@@ -1,3 +1,4 @@
+use ab_glyph::{point, Font, FontArc, Glyph, PxScale, ScaleFont};
 use crate::format::{
     decode_indexed_path, decode_point_record, read_f64, read_u16, GspFile, IndexedPathRecord,
     ObjectGroup, PointRecord,
@@ -6,6 +7,12 @@ use crate::png::encode_png_rgba;
 use std::fs;
 use std::io::Write as _;
 use std::path::Path;
+
+const FONT_CANDIDATES: &[&str] = &[
+    "/usr/share/fonts/noto/NotoSans-Regular.ttf",
+    "/usr/share/fonts/Adwaita/AdwaitaSans-Regular.ttf",
+    "/usr/share/fonts/gnu-free/FreeSans.otf",
+];
 
 #[derive(Debug, Clone)]
 struct GraphTransform {
@@ -53,6 +60,11 @@ struct TextLabel {
     anchor: PointRecord,
     text: String,
     color: [u8; 4],
+}
+
+#[derive(Clone)]
+struct FontRenderer {
+    font: FontArc,
 }
 
 impl Canvas {
@@ -228,6 +240,10 @@ impl Canvas {
     }
 
     fn draw_text(&mut self, x: i32, y: i32, text: &str, rgba: [u8; 4]) {
+        self.draw_text_bitmap(x, y, text, rgba);
+    }
+
+    fn draw_text_bitmap(&mut self, x: i32, y: i32, text: &str, rgba: [u8; 4]) {
         let mut cursor_x = x;
         let mut cursor_y = y;
         for ch in text.chars() {
@@ -363,6 +379,7 @@ pub fn render_points_to_png(
     expand_bounds(&mut bounds);
 
     let mut canvas = Canvas::new(width, height, [250, 250, 248, 255]);
+    let font_renderer = FontRenderer::load();
     let margin = 32.0;
     draw_grid(&mut canvas, width, height, margin, &bounds, &graph);
 
@@ -414,7 +431,11 @@ pub fn render_points_to_png(
 
     for label in &labels {
         let (x, y) = to_screen(&label.anchor, width, height, margin, &bounds, &graph);
-        canvas.draw_text(x + 6, y - 10, &label.text, label.color);
+        if let Some(font) = &font_renderer {
+            font.draw_text(&mut canvas, x + 6, y - 10, &label.text, label.color, 18.0);
+        } else {
+            canvas.draw_text(x + 6, y - 10, &label.text, label.color);
+        }
     }
 
     if let Some(parent) = output_path.parent() {
@@ -1016,4 +1037,73 @@ fn darken(rgba: [u8; 4], amount: u8) -> [u8; 4] {
         rgba[2].saturating_sub(amount),
         rgba[3],
     ]
+}
+
+impl FontRenderer {
+    fn load() -> Option<Self> {
+        for path in FONT_CANDIDATES {
+            if let Ok(bytes) = fs::read(path) {
+                if let Ok(font) = FontArc::try_from_vec(bytes) {
+                    return Some(Self { font });
+                }
+            }
+        }
+        None
+    }
+
+    fn draw_text(
+        &self,
+        canvas: &mut Canvas,
+        x: i32,
+        y: i32,
+        text: &str,
+        rgba: [u8; 4],
+        size: f32,
+    ) {
+        let scale = PxScale::from(size);
+        let scaled = self.font.as_scaled(scale);
+        let mut pen_x = x as f32;
+        let mut pen_y = y as f32 + scaled.ascent();
+
+        for ch in text.chars() {
+            if ch == '\n' {
+                pen_x = x as f32;
+                pen_y += scaled.height() + 4.0;
+                continue;
+            }
+
+            let glyph_id = self.font.glyph_id(ch);
+            let glyph = Glyph {
+                id: glyph_id,
+                scale,
+                position: point(pen_x, pen_y),
+            };
+
+            if let Some(outlined) = self.font.outline_glyph(glyph.clone()) {
+                let bounds = outlined.px_bounds();
+                outlined.draw(|gx, gy, coverage| {
+                    if coverage <= 0.0 {
+                        return;
+                    }
+                    let px = gx as i32 + bounds.min.x.floor() as i32;
+                    let py = gy as i32 + bounds.min.y.floor() as i32;
+                    if px < 0 || py < 0 || px >= canvas.width as i32 || py >= canvas.height as i32 {
+                        return;
+                    }
+                    let index =
+                        ((py as usize) * canvas.width as usize + px as usize) * 4;
+                    let alpha = coverage.clamp(0.0, 1.0);
+                    for channel in 0..3 {
+                        let bg = canvas.pixels[index + channel] as f32;
+                        let fg = rgba[channel] as f32;
+                        let blended = bg * (1.0 - alpha) + fg * alpha;
+                        canvas.pixels[index + channel] = blended.round().clamp(0.0, 255.0) as u8;
+                    }
+                    canvas.pixels[index + 3] = 255;
+                });
+            }
+
+            pen_x += scaled.h_advance(glyph_id);
+        }
+    }
 }
