@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fmt::Write as _;
 use std::fs;
+use std::io::Write as _;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::process;
@@ -45,6 +46,10 @@ fn run() -> Result<(), String> {
         .map(|path| analyze_reference_exe(path))
         .transpose()?;
 
+    if let Some(render_path) = &config.render_path {
+        render_points_to_png(&file, render_path, config.render_width, config.render_height)?;
+    }
+
     println!("{}", render_report(&config, &file, exe_terms.as_ref()));
     Ok(())
 }
@@ -53,6 +58,9 @@ fn run() -> Result<(), String> {
 struct Config {
     gsp_path: PathBuf,
     reference_exe: Option<PathBuf>,
+    render_path: Option<PathBuf>,
+    render_width: u32,
+    render_height: u32,
 }
 
 impl Config {
@@ -64,6 +72,9 @@ impl Config {
 
         let mut gsp_path = None;
         let mut reference_exe = None;
+        let mut render_path = None;
+        let mut render_width = 800_u32;
+        let mut render_height = 600_u32;
         let mut index = 0usize;
 
         while index < raw_args.len() {
@@ -78,6 +89,27 @@ impl Config {
                         return Err("--reference-exe requires a path".to_string());
                     };
                     reference_exe = Some(PathBuf::from(path));
+                }
+                "--render" => {
+                    index += 1;
+                    let Some(path) = raw_args.get(index) else {
+                        return Err("--render requires a path".to_string());
+                    };
+                    render_path = Some(PathBuf::from(path));
+                }
+                "--width" => {
+                    index += 1;
+                    let Some(value) = raw_args.get(index) else {
+                        return Err("--width requires an integer".to_string());
+                    };
+                    render_width = parse_u32_arg(value, "--width")?;
+                }
+                "--height" => {
+                    index += 1;
+                    let Some(value) = raw_args.get(index) else {
+                        return Err("--height requires an integer".to_string());
+                    };
+                    render_height = parse_u32_arg(value, "--height")?;
                 }
                 _ if current_text.starts_with("--") => {
                     return Err(format!("unknown option: {current_text}\n\n{}", Self::usage()));
@@ -101,11 +133,14 @@ impl Config {
         Ok(Self {
             gsp_path,
             reference_exe,
+            render_path,
+            render_width,
+            render_height,
         })
     }
 
     fn usage() -> String {
-        "usage: gsp-rs <path/to/file.gsp> [--reference-exe path/to/GSP5Chs.exe]".to_string()
+        "usage: gsp-rs <path/to/file.gsp> [--reference-exe path/to/GSP5Chs.exe] [--render out.png] [--width 800] [--height 600]".to_string()
     }
 }
 
@@ -152,6 +187,19 @@ impl GspFile {
                 .then_with(|| left.record_type.cmp(&right.record_type))
         });
         entries
+    }
+
+    fn point_records(&self) -> Vec<PointRecord> {
+        self.records
+            .iter()
+            .filter_map(|record| {
+                if record.record_type == 0x0899 {
+                    decode_point_record(record.payload(&self.data))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 }
 
@@ -201,6 +249,62 @@ struct PointRecord {
     y: f64,
 }
 
+#[derive(Debug)]
+struct RenderBounds {
+    min_x: f64,
+    max_x: f64,
+    min_y: f64,
+    max_y: f64,
+}
+
+#[derive(Debug)]
+struct Canvas {
+    width: u32,
+    height: u32,
+    pixels: Vec<u8>,
+}
+
+impl Canvas {
+    fn new(width: u32, height: u32, rgba: [u8; 4]) -> Self {
+        let mut pixels = vec![0; (width as usize) * (height as usize) * 4];
+        for chunk in pixels.chunks_exact_mut(4) {
+            chunk.copy_from_slice(&rgba);
+        }
+        Self {
+            width,
+            height,
+            pixels,
+        }
+    }
+
+    fn set_pixel(&mut self, x: i32, y: i32, rgba: [u8; 4]) {
+        if x < 0 || y < 0 || x >= self.width as i32 || y >= self.height as i32 {
+            return;
+        }
+
+        let index = ((y as usize) * (self.width as usize) + (x as usize)) * 4;
+        self.pixels[index..index + 4].copy_from_slice(&rgba);
+    }
+
+    fn draw_circle(&mut self, cx: i32, cy: i32, radius: i32, rgba: [u8; 4]) {
+        let r2 = radius * radius;
+        for dy in -radius..=radius {
+            for dx in -radius..=radius {
+                if dx * dx + dy * dy <= r2 {
+                    self.set_pixel(cx + dx, cy + dy, rgba);
+                }
+            }
+        }
+    }
+
+    fn draw_crosshair(&mut self, cx: i32, cy: i32, size: i32, rgba: [u8; 4]) {
+        for delta in -size..=size {
+            self.set_pixel(cx + delta, cy, rgba);
+            self.set_pixel(cx, cy + delta, rgba);
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct ExtractedString {
     offset: usize,
@@ -230,6 +334,10 @@ fn render_report(config: &Config, file: &GspFile, exe_terms: Option<&BTreeSet<St
         "  distinct_record_types: {}",
         file.record_type_counts().len()
     );
+    let _ = writeln!(output, "  point_records: {}", file.point_records().len());
+    if let Some(render_path) = &config.render_path {
+        let _ = writeln!(output, "  rendered_png: {}", render_path.display());
+    }
 
     if let Some(header_record) = file.records.first().filter(|record| record.record_type == 0x0384) {
         if let Some(header) = decode_header_record(header_record.payload(&file.data)) {
@@ -618,6 +726,208 @@ fn analyze_reference_exe(path: &Path) -> Result<BTreeSet<String>, String> {
         .map(|term| (*term).to_string())
         .collect();
     Ok(matches)
+}
+
+fn render_points_to_png(
+    file: &GspFile,
+    output_path: &Path,
+    width: u32,
+    height: u32,
+) -> Result<(), String> {
+    if !matches!(
+        output_path.extension().and_then(|ext| ext.to_str()),
+        Some("png") | Some("PNG")
+    ) {
+        return Err(format!(
+            "only PNG output is implemented for now: {}",
+            output_path.display()
+        ));
+    }
+
+    let points = file.point_records();
+    if points.is_empty() {
+        return Err("render target is empty: no 0x0899 point records found".to_string());
+    }
+
+    if width < 64 || height < 64 {
+        return Err("render size must be at least 64x64".to_string());
+    }
+
+    let bounds = point_bounds(&points);
+    let mut canvas = Canvas::new(width, height, [250, 250, 248, 255]);
+    let margin = 32.0_f64;
+    let usable_width = (width as f64 - margin * 2.0).max(1.0);
+    let usable_height = (height as f64 - margin * 2.0).max(1.0);
+    let span_x = (bounds.max_x - bounds.min_x).max(1.0);
+    let span_y = (bounds.max_y - bounds.min_y).max(1.0);
+    let scale = f64::min(usable_width / span_x, usable_height / span_y);
+    let content_width = span_x * scale;
+    let content_height = span_y * scale;
+    let offset_x = (width as f64 - content_width) / 2.0;
+    let offset_y = (height as f64 - content_height) / 2.0;
+
+    for point in &points {
+        let px = ((point.x - bounds.min_x) * scale + offset_x).round() as i32;
+        let py = ((point.y - bounds.min_y) * scale + offset_y).round() as i32;
+        canvas.draw_circle(px, py, 6, [30, 90, 180, 255]);
+        canvas.draw_circle(px, py, 3, [255, 255, 255, 255]);
+        canvas.draw_crosshair(px, py, 9, [20, 20, 20, 255]);
+    }
+
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "failed to create render output directory {}: {error}",
+                parent.display()
+            )
+        })?;
+    }
+
+    let png = encode_png_rgba(width, height, &canvas.pixels)?;
+    let mut file_handle = fs::File::create(output_path)
+        .map_err(|error| format!("failed to create {}: {error}", output_path.display()))?;
+    file_handle
+        .write_all(&png)
+        .map_err(|error| format!("failed to write {}: {error}", output_path.display()))?;
+
+    Ok(())
+}
+
+fn point_bounds(points: &[PointRecord]) -> RenderBounds {
+    let mut min_x = points[0].x;
+    let mut max_x = points[0].x;
+    let mut min_y = points[0].y;
+    let mut max_y = points[0].y;
+
+    for point in points {
+        min_x = min_x.min(point.x);
+        max_x = max_x.max(point.x);
+        min_y = min_y.min(point.y);
+        max_y = max_y.max(point.y);
+    }
+
+    if (max_x - min_x).abs() < f64::EPSILON {
+        max_x += 1.0;
+        min_x -= 1.0;
+    }
+    if (max_y - min_y).abs() < f64::EPSILON {
+        max_y += 1.0;
+        min_y -= 1.0;
+    }
+
+    RenderBounds {
+        min_x,
+        max_x,
+        min_y,
+        max_y,
+    }
+}
+
+fn encode_png_rgba(width: u32, height: u32, rgba: &[u8]) -> Result<Vec<u8>, String> {
+    let expected_len = (width as usize)
+        .checked_mul(height as usize)
+        .and_then(|pixels| pixels.checked_mul(4))
+        .ok_or_else(|| "image dimensions overflow".to_string())?;
+    if rgba.len() != expected_len {
+        return Err(format!(
+            "rgba buffer length mismatch: expected {}, got {}",
+            expected_len,
+            rgba.len()
+        ));
+    }
+
+    let raw = build_png_scanlines(width, height, rgba);
+    let compressed = zlib_store_blocks(&raw);
+    let mut png = Vec::new();
+    png.extend_from_slice(&[137, 80, 78, 71, 13, 10, 26, 10]);
+
+    let mut ihdr = Vec::with_capacity(13);
+    ihdr.extend_from_slice(&width.to_be_bytes());
+    ihdr.extend_from_slice(&height.to_be_bytes());
+    ihdr.push(8);
+    ihdr.push(6);
+    ihdr.push(0);
+    ihdr.push(0);
+    ihdr.push(0);
+    write_png_chunk(&mut png, *b"IHDR", &ihdr);
+    write_png_chunk(&mut png, *b"IDAT", &compressed);
+    write_png_chunk(&mut png, *b"IEND", &[]);
+    Ok(png)
+}
+
+fn build_png_scanlines(width: u32, height: u32, rgba: &[u8]) -> Vec<u8> {
+    let stride = width as usize * 4;
+    let mut raw = Vec::with_capacity((stride + 1) * height as usize);
+    for row in 0..height as usize {
+        raw.push(0);
+        let start = row * stride;
+        raw.extend_from_slice(&rgba[start..start + stride]);
+    }
+    raw
+}
+
+fn zlib_store_blocks(raw: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(raw.len() + raw.len() / 65535 * 5 + 16);
+    out.extend_from_slice(&[0x78, 0x01]);
+
+    let mut offset = 0usize;
+    while offset < raw.len() {
+        let remaining = raw.len() - offset;
+        let block_len = remaining.min(65_535);
+        let final_block = offset + block_len == raw.len();
+        out.push(if final_block { 0x01 } else { 0x00 });
+        let len = block_len as u16;
+        let nlen = !len;
+        out.extend_from_slice(&len.to_le_bytes());
+        out.extend_from_slice(&nlen.to_le_bytes());
+        out.extend_from_slice(&raw[offset..offset + block_len]);
+        offset += block_len;
+    }
+
+    out.extend_from_slice(&adler32(raw).to_be_bytes());
+    out
+}
+
+fn write_png_chunk(out: &mut Vec<u8>, chunk_type: [u8; 4], data: &[u8]) {
+    out.extend_from_slice(&(data.len() as u32).to_be_bytes());
+    out.extend_from_slice(&chunk_type);
+    out.extend_from_slice(data);
+
+    let mut crc_input = Vec::with_capacity(4 + data.len());
+    crc_input.extend_from_slice(&chunk_type);
+    crc_input.extend_from_slice(data);
+    out.extend_from_slice(&crc32(&crc_input).to_be_bytes());
+}
+
+fn adler32(data: &[u8]) -> u32 {
+    const MOD_ADLER: u32 = 65_521;
+    let mut a = 1u32;
+    let mut b = 0u32;
+
+    for byte in data {
+        a = (a + u32::from(*byte)) % MOD_ADLER;
+        b = (b + a) % MOD_ADLER;
+    }
+
+    (b << 16) | a
+}
+
+fn crc32(data: &[u8]) -> u32 {
+    let mut crc = 0xffff_ffffu32;
+    for byte in data {
+        crc ^= u32::from(*byte);
+        for _ in 0..8 {
+            let mask = (crc & 1).wrapping_neg() & 0xedb8_8320;
+            crc = (crc >> 1) ^ mask;
+        }
+    }
+    !crc
+}
+
+fn parse_u32_arg(value: &std::ffi::OsString, flag: &str) -> Result<u32, String> {
+    let text = value.to_string_lossy();
+    text.parse::<u32>()
+        .map_err(|error| format!("{flag} expects an unsigned integer, got {text:?}: {error}"))
 }
 
 fn collect_ascii_strings(data: &[u8]) -> Vec<String> {
