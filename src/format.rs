@@ -70,6 +70,10 @@ impl GspFile {
             })
             .collect()
     }
+
+    pub fn object_groups(&self) -> Vec<ObjectGroup> {
+        collect_object_groups(&self.records, &self.data)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -123,6 +127,27 @@ pub struct IndexedPathRecord {
     #[allow(dead_code)]
     pub record_type: u32,
     pub refs: Vec<usize>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ObjectGroupHeader {
+    pub class_id: u32,
+    pub flags: u32,
+    pub style_a: u32,
+    pub style_b: u32,
+    pub style_c: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct ObjectGroup {
+    #[allow(dead_code)]
+    pub ordinal: usize,
+    #[allow(dead_code)]
+    pub start_offset: usize,
+    #[allow(dead_code)]
+    pub end_offset: usize,
+    pub header: ObjectGroupHeader,
+    pub records: Vec<Record>,
 }
 
 #[derive(Debug, Clone)]
@@ -278,6 +303,20 @@ pub fn decode_indexed_path(record_type: u32, payload: &[u8]) -> Option<IndexedPa
     Some(IndexedPathRecord { record_type, refs })
 }
 
+pub fn decode_object_group_header(payload: &[u8]) -> Option<ObjectGroupHeader> {
+    if payload.len() != 0x1c {
+        return None;
+    }
+
+    Some(ObjectGroupHeader {
+        class_id: read_u32(payload, 0),
+        flags: read_u32(payload, 4),
+        style_a: read_u32(payload, 8),
+        style_b: read_u32(payload, 12),
+        style_c: read_u32(payload, 16),
+    })
+}
+
 pub fn decode_c_string(payload: &[u8]) -> Option<String> {
     let nul = payload.iter().position(|byte| *byte == 0)?;
     let bytes = &payload[..nul];
@@ -336,6 +375,50 @@ pub fn read_f64(data: &[u8], offset: usize) -> f64 {
     f64::from_le_bytes([
         bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
     ])
+}
+
+fn collect_object_groups(records: &[Record], data: &[u8]) -> Vec<ObjectGroup> {
+    let mut groups = Vec::new();
+    let mut index = 0usize;
+
+    while index < records.len() {
+        let record = &records[index];
+        if record.record_type != 0x07d0 {
+            index += 1;
+            continue;
+        }
+
+        let Some(header) = decode_object_group_header(record.payload(data)) else {
+            index += 1;
+            continue;
+        };
+
+        let start_offset = record.offset;
+        let mut group_records = Vec::new();
+        let mut cursor = index + 1;
+        let mut end_offset = record.offset + 8 + record.length as usize;
+
+        while cursor < records.len() {
+            let current = &records[cursor];
+            group_records.push(current.clone());
+            end_offset = current.offset + 8 + current.length as usize;
+            cursor += 1;
+            if current.record_type == 0x07d7 {
+                break;
+            }
+        }
+
+        groups.push(ObjectGroup {
+            ordinal: groups.len() + 1,
+            start_offset,
+            end_offset,
+            header,
+            records: group_records,
+        });
+        index = cursor;
+    }
+
+    groups
 }
 
 fn is_useful_string(bytes: &[u8]) -> bool {

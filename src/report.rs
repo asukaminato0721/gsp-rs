@@ -1,7 +1,8 @@
 use crate::config::Config;
 use crate::format::{
     collect_strings, decode_c_string, decode_header_record, decode_indexed_path,
-    decode_palette_entry, decode_point_record, decode_symbol_slot, record_name, GspFile, Record,
+    decode_object_group_header, decode_palette_entry, decode_point_record, decode_symbol_slot,
+    record_name, GspFile, Record,
 };
 use crate::util::{hex_bytes, truncate_text};
 use std::collections::BTreeSet;
@@ -144,6 +145,14 @@ fn describe_record(record: &Record, payload: &[u8]) -> Vec<String> {
         0x0899 => {
             if let Some(point) = decode_point_record(payload) {
                 details.push(format!("point x={:.6} y={:.6}", point.x, point.y));
+            }
+        }
+        0x07d0 => {
+            if let Some(header) = decode_object_group_header(payload) {
+                details.push(format!(
+                    "object class_id={} flags=0x{:08x} style_a=0x{:08x} style_b=0x{:08x} style_c=0x{:08x}",
+                    header.class_id, header.flags, header.style_a, header.style_b, header.style_c
+                ));
             }
         }
         0x07d2 | 0x07d3 => {

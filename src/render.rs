@@ -1,4 +1,4 @@
-use crate::format::GspFile;
+use crate::format::{decode_indexed_path, decode_point_record, GspFile, ObjectGroup, PointRecord};
 use crate::png::encode_png_rgba;
 use std::fs;
 use std::io::Write as _;
@@ -10,6 +10,12 @@ struct RenderBounds {
     max_x: f64,
     min_y: f64,
     max_y: f64,
+}
+
+#[derive(Debug, Clone)]
+struct CircleShape {
+    center: PointRecord,
+    radius_point: PointRecord,
 }
 
 #[derive(Debug)]
@@ -52,10 +58,135 @@ impl Canvas {
         }
     }
 
-    fn draw_crosshair(&mut self, cx: i32, cy: i32, size: i32, rgba: [u8; 4]) {
-        for delta in -size..=size {
-            self.set_pixel(cx + delta, cy, rgba);
-            self.set_pixel(cx, cy + delta, rgba);
+    fn draw_line(&mut self, mut x0: i32, mut y0: i32, x1: i32, y1: i32, rgba: [u8; 4]) {
+        let dx = (x1 - x0).abs();
+        let sx = if x0 < x1 { 1 } else { -1 };
+        let dy = -(y1 - y0).abs();
+        let sy = if y0 < y1 { 1 } else { -1 };
+        let mut error = dx + dy;
+
+        loop {
+            self.set_pixel(x0, y0, rgba);
+            if x0 == x1 && y0 == y1 {
+                break;
+            }
+
+            let doubled = error * 2;
+            if doubled >= dy {
+                error += dy;
+                x0 += sx;
+            }
+            if doubled <= dx {
+                error += dx;
+                y0 += sy;
+            }
+        }
+    }
+
+    fn draw_polyline(&mut self, points: &[(i32, i32)], closed: bool, rgba: [u8; 4]) {
+        if points.len() < 2 {
+            return;
+        }
+
+        for segment in points.windows(2) {
+            self.draw_line(segment[0].0, segment[0].1, segment[1].0, segment[1].1, rgba);
+        }
+
+        if closed {
+            self.draw_line(
+                points[points.len() - 1].0,
+                points[points.len() - 1].1,
+                points[0].0,
+                points[0].1,
+                rgba,
+            );
+        }
+    }
+
+    fn fill_polygon(&mut self, points: &[(i32, i32)], rgba: [u8; 4]) {
+        if points.len() < 3 {
+            return;
+        }
+
+        let min_y = points.iter().map(|point| point.1).min().unwrap_or(0);
+        let max_y = points.iter().map(|point| point.1).max().unwrap_or(-1);
+
+        for y in min_y..=max_y {
+            let mut intersections = Vec::<i32>::new();
+            for edge in 0..points.len() {
+                let (x1, y1) = points[edge];
+                let (x2, y2) = points[(edge + 1) % points.len()];
+                if y1 == y2 {
+                    continue;
+                }
+
+                let (sy, ey, sx, ex) = if y1 < y2 {
+                    (y1, y2, x1, x2)
+                } else {
+                    (y2, y1, x2, x1)
+                };
+
+                if y < sy || y >= ey {
+                    continue;
+                }
+
+                let t = (y - sy) as f64 / (ey - sy) as f64;
+                let x = sx as f64 + t * (ex - sx) as f64;
+                intersections.push(x.round() as i32);
+            }
+
+            intersections.sort_unstable();
+            for pair in intersections.chunks_exact(2) {
+                let start = pair[0];
+                let end = pair[1];
+                for x in start..=end {
+                    self.set_pixel(x, y, rgba);
+                }
+            }
+        }
+    }
+
+    fn draw_rect_outline(
+        &mut self,
+        left: i32,
+        top: i32,
+        right: i32,
+        bottom: i32,
+        rgba: [u8; 4],
+    ) {
+        self.draw_line(left, top, right, top, rgba);
+        self.draw_line(right, top, right, bottom, rgba);
+        self.draw_line(right, bottom, left, bottom, rgba);
+        self.draw_line(left, bottom, left, top, rgba);
+    }
+
+    fn draw_circle_outline(&mut self, cx: i32, cy: i32, radius: i32, rgba: [u8; 4]) {
+        let mut x = radius;
+        let mut y = 0;
+        let mut error = 1 - radius;
+
+        while x >= y {
+            let octants = [
+                (cx + x, cy + y),
+                (cx + y, cy + x),
+                (cx - y, cy + x),
+                (cx - x, cy + y),
+                (cx - x, cy - y),
+                (cx - y, cy - x),
+                (cx + y, cy - x),
+                (cx + x, cy - y),
+            ];
+            for (px, py) in octants {
+                self.set_pixel(px, py, rgba);
+            }
+
+            y += 1;
+            if error < 0 {
+                error += 2 * y + 1;
+            } else {
+                x -= 1;
+                error += 2 * (y - x) + 1;
+            }
         }
     }
 }
@@ -77,6 +208,7 @@ pub fn render_points_to_png(
     }
 
     let points = file.point_records();
+    let groups = file.object_groups();
     if points.is_empty() {
         return Err("render target is empty: no 0x0899 point records found".to_string());
     }
@@ -98,12 +230,44 @@ pub fn render_points_to_png(
     let offset_x = (width as f64 - content_width) / 2.0;
     let offset_y = (height as f64 - content_height) / 2.0;
 
-    for point in &points {
-        let px = ((point.x - bounds.min_x) * scale + offset_x).round() as i32;
-        let py = ((point.y - bounds.min_y) * scale + offset_y).round() as i32;
-        canvas.draw_circle(px, py, 6, [30, 90, 180, 255]);
-        canvas.draw_circle(px, py, 3, [255, 255, 255, 255]);
-        canvas.draw_crosshair(px, py, 9, [20, 20, 20, 255]);
+    let projected_points = points
+        .iter()
+        .map(|point| world_to_screen(point, &bounds, scale, offset_x, offset_y))
+        .collect::<Vec<_>>();
+
+    canvas.draw_rect_outline(
+        margin as i32,
+        margin as i32,
+        (width as f64 - margin) as i32,
+        (height as f64 - margin) as i32,
+        [220, 220, 220, 255],
+    );
+
+    let point_map = collect_point_objects(file, &groups);
+    let polylines = collect_shape_paths(file, &groups, 2, &point_map, &projected_points);
+    let polygons = collect_shape_paths(file, &groups, 8, &point_map, &projected_points);
+    let circles = collect_circles(file, &groups, &point_map);
+
+    for polygon in &polygons {
+        canvas.fill_polygon(polygon, [120, 245, 110, 255]);
+        canvas.draw_polyline(polygon, true, [40, 150, 40, 255]);
+    }
+
+    for polyline in &polylines {
+        canvas.draw_polyline(polyline, false, [20, 20, 180, 255]);
+    }
+
+    for circle in &circles {
+        if let Some((cx, cy, radius_px)) =
+            project_circle(circle, &bounds, scale, offset_x, offset_y)
+        {
+            canvas.draw_circle_outline(cx, cy, radius_px, [20, 120, 20, 255]);
+        }
+    }
+
+    for (index, _point) in points.iter().enumerate() {
+        let (px, py) = projected_points[index];
+        canvas.draw_circle(px, py, 4, [255, 60, 40, 255]);
     }
 
     if let Some(parent) = output_path.parent() {
@@ -125,7 +289,7 @@ pub fn render_points_to_png(
     Ok(())
 }
 
-fn point_bounds(points: &[crate::format::PointRecord]) -> RenderBounds {
+fn point_bounds(points: &[PointRecord]) -> RenderBounds {
     let mut min_x = points[0].x;
     let mut max_x = points[0].x;
     let mut min_y = points[0].y;
@@ -152,5 +316,109 @@ fn point_bounds(points: &[crate::format::PointRecord]) -> RenderBounds {
         max_x,
         min_y,
         max_y,
+    }
+}
+
+fn world_to_screen(
+    point: &PointRecord,
+    bounds: &RenderBounds,
+    scale: f64,
+    offset_x: f64,
+    offset_y: f64,
+) -> (i32, i32) {
+    let px = ((point.x - bounds.min_x) * scale + offset_x).round() as i32;
+    let py = ((point.y - bounds.min_y) * scale + offset_y).round() as i32;
+    (px, py)
+}
+
+fn collect_point_objects(file: &GspFile, groups: &[ObjectGroup]) -> Vec<Option<PointRecord>> {
+    groups
+        .iter()
+        .map(|group| {
+            if group.header.class_id != 0 {
+                return None;
+            }
+            group
+                .records
+                .iter()
+                .find_map(|record| (record.record_type == 0x0899).then(|| decode_point_record(record.payload(&file.data))).flatten())
+        })
+        .collect()
+}
+
+fn collect_shape_paths(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    class_id: u32,
+    point_map: &[Option<PointRecord>],
+    projected_points: &[(i32, i32)],
+) -> Vec<Vec<(i32, i32)>> {
+    groups
+        .iter()
+        .filter(|group| group.header.class_id == class_id)
+        .filter_map(|group| {
+            let path = group
+                .records
+                .iter()
+                .find_map(|record| match record.record_type {
+                    0x07d2 | 0x07d3 => decode_indexed_path(record.record_type, record.payload(&file.data)),
+                    _ => None,
+                });
+            let path = path?;
+            let mut vertices = Vec::new();
+            for object_ref in path.refs {
+                point_map.get(object_ref.saturating_sub(1))?.as_ref()?;
+                let point_index = point_map
+                    .iter()
+                    .take(object_ref)
+                    .filter(|entry| entry.is_some())
+                    .count()
+                    .saturating_sub(1);
+                vertices.push(*projected_points.get(point_index)?);
+            }
+            (vertices.len() >= 2).then_some(vertices)
+        })
+        .collect()
+}
+
+fn collect_circles(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    point_map: &[Option<PointRecord>],
+) -> Vec<CircleShape> {
+    groups
+        .iter()
+        .filter(|group| group.header.class_id == 3)
+        .filter_map(|group| {
+            let path = group.records.iter().find_map(|record| match record.record_type {
+                0x07d2 | 0x07d3 => decode_indexed_path(record.record_type, record.payload(&file.data)),
+                _ => None,
+            })?;
+            if path.refs.len() != 2 {
+                return None;
+            }
+            let center = point_map.get(path.refs[0].saturating_sub(1))?.clone()?;
+            let radius_point = point_map.get(path.refs[1].saturating_sub(1))?.clone()?;
+            Some(CircleShape { center, radius_point })
+        })
+        .collect()
+}
+
+fn project_circle(
+    circle: &CircleShape,
+    bounds: &RenderBounds,
+    scale: f64,
+    offset_x: f64,
+    offset_y: f64,
+) -> Option<(i32, i32, i32)> {
+    let (cx, cy) = world_to_screen(&circle.center, bounds, scale, offset_x, offset_y);
+    let radius = ((circle.center.x - circle.radius_point.x).powi(2)
+        + (circle.center.y - circle.radius_point.y).powi(2))
+    .sqrt();
+    let radius_px = (radius * scale).round() as i32;
+    if radius_px < 4 {
+        None
+    } else {
+        Some((cx, cy, radius_px))
     }
 }
