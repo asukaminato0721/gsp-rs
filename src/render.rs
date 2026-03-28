@@ -330,7 +330,26 @@ pub fn render_points_to_png(
     let axes = collect_line_shapes(file, &groups, &raw_anchors, &[61]);
     let polygons = collect_polygon_shapes(file, &groups, &raw_anchors);
     let circles = collect_circle_shapes(file, &groups, &point_map);
-    let labels = collect_labels(file, &groups, &raw_anchors);
+    let mut labels = collect_labels(file, &groups, &raw_anchors);
+    if let (Some(circle), Some(formula_index)) = (
+        circles.first(),
+        labels.iter().position(|label| label.text.contains("AB:")),
+    ) {
+        let circumference =
+            2.0 * std::f64::consts::PI * distance_world(&circle.center, &circle.radius_point, &graph);
+        let anchor = PointRecord {
+            x: labels[formula_index].anchor.x,
+            y: labels[formula_index].anchor.y - 0.9 * graph.as_ref().map(|g| g.raw_per_unit).unwrap_or(1.0),
+        };
+        labels.insert(
+            formula_index,
+            TextLabel {
+                anchor,
+                text: format!("AB perimeter = {:.2} cm", circumference),
+                color: [30, 30, 30, 255],
+            },
+        );
+    }
 
     let mut bounds = collect_bounds(
         &graph,
@@ -545,15 +564,24 @@ fn collect_labels(
                     .find(|record| record.record_type == 0x08fc)
                     .and_then(|record| extract_rich_text(record.payload(&file.data)))
                 {
-                    let anchor = anchors
-                        .get(group.ordinal.saturating_sub(1))
-                        .cloned()
-                        .flatten()
+                    let anchor = group
+                        .records
+                        .iter()
+                        .find(|record| record.record_type == 0x08fc)
+                        .and_then(|record| decode_text_anchor(record.payload(&file.data)))
+                        .or_else(|| {
+                            anchors
+                                .get(group.ordinal.saturating_sub(1))
+                                .cloned()
+                                .flatten()
+                        })
                         .or_else(|| find_indexed_path(file, group).and_then(|path| {
                             path.refs
                                 .iter()
                                 .rev()
-                                .find_map(|object_ref| anchors.get(object_ref.saturating_sub(1)).cloned().flatten())
+                                .find_map(|object_ref| {
+                                    anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
+                                })
                         }));
                     if let Some(anchor) = anchor {
                         labels.push(TextLabel {
@@ -831,41 +859,138 @@ fn distance_world(a: &PointRecord, b: &PointRecord, graph: &Option<GraphTransfor
 
 fn extract_rich_text(payload: &[u8]) -> Option<String> {
     let text = String::from_utf8_lossy(payload);
-    let mut out = String::new();
-    let bytes = text.as_bytes();
-    let mut index = 0usize;
-    while index < bytes.len() {
-        if bytes[index] == b'<' && index + 1 < bytes.len() && bytes[index + 1] == b'T' {
-            let start = index + 2;
-            let mut end = start;
-            while end < bytes.len() && bytes[end] != b'>' {
-                end += 1;
-            }
-            if end < bytes.len() {
-                let token = &text[start..end];
-                if token.len() >= 3 {
-                    out.push_str(&token[2..]);
-                }
-                index = end + 1;
-                continue;
-            }
-        }
-        index += 1;
+    let start = text.find('<')?;
+    let markup = text[start..].trim_end_matches('\0');
+
+    if markup.starts_with("<VL") {
+        return extract_simple_text(markup);
     }
-    let cleaned = out
+
+    let parsed = parse_markup(markup);
+    let mut cleaned = parsed
         .replace('\u{2013}', "-")
         .replace('\u{2014}', "-")
-        .replace(">>", "")
-        .replace("<<", "")
-        .replace("厘米", "cm")
+        .replace("厘米", "cm");
+
+    if let Some(first) = cleaned.find("AB:") {
+        if let Some(second_rel) = cleaned[first + 3..].find("AB:") {
+            cleaned.truncate(first + 3 + second_rel);
+        }
+    }
+
+    cleaned = cleaned
+        .replace("  ", " ")
+        .replace("( ", "(")
+        .replace(" )", ")")
+        .replace(" + -", " -")
         .trim()
         .to_string();
+
     (!cleaned.is_empty()).then_some(cleaned)
 }
 
 fn decode_measurement_value(payload: &[u8]) -> Option<f64> {
     (payload.len() == 12).then(|| read_f64(payload, 4))
 }
+
+fn decode_text_anchor(payload: &[u8]) -> Option<PointRecord> {
+    if payload.len() < 16 {
+        return None;
+    }
+    Some(PointRecord {
+        x: read_u16(payload, 12) as f64,
+        y: read_u16(payload, 14) as f64,
+    })
+}
+
+fn extract_simple_text(markup: &str) -> Option<String> {
+    let start = markup.find("<T")?;
+    let tail = &markup[start + 2..];
+    let x_index = tail.find('x')?;
+    let end = tail[x_index + 1..].find('>')?;
+    Some(tail[x_index + 1..x_index + 1 + end].to_string())
+}
+
+fn parse_markup(markup: &str) -> String {
+    fn parse_seq(s: &str, mut index: usize, stop_on_gt: bool) -> (Vec<String>, usize) {
+        let bytes = s.as_bytes();
+        let mut parts = Vec::new();
+
+        while index < bytes.len() {
+            if stop_on_gt && bytes[index] == b'>' {
+                return (parts, index + 1);
+            }
+            if bytes[index] != b'<' {
+                index += 1;
+                continue;
+            }
+            if index + 1 >= bytes.len() {
+                break;
+            }
+
+            match bytes[index + 1] as char {
+                'T' => {
+                    let mut end = index + 2;
+                    while end < bytes.len() && bytes[end] != b'>' {
+                        end += 1;
+                    }
+                    let token = &s[index + 2..end];
+                    if let Some(x_index) = token.find('x') {
+                        parts.push(token[x_index + 1..].to_string());
+                    }
+                    index = end.saturating_add(1);
+                }
+                '!' => {
+                    let mut end = index + 2;
+                    while end < bytes.len() && bytes[end] != b'>' {
+                        end += 1;
+                    }
+                    index = end.saturating_add(1);
+                }
+                _ => {
+                    let mut name_end = index + 1;
+                    while name_end < bytes.len()
+                        && bytes[name_end] != b'<'
+                        && bytes[name_end] != b'>'
+                    {
+                        name_end += 1;
+                    }
+                    let name = &s[index + 1..name_end];
+                    let (inner_parts, next_index) = if name_end < bytes.len() && bytes[name_end] == b'<' {
+                        parse_seq(s, name_end, true)
+                    } else {
+                        (Vec::new(), name_end.saturating_add(1))
+                    };
+                    index = next_index;
+
+                    let mut inner = inner_parts.join("");
+                    if name.starts_with('+') && !inner.is_empty() {
+                        let split = inner
+                            .char_indices()
+                            .rev()
+                            .find(|(_, ch)| !ch.is_ascii_digit())
+                            .map(|(i, _)| i + 1)
+                            .unwrap_or(0);
+                        if split < inner.len() {
+                            let exp = inner.split_off(split);
+                            inner.push('^');
+                            inner.push_str(&exp);
+                        }
+                    }
+                    if !inner.is_empty() {
+                        parts.push(inner);
+                    }
+                }
+            }
+        }
+
+        (parts, index)
+    }
+
+    let (parts, _) = parse_seq(markup, 0, false);
+    parts.join("")
+}
+
 
 fn format_number(value: f64) -> String {
     if (value.fract()).abs() < 0.005 {
