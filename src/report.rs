@@ -1,8 +1,8 @@
 use crate::config::Config;
 use crate::format::{
-    collect_strings, decode_c_string, decode_header_record, decode_indexed_path,
+    GspFile, Record, collect_strings, decode_c_string, decode_header_record, decode_indexed_path,
     decode_object_group_header, decode_palette_entry, decode_point_record, decode_symbol_slot,
-    record_name, GspFile, Record,
+    record_name,
 };
 use crate::util::{hex_bytes, truncate_text};
 use std::collections::BTreeSet;
@@ -14,7 +14,11 @@ pub fn render_report(
     exe_terms: Option<&BTreeSet<String>>,
 ) -> String {
     let mut output = String::new();
-    let zero_len_count = file.records.iter().filter(|record| record.length == 0).count();
+    let zero_len_count = file
+        .records
+        .iter()
+        .filter(|record| record.length == 0)
+        .count();
 
     let _ = writeln!(output, "GSP analysis");
     let _ = writeln!(output, "  path: {}", config.gsp_path.display());
@@ -42,8 +46,7 @@ pub fn render_report(
         .records
         .first()
         .filter(|record| record.record_type == 0x0384)
-    {
-        if let Some(header) = decode_header_record(header_record.payload(&file.data)) {
+        && let Some(header) = decode_header_record(header_record.payload(&file.data)) {
             let _ = writeln!(output);
             let _ = writeln!(output, "Header");
             let _ = writeln!(
@@ -57,7 +60,6 @@ pub fn render_report(
             let _ = writeln!(output, "  words_u16: {:?}", header.words_u16);
             let _ = writeln!(output, "  words_u32: {:?}", header.words_u32);
         }
-    }
 
     let _ = writeln!(output);
     let _ = writeln!(output, "Record Type Counts");
@@ -174,11 +176,7 @@ fn describe_record(record: &Record, payload: &[u8]) -> Vec<String> {
             if let Some(entry) = decode_palette_entry(payload) {
                 details.push(format!(
                     "palette slot={} rgba=[{}, {}, {}, {}]",
-                    entry.slot_index,
-                    entry.rgba[0],
-                    entry.rgba[1],
-                    entry.rgba[2],
-                    entry.rgba[3]
+                    entry.slot_index, entry.rgba[0], entry.rgba[1], entry.rgba[2], entry.rgba[3]
                 ));
             }
         }

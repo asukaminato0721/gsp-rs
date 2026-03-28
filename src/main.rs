@@ -33,7 +33,12 @@ fn run() -> Result<(), String> {
         .transpose()?;
 
     if let Some(render_path) = &config.render_path {
-        render_points_to_png(&file, render_path, config.render_width, config.render_height)?;
+        render_points_to_png(
+            &file,
+            render_path,
+            config.render_width,
+            config.render_height,
+        )?;
     }
 
     println!("{}", render_report(&config, &file, exe_terms.as_ref()));

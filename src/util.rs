@@ -78,7 +78,8 @@ pub fn truncate_text(text: &str, max_chars: usize) -> String {
 }
 
 pub fn hex_bytes(bytes: &[u8]) -> String {
-    bytes.iter()
+    bytes
+        .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect::<Vec<_>>()
         .join(" ")

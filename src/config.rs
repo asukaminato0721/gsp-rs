@@ -60,7 +60,10 @@ impl Config {
                     render_height = parse_u32_arg(value, "--height")?;
                 }
                 _ if current_text.starts_with("--") => {
-                    return Err(format!("unknown option: {current_text}\n\n{}", Self::usage()));
+                    return Err(format!(
+                        "unknown option: {current_text}\n\n{}",
+                        Self::usage()
+                    ));
                 }
                 _ if gsp_path.is_none() => gsp_path = Some(current),
                 _ => {

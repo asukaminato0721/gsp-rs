@@ -11,7 +11,10 @@ pub struct GspFile {
 impl GspFile {
     pub fn parse(data: &[u8]) -> Result<Self, String> {
         if data.len() < 12 {
-            return Err(format!("file is too small to be a GSP file: {} bytes", data.len()));
+            return Err(format!(
+                "file is too small to be a GSP file: {} bytes",
+                data.len()
+            ));
         }
 
         let magic = String::from_utf8_lossy(&data[..4]).to_string();
@@ -248,7 +251,10 @@ pub fn decode_header_record(payload: &[u8]) -> Option<HeaderRecord> {
         .map(|offset| read_u32(payload, offset))
         .collect::<Vec<_>>();
 
-    Some(HeaderRecord { words_u16, words_u32 })
+    Some(HeaderRecord {
+        words_u16,
+        words_u32,
+    })
 }
 
 pub fn decode_symbol_slot(record_type: u32, payload: &[u8]) -> Option<SymbolSlotRecord> {
@@ -287,7 +293,7 @@ pub fn decode_point_record(payload: &[u8]) -> Option<PointRecord> {
 }
 
 pub fn decode_indexed_path(record_type: u32, payload: &[u8]) -> Option<IndexedPathRecord> {
-    if payload.len() < 4 || payload.len() % 4 != 0 {
+    if payload.len() < 4 || !payload.len().is_multiple_of(4) {
         return None;
     }
 
