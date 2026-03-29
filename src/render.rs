@@ -194,7 +194,12 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     );
     let circles = collect_circle_shapes(file, &groups, &point_map);
     let synthetic_axes = if graph_mode && has_function_plots && axes.is_empty() {
-        synthesize_function_axes(&function_plots, function_plot_domain, saved_viewport, &graph_ref)
+        synthesize_function_axes(
+            &function_plots,
+            function_plot_domain,
+            saved_viewport,
+            &graph_ref,
+        )
     } else {
         Vec::new()
     };
@@ -737,7 +742,10 @@ fn collect_function_plots(
     };
 
     let mut plots = Vec::new();
-    for group in groups.iter().filter(|group| (group.header.class_id & 0xffff) == 72) {
+    for group in groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 72)
+    {
         let Some(path) = find_indexed_path(file, group) else {
             continue;
         };
@@ -805,7 +813,10 @@ fn collect_function_plot_domain(file: &GspFile, groups: &[ObjectGroup]) -> Optio
     let mut min_x = f64::INFINITY;
     let mut max_x = f64::NEG_INFINITY;
     let mut found = false;
-    for group in groups.iter().filter(|group| (group.header.class_id & 0xffff) == 72) {
+    for group in groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 72)
+    {
         let Some(descriptor) = group
             .records
             .iter()
@@ -847,10 +858,7 @@ fn collect_graph_window_x_hint(file: &GspFile, groups: &[ObjectGroup]) -> Option
             }
             let min_x = read_f32_unaligned(payload, 14)?;
             let max_x = read_f32_unaligned(payload, 18)?;
-            (min_x.is_finite()
-                && max_x.is_finite()
-                && min_x < max_x
-                && (max_x - min_x) > 1.0)
+            (min_x.is_finite() && max_x.is_finite() && min_x < max_x && (max_x - min_x) > 1.0)
                 .then_some((f64::from(min_x), f64::from(max_x)))
         })
 }
@@ -858,13 +866,19 @@ fn collect_graph_window_x_hint(file: &GspFile, groups: &[ObjectGroup]) -> Option
 fn collect_graph_window_y_hint(file: &GspFile, groups: &[ObjectGroup]) -> Option<(f64, f64)> {
     let expr = groups
         .iter()
-        .find(|group| group.records.iter().any(|record| record.record_type == 0x0907))
+        .find(|group| {
+            group
+                .records
+                .iter()
+                .any(|record| record.record_type == 0x0907)
+        })
         .and_then(|group| decode_function_expr(file, group))?;
     let plot_payload = groups
         .iter()
         .filter(|group| (group.header.class_id & 0xffff) == 72)
         .find_map(|group| {
-            group.records
+            group
+                .records
                 .iter()
                 .find(|record| record.record_type == 0x0902)
                 .map(|record| record.payload(&file.data))
@@ -963,7 +977,9 @@ fn synthesize_function_axes(
     viewport: Option<Bounds>,
     graph: &Option<GraphTransform>,
 ) -> Vec<LineShape> {
-    let Some(mut world_bounds) = viewport.or_else(|| bounds_from_function_plots(function_plots, domain, graph)) else {
+    let Some(mut world_bounds) =
+        viewport.or_else(|| bounds_from_function_plots(function_plots, domain, graph))
+    else {
         return Vec::new();
     };
     if (world_bounds.max_y - world_bounds.min_y).abs() < 1e-6 {
@@ -992,7 +1008,9 @@ fn synthesize_function_axes(
             .map(|point| {
                 to_raw_from_world(
                     &point,
-                    graph.as_ref().expect("graph transform required for synthetic axes"),
+                    graph
+                        .as_ref()
+                        .expect("graph transform required for synthetic axes"),
                 )
             })
             .collect(),
@@ -1016,7 +1034,9 @@ fn synthesize_function_axes(
             .map(|point| {
                 to_raw_from_world(
                     &point,
-                    graph.as_ref().expect("graph transform required for synthetic axes"),
+                    graph
+                        .as_ref()
+                        .expect("graph transform required for synthetic axes"),
                 )
             })
             .collect(),
@@ -1041,8 +1061,7 @@ fn synthesize_function_labels(
             collect_function_plot_domain(file, groups),
             graph,
         )
-    })
-    else {
+    }) else {
         return Vec::new();
     };
     let Some(transform) = graph.as_ref() else {
@@ -1224,8 +1243,7 @@ fn parse_function_term(words: &[u16], index: &mut usize) -> Option<FunctionTerm>
         return None;
     }
     if let Some(op) = decode_unary_function(words[*index]) {
-        if *index + 2 < words.len() && words[*index + 1] == 0x000f && words[*index + 2] == 0x000c
-        {
+        if *index + 2 < words.len() && words[*index + 1] == 0x000f && words[*index + 2] == 0x000c {
             *index += 3;
             return Some(FunctionTerm::UnaryX(op));
         }
@@ -1452,11 +1470,7 @@ fn collect_bounds(
     bounds
 }
 
-fn include_line_bounds(
-    bounds: &mut Bounds,
-    lines: &[LineShape],
-    graph: &Option<GraphTransform>,
-) {
+fn include_line_bounds(bounds: &mut Bounds, lines: &[LineShape], graph: &Option<GraphTransform>) {
     for line in lines {
         for point in &line.points {
             let world = to_world(point, graph);
@@ -1473,24 +1487,25 @@ fn bounds_from_function_plots(
     domain: Option<(f64, f64)>,
     graph: &Option<GraphTransform>,
 ) -> Option<Bounds> {
-    let mut bounds = if let Some(first) = function_plots.first().and_then(|line| line.points.first()) {
-        let first = to_world(first, graph);
-        Bounds {
-            min_x: first.x,
-            max_x: first.x,
-            min_y: first.y,
-            max_y: first.y,
-        }
-    } else if let Some((min_x, max_x)) = domain {
-        Bounds {
-            min_x,
-            max_x,
-            min_y: 0.0,
-            max_y: 0.0,
-        }
-    } else {
-        return None;
-    };
+    let mut bounds =
+        if let Some(first) = function_plots.first().and_then(|line| line.points.first()) {
+            let first = to_world(first, graph);
+            Bounds {
+                min_x: first.x,
+                max_x: first.x,
+                min_y: first.y,
+                max_y: first.y,
+            }
+        } else if let Some((min_x, max_x)) = domain {
+            Bounds {
+                min_x,
+                max_x,
+                min_y: 0.0,
+                max_y: 0.0,
+            }
+        } else {
+            return None;
+        };
     include_line_bounds(&mut bounds, function_plots, graph);
     if let Some((min_x, max_x)) = domain {
         bounds.min_x = bounds.min_x.min(min_x);
@@ -1782,7 +1797,10 @@ mod tests {
         assert!((scene.bounds.min_x + 9.152).abs() < 0.001);
         assert!((scene.bounds.min_y + 1.0).abs() < 0.001);
         assert_eq!(scene.labels.len(), 1);
-        assert_eq!(scene.labels[0].text, "q(x) = |x| + √x + ln(x) + log(x) + sgn(x) + round(x) + trunc(x)");
+        assert_eq!(
+            scene.labels[0].text,
+            "q(x) = |x| + √x + ln(x) + log(x) + sgn(x) + round(x) + trunc(x)"
+        );
     }
 
     #[test]
@@ -1792,7 +1810,12 @@ mod tests {
         let groups = file.object_groups();
         let function_group = groups
             .iter()
-            .find(|group| group.records.iter().any(|record| record.record_type == 0x0907))
+            .find(|group| {
+                group
+                    .records
+                    .iter()
+                    .any(|record| record.record_type == 0x0907)
+            })
             .expect("function group");
         let payload = function_group
             .records

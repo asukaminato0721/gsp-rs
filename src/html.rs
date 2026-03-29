@@ -748,7 +748,11 @@ fn scene_to_json(scene: &Scene, width: u32, height: u32) -> String {
         "\"width\":{width},\"height\":{height},\"graphMode\":{},\"piMode\":{},\"savedViewport\":{},\"yUp\":{},\"bounds\":{{\"minX\":{},\"maxX\":{},\"minY\":{},\"maxY\":{}}},",
         if scene.graph_mode { "true" } else { "false" },
         if scene.pi_mode { "true" } else { "false" },
-        if scene.saved_viewport { "true" } else { "false" },
+        if scene.saved_viewport {
+            "true"
+        } else {
+            "false"
+        },
         if scene.y_up { "true" } else { "false" },
         format_f64(scene.bounds.min_x),
         format_f64(scene.bounds.max_x),
