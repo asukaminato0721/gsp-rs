@@ -286,6 +286,19 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
           y: start.y + (end.y - start.y) * constraint.t,
         }};
       }}
+      if (constraint.kind === 'polyline') {{
+        const count = constraint.points.length;
+        if (count < 2) {{
+          return null;
+        }}
+        const segmentIndex = Math.max(0, Math.min(count - 2, constraint.segmentIndex));
+        const start = constraint.points[segmentIndex];
+        const end = constraint.points[segmentIndex + 1];
+        return {{
+          x: start.x + (end.x - start.x) * constraint.t,
+          y: start.y + (end.y - start.y) * constraint.t,
+        }};
+      }}
       if (constraint.kind === 'polygon-boundary') {{
         const count = constraint.vertexIndices.length;
         if (count < 2) {{
@@ -684,6 +697,32 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
             const t = ((world.x - start.x) * dx + (world.y - start.y) * dy) / lengthSquared;
             point.constraint.t = Math.max(0, Math.min(1, t));
           }}
+        }} else if (point.constraint && point.constraint.kind === 'polyline') {{
+          const count = point.constraint.points.length;
+          let bestSegmentIndex = point.constraint.segmentIndex;
+          let bestT = point.constraint.t;
+          let bestDistanceSquared = Number.POSITIVE_INFINITY;
+          for (let segmentIndex = 0; segmentIndex < count - 1; segmentIndex += 1) {{
+            const start = point.constraint.points[segmentIndex];
+            const end = point.constraint.points[segmentIndex + 1];
+            const dx = end.x - start.x;
+            const dy = end.y - start.y;
+            const lengthSquared = dx * dx + dy * dy;
+            if (lengthSquared <= 1e-9) {{
+              continue;
+            }}
+            const t = Math.max(0, Math.min(1, ((world.x - start.x) * dx + (world.y - start.y) * dy) / lengthSquared));
+            const projX = start.x + dx * t;
+            const projY = start.y + dy * t;
+            const distSq = (world.x - projX) ** 2 + (world.y - projY) ** 2;
+            if (distSq < bestDistanceSquared) {{
+              bestDistanceSquared = distSq;
+              bestSegmentIndex = segmentIndex;
+              bestT = t;
+            }}
+          }}
+          point.constraint.segmentIndex = bestSegmentIndex;
+          point.constraint.t = bestT;
         }} else if (point.constraint && point.constraint.kind === 'polygon-boundary') {{
           const count = point.constraint.vertexIndices.length;
           let bestEdgeIndex = point.constraint.edgeIndex;
@@ -940,6 +979,30 @@ fn scene_to_json(scene: &Scene, width: u32, height: u32) -> String {
                     ",\"constraint\":{{\"kind\":\"segment\",\"startIndex\":{},\"endIndex\":{},\"t\":{}}}",
                     start_index,
                     end_index,
+                    format_f64(*t),
+                );
+            }
+            ScenePointConstraint::OnPolyline {
+                points,
+                segment_index,
+                t,
+            } => {
+                let point_json = points
+                    .iter()
+                    .map(|point| {
+                        format!(
+                            "{{\"x\":{},\"y\":{}}}",
+                            format_f64(point.x),
+                            format_f64(point.y)
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(",");
+                let _ = write!(
+                    out,
+                    ",\"constraint\":{{\"kind\":\"polyline\",\"points\":[{}],\"segmentIndex\":{},\"t\":{}}}",
+                    point_json,
+                    segment_index,
                     format_f64(*t),
                 );
             }

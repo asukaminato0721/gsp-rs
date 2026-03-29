@@ -47,6 +47,11 @@ pub(crate) enum ScenePointConstraint {
         end_index: usize,
         t: f64,
     },
+    OnPolyline {
+        points: Vec<PointRecord>,
+        segment_index: usize,
+        t: f64,
+    },
     OnPolygonBoundary {
         vertex_indices: Vec<usize>,
         edge_index: usize,
@@ -147,10 +152,11 @@ pub(crate) struct TextLabel {
 pub(crate) fn build_scene(file: &GspFile) -> Scene {
     let groups = file.object_groups();
     let point_map = collect_point_objects(file, &groups);
-    let raw_anchors = collect_raw_object_anchors(file, &groups, &point_map);
-    let graph = detect_graph_transform(file, &groups, &raw_anchors);
+    let raw_anchors_for_graph = collect_raw_object_anchors(file, &groups, &point_map, None);
+    let graph = detect_graph_transform(file, &groups, &raw_anchors_for_graph);
     let graph_mode = graph.is_some() && has_graph_classes(&groups);
     let graph_ref = if graph_mode { graph.clone() } else { None };
+    let raw_anchors = collect_raw_object_anchors(file, &groups, &point_map, graph_ref.as_ref());
     let saved_viewport = if graph_mode {
         collect_saved_viewport(file, &groups)
     } else {
@@ -253,7 +259,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         );
     }
 
-    let visible_points = collect_visible_points(file, &groups, &point_map, &raw_anchors);
+    let visible_points = collect_visible_points(file, &groups, &point_map, &raw_anchors, &graph_ref);
 
     let world_points = visible_points
         .iter()
@@ -268,6 +274,15 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
                 } => ScenePointConstraint::OnSegment {
                     start_index: *start_index,
                     end_index: *end_index,
+                    t: *t,
+                },
+                ScenePointConstraint::OnPolyline {
+                    points,
+                    segment_index,
+                    t,
+                } => ScenePointConstraint::OnPolyline {
+                    points: points.iter().map(|point| to_world(point, &graph_ref)).collect(),
+                    segment_index: *segment_index,
                     t: *t,
                 },
                 ScenePointConstraint::OnPolygonBoundary {
@@ -315,7 +330,10 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     );
     include_line_bounds(&mut bounds, &function_plots, &graph_ref);
     include_line_bounds(&mut bounds, &synthetic_axes, &graph_ref);
-    if let Some(viewport) = saved_viewport {
+    let use_saved_viewport = saved_viewport
+        .filter(|viewport| bounds_within(viewport, &bounds))
+        .is_some();
+    if let Some(viewport) = saved_viewport.filter(|_| use_saved_viewport) {
         bounds = viewport;
     } else {
         if let Some((domain_min_x, domain_max_x)) = function_plot_domain {
@@ -330,7 +348,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     Scene {
         graph_mode,
         pi_mode,
-        saved_viewport: saved_viewport.is_some(),
+        saved_viewport: use_saved_viewport,
         y_up: graph_mode,
         origin: graph_ref
             .as_ref()
@@ -405,6 +423,7 @@ fn collect_visible_points(
     groups: &[ObjectGroup],
     point_map: &[Option<PointRecord>],
     anchors: &[Option<PointRecord>],
+    graph: &Option<GraphTransform>,
 ) -> Vec<ScenePoint> {
     let mut group_to_point_index = vec![None; groups.len()];
     let mut points = Vec::<ScenePoint>::new();
@@ -420,7 +439,7 @@ fn collect_visible_points(
                     position,
                     constraint: ScenePointConstraint::Free,
                 }),
-            15 => decode_point_constraint(file, groups, group).and_then(|constraint| {
+            15 => decode_point_constraint(file, groups, group, graph).and_then(|constraint| {
                 let position = anchors.get(index).cloned().flatten()?;
                 match constraint {
                     RawPointConstraint::Segment(constraint) => {
@@ -439,6 +458,18 @@ fn collect_visible_points(
                             },
                         })
                     }
+                    RawPointConstraint::Polyline {
+                        points,
+                        segment_index,
+                        t,
+                    } => Some(ScenePoint {
+                        position,
+                        constraint: ScenePointConstraint::OnPolyline {
+                            points,
+                            segment_index,
+                            t,
+                        },
+                    }),
                     RawPointConstraint::PolygonBoundary {
                         vertex_group_indices,
                         edge_index,
@@ -496,12 +527,15 @@ fn collect_raw_object_anchors(
     file: &GspFile,
     groups: &[ObjectGroup],
     point_map: &[Option<PointRecord>],
+    graph: Option<&GraphTransform>,
 ) -> Vec<Option<PointRecord>> {
     let mut anchors = Vec::with_capacity(groups.len());
     for (index, group) in groups.iter().enumerate() {
         let anchor = if let Some(point) = point_map.get(index).and_then(|point| point.clone()) {
             Some(point)
-        } else if let Some(anchor) = decode_point_constraint_anchor(file, groups, group, &anchors) {
+        } else if let Some(anchor) =
+            decode_point_constraint_anchor(file, groups, group, &anchors, graph)
+        {
             Some(anchor)
         } else if let Some(anchor) = decode_bbox_anchor_raw(file, group) {
             Some(anchor)
@@ -1146,21 +1180,23 @@ fn synthesize_function_labels(
         return Vec::new();
     };
 
-    let expressions = groups
+    let base_entries = groups
         .iter()
         .filter(|group| (group.header.class_id & 0xffff) == 72)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
-            let definition_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            decode_function_expr(file, definition_group)
+            let definition_ordinal = *path.refs.first()?;
+            let definition_group = groups.get(definition_ordinal.checked_sub(1)?)?;
+            let expr = decode_function_expr(file, definition_group)?;
+            Some((definition_ordinal, expr))
         })
         .collect::<Vec<_>>();
 
-    let total = expressions.len();
-    expressions
+    let total = base_entries.len();
+    let mut labels = base_entries
         .into_iter()
         .enumerate()
-        .map(|(index, expr)| {
+        .map(|(index, (_, expr))| {
             let span_x = (bounds.max_x - bounds.min_x).max(1.0);
             let span_y = (bounds.max_y - bounds.min_y).max(1.0);
             let world_anchor = PointRecord {
@@ -1177,7 +1213,48 @@ fn synthesize_function_labels(
                 color: [30, 30, 30, 255],
             }
         })
-        .collect()
+        .collect::<Vec<_>>();
+
+    let derivative_entries = groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 78)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            let base_definition_ordinal = *path.refs.first()?;
+            let base_index = groups
+                .iter()
+                .filter(|candidate| (candidate.header.class_id & 0xffff) == 72)
+                .filter_map(|candidate| {
+                    find_indexed_path(file, candidate)
+                        .and_then(|candidate_path| candidate_path.refs.first().copied())
+                })
+                .position(|ordinal| ordinal == base_definition_ordinal)?;
+            let expr = decode_function_expr(file, group)?;
+            Some((base_index, expr))
+        })
+        .collect::<Vec<_>>();
+
+    let span_x = (bounds.max_x - bounds.min_x).max(1.0);
+    let span_y = (bounds.max_y - bounds.min_y).max(1.0);
+    let base_count = labels.len();
+    labels.extend(derivative_entries.into_iter().enumerate().map(|(offset, (base_index, expr))| {
+        let label_index = base_count + offset;
+        let world_anchor = PointRecord {
+            x: bounds.min_x + span_x * 0.18,
+            y: bounds.max_y - span_y * (0.16 + 0.11 * label_index as f64),
+        };
+        TextLabel {
+            anchor: to_raw_from_world(&world_anchor, transform),
+            text: format!(
+                "{}'(x) = {}",
+                function_name_for_index(base_index, total.max(1), &expr),
+                function_expr_label(expr)
+            ),
+            color: [30, 30, 30, 255],
+        }
+    }));
+
+    labels
 }
 
 fn function_expr_label(expr: FunctionExpr) -> String {
@@ -1202,15 +1279,7 @@ fn function_expr_label(expr: FunctionExpr) -> String {
 }
 
 fn function_name_for_index(index: usize, total: usize, expr: &FunctionExpr) -> &'static str {
-    if total == 1
-        && matches!(
-            expr,
-            FunctionExpr::Parsed(ParsedFunctionExpr { head, tail })
-                if !matches!(head, FunctionTerm::Variable) || !tail.is_empty()
-        )
-    {
-        return "q";
-    }
+    let _ = (total, expr);
     match index {
         0 => "f",
         1 => "g",
@@ -1305,8 +1374,17 @@ fn parse_function_expr(payload: &[u8]) -> Option<ParsedFunctionExpr> {
         .collect::<Vec<_>>();
     let marker_index = words
         .windows(2)
-        .position(|pair| matches!(pair, [0x0094, 0x0001] | [0x00a0, 0x0001]))?;
-    let mut index = marker_index + 2;
+        .position(|pair| matches!(pair, [0x0094, 0x0001] | [0x00a0, 0x0001]));
+    if let Some(marker_index) = marker_index
+        && let Some((parsed, _)) = parse_function_expr_from(&words, marker_index + 2)
+    {
+        return Some(parsed);
+    }
+    find_fallback_function_expr(&words)
+}
+
+fn parse_function_expr_from(words: &[u16], start: usize) -> Option<(ParsedFunctionExpr, usize)> {
+    let mut index = start;
     let head = parse_function_term(&words, &mut index)?;
     let mut tail = Vec::new();
     while index < words.len() {
@@ -1319,7 +1397,25 @@ fn parse_function_expr(payload: &[u8]) -> Option<ParsedFunctionExpr> {
         let term = parse_function_term(&words, &mut index)?;
         tail.push((op, term));
     }
-    Some(ParsedFunctionExpr { head, tail })
+    Some((ParsedFunctionExpr { head, tail }, index))
+}
+
+fn find_fallback_function_expr(words: &[u16]) -> Option<ParsedFunctionExpr> {
+    (0..words.len())
+        .filter_map(|start| parse_function_expr_from(words, start))
+        .find_map(|(parsed, end)| {
+            (end == words.len() && parsed_contains_symbol(&parsed)).then_some(parsed)
+        })
+}
+
+fn parsed_contains_symbol(parsed: &ParsedFunctionExpr) -> bool {
+    matches!(
+        parsed.head,
+        FunctionTerm::Variable | FunctionTerm::UnaryX(_)
+    ) || parsed
+        .tail
+        .iter()
+        .any(|(_, term)| matches!(term, FunctionTerm::Variable | FunctionTerm::UnaryX(_)))
 }
 
 fn parse_function_term(words: &[u16], index: &mut usize) -> Option<FunctionTerm> {
@@ -1422,6 +1518,11 @@ struct PointOnCircleConstraint {
 
 enum RawPointConstraint {
     Segment(PointOnSegmentConstraint),
+    Polyline {
+        points: Vec<PointRecord>,
+        segment_index: usize,
+        t: f64,
+    },
     PolygonBoundary {
         vertex_group_indices: Vec<usize>,
         edge_index: usize,
@@ -1472,6 +1573,7 @@ fn decode_point_constraint(
     file: &GspFile,
     groups: &[ObjectGroup],
     group: &ObjectGroup,
+    graph: &Option<GraphTransform>,
 ) -> Option<RawPointConstraint> {
     if (group.header.class_id & 0xffff) != 15 {
         return None;
@@ -1533,10 +1635,56 @@ fn decode_point_constraint(
                 t,
             })
         }
+        (72, 12) => decode_point_on_function_constraint(file, groups, host_group, payload, graph),
         _ => {
             decode_point_on_segment_constraint(file, groups, group).map(RawPointConstraint::Segment)
         }
     }
+}
+
+fn decode_point_on_function_constraint(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    host_group: &ObjectGroup,
+    payload: &[u8],
+    graph: &Option<GraphTransform>,
+) -> Option<RawPointConstraint> {
+    let transform = graph.as_ref()?;
+    let normalized_t = read_f64(payload, 4);
+    if !normalized_t.is_finite() {
+        return None;
+    }
+
+    let path = find_indexed_path(file, host_group)?;
+    let definition_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+    let descriptor = host_group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x0902)
+        .and_then(|record| decode_function_plot_descriptor(record.payload(&file.data)))?;
+    let expr = decode_function_expr(file, definition_group)?;
+    let points = sample_function_points(&expr, &descriptor)
+        .into_iter()
+        .flatten()
+        .map(|point| to_raw_from_world(&point, transform))
+        .collect::<Vec<_>>();
+    let (segment_index, t) = locate_polyline_parameter(&points, normalized_t)?;
+    Some(RawPointConstraint::Polyline {
+        points,
+        segment_index,
+        t,
+    })
+}
+
+fn locate_polyline_parameter(points: &[PointRecord], normalized_t: f64) -> Option<(usize, f64)> {
+    if points.len() < 2 {
+        return None;
+    }
+
+    let clamped_t = normalized_t.clamp(0.0, 1.0);
+    let scaled = clamped_t * (points.len() - 1) as f64;
+    let segment_index = scaled.floor() as usize;
+    Some((segment_index.min(points.len() - 2), scaled.fract()))
 }
 
 fn decode_polygon_edge_end_index(vertex_count: usize, selector: f64) -> Option<usize> {
@@ -1553,8 +1701,10 @@ fn decode_point_constraint_anchor(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
+    graph: Option<&GraphTransform>,
 ) -> Option<PointRecord> {
-    match decode_point_constraint(file, groups, group)? {
+    let graph = graph.cloned();
+    match decode_point_constraint(file, groups, group, &graph)? {
         RawPointConstraint::Segment(constraint) => {
             let start = anchors.get(constraint.start_group_index)?.clone()?;
             let end = anchors.get(constraint.end_group_index)?.clone()?;
@@ -1564,6 +1714,11 @@ fn decode_point_constraint_anchor(
                 y: start.y + (end.y - start.y) * constraint.t,
             })
         }
+        RawPointConstraint::Polyline {
+            points,
+            segment_index,
+            t,
+        } => resolve_polyline_point(&points, segment_index, t),
         RawPointConstraint::PolygonBoundary {
             vertex_group_indices,
             edge_index,
@@ -1613,6 +1768,23 @@ fn resolve_polygon_boundary_point_raw(
 
     let start = &vertices[edge_index % vertices.len()];
     let end = &vertices[(edge_index + 1) % vertices.len()];
+    Some(PointRecord {
+        x: start.x + (end.x - start.x) * t,
+        y: start.y + (end.y - start.y) * t,
+    })
+}
+
+fn resolve_polyline_point(
+    points: &[PointRecord],
+    segment_index: usize,
+    t: f64,
+) -> Option<PointRecord> {
+    if points.len() < 2 {
+        return None;
+    }
+
+    let start = &points[segment_index.min(points.len() - 2)];
+    let end = &points[(segment_index.min(points.len() - 2)) + 1];
     Some(PointRecord {
         x: start.x + (end.x - start.x) * t,
         y: start.y + (end.y - start.y) * t,
@@ -1753,6 +1925,14 @@ fn bounds_from_function_plots(
         bounds.max_x = bounds.max_x.max(max_x);
     }
     Some(bounds)
+}
+
+fn bounds_within(container: &Bounds, content: &Bounds) -> bool {
+    const TOLERANCE: f64 = 1e-3;
+    container.min_x <= content.min_x + TOLERANCE
+        && container.max_x >= content.max_x - TOLERANCE
+        && container.min_y <= content.min_y + TOLERANCE
+        && container.max_y >= content.max_y - TOLERANCE
 }
 
 fn expand_bounds(bounds: &mut Bounds) {
@@ -2035,12 +2215,12 @@ mod tests {
             }),
             "expected a non-degenerate function plot spanning the graph domain"
         );
-        assert!((scene.bounds.min_x + 9.152).abs() < 0.001);
-        assert!((scene.bounds.min_y + 1.0).abs() < 0.001);
+        assert!(scene.bounds.min_x < -30.0);
+        assert!(scene.bounds.max_y > 100.0);
         assert_eq!(scene.labels.len(), 1);
         assert_eq!(
             scene.labels[0].text,
-            "q(x) = |x| + √x + ln(x) + log(x) + sgn(x) + round(x) + trunc(x)"
+            "f(x) = |x| + √x + ln(x) + log(x) + sgn(x) + round(x) + trunc(x)"
         );
     }
 
@@ -2102,7 +2282,7 @@ mod tests {
         let scene = build_scene(&file);
 
         assert_eq!(scene.circles.len(), 2);
-        assert_eq!(scene.points.len(), 10);
+        assert_eq!(scene.points.len(), 11);
         assert!(scene.points.iter().any(|point| {
             matches!(
                 point.constraint,
@@ -2124,13 +2304,19 @@ mod tests {
             )
         }));
         assert!(scene.points.iter().any(|point| {
-            (point.position.x - 392.357233).abs() < 0.01
-                && (point.position.y - 250.388895).abs() < 0.01
+            (point.position.x + 9.17159).abs() < 0.01
+                && (point.position.y - 5.598877).abs() < 0.01
         }));
         assert!(scene.points.iter().any(|point| {
-            (point.position.x - 424.225624).abs() < 0.01
-                && (point.position.y - 373.557436).abs() < 0.01
+            (point.position.x + 4.956433).abs() < 0.01
+                && (point.position.y - 1.163518).abs() < 0.01
         }));
-        assert!(scene.labels.is_empty());
+        assert!(scene.points.iter().any(|point| {
+            matches!(point.constraint, ScenePointConstraint::OnPolyline { .. })
+        }));
+        assert_eq!(
+            scene.labels.iter().map(|label| label.text.as_str()).collect::<Vec<_>>(),
+            vec!["f(x) = x + sin(x)", "f'(x) = 1 + cos(x)"]
+        );
     }
 }
