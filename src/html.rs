@@ -167,6 +167,7 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
     const zoomReadout = document.getElementById('zoom-readout');
     const margin = 32;
     const trigMode = !!sourceScene.piMode;
+    const savedViewportMode = !!sourceScene.savedViewport;
     const baseBounds = sourceScene.bounds;
     const baseCenterX = (baseBounds.minX + baseBounds.maxX) / 2;
     const baseCenterY = (baseBounds.minY + baseBounds.maxY) / 2;
@@ -325,6 +326,23 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
       return Number.isFinite(value) ? value.toFixed(2) : '-';
     }}
 
+    function chooseGridStep(span, targetLines) {{
+      const rough = Math.max(1e-6, span / Math.max(1, targetLines));
+      const magnitude = 10 ** Math.floor(Math.log10(rough));
+      const normalized = rough / magnitude;
+      if (normalized <= 1) return magnitude;
+      if (normalized <= 2) return magnitude * 2;
+      if (normalized <= 5) return magnitude * 5;
+      return magnitude * 10;
+    }}
+
+    function formatAxisNumber(value) {{
+      if (Math.abs(value - Math.round(value)) < 1e-6) {{
+        return String(Math.round(value));
+      }}
+      return value.toFixed(1);
+    }}
+
     function formatPiLabel(stepIndex) {{
       if (stepIndex === 0) return '';
       const sign = stepIndex < 0 ? '-' : '';
@@ -358,8 +376,10 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
       if (!scene.graphMode) return;
       const bounds = getViewBounds();
       const spanY = bounds.maxY - bounds.minY;
-      const minY = Math.floor(bounds.minY);
-      const maxY = Math.ceil(bounds.maxY);
+      const yMinorStep = savedViewportMode ? 1 : chooseGridStep(spanY, 14);
+      const yMajorStep = savedViewportMode ? 2 : chooseGridStep(spanY, 7);
+      const minYIndex = Math.floor(bounds.minY / yMinorStep);
+      const maxYIndex = Math.ceil(bounds.maxY / yMinorStep);
 
       ctx.save();
       ctx.lineWidth = 1;
@@ -435,10 +455,15 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
           }}
         }}
       }}
-      const yLabelStep = trigMode ? 2 : spanY > 12 ? 2 : 1;
-      for (let y = minY; y <= maxY; y += 1) {{
+      for (let yIndex = minYIndex; yIndex <= maxYIndex; yIndex += 1) {{
+        const y = yIndex * yMinorStep;
+        const major = Math.abs((y / yMajorStep) - Math.round(y / yMajorStep)) < 1e-6;
         const screen = toScreen({{ x: bounds.minX, y }});
-        ctx.strokeStyle = y === 0 ? 'rgb(40,40,40)' : 'rgb(200,200,200)';
+        ctx.strokeStyle = Math.abs(y) < 1e-6
+          ? 'rgb(40,40,40)'
+          : major
+            ? 'rgb(200,200,200)'
+            : 'rgb(225,225,225)';
         ctx.beginPath();
         ctx.moveTo(0, screen.y);
         ctx.lineTo(sourceScene.width, screen.y);
@@ -446,12 +471,12 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
         if (bounds.minX <= 0 && 0 <= bounds.maxX) {{
           ctx.strokeStyle = 'rgb(40,40,40)';
           ctx.beginPath();
-          ctx.moveTo(yAxisX - (y === 0 ? 6 : 4), screen.y);
-          ctx.lineTo(yAxisX + (y === 0 ? 6 : 4), screen.y);
+          ctx.moveTo(yAxisX - (Math.abs(y) < 1e-6 ? 6 : major ? 4 : 2), screen.y);
+          ctx.lineTo(yAxisX + (Math.abs(y) < 1e-6 ? 6 : major ? 4 : 2), screen.y);
           ctx.stroke();
         }}
-        if (y !== 0 && y % yLabelStep === 0) {{
-          const label = String(y);
+        if (major && Math.abs(y) >= 1e-6) {{
+          const label = formatAxisNumber(y);
           const width = ctx.measureText(label).width;
           ctx.fillText(label, yAxisX - width - 8, screen.y - 6);
         }}
@@ -480,6 +505,10 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
         }}
       }});
       return bestIndex;
+    }}
+
+    function isOriginPointIndex(index) {{
+      return typeof scene.origin?.pointIndex === 'number' && scene.origin.pointIndex === index;
     }}
 
     function draw() {{
@@ -565,7 +594,9 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
       const pointIndex = findHitPoint(position.x, position.y);
       dragState = {{
         pointerId: event.pointerId,
-        mode: pointIndex === null ? 'pan' : 'point',
+        mode: pointIndex === null
+          ? 'pan'
+          : (scene.graphMode && isOriginPointIndex(pointIndex) ? 'origin-pan' : 'point'),
         pointIndex,
         lastX: position.x,
         lastY: position.y,
@@ -677,9 +708,10 @@ fn scene_to_json(scene: &Scene, width: u32, height: u32) -> String {
     out.push('{');
     let _ = write!(
         out,
-        "\"width\":{width},\"height\":{height},\"graphMode\":{},\"piMode\":{},\"yUp\":{},\"bounds\":{{\"minX\":{},\"maxX\":{},\"minY\":{},\"maxY\":{}}},",
+        "\"width\":{width},\"height\":{height},\"graphMode\":{},\"piMode\":{},\"savedViewport\":{},\"yUp\":{},\"bounds\":{{\"minX\":{},\"maxX\":{},\"minY\":{},\"maxY\":{}}},",
         if scene.graph_mode { "true" } else { "false" },
         if scene.pi_mode { "true" } else { "false" },
+        if scene.saved_viewport { "true" } else { "false" },
         if scene.y_up { "true" } else { "false" },
         format_f64(scene.bounds.min_x),
         format_f64(scene.bounds.max_x),

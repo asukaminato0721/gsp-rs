@@ -22,6 +22,7 @@ pub(crate) struct Bounds {
 pub(crate) struct Scene {
     pub(crate) graph_mode: bool,
     pub(crate) pi_mode: bool,
+    pub(crate) saved_viewport: bool,
     pub(crate) y_up: bool,
     pub(crate) origin: Option<PointRecord>,
     pub(crate) bounds: Bounds,
@@ -139,6 +140,16 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     let graph = detect_graph_transform(file, &groups, &raw_anchors);
     let graph_mode = graph.is_some() && has_graph_classes(&groups);
     let graph_ref = if graph_mode { graph.clone() } else { None };
+    let saved_viewport = if graph_mode {
+        collect_saved_viewport(file, &groups)
+    } else {
+        None
+    };
+    let pi_mode = if graph_mode {
+        saved_viewport.is_some() || function_uses_pi_scale(file, &groups)
+    } else {
+        false
+    };
     let function_plot_domain = if graph_mode {
         collect_function_plot_domain(file, &groups)
     } else {
@@ -183,7 +194,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     );
     let circles = collect_circle_shapes(file, &groups, &point_map);
     let synthetic_axes = if graph_mode && has_function_plots && axes.is_empty() {
-        synthesize_function_axes(&function_plots, function_plot_domain, &graph_ref)
+        synthesize_function_axes(&function_plots, function_plot_domain, saved_viewport, &graph_ref)
     } else {
         Vec::new()
     };
@@ -197,6 +208,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
             file,
             &groups,
             &function_plots,
+            saved_viewport,
             &graph_ref,
         ));
     }
@@ -263,17 +275,22 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     );
     include_line_bounds(&mut bounds, &function_plots, &graph_ref);
     include_line_bounds(&mut bounds, &synthetic_axes, &graph_ref);
-    if let Some((domain_min_x, domain_max_x)) = function_plot_domain {
-        bounds.min_x = bounds.min_x.min(domain_min_x);
-        bounds.max_x = bounds.max_x.max(domain_max_x);
-        bounds.min_y = bounds.min_y.min(0.0);
-        bounds.max_y = bounds.max_y.max(0.0);
+    if let Some(viewport) = saved_viewport {
+        bounds = viewport;
+    } else {
+        if let Some((domain_min_x, domain_max_x)) = function_plot_domain {
+            bounds.min_x = bounds.min_x.min(domain_min_x);
+            bounds.max_x = bounds.max_x.max(domain_max_x);
+            bounds.min_y = bounds.min_y.min(0.0);
+            bounds.max_y = bounds.max_y.max(0.0);
+        }
+        expand_bounds(&mut bounds);
     }
-    expand_bounds(&mut bounds);
 
     Scene {
         graph_mode,
-        pi_mode: graph_mode && has_function_plots,
+        pi_mode,
+        saved_viewport: saved_viewport.is_some(),
         y_up: graph_mode,
         origin: graph_ref
             .as_ref()
@@ -804,6 +821,64 @@ fn collect_function_plot_domain(file: &GspFile, groups: &[ObjectGroup]) -> Optio
     found.then_some((min_x, max_x))
 }
 
+fn collect_saved_viewport(file: &GspFile, groups: &[ObjectGroup]) -> Option<Bounds> {
+    let (min_x, max_x) = collect_graph_window_x_hint(file, groups)?;
+    let (min_y, max_y) = collect_graph_window_y_hint(file, groups)?;
+    Some(Bounds {
+        min_x,
+        max_x,
+        min_y,
+        max_y,
+    })
+}
+
+fn collect_graph_window_x_hint(file: &GspFile, groups: &[ObjectGroup]) -> Option<(f64, f64)> {
+    groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 58)
+        .find_map(|group| {
+            let payload = group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x07d5)
+                .map(|record| record.payload(&file.data))?;
+            if payload.len() < 22 {
+                return None;
+            }
+            let min_x = read_f32_unaligned(payload, 14)?;
+            let max_x = read_f32_unaligned(payload, 18)?;
+            (min_x.is_finite()
+                && max_x.is_finite()
+                && min_x < max_x
+                && (max_x - min_x) > 1.0)
+                .then_some((f64::from(min_x), f64::from(max_x)))
+        })
+}
+
+fn collect_graph_window_y_hint(file: &GspFile, groups: &[ObjectGroup]) -> Option<(f64, f64)> {
+    let expr = groups
+        .iter()
+        .find(|group| group.records.iter().any(|record| record.record_type == 0x0907))
+        .and_then(|group| decode_function_expr(file, group))?;
+    let plot_payload = groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 72)
+        .find_map(|group| {
+            group.records
+                .iter()
+                .find(|record| record.record_type == 0x0902)
+                .map(|record| record.payload(&file.data))
+        })?;
+
+    match expr {
+        FunctionExpr::Parsed(_) => {
+            let max_y = read_f32_unaligned(plot_payload, 11)?;
+            (max_y.is_finite() && max_y > 0.0).then_some((-1.0, f64::from(max_y)))
+        }
+        _ => None,
+    }
+}
+
 fn decode_function_expr(file: &GspFile, group: &ObjectGroup) -> Option<FunctionExpr> {
     let payload = group
         .records
@@ -885,9 +960,10 @@ fn decode_inner_function_expr(payload: &[u8]) -> Option<FunctionExpr> {
 fn synthesize_function_axes(
     function_plots: &[LineShape],
     domain: Option<(f64, f64)>,
+    viewport: Option<Bounds>,
     graph: &Option<GraphTransform>,
 ) -> Vec<LineShape> {
-    let Some(mut world_bounds) = bounds_from_function_plots(function_plots, domain, graph) else {
+    let Some(mut world_bounds) = viewport.or_else(|| bounds_from_function_plots(function_plots, domain, graph)) else {
         return Vec::new();
     };
     if (world_bounds.max_y - world_bounds.min_y).abs() < 1e-6 {
@@ -956,10 +1032,16 @@ fn synthesize_function_labels(
     file: &GspFile,
     groups: &[ObjectGroup],
     function_plots: &[LineShape],
+    viewport: Option<Bounds>,
     graph: &Option<GraphTransform>,
 ) -> Vec<TextLabel> {
-    let Some(bounds) =
-        bounds_from_function_plots(function_plots, collect_function_plot_domain(file, groups), graph)
+    let Some(bounds) = viewport.or_else(|| {
+        bounds_from_function_plots(
+            function_plots,
+            collect_function_plot_domain(file, groups),
+            graph,
+        )
+    })
     else {
         return Vec::new();
     };
@@ -982,9 +1064,11 @@ fn synthesize_function_labels(
         .into_iter()
         .enumerate()
         .map(|(index, expr)| {
+            let span_x = (bounds.max_x - bounds.min_x).max(1.0);
+            let span_y = (bounds.max_y - bounds.min_y).max(1.0);
             let world_anchor = PointRecord {
-                x: (bounds.min_x + bounds.max_x) / 2.0,
-                y: bounds.max_y + ((bounds.max_y - bounds.min_y).max(1.0) * (0.35 + 0.22 * index as f64)),
+                x: bounds.min_x + span_x * 0.18,
+                y: bounds.max_y - span_y * (0.16 + 0.11 * index as f64),
             };
             TextLabel {
                 anchor: to_raw_from_world(&world_anchor, transform),
@@ -1031,6 +1115,25 @@ fn function_name_for_index(index: usize, total: usize, expr: &FunctionExpr) -> &
         3 => "p",
         _ => "q",
     }
+}
+
+fn function_uses_pi_scale(file: &GspFile, groups: &[ObjectGroup]) -> bool {
+    groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 72)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            let definition_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            decode_function_expr(file, definition_group)
+        })
+        .any(|expr| {
+            matches!(
+                expr,
+                FunctionExpr::SinIdentity
+                    | FunctionExpr::CosIdentityPlus(_)
+                    | FunctionExpr::TanIdentityMinus(_)
+            )
+        })
 }
 
 fn format_function_term(term: FunctionTerm) -> String {
@@ -1431,6 +1534,11 @@ fn to_raw_from_world(point: &PointRecord, graph: &GraphTransform) -> PointRecord
     }
 }
 
+fn read_f32_unaligned(data: &[u8], offset: usize) -> Option<f32> {
+    let bytes = data.get(offset..offset + 4)?;
+    Some(f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+}
+
 pub(crate) fn to_screen(
     point: &PointRecord,
     width: u32,
@@ -1667,10 +1775,12 @@ mod tests {
                     .iter()
                     .map(|point| point.x)
                     .fold(f64::NEG_INFINITY, f64::max);
-                min_x < -20.0 && max_x > 20.0
+                min_x <= 0.1 && max_x > 30.0
             }),
             "expected a non-degenerate function plot spanning the graph domain"
         );
+        assert!((scene.bounds.min_x + 9.152).abs() < 0.001);
+        assert!((scene.bounds.min_y + 1.0).abs() < 0.001);
         assert_eq!(scene.labels.len(), 1);
         assert_eq!(scene.labels[0].text, "q(x) = |x| + √x + ln(x) + log(x) + sgn(x) + round(x) + trunc(x)");
     }
