@@ -2,7 +2,7 @@ use crate::format::{
     GspFile, IndexedPathRecord, ObjectGroup, PointRecord, decode_indexed_path, decode_point_record,
     read_f64, read_u16, read_u32,
 };
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone)]
 struct GraphTransform {
@@ -106,6 +106,7 @@ enum FunctionExpr {
 enum BinaryOp {
     Add,
     Sub,
+    Mul,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -122,17 +123,25 @@ enum UnaryFunction {
     Trunc,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 enum FunctionTerm {
     Variable,
     Constant(f64),
+    Parameter(String, f64),
     UnaryX(UnaryFunction),
+    Product(Box<FunctionTerm>, Box<FunctionTerm>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 struct ParsedFunctionExpr {
     head: FunctionTerm,
     tail: Vec<(BinaryOp, FunctionTerm)>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct ParameterBinding {
+    name: String,
+    value: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -879,7 +888,7 @@ fn collect_function_plots(
         else {
             continue;
         };
-        let Some(expr) = decode_function_expr(file, definition_group) else {
+        let Some(expr) = decode_function_expr(file, groups, definition_group) else {
             continue;
         };
 
@@ -984,7 +993,7 @@ fn collect_graph_window_y_hint(file: &GspFile, groups: &[ObjectGroup]) -> Option
                 .iter()
                 .any(|record| record.record_type == 0x0907)
         })
-        .and_then(|group| decode_function_expr(file, group))?;
+        .and_then(|group| decode_function_expr(file, groups, group))?;
     let plot_payload = groups
         .iter()
         .filter(|group| (group.header.class_id & 0xffff) == 72)
@@ -1005,12 +1014,13 @@ fn collect_graph_window_y_hint(file: &GspFile, groups: &[ObjectGroup]) -> Option
     }
 }
 
-fn decode_function_expr(file: &GspFile, group: &ObjectGroup) -> Option<FunctionExpr> {
+fn decode_function_expr(file: &GspFile, groups: &[ObjectGroup], group: &ObjectGroup) -> Option<FunctionExpr> {
     let payload = group
         .records
         .iter()
         .find(|record| record.record_type == 0x0907)
         .map(|record| record.payload(&file.data))?;
+    let parameters = collect_parameter_bindings(file, groups, group);
 
     let text = extract_inline_function_token(payload)?;
     if text.eq_ignore_ascii_case("x") {
@@ -1018,13 +1028,58 @@ fn decode_function_expr(file: &GspFile, group: &ObjectGroup) -> Option<FunctionE
     }
     if let Ok(value) = text.parse::<f64>() {
         if value == 0.0
-            && let Some(expr) = decode_inner_function_expr(payload)
+            && let Some(expr) = decode_inner_function_expr(payload, &parameters)
         {
             return Some(expr);
         }
         return Some(FunctionExpr::Constant(value));
     }
-    decode_inner_function_expr(payload)
+    decode_inner_function_expr(payload, &parameters)
+}
+
+fn collect_parameter_bindings(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> BTreeMap<u16, ParameterBinding> {
+    let mut bindings = BTreeMap::new();
+    let Some(path) = find_indexed_path(file, group) else {
+        return bindings;
+    };
+    for (index, ordinal) in path.refs.iter().copied().enumerate() {
+        let Some(parameter_group) = groups.get(ordinal.saturating_sub(1)) else {
+            continue;
+        };
+        if let Some(binding) = decode_parameter_binding(file, parameter_group) {
+            bindings.insert(index as u16, binding);
+        }
+    }
+    bindings
+}
+
+fn decode_parameter_binding(file: &GspFile, group: &ObjectGroup) -> Option<ParameterBinding> {
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x0907)
+        .map(|record| record.payload(&file.data))?;
+    let label_payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x07d5)
+        .map(|record| record.payload(&file.data))?;
+    if label_payload.len() < 2 {
+        return None;
+    }
+    let name_code = read_u16(label_payload, label_payload.len() - 2);
+    let name = char::from_u32(name_code as u32)
+        .filter(|ch| ch.is_ascii_alphabetic())?
+        .to_string();
+    let value_code = read_u16(payload, payload.len().checked_sub(2)?);
+    Some(ParameterBinding {
+        name,
+        value: f64::from(value_code),
+    })
 }
 
 fn extract_inline_function_token(payload: &[u8]) -> Option<String> {
@@ -1079,8 +1134,11 @@ fn sample_function_points(
     segments
 }
 
-fn decode_inner_function_expr(payload: &[u8]) -> Option<FunctionExpr> {
-    parse_function_expr(payload).map(canonicalize_function_expr)
+fn decode_inner_function_expr(
+    payload: &[u8],
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Option<FunctionExpr> {
+    parse_function_expr(payload, parameters).map(canonicalize_function_expr)
 }
 
 fn synthesize_function_axes(
@@ -1180,6 +1238,23 @@ fn synthesize_function_labels(
         return Vec::new();
     };
 
+    let parameter_entries = groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 72)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            let definition_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            Some(collect_parameter_bindings(file, groups, definition_group))
+        })
+        .fold(BTreeMap::<String, f64>::new(), |mut acc, bindings| {
+            for binding in bindings.into_values() {
+                acc.entry(binding.name).or_insert(binding.value);
+            }
+            acc
+        })
+        .into_iter()
+        .collect::<Vec<_>>();
+
     let base_entries = groups
         .iter()
         .filter(|group| (group.header.class_id & 0xffff) == 72)
@@ -1187,13 +1262,31 @@ fn synthesize_function_labels(
             let path = find_indexed_path(file, group)?;
             let definition_ordinal = *path.refs.first()?;
             let definition_group = groups.get(definition_ordinal.checked_sub(1)?)?;
-            let expr = decode_function_expr(file, definition_group)?;
+            let expr = decode_function_expr(file, groups, definition_group)?;
             Some((definition_ordinal, expr))
         })
         .collect::<Vec<_>>();
 
     let total = base_entries.len();
-    let mut labels = base_entries
+    let mut labels = parameter_entries
+        .iter()
+        .enumerate()
+        .map(|(index, (name, value))| {
+            let span_x = (bounds.max_x - bounds.min_x).max(1.0);
+            let span_y = (bounds.max_y - bounds.min_y).max(1.0);
+            let world_anchor = PointRecord {
+                x: bounds.min_x + span_x * 0.18,
+                y: bounds.max_y - span_y * (0.08 + 0.11 * index as f64),
+            };
+            TextLabel {
+                anchor: to_raw_from_world(&world_anchor, transform),
+                text: format!("{name} = {:.2}", value),
+                color: [30, 30, 30, 255],
+            }
+        })
+        .collect::<Vec<_>>();
+    let parameter_count = labels.len();
+    labels.extend(base_entries
         .into_iter()
         .enumerate()
         .map(|(index, (_, expr))| {
@@ -1201,7 +1294,7 @@ fn synthesize_function_labels(
             let span_y = (bounds.max_y - bounds.min_y).max(1.0);
             let world_anchor = PointRecord {
                 x: bounds.min_x + span_x * 0.18,
-                y: bounds.max_y - span_y * (0.16 + 0.11 * index as f64),
+                y: bounds.max_y - span_y * (0.16 + 0.11 * (index + parameter_count) as f64),
             };
             TextLabel {
                 anchor: to_raw_from_world(&world_anchor, transform),
@@ -1212,8 +1305,7 @@ fn synthesize_function_labels(
                 ),
                 color: [30, 30, 30, 255],
             }
-        })
-        .collect::<Vec<_>>();
+        }));
 
     let derivative_entries = groups
         .iter()
@@ -1229,7 +1321,7 @@ fn synthesize_function_labels(
                         .and_then(|candidate_path| candidate_path.refs.first().copied())
                 })
                 .position(|ordinal| ordinal == base_definition_ordinal)?;
-            let expr = decode_function_expr(file, group)?;
+            let expr = decode_function_expr(file, groups, group)?;
             Some((base_index, expr))
         })
         .collect::<Vec<_>>();
@@ -1270,6 +1362,7 @@ fn function_expr_label(expr: FunctionExpr) -> String {
                 text.push_str(match op {
                     BinaryOp::Add => " + ",
                     BinaryOp::Sub => " - ",
+                    BinaryOp::Mul => " * ",
                 });
                 text.push_str(&format_function_term(term));
             }
@@ -1296,22 +1389,16 @@ fn function_uses_pi_scale(file: &GspFile, groups: &[ObjectGroup]) -> bool {
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let definition_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            decode_function_expr(file, definition_group)
+            decode_function_expr(file, groups, definition_group)
         })
-        .any(|expr| {
-            matches!(
-                expr,
-                FunctionExpr::SinIdentity
-                    | FunctionExpr::CosIdentityPlus(_)
-                    | FunctionExpr::TanIdentityMinus(_)
-            )
-        })
+        .any(function_expr_uses_trig)
 }
 
 fn format_function_term(term: FunctionTerm) -> String {
     match term {
         FunctionTerm::Variable => "x".to_string(),
         FunctionTerm::Constant(value) => format_number(value),
+        FunctionTerm::Parameter(name, _) => name,
         FunctionTerm::UnaryX(op) => match op {
             UnaryFunction::Sin => "sin(x)".to_string(),
             UnaryFunction::Cos => "cos(x)".to_string(),
@@ -1324,16 +1411,20 @@ fn format_function_term(term: FunctionTerm) -> String {
             UnaryFunction::Round => "round(x)".to_string(),
             UnaryFunction::Trunc => "trunc(x)".to_string(),
         },
+        FunctionTerm::Product(left, right) => {
+            format!("{}*{}", format_function_term(*left), format_function_term(*right))
+        }
     }
 }
 
 fn evaluate_function_expr(expr: &ParsedFunctionExpr, x: f64) -> Option<f64> {
-    let mut value = evaluate_function_term(expr.head, x)?;
+    let mut value = evaluate_function_term(expr.head.clone(), x)?;
     for (op, term) in &expr.tail {
-        let rhs = evaluate_function_term(*term, x)?;
+        let rhs = evaluate_function_term(term.clone(), x)?;
         value = match op {
             BinaryOp::Add => value + rhs,
             BinaryOp::Sub => value - rhs,
+            BinaryOp::Mul => value * rhs,
         };
     }
     value.is_finite().then_some(value)
@@ -1343,6 +1434,7 @@ fn evaluate_function_term(term: FunctionTerm, x: f64) -> Option<f64> {
     match term {
         FunctionTerm::Variable => Some(x),
         FunctionTerm::Constant(value) => Some(value),
+        FunctionTerm::Parameter(_, value) => Some(value),
         FunctionTerm::UnaryX(op) => match op {
             UnaryFunction::Sin => Some(x.sin()),
             UnaryFunction::Cos => Some(x.cos()),
@@ -1364,10 +1456,16 @@ fn evaluate_function_term(term: FunctionTerm, x: f64) -> Option<f64> {
             UnaryFunction::Round => Some(x.round()),
             UnaryFunction::Trunc => Some(x.trunc()),
         },
+        FunctionTerm::Product(left, right) => {
+            Some(evaluate_function_term(*left, x)? * evaluate_function_term(*right, x)?)
+        }
     }
 }
 
-fn parse_function_expr(payload: &[u8]) -> Option<ParsedFunctionExpr> {
+fn parse_function_expr(
+    payload: &[u8],
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Option<ParsedFunctionExpr> {
     let words = payload
         .chunks_exact(2)
         .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
@@ -1376,16 +1474,20 @@ fn parse_function_expr(payload: &[u8]) -> Option<ParsedFunctionExpr> {
         .windows(2)
         .position(|pair| matches!(pair, [0x0094, 0x0001] | [0x00a0, 0x0001]));
     if let Some(marker_index) = marker_index
-        && let Some((parsed, _)) = parse_function_expr_from(&words, marker_index + 2)
+        && let Some((parsed, _)) = parse_function_expr_from(&words, marker_index + 2, parameters)
     {
         return Some(parsed);
     }
-    find_fallback_function_expr(&words)
+    find_fallback_function_expr(&words, parameters)
 }
 
-fn parse_function_expr_from(words: &[u16], start: usize) -> Option<(ParsedFunctionExpr, usize)> {
+fn parse_function_expr_from(
+    words: &[u16],
+    start: usize,
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Option<(ParsedFunctionExpr, usize)> {
     let mut index = start;
-    let head = parse_function_term(&words, &mut index)?;
+    let head = parse_function_term(&words, &mut index, parameters)?;
     let mut tail = Vec::new();
     while index < words.len() {
         let op = match words[index] {
@@ -1394,31 +1496,50 @@ fn parse_function_expr_from(words: &[u16], start: usize) -> Option<(ParsedFuncti
             _ => break,
         };
         index += 1;
-        let term = parse_function_term(&words, &mut index)?;
+        let term = parse_function_term(&words, &mut index, parameters)?;
         tail.push((op, term));
     }
     Some((ParsedFunctionExpr { head, tail }, index))
 }
 
-fn find_fallback_function_expr(words: &[u16]) -> Option<ParsedFunctionExpr> {
+fn find_fallback_function_expr(
+    words: &[u16],
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Option<ParsedFunctionExpr> {
     (0..words.len())
-        .filter_map(|start| parse_function_expr_from(words, start))
+        .filter_map(|start| parse_function_expr_from(words, start, parameters))
         .find_map(|(parsed, end)| {
             (end == words.len() && parsed_contains_symbol(&parsed)).then_some(parsed)
         })
 }
 
 fn parsed_contains_symbol(parsed: &ParsedFunctionExpr) -> bool {
-    matches!(
-        parsed.head,
-        FunctionTerm::Variable | FunctionTerm::UnaryX(_)
-    ) || parsed
-        .tail
-        .iter()
-        .any(|(_, term)| matches!(term, FunctionTerm::Variable | FunctionTerm::UnaryX(_)))
+    function_term_contains_symbol(&parsed.head)
+        || parsed
+            .tail
+            .iter()
+            .any(|(_, term)| function_term_contains_symbol(term))
 }
 
-fn parse_function_term(words: &[u16], index: &mut usize) -> Option<FunctionTerm> {
+fn parse_function_term(
+    words: &[u16],
+    index: &mut usize,
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Option<FunctionTerm> {
+    let mut term = parse_atomic_term(words, index, parameters)?;
+    while *index < words.len() && words[*index] == 0x1002 {
+        *index += 1;
+        let rhs = parse_atomic_term(words, index, parameters)?;
+        term = FunctionTerm::Product(Box::new(term), Box::new(rhs));
+    }
+    Some(term)
+}
+
+fn parse_atomic_term(
+    words: &[u16],
+    index: &mut usize,
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Option<FunctionTerm> {
     if *index >= words.len() {
         return None;
     }
@@ -1428,6 +1549,12 @@ fn parse_function_term(words: &[u16], index: &mut usize) -> Option<FunctionTerm>
             return Some(FunctionTerm::UnaryX(op));
         }
         return None;
+    }
+    if (words[*index] & 0xfff0) == 0x6000 {
+        let parameter_index = words[*index] & 0x000f;
+        *index += 1;
+        let binding = parameters.get(&parameter_index)?.clone();
+        return Some(FunctionTerm::Parameter(binding.name, binding.value));
     }
     if *index + 1 < words.len() && words[*index] == 0x000f && words[*index + 1] == 0x000c {
         *index += 2;
@@ -1440,6 +1567,40 @@ fn parse_function_term(words: &[u16], index: &mut usize) -> Option<FunctionTerm>
     let value = words[*index];
     *index += 1;
     Some(FunctionTerm::Constant(f64::from(value)))
+}
+
+fn function_expr_uses_trig(expr: FunctionExpr) -> bool {
+    match expr {
+        FunctionExpr::SinIdentity | FunctionExpr::CosIdentityPlus(_) | FunctionExpr::TanIdentityMinus(_) => true,
+        FunctionExpr::Parsed(parsed) => {
+            function_term_uses_trig(&parsed.head)
+                || parsed
+                    .tail
+                    .iter()
+                    .any(|(_, term)| function_term_uses_trig(term))
+        }
+        _ => false,
+    }
+}
+
+fn function_term_uses_trig(term: &FunctionTerm) -> bool {
+    match term {
+        FunctionTerm::UnaryX(UnaryFunction::Sin | UnaryFunction::Cos | UnaryFunction::Tan) => true,
+        FunctionTerm::Product(left, right) => {
+            function_term_uses_trig(left) || function_term_uses_trig(right)
+        }
+        _ => false,
+    }
+}
+
+fn function_term_contains_symbol(term: &FunctionTerm) -> bool {
+    match term {
+        FunctionTerm::Variable | FunctionTerm::UnaryX(_) | FunctionTerm::Parameter(_, _) => true,
+        FunctionTerm::Product(left, right) => {
+            function_term_contains_symbol(left) || function_term_contains_symbol(right)
+        }
+        FunctionTerm::Constant(_) => false,
+    }
 }
 
 fn decode_unary_function(word: u16) -> Option<UnaryFunction> {
@@ -1662,7 +1823,7 @@ fn decode_point_on_function_constraint(
         .iter()
         .find(|record| record.record_type == 0x0902)
         .and_then(|record| decode_function_plot_descriptor(record.payload(&file.data)))?;
-    let expr = decode_function_expr(file, definition_group)?;
+    let expr = decode_function_expr(file, groups, definition_group)?;
     let points = sample_function_points(&expr, &descriptor)
         .into_iter()
         .flatten()
@@ -2244,8 +2405,9 @@ mod tests {
             .find(|record| record.record_type == 0x0907)
             .expect("0907 record")
             .payload(&file.data);
+        let parameters = BTreeMap::new();
         assert_eq!(
-            decode_inner_function_expr(payload),
+            decode_inner_function_expr(payload, &parameters),
             Some(FunctionExpr::Parsed(ParsedFunctionExpr {
                 head: FunctionTerm::UnaryX(UnaryFunction::Abs),
                 tail: vec![
@@ -2258,7 +2420,7 @@ mod tests {
                 ],
             }))
         );
-        let expr = decode_function_expr(&file, function_group);
+        let expr = decode_function_expr(&file, &groups, function_group);
         assert_eq!(
             expr,
             Some(FunctionExpr::Parsed(ParsedFunctionExpr {
@@ -2316,7 +2478,7 @@ mod tests {
         }));
         assert_eq!(
             scene.labels.iter().map(|label| label.text.as_str()).collect::<Vec<_>>(),
-            vec!["f(x) = x + sin(x)", "f'(x) = 1 + cos(x)"]
+            vec!["a = 3.00", "f(x) = x + a*sin(x)", "f'(x) = 1 + a*cos(x)"]
         );
     }
 }
