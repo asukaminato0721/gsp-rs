@@ -5,6 +5,7 @@ pub struct Config {
     pub gsp_path: PathBuf,
     pub reference_exe: Option<PathBuf>,
     pub render_path: Option<PathBuf>,
+    pub html_path: Option<PathBuf>,
     pub render_width: u32,
     pub render_height: u32,
 }
@@ -21,6 +22,7 @@ impl Config {
         let mut gsp_path = None;
         let mut reference_exe = None;
         let mut render_path = None;
+        let mut html_path = None;
         let mut render_width = 800_u32;
         let mut render_height = 600_u32;
         let mut index = 0usize;
@@ -44,6 +46,13 @@ impl Config {
                         return Err("--render requires a path".to_string());
                     };
                     render_path = Some(PathBuf::from(path));
+                }
+                "--html" => {
+                    index += 1;
+                    let Some(path) = raw_args.get(index) else {
+                        return Err("--html requires a path".to_string());
+                    };
+                    html_path = Some(PathBuf::from(path));
                 }
                 "--width" => {
                     index += 1;
@@ -85,13 +94,14 @@ impl Config {
             gsp_path,
             reference_exe,
             render_path,
+            html_path,
             render_width,
             render_height,
         })
     }
 
     pub fn usage() -> String {
-        "usage: gsp-rs <path/to/file.gsp> [--reference-exe path/to/GSP5Chs.exe] [--render out.png] [--width 800] [--height 600]".to_string()
+        "usage: gsp-rs <path/to/file.gsp> [--reference-exe path/to/GSP5Chs.exe] [--render out.png] [--html out.html] [--width 800] [--height 600]".to_string()
     }
 }
 

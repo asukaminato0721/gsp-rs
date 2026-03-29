@@ -41,25 +41,29 @@ pub fn render_report(
     if let Some(render_path) = &config.render_path {
         let _ = writeln!(output, "  rendered_png: {}", render_path.display());
     }
+    if let Some(html_path) = &config.html_path {
+        let _ = writeln!(output, "  rendered_html: {}", html_path.display());
+    }
 
     if let Some(header_record) = file
         .records
         .first()
         .filter(|record| record.record_type == 0x0384)
-        && let Some(header) = decode_header_record(header_record.payload(&file.data)) {
-            let _ = writeln!(output);
-            let _ = writeln!(output, "Header");
-            let _ = writeln!(
-                output,
-                "  @0x{:04x} type=0x{:04x} {} len=0x{:x}",
-                header_record.offset,
-                header_record.record_type,
-                record_name(header_record.record_type),
-                header_record.length
-            );
-            let _ = writeln!(output, "  words_u16: {:?}", header.words_u16);
-            let _ = writeln!(output, "  words_u32: {:?}", header.words_u32);
-        }
+        && let Some(header) = decode_header_record(header_record.payload(&file.data))
+    {
+        let _ = writeln!(output);
+        let _ = writeln!(output, "Header");
+        let _ = writeln!(
+            output,
+            "  @0x{:04x} type=0x{:04x} {} len=0x{:x}",
+            header_record.offset,
+            header_record.record_type,
+            record_name(header_record.record_type),
+            header_record.length
+        );
+        let _ = writeln!(output, "  words_u16: {:?}", header.words_u16);
+        let _ = writeln!(output, "  words_u32: {:?}", header.words_u32);
+    }
 
     let _ = writeln!(output);
     let _ = writeln!(output, "Record Type Counts");

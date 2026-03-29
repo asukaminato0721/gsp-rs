@@ -7,7 +7,7 @@ mod util;
 
 use crate::config::Config;
 use crate::format::GspFile;
-use crate::render::render_points_to_png;
+use crate::render::{render_points_to_html, render_points_to_png};
 use crate::report::render_report;
 use crate::util::analyze_reference_exe;
 use std::env;
@@ -39,6 +39,10 @@ fn run() -> Result<(), String> {
             config.render_width,
             config.render_height,
         )?;
+    }
+
+    if let Some(html_path) = &config.html_path {
+        render_points_to_html(&file, html_path, config.render_width, config.render_height)?;
     }
 
     println!("{}", render_report(&config, &file, exe_terms.as_ref()));
