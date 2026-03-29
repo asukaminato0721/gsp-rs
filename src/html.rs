@@ -166,6 +166,7 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
     const coordReadout = document.getElementById('coord-readout');
     const zoomReadout = document.getElementById('zoom-readout');
     const margin = 32;
+    const trigMode = !!sourceScene.piMode;
     const baseBounds = sourceScene.bounds;
     const baseCenterX = (baseBounds.minX + baseBounds.maxX) / 2;
     const baseCenterY = (baseBounds.minY + baseBounds.maxY) / 2;
@@ -324,6 +325,17 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
       return Number.isFinite(value) ? value.toFixed(2) : '-';
     }}
 
+    function formatPiLabel(stepIndex) {{
+      if (stepIndex === 0) return '';
+      const sign = stepIndex < 0 ? '-' : '';
+      const absIndex = Math.abs(stepIndex);
+      if (absIndex % 2 === 0) {{
+        const multiple = absIndex / 2;
+        return multiple === 1 ? `${{sign}}π` : `${{sign}}${{multiple}}π`;
+      }}
+      return absIndex === 1 ? `${{sign}}π/2` : `${{sign}}${{absIndex}}π/2`;
+    }}
+
     function updateReadout(screenX = null, screenY = null) {{
       zoomReadout.textContent = `zoom ${{Math.round(view.zoom * 100)}}%`;
       if (screenX === null || screenY === null) {{
@@ -345,12 +357,7 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
     function drawGrid() {{
       if (!scene.graphMode) return;
       const bounds = getViewBounds();
-      const spanX = bounds.maxX - bounds.minX;
       const spanY = bounds.maxY - bounds.minY;
-      const xLabelStep = spanX > 20 ? 5 : 2;
-      const yLabelStep = spanY > 12 ? 2 : 1;
-      const minX = Math.floor(bounds.minX);
-      const maxX = Math.ceil(bounds.maxX);
       const minY = Math.floor(bounds.minY);
       const maxY = Math.ceil(bounds.maxY);
 
@@ -358,26 +365,95 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
       ctx.lineWidth = 1;
       ctx.font = '12px "Noto Sans", "Segoe UI", sans-serif';
       ctx.fillStyle = 'rgb(20,20,20)';
-      for (let x = minX; x <= maxX; x += 1) {{
-        const screen = toScreen({{ x, y: bounds.minY }});
-        ctx.strokeStyle = x === 0 ? 'rgb(40,40,40)' : 'rgb(200,200,200)';
-        ctx.beginPath();
-        ctx.moveTo(screen.x, margin);
-        ctx.lineTo(screen.x, sourceScene.height - margin);
-        ctx.stroke();
-        if (x !== 0 && x % xLabelStep === 0) {{
-          ctx.fillText(String(x), screen.x - 6, sourceScene.height - margin + 18);
+      const xAxisY = bounds.minY <= 0 && 0 <= bounds.maxY
+        ? toScreen({{ x: bounds.minX, y: 0 }}).y
+        : sourceScene.height - 18;
+      const yAxisX = bounds.minX <= 0 && 0 <= bounds.maxX
+        ? toScreen({{ x: 0, y: bounds.minY }}).x
+        : sourceScene.width / 2;
+      if (trigMode) {{
+        const xMinorStep = Math.PI / 2;
+        const startIndex = Math.ceil(bounds.minX / xMinorStep);
+        const endIndex = Math.floor(bounds.maxX / xMinorStep);
+        for (let stepIndex = startIndex; stepIndex <= endIndex; stepIndex += 1) {{
+          const x = stepIndex * xMinorStep;
+          const screen = toScreen({{ x, y: bounds.minY }});
+          const major = stepIndex % 2 === 0;
+          ctx.strokeStyle = Math.abs(x) < 1e-9
+            ? 'rgb(40,40,40)'
+            : major
+              ? 'rgb(190,190,190)'
+              : 'rgb(220,220,220)';
+          ctx.beginPath();
+          ctx.moveTo(screen.x, 0);
+          ctx.lineTo(screen.x, sourceScene.height);
+          ctx.stroke();
+          if (bounds.minY <= 0 && 0 <= bounds.maxY) {{
+            ctx.strokeStyle = 'rgb(40,40,40)';
+            ctx.beginPath();
+            ctx.moveTo(screen.x, xAxisY - (major ? 6 : 4));
+            ctx.lineTo(screen.x, xAxisY + (major ? 6 : 4));
+            ctx.stroke();
+          }}
+          if (major && stepIndex !== 0) {{
+            const label = formatPiLabel(stepIndex);
+            const width = ctx.measureText(label).width;
+            ctx.fillText(
+              label,
+              screen.x - width / 2,
+              Math.min(sourceScene.height - 4, xAxisY + 16),
+            );
+          }}
+        }}
+      }} else {{
+        const spanX = bounds.maxX - bounds.minX;
+        const xLabelStep = spanX > 20 ? 5 : 2;
+        const minX = Math.floor(bounds.minX);
+        const maxX = Math.ceil(bounds.maxX);
+        for (let x = minX; x <= maxX; x += 1) {{
+          const screen = toScreen({{ x, y: bounds.minY }});
+          ctx.strokeStyle = x === 0 ? 'rgb(40,40,40)' : 'rgb(200,200,200)';
+          ctx.beginPath();
+          ctx.moveTo(screen.x, 0);
+          ctx.lineTo(screen.x, sourceScene.height);
+          ctx.stroke();
+          if (bounds.minY <= 0 && 0 <= bounds.maxY) {{
+            ctx.strokeStyle = 'rgb(40,40,40)';
+            ctx.beginPath();
+            ctx.moveTo(screen.x, xAxisY - (x === 0 ? 6 : 4));
+            ctx.lineTo(screen.x, xAxisY + (x === 0 ? 6 : 4));
+            ctx.stroke();
+          }}
+          if (x !== 0 && x % xLabelStep === 0) {{
+            const label = String(x);
+            const width = ctx.measureText(label).width;
+            ctx.fillText(
+              label,
+              screen.x - width / 2,
+              Math.min(sourceScene.height - 4, xAxisY + 16),
+            );
+          }}
         }}
       }}
+      const yLabelStep = trigMode ? 2 : spanY > 12 ? 2 : 1;
       for (let y = minY; y <= maxY; y += 1) {{
         const screen = toScreen({{ x: bounds.minX, y }});
         ctx.strokeStyle = y === 0 ? 'rgb(40,40,40)' : 'rgb(200,200,200)';
         ctx.beginPath();
-        ctx.moveTo(margin, screen.y);
-        ctx.lineTo(sourceScene.width - margin, screen.y);
+        ctx.moveTo(0, screen.y);
+        ctx.lineTo(sourceScene.width, screen.y);
         ctx.stroke();
+        if (bounds.minX <= 0 && 0 <= bounds.maxX) {{
+          ctx.strokeStyle = 'rgb(40,40,40)';
+          ctx.beginPath();
+          ctx.moveTo(yAxisX - (y === 0 ? 6 : 4), screen.y);
+          ctx.lineTo(yAxisX + (y === 0 ? 6 : 4), screen.y);
+          ctx.stroke();
+        }}
         if (y !== 0 && y % yLabelStep === 0) {{
-          ctx.fillText(String(y), sourceScene.width / 2 - 12, screen.y - 6);
+          const label = String(y);
+          const width = ctx.measureText(label).width;
+          ctx.fillText(label, yAxisX - width - 8, screen.y - 6);
         }}
       }}
       if (scene.origin) {{
@@ -601,8 +677,9 @@ fn scene_to_json(scene: &Scene, width: u32, height: u32) -> String {
     out.push('{');
     let _ = write!(
         out,
-        "\"width\":{width},\"height\":{height},\"graphMode\":{},\"yUp\":{},\"bounds\":{{\"minX\":{},\"maxX\":{},\"minY\":{},\"maxY\":{}}},",
+        "\"width\":{width},\"height\":{height},\"graphMode\":{},\"piMode\":{},\"yUp\":{},\"bounds\":{{\"minX\":{},\"maxX\":{},\"minY\":{},\"maxY\":{}}},",
         if scene.graph_mode { "true" } else { "false" },
+        if scene.pi_mode { "true" } else { "false" },
         if scene.y_up { "true" } else { "false" },
         format_f64(scene.bounds.min_x),
         format_f64(scene.bounds.max_x),
