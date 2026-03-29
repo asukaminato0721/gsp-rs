@@ -33,6 +33,7 @@ struct Bounds {
 #[derive(Debug, Clone)]
 struct Scene {
     graph_mode: bool,
+    y_up: bool,
     origin: Option<PointRecord>,
     bounds: Bounds,
     lines: Vec<LineShape>,
@@ -489,7 +490,7 @@ pub fn render_points_to_png(
         let screen_points = polygon
             .points
             .iter()
-            .map(|point| to_screen(point, width, height, margin, &scene.bounds))
+            .map(|point| to_screen(point, width, height, margin, &scene.bounds, scene.y_up))
             .collect::<Vec<_>>();
         canvas.fill_polygon(&screen_points, polygon.color);
         canvas.draw_polyline(&screen_points, true, darken(polygon.color, 80));
@@ -499,7 +500,7 @@ pub fn render_points_to_png(
         let screen_points = line
             .points
             .iter()
-            .map(|point| to_screen(point, width, height, margin, &scene.bounds))
+            .map(|point| to_screen(point, width, height, margin, &scene.bounds, scene.y_up))
             .collect::<Vec<_>>();
         if screen_points.len() >= 2 {
             if line.dashed {
@@ -518,7 +519,14 @@ pub fn render_points_to_png(
     }
 
     for circle in &scene.circles {
-        let center = to_screen(&circle.center, width, height, margin, &scene.bounds);
+        let center = to_screen(
+            &circle.center,
+            width,
+            height,
+            margin,
+            &scene.bounds,
+            scene.y_up,
+        );
         let radius_world = ((circle.radius_point.x - circle.center.x).powi(2)
             + (circle.radius_point.y - circle.center.y).powi(2))
         .sqrt();
@@ -530,12 +538,26 @@ pub fn render_points_to_png(
     }
 
     for point in &scene.points {
-        let (x, y) = to_screen(&point.position, width, height, margin, &scene.bounds);
+        let (x, y) = to_screen(
+            &point.position,
+            width,
+            height,
+            margin,
+            &scene.bounds,
+            scene.y_up,
+        );
         canvas.draw_circle_filled(x, y, 4, [255, 60, 40, 255]);
     }
 
     for label in &scene.labels {
-        let (x, y) = to_screen(&label.anchor, width, height, margin, &scene.bounds);
+        let (x, y) = to_screen(
+            &label.anchor,
+            width,
+            height,
+            margin,
+            &scene.bounds,
+            scene.y_up,
+        );
         if let Some(font) = &font_renderer {
             font.draw_text(&mut canvas, x + 6, y - 10, &label.text, label.color, 18.0);
         } else {
@@ -704,6 +726,7 @@ fn build_scene(file: &GspFile) -> Scene {
 
     Scene {
         graph_mode,
+        y_up: graph_mode,
         origin: graph_ref
             .as_ref()
             .map(|transform| to_world(&transform.origin_raw, &graph_ref)),
@@ -1004,7 +1027,9 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
       const scale = Math.min(usableWidth / bounds.spanX, usableHeight / bounds.spanY);
       return {{
         x: margin + (point.x - bounds.minX) * scale,
-        y: sourceScene.height - margin - (point.y - bounds.minY) * scale,
+        y: sourceScene.yUp
+          ? sourceScene.height - margin - (point.y - bounds.minY) * scale
+          : margin + (point.y - bounds.minY) * scale,
         scale,
       }};
     }}
@@ -1016,7 +1041,9 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
       const scale = Math.min(usableWidth / bounds.spanX, usableHeight / bounds.spanY);
       return {{
         x: bounds.minX + (screenX - margin) / scale,
-        y: bounds.minY + (sourceScene.height - margin - screenY) / scale,
+        y: sourceScene.yUp
+          ? bounds.minY + (sourceScene.height - margin - screenY) / scale
+          : bounds.minY + (screenY - margin) / scale,
         scale,
       }};
     }}
@@ -1314,8 +1341,9 @@ fn scene_to_json(scene: &Scene, width: u32, height: u32) -> String {
     out.push('{');
     let _ = write!(
         out,
-        "\"width\":{width},\"height\":{height},\"graphMode\":{},\"bounds\":{{\"minX\":{},\"maxX\":{},\"minY\":{},\"maxY\":{}}},",
+        "\"width\":{width},\"height\":{height},\"graphMode\":{},\"yUp\":{},\"bounds\":{{\"minX\":{},\"maxX\":{},\"minY\":{},\"maxY\":{}}},",
         if scene.graph_mode { "true" } else { "false" },
+        if scene.y_up { "true" } else { "false" },
         format_f64(scene.bounds.min_x),
         format_f64(scene.bounds.max_x),
         format_f64(scene.bounds.min_y),
@@ -2103,6 +2131,7 @@ fn draw_grid(
             height,
             margin,
             bounds,
+            true,
         );
         let color = if x == 0 {
             [40, 40, 40, 255]
@@ -2136,6 +2165,7 @@ fn draw_grid(
             height,
             margin,
             bounds,
+            true,
         );
         let color = if y == 0 {
             [40, 40, 40, 255]
@@ -2160,7 +2190,7 @@ fn draw_grid(
     }
 
     if let Some(origin) = origin {
-        let origin_screen = to_screen(origin, width, height, margin, bounds);
+        let origin_screen = to_screen(origin, width, height, margin, bounds, true);
         canvas.draw_circle_filled(origin_screen.0, origin_screen.1, 3, [255, 60, 40, 255]);
     }
 
@@ -2184,10 +2214,15 @@ fn to_screen(
     height: u32,
     margin: f64,
     bounds: &Bounds,
+    y_up: bool,
 ) -> (i32, i32) {
     let scale = screen_scale(width, height, margin, bounds);
     let x = margin + (point.x - bounds.min_x) * scale;
-    let y = height as f64 - margin - (point.y - bounds.min_y) * scale;
+    let y = if y_up {
+        height as f64 - margin - (point.y - bounds.min_y) * scale
+    } else {
+        margin + (point.y - bounds.min_y) * scale
+    };
     (x.round() as i32, y.round() as i32)
 }
 
