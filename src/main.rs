@@ -1,15 +1,15 @@
 mod config;
+#[allow(dead_code)]
 mod format;
+mod html;
+#[allow(dead_code)]
 mod png;
+#[allow(dead_code)]
 mod render;
-mod report;
-mod util;
 
 use crate::config::Config;
 use crate::format::GspFile;
-use crate::render::{render_points_to_html, render_points_to_png};
-use crate::report::render_report;
-use crate::util::analyze_reference_exe;
+use crate::html::render_points_to_html;
 use std::env;
 use std::fs;
 use std::process;
@@ -26,25 +26,13 @@ fn run() -> Result<(), String> {
     let data = fs::read(&config.gsp_path)
         .map_err(|error| format!("failed to read {}: {error}", config.gsp_path.display()))?;
     let file = GspFile::parse(&data)?;
-    let exe_terms = config
-        .reference_exe
-        .as_ref()
-        .map(|path| analyze_reference_exe(path))
-        .transpose()?;
 
-    if let Some(render_path) = &config.render_path {
-        render_points_to_png(
-            &file,
-            render_path,
-            config.render_width,
-            config.render_height,
-        )?;
-    }
-
-    if let Some(html_path) = &config.html_path {
-        render_points_to_html(&file, html_path, config.render_width, config.render_height)?;
-    }
-
-    println!("{}", render_report(&config, &file, exe_terms.as_ref()));
+    render_points_to_html(
+        &file,
+        &config.html_path,
+        config.render_width,
+        config.render_height,
+    )?;
+    println!("generated {}", config.html_path.display());
     Ok(())
 }

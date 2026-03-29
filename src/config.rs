@@ -3,9 +3,7 @@ use std::path::PathBuf;
 #[derive(Debug)]
 pub struct Config {
     pub gsp_path: PathBuf,
-    pub reference_exe: Option<PathBuf>,
-    pub render_path: Option<PathBuf>,
-    pub html_path: Option<PathBuf>,
+    pub html_path: PathBuf,
     pub render_width: u32,
     pub render_height: u32,
 }
@@ -19,94 +17,26 @@ impl Config {
             return Err(Self::usage());
         }
 
-        let mut gsp_path = None;
-        let mut reference_exe = None;
-        let mut render_path = None;
-        let mut html_path = None;
-        let mut render_width = 800_u32;
-        let mut render_height = 600_u32;
-        let mut index = 0usize;
-
-        while index < raw_args.len() {
-            let current = PathBuf::from(&raw_args[index]);
-            let current_text = current.to_string_lossy();
-
-            match current_text.as_ref() {
-                "-h" | "--help" => return Err(Self::usage()),
-                "--reference-exe" => {
-                    index += 1;
-                    let Some(path) = raw_args.get(index) else {
-                        return Err("--reference-exe requires a path".to_string());
-                    };
-                    reference_exe = Some(PathBuf::from(path));
-                }
-                "--render" => {
-                    index += 1;
-                    let Some(path) = raw_args.get(index) else {
-                        return Err("--render requires a path".to_string());
-                    };
-                    render_path = Some(PathBuf::from(path));
-                }
-                "--html" => {
-                    index += 1;
-                    let Some(path) = raw_args.get(index) else {
-                        return Err("--html requires a path".to_string());
-                    };
-                    html_path = Some(PathBuf::from(path));
-                }
-                "--width" => {
-                    index += 1;
-                    let Some(value) = raw_args.get(index) else {
-                        return Err("--width requires an integer".to_string());
-                    };
-                    render_width = parse_u32_arg(value, "--width")?;
-                }
-                "--height" => {
-                    index += 1;
-                    let Some(value) = raw_args.get(index) else {
-                        return Err("--height requires an integer".to_string());
-                    };
-                    render_height = parse_u32_arg(value, "--height")?;
-                }
-                _ if current_text.starts_with("--") => {
-                    return Err(format!(
-                        "unknown option: {current_text}\n\n{}",
-                        Self::usage()
-                    ));
-                }
-                _ if gsp_path.is_none() => gsp_path = Some(current),
-                _ => {
-                    return Err(format!(
-                        "unexpected positional argument: {current_text}\n\n{}",
-                        Self::usage()
-                    ));
-                }
+        if raw_args.len() == 1 {
+            let gsp_path = PathBuf::from(&raw_args[0]);
+            let gsp_text = gsp_path.to_string_lossy();
+            if matches!(gsp_text.as_ref(), "-h" | "--help") {
+                return Err(Self::usage());
             }
 
-            index += 1;
+            let html_path = gsp_path.with_extension("html");
+            return Ok(Self {
+                gsp_path,
+                html_path,
+                render_width: 800,
+                render_height: 600,
+            });
         }
 
-        let Some(gsp_path) = gsp_path else {
-            return Err(Self::usage());
-        };
-
-        Ok(Self {
-            gsp_path,
-            reference_exe,
-            render_path,
-            html_path,
-            render_width,
-            render_height,
-        })
+        Err(Self::usage())
     }
 
     pub fn usage() -> String {
-        "usage: gsp-rs <path/to/file.gsp> [--reference-exe path/to/GSP5Chs.exe] [--render out.png] [--html out.html] [--width 800] [--height 600]".to_string()
+        "usage: gsp-rs <path/to/file.gsp>".to_string()
     }
-}
-
-fn parse_u32_arg(value: &std::ffi::OsString, flag: &str) -> Result<u32, String> {
-    let text = value.to_string_lossy();
-    text.parse::<u32>()
-        .map_err(|error| format!("{flag} expects an unsigned integer, got {text:?}: {error}"))
 }
