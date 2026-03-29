@@ -39,7 +39,23 @@ struct Scene {
     polygons: Vec<PolygonShape>,
     circles: Vec<SceneCircle>,
     labels: Vec<TextLabel>,
-    points: Vec<PointRecord>,
+    points: Vec<ScenePoint>,
+}
+
+#[derive(Debug, Clone)]
+struct ScenePoint {
+    position: PointRecord,
+    constraint: ScenePointConstraint,
+}
+
+#[derive(Debug, Clone)]
+enum ScenePointConstraint {
+    Free,
+    OnSegment {
+        start_index: usize,
+        end_index: usize,
+        t: f64,
+    },
 }
 
 #[derive(Debug)]
@@ -514,7 +530,7 @@ pub fn render_points_to_png(
     }
 
     for point in &scene.points {
-        let (x, y) = to_screen(point, width, height, margin, &scene.bounds);
+        let (x, y) = to_screen(&point.position, width, height, margin, &scene.bounds);
         canvas.draw_circle_filled(x, y, 4, [255, 60, 40, 255]);
     }
 
@@ -648,10 +664,30 @@ fn build_scene(file: &GspFile) -> Scene {
         );
     }
 
-    let world_points = point_map
+    let visible_points = collect_visible_points(file, &groups, &point_map, &raw_anchors);
+
+    let world_points = visible_points
         .iter()
-        .flatten()
-        .map(|point| to_world(point, &graph_ref))
+        .map(|point| ScenePoint {
+            position: to_world(&point.position, &graph_ref),
+            constraint: match &point.constraint {
+                ScenePointConstraint::Free => ScenePointConstraint::Free,
+                ScenePointConstraint::OnSegment {
+                    start_index,
+                    end_index,
+                    t,
+                } => ScenePointConstraint::OnSegment {
+                    start_index: *start_index,
+                    end_index: *end_index,
+                    t: *t,
+                },
+            },
+        })
+        .collect::<Vec<_>>();
+
+    let world_point_positions = world_points
+        .iter()
+        .map(|point| point.position.clone())
         .collect::<Vec<_>>();
 
     let mut bounds = collect_bounds(
@@ -662,7 +698,7 @@ fn build_scene(file: &GspFile) -> Scene {
         &polygons,
         &circles,
         &labels,
-        &world_points,
+        &world_point_positions,
     );
     expand_bounds(&mut bounds);
 
@@ -853,6 +889,7 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
     const baseSpanX = Math.max(1e-6, baseBounds.maxX - baseBounds.minX);
     const baseSpanY = Math.max(1e-6, baseBounds.maxY - baseBounds.minY);
     const pointHitRadius = 10;
+    const pointMatchTolerance = 1e-3;
     const view = {{
       centerX: baseCenterX,
       centerY: baseCenterY,
@@ -862,11 +899,28 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
     let hoverPointIndex = null;
 
     function samePoint(left, right) {{
-      return Math.abs(left.x - right.x) < 1e-6 && Math.abs(left.y - right.y) < 1e-6;
+      return Math.abs(left.x - right.x) < pointMatchTolerance
+        && Math.abs(left.y - right.y) < pointMatchTolerance;
+    }}
+
+    function resolveSourcePoint(index) {{
+      const point = sourceScene.points[index];
+      if (!point) {{
+        return {{ x: 0, y: 0 }};
+      }}
+      if (point.constraint && point.constraint.kind === 'segment') {{
+        const start = resolveSourcePoint(point.constraint.startIndex);
+        const end = resolveSourcePoint(point.constraint.endIndex);
+        return {{
+          x: start.x + (end.x - start.x) * point.constraint.t,
+          y: start.y + (end.y - start.y) * point.constraint.t,
+        }};
+      }}
+      return {{ x: point.x, y: point.y }};
     }}
 
     function attachPointRef(point) {{
-      const pointIndex = sourceScene.points.findIndex((candidate) => samePoint(candidate, point));
+      const pointIndex = sourceScene.points.findIndex((candidate, index) => samePoint(resolveSourcePoint(index), point));
       if (pointIndex >= 0) {{
         return {{ pointIndex }};
       }}
@@ -876,7 +930,11 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
     function hydrateScene(scene) {{
       return {{
         graphMode: scene.graphMode,
-        points: scene.points.map((point) => ({{ ...point }})),
+        points: scene.points.map((point) => ({{
+          x: point.x,
+          y: point.y,
+          constraint: point.constraint ? {{ ...point.constraint }} : null,
+        }})),
         origin: scene.origin ? attachPointRef(scene.origin) : null,
         lines: scene.lines.map((line) => ({{
           color: line.color,
@@ -918,9 +976,25 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
 
     function resolvePoint(handle) {{
       if (typeof handle.pointIndex === 'number') {{
-        return scene.points[handle.pointIndex];
+        return resolveScenePoint(handle.pointIndex);
       }}
       return handle;
+    }}
+
+    function resolveScenePoint(index) {{
+      const point = scene.points[index];
+      if (!point) {{
+        return {{ x: 0, y: 0 }};
+      }}
+      if (point.constraint && point.constraint.kind === 'segment') {{
+        const start = resolveScenePoint(point.constraint.startIndex);
+        const end = resolveScenePoint(point.constraint.endIndex);
+        return {{
+          x: start.x + (end.x - start.x) * point.constraint.t,
+          y: start.y + (end.y - start.y) * point.constraint.t,
+        }};
+      }}
+      return point;
     }}
 
     function toScreen(point) {{
@@ -1032,8 +1106,8 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
     function findHitPoint(screenX, screenY) {{
       let bestIndex = null;
       let bestDistanceSquared = pointHitRadius * pointHitRadius;
-      scene.points.forEach((point, index) => {{
-        const screen = toScreen(point);
+      scene.points.forEach((_, index) => {{
+        const screen = toScreen(resolveScenePoint(index));
         const dx = screen.x - screenX;
         const dy = screen.y - screenY;
         const distanceSquared = dx * dx + dy * dy;
@@ -1104,7 +1178,7 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
       }}
 
       scene.points.forEach((point, index) => {{
-        const screen = toScreen(point);
+        const screen = toScreen(resolveScenePoint(index));
         ctx.beginPath();
         ctx.arc(screen.x, screen.y, index === hoverPointIndex ? 6 : 4, 0, Math.PI * 2);
         ctx.fillStyle = index === hoverPointIndex ? 'rgba(255, 120, 20, 1)' : 'rgba(255, 60, 40, 1)';
@@ -1150,8 +1224,20 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
       if (dragState.mode === 'point') {{
         const world = toWorld(position.x, position.y);
         const point = scene.points[dragState.pointIndex];
-        point.x = world.x;
-        point.y = world.y;
+        if (point.constraint && point.constraint.kind === 'segment') {{
+          const start = resolveScenePoint(point.constraint.startIndex);
+          const end = resolveScenePoint(point.constraint.endIndex);
+          const dx = end.x - start.x;
+          const dy = end.y - start.y;
+          const lengthSquared = dx * dx + dy * dy;
+          if (lengthSquared > 1e-9) {{
+            const t = ((world.x - start.x) * dx + (world.y - start.y) * dy) / lengthSquared;
+            point.constraint.t = Math.max(0, Math.min(1, t));
+          }}
+        }} else {{
+          point.x = world.x;
+          point.y = world.y;
+        }}
         hoverPointIndex = dragState.pointIndex;
       }} else {{
         const worldNow = toWorld(position.x, position.y);
@@ -1334,7 +1420,30 @@ fn scene_to_json(scene: &Scene, width: u32, height: u32) -> String {
         if index > 0 {
             out.push(',');
         }
-        push_point_json(&mut out, point);
+        out.push('{');
+        let _ = write!(
+            out,
+            "\"x\":{},\"y\":{}",
+            format_f64(point.position.x),
+            format_f64(point.position.y),
+        );
+        match &point.constraint {
+            ScenePointConstraint::Free => out.push_str(",\"constraint\":null"),
+            ScenePointConstraint::OnSegment {
+                start_index,
+                end_index,
+                t,
+            } => {
+                let _ = write!(
+                    out,
+                    ",\"constraint\":{{\"kind\":\"segment\",\"startIndex\":{},\"endIndex\":{},\"t\":{}}}",
+                    start_index,
+                    end_index,
+                    format_f64(*t),
+                );
+            }
+        }
+        out.push('}');
     }
     out.push_str("]}");
     out
@@ -1398,6 +1507,55 @@ fn collect_point_objects(file: &GspFile, groups: &[ObjectGroup]) -> Vec<Option<P
         .collect()
 }
 
+fn collect_visible_points(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    point_map: &[Option<PointRecord>],
+    anchors: &[Option<PointRecord>],
+) -> Vec<ScenePoint> {
+    let mut group_to_point_index = vec![None; groups.len()];
+    let mut points = Vec::<ScenePoint>::new();
+
+    for (index, group) in groups.iter().enumerate() {
+        let kind = group.header.class_id & 0xffff;
+        let scene_point = match kind {
+            0 => point_map
+                .get(index)
+                .cloned()
+                .flatten()
+                .map(|position| ScenePoint {
+                    position,
+                    constraint: ScenePointConstraint::Free,
+                }),
+            15 => decode_point_on_segment_constraint(file, groups, group).and_then(|constraint| {
+                let start_index = group_to_point_index
+                    .get(constraint.start_group_index)
+                    .and_then(|index| *index)?;
+                let end_index = group_to_point_index
+                    .get(constraint.end_group_index)
+                    .and_then(|index| *index)?;
+                let position = anchors.get(index).cloned().flatten()?;
+                Some(ScenePoint {
+                    position,
+                    constraint: ScenePointConstraint::OnSegment {
+                        start_index,
+                        end_index,
+                        t: constraint.t,
+                    },
+                })
+            }),
+            _ => None,
+        };
+
+        if let Some(scene_point) = scene_point {
+            group_to_point_index[index] = Some(points.len());
+            points.push(scene_point);
+        }
+    }
+
+    points
+}
+
 fn collect_raw_object_anchors(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -1407,6 +1565,8 @@ fn collect_raw_object_anchors(
     for (index, group) in groups.iter().enumerate() {
         let anchor = if let Some(point) = point_map.get(index).and_then(|point| point.clone()) {
             Some(point)
+        } else if let Some(anchor) = decode_point_on_segment_anchor(file, groups, group, &anchors) {
+            Some(anchor)
         } else if let Some(anchor) = decode_bbox_anchor_raw(file, group) {
             Some(anchor)
         } else {
@@ -1736,6 +1896,66 @@ fn decode_bbox_anchor_raw(file: &GspFile, group: &ObjectGroup) -> Option<PointRe
     Some(PointRecord {
         x: (x0 + x1) / 2.0,
         y: (y0 + y1) / 2.0,
+    })
+}
+
+struct PointOnSegmentConstraint {
+    start_group_index: usize,
+    end_group_index: usize,
+    t: f64,
+}
+
+fn decode_point_on_segment_constraint(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<PointOnSegmentConstraint> {
+    if (group.header.class_id & 0xffff) != 15 {
+        return None;
+    }
+
+    let host_ref = find_indexed_path(file, group)?
+        .refs
+        .first()
+        .copied()
+        .filter(|ordinal| *ordinal > 0)?;
+    let host_group_index = host_ref - 1;
+    let host_group = groups.get(host_group_index)?;
+    let host_path = find_indexed_path(file, host_group)?;
+    if host_path.refs.len() != 2 {
+        return None;
+    }
+
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x07d3 && record.length == 12)
+        .map(|record| record.payload(&file.data))?;
+    let t = read_f64(payload, 4);
+    if !t.is_finite() {
+        return None;
+    }
+
+    Some(PointOnSegmentConstraint {
+        start_group_index: host_path.refs[0].checked_sub(1)?,
+        end_group_index: host_path.refs[1].checked_sub(1)?,
+        t,
+    })
+}
+
+fn decode_point_on_segment_anchor(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    let constraint = decode_point_on_segment_constraint(file, groups, group)?;
+    let start = anchors.get(constraint.start_group_index)?.clone()?;
+    let end = anchors.get(constraint.end_group_index)?.clone()?;
+
+    Some(PointRecord {
+        x: start.x + (end.x - start.x) * constraint.t,
+        y: start.y + (end.y - start.y) * constraint.t,
     })
 }
 
