@@ -193,13 +193,9 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
       if (!point) {{
         return {{ x: 0, y: 0 }};
       }}
-      if (point.constraint && point.constraint.kind === 'segment') {{
-        const start = resolveSourcePoint(point.constraint.startIndex);
-        const end = resolveSourcePoint(point.constraint.endIndex);
-        return {{
-          x: start.x + (end.x - start.x) * point.constraint.t,
-          y: start.y + (end.y - start.y) * point.constraint.t,
-        }};
+      const resolved = resolveConstrainedPoint(point.constraint, resolveSourcePoint);
+      if (resolved) {{
+        return resolved;
       }}
       return {{ x: point.x, y: point.y }};
     }}
@@ -271,15 +267,47 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
       if (!point) {{
         return {{ x: 0, y: 0 }};
       }}
-      if (point.constraint && point.constraint.kind === 'segment') {{
-        const start = resolveScenePoint(point.constraint.startIndex);
-        const end = resolveScenePoint(point.constraint.endIndex);
-        return {{
-          x: start.x + (end.x - start.x) * point.constraint.t,
-          y: start.y + (end.y - start.y) * point.constraint.t,
-        }};
+      const resolved = resolveConstrainedPoint(point.constraint, resolveScenePoint);
+      if (resolved) {{
+        return resolved;
       }}
       return point;
+    }}
+
+    function resolveConstrainedPoint(constraint, resolveFn) {{
+      if (!constraint) {{
+        return null;
+      }}
+      if (constraint.kind === 'segment') {{
+        const start = resolveFn(constraint.startIndex);
+        const end = resolveFn(constraint.endIndex);
+        return {{
+          x: start.x + (end.x - start.x) * constraint.t,
+          y: start.y + (end.y - start.y) * constraint.t,
+        }};
+      }}
+      if (constraint.kind === 'polygon-boundary') {{
+        const count = constraint.vertexIndices.length;
+        if (count < 2) {{
+          return null;
+        }}
+        const start = resolveFn(constraint.vertexIndices[((constraint.edgeIndex % count) + count) % count]);
+        const end = resolveFn(constraint.vertexIndices[(constraint.edgeIndex + 1 + count) % count]);
+        return {{
+          x: start.x + (end.x - start.x) * constraint.t,
+          y: start.y + (end.y - start.y) * constraint.t,
+        }};
+      }}
+      if (constraint.kind === 'circle') {{
+        const center = resolveFn(constraint.centerIndex);
+        const radiusPoint = resolveFn(constraint.radiusIndex);
+        const radius = Math.hypot(radiusPoint.x - center.x, radiusPoint.y - center.y);
+        return {{
+          x: center.x + radius * constraint.unitX,
+          y: center.y + radius * constraint.unitY,
+        }};
+      }}
+      return null;
     }}
 
     function toScreen(point) {{
@@ -656,6 +684,41 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
             const t = ((world.x - start.x) * dx + (world.y - start.y) * dy) / lengthSquared;
             point.constraint.t = Math.max(0, Math.min(1, t));
           }}
+        }} else if (point.constraint && point.constraint.kind === 'polygon-boundary') {{
+          const count = point.constraint.vertexIndices.length;
+          let bestEdgeIndex = point.constraint.edgeIndex;
+          let bestT = point.constraint.t;
+          let bestDistanceSquared = Number.POSITIVE_INFINITY;
+          for (let edgeIndex = 0; edgeIndex < count; edgeIndex += 1) {{
+            const start = resolveScenePoint(point.constraint.vertexIndices[edgeIndex]);
+            const end = resolveScenePoint(point.constraint.vertexIndices[(edgeIndex + 1) % count]);
+            const dx = end.x - start.x;
+            const dy = end.y - start.y;
+            const lengthSquared = dx * dx + dy * dy;
+            if (lengthSquared <= 1e-9) {{
+              continue;
+            }}
+            const t = Math.max(0, Math.min(1, ((world.x - start.x) * dx + (world.y - start.y) * dy) / lengthSquared));
+            const projX = start.x + dx * t;
+            const projY = start.y + dy * t;
+            const distSq = (world.x - projX) ** 2 + (world.y - projY) ** 2;
+            if (distSq < bestDistanceSquared) {{
+              bestDistanceSquared = distSq;
+              bestEdgeIndex = edgeIndex;
+              bestT = t;
+            }}
+          }}
+          point.constraint.edgeIndex = bestEdgeIndex;
+          point.constraint.t = bestT;
+        }} else if (point.constraint && point.constraint.kind === 'circle') {{
+          const center = resolveScenePoint(point.constraint.centerIndex);
+          const dx = world.x - center.x;
+          const dy = world.y - center.y;
+          const length = Math.hypot(dx, dy);
+          if (length > 1e-9) {{
+            point.constraint.unitX = dx / length;
+            point.constraint.unitY = dy / length;
+          }}
         }} else {{
           point.x = world.x;
           point.y = world.y;
@@ -878,6 +941,38 @@ fn scene_to_json(scene: &Scene, width: u32, height: u32) -> String {
                     start_index,
                     end_index,
                     format_f64(*t),
+                );
+            }
+            ScenePointConstraint::OnPolygonBoundary {
+                vertex_indices,
+                edge_index,
+                t,
+            } => {
+                let _ = write!(
+                    out,
+                    ",\"constraint\":{{\"kind\":\"polygon-boundary\",\"vertexIndices\":[{}],\"edgeIndex\":{},\"t\":{}}}",
+                    vertex_indices
+                        .iter()
+                        .map(|index| index.to_string())
+                        .collect::<Vec<_>>()
+                        .join(","),
+                    edge_index,
+                    format_f64(*t),
+                );
+            }
+            ScenePointConstraint::OnCircle {
+                center_index,
+                radius_index,
+                unit_x,
+                unit_y,
+            } => {
+                let _ = write!(
+                    out,
+                    ",\"constraint\":{{\"kind\":\"circle\",\"centerIndex\":{},\"radiusIndex\":{},\"unitX\":{},\"unitY\":{}}}",
+                    center_index,
+                    radius_index,
+                    format_f64(*unit_x),
+                    format_f64(*unit_y),
                 );
             }
         }
