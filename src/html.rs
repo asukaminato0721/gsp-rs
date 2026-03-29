@@ -511,6 +511,32 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
       return typeof scene.origin?.pointIndex === 'number' && scene.origin.pointIndex === index;
     }}
 
+    function findHitLabel(screenX, screenY) {{
+      ctx.save();
+      ctx.font = '18px "Noto Sans", "Segoe UI", sans-serif';
+      ctx.textBaseline = 'top';
+      for (let index = scene.labels.length - 1; index >= 0; index -= 1) {{
+        const label = scene.labels[index];
+        const screen = toScreen(resolvePoint(label.anchor));
+        const lines = label.text.split('\n');
+        const width = lines.reduce((best, line) => Math.max(best, ctx.measureText(line).width), 0);
+        const height = lines.length * 22;
+        const left = screen.x + 2;
+        const top = screen.y - 14;
+        if (
+          screenX >= left &&
+          screenX <= left + width + 8 &&
+          screenY >= top &&
+          screenY <= top + height
+        ) {{
+          ctx.restore();
+          return index;
+        }}
+      }}
+      ctx.restore();
+      return null;
+    }}
+
     function draw() {{
       ctx.clearRect(0, 0, sourceScene.width, sourceScene.height);
       ctx.fillStyle = 'rgb(250,250,248)';
@@ -592,12 +618,14 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
     canvas.addEventListener('pointerdown', (event) => {{
       const position = getCanvasCoords(event);
       const pointIndex = findHitPoint(position.x, position.y);
+      const labelIndex = pointIndex === null ? findHitLabel(position.x, position.y) : null;
       dragState = {{
         pointerId: event.pointerId,
-        mode: pointIndex === null
-          ? 'pan'
-          : (scene.graphMode && isOriginPointIndex(pointIndex) ? 'origin-pan' : 'point'),
+        mode: pointIndex !== null
+          ? (scene.graphMode && isOriginPointIndex(pointIndex) ? 'origin-pan' : 'point')
+          : (labelIndex !== null ? 'label' : 'pan'),
         pointIndex,
+        labelIndex,
         lastX: position.x,
         lastY: position.y,
       }};
@@ -633,6 +661,15 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
           point.y = world.y;
         }}
         hoverPointIndex = dragState.pointIndex;
+      }} else if (dragState.mode === 'label') {{
+        const world = toWorld(position.x, position.y);
+        const label = scene.labels[dragState.labelIndex];
+        if (typeof label.anchor.pointIndex === 'number') {{
+          label.anchor = {{ x: world.x, y: world.y }};
+        }} else {{
+          label.anchor.x = world.x;
+          label.anchor.y = world.y;
+        }}
       }} else {{
         const worldNow = toWorld(position.x, position.y);
         const worldLast = toWorld(dragState.lastX, dragState.lastY);
