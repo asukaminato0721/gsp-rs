@@ -1,1 +1,5 @@
 a (web) render for https://sketchpad.keycurriculum.com/
+
+cargo run ./path/to/your.gsp
+
+will generate a  ./path/to/your.html
