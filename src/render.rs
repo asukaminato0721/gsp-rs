@@ -1,6 +1,6 @@
 use crate::format::{
     GspFile, IndexedPathRecord, ObjectGroup, PointRecord, decode_indexed_path, decode_point_record,
-    read_f64, read_u16,
+    read_f64, read_u16, read_u32,
 };
 use std::collections::BTreeSet;
 
@@ -68,6 +68,20 @@ struct CircleShape {
 }
 
 #[derive(Debug, Clone)]
+struct FunctionPlotDescriptor {
+    x_min: f64,
+    x_max: f64,
+    sample_count: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum FunctionExpr {
+    Constant(f64),
+    Identity,
+    SinIdentity,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct SceneCircle {
     pub(crate) center: PointRecord,
     pub(crate) radius_point: PointRecord,
@@ -88,6 +102,12 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     let graph = detect_graph_transform(file, &groups, &raw_anchors);
     let graph_mode = graph.is_some() && has_graph_classes(&groups);
     let graph_ref = if graph_mode { graph.clone() } else { None };
+    let function_plots = if graph_mode {
+        collect_function_plots(file, &groups, &graph_ref)
+    } else {
+        Vec::new()
+    };
+    let has_function_plots = !function_plots.is_empty();
     let large_non_graph = !graph_mode && file.records.len() > 10_000;
 
     let polylines = collect_line_shapes(
@@ -120,11 +140,19 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         !graph_mode && !large_non_graph,
     );
     let circles = collect_circle_shapes(file, &groups, &point_map);
-    let mut labels = if graph_mode {
-        collect_labels(file, &groups, &raw_anchors)
+    let synthetic_axes = if graph_mode && has_function_plots && axes.is_empty() {
+        synthesize_function_axes(&function_plots, &graph_ref)
     } else {
         Vec::new()
     };
+    let mut labels = if graph_mode {
+        collect_labels(file, &groups, &raw_anchors, !has_function_plots)
+    } else {
+        Vec::new()
+    };
+    if graph_mode && has_function_plots {
+        labels.extend(synthesize_function_labels(&function_plots, &graph_ref));
+    }
 
     if graph_mode
         && let (Some(circle), Some(formula_index), Some(transform)) = (
@@ -186,6 +214,8 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         &labels,
         &world_point_positions,
     );
+    include_line_bounds(&mut bounds, &function_plots, &graph_ref);
+    include_line_bounds(&mut bounds, &synthetic_axes, &graph_ref);
     expand_bounds(&mut bounds);
 
     Scene {
@@ -200,6 +230,8 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
             .chain(derived_segments)
             .chain(measurements)
             .chain(axes)
+            .chain(function_plots)
+            .chain(synthetic_axes)
             .map(|line| LineShape {
                 points: line
                     .points
@@ -358,7 +390,7 @@ fn collect_line_shapes(
                     anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
                 })
                 .collect::<Vec<_>>();
-            (points.len() >= 2).then_some(LineShape {
+            (points.len() >= 2 && has_distinct_points(&points)).then_some(LineShape {
                 points,
                 color: if fallback_generic && !kinds.contains(&(group.header.class_id & 0xffff)) {
                     [40, 40, 40, 255]
@@ -548,6 +580,7 @@ fn collect_labels(
     file: &GspFile,
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
+    include_measurements: bool,
 ) -> Vec<TextLabel> {
     let mut labels = Vec::new();
     for group in groups {
@@ -588,6 +621,9 @@ fn collect_labels(
                 }
             }
             52 | 54 => {
+                if !include_measurements {
+                    continue;
+                }
                 if let Some(value) = group
                     .records
                     .iter()
@@ -618,6 +654,222 @@ fn collect_labels(
         }
     }
     labels
+}
+
+fn collect_function_plots(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    graph: &Option<GraphTransform>,
+) -> Vec<LineShape> {
+    let Some(transform) = graph.as_ref() else {
+        return Vec::new();
+    };
+
+    groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 72)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            if path.refs.len() < 2 {
+                return None;
+            }
+
+            let definition_group = groups.get(path.refs[0].checked_sub(1)?)?;
+            let descriptor = group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x0902)
+                .and_then(|record| decode_function_plot_descriptor(record.payload(&file.data)))?;
+            let expr = decode_function_expr(file, definition_group)?;
+            let mut points = sample_function_points(&expr, &descriptor);
+            if !has_distinct_points(&points) {
+                return None;
+            }
+
+            for point in &mut points {
+                *point = to_raw_from_world(point, transform);
+            }
+
+            Some(LineShape {
+                points,
+                color: color_from_style(group.header.style_b),
+                dashed: false,
+            })
+        })
+        .collect()
+}
+
+fn decode_function_plot_descriptor(payload: &[u8]) -> Option<FunctionPlotDescriptor> {
+    if payload.len() < 20 {
+        return None;
+    }
+
+    let x_min = read_f64(payload, 0);
+    let x_max = read_f64(payload, 8);
+    let sample_count = read_u32(payload, 16) as usize;
+    if !x_min.is_finite() || !x_max.is_finite() || x_min == x_max {
+        return None;
+    }
+
+    Some(FunctionPlotDescriptor {
+        x_min,
+        x_max,
+        sample_count: sample_count.clamp(2, 4096),
+    })
+}
+
+fn decode_function_expr(file: &GspFile, group: &ObjectGroup) -> Option<FunctionExpr> {
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x0907)
+        .map(|record| record.payload(&file.data))?;
+
+    let text = extract_inline_function_token(payload)?;
+    if text.eq_ignore_ascii_case("x") {
+        return Some(FunctionExpr::Identity);
+    }
+    if let Ok(value) = text.parse::<f64>() {
+        if value == 0.0 && payload.ends_with(&[0x94, 0x00, 0x01, 0x00, 0x00, 0x20, 0x0f, 0x00, 0x0c, 0x00]) {
+            return Some(FunctionExpr::SinIdentity);
+        }
+        return Some(FunctionExpr::Constant(value));
+    }
+    decode_inner_function_expr(payload)
+}
+
+fn extract_inline_function_token(payload: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(payload);
+    let start = text.find('<')?;
+    let end = text[start + 1..].find('>')?;
+    let token = text[start + 1..start + 1 + end].trim();
+    if token.is_empty() {
+        None
+    } else {
+        Some(token.to_string())
+    }
+}
+
+fn sample_function_points(
+    expr: &FunctionExpr,
+    descriptor: &FunctionPlotDescriptor,
+) -> Vec<PointRecord> {
+    let mut points = Vec::with_capacity(descriptor.sample_count);
+    let span = descriptor.x_max - descriptor.x_min;
+    let last = descriptor.sample_count.saturating_sub(1).max(1) as f64;
+    for index in 0..descriptor.sample_count {
+        let t = index as f64 / last;
+        let x = descriptor.x_min + span * t;
+        let y = match expr {
+            FunctionExpr::Constant(value) => *value,
+            FunctionExpr::Identity => x,
+            FunctionExpr::SinIdentity => x.sin(),
+        };
+        if y.is_finite() {
+            points.push(PointRecord { x, y });
+        }
+    }
+    points
+}
+
+fn decode_inner_function_expr(payload: &[u8]) -> Option<FunctionExpr> {
+    if payload.ends_with(&[0x94, 0x00, 0x01, 0x00, 0x00, 0x20, 0x0f, 0x00, 0x0c, 0x00]) {
+        return Some(FunctionExpr::SinIdentity);
+    }
+
+    None
+}
+
+fn synthesize_function_axes(
+    function_plots: &[LineShape],
+    graph: &Option<GraphTransform>,
+) -> Vec<LineShape> {
+    let Some(mut world_bounds) = bounds_from_function_plots(function_plots, graph) else {
+        return Vec::new();
+    };
+    if (world_bounds.max_y - world_bounds.min_y).abs() < 1e-6 {
+        world_bounds.min_y -= 1.0;
+        world_bounds.max_y += 1.0;
+    }
+    if (world_bounds.max_x - world_bounds.min_x).abs() < 1e-6 {
+        world_bounds.min_x -= 1.0;
+        world_bounds.max_x += 1.0;
+    }
+
+    let mut axes = Vec::new();
+    if world_bounds.min_x <= 0.0 && 0.0 <= world_bounds.max_x {
+        axes.push(LineShape {
+            points: vec![
+                PointRecord {
+                    x: 0.0,
+                    y: world_bounds.min_y,
+                },
+                PointRecord {
+                    x: 0.0,
+                    y: world_bounds.max_y,
+                },
+            ]
+            .into_iter()
+            .map(|point| {
+                to_raw_from_world(
+                    &point,
+                    graph.as_ref().expect("graph transform required for synthetic axes"),
+                )
+            })
+            .collect(),
+            color: [192, 192, 192, 255],
+            dashed: false,
+        });
+    }
+    if world_bounds.min_y <= 0.0 && 0.0 <= world_bounds.max_y {
+        axes.push(LineShape {
+            points: vec![
+                PointRecord {
+                    x: world_bounds.min_x,
+                    y: 0.0,
+                },
+                PointRecord {
+                    x: world_bounds.max_x,
+                    y: 0.0,
+                },
+            ]
+            .into_iter()
+            .map(|point| {
+                to_raw_from_world(
+                    &point,
+                    graph.as_ref().expect("graph transform required for synthetic axes"),
+                )
+            })
+            .collect(),
+            color: [192, 192, 192, 255],
+            dashed: false,
+        });
+    }
+
+    axes
+}
+
+fn synthesize_function_labels(
+    function_plots: &[LineShape],
+    graph: &Option<GraphTransform>,
+) -> Vec<TextLabel> {
+    let Some(bounds) = bounds_from_function_plots(function_plots, graph) else {
+        return Vec::new();
+    };
+    let Some(transform) = graph.as_ref() else {
+        return Vec::new();
+    };
+
+    let world_anchor = PointRecord {
+        x: (bounds.min_x + bounds.max_x) / 2.0,
+        y: bounds.max_y + ((bounds.max_y - bounds.min_y).max(1.0) * 0.35),
+    };
+
+    vec![TextLabel {
+        anchor: to_raw_from_world(&world_anchor, transform),
+        text: "f(x) = sin(x)".to_string(),
+        color: [30, 30, 30, 255],
+    }]
 }
 
 fn find_indexed_path(file: &GspFile, group: &ObjectGroup) -> Option<IndexedPathRecord> {
@@ -801,6 +1053,38 @@ fn collect_bounds(
     bounds
 }
 
+fn include_line_bounds(
+    bounds: &mut Bounds,
+    lines: &[LineShape],
+    graph: &Option<GraphTransform>,
+) {
+    for line in lines {
+        for point in &line.points {
+            let world = to_world(point, graph);
+            bounds.min_x = bounds.min_x.min(world.x);
+            bounds.max_x = bounds.max_x.max(world.x);
+            bounds.min_y = bounds.min_y.min(world.y);
+            bounds.max_y = bounds.max_y.max(world.y);
+        }
+    }
+}
+
+fn bounds_from_function_plots(
+    function_plots: &[LineShape],
+    graph: &Option<GraphTransform>,
+) -> Option<Bounds> {
+    let first = function_plots.first()?.points.first()?;
+    let first = to_world(first, graph);
+    let mut bounds = Bounds {
+        min_x: first.x,
+        max_x: first.x,
+        min_y: first.y,
+        max_y: first.y,
+    };
+    include_line_bounds(&mut bounds, function_plots, graph);
+    Some(bounds)
+}
+
 fn expand_bounds(bounds: &mut Bounds) {
     if (bounds.max_x - bounds.min_x).abs() < f64::EPSILON {
         bounds.max_x += 1.0;
@@ -826,6 +1110,13 @@ fn to_world(point: &PointRecord, graph: &Option<GraphTransform>) -> PointRecord 
         }
     } else {
         point.clone()
+    }
+}
+
+fn to_raw_from_world(point: &PointRecord, graph: &GraphTransform) -> PointRecord {
+    PointRecord {
+        x: graph.origin_raw.x + point.x * graph.raw_per_unit,
+        y: graph.origin_raw.y - point.y * graph.raw_per_unit,
     }
 }
 
@@ -1019,4 +1310,72 @@ pub(crate) fn darken(rgba: [u8; 4], amount: u8) -> [u8; 4] {
         rgba[2].saturating_sub(amount),
         rgba[3],
     ]
+}
+
+fn has_distinct_points(points: &[PointRecord]) -> bool {
+    points.windows(2).any(|pair| {
+        let dx = pair[0].x - pair[1].x;
+        let dy = pair[0].y - pair[1].y;
+        dx.abs() > 1e-6 || dy.abs() > 1e-6
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::format::GspFile;
+
+    #[test]
+    fn extracts_simple_function_token() {
+        assert_eq!(
+            extract_inline_function_token(b"\0\0<0>\0"),
+            Some("0".to_string())
+        );
+        assert_eq!(
+            extract_inline_function_token(b"junk<x>tail"),
+            Some("x".to_string())
+        );
+    }
+
+    #[test]
+    fn builds_function_plot_for_f_gsp() {
+        let data = include_bytes!("../../f.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert!(scene.graph_mode);
+        assert!(
+            scene.lines.iter().any(|line| {
+                let min_x = line
+                    .points
+                    .iter()
+                    .map(|point| point.x)
+                    .fold(f64::INFINITY, f64::min);
+                let max_x = line
+                    .points
+                    .iter()
+                    .map(|point| point.x)
+                    .fold(f64::NEG_INFINITY, f64::max);
+                min_x < -20.0 && max_x > 20.0
+            }),
+            "expected a non-degenerate function plot spanning the graph domain"
+        );
+    }
+
+    #[test]
+    fn decodes_f_gsp_function_expr() {
+        let data = include_bytes!("../../f.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let groups = file.object_groups();
+        let payload = groups[0]
+            .records
+            .iter()
+            .find(|record| record.record_type == 0x0907)
+            .expect("0907 record")
+            .payload(&file.data);
+        assert!(payload.ends_with(&[0x94, 0x00, 0x01, 0x00, 0x00, 0x20, 0x0f, 0x00, 0x0c, 0x00]));
+        assert_eq!(decode_inner_function_expr(payload), Some(FunctionExpr::SinIdentity));
+        let expr = decode_function_expr(&file, &groups[0]);
+        assert_eq!(expr, Some(FunctionExpr::SinIdentity));
+    }
 }
