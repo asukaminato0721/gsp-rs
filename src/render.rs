@@ -251,11 +251,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     } else {
         Vec::new()
     };
-    let mut labels = if graph_mode {
-        collect_labels(file, &groups, &raw_anchors, !has_function_plots)
-    } else {
-        Vec::new()
-    };
+    let mut labels = collect_labels(file, &groups, &raw_anchors, graph_mode && !has_function_plots);
     if graph_mode && has_function_plots {
         labels.extend(synthesize_function_labels(
             file,
@@ -594,6 +590,8 @@ fn collect_raw_object_anchors(
         } else if let Some(anchor) = decode_point_on_ray_anchor_raw(file, groups, group, &anchors) {
             Some(anchor)
         } else if let Some(anchor) = decode_transform_anchor_raw(file, group, &anchors) {
+            Some(anchor)
+        } else if let Some(anchor) = decode_offset_anchor_raw(file, group, &anchors) {
             Some(anchor)
         } else if let Some(anchor) = decode_bbox_anchor_raw(file, group) {
             Some(anchor)
@@ -1958,6 +1956,38 @@ fn decode_point_on_ray_anchor_raw(
     })
 }
 
+fn decode_offset_anchor_raw(
+    file: &GspFile,
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    if (group.header.class_id & 0xffff) != 67 {
+        return None;
+    }
+
+    let path = find_indexed_path(file, group)?;
+    let origin = anchors.get(path.refs.first()?.checked_sub(1)?)?.clone()?;
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x07d3)
+        .map(|record| record.payload(&file.data))?;
+    if payload.len() < 20 {
+        return None;
+    }
+
+    let dx = read_f64(payload, 4);
+    let dy = read_f64(payload, 12);
+    if !dx.is_finite() || !dy.is_finite() {
+        return None;
+    }
+
+    Some(PointRecord {
+        x: origin.x + dx,
+        y: origin.y + dy,
+    })
+}
+
 struct PointOnSegmentConstraint {
     start_group_index: usize,
     end_group_index: usize,
@@ -2573,16 +2603,17 @@ fn parse_markup(markup: &str) -> String {
 
                     let mut inner = inner_parts.join("");
                     if name.starts_with('+') && !inner.is_empty() {
-                        let split = inner
-                            .char_indices()
-                            .rev()
-                            .find(|(_, ch)| !ch.is_ascii_digit())
-                            .map(|(i, _)| i + 1)
+                        let chars = inner.chars().collect::<Vec<_>>();
+                        let split = chars
+                            .iter()
+                            .rposition(|ch| !ch.is_ascii_digit())
+                            .map(|index| index + 1)
                             .unwrap_or(0);
-                        if split < inner.len() {
-                            let exp = inner.split_off(split);
+                        if split < chars.len() {
+                            let exponent = chars[split..].iter().collect::<String>();
+                            inner = chars[..split].iter().collect::<String>();
                             inner.push('^');
-                            inner.push_str(&exp);
+                            inner.push_str(&exponent);
                         }
                     }
                     if !inner.is_empty() {
@@ -2775,7 +2806,25 @@ mod tests {
         }));
         assert_eq!(
             scene.labels.iter().map(|label| label.text.as_str()).collect::<Vec<_>>(),
-            vec!["a = 3.00", "f(x) = x + a*sin(x)", "f'(x) = 1 + a*cos(x)"]
+            vec![
+                "a = 3.00",
+                "b = 1.00",
+                "f(x) = x + a*sin(x) + b",
+                "f'(x) = 1 + a*cos(x)",
+            ]
+        );
+    }
+
+    #[test]
+    fn keeps_control_labels_in_non_graph_sample() {
+        let data = include_bytes!("../../Samples/个人专栏/潘建平作品/加油潘建平老师.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert!(
+            scene.labels.iter().any(|label| label.text.contains("单价")),
+            "expected UI text label from rich text payload, got {:?}",
+            scene.labels.iter().map(|label| label.text.as_str()).collect::<Vec<_>>()
         );
     }
 }
