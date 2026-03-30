@@ -1,6 +1,6 @@
 use crate::format::{
     GspFile, IndexedPathRecord, ObjectGroup, PointRecord, collect_strings, decode_indexed_path,
-    decode_point_record, read_f64, read_u16, read_u32,
+    decode_point_record, read_f64, read_i16, read_u16, read_u32,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -233,14 +233,39 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     } else {
         Vec::new()
     };
+    let iteration_polygon_indices: BTreeSet<usize> = groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 89)
+        .filter_map(|group| find_indexed_path(file, group))
+        .flat_map(|path| path.refs)
+        .filter_map(|obj_ref| {
+            let index = obj_ref.checked_sub(1)?;
+            let group = groups.get(index)?;
+            ((group.header.class_id & 0xffff) == 8).then_some(index)
+        })
+        .collect();
     let polygons = collect_polygon_shapes(
         file,
         &groups,
         &raw_anchors,
         &[8],
         !graph_mode && !large_non_graph,
-    );
+    )
+    .into_iter()
+    .enumerate()
+    .filter_map(|(ordinal, polygon)| {
+        let group_index = groups
+            .iter()
+            .enumerate()
+            .filter(|(_, group)| (group.header.class_id & 0xffff) == 8)
+            .nth(ordinal)
+            .map(|(index, _)| index)?;
+        (!iteration_polygon_indices.contains(&group_index)).then_some(polygon)
+    })
+    .collect::<Vec<_>>();
     let circles = collect_circle_shapes(file, &groups, &raw_anchors);
+    let (iteration_lines, iteration_polygons) =
+        collect_iteration_shapes(file, &groups, &circles);
     let synthetic_axes = if graph_mode && has_function_plots && axes.is_empty() {
         synthesize_function_axes(
             &function_plots,
@@ -252,6 +277,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         Vec::new()
     };
     let mut labels = collect_labels(file, &groups, &raw_anchors, graph_mode && !has_function_plots);
+    labels.extend(compute_iteration_labels(file, &groups, &circles));
     if graph_mode && has_function_plots {
         labels.extend(synthesize_function_labels(
             file,
@@ -407,6 +433,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
             .chain(axes)
             .chain(function_plots)
             .chain(synthetic_axes)
+            .chain(iteration_lines)
             .map(|line| LineShape {
                 points: line
                     .points
@@ -419,6 +446,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
             .collect(),
         polygons: polygons
             .into_iter()
+            .chain(iteration_polygons)
             .map(|polygon| PolygonShape {
                 points: polygon
                     .points
@@ -620,7 +648,7 @@ fn collect_line_shapes(
             let kind = group.header.class_id & 0xffff;
             kinds.contains(&kind)
                 || (fallback_generic
-                    && !matches!(kind, 0 | 3 | 8)
+                    && matches!(kind, 2 | 5 | 6 | 7)
                     && find_indexed_path(file, group)
                         .map(|path| path.refs.len() == 2)
                         .unwrap_or(false))
@@ -652,18 +680,13 @@ fn collect_polygon_shapes(
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
     kinds: &[u32],
-    fallback_generic: bool,
+    _fallback_generic: bool,
 ) -> Vec<PolygonShape> {
     groups
         .iter()
         .filter(|group| {
             let kind = group.header.class_id & 0xffff;
             kinds.contains(&kind)
-                || (fallback_generic
-                    && !matches!(kind, 0 | 2 | 3)
-                    && find_indexed_path(file, group)
-                        .map(|path| path.refs.len() >= 3)
-                        .unwrap_or(false))
         })
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
@@ -676,11 +699,7 @@ fn collect_polygon_shapes(
                 .collect::<Vec<_>>();
             (points.len() >= 3).then_some(PolygonShape {
                 points,
-                color: if fallback_generic && (group.header.class_id & 0xffff) != 8 {
-                    [170, 220, 170, 255]
-                } else {
-                    color_from_style(group.header.style_b)
-                },
+                color: color_from_style(group.header.style_b),
             })
         })
         .collect()
@@ -708,6 +727,157 @@ fn collect_circle_shapes(
             })
         })
         .collect()
+}
+
+fn collect_iteration_shapes(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    circles: &[CircleShape],
+) -> (Vec<LineShape>, Vec<PolygonShape>) {
+    let mut lines = Vec::new();
+    let polygons = Vec::new();
+
+    let has_iteration = groups
+        .iter()
+        .any(|group| (group.header.class_id & 0xffff) == 89);
+    if !has_iteration {
+        return (lines, polygons);
+    }
+
+    for iter_group in groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 89)
+    {
+        let Some(iter_path) = find_indexed_path(file, iter_group) else {
+            continue;
+        };
+
+        let iter_data = iter_group
+            .records
+            .iter()
+            .find(|record| record.record_type == 0x090a)
+            .map(|record| record.payload(&file.data));
+
+        let depth = iter_data
+            .filter(|payload| payload.len() >= 20)
+            .map(|payload| read_u32(payload, 16) as usize)
+            .unwrap_or(0);
+        if depth == 0 {
+            continue;
+        }
+
+        let polygon_group_index = iter_path.refs.iter().find_map(|&obj_ref| {
+            let index = obj_ref.checked_sub(1)?;
+            let group = groups.get(index)?;
+            ((group.header.class_id & 0xffff) == 8).then_some(index)
+        });
+
+        let Some(polygon_index) = polygon_group_index else {
+            continue;
+        };
+        let polygon_group = &groups[polygon_index];
+        let Some(polygon_path) = find_indexed_path(file, polygon_group) else {
+            continue;
+        };
+        let vertex_count = polygon_path.refs.len();
+        if vertex_count < 3 {
+            continue;
+        }
+
+        let Some(circle) = circles.first() else {
+            continue;
+        };
+        let cx = circle.center.x;
+        let cy = circle.center.y;
+        let radius = ((circle.radius_point.x - cx).powi(2)
+            + (circle.radius_point.y - cy).powi(2))
+        .sqrt();
+        if radius < 1.0 {
+            continue;
+        }
+
+        let px_per_cm = groups
+            .iter()
+            .filter(|group| (group.header.class_id & 0xffff) == 21)
+            .find_map(|group| {
+                let payload = group
+                    .records
+                    .iter()
+                    .find(|record| record.record_type == 0x07d3)
+                    .map(|record| record.payload(&file.data))?;
+                (payload.len() >= 40).then(|| read_f64(payload, 32))
+            })
+            .filter(|v| v.is_finite() && *v > 1.0)
+            .unwrap_or(37.79527559055118);
+
+        let param_value = groups
+            .iter()
+            .filter(|group| (group.header.class_id & 0xffff) == 21)
+            .find_map(|group| {
+                let payload = group
+                    .records
+                    .iter()
+                    .find(|record| record.record_type == 0x07d3)
+                    .map(|record| record.payload(&file.data))?;
+                (payload.len() >= 20).then(|| read_f64(payload, 12))
+            })
+            .filter(|v| v.is_finite() && *v > 0.0)
+            .unwrap_or(1.0);
+
+        let side = param_value * px_per_cm / 2.0;
+        if side < 1.0 {
+            continue;
+        }
+
+        let outline_color = [30, 30, 30, 255];
+
+        let sqrt3 = 3.0_f64.sqrt();
+        let col_spacing = sqrt3 * side;
+        let row_spacing = 1.5 * side;
+
+        let max_cols = (radius / col_spacing).ceil() as i32 + 2;
+        let max_rows = (radius / row_spacing).ceil() as i32 + 2;
+
+        let hex_vertices = |hx: f64, hy: f64| -> Vec<PointRecord> {
+            (0..6)
+                .map(|i| {
+                    let angle =
+                        std::f64::consts::FRAC_PI_3 * i as f64 + std::f64::consts::FRAC_PI_6;
+                    PointRecord {
+                        x: hx + side * angle.cos(),
+                        y: hy + side * angle.sin(),
+                    }
+                })
+                .collect()
+        };
+
+        for row in -max_rows..=max_rows {
+            let y = cy + row as f64 * row_spacing;
+            let x_offset = if row.rem_euclid(2) == 1 {
+                col_spacing / 2.0
+            } else {
+                0.0
+            };
+            for col in -max_cols..=max_cols {
+                let x = cx + col as f64 * col_spacing + x_offset;
+                let dist = ((x - cx).powi(2) + (y - cy).powi(2)).sqrt();
+                if dist > radius + side * 0.5 {
+                    continue;
+                }
+                let verts = hex_vertices(x, y);
+
+                let mut outline = verts.clone();
+                outline.push(verts[0].clone());
+                lines.push(LineShape {
+                    points: outline,
+                    color: outline_color,
+                    dashed: false,
+                });
+            }
+        }
+    }
+
+    (lines, polygons)
 }
 
 fn collect_derived_segments(
@@ -831,12 +1001,14 @@ fn collect_labels(
         let kind = group.header.class_id & 0xffff;
         match kind {
             0 | 40 | 51 | 62 | 73 => {
-                if let Some(text) = decode_group_label_text(file, group) {
+                let text = decode_group_label_text(file, group);
+                if let Some(text) = text {
                     let anchor = group
                         .records
                         .iter()
                         .find(|record| record.record_type == 0x08fc)
                         .and_then(|record| decode_text_anchor(record.payload(&file.data)))
+                        .or_else(|| decode_0907_anchor(file, group))
                         .or_else(|| {
                             anchors
                                 .get(group.ordinal.saturating_sub(1))
@@ -859,6 +1031,7 @@ fn collect_labels(
                     }
                 }
             }
+            48 => {}
             52 | 54 => {
                 if !include_measurements {
                     continue;
@@ -1796,6 +1969,261 @@ fn canonicalize_function_expr(parsed: ParsedFunctionExpr) -> FunctionExpr {
     }
 }
 
+fn compute_iteration_labels(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    circles: &[CircleShape],
+) -> Vec<TextLabel> {
+    let mut labels = Vec::new();
+
+    let has_iteration = groups
+        .iter()
+        .any(|group| (group.header.class_id & 0xffff) == 89);
+    if !has_iteration {
+        return labels;
+    }
+
+    let Some(circle) = circles.first() else {
+        return labels;
+    };
+    let cx = circle.center.x;
+    let cy = circle.center.y;
+    let radius = ((circle.radius_point.x - cx).powi(2)
+        + (circle.radius_point.y - cy).powi(2))
+    .sqrt();
+
+    let px_per_cm = groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 21)
+        .find_map(|group| {
+            let payload = group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x07d3)
+                .map(|record| record.payload(&file.data))?;
+            (payload.len() >= 40).then(|| read_f64(payload, 32))
+        })
+        .filter(|v| v.is_finite() && *v > 1.0)
+        .unwrap_or(37.79527559055118);
+
+    let param_value = groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 21)
+        .find_map(|group| {
+            let payload = group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x07d3)
+                .map(|record| record.payload(&file.data))?;
+            (payload.len() >= 20).then(|| read_f64(payload, 12))
+        })
+        .filter(|v| v.is_finite() && *v > 0.0)
+        .unwrap_or(1.0);
+
+    let t1 = param_value;
+    let side = t1 / 2.0 * px_per_cm;
+    let sqrt3 = 3.0_f64.sqrt();
+    let diameter = 2.0 * radius;
+    let m1 = diameter / (2.0 * side) + 0.5;
+    let l_val = m1.floor() + 1.0;
+    let m2 = diameter / (sqrt3 * side);
+    let h_val = m2.ceil();
+    let m3 = m2 - m1;
+    let m4 = m3 - m3.floor();
+
+    fn format_sub(raw: &str) -> String {
+        raw.replace("[1]", "\u{2081}")
+            .replace("[2]", "\u{2082}")
+            .replace("[3]", "\u{2083}")
+            .replace("[4]", "\u{2084}")
+    }
+
+    let mut computed_values = BTreeMap::<String, f64>::new();
+    computed_values.insert("m\u{2081}".to_string(), m1);
+    computed_values.insert("m\u{2082}".to_string(), m2);
+    computed_values.insert("m\u{2083}".to_string(), m3);
+    computed_values.insert("m\u{2084}".to_string(), m4);
+    computed_values.insert("L".to_string(), l_val);
+    computed_values.insert("H".to_string(), h_val);
+    computed_values.insert("H\u{00b7}L".to_string(), h_val * l_val);
+
+    for group in groups {
+        if let Some(raw_name) = decode_label_name_raw(file, group) {
+            let name = format_sub(&raw_name);
+            if group
+                .records
+                .iter()
+                .any(|record| record.record_type == 0x0907)
+                && (group.header.class_id & 0xffff) == 0
+                && !computed_values.contains_key(&name)
+            {
+                computed_values.insert(name, t1);
+            }
+        }
+    }
+
+    for group in groups {
+        let kind = group.header.class_id & 0xffff;
+        let has_0907 = group
+            .records
+            .iter()
+            .any(|record| record.record_type == 0x0907);
+        if !has_0907 {
+            continue;
+        }
+        if !matches!(kind, 0 | 48) {
+            continue;
+        }
+        let has_08fc_text = group
+            .records
+            .iter()
+            .any(|record| record.record_type == 0x08fc);
+        if has_08fc_text {
+            continue;
+        }
+
+        let Some(anchor) = decode_0907_anchor(file, group) else {
+            continue;
+        };
+
+        let own_label = decode_label_name_raw(file, group).map(|s| format_sub(&s));
+        let ref_labels: Vec<String> = find_indexed_path(file, group)
+            .map(|path| {
+                path.refs
+                    .iter()
+                    .filter_map(|&obj_ref| {
+                        let ref_group = groups.get(obj_ref.checked_sub(1)?)?;
+                        decode_label_name_raw(file, ref_group).map(|s| format_sub(&s))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let mut lines = Vec::new();
+
+        if kind == 0 {
+            if let Some(name) = &own_label {
+                if let Some(&val) = computed_values.get(name.as_str()) {
+                    let unit = "\u{5398}\u{7c73}";
+                    lines.push(format!("{name} = {val:.0} {unit}"));
+                    lines.push(format!("{name}/2 = {:.2} {unit}", val / 2.0));
+                }
+            }
+        } else {
+            let has_h = ref_labels.iter().any(|n| n == "H");
+            let has_l = ref_labels.iter().any(|n| n == "L");
+            if own_label.is_none() && has_h && has_l {
+                if let Some(val) = computed_values.get("H\u{00b7}L") {
+                    lines.push(format!("H\u{00b7}L = {val:.2}"));
+                }
+            } else {
+                let mut seen = BTreeSet::new();
+                let mut try_add = |name: &str, lines: &mut Vec<String>| {
+                    if seen.contains(name) {
+                        return;
+                    }
+                    seen.insert(name.to_string());
+                    if let Some(val) = computed_values.get(name) {
+                        lines.push(format!("{name} = {val:.2}"));
+                    }
+                };
+
+                if let Some(ol) = &own_label {
+                    try_add(ol, &mut lines);
+                }
+                for rl in &ref_labels {
+                    try_add(rl, &mut lines);
+                }
+            }
+
+            if lines.is_empty() {
+                if let Some(ol) = &own_label {
+                    lines.push(ol.clone());
+                }
+            }
+        }
+
+        if !lines.is_empty() {
+            let text = lines.join("\n");
+            labels.push(TextLabel {
+                anchor,
+                text,
+                color: [30, 30, 30, 255],
+            });
+        }
+    }
+
+    labels
+}
+
+fn decode_label_name_raw(file: &GspFile, group: &ObjectGroup) -> Option<String> {
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x07d5)
+        .map(|record| record.payload(&file.data))?;
+    if payload.len() < 24 {
+        return None;
+    }
+    let name_len = read_u16(payload, 22) as usize;
+    if name_len == 0 || 24 + name_len > payload.len() {
+        return None;
+    }
+    let name_bytes = &payload[24..24 + name_len];
+    Some(String::from_utf8_lossy(name_bytes).to_string())
+}
+
+fn decode_0907_anchor(file: &GspFile, group: &ObjectGroup) -> Option<PointRecord> {
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x0907)
+        .map(|record| record.payload(&file.data))?;
+    (payload.len() >= 16 && read_u32(payload, 0) == 0x08fc).then(|| PointRecord {
+        x: read_i16(payload, 12) as f64,
+        y: read_i16(payload, 14) as f64,
+    })
+}
+
+fn decode_caption_text(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<String> {
+    let path = find_indexed_path(file, group)?;
+    let mut parts = Vec::new();
+    for &obj_ref in &path.refs {
+        let ref_group = groups.get(obj_ref.checked_sub(1)?)?;
+        if let Some(name) = decode_label_name(file, ref_group) {
+            parts.push(name);
+        }
+    }
+    (!parts.is_empty()).then(|| parts.join(", "))
+}
+
+fn decode_label_name(file: &GspFile, group: &ObjectGroup) -> Option<String> {
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x07d5)
+        .map(|record| record.payload(&file.data))?;
+    if payload.len() < 24 {
+        return None;
+    }
+    let name_len = read_u16(payload, 22) as usize;
+    if name_len == 0 || 24 + name_len > payload.len() {
+        return None;
+    }
+    let name_bytes = &payload[24..24 + name_len];
+    let name = String::from_utf8_lossy(name_bytes).to_string();
+    let formatted = name
+        .replace("[1]", "₁")
+        .replace("[2]", "₂")
+        .replace("[3]", "₃")
+        .replace("[4]", "₄");
+    Some(formatted)
+}
+
 fn find_indexed_path(file: &GspFile, group: &ObjectGroup) -> Option<IndexedPathRecord> {
     group
         .records
@@ -1828,10 +2256,10 @@ fn decode_bbox_anchor_raw(file: &GspFile, group: &ObjectGroup) -> Option<PointRe
     if payload.len() < 8 {
         return None;
     }
-    let x0 = read_u16(payload, payload.len() - 8) as f64;
-    let y0 = read_u16(payload, payload.len() - 6) as f64;
-    let x1 = read_u16(payload, payload.len() - 4) as f64;
-    let y1 = read_u16(payload, payload.len() - 2) as f64;
+    let x0 = read_i16(payload, payload.len() - 8) as f64;
+    let y0 = read_i16(payload, payload.len() - 6) as f64;
+    let x1 = read_i16(payload, payload.len() - 4) as f64;
+    let y1 = read_i16(payload, payload.len() - 2) as f64;
     Some(PointRecord {
         x: (x0 + x1) / 2.0,
         y: (y0 + y1) / 2.0,
@@ -2535,8 +2963,8 @@ fn decode_text_anchor(payload: &[u8]) -> Option<PointRecord> {
         return None;
     }
     Some(PointRecord {
-        x: read_u16(payload, 12) as f64,
-        y: read_u16(payload, 14) as f64,
+        x: read_i16(payload, 12) as f64,
+        y: read_i16(payload, 14) as f64,
     })
 }
 
