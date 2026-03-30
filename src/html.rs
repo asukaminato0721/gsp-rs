@@ -1,5 +1,8 @@
 use crate::format::{GspFile, PointRecord};
-use crate::render::{Scene, ScenePointConstraint, build_scene, darken};
+use crate::render::{
+    BinaryOp, FunctionExpr, FunctionTerm, Scene, ScenePointConstraint, UnaryFunction, build_scene,
+    darken,
+};
 use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
@@ -83,6 +86,7 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      flex-wrap: wrap;
       gap: 12px;
       padding: 10px 14px;
       border-bottom: 1px solid rgba(0,0,0,0.08);
@@ -105,9 +109,33 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
     .toolbar button:hover {{
       background: rgb(247, 247, 243);
     }}
+    .toolbar .controls {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }}
+    .toolbar label {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      text-transform: none;
+      letter-spacing: 0;
+    }}
+    .toolbar input[type="number"] {{
+      width: 84px;
+      padding: 6px 8px;
+      border: 1px solid rgba(0,0,0,0.14);
+      border-radius: 10px;
+      font: inherit;
+      background: white;
+      color: var(--ink);
+    }}
     .toolbar .hint {{
       opacity: 0.72;
       text-align: right;
+      margin-left: auto;
     }}
     canvas {{
       display: block;
@@ -143,7 +171,10 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
   <main>
     <div class="frame">
       <div class="toolbar">
-        <button id="reset-view" type="button">Reset View</button>
+        <div class="controls">
+          <button id="reset-view" type="button">Reset View</button>
+          <div id="parameter-controls"></div>
+        </div>
         <span class="hint">Drag a point to edit, drag empty space to pan, wheel to zoom</span>
       </div>
       <canvas id="view" width="{width}" height="{height}"></canvas>
@@ -163,6 +194,7 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
     const canvas = document.getElementById('view');
     const ctx = canvas.getContext('2d');
     const resetButton = document.getElementById('reset-view');
+    const parameterControls = document.getElementById('parameter-controls');
     const coordReadout = document.getElementById('coord-readout');
     const zoomReadout = document.getElementById('zoom-readout');
     const margin = 32;
@@ -241,6 +273,151 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
     }}
 
     const scene = hydrateScene(sourceScene);
+    const dynamics = {{
+      parameters: (sourceScene.parameters || []).map((parameter) => ({{ ...parameter }})),
+      functions: (sourceScene.functions || []).map((functionDef) => ({{
+        ...functionDef,
+        expr: functionDef.expr,
+        domain: functionDef.domain,
+        constrainedPointIndices: [...functionDef.constrainedPointIndices],
+      }})),
+    }};
+
+    function evaluateUnary(op, x) {{
+      switch (op) {{
+        case 'sin': return Math.sin(x);
+        case 'cos': return Math.cos(x);
+        case 'tan': return Math.tan(x);
+        case 'abs': return Math.abs(x);
+        case 'sqrt': return x >= 0 ? Math.sqrt(x) : null;
+        case 'ln': return x > 0 ? Math.log(x) : null;
+        case 'log10': return x > 0 ? Math.log10(x) : null;
+        case 'sign': return x > 0 ? 1 : (x < 0 ? -1 : 0);
+        case 'round': return Math.round(x);
+        case 'trunc': return Math.trunc(x);
+        default: return null;
+      }}
+    }}
+
+    function formatExprTerm(term) {{
+      switch (term.kind) {{
+        case 'variable': return 'x';
+        case 'constant': return formatAxisNumber(term.value);
+        case 'parameter': return term.name;
+        case 'unary_x': return `${{term.op}}(x)`;
+        case 'product': return `${{formatExprTerm(term.left)}}*${{formatExprTerm(term.right)}}`;
+        default: return '?';
+      }}
+    }}
+
+    function formatExpr(expr) {{
+      if (expr.kind === 'constant') return formatAxisNumber(expr.value);
+      if (expr.kind === 'identity') return 'x';
+      if (expr.kind === 'parsed') {{
+        let text = formatExprTerm(expr.head);
+        for (const part of expr.tail) {{
+          text += part.op === 'sub' ? ' - ' : ' + ';
+          text += formatExprTerm(part.term);
+        }}
+        return text;
+      }}
+      return '?';
+    }}
+
+    function evaluateExprTerm(term, x, parameters) {{
+      switch (term.kind) {{
+        case 'variable': return x;
+        case 'constant': return term.value;
+        case 'parameter': return parameters.get(term.name) ?? term.value;
+        case 'unary_x': return evaluateUnary(term.op, x);
+        case 'product': {{
+          const left = evaluateExprTerm(term.left, x, parameters);
+          const right = evaluateExprTerm(term.right, x, parameters);
+          return left === null || right === null ? null : left * right;
+        }}
+        default: return null;
+      }}
+    }}
+
+    function evaluateExpr(expr, x, parameters) {{
+      if (expr.kind === 'constant') return expr.value;
+      if (expr.kind === 'identity') return x;
+      if (expr.kind !== 'parsed') return null;
+      let value = evaluateExprTerm(expr.head, x, parameters);
+      if (value === null) return null;
+      for (const part of expr.tail) {{
+        const rhs = evaluateExprTerm(part.term, x, parameters);
+        if (rhs === null) return null;
+        value = part.op === 'sub' ? value - rhs : value + rhs;
+      }}
+      return Number.isFinite(value) ? value : null;
+    }}
+
+    function parameterMap() {{
+      return new Map(dynamics.parameters.map((parameter) => [parameter.name, parameter.value]));
+    }}
+
+    function sampleDynamicFunction(functionDef, parameters) {{
+      const points = [];
+      const last = Math.max(1, functionDef.domain.sampleCount - 1);
+      for (let index = 0; index < functionDef.domain.sampleCount; index += 1) {{
+        const t = index / last;
+        const x = functionDef.domain.xMin + (functionDef.domain.xMax - functionDef.domain.xMin) * t;
+        const y = evaluateExpr(functionDef.expr, x, parameters);
+        if (y === null) continue;
+        points.push({{ x, y }});
+      }}
+      return points;
+    }}
+
+    function syncDynamicScene() {{
+      const parameters = parameterMap();
+      dynamics.parameters.forEach((parameter) => {{
+        if (scene.labels[parameter.labelIndex]) {{
+          scene.labels[parameter.labelIndex].text = `${{parameter.name}} = ${{parameter.value.toFixed(2)}}`;
+        }}
+      }});
+      dynamics.functions.forEach((functionDef) => {{
+        if (scene.labels[functionDef.labelIndex]) {{
+          const head = functionDef.derivative ? `${{functionDef.name}}'(x)` : `${{functionDef.name}}(x)`;
+          scene.labels[functionDef.labelIndex].text = `${{head}} = ${{formatExpr(functionDef.expr)}}`;
+        }}
+        const sampled = sampleDynamicFunction(functionDef, parameters);
+        if (typeof functionDef.lineIndex === 'number' && scene.lines[functionDef.lineIndex]) {{
+          scene.lines[functionDef.lineIndex].points = sampled.map((point) => ({{ ...point }}));
+        }}
+        functionDef.constrainedPointIndices.forEach((pointIndex) => {{
+          const constraint = scene.points[pointIndex]?.constraint;
+          if (constraint && constraint.kind === 'polyline') {{
+            constraint.points = sampled.map((point) => ({{ ...point }}));
+            constraint.segmentIndex = Math.min(constraint.segmentIndex, Math.max(0, sampled.length - 2));
+          }}
+        }});
+      }});
+    }}
+
+    function buildParameterControls() {{
+      if (!dynamics.parameters.length) return;
+      parameterControls.replaceChildren();
+      dynamics.parameters.forEach((parameter, index) => {{
+        const wrapper = document.createElement('label');
+        wrapper.textContent = `${{parameter.name}} =`;
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.step = '0.1';
+        input.value = parameter.value.toFixed(2);
+        input.addEventListener('input', () => {{
+          const value = Number.parseFloat(input.value);
+          if (Number.isFinite(value)) {{
+            dynamics.parameters[index].value = value;
+            syncDynamicScene();
+            draw();
+          }}
+        }});
+        wrapper.appendChild(input);
+        parameterControls.appendChild(wrapper);
+      }});
+    }}
 
     function getViewBounds() {{
       const spanX = baseSpanX / view.zoom;
@@ -827,6 +1004,8 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
       }}
     }});
 
+    syncDynamicScene();
+    buildParameterControls();
     resetView();
   </script>
 </body>
@@ -983,6 +1162,7 @@ fn scene_to_json(scene: &Scene, width: u32, height: u32) -> String {
                 );
             }
             ScenePointConstraint::OnPolyline {
+                function_key,
                 points,
                 segment_index,
                 t,
@@ -1000,7 +1180,8 @@ fn scene_to_json(scene: &Scene, width: u32, height: u32) -> String {
                     .join(",");
                 let _ = write!(
                     out,
-                    ",\"constraint\":{{\"kind\":\"polyline\",\"points\":[{}],\"segmentIndex\":{},\"t\":{}}}",
+                    ",\"constraint\":{{\"kind\":\"polyline\",\"functionKey\":{},\"points\":[{}],\"segmentIndex\":{},\"t\":{}}}",
+                    function_key,
                     point_json,
                     segment_index,
                     format_f64(*t),
@@ -1041,6 +1222,49 @@ fn scene_to_json(scene: &Scene, width: u32, height: u32) -> String {
         }
         out.push('}');
     }
+    out.push_str("],\"parameters\":[");
+    for (index, parameter) in scene.parameters.iter().enumerate() {
+        if index > 0 {
+            out.push(',');
+        }
+        let _ = write!(
+            out,
+            "{{\"name\":\"{}\",\"value\":{},\"labelIndex\":{}}}",
+            escape_json_string(&parameter.name),
+            format_f64(parameter.value),
+            parameter.label_index,
+        );
+    }
+    out.push_str("],\"functions\":[");
+    for (index, function_def) in scene.functions.iter().enumerate() {
+        if index > 0 {
+            out.push(',');
+        }
+        out.push('{');
+        let _ = write!(
+            out,
+            "\"key\":{},\"name\":\"{}\",\"derivative\":{},\"domain\":{{\"xMin\":{},\"xMax\":{},\"sampleCount\":{}}},\"lineIndex\":{},\"labelIndex\":{},\"constrainedPointIndices\":[{}],\"expr\":",
+            function_def.key,
+            escape_json_string(&function_def.name),
+            if function_def.derivative { "true" } else { "false" },
+            format_f64(function_def.domain.x_min),
+            format_f64(function_def.domain.x_max),
+            function_def.domain.sample_count,
+            function_def
+                .line_index
+                .map(|index| index.to_string())
+                .unwrap_or_else(|| "null".to_string()),
+            function_def.label_index,
+            function_def
+                .constrained_point_indices
+                .iter()
+                .map(|index| index.to_string())
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+        push_function_expr_json(&mut out, &function_def.expr);
+        out.push('}');
+    }
     out.push_str("]}");
     out
 }
@@ -1052,6 +1276,88 @@ fn push_point_json(out: &mut String, point: &PointRecord) {
         format_f64(point.x),
         format_f64(point.y),
     );
+}
+
+fn push_function_expr_json(out: &mut String, expr: &FunctionExpr) {
+    match expr {
+        FunctionExpr::Constant(value) => {
+            let _ = write!(out, "{{\"kind\":\"constant\",\"value\":{}}}", format_f64(*value));
+        }
+        FunctionExpr::Identity => out.push_str("{\"kind\":\"identity\"}"),
+        FunctionExpr::SinIdentity => {
+            out.push_str("{\"kind\":\"parsed\",\"head\":{\"kind\":\"unary_x\",\"op\":\"sin\"},\"tail\":[]}")
+        }
+        FunctionExpr::CosIdentityPlus(offset) => {
+            out.push_str("{\"kind\":\"parsed\",\"head\":{\"kind\":\"unary_x\",\"op\":\"cos\"},\"tail\":[");
+            out.push_str("{\"op\":\"add\",\"term\":");
+            push_function_term_json(out, &FunctionTerm::Constant(*offset));
+            out.push_str("}]}");
+        }
+        FunctionExpr::TanIdentityMinus(offset) => {
+            out.push_str("{\"kind\":\"parsed\",\"head\":{\"kind\":\"unary_x\",\"op\":\"tan\"},\"tail\":[");
+            out.push_str("{\"op\":\"sub\",\"term\":");
+            push_function_term_json(out, &FunctionTerm::Constant(*offset));
+            out.push_str("}]}");
+        }
+        FunctionExpr::Parsed(parsed) => {
+            out.push_str("{\"kind\":\"parsed\",\"head\":");
+            push_function_term_json(out, &parsed.head);
+            out.push_str(",\"tail\":[");
+            for (index, (op, term)) in parsed.tail.iter().enumerate() {
+                if index > 0 {
+                    out.push(',');
+                }
+                let op_name = match op {
+                    BinaryOp::Add => "add",
+                    BinaryOp::Sub => "sub",
+                    BinaryOp::Mul => "mul",
+                };
+                let _ = write!(out, "{{\"op\":\"{}\",\"term\":", op_name);
+                push_function_term_json(out, term);
+                out.push('}');
+            }
+            out.push_str("]}");
+        }
+    }
+}
+
+fn push_function_term_json(out: &mut String, term: &FunctionTerm) {
+    match term {
+        FunctionTerm::Variable => out.push_str("{\"kind\":\"variable\"}"),
+        FunctionTerm::Constant(value) => {
+            let _ = write!(out, "{{\"kind\":\"constant\",\"value\":{}}}", format_f64(*value));
+        }
+        FunctionTerm::Parameter(name, value) => {
+            let _ = write!(
+                out,
+                "{{\"kind\":\"parameter\",\"name\":\"{}\",\"value\":{}}}",
+                escape_json_string(name),
+                format_f64(*value),
+            );
+        }
+        FunctionTerm::UnaryX(op) => {
+            let op_name = match op {
+                UnaryFunction::Sin => "sin",
+                UnaryFunction::Cos => "cos",
+                UnaryFunction::Tan => "tan",
+                UnaryFunction::Abs => "abs",
+                UnaryFunction::Sqrt => "sqrt",
+                UnaryFunction::Ln => "ln",
+                UnaryFunction::Log10 => "log10",
+                UnaryFunction::Sign => "sign",
+                UnaryFunction::Round => "round",
+                UnaryFunction::Trunc => "trunc",
+            };
+            let _ = write!(out, "{{\"kind\":\"unary_x\",\"op\":\"{}\"}}", op_name);
+        }
+        FunctionTerm::Product(left, right) => {
+            out.push_str("{\"kind\":\"product\",\"left\":");
+            push_function_term_json(out, left);
+            out.push_str(",\"right\":");
+            push_function_term_json(out, right);
+            out.push('}');
+        }
+    }
 }
 
 fn format_f64(value: f64) -> String {

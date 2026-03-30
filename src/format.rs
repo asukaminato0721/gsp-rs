@@ -195,10 +195,18 @@ pub fn parse_records(data: &[u8]) -> Result<Vec<Record>, String> {
             payload_range: payload_start..payload_end,
         });
 
-        offset = payload_end;
+        offset = align_record_end(payload_end);
     }
 
     Ok(records)
+}
+
+fn align_record_end(payload_end: usize) -> usize {
+    if payload_end.is_multiple_of(2) {
+        payload_end
+    } else {
+        payload_end + 1
+    }
 }
 
 pub fn record_name(record_type: u32) -> &'static str {
@@ -310,17 +318,23 @@ pub fn decode_indexed_path(record_type: u32, payload: &[u8]) -> Option<IndexedPa
 }
 
 pub fn decode_object_group_header(payload: &[u8]) -> Option<ObjectGroupHeader> {
-    if payload.len() != 0x1c {
-        return None;
+    match payload.len() {
+        0x10 => Some(ObjectGroupHeader {
+            class_id: read_u32(payload, 0),
+            flags: read_u32(payload, 4),
+            style_a: read_u32(payload, 8),
+            style_b: read_u32(payload, 12),
+            style_c: 0,
+        }),
+        0x1c => Some(ObjectGroupHeader {
+            class_id: read_u32(payload, 0),
+            flags: read_u32(payload, 4),
+            style_a: read_u32(payload, 8),
+            style_b: read_u32(payload, 12),
+            style_c: read_u32(payload, 16),
+        }),
+        _ => None,
     }
-
-    Some(ObjectGroupHeader {
-        class_id: read_u32(payload, 0),
-        flags: read_u32(payload, 4),
-        style_a: read_u32(payload, 8),
-        style_b: read_u32(payload, 12),
-        style_c: read_u32(payload, 16),
-    })
 }
 
 pub fn decode_c_string(payload: &[u8]) -> Option<String> {
@@ -513,5 +527,38 @@ mod tests {
         let point = decode_point_record(&payload).expect("point");
         assert_eq!(point.x, 239.0);
         assert_eq!(point.y, 205.0);
+    }
+
+    #[test]
+    fn decodes_short_object_group_header() {
+        let payload = [
+            0x00, 0x00, 0x01, 0x00, //
+            0x00, 0x00, 0x01, 0x00, //
+            0x04, 0x00, 0x01, 0x00, //
+            0xff, 0x00, 0x00, 0x20, //
+        ];
+        let header = decode_object_group_header(&payload).expect("header");
+        assert_eq!(header.class_id, 0x0001_0000);
+        assert_eq!(header.flags, 0x0001_0000);
+        assert_eq!(header.style_a, 0x0001_0004);
+        assert_eq!(header.style_b, 0x2000_00ff);
+        assert_eq!(header.style_c, 0);
+    }
+
+    #[test]
+    fn parses_odd_length_record_stream_with_padding() {
+        let mut data = Vec::new();
+        data.extend_from_slice(b"GSP4");
+        data.extend_from_slice(&3_u32.to_le_bytes());
+        data.extend_from_slice(&0x1111_u32.to_le_bytes());
+        data.extend_from_slice(&[1, 2, 3]);
+        data.push(0);
+        data.extend_from_slice(&0_u32.to_le_bytes());
+        data.extend_from_slice(&0x2222_u32.to_le_bytes());
+
+        let file = GspFile::parse(&data).expect("valid padded file");
+        assert_eq!(file.records.len(), 2);
+        assert_eq!(file.records[0].payload(&file.data), &[1, 2, 3]);
+        assert_eq!(file.records[1].record_type, 0x2222);
     }
 }

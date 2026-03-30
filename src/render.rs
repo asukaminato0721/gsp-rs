@@ -1,6 +1,6 @@
 use crate::format::{
-    GspFile, IndexedPathRecord, ObjectGroup, PointRecord, decode_indexed_path, decode_point_record,
-    read_f64, read_u16, read_u32,
+    GspFile, IndexedPathRecord, ObjectGroup, PointRecord, collect_strings, decode_indexed_path,
+    decode_point_record, read_f64, read_u16, read_u32,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -31,6 +31,8 @@ pub(crate) struct Scene {
     pub(crate) circles: Vec<SceneCircle>,
     pub(crate) labels: Vec<TextLabel>,
     pub(crate) points: Vec<ScenePoint>,
+    pub(crate) parameters: Vec<SceneParameter>,
+    pub(crate) functions: Vec<SceneFunction>,
 }
 
 #[derive(Debug, Clone)]
@@ -48,6 +50,7 @@ pub(crate) enum ScenePointConstraint {
         t: f64,
     },
     OnPolyline {
+        function_key: usize,
         points: Vec<PointRecord>,
         segment_index: usize,
         t: f64,
@@ -86,14 +89,14 @@ struct CircleShape {
 }
 
 #[derive(Debug, Clone)]
-struct FunctionPlotDescriptor {
-    x_min: f64,
-    x_max: f64,
-    sample_count: usize,
+pub(crate) struct FunctionPlotDescriptor {
+    pub(crate) x_min: f64,
+    pub(crate) x_max: f64,
+    pub(crate) sample_count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum FunctionExpr {
+pub(crate) enum FunctionExpr {
     Constant(f64),
     Identity,
     SinIdentity,
@@ -103,14 +106,14 @@ enum FunctionExpr {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum BinaryOp {
+pub(crate) enum BinaryOp {
     Add,
     Sub,
     Mul,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum UnaryFunction {
+pub(crate) enum UnaryFunction {
     Sin,
     Cos,
     Tan,
@@ -124,7 +127,7 @@ enum UnaryFunction {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum FunctionTerm {
+pub(crate) enum FunctionTerm {
     Variable,
     Constant(f64),
     Parameter(String, f64),
@@ -133,15 +136,34 @@ enum FunctionTerm {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct ParsedFunctionExpr {
-    head: FunctionTerm,
-    tail: Vec<(BinaryOp, FunctionTerm)>,
+pub(crate) struct ParsedFunctionExpr {
+    pub(crate) head: FunctionTerm,
+    pub(crate) tail: Vec<(BinaryOp, FunctionTerm)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct ParameterBinding {
-    name: String,
-    value: f64,
+pub(crate) struct ParameterBinding {
+    pub(crate) name: String,
+    pub(crate) value: f64,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SceneParameter {
+    pub(crate) name: String,
+    pub(crate) value: f64,
+    pub(crate) label_index: usize,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SceneFunction {
+    pub(crate) key: usize,
+    pub(crate) name: String,
+    pub(crate) derivative: bool,
+    pub(crate) expr: FunctionExpr,
+    pub(crate) domain: FunctionPlotDescriptor,
+    pub(crate) line_index: Option<usize>,
+    pub(crate) label_index: usize,
+    pub(crate) constrained_point_indices: Vec<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -286,10 +308,12 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
                     t: *t,
                 },
                 ScenePointConstraint::OnPolyline {
+                    function_key,
                     points,
                     segment_index,
                     t,
                 } => ScenePointConstraint::OnPolyline {
+                    function_key: *function_key,
                     points: points.iter().map(|point| to_world(point, &graph_ref)).collect(),
                     segment_index: *segment_index,
                     t: *t,
@@ -354,6 +378,23 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         expand_bounds(&mut bounds);
     }
 
+    let parameters = if graph_mode {
+        collect_scene_parameters(file, &groups, &labels)
+    } else {
+        Vec::new()
+    };
+    let functions = if graph_mode {
+        collect_scene_functions(
+            file,
+            &groups,
+            &labels,
+            &world_points,
+            polylines.len() + derived_segments.len() + measurements.len() + axes.len(),
+        )
+    } else {
+        Vec::new()
+    };
+
     Scene {
         graph_mode,
         pi_mode,
@@ -408,6 +449,8 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
             })
             .collect(),
         points: world_points,
+        parameters,
+        functions,
     }
 }
 
@@ -468,12 +511,14 @@ fn collect_visible_points(
                         })
                     }
                     RawPointConstraint::Polyline {
+                        function_key,
                         points,
                         segment_index,
                         t,
                     } => Some(ScenePoint {
                         position,
                         constraint: ScenePointConstraint::OnPolyline {
+                            function_key,
                             points,
                             segment_index,
                             t,
@@ -545,6 +590,10 @@ fn collect_raw_object_anchors(
         } else if let Some(anchor) =
             decode_point_constraint_anchor(file, groups, group, &anchors, graph)
         {
+            Some(anchor)
+        } else if let Some(anchor) = decode_point_on_ray_anchor_raw(file, groups, group, &anchors) {
+            Some(anchor)
+        } else if let Some(anchor) = decode_transform_anchor_raw(file, group, &anchors) {
             Some(anchor)
         } else if let Some(anchor) = decode_bbox_anchor_raw(file, group) {
             Some(anchor)
@@ -783,13 +832,8 @@ fn collect_labels(
     for group in groups {
         let kind = group.header.class_id & 0xffff;
         match kind {
-            0 | 40 | 51 => {
-                if let Some(text) = group
-                    .records
-                    .iter()
-                    .find(|record| record.record_type == 0x08fc)
-                    .and_then(|record| extract_rich_text(record.payload(&file.data)))
-                {
+            0 | 40 | 51 | 62 | 73 => {
+                if let Some(text) = decode_group_label_text(file, group) {
                     let anchor = group
                         .records
                         .iter()
@@ -1382,6 +1426,125 @@ fn function_name_for_index(index: usize, total: usize, expr: &FunctionExpr) -> &
     }
 }
 
+fn collect_scene_parameters(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    labels: &[TextLabel],
+) -> Vec<SceneParameter> {
+    groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 72)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            let definition_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            Some(collect_parameter_bindings(file, groups, definition_group))
+        })
+        .fold(BTreeMap::<String, f64>::new(), |mut acc, bindings| {
+            for binding in bindings.into_values() {
+                acc.entry(binding.name).or_insert(binding.value);
+            }
+            acc
+        })
+        .into_iter()
+        .filter_map(|(name, value)| {
+            let text = format!("{name} = {:.2}", value);
+            let label_index = labels.iter().position(|label| label.text == text)?;
+            Some(SceneParameter {
+                name,
+                value,
+                label_index,
+            })
+        })
+        .collect()
+}
+
+fn collect_scene_functions(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    labels: &[TextLabel],
+    points: &[ScenePoint],
+    plot_line_offset: usize,
+) -> Vec<SceneFunction> {
+    let base_entries = groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 72)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            let definition_ordinal = *path.refs.first()?;
+            let definition_group = groups.get(definition_ordinal.checked_sub(1)?)?;
+            let expr = decode_function_expr(file, groups, definition_group)?;
+            let descriptor = group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x0902)
+                .and_then(|record| decode_function_plot_descriptor(record.payload(&file.data)))?;
+            Some((definition_ordinal, expr, descriptor))
+        })
+        .collect::<Vec<_>>();
+
+    let total = base_entries.len().max(1);
+    let mut functions = base_entries
+        .iter()
+        .enumerate()
+        .filter_map(|(index, (definition_ordinal, expr, descriptor))| {
+            let name = function_name_for_index(index, total, expr).to_string();
+            let label_text = format!("{name}(x) = {}", function_expr_label(expr.clone()));
+            let label_index = labels.iter().position(|label| label.text == label_text)?;
+            let constrained_point_indices = points
+                .iter()
+                .enumerate()
+                .filter_map(|(point_index, point)| match &point.constraint {
+                    ScenePointConstraint::OnPolyline { function_key, .. }
+                        if function_key == definition_ordinal =>
+                    {
+                        Some(point_index)
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            Some(SceneFunction {
+                key: *definition_ordinal,
+                name,
+                derivative: false,
+                expr: expr.clone(),
+                domain: descriptor.clone(),
+                line_index: Some(plot_line_offset + index),
+                label_index,
+                constrained_point_indices,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    functions.extend(
+        groups
+            .iter()
+            .filter(|group| (group.header.class_id & 0xffff) == 78)
+            .filter_map(|group| {
+                let path = find_indexed_path(file, group)?;
+                let base_definition_ordinal = *path.refs.first()?;
+                let base_index = base_entries
+                    .iter()
+                    .position(|(definition_ordinal, _, _)| *definition_ordinal == base_definition_ordinal)?;
+                let base_name = function_name_for_index(base_index, total, &base_entries[base_index].1);
+                let expr = decode_function_expr(file, groups, group)?;
+                let label_text = format!("{}'(x) = {}", base_name, function_expr_label(expr.clone()));
+                let label_index = labels.iter().position(|label| label.text == label_text)?;
+                Some(SceneFunction {
+                    key: base_definition_ordinal,
+                    name: base_name.to_string(),
+                    derivative: true,
+                    expr,
+                    domain: base_entries[base_index].2.clone(),
+                    line_index: None,
+                    label_index,
+                    constrained_point_indices: Vec::new(),
+                })
+            }),
+    );
+
+    functions
+}
+
 fn function_uses_pi_scale(file: &GspFile, groups: &[ObjectGroup]) -> bool {
     groups
         .iter()
@@ -1645,11 +1808,24 @@ fn find_indexed_path(file: &GspFile, group: &ObjectGroup) -> Option<IndexedPathR
         })
 }
 
+fn decode_group_label_text(file: &GspFile, group: &ObjectGroup) -> Option<String> {
+    group.records.iter().find_map(|record| {
+        match record.record_type {
+            0x08fc => extract_rich_text(record.payload(&file.data)),
+            0x07d5 if matches!(group.header.class_id & 0xffff, 62) => collect_strings(record.payload(&file.data))
+                .into_iter()
+                .map(|entry| entry.text.trim().to_string())
+                .find(|text| !text.is_empty()),
+            _ => None,
+        }
+    })
+}
+
 fn decode_bbox_anchor_raw(file: &GspFile, group: &ObjectGroup) -> Option<PointRecord> {
     let payload = group
         .records
         .iter()
-        .find(|record| matches!(record.record_type, 0x0898 | 0x0903))
+        .find(|record| matches!(record.record_type, 0x0898 | 0x08a2 | 0x08a3 | 0x0903))
         .map(|record| record.payload(&file.data))?;
     if payload.len() < 8 {
         return None;
@@ -1661,6 +1837,124 @@ fn decode_bbox_anchor_raw(file: &GspFile, group: &ObjectGroup) -> Option<PointRe
     Some(PointRecord {
         x: (x0 + x1) / 2.0,
         y: (y0 + y1) / 2.0,
+    })
+}
+
+fn decode_transform_anchor_raw(
+    file: &GspFile,
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    let kind = group.header.class_id & 0xffff;
+    match kind {
+        27 => {
+            let path = find_indexed_path(file, group)?;
+            let source = anchors.get(path.refs.first()?.checked_sub(1)?)?.clone()?;
+            let center = anchors.get(path.refs.get(1)?.checked_sub(1)?)?.clone()?;
+            let payload = group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x07d3)
+                .map(|record| record.payload(&file.data))?;
+            if payload.len() < 20 {
+                return None;
+            }
+
+            let cos = read_f64(payload, 4);
+            let sin = read_f64(payload, 12);
+            if !cos.is_finite() || !sin.is_finite() {
+                return None;
+            }
+
+            let dx = source.x - center.x;
+            let dy = source.y - center.y;
+            Some(PointRecord {
+                x: center.x + dx * cos - dy * sin,
+                y: center.y + dx * sin + dy * cos,
+            })
+        }
+        30 => {
+            let path = find_indexed_path(file, group)?;
+            let source = anchors.get(path.refs.first()?.checked_sub(1)?)?.clone()?;
+            let center = anchors.get(path.refs.get(1)?.checked_sub(1)?)?.clone()?;
+            let payload = group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x07d3)
+                .map(|record| record.payload(&file.data))?;
+            if payload.len() < 12 {
+                return None;
+            }
+
+            let t = read_f64(payload, 4);
+            if !t.is_finite() {
+                return None;
+            }
+
+            Some(PointRecord {
+                x: center.x + (source.x - center.x) * t,
+                y: center.y + (source.y - center.y) * t,
+            })
+        }
+        _ => None,
+    }
+}
+
+fn decode_point_on_ray_anchor_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    if (group.header.class_id & 0xffff) != 15 {
+        return None;
+    }
+
+    let host_ref = find_indexed_path(file, group)?
+        .refs
+        .first()
+        .copied()
+        .filter(|ordinal| *ordinal > 0)?;
+    let host_group = groups.get(host_ref - 1)?;
+    if (host_group.header.class_id & 0xffff) != 64 {
+        return None;
+    }
+
+    let host_path = find_indexed_path(file, host_group)?;
+    let origin = anchors.get(host_path.refs.first()?.checked_sub(1)?)?.clone()?;
+    let direction_group = groups.get(host_path.refs.get(1)?.checked_sub(1)?)?;
+    let direction_payload = direction_group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x07d3)
+        .map(|record| record.payload(&file.data))?;
+    if direction_payload.len() < 20 {
+        return None;
+    }
+
+    let unit_x = read_f64(direction_payload, 4);
+    let unit_y = read_f64(direction_payload, 12);
+    if !unit_x.is_finite() || !unit_y.is_finite() {
+        return None;
+    }
+
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x07d3)
+        .map(|record| record.payload(&file.data))?;
+    if payload.len() < 12 {
+        return None;
+    }
+
+    let distance = read_f64(payload, 4);
+    if !distance.is_finite() {
+        return None;
+    }
+
+    Some(PointRecord {
+        x: origin.x + distance * unit_x,
+        y: origin.y - distance * unit_y,
     })
 }
 
@@ -1680,6 +1974,7 @@ struct PointOnCircleConstraint {
 enum RawPointConstraint {
     Segment(PointOnSegmentConstraint),
     Polyline {
+        function_key: usize,
         points: Vec<PointRecord>,
         segment_index: usize,
         t: f64,
@@ -1831,6 +2126,7 @@ fn decode_point_on_function_constraint(
         .collect::<Vec<_>>();
     let (segment_index, t) = locate_polyline_parameter(&points, normalized_t)?;
     Some(RawPointConstraint::Polyline {
+        function_key: *path.refs.first()?,
         points,
         segment_index,
         t,
@@ -1879,6 +2175,7 @@ fn decode_point_constraint_anchor(
             points,
             segment_index,
             t,
+            ..
         } => resolve_polyline_point(&points, segment_index, t),
         RawPointConstraint::PolygonBoundary {
             vertex_group_indices,
