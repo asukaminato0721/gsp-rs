@@ -1,5 +1,6 @@
 use crate::format::{GspFile, PointRecord};
-use crate::render::{Bounds, build_scene, darken, screen_scale, to_screen};
+use crate::render::extract::build_scene;
+use crate::render::geometry::{Bounds, darken, screen_scale, to_screen};
 use ab_glyph::{Font, FontArc, Glyph, PxScale, ScaleFont, point};
 use std::fs;
 use std::io::Write as _;
