@@ -8,7 +8,7 @@ use crate::format::{
 use super::functions::{
     FunctionExpr, collect_function_plot_domain, collect_function_plots, collect_scene_functions,
     collect_scene_parameters, decode_function_expr, decode_function_plot_descriptor,
-    evaluate_expr_with_parameters, function_uses_pi_scale, sample_function_points, synthesize_function_axes,
+    evaluate_expr_with_parameters, function_expr_label, function_uses_pi_scale, sample_function_points, synthesize_function_axes,
     synthesize_function_labels,
 };
 use super::geometry::{
@@ -57,6 +57,9 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         Vec::new()
     };
     let has_function_plots = !function_plots.is_empty();
+    let has_coordinate_objects = groups
+        .iter()
+        .any(|group| matches!(group.header.class_id & 0xffff, 69 | 97));
     let large_non_graph = !graph_mode && file.records.len() > 10_000;
 
     let polylines = collect_line_shapes(
@@ -127,8 +130,9 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         &groups,
         &raw_anchors,
         graph_mode,
-        !has_function_plots,
+        !has_function_plots && !has_coordinate_objects,
     );
+    labels.extend(collect_coordinate_labels(file, &groups));
     labels.extend(collect_polygon_parameter_labels(file, &groups, &raw_anchors));
     labels.extend(collect_segment_parameter_labels(file, &groups));
     labels.extend(collect_circle_parameter_labels(file, &groups, &raw_anchors));
@@ -640,6 +644,8 @@ fn remap_label_bindings(labels: &mut [TextLabel], group_to_point_index: &[Option
             continue;
         };
         let point_index = match binding {
+            TextLabelBinding::ParameterValue { .. }
+            | TextLabelBinding::ExpressionValue { .. } => continue,
             TextLabelBinding::PolygonBoundaryParameter { point_index, .. } => point_index,
             TextLabelBinding::SegmentParameter { point_index, .. } => point_index,
             TextLabelBinding::CircleParameter { point_index, .. } => point_index,
@@ -1084,23 +1090,29 @@ fn collect_labels(
                 if !include_measurements {
                     continue;
                 }
+                let anchor = anchors
+                    .get(group.ordinal.saturating_sub(1))
+                    .cloned()
+                    .flatten()
+                    .or_else(|| {
+                        find_indexed_path(file, group).and_then(|path| {
+                            path.refs.iter().find_map(|object_ref| {
+                                anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
+                            })
+                        })
+                    });
+                if anchor
+                    .as_ref()
+                    .is_some_and(|anchor| anchor.x.abs() < 1e-6 && anchor.y.abs() < 1e-6)
+                {
+                    continue;
+                }
                 if let Some(value) = group
                     .records
                     .iter()
                     .find(|record| record.record_type == 0x07d3 && record.length == 12)
                     .and_then(|record| decode_measurement_value(record.payload(&file.data)))
                 {
-                    let anchor = anchors
-                        .get(group.ordinal.saturating_sub(1))
-                        .cloned()
-                        .flatten()
-                        .or_else(|| {
-                            find_indexed_path(file, group).and_then(|path| {
-                                path.refs.iter().find_map(|object_ref| {
-                                    anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
-                                })
-                            })
-                        });
                     if let Some(anchor) = anchor {
                         labels.push(TextLabel {
                             anchor,
@@ -1112,6 +1124,57 @@ fn collect_labels(
                 }
             }
             _ => {}
+        }
+    }
+    labels
+}
+
+fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) -> Vec<TextLabel> {
+    let mut labels = Vec::new();
+    for group in groups {
+        let kind = group.header.class_id & 0xffff;
+        if kind == 0
+            && group.records.iter().any(|record| record.record_type == 0x0907)
+            && !group.records.iter().any(|record| record.record_type == 0x0899)
+            && let Some(name) = decode_label_name(file, group)
+            && let Some(value) = decode_non_graph_parameter_value_for_group(file, group)
+            && let Some(anchor) = decode_0907_anchor(file, group)
+        {
+            labels.push(TextLabel {
+                anchor,
+                text: format!("{name} = {:.2}", value),
+                color: [30, 30, 30, 255],
+                binding: Some(TextLabelBinding::ParameterValue { name }),
+            });
+        } else if kind == 48
+            && let Some(expr) = decode_function_expr(file, groups, group)
+            && let Some(path) = find_indexed_path(file, group)
+            && let Some(parameter_ref) = path.refs.first().copied()
+            && let Some(parameter_group) = parameter_ref
+                .checked_sub(1)
+                .and_then(|index| groups.get(index))
+            && let Some(parameter_name) = decode_label_name(file, parameter_group)
+            && let Some(parameter_value) = decode_non_graph_parameter_value_for_group(file, parameter_group)
+            && let Some(anchor) = decode_0907_anchor(file, group)
+        {
+            let expr_label = function_expr_label(expr.clone());
+            let Some(value) = evaluate_expr_with_parameters(
+                &expr,
+                0.0,
+                &BTreeMap::from([(parameter_name.clone(), parameter_value)]),
+            ) else {
+                continue;
+            };
+            labels.push(TextLabel {
+                anchor,
+                text: format!("{expr_label} = {:.2}", value),
+                color: [30, 30, 30, 255],
+                binding: Some(TextLabelBinding::ExpressionValue {
+                    parameter_name,
+                    expr_label,
+                    expr,
+                }),
+            });
         }
     }
     labels

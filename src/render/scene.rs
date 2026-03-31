@@ -119,6 +119,14 @@ pub(crate) struct TextLabel {
 
 #[derive(Debug, Clone)]
 pub(crate) enum TextLabelBinding {
+    ParameterValue {
+        name: String,
+    },
+    ExpressionValue {
+        parameter_name: String,
+        expr_label: String,
+        expr: FunctionExpr,
+    },
     PolygonBoundaryParameter {
         point_index: usize,
         point_name: String,

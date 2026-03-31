@@ -442,7 +442,17 @@
   function refreshDynamicLabels(scene) {
     scene.labels.forEach((label) => {
       if (!label.binding) return;
-      if (label.binding.kind === "polygon-boundary-parameter") {
+      if (label.binding.kind === "parameter-value") {
+        const value = parameters.get(label.binding.name);
+        if (value !== null && value !== undefined) {
+          label.text = `${label.binding.name} = ${formatNumber(value)}`;
+        }
+      } else if (label.binding.kind === "expression-value") {
+        const value = evaluateExpr(label.binding.expr, 0, parameters);
+        if (value !== null) {
+          label.text = `${label.binding.exprLabel} = ${formatNumber(value)}`;
+        }
+      } else if (label.binding.kind === "polygon-boundary-parameter") {
         const value = polygonBoundaryParameterFromPoint(scene, label.binding.pointIndex);
         if (value !== null) {
           label.text = `${label.binding.pointName}在${label.binding.polygonName}上的t值 = ${formatNumber(value)}`;

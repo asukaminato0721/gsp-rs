@@ -677,7 +677,7 @@ fn decode_inner_function_expr(
     parse_function_expr(payload, parameters).map(canonicalize_function_expr)
 }
 
-fn function_expr_label(expr: FunctionExpr) -> String {
+pub(super) fn function_expr_label(expr: FunctionExpr) -> String {
     match expr {
         FunctionExpr::Constant(value) => format_number(value),
         FunctionExpr::Identity => "x".to_string(),

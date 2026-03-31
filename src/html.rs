@@ -304,6 +304,18 @@ impl LabelJson {
 #[derive(Serialize)]
 #[serde(tag = "kind")]
 enum LabelBindingJson {
+    #[serde(rename = "parameter-value")]
+    ParameterValue {
+        name: String,
+    },
+    #[serde(rename = "expression-value")]
+    ExpressionValue {
+        #[serde(rename = "parameterName")]
+        parameter_name: String,
+        #[serde(rename = "exprLabel")]
+        expr_label: String,
+        expr: FunctionExprJson,
+    },
     #[serde(rename = "polygon-boundary-parameter")]
     PolygonBoundaryParameter {
         #[serde(rename = "pointIndex")]
@@ -336,6 +348,18 @@ enum LabelBindingJson {
 impl LabelBindingJson {
     fn from_binding(binding: &TextLabelBinding) -> Self {
         match binding {
+            TextLabelBinding::ParameterValue { name } => Self::ParameterValue {
+                name: name.clone(),
+            },
+            TextLabelBinding::ExpressionValue {
+                parameter_name,
+                expr_label,
+                expr,
+            } => Self::ExpressionValue {
+                parameter_name: parameter_name.clone(),
+                expr_label: expr_label.clone(),
+                expr: FunctionExprJson::from_expr(expr),
+            },
             TextLabelBinding::PolygonBoundaryParameter {
                 point_index,
                 point_name,
