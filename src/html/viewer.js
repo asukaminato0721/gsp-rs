@@ -372,11 +372,15 @@
       `${parameter.name} =`,
       input({
         type: "number",
-        step: "0.1",
+        step: parameter.name === "n" ? "1" : "0.1",
+        min: parameter.name === "n" ? "2" : undefined,
         value: parameter.value.toFixed(2),
         oninput: (event) => {
-          const value = Number.parseFloat(event.target.value);
+          let value = Number.parseFloat(event.target.value);
           if (Number.isFinite(value)) {
+            if (parameter.name === "n") {
+              value = Math.max(2, Math.round(value));
+            }
             updateDynamics((draft) => {
               draft.parameters[index].value = value;
             });
