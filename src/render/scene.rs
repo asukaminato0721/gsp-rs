@@ -82,8 +82,12 @@ pub(crate) struct SceneParameter {
 
 #[derive(Debug, Clone)]
 pub(crate) enum ScenePointBinding {
-    Parameter { name: String },
-    DerivedParameter { source_index: usize },
+    Parameter {
+        name: String,
+    },
+    DerivedParameter {
+        source_index: usize,
+    },
     Reflect {
         source_index: usize,
         line_start_index: usize,
@@ -99,7 +103,10 @@ pub(crate) enum ScenePointBinding {
         center_index: usize,
         factor: f64,
     },
-    Coordinate { name: String, expr: FunctionExpr },
+    Coordinate {
+        name: String,
+        expr: FunctionExpr,
+    },
 }
 
 #[derive(Debug, Clone)]
