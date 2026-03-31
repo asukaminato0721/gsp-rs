@@ -3,6 +3,7 @@ use crate::render::extract::build_scene;
 use crate::render::functions::{BinaryOp, FunctionExpr, FunctionTerm, UnaryFunction};
 use crate::render::geometry::darken;
 use crate::render::scene::{Scene, ScenePointConstraint};
+use serde::Serialize;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
@@ -113,389 +114,452 @@ fn indent_asset(asset: &str, spaces: usize) -> String {
 }
 
 fn scene_to_json(scene: &Scene, width: u32, height: u32) -> String {
-    let mut out = String::new();
-    out.push('{');
-    let _ = write!(
-        out,
-        "\"width\":{width},\"height\":{height},\"graphMode\":{},\"piMode\":{},\"savedViewport\":{},\"yUp\":{},\"bounds\":{{\"minX\":{},\"maxX\":{},\"minY\":{},\"maxY\":{}}},",
-        if scene.graph_mode { "true" } else { "false" },
-        if scene.pi_mode { "true" } else { "false" },
-        if scene.saved_viewport {
-            "true"
-        } else {
-            "false"
-        },
-        if scene.y_up { "true" } else { "false" },
-        format_f64(scene.bounds.min_x),
-        format_f64(scene.bounds.max_x),
-        format_f64(scene.bounds.min_y),
-        format_f64(scene.bounds.max_y),
-    );
-    out.push_str("\"origin\":");
-    match &scene.origin {
-        Some(point) => push_point_json(&mut out, point),
-        None => out.push_str("null"),
+    serde_json::to_string(&SceneJson::from_scene(scene, width, height))
+        .expect("scene JSON serialization should succeed")
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SceneJson {
+    width: u32,
+    height: u32,
+    graph_mode: bool,
+    pi_mode: bool,
+    saved_viewport: bool,
+    y_up: bool,
+    bounds: BoundsJson,
+    origin: Option<PointJson>,
+    lines: Vec<LineJson>,
+    polygons: Vec<PolygonJson>,
+    circles: Vec<CircleJson>,
+    labels: Vec<LabelJson>,
+    points: Vec<ScenePointJson>,
+    parameters: Vec<ParameterJson>,
+    functions: Vec<FunctionJson>,
+}
+
+impl SceneJson {
+    fn from_scene(scene: &Scene, width: u32, height: u32) -> Self {
+        Self {
+            width,
+            height,
+            graph_mode: scene.graph_mode,
+            pi_mode: scene.pi_mode,
+            saved_viewport: scene.saved_viewport,
+            y_up: scene.y_up,
+            bounds: BoundsJson::from_scene(scene),
+            origin: scene.origin.as_ref().map(PointJson::from_point),
+            lines: scene.lines.iter().map(LineJson::from_line).collect(),
+            polygons: scene
+                .polygons
+                .iter()
+                .map(PolygonJson::from_polygon)
+                .collect(),
+            circles: scene.circles.iter().map(CircleJson::from_circle).collect(),
+            labels: scene.labels.iter().map(LabelJson::from_label).collect(),
+            points: scene
+                .points
+                .iter()
+                .map(ScenePointJson::from_scene_point)
+                .collect(),
+            parameters: scene
+                .parameters
+                .iter()
+                .map(ParameterJson::from_parameter)
+                .collect(),
+            functions: scene
+                .functions
+                .iter()
+                .map(FunctionJson::from_function)
+                .collect(),
+        }
     }
-    out.push(',');
-    out.push_str("\"lines\":[");
-    for (index, line) in scene.lines.iter().enumerate() {
-        if index > 0 {
-            out.push(',');
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BoundsJson {
+    min_x: f64,
+    max_x: f64,
+    min_y: f64,
+    max_y: f64,
+}
+
+impl BoundsJson {
+    fn from_scene(scene: &Scene) -> Self {
+        Self {
+            min_x: scene.bounds.min_x,
+            max_x: scene.bounds.max_x,
+            min_y: scene.bounds.min_y,
+            max_y: scene.bounds.max_y,
         }
-        out.push('{');
-        out.push_str("\"points\":[");
-        for (point_index, point) in line.points.iter().enumerate() {
-            if point_index > 0 {
-                out.push(',');
-            }
-            push_point_json(&mut out, point);
-        }
-        let _ = write!(
-            out,
-            "],\"color\":[{},{},{},{}],\"dashed\":{}",
-            line.color[0],
-            line.color[1],
-            line.color[2],
-            line.color[3],
-            if line.dashed { "true" } else { "false" },
-        );
-        out.push('}');
     }
-    out.push_str("],\"polygons\":[");
-    for (index, polygon) in scene.polygons.iter().enumerate() {
-        if index > 0 {
-            out.push(',');
+}
+
+#[derive(Serialize)]
+struct PointJson {
+    x: f64,
+    y: f64,
+}
+
+impl PointJson {
+    fn from_point(point: &PointRecord) -> Self {
+        Self {
+            x: point.x,
+            y: point.y,
         }
-        out.push('{');
-        out.push_str("\"points\":[");
-        for (point_index, point) in polygon.points.iter().enumerate() {
-            if point_index > 0 {
-                out.push(',');
-            }
-            push_point_json(&mut out, point);
-        }
-        let outline = darken(polygon.color, 80);
-        let _ = write!(
-            out,
-            "],\"color\":[{},{},{},{}],\"outlineColor\":[{},{},{},{}]",
-            polygon.color[0],
-            polygon.color[1],
-            polygon.color[2],
-            polygon.color[3],
-            outline[0],
-            outline[1],
-            outline[2],
-            outline[3],
-        );
-        out.push('}');
     }
-    out.push_str("],\"circles\":[");
-    for (index, circle) in scene.circles.iter().enumerate() {
-        if index > 0 {
-            out.push(',');
+}
+
+#[derive(Serialize)]
+struct LineJson {
+    points: Vec<PointJson>,
+    color: [u8; 4],
+    dashed: bool,
+}
+
+impl LineJson {
+    fn from_line(line: &crate::render::scene::LineShape) -> Self {
+        Self {
+            points: line.points.iter().map(PointJson::from_point).collect(),
+            color: line.color,
+            dashed: line.dashed,
         }
-        out.push('{');
-        out.push_str("\"center\":");
-        push_point_json(&mut out, &circle.center);
-        out.push_str(",\"radiusPoint\":");
-        push_point_json(&mut out, &circle.radius_point);
-        let _ = write!(
-            out,
-            ",\"color\":[{},{},{},{}]",
-            circle.color[0], circle.color[1], circle.color[2], circle.color[3],
-        );
-        out.push('}');
     }
-    out.push_str("],\"labels\":[");
-    for (index, label) in scene.labels.iter().enumerate() {
-        if index > 0 {
-            out.push(',');
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PolygonJson {
+    points: Vec<PointJson>,
+    color: [u8; 4],
+    outline_color: [u8; 4],
+}
+
+impl PolygonJson {
+    fn from_polygon(polygon: &crate::render::scene::PolygonShape) -> Self {
+        Self {
+            points: polygon.points.iter().map(PointJson::from_point).collect(),
+            color: polygon.color,
+            outline_color: darken(polygon.color, 80),
         }
-        out.push('{');
-        out.push_str("\"anchor\":");
-        push_point_json(&mut out, &label.anchor);
-        let _ = write!(
-            out,
-            ",\"text\":\"{}\",\"color\":[{},{},{},{}]",
-            escape_json_string(&label.text),
-            label.color[0],
-            label.color[1],
-            label.color[2],
-            label.color[3],
-        );
-        out.push('}');
     }
-    out.push_str("],\"points\":[");
-    for (index, point) in scene.points.iter().enumerate() {
-        if index > 0 {
-            out.push(',');
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CircleJson {
+    center: PointJson,
+    radius_point: PointJson,
+    color: [u8; 4],
+}
+
+impl CircleJson {
+    fn from_circle(circle: &crate::render::scene::SceneCircle) -> Self {
+        Self {
+            center: PointJson::from_point(&circle.center),
+            radius_point: PointJson::from_point(&circle.radius_point),
+            color: circle.color,
         }
-        out.push('{');
-        let _ = write!(
-            out,
-            "\"x\":{},\"y\":{}",
-            format_f64(point.position.x),
-            format_f64(point.position.y),
-        );
-        match &point.constraint {
-            ScenePointConstraint::Free => out.push_str(",\"constraint\":null"),
+    }
+}
+
+#[derive(Serialize)]
+struct LabelJson {
+    anchor: PointJson,
+    text: String,
+    color: [u8; 4],
+}
+
+impl LabelJson {
+    fn from_label(label: &crate::render::scene::TextLabel) -> Self {
+        Self {
+            anchor: PointJson::from_point(&label.anchor),
+            text: label.text.clone(),
+            color: label.color,
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct ScenePointJson {
+    x: f64,
+    y: f64,
+    constraint: Option<PointConstraintJson>,
+}
+
+impl ScenePointJson {
+    fn from_scene_point(point: &crate::render::scene::ScenePoint) -> Self {
+        Self {
+            x: point.position.x,
+            y: point.position.y,
+            constraint: PointConstraintJson::from_constraint(&point.constraint),
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind")]
+enum PointConstraintJson {
+    #[serde(rename = "segment")]
+    Segment {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+        t: f64,
+    },
+    #[serde(rename = "polyline")]
+    Polyline {
+        #[serde(rename = "functionKey")]
+        function_key: usize,
+        points: Vec<PointJson>,
+        #[serde(rename = "segmentIndex")]
+        segment_index: usize,
+        t: f64,
+    },
+    #[serde(rename = "polygon-boundary")]
+    PolygonBoundary {
+        #[serde(rename = "vertexIndices")]
+        vertex_indices: Vec<usize>,
+        #[serde(rename = "edgeIndex")]
+        edge_index: usize,
+        t: f64,
+    },
+    #[serde(rename = "circle")]
+    Circle {
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "radiusIndex")]
+        radius_index: usize,
+        #[serde(rename = "unitX")]
+        unit_x: f64,
+        #[serde(rename = "unitY")]
+        unit_y: f64,
+    },
+}
+
+impl PointConstraintJson {
+    fn from_constraint(constraint: &ScenePointConstraint) -> Option<Self> {
+        match constraint {
+            ScenePointConstraint::Free => None,
             ScenePointConstraint::OnSegment {
                 start_index,
                 end_index,
                 t,
-            } => {
-                let _ = write!(
-                    out,
-                    ",\"constraint\":{{\"kind\":\"segment\",\"startIndex\":{},\"endIndex\":{},\"t\":{}}}",
-                    start_index,
-                    end_index,
-                    format_f64(*t),
-                );
-            }
+            } => Some(Self::Segment {
+                start_index: *start_index,
+                end_index: *end_index,
+                t: *t,
+            }),
             ScenePointConstraint::OnPolyline {
                 function_key,
                 points,
                 segment_index,
                 t,
-            } => {
-                let point_json = points
-                    .iter()
-                    .map(|point| {
-                        format!(
-                            "{{\"x\":{},\"y\":{}}}",
-                            format_f64(point.x),
-                            format_f64(point.y)
-                        )
-                    })
-                    .collect::<Vec<_>>()
-                    .join(",");
-                let _ = write!(
-                    out,
-                    ",\"constraint\":{{\"kind\":\"polyline\",\"functionKey\":{},\"points\":[{}],\"segmentIndex\":{},\"t\":{}}}",
-                    function_key,
-                    point_json,
-                    segment_index,
-                    format_f64(*t),
-                );
-            }
+            } => Some(Self::Polyline {
+                function_key: *function_key,
+                points: points.iter().map(PointJson::from_point).collect(),
+                segment_index: *segment_index,
+                t: *t,
+            }),
             ScenePointConstraint::OnPolygonBoundary {
                 vertex_indices,
                 edge_index,
                 t,
-            } => {
-                let _ = write!(
-                    out,
-                    ",\"constraint\":{{\"kind\":\"polygon-boundary\",\"vertexIndices\":[{}],\"edgeIndex\":{},\"t\":{}}}",
-                    vertex_indices
-                        .iter()
-                        .map(|index| index.to_string())
-                        .collect::<Vec<_>>()
-                        .join(","),
-                    edge_index,
-                    format_f64(*t),
-                );
-            }
+            } => Some(Self::PolygonBoundary {
+                vertex_indices: vertex_indices.clone(),
+                edge_index: *edge_index,
+                t: *t,
+            }),
             ScenePointConstraint::OnCircle {
                 center_index,
                 radius_index,
                 unit_x,
                 unit_y,
-            } => {
-                let _ = write!(
-                    out,
-                    ",\"constraint\":{{\"kind\":\"circle\",\"centerIndex\":{},\"radiusIndex\":{},\"unitX\":{},\"unitY\":{}}}",
-                    center_index,
-                    radius_index,
-                    format_f64(*unit_x),
-                    format_f64(*unit_y),
-                );
-            }
+            } => Some(Self::Circle {
+                center_index: *center_index,
+                radius_index: *radius_index,
+                unit_x: *unit_x,
+                unit_y: *unit_y,
+            }),
         }
-        out.push('}');
     }
-    out.push_str("],\"parameters\":[");
-    for (index, parameter) in scene.parameters.iter().enumerate() {
-        if index > 0 {
-            out.push(',');
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ParameterJson {
+    name: String,
+    value: f64,
+    label_index: usize,
+}
+
+impl ParameterJson {
+    fn from_parameter(parameter: &crate::render::scene::SceneParameter) -> Self {
+        Self {
+            name: parameter.name.clone(),
+            value: parameter.value,
+            label_index: parameter.label_index,
         }
-        let _ = write!(
-            out,
-            "{{\"name\":\"{}\",\"value\":{},\"labelIndex\":{}}}",
-            escape_json_string(&parameter.name),
-            format_f64(parameter.value),
-            parameter.label_index,
-        );
     }
-    out.push_str("],\"functions\":[");
-    for (index, function_def) in scene.functions.iter().enumerate() {
-        if index > 0 {
-            out.push(',');
-        }
-        out.push('{');
-        let _ = write!(
-            out,
-            "\"key\":{},\"name\":\"{}\",\"derivative\":{},\"domain\":{{\"xMin\":{},\"xMax\":{},\"sampleCount\":{}}},\"lineIndex\":{},\"labelIndex\":{},\"constrainedPointIndices\":[{}],\"expr\":",
-            function_def.key,
-            escape_json_string(&function_def.name),
-            if function_def.derivative {
-                "true"
-            } else {
-                "false"
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FunctionJson {
+    key: usize,
+    name: String,
+    derivative: bool,
+    domain: DomainJson,
+    line_index: Option<usize>,
+    label_index: usize,
+    constrained_point_indices: Vec<usize>,
+    expr: FunctionExprJson,
+}
+
+impl FunctionJson {
+    fn from_function(function_def: &crate::render::scene::SceneFunction) -> Self {
+        Self {
+            key: function_def.key,
+            name: function_def.name.clone(),
+            derivative: function_def.derivative,
+            domain: DomainJson {
+                x_min: function_def.domain.x_min,
+                x_max: function_def.domain.x_max,
+                sample_count: function_def.domain.sample_count,
             },
-            format_f64(function_def.domain.x_min),
-            format_f64(function_def.domain.x_max),
-            function_def.domain.sample_count,
-            function_def
-                .line_index
-                .map(|index| index.to_string())
-                .unwrap_or_else(|| "null".to_string()),
-            function_def.label_index,
-            function_def
-                .constrained_point_indices
-                .iter()
-                .map(|index| index.to_string())
-                .collect::<Vec<_>>()
-                .join(","),
-        );
-        push_function_expr_json(&mut out, &function_def.expr);
-        out.push('}');
-    }
-    out.push_str("]}");
-    out
-}
-
-fn push_point_json(out: &mut String, point: &PointRecord) {
-    let _ = write!(
-        out,
-        "{{\"x\":{},\"y\":{}}}",
-        format_f64(point.x),
-        format_f64(point.y),
-    );
-}
-
-fn push_function_expr_json(out: &mut String, expr: &FunctionExpr) {
-    match expr {
-        FunctionExpr::Constant(value) => {
-            let _ = write!(
-                out,
-                "{{\"kind\":\"constant\",\"value\":{}}}",
-                format_f64(*value)
-            );
-        }
-        FunctionExpr::Identity => out.push_str("{\"kind\":\"identity\"}"),
-        FunctionExpr::SinIdentity => out.push_str(
-            "{\"kind\":\"parsed\",\"head\":{\"kind\":\"unary_x\",\"op\":\"sin\"},\"tail\":[]}",
-        ),
-        FunctionExpr::CosIdentityPlus(offset) => {
-            out.push_str(
-                "{\"kind\":\"parsed\",\"head\":{\"kind\":\"unary_x\",\"op\":\"cos\"},\"tail\":[",
-            );
-            out.push_str("{\"op\":\"add\",\"term\":");
-            push_function_term_json(out, &FunctionTerm::Constant(*offset));
-            out.push_str("}]}");
-        }
-        FunctionExpr::TanIdentityMinus(offset) => {
-            out.push_str(
-                "{\"kind\":\"parsed\",\"head\":{\"kind\":\"unary_x\",\"op\":\"tan\"},\"tail\":[",
-            );
-            out.push_str("{\"op\":\"sub\",\"term\":");
-            push_function_term_json(out, &FunctionTerm::Constant(*offset));
-            out.push_str("}]}");
-        }
-        FunctionExpr::Parsed(parsed) => {
-            out.push_str("{\"kind\":\"parsed\",\"head\":");
-            push_function_term_json(out, &parsed.head);
-            out.push_str(",\"tail\":[");
-            for (index, (op, term)) in parsed.tail.iter().enumerate() {
-                if index > 0 {
-                    out.push(',');
-                }
-                let op_name = match op {
-                    BinaryOp::Add => "add",
-                    BinaryOp::Sub => "sub",
-                    BinaryOp::Mul => "mul",
-                };
-                let _ = write!(out, "{{\"op\":\"{}\",\"term\":", op_name);
-                push_function_term_json(out, term);
-                out.push('}');
-            }
-            out.push_str("]}");
+            line_index: function_def.line_index,
+            label_index: function_def.label_index,
+            constrained_point_indices: function_def.constrained_point_indices.clone(),
+            expr: FunctionExprJson::from_expr(&function_def.expr),
         }
     }
 }
 
-fn push_function_term_json(out: &mut String, term: &FunctionTerm) {
-    match term {
-        FunctionTerm::Variable => out.push_str("{\"kind\":\"variable\"}"),
-        FunctionTerm::Constant(value) => {
-            let _ = write!(
-                out,
-                "{{\"kind\":\"constant\",\"value\":{}}}",
-                format_f64(*value)
-            );
-        }
-        FunctionTerm::Parameter(name, value) => {
-            let _ = write!(
-                out,
-                "{{\"kind\":\"parameter\",\"name\":\"{}\",\"value\":{}}}",
-                escape_json_string(name),
-                format_f64(*value),
-            );
-        }
-        FunctionTerm::UnaryX(op) => {
-            let op_name = match op {
-                UnaryFunction::Sin => "sin",
-                UnaryFunction::Cos => "cos",
-                UnaryFunction::Tan => "tan",
-                UnaryFunction::Abs => "abs",
-                UnaryFunction::Sqrt => "sqrt",
-                UnaryFunction::Ln => "ln",
-                UnaryFunction::Log10 => "log10",
-                UnaryFunction::Sign => "sign",
-                UnaryFunction::Round => "round",
-                UnaryFunction::Trunc => "trunc",
-            };
-            let _ = write!(out, "{{\"kind\":\"unary_x\",\"op\":\"{}\"}}", op_name);
-        }
-        FunctionTerm::Product(left, right) => {
-            out.push_str("{\"kind\":\"product\",\"left\":");
-            push_function_term_json(out, left);
-            out.push_str(",\"right\":");
-            push_function_term_json(out, right);
-            out.push('}');
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DomainJson {
+    x_min: f64,
+    x_max: f64,
+    sample_count: usize,
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind")]
+enum FunctionExprJson {
+    #[serde(rename = "constant")]
+    Constant { value: f64 },
+    #[serde(rename = "identity")]
+    Identity,
+    #[serde(rename = "parsed")]
+    Parsed {
+        head: FunctionTermJson,
+        tail: Vec<ExprTailJson>,
+    },
+}
+
+impl FunctionExprJson {
+    fn from_expr(expr: &FunctionExpr) -> Self {
+        match expr {
+            FunctionExpr::Constant(value) => Self::Constant { value: *value },
+            FunctionExpr::Identity => Self::Identity,
+            FunctionExpr::SinIdentity => Self::Parsed {
+                head: FunctionTermJson::UnaryX { op: "sin" },
+                tail: Vec::new(),
+            },
+            FunctionExpr::CosIdentityPlus(offset) => Self::Parsed {
+                head: FunctionTermJson::UnaryX { op: "cos" },
+                tail: vec![ExprTailJson {
+                    op: "add",
+                    term: FunctionTermJson::Constant { value: *offset },
+                }],
+            },
+            FunctionExpr::TanIdentityMinus(offset) => Self::Parsed {
+                head: FunctionTermJson::UnaryX { op: "tan" },
+                tail: vec![ExprTailJson {
+                    op: "sub",
+                    term: FunctionTermJson::Constant { value: *offset },
+                }],
+            },
+            FunctionExpr::Parsed(parsed) => Self::Parsed {
+                head: FunctionTermJson::from_term(&parsed.head),
+                tail: parsed
+                    .tail
+                    .iter()
+                    .map(|(op, term)| ExprTailJson {
+                        op: binary_op_name(*op),
+                        term: FunctionTermJson::from_term(term),
+                    })
+                    .collect(),
+            },
         }
     }
 }
 
-fn format_f64(value: f64) -> String {
-    if value.is_finite() {
-        let mut text = format!("{value:.6}");
-        while text.contains('.') && text.ends_with('0') {
-            text.pop();
+#[derive(Serialize)]
+struct ExprTailJson {
+    op: &'static str,
+    term: FunctionTermJson,
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind")]
+enum FunctionTermJson {
+    #[serde(rename = "variable")]
+    Variable,
+    #[serde(rename = "constant")]
+    Constant { value: f64 },
+    #[serde(rename = "parameter")]
+    Parameter { name: String, value: f64 },
+    #[serde(rename = "unary_x")]
+    UnaryX { op: &'static str },
+    #[serde(rename = "product")]
+    Product {
+        left: Box<FunctionTermJson>,
+        right: Box<FunctionTermJson>,
+    },
+}
+
+impl FunctionTermJson {
+    fn from_term(term: &FunctionTerm) -> Self {
+        match term {
+            FunctionTerm::Variable => Self::Variable,
+            FunctionTerm::Constant(value) => Self::Constant { value: *value },
+            FunctionTerm::Parameter(name, value) => Self::Parameter {
+                name: name.clone(),
+                value: *value,
+            },
+            FunctionTerm::UnaryX(op) => Self::UnaryX {
+                op: unary_function_name(*op),
+            },
+            FunctionTerm::Product(left, right) => Self::Product {
+                left: Box::new(Self::from_term(left)),
+                right: Box::new(Self::from_term(right)),
+            },
         }
-        if text.ends_with('.') {
-            text.push('0');
-        }
-        text
-    } else {
-        "0".to_string()
     }
 }
 
-fn escape_json_string(text: &str) -> String {
-    let mut escaped = String::new();
-    for ch in text.chars() {
-        match ch {
-            '\\' => escaped.push_str("\\\\"),
-            '"' => escaped.push_str("\\\""),
-            '\n' => escaped.push_str("\\n"),
-            '\r' => escaped.push_str("\\r"),
-            '\t' => escaped.push_str("\\t"),
-            ch if ch.is_control() => {
-                let _ = write!(escaped, "\\u{:04x}", ch as u32);
-            }
-            _ => escaped.push(ch),
-        }
+fn binary_op_name(op: BinaryOp) -> &'static str {
+    match op {
+        BinaryOp::Add => "add",
+        BinaryOp::Sub => "sub",
+        BinaryOp::Mul => "mul",
     }
-    escaped
+}
+
+fn unary_function_name(op: UnaryFunction) -> &'static str {
+    match op {
+        UnaryFunction::Sin => "sin",
+        UnaryFunction::Cos => "cos",
+        UnaryFunction::Tan => "tan",
+        UnaryFunction::Abs => "abs",
+        UnaryFunction::Sqrt => "sqrt",
+        UnaryFunction::Ln => "ln",
+        UnaryFunction::Log10 => "log10",
+        UnaryFunction::Sign => "sign",
+        UnaryFunction::Round => "round",
+        UnaryFunction::Trunc => "trunc",
+    }
 }

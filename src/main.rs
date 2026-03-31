@@ -23,16 +23,22 @@ fn main() {
 
 fn run() -> Result<(), String> {
     let config = Config::parse(env::args_os().skip(1))?;
-    let data = fs::read(&config.gsp_path)
-        .map_err(|error| format!("failed to read {}: {error}", config.gsp_path.display()))?;
-    let file = GspFile::parse(&data)?;
+    for job in &config.jobs {
+        let data = fs::read(&job.gsp_path)
+            .map_err(|error| format!("failed to read {}: {error}", job.gsp_path.display()))?;
+        let file = GspFile::parse(&data)?;
 
-    render_points_to_html(
-        &file,
-        &config.html_path,
-        config.render_width,
-        config.render_height,
-    )?;
-    println!("generated {}", config.html_path.display());
+        render_points_to_html(
+            &file,
+            &job.html_path,
+            config.render_width,
+            config.render_height,
+        )?;
+        println!(
+            "generated {} from {}",
+            job.html_path.display(),
+            job.gsp_path.display()
+        );
+    }
     Ok(())
 }
