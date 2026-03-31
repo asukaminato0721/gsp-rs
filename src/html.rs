@@ -322,6 +322,15 @@ enum LabelBindingJson {
         #[serde(rename = "segmentName")]
         segment_name: String,
     },
+    #[serde(rename = "circle-parameter")]
+    CircleParameter {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+        #[serde(rename = "pointName")]
+        point_name: String,
+        #[serde(rename = "circleName")]
+        circle_name: String,
+    },
 }
 
 impl LabelBindingJson {
@@ -344,6 +353,15 @@ impl LabelBindingJson {
                 point_index: *point_index,
                 point_name: point_name.clone(),
                 segment_name: segment_name.clone(),
+            },
+            TextLabelBinding::CircleParameter {
+                point_index,
+                point_name,
+                circle_name,
+            } => Self::CircleParameter {
+                point_index: *point_index,
+                point_name: point_name.clone(),
+                circle_name: circle_name.clone(),
             },
         }
     }

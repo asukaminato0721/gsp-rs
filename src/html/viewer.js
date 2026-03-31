@@ -396,6 +396,15 @@
         if (value !== null) {
           label.text = `${label.binding.pointName}在${label.binding.segmentName}上的t值 = ${formatNumber(value)}`;
         }
+      } else if (label.binding.kind === "circle-parameter") {
+        const point = scene.points[label.binding.pointIndex];
+        const constraint = point?.constraint;
+        if (constraint?.kind === "circle") {
+          const pointAngle = Math.atan2(-constraint.unitY, constraint.unitX);
+          const tau = Math.PI * 2;
+          const value = ((pointAngle % tau) + tau) % tau / tau;
+          label.text = `${label.binding.pointName}在⊙${label.binding.circleName}上的值 = ${formatNumber(value)}`;
+        }
       }
     });
   }

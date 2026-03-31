@@ -117,4 +117,9 @@ pub(crate) enum TextLabelBinding {
         point_name: String,
         segment_name: String,
     },
+    CircleParameter {
+        point_index: usize,
+        point_name: String,
+        circle_name: String,
+    },
 }

@@ -126,6 +126,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     );
     labels.extend(collect_polygon_parameter_labels(file, &groups, &raw_anchors));
     labels.extend(collect_segment_parameter_labels(file, &groups));
+    labels.extend(collect_circle_parameter_labels(file, &groups, &raw_anchors));
     labels.extend(compute_iteration_labels(file, &groups, &circles));
     if graph_mode && has_function_plots {
         labels.extend(synthesize_function_labels(
@@ -495,6 +496,7 @@ fn remap_label_bindings(labels: &mut [TextLabel], group_to_point_index: &[Option
         let point_index = match binding {
             TextLabelBinding::PolygonBoundaryParameter { point_index, .. } => point_index,
             TextLabelBinding::SegmentParameter { point_index, .. } => point_index,
+            TextLabelBinding::CircleParameter { point_index, .. } => point_index,
         };
         let Some(mapped_index) = group_to_point_index.get(*point_index).and_then(|index| *index)
         else {
@@ -1068,6 +1070,62 @@ fn collect_segment_parameter_labels(file: &GspFile, groups: &[ObjectGroup]) -> V
         .collect()
 }
 
+fn collect_circle_parameter_labels(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+) -> Vec<TextLabel> {
+    groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 94)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            if path.refs.len() < 2 {
+                return None;
+            }
+
+            let point_group = groups.get(path.refs[0].checked_sub(1)?)?;
+            let circle_group = groups.get(path.refs[1].checked_sub(1)?)?;
+            if (point_group.header.class_id & 0xffff) != 15
+                || (circle_group.header.class_id & 0xffff) != 3
+            {
+                return None;
+            }
+
+            let point_name = decode_label_name(file, point_group)?;
+            let circle_name = circle_name(file, groups, circle_group)?;
+            let anchor = group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x0903)
+                .and_then(|record| decode_text_anchor(record.payload(&file.data)))?;
+            let RawPointConstraint::Circle(constraint) =
+                decode_point_constraint(file, groups, point_group, &None)?
+            else {
+                return None;
+            };
+            let value = circle_parameter(
+                anchors,
+                constraint.center_group_index,
+                constraint.radius_group_index,
+                constraint.unit_x,
+                constraint.unit_y,
+            )?;
+
+            Some(TextLabel {
+                anchor,
+                text: format!("{point_name}在⊙{circle_name}上的值 = {:.2}", value),
+                color: [30, 30, 30, 255],
+                binding: Some(TextLabelBinding::CircleParameter {
+                    point_index: path.refs[0].checked_sub(1)?,
+                    point_name,
+                    circle_name,
+                }),
+            })
+        })
+        .collect()
+}
+
 fn segment_name(file: &GspFile, groups: &[ObjectGroup], segment_group: &ObjectGroup) -> Option<String> {
     let path = find_indexed_path(file, segment_group)?;
     let names = path
@@ -1076,6 +1134,29 @@ fn segment_name(file: &GspFile, groups: &[ObjectGroup], segment_group: &ObjectGr
         .map(|&object_ref| groups.get(object_ref.checked_sub(1)?).and_then(|group| decode_label_name(file, group)))
         .collect::<Option<Vec<_>>>()?;
     (names.len() >= 2).then(|| names.join(""))
+}
+
+fn circle_name(file: &GspFile, groups: &[ObjectGroup], circle_group: &ObjectGroup) -> Option<String> {
+    let path = find_indexed_path(file, circle_group)?;
+    let names = path
+        .refs
+        .iter()
+        .map(|&object_ref| groups.get(object_ref.checked_sub(1)?).and_then(|group| decode_label_name(file, group)))
+        .collect::<Option<Vec<_>>>()?;
+    (names.len() >= 2).then(|| names.join(""))
+}
+
+fn circle_parameter(
+    anchors: &[Option<PointRecord>],
+    center_group_index: usize,
+    _radius_group_index: usize,
+    unit_x: f64,
+    unit_y: f64,
+) -> Option<f64> {
+    let _center = anchors.get(center_group_index)?.clone()?;
+    let point_angle = unit_y.atan2(unit_x);
+    let tau = std::f64::consts::TAU;
+    Some(point_angle.rem_euclid(tau) / tau)
 }
 
 fn polygon_vertex_name(
@@ -2524,6 +2605,28 @@ mod tests {
         assert!(
             texts.contains(&"C在AB上的t值 = 0.51"),
             "expected segment parameter label, got {texts:?}"
+        );
+    }
+
+    #[test]
+    fn preserves_circle_parameter_label_in_circle_point_value_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/circle_point_value.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.circles.len(), 1, "expected one circle");
+        assert_eq!(scene.points.len(), 3, "expected center, radius point, and constrained point");
+        let texts = scene
+            .labels
+            .iter()
+            .map(|label| label.text.as_str())
+            .collect::<Vec<_>>();
+        assert!(texts.contains(&"A"), "expected point label A, got {texts:?}");
+        assert!(texts.contains(&"B"), "expected point label B, got {texts:?}");
+        assert!(texts.contains(&"C"), "expected point label C, got {texts:?}");
+        assert!(
+            texts.contains(&"C在⊙AB上的值 = 0.38"),
+            "expected circle parameter label, got {texts:?}"
         );
     }
 
