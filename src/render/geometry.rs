@@ -108,6 +108,15 @@ pub(super) fn color_from_style(style: u32) -> [u8; 4] {
     ]
 }
 
+pub(super) fn fill_color_from_styles(style_b: u32, style_c: u32) -> [u8; 4] {
+    let mut color = color_from_style(style_b);
+    let alpha = ((style_c >> 8) & 0xff) as u8;
+    if alpha != 0 {
+        color[3] = alpha;
+    }
+    color
+}
+
 pub(crate) fn darken(rgba: [u8; 4], amount: u8) -> [u8; 4] {
     [
         rgba[0].saturating_sub(amount),

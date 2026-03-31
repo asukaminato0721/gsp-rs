@@ -296,6 +296,7 @@ pub(super) fn synthesize_function_labels(
                 anchor: to_raw_from_world(&world_anchor, transform),
                 text: format!("{name} = {:.2}", value),
                 color: [30, 30, 30, 255],
+                binding: None,
             }
         })
         .collect::<Vec<_>>();
@@ -319,6 +320,7 @@ pub(super) fn synthesize_function_labels(
                         function_expr_label(expr)
                     ),
                     color: [30, 30, 30, 255],
+                    binding: None,
                 }
             }),
     );
@@ -360,6 +362,7 @@ pub(super) fn synthesize_function_labels(
                     function_expr_label(expr)
                 ),
                 color: [30, 30, 30, 255],
+                binding: None,
             }
         },
     ));

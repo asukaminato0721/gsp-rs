@@ -102,4 +102,14 @@ pub(crate) struct TextLabel {
     pub(crate) anchor: PointRecord,
     pub(crate) text: String,
     pub(crate) color: [u8; 4],
+    pub(crate) binding: Option<TextLabelBinding>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum TextLabelBinding {
+    PolygonBoundaryParameter {
+        point_index: usize,
+        point_name: String,
+        polygon_name: String,
+    },
 }

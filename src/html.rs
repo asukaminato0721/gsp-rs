@@ -2,7 +2,7 @@ use crate::format::{GspFile, PointRecord};
 use crate::render::extract::build_scene;
 use crate::render::functions::{BinaryOp, FunctionExpr, FunctionTerm, UnaryFunction};
 use crate::render::geometry::darken;
-use crate::render::scene::{Scene, ScenePointConstraint};
+use crate::render::scene::{Scene, ScenePointConstraint, TextLabelBinding};
 use serde::Serialize;
 use std::fmt::Write as _;
 use std::fs;
@@ -287,6 +287,7 @@ struct LabelJson {
     anchor: PointJson,
     text: String,
     color: [u8; 4],
+    binding: Option<LabelBindingJson>,
 }
 
 impl LabelJson {
@@ -295,6 +296,37 @@ impl LabelJson {
             anchor: PointJson::from_point(&label.anchor),
             text: label.text.clone(),
             color: label.color,
+            binding: label.binding.as_ref().map(LabelBindingJson::from_binding),
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind")]
+enum LabelBindingJson {
+    #[serde(rename = "polygon-boundary-parameter")]
+    PolygonBoundaryParameter {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+        #[serde(rename = "pointName")]
+        point_name: String,
+        #[serde(rename = "polygonName")]
+        polygon_name: String,
+    },
+}
+
+impl LabelBindingJson {
+    fn from_binding(binding: &TextLabelBinding) -> Self {
+        match binding {
+            TextLabelBinding::PolygonBoundaryParameter {
+                point_index,
+                point_name,
+                polygon_name,
+            } => Self::PolygonBoundaryParameter {
+                point_index: *point_index,
+                point_name: point_name.clone(),
+                polygon_name: polygon_name.clone(),
+            },
         }
     }
 }

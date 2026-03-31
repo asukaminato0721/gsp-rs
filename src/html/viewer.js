@@ -60,7 +60,11 @@
     if (!point) {
       return { x: 0, y: 0 };
     }
-    const resolved = resolveConstrainedPoint(point.constraint, resolveSourcePoint);
+    const resolved = sceneModule.resolveConstrainedPoint(
+      null,
+      point.constraint,
+      resolveSourcePoint,
+    );
     if (resolved) {
       return resolved;
     }
@@ -167,6 +171,7 @@
         text: label.text,
         color: label.color,
         anchor: attachLabelAnchor(label.anchor, hydratedLines),
+        binding: label.binding ? { ...label.binding } : null,
       })),
     };
   }
@@ -195,6 +200,7 @@
   function updateScene(mutator) {
     const next = sceneState.val;
     mutator(next);
+    refreshDynamicLabels(next);
     sceneState.val = { ...next };
   }
 
@@ -348,6 +354,46 @@
     return Number.isFinite(value) ? value.toFixed(2) : "-";
   }
 
+  function polygonBoundaryParameterFromPoint(scene, pointIndex) {
+    const point = scene.points[pointIndex];
+    const constraint = point?.constraint;
+    if (!constraint || constraint.kind !== "polygon-boundary" || constraint.vertexIndices.length < 2) {
+      return null;
+    }
+
+    const count = constraint.vertexIndices.length;
+    let perimeter = 0;
+    let traveled = 0;
+    for (let index = 0; index < count; index += 1) {
+      const start = scene.points[constraint.vertexIndices[index]];
+      const end = scene.points[constraint.vertexIndices[(index + 1) % count]];
+      if (!start || !end) {
+        return null;
+      }
+      const length = Math.hypot(end.x - start.x, end.y - start.y);
+      perimeter += length;
+      if (index < constraint.edgeIndex) {
+        traveled += length;
+      } else if (index === constraint.edgeIndex) {
+        traveled += length * Math.max(0, Math.min(1, constraint.t));
+      }
+    }
+
+    return perimeter > 1e-9 ? traveled / perimeter : null;
+  }
+
+  function refreshDynamicLabels(scene) {
+    scene.labels.forEach((label) => {
+      if (!label.binding) return;
+      if (label.binding.kind === "polygon-boundary-parameter") {
+        const value = polygonBoundaryParameterFromPoint(scene, label.binding.pointIndex);
+        if (value !== null) {
+          label.text = `${label.binding.pointName}在${label.binding.polygonName}上的t值 = ${formatNumber(value)}`;
+        }
+      }
+    });
+  }
+
   function formatAxisNumber(value) {
     if (Math.abs(value - Math.round(value)) < 1e-6) {
       return String(Math.round(value));
@@ -462,9 +508,9 @@
       return;
     }
     if (dragState.val.mode === "point") {
-      updateDraggedPoint(toWorld(position.x, position.y));
+      updateDraggedPoint(sceneModule.toWorld(viewerEnv, position.x, position.y));
     } else if (dragState.val.mode === "label") {
-      updateDraggedLabel(toWorld(position.x, position.y));
+      updateDraggedLabel(sceneModule.toWorld(viewerEnv, position.x, position.y));
     } else {
       panFromPointerDelta(position);
     }

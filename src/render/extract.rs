@@ -12,11 +12,13 @@ use super::functions::{
     synthesize_function_labels,
 };
 use super::geometry::{
-    Bounds, GraphTransform, color_from_style, distance_world, format_number, has_distinct_points,
-    include_line_bounds, read_f32_unaligned, to_raw_from_world, to_world,
+    Bounds, GraphTransform, color_from_style, distance_world, fill_color_from_styles,
+    format_number, has_distinct_points, include_line_bounds, read_f32_unaligned,
+    to_raw_from_world, to_world,
 };
 use super::scene::{
     LineShape, PolygonShape, Scene, SceneCircle, ScenePoint, ScenePointConstraint, TextLabel,
+    TextLabelBinding,
 };
 
 #[derive(Debug, Clone)]
@@ -120,8 +122,9 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         &groups,
         &raw_anchors,
         graph_mode,
-        graph_mode && !has_function_plots,
+        !has_function_plots,
     );
+    labels.extend(collect_polygon_parameter_labels(file, &groups, &raw_anchors));
     labels.extend(compute_iteration_labels(file, &groups, &circles));
     if graph_mode && has_function_plots {
         labels.extend(synthesize_function_labels(
@@ -153,12 +156,14 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
                 anchor,
                 text: format!("AB perimeter = {:.2} cm", circumference),
                 color: [30, 30, 30, 255],
+                binding: None,
             },
         );
     }
 
-    let visible_points =
+    let (visible_points, group_to_point_index) =
         collect_visible_points(file, &groups, &point_map, &raw_anchors, &graph_ref);
+    remap_label_bindings(&mut labels, &group_to_point_index);
 
     let world_points = visible_points
         .iter()
@@ -335,6 +340,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
                 anchor: to_world(&label.anchor, &graph_ref),
                 text: label.text,
                 color: label.color,
+                binding: label.binding,
             })
             .collect(),
         points: world_points,
@@ -365,7 +371,7 @@ fn collect_visible_points(
     point_map: &[Option<PointRecord>],
     anchors: &[Option<PointRecord>],
     graph: &Option<GraphTransform>,
-) -> Vec<ScenePoint> {
+) -> (Vec<ScenePoint>, Vec<Option<usize>>) {
     let mut group_to_point_index = vec![None; groups.len()];
     let mut points = Vec::<ScenePoint>::new();
 
@@ -477,7 +483,22 @@ fn collect_visible_points(
         }
     }
 
-    points
+    (points, group_to_point_index)
+}
+
+fn remap_label_bindings(labels: &mut [TextLabel], group_to_point_index: &[Option<usize>]) {
+    for label in labels {
+        let Some(TextLabelBinding::PolygonBoundaryParameter { point_index, .. }) =
+            label.binding.as_mut()
+        else {
+            continue;
+        };
+        let Some(mapped_index) = group_to_point_index.get(*point_index).and_then(|index| *index) else {
+            label.binding = None;
+            continue;
+        };
+        *point_index = mapped_index;
+    }
 }
 
 fn collect_raw_object_anchors(
@@ -576,7 +597,7 @@ fn collect_polygon_shapes(
                 .collect::<Vec<_>>();
             (points.len() >= 3).then_some(PolygonShape {
                 points,
-                color: color_from_style(group.header.style_b),
+                color: fill_color_from_styles(group.header.style_b, group.header.style_c),
             })
         })
         .collect()
@@ -877,9 +898,9 @@ fn collect_labels(
     for group in groups {
         let kind = group.header.class_id & 0xffff;
         match kind {
-            0 | 2 | 40 | 51 | 62 | 73 => {
+            0 | 2 | 15 | 40 | 51 | 62 | 73 => {
                 let text = decode_group_label_text(file, group).or_else(|| {
-                    (!graph_mode && matches!(kind, 0 | 2))
+                    (!graph_mode && matches!(kind, 0 | 2 | 15))
                         .then(|| decode_label_name(file, group))
                         .flatten()
                 });
@@ -890,6 +911,7 @@ fn collect_labels(
                             anchor,
                             text,
                             color: [30, 30, 30, 255],
+                            binding: None,
                         });
                     }
                 }
@@ -921,6 +943,7 @@ fn collect_labels(
                             anchor,
                             text: format_number(value),
                             color: [60, 60, 60, 255],
+                            binding: None,
                         });
                     }
                 }
@@ -940,6 +963,107 @@ fn collect_saved_viewport(file: &GspFile, groups: &[ObjectGroup]) -> Option<Boun
         min_y,
         max_y,
     })
+}
+
+fn collect_polygon_parameter_labels(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+) -> Vec<TextLabel> {
+    groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 94)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            if path.refs.len() < 2 {
+                return None;
+            }
+
+            let point_group = groups.get(path.refs[0].checked_sub(1)?)?;
+            let polygon_group = groups.get(path.refs[1].checked_sub(1)?)?;
+            if (point_group.header.class_id & 0xffff) != 15
+                || (polygon_group.header.class_id & 0xffff) != 8
+            {
+                return None;
+            }
+
+            let point_name = decode_label_name(file, point_group)?;
+            let polygon_name = polygon_vertex_name(file, groups, polygon_group)?;
+            let anchor = group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x0903)
+                .and_then(|record| decode_text_anchor(record.payload(&file.data)))?;
+            let RawPointConstraint::PolygonBoundary {
+                vertex_group_indices,
+                edge_index,
+                t,
+            } = decode_point_constraint(file, groups, point_group, &None)?
+            else {
+                return None;
+            };
+            let global_t =
+                polygon_boundary_parameter(anchors, &vertex_group_indices, edge_index, t)?;
+
+            Some(TextLabel {
+                anchor,
+                text: format!("{point_name}在{polygon_name}上的t值 = {:.2}", global_t),
+                color: [30, 30, 30, 255],
+                binding: Some(TextLabelBinding::PolygonBoundaryParameter {
+                    point_index: path.refs[0].checked_sub(1)?,
+                    point_name,
+                    polygon_name,
+                }),
+            })
+        })
+        .collect()
+}
+
+fn polygon_vertex_name(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    polygon_group: &ObjectGroup,
+) -> Option<String> {
+    let path = find_indexed_path(file, polygon_group)?;
+    let names = path
+        .refs
+        .iter()
+        .map(|&object_ref| groups.get(object_ref.checked_sub(1)?).and_then(|group| decode_label_name(file, group)))
+        .collect::<Option<Vec<_>>>()?
+        ;
+    (!names.is_empty()).then(|| names.join(""))
+}
+
+fn polygon_boundary_parameter(
+    anchors: &[Option<PointRecord>],
+    vertex_group_indices: &[usize],
+    edge_index: usize,
+    t: f64,
+) -> Option<f64> {
+    if vertex_group_indices.len() < 2 {
+        return None;
+    }
+
+    let vertices = vertex_group_indices
+        .iter()
+        .map(|group_index| anchors.get(*group_index)?.clone())
+        .collect::<Option<Vec<_>>>()?;
+
+    let mut perimeter = 0.0;
+    let mut traveled = 0.0;
+    for index in 0..vertices.len() {
+        let start = &vertices[index];
+        let end = &vertices[(index + 1) % vertices.len()];
+        let length = ((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt();
+        perimeter += length;
+        if index < edge_index % vertices.len() {
+            traveled += length;
+        } else if index == edge_index % vertices.len() {
+            traveled += length * t.clamp(0.0, 1.0);
+        }
+    }
+
+    (perimeter > 1e-9).then_some(traveled / perimeter)
 }
 
 fn collect_graph_window_x_hint(file: &GspFile, groups: &[ObjectGroup]) -> Option<(f64, f64)> {
@@ -1167,6 +1291,7 @@ fn compute_iteration_labels(
                 anchor,
                 text: lines.join("\n"),
                 color: [30, 30, 30, 255],
+                binding: None,
             });
         }
     }
@@ -1676,19 +1801,17 @@ fn decode_point_constraint(
             }
 
             let t = read_f64(payload, 4);
-            let selector = read_f64(payload, 12);
-            if !t.is_finite() || !selector.is_finite() {
+            if !t.is_finite() {
                 return None;
             }
 
-            let end_vertex = decode_polygon_edge_end_index(host_path.refs.len(), selector)?;
             Some(RawPointConstraint::PolygonBoundary {
                 vertex_group_indices: host_path
                     .refs
                     .iter()
                     .map(|vertex| vertex.checked_sub(1))
                     .collect::<Option<Vec<_>>>()?,
-                edge_index: (end_vertex + host_path.refs.len() - 1) % host_path.refs.len(),
+                edge_index: decode_polygon_edge_index(host_path.refs.len(), payload)?,
                 t,
             })
         }
@@ -1745,13 +1868,22 @@ fn locate_polyline_parameter(points: &[PointRecord], normalized_t: f64) -> Optio
     Some((segment_index.min(points.len() - 2), scaled.fract()))
 }
 
-fn decode_polygon_edge_end_index(vertex_count: usize, selector: f64) -> Option<usize> {
-    if vertex_count < 2 || !selector.is_finite() {
+fn decode_polygon_edge_index(vertex_count: usize, payload: &[u8]) -> Option<usize> {
+    if vertex_count < 2 || payload.len() < 16 {
         return None;
     }
 
-    let edge = ((selector * vertex_count as f64) - 0.25).round() as isize;
-    Some(edge.rem_euclid(vertex_count as isize) as usize)
+    let discrete = read_u32(payload, 12) as usize;
+    if discrete < vertex_count {
+        return Some(discrete);
+    }
+
+    let selector = read_f64(payload, 12);
+    if !selector.is_finite() {
+        return None;
+    }
+    let end_vertex = ((selector * vertex_count as f64) - 0.25).round() as isize;
+    Some(((end_vertex + vertex_count as isize - 1).rem_euclid(vertex_count as isize)) as usize)
 }
 
 fn decode_point_constraint_anchor(
@@ -2162,7 +2294,6 @@ mod tests {
                 point.constraint,
                 ScenePointConstraint::OnPolygonBoundary {
                     ref vertex_indices,
-                    edge_index: 3,
                     ..
                 } if vertex_indices == &vec![2, 6, 3, 4]
             )
@@ -2230,6 +2361,89 @@ mod tests {
             }
             _ => panic!("expected offset constraint"),
         }
+    }
+
+    #[test]
+    fn preserves_polygon_in_poly_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/poly.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.polygons.len(), 1, "expected a single polygon");
+        assert_eq!(
+            scene.polygons[0].points.len(),
+            4,
+            "expected polygon to keep its four vertices"
+        );
+        assert_eq!(
+            scene.polygons[0].color,
+            [255, 128, 0, 127],
+            "expected polygon fill opacity from source style metadata"
+        );
+        assert_eq!(scene.points.len(), 4, "expected four visible points");
+        assert!(
+            scene
+                .points
+                .iter()
+                .all(|point| matches!(point.constraint, ScenePointConstraint::Free)),
+            "expected polygon vertices to stay free points"
+        );
+    }
+
+    #[test]
+    fn preserves_polygon_boundary_point_in_poly_point_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/poly_point.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.polygons.len(), 1, "expected a single polygon");
+        assert_eq!(scene.points.len(), 5, "expected four vertices and one constrained point");
+        assert_eq!(
+            scene
+                .points
+                .iter()
+                .filter(|point| matches!(point.constraint, ScenePointConstraint::Free))
+                .count(),
+            4,
+            "expected four free polygon vertices"
+        );
+        assert!(scene.points.iter().any(|point| {
+            matches!(
+                point.constraint,
+                ScenePointConstraint::OnPolygonBoundary {
+                    ref vertex_indices,
+                    edge_index: 2,
+                    t,
+                } if vertex_indices == &vec![0, 1, 2, 3] && (t - 0.4450450665338869).abs() < 0.001
+            )
+        }));
+        assert!(scene.points.iter().any(|point| {
+            (point.position.x - 487.23).abs() < 0.05 && (point.position.y - 262.28).abs() < 0.05
+        }));
+    }
+
+    #[test]
+    fn preserves_polygon_labels_in_poly_point_with_val_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/poly_point_with_val.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.polygons.len(), 1, "expected a single polygon");
+        assert_eq!(scene.points.len(), 5, "expected four vertices and one constrained point");
+        let texts = scene
+            .labels
+            .iter()
+            .map(|label| label.text.as_str())
+            .collect::<Vec<_>>();
+        assert!(texts.contains(&"A"), "expected point label A, got {texts:?}");
+        assert!(texts.contains(&"B"), "expected point label B, got {texts:?}");
+        assert!(texts.contains(&"C"), "expected point label C, got {texts:?}");
+        assert!(texts.contains(&"D"), "expected point label D, got {texts:?}");
+        assert!(texts.contains(&"E"), "expected constrained point label E, got {texts:?}");
+        assert!(
+            texts.contains(&"E在ABCD上的t值 = 0.58"),
+            "expected polygon parameter label, got {texts:?}"
+        );
     }
 
     #[test]
