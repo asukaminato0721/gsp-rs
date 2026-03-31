@@ -64,6 +64,19 @@ pub(crate) struct LineShape {
     pub(crate) points: Vec<PointRecord>,
     pub(crate) color: [u8; 4],
     pub(crate) dashed: bool,
+    pub(crate) binding: Option<LineBinding>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum LineBinding {
+    RotateEdge {
+        center_index: usize,
+        vertex_index: usize,
+        parameter_name: String,
+        angle_expr: FunctionExpr,
+        start_step: usize,
+        end_step: usize,
+    },
 }
 
 #[derive(Debug, Clone)]

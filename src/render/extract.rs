@@ -6,10 +6,11 @@ use crate::format::{
 };
 
 use super::functions::{
-    FunctionExpr, collect_function_plot_domain, collect_function_plots, collect_scene_functions,
-    collect_scene_parameters, decode_function_expr, decode_function_plot_descriptor,
-    evaluate_expr_with_parameters, function_expr_label, function_uses_pi_scale,
-    sample_function_points, synthesize_function_axes, synthesize_function_labels,
+    BinaryOp, FunctionExpr, FunctionTerm, ParsedFunctionExpr, collect_function_plot_domain,
+    collect_function_plots, collect_scene_functions, collect_scene_parameters,
+    decode_function_expr, decode_function_plot_descriptor, evaluate_expr_with_parameters,
+    function_expr_label, function_uses_pi_scale, sample_function_points,
+    synthesize_function_axes, synthesize_function_labels,
 };
 use super::geometry::{
     Bounds, GraphTransform, color_from_style, distance_world, fill_color_from_styles,
@@ -61,6 +62,9 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     let has_coordinate_objects = groups
         .iter()
         .any(|group| matches!(group.header.class_id & 0xffff, 69 | 97));
+    let has_iteration_helpers = groups
+        .iter()
+        .any(|group| matches!(group.header.class_id & 0xffff, 76 | 77 | 89));
     let large_non_graph = !graph_mode && file.records.len() > 10_000;
 
     let polylines = collect_line_shapes(
@@ -75,6 +79,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     } else {
         Vec::new()
     };
+    let mut rotational_iteration_lines = collect_rotational_iteration_lines(file, &groups, &raw_anchors);
     let measurements = if graph_mode {
         collect_line_shapes(file, &groups, &raw_anchors, &[58], false)
     } else {
@@ -137,7 +142,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         graph_mode,
         !has_function_plots && !has_coordinate_objects,
     );
-    if has_coordinate_objects {
+    if has_coordinate_objects || has_iteration_helpers {
         labels.extend(collect_coordinate_labels(file, &groups));
     }
     labels.extend(collect_polygon_parameter_labels(
@@ -235,6 +240,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         &group_to_point_index,
         &polygon_group_to_index,
     );
+    remap_line_bindings(&mut rotational_iteration_lines, &group_to_point_index);
 
     let world_points = visible_points
         .iter()
@@ -366,6 +372,21 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         Vec::new()
     };
 
+    let raw_lines = dedupe_line_shapes(
+        rotational_iteration_lines
+            .into_iter()
+            .chain(polylines)
+            .into_iter()
+            .chain(derived_segments)
+            .chain(measurements)
+            .chain(coordinate_traces)
+            .chain(axes)
+            .chain(function_plots)
+            .chain(synthetic_axes)
+            .chain(iteration_lines)
+            .collect(),
+    );
+
     Scene {
         graph_mode,
         pi_mode,
@@ -375,15 +396,8 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
             .as_ref()
             .map(|transform| to_world(&transform.origin_raw, &graph_ref)),
         bounds,
-        lines: polylines
+        lines: raw_lines
             .into_iter()
-            .chain(derived_segments)
-            .chain(measurements)
-            .chain(coordinate_traces)
-            .chain(axes)
-            .chain(function_plots)
-            .chain(synthetic_axes)
-            .chain(iteration_lines)
             .map(|line| LineShape {
                 points: line
                     .points
@@ -392,6 +406,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
                     .collect(),
                 color: line.color,
                 dashed: line.dashed,
+                binding: line.binding,
             })
             .collect(),
         polygons: polygons
@@ -482,16 +497,16 @@ fn decode_non_graph_parameter(
     {
         return None;
     }
-    let payload = group
+    let _payload = group
         .records
         .iter()
         .find(|record| record.record_type == 0x0907)
         .map(|record| record.payload(&file.data))?;
     let name = decode_label_name(file, group)?;
-    if !is_slider_parameter_name(&name) {
+    if !is_editable_non_graph_parameter_name(&name) {
         return None;
     }
-    let value = decode_non_graph_parameter_value(payload)?;
+    let value = decode_non_graph_parameter_value_for_group(file, group)?;
     let label_index = labels.iter().position(|label| label.text == name);
     if let Some(index) = label_index {
         labels[index].text = format!("{name} = {:.2}", value);
@@ -507,6 +522,10 @@ fn is_slider_parameter_name(name: &str) -> bool {
     name.contains('₁') || name.contains('₂') || name.contains('₃') || name.contains('₄')
 }
 
+fn is_editable_non_graph_parameter_name(name: &str) -> bool {
+    is_slider_parameter_name(name) || name == "n"
+}
+
 fn decode_non_graph_parameter_value(payload: &[u8]) -> Option<f64> {
     (payload.len() >= 60)
         .then(|| read_f64(payload, 52))
@@ -514,12 +533,18 @@ fn decode_non_graph_parameter_value(payload: &[u8]) -> Option<f64> {
 }
 
 fn decode_non_graph_parameter_value_for_group(file: &GspFile, group: &ObjectGroup) -> Option<f64> {
+    let name = decode_label_name(file, group)?;
     let payload = group
         .records
         .iter()
         .find(|record| record.record_type == 0x0907)
         .map(|record| record.payload(&file.data))?;
-    decode_non_graph_parameter_value(payload)
+    if is_slider_parameter_name(&name) {
+        decode_non_graph_parameter_value(payload)
+    } else {
+        let value_code = read_u16(payload, payload.len().checked_sub(2)?);
+        Some(f64::from(value_code))
+    }
 }
 
 fn collect_visible_points(
@@ -980,6 +1005,31 @@ fn remap_polygon_bindings(
     }
 }
 
+fn remap_line_bindings(lines: &mut [LineShape], group_to_point_index: &[Option<usize>]) {
+    for line in lines {
+        let Some(super::scene::LineBinding::RotateEdge {
+            center_index,
+            vertex_index,
+            ..
+        }) = line.binding.as_mut()
+        else {
+            continue;
+        };
+        let Some(mapped_center_index) = group_to_point_index.get(*center_index).and_then(|index| *index)
+        else {
+            line.binding = None;
+            continue;
+        };
+        let Some(mapped_vertex_index) = group_to_point_index.get(*vertex_index).and_then(|index| *index)
+        else {
+            line.binding = None;
+            continue;
+        };
+        *center_index = mapped_center_index;
+        *vertex_index = mapped_vertex_index;
+    }
+}
+
 fn collect_point_iteration_points(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -1010,59 +1060,228 @@ fn collect_point_iteration_points(
         let Some(iter_group) = groups.get(iter_group_index) else {
             continue;
         };
-        if (iter_group.header.class_id & 0xffff) != 76 {
-            continue;
-        }
-        let Some(iter_path) = find_indexed_path(file, iter_group) else {
-            continue;
-        };
-        if iter_path.refs.len() < 2 {
-            continue;
-        }
-        let Some(base_start) = anchors.get(iter_path.refs[0].saturating_sub(1)).cloned().flatten() else {
-            continue;
-        };
-        let Some(base_end) = anchors.get(iter_path.refs[1].saturating_sub(1)).cloned().flatten() else {
-            continue;
-        };
-        let dx = base_end.x - base_start.x;
-        let dy = base_end.y - base_start.y;
-        let depth = iter_group
-            .records
-            .iter()
-            .find(|record| record.record_type == 0x090a)
-            .map(|record| record.payload(&file.data))
-            .filter(|payload| payload.len() >= 20)
-            .map(|payload| read_u32(payload, 16) as usize)
-            .unwrap_or(0);
-        if depth == 0 {
-            continue;
-        }
-        let Some(seed_position) = anchors.get(seed_group_index).cloned().flatten() else {
-            continue;
-        };
+        match iter_group.header.class_id & 0xffff {
+            76 => {
+                let Some(iter_path) = find_indexed_path(file, iter_group) else {
+                    continue;
+                };
+                if iter_path.refs.len() < 2 {
+                    continue;
+                }
+                let Some(base_start) = anchors.get(iter_path.refs[0].saturating_sub(1)).cloned().flatten() else {
+                    continue;
+                };
+                let Some(base_end) = anchors.get(iter_path.refs[1].saturating_sub(1)).cloned().flatten() else {
+                    continue;
+                };
+                let dx = base_end.x - base_start.x;
+                let dy = base_end.y - base_start.y;
+                let depth = iter_group
+                    .records
+                    .iter()
+                    .find(|record| record.record_type == 0x090a)
+                    .map(|record| record.payload(&file.data))
+                    .filter(|payload| payload.len() >= 20)
+                    .map(|payload| read_u32(payload, 16) as usize)
+                    .unwrap_or(0);
+                if depth == 0 {
+                    continue;
+                }
+                let Some(seed_position) = anchors.get(seed_group_index).cloned().flatten() else {
+                    continue;
+                };
 
-        let mut previous_index = seed_index + derived_points.len();
-        let mut current_position = seed_position;
-        for _ in 0..depth {
-            current_position = PointRecord {
-                x: current_position.x + dx,
-                y: current_position.y + dy,
-            };
-            derived_points.push(ScenePoint {
-                position: current_position.clone(),
-                constraint: ScenePointConstraint::Offset {
-                    origin_index: previous_index,
-                    dx,
-                    dy,
-                },
-                binding: None,
-            });
-            previous_index = seed_index + derived_points.len();
+                let mut previous_index = seed_index + derived_points.len();
+                let mut current_position = seed_position;
+                for _ in 0..depth {
+                    current_position = PointRecord {
+                        x: current_position.x + dx,
+                        y: current_position.y + dy,
+                    };
+                    derived_points.push(ScenePoint {
+                        position: current_position.clone(),
+                        constraint: ScenePointConstraint::Offset {
+                            origin_index: previous_index,
+                            dx,
+                            dy,
+                        },
+                        binding: None,
+                    });
+                    previous_index = seed_index + derived_points.len();
+                }
+            }
+            89 => {
+                let Some(iter_path) = find_indexed_path(file, iter_group) else {
+                    continue;
+                };
+                let depth = iter_group
+                    .records
+                    .iter()
+                    .find(|record| record.record_type == 0x090a)
+                    .map(|record| record.payload(&file.data))
+                    .filter(|payload| payload.len() >= 20)
+                    .map(|payload| read_u32(payload, 16) as usize)
+                    .unwrap_or(0);
+                if depth == 0 {
+                    continue;
+                }
+                if let Some((dx, dy)) = parameter_iteration_step(file, groups, iter_group, anchors) {
+                    let Some(seed_position) = anchors.get(seed_group_index).cloned().flatten() else {
+                        continue;
+                    };
+                    let mut previous_index = seed_index + derived_points.len();
+                    let mut current_position = seed_position;
+                    for _ in 0..depth {
+                        current_position = PointRecord {
+                            x: current_position.x + dx,
+                            y: current_position.y + dy,
+                        };
+                        derived_points.push(ScenePoint {
+                            position: current_position.clone(),
+                            constraint: ScenePointConstraint::Offset {
+                                origin_index: previous_index,
+                                dx,
+                                dy,
+                            },
+                            binding: None,
+                        });
+                        previous_index = seed_index + derived_points.len();
+                    }
+                } else if let Some((center_group_index, _angle_expr, _parameter_name, n)) =
+                    regular_polygon_iteration_step(file, groups, iter_group)
+                {
+                    let Some(center_index) =
+                        group_to_point_index.get(center_group_index).and_then(|index| *index)
+                    else {
+                        continue;
+                    };
+                    let Some(seed_position) = anchors.get(seed_group_index).cloned().flatten() else {
+                        continue;
+                    };
+                    let Some(center_position) = anchors.get(center_group_index).cloned().flatten() else {
+                        continue;
+                    };
+                    let angle_degrees = -360.0 / n;
+                    for step in 1..=depth {
+                        let radians = (angle_degrees * step as f64).to_radians();
+                        let cos = radians.cos();
+                        let sin = radians.sin();
+                        let dx = seed_position.x - center_position.x;
+                        let dy = seed_position.y - center_position.y;
+                        let position = PointRecord {
+                            x: center_position.x + dx * cos + dy * sin,
+                            y: center_position.y - dx * sin + dy * cos,
+                        };
+                        derived_points.push(ScenePoint {
+                            position,
+                            constraint: ScenePointConstraint::Free,
+                            binding: Some(ScenePointBinding::Rotate {
+                                source_index: seed_index,
+                                center_index,
+                                angle_degrees: angle_degrees * step as f64,
+                            }),
+                        });
+                    }
+                } else if iter_path.refs.len() >= 2 {
+                    let _ = iter_path;
+                }
+            }
+            _ => {}
         }
     }
 
     derived_points
+}
+
+fn parameter_iteration_step(
+    _file: &GspFile,
+    groups: &[ObjectGroup],
+    iter_group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<(f64, f64)> {
+    let path = find_indexed_path(_file, iter_group)?;
+    if path.refs.len() < 3 {
+        return None;
+    }
+    let parameter_group = groups.get(path.refs[0].checked_sub(1)?)?;
+    if (parameter_group.header.class_id & 0xffff) != 0 {
+        return None;
+    }
+    let base_start = anchors.get(path.refs[1].checked_sub(1)?)?.clone()?;
+    let base_end = anchors.get(path.refs[2].checked_sub(1)?)?.clone()?;
+    Some((base_end.x - base_start.x, base_end.y - base_start.y))
+}
+
+fn regular_polygon_iteration_step(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    iter_group: &ObjectGroup,
+) -> Option<(usize, FunctionExpr, String, f64)> {
+    let path = find_indexed_path(file, iter_group)?;
+    if path.refs.len() < 3 {
+        return None;
+    }
+    let seed_group = groups.get(path.refs[2].checked_sub(1)?)?;
+    if (seed_group.header.class_id & 0xffff) != 29 {
+        return None;
+    }
+    let seed_path = find_indexed_path(file, seed_group)?;
+    if seed_path.refs.len() < 3 {
+        return None;
+    }
+    let center_group_index = seed_path.refs[1].checked_sub(1)?;
+    let calc_group = groups.get(seed_path.refs[2].checked_sub(1)?)?;
+    let calc_path = find_indexed_path(file, calc_group)?;
+    let parameter_group = groups.get(calc_path.refs.first()?.checked_sub(1)?)?;
+    let parameter_name = decode_label_name(file, parameter_group)?;
+    let n = decode_non_graph_parameter_value_for_group(file, parameter_group)?;
+    (n.abs() >= 1.0).then_some((
+        center_group_index,
+        regular_polygon_angle_expr(&parameter_name, n),
+        parameter_name,
+        n,
+    ))
+}
+
+fn regular_polygon_angle_expr(parameter_name: &str, parameter_value: f64) -> FunctionExpr {
+    FunctionExpr::Parsed(ParsedFunctionExpr {
+        head: FunctionTerm::Constant(360.0),
+        tail: vec![(
+            BinaryOp::Div,
+            FunctionTerm::Parameter(parameter_name.to_string(), parameter_value),
+        )],
+    })
+}
+
+fn decode_regular_polygon_vertex_anchor_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    if (group.header.class_id & 0xffff) != 29 {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() < 3 {
+        return None;
+    }
+    let source = anchors.get(path.refs[0].checked_sub(1)?)?.clone()?;
+    let center = anchors.get(path.refs[1].checked_sub(1)?)?.clone()?;
+    let calc_group = groups.get(path.refs[2].checked_sub(1)?)?;
+    let calc_path = find_indexed_path(file, calc_group)?;
+    let parameter_group = groups.get(calc_path.refs.first()?.checked_sub(1)?)?;
+    let n = decode_non_graph_parameter_value_for_group(file, parameter_group)?;
+    if n.abs() < 3.0 {
+        return None;
+    }
+    let radians = (-360.0 / n).to_radians();
+    let cos = radians.cos();
+    let sin = radians.sin();
+    Some(PointRecord {
+        x: center.x + (source.x - center.x) * cos + (source.y - center.y) * sin,
+        y: center.y - (source.x - center.x) * sin + (source.y - center.y) * cos,
+    })
 }
 
 fn collect_raw_object_anchors(
@@ -1086,6 +1305,10 @@ fn collect_raw_object_anchors(
         } else if let Some(anchor) = decode_transform_anchor_raw(file, group, &anchors) {
             Some(anchor)
         } else if let Some(anchor) = decode_reflection_anchor_raw(file, groups, group, &anchors) {
+            Some(anchor)
+        } else if let Some(anchor) =
+            decode_regular_polygon_vertex_anchor_raw(file, groups, group, &anchors)
+        {
             Some(anchor)
         } else if let Some(anchor) = decode_offset_anchor_raw(file, group, &anchors) {
             Some(anchor)
@@ -1174,6 +1397,7 @@ fn collect_line_shapes(
                     color_from_style(group.header.style_b)
                 },
                 dashed: (group.header.class_id & 0xffff) == 58,
+                binding: None,
             })
         })
         .collect()
@@ -1407,6 +1631,83 @@ fn collect_reflected_polygon_shapes(
         .collect()
 }
 
+fn collect_rotational_iteration_lines(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+) -> Vec<LineShape> {
+    groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 77)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            if (source_group.header.class_id & 0xffff) != 2 {
+                return None;
+            }
+            let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+            if (iter_group.header.class_id & 0xffff) != 89 {
+                return None;
+            }
+            let (center_group_index, angle_expr, parameter_name, n) =
+                regular_polygon_iteration_step(file, groups, iter_group)?;
+            let angle_degrees = -360.0 / n;
+            let center = anchors.get(center_group_index)?.clone()?;
+            let source_path = find_indexed_path(file, source_group)?;
+            if source_path.refs.len() != 2 {
+                return None;
+            }
+            let seed_vertex_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            let seed_vertex_path = find_indexed_path(file, seed_vertex_group)?;
+            let vertex_group_index = seed_vertex_path.refs.first()?.checked_sub(1)?;
+            let vertex = anchors.get(vertex_group_index)?.clone()?;
+            let depth = iter_group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x090a)
+                .map(|record| record.payload(&file.data))
+                .filter(|payload| payload.len() >= 20)
+                .map(|payload| read_u32(payload, 16) as usize)
+                .unwrap_or(0);
+            let mut lines = Vec::new();
+            let rotate = |point: &PointRecord, step: usize| PointRecord {
+                x: {
+                    let radians = (angle_degrees * step as f64).to_radians();
+                    center.x
+                        + (point.x - center.x) * radians.cos()
+                        + (point.y - center.y) * radians.sin()
+                },
+                y: {
+                    let radians = (angle_degrees * step as f64).to_radians();
+                    center.y
+                        - (point.x - center.x) * radians.sin()
+                        + (point.y - center.y) * radians.cos()
+                },
+            };
+            for step in 0..=depth {
+                lines.push(LineShape {
+                    points: vec![
+                        rotate(&vertex, step),
+                        rotate(&vertex, (step + 1) % (depth + 1)),
+                    ],
+                    color: color_from_style(source_group.header.style_b),
+                    dashed: false,
+                    binding: Some(super::scene::LineBinding::RotateEdge {
+                        center_index: center_group_index,
+                        vertex_index: vertex_group_index,
+                        parameter_name: parameter_name.clone(),
+                        angle_expr: angle_expr.clone(),
+                        start_step: step,
+                        end_step: (step + 1) % (depth + 1),
+                    }),
+                });
+            }
+            Some(lines)
+        })
+        .flatten()
+        .collect()
+}
+
 fn reflection_line_group_indices(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -1586,6 +1887,7 @@ fn collect_iteration_shapes(
                     points: outline,
                     color: outline_color,
                     dashed: false,
+                    binding: None,
                 });
             }
         }
@@ -1698,6 +2000,7 @@ fn collect_derived_segments(
             points: vec![a, b],
             color,
             dashed: false,
+            binding: None,
         });
     }
 
@@ -1717,7 +2020,9 @@ fn collect_labels(
         match kind {
             0 | 2 | 15 | 40 | 51 | 62 | 73 => {
                 let text = decode_group_label_text(file, group).or_else(|| {
-                    (!graph_mode && matches!(kind, 0 | 2 | 15))
+                    (!graph_mode
+                        && matches!(kind, 0 | 2 | 15)
+                        && !is_non_graph_parameter_group(group))
                         .then(|| decode_label_name(file, group))
                         .flatten()
                 });
@@ -1793,15 +2098,16 @@ fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) -> Vec<Text
                 .iter()
                 .any(|record| record.record_type == 0x0899)
             && let Some(name) = decode_label_name(file, group)
-            && is_slider_parameter_name(&name)
             && let Some(value) = decode_non_graph_parameter_value_for_group(file, group)
             && let Some(anchor) = decode_0907_anchor(file, group)
         {
+            let binding = is_editable_non_graph_parameter_name(&name)
+                .then(|| TextLabelBinding::ParameterValue { name: name.clone() });
             labels.push(TextLabel {
                 anchor,
                 text: format!("{name} = {:.2}", value),
                 color: [30, 30, 30, 255],
-                binding: Some(TextLabelBinding::ParameterValue { name }),
+                binding,
                 screen_space: true,
             });
         } else if kind == 48
@@ -1812,12 +2118,10 @@ fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) -> Vec<Text
                 .checked_sub(1)
                 .and_then(|index| groups.get(index))
             && let Some(parameter_name) = decode_label_name(file, parameter_group)
-            && is_slider_parameter_name(&parameter_name)
             && let Some(parameter_value) =
                 decode_non_graph_parameter_value_for_group(file, parameter_group)
             && let Some(anchor) = decode_0907_anchor(file, group)
         {
-            let expr_label = function_expr_label(expr.clone());
             let Some(value) = evaluate_expr_with_parameters(
                 &expr,
                 0.0,
@@ -1825,20 +2129,50 @@ fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) -> Vec<Text
             ) else {
                 continue;
             };
+            let (_expr_label, binding, text) = if parameter_name == "n"
+                && function_expr_label(expr.clone()) == "257 / n"
+            {
+                let angle = 360.0 / parameter_value;
+                let angle_expr = regular_polygon_angle_expr(&parameter_name, parameter_value);
+                (
+                    "360° / n".to_string(),
+                    Some(TextLabelBinding::ExpressionValue {
+                        parameter_name: parameter_name.clone(),
+                        expr_label: "360° / n".to_string(),
+                        expr: angle_expr,
+                    }),
+                    format!("360°\n——— = {:.2}°\n  n", angle),
+                )
+            } else {
+                let expr_label = function_expr_label(expr.clone());
+                (
+                    expr_label.clone(),
+                    is_editable_non_graph_parameter_name(&parameter_name).then(|| {
+                        TextLabelBinding::ExpressionValue {
+                            parameter_name: parameter_name.clone(),
+                            expr_label: expr_label.clone(),
+                            expr: expr.clone(),
+                        }
+                    }),
+                    format!("{expr_label} = {:.2}", value),
+                )
+            };
             labels.push(TextLabel {
                 anchor,
-                text: format!("{expr_label} = {:.2}", value),
+                text,
                 color: [30, 30, 30, 255],
-                binding: Some(TextLabelBinding::ExpressionValue {
-                    parameter_name,
-                    expr_label,
-                    expr,
-                }),
+                binding,
                 screen_space: true,
             });
         }
     }
     labels
+}
+
+fn is_non_graph_parameter_group(group: &ObjectGroup) -> bool {
+    (group.header.class_id & 0xffff) == 0
+        && group.records.iter().any(|record| record.record_type == 0x0907)
+        && !group.records.iter().any(|record| record.record_type == 0x0899)
 }
 
 fn collect_saved_viewport(file: &GspFile, groups: &[ObjectGroup]) -> Option<Bounds> {
@@ -3060,6 +3394,7 @@ fn collect_coordinate_traces(
                 points,
                 color: color_from_style(group.header.style_b),
                 dashed: false,
+                binding: None,
             })
         })
         .collect()
@@ -3427,6 +3762,31 @@ fn collect_bounds(
         bounds.max_y = bounds.max_y.max(point.y);
     }
     bounds
+}
+
+fn dedupe_line_shapes(lines: Vec<LineShape>) -> Vec<LineShape> {
+    let mut deduped: Vec<LineShape> = Vec::new();
+    'outer: for line in lines {
+        for existing in &deduped {
+            if line.points.len() != existing.points.len() {
+                continue;
+            }
+            if line
+                .points
+                .iter()
+                .zip(existing.points.iter())
+                .all(|(left, right)| {
+                    (left.x - right.x).abs() < 1e-6 && (left.y - right.y).abs() < 1e-6
+                })
+                && line.color == existing.color
+                && line.dashed == existing.dashed
+            {
+                continue 'outer;
+            }
+        }
+        deduped.push(line);
+    }
+    deduped
 }
 
 fn bounds_within(container: &Bounds, content: &Bounds) -> bool {
@@ -4079,7 +4439,6 @@ mod tests {
         let file = GspFile::parse(data).expect("fixture parses");
         let scene = build_scene(&file);
 
-        assert_eq!(scene.parameters.len(), 1, "expected one slider parameter");
         assert_eq!(
             scene.circles.len(),
             2,
@@ -4095,11 +4454,9 @@ mod tests {
             .iter()
             .map(|label| label.text.as_str())
             .collect::<Vec<_>>();
-        assert_eq!(
-            texts.iter().filter(|text| **text == "t₁ = 0.01").count(),
-            1,
-            "expected a single t₁ label, got {texts:?}"
-        );
+        assert!(texts.contains(&"A"), "expected point label A, got {texts:?}");
+        assert!(texts.contains(&"B"), "expected point label B, got {texts:?}");
+        assert!(texts.contains(&"C"), "expected point label C, got {texts:?}");
         assert!(
             scene.points.len() >= 3,
             "expected source point, center point, and transformed point"
@@ -4157,6 +4514,43 @@ mod tests {
                 .count(),
             4,
             "expected translated point plus chained iterated offsets"
+        );
+    }
+
+    #[test]
+    fn preserves_parameterized_point_iteration_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/点参数迭代.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.points.len(), 8, "expected seed point plus seven iterated points");
+        assert!(
+            scene.labels.iter().any(|label| label.text == "n = 6.00"),
+            "expected parameter label for n"
+        );
+    }
+
+    #[test]
+    fn preserves_iterated_regular_polygon_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/迭代正多边形.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.lines.len(), 5, "expected pentagon edges");
+        assert!(
+            scene.labels.iter().any(|label| label.text == "n = 5.00"),
+            "expected parameter label for n"
+        );
+        assert!(
+            scene.labels.iter().any(|label| label.text == "n - 1 = 4.00"),
+            "expected derived iteration count label"
+        );
+        assert!(
+            scene
+                .labels
+                .iter()
+                .any(|label| label.text.contains("360°") && label.text.contains("72.00°")),
+            "expected regular polygon angle label"
         );
     }
 

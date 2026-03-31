@@ -33,6 +33,7 @@ pub(crate) enum BinaryOp {
     Add,
     Sub,
     Mul,
+    Div,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -122,6 +123,7 @@ pub(super) fn collect_function_plots(
                 points,
                 color: super::geometry::color_from_style(group.header.style_b),
                 dashed: false,
+                binding: None,
             });
         }
     }
@@ -200,6 +202,7 @@ pub(super) fn synthesize_function_axes(
             .collect(),
             color: [192, 192, 192, 255],
             dashed: false,
+            binding: None,
         });
     }
     if world_bounds.min_y <= 0.0 && 0.0 <= world_bounds.max_y {
@@ -226,6 +229,7 @@ pub(super) fn synthesize_function_axes(
             .collect(),
             color: [192, 192, 192, 255],
             dashed: false,
+            binding: None,
         });
     }
 
@@ -693,6 +697,7 @@ pub(super) fn function_expr_label(expr: FunctionExpr) -> String {
                     BinaryOp::Add => " + ",
                     BinaryOp::Sub => " - ",
                     BinaryOp::Mul => " * ",
+                    BinaryOp::Div => " / ",
                 });
                 text.push_str(&format_function_term(term));
             }
@@ -747,6 +752,7 @@ fn evaluate_function_expr(expr: &ParsedFunctionExpr, x: f64) -> Option<f64> {
             BinaryOp::Add => value + rhs,
             BinaryOp::Sub => value - rhs,
             BinaryOp::Mul => value * rhs,
+            BinaryOp::Div => (rhs.abs() >= 1e-9).then_some(value / rhs)?,
         };
     }
     value.is_finite().then_some(value)
@@ -782,6 +788,7 @@ fn evaluate_parsed_with_parameters(
             BinaryOp::Add => value + rhs,
             BinaryOp::Sub => value - rhs,
             BinaryOp::Mul => value * rhs,
+            BinaryOp::Div => (rhs.abs() >= 1e-9).then_some(value / rhs)?,
         };
     }
     value.is_finite().then_some(value)
@@ -887,6 +894,7 @@ fn parse_function_expr_from(
         let op = match words[index] {
             0x1000 => BinaryOp::Add,
             0x1001 => BinaryOp::Sub,
+            0x1003 => BinaryOp::Div,
             _ => break,
         };
         index += 1;

@@ -3,7 +3,7 @@ use crate::render::extract::build_scene;
 use crate::render::functions::{BinaryOp, FunctionExpr, FunctionTerm, UnaryFunction};
 use crate::render::geometry::darken;
 use crate::render::scene::{
-    Scene, ScenePointBinding, ScenePointConstraint, ShapeBinding, TextLabelBinding,
+    LineBinding, Scene, ScenePointBinding, ScenePointConstraint, ShapeBinding, TextLabelBinding,
 };
 use serde::Serialize;
 use std::fmt::Write as _;
@@ -236,6 +236,7 @@ struct LineJson {
     points: Vec<PointJson>,
     color: [u8; 4],
     dashed: bool,
+    binding: Option<LineBindingJson>,
 }
 
 impl LineJson {
@@ -244,6 +245,49 @@ impl LineJson {
             points: line.points.iter().map(PointJson::from_point).collect(),
             color: line.color,
             dashed: line.dashed,
+            binding: line.binding.as_ref().map(LineBindingJson::from_binding),
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind")]
+enum LineBindingJson {
+    #[serde(rename = "rotate-edge")]
+    RotateEdge {
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "vertexIndex")]
+        vertex_index: usize,
+        #[serde(rename = "parameterName")]
+        parameter_name: String,
+        #[serde(rename = "angleExpr")]
+        angle_expr: FunctionExprJson,
+        #[serde(rename = "startStep")]
+        start_step: usize,
+        #[serde(rename = "endStep")]
+        end_step: usize,
+    },
+}
+
+impl LineBindingJson {
+    fn from_binding(binding: &LineBinding) -> Self {
+        match binding {
+            LineBinding::RotateEdge {
+                center_index,
+                vertex_index,
+                parameter_name,
+                angle_expr,
+                start_step,
+                end_step,
+            } => Self::RotateEdge {
+                center_index: *center_index,
+                vertex_index: *vertex_index,
+                parameter_name: parameter_name.clone(),
+                angle_expr: FunctionExprJson::from_expr(angle_expr),
+                start_step: *start_step,
+                end_step: *end_step,
+            },
         }
     }
 }
@@ -848,6 +892,7 @@ fn binary_op_name(op: BinaryOp) -> &'static str {
         BinaryOp::Add => "add",
         BinaryOp::Sub => "sub",
         BinaryOp::Mul => "mul",
+        BinaryOp::Div => "div",
     }
 }
 

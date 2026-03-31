@@ -148,6 +148,7 @@
       color: line.color,
       dashed: line.dashed,
       points: line.points.map(attachPointRef),
+      binding: line.binding ? { ...line.binding } : null,
     }));
     return {
       graphMode: scene.graphMode,
@@ -249,7 +250,13 @@
     if (expr.kind === "parsed") {
       let text = formatExprTerm(expr.head);
       for (const part of expr.tail) {
-        text += part.op === "sub" ? " - " : " + ";
+        text += part.op === "sub"
+          ? " - "
+          : part.op === "mul"
+            ? " * "
+            : part.op === "div"
+              ? " / "
+              : " + ";
         text += formatExprTerm(part.term);
       }
       return text;
@@ -281,7 +288,14 @@
     for (const part of expr.tail) {
       const rhs = evaluateExprTerm(part.term, x, parameters);
       if (rhs === null) return null;
-      value = part.op === "sub" ? value - rhs : value + rhs;
+      value = part.op === "sub"
+        ? value - rhs
+        : part.op === "mul"
+          ? value * rhs
+        : part.op === "div"
+          ? (Math.abs(rhs) >= 1e-9 ? value / rhs : null)
+          : value + rhs;
+      if (value === null) return null;
     }
     return Number.isFinite(value) ? value : null;
   }
@@ -589,6 +603,83 @@
         });
       }
     });
+
+    scene.lines.forEach((line) => {
+      if (line.binding?.kind !== "rotate-edge") {
+        return;
+      }
+    });
+
+    const preservedLines = [];
+    const rotateFamilies = new Map();
+    const parameters = parameterMap();
+    scene.lines.forEach((line) => {
+      if (line.binding?.kind !== "rotate-edge") {
+        preservedLines.push(line);
+        return;
+      }
+      const key = `${line.binding.centerIndex}:${line.binding.vertexIndex}:${line.binding.parameterName}`;
+      if (!rotateFamilies.has(key)) {
+        rotateFamilies.set(key, {
+          binding: line.binding,
+          color: line.color,
+          dashed: line.dashed,
+        });
+      }
+    });
+    for (const family of rotateFamilies.values()) {
+      const center = scene.points[family.binding.centerIndex];
+      const vertex = scene.points[family.binding.vertexIndex];
+      const sidesValue = parameters.get(family.binding.parameterName);
+      const sides = Math.max(1, Math.round(Number.isFinite(sidesValue) ? sidesValue : 1));
+      if (!center || !vertex) continue;
+      if (sides === 1) {
+        continue;
+      }
+      const angleDegrees = evaluateExpr(family.binding.angleExpr, 0, parameters);
+      if (!Number.isFinite(angleDegrees)) {
+        continue;
+      }
+      const rotate = (step) => {
+        const radians = (angleDegrees * step) * Math.PI / 180;
+        const cos = Math.cos(radians);
+        const sin = Math.sin(radians);
+        const dx = vertex.x - center.x;
+        const dy = vertex.y - center.y;
+        return {
+          x: center.x + dx * cos + dy * sin,
+          y: center.y - dx * sin + dy * cos,
+        };
+      };
+      if (sides === 2) {
+        preservedLines.push({
+          points: [rotate(0), rotate(1)],
+          color: family.color,
+          dashed: family.dashed,
+          binding: {
+            ...family.binding,
+            angleDegrees,
+            startStep: 0,
+            endStep: 1,
+          },
+        });
+        continue;
+      }
+      for (let step = 0; step < sides; step += 1) {
+        preservedLines.push({
+          points: [rotate(step), rotate((step + 1) % sides)],
+          color: family.color,
+          dashed: family.dashed,
+          binding: {
+            ...family.binding,
+            angleDegrees,
+            startStep: step,
+            endStep: (step + 1) % sides,
+          },
+        });
+      }
+    }
+    scene.lines = preservedLines;
   }
 
   function refreshDynamicLabels(scene) {
@@ -603,7 +694,9 @@
       } else if (label.binding.kind === "expression-value") {
         const value = evaluateExpr(label.binding.expr, 0, parameters);
         if (value !== null) {
-          label.text = `${label.binding.exprLabel} = ${formatNumber(value)}`;
+          label.text = label.binding.exprLabel === "360° / n"
+            ? `360°\n——— = ${formatNumber(value)}°\n  n`
+            : `${label.binding.exprLabel} = ${formatNumber(value)}`;
         }
       } else if (label.binding.kind === "polygon-boundary-parameter") {
         const value = polygonBoundaryParameterFromPoint(scene, label.binding.pointIndex);
