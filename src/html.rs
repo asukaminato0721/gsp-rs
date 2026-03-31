@@ -2,7 +2,9 @@ use crate::format::{GspFile, PointRecord};
 use crate::render::extract::build_scene;
 use crate::render::functions::{BinaryOp, FunctionExpr, FunctionTerm, UnaryFunction};
 use crate::render::geometry::darken;
-use crate::render::scene::{Scene, ScenePointBinding, ScenePointConstraint, TextLabelBinding};
+use crate::render::scene::{
+    Scene, ScenePointBinding, ScenePointConstraint, ShapeBinding, TextLabelBinding,
+};
 use serde::Serialize;
 use std::fmt::Write as _;
 use std::fs;
@@ -252,6 +254,7 @@ struct PolygonJson {
     points: Vec<PointJson>,
     color: [u8; 4],
     outline_color: [u8; 4],
+    binding: Option<ShapeBindingJson>,
 }
 
 impl PolygonJson {
@@ -260,6 +263,7 @@ impl PolygonJson {
             points: polygon.points.iter().map(PointJson::from_point).collect(),
             color: polygon.color,
             outline_color: darken(polygon.color, 80),
+            binding: polygon.binding.as_ref().map(ShapeBindingJson::from_binding),
         }
     }
 }
@@ -270,6 +274,7 @@ struct CircleJson {
     center: PointJson,
     radius_point: PointJson,
     color: [u8; 4],
+    binding: Option<ShapeBindingJson>,
 }
 
 impl CircleJson {
@@ -278,6 +283,89 @@ impl CircleJson {
             center: PointJson::from_point(&circle.center),
             radius_point: PointJson::from_point(&circle.radius_point),
             color: circle.color,
+            binding: circle.binding.as_ref().map(ShapeBindingJson::from_binding),
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind")]
+enum ShapeBindingJson {
+    #[serde(rename = "scale-polygon")]
+    ScalePolygon {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        factor: f64,
+    },
+    #[serde(rename = "scale-circle")]
+    ScaleCircle {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        factor: f64,
+    },
+    #[serde(rename = "reflect-polygon")]
+    ReflectPolygon {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        #[serde(rename = "lineStartIndex")]
+        line_start_index: usize,
+        #[serde(rename = "lineEndIndex")]
+        line_end_index: usize,
+    },
+    #[serde(rename = "reflect-circle")]
+    ReflectCircle {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        #[serde(rename = "lineStartIndex")]
+        line_start_index: usize,
+        #[serde(rename = "lineEndIndex")]
+        line_end_index: usize,
+    },
+}
+
+impl ShapeBindingJson {
+    fn from_binding(binding: &ShapeBinding) -> Self {
+        match binding {
+            ShapeBinding::ScalePolygon {
+                source_index,
+                center_index,
+                factor,
+            } => Self::ScalePolygon {
+                source_index: *source_index,
+                center_index: *center_index,
+                factor: *factor,
+            },
+            ShapeBinding::ScaleCircle {
+                source_index,
+                center_index,
+                factor,
+            } => Self::ScaleCircle {
+                source_index: *source_index,
+                center_index: *center_index,
+                factor: *factor,
+            },
+            ShapeBinding::ReflectPolygon {
+                source_index,
+                line_start_index,
+                line_end_index,
+            } => Self::ReflectPolygon {
+                source_index: *source_index,
+                line_start_index: *line_start_index,
+                line_end_index: *line_end_index,
+            },
+            ShapeBinding::ReflectCircle {
+                source_index,
+                line_start_index,
+                line_end_index,
+            } => Self::ReflectCircle {
+                source_index: *source_index,
+                line_start_index: *line_start_index,
+                line_end_index: *line_end_index,
+            },
         }
     }
 }
@@ -421,6 +509,15 @@ enum PointBindingJson {
         #[serde(rename = "sourceIndex")]
         source_index: usize,
     },
+    #[serde(rename = "reflect")]
+    Reflect {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        #[serde(rename = "lineStartIndex")]
+        line_start_index: usize,
+        #[serde(rename = "lineEndIndex")]
+        line_end_index: usize,
+    },
     #[serde(rename = "rotate")]
     Rotate {
         #[serde(rename = "sourceIndex")]
@@ -451,6 +548,15 @@ impl PointBindingJson {
             ScenePointBinding::Parameter { name } => Self::Parameter { name: name.clone() },
             ScenePointBinding::DerivedParameter { source_index } => Self::DerivedParameter {
                 source_index: *source_index,
+            },
+            ScenePointBinding::Reflect {
+                source_index,
+                line_start_index,
+                line_end_index,
+            } => Self::Reflect {
+                source_index: *source_index,
+                line_start_index: *line_start_index,
+                line_end_index: *line_end_index,
             },
             ScenePointBinding::Rotate {
                 source_index,

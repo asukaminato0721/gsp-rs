@@ -163,11 +163,13 @@
         color: polygon.color,
         outlineColor: polygon.outlineColor,
         points: polygon.points.map(attachPointRef),
+        binding: polygon.binding ? { ...polygon.binding } : null,
       })),
       circles: scene.circles.map((circle) => ({
         color: circle.color,
         center: attachPointRef(circle.center),
         radiusPoint: attachPointRef(circle.radiusPoint),
+        binding: circle.binding ? { ...circle.binding } : null,
       })),
       labels: scene.labels.map((label) => ({
         text: label.text,
@@ -475,12 +477,33 @@
   }
 
   function refreshDerivedPoints(scene) {
+    const resolveHandle = (handle) => {
+      if (typeof handle?.pointIndex === "number") {
+        return scene.points[handle.pointIndex] || { x: 0, y: 0 };
+      }
+      return handle || { x: 0, y: 0 };
+    };
+
     scene.points.forEach((point) => {
       if (point.binding?.kind === "derived-parameter") {
         const value = parameterValueFromPoint(scene, point.binding.sourceIndex);
         if (value !== null) {
           applyNormalizedParameterToPoint(point, scene, value);
         }
+      } else if (point.binding?.kind === "reflect") {
+        const source = scene.points[point.binding.sourceIndex];
+        const lineStart = scene.points[point.binding.lineStartIndex];
+        const lineEnd = scene.points[point.binding.lineEndIndex];
+        if (!source || !lineStart || !lineEnd) return;
+        const dx = lineEnd.x - lineStart.x;
+        const dy = lineEnd.y - lineStart.y;
+        const lenSq = dx * dx + dy * dy;
+        if (lenSq <= 1e-9) return;
+        const t = ((source.x - lineStart.x) * dx + (source.y - lineStart.y) * dy) / lenSq;
+        const projX = lineStart.x + t * dx;
+        const projY = lineStart.y + t * dy;
+        point.x = projX * 2 - source.x;
+        point.y = projY * 2 - source.y;
       } else if (point.binding?.kind === "rotate") {
         const source = scene.points[point.binding.sourceIndex];
         const center = scene.points[point.binding.centerIndex];
@@ -498,6 +521,72 @@
         if (!source || !center) return;
         point.x = center.x + (source.x - center.x) * point.binding.factor;
         point.y = center.y + (source.y - center.y) * point.binding.factor;
+      }
+    });
+
+    scene.circles.forEach((circle) => {
+      if (circle.binding?.kind === "scale-circle") {
+        const source = scene.circles[circle.binding.sourceIndex];
+        const center = scene.points[circle.binding.centerIndex];
+        if (!source || !center) return;
+        const sourceCenter = resolveHandle(source.center);
+        const sourceRadius = resolveHandle(source.radiusPoint);
+        circle.center = {
+          x: center.x + (sourceCenter.x - center.x) * circle.binding.factor,
+          y: center.y + (sourceCenter.y - center.y) * circle.binding.factor,
+        };
+        circle.radiusPoint = {
+          x: center.x + (sourceRadius.x - center.x) * circle.binding.factor,
+          y: center.y + (sourceRadius.y - center.y) * circle.binding.factor,
+        };
+      } else if (circle.binding?.kind === "reflect-circle") {
+        const source = scene.circles[circle.binding.sourceIndex];
+        const lineStart = scene.points[circle.binding.lineStartIndex];
+        const lineEnd = scene.points[circle.binding.lineEndIndex];
+        if (!source || !lineStart || !lineEnd) return;
+        const reflect = (p) => {
+          const dx = lineEnd.x - lineStart.x;
+          const dy = lineEnd.y - lineStart.y;
+          const lenSq = dx * dx + dy * dy;
+          if (lenSq <= 1e-9) return p;
+          const t = ((p.x - lineStart.x) * dx + (p.y - lineStart.y) * dy) / lenSq;
+          const projX = lineStart.x + t * dx;
+          const projY = lineStart.y + t * dy;
+          return { x: projX * 2 - p.x, y: projY * 2 - p.y };
+        };
+        circle.center = reflect(resolveHandle(source.center));
+        circle.radiusPoint = reflect(resolveHandle(source.radiusPoint));
+      }
+    });
+
+    scene.polygons.forEach((polygon) => {
+      if (polygon.binding?.kind === "scale-polygon") {
+        const source = scene.polygons[polygon.binding.sourceIndex];
+        const center = scene.points[polygon.binding.centerIndex];
+        if (!source || !center) return;
+        polygon.points = source.points.map((handle) => {
+          const point = resolveHandle(handle);
+          return {
+            x: center.x + (point.x - center.x) * polygon.binding.factor,
+            y: center.y + (point.y - center.y) * polygon.binding.factor,
+          };
+        });
+      } else if (polygon.binding?.kind === "reflect-polygon") {
+        const source = scene.polygons[polygon.binding.sourceIndex];
+        const lineStart = scene.points[polygon.binding.lineStartIndex];
+        const lineEnd = scene.points[polygon.binding.lineEndIndex];
+        if (!source || !lineStart || !lineEnd) return;
+        polygon.points = source.points.map((handle) => {
+          const point = resolveHandle(handle);
+          const dx = lineEnd.x - lineStart.x;
+          const dy = lineEnd.y - lineStart.y;
+          const lenSq = dx * dx + dy * dy;
+          if (lenSq <= 1e-9) return point;
+          const t = ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / lenSq;
+          const projX = lineStart.x + t * dx;
+          const projY = lineStart.y + t * dy;
+          return { x: projX * 2 - point.x, y: projY * 2 - point.y };
+        });
       }
     });
   }

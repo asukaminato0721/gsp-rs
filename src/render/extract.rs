@@ -26,6 +26,7 @@ struct CircleShape {
     center: PointRecord,
     radius_point: PointRecord,
     color: [u8; 4],
+    binding: Option<super::scene::ShapeBinding>,
 }
 
 pub(crate) fn build_scene(file: &GspFile) -> Scene {
@@ -114,6 +115,10 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         })
         .collect::<Vec<_>>();
     let circles = collect_circle_shapes(file, &groups, &raw_anchors);
+    let mut transformed_circles = collect_transformed_circle_shapes(file, &groups, &raw_anchors);
+    let mut reflected_circles = collect_reflected_circle_shapes(file, &groups, &raw_anchors);
+    let mut transformed_polygons = collect_transformed_polygon_shapes(file, &groups, &raw_anchors);
+    let mut reflected_polygons = collect_reflected_polygon_shapes(file, &groups, &raw_anchors);
     let (iteration_lines, iteration_polygons) = collect_iteration_shapes(file, &groups, &circles);
     let synthetic_axes = if graph_mode && has_function_plots && axes.is_empty() {
         synthesize_function_axes(
@@ -182,6 +187,46 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     let (visible_points, group_to_point_index) =
         collect_visible_points(file, &groups, &point_map, &raw_anchors, &graph_ref);
     remap_label_bindings(&mut labels, &group_to_point_index);
+    let circle_group_to_index = groups
+        .iter()
+        .enumerate()
+        .filter(|(_, group)| (group.header.class_id & 0xffff) == 3)
+        .enumerate()
+        .fold(vec![None; groups.len()], |mut acc, (shape_index, (group_index, _))| {
+            acc[group_index] = Some(shape_index);
+            acc
+        });
+    let polygon_group_to_index = groups
+        .iter()
+        .enumerate()
+        .filter(|(index, group)| {
+            (group.header.class_id & 0xffff) == 8 && !iteration_polygon_indices.contains(index)
+        })
+        .enumerate()
+        .fold(vec![None; groups.len()], |mut acc, (shape_index, (group_index, _))| {
+            acc[group_index] = Some(shape_index);
+            acc
+        });
+    remap_circle_bindings(
+        &mut transformed_circles,
+        &group_to_point_index,
+        &circle_group_to_index,
+    );
+    remap_circle_bindings(
+        &mut reflected_circles,
+        &group_to_point_index,
+        &circle_group_to_index,
+    );
+    remap_polygon_bindings(
+        &mut transformed_polygons,
+        &group_to_point_index,
+        &polygon_group_to_index,
+    );
+    remap_polygon_bindings(
+        &mut reflected_polygons,
+        &group_to_point_index,
+        &polygon_group_to_index,
+    );
 
     let world_points = visible_points
         .iter()
@@ -268,7 +313,12 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         &measurements,
         &axes,
         &polygons,
-        &circles,
+        &circles
+            .iter()
+            .chain(transformed_circles.iter())
+            .chain(reflected_circles.iter())
+            .cloned()
+            .collect::<Vec<_>>(),
         &labels,
         &world_point_positions,
     );
@@ -337,6 +387,8 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
             .collect(),
         polygons: polygons
             .into_iter()
+            .chain(transformed_polygons)
+            .chain(reflected_polygons)
             .chain(iteration_polygons)
             .map(|polygon| PolygonShape {
                 points: polygon
@@ -345,14 +397,18 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
                     .map(|point| to_world(&point, &graph_ref))
                     .collect(),
                 color: polygon.color,
+                binding: polygon.binding,
             })
             .collect(),
         circles: circles
             .into_iter()
+            .chain(transformed_circles)
+            .chain(reflected_circles)
             .map(|circle| SceneCircle {
                 center: to_world(&circle.center, &graph_ref),
                 radius_point: to_world(&circle.radius_point, &graph_ref),
                 color: circle.color,
+                binding: circle.binding,
             })
             .collect(),
         labels: labels
@@ -691,6 +747,35 @@ fn collect_visible_points(
                     expr: point.expr,
                 }),
             }),
+            34 => {
+                decode_reflection_anchor_raw(file, groups, group, anchors).and_then(|position| {
+                    let path = find_indexed_path(file, group)?;
+                    let source_group_index = path.refs.first()?.checked_sub(1)?;
+                    let (line_start_group_index, line_end_group_index) =
+                        reflection_line_group_indices(file, groups, group)?;
+                    let source_index = group_to_point_index
+                        .get(source_group_index)
+                        .and_then(|index| *index)?;
+                    let line_start_index = group_to_point_index
+                        .get(line_start_group_index)
+                        .and_then(|index| *index)?;
+                    let line_end_index = group_to_point_index
+                        .get(line_end_group_index)
+                        .and_then(|index| *index)?;
+                    groups
+                        .get(source_group_index)
+                        .filter(|source_group| (source_group.header.class_id & 0xffff) == 0)
+                        .map(|_| ScenePoint {
+                            position,
+                            constraint: ScenePointConstraint::Free,
+                            binding: Some(ScenePointBinding::Reflect {
+                                source_index,
+                                line_start_index,
+                                line_end_index,
+                            }),
+                        })
+                })
+            }
             27 | 30 => decode_transform_binding(file, group).and_then(|binding| {
                 let position = anchors.get(index).cloned().flatten()?;
                 let source_index = group_to_point_index
@@ -752,6 +837,126 @@ fn remap_label_bindings(labels: &mut [TextLabel], group_to_point_index: &[Option
     }
 }
 
+fn remap_circle_bindings(
+    circles: &mut [CircleShape],
+    group_to_point_index: &[Option<usize>],
+    group_to_circle_index: &[Option<usize>],
+) {
+    for circle in circles {
+        let Some(binding) = circle.binding.as_mut() else {
+            continue;
+        };
+        let (source_index, center_index) = match binding {
+            super::scene::ShapeBinding::ScaleCircle {
+                source_index,
+                center_index,
+                ..
+            } => (source_index, center_index),
+            super::scene::ShapeBinding::ReflectCircle {
+                source_index,
+                line_start_index,
+                line_end_index,
+            } => {
+                let Some(mapped_source_index) =
+                    group_to_circle_index.get(*source_index).and_then(|index| *index)
+                else {
+                    circle.binding = None;
+                    continue;
+                };
+                let Some(mapped_line_start_index) =
+                    group_to_point_index.get(*line_start_index).and_then(|index| *index)
+                else {
+                    circle.binding = None;
+                    continue;
+                };
+                let Some(mapped_line_end_index) =
+                    group_to_point_index.get(*line_end_index).and_then(|index| *index)
+                else {
+                    circle.binding = None;
+                    continue;
+                };
+                *source_index = mapped_source_index;
+                *line_start_index = mapped_line_start_index;
+                *line_end_index = mapped_line_end_index;
+                continue;
+            }
+            _ => continue,
+        };
+        let Some(mapped_source_index) = group_to_circle_index.get(*source_index).and_then(|index| *index)
+        else {
+            circle.binding = None;
+            continue;
+        };
+        let Some(mapped_center_index) = group_to_point_index.get(*center_index).and_then(|index| *index)
+        else {
+            circle.binding = None;
+            continue;
+        };
+        *source_index = mapped_source_index;
+        *center_index = mapped_center_index;
+    }
+}
+
+fn remap_polygon_bindings(
+    polygons: &mut [PolygonShape],
+    group_to_point_index: &[Option<usize>],
+    group_to_polygon_index: &[Option<usize>],
+) {
+    for polygon in polygons {
+        let Some(binding) = polygon.binding.as_mut() else {
+            continue;
+        };
+        let (source_index, center_index) = match binding {
+            super::scene::ShapeBinding::ScalePolygon {
+                source_index,
+                center_index,
+                ..
+            } => (source_index, center_index),
+            super::scene::ShapeBinding::ReflectPolygon {
+                source_index,
+                line_start_index,
+                line_end_index,
+            } => {
+                let Some(mapped_source_index) =
+                    group_to_polygon_index.get(*source_index).and_then(|index| *index)
+                else {
+                    polygon.binding = None;
+                    continue;
+                };
+                let Some(mapped_line_start_index) =
+                    group_to_point_index.get(*line_start_index).and_then(|index| *index)
+                else {
+                    polygon.binding = None;
+                    continue;
+                };
+                let Some(mapped_line_end_index) =
+                    group_to_point_index.get(*line_end_index).and_then(|index| *index)
+                else {
+                    polygon.binding = None;
+                    continue;
+                };
+                *source_index = mapped_source_index;
+                *line_start_index = mapped_line_start_index;
+                *line_end_index = mapped_line_end_index;
+                continue;
+            }
+            _ => continue,
+        };
+        let Some(mapped_source_index) = group_to_polygon_index.get(*source_index).and_then(|index| *index)
+        else {
+            polygon.binding = None;
+            continue;
+        };
+        let Some(mapped_center_index) = group_to_point_index.get(*center_index).and_then(|index| *index)
+        else {
+            polygon.binding = None;
+            continue;
+        };
+        *source_index = mapped_source_index;
+        *center_index = mapped_center_index;
+    }
+}
+
 fn collect_raw_object_anchors(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -772,6 +977,8 @@ fn collect_raw_object_anchors(
             Some(anchor)
         } else if let Some(anchor) = decode_transform_anchor_raw(file, group, &anchors) {
             Some(anchor)
+        } else if let Some(anchor) = decode_reflection_anchor_raw(file, groups, group, &anchors) {
+            Some(anchor)
         } else if let Some(anchor) = decode_offset_anchor_raw(file, group, &anchors) {
             Some(anchor)
         } else if let Some(anchor) =
@@ -790,6 +997,29 @@ fn collect_raw_object_anchors(
         anchors.push(anchor);
     }
     anchors
+}
+
+fn decode_reflection_anchor_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    if (group.header.class_id & 0xffff) != 34 {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    let source_group_index = path.refs.first()?.checked_sub(1)?;
+    let source_group = groups.get(source_group_index)?;
+    if (source_group.header.class_id & 0xffff) != 0 {
+        return None;
+    }
+    let source = anchors.get(source_group_index)?.clone()?;
+    let (line_start_group_index, line_end_group_index) =
+        reflection_line_group_indices(file, groups, group)?;
+    let line_start = anchors.get(line_start_group_index)?.clone()?;
+    let line_end = anchors.get(line_end_group_index)?.clone()?;
+    reflect_point_across_line(&source, &line_start, &line_end)
 }
 
 fn decode_parameter_controlled_anchor_raw(
@@ -862,6 +1092,7 @@ fn collect_polygon_shapes(
             (points.len() >= 3).then_some(PolygonShape {
                 points,
                 color: fill_color_from_styles(group.header.style_b, group.header.style_c),
+                binding: None,
             })
         })
         .collect()
@@ -886,9 +1117,213 @@ fn collect_circle_shapes(
                 center,
                 radius_point,
                 color: color_from_style(group.header.style_b),
+                binding: None,
             })
         })
         .collect()
+}
+
+fn collect_transformed_circle_shapes(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+) -> Vec<CircleShape> {
+    groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 30)
+        .filter_map(|group| {
+            let binding = decode_transform_binding(file, group)?;
+            let TransformBindingKind::Scale { factor } = binding.kind else {
+                return None;
+            };
+            let path = find_indexed_path(file, group)?;
+            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            if (source_group.header.class_id & 0xffff) != 3 {
+                return None;
+            }
+            let source_path = find_indexed_path(file, source_group)?;
+            if source_path.refs.len() != 2 {
+                return None;
+            }
+            let scale_center = anchors.get(binding.center_group_index)?.clone()?;
+            let source_center = anchors.get(source_path.refs[0].checked_sub(1)?)?.clone()?;
+            let source_radius = anchors.get(source_path.refs[1].checked_sub(1)?)?.clone()?;
+            Some(CircleShape {
+                center: PointRecord {
+                    x: scale_center.x + (source_center.x - scale_center.x) * factor,
+                    y: scale_center.y + (source_center.y - scale_center.y) * factor,
+                },
+                radius_point: PointRecord {
+                    x: scale_center.x + (source_radius.x - scale_center.x) * factor,
+                    y: scale_center.y + (source_radius.y - scale_center.y) * factor,
+                },
+                color: color_from_style(source_group.header.style_b),
+                binding: Some(super::scene::ShapeBinding::ScaleCircle {
+                    source_index: path.refs.first()?.checked_sub(1)?,
+                    center_index: binding.center_group_index,
+                    factor,
+                }),
+            })
+        })
+        .collect()
+}
+
+fn collect_transformed_polygon_shapes(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+) -> Vec<PolygonShape> {
+    groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 30)
+        .filter_map(|group| {
+            let binding = decode_transform_binding(file, group)?;
+            let TransformBindingKind::Scale { factor } = binding.kind else {
+                return None;
+            };
+            let path = find_indexed_path(file, group)?;
+            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            if (source_group.header.class_id & 0xffff) != 8 {
+                return None;
+            }
+            let source_path = find_indexed_path(file, source_group)?;
+            let scale_center = anchors.get(binding.center_group_index)?.clone()?;
+            let points = source_path
+                .refs
+                .iter()
+                .filter_map(|object_ref| anchors.get(object_ref.saturating_sub(1)).cloned().flatten())
+                .map(|point| PointRecord {
+                    x: scale_center.x + (point.x - scale_center.x) * factor,
+                    y: scale_center.y + (point.y - scale_center.y) * factor,
+                })
+                .collect::<Vec<_>>();
+            (points.len() >= 3).then_some(PolygonShape {
+                points,
+                color: fill_color_from_styles(source_group.header.style_b, source_group.header.style_c),
+                binding: Some(super::scene::ShapeBinding::ScalePolygon {
+                    source_index: path.refs.first()?.checked_sub(1)?,
+                    center_index: binding.center_group_index,
+                    factor,
+                }),
+            })
+        })
+        .collect()
+}
+
+fn collect_reflected_circle_shapes(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+) -> Vec<CircleShape> {
+    groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 34)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            if (source_group.header.class_id & 0xffff) != 3 {
+                return None;
+            }
+            let (line_start_group_index, line_end_group_index) =
+                reflection_line_group_indices(file, groups, group)?;
+            let source_path = find_indexed_path(file, source_group)?;
+            let center = reflect_point_across_line(
+                &anchors.get(source_path.refs[0].checked_sub(1)?)?.clone()?,
+                &anchors.get(line_start_group_index)?.clone()?,
+                &anchors.get(line_end_group_index)?.clone()?,
+            )?;
+            let radius_point = reflect_point_across_line(
+                &anchors.get(source_path.refs[1].checked_sub(1)?)?.clone()?,
+                &anchors.get(line_start_group_index)?.clone()?,
+                &anchors.get(line_end_group_index)?.clone()?,
+            )?;
+            Some(CircleShape {
+                center,
+                radius_point,
+                color: color_from_style(source_group.header.style_b),
+                binding: Some(super::scene::ShapeBinding::ReflectCircle {
+                    source_index: path.refs.first()?.checked_sub(1)?,
+                    line_start_index: line_start_group_index,
+                    line_end_index: line_end_group_index,
+                }),
+            })
+        })
+        .collect()
+}
+
+fn collect_reflected_polygon_shapes(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+) -> Vec<PolygonShape> {
+    groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 34)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            if (source_group.header.class_id & 0xffff) != 8 {
+                return None;
+            }
+            let (line_start_group_index, line_end_group_index) =
+                reflection_line_group_indices(file, groups, group)?;
+            let source_path = find_indexed_path(file, source_group)?;
+            let line_start = anchors.get(line_start_group_index)?.clone()?;
+            let line_end = anchors.get(line_end_group_index)?.clone()?;
+            let points = source_path
+                .refs
+                .iter()
+                .filter_map(|object_ref| anchors.get(object_ref.saturating_sub(1)).cloned().flatten())
+                .filter_map(|point| reflect_point_across_line(&point, &line_start, &line_end))
+                .collect::<Vec<_>>();
+            (points.len() >= 3).then_some(PolygonShape {
+                points,
+                color: fill_color_from_styles(source_group.header.style_b, source_group.header.style_c),
+                binding: Some(super::scene::ShapeBinding::ReflectPolygon {
+                    source_index: path.refs.first()?.checked_sub(1)?,
+                    line_start_index: line_start_group_index,
+                    line_end_index: line_end_group_index,
+                }),
+            })
+        })
+        .collect()
+}
+
+fn reflection_line_group_indices(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<(usize, usize)> {
+    let path = find_indexed_path(file, group)?;
+    let line_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+    if (line_group.header.class_id & 0xffff) != 2 {
+        return None;
+    }
+    let line_path = find_indexed_path(file, line_group)?;
+    Some((
+        line_path.refs.first()?.checked_sub(1)?,
+        line_path.refs.get(1)?.checked_sub(1)?,
+    ))
+}
+
+fn reflect_point_across_line(
+    point: &PointRecord,
+    line_start: &PointRecord,
+    line_end: &PointRecord,
+) -> Option<PointRecord> {
+    let dx = line_end.x - line_start.x;
+    let dy = line_end.y - line_start.y;
+    let len_sq = dx * dx + dy * dy;
+    if len_sq <= 1e-9 {
+        return None;
+    }
+    let t = ((point.x - line_start.x) * dx + (point.y - line_start.y) * dy) / len_sq;
+    let proj_x = line_start.x + t * dx;
+    let proj_y = line_start.y + t * dy;
+    Some(PointRecord {
+        x: proj_x * 2.0 - point.x,
+        y: proj_y * 2.0 - point.y,
+    })
 }
 
 fn collect_iteration_shapes(
@@ -3527,6 +3962,8 @@ mod tests {
         let scene = build_scene(&file);
 
         assert_eq!(scene.parameters.len(), 1, "expected one slider parameter");
+        assert_eq!(scene.circles.len(), 2, "expected original and scaled circle");
+        assert_eq!(scene.polygons.len(), 2, "expected original and scaled polygon");
         let texts = scene
             .labels
             .iter()
@@ -3541,6 +3978,32 @@ mod tests {
             scene.points.len() >= 3,
             "expected source point, center point, and transformed point"
         );
+        assert!(scene.points.iter().any(|point| matches!(
+            point.binding,
+            Some(ScenePointBinding::Scale { factor, .. }) if (factor - 1.0 / 3.0).abs() < 0.0001
+        )));
+    }
+
+    #[test]
+    fn preserves_reflection_point_circle_and_polygon_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/reflection.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.circles.len(), 2, "expected original and reflected circle");
+        assert_eq!(scene.polygons.len(), 2, "expected original and reflected polygon");
+        assert!(scene.points.iter().any(|point| matches!(
+            point.binding,
+            Some(ScenePointBinding::Reflect { .. })
+        )));
+        assert!(scene.circles.iter().any(|circle| matches!(
+            circle.binding,
+            Some(crate::render::scene::ShapeBinding::ReflectCircle { .. })
+        )));
+        assert!(scene.polygons.iter().any(|polygon| matches!(
+            polygon.binding,
+            Some(crate::render::scene::ShapeBinding::ReflectPolygon { .. })
+        )));
     }
 
     #[test]
