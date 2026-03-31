@@ -1,0 +1,100 @@
+use crate::format::PointRecord;
+
+use super::functions::{FunctionExpr, FunctionPlotDescriptor};
+use super::geometry::Bounds;
+
+#[derive(Debug, Clone)]
+pub(crate) struct Scene {
+    pub(crate) graph_mode: bool,
+    pub(crate) pi_mode: bool,
+    pub(crate) saved_viewport: bool,
+    pub(crate) y_up: bool,
+    pub(crate) origin: Option<PointRecord>,
+    pub(crate) bounds: Bounds,
+    pub(crate) lines: Vec<LineShape>,
+    pub(crate) polygons: Vec<PolygonShape>,
+    pub(crate) circles: Vec<SceneCircle>,
+    pub(crate) labels: Vec<TextLabel>,
+    pub(crate) points: Vec<ScenePoint>,
+    pub(crate) parameters: Vec<SceneParameter>,
+    pub(crate) functions: Vec<SceneFunction>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ScenePoint {
+    pub(crate) position: PointRecord,
+    pub(crate) constraint: ScenePointConstraint,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum ScenePointConstraint {
+    Free,
+    OnSegment {
+        start_index: usize,
+        end_index: usize,
+        t: f64,
+    },
+    OnPolyline {
+        function_key: usize,
+        points: Vec<PointRecord>,
+        segment_index: usize,
+        t: f64,
+    },
+    OnPolygonBoundary {
+        vertex_indices: Vec<usize>,
+        edge_index: usize,
+        t: f64,
+    },
+    OnCircle {
+        center_index: usize,
+        radius_index: usize,
+        unit_x: f64,
+        unit_y: f64,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct LineShape {
+    pub(crate) points: Vec<PointRecord>,
+    pub(crate) color: [u8; 4],
+    pub(crate) dashed: bool,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PolygonShape {
+    pub(crate) points: Vec<PointRecord>,
+    pub(crate) color: [u8; 4],
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SceneParameter {
+    pub(crate) name: String,
+    pub(crate) value: f64,
+    pub(crate) label_index: usize,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SceneFunction {
+    pub(crate) key: usize,
+    pub(crate) name: String,
+    pub(crate) derivative: bool,
+    pub(crate) expr: FunctionExpr,
+    pub(crate) domain: FunctionPlotDescriptor,
+    pub(crate) line_index: Option<usize>,
+    pub(crate) label_index: usize,
+    pub(crate) constrained_point_indices: Vec<usize>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SceneCircle {
+    pub(crate) center: PointRecord,
+    pub(crate) radius_point: PointRecord,
+    pub(crate) color: [u8; 4],
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct TextLabel {
+    pub(crate) anchor: PointRecord,
+    pub(crate) text: String,
+    pub(crate) color: [u8; 4],
+}

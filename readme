@@ -1,5 +1,9 @@
 a (web) render for https://sketchpad.keycurriculum.com/
 
 cargo run ./path/to/your.gsp
+cargo run ./path/to/one.gsp ./path/to/two.gsp
 
-will generate a  ./path/to/your.html
+will generate:
+- `./path/to/your.html`
+- `./path/to/one.html`
+- `./path/to/two.html`

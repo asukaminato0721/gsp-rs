@@ -381,6 +381,13 @@ pub fn read_u16(data: &[u8], offset: usize) -> u16 {
     u16::from_le_bytes([bytes[0], bytes[1]])
 }
 
+pub fn read_i16(data: &[u8], offset: usize) -> i16 {
+    let bytes = data
+        .get(offset..offset + 2)
+        .expect("read_i16 caller must validate bounds");
+    i16::from_le_bytes([bytes[0], bytes[1]])
+}
+
 pub fn read_u32(data: &[u8], offset: usize) -> u32 {
     let bytes = data
         .get(offset..offset + 4)

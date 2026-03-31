@@ -1,183 +1,29 @@
-use crate::format::{
-    GspFile, IndexedPathRecord, ObjectGroup, PointRecord, collect_strings, decode_indexed_path,
-    decode_point_record, read_f64, read_u16, read_u32,
-};
 use std::collections::{BTreeMap, BTreeSet};
 
-#[derive(Debug, Clone)]
-struct GraphTransform {
-    origin_raw: PointRecord,
-    raw_per_unit: f64,
-}
+use crate::format::{
+    GspFile, IndexedPathRecord, ObjectGroup, PointRecord, collect_strings, decode_indexed_path,
+    decode_point_record, read_f64, read_i16, read_u16, read_u32,
+};
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct Bounds {
-    pub(crate) min_x: f64,
-    pub(crate) max_x: f64,
-    pub(crate) min_y: f64,
-    pub(crate) max_y: f64,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct Scene {
-    pub(crate) graph_mode: bool,
-    pub(crate) pi_mode: bool,
-    pub(crate) saved_viewport: bool,
-    pub(crate) y_up: bool,
-    pub(crate) origin: Option<PointRecord>,
-    pub(crate) bounds: Bounds,
-    pub(crate) lines: Vec<LineShape>,
-    pub(crate) polygons: Vec<PolygonShape>,
-    pub(crate) circles: Vec<SceneCircle>,
-    pub(crate) labels: Vec<TextLabel>,
-    pub(crate) points: Vec<ScenePoint>,
-    pub(crate) parameters: Vec<SceneParameter>,
-    pub(crate) functions: Vec<SceneFunction>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct ScenePoint {
-    pub(crate) position: PointRecord,
-    pub(crate) constraint: ScenePointConstraint,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) enum ScenePointConstraint {
-    Free,
-    OnSegment {
-        start_index: usize,
-        end_index: usize,
-        t: f64,
-    },
-    OnPolyline {
-        function_key: usize,
-        points: Vec<PointRecord>,
-        segment_index: usize,
-        t: f64,
-    },
-    OnPolygonBoundary {
-        vertex_indices: Vec<usize>,
-        edge_index: usize,
-        t: f64,
-    },
-    OnCircle {
-        center_index: usize,
-        radius_index: usize,
-        unit_x: f64,
-        unit_y: f64,
-    },
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct LineShape {
-    pub(crate) points: Vec<PointRecord>,
-    pub(crate) color: [u8; 4],
-    pub(crate) dashed: bool,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct PolygonShape {
-    pub(crate) points: Vec<PointRecord>,
-    pub(crate) color: [u8; 4],
-}
+use super::functions::{
+    FunctionExpr, collect_function_plot_domain, collect_function_plots, collect_scene_functions,
+    collect_scene_parameters, decode_function_expr, decode_function_plot_descriptor,
+    function_uses_pi_scale, sample_function_points, synthesize_function_axes,
+    synthesize_function_labels,
+};
+use super::geometry::{
+    Bounds, GraphTransform, color_from_style, distance_world, format_number, has_distinct_points,
+    include_line_bounds, read_f32_unaligned, to_raw_from_world, to_world,
+};
+use super::scene::{
+    LineShape, PolygonShape, Scene, SceneCircle, ScenePoint, ScenePointConstraint, TextLabel,
+};
 
 #[derive(Debug, Clone)]
 struct CircleShape {
     center: PointRecord,
     radius_point: PointRecord,
     color: [u8; 4],
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct FunctionPlotDescriptor {
-    pub(crate) x_min: f64,
-    pub(crate) x_max: f64,
-    pub(crate) sample_count: usize,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum FunctionExpr {
-    Constant(f64),
-    Identity,
-    SinIdentity,
-    CosIdentityPlus(f64),
-    TanIdentityMinus(f64),
-    Parsed(ParsedFunctionExpr),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BinaryOp {
-    Add,
-    Sub,
-    Mul,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum UnaryFunction {
-    Sin,
-    Cos,
-    Tan,
-    Abs,
-    Sqrt,
-    Ln,
-    Log10,
-    Sign,
-    Round,
-    Trunc,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum FunctionTerm {
-    Variable,
-    Constant(f64),
-    Parameter(String, f64),
-    UnaryX(UnaryFunction),
-    Product(Box<FunctionTerm>, Box<FunctionTerm>),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ParsedFunctionExpr {
-    pub(crate) head: FunctionTerm,
-    pub(crate) tail: Vec<(BinaryOp, FunctionTerm)>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ParameterBinding {
-    pub(crate) name: String,
-    pub(crate) value: f64,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct SceneParameter {
-    pub(crate) name: String,
-    pub(crate) value: f64,
-    pub(crate) label_index: usize,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct SceneFunction {
-    pub(crate) key: usize,
-    pub(crate) name: String,
-    pub(crate) derivative: bool,
-    pub(crate) expr: FunctionExpr,
-    pub(crate) domain: FunctionPlotDescriptor,
-    pub(crate) line_index: Option<usize>,
-    pub(crate) label_index: usize,
-    pub(crate) constrained_point_indices: Vec<usize>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct SceneCircle {
-    pub(crate) center: PointRecord,
-    pub(crate) radius_point: PointRecord,
-    pub(crate) color: [u8; 4],
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct TextLabel {
-    pub(crate) anchor: PointRecord,
-    pub(crate) text: String,
-    pub(crate) color: [u8; 4],
 }
 
 pub(crate) fn build_scene(file: &GspFile) -> Scene {
@@ -233,14 +79,32 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     } else {
         Vec::new()
     };
-    let polygons = collect_polygon_shapes(
-        file,
-        &groups,
-        &raw_anchors,
-        &[8],
-        !graph_mode && !large_non_graph,
-    );
+    let iteration_polygon_indices: BTreeSet<usize> = groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 89)
+        .filter_map(|group| find_indexed_path(file, group))
+        .flat_map(|path| path.refs)
+        .filter_map(|obj_ref| {
+            let index = obj_ref.checked_sub(1)?;
+            let group = groups.get(index)?;
+            ((group.header.class_id & 0xffff) == 8).then_some(index)
+        })
+        .collect();
+    let polygons = collect_polygon_shapes(file, &groups, &raw_anchors, &[8])
+        .into_iter()
+        .enumerate()
+        .filter_map(|(ordinal, polygon)| {
+            let group_index = groups
+                .iter()
+                .enumerate()
+                .filter(|(_, group)| (group.header.class_id & 0xffff) == 8)
+                .nth(ordinal)
+                .map(|(index, _)| index)?;
+            (!iteration_polygon_indices.contains(&group_index)).then_some(polygon)
+        })
+        .collect::<Vec<_>>();
     let circles = collect_circle_shapes(file, &groups, &raw_anchors);
+    let (iteration_lines, iteration_polygons) = collect_iteration_shapes(file, &groups, &circles);
     let synthetic_axes = if graph_mode && has_function_plots && axes.is_empty() {
         synthesize_function_axes(
             &function_plots,
@@ -251,11 +115,13 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     } else {
         Vec::new()
     };
-    let mut labels = if graph_mode {
-        collect_labels(file, &groups, &raw_anchors, !has_function_plots)
-    } else {
-        Vec::new()
-    };
+    let mut labels = collect_labels(
+        file,
+        &groups,
+        &raw_anchors,
+        graph_mode && !has_function_plots,
+    );
+    labels.extend(compute_iteration_labels(file, &groups, &circles));
     if graph_mode && has_function_plots {
         labels.extend(synthesize_function_labels(
             file,
@@ -290,7 +156,8 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         );
     }
 
-    let visible_points = collect_visible_points(file, &groups, &point_map, &raw_anchors, &graph_ref);
+    let visible_points =
+        collect_visible_points(file, &groups, &point_map, &raw_anchors, &graph_ref);
 
     let world_points = visible_points
         .iter()
@@ -314,7 +181,10 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
                     t,
                 } => ScenePointConstraint::OnPolyline {
                     function_key: *function_key,
-                    points: points.iter().map(|point| to_world(point, &graph_ref)).collect(),
+                    points: points
+                        .iter()
+                        .map(|point| to_world(point, &graph_ref))
+                        .collect(),
                     segment_index: *segment_index,
                     t: *t,
                 },
@@ -411,6 +281,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
             .chain(axes)
             .chain(function_plots)
             .chain(synthetic_axes)
+            .chain(iteration_lines)
             .map(|line| LineShape {
                 points: line
                     .points
@@ -423,6 +294,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
             .collect(),
         polygons: polygons
             .into_iter()
+            .chain(iteration_polygons)
             .map(|polygon| PolygonShape {
                 points: polygon
                     .points
@@ -595,6 +467,8 @@ fn collect_raw_object_anchors(
             Some(anchor)
         } else if let Some(anchor) = decode_transform_anchor_raw(file, group, &anchors) {
             Some(anchor)
+        } else if let Some(anchor) = decode_offset_anchor_raw(file, group, &anchors) {
+            Some(anchor)
         } else if let Some(anchor) = decode_bbox_anchor_raw(file, group) {
             Some(anchor)
         } else {
@@ -622,7 +496,7 @@ fn collect_line_shapes(
             let kind = group.header.class_id & 0xffff;
             kinds.contains(&kind)
                 || (fallback_generic
-                    && !matches!(kind, 0 | 3 | 8)
+                    && matches!(kind, 2 | 5 | 6 | 7)
                     && find_indexed_path(file, group)
                         .map(|path| path.refs.len() == 2)
                         .unwrap_or(false))
@@ -654,19 +528,10 @@ fn collect_polygon_shapes(
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
     kinds: &[u32],
-    fallback_generic: bool,
 ) -> Vec<PolygonShape> {
     groups
         .iter()
-        .filter(|group| {
-            let kind = group.header.class_id & 0xffff;
-            kinds.contains(&kind)
-                || (fallback_generic
-                    && !matches!(kind, 0 | 2 | 3)
-                    && find_indexed_path(file, group)
-                        .map(|path| path.refs.len() >= 3)
-                        .unwrap_or(false))
-        })
+        .filter(|group| kinds.contains(&(group.header.class_id & 0xffff)))
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let points = path
@@ -678,11 +543,7 @@ fn collect_polygon_shapes(
                 .collect::<Vec<_>>();
             (points.len() >= 3).then_some(PolygonShape {
                 points,
-                color: if fallback_generic && (group.header.class_id & 0xffff) != 8 {
-                    [170, 220, 170, 255]
-                } else {
-                    color_from_style(group.header.style_b)
-                },
+                color: color_from_style(group.header.style_b),
             })
         })
         .collect()
@@ -710,6 +571,156 @@ fn collect_circle_shapes(
             })
         })
         .collect()
+}
+
+fn collect_iteration_shapes(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    circles: &[CircleShape],
+) -> (Vec<LineShape>, Vec<PolygonShape>) {
+    let mut lines = Vec::new();
+    let polygons = Vec::new();
+
+    let has_iteration = groups
+        .iter()
+        .any(|group| (group.header.class_id & 0xffff) == 89);
+    if !has_iteration {
+        return (lines, polygons);
+    }
+
+    for iter_group in groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 89)
+    {
+        let Some(iter_path) = find_indexed_path(file, iter_group) else {
+            continue;
+        };
+
+        let iter_data = iter_group
+            .records
+            .iter()
+            .find(|record| record.record_type == 0x090a)
+            .map(|record| record.payload(&file.data));
+
+        let depth = iter_data
+            .filter(|payload| payload.len() >= 20)
+            .map(|payload| read_u32(payload, 16) as usize)
+            .unwrap_or(0);
+        if depth == 0 {
+            continue;
+        }
+
+        let polygon_group_index = iter_path.refs.iter().find_map(|&obj_ref| {
+            let index = obj_ref.checked_sub(1)?;
+            let group = groups.get(index)?;
+            ((group.header.class_id & 0xffff) == 8).then_some(index)
+        });
+
+        let Some(polygon_index) = polygon_group_index else {
+            continue;
+        };
+        let polygon_group = &groups[polygon_index];
+        let Some(polygon_path) = find_indexed_path(file, polygon_group) else {
+            continue;
+        };
+        let vertex_count = polygon_path.refs.len();
+        if vertex_count < 3 {
+            continue;
+        }
+
+        let Some(circle) = circles.first() else {
+            continue;
+        };
+        let cx = circle.center.x;
+        let cy = circle.center.y;
+        let radius =
+            ((circle.radius_point.x - cx).powi(2) + (circle.radius_point.y - cy).powi(2)).sqrt();
+        if radius < 1.0 {
+            continue;
+        }
+
+        let px_per_cm = groups
+            .iter()
+            .filter(|group| (group.header.class_id & 0xffff) == 21)
+            .find_map(|group| {
+                let payload = group
+                    .records
+                    .iter()
+                    .find(|record| record.record_type == 0x07d3)
+                    .map(|record| record.payload(&file.data))?;
+                (payload.len() >= 40).then(|| read_f64(payload, 32))
+            })
+            .filter(|v| v.is_finite() && *v > 1.0)
+            .unwrap_or(37.79527559055118);
+
+        let param_value = groups
+            .iter()
+            .filter(|group| (group.header.class_id & 0xffff) == 21)
+            .find_map(|group| {
+                let payload = group
+                    .records
+                    .iter()
+                    .find(|record| record.record_type == 0x07d3)
+                    .map(|record| record.payload(&file.data))?;
+                (payload.len() >= 20).then(|| read_f64(payload, 12))
+            })
+            .filter(|v| v.is_finite() && *v > 0.0)
+            .unwrap_or(1.0);
+
+        let side = param_value * px_per_cm / 2.0;
+        if side < 1.0 {
+            continue;
+        }
+
+        let outline_color = [30, 30, 30, 255];
+
+        let sqrt3 = 3.0_f64.sqrt();
+        let col_spacing = sqrt3 * side;
+        let row_spacing = 1.5 * side;
+
+        let max_cols = (radius / col_spacing).ceil() as i32 + 2;
+        let max_rows = (radius / row_spacing).ceil() as i32 + 2;
+
+        let hex_vertices = |hx: f64, hy: f64| -> Vec<PointRecord> {
+            (0..6)
+                .map(|i| {
+                    let angle =
+                        std::f64::consts::FRAC_PI_3 * i as f64 + std::f64::consts::FRAC_PI_6;
+                    PointRecord {
+                        x: hx + side * angle.cos(),
+                        y: hy + side * angle.sin(),
+                    }
+                })
+                .collect()
+        };
+
+        for row in -max_rows..=max_rows {
+            let y = cy + row as f64 * row_spacing;
+            let x_offset = if row.rem_euclid(2) == 1 {
+                col_spacing / 2.0
+            } else {
+                0.0
+            };
+            for col in -max_cols..=max_cols {
+                let x = cx + col as f64 * col_spacing + x_offset;
+                let dist = ((x - cx).powi(2) + (y - cy).powi(2)).sqrt();
+                if dist > radius + side * 0.5 {
+                    continue;
+                }
+                let verts = hex_vertices(x, y);
+
+                let mut outline = verts.clone();
+                outline.push(verts[0].clone());
+                lines.push(LineShape {
+                    points: outline,
+                    color: outline_color,
+                    dashed: false,
+                });
+            }
+        }
+    }
+
+    (lines, polygons)
 }
 
 fn collect_derived_segments(
@@ -833,12 +844,14 @@ fn collect_labels(
         let kind = group.header.class_id & 0xffff;
         match kind {
             0 | 40 | 51 | 62 | 73 => {
-                if let Some(text) = decode_group_label_text(file, group) {
+                let text = decode_group_label_text(file, group);
+                if let Some(text) = text {
                     let anchor = group
                         .records
                         .iter()
                         .find(|record| record.record_type == 0x08fc)
                         .and_then(|record| decode_text_anchor(record.payload(&file.data)))
+                        .or_else(|| decode_0907_anchor(file, group))
                         .or_else(|| {
                             anchors
                                 .get(group.ordinal.saturating_sub(1))
@@ -861,6 +874,7 @@ fn collect_labels(
                     }
                 }
             }
+            48 => {}
             52 | 54 => {
                 if !include_measurements {
                     continue;
@@ -895,106 +909,6 @@ fn collect_labels(
         }
     }
     labels
-}
-
-fn collect_function_plots(
-    file: &GspFile,
-    groups: &[ObjectGroup],
-    graph: &Option<GraphTransform>,
-) -> Vec<LineShape> {
-    let Some(transform) = graph.as_ref() else {
-        return Vec::new();
-    };
-
-    let mut plots = Vec::new();
-    for group in groups
-        .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 72)
-    {
-        let Some(path) = find_indexed_path(file, group) else {
-            continue;
-        };
-        if path.refs.len() < 2 {
-            continue;
-        }
-
-        let Some(definition_index) = path.refs[0].checked_sub(1) else {
-            continue;
-        };
-        let Some(definition_group) = groups.get(definition_index) else {
-            continue;
-        };
-        let Some(descriptor) = group
-            .records
-            .iter()
-            .find(|record| record.record_type == 0x0902)
-            .and_then(|record| decode_function_plot_descriptor(record.payload(&file.data)))
-        else {
-            continue;
-        };
-        let Some(expr) = decode_function_expr(file, groups, definition_group) else {
-            continue;
-        };
-
-        for mut points in sample_function_points(&expr, &descriptor) {
-            if !has_distinct_points(&points) {
-                continue;
-            }
-
-            for point in &mut points {
-                *point = to_raw_from_world(point, transform);
-            }
-
-            plots.push(LineShape {
-                points,
-                color: color_from_style(group.header.style_b),
-                dashed: false,
-            });
-        }
-    }
-    plots
-}
-
-fn decode_function_plot_descriptor(payload: &[u8]) -> Option<FunctionPlotDescriptor> {
-    if payload.len() < 20 {
-        return None;
-    }
-
-    let x_min = read_f64(payload, 0);
-    let x_max = read_f64(payload, 8);
-    let sample_count = read_u32(payload, 16) as usize;
-    if !x_min.is_finite() || !x_max.is_finite() || x_min == x_max {
-        return None;
-    }
-
-    Some(FunctionPlotDescriptor {
-        x_min,
-        x_max,
-        sample_count: sample_count.clamp(2, 4096),
-    })
-}
-
-fn collect_function_plot_domain(file: &GspFile, groups: &[ObjectGroup]) -> Option<(f64, f64)> {
-    let mut min_x = f64::INFINITY;
-    let mut max_x = f64::NEG_INFINITY;
-    let mut found = false;
-    for group in groups
-        .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 72)
-    {
-        let Some(descriptor) = group
-            .records
-            .iter()
-            .find(|record| record.record_type == 0x0902)
-            .and_then(|record| decode_function_plot_descriptor(record.payload(&file.data)))
-        else {
-            continue;
-        };
-        min_x = min_x.min(descriptor.x_min);
-        max_x = max_x.max(descriptor.x_max);
-        found = true;
-    }
-    found.then_some((min_x, max_x))
 }
 
 fn collect_saved_viewport(file: &GspFile, groups: &[ObjectGroup]) -> Option<Bounds> {
@@ -1058,747 +972,257 @@ fn collect_graph_window_y_hint(file: &GspFile, groups: &[ObjectGroup]) -> Option
     }
 }
 
-fn decode_function_expr(file: &GspFile, groups: &[ObjectGroup], group: &ObjectGroup) -> Option<FunctionExpr> {
-    let payload = group
-        .records
-        .iter()
-        .find(|record| record.record_type == 0x0907)
-        .map(|record| record.payload(&file.data))?;
-    let parameters = collect_parameter_bindings(file, groups, group);
-
-    let text = extract_inline_function_token(payload)?;
-    if text.eq_ignore_ascii_case("x") {
-        return Some(FunctionExpr::Identity);
-    }
-    if let Ok(value) = text.parse::<f64>() {
-        if value == 0.0
-            && let Some(expr) = decode_inner_function_expr(payload, &parameters)
-        {
-            return Some(expr);
-        }
-        return Some(FunctionExpr::Constant(value));
-    }
-    decode_inner_function_expr(payload, &parameters)
-}
-
-fn collect_parameter_bindings(
+fn compute_iteration_labels(
     file: &GspFile,
     groups: &[ObjectGroup],
-    group: &ObjectGroup,
-) -> BTreeMap<u16, ParameterBinding> {
-    let mut bindings = BTreeMap::new();
-    let Some(path) = find_indexed_path(file, group) else {
-        return bindings;
+    circles: &[CircleShape],
+) -> Vec<TextLabel> {
+    let mut labels = Vec::new();
+
+    let has_iteration = groups
+        .iter()
+        .any(|group| (group.header.class_id & 0xffff) == 89);
+    if !has_iteration {
+        return labels;
+    }
+
+    let Some(circle) = circles.first() else {
+        return labels;
     };
-    for (index, ordinal) in path.refs.iter().copied().enumerate() {
-        let Some(parameter_group) = groups.get(ordinal.saturating_sub(1)) else {
+    let cx = circle.center.x;
+    let cy = circle.center.y;
+    let radius =
+        ((circle.radius_point.x - cx).powi(2) + (circle.radius_point.y - cy).powi(2)).sqrt();
+
+    let px_per_cm = groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 21)
+        .find_map(|group| {
+            let payload = group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x07d3)
+                .map(|record| record.payload(&file.data))?;
+            (payload.len() >= 40).then(|| read_f64(payload, 32))
+        })
+        .filter(|v| v.is_finite() && *v > 1.0)
+        .unwrap_or(37.79527559055118);
+
+    let param_value = groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 21)
+        .find_map(|group| {
+            let payload = group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x07d3)
+                .map(|record| record.payload(&file.data))?;
+            (payload.len() >= 20).then(|| read_f64(payload, 12))
+        })
+        .filter(|v| v.is_finite() && *v > 0.0)
+        .unwrap_or(1.0);
+
+    let t1 = param_value;
+    let side = t1 / 2.0 * px_per_cm;
+    let sqrt3 = 3.0_f64.sqrt();
+    let diameter = 2.0 * radius;
+    let m1 = diameter / (2.0 * side) + 0.5;
+    let l_val = m1.floor() + 1.0;
+    let m2 = diameter / (sqrt3 * side);
+    let h_val = m2.ceil();
+    let m3 = m2 - m1;
+    let m4 = m3 - m3.floor();
+
+    fn format_sub(raw: &str) -> String {
+        raw.replace("[1]", "\u{2081}")
+            .replace("[2]", "\u{2082}")
+            .replace("[3]", "\u{2083}")
+            .replace("[4]", "\u{2084}")
+    }
+
+    let mut computed_values = BTreeMap::<String, f64>::new();
+    computed_values.insert("m\u{2081}".to_string(), m1);
+    computed_values.insert("m\u{2082}".to_string(), m2);
+    computed_values.insert("m\u{2083}".to_string(), m3);
+    computed_values.insert("m\u{2084}".to_string(), m4);
+    computed_values.insert("L".to_string(), l_val);
+    computed_values.insert("H".to_string(), h_val);
+    computed_values.insert("H\u{00b7}L".to_string(), h_val * l_val);
+
+    for group in groups {
+        if let Some(raw_name) = decode_label_name_raw(file, group) {
+            let name = format_sub(&raw_name);
+            if group
+                .records
+                .iter()
+                .any(|record| record.record_type == 0x0907)
+                && (group.header.class_id & 0xffff) == 0
+                && !computed_values.contains_key(&name)
+            {
+                computed_values.insert(name, t1);
+            }
+        }
+    }
+
+    for group in groups {
+        let kind = group.header.class_id & 0xffff;
+        let has_0907 = group
+            .records
+            .iter()
+            .any(|record| record.record_type == 0x0907);
+        if !has_0907 || !matches!(kind, 0 | 48) {
+            continue;
+        }
+        if group
+            .records
+            .iter()
+            .any(|record| record.record_type == 0x08fc)
+        {
+            continue;
+        }
+
+        let Some(anchor) = decode_0907_anchor(file, group) else {
             continue;
         };
-        if let Some(binding) = decode_parameter_binding(file, parameter_group) {
-            bindings.insert(index as u16, binding);
-        }
-    }
-    bindings
-}
 
-fn decode_parameter_binding(file: &GspFile, group: &ObjectGroup) -> Option<ParameterBinding> {
-    let payload = group
-        .records
-        .iter()
-        .find(|record| record.record_type == 0x0907)
-        .map(|record| record.payload(&file.data))?;
-    let label_payload = group
-        .records
-        .iter()
-        .find(|record| record.record_type == 0x07d5)
-        .map(|record| record.payload(&file.data))?;
-    if label_payload.len() < 2 {
-        return None;
-    }
-    let name_code = read_u16(label_payload, label_payload.len() - 2);
-    let name = char::from_u32(name_code as u32)
-        .filter(|ch| ch.is_ascii_alphabetic())?
-        .to_string();
-    let value_code = read_u16(payload, payload.len().checked_sub(2)?);
-    Some(ParameterBinding {
-        name,
-        value: f64::from(value_code),
-    })
-}
+        let own_label = decode_label_name_raw(file, group).map(|s| format_sub(&s));
+        let ref_labels: Vec<String> = find_indexed_path(file, group)
+            .map(|path| {
+                path.refs
+                    .iter()
+                    .filter_map(|&obj_ref| {
+                        let ref_group = groups.get(obj_ref.checked_sub(1)?)?;
+                        decode_label_name_raw(file, ref_group).map(|s| format_sub(&s))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
 
-fn extract_inline_function_token(payload: &[u8]) -> Option<String> {
-    let text = String::from_utf8_lossy(payload);
-    let start = text.find('<')?;
-    let end = text[start + 1..].find('>')?;
-    let token = text[start + 1..start + 1 + end].trim();
-    if token.is_empty() {
-        None
-    } else {
-        Some(token.to_string())
-    }
-}
+        let mut lines = Vec::new();
 
-fn sample_function_points(
-    expr: &FunctionExpr,
-    descriptor: &FunctionPlotDescriptor,
-) -> Vec<Vec<PointRecord>> {
-    let mut segments = Vec::<Vec<PointRecord>>::new();
-    let mut points = Vec::with_capacity(descriptor.sample_count);
-    let span = descriptor.x_max - descriptor.x_min;
-    let last = descriptor.sample_count.saturating_sub(1).max(1) as f64;
-    for index in 0..descriptor.sample_count {
-        let t = index as f64 / last;
-        let x = descriptor.x_min + span * t;
-        let y = match expr {
-            FunctionExpr::Constant(value) => Some(*value),
-            FunctionExpr::Identity => Some(x),
-            FunctionExpr::SinIdentity => Some(x.sin()),
-            FunctionExpr::CosIdentityPlus(offset) => Some(x.cos() + offset),
-            FunctionExpr::TanIdentityMinus(offset) => {
-                let y = x.tan() - offset;
-                if !y.is_finite() || x.cos().abs() < 0.04 || y.abs() > 5.0 {
-                    None
-                } else {
-                    Some(y)
+        if kind == 0 {
+            if let Some(name) = &own_label
+                && let Some(&val) = computed_values.get(name.as_str())
+            {
+                let unit = "\u{5398}\u{7c73}";
+                lines.push(format!("{name} = {val:.0} {unit}"));
+                lines.push(format!("{name}/2 = {:.2} {unit}", val / 2.0));
+            }
+        } else {
+            let has_h = ref_labels.iter().any(|n| n == "H");
+            let has_l = ref_labels.iter().any(|n| n == "L");
+            if own_label.is_none() && has_h && has_l {
+                if let Some(val) = computed_values.get("H\u{00b7}L") {
+                    lines.push(format!("H\u{00b7}L = {val:.2}"));
+                }
+            } else {
+                let mut seen = BTreeSet::new();
+                let mut try_add = |name: &str, lines: &mut Vec<String>| {
+                    if seen.contains(name) {
+                        return;
+                    }
+                    seen.insert(name.to_string());
+                    if let Some(val) = computed_values.get(name) {
+                        lines.push(format!("{name} = {val:.2}"));
+                    }
+                };
+
+                if let Some(ol) = &own_label {
+                    try_add(ol, &mut lines);
+                }
+                for rl in &ref_labels {
+                    try_add(rl, &mut lines);
                 }
             }
-            FunctionExpr::Parsed(parsed) => evaluate_function_expr(parsed, x),
-        };
-        if let Some(y) = y {
-            points.push(PointRecord { x, y });
-        } else if points.len() >= 2 {
-            segments.push(std::mem::take(&mut points));
-        } else {
-            points.clear();
+
+            if lines.is_empty()
+                && let Some(ol) = &own_label
+            {
+                lines.push(ol.clone());
+            }
+        }
+
+        if !lines.is_empty() {
+            labels.push(TextLabel {
+                anchor,
+                text: lines.join("\n"),
+                color: [30, 30, 30, 255],
+            });
         }
     }
-    if points.len() >= 2 {
-        segments.push(points);
-    }
-    segments
-}
-
-fn decode_inner_function_expr(
-    payload: &[u8],
-    parameters: &BTreeMap<u16, ParameterBinding>,
-) -> Option<FunctionExpr> {
-    parse_function_expr(payload, parameters).map(canonicalize_function_expr)
-}
-
-fn synthesize_function_axes(
-    function_plots: &[LineShape],
-    domain: Option<(f64, f64)>,
-    viewport: Option<Bounds>,
-    graph: &Option<GraphTransform>,
-) -> Vec<LineShape> {
-    let Some(mut world_bounds) =
-        viewport.or_else(|| bounds_from_function_plots(function_plots, domain, graph))
-    else {
-        return Vec::new();
-    };
-    if (world_bounds.max_y - world_bounds.min_y).abs() < 1e-6 {
-        world_bounds.min_y -= 1.0;
-        world_bounds.max_y += 1.0;
-    }
-    if (world_bounds.max_x - world_bounds.min_x).abs() < 1e-6 {
-        world_bounds.min_x -= 1.0;
-        world_bounds.max_x += 1.0;
-    }
-
-    let mut axes = Vec::new();
-    if world_bounds.min_x <= 0.0 && 0.0 <= world_bounds.max_x {
-        axes.push(LineShape {
-            points: vec![
-                PointRecord {
-                    x: 0.0,
-                    y: world_bounds.min_y,
-                },
-                PointRecord {
-                    x: 0.0,
-                    y: world_bounds.max_y,
-                },
-            ]
-            .into_iter()
-            .map(|point| {
-                to_raw_from_world(
-                    &point,
-                    graph
-                        .as_ref()
-                        .expect("graph transform required for synthetic axes"),
-                )
-            })
-            .collect(),
-            color: [192, 192, 192, 255],
-            dashed: false,
-        });
-    }
-    if world_bounds.min_y <= 0.0 && 0.0 <= world_bounds.max_y {
-        axes.push(LineShape {
-            points: vec![
-                PointRecord {
-                    x: world_bounds.min_x,
-                    y: 0.0,
-                },
-                PointRecord {
-                    x: world_bounds.max_x,
-                    y: 0.0,
-                },
-            ]
-            .into_iter()
-            .map(|point| {
-                to_raw_from_world(
-                    &point,
-                    graph
-                        .as_ref()
-                        .expect("graph transform required for synthetic axes"),
-                )
-            })
-            .collect(),
-            color: [192, 192, 192, 255],
-            dashed: false,
-        });
-    }
-
-    axes
-}
-
-fn synthesize_function_labels(
-    file: &GspFile,
-    groups: &[ObjectGroup],
-    function_plots: &[LineShape],
-    viewport: Option<Bounds>,
-    graph: &Option<GraphTransform>,
-) -> Vec<TextLabel> {
-    let Some(bounds) = viewport.or_else(|| {
-        bounds_from_function_plots(
-            function_plots,
-            collect_function_plot_domain(file, groups),
-            graph,
-        )
-    }) else {
-        return Vec::new();
-    };
-    let Some(transform) = graph.as_ref() else {
-        return Vec::new();
-    };
-
-    let parameter_entries = groups
-        .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 72)
-        .filter_map(|group| {
-            let path = find_indexed_path(file, group)?;
-            let definition_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            Some(collect_parameter_bindings(file, groups, definition_group))
-        })
-        .fold(BTreeMap::<String, f64>::new(), |mut acc, bindings| {
-            for binding in bindings.into_values() {
-                acc.entry(binding.name).or_insert(binding.value);
-            }
-            acc
-        })
-        .into_iter()
-        .collect::<Vec<_>>();
-
-    let base_entries = groups
-        .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 72)
-        .filter_map(|group| {
-            let path = find_indexed_path(file, group)?;
-            let definition_ordinal = *path.refs.first()?;
-            let definition_group = groups.get(definition_ordinal.checked_sub(1)?)?;
-            let expr = decode_function_expr(file, groups, definition_group)?;
-            Some((definition_ordinal, expr))
-        })
-        .collect::<Vec<_>>();
-
-    let total = base_entries.len();
-    let mut labels = parameter_entries
-        .iter()
-        .enumerate()
-        .map(|(index, (name, value))| {
-            let span_x = (bounds.max_x - bounds.min_x).max(1.0);
-            let span_y = (bounds.max_y - bounds.min_y).max(1.0);
-            let world_anchor = PointRecord {
-                x: bounds.min_x + span_x * 0.18,
-                y: bounds.max_y - span_y * (0.08 + 0.11 * index as f64),
-            };
-            TextLabel {
-                anchor: to_raw_from_world(&world_anchor, transform),
-                text: format!("{name} = {:.2}", value),
-                color: [30, 30, 30, 255],
-            }
-        })
-        .collect::<Vec<_>>();
-    let parameter_count = labels.len();
-    labels.extend(base_entries
-        .into_iter()
-        .enumerate()
-        .map(|(index, (_, expr))| {
-            let span_x = (bounds.max_x - bounds.min_x).max(1.0);
-            let span_y = (bounds.max_y - bounds.min_y).max(1.0);
-            let world_anchor = PointRecord {
-                x: bounds.min_x + span_x * 0.18,
-                y: bounds.max_y - span_y * (0.16 + 0.11 * (index + parameter_count) as f64),
-            };
-            TextLabel {
-                anchor: to_raw_from_world(&world_anchor, transform),
-                text: format!(
-                    "{}(x) = {}",
-                    function_name_for_index(index, total, &expr),
-                    function_expr_label(expr)
-                ),
-                color: [30, 30, 30, 255],
-            }
-        }));
-
-    let derivative_entries = groups
-        .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 78)
-        .filter_map(|group| {
-            let path = find_indexed_path(file, group)?;
-            let base_definition_ordinal = *path.refs.first()?;
-            let base_index = groups
-                .iter()
-                .filter(|candidate| (candidate.header.class_id & 0xffff) == 72)
-                .filter_map(|candidate| {
-                    find_indexed_path(file, candidate)
-                        .and_then(|candidate_path| candidate_path.refs.first().copied())
-                })
-                .position(|ordinal| ordinal == base_definition_ordinal)?;
-            let expr = decode_function_expr(file, groups, group)?;
-            Some((base_index, expr))
-        })
-        .collect::<Vec<_>>();
-
-    let span_x = (bounds.max_x - bounds.min_x).max(1.0);
-    let span_y = (bounds.max_y - bounds.min_y).max(1.0);
-    let base_count = labels.len();
-    labels.extend(derivative_entries.into_iter().enumerate().map(|(offset, (base_index, expr))| {
-        let label_index = base_count + offset;
-        let world_anchor = PointRecord {
-            x: bounds.min_x + span_x * 0.18,
-            y: bounds.max_y - span_y * (0.16 + 0.11 * label_index as f64),
-        };
-        TextLabel {
-            anchor: to_raw_from_world(&world_anchor, transform),
-            text: format!(
-                "{}'(x) = {}",
-                function_name_for_index(base_index, total.max(1), &expr),
-                function_expr_label(expr)
-            ),
-            color: [30, 30, 30, 255],
-        }
-    }));
 
     labels
 }
 
-fn function_expr_label(expr: FunctionExpr) -> String {
-    match expr {
-        FunctionExpr::Constant(value) => format_number(value),
-        FunctionExpr::Identity => "x".to_string(),
-        FunctionExpr::SinIdentity => "sin(x)".to_string(),
-        FunctionExpr::CosIdentityPlus(offset) => format!("cos(x) + {}", format_number(offset)),
-        FunctionExpr::TanIdentityMinus(offset) => format!("tan(x) - {}", format_number(offset)),
-        FunctionExpr::Parsed(parsed) => {
-            let mut text = format_function_term(parsed.head);
-            for (op, term) in parsed.tail {
-                text.push_str(match op {
-                    BinaryOp::Add => " + ",
-                    BinaryOp::Sub => " - ",
-                    BinaryOp::Mul => " * ",
-                });
-                text.push_str(&format_function_term(term));
-            }
-            text
-        }
-    }
-}
-
-fn function_name_for_index(index: usize, total: usize, expr: &FunctionExpr) -> &'static str {
-    let _ = (total, expr);
-    match index {
-        0 => "f",
-        1 => "g",
-        2 => "h",
-        3 => "p",
-        _ => "q",
-    }
-}
-
-fn collect_scene_parameters(
-    file: &GspFile,
-    groups: &[ObjectGroup],
-    labels: &[TextLabel],
-) -> Vec<SceneParameter> {
-    groups
+fn decode_label_name_raw(file: &GspFile, group: &ObjectGroup) -> Option<String> {
+    let payload = group
+        .records
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 72)
-        .filter_map(|group| {
-            let path = find_indexed_path(file, group)?;
-            let definition_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            Some(collect_parameter_bindings(file, groups, definition_group))
-        })
-        .fold(BTreeMap::<String, f64>::new(), |mut acc, bindings| {
-            for binding in bindings.into_values() {
-                acc.entry(binding.name).or_insert(binding.value);
-            }
-            acc
-        })
-        .into_iter()
-        .filter_map(|(name, value)| {
-            let text = format!("{name} = {:.2}", value);
-            let label_index = labels.iter().position(|label| label.text == text)?;
-            Some(SceneParameter {
-                name,
-                value,
-                label_index,
-            })
-        })
-        .collect()
-}
-
-fn collect_scene_functions(
-    file: &GspFile,
-    groups: &[ObjectGroup],
-    labels: &[TextLabel],
-    points: &[ScenePoint],
-    plot_line_offset: usize,
-) -> Vec<SceneFunction> {
-    let base_entries = groups
-        .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 72)
-        .filter_map(|group| {
-            let path = find_indexed_path(file, group)?;
-            let definition_ordinal = *path.refs.first()?;
-            let definition_group = groups.get(definition_ordinal.checked_sub(1)?)?;
-            let expr = decode_function_expr(file, groups, definition_group)?;
-            let descriptor = group
-                .records
-                .iter()
-                .find(|record| record.record_type == 0x0902)
-                .and_then(|record| decode_function_plot_descriptor(record.payload(&file.data)))?;
-            Some((definition_ordinal, expr, descriptor))
-        })
-        .collect::<Vec<_>>();
-
-    let total = base_entries.len().max(1);
-    let mut functions = base_entries
-        .iter()
-        .enumerate()
-        .filter_map(|(index, (definition_ordinal, expr, descriptor))| {
-            let name = function_name_for_index(index, total, expr).to_string();
-            let label_text = format!("{name}(x) = {}", function_expr_label(expr.clone()));
-            let label_index = labels.iter().position(|label| label.text == label_text)?;
-            let constrained_point_indices = points
-                .iter()
-                .enumerate()
-                .filter_map(|(point_index, point)| match &point.constraint {
-                    ScenePointConstraint::OnPolyline { function_key, .. }
-                        if function_key == definition_ordinal =>
-                    {
-                        Some(point_index)
-                    }
-                    _ => None,
-                })
-                .collect::<Vec<_>>();
-            Some(SceneFunction {
-                key: *definition_ordinal,
-                name,
-                derivative: false,
-                expr: expr.clone(),
-                domain: descriptor.clone(),
-                line_index: Some(plot_line_offset + index),
-                label_index,
-                constrained_point_indices,
-            })
-        })
-        .collect::<Vec<_>>();
-
-    functions.extend(
-        groups
-            .iter()
-            .filter(|group| (group.header.class_id & 0xffff) == 78)
-            .filter_map(|group| {
-                let path = find_indexed_path(file, group)?;
-                let base_definition_ordinal = *path.refs.first()?;
-                let base_index = base_entries
-                    .iter()
-                    .position(|(definition_ordinal, _, _)| *definition_ordinal == base_definition_ordinal)?;
-                let base_name = function_name_for_index(base_index, total, &base_entries[base_index].1);
-                let expr = decode_function_expr(file, groups, group)?;
-                let label_text = format!("{}'(x) = {}", base_name, function_expr_label(expr.clone()));
-                let label_index = labels.iter().position(|label| label.text == label_text)?;
-                Some(SceneFunction {
-                    key: base_definition_ordinal,
-                    name: base_name.to_string(),
-                    derivative: true,
-                    expr,
-                    domain: base_entries[base_index].2.clone(),
-                    line_index: None,
-                    label_index,
-                    constrained_point_indices: Vec::new(),
-                })
-            }),
-    );
-
-    functions
-}
-
-fn function_uses_pi_scale(file: &GspFile, groups: &[ObjectGroup]) -> bool {
-    groups
-        .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 72)
-        .filter_map(|group| {
-            let path = find_indexed_path(file, group)?;
-            let definition_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            decode_function_expr(file, groups, definition_group)
-        })
-        .any(function_expr_uses_trig)
-}
-
-fn format_function_term(term: FunctionTerm) -> String {
-    match term {
-        FunctionTerm::Variable => "x".to_string(),
-        FunctionTerm::Constant(value) => format_number(value),
-        FunctionTerm::Parameter(name, _) => name,
-        FunctionTerm::UnaryX(op) => match op {
-            UnaryFunction::Sin => "sin(x)".to_string(),
-            UnaryFunction::Cos => "cos(x)".to_string(),
-            UnaryFunction::Tan => "tan(x)".to_string(),
-            UnaryFunction::Abs => "|x|".to_string(),
-            UnaryFunction::Sqrt => "√x".to_string(),
-            UnaryFunction::Ln => "ln(x)".to_string(),
-            UnaryFunction::Log10 => "log(x)".to_string(),
-            UnaryFunction::Sign => "sgn(x)".to_string(),
-            UnaryFunction::Round => "round(x)".to_string(),
-            UnaryFunction::Trunc => "trunc(x)".to_string(),
-        },
-        FunctionTerm::Product(left, right) => {
-            format!("{}*{}", format_function_term(*left), format_function_term(*right))
-        }
-    }
-}
-
-fn evaluate_function_expr(expr: &ParsedFunctionExpr, x: f64) -> Option<f64> {
-    let mut value = evaluate_function_term(expr.head.clone(), x)?;
-    for (op, term) in &expr.tail {
-        let rhs = evaluate_function_term(term.clone(), x)?;
-        value = match op {
-            BinaryOp::Add => value + rhs,
-            BinaryOp::Sub => value - rhs,
-            BinaryOp::Mul => value * rhs,
-        };
-    }
-    value.is_finite().then_some(value)
-}
-
-fn evaluate_function_term(term: FunctionTerm, x: f64) -> Option<f64> {
-    match term {
-        FunctionTerm::Variable => Some(x),
-        FunctionTerm::Constant(value) => Some(value),
-        FunctionTerm::Parameter(_, value) => Some(value),
-        FunctionTerm::UnaryX(op) => match op {
-            UnaryFunction::Sin => Some(x.sin()),
-            UnaryFunction::Cos => Some(x.cos()),
-            UnaryFunction::Tan => {
-                let y = x.tan();
-                (y.is_finite() && x.cos().abs() >= 0.04 && y.abs() <= 5.0).then_some(y)
-            }
-            UnaryFunction::Abs => Some(x.abs()),
-            UnaryFunction::Sqrt => (x >= 0.0).then(|| x.sqrt()),
-            UnaryFunction::Ln => (x > 0.0).then(|| x.ln()),
-            UnaryFunction::Log10 => (x > 0.0).then(|| x.log10()),
-            UnaryFunction::Sign => Some(if x > 0.0 {
-                1.0
-            } else if x < 0.0 {
-                -1.0
-            } else {
-                0.0
-            }),
-            UnaryFunction::Round => Some(x.round()),
-            UnaryFunction::Trunc => Some(x.trunc()),
-        },
-        FunctionTerm::Product(left, right) => {
-            Some(evaluate_function_term(*left, x)? * evaluate_function_term(*right, x)?)
-        }
-    }
-}
-
-fn parse_function_expr(
-    payload: &[u8],
-    parameters: &BTreeMap<u16, ParameterBinding>,
-) -> Option<ParsedFunctionExpr> {
-    let words = payload
-        .chunks_exact(2)
-        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
-        .collect::<Vec<_>>();
-    let marker_index = words
-        .windows(2)
-        .position(|pair| matches!(pair, [0x0094, 0x0001] | [0x00a0, 0x0001]));
-    if let Some(marker_index) = marker_index
-        && let Some((parsed, _)) = parse_function_expr_from(&words, marker_index + 2, parameters)
-    {
-        return Some(parsed);
-    }
-    find_fallback_function_expr(&words, parameters)
-}
-
-fn parse_function_expr_from(
-    words: &[u16],
-    start: usize,
-    parameters: &BTreeMap<u16, ParameterBinding>,
-) -> Option<(ParsedFunctionExpr, usize)> {
-    let mut index = start;
-    let head = parse_function_term(&words, &mut index, parameters)?;
-    let mut tail = Vec::new();
-    while index < words.len() {
-        let op = match words[index] {
-            0x1000 => BinaryOp::Add,
-            0x1001 => BinaryOp::Sub,
-            _ => break,
-        };
-        index += 1;
-        let term = parse_function_term(&words, &mut index, parameters)?;
-        tail.push((op, term));
-    }
-    Some((ParsedFunctionExpr { head, tail }, index))
-}
-
-fn find_fallback_function_expr(
-    words: &[u16],
-    parameters: &BTreeMap<u16, ParameterBinding>,
-) -> Option<ParsedFunctionExpr> {
-    (0..words.len())
-        .filter_map(|start| parse_function_expr_from(words, start, parameters))
-        .find_map(|(parsed, end)| {
-            (end == words.len() && parsed_contains_symbol(&parsed)).then_some(parsed)
-        })
-}
-
-fn parsed_contains_symbol(parsed: &ParsedFunctionExpr) -> bool {
-    function_term_contains_symbol(&parsed.head)
-        || parsed
-            .tail
-            .iter()
-            .any(|(_, term)| function_term_contains_symbol(term))
-}
-
-fn parse_function_term(
-    words: &[u16],
-    index: &mut usize,
-    parameters: &BTreeMap<u16, ParameterBinding>,
-) -> Option<FunctionTerm> {
-    let mut term = parse_atomic_term(words, index, parameters)?;
-    while *index < words.len() && words[*index] == 0x1002 {
-        *index += 1;
-        let rhs = parse_atomic_term(words, index, parameters)?;
-        term = FunctionTerm::Product(Box::new(term), Box::new(rhs));
-    }
-    Some(term)
-}
-
-fn parse_atomic_term(
-    words: &[u16],
-    index: &mut usize,
-    parameters: &BTreeMap<u16, ParameterBinding>,
-) -> Option<FunctionTerm> {
-    if *index >= words.len() {
+        .find(|record| record.record_type == 0x07d5)
+        .map(|record| record.payload(&file.data))?;
+    if payload.len() < 24 {
         return None;
     }
-    if let Some(op) = decode_unary_function(words[*index]) {
-        if *index + 2 < words.len() && words[*index + 1] == 0x000f && words[*index + 2] == 0x000c {
-            *index += 3;
-            return Some(FunctionTerm::UnaryX(op));
-        }
+    let name_len = read_u16(payload, 22) as usize;
+    if name_len == 0 || 24 + name_len > payload.len() {
         return None;
     }
-    if (words[*index] & 0xfff0) == 0x6000 {
-        let parameter_index = words[*index] & 0x000f;
-        *index += 1;
-        let binding = parameters.get(&parameter_index)?.clone();
-        return Some(FunctionTerm::Parameter(binding.name, binding.value));
-    }
-    if *index + 1 < words.len() && words[*index] == 0x000f && words[*index + 1] == 0x000c {
-        *index += 2;
-        return Some(FunctionTerm::Variable);
-    }
-    if words[*index] == 0x000f {
-        *index += 1;
-        return Some(FunctionTerm::Variable);
-    }
-    let value = words[*index];
-    *index += 1;
-    Some(FunctionTerm::Constant(f64::from(value)))
+    let name_bytes = &payload[24..24 + name_len];
+    Some(String::from_utf8_lossy(name_bytes).to_string())
 }
 
-fn function_expr_uses_trig(expr: FunctionExpr) -> bool {
-    match expr {
-        FunctionExpr::SinIdentity | FunctionExpr::CosIdentityPlus(_) | FunctionExpr::TanIdentityMinus(_) => true,
-        FunctionExpr::Parsed(parsed) => {
-            function_term_uses_trig(&parsed.head)
-                || parsed
-                    .tail
-                    .iter()
-                    .any(|(_, term)| function_term_uses_trig(term))
+fn decode_0907_anchor(file: &GspFile, group: &ObjectGroup) -> Option<PointRecord> {
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x0907)
+        .map(|record| record.payload(&file.data))?;
+    (payload.len() >= 16 && read_u32(payload, 0) == 0x08fc).then(|| PointRecord {
+        x: read_i16(payload, 12) as f64,
+        y: read_i16(payload, 14) as f64,
+    })
+}
+
+fn decode_caption_text(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<String> {
+    let path = find_indexed_path(file, group)?;
+    let mut parts = Vec::new();
+    for &obj_ref in &path.refs {
+        let ref_group = groups.get(obj_ref.checked_sub(1)?)?;
+        if let Some(name) = decode_label_name(file, ref_group) {
+            parts.push(name);
         }
-        _ => false,
     }
+    (!parts.is_empty()).then(|| parts.join(", "))
 }
 
-fn function_term_uses_trig(term: &FunctionTerm) -> bool {
-    match term {
-        FunctionTerm::UnaryX(UnaryFunction::Sin | UnaryFunction::Cos | UnaryFunction::Tan) => true,
-        FunctionTerm::Product(left, right) => {
-            function_term_uses_trig(left) || function_term_uses_trig(right)
-        }
-        _ => false,
+fn decode_label_name(file: &GspFile, group: &ObjectGroup) -> Option<String> {
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x07d5)
+        .map(|record| record.payload(&file.data))?;
+    if payload.len() < 24 {
+        return None;
     }
+    let name_len = read_u16(payload, 22) as usize;
+    if name_len == 0 || 24 + name_len > payload.len() {
+        return None;
+    }
+    let name_bytes = &payload[24..24 + name_len];
+    Some(
+        String::from_utf8_lossy(name_bytes)
+            .replace("[1]", "₁")
+            .replace("[2]", "₂")
+            .replace("[3]", "₃")
+            .replace("[4]", "₄"),
+    )
 }
 
-fn function_term_contains_symbol(term: &FunctionTerm) -> bool {
-    match term {
-        FunctionTerm::Variable | FunctionTerm::UnaryX(_) | FunctionTerm::Parameter(_, _) => true,
-        FunctionTerm::Product(left, right) => {
-            function_term_contains_symbol(left) || function_term_contains_symbol(right)
-        }
-        FunctionTerm::Constant(_) => false,
-    }
-}
-
-fn decode_unary_function(word: u16) -> Option<UnaryFunction> {
-    match word {
-        0x2000 => Some(UnaryFunction::Sin),
-        0x2001 => Some(UnaryFunction::Cos),
-        0x2002 => Some(UnaryFunction::Tan),
-        0x2006 => Some(UnaryFunction::Abs),
-        0x2007 => Some(UnaryFunction::Sqrt),
-        0x2008 => Some(UnaryFunction::Ln),
-        0x2009 => Some(UnaryFunction::Log10),
-        0x200a => Some(UnaryFunction::Sign),
-        0x200b => Some(UnaryFunction::Round),
-        0x200c => Some(UnaryFunction::Trunc),
-        _ => None,
-    }
-}
-
-fn canonicalize_function_expr(parsed: ParsedFunctionExpr) -> FunctionExpr {
-    match (&parsed.head, parsed.tail.as_slice()) {
-        (FunctionTerm::Variable, []) => FunctionExpr::Identity,
-        (FunctionTerm::UnaryX(UnaryFunction::Sin), []) => FunctionExpr::SinIdentity,
-        (
-            FunctionTerm::UnaryX(UnaryFunction::Cos),
-            [(BinaryOp::Add, FunctionTerm::Constant(value))],
-        ) if (*value - 5.0).abs() < f64::EPSILON => FunctionExpr::CosIdentityPlus(5.0),
-        (
-            FunctionTerm::UnaryX(UnaryFunction::Tan),
-            [(BinaryOp::Sub, FunctionTerm::Constant(value))],
-        ) if (*value - 4.0).abs() < f64::EPSILON => FunctionExpr::TanIdentityMinus(4.0),
-        _ => FunctionExpr::Parsed(parsed),
-    }
-}
-
-fn find_indexed_path(file: &GspFile, group: &ObjectGroup) -> Option<IndexedPathRecord> {
+pub(super) fn find_indexed_path(file: &GspFile, group: &ObjectGroup) -> Option<IndexedPathRecord> {
     group
         .records
         .iter()
@@ -1809,16 +1233,19 @@ fn find_indexed_path(file: &GspFile, group: &ObjectGroup) -> Option<IndexedPathR
 }
 
 fn decode_group_label_text(file: &GspFile, group: &ObjectGroup) -> Option<String> {
-    group.records.iter().find_map(|record| {
-        match record.record_type {
+    group
+        .records
+        .iter()
+        .find_map(|record| match record.record_type {
             0x08fc => extract_rich_text(record.payload(&file.data)),
-            0x07d5 if matches!(group.header.class_id & 0xffff, 62) => collect_strings(record.payload(&file.data))
-                .into_iter()
-                .map(|entry| entry.text.trim().to_string())
-                .find(|text| !text.is_empty()),
+            0x07d5 if matches!(group.header.class_id & 0xffff, 62) => {
+                collect_strings(record.payload(&file.data))
+                    .into_iter()
+                    .map(|entry| entry.text.trim().to_string())
+                    .find(|text| !text.is_empty())
+            }
             _ => None,
-        }
-    })
+        })
 }
 
 fn decode_bbox_anchor_raw(file: &GspFile, group: &ObjectGroup) -> Option<PointRecord> {
@@ -1830,10 +1257,10 @@ fn decode_bbox_anchor_raw(file: &GspFile, group: &ObjectGroup) -> Option<PointRe
     if payload.len() < 8 {
         return None;
     }
-    let x0 = read_u16(payload, payload.len() - 8) as f64;
-    let y0 = read_u16(payload, payload.len() - 6) as f64;
-    let x1 = read_u16(payload, payload.len() - 4) as f64;
-    let y1 = read_u16(payload, payload.len() - 2) as f64;
+    let x0 = read_i16(payload, payload.len() - 8) as f64;
+    let y0 = read_i16(payload, payload.len() - 6) as f64;
+    let x1 = read_i16(payload, payload.len() - 4) as f64;
+    let y1 = read_i16(payload, payload.len() - 2) as f64;
     Some(PointRecord {
         x: (x0 + x1) / 2.0,
         y: (y0 + y1) / 2.0,
@@ -1921,7 +1348,9 @@ fn decode_point_on_ray_anchor_raw(
     }
 
     let host_path = find_indexed_path(file, host_group)?;
-    let origin = anchors.get(host_path.refs.first()?.checked_sub(1)?)?.clone()?;
+    let origin = anchors
+        .get(host_path.refs.first()?.checked_sub(1)?)?
+        .clone()?;
     let direction_group = groups.get(host_path.refs.get(1)?.checked_sub(1)?)?;
     let direction_payload = direction_group
         .records
@@ -1955,6 +1384,38 @@ fn decode_point_on_ray_anchor_raw(
     Some(PointRecord {
         x: origin.x + distance * unit_x,
         y: origin.y - distance * unit_y,
+    })
+}
+
+fn decode_offset_anchor_raw(
+    file: &GspFile,
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    if (group.header.class_id & 0xffff) != 67 {
+        return None;
+    }
+
+    let path = find_indexed_path(file, group)?;
+    let origin = anchors.get(path.refs.first()?.checked_sub(1)?)?.clone()?;
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x07d3)
+        .map(|record| record.payload(&file.data))?;
+    if payload.len() < 20 {
+        return None;
+    }
+
+    let dx = read_f64(payload, 4);
+    let dy = read_f64(payload, 12);
+    if !dx.is_finite() || !dy.is_finite() {
+        return None;
+    }
+
+    Some(PointRecord {
+        x: origin.x + dx,
+        y: origin.y + dy,
     })
 }
 
@@ -2341,50 +1802,6 @@ fn collect_bounds(
     bounds
 }
 
-fn include_line_bounds(bounds: &mut Bounds, lines: &[LineShape], graph: &Option<GraphTransform>) {
-    for line in lines {
-        for point in &line.points {
-            let world = to_world(point, graph);
-            bounds.min_x = bounds.min_x.min(world.x);
-            bounds.max_x = bounds.max_x.max(world.x);
-            bounds.min_y = bounds.min_y.min(world.y);
-            bounds.max_y = bounds.max_y.max(world.y);
-        }
-    }
-}
-
-fn bounds_from_function_plots(
-    function_plots: &[LineShape],
-    domain: Option<(f64, f64)>,
-    graph: &Option<GraphTransform>,
-) -> Option<Bounds> {
-    let mut bounds =
-        if let Some(first) = function_plots.first().and_then(|line| line.points.first()) {
-            let first = to_world(first, graph);
-            Bounds {
-                min_x: first.x,
-                max_x: first.x,
-                min_y: first.y,
-                max_y: first.y,
-            }
-        } else if let Some((min_x, max_x)) = domain {
-            Bounds {
-                min_x,
-                max_x,
-                min_y: 0.0,
-                max_y: 0.0,
-            }
-        } else {
-            return None;
-        };
-    include_line_bounds(&mut bounds, function_plots, graph);
-    if let Some((min_x, max_x)) = domain {
-        bounds.min_x = bounds.min_x.min(min_x);
-        bounds.max_x = bounds.max_x.max(max_x);
-    }
-    Some(bounds)
-}
-
 fn bounds_within(container: &Bounds, content: &Bounds) -> bool {
     const TOLERANCE: f64 = 1e-3;
     container.min_x <= content.min_x + TOLERANCE
@@ -2408,61 +1825,6 @@ fn expand_bounds(bounds: &mut Bounds) {
     bounds.max_x += margin_x;
     bounds.min_y -= margin_y;
     bounds.max_y += margin_y;
-}
-
-fn to_world(point: &PointRecord, graph: &Option<GraphTransform>) -> PointRecord {
-    if let Some(graph) = graph {
-        PointRecord {
-            x: (point.x - graph.origin_raw.x) / graph.raw_per_unit,
-            y: (graph.origin_raw.y - point.y) / graph.raw_per_unit,
-        }
-    } else {
-        point.clone()
-    }
-}
-
-fn to_raw_from_world(point: &PointRecord, graph: &GraphTransform) -> PointRecord {
-    PointRecord {
-        x: graph.origin_raw.x + point.x * graph.raw_per_unit,
-        y: graph.origin_raw.y - point.y * graph.raw_per_unit,
-    }
-}
-
-fn read_f32_unaligned(data: &[u8], offset: usize) -> Option<f32> {
-    let bytes = data.get(offset..offset + 4)?;
-    Some(f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
-}
-
-pub(crate) fn to_screen(
-    point: &PointRecord,
-    width: u32,
-    height: u32,
-    margin: f64,
-    bounds: &Bounds,
-    y_up: bool,
-) -> (i32, i32) {
-    let scale = screen_scale(width, height, margin, bounds);
-    let x = margin + (point.x - bounds.min_x) * scale;
-    let y = if y_up {
-        height as f64 - margin - (point.y - bounds.min_y) * scale
-    } else {
-        margin + (point.y - bounds.min_y) * scale
-    };
-    (x.round() as i32, y.round() as i32)
-}
-
-pub(crate) fn screen_scale(width: u32, height: u32, margin: f64, bounds: &Bounds) -> f64 {
-    let usable_width = (width as f64 - margin * 2.0).max(1.0);
-    let usable_height = (height as f64 - margin * 2.0).max(1.0);
-    let span_x = (bounds.max_x - bounds.min_x).max(1.0);
-    let span_y = (bounds.max_y - bounds.min_y).max(1.0);
-    f64::min(usable_width / span_x, usable_height / span_y)
-}
-
-fn distance_world(a: &PointRecord, b: &PointRecord, graph: &Option<GraphTransform>) -> f64 {
-    let aw = to_world(a, graph);
-    let bw = to_world(b, graph);
-    ((aw.x - bw.x).powi(2) + (aw.y - bw.y).powi(2)).sqrt()
 }
 
 fn extract_rich_text(payload: &[u8]) -> Option<String> {
@@ -2505,8 +1867,8 @@ fn decode_text_anchor(payload: &[u8]) -> Option<PointRecord> {
         return None;
     }
     Some(PointRecord {
-        x: read_u16(payload, 12) as f64,
-        y: read_u16(payload, 14) as f64,
+        x: read_i16(payload, 12) as f64,
+        y: read_i16(payload, 14) as f64,
     })
 }
 
@@ -2573,16 +1935,17 @@ fn parse_markup(markup: &str) -> String {
 
                     let mut inner = inner_parts.join("");
                     if name.starts_with('+') && !inner.is_empty() {
-                        let split = inner
-                            .char_indices()
-                            .rev()
-                            .find(|(_, ch)| !ch.is_ascii_digit())
-                            .map(|(i, _)| i + 1)
+                        let chars = inner.chars().collect::<Vec<_>>();
+                        let split = chars
+                            .iter()
+                            .rposition(|ch| !ch.is_ascii_digit())
+                            .map(|index| index + 1)
                             .unwrap_or(0);
-                        if split < inner.len() {
-                            let exp = inner.split_off(split);
+                        if split < chars.len() {
+                            let exponent = chars[split..].iter().collect::<String>();
+                            inner = chars[..split].iter().collect::<String>();
                             inner.push('^');
-                            inner.push_str(&exp);
+                            inner.push_str(&exponent);
                         }
                     }
                     if !inner.is_empty() {
@@ -2599,60 +1962,14 @@ fn parse_markup(markup: &str) -> String {
     parts.join("")
 }
 
-fn format_number(value: f64) -> String {
-    if (value.fract()).abs() < 0.005 {
-        format!("{value:.0}")
-    } else {
-        format!("{value:.2}")
-    }
-}
-
-fn color_from_style(style: u32) -> [u8; 4] {
-    [
-        (style & 0xff) as u8,
-        ((style >> 8) & 0xff) as u8,
-        ((style >> 16) & 0xff) as u8,
-        255,
-    ]
-}
-
-pub(crate) fn darken(rgba: [u8; 4], amount: u8) -> [u8; 4] {
-    [
-        rgba[0].saturating_sub(amount),
-        rgba[1].saturating_sub(amount),
-        rgba[2].saturating_sub(amount),
-        rgba[3],
-    ]
-}
-
-fn has_distinct_points(points: &[PointRecord]) -> bool {
-    points.windows(2).any(|pair| {
-        let dx = pair[0].x - pair[1].x;
-        let dy = pair[0].y - pair[1].y;
-        dx.abs() > 1e-6 || dy.abs() > 1e-6
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::format::GspFile;
 
     #[test]
-    fn extracts_simple_function_token() {
-        assert_eq!(
-            extract_inline_function_token(b"\0\0<0>\0"),
-            Some("0".to_string())
-        );
-        assert_eq!(
-            extract_inline_function_token(b"junk<x>tail"),
-            Some("x".to_string())
-        );
-    }
-
-    #[test]
     fn builds_function_plot_for_f_gsp() {
-        let data = include_bytes!("../../f.gsp");
+        let data = include_bytes!("../../../f.gsp");
         let file = GspFile::parse(data).expect("fixture parses");
         let scene = build_scene(&file);
 
@@ -2683,60 +2000,8 @@ mod tests {
     }
 
     #[test]
-    fn decodes_f_gsp_function_expr() {
-        let data = include_bytes!("../../f.gsp");
-        let file = GspFile::parse(data).expect("fixture parses");
-        let groups = file.object_groups();
-        let function_group = groups
-            .iter()
-            .find(|group| {
-                group
-                    .records
-                    .iter()
-                    .any(|record| record.record_type == 0x0907)
-            })
-            .expect("function group");
-        let payload = function_group
-            .records
-            .iter()
-            .find(|record| record.record_type == 0x0907)
-            .expect("0907 record")
-            .payload(&file.data);
-        let parameters = BTreeMap::new();
-        assert_eq!(
-            decode_inner_function_expr(payload, &parameters),
-            Some(FunctionExpr::Parsed(ParsedFunctionExpr {
-                head: FunctionTerm::UnaryX(UnaryFunction::Abs),
-                tail: vec![
-                    (BinaryOp::Add, FunctionTerm::UnaryX(UnaryFunction::Sqrt)),
-                    (BinaryOp::Add, FunctionTerm::UnaryX(UnaryFunction::Ln)),
-                    (BinaryOp::Add, FunctionTerm::UnaryX(UnaryFunction::Log10)),
-                    (BinaryOp::Add, FunctionTerm::UnaryX(UnaryFunction::Sign)),
-                    (BinaryOp::Add, FunctionTerm::UnaryX(UnaryFunction::Round)),
-                    (BinaryOp::Add, FunctionTerm::UnaryX(UnaryFunction::Trunc)),
-                ],
-            }))
-        );
-        let expr = decode_function_expr(&file, &groups, function_group);
-        assert_eq!(
-            expr,
-            Some(FunctionExpr::Parsed(ParsedFunctionExpr {
-                head: FunctionTerm::UnaryX(UnaryFunction::Abs),
-                tail: vec![
-                    (BinaryOp::Add, FunctionTerm::UnaryX(UnaryFunction::Sqrt)),
-                    (BinaryOp::Add, FunctionTerm::UnaryX(UnaryFunction::Ln)),
-                    (BinaryOp::Add, FunctionTerm::UnaryX(UnaryFunction::Log10)),
-                    (BinaryOp::Add, FunctionTerm::UnaryX(UnaryFunction::Sign)),
-                    (BinaryOp::Add, FunctionTerm::UnaryX(UnaryFunction::Round)),
-                    (BinaryOp::Add, FunctionTerm::UnaryX(UnaryFunction::Trunc)),
-                ],
-            }))
-        );
-    }
-
-    #[test]
     fn preserves_constrained_points_in_edge_gsp() {
-        let data = include_bytes!("../../edge.gsp");
+        let data = include_bytes!("../../../edge.gsp");
         let file = GspFile::parse(data).expect("fixture parses");
         let scene = build_scene(&file);
 
@@ -2763,19 +2028,45 @@ mod tests {
             )
         }));
         assert!(scene.points.iter().any(|point| {
-            (point.position.x + 9.17159).abs() < 0.01
-                && (point.position.y - 5.598877).abs() < 0.01
+            (point.position.x + 9.17159).abs() < 0.01 && (point.position.y - 5.598877).abs() < 0.01
         }));
         assert!(scene.points.iter().any(|point| {
-            (point.position.x + 4.956433).abs() < 0.01
-                && (point.position.y - 1.163518).abs() < 0.01
+            (point.position.x + 4.956433).abs() < 0.01 && (point.position.y - 1.163518).abs() < 0.01
         }));
-        assert!(scene.points.iter().any(|point| {
-            matches!(point.constraint, ScenePointConstraint::OnPolyline { .. })
-        }));
+        assert!(
+            scene.points.iter().any(|point| {
+                matches!(point.constraint, ScenePointConstraint::OnPolyline { .. })
+            })
+        );
         assert_eq!(
-            scene.labels.iter().map(|label| label.text.as_str()).collect::<Vec<_>>(),
-            vec!["a = 3.00", "f(x) = x + a*sin(x)", "f'(x) = 1 + a*cos(x)"]
+            scene
+                .labels
+                .iter()
+                .map(|label| label.text.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "a = 3.00",
+                "b = 1.00",
+                "f(x) = x + a*sin(x) + b",
+                "f'(x) = 1 + a*cos(x)",
+            ]
+        );
+    }
+
+    #[test]
+    fn keeps_control_labels_in_non_graph_sample() {
+        let data = include_bytes!("../../../Samples/个人专栏/潘建平作品/加油潘建平老师.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert!(
+            scene.labels.iter().any(|label| label.text.contains("单价")),
+            "expected UI text label from rich text payload, got {:?}",
+            scene
+                .labels
+                .iter()
+                .map(|label| label.text.as_str())
+                .collect::<Vec<_>>()
         );
     }
 }
