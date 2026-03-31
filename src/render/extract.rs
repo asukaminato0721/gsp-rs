@@ -186,6 +186,8 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
 
     let (visible_points, group_to_point_index) =
         collect_visible_points(file, &groups, &point_map, &raw_anchors, &graph_ref);
+    let derived_iteration_points =
+        collect_point_iteration_points(file, &groups, &raw_anchors, &group_to_point_index);
     remap_label_bindings(&mut labels, &group_to_point_index);
     let circle_group_to_index = groups
         .iter()
@@ -236,6 +238,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
 
     let world_points = visible_points
         .iter()
+        .chain(derived_iteration_points.iter())
         .map(|point| ScenePoint {
             position: to_world(&point.position, &graph_ref),
             constraint: match &point.constraint {
@@ -975,6 +978,91 @@ fn remap_polygon_bindings(
         *source_index = mapped_source_index;
         *center_index = mapped_center_index;
     }
+}
+
+fn collect_point_iteration_points(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group_to_point_index: &[Option<usize>],
+) -> Vec<ScenePoint> {
+    let mut derived_points = Vec::new();
+
+    for group in groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 77)
+    {
+        let Some(path) = find_indexed_path(file, group) else {
+            continue;
+        };
+        if path.refs.len() < 2 {
+            continue;
+        }
+        let Some(seed_group_index) = path.refs[0].checked_sub(1) else {
+            continue;
+        };
+        let Some(iter_group_index) = path.refs[1].checked_sub(1) else {
+            continue;
+        };
+        let Some(seed_index) = group_to_point_index.get(seed_group_index).and_then(|index| *index) else {
+            continue;
+        };
+        let Some(iter_group) = groups.get(iter_group_index) else {
+            continue;
+        };
+        if (iter_group.header.class_id & 0xffff) != 76 {
+            continue;
+        }
+        let Some(iter_path) = find_indexed_path(file, iter_group) else {
+            continue;
+        };
+        if iter_path.refs.len() < 2 {
+            continue;
+        }
+        let Some(base_start) = anchors.get(iter_path.refs[0].saturating_sub(1)).cloned().flatten() else {
+            continue;
+        };
+        let Some(base_end) = anchors.get(iter_path.refs[1].saturating_sub(1)).cloned().flatten() else {
+            continue;
+        };
+        let dx = base_end.x - base_start.x;
+        let dy = base_end.y - base_start.y;
+        let depth = iter_group
+            .records
+            .iter()
+            .find(|record| record.record_type == 0x090a)
+            .map(|record| record.payload(&file.data))
+            .filter(|payload| payload.len() >= 20)
+            .map(|payload| read_u32(payload, 16) as usize)
+            .unwrap_or(0);
+        if depth == 0 {
+            continue;
+        }
+        let Some(seed_position) = anchors.get(seed_group_index).cloned().flatten() else {
+            continue;
+        };
+
+        let mut previous_index = seed_index + derived_points.len();
+        let mut current_position = seed_position;
+        for _ in 0..depth {
+            current_position = PointRecord {
+                x: current_position.x + dx,
+                y: current_position.y + dy,
+            };
+            derived_points.push(ScenePoint {
+                position: current_position.clone(),
+                constraint: ScenePointConstraint::Offset {
+                    origin_index: previous_index,
+                    dx,
+                    dy,
+                },
+                binding: None,
+            });
+            previous_index = seed_index + derived_points.len();
+        }
+    }
+
+    derived_points
 }
 
 fn collect_raw_object_anchors(
@@ -4052,6 +4140,24 @@ mod tests {
             polygon.binding,
             Some(crate::render::scene::ShapeBinding::ReflectPolygon { .. })
         )));
+    }
+
+    #[test]
+    fn preserves_point_iteration_in_dot_iteration_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/点迭代.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.points.len(), 5, "expected seed point, translated point, and three iterated points");
+        assert_eq!(
+            scene
+                .points
+                .iter()
+                .filter(|point| matches!(point.constraint, ScenePointConstraint::Offset { .. }))
+                .count(),
+            4,
+            "expected translated point plus chained iterated offsets"
+        );
     }
 
     #[test]
