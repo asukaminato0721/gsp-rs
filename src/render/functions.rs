@@ -396,7 +396,7 @@ pub(super) fn collect_scene_parameters(
             Some(SceneParameter {
                 name,
                 value,
-                label_index,
+                label_index: Some(label_index),
             })
         })
         .collect()

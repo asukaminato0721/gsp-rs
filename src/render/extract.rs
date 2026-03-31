@@ -17,8 +17,8 @@ use super::geometry::{
     to_raw_from_world, to_world,
 };
 use super::scene::{
-    LineShape, PolygonShape, Scene, SceneCircle, ScenePoint, ScenePointConstraint, TextLabel,
-    TextLabelBinding,
+    LineShape, PolygonShape, Scene, SceneCircle, SceneParameter, ScenePoint, ScenePointBinding,
+    ScenePointConstraint, TextLabel, TextLabelBinding,
 };
 
 #[derive(Debug, Clone)]
@@ -237,6 +237,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
                     },
                 },
             },
+            binding: point.binding.clone(),
         })
         .collect::<Vec<_>>();
 
@@ -275,7 +276,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     let parameters = if graph_mode {
         collect_scene_parameters(file, &groups, &labels)
     } else {
-        Vec::new()
+        collect_non_graph_parameters(file, &groups, &mut labels)
     };
     let functions = if graph_mode {
         collect_scene_functions(
@@ -367,6 +368,61 @@ fn collect_point_objects(file: &GspFile, groups: &[ObjectGroup]) -> Vec<Option<P
         .collect()
 }
 
+fn collect_non_graph_parameters(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    labels: &mut [TextLabel],
+) -> Vec<SceneParameter> {
+    groups
+        .iter()
+        .filter_map(|group| decode_non_graph_parameter(file, group, labels))
+        .collect()
+}
+
+fn decode_non_graph_parameter(
+    file: &GspFile,
+    group: &ObjectGroup,
+    labels: &mut [TextLabel],
+) -> Option<SceneParameter> {
+    if (group.header.class_id & 0xffff) != 0 {
+        return None;
+    }
+    if group.records.iter().any(|record| record.record_type == 0x0899) {
+        return None;
+    }
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x0907)
+        .map(|record| record.payload(&file.data))?;
+    let name = decode_label_name(file, group)?;
+    let value = decode_non_graph_parameter_value(payload)?;
+    let label_index = labels.iter().position(|label| label.text == name);
+    if let Some(index) = label_index {
+        labels[index].text = format!("{name} = {:.2}", value);
+    }
+    Some(SceneParameter {
+        name,
+        value,
+        label_index,
+    })
+}
+
+fn decode_non_graph_parameter_value(payload: &[u8]) -> Option<f64> {
+    (payload.len() >= 60)
+        .then(|| read_f64(payload, 52))
+        .filter(|value| value.is_finite())
+}
+
+fn decode_non_graph_parameter_value_for_group(file: &GspFile, group: &ObjectGroup) -> Option<f64> {
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x0907)
+        .map(|record| record.payload(&file.data))?;
+    decode_non_graph_parameter_value(payload)
+}
+
 fn collect_visible_points(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -387,6 +443,7 @@ fn collect_visible_points(
                 .map(|position| ScenePoint {
                     position,
                     constraint: ScenePointConstraint::Free,
+                    binding: None,
                 }),
             21 => decode_translated_point_constraint(file, group).and_then(|constraint| {
                 let origin_index = group_to_point_index
@@ -400,6 +457,7 @@ fn collect_visible_points(
                         dx: constraint.dx,
                         dy: constraint.dy,
                     },
+                    binding: None,
                 })
             }),
             15 => decode_point_constraint(file, groups, group, graph).and_then(|constraint| {
@@ -419,6 +477,7 @@ fn collect_visible_points(
                                 end_index,
                                 t: constraint.t,
                             },
+                            binding: None,
                         })
                     }
                     RawPointConstraint::Polyline {
@@ -434,6 +493,7 @@ fn collect_visible_points(
                             segment_index,
                             t,
                         },
+                        binding: None,
                     }),
                     RawPointConstraint::PolygonBoundary {
                         vertex_group_indices,
@@ -455,6 +515,7 @@ fn collect_visible_points(
                                 edge_index,
                                 t,
                             },
+                            binding: None,
                         })
                     }
                     RawPointConstraint::Circle(constraint) => {
@@ -472,10 +533,80 @@ fn collect_visible_points(
                                 unit_x: constraint.unit_x,
                                 unit_y: constraint.unit_y,
                             },
+                            binding: None,
                         })
                     }
                 }
             }),
+            95 => decode_parameter_controlled_point(file, groups, group, anchors).and_then(
+                |parameter_point| match parameter_point.constraint {
+                    RawPointConstraint::Segment(constraint) => {
+                        let start_index = group_to_point_index
+                            .get(constraint.start_group_index)
+                            .and_then(|index| *index)?;
+                        let end_index = group_to_point_index
+                            .get(constraint.end_group_index)
+                            .and_then(|index| *index)?;
+                        Some(ScenePoint {
+                            position: parameter_point.position,
+                            constraint: ScenePointConstraint::OnSegment {
+                                start_index,
+                                end_index,
+                                t: constraint.t,
+                            },
+                            binding: Some(ScenePointBinding::Parameter {
+                                name: parameter_point.parameter_name,
+                            }),
+                        })
+                    }
+                    RawPointConstraint::PolygonBoundary {
+                        vertex_group_indices,
+                        edge_index,
+                        t,
+                    } => {
+                        let vertex_indices = vertex_group_indices
+                            .iter()
+                            .map(|group_index| {
+                                group_to_point_index
+                                    .get(*group_index)
+                                    .and_then(|index| *index)
+                            })
+                            .collect::<Option<Vec<_>>>()?;
+                        Some(ScenePoint {
+                            position: parameter_point.position,
+                            constraint: ScenePointConstraint::OnPolygonBoundary {
+                                vertex_indices,
+                                edge_index,
+                                t,
+                            },
+                            binding: Some(ScenePointBinding::Parameter {
+                                name: parameter_point.parameter_name,
+                            }),
+                        })
+                    }
+                    RawPointConstraint::Circle(constraint) => {
+                        let center_index = group_to_point_index
+                            .get(constraint.center_group_index)
+                            .and_then(|index| *index)?;
+                        let radius_index = group_to_point_index
+                            .get(constraint.radius_group_index)
+                            .and_then(|index| *index)?;
+                        Some(ScenePoint {
+                            position: parameter_point.position,
+                            constraint: ScenePointConstraint::OnCircle {
+                                center_index,
+                                radius_index,
+                                unit_x: constraint.unit_x,
+                                unit_y: constraint.unit_y,
+                            },
+                            binding: Some(ScenePointBinding::Parameter {
+                                name: parameter_point.parameter_name,
+                            }),
+                        })
+                    }
+                    RawPointConstraint::Polyline { .. } => None,
+                },
+            ),
             _ => None,
         };
 
@@ -529,6 +660,8 @@ fn collect_raw_object_anchors(
             Some(anchor)
         } else if let Some(anchor) = decode_offset_anchor_raw(file, group, &anchors) {
             Some(anchor)
+        } else if let Some(anchor) = decode_parameter_controlled_anchor_raw(file, groups, group, &anchors) {
+            Some(anchor)
         } else if let Some(anchor) = decode_bbox_anchor_raw(file, group) {
             Some(anchor)
         } else {
@@ -541,6 +674,15 @@ fn collect_raw_object_anchors(
         anchors.push(anchor);
     }
     anchors
+}
+
+fn decode_parameter_controlled_anchor_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    decode_parameter_controlled_point(file, groups, group, anchors).map(|point| point.position)
 }
 
 fn collect_line_shapes(
@@ -1853,6 +1995,12 @@ enum RawPointConstraint {
     Circle(PointOnCircleConstraint),
 }
 
+struct ParameterControlledPoint {
+    position: PointRecord,
+    constraint: RawPointConstraint,
+    parameter_name: String,
+}
+
 fn decode_point_on_segment_constraint(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -1889,6 +2037,135 @@ fn decode_point_on_segment_constraint(
         end_group_index: host_path.refs[1].checked_sub(1)?,
         t,
     })
+}
+
+fn decode_parameter_controlled_point(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<ParameterControlledPoint> {
+    if (group.header.class_id & 0xffff) != 95 {
+        return None;
+    }
+
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() < 2 {
+        return None;
+    }
+
+    let parameter_group = groups.get(path.refs[0].checked_sub(1)?)?;
+    let host_group = groups.get(path.refs[1].checked_sub(1)?)?;
+    let parameter_name = decode_label_name(file, parameter_group)?;
+    let parameter_value = decode_non_graph_parameter_value_for_group(file, parameter_group)?
+        .clamp(0.0, 1.0);
+
+    match host_group.header.class_id & 0xffff {
+        2 => {
+            let host_path = find_indexed_path(file, host_group)?;
+            if host_path.refs.len() != 2 {
+                return None;
+            }
+            let start_group_index = host_path.refs[0].checked_sub(1)?;
+            let end_group_index = host_path.refs[1].checked_sub(1)?;
+            let start = anchors.get(start_group_index)?.clone()?;
+            let end = anchors.get(end_group_index)?.clone()?;
+            let position = PointRecord {
+                x: start.x + (end.x - start.x) * parameter_value,
+                y: start.y + (end.y - start.y) * parameter_value,
+            };
+            Some(ParameterControlledPoint {
+                position,
+                constraint: RawPointConstraint::Segment(PointOnSegmentConstraint {
+                    start_group_index,
+                    end_group_index,
+                    t: parameter_value,
+                }),
+                parameter_name,
+            })
+        }
+        8 => {
+            let host_path = find_indexed_path(file, host_group)?;
+            let vertex_group_indices = host_path
+                .refs
+                .iter()
+                .map(|vertex| vertex.checked_sub(1))
+                .collect::<Option<Vec<_>>>()?;
+            let vertices = vertex_group_indices
+                .iter()
+                .map(|group_index| anchors.get(*group_index)?.clone())
+                .collect::<Option<Vec<_>>>()?;
+            let (edge_index, t) = polygon_parameter_to_edge(&vertices, parameter_value)?;
+            let position = resolve_polygon_boundary_point_raw(&vertices, edge_index, t)?;
+            Some(ParameterControlledPoint {
+                position,
+                constraint: RawPointConstraint::PolygonBoundary {
+                    vertex_group_indices,
+                    edge_index,
+                    t,
+                },
+                parameter_name,
+            })
+        }
+        3 => {
+            let host_path = find_indexed_path(file, host_group)?;
+            if host_path.refs.len() != 2 {
+                return None;
+            }
+            let center_group_index = host_path.refs[0].checked_sub(1)?;
+            let radius_group_index = host_path.refs[1].checked_sub(1)?;
+            let center = anchors.get(center_group_index)?.clone()?;
+            let radius_point = anchors.get(radius_group_index)?.clone()?;
+            let angle = std::f64::consts::TAU * parameter_value;
+            let unit_x = angle.cos();
+            let unit_y = angle.sin();
+            let position = resolve_circle_point_raw(&center, &radius_point, unit_x, unit_y);
+            Some(ParameterControlledPoint {
+                position,
+                constraint: RawPointConstraint::Circle(PointOnCircleConstraint {
+                    center_group_index,
+                    radius_group_index,
+                    unit_x,
+                    unit_y,
+                }),
+                parameter_name,
+            })
+        }
+        _ => None,
+    }
+}
+
+fn polygon_parameter_to_edge(vertices: &[PointRecord], parameter: f64) -> Option<(usize, f64)> {
+    if vertices.len() < 2 {
+        return None;
+    }
+    let clamped = parameter.clamp(0.0, 1.0);
+    let lengths = (0..vertices.len())
+        .map(|index| {
+            let start = &vertices[index];
+            let end = &vertices[(index + 1) % vertices.len()];
+            ((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt()
+        })
+        .collect::<Vec<_>>();
+    let perimeter: f64 = lengths.iter().sum();
+    if perimeter <= 1e-9 {
+        return None;
+    }
+
+    let target = clamped * perimeter;
+    let mut traveled = 0.0;
+    for (edge_index, length) in lengths.iter().enumerate() {
+        if traveled + length >= target || edge_index == lengths.len() - 1 {
+            let local_t = if *length <= 1e-9 {
+                0.0
+            } else {
+                ((target - traveled) / length).clamp(0.0, 1.0)
+            };
+            return Some((edge_index, local_t));
+        }
+        traveled += length;
+    }
+    None
 }
 
 fn decode_point_constraint(
@@ -2628,6 +2905,55 @@ mod tests {
             texts.contains(&"C在⊙AB上的值 = 0.38"),
             "expected circle parameter label, got {texts:?}"
         );
+    }
+
+    #[test]
+    fn preserves_parameter_controlled_point_on_segment_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/point_on_segment.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.lines.len(), 1, "expected one segment");
+        assert_eq!(scene.points.len(), 3, "expected endpoints plus controlled point");
+        assert_eq!(scene.parameters.len(), 1, "expected t parameter");
+        assert_eq!(scene.parameters[0].name, "t₁");
+        assert!((scene.parameters[0].value - 0.01).abs() < 0.001);
+        assert!(scene.points.iter().any(|point| matches!(
+            point.constraint,
+            ScenePointConstraint::OnSegment { t, .. } if (t - 0.01).abs() < 0.001
+        )));
+    }
+
+    #[test]
+    fn preserves_parameter_controlled_point_on_poly_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/point_on_poly.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.polygons.len(), 1, "expected one polygon");
+        assert_eq!(scene.points.len(), 4, "expected polygon vertices plus controlled point");
+        assert_eq!(scene.parameters.len(), 1, "expected t parameter");
+        assert_eq!(scene.parameters[0].name, "t₁");
+        assert!(scene.points.iter().any(|point| matches!(
+            point.constraint,
+            ScenePointConstraint::OnPolygonBoundary { .. }
+        )));
+    }
+
+    #[test]
+    fn preserves_parameter_controlled_point_on_circle_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/point_on_circle.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.circles.len(), 1, "expected one circle");
+        assert_eq!(scene.points.len(), 3, "expected circle points plus controlled point");
+        assert_eq!(scene.parameters.len(), 1, "expected t parameter");
+        assert_eq!(scene.parameters[0].name, "t₁");
+        assert!(scene.points.iter().any(|point| matches!(
+            point.constraint,
+            ScenePointConstraint::OnCircle { .. }
+        )));
     }
 
     #[test]

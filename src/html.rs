@@ -2,7 +2,7 @@ use crate::format::{GspFile, PointRecord};
 use crate::render::extract::build_scene;
 use crate::render::functions::{BinaryOp, FunctionExpr, FunctionTerm, UnaryFunction};
 use crate::render::geometry::darken;
-use crate::render::scene::{Scene, ScenePointConstraint, TextLabelBinding};
+use crate::render::scene::{Scene, ScenePointBinding, ScenePointConstraint, TextLabelBinding};
 use serde::Serialize;
 use std::fmt::Write as _;
 use std::fs;
@@ -372,6 +372,7 @@ struct ScenePointJson {
     x: f64,
     y: f64,
     constraint: Option<PointConstraintJson>,
+    binding: Option<PointBindingJson>,
 }
 
 impl ScenePointJson {
@@ -380,6 +381,24 @@ impl ScenePointJson {
             x: point.position.x,
             y: point.position.y,
             constraint: PointConstraintJson::from_constraint(&point.constraint),
+            binding: point.binding.as_ref().map(PointBindingJson::from_binding),
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind")]
+enum PointBindingJson {
+    #[serde(rename = "parameter")]
+    Parameter {
+        name: String,
+    },
+}
+
+impl PointBindingJson {
+    fn from_binding(binding: &ScenePointBinding) -> Self {
+        match binding {
+            ScenePointBinding::Parameter { name } => Self::Parameter { name: name.clone() },
         }
     }
 }
@@ -494,7 +513,7 @@ impl PointConstraintJson {
 struct ParameterJson {
     name: String,
     value: f64,
-    label_index: usize,
+    label_index: Option<usize>,
 }
 
 impl ParameterJson {

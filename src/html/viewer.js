@@ -154,6 +154,7 @@
         x: point.x,
         y: point.y,
         constraint: point.constraint ? { ...point.constraint } : null,
+        binding: point.binding ? { ...point.binding } : null,
       })),
       origin: scene.origin ? attachPointRef(scene.origin) : null,
       lines: hydratedLines,
@@ -301,8 +302,50 @@
     const parameters = parameterMap();
     updateScene((draft) => {
       currentDynamics().parameters.forEach((parameter) => {
-        if (draft.labels[parameter.labelIndex]) {
+        if (typeof parameter.labelIndex === "number" && draft.labels[parameter.labelIndex]) {
           draft.labels[parameter.labelIndex].text = `${parameter.name} = ${parameter.value.toFixed(2)}`;
+        }
+      });
+      draft.points.forEach((point) => {
+        if (point.binding?.kind !== "parameter" || !point.constraint) {
+          return;
+        }
+        const value = parameters.get(point.binding.name);
+        if (!Number.isFinite(value)) {
+          return;
+        }
+        const clamped = Math.max(0, Math.min(1, value));
+        if (point.constraint.kind === "segment") {
+          point.constraint.t = clamped;
+        } else if (point.constraint.kind === "polygon-boundary") {
+          const count = point.constraint.vertexIndices.length;
+          if (count < 2) return;
+          const lengths = [];
+          let perimeter = 0;
+          for (let i = 0; i < count; i += 1) {
+            const start = draft.points[point.constraint.vertexIndices[i]];
+            const end = draft.points[point.constraint.vertexIndices[(i + 1) % count]];
+            if (!start || !end) return;
+            const length = Math.hypot(end.x - start.x, end.y - start.y);
+            lengths.push(length);
+            perimeter += length;
+          }
+          if (perimeter <= 1e-9) return;
+          const target = clamped * perimeter;
+          let traveled = 0;
+          for (let edgeIndex = 0; edgeIndex < lengths.length; edgeIndex += 1) {
+            const length = lengths[edgeIndex];
+            if (traveled + length >= target || edgeIndex === lengths.length - 1) {
+              point.constraint.edgeIndex = edgeIndex;
+              point.constraint.t = length <= 1e-9 ? 0 : Math.max(0, Math.min(1, (target - traveled) / length));
+              break;
+            }
+            traveled += length;
+          }
+        } else if (point.constraint.kind === "circle") {
+          const angle = Math.PI * 2 * clamped;
+          point.constraint.unitX = Math.cos(angle);
+          point.constraint.unitY = -Math.sin(angle);
         }
       });
       currentDynamics().functions.forEach((functionDef) => {
@@ -327,7 +370,7 @@
 
   function buildParameterControls() {
     parameterControls.replaceChildren();
-    van.add(parameterControls, () => currentDynamics().parameters.map((parameter, index) => label(
+    const controls = currentDynamics().parameters.map((parameter, index) => label(
       `${parameter.name} =`,
       input({
         type: "number",
@@ -343,7 +386,10 @@
           }
         },
       }),
-    )));
+    ));
+    if (controls.length > 0) {
+      van.add(parameterControls, ...controls);
+    }
   }
 
   function rgba(color) {

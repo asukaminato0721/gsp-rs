@@ -24,6 +24,7 @@ pub(crate) struct Scene {
 pub(crate) struct ScenePoint {
     pub(crate) position: PointRecord,
     pub(crate) constraint: ScenePointConstraint,
+    pub(crate) binding: Option<ScenePointBinding>,
 }
 
 #[derive(Debug, Clone)]
@@ -75,7 +76,14 @@ pub(crate) struct PolygonShape {
 pub(crate) struct SceneParameter {
     pub(crate) name: String,
     pub(crate) value: f64,
-    pub(crate) label_index: usize,
+    pub(crate) label_index: Option<usize>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum ScenePointBinding {
+    Parameter {
+        name: String,
+    },
 }
 
 #[derive(Debug, Clone)]
