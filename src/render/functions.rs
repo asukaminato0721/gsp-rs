@@ -296,6 +296,8 @@ pub(super) fn synthesize_function_labels(
                 anchor: to_raw_from_world(&world_anchor, transform),
                 text: format!("{name} = {:.2}", value),
                 color: [30, 30, 30, 255],
+                binding: None,
+                screen_space: false,
             }
         })
         .collect::<Vec<_>>();
@@ -319,6 +321,8 @@ pub(super) fn synthesize_function_labels(
                         function_expr_label(expr)
                     ),
                     color: [30, 30, 30, 255],
+                    binding: None,
+                    screen_space: false,
                 }
             }),
     );
@@ -360,6 +364,8 @@ pub(super) fn synthesize_function_labels(
                     function_expr_label(expr)
                 ),
                 color: [30, 30, 30, 255],
+                binding: None,
+                screen_space: false,
             }
         },
     ));
@@ -393,7 +399,7 @@ pub(super) fn collect_scene_parameters(
             Some(SceneParameter {
                 name,
                 value,
-                label_index,
+                label_index: Some(label_index),
             })
         })
         .collect()
@@ -577,18 +583,42 @@ fn decode_parameter_binding(file: &GspFile, group: &ObjectGroup) -> Option<Param
         .iter()
         .find(|record| record.record_type == 0x07d5)
         .map(|record| record.payload(&file.data))?;
+    let name = decode_parameter_name(label_payload)?;
+    let value = if name.contains('₁') || name.contains('₂') || name.contains('₃') || name.contains('₄') {
+        read_f64(payload, 52)
+    } else {
+        f64::from(read_u16(payload, payload.len().checked_sub(2)?))
+    };
+    if !value.is_finite() {
+        return None;
+    }
+    Some(ParameterBinding {
+        name,
+        value,
+    })
+}
+
+fn decode_parameter_name(label_payload: &[u8]) -> Option<String> {
+    if label_payload.len() >= 24 {
+        let name_len = read_u16(label_payload, 22) as usize;
+        if name_len > 0 && 24 + name_len <= label_payload.len() {
+            let name = String::from_utf8_lossy(&label_payload[24..24 + name_len]).to_string();
+            return Some(
+                name.replace("[1]", "₁")
+                    .replace("[2]", "₂")
+                    .replace("[3]", "₃")
+                    .replace("[4]", "₄"),
+            );
+        }
+    }
     if label_payload.len() < 2 {
         return None;
     }
     let name_code = read_u16(label_payload, label_payload.len() - 2);
-    let name = char::from_u32(name_code as u32)
+    char::from_u32(name_code as u32)
         .filter(|ch| ch.is_ascii_alphabetic())?
-        .to_string();
-    let value_code = read_u16(payload, payload.len().checked_sub(2)?);
-    Some(ParameterBinding {
-        name,
-        value: f64::from(value_code),
-    })
+        .to_string()
+        .into()
 }
 
 fn extract_inline_function_token(payload: &[u8]) -> Option<String> {
@@ -650,7 +680,7 @@ fn decode_inner_function_expr(
     parse_function_expr(payload, parameters).map(canonicalize_function_expr)
 }
 
-fn function_expr_label(expr: FunctionExpr) -> String {
+pub(super) fn function_expr_label(expr: FunctionExpr) -> String {
     match expr {
         FunctionExpr::Constant(value) => format_number(value),
         FunctionExpr::Identity => "x".to_string(),
@@ -721,6 +751,78 @@ fn evaluate_function_expr(expr: &ParsedFunctionExpr, x: f64) -> Option<f64> {
         };
     }
     value.is_finite().then_some(value)
+}
+
+pub(super) fn evaluate_expr_with_parameters(
+    expr: &FunctionExpr,
+    x: f64,
+    parameters: &BTreeMap<String, f64>,
+) -> Option<f64> {
+    match expr {
+        FunctionExpr::Constant(value) => Some(*value),
+        FunctionExpr::Identity => Some(x),
+        FunctionExpr::SinIdentity => Some(x.sin()),
+        FunctionExpr::CosIdentityPlus(offset) => Some(x.cos() + offset),
+        FunctionExpr::TanIdentityMinus(offset) => {
+            let y = x.tan() - offset;
+            (y.is_finite() && x.cos().abs() >= 0.04 && y.abs() <= 5.0).then_some(y)
+        }
+        FunctionExpr::Parsed(parsed) => evaluate_parsed_with_parameters(parsed, x, parameters),
+    }
+}
+
+fn evaluate_parsed_with_parameters(
+    expr: &ParsedFunctionExpr,
+    x: f64,
+    parameters: &BTreeMap<String, f64>,
+) -> Option<f64> {
+    let mut value = evaluate_function_term_with_parameters(expr.head.clone(), x, parameters)?;
+    for (op, term) in &expr.tail {
+        let rhs = evaluate_function_term_with_parameters(term.clone(), x, parameters)?;
+        value = match op {
+            BinaryOp::Add => value + rhs,
+            BinaryOp::Sub => value - rhs,
+            BinaryOp::Mul => value * rhs,
+        };
+    }
+    value.is_finite().then_some(value)
+}
+
+fn evaluate_function_term_with_parameters(
+    term: FunctionTerm,
+    x: f64,
+    parameters: &BTreeMap<String, f64>,
+) -> Option<f64> {
+    match term {
+        FunctionTerm::Variable => Some(x),
+        FunctionTerm::Constant(value) => Some(value),
+        FunctionTerm::Parameter(name, value) => Some(*parameters.get(&name).unwrap_or(&value)),
+        FunctionTerm::UnaryX(op) => match op {
+            UnaryFunction::Sin => Some(x.sin()),
+            UnaryFunction::Cos => Some(x.cos()),
+            UnaryFunction::Tan => {
+                let y = x.tan();
+                (y.is_finite() && x.cos().abs() >= 0.04 && y.abs() <= 5.0).then_some(y)
+            }
+            UnaryFunction::Abs => Some(x.abs()),
+            UnaryFunction::Sqrt => (x >= 0.0).then(|| x.sqrt()),
+            UnaryFunction::Ln => (x > 0.0).then(|| x.ln()),
+            UnaryFunction::Log10 => (x > 0.0).then(|| x.log10()),
+            UnaryFunction::Sign => Some(if x > 0.0 {
+                1.0
+            } else if x < 0.0 {
+                -1.0
+            } else {
+                0.0
+            }),
+            UnaryFunction::Round => Some(x.round()),
+            UnaryFunction::Trunc => Some(x.trunc()),
+        },
+        FunctionTerm::Product(left, right) => Some(
+            evaluate_function_term_with_parameters(*left, x, parameters)?
+                * evaluate_function_term_with_parameters(*right, x, parameters)?,
+        ),
+    }
 }
 
 fn evaluate_function_term(term: FunctionTerm, x: f64) -> Option<f64> {

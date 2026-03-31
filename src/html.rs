@@ -2,13 +2,17 @@ use crate::format::{GspFile, PointRecord};
 use crate::render::extract::build_scene;
 use crate::render::functions::{BinaryOp, FunctionExpr, FunctionTerm, UnaryFunction};
 use crate::render::geometry::darken;
-use crate::render::scene::{Scene, ScenePointConstraint};
+use crate::render::scene::{Scene, ScenePointBinding, ScenePointConstraint, TextLabelBinding};
 use serde::Serialize;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 
 const VIEWER_CSS: &str = include_str!("html/viewer.css");
+const VAN_JS: &str = include_str!("html/vendor/van-1.6.0.js");
+const VIEWER_SCENE_JS: &str = include_str!("html/viewer_scene.js");
+const VIEWER_RENDER_JS: &str = include_str!("html/viewer_render.js");
+const VIEWER_DRAG_JS: &str = include_str!("html/viewer_drag.js");
 const VIEWER_JS: &str = include_str!("html/viewer.js");
 
 pub fn render_points_to_html(
@@ -47,6 +51,8 @@ pub fn render_points_to_html(
 fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
     let mut html = String::new();
     let scene_json = scene_to_json(scene, width, height);
+    let van_js = van_runtime_to_global();
+    let viewer_modules_js = format!("{VIEWER_SCENE_JS}\n{VIEWER_RENDER_JS}\n{VIEWER_DRAG_JS}");
     let frame_width = width + 40;
     let shape_count =
         scene.lines.len() + scene.polygons.len() + scene.circles.len() + scene.labels.len();
@@ -88,6 +94,12 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
   </main>
   <script id="scene-data" type="application/json">{scene_json}</script>
   <script>
+{embedded_van_js}
+  </script>
+  <script>
+{embedded_viewer_modules_js}
+  </script>
+  <script>
 {embedded_js}
   </script>
 </body>
@@ -99,9 +111,15 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
         shape_count = shape_count,
         scene_json = scene_json,
         embedded_css = indent_asset(VIEWER_CSS, 4),
+        embedded_van_js = indent_asset(&van_js, 4),
+        embedded_viewer_modules_js = indent_asset(&viewer_modules_js, 4),
         embedded_js = indent_asset(VIEWER_JS, 4),
     );
     html
+}
+
+fn van_runtime_to_global() -> String {
+    VAN_JS.replacen("export default {", "window.van = {", 1)
 }
 
 fn indent_asset(asset: &str, spaces: usize) -> String {
@@ -269,6 +287,9 @@ struct LabelJson {
     anchor: PointJson,
     text: String,
     color: [u8; 4],
+    binding: Option<LabelBindingJson>,
+    #[serde(rename = "screenSpace")]
+    screen_space: bool,
 }
 
 impl LabelJson {
@@ -277,6 +298,98 @@ impl LabelJson {
             anchor: PointJson::from_point(&label.anchor),
             text: label.text.clone(),
             color: label.color,
+            binding: label.binding.as_ref().map(LabelBindingJson::from_binding),
+            screen_space: label.screen_space,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind")]
+enum LabelBindingJson {
+    #[serde(rename = "parameter-value")]
+    ParameterValue {
+        name: String,
+    },
+    #[serde(rename = "expression-value")]
+    ExpressionValue {
+        #[serde(rename = "parameterName")]
+        parameter_name: String,
+        #[serde(rename = "exprLabel")]
+        expr_label: String,
+        expr: FunctionExprJson,
+    },
+    #[serde(rename = "polygon-boundary-parameter")]
+    PolygonBoundaryParameter {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+        #[serde(rename = "pointName")]
+        point_name: String,
+        #[serde(rename = "polygonName")]
+        polygon_name: String,
+    },
+    #[serde(rename = "segment-parameter")]
+    SegmentParameter {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+        #[serde(rename = "pointName")]
+        point_name: String,
+        #[serde(rename = "segmentName")]
+        segment_name: String,
+    },
+    #[serde(rename = "circle-parameter")]
+    CircleParameter {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+        #[serde(rename = "pointName")]
+        point_name: String,
+        #[serde(rename = "circleName")]
+        circle_name: String,
+    },
+}
+
+impl LabelBindingJson {
+    fn from_binding(binding: &TextLabelBinding) -> Self {
+        match binding {
+            TextLabelBinding::ParameterValue { name } => Self::ParameterValue {
+                name: name.clone(),
+            },
+            TextLabelBinding::ExpressionValue {
+                parameter_name,
+                expr_label,
+                expr,
+            } => Self::ExpressionValue {
+                parameter_name: parameter_name.clone(),
+                expr_label: expr_label.clone(),
+                expr: FunctionExprJson::from_expr(expr),
+            },
+            TextLabelBinding::PolygonBoundaryParameter {
+                point_index,
+                point_name,
+                polygon_name,
+            } => Self::PolygonBoundaryParameter {
+                point_index: *point_index,
+                point_name: point_name.clone(),
+                polygon_name: polygon_name.clone(),
+            },
+            TextLabelBinding::SegmentParameter {
+                point_index,
+                point_name,
+                segment_name,
+            } => Self::SegmentParameter {
+                point_index: *point_index,
+                point_name: point_name.clone(),
+                segment_name: segment_name.clone(),
+            },
+            TextLabelBinding::CircleParameter {
+                point_index,
+                point_name,
+                circle_name,
+            } => Self::CircleParameter {
+                point_index: *point_index,
+                point_name: point_name.clone(),
+                circle_name: circle_name.clone(),
+            },
         }
     }
 }
@@ -286,6 +399,7 @@ struct ScenePointJson {
     x: f64,
     y: f64,
     constraint: Option<PointConstraintJson>,
+    binding: Option<PointBindingJson>,
 }
 
 impl ScenePointJson {
@@ -294,6 +408,33 @@ impl ScenePointJson {
             x: point.position.x,
             y: point.position.y,
             constraint: PointConstraintJson::from_constraint(&point.constraint),
+            binding: point.binding.as_ref().map(PointBindingJson::from_binding),
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind")]
+enum PointBindingJson {
+    #[serde(rename = "parameter")]
+    Parameter {
+        name: String,
+    },
+    #[serde(rename = "coordinate")]
+    Coordinate {
+        name: String,
+        expr: FunctionExprJson,
+    },
+}
+
+impl PointBindingJson {
+    fn from_binding(binding: &ScenePointBinding) -> Self {
+        match binding {
+            ScenePointBinding::Parameter { name } => Self::Parameter { name: name.clone() },
+            ScenePointBinding::Coordinate { name, expr } => Self::Coordinate {
+                name: name.clone(),
+                expr: FunctionExprJson::from_expr(expr),
+            },
         }
     }
 }
@@ -301,6 +442,13 @@ impl ScenePointJson {
 #[derive(Serialize)]
 #[serde(tag = "kind")]
 enum PointConstraintJson {
+    #[serde(rename = "offset")]
+    Offset {
+        #[serde(rename = "originIndex")]
+        origin_index: usize,
+        dx: f64,
+        dy: f64,
+    },
     #[serde(rename = "segment")]
     Segment {
         #[serde(rename = "startIndex")]
@@ -343,6 +491,15 @@ impl PointConstraintJson {
     fn from_constraint(constraint: &ScenePointConstraint) -> Option<Self> {
         match constraint {
             ScenePointConstraint::Free => None,
+            ScenePointConstraint::Offset {
+                origin_index,
+                dx,
+                dy,
+            } => Some(Self::Offset {
+                origin_index: *origin_index,
+                dx: *dx,
+                dy: *dy,
+            }),
             ScenePointConstraint::OnSegment {
                 start_index,
                 end_index,
@@ -392,7 +549,7 @@ impl PointConstraintJson {
 struct ParameterJson {
     name: String,
     value: f64,
-    label_index: usize,
+    label_index: Option<usize>,
 }
 
 impl ParameterJson {

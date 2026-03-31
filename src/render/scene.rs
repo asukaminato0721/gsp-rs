@@ -24,11 +24,17 @@ pub(crate) struct Scene {
 pub(crate) struct ScenePoint {
     pub(crate) position: PointRecord,
     pub(crate) constraint: ScenePointConstraint,
+    pub(crate) binding: Option<ScenePointBinding>,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) enum ScenePointConstraint {
     Free,
+    Offset {
+        origin_index: usize,
+        dx: f64,
+        dy: f64,
+    },
     OnSegment {
         start_index: usize,
         end_index: usize,
@@ -70,7 +76,18 @@ pub(crate) struct PolygonShape {
 pub(crate) struct SceneParameter {
     pub(crate) name: String,
     pub(crate) value: f64,
-    pub(crate) label_index: usize,
+    pub(crate) label_index: Option<usize>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum ScenePointBinding {
+    Parameter {
+        name: String,
+    },
+    Coordinate {
+        name: String,
+        expr: FunctionExpr,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -97,4 +114,33 @@ pub(crate) struct TextLabel {
     pub(crate) anchor: PointRecord,
     pub(crate) text: String,
     pub(crate) color: [u8; 4],
+    pub(crate) binding: Option<TextLabelBinding>,
+    pub(crate) screen_space: bool,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum TextLabelBinding {
+    ParameterValue {
+        name: String,
+    },
+    ExpressionValue {
+        parameter_name: String,
+        expr_label: String,
+        expr: FunctionExpr,
+    },
+    PolygonBoundaryParameter {
+        point_index: usize,
+        point_name: String,
+        polygon_name: String,
+    },
+    SegmentParameter {
+        point_index: usize,
+        point_name: String,
+        segment_name: String,
+    },
+    CircleParameter {
+        point_index: usize,
+        point_name: String,
+        circle_name: String,
+    },
 }
