@@ -125,6 +125,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         !has_function_plots,
     );
     labels.extend(collect_polygon_parameter_labels(file, &groups, &raw_anchors));
+    labels.extend(collect_segment_parameter_labels(file, &groups));
     labels.extend(compute_iteration_labels(file, &groups, &circles));
     if graph_mode && has_function_plots {
         labels.extend(synthesize_function_labels(
@@ -488,12 +489,15 @@ fn collect_visible_points(
 
 fn remap_label_bindings(labels: &mut [TextLabel], group_to_point_index: &[Option<usize>]) {
     for label in labels {
-        let Some(TextLabelBinding::PolygonBoundaryParameter { point_index, .. }) =
-            label.binding.as_mut()
-        else {
+        let Some(binding) = label.binding.as_mut() else {
             continue;
         };
-        let Some(mapped_index) = group_to_point_index.get(*point_index).and_then(|index| *index) else {
+        let point_index = match binding {
+            TextLabelBinding::PolygonBoundaryParameter { point_index, .. } => point_index,
+            TextLabelBinding::SegmentParameter { point_index, .. } => point_index,
+        };
+        let Some(mapped_index) = group_to_point_index.get(*point_index).and_then(|index| *index)
+        else {
             label.binding = None;
             continue;
         };
@@ -1017,6 +1021,61 @@ fn collect_polygon_parameter_labels(
             })
         })
         .collect()
+}
+
+fn collect_segment_parameter_labels(file: &GspFile, groups: &[ObjectGroup]) -> Vec<TextLabel> {
+    groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 94)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            if path.refs.len() < 2 {
+                return None;
+            }
+
+            let point_group = groups.get(path.refs[0].checked_sub(1)?)?;
+            let segment_group = groups.get(path.refs[1].checked_sub(1)?)?;
+            if (point_group.header.class_id & 0xffff) != 15
+                || (segment_group.header.class_id & 0xffff) != 2
+            {
+                return None;
+            }
+
+            let point_name = decode_label_name(file, point_group)?;
+            let segment_name = segment_name(file, groups, segment_group)?;
+            let anchor = group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x0903)
+                .and_then(|record| decode_text_anchor(record.payload(&file.data)))?;
+            let RawPointConstraint::Segment(constraint) =
+                decode_point_constraint(file, groups, point_group, &None)?
+            else {
+                return None;
+            };
+
+            Some(TextLabel {
+                anchor,
+                text: format!("{point_name}在{segment_name}上的t值 = {:.2}", constraint.t),
+                color: [30, 30, 30, 255],
+                binding: Some(TextLabelBinding::SegmentParameter {
+                    point_index: path.refs[0].checked_sub(1)?,
+                    point_name,
+                    segment_name,
+                }),
+            })
+        })
+        .collect()
+}
+
+fn segment_name(file: &GspFile, groups: &[ObjectGroup], segment_group: &ObjectGroup) -> Option<String> {
+    let path = find_indexed_path(file, segment_group)?;
+    let names = path
+        .refs
+        .iter()
+        .map(|&object_ref| groups.get(object_ref.checked_sub(1)?).and_then(|group| decode_label_name(file, group)))
+        .collect::<Option<Vec<_>>>()?;
+    (names.len() >= 2).then(|| names.join(""))
 }
 
 fn polygon_vertex_name(
@@ -2443,6 +2502,28 @@ mod tests {
         assert!(
             texts.contains(&"E在ABCD上的t值 = 0.58"),
             "expected polygon parameter label, got {texts:?}"
+        );
+    }
+
+    #[test]
+    fn preserves_segment_parameter_label_in_segment_point_value_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/segment_point_value.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.lines.len(), 1, "expected one segment");
+        assert_eq!(scene.points.len(), 3, "expected two endpoints and one constrained point");
+        let texts = scene
+            .labels
+            .iter()
+            .map(|label| label.text.as_str())
+            .collect::<Vec<_>>();
+        assert!(texts.contains(&"A"), "expected point label A, got {texts:?}");
+        assert!(texts.contains(&"B"), "expected point label B, got {texts:?}");
+        assert!(texts.contains(&"C"), "expected point label C, got {texts:?}");
+        assert!(
+            texts.contains(&"C在AB上的t值 = 0.51"),
+            "expected segment parameter label, got {texts:?}"
         );
     }
 

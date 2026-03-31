@@ -313,6 +313,15 @@ enum LabelBindingJson {
         #[serde(rename = "polygonName")]
         polygon_name: String,
     },
+    #[serde(rename = "segment-parameter")]
+    SegmentParameter {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+        #[serde(rename = "pointName")]
+        point_name: String,
+        #[serde(rename = "segmentName")]
+        segment_name: String,
+    },
 }
 
 impl LabelBindingJson {
@@ -326,6 +335,15 @@ impl LabelBindingJson {
                 point_index: *point_index,
                 point_name: point_name.clone(),
                 polygon_name: polygon_name.clone(),
+            },
+            TextLabelBinding::SegmentParameter {
+                point_index,
+                point_name,
+                segment_name,
+            } => Self::SegmentParameter {
+                point_index: *point_index,
+                point_name: point_name.clone(),
+                segment_name: segment_name.clone(),
             },
         }
     }

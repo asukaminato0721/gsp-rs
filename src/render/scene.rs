@@ -112,4 +112,9 @@ pub(crate) enum TextLabelBinding {
         point_name: String,
         polygon_name: String,
     },
+    SegmentParameter {
+        point_index: usize,
+        point_name: String,
+        segment_name: String,
+    },
 }

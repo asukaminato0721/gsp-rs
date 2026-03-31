@@ -390,6 +390,12 @@
         if (value !== null) {
           label.text = `${label.binding.pointName}在${label.binding.polygonName}上的t值 = ${formatNumber(value)}`;
         }
+      } else if (label.binding.kind === "segment-parameter") {
+        const point = scene.points[label.binding.pointIndex];
+        const value = point?.constraint?.kind === "segment" ? point.constraint.t : null;
+        if (value !== null) {
+          label.text = `${label.binding.pointName}在${label.binding.segmentName}上的t值 = ${formatNumber(value)}`;
+        }
       }
     });
   }
