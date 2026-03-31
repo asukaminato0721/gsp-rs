@@ -1,4 +1,6 @@
 (() => {
+  const van = window.van;
+  const { label, input } = van.tags;
   const sourceScene = JSON.parse(document.getElementById("scene-data").textContent);
   const canvas = document.getElementById("view");
   const ctx = canvas.getContext("2d");
@@ -16,13 +18,36 @@
   const baseSpanY = Math.max(1e-6, baseBounds.maxY - baseBounds.minY);
   const pointHitRadius = 10;
   const pointMatchTolerance = 1e-3;
-  const view = {
+  const pointerWorldState = van.state(null);
+  const viewState = van?.state ? van.state({
     centerX: baseCenterX,
     centerY: baseCenterY,
     zoom: 1,
-  };
-  let dragState = null;
-  let hoverPointIndex = null;
+  }) : { val: {
+    centerX: baseCenterX,
+    centerY: baseCenterY,
+    zoom: 1,
+  } };
+  const view = new Proxy({}, {
+    get: (_, key) => viewState.val[key],
+    set: (_, key, value) => {
+      viewState.val = { ...viewState.val, [key]: value };
+      return true;
+    },
+  });
+  const dragState = van?.state ? van.state(null) : { val: null };
+  const hoverPointIndex = van?.state ? van.state(null) : { val: null };
+  const labelAttachDistance = 40;
+  const coordText = van.derive(() => {
+    const world = pointerWorldState.val;
+    return world ? `x ${formatNumber(world.x)}, y ${formatNumber(world.y)}` : "x -, y -";
+  });
+  const zoomText = van.derive(() => `zoom ${Math.round(viewState.val.zoom * 100)}%`);
+
+  coordReadout.replaceChildren();
+  zoomReadout.replaceChildren();
+  van.add(coordReadout, coordText);
+  van.add(zoomReadout, zoomText);
 
   function samePoint(left, right) {
     return Math.abs(left.x - right.x) < pointMatchTolerance
@@ -49,7 +74,75 @@
     return { x: point.x, y: point.y };
   }
 
+  function resolveSourceHandle(handle) {
+    if (typeof handle.pointIndex === "number") {
+      return resolveSourcePoint(handle.pointIndex);
+    }
+    return handle;
+  }
+
+  function distanceSquared(left, right) {
+    const dx = left.x - right.x;
+    const dy = left.y - right.y;
+    return dx * dx + dy * dy;
+  }
+
+  function attachLabelAnchor(point, hydratedLines) {
+    let bestPointIndex = null;
+    let bestPointDistanceSquared = Number.POSITIVE_INFINITY;
+    sourceScene.points.forEach((candidate, index) => {
+      const resolved = resolveSourcePoint(index);
+      const distSq = distanceSquared(resolved, point);
+      if (distSq < bestPointDistanceSquared) {
+        bestPointDistanceSquared = distSq;
+        bestPointIndex = index;
+      }
+    });
+    if (bestPointIndex !== null && bestPointDistanceSquared <= labelAttachDistance ** 2) {
+      const base = resolveSourcePoint(bestPointIndex);
+      return {
+        pointIndex: bestPointIndex,
+        dx: point.x - base.x,
+        dy: point.y - base.y,
+      };
+    }
+
+    let bestLineAnchor = null;
+    let bestLineDistanceSquared = Number.POSITIVE_INFINITY;
+    hydratedLines.forEach((line, lineIndex) => {
+      for (let segmentIndex = 0; segmentIndex < line.points.length - 1; segmentIndex += 1) {
+        const start = resolveSourceHandle(line.points[segmentIndex]);
+        const end = resolveSourceHandle(line.points[segmentIndex + 1]);
+        const midpoint = {
+          x: (start.x + end.x) / 2,
+          y: (start.y + end.y) / 2,
+        };
+        const distSq = distanceSquared(midpoint, point);
+        if (distSq < bestLineDistanceSquared) {
+          bestLineDistanceSquared = distSq;
+          bestLineAnchor = {
+            lineIndex,
+            segmentIndex,
+            t: 0.5,
+            dx: point.x - midpoint.x,
+            dy: point.y - midpoint.y,
+          };
+        }
+      }
+    });
+    if (bestLineAnchor && bestLineDistanceSquared <= labelAttachDistance ** 2) {
+      return bestLineAnchor;
+    }
+
+    return { x: point.x, y: point.y };
+  }
+
   function hydrateScene(scene) {
+    const hydratedLines = scene.lines.map((line) => ({
+      color: line.color,
+      dashed: line.dashed,
+      points: line.points.map(attachPointRef),
+    }));
     return {
       graphMode: scene.graphMode,
       points: scene.points.map((point) => ({
@@ -58,11 +151,7 @@
         constraint: point.constraint ? { ...point.constraint } : null,
       })),
       origin: scene.origin ? attachPointRef(scene.origin) : null,
-      lines: scene.lines.map((line) => ({
-        color: line.color,
-        dashed: line.dashed,
-        points: line.points.map(attachPointRef),
-      })),
+      lines: hydratedLines,
       polygons: scene.polygons.map((polygon) => ({
         color: polygon.color,
         outlineColor: polygon.outlineColor,
@@ -76,13 +165,13 @@
       labels: scene.labels.map((label) => ({
         text: label.text,
         color: label.color,
-        anchor: attachPointRef(label.anchor),
+        anchor: attachLabelAnchor(label.anchor, hydratedLines),
       })),
     };
   }
 
-  const scene = hydrateScene(sourceScene);
-  const dynamics = {
+  const sceneState = van?.state ? van.state(hydrateScene(sourceScene)) : { val: hydrateScene(sourceScene) };
+  const dynamicsState = van?.state ? van.state({
     parameters: (sourceScene.parameters || []).map((parameter) => ({ ...parameter })),
     functions: (sourceScene.functions || []).map((functionDef) => ({
       ...functionDef,
@@ -90,7 +179,29 @@
       domain: functionDef.domain,
       constrainedPointIndices: [...functionDef.constrainedPointIndices],
     })),
-  };
+  }) : { val: {
+    parameters: (sourceScene.parameters || []).map((parameter) => ({ ...parameter })),
+    functions: (sourceScene.functions || []).map((functionDef) => ({
+      ...functionDef,
+      expr: functionDef.expr,
+      domain: functionDef.domain,
+      constrainedPointIndices: [...functionDef.constrainedPointIndices],
+    })),
+  } };
+  const currentScene = () => sceneState.val;
+  const currentDynamics = () => dynamicsState.val;
+
+  function updateScene(mutator) {
+    const next = sceneState.val;
+    mutator(next);
+    sceneState.val = { ...next };
+  }
+
+  function updateDynamics(mutator) {
+    const next = dynamicsState.val;
+    mutator(next);
+    dynamicsState.val = { ...next };
+  }
 
   function evaluateUnary(op, x) {
     switch (op) {
@@ -163,7 +274,7 @@
   }
 
   function parameterMap() {
-    return new Map(dynamics.parameters.map((parameter) => [parameter.name, parameter.value]));
+    return new Map(currentDynamics().parameters.map((parameter) => [parameter.name, parameter.value]));
   }
 
   function sampleDynamicFunction(functionDef, parameters) {
@@ -181,51 +292,51 @@
 
   function syncDynamicScene() {
     const parameters = parameterMap();
-    dynamics.parameters.forEach((parameter) => {
-      if (scene.labels[parameter.labelIndex]) {
-        scene.labels[parameter.labelIndex].text = `${parameter.name} = ${parameter.value.toFixed(2)}`;
-      }
-    });
-    dynamics.functions.forEach((functionDef) => {
-      if (scene.labels[functionDef.labelIndex]) {
-        const head = functionDef.derivative ? `${functionDef.name}'(x)` : `${functionDef.name}(x)`;
-        scene.labels[functionDef.labelIndex].text = `${head} = ${formatExpr(functionDef.expr)}`;
-      }
-      const sampled = sampleDynamicFunction(functionDef, parameters);
-      if (typeof functionDef.lineIndex === "number" && scene.lines[functionDef.lineIndex]) {
-        scene.lines[functionDef.lineIndex].points = sampled.map((point) => ({ ...point }));
-      }
-      functionDef.constrainedPointIndices.forEach((pointIndex) => {
-        const constraint = scene.points[pointIndex]?.constraint;
-        if (constraint && constraint.kind === "polyline") {
-          constraint.points = sampled.map((point) => ({ ...point }));
-          constraint.segmentIndex = Math.min(constraint.segmentIndex, Math.max(0, sampled.length - 2));
+    updateScene((draft) => {
+      currentDynamics().parameters.forEach((parameter) => {
+        if (draft.labels[parameter.labelIndex]) {
+          draft.labels[parameter.labelIndex].text = `${parameter.name} = ${parameter.value.toFixed(2)}`;
         }
+      });
+      currentDynamics().functions.forEach((functionDef) => {
+        if (draft.labels[functionDef.labelIndex]) {
+          const head = functionDef.derivative ? `${functionDef.name}'(x)` : `${functionDef.name}(x)`;
+          draft.labels[functionDef.labelIndex].text = `${head} = ${formatExpr(functionDef.expr)}`;
+        }
+        const sampled = sampleDynamicFunction(functionDef, parameters);
+        if (typeof functionDef.lineIndex === "number" && draft.lines[functionDef.lineIndex]) {
+          draft.lines[functionDef.lineIndex].points = sampled.map((point) => ({ ...point }));
+        }
+        functionDef.constrainedPointIndices.forEach((pointIndex) => {
+          const constraint = draft.points[pointIndex]?.constraint;
+          if (constraint && constraint.kind === "polyline") {
+            constraint.points = sampled.map((point) => ({ ...point }));
+            constraint.segmentIndex = Math.min(constraint.segmentIndex, Math.max(0, sampled.length - 2));
+          }
+        });
       });
     });
   }
 
   function buildParameterControls() {
-    if (!dynamics.parameters.length) return;
     parameterControls.replaceChildren();
-    dynamics.parameters.forEach((parameter, index) => {
-      const wrapper = document.createElement("label");
-      wrapper.textContent = `${parameter.name} =`;
-      const input = document.createElement("input");
-      input.type = "number";
-      input.step = "0.1";
-      input.value = parameter.value.toFixed(2);
-      input.addEventListener("input", () => {
-        const value = Number.parseFloat(input.value);
-        if (Number.isFinite(value)) {
-          dynamics.parameters[index].value = value;
-          syncDynamicScene();
-          draw();
-        }
-      });
-      wrapper.appendChild(input);
-      parameterControls.appendChild(wrapper);
-    });
+    van.add(parameterControls, () => currentDynamics().parameters.map((parameter, index) => label(
+      `${parameter.name} =`,
+      input({
+        type: "number",
+        step: "0.1",
+        value: parameter.value.toFixed(2),
+        oninput: (event) => {
+          const value = Number.parseFloat(event.target.value);
+          if (Number.isFinite(value)) {
+            updateDynamics((draft) => {
+              draft.parameters[index].value = value;
+            });
+            syncDynamicScene();
+          }
+        },
+      }),
+    )));
   }
 
   function getViewBounds() {
@@ -243,13 +354,52 @@
 
   function resolvePoint(handle) {
     if (typeof handle.pointIndex === "number") {
+      const point = resolveScenePoint(handle.pointIndex);
+      return {
+        x: point.x + (handle.dx || 0),
+        y: point.y + (handle.dy || 0),
+      };
+    }
+    if (typeof handle.lineIndex === "number") {
+      const line = currentScene().lines[handle.lineIndex];
+      if (!line || line.points.length < 2) {
+        return { x: handle.x || 0, y: handle.y || 0 };
+      }
+      const segmentIndex = Math.max(0, Math.min(line.points.length - 2, handle.segmentIndex || 0));
+      const t = typeof handle.t === "number" ? handle.t : 0.5;
+      const start = resolvePoint(line.points[segmentIndex]);
+      const end = resolvePoint(line.points[segmentIndex + 1]);
+      return {
+        x: start.x + (end.x - start.x) * t + (handle.dx || 0),
+        y: start.y + (end.y - start.y) * t + (handle.dy || 0),
+      };
+    }
+    return handle;
+  }
+
+  function resolveAnchorBase(handle) {
+    if (typeof handle.pointIndex === "number") {
       return resolveScenePoint(handle.pointIndex);
+    }
+    if (typeof handle.lineIndex === "number") {
+      const line = currentScene().lines[handle.lineIndex];
+      if (!line || line.points.length < 2) {
+        return { x: handle.x || 0, y: handle.y || 0 };
+      }
+      const segmentIndex = Math.max(0, Math.min(line.points.length - 2, handle.segmentIndex || 0));
+      const t = typeof handle.t === "number" ? handle.t : 0.5;
+      const start = resolvePoint(line.points[segmentIndex]);
+      const end = resolvePoint(line.points[segmentIndex + 1]);
+      return {
+        x: start.x + (end.x - start.x) * t,
+        y: start.y + (end.y - start.y) * t,
+      };
     }
     return handle;
   }
 
   function resolveScenePoint(index) {
-    const point = scene.points[index];
+    const point = currentScene().points[index];
     if (!point) {
       return { x: 0, y: 0 };
     }
@@ -389,13 +539,11 @@
   }
 
   function updateReadout(screenX = null, screenY = null) {
-    zoomReadout.textContent = `zoom ${Math.round(view.zoom * 100)}%`;
     if (screenX === null || screenY === null) {
-      coordReadout.textContent = "x -, y -";
+      pointerWorldState.val = null;
       return;
     }
-    const world = toWorld(screenX, screenY);
-    coordReadout.textContent = `x ${formatNumber(world.x)}, y ${formatNumber(world.y)}`;
+    pointerWorldState.val = toWorld(screenX, screenY);
   }
 
   function resetView() {
@@ -403,11 +551,10 @@
     view.centerY = baseCenterY;
     view.zoom = 1;
     updateReadout();
-    draw();
   }
 
   function drawGrid() {
-    if (!scene.graphMode) return;
+    if (!currentScene().graphMode) return;
     const bounds = getViewBounds();
     const spanY = bounds.maxY - bounds.minY;
     const yMinorStep = savedViewportMode ? 1 : chooseGridStep(spanY, 14);
@@ -515,8 +662,8 @@
         ctx.fillText(label, yAxisX - width - 8, screen.y - 6);
       }
     }
-    if (scene.origin) {
-      const origin = toScreen(resolvePoint(scene.origin));
+    if (currentScene().origin) {
+      const origin = toScreen(resolvePoint(currentScene().origin));
       ctx.fillStyle = "rgba(255, 60, 40, 1)";
       ctx.beginPath();
       ctx.arc(origin.x, origin.y, 3, 0, Math.PI * 2);
@@ -528,7 +675,7 @@
   function findHitPoint(screenX, screenY) {
     let bestIndex = null;
     let bestDistanceSquared = pointHitRadius * pointHitRadius;
-    scene.points.forEach((_, index) => {
+    currentScene().points.forEach((_, index) => {
       const screen = toScreen(resolveScenePoint(index));
       const dx = screen.x - screenX;
       const dy = screen.y - screenY;
@@ -542,15 +689,15 @@
   }
 
   function isOriginPointIndex(index) {
-    return typeof scene.origin?.pointIndex === "number" && scene.origin.pointIndex === index;
+    return typeof currentScene().origin?.pointIndex === "number" && currentScene().origin.pointIndex === index;
   }
 
   function findHitLabel(screenX, screenY) {
     ctx.save();
     ctx.font = "18px \"Noto Sans\", \"Segoe UI\", sans-serif";
     ctx.textBaseline = "top";
-    for (let index = scene.labels.length - 1; index >= 0; index -= 1) {
-      const label = scene.labels[index];
+    for (let index = currentScene().labels.length - 1; index >= 0; index -= 1) {
+      const label = currentScene().labels[index];
       const screen = toScreen(resolvePoint(label.anchor));
       const lines = label.text.split("\n");
       const width = lines.reduce((best, line) => Math.max(best, ctx.measureText(line).width), 0);
@@ -577,7 +724,7 @@
     ctx.fillRect(0, 0, sourceScene.width, sourceScene.height);
     drawGrid();
 
-    for (const polygon of scene.polygons) {
+    for (const polygon of currentScene().polygons) {
       if (polygon.points.length < 3) continue;
       ctx.beginPath();
       polygon.points.forEach((handle, index) => {
@@ -596,7 +743,7 @@
       ctx.stroke();
     }
 
-    for (const line of scene.lines) {
+    for (const line of currentScene().lines) {
       if (line.points.length < 2) continue;
       ctx.beginPath();
       line.points.forEach((handle, index) => {
@@ -614,7 +761,7 @@
     }
     ctx.setLineDash([]);
 
-    for (const circle of scene.circles) {
+    for (const circle of currentScene().circles) {
       const centerWorld = resolvePoint(circle.center);
       const radiusPointWorld = resolvePoint(circle.radiusPoint);
       const center = toScreen(centerWorld);
@@ -629,17 +776,17 @@
       ctx.stroke();
     }
 
-    scene.points.forEach((point, index) => {
+    currentScene().points.forEach((point, index) => {
       const screen = toScreen(resolveScenePoint(index));
       ctx.beginPath();
-      ctx.arc(screen.x, screen.y, index === hoverPointIndex ? 6 : 4, 0, Math.PI * 2);
-      ctx.fillStyle = index === hoverPointIndex ? "rgba(255, 120, 20, 1)" : "rgba(255, 60, 40, 1)";
+      ctx.arc(screen.x, screen.y, index === hoverPointIndex.val ? 6 : 4, 0, Math.PI * 2);
+      ctx.fillStyle = index === hoverPointIndex.val ? "rgba(255, 120, 20, 1)" : "rgba(255, 60, 40, 1)";
       ctx.fill();
     });
 
     ctx.font = "18px \"Noto Sans\", \"Segoe UI\", sans-serif";
     ctx.textBaseline = "top";
-    for (const label of scene.labels) {
+    for (const label of currentScene().labels) {
       const screen = toScreen(resolvePoint(label.anchor));
       ctx.fillStyle = rgba(label.color);
       const lines = label.text.split("\n");
@@ -649,146 +796,153 @@
     }
   }
 
+  van.derive(() => {
+    draw();
+    return 0;
+  });
+
   canvas.addEventListener("pointerdown", (event) => {
     const position = getCanvasCoords(event);
     const pointIndex = findHitPoint(position.x, position.y);
     const labelIndex = pointIndex === null ? findHitLabel(position.x, position.y) : null;
-    dragState = {
+    dragState.val = {
       pointerId: event.pointerId,
       mode: pointIndex !== null
-        ? (scene.graphMode && isOriginPointIndex(pointIndex) ? "origin-pan" : "point")
+        ? (currentScene().graphMode && isOriginPointIndex(pointIndex) ? "origin-pan" : "point")
         : (labelIndex !== null ? "label" : "pan"),
       pointIndex,
       labelIndex,
       lastX: position.x,
       lastY: position.y,
     };
-    hoverPointIndex = pointIndex;
+    hoverPointIndex.val = pointIndex;
     canvas.classList.add("is-dragging");
     canvas.setPointerCapture(event.pointerId);
-    draw();
   });
 
   canvas.addEventListener("pointermove", (event) => {
     const position = getCanvasCoords(event);
     updateReadout(position.x, position.y);
-    hoverPointIndex = findHitPoint(position.x, position.y);
-    if (!dragState || dragState.pointerId !== event.pointerId) {
-      draw();
+    hoverPointIndex.val = findHitPoint(position.x, position.y);
+    if (!dragState.val || dragState.val.pointerId !== event.pointerId) {
       return;
     }
-    if (dragState.mode === "point") {
+    if (dragState.val.mode === "point") {
       const world = toWorld(position.x, position.y);
-      const point = scene.points[dragState.pointIndex];
-      if (point.constraint && point.constraint.kind === "offset") {
-        const originPoint = scene.points[point.constraint.originIndex];
-        if (originPoint && !originPoint.constraint) {
-          originPoint.x = world.x - point.constraint.dx;
-          originPoint.y = world.y - point.constraint.dy;
+      updateScene((draft) => {
+        const point = draft.points[dragState.val.pointIndex];
+        if (point.constraint && point.constraint.kind === "offset") {
+          const originPoint = draft.points[point.constraint.originIndex];
+          if (originPoint && !originPoint.constraint) {
+            originPoint.x = world.x - point.constraint.dx;
+            originPoint.y = world.y - point.constraint.dy;
+          } else {
+            const origin = resolveScenePoint(point.constraint.originIndex);
+            point.constraint.dx = world.x - origin.x;
+            point.constraint.dy = world.y - origin.y;
+          }
+        } else if (point.constraint && point.constraint.kind === "segment") {
+          const start = resolveScenePoint(point.constraint.startIndex);
+          const end = resolveScenePoint(point.constraint.endIndex);
+          const dx = end.x - start.x;
+          const dy = end.y - start.y;
+          const lengthSquared = dx * dx + dy * dy;
+          if (lengthSquared > 1e-9) {
+            const t = ((world.x - start.x) * dx + (world.y - start.y) * dy) / lengthSquared;
+            point.constraint.t = Math.max(0, Math.min(1, t));
+          }
+        } else if (point.constraint && point.constraint.kind === "polyline") {
+          const count = point.constraint.points.length;
+          let bestSegmentIndex = point.constraint.segmentIndex;
+          let bestT = point.constraint.t;
+          let bestDistanceSquared = Number.POSITIVE_INFINITY;
+          for (let segmentIndex = 0; segmentIndex < count - 1; segmentIndex += 1) {
+            const start = point.constraint.points[segmentIndex];
+            const end = point.constraint.points[segmentIndex + 1];
+            const dx = end.x - start.x;
+            const dy = end.y - start.y;
+            const lengthSquared = dx * dx + dy * dy;
+            if (lengthSquared <= 1e-9) {
+              continue;
+            }
+            const t = Math.max(0, Math.min(1, ((world.x - start.x) * dx + (world.y - start.y) * dy) / lengthSquared));
+            const projX = start.x + dx * t;
+            const projY = start.y + dy * t;
+            const distSq = (world.x - projX) ** 2 + (world.y - projY) ** 2;
+            if (distSq < bestDistanceSquared) {
+              bestDistanceSquared = distSq;
+              bestSegmentIndex = segmentIndex;
+              bestT = t;
+            }
+          }
+          point.constraint.segmentIndex = bestSegmentIndex;
+          point.constraint.t = bestT;
+        } else if (point.constraint && point.constraint.kind === "polygon-boundary") {
+          const count = point.constraint.vertexIndices.length;
+          let bestEdgeIndex = point.constraint.edgeIndex;
+          let bestT = point.constraint.t;
+          let bestDistanceSquared = Number.POSITIVE_INFINITY;
+          for (let edgeIndex = 0; edgeIndex < count; edgeIndex += 1) {
+            const start = resolveScenePoint(point.constraint.vertexIndices[edgeIndex]);
+            const end = resolveScenePoint(point.constraint.vertexIndices[(edgeIndex + 1) % count]);
+            const dx = end.x - start.x;
+            const dy = end.y - start.y;
+            const lengthSquared = dx * dx + dy * dy;
+            if (lengthSquared <= 1e-9) {
+              continue;
+            }
+            const t = Math.max(0, Math.min(1, ((world.x - start.x) * dx + (world.y - start.y) * dy) / lengthSquared));
+            const projX = start.x + dx * t;
+            const projY = start.y + dy * t;
+            const distSq = (world.x - projX) ** 2 + (world.y - projY) ** 2;
+            if (distSq < bestDistanceSquared) {
+              bestDistanceSquared = distSq;
+              bestEdgeIndex = edgeIndex;
+              bestT = t;
+            }
+          }
+          point.constraint.edgeIndex = bestEdgeIndex;
+          point.constraint.t = bestT;
+        } else if (point.constraint && point.constraint.kind === "circle") {
+          const center = resolveScenePoint(point.constraint.centerIndex);
+          const dx = world.x - center.x;
+          const dy = world.y - center.y;
+          const length = Math.hypot(dx, dy);
+          if (length > 1e-9) {
+            point.constraint.unitX = dx / length;
+            point.constraint.unitY = dy / length;
+          }
         } else {
-          const origin = resolveScenePoint(point.constraint.originIndex);
-          point.constraint.dx = world.x - origin.x;
-          point.constraint.dy = world.y - origin.y;
+          point.x = world.x;
+          point.y = world.y;
         }
-      } else if (point.constraint && point.constraint.kind === "segment") {
-        const start = resolveScenePoint(point.constraint.startIndex);
-        const end = resolveScenePoint(point.constraint.endIndex);
-        const dx = end.x - start.x;
-        const dy = end.y - start.y;
-        const lengthSquared = dx * dx + dy * dy;
-        if (lengthSquared > 1e-9) {
-          const t = ((world.x - start.x) * dx + (world.y - start.y) * dy) / lengthSquared;
-          point.constraint.t = Math.max(0, Math.min(1, t));
-        }
-      } else if (point.constraint && point.constraint.kind === "polyline") {
-        const count = point.constraint.points.length;
-        let bestSegmentIndex = point.constraint.segmentIndex;
-        let bestT = point.constraint.t;
-        let bestDistanceSquared = Number.POSITIVE_INFINITY;
-        for (let segmentIndex = 0; segmentIndex < count - 1; segmentIndex += 1) {
-          const start = point.constraint.points[segmentIndex];
-          const end = point.constraint.points[segmentIndex + 1];
-          const dx = end.x - start.x;
-          const dy = end.y - start.y;
-          const lengthSquared = dx * dx + dy * dy;
-          if (lengthSquared <= 1e-9) {
-            continue;
-          }
-          const t = Math.max(0, Math.min(1, ((world.x - start.x) * dx + (world.y - start.y) * dy) / lengthSquared));
-          const projX = start.x + dx * t;
-          const projY = start.y + dy * t;
-          const distSq = (world.x - projX) ** 2 + (world.y - projY) ** 2;
-          if (distSq < bestDistanceSquared) {
-            bestDistanceSquared = distSq;
-            bestSegmentIndex = segmentIndex;
-            bestT = t;
-          }
-        }
-        point.constraint.segmentIndex = bestSegmentIndex;
-        point.constraint.t = bestT;
-      } else if (point.constraint && point.constraint.kind === "polygon-boundary") {
-        const count = point.constraint.vertexIndices.length;
-        let bestEdgeIndex = point.constraint.edgeIndex;
-        let bestT = point.constraint.t;
-        let bestDistanceSquared = Number.POSITIVE_INFINITY;
-        for (let edgeIndex = 0; edgeIndex < count; edgeIndex += 1) {
-          const start = resolveScenePoint(point.constraint.vertexIndices[edgeIndex]);
-          const end = resolveScenePoint(point.constraint.vertexIndices[(edgeIndex + 1) % count]);
-          const dx = end.x - start.x;
-          const dy = end.y - start.y;
-          const lengthSquared = dx * dx + dy * dy;
-          if (lengthSquared <= 1e-9) {
-            continue;
-          }
-          const t = Math.max(0, Math.min(1, ((world.x - start.x) * dx + (world.y - start.y) * dy) / lengthSquared));
-          const projX = start.x + dx * t;
-          const projY = start.y + dy * t;
-          const distSq = (world.x - projX) ** 2 + (world.y - projY) ** 2;
-          if (distSq < bestDistanceSquared) {
-            bestDistanceSquared = distSq;
-            bestEdgeIndex = edgeIndex;
-            bestT = t;
-          }
-        }
-        point.constraint.edgeIndex = bestEdgeIndex;
-        point.constraint.t = bestT;
-      } else if (point.constraint && point.constraint.kind === "circle") {
-        const center = resolveScenePoint(point.constraint.centerIndex);
-        const dx = world.x - center.x;
-        const dy = world.y - center.y;
-        const length = Math.hypot(dx, dy);
-        if (length > 1e-9) {
-          point.constraint.unitX = dx / length;
-          point.constraint.unitY = dy / length;
-        }
-      } else {
-        point.x = world.x;
-        point.y = world.y;
-      }
-      hoverPointIndex = dragState.pointIndex;
-    } else if (dragState.mode === "label") {
+      });
+      hoverPointIndex.val = dragState.val.pointIndex;
+    } else if (dragState.val.mode === "label") {
       const world = toWorld(position.x, position.y);
-      const label = scene.labels[dragState.labelIndex];
-      if (typeof label.anchor.pointIndex === "number") {
-        label.anchor = { x: world.x, y: world.y };
-      } else {
-        label.anchor.x = world.x;
-        label.anchor.y = world.y;
-      }
+      updateScene((draft) => {
+        const label = draft.labels[dragState.val.labelIndex];
+        if (typeof label.anchor.pointIndex === "number" || typeof label.anchor.lineIndex === "number") {
+          const base = resolveAnchorBase(label.anchor);
+          label.anchor.dx = world.x - base.x;
+          label.anchor.dy = world.y - base.y;
+        } else {
+          label.anchor.x = world.x;
+          label.anchor.y = world.y;
+        }
+      });
     } else {
       const worldNow = toWorld(position.x, position.y);
-      const worldLast = toWorld(dragState.lastX, dragState.lastY);
+      const worldLast = toWorld(dragState.val.lastX, dragState.val.lastY);
       view.centerX -= worldNow.x - worldLast.x;
       view.centerY -= worldNow.y - worldLast.y;
     }
-    dragState.lastX = position.x;
-    dragState.lastY = position.y;
-    draw();
+    dragState.val = { ...dragState.val, lastX: position.x, lastY: position.y };
   });
 
   function endDrag(pointerId) {
-    if (dragState && dragState.pointerId === pointerId) {
-      dragState = null;
+    if (dragState.val && dragState.val.pointerId === pointerId) {
+      dragState.val = null;
       canvas.classList.remove("is-dragging");
     }
   }
@@ -796,10 +950,9 @@
   canvas.addEventListener("pointerup", (event) => endDrag(event.pointerId));
   canvas.addEventListener("pointercancel", (event) => endDrag(event.pointerId));
   canvas.addEventListener("pointerleave", () => {
-    hoverPointIndex = null;
-    if (!dragState) {
+    hoverPointIndex.val = null;
+    if (!dragState.val) {
       updateReadout();
-      draw();
     }
   });
 
@@ -813,7 +966,6 @@
     view.centerX += before.x - after.x;
     view.centerY += before.y - after.y;
     updateReadout(position.x, position.y);
-    draw();
   }, { passive: false });
 
   canvas.addEventListener("dblclick", () => {

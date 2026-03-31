@@ -9,6 +9,7 @@ use std::fs;
 use std::path::Path;
 
 const VIEWER_CSS: &str = include_str!("html/viewer.css");
+const VAN_JS: &str = include_str!("html/vendor/van-1.6.0.js");
 const VIEWER_JS: &str = include_str!("html/viewer.js");
 
 pub fn render_points_to_html(
@@ -47,6 +48,7 @@ pub fn render_points_to_html(
 fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
     let mut html = String::new();
     let scene_json = scene_to_json(scene, width, height);
+    let van_js = van_runtime_to_global();
     let frame_width = width + 40;
     let shape_count =
         scene.lines.len() + scene.polygons.len() + scene.circles.len() + scene.labels.len();
@@ -88,6 +90,9 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
   </main>
   <script id="scene-data" type="application/json">{scene_json}</script>
   <script>
+{embedded_van_js}
+  </script>
+  <script>
 {embedded_js}
   </script>
 </body>
@@ -99,9 +104,14 @@ fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
         shape_count = shape_count,
         scene_json = scene_json,
         embedded_css = indent_asset(VIEWER_CSS, 4),
+        embedded_van_js = indent_asset(&van_js, 4),
         embedded_js = indent_asset(VIEWER_JS, 4),
     );
     html
+}
+
+fn van_runtime_to_global() -> String {
+    VAN_JS.replacen("export default {", "window.van = {", 1)
 }
 
 fn indent_asset(asset: &str, spaces: usize) -> String {

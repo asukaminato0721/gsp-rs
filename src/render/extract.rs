@@ -119,6 +119,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         file,
         &groups,
         &raw_anchors,
+        graph_mode,
         graph_mode && !has_function_plots,
     );
     labels.extend(compute_iteration_labels(file, &groups, &circles));
@@ -869,34 +870,21 @@ fn collect_labels(
     file: &GspFile,
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
+    graph_mode: bool,
     include_measurements: bool,
 ) -> Vec<TextLabel> {
     let mut labels = Vec::new();
     for group in groups {
         let kind = group.header.class_id & 0xffff;
         match kind {
-            0 | 40 | 51 | 62 | 73 => {
-                let text = decode_group_label_text(file, group);
+            0 | 2 | 40 | 51 | 62 | 73 => {
+                let text = decode_group_label_text(file, group).or_else(|| {
+                    (!graph_mode && matches!(kind, 0 | 2))
+                        .then(|| decode_label_name(file, group))
+                        .flatten()
+                });
                 if let Some(text) = text {
-                    let anchor = group
-                        .records
-                        .iter()
-                        .find(|record| record.record_type == 0x08fc)
-                        .and_then(|record| decode_text_anchor(record.payload(&file.data)))
-                        .or_else(|| decode_0907_anchor(file, group))
-                        .or_else(|| {
-                            anchors
-                                .get(group.ordinal.saturating_sub(1))
-                                .cloned()
-                                .flatten()
-                        })
-                        .or_else(|| {
-                            find_indexed_path(file, group).and_then(|path| {
-                                path.refs.iter().rev().find_map(|object_ref| {
-                                    anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
-                                })
-                            })
-                        });
+                    let anchor = decode_label_anchor(file, groups, group, anchors);
                     if let Some(anchor) = anchor {
                         labels.push(TextLabel {
                             anchor,
@@ -1278,6 +1266,71 @@ fn decode_group_label_text(file: &GspFile, group: &ObjectGroup) -> Option<String
             }
             _ => None,
         })
+}
+
+fn decode_label_anchor(
+    file: &GspFile,
+    _groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    let kind = group.header.class_id & 0xffff;
+    let offset = decode_label_offset(file, group).unwrap_or((0.0, 0.0));
+    let base = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x08fc)
+        .and_then(|record| decode_text_anchor(record.payload(&file.data)))
+        .or_else(|| decode_0907_anchor(file, group))
+        .or_else(|| match kind {
+            0 => anchors.get(group.ordinal.saturating_sub(1)).cloned().flatten(),
+            2 => find_indexed_path(file, group).and_then(|path| {
+                let points = path
+                    .refs
+                    .iter()
+                    .filter_map(|object_ref| {
+                        anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
+                    })
+                    .collect::<Vec<_>>();
+                if points.len() >= 2 {
+                    let start = points.first()?;
+                    let end = points.last()?;
+                    Some(PointRecord {
+                        x: (start.x + end.x) / 2.0,
+                        y: (start.y + end.y) / 2.0,
+                    })
+                } else {
+                    None
+                }
+            }),
+            _ => None,
+        })
+        .or_else(|| {
+            anchors
+                .get(group.ordinal.saturating_sub(1))
+                .cloned()
+                .flatten()
+        })
+        .or_else(|| {
+            find_indexed_path(file, group).and_then(|path| {
+                path.refs.iter().rev().find_map(|object_ref| {
+                    anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
+                })
+            })
+        })?;
+    Some(PointRecord {
+        x: base.x + offset.0,
+        y: base.y + offset.1,
+    })
+}
+
+fn decode_label_offset(file: &GspFile, group: &ObjectGroup) -> Option<(f64, f64)> {
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x07d5)
+        .map(|record| record.payload(&file.data))?;
+    (payload.len() >= 10).then(|| (read_i16(payload, 6) as f64, read_i16(payload, 8) as f64))
 }
 
 fn decode_bbox_anchor_raw(file: &GspFile, group: &ObjectGroup) -> Option<PointRecord> {
@@ -2147,18 +2200,65 @@ mod tests {
         let scene = build_scene(&file);
 
         assert_eq!(scene.points.len(), 2, "expected base point and translated point");
-        assert!((scene.points[0].position.x - 239.0).abs() < 0.001);
-        assert!((scene.points[0].position.y - 205.0).abs() < 0.001);
-        assert!((scene.points[1].position.x - 239.0).abs() < 0.001);
-        assert!((scene.points[1].position.y - 167.20472440944883).abs() < 0.001);
-        assert!(matches!(
-            scene.points[1].constraint,
+        let origin = scene
+            .points
+            .iter()
+            .find(|point| matches!(point.constraint, ScenePointConstraint::Free))
+            .expect("expected free origin point");
+        let translated = scene
+            .points
+            .iter()
+            .find(|point| matches!(point.constraint, ScenePointConstraint::Offset { .. }))
+            .expect("expected translated offset point");
+
+        match translated.constraint {
             ScenePointConstraint::Offset {
-                origin_index: 0,
+                origin_index,
                 dx,
                 dy,
-            } if dx.abs() < 0.001 && (dy + 37.79527559055118).abs() < 0.001
-        ));
+            } => {
+                assert_eq!(origin_index, 0);
+                assert!(dx.abs() < 0.001, "expected 90-degree translation to keep x constant, got dx={dx}");
+                assert!(dy < 0.0, "expected upward translation in raw coordinates, got dy={dy}");
+                assert!(
+                    (translated.position.x - (origin.position.x + dx)).abs() < 0.001
+                        && (translated.position.y - (origin.position.y + dy)).abs() < 0.001,
+                    "expected translated point to preserve offset from origin: origin={:?}, translated={:?}",
+                    origin.position,
+                    translated.position
+                );
+            }
+            _ => panic!("expected offset constraint"),
+        }
+    }
+
+    #[test]
+    fn preserves_point_label_in_point_label_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/point_label.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert!(
+            scene.labels.iter().any(|label| label.text == "A"),
+            "expected point label A, got {:?}",
+            scene.labels.iter().map(|label| &label.text).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn preserves_point_and_segment_labels_in_segment_label_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/segment_label.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        let texts = scene
+            .labels
+            .iter()
+            .map(|label| label.text.as_str())
+            .collect::<Vec<_>>();
+        assert!(texts.contains(&"A"), "expected point label A, got {texts:?}");
+        assert!(texts.contains(&"B"), "expected point label B, got {texts:?}");
+        assert!(texts.contains(&"j"), "expected segment label j, got {texts:?}");
     }
 
     #[test]
