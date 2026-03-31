@@ -301,6 +301,13 @@ impl ScenePointJson {
 #[derive(Serialize)]
 #[serde(tag = "kind")]
 enum PointConstraintJson {
+    #[serde(rename = "offset")]
+    Offset {
+        #[serde(rename = "originIndex")]
+        origin_index: usize,
+        dx: f64,
+        dy: f64,
+    },
     #[serde(rename = "segment")]
     Segment {
         #[serde(rename = "startIndex")]
@@ -343,6 +350,15 @@ impl PointConstraintJson {
     fn from_constraint(constraint: &ScenePointConstraint) -> Option<Self> {
         match constraint {
             ScenePointConstraint::Free => None,
+            ScenePointConstraint::Offset {
+                origin_index,
+                dx,
+                dy,
+            } => Some(Self::Offset {
+                origin_index: *origin_index,
+                dx: *dx,
+                dy: *dy,
+            }),
             ScenePointConstraint::OnSegment {
                 start_index,
                 end_index,

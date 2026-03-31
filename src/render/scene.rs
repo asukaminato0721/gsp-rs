@@ -29,6 +29,11 @@ pub(crate) struct ScenePoint {
 #[derive(Debug, Clone)]
 pub(crate) enum ScenePointConstraint {
     Free,
+    Offset {
+        origin_index: usize,
+        dx: f64,
+        dy: f64,
+    },
     OnSegment {
         start_index: usize,
         end_index: usize,

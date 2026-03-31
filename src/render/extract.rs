@@ -165,6 +165,22 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
             position: to_world(&point.position, &graph_ref),
             constraint: match &point.constraint {
                 ScenePointConstraint::Free => ScenePointConstraint::Free,
+                ScenePointConstraint::Offset {
+                    origin_index,
+                    dx,
+                    dy,
+                } => {
+                    let (dx, dy) = if let Some(transform) = &graph_ref {
+                        (dx / transform.raw_per_unit, -dy / transform.raw_per_unit)
+                    } else {
+                        (*dx, *dy)
+                    };
+                    ScenePointConstraint::Offset {
+                        origin_index: *origin_index,
+                        dx,
+                        dy,
+                    }
+                }
                 ScenePointConstraint::OnSegment {
                     start_index,
                     end_index,
@@ -363,6 +379,20 @@ fn collect_visible_points(
                     position,
                     constraint: ScenePointConstraint::Free,
                 }),
+            21 => decode_translated_point_constraint(file, group).and_then(|constraint| {
+                let origin_index = group_to_point_index
+                    .get(constraint.origin_group_index)
+                    .and_then(|index| *index)?;
+                let position = anchors.get(index).cloned().flatten()?;
+                Some(ScenePoint {
+                    position,
+                    constraint: ScenePointConstraint::Offset {
+                        origin_index,
+                        dx: constraint.dx,
+                        dy: constraint.dy,
+                    },
+                })
+            }),
             15 => decode_point_constraint(file, groups, group, graph).and_then(|constraint| {
                 let position = anchors.get(index).cloned().flatten()?;
                 match constraint {
@@ -464,6 +494,8 @@ fn collect_raw_object_anchors(
         {
             Some(anchor)
         } else if let Some(anchor) = decode_point_on_ray_anchor_raw(file, groups, group, &anchors) {
+            Some(anchor)
+        } else if let Some(anchor) = decode_translated_point_anchor_raw(file, group, &anchors) {
             Some(anchor)
         } else if let Some(anchor) = decode_transform_anchor_raw(file, group, &anchors) {
             Some(anchor)
@@ -1387,6 +1419,55 @@ fn decode_point_on_ray_anchor_raw(
     })
 }
 
+fn decode_translated_point_anchor_raw(
+    file: &GspFile,
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    let constraint = decode_translated_point_constraint(file, group)?;
+    let path = find_indexed_path(file, group)?;
+    let origin = anchors.get(path.refs.first()?.checked_sub(1)?)?.clone()?;
+    Some(PointRecord {
+        x: origin.x + constraint.dx,
+        y: origin.y + constraint.dy,
+    })
+}
+
+fn decode_translated_point_constraint(
+    file: &GspFile,
+    group: &ObjectGroup,
+) -> Option<TranslatedPointConstraint> {
+    if (group.header.class_id & 0xffff) != 21 {
+        return None;
+    }
+
+    let path = find_indexed_path(file, group)?;
+    let origin_group_index = path.refs.first()?.checked_sub(1)?;
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x07d3)
+        .map(|record| record.payload(&file.data))?;
+    if payload.len() < 48 {
+        return None;
+    }
+
+    let angle_degrees = read_f64(payload, 20);
+    let units_to_raw = read_f64(payload, 32);
+    let distance = read_f64(payload, 40);
+    if !angle_degrees.is_finite() || !units_to_raw.is_finite() || !distance.is_finite() {
+        return None;
+    }
+
+    let angle_radians = angle_degrees.to_radians();
+    let step = units_to_raw * distance;
+    Some(TranslatedPointConstraint {
+        origin_group_index,
+        dx: step * angle_radians.cos(),
+        dy: -step * angle_radians.sin(),
+    })
+}
+
 fn decode_offset_anchor_raw(
     file: &GspFile,
     group: &ObjectGroup,
@@ -1423,6 +1504,12 @@ struct PointOnSegmentConstraint {
     start_group_index: usize,
     end_group_index: usize,
     t: f64,
+}
+
+struct TranslatedPointConstraint {
+    origin_group_index: usize,
+    dx: f64,
+    dy: f64,
 }
 
 struct PointOnCircleConstraint {
@@ -2051,6 +2138,27 @@ mod tests {
                 "f'(x) = 1 + a*cos(x)",
             ]
         );
+    }
+
+    #[test]
+    fn preserves_translated_points_in_point_translation_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/point_translation.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.points.len(), 2, "expected base point and translated point");
+        assert!((scene.points[0].position.x - 239.0).abs() < 0.001);
+        assert!((scene.points[0].position.y - 205.0).abs() < 0.001);
+        assert!((scene.points[1].position.x - 239.0).abs() < 0.001);
+        assert!((scene.points[1].position.y - 167.20472440944883).abs() < 0.001);
+        assert!(matches!(
+            scene.points[1].constraint,
+            ScenePointConstraint::Offset {
+                origin_index: 0,
+                dx,
+                dy,
+            } if dx.abs() < 0.001 && (dy + 37.79527559055118).abs() < 0.001
+        ));
     }
 
     #[test]

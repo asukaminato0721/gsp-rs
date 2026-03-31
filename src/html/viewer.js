@@ -264,6 +264,13 @@
     if (!constraint) {
       return null;
     }
+    if (constraint.kind === "offset") {
+      const origin = resolveFn(constraint.originIndex);
+      return {
+        x: origin.x + constraint.dx,
+        y: origin.y + constraint.dy,
+      };
+    }
     if (constraint.kind === "segment") {
       const start = resolveFn(constraint.startIndex);
       const end = resolveFn(constraint.endIndex);
@@ -673,7 +680,17 @@
     if (dragState.mode === "point") {
       const world = toWorld(position.x, position.y);
       const point = scene.points[dragState.pointIndex];
-      if (point.constraint && point.constraint.kind === "segment") {
+      if (point.constraint && point.constraint.kind === "offset") {
+        const originPoint = scene.points[point.constraint.originIndex];
+        if (originPoint && !originPoint.constraint) {
+          originPoint.x = world.x - point.constraint.dx;
+          originPoint.y = world.y - point.constraint.dy;
+        } else {
+          const origin = resolveScenePoint(point.constraint.originIndex);
+          point.constraint.dx = world.x - origin.x;
+          point.constraint.dy = world.y - origin.y;
+        }
+      } else if (point.constraint && point.constraint.kind === "segment") {
         const start = resolveScenePoint(point.constraint.startIndex);
         const end = resolveScenePoint(point.constraint.endIndex);
         const dx = end.x - start.x;
