@@ -8,7 +8,7 @@ use crate::format::{
 use super::functions::{
     FunctionExpr, collect_function_plot_domain, collect_function_plots, collect_scene_functions,
     collect_scene_parameters, decode_function_expr, decode_function_plot_descriptor,
-    function_uses_pi_scale, sample_function_points, synthesize_function_axes,
+    evaluate_expr_with_parameters, function_uses_pi_scale, sample_function_points, synthesize_function_axes,
     synthesize_function_labels,
 };
 use super::geometry::{
@@ -73,6 +73,11 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     };
     let measurements = if graph_mode {
         collect_line_shapes(file, &groups, &raw_anchors, &[58], false)
+    } else {
+        Vec::new()
+    };
+    let coordinate_traces = if graph_mode {
+        collect_coordinate_traces(file, &groups, &graph_ref)
     } else {
         Vec::new()
     };
@@ -273,11 +278,12 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         expand_bounds(&mut bounds);
     }
 
-    let parameters = if graph_mode {
+    let mut parameters = if graph_mode {
         collect_scene_parameters(file, &groups, &labels)
     } else {
-        collect_non_graph_parameters(file, &groups, &mut labels)
+        Vec::new()
     };
+    parameters.extend(collect_non_graph_parameters(file, &groups, &mut labels));
     let functions = if graph_mode {
         collect_scene_functions(
             file,
@@ -303,6 +309,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
             .into_iter()
             .chain(derived_segments)
             .chain(measurements)
+            .chain(coordinate_traces)
             .chain(axes)
             .chain(function_plots)
             .chain(synthetic_axes)
@@ -607,6 +614,14 @@ fn collect_visible_points(
                     RawPointConstraint::Polyline { .. } => None,
                 },
             ),
+            69 => decode_coordinate_point(file, groups, group, graph).map(|point| ScenePoint {
+                position: point.position,
+                constraint: ScenePointConstraint::Free,
+                binding: Some(ScenePointBinding::Coordinate {
+                    name: point.parameter_name,
+                    expr: point.expr,
+                }),
+            }),
             _ => None,
         };
 
@@ -2001,6 +2016,12 @@ struct ParameterControlledPoint {
     parameter_name: String,
 }
 
+struct CoordinatePoint {
+    position: PointRecord,
+    parameter_name: String,
+    expr: FunctionExpr,
+}
+
 fn decode_point_on_segment_constraint(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -2133,6 +2154,94 @@ fn decode_parameter_controlled_point(
         }
         _ => None,
     }
+}
+
+fn decode_coordinate_point(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    graph: &Option<GraphTransform>,
+) -> Option<CoordinatePoint> {
+    if (group.header.class_id & 0xffff) != 69 {
+        return None;
+    }
+
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() < 2 {
+        return None;
+    }
+    let parameter_group = groups.get(path.refs[0].checked_sub(1)?)?;
+    let calc_group = groups.get(path.refs[1].checked_sub(1)?)?;
+
+    let parameter_name = decode_label_name(file, parameter_group)?;
+    let parameter_value = decode_non_graph_parameter_value_for_group(file, parameter_group)?;
+    let expr = decode_function_expr(file, groups, calc_group)?;
+    let parameters = BTreeMap::from([(parameter_name.clone(), parameter_value)]);
+    let y = evaluate_expr_with_parameters(&expr, 0.0, &parameters)?;
+    let world = PointRecord {
+        x: parameter_value,
+        y,
+    };
+    let position = if let Some(transform) = graph {
+        to_raw_from_world(&world, transform)
+    } else {
+        world
+    };
+
+    Some(CoordinatePoint {
+        position,
+        parameter_name,
+        expr,
+    })
+}
+
+fn collect_coordinate_traces(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    graph: &Option<GraphTransform>,
+) -> Vec<LineShape> {
+    groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 97)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            if path.refs.len() < 3 {
+                return None;
+            }
+            let parameter_group = groups.get(path.refs[1].checked_sub(1)?)?;
+            let calc_group = groups.get(path.refs[2].checked_sub(1)?)?;
+            let parameter_name = decode_label_name(file, parameter_group)?;
+            let payload = group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x0902)
+                .map(|record| record.payload(&file.data))?;
+            let descriptor = decode_function_plot_descriptor(payload)?;
+            let expr = decode_function_expr(file, groups, calc_group)?;
+
+            let mut points = Vec::with_capacity(descriptor.sample_count);
+            let last = descriptor.sample_count.saturating_sub(1).max(1) as f64;
+            for index in 0..descriptor.sample_count {
+                let t = index as f64 / last;
+                let x = descriptor.x_min + (descriptor.x_max - descriptor.x_min) * t;
+                let parameters = BTreeMap::from([(parameter_name.clone(), x)]);
+                let y = evaluate_expr_with_parameters(&expr, 0.0, &parameters)?;
+                let world = PointRecord { x, y };
+                let point = if let Some(transform) = graph {
+                    to_raw_from_world(&world, transform)
+                } else {
+                    world
+                };
+                points.push(point);
+            }
+
+            (points.len() >= 2).then_some(LineShape {
+                points,
+                color: color_from_style(group.header.style_b),
+                dashed: false,
+            })
+        })
+        .collect()
 }
 
 fn polygon_parameter_to_edge(vertices: &[PointRecord], parameter: f64) -> Option<(usize, f64)> {
@@ -2954,6 +3063,51 @@ mod tests {
             point.constraint,
             ScenePointConstraint::OnCircle { .. }
         )));
+    }
+
+    #[test]
+    fn preserves_coordinate_point_in_cood_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/cood.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert!(scene.graph_mode, "expected graph scene");
+        assert_eq!(scene.parameters.len(), 1, "expected t parameter");
+        assert_eq!(scene.parameters[0].name, "t₁");
+        assert!((scene.parameters[0].value - 0.01).abs() < 0.001);
+        assert!(
+            scene.points.iter().any(|point| {
+                point.binding.as_ref().is_some_and(|binding| matches!(
+                    binding,
+                    ScenePointBinding::Coordinate { name, .. } if name == "t₁"
+                ))
+            }),
+            "expected coordinate-controlled point"
+        );
+        assert!(scene.points.iter().any(|point| {
+            (point.position.x - 0.01).abs() < 0.001 && (point.position.y - 1.01).abs() < 0.001
+        }));
+    }
+
+    #[test]
+    fn preserves_coordinate_trace_in_cood_trace_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/cood-trace.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert!(scene.graph_mode, "expected graph scene");
+        assert_eq!(scene.parameters.len(), 1, "expected t parameter");
+        assert_eq!(scene.parameters[0].name, "t₁");
+        assert!(
+            scene.lines.iter().any(|line| {
+                line.points.len() > 100
+                    && line.points.first().is_some_and(|point| point.x.abs() < 0.001)
+                    && line.points.first().is_some_and(|point| (point.y - 1.0).abs() < 0.001)
+                    && line.points.last().is_some_and(|point| (point.x - 1.0).abs() < 0.001)
+                    && line.points.last().is_some_and(|point| (point.y - 2.0).abs() < 0.001)
+            }),
+            "expected sampled coordinate trace line"
+        );
     }
 
     #[test]

@@ -308,6 +308,17 @@
       });
       draft.points.forEach((point) => {
         if (point.binding?.kind !== "parameter" || !point.constraint) {
+          if (point.binding?.kind === "coordinate") {
+            const value = parameters.get(point.binding.name);
+            if (!Number.isFinite(value)) {
+              return;
+            }
+            point.x = value;
+            const y = evaluateExpr(point.binding.expr, 0, parameters);
+            if (y !== null) {
+              point.y = y;
+            }
+          }
           return;
         }
         const value = parameters.get(point.binding.name);

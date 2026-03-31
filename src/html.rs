@@ -393,12 +393,21 @@ enum PointBindingJson {
     Parameter {
         name: String,
     },
+    #[serde(rename = "coordinate")]
+    Coordinate {
+        name: String,
+        expr: FunctionExprJson,
+    },
 }
 
 impl PointBindingJson {
     fn from_binding(binding: &ScenePointBinding) -> Self {
         match binding {
             ScenePointBinding::Parameter { name } => Self::Parameter { name: name.clone() },
+            ScenePointBinding::Coordinate { name, expr } => Self::Coordinate {
+                name: name.clone(),
+                expr: FunctionExprJson::from_expr(expr),
+            },
         }
     }
 }

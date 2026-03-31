@@ -84,6 +84,10 @@ pub(crate) enum ScenePointBinding {
     Parameter {
         name: String,
     },
+    Coordinate {
+        name: String,
+        expr: FunctionExpr,
+    },
 }
 
 #[derive(Debug, Clone)]
