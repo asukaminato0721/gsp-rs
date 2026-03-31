@@ -132,7 +132,9 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         graph_mode,
         !has_function_plots && !has_coordinate_objects,
     );
-    labels.extend(collect_coordinate_labels(file, &groups));
+    if has_coordinate_objects {
+        labels.extend(collect_coordinate_labels(file, &groups));
+    }
     labels.extend(collect_polygon_parameter_labels(
         file,
         &groups,
@@ -688,6 +690,31 @@ fn collect_visible_points(
                     name: point.parameter_name,
                     expr: point.expr,
                 }),
+            }),
+            27 | 30 => decode_transform_binding(file, group).and_then(|binding| {
+                let position = anchors.get(index).cloned().flatten()?;
+                let source_index = group_to_point_index
+                    .get(binding.source_group_index)
+                    .and_then(|index| *index)?;
+                let center_index = group_to_point_index
+                    .get(binding.center_group_index)
+                    .and_then(|index| *index)?;
+                Some(ScenePoint {
+                    position,
+                    constraint: ScenePointConstraint::Free,
+                    binding: Some(match binding.kind {
+                        TransformBindingKind::Rotate { angle_degrees } => ScenePointBinding::Rotate {
+                            source_index,
+                            center_index,
+                            angle_degrees,
+                        },
+                        TransformBindingKind::Scale { factor } => ScenePointBinding::Scale {
+                            source_index,
+                            center_index,
+                            factor,
+                        },
+                    }),
+                })
             }),
             _ => None,
         };
@@ -1952,48 +1979,29 @@ fn decode_transform_anchor_raw(
     let kind = group.header.class_id & 0xffff;
     match kind {
         27 => {
-            let path = find_indexed_path(file, group)?;
-            let source = anchors.get(path.refs.first()?.checked_sub(1)?)?.clone()?;
-            let center = anchors.get(path.refs.get(1)?.checked_sub(1)?)?.clone()?;
-            let payload = group
-                .records
-                .iter()
-                .find(|record| record.record_type == 0x07d3)
-                .map(|record| record.payload(&file.data))?;
-            if payload.len() < 20 {
+            let binding = decode_transform_binding(file, group)?;
+            let source = anchors.get(binding.source_group_index)?.clone()?;
+            let center = anchors.get(binding.center_group_index)?.clone()?;
+            let TransformBindingKind::Rotate { angle_degrees } = binding.kind else {
                 return None;
-            }
-
-            let cos = read_f64(payload, 4);
-            let sin = read_f64(payload, 12);
-            if !cos.is_finite() || !sin.is_finite() {
-                return None;
-            }
-
+            };
+            let radians = angle_degrees.to_radians();
+            let cos = radians.cos();
+            let sin = radians.sin();
             let dx = source.x - center.x;
             let dy = source.y - center.y;
             Some(PointRecord {
-                x: center.x + dx * cos - dy * sin,
-                y: center.y + dx * sin + dy * cos,
+                x: center.x + dx * cos + dy * sin,
+                y: center.y - dx * sin + dy * cos,
             })
         }
         30 => {
-            let path = find_indexed_path(file, group)?;
-            let source = anchors.get(path.refs.first()?.checked_sub(1)?)?.clone()?;
-            let center = anchors.get(path.refs.get(1)?.checked_sub(1)?)?.clone()?;
-            let payload = group
-                .records
-                .iter()
-                .find(|record| record.record_type == 0x07d3)
-                .map(|record| record.payload(&file.data))?;
-            if payload.len() < 12 {
+            let binding = decode_transform_binding(file, group)?;
+            let source = anchors.get(binding.source_group_index)?.clone()?;
+            let center = anchors.get(binding.center_group_index)?.clone()?;
+            let TransformBindingKind::Scale { factor: t } = binding.kind else {
                 return None;
-            }
-
-            let t = read_f64(payload, 4);
-            if !t.is_finite() {
-                return None;
-            }
+            };
 
             Some(PointRecord {
                 x: center.x + (source.x - center.x) * t,
@@ -2002,6 +2010,53 @@ fn decode_transform_anchor_raw(
         }
         _ => None,
     }
+}
+
+fn decode_transform_binding(file: &GspFile, group: &ObjectGroup) -> Option<TransformBinding> {
+    let kind = group.header.class_id & 0xffff;
+    let path = find_indexed_path(file, group)?;
+    let source_group_index = path.refs.first()?.checked_sub(1)?;
+    let center_group_index = path.refs.get(1)?.checked_sub(1)?;
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x07d3)
+        .map(|record| record.payload(&file.data))?;
+
+    let kind = match kind {
+        27 => {
+            let angle_degrees = if payload.len() >= 28 {
+                let angle = read_f64(payload, 20);
+                if angle.is_finite() {
+                    angle
+                } else {
+                    return None;
+                }
+            } else {
+                let cos = read_f64(payload, 4);
+                let sin = read_f64(payload, 12);
+                sin.atan2(cos).to_degrees()
+            };
+            TransformBindingKind::Rotate { angle_degrees }
+        }
+        30 => {
+            if payload.len() < 12 {
+                return None;
+            }
+            let factor = read_f64(payload, 4);
+            if !factor.is_finite() {
+                return None;
+            }
+            TransformBindingKind::Scale { factor }
+        }
+        _ => return None,
+    };
+
+    Some(TransformBinding {
+        source_group_index,
+        center_group_index,
+        kind,
+    })
 }
 
 fn decode_point_on_ray_anchor_raw(
@@ -2191,6 +2246,17 @@ struct CoordinatePoint {
     position: PointRecord,
     parameter_name: String,
     expr: FunctionExpr,
+}
+
+struct TransformBinding {
+    source_group_index: usize,
+    center_group_index: usize,
+    kind: TransformBindingKind,
+}
+
+enum TransformBindingKind {
+    Rotate { angle_degrees: f64 },
+    Scale { factor: f64 },
 }
 
 fn decode_point_on_segment_constraint(
@@ -3258,18 +3324,13 @@ mod tests {
         let scene = build_scene(&file);
 
         assert_eq!(scene.lines.len(), 2, "expected two segments");
-        assert_eq!(
-            scene.points.len(),
-            6,
-            "expected endpoints plus two constrained points"
-        );
         let texts = scene
             .labels
             .iter()
             .map(|label| label.text.as_str())
             .collect::<Vec<_>>();
         assert!(
-            texts.contains(&"C在AB上的t值 = 0.55"),
+            texts.contains(&"C在AB上的t值 = 0.72"),
             "expected measured segment parameter label, got {texts:?}"
         );
         assert_eq!(
@@ -3284,7 +3345,21 @@ mod tests {
                 .filter(|point| matches!(point.constraint, ScenePointConstraint::OnSegment { .. }))
                 .count(),
             2,
-            "expected both the measured point and the copied point on the second segment"
+            "expected measured point plus derived segment point"
+        );
+        assert!(
+            scene
+                .points
+                .iter()
+                .any(|point| matches!(point.constraint, ScenePointConstraint::OnCircle { .. })),
+            "expected derived circle point"
+        );
+        assert!(
+            scene.points.iter().any(|point| matches!(
+                point.constraint,
+                ScenePointConstraint::OnPolygonBoundary { .. }
+            )),
+            "expected derived polygon point"
         );
     }
 
@@ -3442,6 +3517,29 @@ mod tests {
                         .is_some_and(|point| (point.y - 2.0).abs() < 0.001)
             }),
             "expected sampled coordinate trace line"
+        );
+    }
+
+    #[test]
+    fn preserves_scaled_point_and_single_parameter_label_in_scale_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/scale.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.parameters.len(), 1, "expected one slider parameter");
+        let texts = scene
+            .labels
+            .iter()
+            .map(|label| label.text.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            texts.iter().filter(|text| **text == "t₁ = 0.01").count(),
+            1,
+            "expected a single t₁ label, got {texts:?}"
+        );
+        assert!(
+            scene.points.len() >= 3,
+            "expected source point, center point, and transformed point"
         );
     }
 

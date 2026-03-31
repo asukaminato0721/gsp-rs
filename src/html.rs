@@ -421,6 +421,23 @@ enum PointBindingJson {
         #[serde(rename = "sourceIndex")]
         source_index: usize,
     },
+    #[serde(rename = "rotate")]
+    Rotate {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "angleDegrees")]
+        angle_degrees: f64,
+    },
+    #[serde(rename = "scale")]
+    Scale {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        factor: f64,
+    },
     #[serde(rename = "coordinate")]
     Coordinate {
         name: String,
@@ -434,6 +451,24 @@ impl PointBindingJson {
             ScenePointBinding::Parameter { name } => Self::Parameter { name: name.clone() },
             ScenePointBinding::DerivedParameter { source_index } => Self::DerivedParameter {
                 source_index: *source_index,
+            },
+            ScenePointBinding::Rotate {
+                source_index,
+                center_index,
+                angle_degrees,
+            } => Self::Rotate {
+                source_index: *source_index,
+                center_index: *center_index,
+                angle_degrees: *angle_degrees,
+            },
+            ScenePointBinding::Scale {
+                source_index,
+                center_index,
+                factor,
+            } => Self::Scale {
+                source_index: *source_index,
+                center_index: *center_index,
+                factor: *factor,
             },
             ScenePointBinding::Coordinate { name, expr } => Self::Coordinate {
                 name: name.clone(),

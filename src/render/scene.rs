@@ -83,6 +83,16 @@ pub(crate) struct SceneParameter {
 pub(crate) enum ScenePointBinding {
     Parameter { name: String },
     DerivedParameter { source_index: usize },
+    Rotate {
+        source_index: usize,
+        center_index: usize,
+        angle_degrees: f64,
+    },
+    Scale {
+        source_index: usize,
+        center_index: usize,
+        factor: f64,
+    },
     Coordinate { name: String, expr: FunctionExpr },
 }
 

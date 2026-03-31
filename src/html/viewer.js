@@ -476,12 +476,28 @@
 
   function refreshDerivedPoints(scene) {
     scene.points.forEach((point) => {
-      if (point.binding?.kind !== "derived-parameter") {
-        return;
-      }
-      const value = parameterValueFromPoint(scene, point.binding.sourceIndex);
-      if (value !== null) {
-        applyNormalizedParameterToPoint(point, scene, value);
+      if (point.binding?.kind === "derived-parameter") {
+        const value = parameterValueFromPoint(scene, point.binding.sourceIndex);
+        if (value !== null) {
+          applyNormalizedParameterToPoint(point, scene, value);
+        }
+      } else if (point.binding?.kind === "rotate") {
+        const source = scene.points[point.binding.sourceIndex];
+        const center = scene.points[point.binding.centerIndex];
+        if (!source || !center) return;
+        const radians = point.binding.angleDegrees * Math.PI / 180;
+        const cos = Math.cos(radians);
+        const sin = Math.sin(radians);
+        const dx = source.x - center.x;
+        const dy = source.y - center.y;
+        point.x = center.x + dx * cos + dy * sin;
+        point.y = center.y - dx * sin + dy * cos;
+      } else if (point.binding?.kind === "scale") {
+        const source = scene.points[point.binding.sourceIndex];
+        const center = scene.points[point.binding.centerIndex];
+        if (!source || !center) return;
+        point.x = center.x + (source.x - center.x) * point.binding.factor;
+        point.y = center.y + (source.y - center.y) * point.binding.factor;
       }
     });
   }
