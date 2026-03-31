@@ -308,9 +308,7 @@ impl LabelJson {
 #[serde(tag = "kind")]
 enum LabelBindingJson {
     #[serde(rename = "parameter-value")]
-    ParameterValue {
-        name: String,
-    },
+    ParameterValue { name: String },
     #[serde(rename = "expression-value")]
     ExpressionValue {
         #[serde(rename = "parameterName")]
@@ -351,9 +349,9 @@ enum LabelBindingJson {
 impl LabelBindingJson {
     fn from_binding(binding: &TextLabelBinding) -> Self {
         match binding {
-            TextLabelBinding::ParameterValue { name } => Self::ParameterValue {
-                name: name.clone(),
-            },
+            TextLabelBinding::ParameterValue { name } => {
+                Self::ParameterValue { name: name.clone() }
+            }
             TextLabelBinding::ExpressionValue {
                 parameter_name,
                 expr_label,
@@ -417,8 +415,11 @@ impl ScenePointJson {
 #[serde(tag = "kind")]
 enum PointBindingJson {
     #[serde(rename = "parameter")]
-    Parameter {
-        name: String,
+    Parameter { name: String },
+    #[serde(rename = "derived-parameter")]
+    DerivedParameter {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
     },
     #[serde(rename = "coordinate")]
     Coordinate {
@@ -431,6 +432,9 @@ impl PointBindingJson {
     fn from_binding(binding: &ScenePointBinding) -> Self {
         match binding {
             ScenePointBinding::Parameter { name } => Self::Parameter { name: name.clone() },
+            ScenePointBinding::DerivedParameter { source_index } => Self::DerivedParameter {
+                source_index: *source_index,
+            },
             ScenePointBinding::Coordinate { name, expr } => Self::Coordinate {
                 name: name.clone(),
                 expr: FunctionExprJson::from_expr(expr),

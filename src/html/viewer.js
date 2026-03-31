@@ -203,6 +203,7 @@
   function updateScene(mutator) {
     const next = sceneState.val;
     mutator(next);
+    refreshDerivedPoints(next);
     refreshDynamicLabels(next);
     sceneState.val = { ...next };
   }
@@ -327,39 +328,7 @@
         if (!Number.isFinite(value)) {
           return;
         }
-        const clamped = Math.max(0, Math.min(1, value));
-        if (point.constraint.kind === "segment") {
-          point.constraint.t = clamped;
-        } else if (point.constraint.kind === "polygon-boundary") {
-          const count = point.constraint.vertexIndices.length;
-          if (count < 2) return;
-          const lengths = [];
-          let perimeter = 0;
-          for (let i = 0; i < count; i += 1) {
-            const start = draft.points[point.constraint.vertexIndices[i]];
-            const end = draft.points[point.constraint.vertexIndices[(i + 1) % count]];
-            if (!start || !end) return;
-            const length = Math.hypot(end.x - start.x, end.y - start.y);
-            lengths.push(length);
-            perimeter += length;
-          }
-          if (perimeter <= 1e-9) return;
-          const target = clamped * perimeter;
-          let traveled = 0;
-          for (let edgeIndex = 0; edgeIndex < lengths.length; edgeIndex += 1) {
-            const length = lengths[edgeIndex];
-            if (traveled + length >= target || edgeIndex === lengths.length - 1) {
-              point.constraint.edgeIndex = edgeIndex;
-              point.constraint.t = length <= 1e-9 ? 0 : Math.max(0, Math.min(1, (target - traveled) / length));
-              break;
-            }
-            traveled += length;
-          }
-        } else if (point.constraint.kind === "circle") {
-          const angle = Math.PI * 2 * clamped;
-          point.constraint.unitX = Math.cos(angle);
-          point.constraint.unitY = -Math.sin(angle);
-        }
+        applyNormalizedParameterToPoint(point, draft, value);
       });
       currentDynamics().functions.forEach((functionDef) => {
         if (draft.labels[functionDef.labelIndex]) {
@@ -413,6 +382,54 @@
     return Number.isFinite(value) ? value.toFixed(2) : "-";
   }
 
+  function circleParameterFromPoint(scene, pointIndex) {
+    const point = scene.points[pointIndex];
+    const constraint = point?.constraint;
+    if (constraint?.kind !== "circle") {
+      return null;
+    }
+    const pointAngle = Math.atan2(-constraint.unitY, constraint.unitX);
+    const tau = Math.PI * 2;
+    return ((pointAngle % tau) + tau) % tau / tau;
+  }
+
+  function applyNormalizedParameterToPoint(point, scene, value) {
+    if (!point.constraint) return;
+    const clamped = Math.max(0, Math.min(1, value));
+    if (point.constraint.kind === "segment") {
+      point.constraint.t = clamped;
+    } else if (point.constraint.kind === "polygon-boundary") {
+      const count = point.constraint.vertexIndices.length;
+      if (count < 2) return;
+      const lengths = [];
+      let perimeter = 0;
+      for (let i = 0; i < count; i += 1) {
+        const start = scene.points[point.constraint.vertexIndices[i]];
+        const end = scene.points[point.constraint.vertexIndices[(i + 1) % count]];
+        if (!start || !end) return;
+        const length = Math.hypot(end.x - start.x, end.y - start.y);
+        lengths.push(length);
+        perimeter += length;
+      }
+      if (perimeter <= 1e-9) return;
+      const target = clamped * perimeter;
+      let traveled = 0;
+      for (let edgeIndex = 0; edgeIndex < lengths.length; edgeIndex += 1) {
+        const length = lengths[edgeIndex];
+        if (traveled + length >= target || edgeIndex === lengths.length - 1) {
+          point.constraint.edgeIndex = edgeIndex;
+          point.constraint.t = length <= 1e-9 ? 0 : Math.max(0, Math.min(1, (target - traveled) / length));
+          break;
+        }
+        traveled += length;
+      }
+    } else if (point.constraint.kind === "circle") {
+      const angle = Math.PI * 2 * clamped;
+      point.constraint.unitX = Math.cos(angle);
+      point.constraint.unitY = -Math.sin(angle);
+    }
+  }
+
   function polygonBoundaryParameterFromPoint(scene, pointIndex) {
     const point = scene.points[pointIndex];
     const constraint = point?.constraint;
@@ -439,6 +456,34 @@
     }
 
     return perimeter > 1e-9 ? traveled / perimeter : null;
+  }
+
+  function parameterValueFromPoint(scene, pointIndex) {
+    const point = scene.points[pointIndex];
+    const constraint = point?.constraint;
+    if (!constraint) return null;
+    if (constraint.kind === "segment") {
+      return constraint.t;
+    }
+    if (constraint.kind === "polygon-boundary") {
+      return polygonBoundaryParameterFromPoint(scene, pointIndex);
+    }
+    if (constraint.kind === "circle") {
+      return circleParameterFromPoint(scene, pointIndex);
+    }
+    return null;
+  }
+
+  function refreshDerivedPoints(scene) {
+    scene.points.forEach((point) => {
+      if (point.binding?.kind !== "derived-parameter") {
+        return;
+      }
+      const value = parameterValueFromPoint(scene, point.binding.sourceIndex);
+      if (value !== null) {
+        applyNormalizedParameterToPoint(point, scene, value);
+      }
+    });
   }
 
   function refreshDynamicLabels(scene) {

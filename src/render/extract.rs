@@ -8,13 +8,13 @@ use crate::format::{
 use super::functions::{
     FunctionExpr, collect_function_plot_domain, collect_function_plots, collect_scene_functions,
     collect_scene_parameters, decode_function_expr, decode_function_plot_descriptor,
-    evaluate_expr_with_parameters, function_expr_label, function_uses_pi_scale, sample_function_points, synthesize_function_axes,
-    synthesize_function_labels,
+    evaluate_expr_with_parameters, function_expr_label, function_uses_pi_scale,
+    sample_function_points, synthesize_function_axes, synthesize_function_labels,
 };
 use super::geometry::{
     Bounds, GraphTransform, color_from_style, distance_world, fill_color_from_styles,
-    format_number, has_distinct_points, include_line_bounds, read_f32_unaligned,
-    to_raw_from_world, to_world,
+    format_number, has_distinct_points, include_line_bounds, read_f32_unaligned, to_raw_from_world,
+    to_world,
 };
 use super::scene::{
     LineShape, PolygonShape, Scene, SceneCircle, SceneParameter, ScenePoint, ScenePointBinding,
@@ -133,7 +133,11 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         !has_function_plots && !has_coordinate_objects,
     );
     labels.extend(collect_coordinate_labels(file, &groups));
-    labels.extend(collect_polygon_parameter_labels(file, &groups, &raw_anchors));
+    labels.extend(collect_polygon_parameter_labels(
+        file,
+        &groups,
+        &raw_anchors,
+    ));
     labels.extend(collect_segment_parameter_labels(file, &groups));
     labels.extend(collect_circle_parameter_labels(file, &groups, &raw_anchors));
     labels.extend(compute_iteration_labels(file, &groups, &circles));
@@ -404,7 +408,11 @@ fn decode_non_graph_parameter(
     if (group.header.class_id & 0xffff) != 0 {
         return None;
     }
-    if group.records.iter().any(|record| record.record_type == 0x0899) {
+    if group
+        .records
+        .iter()
+        .any(|record| record.record_type == 0x0899)
+    {
         return None;
     }
     let payload = group
@@ -571,6 +579,22 @@ fn collect_visible_points(
                         let end_index = group_to_point_index
                             .get(constraint.end_group_index)
                             .and_then(|index| *index)?;
+                        let binding = if let Some(source_group_index) =
+                            parameter_point.source_point_group_index
+                        {
+                            group_to_point_index
+                                .get(source_group_index)
+                                .and_then(|index| *index)
+                                .map(|source_index| ScenePointBinding::DerivedParameter {
+                                    source_index,
+                                })
+                        } else {
+                            (!parameter_point.parameter_name.is_empty()).then(|| {
+                                ScenePointBinding::Parameter {
+                                    name: parameter_point.parameter_name,
+                                }
+                            })
+                        };
                         Some(ScenePoint {
                             position: parameter_point.position,
                             constraint: ScenePointConstraint::OnSegment {
@@ -578,9 +602,7 @@ fn collect_visible_points(
                                 end_index,
                                 t: constraint.t,
                             },
-                            binding: Some(ScenePointBinding::Parameter {
-                                name: parameter_point.parameter_name,
-                            }),
+                            binding,
                         })
                     }
                     RawPointConstraint::PolygonBoundary {
@@ -596,6 +618,22 @@ fn collect_visible_points(
                                     .and_then(|index| *index)
                             })
                             .collect::<Option<Vec<_>>>()?;
+                        let binding = if let Some(source_group_index) =
+                            parameter_point.source_point_group_index
+                        {
+                            group_to_point_index
+                                .get(source_group_index)
+                                .and_then(|index| *index)
+                                .map(|source_index| ScenePointBinding::DerivedParameter {
+                                    source_index,
+                                })
+                        } else {
+                            (!parameter_point.parameter_name.is_empty()).then(|| {
+                                ScenePointBinding::Parameter {
+                                    name: parameter_point.parameter_name,
+                                }
+                            })
+                        };
                         Some(ScenePoint {
                             position: parameter_point.position,
                             constraint: ScenePointConstraint::OnPolygonBoundary {
@@ -603,9 +641,7 @@ fn collect_visible_points(
                                 edge_index,
                                 t,
                             },
-                            binding: Some(ScenePointBinding::Parameter {
-                                name: parameter_point.parameter_name,
-                            }),
+                            binding,
                         })
                     }
                     RawPointConstraint::Circle(constraint) => {
@@ -615,6 +651,22 @@ fn collect_visible_points(
                         let radius_index = group_to_point_index
                             .get(constraint.radius_group_index)
                             .and_then(|index| *index)?;
+                        let binding = if let Some(source_group_index) =
+                            parameter_point.source_point_group_index
+                        {
+                            group_to_point_index
+                                .get(source_group_index)
+                                .and_then(|index| *index)
+                                .map(|source_index| ScenePointBinding::DerivedParameter {
+                                    source_index,
+                                })
+                        } else {
+                            (!parameter_point.parameter_name.is_empty()).then(|| {
+                                ScenePointBinding::Parameter {
+                                    name: parameter_point.parameter_name,
+                                }
+                            })
+                        };
                         Some(ScenePoint {
                             position: parameter_point.position,
                             constraint: ScenePointConstraint::OnCircle {
@@ -623,9 +675,7 @@ fn collect_visible_points(
                                 unit_x: constraint.unit_x,
                                 unit_y: constraint.unit_y,
                             },
-                            binding: Some(ScenePointBinding::Parameter {
-                                name: parameter_point.parameter_name,
-                            }),
+                            binding,
                         })
                     }
                     RawPointConstraint::Polyline { .. } => None,
@@ -657,13 +707,16 @@ fn remap_label_bindings(labels: &mut [TextLabel], group_to_point_index: &[Option
             continue;
         };
         let point_index = match binding {
-            TextLabelBinding::ParameterValue { .. }
-            | TextLabelBinding::ExpressionValue { .. } => continue,
+            TextLabelBinding::ParameterValue { .. } | TextLabelBinding::ExpressionValue { .. } => {
+                continue;
+            }
             TextLabelBinding::PolygonBoundaryParameter { point_index, .. } => point_index,
             TextLabelBinding::SegmentParameter { point_index, .. } => point_index,
             TextLabelBinding::CircleParameter { point_index, .. } => point_index,
         };
-        let Some(mapped_index) = group_to_point_index.get(*point_index).and_then(|index| *index)
+        let Some(mapped_index) = group_to_point_index
+            .get(*point_index)
+            .and_then(|index| *index)
         else {
             label.binding = None;
             continue;
@@ -694,7 +747,9 @@ fn collect_raw_object_anchors(
             Some(anchor)
         } else if let Some(anchor) = decode_offset_anchor_raw(file, group, &anchors) {
             Some(anchor)
-        } else if let Some(anchor) = decode_parameter_controlled_anchor_raw(file, groups, group, &anchors) {
+        } else if let Some(anchor) =
+            decode_parameter_controlled_anchor_raw(file, groups, group, &anchors)
+        {
             Some(anchor)
         } else if let Some(anchor) = decode_bbox_anchor_raw(file, group) {
             Some(anchor)
@@ -1149,8 +1204,14 @@ fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) -> Vec<Text
     for group in groups {
         let kind = group.header.class_id & 0xffff;
         if kind == 0
-            && group.records.iter().any(|record| record.record_type == 0x0907)
-            && !group.records.iter().any(|record| record.record_type == 0x0899)
+            && group
+                .records
+                .iter()
+                .any(|record| record.record_type == 0x0907)
+            && !group
+                .records
+                .iter()
+                .any(|record| record.record_type == 0x0899)
             && let Some(name) = decode_label_name(file, group)
             && is_slider_parameter_name(&name)
             && let Some(value) = decode_non_graph_parameter_value_for_group(file, group)
@@ -1172,7 +1233,8 @@ fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) -> Vec<Text
                 .and_then(|index| groups.get(index))
             && let Some(parameter_name) = decode_label_name(file, parameter_group)
             && is_slider_parameter_name(&parameter_name)
-            && let Some(parameter_value) = decode_non_graph_parameter_value_for_group(file, parameter_group)
+            && let Some(parameter_value) =
+                decode_non_graph_parameter_value_for_group(file, parameter_group)
             && let Some(anchor) = decode_0907_anchor(file, group)
         {
             let expr_label = function_expr_label(expr.clone());
@@ -1368,22 +1430,38 @@ fn collect_circle_parameter_labels(
         .collect()
 }
 
-fn segment_name(file: &GspFile, groups: &[ObjectGroup], segment_group: &ObjectGroup) -> Option<String> {
+fn segment_name(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    segment_group: &ObjectGroup,
+) -> Option<String> {
     let path = find_indexed_path(file, segment_group)?;
     let names = path
         .refs
         .iter()
-        .map(|&object_ref| groups.get(object_ref.checked_sub(1)?).and_then(|group| decode_label_name(file, group)))
+        .map(|&object_ref| {
+            groups
+                .get(object_ref.checked_sub(1)?)
+                .and_then(|group| decode_label_name(file, group))
+        })
         .collect::<Option<Vec<_>>>()?;
     (names.len() >= 2).then(|| names.join(""))
 }
 
-fn circle_name(file: &GspFile, groups: &[ObjectGroup], circle_group: &ObjectGroup) -> Option<String> {
+fn circle_name(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    circle_group: &ObjectGroup,
+) -> Option<String> {
     let path = find_indexed_path(file, circle_group)?;
     let names = path
         .refs
         .iter()
-        .map(|&object_ref| groups.get(object_ref.checked_sub(1)?).and_then(|group| decode_label_name(file, group)))
+        .map(|&object_ref| {
+            groups
+                .get(object_ref.checked_sub(1)?)
+                .and_then(|group| decode_label_name(file, group))
+        })
         .collect::<Option<Vec<_>>>()?;
     (names.len() >= 2).then(|| names.join(""))
 }
@@ -1410,9 +1488,12 @@ fn polygon_vertex_name(
     let names = path
         .refs
         .iter()
-        .map(|&object_ref| groups.get(object_ref.checked_sub(1)?).and_then(|group| decode_label_name(file, group)))
-        .collect::<Option<Vec<_>>>()?
-        ;
+        .map(|&object_ref| {
+            groups
+                .get(object_ref.checked_sub(1)?)
+                .and_then(|group| decode_label_name(file, group))
+        })
+        .collect::<Option<Vec<_>>>()?;
     (!names.is_empty()).then(|| names.join(""))
 }
 
@@ -1791,7 +1872,10 @@ fn decode_label_anchor(
         .and_then(|record| decode_text_anchor(record.payload(&file.data)))
         .or_else(|| decode_0907_anchor(file, group))
         .or_else(|| match kind {
-            0 => anchors.get(group.ordinal.saturating_sub(1)).cloned().flatten(),
+            0 => anchors
+                .get(group.ordinal.saturating_sub(1))
+                .cloned()
+                .flatten(),
             2 => find_indexed_path(file, group).and_then(|path| {
                 let points = path
                     .refs
@@ -2100,6 +2184,7 @@ struct ParameterControlledPoint {
     position: PointRecord,
     constraint: RawPointConstraint,
     parameter_name: String,
+    source_point_group_index: Option<usize>,
 }
 
 struct CoordinatePoint {
@@ -2161,11 +2246,39 @@ fn decode_parameter_controlled_point(
         return None;
     }
 
-    let parameter_group = groups.get(path.refs[0].checked_sub(1)?)?;
+    let source_group = groups.get(path.refs[0].checked_sub(1)?)?;
     let host_group = groups.get(path.refs[1].checked_sub(1)?)?;
-    let parameter_name = decode_label_name(file, parameter_group)?;
-    let parameter_value = decode_non_graph_parameter_value_for_group(file, parameter_group)?
-        .clamp(0.0, 1.0);
+    let (parameter_name, parameter_value, source_point_group_index) =
+        if (source_group.header.class_id & 0xffff) == 0 {
+            (
+                decode_label_name(file, source_group)?,
+                decode_non_graph_parameter_value_for_group(file, source_group)?.clamp(0.0, 1.0),
+                None,
+            )
+        } else if (source_group.header.class_id & 0xffff) == 94 {
+            let path = find_indexed_path(file, source_group)?;
+            let point_group_index = path.refs.first()?.checked_sub(1)?;
+            let point_group = groups.get(point_group_index)?;
+            let t = match decode_point_constraint(file, groups, point_group, &None)? {
+                RawPointConstraint::Segment(constraint) => constraint.t,
+                RawPointConstraint::PolygonBoundary {
+                    edge_index,
+                    t,
+                    vertex_group_indices,
+                } => polygon_boundary_parameter(anchors, &vertex_group_indices, edge_index, t)?,
+                RawPointConstraint::Circle(constraint) => circle_parameter(
+                    anchors,
+                    constraint.center_group_index,
+                    constraint.radius_group_index,
+                    constraint.unit_x,
+                    constraint.unit_y,
+                )?,
+                RawPointConstraint::Polyline { .. } => return None,
+            };
+            (String::new(), t.clamp(0.0, 1.0), Some(point_group_index))
+        } else {
+            return None;
+        };
 
     match host_group.header.class_id & 0xffff {
         2 => {
@@ -2189,6 +2302,7 @@ fn decode_parameter_controlled_point(
                     t: parameter_value,
                 }),
                 parameter_name,
+                source_point_group_index,
             })
         }
         8 => {
@@ -2212,6 +2326,7 @@ fn decode_parameter_controlled_point(
                     t,
                 },
                 parameter_name,
+                source_point_group_index,
             })
         }
         3 => {
@@ -2236,6 +2351,7 @@ fn decode_parameter_controlled_point(
                     unit_y,
                 }),
                 parameter_name,
+                source_point_group_index,
             })
         }
         _ => None,
@@ -2661,7 +2777,9 @@ fn collect_bounds(
     for label in labels {
         if matches!(
             label.binding,
-            Some(TextLabelBinding::ParameterValue { .. } | TextLabelBinding::ExpressionValue { .. })
+            Some(
+                TextLabelBinding::ParameterValue { .. } | TextLabelBinding::ExpressionValue { .. }
+            )
         ) {
             continue;
         }
@@ -2948,7 +3066,11 @@ mod tests {
         let file = GspFile::parse(data).expect("fixture parses");
         let scene = build_scene(&file);
 
-        assert_eq!(scene.points.len(), 2, "expected base point and translated point");
+        assert_eq!(
+            scene.points.len(),
+            2,
+            "expected base point and translated point"
+        );
         let origin = scene
             .points
             .iter()
@@ -2967,8 +3089,14 @@ mod tests {
                 dy,
             } => {
                 assert_eq!(origin_index, 0);
-                assert!(dx.abs() < 0.001, "expected 90-degree translation to keep x constant, got dx={dx}");
-                assert!(dy < 0.0, "expected upward translation in raw coordinates, got dy={dy}");
+                assert!(
+                    dx.abs() < 0.001,
+                    "expected 90-degree translation to keep x constant, got dx={dx}"
+                );
+                assert!(
+                    dy < 0.0,
+                    "expected upward translation in raw coordinates, got dy={dy}"
+                );
                 assert!(
                     (translated.position.x - (origin.position.x + dx)).abs() < 0.001
                         && (translated.position.y - (origin.position.y + dy)).abs() < 0.001,
@@ -3015,7 +3143,11 @@ mod tests {
         let scene = build_scene(&file);
 
         assert_eq!(scene.polygons.len(), 1, "expected a single polygon");
-        assert_eq!(scene.points.len(), 5, "expected four vertices and one constrained point");
+        assert_eq!(
+            scene.points.len(),
+            5,
+            "expected four vertices and one constrained point"
+        );
         assert_eq!(
             scene
                 .points
@@ -3047,17 +3179,36 @@ mod tests {
         let scene = build_scene(&file);
 
         assert_eq!(scene.polygons.len(), 1, "expected a single polygon");
-        assert_eq!(scene.points.len(), 5, "expected four vertices and one constrained point");
+        assert_eq!(
+            scene.points.len(),
+            5,
+            "expected four vertices and one constrained point"
+        );
         let texts = scene
             .labels
             .iter()
             .map(|label| label.text.as_str())
             .collect::<Vec<_>>();
-        assert!(texts.contains(&"A"), "expected point label A, got {texts:?}");
-        assert!(texts.contains(&"B"), "expected point label B, got {texts:?}");
-        assert!(texts.contains(&"C"), "expected point label C, got {texts:?}");
-        assert!(texts.contains(&"D"), "expected point label D, got {texts:?}");
-        assert!(texts.contains(&"E"), "expected constrained point label E, got {texts:?}");
+        assert!(
+            texts.contains(&"A"),
+            "expected point label A, got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"B"),
+            "expected point label B, got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"C"),
+            "expected point label C, got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"D"),
+            "expected point label D, got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"E"),
+            "expected constrained point label E, got {texts:?}"
+        );
         assert!(
             texts.contains(&"E在ABCD上的t值 = 0.58"),
             "expected polygon parameter label, got {texts:?}"
@@ -3071,18 +3222,69 @@ mod tests {
         let scene = build_scene(&file);
 
         assert_eq!(scene.lines.len(), 1, "expected one segment");
-        assert_eq!(scene.points.len(), 3, "expected two endpoints and one constrained point");
+        assert_eq!(
+            scene.points.len(),
+            3,
+            "expected two endpoints and one constrained point"
+        );
         let texts = scene
             .labels
             .iter()
             .map(|label| label.text.as_str())
             .collect::<Vec<_>>();
-        assert!(texts.contains(&"A"), "expected point label A, got {texts:?}");
-        assert!(texts.contains(&"B"), "expected point label B, got {texts:?}");
-        assert!(texts.contains(&"C"), "expected point label C, got {texts:?}");
+        assert!(
+            texts.contains(&"A"),
+            "expected point label A, got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"B"),
+            "expected point label B, got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"C"),
+            "expected point label C, got {texts:?}"
+        );
         assert!(
             texts.contains(&"C在AB上的t值 = 0.51"),
             "expected segment parameter label, got {texts:?}"
+        );
+    }
+
+    #[test]
+    fn preserves_point_segment_value_segment_point_gsp() {
+        let data =
+            include_bytes!("../../tests/fixtures/gsp/static/point_segment_value_segment_point.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.lines.len(), 2, "expected two segments");
+        assert_eq!(
+            scene.points.len(),
+            6,
+            "expected endpoints plus two constrained points"
+        );
+        let texts = scene
+            .labels
+            .iter()
+            .map(|label| label.text.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            texts.contains(&"C在AB上的t值 = 0.55"),
+            "expected measured segment parameter label, got {texts:?}"
+        );
+        assert_eq!(
+            scene.parameters.len(),
+            0,
+            "expected derived value, not slider parameter"
+        );
+        assert_eq!(
+            scene
+                .points
+                .iter()
+                .filter(|point| matches!(point.constraint, ScenePointConstraint::OnSegment { .. }))
+                .count(),
+            2,
+            "expected both the measured point and the copied point on the second segment"
         );
     }
 
@@ -3093,15 +3295,28 @@ mod tests {
         let scene = build_scene(&file);
 
         assert_eq!(scene.circles.len(), 1, "expected one circle");
-        assert_eq!(scene.points.len(), 3, "expected center, radius point, and constrained point");
+        assert_eq!(
+            scene.points.len(),
+            3,
+            "expected center, radius point, and constrained point"
+        );
         let texts = scene
             .labels
             .iter()
             .map(|label| label.text.as_str())
             .collect::<Vec<_>>();
-        assert!(texts.contains(&"A"), "expected point label A, got {texts:?}");
-        assert!(texts.contains(&"B"), "expected point label B, got {texts:?}");
-        assert!(texts.contains(&"C"), "expected point label C, got {texts:?}");
+        assert!(
+            texts.contains(&"A"),
+            "expected point label A, got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"B"),
+            "expected point label B, got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"C"),
+            "expected point label C, got {texts:?}"
+        );
         assert!(
             texts.contains(&"C在⊙AB上的值 = 0.38"),
             "expected circle parameter label, got {texts:?}"
@@ -3115,7 +3330,11 @@ mod tests {
         let scene = build_scene(&file);
 
         assert_eq!(scene.lines.len(), 1, "expected one segment");
-        assert_eq!(scene.points.len(), 3, "expected endpoints plus controlled point");
+        assert_eq!(
+            scene.points.len(),
+            3,
+            "expected endpoints plus controlled point"
+        );
         assert_eq!(scene.parameters.len(), 1, "expected t parameter");
         assert_eq!(scene.parameters[0].name, "t₁");
         assert!((scene.parameters[0].value - 0.01).abs() < 0.001);
@@ -3132,7 +3351,11 @@ mod tests {
         let scene = build_scene(&file);
 
         assert_eq!(scene.polygons.len(), 1, "expected one polygon");
-        assert_eq!(scene.points.len(), 4, "expected polygon vertices plus controlled point");
+        assert_eq!(
+            scene.points.len(),
+            4,
+            "expected polygon vertices plus controlled point"
+        );
         assert_eq!(scene.parameters.len(), 1, "expected t parameter");
         assert_eq!(scene.parameters[0].name, "t₁");
         assert!(scene.points.iter().any(|point| matches!(
@@ -3148,13 +3371,19 @@ mod tests {
         let scene = build_scene(&file);
 
         assert_eq!(scene.circles.len(), 1, "expected one circle");
-        assert_eq!(scene.points.len(), 3, "expected circle points plus controlled point");
+        assert_eq!(
+            scene.points.len(),
+            3,
+            "expected circle points plus controlled point"
+        );
         assert_eq!(scene.parameters.len(), 1, "expected t parameter");
         assert_eq!(scene.parameters[0].name, "t₁");
-        assert!(scene.points.iter().any(|point| matches!(
-            point.constraint,
-            ScenePointConstraint::OnCircle { .. }
-        )));
+        assert!(
+            scene
+                .points
+                .iter()
+                .any(|point| matches!(point.constraint, ScenePointConstraint::OnCircle { .. }))
+        );
     }
 
     #[test]
@@ -3169,10 +3398,12 @@ mod tests {
         assert!((scene.parameters[0].value - 0.01).abs() < 0.001);
         assert!(
             scene.points.iter().any(|point| {
-                point.binding.as_ref().is_some_and(|binding| matches!(
-                    binding,
-                    ScenePointBinding::Coordinate { name, .. } if name == "t₁"
-                ))
+                point.binding.as_ref().is_some_and(|binding| {
+                    matches!(
+                        binding,
+                        ScenePointBinding::Coordinate { name, .. } if name == "t₁"
+                    )
+                })
             }),
             "expected coordinate-controlled point"
         );
@@ -3193,10 +3424,22 @@ mod tests {
         assert!(
             scene.lines.iter().any(|line| {
                 line.points.len() > 100
-                    && line.points.first().is_some_and(|point| point.x.abs() < 0.001)
-                    && line.points.first().is_some_and(|point| (point.y - 1.0).abs() < 0.001)
-                    && line.points.last().is_some_and(|point| (point.x - 1.0).abs() < 0.001)
-                    && line.points.last().is_some_and(|point| (point.y - 2.0).abs() < 0.001)
+                    && line
+                        .points
+                        .first()
+                        .is_some_and(|point| point.x.abs() < 0.001)
+                    && line
+                        .points
+                        .first()
+                        .is_some_and(|point| (point.y - 1.0).abs() < 0.001)
+                    && line
+                        .points
+                        .last()
+                        .is_some_and(|point| (point.x - 1.0).abs() < 0.001)
+                    && line
+                        .points
+                        .last()
+                        .is_some_and(|point| (point.y - 2.0).abs() < 0.001)
             }),
             "expected sampled coordinate trace line"
         );
@@ -3211,7 +3454,11 @@ mod tests {
         assert!(
             scene.labels.iter().any(|label| label.text == "A"),
             "expected point label A, got {:?}",
-            scene.labels.iter().map(|label| &label.text).collect::<Vec<_>>()
+            scene
+                .labels
+                .iter()
+                .map(|label| &label.text)
+                .collect::<Vec<_>>()
         );
     }
 
@@ -3226,9 +3473,18 @@ mod tests {
             .iter()
             .map(|label| label.text.as_str())
             .collect::<Vec<_>>();
-        assert!(texts.contains(&"A"), "expected point label A, got {texts:?}");
-        assert!(texts.contains(&"B"), "expected point label B, got {texts:?}");
-        assert!(texts.contains(&"j"), "expected segment label j, got {texts:?}");
+        assert!(
+            texts.contains(&"A"),
+            "expected point label A, got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"B"),
+            "expected point label B, got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"j"),
+            "expected segment label j, got {texts:?}"
+        );
     }
 
     #[test]
