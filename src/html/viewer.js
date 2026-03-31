@@ -597,7 +597,7 @@
     if (dragState.val.mode === "point") {
       updateDraggedPoint(sceneModule.toWorld(viewerEnv, position.x, position.y));
     } else if (dragState.val.mode === "label") {
-      updateDraggedLabel(sceneModule.toWorld(viewerEnv, position.x, position.y));
+      updateDraggedLabel(position);
     } else {
       panFromPointerDelta(position);
     }

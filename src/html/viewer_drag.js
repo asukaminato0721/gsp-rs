@@ -117,14 +117,19 @@
     env.hoverPointIndex.val = env.dragState.val.pointIndex;
   }
 
-  function updateDraggedLabel(env, world) {
+  function updateDraggedLabel(env, position) {
     env.updateScene((draft) => {
       const label = draft.labels[env.dragState.val.labelIndex];
-      if (typeof label.anchor.pointIndex === "number" || typeof label.anchor.lineIndex === "number") {
+      if (label.screenSpace) {
+        label.anchor.x = position.x;
+        label.anchor.y = position.y;
+      } else if (typeof label.anchor.pointIndex === "number" || typeof label.anchor.lineIndex === "number") {
         const base = env.resolveAnchorBase(label.anchor);
+        const world = env.toWorld(position.x, position.y);
         label.anchor.dx = world.x - base.x;
         label.anchor.dy = world.y - base.y;
       } else {
+        const world = env.toWorld(position.x, position.y);
         label.anchor.x = world.x;
         label.anchor.y = world.y;
       }
