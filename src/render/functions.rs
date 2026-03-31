@@ -297,6 +297,7 @@ pub(super) fn synthesize_function_labels(
                 text: format!("{name} = {:.2}", value),
                 color: [30, 30, 30, 255],
                 binding: None,
+                screen_space: false,
             }
         })
         .collect::<Vec<_>>();
@@ -321,6 +322,7 @@ pub(super) fn synthesize_function_labels(
                     ),
                     color: [30, 30, 30, 255],
                     binding: None,
+                    screen_space: false,
                 }
             }),
     );
@@ -363,6 +365,7 @@ pub(super) fn synthesize_function_labels(
                 ),
                 color: [30, 30, 30, 255],
                 binding: None,
+                screen_space: false,
             }
         },
     ));

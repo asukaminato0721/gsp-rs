@@ -115,6 +115,7 @@ pub(crate) struct TextLabel {
     pub(crate) text: String,
     pub(crate) color: [u8; 4],
     pub(crate) binding: Option<TextLabelBinding>,
+    pub(crate) screen_space: bool,
 }
 
 #[derive(Debug, Clone)]

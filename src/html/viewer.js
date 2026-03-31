@@ -17,6 +17,7 @@
   const baseCenterY = (baseBounds.minY + baseBounds.maxY) / 2;
   const baseSpanX = Math.max(1e-6, baseBounds.maxX - baseBounds.minX);
   const baseSpanY = Math.max(1e-6, baseBounds.maxY - baseBounds.minY);
+  const minZoom = 0.05;
   const pointHitRadius = 10;
   const pointMatchTolerance = 1e-3;
   const pointerWorldState = van.state(null);
@@ -171,8 +172,9 @@
       labels: scene.labels.map((label) => ({
         text: label.text,
         color: label.color,
-        anchor: attachLabelAnchor(label.anchor, hydratedLines),
+        anchor: label.screenSpace ? { ...label.anchor } : attachLabelAnchor(label.anchor, hydratedLines),
         binding: label.binding ? { ...label.binding } : null,
+        screenSpace: !!label.screenSpace,
       })),
     };
   }
@@ -440,6 +442,7 @@
   }
 
   function refreshDynamicLabels(scene) {
+    const parameters = parameterMap();
     scene.labels.forEach((label) => {
       if (!label.binding) return;
       if (label.binding.kind === "parameter-value") {
@@ -563,6 +566,8 @@
     getViewBounds: () => sceneModule.getViewBounds(viewerEnv),
     rgba,
     updateScene,
+    updateDynamics,
+    syncDynamicScene,
     isOriginPointIndex,
     formatAxisNumber,
     formatPiLabel,
@@ -620,7 +625,7 @@
     const position = sceneModule.getCanvasCoords(viewerEnv, event);
     const before = sceneModule.toWorld(viewerEnv, position.x, position.y);
     const factor = event.deltaY < 0 ? 1.1 : 1 / 1.1;
-    view.zoom = Math.max(0.25, Math.min(64, view.zoom * factor));
+    view.zoom = Math.max(minZoom, Math.min(64, view.zoom * factor));
     const after = sceneModule.toWorld(viewerEnv, position.x, position.y);
     view.centerX += before.x - after.x;
     view.centerY += before.y - after.y;

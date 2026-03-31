@@ -3,6 +3,10 @@
 
   function dragModeFor(env, pointIndex, labelIndex) {
     if (pointIndex !== null) {
+      const point = env.currentScene().points[pointIndex];
+      if (point?.binding?.kind === "coordinate") {
+        return "pan";
+      }
       return env.currentScene().graphMode && env.isOriginPointIndex(pointIndex) ? "origin-pan" : "point";
     }
     return labelIndex !== null ? "label" : "pan";

@@ -12,7 +12,9 @@
   }
 
   function labelBounds(env, label) {
-    const screen = env.toScreen(env.resolvePoint(label.anchor));
+    const screen = label.screenSpace
+      ? { x: label.anchor.x, y: label.anchor.y }
+      : env.toScreen(env.resolvePoint(label.anchor));
     const metrics = labelMetrics(env, label.text);
     return {
       screen,

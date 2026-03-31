@@ -168,6 +168,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
                 text: format!("AB perimeter = {:.2} cm", circumference),
                 color: [30, 30, 30, 255],
                 binding: None,
+                screen_space: false,
             },
         );
     }
@@ -351,10 +352,15 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         labels: labels
             .into_iter()
             .map(|label| TextLabel {
-                anchor: to_world(&label.anchor, &graph_ref),
+                anchor: if label.screen_space {
+                    label.anchor
+                } else {
+                    to_world(&label.anchor, &graph_ref)
+                },
                 text: label.text,
                 color: label.color,
                 binding: label.binding,
+                screen_space: label.screen_space,
             })
             .collect(),
         points: world_points,
@@ -407,6 +413,9 @@ fn decode_non_graph_parameter(
         .find(|record| record.record_type == 0x0907)
         .map(|record| record.payload(&file.data))?;
     let name = decode_label_name(file, group)?;
+    if !is_slider_parameter_name(&name) {
+        return None;
+    }
     let value = decode_non_graph_parameter_value(payload)?;
     let label_index = labels.iter().position(|label| label.text == name);
     if let Some(index) = label_index {
@@ -417,6 +426,10 @@ fn decode_non_graph_parameter(
         value,
         label_index,
     })
+}
+
+fn is_slider_parameter_name(name: &str) -> bool {
+    name.contains('₁') || name.contains('₂') || name.contains('₃') || name.contains('₄')
 }
 
 fn decode_non_graph_parameter_value(payload: &[u8]) -> Option<f64> {
@@ -1081,6 +1094,7 @@ fn collect_labels(
                             text,
                             color: [30, 30, 30, 255],
                             binding: None,
+                            screen_space: false,
                         });
                     }
                 }
@@ -1119,6 +1133,7 @@ fn collect_labels(
                             text: format_number(value),
                             color: [60, 60, 60, 255],
                             binding: None,
+                            screen_space: false,
                         });
                     }
                 }
@@ -1137,6 +1152,7 @@ fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) -> Vec<Text
             && group.records.iter().any(|record| record.record_type == 0x0907)
             && !group.records.iter().any(|record| record.record_type == 0x0899)
             && let Some(name) = decode_label_name(file, group)
+            && is_slider_parameter_name(&name)
             && let Some(value) = decode_non_graph_parameter_value_for_group(file, group)
             && let Some(anchor) = decode_0907_anchor(file, group)
         {
@@ -1145,6 +1161,7 @@ fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) -> Vec<Text
                 text: format!("{name} = {:.2}", value),
                 color: [30, 30, 30, 255],
                 binding: Some(TextLabelBinding::ParameterValue { name }),
+                screen_space: true,
             });
         } else if kind == 48
             && let Some(expr) = decode_function_expr(file, groups, group)
@@ -1154,6 +1171,7 @@ fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) -> Vec<Text
                 .checked_sub(1)
                 .and_then(|index| groups.get(index))
             && let Some(parameter_name) = decode_label_name(file, parameter_group)
+            && is_slider_parameter_name(&parameter_name)
             && let Some(parameter_value) = decode_non_graph_parameter_value_for_group(file, parameter_group)
             && let Some(anchor) = decode_0907_anchor(file, group)
         {
@@ -1174,6 +1192,7 @@ fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) -> Vec<Text
                     expr_label,
                     expr,
                 }),
+                screen_space: true,
             });
         }
     }
@@ -1240,6 +1259,7 @@ fn collect_polygon_parameter_labels(
                     point_name,
                     polygon_name,
                 }),
+                screen_space: false,
             })
         })
         .collect()
@@ -1285,6 +1305,7 @@ fn collect_segment_parameter_labels(file: &GspFile, groups: &[ObjectGroup]) -> V
                     point_name,
                     segment_name,
                 }),
+                screen_space: false,
             })
         })
         .collect()
@@ -1341,6 +1362,7 @@ fn collect_circle_parameter_labels(
                     point_name,
                     circle_name,
                 }),
+                screen_space: false,
             })
         })
         .collect()
@@ -1652,6 +1674,7 @@ fn compute_iteration_labels(
                 text: lines.join("\n"),
                 color: [30, 30, 30, 255],
                 binding: None,
+                screen_space: false,
             });
         }
     }
@@ -2636,6 +2659,12 @@ fn collect_bounds(
         points.push(circle.radius_point.clone());
     }
     for label in labels {
+        if matches!(
+            label.binding,
+            Some(TextLabelBinding::ParameterValue { .. } | TextLabelBinding::ExpressionValue { .. })
+        ) {
+            continue;
+        }
         points.push(label.anchor.clone());
     }
     points.extend(points_only.iter().cloned());

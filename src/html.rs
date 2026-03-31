@@ -288,6 +288,8 @@ struct LabelJson {
     text: String,
     color: [u8; 4],
     binding: Option<LabelBindingJson>,
+    #[serde(rename = "screenSpace")]
+    screen_space: bool,
 }
 
 impl LabelJson {
@@ -297,6 +299,7 @@ impl LabelJson {
             text: label.text.clone(),
             color: label.color,
             binding: label.binding.as_ref().map(LabelBindingJson::from_binding),
+            screen_space: label.screen_space,
         }
     }
 }
