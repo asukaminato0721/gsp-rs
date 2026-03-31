@@ -70,6 +70,7 @@ pub(crate) struct LineShape {
 pub(crate) struct PolygonShape {
     pub(crate) points: Vec<PointRecord>,
     pub(crate) color: [u8; 4],
+    pub(crate) binding: Option<ShapeBinding>,
 }
 
 #[derive(Debug, Clone)]
@@ -83,6 +84,24 @@ pub(crate) struct SceneParameter {
 pub(crate) enum ScenePointBinding {
     Parameter {
         name: String,
+    },
+    DerivedParameter {
+        source_index: usize,
+    },
+    Reflect {
+        source_index: usize,
+        line_start_index: usize,
+        line_end_index: usize,
+    },
+    Rotate {
+        source_index: usize,
+        center_index: usize,
+        angle_degrees: f64,
+    },
+    Scale {
+        source_index: usize,
+        center_index: usize,
+        factor: f64,
     },
     Coordinate {
         name: String,
@@ -107,6 +126,31 @@ pub(crate) struct SceneCircle {
     pub(crate) center: PointRecord,
     pub(crate) radius_point: PointRecord,
     pub(crate) color: [u8; 4],
+    pub(crate) binding: Option<ShapeBinding>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum ShapeBinding {
+    ScalePolygon {
+        source_index: usize,
+        center_index: usize,
+        factor: f64,
+    },
+    ScaleCircle {
+        source_index: usize,
+        center_index: usize,
+        factor: f64,
+    },
+    ReflectPolygon {
+        source_index: usize,
+        line_start_index: usize,
+        line_end_index: usize,
+    },
+    ReflectCircle {
+        source_index: usize,
+        line_start_index: usize,
+        line_end_index: usize,
+    },
 }
 
 #[derive(Debug, Clone)]

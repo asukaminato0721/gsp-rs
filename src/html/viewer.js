@@ -163,11 +163,13 @@
         color: polygon.color,
         outlineColor: polygon.outlineColor,
         points: polygon.points.map(attachPointRef),
+        binding: polygon.binding ? { ...polygon.binding } : null,
       })),
       circles: scene.circles.map((circle) => ({
         color: circle.color,
         center: attachPointRef(circle.center),
         radiusPoint: attachPointRef(circle.radiusPoint),
+        binding: circle.binding ? { ...circle.binding } : null,
       })),
       labels: scene.labels.map((label) => ({
         text: label.text,
@@ -203,6 +205,7 @@
   function updateScene(mutator) {
     const next = sceneState.val;
     mutator(next);
+    refreshDerivedPoints(next);
     refreshDynamicLabels(next);
     sceneState.val = { ...next };
   }
@@ -327,39 +330,7 @@
         if (!Number.isFinite(value)) {
           return;
         }
-        const clamped = Math.max(0, Math.min(1, value));
-        if (point.constraint.kind === "segment") {
-          point.constraint.t = clamped;
-        } else if (point.constraint.kind === "polygon-boundary") {
-          const count = point.constraint.vertexIndices.length;
-          if (count < 2) return;
-          const lengths = [];
-          let perimeter = 0;
-          for (let i = 0; i < count; i += 1) {
-            const start = draft.points[point.constraint.vertexIndices[i]];
-            const end = draft.points[point.constraint.vertexIndices[(i + 1) % count]];
-            if (!start || !end) return;
-            const length = Math.hypot(end.x - start.x, end.y - start.y);
-            lengths.push(length);
-            perimeter += length;
-          }
-          if (perimeter <= 1e-9) return;
-          const target = clamped * perimeter;
-          let traveled = 0;
-          for (let edgeIndex = 0; edgeIndex < lengths.length; edgeIndex += 1) {
-            const length = lengths[edgeIndex];
-            if (traveled + length >= target || edgeIndex === lengths.length - 1) {
-              point.constraint.edgeIndex = edgeIndex;
-              point.constraint.t = length <= 1e-9 ? 0 : Math.max(0, Math.min(1, (target - traveled) / length));
-              break;
-            }
-            traveled += length;
-          }
-        } else if (point.constraint.kind === "circle") {
-          const angle = Math.PI * 2 * clamped;
-          point.constraint.unitX = Math.cos(angle);
-          point.constraint.unitY = -Math.sin(angle);
-        }
+        applyNormalizedParameterToPoint(point, draft, value);
       });
       currentDynamics().functions.forEach((functionDef) => {
         if (draft.labels[functionDef.labelIndex]) {
@@ -413,6 +384,54 @@
     return Number.isFinite(value) ? value.toFixed(2) : "-";
   }
 
+  function circleParameterFromPoint(scene, pointIndex) {
+    const point = scene.points[pointIndex];
+    const constraint = point?.constraint;
+    if (constraint?.kind !== "circle") {
+      return null;
+    }
+    const pointAngle = Math.atan2(-constraint.unitY, constraint.unitX);
+    const tau = Math.PI * 2;
+    return ((pointAngle % tau) + tau) % tau / tau;
+  }
+
+  function applyNormalizedParameterToPoint(point, scene, value) {
+    if (!point.constraint) return;
+    const clamped = Math.max(0, Math.min(1, value));
+    if (point.constraint.kind === "segment") {
+      point.constraint.t = clamped;
+    } else if (point.constraint.kind === "polygon-boundary") {
+      const count = point.constraint.vertexIndices.length;
+      if (count < 2) return;
+      const lengths = [];
+      let perimeter = 0;
+      for (let i = 0; i < count; i += 1) {
+        const start = scene.points[point.constraint.vertexIndices[i]];
+        const end = scene.points[point.constraint.vertexIndices[(i + 1) % count]];
+        if (!start || !end) return;
+        const length = Math.hypot(end.x - start.x, end.y - start.y);
+        lengths.push(length);
+        perimeter += length;
+      }
+      if (perimeter <= 1e-9) return;
+      const target = clamped * perimeter;
+      let traveled = 0;
+      for (let edgeIndex = 0; edgeIndex < lengths.length; edgeIndex += 1) {
+        const length = lengths[edgeIndex];
+        if (traveled + length >= target || edgeIndex === lengths.length - 1) {
+          point.constraint.edgeIndex = edgeIndex;
+          point.constraint.t = length <= 1e-9 ? 0 : Math.max(0, Math.min(1, (target - traveled) / length));
+          break;
+        }
+        traveled += length;
+      }
+    } else if (point.constraint.kind === "circle") {
+      const angle = Math.PI * 2 * clamped;
+      point.constraint.unitX = Math.cos(angle);
+      point.constraint.unitY = -Math.sin(angle);
+    }
+  }
+
   function polygonBoundaryParameterFromPoint(scene, pointIndex) {
     const point = scene.points[pointIndex];
     const constraint = point?.constraint;
@@ -439,6 +458,137 @@
     }
 
     return perimeter > 1e-9 ? traveled / perimeter : null;
+  }
+
+  function parameterValueFromPoint(scene, pointIndex) {
+    const point = scene.points[pointIndex];
+    const constraint = point?.constraint;
+    if (!constraint) return null;
+    if (constraint.kind === "segment") {
+      return constraint.t;
+    }
+    if (constraint.kind === "polygon-boundary") {
+      return polygonBoundaryParameterFromPoint(scene, pointIndex);
+    }
+    if (constraint.kind === "circle") {
+      return circleParameterFromPoint(scene, pointIndex);
+    }
+    return null;
+  }
+
+  function refreshDerivedPoints(scene) {
+    const resolveHandle = (handle) => {
+      if (typeof handle?.pointIndex === "number") {
+        return scene.points[handle.pointIndex] || { x: 0, y: 0 };
+      }
+      return handle || { x: 0, y: 0 };
+    };
+
+    scene.points.forEach((point) => {
+      if (point.binding?.kind === "derived-parameter") {
+        const value = parameterValueFromPoint(scene, point.binding.sourceIndex);
+        if (value !== null) {
+          applyNormalizedParameterToPoint(point, scene, value);
+        }
+      } else if (point.binding?.kind === "reflect") {
+        const source = scene.points[point.binding.sourceIndex];
+        const lineStart = scene.points[point.binding.lineStartIndex];
+        const lineEnd = scene.points[point.binding.lineEndIndex];
+        if (!source || !lineStart || !lineEnd) return;
+        const dx = lineEnd.x - lineStart.x;
+        const dy = lineEnd.y - lineStart.y;
+        const lenSq = dx * dx + dy * dy;
+        if (lenSq <= 1e-9) return;
+        const t = ((source.x - lineStart.x) * dx + (source.y - lineStart.y) * dy) / lenSq;
+        const projX = lineStart.x + t * dx;
+        const projY = lineStart.y + t * dy;
+        point.x = projX * 2 - source.x;
+        point.y = projY * 2 - source.y;
+      } else if (point.binding?.kind === "rotate") {
+        const source = scene.points[point.binding.sourceIndex];
+        const center = scene.points[point.binding.centerIndex];
+        if (!source || !center) return;
+        const radians = point.binding.angleDegrees * Math.PI / 180;
+        const cos = Math.cos(radians);
+        const sin = Math.sin(radians);
+        const dx = source.x - center.x;
+        const dy = source.y - center.y;
+        point.x = center.x + dx * cos + dy * sin;
+        point.y = center.y - dx * sin + dy * cos;
+      } else if (point.binding?.kind === "scale") {
+        const source = scene.points[point.binding.sourceIndex];
+        const center = scene.points[point.binding.centerIndex];
+        if (!source || !center) return;
+        point.x = center.x + (source.x - center.x) * point.binding.factor;
+        point.y = center.y + (source.y - center.y) * point.binding.factor;
+      }
+    });
+
+    scene.circles.forEach((circle) => {
+      if (circle.binding?.kind === "scale-circle") {
+        const source = scene.circles[circle.binding.sourceIndex];
+        const center = scene.points[circle.binding.centerIndex];
+        if (!source || !center) return;
+        const sourceCenter = resolveHandle(source.center);
+        const sourceRadius = resolveHandle(source.radiusPoint);
+        circle.center = {
+          x: center.x + (sourceCenter.x - center.x) * circle.binding.factor,
+          y: center.y + (sourceCenter.y - center.y) * circle.binding.factor,
+        };
+        circle.radiusPoint = {
+          x: center.x + (sourceRadius.x - center.x) * circle.binding.factor,
+          y: center.y + (sourceRadius.y - center.y) * circle.binding.factor,
+        };
+      } else if (circle.binding?.kind === "reflect-circle") {
+        const source = scene.circles[circle.binding.sourceIndex];
+        const lineStart = scene.points[circle.binding.lineStartIndex];
+        const lineEnd = scene.points[circle.binding.lineEndIndex];
+        if (!source || !lineStart || !lineEnd) return;
+        const reflect = (p) => {
+          const dx = lineEnd.x - lineStart.x;
+          const dy = lineEnd.y - lineStart.y;
+          const lenSq = dx * dx + dy * dy;
+          if (lenSq <= 1e-9) return p;
+          const t = ((p.x - lineStart.x) * dx + (p.y - lineStart.y) * dy) / lenSq;
+          const projX = lineStart.x + t * dx;
+          const projY = lineStart.y + t * dy;
+          return { x: projX * 2 - p.x, y: projY * 2 - p.y };
+        };
+        circle.center = reflect(resolveHandle(source.center));
+        circle.radiusPoint = reflect(resolveHandle(source.radiusPoint));
+      }
+    });
+
+    scene.polygons.forEach((polygon) => {
+      if (polygon.binding?.kind === "scale-polygon") {
+        const source = scene.polygons[polygon.binding.sourceIndex];
+        const center = scene.points[polygon.binding.centerIndex];
+        if (!source || !center) return;
+        polygon.points = source.points.map((handle) => {
+          const point = resolveHandle(handle);
+          return {
+            x: center.x + (point.x - center.x) * polygon.binding.factor,
+            y: center.y + (point.y - center.y) * polygon.binding.factor,
+          };
+        });
+      } else if (polygon.binding?.kind === "reflect-polygon") {
+        const source = scene.polygons[polygon.binding.sourceIndex];
+        const lineStart = scene.points[polygon.binding.lineStartIndex];
+        const lineEnd = scene.points[polygon.binding.lineEndIndex];
+        if (!source || !lineStart || !lineEnd) return;
+        polygon.points = source.points.map((handle) => {
+          const point = resolveHandle(handle);
+          const dx = lineEnd.x - lineStart.x;
+          const dy = lineEnd.y - lineStart.y;
+          const lenSq = dx * dx + dy * dy;
+          if (lenSq <= 1e-9) return point;
+          const t = ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / lenSq;
+          const projX = lineStart.x + t * dx;
+          const projY = lineStart.y + t * dy;
+          return { x: projX * 2 - point.x, y: projY * 2 - point.y };
+        });
+      }
+    });
   }
 
   function refreshDynamicLabels(scene) {
