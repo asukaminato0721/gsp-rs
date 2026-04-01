@@ -41,12 +41,9 @@
       } else if (point.constraint && point.constraint.kind === "segment") {
         const start = env.resolveScenePoint(point.constraint.startIndex);
         const end = env.resolveScenePoint(point.constraint.endIndex);
-        const dx = end.x - start.x;
-        const dy = end.y - start.y;
-        const lengthSquared = dx * dx + dy * dy;
-        if (lengthSquared > 1e-9) {
-          const t = ((world.x - start.x) * dx + (world.y - start.y) * dy) / lengthSquared;
-          point.constraint.t = Math.max(0, Math.min(1, t));
+        const projection = window.GspViewerModules.scene.projectToSegment(world, start, end);
+        if (projection) {
+          point.constraint.t = projection.t;
         }
       } else if (point.constraint && point.constraint.kind === "polyline") {
         const count = point.constraint.points.length;
@@ -56,20 +53,14 @@
         for (let segmentIndex = 0; segmentIndex < count - 1; segmentIndex += 1) {
           const start = point.constraint.points[segmentIndex];
           const end = point.constraint.points[segmentIndex + 1];
-          const dx = end.x - start.x;
-          const dy = end.y - start.y;
-          const lengthSquared = dx * dx + dy * dy;
-          if (lengthSquared <= 1e-9) {
+          const projection = window.GspViewerModules.scene.projectToSegment(world, start, end);
+          if (!projection) {
             continue;
           }
-          const t = Math.max(0, Math.min(1, ((world.x - start.x) * dx + (world.y - start.y) * dy) / lengthSquared));
-          const projX = start.x + dx * t;
-          const projY = start.y + dy * t;
-          const distSq = (world.x - projX) ** 2 + (world.y - projY) ** 2;
-          if (distSq < bestDistanceSquared) {
-            bestDistanceSquared = distSq;
+          if (projection.distanceSquared < bestDistanceSquared) {
+            bestDistanceSquared = projection.distanceSquared;
             bestSegmentIndex = segmentIndex;
-            bestT = t;
+            bestT = projection.t;
           }
         }
         point.constraint.segmentIndex = bestSegmentIndex;
@@ -82,20 +73,14 @@
         for (let edgeIndex = 0; edgeIndex < count; edgeIndex += 1) {
           const start = env.resolveScenePoint(point.constraint.vertexIndices[edgeIndex]);
           const end = env.resolveScenePoint(point.constraint.vertexIndices[(edgeIndex + 1) % count]);
-          const dx = end.x - start.x;
-          const dy = end.y - start.y;
-          const lengthSquared = dx * dx + dy * dy;
-          if (lengthSquared <= 1e-9) {
+          const projection = window.GspViewerModules.scene.projectToSegment(world, start, end);
+          if (!projection) {
             continue;
           }
-          const t = Math.max(0, Math.min(1, ((world.x - start.x) * dx + (world.y - start.y) * dy) / lengthSquared));
-          const projX = start.x + dx * t;
-          const projY = start.y + dy * t;
-          const distSq = (world.x - projX) ** 2 + (world.y - projY) ** 2;
-          if (distSq < bestDistanceSquared) {
-            bestDistanceSquared = distSq;
+          if (projection.distanceSquared < bestDistanceSquared) {
+            bestDistanceSquared = projection.distanceSquared;
             bestEdgeIndex = edgeIndex;
-            bestT = t;
+            bestT = projection.t;
           }
         }
         point.constraint.edgeIndex = bestEdgeIndex;

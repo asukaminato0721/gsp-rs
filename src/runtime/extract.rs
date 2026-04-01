@@ -26,9 +26,8 @@ use self::points::{
     decode_point_constraint_anchor, decode_point_on_ray_anchor_raw, decode_reflection_anchor_raw,
     decode_regular_polygon_vertex_anchor_raw, decode_transform_binding,
     decode_translated_point_anchor_raw, is_editable_non_graph_parameter_name,
-    reflect_point_across_line, reflection_line_group_indices, regular_polygon_angle_expr,
-    regular_polygon_iteration_step, remap_circle_bindings, remap_label_bindings,
-    remap_line_bindings, remap_polygon_bindings,
+    reflection_line_group_indices, regular_polygon_angle_expr, regular_polygon_iteration_step,
+    remap_circle_bindings, remap_label_bindings, remap_line_bindings, remap_polygon_bindings,
 };
 use self::shapes::{
     collect_circle_shapes, collect_coordinate_traces, collect_derived_segments,

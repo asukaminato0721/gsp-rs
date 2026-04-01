@@ -3,6 +3,29 @@
 (function() {
   const modules = window.GspViewerModules || (window.GspViewerModules = {});
 
+  function lerpPoint(start, end, t) {
+    return {
+      x: start.x + (end.x - start.x) * t,
+      y: start.y + (end.y - start.y) * t,
+    };
+  }
+
+  function projectToSegment(point, start, end) {
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const lengthSquared = dx * dx + dy * dy;
+    if (lengthSquared <= 1e-9) {
+      return null;
+    }
+    const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared));
+    const projected = lerpPoint(start, end, t);
+    return {
+      t,
+      projected,
+      distanceSquared: (point.x - projected.x) ** 2 + (point.y - projected.y) ** 2,
+    };
+  }
+
   /** @param {ViewerEnv} env */
   function getViewBounds(env) {
     const spanX = env.baseSpanX / env.view.zoom;
@@ -31,10 +54,7 @@
     if (constraint.kind === "segment") {
       const start = resolveFn(constraint.startIndex);
       const end = resolveFn(constraint.endIndex);
-      return {
-        x: start.x + (end.x - start.x) * constraint.t,
-        y: start.y + (end.y - start.y) * constraint.t,
-      };
+      return lerpPoint(start, end, constraint.t);
     }
     if (constraint.kind === "polyline") {
       const count = constraint.points.length;
@@ -42,20 +62,14 @@
       const segmentIndex = Math.max(0, Math.min(count - 2, constraint.segmentIndex));
       const start = constraint.points[segmentIndex];
       const end = constraint.points[segmentIndex + 1];
-      return {
-        x: start.x + (end.x - start.x) * constraint.t,
-        y: start.y + (end.y - start.y) * constraint.t,
-      };
+      return lerpPoint(start, end, constraint.t);
     }
     if (constraint.kind === "polygon-boundary") {
       const count = constraint.vertexIndices.length;
       if (count < 2) return null;
       const start = resolveFn(constraint.vertexIndices[((constraint.edgeIndex % count) + count) % count]);
       const end = resolveFn(constraint.vertexIndices[(constraint.edgeIndex + 1 + count) % count]);
-      return {
-        x: start.x + (end.x - start.x) * constraint.t,
-        y: start.y + (end.y - start.y) * constraint.t,
-      };
+      return lerpPoint(start, end, constraint.t);
     }
     if (constraint.kind === "circle") {
       const center = resolveFn(constraint.centerIndex);
@@ -96,8 +110,8 @@
       const start = resolvePoint(env, line.points[segmentIndex]);
       const end = resolvePoint(env, line.points[segmentIndex + 1]);
       return {
-        x: start.x + (end.x - start.x) * t + (handle.dx || 0),
-        y: start.y + (end.y - start.y) * t + (handle.dy || 0),
+        x: lerpPoint(start, end, t).x + (handle.dx || 0),
+        y: lerpPoint(start, end, t).y + (handle.dy || 0),
       };
     }
     return handle;
@@ -117,10 +131,7 @@
       const t = typeof handle.t === "number" ? handle.t : 0.5;
       const start = resolvePoint(env, line.points[segmentIndex]);
       const end = resolvePoint(env, line.points[segmentIndex + 1]);
-      return {
-        x: start.x + (end.x - start.x) * t,
-        y: start.y + (end.y - start.y) * t,
-      };
+      return lerpPoint(start, end, t);
     }
     return handle;
   }
@@ -292,6 +303,8 @@
     toWorld,
     getCanvasCoords,
     chooseGridStep,
+    lerpPoint,
+    projectToSegment,
     drawGrid,
   };
 })();

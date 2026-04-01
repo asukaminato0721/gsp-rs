@@ -106,6 +106,16 @@ type ViewerSceneModule = {
   getViewBounds: (env: ViewerEnv) => ViewerEnv["getViewBounds"] extends () => infer T ? T : never;
   getCanvasCoords: (env: ViewerEnv, event: MouseEvent | PointerEvent | WheelEvent) => Point;
   chooseGridStep: (span: number, targetLines: number) => number;
+  lerpPoint: (start: Point, end: Point, t: number) => Point;
+  projectToSegment: (
+    point: Point,
+    start: Point,
+    end: Point,
+  ) => {
+    t: number;
+    projected: Point;
+    distanceSquared: number;
+  } | null;
   drawGrid: (env: ViewerEnv) => void;
 };
 

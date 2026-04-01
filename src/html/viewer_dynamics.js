@@ -3,6 +3,47 @@
 (function() {
   const modules = window.GspViewerModules || (window.GspViewerModules = {});
 
+  function lerpPoint(start, end, t) {
+    return {
+      x: start.x + (end.x - start.x) * t,
+      y: start.y + (end.y - start.y) * t,
+    };
+  }
+
+  function rotateAround(point, center, radians) {
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    const dx = point.x - center.x;
+    const dy = point.y - center.y;
+    return {
+      x: center.x + dx * cos + dy * sin,
+      y: center.y - dx * sin + dy * cos,
+    };
+  }
+
+  function scaleAround(point, center, factor) {
+    return {
+      x: center.x + (point.x - center.x) * factor,
+      y: center.y + (point.y - center.y) * factor,
+    };
+  }
+
+  function reflectAcrossLine(point, lineStart, lineEnd) {
+    const dx = lineEnd.x - lineStart.x;
+    const dy = lineEnd.y - lineStart.y;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq <= 1e-9) return point;
+    const t = ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / lenSq;
+    const projection = {
+      x: lineStart.x + t * dx,
+      y: lineStart.y + t * dy,
+    };
+    return {
+      x: projection.x * 2 - point.x,
+      y: projection.y * 2 - point.y,
+    };
+  }
+
   function evaluateUnary(op, x) {
     switch (op) {
       case "sin": return Math.sin(x);
@@ -216,32 +257,23 @@
         const lineStart = scene.points[point.binding.lineStartIndex];
         const lineEnd = scene.points[point.binding.lineEndIndex];
         if (!source || !lineStart || !lineEnd) return;
-        const dx = lineEnd.x - lineStart.x;
-        const dy = lineEnd.y - lineStart.y;
-        const lenSq = dx * dx + dy * dy;
-        if (lenSq <= 1e-9) return;
-        const t = ((source.x - lineStart.x) * dx + (source.y - lineStart.y) * dy) / lenSq;
-        const projX = lineStart.x + t * dx;
-        const projY = lineStart.y + t * dy;
-        point.x = projX * 2 - source.x;
-        point.y = projY * 2 - source.y;
+        const reflected = reflectAcrossLine(source, lineStart, lineEnd);
+        point.x = reflected.x;
+        point.y = reflected.y;
       } else if (point.binding?.kind === "rotate") {
         const source = scene.points[point.binding.sourceIndex];
         const center = scene.points[point.binding.centerIndex];
         if (!source || !center) return;
-        const radians = point.binding.angleDegrees * Math.PI / 180;
-        const cos = Math.cos(radians);
-        const sin = Math.sin(radians);
-        const dx = source.x - center.x;
-        const dy = source.y - center.y;
-        point.x = center.x + dx * cos + dy * sin;
-        point.y = center.y - dx * sin + dy * cos;
+        const rotated = rotateAround(source, center, point.binding.angleDegrees * Math.PI / 180);
+        point.x = rotated.x;
+        point.y = rotated.y;
       } else if (point.binding?.kind === "scale") {
         const source = scene.points[point.binding.sourceIndex];
         const center = scene.points[point.binding.centerIndex];
         if (!source || !center) return;
-        point.x = center.x + (source.x - center.x) * point.binding.factor;
-        point.y = center.y + (source.y - center.y) * point.binding.factor;
+        const scaled = scaleAround(source, center, point.binding.factor);
+        point.x = scaled.x;
+        point.y = scaled.y;
       }
     });
 
@@ -252,31 +284,15 @@
         if (!source || !center) return;
         const sourceCenter = resolveHandle(source.center);
         const sourceRadius = resolveHandle(source.radiusPoint);
-        circle.center = {
-          x: center.x + (sourceCenter.x - center.x) * circle.binding.factor,
-          y: center.y + (sourceCenter.y - center.y) * circle.binding.factor,
-        };
-        circle.radiusPoint = {
-          x: center.x + (sourceRadius.x - center.x) * circle.binding.factor,
-          y: center.y + (sourceRadius.y - center.y) * circle.binding.factor,
-        };
+        circle.center = scaleAround(sourceCenter, center, circle.binding.factor);
+        circle.radiusPoint = scaleAround(sourceRadius, center, circle.binding.factor);
       } else if (circle.binding?.kind === "reflect-circle") {
         const source = scene.circles[circle.binding.sourceIndex];
         const lineStart = scene.points[circle.binding.lineStartIndex];
         const lineEnd = scene.points[circle.binding.lineEndIndex];
         if (!source || !lineStart || !lineEnd) return;
-        const reflect = (p) => {
-          const dx = lineEnd.x - lineStart.x;
-          const dy = lineEnd.y - lineStart.y;
-          const lenSq = dx * dx + dy * dy;
-          if (lenSq <= 1e-9) return p;
-          const t = ((p.x - lineStart.x) * dx + (p.y - lineStart.y) * dy) / lenSq;
-          const projX = lineStart.x + t * dx;
-          const projY = lineStart.y + t * dy;
-          return { x: projX * 2 - p.x, y: projY * 2 - p.y };
-        };
-        circle.center = reflect(resolveHandle(source.center));
-        circle.radiusPoint = reflect(resolveHandle(source.radiusPoint));
+        circle.center = reflectAcrossLine(resolveHandle(source.center), lineStart, lineEnd);
+        circle.radiusPoint = reflectAcrossLine(resolveHandle(source.radiusPoint), lineStart, lineEnd);
       }
     });
 
@@ -287,10 +303,7 @@
         if (!source || !center) return;
         polygon.points = source.points.map((handle) => {
           const point = resolveHandle(handle);
-          return {
-            x: center.x + (point.x - center.x) * polygon.binding.factor,
-            y: center.y + (point.y - center.y) * polygon.binding.factor,
-          };
+          return scaleAround(point, center, polygon.binding.factor);
         });
       } else if (polygon.binding?.kind === "reflect-polygon") {
         const source = scene.polygons[polygon.binding.sourceIndex];
@@ -299,14 +312,7 @@
         if (!source || !lineStart || !lineEnd) return;
         polygon.points = source.points.map((handle) => {
           const point = resolveHandle(handle);
-          const dx = lineEnd.x - lineStart.x;
-          const dy = lineEnd.y - lineStart.y;
-          const lenSq = dx * dx + dy * dy;
-          if (lenSq <= 1e-9) return point;
-          const t = ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / lenSq;
-          const projX = lineStart.x + t * dx;
-          const projY = lineStart.y + t * dy;
-          return { x: projX * 2 - point.x, y: projY * 2 - point.y };
+          return reflectAcrossLine(point, lineStart, lineEnd);
         });
       }
     });
@@ -337,17 +343,7 @@
       if (sides === 1) continue;
       const angleDegrees = evaluateExpr(family.binding.angleExpr, 0, parameters);
       if (!Number.isFinite(angleDegrees)) continue;
-      const rotate = (step) => {
-        const radians = (angleDegrees * step) * Math.PI / 180;
-        const cos = Math.cos(radians);
-        const sin = Math.sin(radians);
-        const dx = vertex.x - center.x;
-        const dy = vertex.y - center.y;
-        return {
-          x: center.x + dx * cos + dy * sin,
-          y: center.y - dx * sin + dy * cos,
-        };
-      };
+      const rotate = (step) => rotateAround(vertex, center, (angleDegrees * step) * Math.PI / 180);
       if (sides === 2) {
         preservedLines.push({
           points: [rotate(0), rotate(1)],

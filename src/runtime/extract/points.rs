@@ -9,7 +9,7 @@ pub(super) use anchors::{
     decode_offset_anchor_raw, decode_parameter_controlled_anchor_raw,
     decode_point_constraint_anchor, decode_point_on_ray_anchor_raw, decode_reflection_anchor_raw,
     decode_regular_polygon_vertex_anchor_raw, decode_translated_point_anchor_raw,
-    reflect_point_across_line, reflection_line_group_indices,
+    reflection_line_group_indices,
 };
 pub(super) use bindings::{
     TransformBindingKind, collect_point_iteration_points, collect_visible_points,
