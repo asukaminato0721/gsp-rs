@@ -1,8 +1,9 @@
 :root {
   color-scheme: light;
-  --paper: rgb(250, 250, 248);
-  --frame: rgb(215, 215, 210);
+  --paper: rgb(255, 255, 255);
+  --frame: rgb(214, 214, 214);
   --ink: rgb(32, 32, 32);
+  --panel: rgb(247, 247, 247);
 }
 
 * {
@@ -14,9 +15,7 @@ body {
   min-height: 100vh;
   display: grid;
   place-items: center;
-  background:
-    radial-gradient(circle at top, rgba(255,255,255,0.92), rgba(235,236,230,0.9)),
-    linear-gradient(180deg, rgb(243, 244, 240), rgb(225, 227, 220));
+  background: rgb(242, 242, 242);
   color: var(--ink);
   font: 14px/1.45 "Noto Sans", "Segoe UI", sans-serif;
 }
@@ -27,12 +26,10 @@ main {
 }
 
 .frame {
-  background: rgba(255,255,255,0.72);
+  background: white;
   border: 1px solid var(--frame);
-  border-radius: 18px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.12);
+  border-radius: 8px;
   overflow: hidden;
-  backdrop-filter: blur(8px);
 }
 
 .toolbar {
@@ -42,27 +39,9 @@ main {
   flex-wrap: wrap;
   gap: 12px;
   padding: 10px 14px;
-  border-bottom: 1px solid rgba(0,0,0,0.08);
-  background: rgba(255,255,255,0.78);
+  border-bottom: 1px solid var(--frame);
+  background: var(--panel);
   font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.toolbar button {
-  border: 1px solid rgba(0,0,0,0.14);
-  border-radius: 999px;
-  background: white;
-  color: var(--ink);
-  padding: 8px 12px;
-  font: inherit;
-  cursor: pointer;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.toolbar button:hover {
-  background: rgb(247, 247, 243);
 }
 
 .toolbar .controls {
@@ -84,8 +63,8 @@ main {
 .toolbar input[type="number"] {
   width: 84px;
   padding: 6px 8px;
-  border: 1px solid rgba(0,0,0,0.14);
-  border-radius: 10px;
+  border: 1px solid var(--frame);
+  border-radius: 6px;
   font: inherit;
   background: white;
   color: var(--ink);
@@ -123,41 +102,7 @@ canvas.is-dragging {
 
 .scene-link-button {
   position: absolute;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 10px;
-  border: 1px solid rgba(0,0,0,0.16);
-  border-radius: 999px;
-  background: rgba(255,255,255,0.92);
-  color: var(--ink);
-  text-decoration: none;
-  font: 12px/1.2 "Noto Sans", "Segoe UI", sans-serif;
-  letter-spacing: 0.01em;
-  appearance: none;
-  transform: translateY(0);
-  box-shadow: 0 10px 24px rgba(0,0,0,0.12);
   pointer-events: auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.scene-link-button:hover {
-  background: white;
-}
-
-.scene-link-button:focus {
-  outline: none;
-}
-
-.scene-link-button.is-active {
-  transform: translateY(1px);
-  border-color: rgba(0, 95, 204, 0.46);
-  background: rgb(232, 241, 255);
-  box-shadow:
-    inset 0 2px 6px rgba(0, 75, 160, 0.18),
-    0 4px 12px rgba(0, 95, 204, 0.16);
 }
 
 .meta {
@@ -166,11 +111,9 @@ canvas.is-dragging {
   flex-wrap: wrap;
   gap: 12px;
   padding: 10px 14px;
-  border-top: 1px solid rgba(0,0,0,0.08);
-  background: rgba(250,250,248,0.9);
+  border-top: 1px solid var(--frame);
+  background: var(--panel);
   font-size: 12px;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
 }
 
 .meta .right {

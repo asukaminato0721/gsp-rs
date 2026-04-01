@@ -66,6 +66,7 @@
   })) };
   const buttonTimers = new Map();
   const buttonAnimations = new Map();
+  let buttonPointerState = null;
   const labelAttachDistance = 40;
   const coordText = van.derive(() => {
     const world = pointerWorldState.val;
@@ -324,12 +325,82 @@
       if (buttonDef.height) {
         anchor.style.height = `${(buttonDef.height / sourceScene.height) * 100}%`;
       }
-      anchor.addEventListener("click", () => {
-        runButtonAction(buttonIndex);
-        anchor.blur();
+      anchor.addEventListener("pointerdown", (event) => {
+        beginButtonPointer(buttonIndex, event);
       });
       buttonOverlays.append(anchor);
     });
+  }
+
+  function buttonPointerScale() {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      scaleX: rect.width > 0 ? sourceScene.width / rect.width : 1,
+      scaleY: rect.height > 0 ? sourceScene.height / rect.height : 1,
+    };
+  }
+
+  function beginButtonPointer(buttonIndex, event) {
+    const button = buttonsState.val[buttonIndex];
+    if (!button) {
+      return;
+    }
+    const { scaleX, scaleY } = buttonPointerScale();
+    buttonPointerState = {
+      buttonIndex,
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      originX: button.x,
+      originY: button.y,
+      scaleX,
+      scaleY,
+      dragged: false,
+    };
+    window.addEventListener("pointermove", handleButtonPointerMove);
+    window.addEventListener("pointerup", handleButtonPointerUp);
+    window.addEventListener("pointercancel", handleButtonPointerUp);
+    event.preventDefault();
+  }
+
+  function handleButtonPointerMove(event) {
+    if (!buttonPointerState || event.pointerId !== buttonPointerState.pointerId) {
+      return;
+    }
+    const dx = (event.clientX - buttonPointerState.startClientX) * buttonPointerState.scaleX;
+    const dy = (event.clientY - buttonPointerState.startClientY) * buttonPointerState.scaleY;
+    if (!buttonPointerState.dragged && Math.hypot(dx, dy) >= 4) {
+      buttonPointerState.dragged = true;
+    }
+    if (!buttonPointerState.dragged) {
+      return;
+    }
+    updateButtons((buttons) => {
+      const button = buttons[buttonPointerState.buttonIndex];
+      if (!button) {
+        return;
+      }
+      button.x = buttonPointerState.originX + dx;
+      button.y = buttonPointerState.originY + dy;
+    });
+  }
+
+  function clearButtonPointer() {
+    window.removeEventListener("pointermove", handleButtonPointerMove);
+    window.removeEventListener("pointerup", handleButtonPointerUp);
+    window.removeEventListener("pointercancel", handleButtonPointerUp);
+    buttonPointerState = null;
+  }
+
+  function handleButtonPointerUp(event) {
+    if (!buttonPointerState || event.pointerId !== buttonPointerState.pointerId) {
+      return;
+    }
+    const { buttonIndex, dragged } = buttonPointerState;
+    clearButtonPointer();
+    if (!dragged) {
+      runButtonAction(buttonIndex);
+    }
   }
 
   function setTargetsVisibility(action, visible) {
@@ -358,24 +429,6 @@
     setTargetsVisibility(action, hiddenPoint || hiddenLine || hiddenCircle || hiddenPolygon);
   }
 
-  function movePointToTarget(pointIndex, targetPointIndex = null) {
-    updateScene((scene) => {
-      const point = scene.points[pointIndex];
-      if (!point?.constraint) {
-        return;
-      }
-      if (point.constraint.kind === "segment") {
-        if (targetPointIndex === point.constraint.startIndex) {
-          point.constraint.t = 0;
-        } else if (targetPointIndex === point.constraint.endIndex) {
-          point.constraint.t = 1;
-        } else {
-          point.constraint.t = point.constraint.t < 0.5 ? 1 : 0;
-        }
-      }
-    });
-  }
-
   function stopButtonAnimation(buttonIndex) {
     const handle = buttonAnimations.get(buttonIndex);
     if (handle?.rafId) {
@@ -392,7 +445,7 @@
     });
   }
 
-  function toggleAnimatedPoint(buttonIndex, pointIndex, mode) {
+  function toggleAnimatedPoint(buttonIndex, pointIndex, mode, targetPointIndex = null) {
     if (buttonsState.val[buttonIndex]?.active) {
       stopButtonAnimation(buttonIndex);
       return;
@@ -403,9 +456,19 @@
       return;
     }
     const base = { x: point.x, y: point.y };
+    let initialDirection = 1;
+    if (point.constraint?.kind === "segment") {
+      if (targetPointIndex === point.constraint.startIndex) {
+        initialDirection = -1;
+      } else if (targetPointIndex === point.constraint.endIndex) {
+        initialDirection = 1;
+      } else {
+        initialDirection = point.constraint.t < 0.5 ? 1 : -1;
+      }
+    }
     const state = {
       stop: false,
-      direction: 1,
+      direction: initialDirection,
       t: 0,
       vx: (Math.random() - 0.5) * 0.003,
       vy: (Math.random() - 0.5) * 0.003,
@@ -435,7 +498,8 @@
           return;
         }
         if (draftPoint.constraint?.kind === "segment") {
-          const delta = (mode === "scroll" ? 0.00035 : 0.0006) * dt;
+          const durationMs = mode === "scroll" ? 16000 : 12000;
+          const delta = dt / durationMs;
           if (mode === "scroll") {
             draftPoint.constraint.t = (draftPoint.constraint.t + delta) % 1;
           } else {
@@ -512,7 +576,12 @@
         break;
       case "move-point":
         if (typeof action.pointIndex === "number") {
-          movePointToTarget(action.pointIndex, action.targetPointIndex ?? null);
+          toggleAnimatedPoint(
+            buttonIndex,
+            action.pointIndex,
+            "move",
+            action.targetPointIndex ?? null,
+          );
         }
         break;
       case "animate-point":
