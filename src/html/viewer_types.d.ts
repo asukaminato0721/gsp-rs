@@ -91,6 +91,7 @@ type ViewerEnv = {
   resolveScenePoint: (index: number) => Point;
   resolvePoint: (handle: PointHandle) => Point;
   resolveAnchorBase: (handle: PointHandle) => Point;
+  resolveLinePoints: (lineOrIndex: any) => Point[] | null;
   toScreen: (point: Point) => Point & { scale: number };
   toWorld: (x: number, y: number) => Point & { scale: number };
   getViewBounds: () => {
@@ -121,6 +122,7 @@ type ViewerSceneModule = {
   resolveScenePoint: (env: ViewerEnv, index: number) => Point;
   resolvePoint: (env: ViewerEnv, handle: PointHandle) => Point;
   resolveAnchorBase: (env: ViewerEnv, handle: PointHandle) => Point;
+  resolveLinePoints: (env: ViewerEnv, lineOrIndex: any) => Point[] | null;
   toScreen: (env: ViewerEnv, point: Point) => Point & { scale: number };
   toWorld: (env: ViewerEnv, x: number, y: number) => Point & { scale: number };
   getViewBounds: (env: ViewerEnv) => ViewerEnv["getViewBounds"] extends () => infer T ? T : never;

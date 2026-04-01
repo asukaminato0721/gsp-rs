@@ -180,6 +180,7 @@
     }));
     return {
       graphMode: scene.graphMode,
+      bounds: scene.bounds ? { ...scene.bounds } : null,
       points: scene.points.map((point) => ({
         x: point.x,
         y: point.y,
@@ -293,6 +294,7 @@
     view.centerX = baseCenterX;
     view.centerY = baseCenterY;
     view.zoom = 1;
+    dynamicsModule.syncDynamicScene(viewerEnv);
     updateReadout();
   }
 
@@ -636,6 +638,7 @@
 
   function panFromPointerDelta(position) {
     dragModule.panFromPointerDelta(viewerEnv, position);
+    dynamicsModule.syncDynamicScene(viewerEnv);
   }
 
   function draw() {
@@ -661,6 +664,7 @@
     resolveScenePoint: (index) => sceneModule.resolveScenePoint(viewerEnv, index),
     resolvePoint: (handle) => sceneModule.resolvePoint(viewerEnv, handle),
     resolveAnchorBase: (handle) => sceneModule.resolveAnchorBase(viewerEnv, handle),
+    resolveLinePoints: (lineOrIndex) => sceneModule.resolveLinePoints(viewerEnv, lineOrIndex),
     toScreen: (point) => sceneModule.toScreen(viewerEnv, point),
     toWorld: (x, y) => sceneModule.toWorld(viewerEnv, x, y),
     getViewBounds: () => sceneModule.getViewBounds(viewerEnv),
@@ -739,6 +743,7 @@
     const after = sceneModule.toWorld(viewerEnv, position.x, position.y);
     view.centerX += before.x - after.x;
     view.centerY += before.y - after.y;
+    dynamicsModule.syncDynamicScene(viewerEnv);
     updateReadout(position.x, position.y);
   }, { passive: false });
 

@@ -254,6 +254,55 @@ impl LineJson {
 #[derive(Serialize)]
 #[serde(tag = "kind")]
 enum LineBindingJson {
+    #[serde(rename = "line")]
+    Line {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+    },
+    #[serde(rename = "ray")]
+    Ray {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+    },
+    #[serde(rename = "translate-line")]
+    TranslateLine {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        #[serde(rename = "vectorStartIndex")]
+        vector_start_index: usize,
+        #[serde(rename = "vectorEndIndex")]
+        vector_end_index: usize,
+    },
+    #[serde(rename = "rotate-line")]
+    RotateLine {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "angleDegrees")]
+        angle_degrees: f64,
+    },
+    #[serde(rename = "scale-line")]
+    ScaleLine {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        factor: f64,
+    },
+    #[serde(rename = "reflect-line")]
+    ReflectLine {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        #[serde(rename = "lineStartIndex")]
+        line_start_index: usize,
+        #[serde(rename = "lineEndIndex")]
+        line_end_index: usize,
+    },
     #[serde(rename = "rotate-edge")]
     RotateEdge {
         #[serde(rename = "centerIndex")]
@@ -274,6 +323,56 @@ enum LineBindingJson {
 impl LineBindingJson {
     fn from_binding(binding: &LineBinding) -> Self {
         match binding {
+            LineBinding::Line {
+                start_index,
+                end_index,
+            } => Self::Line {
+                start_index: *start_index,
+                end_index: *end_index,
+            },
+            LineBinding::Ray {
+                start_index,
+                end_index,
+            } => Self::Ray {
+                start_index: *start_index,
+                end_index: *end_index,
+            },
+            LineBinding::TranslateLine {
+                source_index,
+                vector_start_index,
+                vector_end_index,
+            } => Self::TranslateLine {
+                source_index: *source_index,
+                vector_start_index: *vector_start_index,
+                vector_end_index: *vector_end_index,
+            },
+            LineBinding::RotateLine {
+                source_index,
+                center_index,
+                angle_degrees,
+            } => Self::RotateLine {
+                source_index: *source_index,
+                center_index: *center_index,
+                angle_degrees: *angle_degrees,
+            },
+            LineBinding::ScaleLine {
+                source_index,
+                center_index,
+                factor,
+            } => Self::ScaleLine {
+                source_index: *source_index,
+                center_index: *center_index,
+                factor: *factor,
+            },
+            LineBinding::ReflectLine {
+                source_index,
+                line_start_index,
+                line_end_index,
+            } => Self::ReflectLine {
+                source_index: *source_index,
+                line_start_index: *line_start_index,
+                line_end_index: *line_end_index,
+            },
             LineBinding::RotateEdge {
                 center_index,
                 vertex_index,
@@ -336,6 +435,42 @@ impl CircleJson {
 #[derive(Serialize)]
 #[serde(tag = "kind")]
 enum ShapeBindingJson {
+    #[serde(rename = "translate-polygon")]
+    TranslatePolygon {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        #[serde(rename = "vectorStartIndex")]
+        vector_start_index: usize,
+        #[serde(rename = "vectorEndIndex")]
+        vector_end_index: usize,
+    },
+    #[serde(rename = "translate-circle")]
+    TranslateCircle {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        #[serde(rename = "vectorStartIndex")]
+        vector_start_index: usize,
+        #[serde(rename = "vectorEndIndex")]
+        vector_end_index: usize,
+    },
+    #[serde(rename = "rotate-polygon")]
+    RotatePolygon {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "angleDegrees")]
+        angle_degrees: f64,
+    },
+    #[serde(rename = "rotate-circle")]
+    RotateCircle {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "angleDegrees")]
+        angle_degrees: f64,
+    },
     #[serde(rename = "scale-polygon")]
     ScalePolygon {
         #[serde(rename = "sourceIndex")]
@@ -375,6 +510,42 @@ enum ShapeBindingJson {
 impl ShapeBindingJson {
     fn from_binding(binding: &ShapeBinding) -> Self {
         match binding {
+            ShapeBinding::TranslatePolygon {
+                source_index,
+                vector_start_index,
+                vector_end_index,
+            } => Self::TranslatePolygon {
+                source_index: *source_index,
+                vector_start_index: *vector_start_index,
+                vector_end_index: *vector_end_index,
+            },
+            ShapeBinding::TranslateCircle {
+                source_index,
+                vector_start_index,
+                vector_end_index,
+            } => Self::TranslateCircle {
+                source_index: *source_index,
+                vector_start_index: *vector_start_index,
+                vector_end_index: *vector_end_index,
+            },
+            ShapeBinding::RotatePolygon {
+                source_index,
+                center_index,
+                angle_degrees,
+            } => Self::RotatePolygon {
+                source_index: *source_index,
+                center_index: *center_index,
+                angle_degrees: *angle_degrees,
+            },
+            ShapeBinding::RotateCircle {
+                source_index,
+                center_index,
+                angle_degrees,
+            } => Self::RotateCircle {
+                source_index: *source_index,
+                center_index: *center_index,
+                angle_degrees: *angle_degrees,
+            },
             ShapeBinding::ScalePolygon {
                 source_index,
                 center_index,
@@ -554,6 +725,15 @@ enum PointBindingJson {
         #[serde(rename = "sourceIndex")]
         source_index: usize,
     },
+    #[serde(rename = "translate")]
+    Translate {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        #[serde(rename = "vectorStartIndex")]
+        vector_start_index: usize,
+        #[serde(rename = "vectorEndIndex")]
+        vector_end_index: usize,
+    },
     #[serde(rename = "reflect")]
     Reflect {
         #[serde(rename = "sourceIndex")]
@@ -593,6 +773,15 @@ impl PointBindingJson {
             ScenePointBinding::Parameter { name } => Self::Parameter { name: name.clone() },
             ScenePointBinding::DerivedParameter { source_index } => Self::DerivedParameter {
                 source_index: *source_index,
+            },
+            ScenePointBinding::Translate {
+                source_index,
+                vector_start_index,
+                vector_end_index,
+            } => Self::Translate {
+                source_index: *source_index,
+                vector_start_index: *vector_start_index,
+                vector_end_index: *vector_end_index,
             },
             ScenePointBinding::Reflect {
                 source_index,

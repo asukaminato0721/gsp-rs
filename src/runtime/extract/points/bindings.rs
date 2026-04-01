@@ -1,4 +1,7 @@
-use super::anchors::{decode_reflection_anchor_raw, reflection_line_group_indices};
+use super::anchors::{
+    decode_reflection_anchor_raw, reflection_line_group_indices,
+    translation_point_pair_group_indices,
+};
 use super::constraints::{
     CoordinatePoint, ParameterControlledPoint, RawPointConstraint, decode_coordinate_point,
     decode_parameter_controlled_point, decode_point_constraint, decode_translated_point_constraint,
@@ -93,33 +96,67 @@ pub(crate) fn collect_visible_points(
                         }),
                     })
             }),
-            27 | 30 => decode_transform_binding(file, group).and_then(|binding| {
-                let position = anchors.get(index).cloned().flatten()?;
+            16 => anchors.get(index).cloned().flatten().and_then(|position| {
+                let path = find_indexed_path(file, group)?;
+                let source_group_index = path.refs.first()?.checked_sub(1)?;
+                let (vector_start_group_index, vector_end_group_index) =
+                    translation_point_pair_group_indices(file, group)?;
                 let source_index = group_to_point_index
-                    .get(binding.source_group_index)
+                    .get(source_group_index)
                     .and_then(|point_index| *point_index)?;
-                let center_index = group_to_point_index
-                    .get(binding.center_group_index)
+                let vector_start_index = group_to_point_index
+                    .get(vector_start_group_index)
                     .and_then(|point_index| *point_index)?;
-                Some(ScenePoint {
-                    position,
-                    constraint: ScenePointConstraint::Free,
-                    binding: Some(match binding.kind {
-                        TransformBindingKind::Rotate { angle_degrees } => {
-                            ScenePointBinding::Rotate {
+                let vector_end_index = group_to_point_index
+                    .get(vector_end_group_index)
+                    .and_then(|point_index| *point_index)?;
+                groups
+                    .get(source_group_index)
+                    .filter(|source_group| (source_group.header.class_id & 0xffff) == 0)
+                    .map(|_| ScenePoint {
+                        position,
+                        constraint: ScenePointConstraint::Free,
+                        binding: Some(ScenePointBinding::Translate {
+                            source_index,
+                            vector_start_index,
+                            vector_end_index,
+                        }),
+                    })
+            }),
+            27 | 29 | 30 => {
+                let binding = if kind == 29 {
+                    decode_parameter_rotation_binding(file, groups, group)
+                } else {
+                    decode_transform_binding(file, group)
+                };
+                binding.and_then(|binding| {
+                    let position = anchors.get(index).cloned().flatten()?;
+                    let source_index = group_to_point_index
+                        .get(binding.source_group_index)
+                        .and_then(|point_index| *point_index)?;
+                    let center_index = group_to_point_index
+                        .get(binding.center_group_index)
+                        .and_then(|point_index| *point_index)?;
+                    Some(ScenePoint {
+                        position,
+                        constraint: ScenePointConstraint::Free,
+                        binding: Some(match binding.kind {
+                            TransformBindingKind::Rotate { angle_degrees } => {
+                                ScenePointBinding::Rotate {
+                                    source_index,
+                                    center_index,
+                                    angle_degrees,
+                                }
+                            }
+                            TransformBindingKind::Scale { factor } => ScenePointBinding::Scale {
                                 source_index,
                                 center_index,
-                                angle_degrees,
-                            }
-                        }
-                        TransformBindingKind::Scale { factor } => ScenePointBinding::Scale {
-                            source_index,
-                            center_index,
-                            factor,
-                        },
-                    }),
+                                factor,
+                            },
+                        }),
+                    })
                 })
-            }),
+            }
             _ => None,
         };
 
@@ -350,6 +387,22 @@ pub(crate) fn remap_circle_bindings(
             continue;
         };
         let (source_index, center_index) = match binding {
+            ShapeBinding::TranslateCircle { source_index, .. } => {
+                let Some(mapped_source_index) = group_to_circle_index
+                    .get(*source_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    circle.binding = None;
+                    continue;
+                };
+                *source_index = mapped_source_index;
+                continue;
+            }
+            ShapeBinding::RotateCircle {
+                source_index,
+                center_index,
+                ..
+            } => (source_index, center_index),
             ShapeBinding::ScaleCircle {
                 source_index,
                 center_index,
@@ -417,6 +470,42 @@ pub(crate) fn remap_polygon_bindings(
             continue;
         };
         let (source_index, center_index) = match binding {
+            ShapeBinding::TranslatePolygon {
+                source_index,
+                vector_start_index,
+                vector_end_index,
+            } => {
+                let Some(mapped_source_index) = group_to_polygon_index
+                    .get(*source_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    polygon.binding = None;
+                    continue;
+                };
+                let Some(mapped_vector_start_index) = group_to_point_index
+                    .get(*vector_start_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    polygon.binding = None;
+                    continue;
+                };
+                let Some(mapped_vector_end_index) = group_to_point_index
+                    .get(*vector_end_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    polygon.binding = None;
+                    continue;
+                };
+                *source_index = mapped_source_index;
+                *vector_start_index = mapped_vector_start_index;
+                *vector_end_index = mapped_vector_end_index;
+                continue;
+            }
+            ShapeBinding::RotatePolygon {
+                source_index,
+                center_index,
+                ..
+            } => (source_index, center_index),
             ShapeBinding::ScalePolygon {
                 source_index,
                 center_index,
@@ -474,32 +563,151 @@ pub(crate) fn remap_polygon_bindings(
     }
 }
 
-pub(crate) fn remap_line_bindings(lines: &mut [LineShape], group_to_point_index: &[Option<usize>]) {
+pub(crate) fn remap_line_bindings(
+    lines: &mut [LineShape],
+    group_to_point_index: &[Option<usize>],
+    group_to_line_index: &[Option<usize>],
+) {
     for line in lines {
-        let Some(LineBinding::RotateEdge {
-            center_index,
-            vertex_index,
-            ..
-        }) = line.binding.as_mut()
-        else {
+        let Some(binding) = line.binding.as_mut() else {
             continue;
         };
-        let Some(mapped_center_index) = group_to_point_index
-            .get(*center_index)
-            .and_then(|mapped_index| *mapped_index)
-        else {
-            line.binding = None;
-            continue;
-        };
-        let Some(mapped_vertex_index) = group_to_point_index
-            .get(*vertex_index)
-            .and_then(|mapped_index| *mapped_index)
-        else {
-            line.binding = None;
-            continue;
-        };
-        *center_index = mapped_center_index;
-        *vertex_index = mapped_vertex_index;
+        match binding {
+            LineBinding::TranslateLine {
+                source_index,
+                vector_start_index,
+                vector_end_index,
+            } => {
+                let Some(mapped_source_index) = group_to_line_index
+                    .get(*source_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                let Some(mapped_vector_start_index) = group_to_point_index
+                    .get(*vector_start_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                let Some(mapped_vector_end_index) = group_to_point_index
+                    .get(*vector_end_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                *source_index = mapped_source_index;
+                *vector_start_index = mapped_vector_start_index;
+                *vector_end_index = mapped_vector_end_index;
+            }
+            LineBinding::Line {
+                start_index,
+                end_index,
+            }
+            | LineBinding::Ray {
+                start_index,
+                end_index,
+            } => {
+                let Some(mapped_start_index) = group_to_point_index
+                    .get(*start_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                let Some(mapped_end_index) = group_to_point_index
+                    .get(*end_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                *start_index = mapped_start_index;
+                *end_index = mapped_end_index;
+            }
+            LineBinding::RotateLine {
+                source_index,
+                center_index,
+                ..
+            }
+            | LineBinding::ScaleLine {
+                source_index,
+                center_index,
+                ..
+            } => {
+                let Some(mapped_source_index) = group_to_line_index
+                    .get(*source_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                let Some(mapped_center_index) = group_to_point_index
+                    .get(*center_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                *source_index = mapped_source_index;
+                *center_index = mapped_center_index;
+            }
+            LineBinding::ReflectLine {
+                source_index,
+                line_start_index,
+                line_end_index,
+            } => {
+                let Some(mapped_source_index) = group_to_line_index
+                    .get(*source_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                let Some(mapped_line_start_index) = group_to_point_index
+                    .get(*line_start_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                let Some(mapped_line_end_index) = group_to_point_index
+                    .get(*line_end_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                *source_index = mapped_source_index;
+                *line_start_index = mapped_line_start_index;
+                *line_end_index = mapped_line_end_index;
+            }
+            LineBinding::RotateEdge {
+                center_index,
+                vertex_index,
+                ..
+            } => {
+                let Some(mapped_center_index) = group_to_point_index
+                    .get(*center_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                let Some(mapped_vertex_index) = group_to_point_index
+                    .get(*vertex_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                *center_index = mapped_center_index;
+                *vertex_index = mapped_vertex_index;
+            }
+        }
     }
 }
 
@@ -742,5 +950,34 @@ pub(crate) fn decode_transform_binding(
         source_group_index,
         center_group_index,
         kind,
+    })
+}
+
+pub(crate) fn decode_parameter_rotation_binding(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<TransformBinding> {
+    if (group.header.class_id & 0xffff) != 29 {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    let source_group_index = path.refs.first()?.checked_sub(1)?;
+    let center_group_index = path.refs.get(1)?.checked_sub(1)?;
+    let angle_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
+    if (angle_group.header.class_id & 0xffff) != 0 {
+        return None;
+    }
+    let angle_radians = decode_angle_parameter_value_for_group(file, angle_group)?;
+    if !angle_radians.is_finite() {
+        return None;
+    }
+
+    Some(TransformBinding {
+        source_group_index,
+        center_group_index,
+        kind: TransformBindingKind::Rotate {
+            angle_degrees: angle_radians.to_degrees(),
+        },
     })
 }

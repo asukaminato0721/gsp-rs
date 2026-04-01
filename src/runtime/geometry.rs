@@ -129,6 +129,110 @@ pub(super) fn include_line_bounds(
     }
 }
 
+pub(super) fn clip_line_to_bounds(
+    start: &PointRecord,
+    end: &PointRecord,
+    bounds: &Bounds,
+) -> Option<[PointRecord; 2]> {
+    clip_parametric_line_to_bounds(start, end, bounds, false)
+}
+
+pub(super) fn clip_ray_to_bounds(
+    start: &PointRecord,
+    end: &PointRecord,
+    bounds: &Bounds,
+) -> Option<[PointRecord; 2]> {
+    clip_parametric_line_to_bounds(start, end, bounds, true)
+}
+
+fn clip_parametric_line_to_bounds(
+    start: &PointRecord,
+    end: &PointRecord,
+    bounds: &Bounds,
+    ray_only: bool,
+) -> Option<[PointRecord; 2]> {
+    let dx = end.x - start.x;
+    let dy = end.y - start.y;
+    if dx.abs() <= 1e-9 && dy.abs() <= 1e-9 {
+        return None;
+    }
+
+    let mut hits = Vec::<(f64, PointRecord)>::new();
+    let mut push_hit = |t: f64, point: PointRecord| {
+        if !t.is_finite()
+            || (ray_only && t < -1e-9)
+            || point.x < bounds.min_x - 1e-6
+            || point.x > bounds.max_x + 1e-6
+            || point.y < bounds.min_y - 1e-6
+            || point.y > bounds.max_y + 1e-6
+        {
+            return;
+        }
+        if hits.iter().any(|(existing_t, existing)| {
+            (existing_t - t).abs() < 1e-6
+                || ((existing.x - point.x).abs() < 1e-6 && (existing.y - point.y).abs() < 1e-6)
+        }) {
+            return;
+        }
+        hits.push((t, point));
+    };
+
+    if dx.abs() > 1e-9 {
+        for x in [bounds.min_x, bounds.max_x] {
+            let t = (x - start.x) / dx;
+            push_hit(
+                t,
+                PointRecord {
+                    x,
+                    y: start.y + dy * t,
+                },
+            );
+        }
+    }
+
+    if dy.abs() > 1e-9 {
+        for y in [bounds.min_y, bounds.max_y] {
+            let t = (y - start.y) / dy;
+            push_hit(
+                t,
+                PointRecord {
+                    x: start.x + dx * t,
+                    y,
+                },
+            );
+        }
+    }
+
+    if ray_only
+        && start.x >= bounds.min_x - 1e-6
+        && start.x <= bounds.max_x + 1e-6
+        && start.y >= bounds.min_y - 1e-6
+        && start.y <= bounds.max_y + 1e-6
+    {
+        push_hit(0.0, start.clone());
+    }
+
+    if hits.len() < 2 {
+        return None;
+    }
+    hits.sort_by(|left, right| left.0.total_cmp(&right.0));
+    if ray_only {
+        let first = hits.first()?.1.clone();
+        let last = hits.last()?.1.clone();
+        if (first.x - last.x).abs() < 1e-6 && (first.y - last.y).abs() < 1e-6 {
+            return None;
+        }
+        Some([first, last])
+    } else {
+        let first = hits.first()?.1.clone();
+        let last = hits.last()?.1.clone();
+        if (first.x - last.x).abs() < 1e-6 && (first.y - last.y).abs() < 1e-6 {
+            return None;
+        }
+        Some([first, last])
+    }
+}
+
 pub(super) fn format_number(value: f64) -> String {
     if (value.fract()).abs() < 0.005 {
         format!("{value:.0}")

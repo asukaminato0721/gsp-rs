@@ -1,6 +1,50 @@
 (function() {
   const modules = window.GspViewerModules || (window.GspViewerModules = {});
 
+  function clipParametricLineToRect(start, end, width, height, rayOnly) {
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    if (Math.abs(dx) <= 1e-9 && Math.abs(dy) <= 1e-9) return null;
+
+    const hits = [];
+    const pushHit = (t, point) => {
+      if (!Number.isFinite(t)) return;
+      if (rayOnly && t < -1e-9) return;
+      if (
+        point.x < -1e-6 || point.x > width + 1e-6 ||
+        point.y < -1e-6 || point.y > height + 1e-6
+      ) return;
+      if (hits.some((hit) =>
+        Math.abs(hit.t - t) < 1e-6 ||
+        (Math.abs(hit.point.x - point.x) < 1e-6 && Math.abs(hit.point.y - point.y) < 1e-6)
+      )) return;
+      hits.push({ t, point });
+    };
+
+    if (Math.abs(dx) > 1e-9) {
+      for (const x of [0, width]) {
+        const t = (x - start.x) / dx;
+        pushHit(t, { x, y: start.y + dy * t });
+      }
+    }
+    if (Math.abs(dy) > 1e-9) {
+      for (const y of [0, height]) {
+        const t = (y - start.y) / dy;
+        pushHit(t, { x: start.x + dx * t, y });
+      }
+    }
+    if (
+      rayOnly &&
+      start.x >= -1e-6 && start.x <= width + 1e-6 &&
+      start.y >= -1e-6 && start.y <= height + 1e-6
+    ) {
+      pushHit(0, { ...start });
+    }
+    if (hits.length < 2) return null;
+    hits.sort((a, b) => a.t - b.t);
+    return [hits[0].point, hits[hits.length - 1].point];
+  }
+
   function labelMetrics(env, text) {
     const lines = text.split("\n");
     const width = lines.reduce((best, line) => Math.max(best, env.ctx.measureText(line).width), 0);
@@ -94,10 +138,28 @@
   function drawLines(env) {
     for (const line of env.currentScene().lines) {
       if (line.visible === false) continue;
-      if (line.points.length < 2) continue;
+      let screenPoints = null;
+      if (line.binding?.kind === "line" || line.binding?.kind === "ray") {
+        const start = env.toScreen(env.resolveScenePoint(line.binding.startIndex));
+        const end = env.toScreen(env.resolveScenePoint(line.binding.endIndex));
+        screenPoints = clipParametricLineToRect(
+          start,
+          end,
+          env.sourceScene.width,
+          env.sourceScene.height,
+          line.binding.kind === "ray",
+        );
+      } else {
+        const points = env.resolveLinePoints
+          ? env.resolveLinePoints(line)
+          : line.points.map((handle) => env.resolvePoint(handle));
+        if (points && points.length >= 2) {
+          screenPoints = points.map((point) => env.toScreen(point));
+        }
+      }
+      if (!screenPoints || screenPoints.length < 2) continue;
       env.ctx.beginPath();
-      line.points.forEach((handle, index) => {
-        const screen = env.toScreen(env.resolvePoint(handle));
+      screenPoints.forEach((screen, index) => {
         if (index === 0) {
           env.ctx.moveTo(screen.x, screen.y);
         } else {

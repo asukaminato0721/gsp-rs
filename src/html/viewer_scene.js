@@ -26,6 +26,50 @@
     };
   }
 
+  function clipParametricLineToBounds(start, end, bounds, rayOnly) {
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    if (Math.abs(dx) <= 1e-9 && Math.abs(dy) <= 1e-9) return null;
+
+    const hits = [];
+    const pushHit = (t, point) => {
+      if (!Number.isFinite(t)) return;
+      if (rayOnly && t < -1e-9) return;
+      if (
+        point.x < bounds.minX - 1e-6 || point.x > bounds.maxX + 1e-6 ||
+        point.y < bounds.minY - 1e-6 || point.y > bounds.maxY + 1e-6
+      ) return;
+      if (hits.some((hit) =>
+        Math.abs(hit.t - t) < 1e-6 ||
+        (Math.abs(hit.point.x - point.x) < 1e-6 && Math.abs(hit.point.y - point.y) < 1e-6)
+      )) return;
+      hits.push({ t, point });
+    };
+
+    if (Math.abs(dx) > 1e-9) {
+      for (const x of [bounds.minX, bounds.maxX]) {
+        const t = (x - start.x) / dx;
+        pushHit(t, { x, y: start.y + dy * t });
+      }
+    }
+    if (Math.abs(dy) > 1e-9) {
+      for (const y of [bounds.minY, bounds.maxY]) {
+        const t = (y - start.y) / dy;
+        pushHit(t, { x: start.x + dx * t, y });
+      }
+    }
+    if (
+      rayOnly &&
+      start.x >= bounds.minX - 1e-6 && start.x <= bounds.maxX + 1e-6 &&
+      start.y >= bounds.minY - 1e-6 && start.y <= bounds.maxY + 1e-6
+    ) {
+      pushHit(0, { ...start });
+    }
+    if (hits.length < 2) return null;
+    hits.sort((a, b) => a.t - b.t);
+    return [hits[0].point, hits[hits.length - 1].point];
+  }
+
   /** @param {ViewerEnv} env */
   function getViewBounds(env) {
     const spanX = env.baseSpanX / env.view.zoom;
@@ -101,14 +145,14 @@
       };
     }
     if (typeof handle.lineIndex === "number") {
-      const line = env.currentScene().lines[handle.lineIndex];
-      if (!line || line.points.length < 2) {
+      const points = resolveLinePoints(env, handle.lineIndex);
+      if (!points || points.length < 2) {
         return { x: handle.x || 0, y: handle.y || 0 };
       }
-      const segmentIndex = Math.max(0, Math.min(line.points.length - 2, handle.segmentIndex || 0));
+      const segmentIndex = Math.max(0, Math.min(points.length - 2, handle.segmentIndex || 0));
       const t = typeof handle.t === "number" ? handle.t : 0.5;
-      const start = resolvePoint(env, line.points[segmentIndex]);
-      const end = resolvePoint(env, line.points[segmentIndex + 1]);
+      const start = points[segmentIndex];
+      const end = points[segmentIndex + 1];
       return {
         x: lerpPoint(start, end, t).x + (handle.dx || 0),
         y: lerpPoint(start, end, t).y + (handle.dy || 0),
@@ -123,17 +167,34 @@
       return resolveScenePoint(env, handle.pointIndex);
     }
     if (typeof handle.lineIndex === "number") {
-      const line = env.currentScene().lines[handle.lineIndex];
-      if (!line || line.points.length < 2) {
+      const points = resolveLinePoints(env, handle.lineIndex);
+      if (!points || points.length < 2) {
         return { x: handle.x || 0, y: handle.y || 0 };
       }
-      const segmentIndex = Math.max(0, Math.min(line.points.length - 2, handle.segmentIndex || 0));
+      const segmentIndex = Math.max(0, Math.min(points.length - 2, handle.segmentIndex || 0));
       const t = typeof handle.t === "number" ? handle.t : 0.5;
-      const start = resolvePoint(env, line.points[segmentIndex]);
-      const end = resolvePoint(env, line.points[segmentIndex + 1]);
+      const start = points[segmentIndex];
+      const end = points[segmentIndex + 1];
       return lerpPoint(start, end, t);
     }
     return handle;
+  }
+
+  /** @param {ViewerEnv} env */
+  function resolveLinePoints(env, lineOrIndex) {
+    const line = typeof lineOrIndex === "number" ? env.currentScene().lines[lineOrIndex] : lineOrIndex;
+    if (!line) return null;
+    if (line.binding?.kind === "line") {
+      const start = resolveScenePoint(env, line.binding.startIndex);
+      const end = resolveScenePoint(env, line.binding.endIndex);
+      return clipParametricLineToBounds(start, end, getViewBounds(env), false);
+    }
+    if (line.binding?.kind === "ray") {
+      const start = resolveScenePoint(env, line.binding.startIndex);
+      const end = resolveScenePoint(env, line.binding.endIndex);
+      return clipParametricLineToBounds(start, end, getViewBounds(env), true);
+    }
+    return line.points.map((handle) => resolvePoint(env, handle));
   }
 
   /** @param {ViewerEnv} env */
@@ -299,6 +360,7 @@
     resolveScenePoint,
     resolvePoint,
     resolveAnchorBase,
+    resolveLinePoints,
     toScreen,
     toWorld,
     getCanvasCoords,

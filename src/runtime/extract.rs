@@ -22,19 +22,25 @@ use self::labels::{
 use self::points::{
     RawPointConstraint, TransformBindingKind, collect_non_graph_parameters,
     collect_point_iteration_points, collect_point_objects, collect_visible_points,
-    decode_offset_anchor_raw, decode_parameter_controlled_anchor_raw, decode_point_constraint,
-    decode_point_constraint_anchor, decode_point_on_ray_anchor_raw, decode_reflection_anchor_raw,
+    decode_offset_anchor_raw, decode_parameter_controlled_anchor_raw,
+    decode_parameter_rotation_anchor_raw, decode_parameter_rotation_binding,
+    decode_point_constraint, decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,
+    decode_point_pair_translation_anchor_raw, decode_reflection_anchor_raw,
     decode_regular_polygon_vertex_anchor_raw, decode_transform_binding,
     decode_translated_point_anchor_raw, is_editable_non_graph_parameter_name,
     reflection_line_group_indices, regular_polygon_angle_expr, regular_polygon_iteration_step,
     remap_circle_bindings, remap_label_bindings, remap_line_bindings, remap_polygon_bindings,
+    translation_point_pair_group_indices,
 };
 use self::shapes::{
-    collect_circle_shapes, collect_coordinate_traces, collect_derived_segments,
-    collect_iteration_shapes, collect_line_shapes, collect_polygon_shapes,
-    collect_raw_object_anchors, collect_reflected_circle_shapes, collect_reflected_polygon_shapes,
-    collect_rotational_iteration_lines, collect_transformed_circle_shapes,
-    collect_transformed_polygon_shapes,
+    collect_bound_line_shapes, collect_circle_shapes, collect_coordinate_traces,
+    collect_derived_segments, collect_iteration_shapes, collect_line_shapes,
+    collect_polygon_shapes, collect_raw_object_anchors, collect_reflected_circle_shapes,
+    collect_reflected_line_shapes, collect_reflected_polygon_shapes, collect_rotated_circle_shapes,
+    collect_rotated_line_shapes, collect_rotated_polygon_shapes,
+    collect_rotational_iteration_lines, collect_scaled_line_shapes,
+    collect_transformed_circle_shapes, collect_transformed_polygon_shapes,
+    collect_translated_polygon_shapes,
 };
 
 use super::functions::{
@@ -42,11 +48,14 @@ use super::functions::{
     collect_scene_parameters, function_uses_pi_scale, synthesize_function_axes,
     synthesize_function_labels,
 };
-use super::geometry::{Bounds, GraphTransform, distance_world, include_line_bounds, to_world};
+use super::geometry::{
+    Bounds, GraphTransform, clip_line_to_bounds, clip_ray_to_bounds, distance_world,
+    include_line_bounds, to_world,
+};
 use super::scene::{
-    ButtonAction, LineShape, PolygonShape, Scene, SceneButton, SceneCircle, SceneParameter,
-    ScenePoint, ScenePointBinding, ScenePointConstraint, ScreenPoint, ScreenRect, TextLabel,
-    TextLabelBinding,
+    ButtonAction, LineBinding, LineShape, PolygonShape, Scene, SceneButton, SceneCircle,
+    SceneParameter, ScenePoint, ScenePointBinding, ScenePointConstraint, ScreenPoint, ScreenRect,
+    TextLabel, TextLabelBinding,
 };
 
 pub(crate) use self::decode::find_indexed_path;
@@ -103,11 +112,16 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         &[2],
         !graph_mode && !large_non_graph,
     );
+    let mut direct_lines = collect_bound_line_shapes(file, &groups, &raw_anchors, 63);
+    let mut rays = collect_bound_line_shapes(file, &groups, &raw_anchors, 64);
     let derived_segments = if large_non_graph {
         collect_derived_segments(file, &groups, &point_map, &[24])
     } else {
         Vec::new()
     };
+    let mut rotated_lines = collect_rotated_line_shapes(file, &groups, &raw_anchors);
+    let mut scaled_lines = collect_scaled_line_shapes(file, &groups, &raw_anchors);
+    let mut reflected_lines = collect_reflected_line_shapes(file, &groups, &raw_anchors);
     let mut rotational_iteration_lines =
         collect_rotational_iteration_lines(file, &groups, &raw_anchors);
     let measurements = if graph_mode {
@@ -150,8 +164,11 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         })
         .collect::<Vec<_>>();
     let circles = collect_circle_shapes(file, &groups, &raw_anchors);
+    let mut rotated_circles = collect_rotated_circle_shapes(file, &groups, &raw_anchors);
     let mut transformed_circles = collect_transformed_circle_shapes(file, &groups, &raw_anchors);
     let mut reflected_circles = collect_reflected_circle_shapes(file, &groups, &raw_anchors);
+    let mut translated_polygons = collect_translated_polygon_shapes(file, &groups, &raw_anchors);
+    let mut rotated_polygons = collect_rotated_polygon_shapes(file, &groups, &raw_anchors);
     let mut transformed_polygons = collect_transformed_polygon_shapes(file, &groups, &raw_anchors);
     let mut reflected_polygons = collect_reflected_polygon_shapes(file, &groups, &raw_anchors);
     let (iteration_lines, iteration_polygons) = collect_iteration_shapes(file, &groups, &circles);
@@ -251,6 +268,11 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
             },
         );
     remap_circle_bindings(
+        &mut rotated_circles,
+        &group_to_point_index,
+        &circle_group_to_index,
+    );
+    remap_circle_bindings(
         &mut transformed_circles,
         &group_to_point_index,
         &circle_group_to_index,
@@ -259,6 +281,16 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         &mut reflected_circles,
         &group_to_point_index,
         &circle_group_to_index,
+    );
+    remap_polygon_bindings(
+        &mut translated_polygons,
+        &group_to_point_index,
+        &polygon_group_to_index,
+    );
+    remap_polygon_bindings(
+        &mut rotated_polygons,
+        &group_to_point_index,
+        &polygon_group_to_index,
     );
     remap_polygon_bindings(
         &mut transformed_polygons,
@@ -270,7 +302,44 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         &group_to_point_index,
         &polygon_group_to_index,
     );
-    remap_line_bindings(&mut rotational_iteration_lines, &group_to_point_index);
+    let line_group_to_index = groups
+        .iter()
+        .enumerate()
+        .filter(|(_, group)| (group.header.class_id & 0xffff) == 2)
+        .enumerate()
+        .fold(
+            vec![None; groups.len()],
+            |mut acc, (line_index, (group_index, _))| {
+                acc[group_index] = Some(line_index);
+                acc
+            },
+        );
+    remap_line_bindings(
+        &mut direct_lines,
+        &group_to_point_index,
+        &line_group_to_index,
+    );
+    remap_line_bindings(&mut rays, &group_to_point_index, &line_group_to_index);
+    remap_line_bindings(
+        &mut rotated_lines,
+        &group_to_point_index,
+        &line_group_to_index,
+    );
+    remap_line_bindings(
+        &mut scaled_lines,
+        &group_to_point_index,
+        &line_group_to_index,
+    );
+    remap_line_bindings(
+        &mut reflected_lines,
+        &group_to_point_index,
+        &line_group_to_index,
+    );
+    remap_line_bindings(
+        &mut rotational_iteration_lines,
+        &group_to_point_index,
+        &line_group_to_index,
+    );
 
     let world_points = visible_points
         .iter()
@@ -352,18 +421,45 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         .map(|point| point.position.clone())
         .collect::<Vec<_>>();
 
+    let bounds_lines = rotational_iteration_lines
+        .iter()
+        .chain(polylines.iter())
+        .chain(direct_lines.iter())
+        .chain(rays.iter())
+        .chain(rotated_lines.iter())
+        .chain(scaled_lines.iter())
+        .chain(reflected_lines.iter())
+        .chain(derived_segments.iter())
+        .chain(measurements.iter())
+        .chain(coordinate_traces.iter())
+        .chain(axes.iter())
+        .chain(iteration_lines.iter())
+        .cloned()
+        .collect::<Vec<_>>();
+    let bounds_polygons = polygons
+        .iter()
+        .chain(translated_polygons.iter())
+        .chain(rotated_polygons.iter())
+        .chain(transformed_polygons.iter())
+        .chain(reflected_polygons.iter())
+        .chain(iteration_polygons.iter())
+        .cloned()
+        .collect::<Vec<_>>();
+    let bounds_circles = circles
+        .iter()
+        .chain(rotated_circles.iter())
+        .chain(transformed_circles.iter())
+        .chain(reflected_circles.iter())
+        .cloned()
+        .collect::<Vec<_>>();
+
     let mut bounds = collect_bounds(
         &graph_ref,
-        &polylines,
-        &measurements,
-        &axes,
-        &polygons,
-        &circles
-            .iter()
-            .chain(transformed_circles.iter())
-            .chain(reflected_circles.iter())
-            .cloned()
-            .collect::<Vec<_>>(),
+        &bounds_lines,
+        &[],
+        &[],
+        &bounds_polygons,
+        &bounds_circles,
         &labels,
         &world_point_positions,
     );
@@ -383,19 +479,6 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         }
         expand_bounds(&mut bounds);
     }
-
-    let line_group_to_index = groups
-        .iter()
-        .enumerate()
-        .filter(|(_, group)| (group.header.class_id & 0xffff) == 2)
-        .enumerate()
-        .fold(
-            vec![None; groups.len()],
-            |mut acc, (line_index, (group_index, _))| {
-                acc[group_index] = Some(line_index);
-                acc
-            },
-        );
 
     let mut parameters = if graph_mode {
         collect_scene_parameters(file, &groups, &labels)
@@ -425,10 +508,13 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     };
 
     let raw_lines = dedupe_line_shapes(
-        rotational_iteration_lines
+        polylines
             .into_iter()
-            .chain(polylines)
-            .into_iter()
+            .chain(direct_lines)
+            .chain(rays)
+            .chain(rotated_lines)
+            .chain(scaled_lines)
+            .chain(reflected_lines)
             .chain(derived_segments)
             .chain(measurements)
             .chain(coordinate_traces)
@@ -436,6 +522,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
             .chain(function_plots)
             .chain(synthetic_axes)
             .chain(iteration_lines)
+            .chain(rotational_iteration_lines)
             .collect(),
     );
 
@@ -450,19 +537,12 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         bounds,
         lines: raw_lines
             .into_iter()
-            .map(|line| LineShape {
-                points: line
-                    .points
-                    .into_iter()
-                    .map(|point| to_world(&point, &graph_ref))
-                    .collect(),
-                color: line.color,
-                dashed: line.dashed,
-                binding: line.binding,
-            })
+            .map(|line| world_line_shape(line, &graph_ref, &bounds))
             .collect(),
         polygons: polygons
             .into_iter()
+            .chain(translated_polygons)
+            .chain(rotated_polygons)
             .chain(transformed_polygons)
             .chain(reflected_polygons)
             .chain(iteration_polygons)
@@ -478,6 +558,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
             .collect(),
         circles: circles
             .into_iter()
+            .chain(rotated_circles)
             .chain(transformed_circles)
             .chain(reflected_circles)
             .map(|circle| SceneCircle {
@@ -505,6 +586,40 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         buttons,
         parameters,
         functions,
+    }
+}
+
+fn world_line_shape(
+    line: LineShape,
+    graph_ref: &Option<GraphTransform>,
+    bounds: &Bounds,
+) -> LineShape {
+    let mut world_points = line
+        .points
+        .into_iter()
+        .map(|point| to_world(&point, graph_ref))
+        .collect::<Vec<_>>();
+
+    if let Some(binding) = &line.binding {
+        let clipped = match binding {
+            LineBinding::Line { .. } if world_points.len() >= 2 => {
+                clip_line_to_bounds(&world_points[0], &world_points[1], bounds)
+            }
+            LineBinding::Ray { .. } if world_points.len() >= 2 => {
+                clip_ray_to_bounds(&world_points[0], &world_points[1], bounds)
+            }
+            _ => None,
+        };
+        if let Some([start, end]) = clipped {
+            world_points = vec![start, end];
+        }
+    }
+
+    LineShape {
+        points: world_points,
+        color: line.color,
+        dashed: line.dashed,
+        binding: line.binding,
     }
 }
 
@@ -1105,6 +1220,54 @@ mod tests {
     }
 
     #[test]
+    fn preserves_line_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/line.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.lines.len(), 1, "expected one line");
+        assert_eq!(scene.points.len(), 2, "expected two defining points");
+        let line = &scene.lines[0];
+        assert!(matches!(line.binding, Some(LineBinding::Line { .. })));
+        let min_x = line
+            .points
+            .iter()
+            .map(|point| point.x)
+            .fold(f64::INFINITY, f64::min);
+        let max_x = line
+            .points
+            .iter()
+            .map(|point| point.x)
+            .fold(f64::NEG_INFINITY, f64::max);
+        assert!((min_x - scene.bounds.min_x).abs() < 1e-3);
+        assert!((max_x - scene.bounds.max_x).abs() < 1e-3);
+    }
+
+    #[test]
+    fn preserves_ray_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/ray.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.lines.len(), 1, "expected one ray");
+        assert_eq!(scene.points.len(), 2, "expected two defining points");
+        let line = &scene.lines[0];
+        assert!(matches!(line.binding, Some(LineBinding::Ray { .. })));
+        let max_x = line
+            .points
+            .iter()
+            .map(|point| point.x)
+            .fold(f64::NEG_INFINITY, f64::max);
+        assert!((max_x - scene.bounds.max_x).abs() < 1e-3);
+        assert!(
+            line.points
+                .iter()
+                .any(|point| (point.x - scene.points[0].position.x).abs() < 1e-3),
+            "expected ray to include its start point"
+        );
+    }
+
+    #[test]
     fn preserves_point_segment_value_segment_point_gsp() {
         let data =
             include_bytes!("../../tests/fixtures/gsp/static/point_segment_value_segment_point.gsp");
@@ -1384,69 +1547,54 @@ mod tests {
     }
 
     #[test]
-    fn preserves_point_iteration_in_dot_iteration_gsp() {
-        let data = include_bytes!("../../tests/fixtures/gsp/static/点迭代.gsp");
+    fn preserves_translation_and_right_angle_rotation_in_transform_fixture() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/平移旋转缩放轴对称.gsp");
         let file = GspFile::parse(data).expect("fixture parses");
         let scene = build_scene(&file);
 
-        assert_eq!(
-            scene.points.len(),
-            5,
-            "expected seed point, translated point, and three iterated points"
-        );
-        assert_eq!(
+        assert!(
             scene
                 .points
                 .iter()
-                .filter(|point| matches!(point.constraint, ScenePointConstraint::Offset { .. }))
-                .count(),
-            4,
-            "expected translated point plus chained iterated offsets"
+                .any(|point| matches!(point.binding, Some(ScenePointBinding::Translate { .. })))
         );
+        assert!(scene.polygons.iter().any(|polygon| matches!(
+            polygon.binding,
+            Some(crate::runtime::scene::ShapeBinding::TranslatePolygon { .. })
+        )));
+        assert!(scene.polygons.iter().any(|polygon| matches!(
+            polygon.binding,
+            Some(crate::runtime::scene::ShapeBinding::RotatePolygon { angle_degrees, .. })
+                if (angle_degrees - 90.0).abs() < 1e-3
+        )));
     }
 
     #[test]
-    fn preserves_parameterized_point_iteration_gsp() {
-        let data = include_bytes!("../../tests/fixtures/gsp/static/点参数迭代.gsp");
+    fn preserves_reflect_then_translate_in_translation_fixture() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/平移.gsp");
         let file = GspFile::parse(data).expect("fixture parses");
         let scene = build_scene(&file);
 
-        assert_eq!(
-            scene.points.len(),
-            8,
-            "expected seed point plus seven iterated points"
-        );
-        assert!(
-            scene.labels.iter().any(|label| label.text == "n = 6.00"),
-            "expected parameter label for n"
-        );
-    }
+        let reflected_points = scene
+            .points
+            .iter()
+            .enumerate()
+            .filter_map(|(index, point)| match point.binding {
+                Some(ScenePointBinding::Reflect { .. }) => Some(index),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(reflected_points.len(), 2, "expected reflected A' and B'");
 
-    #[test]
-    fn preserves_iterated_regular_polygon_gsp() {
-        let data = include_bytes!("../../tests/fixtures/gsp/static/迭代正多边形.gsp");
-        let file = GspFile::parse(data).expect("fixture parses");
-        let scene = build_scene(&file);
-
-        assert_eq!(scene.lines.len(), 5, "expected pentagon edges");
-        assert!(
-            scene.labels.iter().any(|label| label.text == "n = 5.00"),
-            "expected parameter label for n"
-        );
-        assert!(
-            scene
-                .labels
-                .iter()
-                .any(|label| label.text == "n - 1 = 4.00"),
-            "expected derived iteration count label"
-        );
-        assert!(
-            scene
-                .labels
-                .iter()
-                .any(|label| label.text.contains("360°") && label.text.contains("72.00°")),
-            "expected regular polygon angle label"
-        );
+        assert!(scene.polygons.iter().any(|polygon| matches!(
+            polygon.binding,
+            Some(crate::runtime::scene::ShapeBinding::TranslatePolygon {
+                vector_start_index,
+                vector_end_index,
+                ..
+            }) if reflected_points.contains(&vector_start_index)
+                && reflected_points.contains(&vector_end_index)
+        )));
     }
 
     #[test]

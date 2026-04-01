@@ -124,6 +124,34 @@ pub(crate) struct LineShape {
 
 #[derive(Debug, Clone)]
 pub(crate) enum LineBinding {
+    Line {
+        start_index: usize,
+        end_index: usize,
+    },
+    Ray {
+        start_index: usize,
+        end_index: usize,
+    },
+    TranslateLine {
+        source_index: usize,
+        vector_start_index: usize,
+        vector_end_index: usize,
+    },
+    RotateLine {
+        source_index: usize,
+        center_index: usize,
+        angle_degrees: f64,
+    },
+    ScaleLine {
+        source_index: usize,
+        center_index: usize,
+        factor: f64,
+    },
+    ReflectLine {
+        source_index: usize,
+        line_start_index: usize,
+        line_end_index: usize,
+    },
     RotateEdge {
         center_index: usize,
         vertex_index: usize,
@@ -155,6 +183,11 @@ pub(crate) enum ScenePointBinding {
     },
     DerivedParameter {
         source_index: usize,
+    },
+    Translate {
+        source_index: usize,
+        vector_start_index: usize,
+        vector_end_index: usize,
     },
     Reflect {
         source_index: usize,
@@ -199,6 +232,26 @@ pub(crate) struct SceneCircle {
 
 #[derive(Debug, Clone)]
 pub(crate) enum ShapeBinding {
+    TranslatePolygon {
+        source_index: usize,
+        vector_start_index: usize,
+        vector_end_index: usize,
+    },
+    TranslateCircle {
+        source_index: usize,
+        vector_start_index: usize,
+        vector_end_index: usize,
+    },
+    RotatePolygon {
+        source_index: usize,
+        center_index: usize,
+        angle_degrees: f64,
+    },
+    RotateCircle {
+        source_index: usize,
+        center_index: usize,
+        angle_degrees: f64,
+    },
     ScalePolygon {
         source_index: usize,
         center_index: usize,

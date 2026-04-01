@@ -31,6 +31,21 @@ pub(crate) fn decode_regular_polygon_vertex_anchor_raw(
     Some(rotate_around(&source, &center, (-360.0 / n).to_radians()))
 }
 
+pub(crate) fn decode_parameter_rotation_anchor_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    let binding = decode_parameter_rotation_binding(file, groups, group)?;
+    let source = anchors.get(binding.source_group_index)?.clone()?;
+    let center = anchors.get(binding.center_group_index)?.clone()?;
+    let TransformBindingKind::Rotate { angle_degrees } = binding.kind else {
+        return None;
+    };
+    Some(rotate_around(&source, &center, angle_degrees.to_radians()))
+}
+
 pub(crate) fn decode_reflection_anchor_raw(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -54,6 +69,32 @@ pub(crate) fn decode_reflection_anchor_raw(
     reflect_point_across_line(&source, &line_start, &line_end)
 }
 
+pub(crate) fn decode_point_pair_translation_anchor_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    if (group.header.class_id & 0xffff) != 16 {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    let source_group_index = path.refs.first()?.checked_sub(1)?;
+    let source_group = groups.get(source_group_index)?;
+    if (source_group.header.class_id & 0xffff) != 0 {
+        return None;
+    }
+    let (vector_start_group_index, vector_end_group_index) =
+        translation_point_pair_group_indices(file, group)?;
+    let source = anchors.get(source_group_index)?.clone()?;
+    let vector_start = anchors.get(vector_start_group_index)?.clone()?;
+    let vector_end = anchors.get(vector_end_group_index)?.clone()?;
+    Some(PointRecord {
+        x: source.x + (vector_end.x - vector_start.x),
+        y: source.y + (vector_end.y - vector_start.y),
+    })
+}
+
 pub(crate) fn decode_parameter_controlled_anchor_raw(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -70,13 +111,27 @@ pub(crate) fn reflection_line_group_indices(
 ) -> Option<(usize, usize)> {
     let path = find_indexed_path(file, group)?;
     let line_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
-    if (line_group.header.class_id & 0xffff) != 2 {
+    if !matches!(line_group.header.class_id & 0xffff, 2 | 63 | 64) {
         return None;
     }
     let line_path = find_indexed_path(file, line_group)?;
     Some((
         line_path.refs.first()?.checked_sub(1)?,
         line_path.refs.get(1)?.checked_sub(1)?,
+    ))
+}
+
+pub(crate) fn translation_point_pair_group_indices(
+    file: &GspFile,
+    group: &ObjectGroup,
+) -> Option<(usize, usize)> {
+    if (group.header.class_id & 0xffff) != 16 {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    Some((
+        path.refs.get(1)?.checked_sub(1)?,
+        path.refs.get(2)?.checked_sub(1)?,
     ))
 }
 
