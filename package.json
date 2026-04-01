@@ -1,0 +1,11 @@
+{
+  "name": "gsp-rs-web-checks",
+  "private": true,
+  "packageManager": "pnpm@10",
+  "scripts": {
+    "typecheck:js": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0"
+  }
+}

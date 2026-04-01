@@ -1,0 +1,1170 @@
+use std::collections::BTreeSet;
+
+mod decode;
+mod graph;
+mod labels;
+mod points;
+mod shapes;
+
+use crate::format::{
+    GspFile, IndexedPathRecord, ObjectGroup, PointRecord, collect_strings, decode_indexed_path,
+    decode_point_record, read_f64, read_i16, read_u16, read_u32,
+};
+
+use self::graph::{
+    bounds_within, collect_bounds, collect_saved_viewport, dedupe_line_shapes,
+    detect_graph_transform, expand_bounds, has_graph_classes,
+};
+use self::labels::{
+    collect_circle_parameter_labels, collect_coordinate_labels, collect_labels,
+    collect_polygon_parameter_labels, collect_segment_parameter_labels, compute_iteration_labels,
+};
+use self::points::{
+    RawPointConstraint, TransformBindingKind, collect_non_graph_parameters,
+    collect_point_iteration_points, collect_point_objects, collect_visible_points,
+    decode_offset_anchor_raw, decode_parameter_controlled_anchor_raw, decode_point_constraint,
+    decode_point_constraint_anchor, decode_point_on_ray_anchor_raw, decode_reflection_anchor_raw,
+    decode_regular_polygon_vertex_anchor_raw, decode_transform_binding,
+    decode_translated_point_anchor_raw, is_editable_non_graph_parameter_name,
+    reflection_line_group_indices, regular_polygon_angle_expr, regular_polygon_iteration_step,
+    remap_circle_bindings, remap_label_bindings, remap_line_bindings, remap_polygon_bindings,
+};
+use self::shapes::{
+    collect_circle_shapes, collect_coordinate_traces, collect_derived_segments,
+    collect_iteration_shapes, collect_line_shapes, collect_polygon_shapes,
+    collect_raw_object_anchors, collect_reflected_circle_shapes, collect_reflected_polygon_shapes,
+    collect_rotational_iteration_lines, collect_transformed_circle_shapes,
+    collect_transformed_polygon_shapes,
+};
+
+use super::functions::{
+    collect_function_plot_domain, collect_function_plots, collect_scene_functions,
+    collect_scene_parameters, function_uses_pi_scale, synthesize_function_axes,
+    synthesize_function_labels,
+};
+use super::geometry::{Bounds, GraphTransform, distance_world, include_line_bounds, to_world};
+use super::scene::{
+    LineShape, PolygonShape, Scene, SceneCircle, SceneParameter, ScenePoint, ScenePointBinding,
+    ScenePointConstraint, TextLabel, TextLabelBinding,
+};
+
+pub(crate) use self::decode::find_indexed_path;
+
+#[derive(Debug, Clone)]
+struct CircleShape {
+    center: PointRecord,
+    radius_point: PointRecord,
+    color: [u8; 4],
+    binding: Option<super::scene::ShapeBinding>,
+}
+
+pub(crate) fn build_scene(file: &GspFile) -> Scene {
+    let groups = file.object_groups();
+    let point_map = collect_point_objects(file, &groups);
+    let raw_anchors_for_graph = collect_raw_object_anchors(file, &groups, &point_map, None);
+    let graph = detect_graph_transform(file, &groups, &raw_anchors_for_graph);
+    let graph_mode = graph.is_some() && has_graph_classes(&groups);
+    let graph_ref = if graph_mode { graph.clone() } else { None };
+    let raw_anchors = collect_raw_object_anchors(file, &groups, &point_map, graph_ref.as_ref());
+    let saved_viewport = if graph_mode {
+        collect_saved_viewport(file, &groups)
+    } else {
+        None
+    };
+    let pi_mode = if graph_mode {
+        saved_viewport.is_some() || function_uses_pi_scale(file, &groups)
+    } else {
+        false
+    };
+    let function_plot_domain = if graph_mode {
+        collect_function_plot_domain(file, &groups)
+    } else {
+        None
+    };
+    let function_plots = if graph_mode {
+        collect_function_plots(file, &groups, &graph_ref)
+    } else {
+        Vec::new()
+    };
+    let has_function_plots = !function_plots.is_empty();
+    let has_coordinate_objects = groups
+        .iter()
+        .any(|group| matches!(group.header.class_id & 0xffff, 69 | 97));
+    let has_iteration_helpers = groups
+        .iter()
+        .any(|group| matches!(group.header.class_id & 0xffff, 76 | 77 | 89));
+    let large_non_graph = !graph_mode && file.records.len() > 10_000;
+
+    let polylines = collect_line_shapes(
+        file,
+        &groups,
+        &raw_anchors,
+        &[2],
+        !graph_mode && !large_non_graph,
+    );
+    let derived_segments = if large_non_graph {
+        collect_derived_segments(file, &groups, &point_map, &[24])
+    } else {
+        Vec::new()
+    };
+    let mut rotational_iteration_lines =
+        collect_rotational_iteration_lines(file, &groups, &raw_anchors);
+    let measurements = if graph_mode {
+        collect_line_shapes(file, &groups, &raw_anchors, &[58], false)
+    } else {
+        Vec::new()
+    };
+    let coordinate_traces = if graph_mode {
+        collect_coordinate_traces(file, &groups, &graph_ref)
+    } else {
+        Vec::new()
+    };
+    let axes = if graph_mode {
+        collect_line_shapes(file, &groups, &raw_anchors, &[61], false)
+    } else {
+        Vec::new()
+    };
+    let iteration_polygon_indices: BTreeSet<usize> = groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 89)
+        .filter_map(|group| find_indexed_path(file, group))
+        .flat_map(|path| path.refs)
+        .filter_map(|obj_ref| {
+            let index = obj_ref.checked_sub(1)?;
+            let group = groups.get(index)?;
+            ((group.header.class_id & 0xffff) == 8).then_some(index)
+        })
+        .collect();
+    let polygons = collect_polygon_shapes(file, &groups, &raw_anchors, &[8])
+        .into_iter()
+        .enumerate()
+        .filter_map(|(ordinal, polygon)| {
+            let group_index = groups
+                .iter()
+                .enumerate()
+                .filter(|(_, group)| (group.header.class_id & 0xffff) == 8)
+                .nth(ordinal)
+                .map(|(index, _)| index)?;
+            (!iteration_polygon_indices.contains(&group_index)).then_some(polygon)
+        })
+        .collect::<Vec<_>>();
+    let circles = collect_circle_shapes(file, &groups, &raw_anchors);
+    let mut transformed_circles = collect_transformed_circle_shapes(file, &groups, &raw_anchors);
+    let mut reflected_circles = collect_reflected_circle_shapes(file, &groups, &raw_anchors);
+    let mut transformed_polygons = collect_transformed_polygon_shapes(file, &groups, &raw_anchors);
+    let mut reflected_polygons = collect_reflected_polygon_shapes(file, &groups, &raw_anchors);
+    let (iteration_lines, iteration_polygons) = collect_iteration_shapes(file, &groups, &circles);
+    let synthetic_axes = if graph_mode && has_function_plots && axes.is_empty() {
+        synthesize_function_axes(
+            &function_plots,
+            function_plot_domain,
+            saved_viewport,
+            &graph_ref,
+        )
+    } else {
+        Vec::new()
+    };
+    let mut labels = collect_labels(
+        file,
+        &groups,
+        &raw_anchors,
+        graph_mode,
+        !has_function_plots && !has_coordinate_objects,
+    );
+    if has_coordinate_objects || has_iteration_helpers {
+        labels.extend(collect_coordinate_labels(file, &groups));
+    }
+    labels.extend(collect_polygon_parameter_labels(
+        file,
+        &groups,
+        &raw_anchors,
+    ));
+    labels.extend(collect_segment_parameter_labels(file, &groups));
+    labels.extend(collect_circle_parameter_labels(file, &groups, &raw_anchors));
+    labels.extend(compute_iteration_labels(file, &groups, &circles));
+    if graph_mode && has_function_plots {
+        labels.extend(synthesize_function_labels(
+            file,
+            &groups,
+            &function_plots,
+            saved_viewport,
+            &graph_ref,
+        ));
+    }
+
+    if graph_mode
+        && let (Some(circle), Some(formula_index), Some(transform)) = (
+            circles.first(),
+            labels.iter().position(|label| label.text.contains("AB:")),
+            graph_ref.as_ref(),
+        )
+    {
+        let circumference = 2.0
+            * std::f64::consts::PI
+            * distance_world(&circle.center, &circle.radius_point, &graph_ref);
+        let anchor = PointRecord {
+            x: labels[formula_index].anchor.x,
+            y: labels[formula_index].anchor.y - 0.9 * transform.raw_per_unit,
+        };
+        labels.insert(
+            formula_index,
+            TextLabel {
+                anchor,
+                text: format!("AB perimeter = {:.2} cm", circumference),
+                color: [30, 30, 30, 255],
+                binding: None,
+                screen_space: false,
+            },
+        );
+    }
+
+    let (visible_points, group_to_point_index) =
+        collect_visible_points(file, &groups, &point_map, &raw_anchors, &graph_ref);
+    let derived_iteration_points =
+        collect_point_iteration_points(file, &groups, &raw_anchors, &group_to_point_index);
+    remap_label_bindings(&mut labels, &group_to_point_index);
+    let circle_group_to_index = groups
+        .iter()
+        .enumerate()
+        .filter(|(_, group)| (group.header.class_id & 0xffff) == 3)
+        .enumerate()
+        .fold(
+            vec![None; groups.len()],
+            |mut acc, (shape_index, (group_index, _))| {
+                acc[group_index] = Some(shape_index);
+                acc
+            },
+        );
+    let polygon_group_to_index = groups
+        .iter()
+        .enumerate()
+        .filter(|(index, group)| {
+            (group.header.class_id & 0xffff) == 8 && !iteration_polygon_indices.contains(index)
+        })
+        .enumerate()
+        .fold(
+            vec![None; groups.len()],
+            |mut acc, (shape_index, (group_index, _))| {
+                acc[group_index] = Some(shape_index);
+                acc
+            },
+        );
+    remap_circle_bindings(
+        &mut transformed_circles,
+        &group_to_point_index,
+        &circle_group_to_index,
+    );
+    remap_circle_bindings(
+        &mut reflected_circles,
+        &group_to_point_index,
+        &circle_group_to_index,
+    );
+    remap_polygon_bindings(
+        &mut transformed_polygons,
+        &group_to_point_index,
+        &polygon_group_to_index,
+    );
+    remap_polygon_bindings(
+        &mut reflected_polygons,
+        &group_to_point_index,
+        &polygon_group_to_index,
+    );
+    remap_line_bindings(&mut rotational_iteration_lines, &group_to_point_index);
+
+    let world_points = visible_points
+        .iter()
+        .chain(derived_iteration_points.iter())
+        .map(|point| ScenePoint {
+            position: to_world(&point.position, &graph_ref),
+            constraint: match &point.constraint {
+                ScenePointConstraint::Free => ScenePointConstraint::Free,
+                ScenePointConstraint::Offset {
+                    origin_index,
+                    dx,
+                    dy,
+                } => {
+                    let (dx, dy) = if let Some(transform) = &graph_ref {
+                        (dx / transform.raw_per_unit, -dy / transform.raw_per_unit)
+                    } else {
+                        (*dx, *dy)
+                    };
+                    ScenePointConstraint::Offset {
+                        origin_index: *origin_index,
+                        dx,
+                        dy,
+                    }
+                }
+                ScenePointConstraint::OnSegment {
+                    start_index,
+                    end_index,
+                    t,
+                } => ScenePointConstraint::OnSegment {
+                    start_index: *start_index,
+                    end_index: *end_index,
+                    t: *t,
+                },
+                ScenePointConstraint::OnPolyline {
+                    function_key,
+                    points,
+                    segment_index,
+                    t,
+                } => ScenePointConstraint::OnPolyline {
+                    function_key: *function_key,
+                    points: points
+                        .iter()
+                        .map(|point| to_world(point, &graph_ref))
+                        .collect(),
+                    segment_index: *segment_index,
+                    t: *t,
+                },
+                ScenePointConstraint::OnPolygonBoundary {
+                    vertex_indices,
+                    edge_index,
+                    t,
+                } => ScenePointConstraint::OnPolygonBoundary {
+                    vertex_indices: vertex_indices.clone(),
+                    edge_index: *edge_index,
+                    t: *t,
+                },
+                ScenePointConstraint::OnCircle {
+                    center_index,
+                    radius_index,
+                    unit_x,
+                    unit_y,
+                } => ScenePointConstraint::OnCircle {
+                    center_index: *center_index,
+                    radius_index: *radius_index,
+                    unit_x: *unit_x,
+                    unit_y: if graph_ref.is_some() {
+                        *unit_y
+                    } else {
+                        -*unit_y
+                    },
+                },
+            },
+            binding: point.binding.clone(),
+        })
+        .collect::<Vec<_>>();
+
+    let world_point_positions = world_points
+        .iter()
+        .map(|point| point.position.clone())
+        .collect::<Vec<_>>();
+
+    let mut bounds = collect_bounds(
+        &graph_ref,
+        &polylines,
+        &measurements,
+        &axes,
+        &polygons,
+        &circles
+            .iter()
+            .chain(transformed_circles.iter())
+            .chain(reflected_circles.iter())
+            .cloned()
+            .collect::<Vec<_>>(),
+        &labels,
+        &world_point_positions,
+    );
+    include_line_bounds(&mut bounds, &function_plots, &graph_ref);
+    include_line_bounds(&mut bounds, &synthetic_axes, &graph_ref);
+    let use_saved_viewport = saved_viewport
+        .filter(|viewport| bounds_within(viewport, &bounds))
+        .is_some();
+    if let Some(viewport) = saved_viewport.filter(|_| use_saved_viewport) {
+        bounds = viewport;
+    } else {
+        if let Some((domain_min_x, domain_max_x)) = function_plot_domain {
+            bounds.min_x = bounds.min_x.min(domain_min_x);
+            bounds.max_x = bounds.max_x.max(domain_max_x);
+            bounds.min_y = bounds.min_y.min(0.0);
+            bounds.max_y = bounds.max_y.max(0.0);
+        }
+        expand_bounds(&mut bounds);
+    }
+
+    let mut parameters = if graph_mode {
+        collect_scene_parameters(file, &groups, &labels)
+    } else {
+        Vec::new()
+    };
+    parameters.extend(collect_non_graph_parameters(file, &groups, &mut labels));
+    let functions = if graph_mode {
+        collect_scene_functions(
+            file,
+            &groups,
+            &labels,
+            &world_points,
+            polylines.len() + derived_segments.len() + measurements.len() + axes.len(),
+        )
+    } else {
+        Vec::new()
+    };
+
+    let raw_lines = dedupe_line_shapes(
+        rotational_iteration_lines
+            .into_iter()
+            .chain(polylines)
+            .into_iter()
+            .chain(derived_segments)
+            .chain(measurements)
+            .chain(coordinate_traces)
+            .chain(axes)
+            .chain(function_plots)
+            .chain(synthetic_axes)
+            .chain(iteration_lines)
+            .collect(),
+    );
+
+    Scene {
+        graph_mode,
+        pi_mode,
+        saved_viewport: use_saved_viewport,
+        y_up: graph_mode,
+        origin: graph_ref
+            .as_ref()
+            .map(|transform| to_world(&transform.origin_raw, &graph_ref)),
+        bounds,
+        lines: raw_lines
+            .into_iter()
+            .map(|line| LineShape {
+                points: line
+                    .points
+                    .into_iter()
+                    .map(|point| to_world(&point, &graph_ref))
+                    .collect(),
+                color: line.color,
+                dashed: line.dashed,
+                binding: line.binding,
+            })
+            .collect(),
+        polygons: polygons
+            .into_iter()
+            .chain(transformed_polygons)
+            .chain(reflected_polygons)
+            .chain(iteration_polygons)
+            .map(|polygon| PolygonShape {
+                points: polygon
+                    .points
+                    .into_iter()
+                    .map(|point| to_world(&point, &graph_ref))
+                    .collect(),
+                color: polygon.color,
+                binding: polygon.binding,
+            })
+            .collect(),
+        circles: circles
+            .into_iter()
+            .chain(transformed_circles)
+            .chain(reflected_circles)
+            .map(|circle| SceneCircle {
+                center: to_world(&circle.center, &graph_ref),
+                radius_point: to_world(&circle.radius_point, &graph_ref),
+                color: circle.color,
+                binding: circle.binding,
+            })
+            .collect(),
+        labels: labels
+            .into_iter()
+            .map(|label| TextLabel {
+                anchor: if label.screen_space {
+                    label.anchor
+                } else {
+                    to_world(&label.anchor, &graph_ref)
+                },
+                text: label.text,
+                color: label.color,
+                binding: label.binding,
+                screen_space: label.screen_space,
+            })
+            .collect(),
+        points: world_points,
+        parameters,
+        functions,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::format::GspFile;
+
+    #[test]
+    fn builds_function_plot_for_f_gsp() {
+        let data = include_bytes!("../../../f.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert!(scene.graph_mode);
+        assert!(
+            scene.lines.iter().any(|line| {
+                let min_x = line
+                    .points
+                    .iter()
+                    .map(|point| point.x)
+                    .fold(f64::INFINITY, f64::min);
+                let max_x = line
+                    .points
+                    .iter()
+                    .map(|point| point.x)
+                    .fold(f64::NEG_INFINITY, f64::max);
+                min_x <= 0.1 && max_x > 30.0
+            }),
+            "expected a non-degenerate function plot spanning the graph domain"
+        );
+        assert!(scene.bounds.min_x < -30.0);
+        assert!(scene.bounds.max_y > 100.0);
+        assert_eq!(scene.labels.len(), 1);
+        assert_eq!(
+            scene.labels[0].text,
+            "f(x) = |x| + √x + ln(x) + log(x) + sgn(x) + round(x) + trunc(x)"
+        );
+    }
+
+    #[test]
+    fn preserves_constrained_points_in_edge_gsp() {
+        let data = include_bytes!("../../../edge.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.circles.len(), 2);
+        assert_eq!(scene.points.len(), 11);
+        assert!(scene.points.iter().any(|point| {
+            matches!(
+                point.constraint,
+                ScenePointConstraint::OnCircle {
+                    center_index: 0,
+                    radius_index: 1,
+                    ..
+                }
+            )
+        }));
+        assert!(scene.points.iter().any(|point| {
+            matches!(
+                point.constraint,
+                ScenePointConstraint::OnPolygonBoundary {
+                    ref vertex_indices,
+                    ..
+                } if vertex_indices == &vec![2, 6, 3, 4]
+            )
+        }));
+        assert!(scene.points.iter().any(|point| {
+            (point.position.x + 9.17159).abs() < 0.01 && (point.position.y - 5.598877).abs() < 0.01
+        }));
+        assert!(scene.points.iter().any(|point| {
+            (point.position.x + 4.956433).abs() < 0.01 && (point.position.y - 1.163518).abs() < 0.01
+        }));
+        assert!(
+            scene.points.iter().any(|point| {
+                matches!(point.constraint, ScenePointConstraint::OnPolyline { .. })
+            })
+        );
+        assert_eq!(
+            scene
+                .labels
+                .iter()
+                .map(|label| label.text.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "a = 3.00",
+                "b = 1.00",
+                "f(x) = x + a*sin(x) + b",
+                "f'(x) = 1 + a*cos(x)",
+            ]
+        );
+    }
+
+    #[test]
+    fn preserves_translated_points_in_point_translation_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/point_translation.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(
+            scene.points.len(),
+            2,
+            "expected base point and translated point"
+        );
+        let origin = scene
+            .points
+            .iter()
+            .find(|point| matches!(point.constraint, ScenePointConstraint::Free))
+            .expect("expected free origin point");
+        let translated = scene
+            .points
+            .iter()
+            .find(|point| matches!(point.constraint, ScenePointConstraint::Offset { .. }))
+            .expect("expected translated offset point");
+
+        match translated.constraint {
+            ScenePointConstraint::Offset {
+                origin_index,
+                dx,
+                dy,
+            } => {
+                assert_eq!(origin_index, 0);
+                assert!(
+                    dx.abs() < 0.001,
+                    "expected 90-degree translation to keep x constant, got dx={dx}"
+                );
+                assert!(
+                    dy < 0.0,
+                    "expected upward translation in raw coordinates, got dy={dy}"
+                );
+                assert!(
+                    (translated.position.x - (origin.position.x + dx)).abs() < 0.001
+                        && (translated.position.y - (origin.position.y + dy)).abs() < 0.001,
+                    "expected translated point to preserve offset from origin: origin={:?}, translated={:?}",
+                    origin.position,
+                    translated.position
+                );
+            }
+            _ => panic!("expected offset constraint"),
+        }
+    }
+
+    #[test]
+    fn preserves_polygon_in_poly_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/poly.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.polygons.len(), 1, "expected a single polygon");
+        assert_eq!(
+            scene.polygons[0].points.len(),
+            4,
+            "expected polygon to keep its four vertices"
+        );
+        assert_eq!(
+            scene.polygons[0].color,
+            [255, 128, 0, 127],
+            "expected polygon fill opacity from source style metadata"
+        );
+        assert_eq!(scene.points.len(), 4, "expected four visible points");
+        assert!(
+            scene
+                .points
+                .iter()
+                .all(|point| matches!(point.constraint, ScenePointConstraint::Free)),
+            "expected polygon vertices to stay free points"
+        );
+    }
+
+    #[test]
+    fn preserves_polygon_boundary_point_in_poly_point_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/poly_point.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.polygons.len(), 1, "expected a single polygon");
+        assert_eq!(
+            scene.points.len(),
+            5,
+            "expected four vertices and one constrained point"
+        );
+        assert_eq!(
+            scene
+                .points
+                .iter()
+                .filter(|point| matches!(point.constraint, ScenePointConstraint::Free))
+                .count(),
+            4,
+            "expected four free polygon vertices"
+        );
+        assert!(scene.points.iter().any(|point| {
+            matches!(
+                point.constraint,
+                ScenePointConstraint::OnPolygonBoundary {
+                    ref vertex_indices,
+                    edge_index: 2,
+                    t,
+                } if vertex_indices == &vec![0, 1, 2, 3] && (t - 0.4450450665338869).abs() < 0.001
+            )
+        }));
+        assert!(scene.points.iter().any(|point| {
+            (point.position.x - 487.23).abs() < 0.05 && (point.position.y - 262.28).abs() < 0.05
+        }));
+    }
+
+    #[test]
+    fn preserves_polygon_labels_in_poly_point_with_val_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/poly_point_with_val.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.polygons.len(), 1, "expected a single polygon");
+        assert_eq!(
+            scene.points.len(),
+            5,
+            "expected four vertices and one constrained point"
+        );
+        let texts = scene
+            .labels
+            .iter()
+            .map(|label| label.text.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            texts.contains(&"A"),
+            "expected point label A, got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"B"),
+            "expected point label B, got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"C"),
+            "expected point label C, got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"D"),
+            "expected point label D, got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"E"),
+            "expected constrained point label E, got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"E在ABCD上的t值 = 0.58"),
+            "expected polygon parameter label, got {texts:?}"
+        );
+    }
+
+    #[test]
+    fn preserves_segment_parameter_label_in_segment_point_value_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/segment_point_value.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.lines.len(), 1, "expected one segment");
+        assert_eq!(
+            scene.points.len(),
+            3,
+            "expected two endpoints and one constrained point"
+        );
+        let texts = scene
+            .labels
+            .iter()
+            .map(|label| label.text.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            texts.contains(&"A"),
+            "expected point label A, got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"B"),
+            "expected point label B, got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"C"),
+            "expected point label C, got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"C在AB上的t值 = 0.51"),
+            "expected segment parameter label, got {texts:?}"
+        );
+    }
+
+    #[test]
+    fn preserves_point_segment_value_segment_point_gsp() {
+        let data =
+            include_bytes!("../../tests/fixtures/gsp/static/point_segment_value_segment_point.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.lines.len(), 2, "expected two segments");
+        let texts = scene
+            .labels
+            .iter()
+            .map(|label| label.text.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            texts.contains(&"C在AB上的t值 = 0.72"),
+            "expected measured segment parameter label, got {texts:?}"
+        );
+        assert_eq!(
+            scene.parameters.len(),
+            0,
+            "expected derived value, not slider parameter"
+        );
+        assert_eq!(
+            scene
+                .points
+                .iter()
+                .filter(|point| matches!(point.constraint, ScenePointConstraint::OnSegment { .. }))
+                .count(),
+            2,
+            "expected measured point plus derived segment point"
+        );
+        assert!(
+            scene
+                .points
+                .iter()
+                .any(|point| matches!(point.constraint, ScenePointConstraint::OnCircle { .. })),
+            "expected derived circle point"
+        );
+        assert!(
+            scene.points.iter().any(|point| matches!(
+                point.constraint,
+                ScenePointConstraint::OnPolygonBoundary { .. }
+            )),
+            "expected derived polygon point"
+        );
+    }
+
+    #[test]
+    fn preserves_circle_parameter_label_in_circle_point_value_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/circle_point_value.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.circles.len(), 1, "expected one circle");
+        assert_eq!(
+            scene.points.len(),
+            3,
+            "expected center, radius point, and constrained point"
+        );
+        let texts = scene
+            .labels
+            .iter()
+            .map(|label| label.text.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            texts.contains(&"A"),
+            "expected point label A, got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"B"),
+            "expected point label B, got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"C"),
+            "expected point label C, got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"C在⊙AB上的值 = 0.38"),
+            "expected circle parameter label, got {texts:?}"
+        );
+    }
+
+    #[test]
+    fn preserves_parameter_controlled_point_on_segment_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/point_on_segment.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.lines.len(), 1, "expected one segment");
+        assert_eq!(
+            scene.points.len(),
+            3,
+            "expected endpoints plus controlled point"
+        );
+        assert_eq!(scene.parameters.len(), 1, "expected t parameter");
+        assert_eq!(scene.parameters[0].name, "t₁");
+        assert!((scene.parameters[0].value - 0.01).abs() < 0.001);
+        assert!(scene.points.iter().any(|point| matches!(
+            point.constraint,
+            ScenePointConstraint::OnSegment { t, .. } if (t - 0.01).abs() < 0.001
+        )));
+    }
+
+    #[test]
+    fn preserves_parameter_controlled_point_on_poly_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/point_on_poly.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.polygons.len(), 1, "expected one polygon");
+        assert_eq!(
+            scene.points.len(),
+            4,
+            "expected polygon vertices plus controlled point"
+        );
+        assert_eq!(scene.parameters.len(), 1, "expected t parameter");
+        assert_eq!(scene.parameters[0].name, "t₁");
+        assert!(scene.points.iter().any(|point| matches!(
+            point.constraint,
+            ScenePointConstraint::OnPolygonBoundary { .. }
+        )));
+    }
+
+    #[test]
+    fn preserves_parameter_controlled_point_on_circle_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/point_on_circle.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.circles.len(), 1, "expected one circle");
+        assert_eq!(
+            scene.points.len(),
+            3,
+            "expected circle points plus controlled point"
+        );
+        assert_eq!(scene.parameters.len(), 1, "expected t parameter");
+        assert_eq!(scene.parameters[0].name, "t₁");
+        assert!(
+            scene
+                .points
+                .iter()
+                .any(|point| matches!(point.constraint, ScenePointConstraint::OnCircle { .. }))
+        );
+    }
+
+    #[test]
+    fn preserves_coordinate_point_in_cood_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/cood.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert!(scene.graph_mode, "expected graph scene");
+        assert_eq!(scene.parameters.len(), 1, "expected t parameter");
+        assert_eq!(scene.parameters[0].name, "t₁");
+        assert!((scene.parameters[0].value - 0.01).abs() < 0.001);
+        assert!(
+            scene.points.iter().any(|point| {
+                point.binding.as_ref().is_some_and(|binding| {
+                    matches!(
+                        binding,
+                        ScenePointBinding::Coordinate { name, .. } if name == "t₁"
+                    )
+                })
+            }),
+            "expected coordinate-controlled point"
+        );
+        assert!(scene.points.iter().any(|point| {
+            (point.position.x - 0.01).abs() < 0.001 && (point.position.y - 1.01).abs() < 0.001
+        }));
+    }
+
+    #[test]
+    fn preserves_coordinate_trace_in_cood_trace_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/cood-trace.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert!(scene.graph_mode, "expected graph scene");
+        assert_eq!(scene.parameters.len(), 1, "expected t parameter");
+        assert_eq!(scene.parameters[0].name, "t₁");
+        assert!(
+            scene.lines.iter().any(|line| {
+                line.points.len() > 100
+                    && line
+                        .points
+                        .first()
+                        .is_some_and(|point| point.x.abs() < 0.001)
+                    && line
+                        .points
+                        .first()
+                        .is_some_and(|point| (point.y - 1.0).abs() < 0.001)
+                    && line
+                        .points
+                        .last()
+                        .is_some_and(|point| (point.x - 1.0).abs() < 0.001)
+                    && line
+                        .points
+                        .last()
+                        .is_some_and(|point| (point.y - 2.0).abs() < 0.001)
+            }),
+            "expected sampled coordinate trace line"
+        );
+    }
+
+    #[test]
+    fn preserves_scaled_point_and_single_parameter_label_in_scale_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/scale.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(
+            scene.circles.len(),
+            2,
+            "expected original and scaled circle"
+        );
+        assert_eq!(
+            scene.polygons.len(),
+            2,
+            "expected original and scaled polygon"
+        );
+        let texts = scene
+            .labels
+            .iter()
+            .map(|label| label.text.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            texts.contains(&"A"),
+            "expected point label A, got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"B"),
+            "expected point label B, got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"C"),
+            "expected point label C, got {texts:?}"
+        );
+        assert!(
+            scene.points.len() >= 3,
+            "expected source point, center point, and transformed point"
+        );
+        assert!(scene.points.iter().any(|point| matches!(
+            point.binding,
+            Some(ScenePointBinding::Scale { factor, .. }) if (factor - 1.0 / 3.0).abs() < 0.0001
+        )));
+    }
+
+    #[test]
+    fn preserves_reflection_point_circle_and_polygon_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/reflection.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(
+            scene.circles.len(),
+            2,
+            "expected original and reflected circle"
+        );
+        assert_eq!(
+            scene.polygons.len(),
+            2,
+            "expected original and reflected polygon"
+        );
+        assert!(
+            scene
+                .points
+                .iter()
+                .any(|point| matches!(point.binding, Some(ScenePointBinding::Reflect { .. })))
+        );
+        assert!(scene.circles.iter().any(|circle| matches!(
+            circle.binding,
+            Some(crate::runtime::scene::ShapeBinding::ReflectCircle { .. })
+        )));
+        assert!(scene.polygons.iter().any(|polygon| matches!(
+            polygon.binding,
+            Some(crate::runtime::scene::ShapeBinding::ReflectPolygon { .. })
+        )));
+    }
+
+    #[test]
+    fn preserves_point_iteration_in_dot_iteration_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/点迭代.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(
+            scene.points.len(),
+            5,
+            "expected seed point, translated point, and three iterated points"
+        );
+        assert_eq!(
+            scene
+                .points
+                .iter()
+                .filter(|point| matches!(point.constraint, ScenePointConstraint::Offset { .. }))
+                .count(),
+            4,
+            "expected translated point plus chained iterated offsets"
+        );
+    }
+
+    #[test]
+    fn preserves_parameterized_point_iteration_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/点参数迭代.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(
+            scene.points.len(),
+            8,
+            "expected seed point plus seven iterated points"
+        );
+        assert!(
+            scene.labels.iter().any(|label| label.text == "n = 6.00"),
+            "expected parameter label for n"
+        );
+    }
+
+    #[test]
+    fn preserves_iterated_regular_polygon_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/迭代正多边形.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.lines.len(), 5, "expected pentagon edges");
+        assert!(
+            scene.labels.iter().any(|label| label.text == "n = 5.00"),
+            "expected parameter label for n"
+        );
+        assert!(
+            scene
+                .labels
+                .iter()
+                .any(|label| label.text == "n - 1 = 4.00"),
+            "expected derived iteration count label"
+        );
+        assert!(
+            scene
+                .labels
+                .iter()
+                .any(|label| label.text.contains("360°") && label.text.contains("72.00°")),
+            "expected regular polygon angle label"
+        );
+    }
+
+    #[test]
+    fn preserves_point_label_in_point_label_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/point_label.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert!(
+            scene.labels.iter().any(|label| label.text == "A"),
+            "expected point label A, got {:?}",
+            scene
+                .labels
+                .iter()
+                .map(|label| &label.text)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn preserves_point_and_segment_labels_in_segment_label_gsp() {
+        let data = include_bytes!("../../tests/fixtures/gsp/static/segment_label.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        let texts = scene
+            .labels
+            .iter()
+            .map(|label| label.text.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            texts.contains(&"A"),
+            "expected point label A, got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"B"),
+            "expected point label B, got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"j"),
+            "expected segment label j, got {texts:?}"
+        );
+    }
+
+    #[test]
+    fn keeps_control_labels_in_non_graph_sample() {
+        let data = include_bytes!("../../../Samples/个人专栏/潘建平作品/加油潘建平老师.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert!(
+            scene.labels.iter().any(|label| label.text.contains("单价")),
+            "expected UI text label from rich text payload, got {:?}",
+            scene
+                .labels
+                .iter()
+                .map(|label| label.text.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
+}

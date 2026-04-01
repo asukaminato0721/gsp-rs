@@ -1,6 +1,32 @@
+// @ts-check
+
 (function() {
   const modules = window.GspViewerModules || (window.GspViewerModules = {});
 
+  function lerpPoint(start, end, t) {
+    return {
+      x: start.x + (end.x - start.x) * t,
+      y: start.y + (end.y - start.y) * t,
+    };
+  }
+
+  function projectToSegment(point, start, end) {
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const lengthSquared = dx * dx + dy * dy;
+    if (lengthSquared <= 1e-9) {
+      return null;
+    }
+    const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared));
+    const projected = lerpPoint(start, end, t);
+    return {
+      t,
+      projected,
+      distanceSquared: (point.x - projected.x) ** 2 + (point.y - projected.y) ** 2,
+    };
+  }
+
+  /** @param {ViewerEnv} env */
   function getViewBounds(env) {
     const spanX = env.baseSpanX / env.view.zoom;
     const spanY = env.baseSpanY / env.view.zoom;
@@ -14,6 +40,11 @@
     };
   }
 
+  /**
+   * @param {ViewerEnv | null} env
+   * @param {any} constraint
+   * @param {(index: number) => Point} resolveFn
+   */
   function resolveConstrainedPoint(env, constraint, resolveFn) {
     if (!constraint) return null;
     if (constraint.kind === "offset") {
@@ -23,10 +54,7 @@
     if (constraint.kind === "segment") {
       const start = resolveFn(constraint.startIndex);
       const end = resolveFn(constraint.endIndex);
-      return {
-        x: start.x + (end.x - start.x) * constraint.t,
-        y: start.y + (end.y - start.y) * constraint.t,
-      };
+      return lerpPoint(start, end, constraint.t);
     }
     if (constraint.kind === "polyline") {
       const count = constraint.points.length;
@@ -34,20 +62,14 @@
       const segmentIndex = Math.max(0, Math.min(count - 2, constraint.segmentIndex));
       const start = constraint.points[segmentIndex];
       const end = constraint.points[segmentIndex + 1];
-      return {
-        x: start.x + (end.x - start.x) * constraint.t,
-        y: start.y + (end.y - start.y) * constraint.t,
-      };
+      return lerpPoint(start, end, constraint.t);
     }
     if (constraint.kind === "polygon-boundary") {
       const count = constraint.vertexIndices.length;
       if (count < 2) return null;
       const start = resolveFn(constraint.vertexIndices[((constraint.edgeIndex % count) + count) % count]);
       const end = resolveFn(constraint.vertexIndices[(constraint.edgeIndex + 1 + count) % count]);
-      return {
-        x: start.x + (end.x - start.x) * constraint.t,
-        y: start.y + (end.y - start.y) * constraint.t,
-      };
+      return lerpPoint(start, end, constraint.t);
     }
     if (constraint.kind === "circle") {
       const center = resolveFn(constraint.centerIndex);
@@ -61,6 +83,7 @@
     return null;
   }
 
+  /** @param {ViewerEnv} env */
   function resolveScenePoint(env, index) {
     const point = env.currentScene().points[index];
     if (!point) return { x: 0, y: 0 };
@@ -68,6 +91,7 @@
     return resolved || point;
   }
 
+  /** @param {ViewerEnv} env */
   function resolvePoint(env, handle) {
     if (typeof handle.pointIndex === "number") {
       const point = resolveScenePoint(env, handle.pointIndex);
@@ -86,13 +110,14 @@
       const start = resolvePoint(env, line.points[segmentIndex]);
       const end = resolvePoint(env, line.points[segmentIndex + 1]);
       return {
-        x: start.x + (end.x - start.x) * t + (handle.dx || 0),
-        y: start.y + (end.y - start.y) * t + (handle.dy || 0),
+        x: lerpPoint(start, end, t).x + (handle.dx || 0),
+        y: lerpPoint(start, end, t).y + (handle.dy || 0),
       };
     }
     return handle;
   }
 
+  /** @param {ViewerEnv} env */
   function resolveAnchorBase(env, handle) {
     if (typeof handle.pointIndex === "number") {
       return resolveScenePoint(env, handle.pointIndex);
@@ -106,14 +131,12 @@
       const t = typeof handle.t === "number" ? handle.t : 0.5;
       const start = resolvePoint(env, line.points[segmentIndex]);
       const end = resolvePoint(env, line.points[segmentIndex + 1]);
-      return {
-        x: start.x + (end.x - start.x) * t,
-        y: start.y + (end.y - start.y) * t,
-      };
+      return lerpPoint(start, end, t);
     }
     return handle;
   }
 
+  /** @param {ViewerEnv} env */
   function toScreen(env, point) {
     const usableWidth = Math.max(1, env.sourceScene.width - env.margin * 2);
     const usableHeight = Math.max(1, env.sourceScene.height - env.margin * 2);
@@ -128,6 +151,7 @@
     };
   }
 
+  /** @param {ViewerEnv} env */
   function toWorld(env, screenX, screenY) {
     const usableWidth = Math.max(1, env.sourceScene.width - env.margin * 2);
     const usableHeight = Math.max(1, env.sourceScene.height - env.margin * 2);
@@ -142,6 +166,7 @@
     };
   }
 
+  /** @param {ViewerEnv} env */
   function getCanvasCoords(env, event) {
     const rect = env.canvas.getBoundingClientRect();
     return {
@@ -160,6 +185,7 @@
     return magnitude * 10;
   }
 
+  /** @param {ViewerEnv} env */
   function drawGrid(env) {
     if (!env.currentScene().graphMode) return;
     const bounds = getViewBounds(env);
@@ -277,6 +303,8 @@
     toWorld,
     getCanvasCoords,
     chooseGridStep,
+    lerpPoint,
+    projectToSegment,
     drawGrid,
   };
 })();
