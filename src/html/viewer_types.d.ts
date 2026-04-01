@@ -46,6 +46,14 @@ type SceneData = {
   polygons: any[];
   circles: any[];
   labels: any[];
+  buttons?: Array<{
+    text: string;
+    href: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }>;
   parameters?: any[];
   functions?: any[];
 };

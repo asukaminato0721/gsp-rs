@@ -2,7 +2,8 @@ use crate::format::PointRecord;
 use crate::runtime::functions::{BinaryOp, FunctionExpr, FunctionTerm, UnaryFunction};
 use crate::runtime::geometry::darken;
 use crate::runtime::scene::{
-    LineBinding, Scene, ScenePointBinding, ScenePointConstraint, ShapeBinding, TextLabelBinding,
+    LineBinding, Scene, SceneButton, ScenePointBinding, ScenePointConstraint, ShapeBinding,
+    TextLabelBinding,
 };
 use serde::Serialize;
 
@@ -27,6 +28,7 @@ struct SceneJson {
     circles: Vec<CircleJson>,
     labels: Vec<LabelJson>,
     points: Vec<ScenePointJson>,
+    buttons: Vec<ButtonJson>,
     parameters: Vec<ParameterJson>,
     functions: Vec<FunctionJson>,
 }
@@ -55,6 +57,7 @@ impl SceneJson {
                 .iter()
                 .map(ScenePointJson::from_scene_point)
                 .collect(),
+            buttons: scene.buttons.iter().map(ButtonJson::from_button).collect(),
             parameters: scene
                 .parameters
                 .iter()
@@ -65,6 +68,30 @@ impl SceneJson {
                 .iter()
                 .map(FunctionJson::from_function)
                 .collect(),
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ButtonJson {
+    text: String,
+    href: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+impl ButtonJson {
+    fn from_button(button: &SceneButton) -> Self {
+        Self {
+            text: button.text.clone(),
+            href: button.href.clone(),
+            x: button.rect.x,
+            y: button.rect.y,
+            width: button.rect.width,
+            height: button.rect.height,
         }
     }
 }

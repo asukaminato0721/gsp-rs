@@ -52,11 +52,7 @@ pub(super) fn rotate_around(
     }
 }
 
-pub(super) fn scale_around(
-    point: &PointRecord,
-    center: &PointRecord,
-    factor: f64,
-) -> PointRecord {
+pub(super) fn scale_around(point: &PointRecord, center: &PointRecord, factor: f64) -> PointRecord {
     center.clone() + (point.clone() - center.clone()) * factor
 }
 

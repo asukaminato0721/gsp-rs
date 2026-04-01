@@ -44,8 +44,8 @@ use super::functions::{
 };
 use super::geometry::{Bounds, GraphTransform, distance_world, include_line_bounds, to_world};
 use super::scene::{
-    LineShape, PolygonShape, Scene, SceneCircle, SceneParameter, ScenePoint, ScenePointBinding,
-    ScenePointConstraint, TextLabel, TextLabelBinding,
+    LineShape, PolygonShape, Scene, SceneButton, SceneCircle, SceneParameter, ScenePoint,
+    ScenePointBinding, ScenePointConstraint, ScreenRect, TextLabel, TextLabelBinding,
 };
 
 pub(crate) use self::decode::find_indexed_path;
@@ -389,6 +389,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         Vec::new()
     };
     parameters.extend(collect_non_graph_parameters(file, &groups, &mut labels));
+    let buttons = collect_link_buttons(file, &groups);
     let functions = if graph_mode {
         collect_scene_functions(
             file,
@@ -479,9 +480,45 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
             })
             .collect(),
         points: world_points,
+        buttons,
         parameters,
         functions,
     }
+}
+
+fn collect_link_buttons(file: &GspFile, groups: &[ObjectGroup]) -> Vec<SceneButton> {
+    groups
+        .iter()
+        .filter_map(|group| {
+            if (group.header.class_id & 0xffff) != 0 {
+                return None;
+            }
+            if group
+                .records
+                .iter()
+                .any(|record| matches!(record.record_type, 0x0899 | 0x0907))
+            {
+                return None;
+            }
+
+            let href = decode::decode_link_button_url(file, group)?;
+            let text = decode::decode_label_name_raw(file, group)
+                .filter(|label| !label.trim().is_empty())
+                .unwrap_or_else(|| href.clone());
+            let (x, y, width, height) = decode::decode_bbox_rect_raw(file, group)?;
+
+            Some(SceneButton {
+                text,
+                href,
+                rect: ScreenRect {
+                    x,
+                    y,
+                    width,
+                    height,
+                },
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]

@@ -19,6 +19,8 @@
   /** @type {HTMLElement} */
   const parameterControls = /** @type {HTMLElement} */ (document.getElementById("parameter-controls"));
   /** @type {HTMLElement} */
+  const buttonOverlays = /** @type {HTMLElement} */ (document.getElementById("button-overlays"));
+  /** @type {HTMLElement} */
   const coordReadout = /** @type {HTMLElement} */ (document.getElementById("coord-readout"));
   /** @type {HTMLElement} */
   const zoomReadout = /** @type {HTMLElement} */ (document.getElementById("zoom-readout"));
@@ -272,6 +274,26 @@
     updateReadout();
   }
 
+  function renderButtons() {
+    if (!buttonOverlays) {
+      return;
+    }
+    buttonOverlays.replaceChildren();
+    (sourceScene.buttons || []).forEach((buttonDef) => {
+      const anchor = document.createElement("a");
+      anchor.className = "scene-link-button";
+      anchor.href = buttonDef.href;
+      anchor.target = "_blank";
+      anchor.rel = "noreferrer noopener";
+      anchor.textContent = buttonDef.text;
+      anchor.style.left = `${(buttonDef.x / sourceScene.width) * 100}%`;
+      anchor.style.top = `${(buttonDef.y / sourceScene.height) * 100}%`;
+      anchor.style.width = `${(buttonDef.width / sourceScene.width) * 100}%`;
+      anchor.style.height = `${(buttonDef.height / sourceScene.height) * 100}%`;
+      buttonOverlays.append(anchor);
+    });
+  }
+
   function findHitPoint(screenX, screenY) {
     return renderModule.findHitPoint(viewerEnv, screenX, screenY);
   }
@@ -415,5 +437,6 @@
 
   dynamicsModule.syncDynamicScene(viewerEnv);
   dynamicsModule.buildParameterControls(viewerEnv);
+  renderButtons();
   resetView();
 })();

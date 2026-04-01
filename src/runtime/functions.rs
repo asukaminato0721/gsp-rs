@@ -18,8 +18,8 @@ pub(crate) use scene::{collect_scene_functions, collect_scene_parameters, functi
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::decode::{decode_inner_function_expr, extract_inline_function_token};
+    use super::*;
     use crate::format::GspFile;
     use std::collections::BTreeMap;
 

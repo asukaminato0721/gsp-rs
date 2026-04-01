@@ -31,7 +31,9 @@ pub(crate) fn decode_function_expr(
         return Some(FunctionExpr::Identity);
     }
     if let Ok(value) = text.parse::<f64>() {
-        if value == 0.0 && let Some(expr) = decode_inner_function_expr(payload, &parameters) {
+        if value == 0.0
+            && let Some(expr) = decode_inner_function_expr(payload, &parameters)
+        {
             return Some(expr);
         }
         return Some(FunctionExpr::Constant(value));
@@ -228,8 +230,7 @@ fn parse_atomic_term(
         return None;
     }
     if let Some(op) = decode_unary_function(words[*index]) {
-        if *index + 2 < words.len() && words[*index + 1] == 0x000f && words[*index + 2] == 0x000c
-        {
+        if *index + 2 < words.len() && words[*index + 1] == 0x000f && words[*index + 2] == 0x000c {
             *index += 3;
             return Some(FunctionTerm::UnaryX(op));
         }

@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::decode::{
     decode_0907_anchor, decode_group_label_text, decode_label_anchor, decode_label_name,
-    decode_label_name_raw, decode_measurement_value, decode_text_anchor, find_indexed_path,
+    decode_label_name_raw, decode_link_button_url, decode_measurement_value, decode_text_anchor,
+    find_indexed_path,
 };
 use super::points::decode_non_graph_parameter_value_for_group;
 use super::*;
@@ -23,6 +24,9 @@ pub(super) fn collect_labels(
         let kind = group.header.class_id & 0xffff;
         match kind {
             0 | 2 | 15 | 40 | 51 | 62 | 73 => {
+                if kind == 0 && decode_link_button_url(file, group).is_some() {
+                    continue;
+                }
                 let text = decode_group_label_text(file, group).or_else(|| {
                     (!graph_mode
                         && matches!(kind, 0 | 2 | 15)

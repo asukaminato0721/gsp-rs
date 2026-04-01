@@ -16,8 +16,24 @@ pub(crate) struct Scene {
     pub(crate) circles: Vec<SceneCircle>,
     pub(crate) labels: Vec<TextLabel>,
     pub(crate) points: Vec<ScenePoint>,
+    pub(crate) buttons: Vec<SceneButton>,
     pub(crate) parameters: Vec<SceneParameter>,
     pub(crate) functions: Vec<SceneFunction>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SceneButton {
+    pub(crate) text: String,
+    pub(crate) href: String,
+    pub(crate) rect: ScreenRect,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ScreenRect {
+    pub(crate) x: f64,
+    pub(crate) y: f64,
+    pub(crate) width: f64,
+    pub(crate) height: f64,
 }
 
 #[derive(Debug, Clone)]
