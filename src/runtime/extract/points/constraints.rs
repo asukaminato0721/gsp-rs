@@ -7,7 +7,7 @@ use crate::runtime::functions::{
     BinaryOp, FunctionExpr, FunctionTerm, ParsedFunctionExpr, decode_function_expr,
     decode_function_plot_descriptor, evaluate_expr_with_parameters, sample_function_points,
 };
-use crate::runtime::geometry::to_raw_from_world;
+use crate::runtime::geometry::{lerp_point, to_raw_from_world};
 
 pub(crate) struct PointOnSegmentConstraint {
     pub(crate) start_group_index: usize,
@@ -274,7 +274,7 @@ pub(crate) fn decode_parameter_controlled_point(
             let end_group_index = host_path.refs[1].checked_sub(1)?;
             let start = anchors.get(start_group_index)?.clone()?;
             let end = anchors.get(end_group_index)?.clone()?;
-            let position = start.clone() + (end - start) * parameter_value;
+            let position = lerp_point(&start, &end, parameter_value);
             Some(ParameterControlledPoint {
                 position,
                 constraint: RawPointConstraint::Segment(PointOnSegmentConstraint {

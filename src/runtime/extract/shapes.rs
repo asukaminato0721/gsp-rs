@@ -8,7 +8,8 @@ use crate::runtime::functions::{
     decode_function_expr, decode_function_plot_descriptor, evaluate_expr_with_parameters,
 };
 use crate::runtime::geometry::{
-    color_from_style, fill_color_from_styles, has_distinct_points, to_raw_from_world,
+    color_from_style, fill_color_from_styles, has_distinct_points, reflect_across_line,
+    rotate_around, scale_around, to_raw_from_world,
 };
 use crate::runtime::scene::{LineBinding, ShapeBinding};
 
@@ -177,8 +178,8 @@ pub(super) fn collect_transformed_circle_shapes(
             let source_center = anchors.get(source_path.refs[0].checked_sub(1)?)?.clone()?;
             let source_radius = anchors.get(source_path.refs[1].checked_sub(1)?)?.clone()?;
             Some(CircleShape {
-                center: scale_center.clone() + (source_center - scale_center.clone()) * factor,
-                radius_point: scale_center.clone() + (source_radius - scale_center) * factor,
+                center: scale_around(&source_center, &scale_center, factor),
+                radius_point: scale_around(&source_radius, &scale_center, factor),
                 color: color_from_style(source_group.header.style_b),
                 binding: Some(ShapeBinding::ScaleCircle {
                     source_index: path.refs.first()?.checked_sub(1)?,
@@ -216,7 +217,7 @@ pub(super) fn collect_transformed_polygon_shapes(
                 .filter_map(|object_ref| {
                     anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
                 })
-                .map(|point| scale_center.clone() + (point - scale_center.clone()) * factor)
+                .map(|point| scale_around(&point, &scale_center, factor))
                 .collect::<Vec<_>>();
             (points.len() >= 3).then_some(PolygonShape {
                 points,
@@ -255,8 +256,8 @@ pub(super) fn collect_reflected_circle_shapes(
             let source_radius = anchors.get(source_path.refs[1].checked_sub(1)?)?.clone()?;
             let line_start = anchors.get(line_start_group_index)?.clone()?;
             let line_end = anchors.get(line_end_group_index)?.clone()?;
-            let center = reflect_point_across_line(&source_center, &line_start, &line_end)?;
-            let radius_point = reflect_point_across_line(&source_radius, &line_start, &line_end)?;
+            let center = reflect_across_line(&source_center, &line_start, &line_end)?;
+            let radius_point = reflect_across_line(&source_radius, &line_start, &line_end)?;
             Some(CircleShape {
                 center,
                 radius_point,
@@ -296,7 +297,7 @@ pub(super) fn collect_reflected_polygon_shapes(
                 .filter_map(|object_ref| {
                     anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
                 })
-                .filter_map(|point| reflect_point_across_line(&point, &line_start, &line_end))
+                .filter_map(|point| reflect_across_line(&point, &line_start, &line_end))
                 .collect::<Vec<_>>();
             (points.len() >= 3).then_some(PolygonShape {
                 points,
@@ -353,18 +354,8 @@ pub(super) fn collect_rotational_iteration_lines(
                 .map(|payload| read_u32(payload, 16) as usize)
                 .unwrap_or(0);
             let mut lines = Vec::new();
-            let rotate = |point: &PointRecord, step: usize| PointRecord {
-                x: {
-                    let radians = (angle_degrees * step as f64).to_radians();
-                    center.x
-                        + (point.x - center.x) * radians.cos()
-                        + (point.y - center.y) * radians.sin()
-                },
-                y: {
-                    let radians = (angle_degrees * step as f64).to_radians();
-                    center.y - (point.x - center.x) * radians.sin()
-                        + (point.y - center.y) * radians.cos()
-                },
+            let rotate = |point: &PointRecord, step: usize| {
+                rotate_around(point, &center, (angle_degrees * step as f64).to_radians())
             };
             for step in 0..=depth {
                 lines.push(LineShape {

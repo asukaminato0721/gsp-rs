@@ -34,6 +34,48 @@ pub(super) fn to_raw_from_world(point: &PointRecord, graph: &GraphTransform) -> 
     }
 }
 
+pub(super) fn lerp_point(start: &PointRecord, end: &PointRecord, t: f64) -> PointRecord {
+    start.clone() + (end.clone() - start.clone()) * t
+}
+
+pub(super) fn rotate_around(
+    point: &PointRecord,
+    center: &PointRecord,
+    radians: f64,
+) -> PointRecord {
+    let cos = radians.cos();
+    let sin = radians.sin();
+    let delta = point.clone() - center.clone();
+    PointRecord {
+        x: center.x + delta.x * cos + delta.y * sin,
+        y: center.y - delta.x * sin + delta.y * cos,
+    }
+}
+
+pub(super) fn scale_around(
+    point: &PointRecord,
+    center: &PointRecord,
+    factor: f64,
+) -> PointRecord {
+    center.clone() + (point.clone() - center.clone()) * factor
+}
+
+pub(super) fn reflect_across_line(
+    point: &PointRecord,
+    line_start: &PointRecord,
+    line_end: &PointRecord,
+) -> Option<PointRecord> {
+    let line_delta = line_end.clone() - line_start.clone();
+    let len_sq = line_delta.x * line_delta.x + line_delta.y * line_delta.y;
+    if len_sq <= 1e-9 {
+        return None;
+    }
+    let point_delta = point.clone() - line_start.clone();
+    let t = (point_delta.x * line_delta.x + point_delta.y * line_delta.y) / len_sq;
+    let projection = line_start.clone() + line_delta * t;
+    Some(projection.clone() * 2.0 - point.clone())
+}
+
 pub(super) fn read_f32_unaligned(data: &[u8], offset: usize) -> Option<f32> {
     let bytes = data.get(offset..offset + 4)?;
     Some(f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
@@ -128,8 +170,9 @@ pub(crate) fn darken(rgba: [u8; 4], amount: u8) -> [u8; 4] {
 
 pub(super) fn has_distinct_points(points: &[PointRecord]) -> bool {
     points.windows(2).any(|pair| {
-        let dx = pair[0].x - pair[1].x;
-        let dy = pair[0].y - pair[1].y;
+        let delta = pair[0].clone() - pair[1].clone();
+        let dx = delta.x;
+        let dy = delta.y;
         dx.abs() > 1e-6 || dy.abs() > 1e-6
     })
 }

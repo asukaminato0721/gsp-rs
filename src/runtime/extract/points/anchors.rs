@@ -4,6 +4,7 @@ use super::constraints::{
     decode_translated_point_constraint,
 };
 use super::*;
+use crate::runtime::geometry::{lerp_point, reflect_across_line, rotate_around};
 
 pub(crate) fn decode_regular_polygon_vertex_anchor_raw(
     file: &GspFile,
@@ -27,14 +28,7 @@ pub(crate) fn decode_regular_polygon_vertex_anchor_raw(
     if n.abs() < 3.0 {
         return None;
     }
-    let radians = (-360.0 / n).to_radians();
-    let cos = radians.cos();
-    let sin = radians.sin();
-    let delta = source - center.clone();
-    Some(PointRecord {
-        x: center.x + delta.x * cos + delta.y * sin,
-        y: center.y - delta.x * sin + delta.y * cos,
-    })
+    Some(rotate_around(&source, &center, (-360.0 / n).to_radians()))
 }
 
 pub(crate) fn decode_reflection_anchor_raw(
@@ -91,19 +85,7 @@ pub(crate) fn reflect_point_across_line(
     line_start: &PointRecord,
     line_end: &PointRecord,
 ) -> Option<PointRecord> {
-    let dx = line_end.x - line_start.x;
-    let dy = line_end.y - line_start.y;
-    let len_sq = dx * dx + dy * dy;
-    if len_sq <= 1e-9 {
-        return None;
-    }
-    let t = ((point.x - line_start.x) * dx + (point.y - line_start.y) * dy) / len_sq;
-    let proj_x = line_start.x + t * dx;
-    let proj_y = line_start.y + t * dy;
-    Some(PointRecord {
-        x: proj_x * 2.0 - point.x,
-        y: proj_y * 2.0 - point.y,
-    })
+    reflect_across_line(point, line_start, line_end)
 }
 
 pub(crate) fn decode_point_on_ray_anchor_raw(
@@ -225,10 +207,7 @@ pub(crate) fn decode_point_constraint_anchor(
             let start = anchors.get(constraint.start_group_index)?.clone()?;
             let end = anchors.get(constraint.end_group_index)?.clone()?;
 
-            Some(PointRecord {
-                x: start.x + (end.x - start.x) * constraint.t,
-                y: start.y + (end.y - start.y) * constraint.t,
-            })
+            Some(lerp_point(&start, &end, constraint.t))
         }
         RawPointConstraint::Polyline {
             points,
@@ -285,10 +264,7 @@ pub(crate) fn resolve_polygon_boundary_point_raw(
 
     let start = &vertices[edge_index % vertices.len()];
     let end = &vertices[(edge_index + 1) % vertices.len()];
-    Some(PointRecord {
-        x: start.x + (end.x - start.x) * t,
-        y: start.y + (end.y - start.y) * t,
-    })
+    Some(lerp_point(start, end, t))
 }
 
 fn resolve_polyline_point(
@@ -302,8 +278,5 @@ fn resolve_polyline_point(
 
     let start = &points[segment_index.min(points.len() - 2)];
     let end = &points[(segment_index.min(points.len() - 2)) + 1];
-    Some(PointRecord {
-        x: start.x + (end.x - start.x) * t,
-        y: start.y + (end.y - start.y) * t,
-    })
+    Some(lerp_point(start, end, t))
 }
