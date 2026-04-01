@@ -19,6 +19,8 @@
   /** @type {HTMLElement} */
   const parameterControls = /** @type {HTMLElement} */ (document.getElementById("parameter-controls"));
   /** @type {HTMLElement} */
+  const buttonOverlays = /** @type {HTMLElement} */ (document.getElementById("button-overlays"));
+  /** @type {HTMLElement} */
   const coordReadout = /** @type {HTMLElement} */ (document.getElementById("coord-readout"));
   /** @type {HTMLElement} */
   const zoomReadout = /** @type {HTMLElement} */ (document.getElementById("zoom-readout"));
@@ -53,6 +55,18 @@
   });
   const dragState = van?.state ? van.state(null) : { val: null };
   const hoverPointIndex = van?.state ? van.state(null) : { val: null };
+  const buttonsState = van?.state ? van.state((sourceScene.buttons || []).map((button) => ({
+    ...button,
+    visible: true,
+    active: false,
+  }))) : { val: (sourceScene.buttons || []).map((button) => ({
+    ...button,
+    visible: true,
+    active: false,
+  })) };
+  const buttonTimers = new Map();
+  const buttonAnimations = new Map();
+  let buttonPointerState = null;
   const labelAttachDistance = 40;
   const coordText = van.derive(() => {
     const world = pointerWorldState.val;
@@ -166,9 +180,11 @@
     }));
     return {
       graphMode: scene.graphMode,
+      bounds: scene.bounds ? { ...scene.bounds } : null,
       points: scene.points.map((point) => ({
         x: point.x,
         y: point.y,
+        visible: true,
         constraint: point.constraint ? { ...point.constraint } : null,
         binding: point.binding ? { ...point.binding } : null,
       })),
@@ -177,11 +193,13 @@
       polygons: scene.polygons.map((polygon) => ({
         color: polygon.color,
         outlineColor: polygon.outlineColor,
+        visible: true,
         points: polygon.points.map(attachPointRef),
         binding: polygon.binding ? { ...polygon.binding } : null,
       })),
       circles: scene.circles.map((circle) => ({
         color: circle.color,
+        visible: true,
         center: attachPointRef(circle.center),
         radiusPoint: attachPointRef(circle.radiusPoint),
         binding: circle.binding ? { ...circle.binding } : null,
@@ -189,6 +207,7 @@
       labels: scene.labels.map((label) => ({
         text: label.text,
         color: label.color,
+        visible: true,
         anchor: label.screenSpace ? { ...label.anchor } : attachLabelAnchor(label.anchor, hydratedLines),
         binding: label.binding ? { ...label.binding } : null,
         screenSpace: !!label.screenSpace,
@@ -231,6 +250,12 @@
     dynamicsState.val = { ...next };
   }
 
+  function updateButtons(mutator) {
+    const next = buttonsState.val.slice();
+    mutator(next);
+    buttonsState.val = next;
+  }
+
   function rgba(color) {
     return `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${(color[3] / 255).toFixed(3)})`;
   }
@@ -269,7 +294,322 @@
     view.centerX = baseCenterX;
     view.centerY = baseCenterY;
     view.zoom = 1;
+    dynamicsModule.syncDynamicScene(viewerEnv);
     updateReadout();
+  }
+
+  function renderButtons() {
+    if (!buttonOverlays) {
+      return;
+    }
+    buttonOverlays.replaceChildren();
+    const stackedOffsets = new Map();
+    buttonsState.val.forEach((buttonDef, buttonIndex) => {
+      if (buttonDef.visible === false) {
+        return;
+      }
+      const anchor = document.createElement("button");
+      anchor.className = "scene-link-button";
+      anchor.setAttribute("aria-pressed", buttonDef.active ? "true" : "false");
+      if (buttonDef.active) {
+        anchor.classList.add("is-active");
+      }
+      anchor.type = "button";
+      anchor.textContent = buttonDef.text;
+      const key = `${Math.round(buttonDef.x)}:${Math.round(buttonDef.y)}`;
+      const stackedOffset = stackedOffsets.get(key) || 0;
+      stackedOffsets.set(key, stackedOffset + 1);
+      anchor.style.left = `${(buttonDef.x / sourceScene.width) * 100}%`;
+      anchor.style.top = `${((buttonDef.y + stackedOffset * 34) / sourceScene.height) * 100}%`;
+      if (buttonDef.width) {
+        anchor.style.width = `${(buttonDef.width / sourceScene.width) * 100}%`;
+      }
+      if (buttonDef.height) {
+        anchor.style.height = `${(buttonDef.height / sourceScene.height) * 100}%`;
+      }
+      anchor.addEventListener("pointerdown", (event) => {
+        beginButtonPointer(buttonIndex, event);
+      });
+      buttonOverlays.append(anchor);
+    });
+  }
+
+  function buttonPointerScale() {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      scaleX: rect.width > 0 ? sourceScene.width / rect.width : 1,
+      scaleY: rect.height > 0 ? sourceScene.height / rect.height : 1,
+    };
+  }
+
+  function beginButtonPointer(buttonIndex, event) {
+    const button = buttonsState.val[buttonIndex];
+    if (!button) {
+      return;
+    }
+    const { scaleX, scaleY } = buttonPointerScale();
+    buttonPointerState = {
+      buttonIndex,
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      originX: button.x,
+      originY: button.y,
+      scaleX,
+      scaleY,
+      dragged: false,
+    };
+    window.addEventListener("pointermove", handleButtonPointerMove);
+    window.addEventListener("pointerup", handleButtonPointerUp);
+    window.addEventListener("pointercancel", handleButtonPointerUp);
+    event.preventDefault();
+  }
+
+  function handleButtonPointerMove(event) {
+    if (!buttonPointerState || event.pointerId !== buttonPointerState.pointerId) {
+      return;
+    }
+    const dx = (event.clientX - buttonPointerState.startClientX) * buttonPointerState.scaleX;
+    const dy = (event.clientY - buttonPointerState.startClientY) * buttonPointerState.scaleY;
+    if (!buttonPointerState.dragged && Math.hypot(dx, dy) >= 4) {
+      buttonPointerState.dragged = true;
+    }
+    if (!buttonPointerState.dragged) {
+      return;
+    }
+    updateButtons((buttons) => {
+      const button = buttons[buttonPointerState.buttonIndex];
+      if (!button) {
+        return;
+      }
+      button.x = buttonPointerState.originX + dx;
+      button.y = buttonPointerState.originY + dy;
+    });
+  }
+
+  function clearButtonPointer() {
+    window.removeEventListener("pointermove", handleButtonPointerMove);
+    window.removeEventListener("pointerup", handleButtonPointerUp);
+    window.removeEventListener("pointercancel", handleButtonPointerUp);
+    buttonPointerState = null;
+  }
+
+  function handleButtonPointerUp(event) {
+    if (!buttonPointerState || event.pointerId !== buttonPointerState.pointerId) {
+      return;
+    }
+    const { buttonIndex, dragged } = buttonPointerState;
+    clearButtonPointer();
+    if (!dragged) {
+      runButtonAction(buttonIndex);
+    }
+  }
+
+  function setTargetsVisibility(action, visible) {
+    updateScene((scene) => {
+      (action.pointIndices || []).forEach((index) => {
+        if (scene.points[index]) scene.points[index].visible = visible;
+      });
+      (action.lineIndices || []).forEach((index) => {
+        if (scene.lines[index]) scene.lines[index].visible = visible;
+      });
+      (action.circleIndices || []).forEach((index) => {
+        if (scene.circles[index]) scene.circles[index].visible = visible;
+      });
+      (action.polygonIndices || []).forEach((index) => {
+        if (scene.polygons[index]) scene.polygons[index].visible = visible;
+      });
+    });
+  }
+
+  function toggleTargetsVisibility(action) {
+    const scene = currentScene();
+    const hiddenPoint = (action.pointIndices || []).some((index) => scene.points[index]?.visible === false);
+    const hiddenLine = (action.lineIndices || []).some((index) => scene.lines[index]?.visible === false);
+    const hiddenCircle = (action.circleIndices || []).some((index) => scene.circles[index]?.visible === false);
+    const hiddenPolygon = (action.polygonIndices || []).some((index) => scene.polygons[index]?.visible === false);
+    setTargetsVisibility(action, hiddenPoint || hiddenLine || hiddenCircle || hiddenPolygon);
+  }
+
+  function stopButtonAnimation(buttonIndex) {
+    const handle = buttonAnimations.get(buttonIndex);
+    if (handle?.rafId) {
+      window.cancelAnimationFrame(handle.rafId);
+    }
+    if (handle) {
+      handle.stop = true;
+    }
+    buttonAnimations.delete(buttonIndex);
+    updateButtons((buttons) => {
+      if (buttons[buttonIndex]) {
+        buttons[buttonIndex].active = false;
+      }
+    });
+  }
+
+  function toggleAnimatedPoint(buttonIndex, pointIndex, mode, targetPointIndex = null) {
+    if (buttonsState.val[buttonIndex]?.active) {
+      stopButtonAnimation(buttonIndex);
+      return;
+    }
+    const scene = currentScene();
+    const point = scene.points[pointIndex];
+    if (!point) {
+      return;
+    }
+    const base = { x: point.x, y: point.y };
+    let initialDirection = 1;
+    if (point.constraint?.kind === "segment") {
+      if (targetPointIndex === point.constraint.startIndex) {
+        initialDirection = -1;
+      } else if (targetPointIndex === point.constraint.endIndex) {
+        initialDirection = 1;
+      } else {
+        initialDirection = point.constraint.t < 0.5 ? 1 : -1;
+      }
+    }
+    const state = {
+      stop: false,
+      direction: initialDirection,
+      t: 0,
+      vx: (Math.random() - 0.5) * 0.003,
+      vy: (Math.random() - 0.5) * 0.003,
+      nextTurnAt: 500 + Math.random() * 700,
+      elapsedMs: 0,
+      rafId: 0,
+    };
+    buttonAnimations.set(buttonIndex, state);
+    updateButtons((buttons) => {
+      if (buttons[buttonIndex]) {
+        buttons[buttonIndex].active = true;
+      }
+    });
+    let lastTime = null;
+    const step = (timestamp) => {
+      if (state.stop) {
+        return;
+      }
+      if (lastTime === null) {
+        lastTime = timestamp;
+      }
+      const dt = Math.min(64, timestamp - lastTime);
+      lastTime = timestamp;
+      updateScene((draft) => {
+        const draftPoint = draft.points[pointIndex];
+        if (!draftPoint) {
+          return;
+        }
+        if (draftPoint.constraint?.kind === "segment") {
+          const durationMs = mode === "scroll" ? 16000 : 12000;
+          const delta = dt / durationMs;
+          if (mode === "scroll") {
+            draftPoint.constraint.t = (draftPoint.constraint.t + delta) % 1;
+          } else {
+            let next = draftPoint.constraint.t + delta * state.direction;
+            if (next >= 1) {
+              next = 1;
+              state.direction = -1;
+            } else if (next <= 0) {
+              next = 0;
+              state.direction = 1;
+            }
+            draftPoint.constraint.t = next;
+          }
+        } else if (mode === "scroll") {
+          state.t += dt * 0.004;
+          draftPoint.x = base.x + Math.sin(state.t) * 36;
+        } else {
+          state.elapsedMs += dt;
+          if (state.elapsedMs >= state.nextTurnAt) {
+            state.elapsedMs = 0;
+            state.nextTurnAt = 500 + Math.random() * 700;
+            state.vx += (Math.random() - 0.5) * 0.0016;
+            state.vy += (Math.random() - 0.5) * 0.0016;
+          }
+          state.vx += (base.x - draftPoint.x) * 0.00008;
+          state.vy += (base.y - draftPoint.y) * 0.00008;
+          const speed = Math.hypot(state.vx, state.vy);
+          if (speed > 0.005) {
+            state.vx = (state.vx / speed) * 0.005;
+            state.vy = (state.vy / speed) * 0.005;
+          } else if (speed < 0.0008) {
+            const angle = Math.random() * Math.PI * 2;
+            state.vx = Math.cos(angle) * 0.0015;
+            state.vy = Math.sin(angle) * 0.0015;
+          }
+
+          draftPoint.x += state.vx * dt;
+          draftPoint.y += state.vy * dt;
+
+          const maxDx = 0.8;
+          const maxDy = 0.6;
+          if (draftPoint.x < base.x - maxDx || draftPoint.x > base.x + maxDx) {
+            state.vx *= -0.7;
+            draftPoint.x = Math.max(base.x - maxDx, Math.min(base.x + maxDx, draftPoint.x));
+          }
+          if (draftPoint.y < base.y - maxDy || draftPoint.y > base.y + maxDy) {
+            state.vy *= -0.7;
+            draftPoint.y = Math.max(base.y - maxDy, Math.min(base.y + maxDy, draftPoint.y));
+          }
+        }
+      });
+      state.rafId = window.requestAnimationFrame(step);
+    };
+    state.rafId = window.requestAnimationFrame(step);
+  }
+
+  function runButtonAction(buttonIndex) {
+    const button = buttonsState.val[buttonIndex];
+    if (!button) {
+      return;
+    }
+    const action = button.action || {};
+    switch (action.kind) {
+      case "link":
+        if (action.href) {
+          window.open(action.href, "_blank", "noopener,noreferrer");
+        }
+        break;
+      case "toggle-visibility":
+        toggleTargetsVisibility(action);
+        break;
+      case "set-visibility":
+        setTargetsVisibility(action, !!action.visible);
+        break;
+      case "move-point":
+        if (typeof action.pointIndex === "number") {
+          toggleAnimatedPoint(
+            buttonIndex,
+            action.pointIndex,
+            "move",
+            action.targetPointIndex ?? null,
+          );
+        }
+        break;
+      case "animate-point":
+        if (typeof action.pointIndex === "number") {
+          toggleAnimatedPoint(buttonIndex, action.pointIndex, "animate");
+        }
+        break;
+      case "scroll-point":
+        if (typeof action.pointIndex === "number") {
+          toggleAnimatedPoint(buttonIndex, action.pointIndex, "scroll");
+        }
+        break;
+      case "sequence": {
+        const intervalMs = Math.max(0, action.intervalMs || 0);
+        (action.buttonIndices || []).forEach((childButtonIndex, offset) => {
+          const timer = window.setTimeout(() => {
+            runButtonAction(childButtonIndex);
+            buttonTimers.delete(timer);
+          }, offset * intervalMs);
+          buttonTimers.set(timer, true);
+        });
+        break;
+      }
+      default:
+        break;
+    }
   }
 
   function findHitPoint(screenX, screenY) {
@@ -284,8 +624,12 @@
     return renderModule.findHitLabel(viewerEnv, screenX, screenY);
   }
 
-  function beginDrag(pointerId, position, pointIndex, labelIndex) {
-    dragModule.beginDrag(viewerEnv, pointerId, position, pointIndex, labelIndex);
+  function findHitPolygon(screenX, screenY) {
+    return renderModule.findHitPolygon ? renderModule.findHitPolygon(viewerEnv, screenX, screenY) : null;
+  }
+
+  function beginDrag(pointerId, position, pointIndex, labelIndex, polygonIndex) {
+    dragModule.beginDrag(viewerEnv, pointerId, position, pointIndex, labelIndex, polygonIndex);
   }
 
   function updateDraggedPoint(world) {
@@ -296,8 +640,13 @@
     dragModule.updateDraggedLabel(viewerEnv, world);
   }
 
+  function updateDraggedPolygon(world) {
+    dragModule.updateDraggedPolygon(viewerEnv, world);
+  }
+
   function panFromPointerDelta(position) {
     dragModule.panFromPointerDelta(viewerEnv, position);
+    dynamicsModule.syncDynamicScene(viewerEnv);
   }
 
   function draw() {
@@ -323,6 +672,7 @@
     resolveScenePoint: (index) => sceneModule.resolveScenePoint(viewerEnv, index),
     resolvePoint: (handle) => sceneModule.resolvePoint(viewerEnv, handle),
     resolveAnchorBase: (handle) => sceneModule.resolveAnchorBase(viewerEnv, handle),
+    resolveLinePoints: (lineOrIndex) => sceneModule.resolveLinePoints(viewerEnv, lineOrIndex),
     toScreen: (point) => sceneModule.toScreen(viewerEnv, point),
     toWorld: (x, y) => sceneModule.toWorld(viewerEnv, x, y),
     getViewBounds: () => sceneModule.getViewBounds(viewerEnv),
@@ -346,11 +696,19 @@
     return 0;
   });
 
+  van.derive(() => {
+    renderButtons();
+    return 0;
+  });
+
   canvas.addEventListener("pointerdown", (event) => {
     const position = sceneModule.getCanvasCoords(viewerEnv, event);
     const pointIndex = findHitPoint(position.x, position.y);
     const labelIndex = pointIndex === null ? findHitLabel(position.x, position.y) : null;
-    beginDrag(event.pointerId, position, pointIndex, labelIndex);
+    const polygonIndex = pointIndex === null && labelIndex === null
+      ? findHitPolygon(position.x, position.y)
+      : null;
+    beginDrag(event.pointerId, position, pointIndex, labelIndex, polygonIndex);
     canvas.setPointerCapture(event.pointerId);
   });
 
@@ -363,6 +721,8 @@
     }
     if (dragState.val.mode === "point") {
       updateDraggedPoint(sceneModule.toWorld(viewerEnv, position.x, position.y));
+    } else if (dragState.val.mode === "polygon") {
+      updateDraggedPolygon(sceneModule.toWorld(viewerEnv, position.x, position.y));
     } else if (dragState.val.mode === "label") {
       updateDraggedLabel(position);
     } else {
@@ -396,6 +756,7 @@
     const after = sceneModule.toWorld(viewerEnv, position.x, position.y);
     view.centerX += before.x - after.x;
     view.centerY += before.y - after.y;
+    dynamicsModule.syncDynamicScene(viewerEnv);
     updateReadout(position.x, position.y);
   }, { passive: false });
 

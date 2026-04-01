@@ -44,6 +44,58 @@
     };
   }
 
+  function clipParametricLineToBounds(start, end, bounds, rayOnly) {
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    if (Math.abs(dx) <= 1e-9 && Math.abs(dy) <= 1e-9) return null;
+
+    const hits = [];
+    const pushHit = (t, point) => {
+      if (!Number.isFinite(t)) return;
+      if (rayOnly && t < -1e-9) return;
+      if (
+        point.x < bounds.minX - 1e-6 || point.x > bounds.maxX + 1e-6 ||
+        point.y < bounds.minY - 1e-6 || point.y > bounds.maxY + 1e-6
+      ) return;
+      if (hits.some((hit) =>
+        Math.abs(hit.t - t) < 1e-6 ||
+        (Math.abs(hit.point.x - point.x) < 1e-6 && Math.abs(hit.point.y - point.y) < 1e-6)
+      )) return;
+      hits.push({ t, point });
+    };
+
+    if (Math.abs(dx) > 1e-9) {
+      for (const x of [bounds.minX, bounds.maxX]) {
+        const t = (x - start.x) / dx;
+        pushHit(t, { x, y: start.y + dy * t });
+      }
+    }
+    if (Math.abs(dy) > 1e-9) {
+      for (const y of [bounds.minY, bounds.maxY]) {
+        const t = (y - start.y) / dy;
+        pushHit(t, { x: start.x + dx * t, y });
+      }
+    }
+    if (
+      rayOnly &&
+      start.x >= bounds.minX - 1e-6 && start.x <= bounds.maxX + 1e-6 &&
+      start.y >= bounds.minY - 1e-6 && start.y <= bounds.maxY + 1e-6
+    ) {
+      pushHit(0, { ...start });
+    }
+    if (hits.length < 2) return null;
+    hits.sort((a, b) => a.t - b.t);
+    return [hits[0].point, hits[hits.length - 1].point];
+  }
+
+  function clipLineToBounds(start, end, bounds) {
+    return clipParametricLineToBounds(start, end, bounds, false);
+  }
+
+  function clipRayToBounds(start, end, bounds) {
+    return clipParametricLineToBounds(start, end, bounds, true);
+  }
+
   function evaluateUnary(op, x) {
     switch (op) {
       case "sin": return Math.sin(x);
@@ -239,6 +291,7 @@
 
   /** @param {ViewerEnv} env */
   function refreshDerivedPoints(env, scene) {
+    const bounds = env.getViewBounds ? env.getViewBounds() : (scene.bounds || env.sourceScene.bounds);
     const resolveHandle = (handle) => {
       if (typeof handle?.pointIndex === "number") {
         return scene.points[handle.pointIndex] || { x: 0, y: 0 };
@@ -252,6 +305,13 @@
         if (value !== null) {
           applyNormalizedParameterToPoint(point, scene, value);
         }
+      } else if (point.binding?.kind === "translate") {
+        const source = scene.points[point.binding.sourceIndex];
+        const vectorStart = scene.points[point.binding.vectorStartIndex];
+        const vectorEnd = scene.points[point.binding.vectorEndIndex];
+        if (!source || !vectorStart || !vectorEnd) return;
+        point.x = source.x + (vectorEnd.x - vectorStart.x);
+        point.y = source.y + (vectorEnd.y - vectorStart.y);
       } else if (point.binding?.kind === "reflect") {
         const source = scene.points[point.binding.sourceIndex];
         const lineStart = scene.points[point.binding.lineStartIndex];
@@ -278,7 +338,16 @@
     });
 
     scene.circles.forEach((circle) => {
-      if (circle.binding?.kind === "scale-circle") {
+      if (circle.binding?.kind === "rotate-circle") {
+        const source = scene.circles[circle.binding.sourceIndex];
+        const center = scene.points[circle.binding.centerIndex];
+        if (!source || !center) return;
+        const sourceCenter = resolveHandle(source.center);
+        const sourceRadius = resolveHandle(source.radiusPoint);
+        const radians = circle.binding.angleDegrees * Math.PI / 180;
+        circle.center = rotateAround(sourceCenter, center, radians);
+        circle.radiusPoint = rotateAround(sourceRadius, center, radians);
+      } else if (circle.binding?.kind === "scale-circle") {
         const source = scene.circles[circle.binding.sourceIndex];
         const center = scene.points[circle.binding.centerIndex];
         if (!source || !center) return;
@@ -297,7 +366,27 @@
     });
 
     scene.polygons.forEach((polygon) => {
-      if (polygon.binding?.kind === "scale-polygon") {
+      if (polygon.binding?.kind === "translate-polygon") {
+        const source = scene.polygons[polygon.binding.sourceIndex];
+        const vectorStart = scene.points[polygon.binding.vectorStartIndex];
+        const vectorEnd = scene.points[polygon.binding.vectorEndIndex];
+        if (!source || !vectorStart || !vectorEnd) return;
+        const dx = vectorEnd.x - vectorStart.x;
+        const dy = vectorEnd.y - vectorStart.y;
+        polygon.points = source.points.map((handle) => {
+          const point = resolveHandle(handle);
+          return { x: point.x + dx, y: point.y + dy };
+        });
+      } else if (polygon.binding?.kind === "rotate-polygon") {
+        const source = scene.polygons[polygon.binding.sourceIndex];
+        const center = scene.points[polygon.binding.centerIndex];
+        if (!source || !center) return;
+        const radians = polygon.binding.angleDegrees * Math.PI / 180;
+        polygon.points = source.points.map((handle) => {
+          const point = resolveHandle(handle);
+          return rotateAround(point, center, radians);
+        });
+      } else if (polygon.binding?.kind === "scale-polygon") {
         const source = scene.polygons[polygon.binding.sourceIndex];
         const center = scene.points[polygon.binding.centerIndex];
         if (!source || !center) return;
@@ -321,6 +410,51 @@
     const rotateFamilies = new Map();
     const parameters = parameterMap(env);
     scene.lines.forEach((line) => {
+      if (line.binding?.kind === "line") {
+        const start = scene.points[line.binding.startIndex];
+        const end = scene.points[line.binding.endIndex];
+        const clipped = start && end ? clipLineToBounds(start, end, bounds) : null;
+        if (clipped) line.points = clipped;
+        preservedLines.push(line);
+        return;
+      }
+      if (line.binding?.kind === "ray") {
+        const start = scene.points[line.binding.startIndex];
+        const end = scene.points[line.binding.endIndex];
+        const clipped = start && end ? clipRayToBounds(start, end, bounds) : null;
+        if (clipped) line.points = clipped;
+        preservedLines.push(line);
+        return;
+      }
+      if (line.binding?.kind === "rotate-line") {
+        const source = scene.lines[line.binding.sourceIndex];
+        const center = scene.points[line.binding.centerIndex];
+        if (source && center) {
+          const radians = line.binding.angleDegrees * Math.PI / 180;
+          line.points = source.points.map((point) => rotateAround(point, center, radians));
+        }
+        preservedLines.push(line);
+        return;
+      }
+      if (line.binding?.kind === "scale-line") {
+        const source = scene.lines[line.binding.sourceIndex];
+        const center = scene.points[line.binding.centerIndex];
+        if (source && center) {
+          line.points = source.points.map((point) => scaleAround(point, center, line.binding.factor));
+        }
+        preservedLines.push(line);
+        return;
+      }
+      if (line.binding?.kind === "reflect-line") {
+        const source = scene.lines[line.binding.sourceIndex];
+        const lineStart = scene.points[line.binding.lineStartIndex];
+        const lineEnd = scene.points[line.binding.lineEndIndex];
+        if (source && lineStart && lineEnd) {
+          line.points = source.points.map((point) => reflectAcrossLine(point, lineStart, lineEnd));
+        }
+        preservedLines.push(line);
+        return;
+      }
       if (line.binding?.kind !== "rotate-edge") {
         preservedLines.push(line);
         return;

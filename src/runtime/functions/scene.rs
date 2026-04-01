@@ -2,10 +2,15 @@ use std::collections::BTreeMap;
 
 use crate::format::{GspFile, ObjectGroup, read_f64, read_u16};
 use crate::runtime::extract::find_indexed_path;
-use crate::runtime::scene::{SceneFunction, SceneParameter, ScenePoint, ScenePointConstraint, TextLabel};
+use crate::runtime::scene::{
+    SceneFunction, SceneParameter, ScenePoint, ScenePointConstraint, TextLabel,
+};
 
 use super::decode::{decode_function_expr, decode_function_plot_descriptor};
-use super::expr::{FunctionExpr, FunctionPlotDescriptor, function_expr_label, function_name_for_index, function_expr_uses_trig};
+use super::expr::{
+    FunctionExpr, FunctionPlotDescriptor, function_expr_label, function_expr_uses_trig,
+    function_name_for_index,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct ParameterBinding {

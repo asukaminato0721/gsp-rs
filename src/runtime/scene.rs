@@ -16,8 +16,63 @@ pub(crate) struct Scene {
     pub(crate) circles: Vec<SceneCircle>,
     pub(crate) labels: Vec<TextLabel>,
     pub(crate) points: Vec<ScenePoint>,
+    pub(crate) buttons: Vec<SceneButton>,
     pub(crate) parameters: Vec<SceneParameter>,
     pub(crate) functions: Vec<SceneFunction>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SceneButton {
+    pub(crate) text: String,
+    pub(crate) anchor: ScreenPoint,
+    pub(crate) rect: Option<ScreenRect>,
+    pub(crate) action: ButtonAction,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum ButtonAction {
+    Link {
+        href: String,
+    },
+    ToggleVisibility {
+        point_indices: Vec<usize>,
+        line_indices: Vec<usize>,
+        circle_indices: Vec<usize>,
+        polygon_indices: Vec<usize>,
+    },
+    SetVisibility {
+        visible: bool,
+        point_indices: Vec<usize>,
+        line_indices: Vec<usize>,
+        circle_indices: Vec<usize>,
+        polygon_indices: Vec<usize>,
+    },
+    MovePoint {
+        point_index: usize,
+        target_point_index: Option<usize>,
+    },
+    AnimatePoint {
+        point_index: usize,
+    },
+    ScrollPoint {
+        point_index: usize,
+    },
+    Sequence {
+        button_indices: Vec<usize>,
+        interval_ms: u32,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ScreenPoint {
+    pub(crate) x: f64,
+    pub(crate) y: f64,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ScreenRect {
+    pub(crate) width: f64,
+    pub(crate) height: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -69,6 +124,34 @@ pub(crate) struct LineShape {
 
 #[derive(Debug, Clone)]
 pub(crate) enum LineBinding {
+    Line {
+        start_index: usize,
+        end_index: usize,
+    },
+    Ray {
+        start_index: usize,
+        end_index: usize,
+    },
+    TranslateLine {
+        source_index: usize,
+        vector_start_index: usize,
+        vector_end_index: usize,
+    },
+    RotateLine {
+        source_index: usize,
+        center_index: usize,
+        angle_degrees: f64,
+    },
+    ScaleLine {
+        source_index: usize,
+        center_index: usize,
+        factor: f64,
+    },
+    ReflectLine {
+        source_index: usize,
+        line_start_index: usize,
+        line_end_index: usize,
+    },
     RotateEdge {
         center_index: usize,
         vertex_index: usize,
@@ -100,6 +183,11 @@ pub(crate) enum ScenePointBinding {
     },
     DerivedParameter {
         source_index: usize,
+    },
+    Translate {
+        source_index: usize,
+        vector_start_index: usize,
+        vector_end_index: usize,
     },
     Reflect {
         source_index: usize,
@@ -144,6 +232,26 @@ pub(crate) struct SceneCircle {
 
 #[derive(Debug, Clone)]
 pub(crate) enum ShapeBinding {
+    TranslatePolygon {
+        source_index: usize,
+        vector_start_index: usize,
+        vector_end_index: usize,
+    },
+    TranslateCircle {
+        source_index: usize,
+        vector_start_index: usize,
+        vector_end_index: usize,
+    },
+    RotatePolygon {
+        source_index: usize,
+        center_index: usize,
+        angle_degrees: f64,
+    },
+    RotateCircle {
+        source_index: usize,
+        center_index: usize,
+        angle_degrees: f64,
+    },
     ScalePolygon {
         source_index: usize,
         center_index: usize,

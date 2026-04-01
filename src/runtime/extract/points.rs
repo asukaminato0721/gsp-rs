@@ -7,14 +7,16 @@ mod constraints;
 
 pub(super) use anchors::{
     decode_offset_anchor_raw, decode_parameter_controlled_anchor_raw,
-    decode_point_constraint_anchor, decode_point_on_ray_anchor_raw, decode_reflection_anchor_raw,
-    decode_regular_polygon_vertex_anchor_raw, decode_translated_point_anchor_raw,
-    reflection_line_group_indices,
+    decode_parameter_rotation_anchor_raw, decode_point_constraint_anchor,
+    decode_point_on_ray_anchor_raw, decode_point_pair_translation_anchor_raw,
+    decode_reflection_anchor_raw, decode_regular_polygon_vertex_anchor_raw,
+    decode_translated_point_anchor_raw, reflection_line_group_indices,
+    translation_point_pair_group_indices,
 };
 pub(super) use bindings::{
     TransformBindingKind, collect_point_iteration_points, collect_visible_points,
-    decode_transform_binding, remap_circle_bindings, remap_label_bindings, remap_line_bindings,
-    remap_polygon_bindings,
+    decode_parameter_rotation_binding, decode_transform_binding, remap_circle_bindings,
+    remap_label_bindings, remap_line_bindings, remap_polygon_bindings,
 };
 pub(super) use constraints::{
     RawPointConstraint, decode_point_constraint, regular_polygon_angle_expr,
@@ -117,4 +119,34 @@ pub(super) fn decode_non_graph_parameter_value_for_group(
         let value_code = read_u16(payload, payload.len().checked_sub(2)?);
         Some(f64::from(value_code))
     }
+}
+
+pub(super) fn decode_angle_parameter_value_for_group(
+    file: &GspFile,
+    group: &ObjectGroup,
+) -> Option<f64> {
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x0907)
+        .map(|record| record.payload(&file.data))?;
+    let current = decode_non_graph_parameter_value(payload)?;
+    let max = (payload.len() >= 76)
+        .then(|| read_f64(payload, 68))
+        .filter(|value| value.is_finite())?;
+    let step = (payload.len() >= 84)
+        .then(|| read_f64(payload, 76))
+        .filter(|value| value.is_finite() && *value > 0.0)?;
+
+    // Legacy copies of some angle sliders keep range metadata but lose the current
+    // snapped value. Recover the intended quarter-turn from the preserved tick step.
+    if payload.len() >= 98
+        && (max - std::f64::consts::TAU).abs() < 1e-6
+        && (step - std::f64::consts::FRAC_PI_4).abs() < 1e-6
+        && current < step * 0.5
+    {
+        return Some(step * 2.0);
+    }
+
+    Some(current)
 }

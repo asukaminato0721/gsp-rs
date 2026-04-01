@@ -1,6 +1,50 @@
 (function() {
   const modules = window.GspViewerModules || (window.GspViewerModules = {});
 
+  function clipParametricLineToRect(start, end, width, height, rayOnly) {
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    if (Math.abs(dx) <= 1e-9 && Math.abs(dy) <= 1e-9) return null;
+
+    const hits = [];
+    const pushHit = (t, point) => {
+      if (!Number.isFinite(t)) return;
+      if (rayOnly && t < -1e-9) return;
+      if (
+        point.x < -1e-6 || point.x > width + 1e-6 ||
+        point.y < -1e-6 || point.y > height + 1e-6
+      ) return;
+      if (hits.some((hit) =>
+        Math.abs(hit.t - t) < 1e-6 ||
+        (Math.abs(hit.point.x - point.x) < 1e-6 && Math.abs(hit.point.y - point.y) < 1e-6)
+      )) return;
+      hits.push({ t, point });
+    };
+
+    if (Math.abs(dx) > 1e-9) {
+      for (const x of [0, width]) {
+        const t = (x - start.x) / dx;
+        pushHit(t, { x, y: start.y + dy * t });
+      }
+    }
+    if (Math.abs(dy) > 1e-9) {
+      for (const y of [0, height]) {
+        const t = (y - start.y) / dy;
+        pushHit(t, { x: start.x + dx * t, y });
+      }
+    }
+    if (
+      rayOnly &&
+      start.x >= -1e-6 && start.x <= width + 1e-6 &&
+      start.y >= -1e-6 && start.y <= height + 1e-6
+    ) {
+      pushHit(0, { ...start });
+    }
+    if (hits.length < 2) return null;
+    hits.sort((a, b) => a.t - b.t);
+    return [hits[0].point, hits[hits.length - 1].point];
+  }
+
   function labelMetrics(env, text) {
     const lines = text.split("\n");
     const width = lines.reduce((best, line) => Math.max(best, env.ctx.measureText(line).width), 0);
@@ -29,7 +73,10 @@
   function findHitPoint(env, screenX, screenY) {
     let bestIndex = null;
     let bestDistanceSquared = env.pointHitRadius * env.pointHitRadius;
-    env.currentScene().points.forEach((_, index) => {
+    env.currentScene().points.forEach((point, index) => {
+      if (point.visible === false) {
+        return;
+      }
       const screen = env.toScreen(env.resolveScenePoint(index));
       const dx = screen.x - screenX;
       const dy = screen.y - screenY;
@@ -48,6 +95,9 @@
     env.ctx.textBaseline = "top";
     for (let index = env.currentScene().labels.length - 1; index >= 0; index -= 1) {
       const label = env.currentScene().labels[index];
+      if (label.visible === false) {
+        continue;
+      }
       const bounds = labelBounds(env, label);
       if (
         screenX >= bounds.left &&
@@ -63,8 +113,46 @@
     return null;
   }
 
+  function pointInPolygon(point, polygon) {
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
+      const xi = polygon[i].x;
+      const yi = polygon[i].y;
+      const xj = polygon[j].x;
+      const yj = polygon[j].y;
+      const intersects = ((yi > point.y) !== (yj > point.y))
+        && (point.x < ((xj - xi) * (point.y - yi)) / ((yj - yi) || 1e-9) + xi);
+      if (intersects) inside = !inside;
+    }
+    return inside;
+  }
+
+  function isFreePolygon(env, polygon) {
+    if (polygon.binding) return false;
+    if (polygon.points.length < 3) return false;
+    return polygon.points.every((handle) => {
+      if (typeof handle?.pointIndex !== "number") return false;
+      const point = env.currentScene().points[handle.pointIndex];
+      return point && !point.constraint && !point.binding;
+    });
+  }
+
+  function findHitPolygon(env, screenX, screenY) {
+    for (let index = env.currentScene().polygons.length - 1; index >= 0; index -= 1) {
+      const polygon = env.currentScene().polygons[index];
+      if (polygon.visible === false || !isFreePolygon(env, polygon)) continue;
+      const screenPoints = polygon.points.map((handle) => env.toScreen(env.resolvePoint(handle)));
+      if (screenPoints.length < 3) continue;
+      if (pointInPolygon({ x: screenX, y: screenY }, screenPoints)) {
+        return index;
+      }
+    }
+    return null;
+  }
+
   function drawPolygons(env) {
     for (const polygon of env.currentScene().polygons) {
+      if (polygon.visible === false) continue;
       if (polygon.points.length < 3) continue;
       env.ctx.beginPath();
       polygon.points.forEach((handle, index) => {
@@ -86,10 +174,29 @@
 
   function drawLines(env) {
     for (const line of env.currentScene().lines) {
-      if (line.points.length < 2) continue;
+      if (line.visible === false) continue;
+      let screenPoints = null;
+      if (line.binding?.kind === "line" || line.binding?.kind === "ray") {
+        const start = env.toScreen(env.resolveScenePoint(line.binding.startIndex));
+        const end = env.toScreen(env.resolveScenePoint(line.binding.endIndex));
+        screenPoints = clipParametricLineToRect(
+          start,
+          end,
+          env.sourceScene.width,
+          env.sourceScene.height,
+          line.binding.kind === "ray",
+        );
+      } else {
+        const points = env.resolveLinePoints
+          ? env.resolveLinePoints(line)
+          : line.points.map((handle) => env.resolvePoint(handle));
+        if (points && points.length >= 2) {
+          screenPoints = points.map((point) => env.toScreen(point));
+        }
+      }
+      if (!screenPoints || screenPoints.length < 2) continue;
       env.ctx.beginPath();
-      line.points.forEach((handle, index) => {
-        const screen = env.toScreen(env.resolvePoint(handle));
+      screenPoints.forEach((screen, index) => {
         if (index === 0) {
           env.ctx.moveTo(screen.x, screen.y);
         } else {
@@ -106,6 +213,7 @@
 
   function drawCircles(env) {
     for (const circle of env.currentScene().circles) {
+      if (circle.visible === false) continue;
       const centerWorld = env.resolvePoint(circle.center);
       const radiusPointWorld = env.resolvePoint(circle.radiusPoint);
       const center = env.toScreen(centerWorld);
@@ -122,7 +230,10 @@
   }
 
   function drawPoints(env) {
-    env.currentScene().points.forEach((_, index) => {
+    env.currentScene().points.forEach((point, index) => {
+      if (point.visible === false) {
+        return;
+      }
       const screen = env.toScreen(env.resolveScenePoint(index));
       env.ctx.beginPath();
       env.ctx.arc(screen.x, screen.y, index === env.hoverPointIndex.val ? 6 : 4, 0, Math.PI * 2);
@@ -135,6 +246,7 @@
     env.ctx.font = "18px \"Noto Sans\", \"Segoe UI\", sans-serif";
     env.ctx.textBaseline = "top";
     for (const label of env.currentScene().labels) {
+      if (label.visible === false) continue;
       const bounds = labelBounds(env, label);
       env.ctx.fillStyle = env.rgba(label.color);
       bounds.lines.forEach((line, index) => {
@@ -160,6 +272,7 @@
     labelBounds,
     findHitPoint,
     findHitLabel,
+    findHitPolygon,
     drawPolygons,
     drawLines,
     drawCircles,

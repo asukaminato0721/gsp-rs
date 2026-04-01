@@ -2,7 +2,9 @@ use std::collections::BTreeMap;
 
 use crate::format::{GspFile, ObjectGroup, PointRecord};
 use crate::runtime::extract::find_indexed_path;
-use crate::runtime::geometry::{Bounds, GraphTransform, has_distinct_points, include_line_bounds, to_raw_from_world};
+use crate::runtime::geometry::{
+    Bounds, GraphTransform, has_distinct_points, include_line_bounds, to_raw_from_world,
+};
 use crate::runtime::scene::{LineShape, TextLabel};
 
 use super::decode::{decode_function_expr, decode_function_plot_descriptor};
@@ -200,7 +202,11 @@ pub(crate) fn synthesize_function_labels(
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let definition_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            Some(super::scene::collect_parameter_bindings(file, groups, definition_group))
+            Some(super::scene::collect_parameter_bindings(
+                file,
+                groups,
+                definition_group,
+            ))
         })
         .fold(BTreeMap::<String, f64>::new(), |mut acc, bindings| {
             for binding in bindings.into_values() {
@@ -244,25 +250,30 @@ pub(crate) fn synthesize_function_labels(
         })
         .collect::<Vec<_>>();
     let parameter_count = labels.len();
-    labels.extend(base_entries.into_iter().enumerate().map(|(index, (_, expr))| {
-        let span_x = (bounds.max_x - bounds.min_x).max(1.0);
-        let span_y = (bounds.max_y - bounds.min_y).max(1.0);
-        let world_anchor = PointRecord {
-            x: bounds.min_x + span_x * 0.18,
-            y: bounds.max_y - span_y * (0.16 + 0.11 * (index + parameter_count) as f64),
-        };
-        TextLabel {
-            anchor: to_raw_from_world(&world_anchor, transform),
-            text: format!(
-                "{}(x) = {}",
-                function_name_for_index(index, total, &expr),
-                function_expr_label(expr)
-            ),
-            color: [30, 30, 30, 255],
-            binding: None,
-            screen_space: false,
-        }
-    }));
+    labels.extend(
+        base_entries
+            .into_iter()
+            .enumerate()
+            .map(|(index, (_, expr))| {
+                let span_x = (bounds.max_x - bounds.min_x).max(1.0);
+                let span_y = (bounds.max_y - bounds.min_y).max(1.0);
+                let world_anchor = PointRecord {
+                    x: bounds.min_x + span_x * 0.18,
+                    y: bounds.max_y - span_y * (0.16 + 0.11 * (index + parameter_count) as f64),
+                };
+                TextLabel {
+                    anchor: to_raw_from_world(&world_anchor, transform),
+                    text: format!(
+                        "{}(x) = {}",
+                        function_name_for_index(index, total, &expr),
+                        function_expr_label(expr)
+                    ),
+                    color: [30, 30, 30, 255],
+                    binding: None,
+                    screen_space: false,
+                }
+            }),
+    );
 
     let derivative_entries = groups
         .iter()

@@ -1,5 +1,28 @@
 use super::*;
 
+pub(crate) fn is_action_button_group(group: &ObjectGroup) -> bool {
+    (group.header.class_id & 0xffff) == 62
+        && group
+            .records
+            .iter()
+            .any(|record| record.record_type == 0x0906)
+}
+
+pub(crate) fn decode_link_button_url(file: &GspFile, group: &ObjectGroup) -> Option<String> {
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x0906)
+        .map(|record| record.payload(&file.data))?;
+    if payload.len() < 16 || read_u32(payload, 12) != 6 {
+        return None;
+    }
+    collect_strings(payload)
+        .into_iter()
+        .map(|entry| entry.text.trim().to_string())
+        .find(|text| text.starts_with("http://") || text.starts_with("https://"))
+}
+
 pub(crate) fn decode_label_name_raw(file: &GspFile, group: &ObjectGroup) -> Option<String> {
     let payload = group
         .records
@@ -163,6 +186,17 @@ pub(crate) fn decode_label_offset(file: &GspFile, group: &ObjectGroup) -> Option
 }
 
 pub(crate) fn decode_bbox_anchor_raw(file: &GspFile, group: &ObjectGroup) -> Option<PointRecord> {
+    let (x, y, width, height) = decode_bbox_rect_raw(file, group)?;
+    Some(PointRecord {
+        x: x + width / 2.0,
+        y: y + height / 2.0,
+    })
+}
+
+pub(crate) fn decode_bbox_rect_raw(
+    file: &GspFile,
+    group: &ObjectGroup,
+) -> Option<(f64, f64, f64, f64)> {
     let payload = group
         .records
         .iter()
@@ -175,9 +209,23 @@ pub(crate) fn decode_bbox_anchor_raw(file: &GspFile, group: &ObjectGroup) -> Opt
     let y0 = read_i16(payload, payload.len() - 6) as f64;
     let x1 = read_i16(payload, payload.len() - 4) as f64;
     let y1 = read_i16(payload, payload.len() - 2) as f64;
-    Some(PointRecord {
-        x: (x0 + x1) / 2.0,
-        y: (y0 + y1) / 2.0,
+    let left = x0.min(x1);
+    let top = y0.min(y1);
+    Some((left, top, (x1 - x0).abs(), (y1 - y0).abs()))
+}
+
+pub(crate) fn decode_button_screen_anchor(
+    file: &GspFile,
+    group: &ObjectGroup,
+) -> Option<PointRecord> {
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x0906)
+        .map(|record| record.payload(&file.data))?;
+    (payload.len() >= 24).then(|| PointRecord {
+        x: read_u16(payload, payload.len() - 4) as f64,
+        y: read_u16(payload, payload.len() - 2) as f64,
     })
 }
 

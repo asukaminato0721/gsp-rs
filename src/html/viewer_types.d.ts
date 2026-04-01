@@ -46,6 +46,26 @@ type SceneData = {
   polygons: any[];
   circles: any[];
   labels: any[];
+  buttons?: Array<{
+    text: string;
+    x: number;
+    y: number;
+    width?: number | null;
+    height?: number | null;
+    action: {
+      kind: string;
+      href?: string;
+      visible?: boolean;
+      pointIndices?: number[];
+      lineIndices?: number[];
+      circleIndices?: number[];
+      polygonIndices?: number[];
+      pointIndex?: number;
+      targetPointIndex?: number | null;
+      buttonIndices?: number[];
+      intervalMs?: number;
+    };
+  }>;
   parameters?: any[];
   functions?: any[];
 };
@@ -71,6 +91,7 @@ type ViewerEnv = {
   resolveScenePoint: (index: number) => Point;
   resolvePoint: (handle: PointHandle) => Point;
   resolveAnchorBase: (handle: PointHandle) => Point;
+  resolveLinePoints: (lineOrIndex: any) => Point[] | null;
   toScreen: (point: Point) => Point & { scale: number };
   toWorld: (x: number, y: number) => Point & { scale: number };
   getViewBounds: () => {
@@ -101,6 +122,7 @@ type ViewerSceneModule = {
   resolveScenePoint: (env: ViewerEnv, index: number) => Point;
   resolvePoint: (env: ViewerEnv, handle: PointHandle) => Point;
   resolveAnchorBase: (env: ViewerEnv, handle: PointHandle) => Point;
+  resolveLinePoints: (env: ViewerEnv, lineOrIndex: any) => Point[] | null;
   toScreen: (env: ViewerEnv, point: Point) => Point & { scale: number };
   toWorld: (env: ViewerEnv, x: number, y: number) => Point & { scale: number };
   getViewBounds: (env: ViewerEnv) => ViewerEnv["getViewBounds"] extends () => infer T ? T : never;
@@ -123,12 +145,21 @@ type ViewerRenderModule = {
   draw: (env: ViewerEnv) => void;
   findHitPoint: (env: ViewerEnv, screenX: number, screenY: number) => number | null;
   findHitLabel: (env: ViewerEnv, screenX: number, screenY: number) => number | null;
+  findHitPolygon: (env: ViewerEnv, screenX: number, screenY: number) => number | null;
 };
 
 type ViewerDragModule = {
-  beginDrag: (env: ViewerEnv, pointerId: number, position: Point, pointIndex: number | null, labelIndex: number | null) => void;
+  beginDrag: (
+    env: ViewerEnv,
+    pointerId: number,
+    position: Point,
+    pointIndex: number | null,
+    labelIndex: number | null,
+    polygonIndex: number | null,
+  ) => void;
   updateDraggedPoint: (env: ViewerEnv, world: Point) => void;
   updateDraggedLabel: (env: ViewerEnv, world: Point) => void;
+  updateDraggedPolygon: (env: ViewerEnv, world: Point) => void;
   panFromPointerDelta: (env: ViewerEnv, position: Point) => void;
 };
 

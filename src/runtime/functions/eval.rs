@@ -2,7 +2,9 @@ use std::collections::BTreeMap;
 
 use crate::format::PointRecord;
 
-use super::expr::{BinaryOp, FunctionExpr, FunctionPlotDescriptor, FunctionTerm, ParsedFunctionExpr, UnaryFunction};
+use super::expr::{
+    BinaryOp, FunctionExpr, FunctionPlotDescriptor, FunctionTerm, ParsedFunctionExpr, UnaryFunction,
+};
 
 pub(crate) fn sample_function_points(
     expr: &FunctionExpr,
@@ -114,7 +116,13 @@ fn evaluate_function_term_with_parameters(
             UnaryFunction::Sqrt => (x >= 0.0).then(|| x.sqrt()),
             UnaryFunction::Ln => (x > 0.0).then(|| x.ln()),
             UnaryFunction::Log10 => (x > 0.0).then(|| x.log10()),
-            UnaryFunction::Sign => Some(if x > 0.0 { 1.0 } else if x < 0.0 { -1.0 } else { 0.0 }),
+            UnaryFunction::Sign => Some(if x > 0.0 {
+                1.0
+            } else if x < 0.0 {
+                -1.0
+            } else {
+                0.0
+            }),
             UnaryFunction::Round => Some(x.round()),
             UnaryFunction::Trunc => Some(x.trunc()),
         },
@@ -141,7 +149,13 @@ fn evaluate_function_term(term: FunctionTerm, x: f64) -> Option<f64> {
             UnaryFunction::Sqrt => (x >= 0.0).then(|| x.sqrt()),
             UnaryFunction::Ln => (x > 0.0).then(|| x.ln()),
             UnaryFunction::Log10 => (x > 0.0).then(|| x.log10()),
-            UnaryFunction::Sign => Some(if x > 0.0 { 1.0 } else if x < 0.0 { -1.0 } else { 0.0 }),
+            UnaryFunction::Sign => Some(if x > 0.0 {
+                1.0
+            } else if x < 0.0 {
+                -1.0
+            } else {
+                0.0
+            }),
             UnaryFunction::Round => Some(x.round()),
             UnaryFunction::Trunc => Some(x.trunc()),
         },
