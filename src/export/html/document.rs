@@ -1,6 +1,6 @@
 use super::assets::{
-    VIEWER_CSS, VIEWER_DRAG_JS, VIEWER_JS, VIEWER_RENDER_JS, VIEWER_SCENE_JS, indent_asset,
-    van_runtime_to_global,
+    VIEWER_CSS, VIEWER_DRAG_JS, VIEWER_DYNAMICS_JS, VIEWER_JS, VIEWER_RENDER_JS,
+    VIEWER_SCENE_JS, indent_asset, van_runtime_to_global,
 };
 use super::scene_json::scene_to_json;
 use crate::runtime::scene::Scene;
@@ -10,7 +10,8 @@ pub(super) fn render_standalone_html_document(scene: &Scene, width: u32, height:
     let mut html = String::new();
     let scene_json = scene_to_json(scene, width, height);
     let van_js = van_runtime_to_global();
-    let viewer_modules_js = format!("{VIEWER_SCENE_JS}\n{VIEWER_RENDER_JS}\n{VIEWER_DRAG_JS}");
+    let viewer_modules_js =
+        format!("{VIEWER_SCENE_JS}\n{VIEWER_RENDER_JS}\n{VIEWER_DRAG_JS}\n{VIEWER_DYNAMICS_JS}");
     let frame_width = width + 40;
     let shape_count =
         scene.lines.len() + scene.polygons.len() + scene.circles.len() + scene.labels.len();
