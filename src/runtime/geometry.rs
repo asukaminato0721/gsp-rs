@@ -3,7 +3,7 @@ use crate::format::PointRecord;
 use super::scene::LineShape;
 
 #[derive(Debug, Clone)]
-pub(super) struct GraphTransform {
+pub(crate) struct GraphTransform {
     pub(super) origin_raw: PointRecord,
     pub(super) raw_per_unit: f64,
 }
