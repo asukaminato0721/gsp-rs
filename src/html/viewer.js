@@ -211,8 +211,8 @@
   function updateScene(mutator) {
     const next = sceneState.val;
     mutator(next);
-    refreshDerivedPoints(next);
-    refreshDynamicLabels(next);
+    dynamicsModule.refreshDerivedPoints(viewerEnv, next);
+    dynamicsModule.refreshDynamicLabels(viewerEnv, next);
     sceneState.val = { ...next };
   }
 
@@ -309,6 +309,7 @@
     dragState,
     view,
     currentScene,
+    currentDynamics,
     resolveScenePoint: (index) => sceneModule.resolveScenePoint(viewerEnv, index),
     resolvePoint: (handle) => sceneModule.resolvePoint(viewerEnv, handle),
     resolveAnchorBase: (handle) => sceneModule.resolveAnchorBase(viewerEnv, handle),

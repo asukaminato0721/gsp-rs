@@ -457,8 +457,6 @@
           }
         });
       });
-      refreshDerivedPoints(env, draft);
-      refreshDynamicLabels(env, draft);
     });
   }
 
