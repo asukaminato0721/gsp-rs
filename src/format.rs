@@ -5,6 +5,7 @@ mod strings;
 
 use std::collections::BTreeMap;
 use std::ops::Range;
+use std::ops::{Add, AddAssign, Mul, Sub, SubAssign};
 
 #[allow(unused_imports)]
 pub use decode::{
@@ -138,6 +139,53 @@ pub struct PaletteEntryRecord {
 pub struct PointRecord {
     pub x: f64,
     pub y: f64,
+}
+
+impl Add for PointRecord {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self {
+            x: self.x + rhs.x,
+            y: self.y + rhs.y,
+        }
+    }
+}
+
+impl Sub for PointRecord {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self {
+            x: self.x - rhs.x,
+            y: self.y - rhs.y,
+        }
+    }
+}
+
+impl Mul<f64> for PointRecord {
+    type Output = Self;
+
+    fn mul(self, rhs: f64) -> Self::Output {
+        Self {
+            x: self.x * rhs,
+            y: self.y * rhs,
+        }
+    }
+}
+
+impl AddAssign for PointRecord {
+    fn add_assign(&mut self, rhs: Self) {
+        self.x += rhs.x;
+        self.y += rhs.y;
+    }
+}
+
+impl SubAssign for PointRecord {
+    fn sub_assign(&mut self, rhs: Self) {
+        self.x -= rhs.x;
+        self.y -= rhs.y;
+    }
 }
 
 #[derive(Debug, Clone)]

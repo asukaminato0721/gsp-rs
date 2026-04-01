@@ -30,9 +30,10 @@ pub(crate) fn decode_regular_polygon_vertex_anchor_raw(
     let radians = (-360.0 / n).to_radians();
     let cos = radians.cos();
     let sin = radians.sin();
+    let delta = source - center.clone();
     Some(PointRecord {
-        x: center.x + (source.x - center.x) * cos + (source.y - center.y) * sin,
-        y: center.y - (source.x - center.x) * sin + (source.y - center.y) * cos,
+        x: center.x + delta.x * cos + delta.y * sin,
+        y: center.y - delta.x * sin + delta.y * cos,
     })
 }
 

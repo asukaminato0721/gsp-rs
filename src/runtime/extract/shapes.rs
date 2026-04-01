@@ -177,14 +177,8 @@ pub(super) fn collect_transformed_circle_shapes(
             let source_center = anchors.get(source_path.refs[0].checked_sub(1)?)?.clone()?;
             let source_radius = anchors.get(source_path.refs[1].checked_sub(1)?)?.clone()?;
             Some(CircleShape {
-                center: PointRecord {
-                    x: scale_center.x + (source_center.x - scale_center.x) * factor,
-                    y: scale_center.y + (source_center.y - scale_center.y) * factor,
-                },
-                radius_point: PointRecord {
-                    x: scale_center.x + (source_radius.x - scale_center.x) * factor,
-                    y: scale_center.y + (source_radius.y - scale_center.y) * factor,
-                },
+                center: scale_center.clone() + (source_center - scale_center.clone()) * factor,
+                radius_point: scale_center.clone() + (source_radius - scale_center) * factor,
                 color: color_from_style(source_group.header.style_b),
                 binding: Some(ShapeBinding::ScaleCircle {
                     source_index: path.refs.first()?.checked_sub(1)?,
@@ -222,10 +216,7 @@ pub(super) fn collect_transformed_polygon_shapes(
                 .filter_map(|object_ref| {
                     anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
                 })
-                .map(|point| PointRecord {
-                    x: scale_center.x + (point.x - scale_center.x) * factor,
-                    y: scale_center.y + (point.y - scale_center.y) * factor,
-                })
+                .map(|point| scale_center.clone() + (point - scale_center.clone()) * factor)
                 .collect::<Vec<_>>();
             (points.len() >= 3).then_some(PolygonShape {
                 points,

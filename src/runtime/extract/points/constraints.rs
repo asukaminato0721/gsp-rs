@@ -274,10 +274,7 @@ pub(crate) fn decode_parameter_controlled_point(
             let end_group_index = host_path.refs[1].checked_sub(1)?;
             let start = anchors.get(start_group_index)?.clone()?;
             let end = anchors.get(end_group_index)?.clone()?;
-            let position = PointRecord {
-                x: start.x + (end.x - start.x) * parameter_value,
-                y: start.y + (end.y - start.y) * parameter_value,
-            };
+            let position = start.clone() + (end - start) * parameter_value;
             Some(ParameterControlledPoint {
                 position,
                 constraint: RawPointConstraint::Segment(PointOnSegmentConstraint {

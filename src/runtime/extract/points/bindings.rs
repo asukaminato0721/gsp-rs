@@ -578,10 +578,7 @@ pub(crate) fn collect_point_iteration_points(
                 let mut previous_index = seed_index + derived_points.len();
                 let mut current_position = seed_position;
                 for _ in 0..depth {
-                    current_position = PointRecord {
-                        x: current_position.x + dx,
-                        y: current_position.y + dy,
-                    };
+                    current_position += PointRecord { x: dx, y: dy };
                     derived_points.push(ScenePoint {
                         position: current_position.clone(),
                         constraint: ScenePointConstraint::Offset {
@@ -618,10 +615,7 @@ pub(crate) fn collect_point_iteration_points(
                     let mut previous_index = seed_index + derived_points.len();
                     let mut current_position = seed_position;
                     for _ in 0..depth {
-                        current_position = PointRecord {
-                            x: current_position.x + dx,
-                            y: current_position.y + dy,
-                        };
+                        current_position += PointRecord { x: dx, y: dy };
                         derived_points.push(ScenePoint {
                             position: current_position.clone(),
                             constraint: ScenePointConstraint::Offset {
