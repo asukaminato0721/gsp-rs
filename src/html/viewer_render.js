@@ -113,6 +113,43 @@
     return null;
   }
 
+  function pointInPolygon(point, polygon) {
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
+      const xi = polygon[i].x;
+      const yi = polygon[i].y;
+      const xj = polygon[j].x;
+      const yj = polygon[j].y;
+      const intersects = ((yi > point.y) !== (yj > point.y))
+        && (point.x < ((xj - xi) * (point.y - yi)) / ((yj - yi) || 1e-9) + xi);
+      if (intersects) inside = !inside;
+    }
+    return inside;
+  }
+
+  function isFreePolygon(env, polygon) {
+    if (polygon.binding) return false;
+    if (polygon.points.length < 3) return false;
+    return polygon.points.every((handle) => {
+      if (typeof handle?.pointIndex !== "number") return false;
+      const point = env.currentScene().points[handle.pointIndex];
+      return point && !point.constraint && !point.binding;
+    });
+  }
+
+  function findHitPolygon(env, screenX, screenY) {
+    for (let index = env.currentScene().polygons.length - 1; index >= 0; index -= 1) {
+      const polygon = env.currentScene().polygons[index];
+      if (polygon.visible === false || !isFreePolygon(env, polygon)) continue;
+      const screenPoints = polygon.points.map((handle) => env.toScreen(env.resolvePoint(handle)));
+      if (screenPoints.length < 3) continue;
+      if (pointInPolygon({ x: screenX, y: screenY }, screenPoints)) {
+        return index;
+      }
+    }
+    return null;
+  }
+
   function drawPolygons(env) {
     for (const polygon of env.currentScene().polygons) {
       if (polygon.visible === false) continue;
@@ -235,6 +272,7 @@
     labelBounds,
     findHitPoint,
     findHitLabel,
+    findHitPolygon,
     drawPolygons,
     drawLines,
     drawCircles,

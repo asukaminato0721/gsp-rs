@@ -145,12 +145,21 @@ type ViewerRenderModule = {
   draw: (env: ViewerEnv) => void;
   findHitPoint: (env: ViewerEnv, screenX: number, screenY: number) => number | null;
   findHitLabel: (env: ViewerEnv, screenX: number, screenY: number) => number | null;
+  findHitPolygon: (env: ViewerEnv, screenX: number, screenY: number) => number | null;
 };
 
 type ViewerDragModule = {
-  beginDrag: (env: ViewerEnv, pointerId: number, position: Point, pointIndex: number | null, labelIndex: number | null) => void;
+  beginDrag: (
+    env: ViewerEnv,
+    pointerId: number,
+    position: Point,
+    pointIndex: number | null,
+    labelIndex: number | null,
+    polygonIndex: number | null,
+  ) => void;
   updateDraggedPoint: (env: ViewerEnv, world: Point) => void;
   updateDraggedLabel: (env: ViewerEnv, world: Point) => void;
+  updateDraggedPolygon: (env: ViewerEnv, world: Point) => void;
   panFromPointerDelta: (env: ViewerEnv, position: Point) => void;
 };
 

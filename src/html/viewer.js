@@ -624,8 +624,12 @@
     return renderModule.findHitLabel(viewerEnv, screenX, screenY);
   }
 
-  function beginDrag(pointerId, position, pointIndex, labelIndex) {
-    dragModule.beginDrag(viewerEnv, pointerId, position, pointIndex, labelIndex);
+  function findHitPolygon(screenX, screenY) {
+    return renderModule.findHitPolygon ? renderModule.findHitPolygon(viewerEnv, screenX, screenY) : null;
+  }
+
+  function beginDrag(pointerId, position, pointIndex, labelIndex, polygonIndex) {
+    dragModule.beginDrag(viewerEnv, pointerId, position, pointIndex, labelIndex, polygonIndex);
   }
 
   function updateDraggedPoint(world) {
@@ -634,6 +638,10 @@
 
   function updateDraggedLabel(world) {
     dragModule.updateDraggedLabel(viewerEnv, world);
+  }
+
+  function updateDraggedPolygon(world) {
+    dragModule.updateDraggedPolygon(viewerEnv, world);
   }
 
   function panFromPointerDelta(position) {
@@ -697,7 +705,10 @@
     const position = sceneModule.getCanvasCoords(viewerEnv, event);
     const pointIndex = findHitPoint(position.x, position.y);
     const labelIndex = pointIndex === null ? findHitLabel(position.x, position.y) : null;
-    beginDrag(event.pointerId, position, pointIndex, labelIndex);
+    const polygonIndex = pointIndex === null && labelIndex === null
+      ? findHitPolygon(position.x, position.y)
+      : null;
+    beginDrag(event.pointerId, position, pointIndex, labelIndex, polygonIndex);
     canvas.setPointerCapture(event.pointerId);
   });
 
@@ -710,6 +721,8 @@
     }
     if (dragState.val.mode === "point") {
       updateDraggedPoint(sceneModule.toWorld(viewerEnv, position.x, position.y));
+    } else if (dragState.val.mode === "polygon") {
+      updateDraggedPolygon(sceneModule.toWorld(viewerEnv, position.x, position.y));
     } else if (dragState.val.mode === "label") {
       updateDraggedLabel(position);
     } else {

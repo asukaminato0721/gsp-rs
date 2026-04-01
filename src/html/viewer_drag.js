@@ -1,7 +1,7 @@
 (function() {
   const modules = window.GspViewerModules || (window.GspViewerModules = {});
 
-  function dragModeFor(env, pointIndex, labelIndex) {
+  function dragModeFor(env, pointIndex, labelIndex, polygonIndex) {
     if (pointIndex !== null) {
       const point = env.currentScene().points[pointIndex];
       if (point?.binding?.kind === "coordinate") {
@@ -9,15 +9,19 @@
       }
       return env.currentScene().graphMode && env.isOriginPointIndex(pointIndex) ? "origin-pan" : "point";
     }
+    if (polygonIndex !== null) {
+      return "polygon";
+    }
     return labelIndex !== null ? "label" : "pan";
   }
 
-  function beginDrag(env, pointerId, position, pointIndex, labelIndex) {
+  function beginDrag(env, pointerId, position, pointIndex, labelIndex, polygonIndex) {
     env.dragState.val = {
       pointerId,
-      mode: dragModeFor(env, pointIndex, labelIndex),
+      mode: dragModeFor(env, pointIndex, labelIndex, polygonIndex),
       pointIndex,
       labelIndex,
+      polygonIndex,
       lastX: position.x,
       lastY: position.y,
     };
@@ -121,6 +125,24 @@
     });
   }
 
+  function updateDraggedPolygon(env, world) {
+    const previous = env.toWorld(env.dragState.val.lastX, env.dragState.val.lastY);
+    const dx = world.x - previous.x;
+    const dy = world.y - previous.y;
+    if (Math.abs(dx) <= 1e-9 && Math.abs(dy) <= 1e-9) return;
+    env.updateScene((draft) => {
+      const polygon = draft.polygons[env.dragState.val.polygonIndex];
+      if (!polygon) return;
+      polygon.points.forEach((handle) => {
+        if (typeof handle?.pointIndex !== "number") return;
+        const point = draft.points[handle.pointIndex];
+        if (!point || point.constraint || point.binding) return;
+        point.x += dx;
+        point.y += dy;
+      });
+    });
+  }
+
   function panFromPointerDelta(env, position) {
     const worldNow = env.toWorld(position.x, position.y);
     const worldLast = env.toWorld(env.dragState.val.lastX, env.dragState.val.lastY);
@@ -133,6 +155,7 @@
     beginDrag,
     updateDraggedPoint,
     updateDraggedLabel,
+    updateDraggedPolygon,
     panFromPointerDelta,
   };
 })();
