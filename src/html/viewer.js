@@ -307,6 +307,7 @@
       }
       const anchor = document.createElement("button");
       anchor.className = "scene-link-button";
+      anchor.setAttribute("aria-pressed", buttonDef.active ? "true" : "false");
       if (buttonDef.active) {
         anchor.classList.add("is-active");
       }
@@ -325,6 +326,7 @@
       }
       anchor.addEventListener("click", () => {
         runButtonAction(buttonIndex);
+        anchor.blur();
       });
       buttonOverlays.append(anchor);
     });
@@ -376,10 +378,12 @@
 
   function stopButtonAnimation(buttonIndex) {
     const handle = buttonAnimations.get(buttonIndex);
-    if (!handle) {
-      return;
+    if (handle?.rafId) {
+      window.cancelAnimationFrame(handle.rafId);
     }
-    handle.stop = true;
+    if (handle) {
+      handle.stop = true;
+    }
     buttonAnimations.delete(buttonIndex);
     updateButtons((buttons) => {
       if (buttons[buttonIndex]) {
@@ -389,7 +393,7 @@
   }
 
   function toggleAnimatedPoint(buttonIndex, pointIndex, mode) {
-    if (buttonAnimations.has(buttonIndex)) {
+    if (buttonsState.val[buttonIndex]?.active) {
       stopButtonAnimation(buttonIndex);
       return;
     }
@@ -399,7 +403,16 @@
       return;
     }
     const base = { x: point.x, y: point.y };
-    const state = { stop: false, direction: 1, t: 0 };
+    const state = {
+      stop: false,
+      direction: 1,
+      t: 0,
+      vx: (Math.random() - 0.5) * 0.003,
+      vy: (Math.random() - 0.5) * 0.003,
+      nextTurnAt: 500 + Math.random() * 700,
+      elapsedMs: 0,
+      rafId: 0,
+    };
     buttonAnimations.set(buttonIndex, state);
     updateButtons((buttons) => {
       if (buttons[buttonIndex]) {
@@ -440,14 +453,43 @@
           state.t += dt * 0.004;
           draftPoint.x = base.x + Math.sin(state.t) * 36;
         } else {
-          state.t += dt * 0.0035;
-          draftPoint.x = base.x + Math.cos(state.t) * 24;
-          draftPoint.y = base.y + Math.sin(state.t) * 18;
+          state.elapsedMs += dt;
+          if (state.elapsedMs >= state.nextTurnAt) {
+            state.elapsedMs = 0;
+            state.nextTurnAt = 500 + Math.random() * 700;
+            state.vx += (Math.random() - 0.5) * 0.0016;
+            state.vy += (Math.random() - 0.5) * 0.0016;
+          }
+          state.vx += (base.x - draftPoint.x) * 0.00008;
+          state.vy += (base.y - draftPoint.y) * 0.00008;
+          const speed = Math.hypot(state.vx, state.vy);
+          if (speed > 0.005) {
+            state.vx = (state.vx / speed) * 0.005;
+            state.vy = (state.vy / speed) * 0.005;
+          } else if (speed < 0.0008) {
+            const angle = Math.random() * Math.PI * 2;
+            state.vx = Math.cos(angle) * 0.0015;
+            state.vy = Math.sin(angle) * 0.0015;
+          }
+
+          draftPoint.x += state.vx * dt;
+          draftPoint.y += state.vy * dt;
+
+          const maxDx = 0.8;
+          const maxDy = 0.6;
+          if (draftPoint.x < base.x - maxDx || draftPoint.x > base.x + maxDx) {
+            state.vx *= -0.7;
+            draftPoint.x = Math.max(base.x - maxDx, Math.min(base.x + maxDx, draftPoint.x));
+          }
+          if (draftPoint.y < base.y - maxDy || draftPoint.y > base.y + maxDy) {
+            state.vy *= -0.7;
+            draftPoint.y = Math.max(base.y - maxDy, Math.min(base.y + maxDy, draftPoint.y));
+          }
         }
       });
-      window.requestAnimationFrame(step);
+      state.rafId = window.requestAnimationFrame(step);
     };
-    window.requestAnimationFrame(step);
+    state.rafId = window.requestAnimationFrame(step);
   }
 
   function runButtonAction(buttonIndex) {
@@ -570,6 +612,10 @@
 
   van.derive(() => {
     draw();
+    return 0;
+  });
+
+  van.derive(() => {
     renderButtons();
     return 0;
   });
