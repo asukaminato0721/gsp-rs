@@ -1,6 +1,9 @@
+// @ts-check
+
 (function() {
   const modules = window.GspViewerModules || (window.GspViewerModules = {});
 
+  /** @param {ViewerEnv} env */
   function getViewBounds(env) {
     const spanX = env.baseSpanX / env.view.zoom;
     const spanY = env.baseSpanY / env.view.zoom;
@@ -14,6 +17,11 @@
     };
   }
 
+  /**
+   * @param {ViewerEnv | null} env
+   * @param {any} constraint
+   * @param {(index: number) => Point} resolveFn
+   */
   function resolveConstrainedPoint(env, constraint, resolveFn) {
     if (!constraint) return null;
     if (constraint.kind === "offset") {
@@ -61,6 +69,7 @@
     return null;
   }
 
+  /** @param {ViewerEnv} env */
   function resolveScenePoint(env, index) {
     const point = env.currentScene().points[index];
     if (!point) return { x: 0, y: 0 };
@@ -68,6 +77,7 @@
     return resolved || point;
   }
 
+  /** @param {ViewerEnv} env */
   function resolvePoint(env, handle) {
     if (typeof handle.pointIndex === "number") {
       const point = resolveScenePoint(env, handle.pointIndex);
@@ -93,6 +103,7 @@
     return handle;
   }
 
+  /** @param {ViewerEnv} env */
   function resolveAnchorBase(env, handle) {
     if (typeof handle.pointIndex === "number") {
       return resolveScenePoint(env, handle.pointIndex);
@@ -114,6 +125,7 @@
     return handle;
   }
 
+  /** @param {ViewerEnv} env */
   function toScreen(env, point) {
     const usableWidth = Math.max(1, env.sourceScene.width - env.margin * 2);
     const usableHeight = Math.max(1, env.sourceScene.height - env.margin * 2);
@@ -128,6 +140,7 @@
     };
   }
 
+  /** @param {ViewerEnv} env */
   function toWorld(env, screenX, screenY) {
     const usableWidth = Math.max(1, env.sourceScene.width - env.margin * 2);
     const usableHeight = Math.max(1, env.sourceScene.height - env.margin * 2);
@@ -142,6 +155,7 @@
     };
   }
 
+  /** @param {ViewerEnv} env */
   function getCanvasCoords(env, event) {
     const rect = env.canvas.getBoundingClientRect();
     return {
@@ -160,6 +174,7 @@
     return magnitude * 10;
   }
 
+  /** @param {ViewerEnv} env */
   function drawGrid(env) {
     if (!env.currentScene().graphMode) return;
     const bounds = getViewBounds(env);

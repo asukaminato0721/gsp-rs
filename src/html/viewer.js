@@ -1,3 +1,5 @@
+// @ts-check
+
 (() => {
   const van = window.van;
   const { label, input } = van.tags;
@@ -7,13 +9,19 @@
     drag: dragModule,
     dynamics: dynamicsModule,
   } = window.GspViewerModules;
+  /** @type {SceneData} */
   const sourceScene = JSON.parse(document.getElementById("scene-data").textContent);
-  const canvas = document.getElementById("view");
+  /** @type {HTMLCanvasElement} */
+  const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById("view"));
   const ctx = canvas.getContext("2d");
-  const resetButton = document.getElementById("reset-view");
-  const parameterControls = document.getElementById("parameter-controls");
-  const coordReadout = document.getElementById("coord-readout");
-  const zoomReadout = document.getElementById("zoom-readout");
+  /** @type {HTMLButtonElement} */
+  const resetButton = /** @type {HTMLButtonElement} */ (document.getElementById("reset-view"));
+  /** @type {HTMLElement} */
+  const parameterControls = /** @type {HTMLElement} */ (document.getElementById("parameter-controls"));
+  /** @type {HTMLElement} */
+  const coordReadout = /** @type {HTMLElement} */ (document.getElementById("coord-readout"));
+  /** @type {HTMLElement} */
+  const zoomReadout = /** @type {HTMLElement} */ (document.getElementById("zoom-readout"));
   const margin = 32;
   const trigMode = !!sourceScene.piMode;
   const savedViewportMode = !!sourceScene.savedViewport;
@@ -35,7 +43,8 @@
     centerY: baseCenterY,
     zoom: 1,
   } };
-  const view = new Proxy({}, {
+  /** @type {ViewState} */
+  const view = new Proxy(/** @type {ViewState} */ ({}), {
     get: (_, key) => viewState.val[key],
     set: (_, key, value) => {
       viewState.val = { ...viewState.val, [key]: value };
@@ -295,6 +304,7 @@
     renderModule.draw(viewerEnv);
   }
 
+  /** @type {ViewerEnv} */
   const viewerEnv = {
     canvas,
     ctx,

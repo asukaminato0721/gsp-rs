@@ -1,3 +1,5 @@
+// @ts-check
+
 (function() {
   const modules = window.GspViewerModules || (window.GspViewerModules = {});
 
@@ -84,6 +86,7 @@
     return "?";
   }
 
+  /** @param {ViewerEnv} env */
   function parameterMap(env) {
     return new Map(env.currentDynamics().parameters.map((parameter) => [parameter.name, parameter.value]));
   }
@@ -193,6 +196,7 @@
     }
   }
 
+  /** @param {ViewerEnv} env */
   function refreshDerivedPoints(env, scene) {
     const resolveHandle = (handle) => {
       if (typeof handle?.pointIndex === "number") {
@@ -375,6 +379,7 @@
     scene.lines = preservedLines;
   }
 
+  /** @param {ViewerEnv} env */
   function refreshDynamicLabels(env, scene) {
     const parameters = parameterMap(env);
     scene.labels.forEach((label) => {
@@ -415,6 +420,7 @@
     });
   }
 
+  /** @param {ViewerEnv} env */
   function syncDynamicScene(env) {
     const parameters = parameterMap(env);
     env.updateScene((draft) => {
@@ -460,6 +466,7 @@
     });
   }
 
+  /** @param {ViewerEnv} env */
   function buildParameterControls(env) {
     env.parameterControls.replaceChildren();
     const controls = env.currentDynamics().parameters.map((parameter, index) => env.labelTag(

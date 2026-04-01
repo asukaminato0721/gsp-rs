@@ -2,14 +2,3 @@ a (web) render for https://sketchpad.keycurriculum.com/
 
 cargo run ./path/to/your.gsp
 cargo run ./path/to/one.gsp ./path/to/two.gsp
-
-will generate:
-- `./path/to/your.html`
-- `./path/to/one.html`
-- `./path/to/two.html`
-
-architecture:
-- `gsp` parsing stays separate from export.
-- `runtime` builds a normalized scene plus interaction/runtime metadata.
-- `export/html` turns that scene into a self-contained single HTML file.
-- `pipeline` is the product boundary: `.gsp -> standalone html`.
