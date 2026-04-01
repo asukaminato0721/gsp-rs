@@ -1,5 +1,13 @@
 use super::*;
 
+pub(crate) fn is_action_button_group(group: &ObjectGroup) -> bool {
+    (group.header.class_id & 0xffff) == 62
+        && group
+            .records
+            .iter()
+            .any(|record| record.record_type == 0x0906)
+}
+
 pub(crate) fn decode_link_button_url(file: &GspFile, group: &ObjectGroup) -> Option<String> {
     let payload = group
         .records
@@ -204,6 +212,21 @@ pub(crate) fn decode_bbox_rect_raw(
     let left = x0.min(x1);
     let top = y0.min(y1);
     Some((left, top, (x1 - x0).abs(), (y1 - y0).abs()))
+}
+
+pub(crate) fn decode_button_screen_anchor(
+    file: &GspFile,
+    group: &ObjectGroup,
+) -> Option<PointRecord> {
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x0906)
+        .map(|record| record.payload(&file.data))?;
+    (payload.len() >= 24).then(|| PointRecord {
+        x: read_u16(payload, payload.len() - 4) as f64,
+        y: read_u16(payload, payload.len() - 2) as f64,
+    })
 }
 
 pub(crate) fn decode_transform_anchor_raw(

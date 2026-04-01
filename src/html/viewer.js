@@ -55,6 +55,17 @@
   });
   const dragState = van?.state ? van.state(null) : { val: null };
   const hoverPointIndex = van?.state ? van.state(null) : { val: null };
+  const buttonsState = van?.state ? van.state((sourceScene.buttons || []).map((button) => ({
+    ...button,
+    visible: true,
+    active: false,
+  }))) : { val: (sourceScene.buttons || []).map((button) => ({
+    ...button,
+    visible: true,
+    active: false,
+  })) };
+  const buttonTimers = new Map();
+  const buttonAnimations = new Map();
   const labelAttachDistance = 40;
   const coordText = van.derive(() => {
     const world = pointerWorldState.val;
@@ -171,6 +182,7 @@
       points: scene.points.map((point) => ({
         x: point.x,
         y: point.y,
+        visible: true,
         constraint: point.constraint ? { ...point.constraint } : null,
         binding: point.binding ? { ...point.binding } : null,
       })),
@@ -179,11 +191,13 @@
       polygons: scene.polygons.map((polygon) => ({
         color: polygon.color,
         outlineColor: polygon.outlineColor,
+        visible: true,
         points: polygon.points.map(attachPointRef),
         binding: polygon.binding ? { ...polygon.binding } : null,
       })),
       circles: scene.circles.map((circle) => ({
         color: circle.color,
+        visible: true,
         center: attachPointRef(circle.center),
         radiusPoint: attachPointRef(circle.radiusPoint),
         binding: circle.binding ? { ...circle.binding } : null,
@@ -191,6 +205,7 @@
       labels: scene.labels.map((label) => ({
         text: label.text,
         color: label.color,
+        visible: true,
         anchor: label.screenSpace ? { ...label.anchor } : attachLabelAnchor(label.anchor, hydratedLines),
         binding: label.binding ? { ...label.binding } : null,
         screenSpace: !!label.screenSpace,
@@ -231,6 +246,12 @@
     const next = dynamicsState.val;
     mutator(next);
     dynamicsState.val = { ...next };
+  }
+
+  function updateButtons(mutator) {
+    const next = buttonsState.val.slice();
+    mutator(next);
+    buttonsState.val = next;
   }
 
   function rgba(color) {
@@ -279,19 +300,203 @@
       return;
     }
     buttonOverlays.replaceChildren();
-    (sourceScene.buttons || []).forEach((buttonDef) => {
-      const anchor = document.createElement("a");
+    const stackedOffsets = new Map();
+    buttonsState.val.forEach((buttonDef, buttonIndex) => {
+      if (buttonDef.visible === false) {
+        return;
+      }
+      const anchor = document.createElement("button");
       anchor.className = "scene-link-button";
-      anchor.href = buttonDef.href;
-      anchor.target = "_blank";
-      anchor.rel = "noreferrer noopener";
+      if (buttonDef.active) {
+        anchor.classList.add("is-active");
+      }
+      anchor.type = "button";
       anchor.textContent = buttonDef.text;
+      const key = `${Math.round(buttonDef.x)}:${Math.round(buttonDef.y)}`;
+      const stackedOffset = stackedOffsets.get(key) || 0;
+      stackedOffsets.set(key, stackedOffset + 1);
       anchor.style.left = `${(buttonDef.x / sourceScene.width) * 100}%`;
-      anchor.style.top = `${(buttonDef.y / sourceScene.height) * 100}%`;
-      anchor.style.width = `${(buttonDef.width / sourceScene.width) * 100}%`;
-      anchor.style.height = `${(buttonDef.height / sourceScene.height) * 100}%`;
+      anchor.style.top = `${((buttonDef.y + stackedOffset * 34) / sourceScene.height) * 100}%`;
+      if (buttonDef.width) {
+        anchor.style.width = `${(buttonDef.width / sourceScene.width) * 100}%`;
+      }
+      if (buttonDef.height) {
+        anchor.style.height = `${(buttonDef.height / sourceScene.height) * 100}%`;
+      }
+      anchor.addEventListener("click", () => {
+        runButtonAction(buttonIndex);
+      });
       buttonOverlays.append(anchor);
     });
+  }
+
+  function setTargetsVisibility(action, visible) {
+    updateScene((scene) => {
+      (action.pointIndices || []).forEach((index) => {
+        if (scene.points[index]) scene.points[index].visible = visible;
+      });
+      (action.lineIndices || []).forEach((index) => {
+        if (scene.lines[index]) scene.lines[index].visible = visible;
+      });
+      (action.circleIndices || []).forEach((index) => {
+        if (scene.circles[index]) scene.circles[index].visible = visible;
+      });
+      (action.polygonIndices || []).forEach((index) => {
+        if (scene.polygons[index]) scene.polygons[index].visible = visible;
+      });
+    });
+  }
+
+  function toggleTargetsVisibility(action) {
+    const scene = currentScene();
+    const hiddenPoint = (action.pointIndices || []).some((index) => scene.points[index]?.visible === false);
+    const hiddenLine = (action.lineIndices || []).some((index) => scene.lines[index]?.visible === false);
+    const hiddenCircle = (action.circleIndices || []).some((index) => scene.circles[index]?.visible === false);
+    const hiddenPolygon = (action.polygonIndices || []).some((index) => scene.polygons[index]?.visible === false);
+    setTargetsVisibility(action, hiddenPoint || hiddenLine || hiddenCircle || hiddenPolygon);
+  }
+
+  function movePointToTarget(pointIndex, targetPointIndex = null) {
+    updateScene((scene) => {
+      const point = scene.points[pointIndex];
+      if (!point?.constraint) {
+        return;
+      }
+      if (point.constraint.kind === "segment") {
+        if (targetPointIndex === point.constraint.startIndex) {
+          point.constraint.t = 0;
+        } else if (targetPointIndex === point.constraint.endIndex) {
+          point.constraint.t = 1;
+        } else {
+          point.constraint.t = point.constraint.t < 0.5 ? 1 : 0;
+        }
+      }
+    });
+  }
+
+  function stopButtonAnimation(buttonIndex) {
+    const handle = buttonAnimations.get(buttonIndex);
+    if (!handle) {
+      return;
+    }
+    handle.stop = true;
+    buttonAnimations.delete(buttonIndex);
+    updateButtons((buttons) => {
+      if (buttons[buttonIndex]) {
+        buttons[buttonIndex].active = false;
+      }
+    });
+  }
+
+  function toggleAnimatedPoint(buttonIndex, pointIndex, mode) {
+    if (buttonAnimations.has(buttonIndex)) {
+      stopButtonAnimation(buttonIndex);
+      return;
+    }
+    const scene = currentScene();
+    const point = scene.points[pointIndex];
+    if (!point) {
+      return;
+    }
+    const base = { x: point.x, y: point.y };
+    const state = { stop: false, direction: 1, t: 0 };
+    buttonAnimations.set(buttonIndex, state);
+    updateButtons((buttons) => {
+      if (buttons[buttonIndex]) {
+        buttons[buttonIndex].active = true;
+      }
+    });
+    let lastTime = null;
+    const step = (timestamp) => {
+      if (state.stop) {
+        return;
+      }
+      if (lastTime === null) {
+        lastTime = timestamp;
+      }
+      const dt = Math.min(64, timestamp - lastTime);
+      lastTime = timestamp;
+      updateScene((draft) => {
+        const draftPoint = draft.points[pointIndex];
+        if (!draftPoint) {
+          return;
+        }
+        if (draftPoint.constraint?.kind === "segment") {
+          const delta = (mode === "scroll" ? 0.00035 : 0.0006) * dt;
+          if (mode === "scroll") {
+            draftPoint.constraint.t = (draftPoint.constraint.t + delta) % 1;
+          } else {
+            let next = draftPoint.constraint.t + delta * state.direction;
+            if (next >= 1) {
+              next = 1;
+              state.direction = -1;
+            } else if (next <= 0) {
+              next = 0;
+              state.direction = 1;
+            }
+            draftPoint.constraint.t = next;
+          }
+        } else if (mode === "scroll") {
+          state.t += dt * 0.004;
+          draftPoint.x = base.x + Math.sin(state.t) * 36;
+        } else {
+          state.t += dt * 0.0035;
+          draftPoint.x = base.x + Math.cos(state.t) * 24;
+          draftPoint.y = base.y + Math.sin(state.t) * 18;
+        }
+      });
+      window.requestAnimationFrame(step);
+    };
+    window.requestAnimationFrame(step);
+  }
+
+  function runButtonAction(buttonIndex) {
+    const button = buttonsState.val[buttonIndex];
+    if (!button) {
+      return;
+    }
+    const action = button.action || {};
+    switch (action.kind) {
+      case "link":
+        if (action.href) {
+          window.open(action.href, "_blank", "noopener,noreferrer");
+        }
+        break;
+      case "toggle-visibility":
+        toggleTargetsVisibility(action);
+        break;
+      case "set-visibility":
+        setTargetsVisibility(action, !!action.visible);
+        break;
+      case "move-point":
+        if (typeof action.pointIndex === "number") {
+          movePointToTarget(action.pointIndex, action.targetPointIndex ?? null);
+        }
+        break;
+      case "animate-point":
+        if (typeof action.pointIndex === "number") {
+          toggleAnimatedPoint(buttonIndex, action.pointIndex, "animate");
+        }
+        break;
+      case "scroll-point":
+        if (typeof action.pointIndex === "number") {
+          toggleAnimatedPoint(buttonIndex, action.pointIndex, "scroll");
+        }
+        break;
+      case "sequence": {
+        const intervalMs = Math.max(0, action.intervalMs || 0);
+        (action.buttonIndices || []).forEach((childButtonIndex, offset) => {
+          const timer = window.setTimeout(() => {
+            runButtonAction(childButtonIndex);
+            buttonTimers.delete(timer);
+          }, offset * intervalMs);
+          buttonTimers.set(timer, true);
+        });
+        break;
+      }
+      default:
+        break;
+    }
   }
 
   function findHitPoint(screenX, screenY) {
@@ -365,6 +570,7 @@
 
   van.derive(() => {
     draw();
+    renderButtons();
     return 0;
   });
 
@@ -437,6 +643,5 @@
 
   dynamicsModule.syncDynamicScene(viewerEnv);
   dynamicsModule.buildParameterControls(viewerEnv);
-  renderButtons();
   resetView();
 })();

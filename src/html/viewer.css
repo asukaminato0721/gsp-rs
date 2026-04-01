@@ -145,6 +145,11 @@ canvas.is-dragging {
   background: white;
 }
 
+.scene-link-button.is-active {
+  border-color: rgba(0, 95, 204, 0.38);
+  box-shadow: 0 10px 26px rgba(0, 95, 204, 0.18);
+}
+
 .meta {
   display: flex;
   justify-content: space-between;

@@ -48,11 +48,23 @@ type SceneData = {
   labels: any[];
   buttons?: Array<{
     text: string;
-    href: string;
     x: number;
     y: number;
-    width: number;
-    height: number;
+    width?: number | null;
+    height?: number | null;
+    action: {
+      kind: string;
+      href?: string;
+      visible?: boolean;
+      pointIndices?: number[];
+      lineIndices?: number[];
+      circleIndices?: number[];
+      polygonIndices?: number[];
+      pointIndex?: number;
+      targetPointIndex?: number | null;
+      buttonIndices?: number[];
+      intervalMs?: number;
+    };
   }>;
   parameters?: any[];
   functions?: any[];

@@ -29,7 +29,10 @@
   function findHitPoint(env, screenX, screenY) {
     let bestIndex = null;
     let bestDistanceSquared = env.pointHitRadius * env.pointHitRadius;
-    env.currentScene().points.forEach((_, index) => {
+    env.currentScene().points.forEach((point, index) => {
+      if (point.visible === false) {
+        return;
+      }
       const screen = env.toScreen(env.resolveScenePoint(index));
       const dx = screen.x - screenX;
       const dy = screen.y - screenY;
@@ -48,6 +51,9 @@
     env.ctx.textBaseline = "top";
     for (let index = env.currentScene().labels.length - 1; index >= 0; index -= 1) {
       const label = env.currentScene().labels[index];
+      if (label.visible === false) {
+        continue;
+      }
       const bounds = labelBounds(env, label);
       if (
         screenX >= bounds.left &&
@@ -65,6 +71,7 @@
 
   function drawPolygons(env) {
     for (const polygon of env.currentScene().polygons) {
+      if (polygon.visible === false) continue;
       if (polygon.points.length < 3) continue;
       env.ctx.beginPath();
       polygon.points.forEach((handle, index) => {
@@ -86,6 +93,7 @@
 
   function drawLines(env) {
     for (const line of env.currentScene().lines) {
+      if (line.visible === false) continue;
       if (line.points.length < 2) continue;
       env.ctx.beginPath();
       line.points.forEach((handle, index) => {
@@ -106,6 +114,7 @@
 
   function drawCircles(env) {
     for (const circle of env.currentScene().circles) {
+      if (circle.visible === false) continue;
       const centerWorld = env.resolvePoint(circle.center);
       const radiusPointWorld = env.resolvePoint(circle.radiusPoint);
       const center = env.toScreen(centerWorld);
@@ -122,7 +131,10 @@
   }
 
   function drawPoints(env) {
-    env.currentScene().points.forEach((_, index) => {
+    env.currentScene().points.forEach((point, index) => {
+      if (point.visible === false) {
+        return;
+      }
       const screen = env.toScreen(env.resolveScenePoint(index));
       env.ctx.beginPath();
       env.ctx.arc(screen.x, screen.y, index === env.hoverPointIndex.val ? 6 : 4, 0, Math.PI * 2);
@@ -135,6 +147,7 @@
     env.ctx.font = "18px \"Noto Sans\", \"Segoe UI\", sans-serif";
     env.ctx.textBaseline = "top";
     for (const label of env.currentScene().labels) {
+      if (label.visible === false) continue;
       const bounds = labelBounds(env, label);
       env.ctx.fillStyle = env.rgba(label.color);
       bounds.lines.forEach((line, index) => {

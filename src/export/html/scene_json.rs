@@ -2,8 +2,8 @@ use crate::format::PointRecord;
 use crate::runtime::functions::{BinaryOp, FunctionExpr, FunctionTerm, UnaryFunction};
 use crate::runtime::geometry::darken;
 use crate::runtime::scene::{
-    LineBinding, Scene, SceneButton, ScenePointBinding, ScenePointConstraint, ShapeBinding,
-    TextLabelBinding,
+    ButtonAction, LineBinding, Scene, SceneButton, ScenePointBinding, ScenePointConstraint,
+    ShapeBinding, TextLabelBinding,
 };
 use serde::Serialize;
 
@@ -76,22 +76,123 @@ impl SceneJson {
 #[serde(rename_all = "camelCase")]
 struct ButtonJson {
     text: String,
-    href: String,
     x: f64,
     y: f64,
-    width: f64,
-    height: f64,
+    width: Option<f64>,
+    height: Option<f64>,
+    action: ButtonActionJson,
 }
 
 impl ButtonJson {
     fn from_button(button: &SceneButton) -> Self {
         Self {
             text: button.text.clone(),
-            href: button.href.clone(),
-            x: button.rect.x,
-            y: button.rect.y,
-            width: button.rect.width,
-            height: button.rect.height,
+            x: button.anchor.x,
+            y: button.anchor.y,
+            width: button.rect.as_ref().map(|rect| rect.width),
+            height: button.rect.as_ref().map(|rect| rect.height),
+            action: ButtonActionJson::from_action(&button.action),
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+enum ButtonActionJson {
+    Link {
+        href: String,
+    },
+    ToggleVisibility {
+        #[serde(rename = "pointIndices")]
+        point_indices: Vec<usize>,
+        #[serde(rename = "lineIndices")]
+        line_indices: Vec<usize>,
+        #[serde(rename = "circleIndices")]
+        circle_indices: Vec<usize>,
+        #[serde(rename = "polygonIndices")]
+        polygon_indices: Vec<usize>,
+    },
+    SetVisibility {
+        visible: bool,
+        #[serde(rename = "pointIndices")]
+        point_indices: Vec<usize>,
+        #[serde(rename = "lineIndices")]
+        line_indices: Vec<usize>,
+        #[serde(rename = "circleIndices")]
+        circle_indices: Vec<usize>,
+        #[serde(rename = "polygonIndices")]
+        polygon_indices: Vec<usize>,
+    },
+    MovePoint {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+        #[serde(rename = "targetPointIndex")]
+        target_point_index: Option<usize>,
+    },
+    AnimatePoint {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+    },
+    ScrollPoint {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+    },
+    Sequence {
+        #[serde(rename = "buttonIndices")]
+        button_indices: Vec<usize>,
+        #[serde(rename = "intervalMs")]
+        interval_ms: u32,
+    },
+}
+
+impl ButtonActionJson {
+    fn from_action(action: &ButtonAction) -> Self {
+        match action {
+            ButtonAction::Link { href } => Self::Link { href: href.clone() },
+            ButtonAction::ToggleVisibility {
+                point_indices,
+                line_indices,
+                circle_indices,
+                polygon_indices,
+            } => Self::ToggleVisibility {
+                point_indices: point_indices.clone(),
+                line_indices: line_indices.clone(),
+                circle_indices: circle_indices.clone(),
+                polygon_indices: polygon_indices.clone(),
+            },
+            ButtonAction::SetVisibility {
+                visible,
+                point_indices,
+                line_indices,
+                circle_indices,
+                polygon_indices,
+            } => Self::SetVisibility {
+                visible: *visible,
+                point_indices: point_indices.clone(),
+                line_indices: line_indices.clone(),
+                circle_indices: circle_indices.clone(),
+                polygon_indices: polygon_indices.clone(),
+            },
+            ButtonAction::MovePoint {
+                point_index,
+                target_point_index,
+            } => Self::MovePoint {
+                point_index: *point_index,
+                target_point_index: *target_point_index,
+            },
+            ButtonAction::AnimatePoint { point_index } => Self::AnimatePoint {
+                point_index: *point_index,
+            },
+            ButtonAction::ScrollPoint { point_index } => Self::ScrollPoint {
+                point_index: *point_index,
+            },
+            ButtonAction::Sequence {
+                button_indices,
+                interval_ms,
+            } => Self::Sequence {
+                button_indices: button_indices.clone(),
+                interval_ms: *interval_ms,
+            },
         }
     }
 }

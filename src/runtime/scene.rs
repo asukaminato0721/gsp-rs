@@ -24,14 +24,53 @@ pub(crate) struct Scene {
 #[derive(Debug, Clone)]
 pub(crate) struct SceneButton {
     pub(crate) text: String,
-    pub(crate) href: String,
-    pub(crate) rect: ScreenRect,
+    pub(crate) anchor: ScreenPoint,
+    pub(crate) rect: Option<ScreenRect>,
+    pub(crate) action: ButtonAction,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum ButtonAction {
+    Link {
+        href: String,
+    },
+    ToggleVisibility {
+        point_indices: Vec<usize>,
+        line_indices: Vec<usize>,
+        circle_indices: Vec<usize>,
+        polygon_indices: Vec<usize>,
+    },
+    SetVisibility {
+        visible: bool,
+        point_indices: Vec<usize>,
+        line_indices: Vec<usize>,
+        circle_indices: Vec<usize>,
+        polygon_indices: Vec<usize>,
+    },
+    MovePoint {
+        point_index: usize,
+        target_point_index: Option<usize>,
+    },
+    AnimatePoint {
+        point_index: usize,
+    },
+    ScrollPoint {
+        point_index: usize,
+    },
+    Sequence {
+        button_indices: Vec<usize>,
+        interval_ms: u32,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ScreenPoint {
+    pub(crate) x: f64,
+    pub(crate) y: f64,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct ScreenRect {
-    pub(crate) x: f64,
-    pub(crate) y: f64,
     pub(crate) width: f64,
     pub(crate) height: f64,
 }
