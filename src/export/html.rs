@@ -1,8 +1,7 @@
-use crate::format::{GspFile, PointRecord};
-use crate::render::extract::build_scene;
-use crate::render::functions::{BinaryOp, FunctionExpr, FunctionTerm, UnaryFunction};
-use crate::render::geometry::darken;
-use crate::render::scene::{
+use crate::format::PointRecord;
+use crate::runtime::functions::{BinaryOp, FunctionExpr, FunctionTerm, UnaryFunction};
+use crate::runtime::geometry::darken;
+use crate::runtime::scene::{
     LineBinding, Scene, ScenePointBinding, ScenePointConstraint, ShapeBinding, TextLabelBinding,
 };
 use serde::Serialize;
@@ -10,19 +9,14 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 
-const VIEWER_CSS: &str = include_str!("html/viewer.css");
-const VAN_JS: &str = include_str!("html/vendor/van-1.6.0.js");
-const VIEWER_SCENE_JS: &str = include_str!("html/viewer_scene.js");
-const VIEWER_RENDER_JS: &str = include_str!("html/viewer_render.js");
-const VIEWER_DRAG_JS: &str = include_str!("html/viewer_drag.js");
-const VIEWER_JS: &str = include_str!("html/viewer.js");
+const VIEWER_CSS: &str = include_str!("../html/viewer.css");
+const VAN_JS: &str = include_str!("../html/vendor/van-1.6.0.js");
+const VIEWER_SCENE_JS: &str = include_str!("../html/viewer_scene.js");
+const VIEWER_RENDER_JS: &str = include_str!("../html/viewer_render.js");
+const VIEWER_DRAG_JS: &str = include_str!("../html/viewer_drag.js");
+const VIEWER_JS: &str = include_str!("../html/viewer.js");
 
-pub fn render_points_to_html(
-    file: &GspFile,
-    output_path: &Path,
-    width: u32,
-    height: u32,
-) -> Result<(), String> {
+pub(crate) fn write_standalone_html(output_path: &Path, html: &str) -> Result<(), String> {
     if !matches!(
         output_path.extension().and_then(|ext| ext.to_str()),
         Some("html") | Some("HTML") | Some("htm") | Some("HTM")
@@ -32,9 +26,6 @@ pub fn render_points_to_html(
             output_path.display()
         ));
     }
-
-    let scene = build_scene(file);
-    let html = build_standalone_html(&scene, width, height);
 
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent).map_err(|error| {
@@ -50,7 +41,7 @@ pub fn render_points_to_html(
     Ok(())
 }
 
-fn build_standalone_html(scene: &Scene, width: u32, height: u32) -> String {
+pub(crate) fn render_standalone_html_document(scene: &Scene, width: u32, height: u32) -> String {
     let mut html = String::new();
     let scene_json = scene_to_json(scene, width, height);
     let van_js = van_runtime_to_global();
@@ -240,7 +231,7 @@ struct LineJson {
 }
 
 impl LineJson {
-    fn from_line(line: &crate::render::scene::LineShape) -> Self {
+    fn from_line(line: &crate::runtime::scene::LineShape) -> Self {
         Self {
             points: line.points.iter().map(PointJson::from_point).collect(),
             color: line.color,
@@ -302,7 +293,7 @@ struct PolygonJson {
 }
 
 impl PolygonJson {
-    fn from_polygon(polygon: &crate::render::scene::PolygonShape) -> Self {
+    fn from_polygon(polygon: &crate::runtime::scene::PolygonShape) -> Self {
         Self {
             points: polygon.points.iter().map(PointJson::from_point).collect(),
             color: polygon.color,
@@ -322,7 +313,7 @@ struct CircleJson {
 }
 
 impl CircleJson {
-    fn from_circle(circle: &crate::render::scene::SceneCircle) -> Self {
+    fn from_circle(circle: &crate::runtime::scene::SceneCircle) -> Self {
         Self {
             center: PointJson::from_point(&circle.center),
             radius_point: PointJson::from_point(&circle.radius_point),
@@ -425,7 +416,7 @@ struct LabelJson {
 }
 
 impl LabelJson {
-    fn from_label(label: &crate::render::scene::TextLabel) -> Self {
+    fn from_label(label: &crate::runtime::scene::TextLabel) -> Self {
         Self {
             anchor: PointJson::from_point(&label.anchor),
             text: label.text.clone(),
@@ -533,7 +524,7 @@ struct ScenePointJson {
 }
 
 impl ScenePointJson {
-    fn from_scene_point(point: &crate::render::scene::ScenePoint) -> Self {
+    fn from_scene_point(point: &crate::runtime::scene::ScenePoint) -> Self {
         Self {
             x: point.position.x,
             y: point.position.y,
@@ -742,7 +733,7 @@ struct ParameterJson {
 }
 
 impl ParameterJson {
-    fn from_parameter(parameter: &crate::render::scene::SceneParameter) -> Self {
+    fn from_parameter(parameter: &crate::runtime::scene::SceneParameter) -> Self {
         Self {
             name: parameter.name.clone(),
             value: parameter.value,
@@ -765,7 +756,7 @@ struct FunctionJson {
 }
 
 impl FunctionJson {
-    fn from_function(function_def: &crate::render::scene::SceneFunction) -> Self {
+    fn from_function(function_def: &crate::runtime::scene::SceneFunction) -> Self {
         Self {
             key: function_def.key,
             name: function_def.name.clone(),

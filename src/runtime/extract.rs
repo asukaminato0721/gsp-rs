@@ -9,8 +9,8 @@ use super::functions::{
     BinaryOp, FunctionExpr, FunctionTerm, ParsedFunctionExpr, collect_function_plot_domain,
     collect_function_plots, collect_scene_functions, collect_scene_parameters,
     decode_function_expr, decode_function_plot_descriptor, evaluate_expr_with_parameters,
-    function_expr_label, function_uses_pi_scale, sample_function_points,
-    synthesize_function_axes, synthesize_function_labels,
+    function_expr_label, function_uses_pi_scale, sample_function_points, synthesize_function_axes,
+    synthesize_function_labels,
 };
 use super::geometry::{
     Bounds, GraphTransform, color_from_style, distance_world, fill_color_from_styles,
@@ -79,7 +79,8 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     } else {
         Vec::new()
     };
-    let mut rotational_iteration_lines = collect_rotational_iteration_lines(file, &groups, &raw_anchors);
+    let mut rotational_iteration_lines =
+        collect_rotational_iteration_lines(file, &groups, &raw_anchors);
     let measurements = if graph_mode {
         collect_line_shapes(file, &groups, &raw_anchors, &[58], false)
     } else {
@@ -1015,12 +1016,16 @@ fn remap_line_bindings(lines: &mut [LineShape], group_to_point_index: &[Option<u
         else {
             continue;
         };
-        let Some(mapped_center_index) = group_to_point_index.get(*center_index).and_then(|index| *index)
+        let Some(mapped_center_index) = group_to_point_index
+            .get(*center_index)
+            .and_then(|index| *index)
         else {
             line.binding = None;
             continue;
         };
-        let Some(mapped_vertex_index) = group_to_point_index.get(*vertex_index).and_then(|index| *index)
+        let Some(mapped_vertex_index) = group_to_point_index
+            .get(*vertex_index)
+            .and_then(|index| *index)
         else {
             line.binding = None;
             continue;
@@ -1054,7 +1059,10 @@ fn collect_point_iteration_points(
         let Some(iter_group_index) = path.refs[1].checked_sub(1) else {
             continue;
         };
-        let Some(seed_index) = group_to_point_index.get(seed_group_index).and_then(|index| *index) else {
+        let Some(seed_index) = group_to_point_index
+            .get(seed_group_index)
+            .and_then(|index| *index)
+        else {
             continue;
         };
         let Some(iter_group) = groups.get(iter_group_index) else {
@@ -1068,10 +1076,18 @@ fn collect_point_iteration_points(
                 if iter_path.refs.len() < 2 {
                     continue;
                 }
-                let Some(base_start) = anchors.get(iter_path.refs[0].saturating_sub(1)).cloned().flatten() else {
+                let Some(base_start) = anchors
+                    .get(iter_path.refs[0].saturating_sub(1))
+                    .cloned()
+                    .flatten()
+                else {
                     continue;
                 };
-                let Some(base_end) = anchors.get(iter_path.refs[1].saturating_sub(1)).cloned().flatten() else {
+                let Some(base_end) = anchors
+                    .get(iter_path.refs[1].saturating_sub(1))
+                    .cloned()
+                    .flatten()
+                else {
                     continue;
                 };
                 let dx = base_end.x - base_start.x;
@@ -1125,8 +1141,10 @@ fn collect_point_iteration_points(
                 if depth == 0 {
                     continue;
                 }
-                if let Some((dx, dy)) = parameter_iteration_step(file, groups, iter_group, anchors) {
-                    let Some(seed_position) = anchors.get(seed_group_index).cloned().flatten() else {
+                if let Some((dx, dy)) = parameter_iteration_step(file, groups, iter_group, anchors)
+                {
+                    let Some(seed_position) = anchors.get(seed_group_index).cloned().flatten()
+                    else {
                         continue;
                     };
                     let mut previous_index = seed_index + derived_points.len();
@@ -1150,15 +1168,18 @@ fn collect_point_iteration_points(
                 } else if let Some((center_group_index, _angle_expr, _parameter_name, n)) =
                     regular_polygon_iteration_step(file, groups, iter_group)
                 {
-                    let Some(center_index) =
-                        group_to_point_index.get(center_group_index).and_then(|index| *index)
+                    let Some(center_index) = group_to_point_index
+                        .get(center_group_index)
+                        .and_then(|index| *index)
                     else {
                         continue;
                     };
-                    let Some(seed_position) = anchors.get(seed_group_index).cloned().flatten() else {
+                    let Some(seed_position) = anchors.get(seed_group_index).cloned().flatten()
+                    else {
                         continue;
                     };
-                    let Some(center_position) = anchors.get(center_group_index).cloned().flatten() else {
+                    let Some(center_position) = anchors.get(center_group_index).cloned().flatten()
+                    else {
                         continue;
                     };
                     let angle_degrees = -360.0 / n;
@@ -1679,8 +1700,7 @@ fn collect_rotational_iteration_lines(
                 },
                 y: {
                     let radians = (angle_degrees * step as f64).to_radians();
-                    center.y
-                        - (point.x - center.x) * radians.sin()
+                    center.y - (point.x - center.x) * radians.sin()
                         + (point.y - center.y) * radians.cos()
                 },
             };
@@ -2023,8 +2043,8 @@ fn collect_labels(
                     (!graph_mode
                         && matches!(kind, 0 | 2 | 15)
                         && !is_non_graph_parameter_group(group))
-                        .then(|| decode_label_name(file, group))
-                        .flatten()
+                    .then(|| decode_label_name(file, group))
+                    .flatten()
                 });
                 if let Some(text) = text {
                     let anchor = decode_label_anchor(file, groups, group, anchors);
@@ -2129,34 +2149,33 @@ fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) -> Vec<Text
             ) else {
                 continue;
             };
-            let (_expr_label, binding, text) = if parameter_name == "n"
-                && function_expr_label(expr.clone()) == "257 / n"
-            {
-                let angle = 360.0 / parameter_value;
-                let angle_expr = regular_polygon_angle_expr(&parameter_name, parameter_value);
-                (
-                    "360° / n".to_string(),
-                    Some(TextLabelBinding::ExpressionValue {
-                        parameter_name: parameter_name.clone(),
-                        expr_label: "360° / n".to_string(),
-                        expr: angle_expr,
-                    }),
-                    format!("360°\n——— = {:.2}°\n  n", angle),
-                )
-            } else {
-                let expr_label = function_expr_label(expr.clone());
-                (
-                    expr_label.clone(),
-                    is_editable_non_graph_parameter_name(&parameter_name).then(|| {
-                        TextLabelBinding::ExpressionValue {
+            let (_expr_label, binding, text) =
+                if parameter_name == "n" && function_expr_label(expr.clone()) == "257 / n" {
+                    let angle = 360.0 / parameter_value;
+                    let angle_expr = regular_polygon_angle_expr(&parameter_name, parameter_value);
+                    (
+                        "360° / n".to_string(),
+                        Some(TextLabelBinding::ExpressionValue {
                             parameter_name: parameter_name.clone(),
-                            expr_label: expr_label.clone(),
-                            expr: expr.clone(),
-                        }
-                    }),
-                    format!("{expr_label} = {:.2}", value),
-                )
-            };
+                            expr_label: "360° / n".to_string(),
+                            expr: angle_expr,
+                        }),
+                        format!("360°\n——— = {:.2}°\n  n", angle),
+                    )
+                } else {
+                    let expr_label = function_expr_label(expr.clone());
+                    (
+                        expr_label.clone(),
+                        is_editable_non_graph_parameter_name(&parameter_name).then(|| {
+                            TextLabelBinding::ExpressionValue {
+                                parameter_name: parameter_name.clone(),
+                                expr_label: expr_label.clone(),
+                                expr: expr.clone(),
+                            }
+                        }),
+                        format!("{expr_label} = {:.2}", value),
+                    )
+                };
             labels.push(TextLabel {
                 anchor,
                 text,
@@ -2171,8 +2190,14 @@ fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) -> Vec<Text
 
 fn is_non_graph_parameter_group(group: &ObjectGroup) -> bool {
     (group.header.class_id & 0xffff) == 0
-        && group.records.iter().any(|record| record.record_type == 0x0907)
-        && !group.records.iter().any(|record| record.record_type == 0x0899)
+        && group
+            .records
+            .iter()
+            .any(|record| record.record_type == 0x0907)
+        && !group
+            .records
+            .iter()
+            .any(|record| record.record_type == 0x0899)
 }
 
 fn collect_saved_viewport(file: &GspFile, groups: &[ObjectGroup]) -> Option<Bounds> {
@@ -4454,9 +4479,18 @@ mod tests {
             .iter()
             .map(|label| label.text.as_str())
             .collect::<Vec<_>>();
-        assert!(texts.contains(&"A"), "expected point label A, got {texts:?}");
-        assert!(texts.contains(&"B"), "expected point label B, got {texts:?}");
-        assert!(texts.contains(&"C"), "expected point label C, got {texts:?}");
+        assert!(
+            texts.contains(&"A"),
+            "expected point label A, got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"B"),
+            "expected point label B, got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"C"),
+            "expected point label C, got {texts:?}"
+        );
         assert!(
             scene.points.len() >= 3,
             "expected source point, center point, and transformed point"
@@ -4491,11 +4525,11 @@ mod tests {
         );
         assert!(scene.circles.iter().any(|circle| matches!(
             circle.binding,
-            Some(crate::render::scene::ShapeBinding::ReflectCircle { .. })
+            Some(crate::runtime::scene::ShapeBinding::ReflectCircle { .. })
         )));
         assert!(scene.polygons.iter().any(|polygon| matches!(
             polygon.binding,
-            Some(crate::render::scene::ShapeBinding::ReflectPolygon { .. })
+            Some(crate::runtime::scene::ShapeBinding::ReflectPolygon { .. })
         )));
     }
 
@@ -4505,7 +4539,11 @@ mod tests {
         let file = GspFile::parse(data).expect("fixture parses");
         let scene = build_scene(&file);
 
-        assert_eq!(scene.points.len(), 5, "expected seed point, translated point, and three iterated points");
+        assert_eq!(
+            scene.points.len(),
+            5,
+            "expected seed point, translated point, and three iterated points"
+        );
         assert_eq!(
             scene
                 .points
@@ -4523,7 +4561,11 @@ mod tests {
         let file = GspFile::parse(data).expect("fixture parses");
         let scene = build_scene(&file);
 
-        assert_eq!(scene.points.len(), 8, "expected seed point plus seven iterated points");
+        assert_eq!(
+            scene.points.len(),
+            8,
+            "expected seed point plus seven iterated points"
+        );
         assert!(
             scene.labels.iter().any(|label| label.text == "n = 6.00"),
             "expected parameter label for n"
@@ -4542,7 +4584,10 @@ mod tests {
             "expected parameter label for n"
         );
         assert!(
-            scene.labels.iter().any(|label| label.text == "n - 1 = 4.00"),
+            scene
+                .labels
+                .iter()
+                .any(|label| label.text == "n - 1 = 4.00"),
             "expected derived iteration count label"
         );
         assert!(
