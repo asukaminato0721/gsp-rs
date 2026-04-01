@@ -1,3 +1,4 @@
+use super::super::decode::find_indexed_path;
 use super::constraints::{
     RawPointConstraint, decode_parameter_controlled_point, decode_point_constraint,
     decode_translated_point_constraint,

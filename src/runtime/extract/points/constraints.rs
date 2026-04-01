@@ -1,5 +1,13 @@
+use std::collections::BTreeMap;
+
+use super::super::decode::find_indexed_path;
 use super::anchors::{resolve_circle_point_raw, resolve_polygon_boundary_point_raw};
 use super::*;
+use crate::runtime::functions::{
+    BinaryOp, FunctionExpr, FunctionTerm, ParsedFunctionExpr, decode_function_expr,
+    decode_function_plot_descriptor, evaluate_expr_with_parameters, sample_function_points,
+};
+use crate::runtime::geometry::to_raw_from_world;
 
 pub(crate) struct PointOnSegmentConstraint {
     pub(crate) start_group_index: usize,

@@ -1,5 +1,15 @@
+use std::collections::{BTreeMap, BTreeSet};
+
+use super::decode::{
+    decode_0907_anchor, decode_group_label_text, decode_label_anchor, decode_label_name,
+    decode_label_name_raw, decode_measurement_value, decode_text_anchor, find_indexed_path,
+};
 use super::points::decode_non_graph_parameter_value_for_group;
 use super::*;
+use crate::runtime::functions::{
+    decode_function_expr, evaluate_expr_with_parameters, function_expr_label,
+};
+use crate::runtime::geometry::format_number;
 
 pub(super) fn collect_labels(
     file: &GspFile,
@@ -21,7 +31,7 @@ pub(super) fn collect_labels(
                     .flatten()
                 });
                 if let Some(text) = text {
-                    let anchor = decode_label_anchor(file, groups, group, anchors);
+                    let anchor = decode_label_anchor(file, group, anchors);
                     if let Some(anchor) = anchor {
                         labels.push(TextLabel {
                             anchor,

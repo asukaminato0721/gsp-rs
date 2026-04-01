@@ -1,3 +1,4 @@
+use super::decode::decode_label_name;
 use super::*;
 
 mod anchors;
