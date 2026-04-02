@@ -845,6 +845,10 @@ enum LineIterationJson {
         end_index: usize,
         dx: f64,
         dy: f64,
+        #[serde(rename = "secondaryDx")]
+        secondary_dx: Option<f64>,
+        #[serde(rename = "secondaryDy")]
+        secondary_dy: Option<f64>,
         depth: usize,
         #[serde(rename = "parameterName")]
         parameter_name: Option<String>,
@@ -860,6 +864,8 @@ impl LineIterationJson {
             end_index: family.end_index,
             dx: family.dx,
             dy: family.dy,
+            secondary_dx: family.secondary_dx,
+            secondary_dy: family.secondary_dy,
             depth: family.depth,
             parameter_name: family.parameter_name.clone(),
             color: family.color,
@@ -876,6 +882,10 @@ enum PolygonIterationJson {
         vertex_indices: Vec<usize>,
         dx: f64,
         dy: f64,
+        #[serde(rename = "secondaryDx")]
+        secondary_dx: Option<f64>,
+        #[serde(rename = "secondaryDy")]
+        secondary_dy: Option<f64>,
         depth: usize,
         #[serde(rename = "parameterName")]
         parameter_name: Option<String>,
@@ -889,6 +899,8 @@ impl PolygonIterationJson {
             vertex_indices: family.vertex_indices.clone(),
             dx: family.dx,
             dy: family.dy,
+            secondary_dx: family.secondary_dx,
+            secondary_dy: family.secondary_dy,
             depth: family.depth,
             parameter_name: family.parameter_name.clone(),
             color: family.color,

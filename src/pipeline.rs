@@ -134,5 +134,6 @@ mod tests {
         assert!(html.contains("\"polygonIterations\":["));
         assert!(html.contains("\"parameterName\":\"n\""));
         assert!(html.contains("\"vertexIndices\":[0,2,1]"));
+        assert!(html.contains("\"secondaryDx\":37.79527559055118"));
     }
 }

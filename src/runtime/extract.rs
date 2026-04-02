@@ -750,6 +750,18 @@ fn world_line_iteration_family(
     LineIterationFamily {
         dx: delta.x,
         dy: delta.y,
+        secondary_dx: match (family.secondary_dx, family.secondary_dy) {
+            (Some(dx), Some(dy)) => Some(
+                world_delta(&PointRecord { x: dx, y: dy }, graph_ref).x,
+            ),
+            _ => None,
+        },
+        secondary_dy: match (family.secondary_dx, family.secondary_dy) {
+            (Some(dx), Some(dy)) => Some(
+                world_delta(&PointRecord { x: dx, y: dy }, graph_ref).y,
+            ),
+            _ => None,
+        },
         ..family
     }
 }
@@ -768,6 +780,18 @@ fn world_polygon_iteration_family(
     PolygonIterationFamily {
         dx: delta.x,
         dy: delta.y,
+        secondary_dx: match (family.secondary_dx, family.secondary_dy) {
+            (Some(dx), Some(dy)) => Some(
+                world_delta(&PointRecord { x: dx, y: dy }, graph_ref).x,
+            ),
+            _ => None,
+        },
+        secondary_dy: match (family.secondary_dx, family.secondary_dy) {
+            (Some(dx), Some(dy)) => Some(
+                world_delta(&PointRecord { x: dx, y: dy }, graph_ref).y,
+            ),
+            _ => None,
+        },
         ..family
     }
 }
@@ -1823,13 +1847,13 @@ mod tests {
 
         assert_eq!(
             scene.polygons.len(),
-            5,
-            "expected seed polygon plus four iterated copies"
+            15,
+            "expected triangular lattice of seed polygon plus carried copies"
         );
         assert_eq!(
             scene.lines.len(),
-            15,
-            "expected seed edges plus four carried copies"
+            45,
+            "expected triangular lattice of carried line copies"
         );
         assert!(
             scene
@@ -1841,6 +1865,8 @@ mod tests {
         assert!(scene.line_iterations.iter().all(|family| {
             family.parameter_name.as_deref() == Some("n")
                 && family.depth == 4
+                && family.secondary_dx.is_some()
+                && family.secondary_dy.is_some()
                 && (family.dy + 37.79527559055118).abs() < 1e-6
         }));
         assert_eq!(scene.polygon_iterations.len(), 1);
@@ -1849,6 +1875,8 @@ mod tests {
                 family.parameter_name.as_deref() == Some("n")
                     && family.depth == 4
                     && family.vertex_indices == vec![0, 2, 1]
+                    && family.secondary_dx.is_some()
+                    && family.secondary_dy.is_some()
                     && family.dx.abs() < 1e-6
                     && (family.dy + 37.79527559055118).abs() < 1e-6
             })
@@ -1897,6 +1925,14 @@ mod tests {
         }));
         assert!(first_vertices.iter().any(|point| {
             (point.x - 168.0).abs() < 1e-6 && (point.y - 224.81889763779532).abs() < 1e-6
+        }));
+        assert!(first_vertices.iter().any(|point| {
+            (point.x - 205.79527559055117).abs() < 1e-6
+                && (point.y - 300.40944881889766).abs() < 1e-6
+        }));
+        assert!(first_vertices.iter().any(|point| {
+            (point.x - 243.59055118110234).abs() < 1e-6
+                && (point.y - 262.6141732283465).abs() < 1e-6
         }));
     }
 

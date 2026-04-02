@@ -727,7 +727,11 @@ pub(super) fn collect_carried_iteration_lines(
             }
             let start = anchors.get(source_path.refs[0].checked_sub(1)?)?.clone()?;
             let end = anchors.get(source_path.refs[1].checked_sub(1)?)?.clone()?;
-            let step = carried_iteration_step(file, groups, iter_group, anchors)?;
+            let steps = carried_iteration_steps(file, groups, iter_group, anchors);
+            let Some(step) = steps.first().cloned() else {
+                return None;
+            };
+            let secondary_step = steps.get(1).cloned();
             let depth = iter_group
                 .records
                 .iter()
@@ -738,12 +742,9 @@ pub(super) fn collect_carried_iteration_lines(
                 .unwrap_or(3);
             let color = color_from_style(source_group.header.style_b);
             Some(
-                (1..=depth)
-                    .map(|index| {
-                        let delta = PointRecord {
-                            x: step.x * index as f64,
-                            y: step.y * index as f64,
-                        };
+                carried_iteration_line_deltas(&step, secondary_step.as_ref(), depth)
+                    .into_iter()
+                    .map(|delta| {
                         LineShape {
                             points: vec![start.clone() + delta.clone(), end.clone() + delta],
                             color,
@@ -790,7 +791,11 @@ pub(super) fn collect_carried_line_iteration_families(
                 .get(source_path.refs[1].checked_sub(1)?)
                 .copied()
                 .flatten()?;
-            let step = carried_iteration_step(file, groups, iter_group, anchors)?;
+            let steps = carried_iteration_steps(file, groups, iter_group, anchors);
+            let Some(step) = steps.first().cloned() else {
+                return None;
+            };
+            let secondary_step = steps.get(1).cloned();
             let depth = carried_iteration_depth(file, iter_group, 3);
             if depth == 0 {
                 return None;
@@ -800,6 +805,8 @@ pub(super) fn collect_carried_line_iteration_families(
                 end_index,
                 dx: step.x,
                 dy: step.y,
+                secondary_dx: secondary_step.as_ref().map(|step| step.x),
+                secondary_dy: secondary_step.as_ref().map(|step| step.y),
                 depth,
                 parameter_name: carried_iteration_parameter_name(file, groups, iter_group),
                 color: color_from_style(source_group.header.style_b),
@@ -809,33 +816,110 @@ pub(super) fn collect_carried_line_iteration_families(
         .collect()
 }
 
-fn carried_iteration_step(
+fn carried_iteration_steps(
     file: &GspFile,
     groups: &[ObjectGroup],
     iter_group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
-) -> Option<PointRecord> {
-    let iter_path = find_indexed_path(file, iter_group)?;
-    if let Some(constraint) = iter_path
+) -> Vec<PointRecord> {
+    let Some(iter_path) = find_indexed_path(file, iter_group) else {
+        return Vec::new();
+    };
+    let translated_steps = iter_path
         .refs
         .iter()
         .filter_map(|ordinal| ordinal.checked_sub(1).and_then(|index| groups.get(index)))
-        .find_map(|group| decode_translated_point_constraint(file, group))
-    {
-        return Some(PointRecord {
+        .filter_map(|group| decode_translated_point_constraint(file, group))
+        .map(|constraint| PointRecord {
             x: constraint.dx,
             y: constraint.dy,
+        })
+        .fold(Vec::<PointRecord>::new(), |mut acc, step| {
+            let already_present = acc.iter().any(|existing| {
+                (existing.x - step.x).abs() < 1e-6 && (existing.y - step.y).abs() < 1e-6
+            });
+            if !already_present {
+                acc.push(step);
+            }
+            acc
         });
+    if !translated_steps.is_empty() {
+        return translated_steps;
     }
     if iter_path.refs.len() < 2 {
-        return None;
+        return Vec::new();
     }
-    let base_start = anchors.get(iter_path.refs[0].checked_sub(1)?)?.clone()?;
-    let base_end = anchors.get(iter_path.refs[1].checked_sub(1)?)?.clone()?;
-    Some(PointRecord {
+    let Some(base_start_index) = iter_path.refs[0].checked_sub(1) else {
+        return Vec::new();
+    };
+    let Some(base_end_index) = iter_path.refs[1].checked_sub(1) else {
+        return Vec::new();
+    };
+    let Some(base_start) = anchors.get(base_start_index).cloned().flatten() else {
+        return Vec::new();
+    };
+    let Some(base_end) = anchors.get(base_end_index).cloned().flatten() else {
+        return Vec::new();
+    };
+    vec![PointRecord {
         x: base_end.x - base_start.x,
         y: base_end.y - base_start.y,
-    })
+    }]
+}
+
+fn carried_iteration_line_deltas(
+    step: &PointRecord,
+    secondary_step: Option<&PointRecord>,
+    depth: usize,
+) -> Vec<PointRecord> {
+    if let Some(secondary) = secondary_step {
+        let mut deltas = Vec::new();
+        for primary_index in 0..=depth {
+            for secondary_index in 0..=depth - primary_index {
+                if primary_index == 0 && secondary_index == 0 {
+                    continue;
+                }
+                deltas.push(PointRecord {
+                    x: step.x * primary_index as f64 + secondary.x * secondary_index as f64,
+                    y: step.y * primary_index as f64 + secondary.y * secondary_index as f64,
+                });
+            }
+        }
+        return deltas;
+    }
+
+    (1..=depth)
+        .map(|index| PointRecord {
+            x: step.x * index as f64,
+            y: step.y * index as f64,
+        })
+        .collect()
+}
+
+fn carried_iteration_polygon_deltas(
+    step: &PointRecord,
+    secondary_step: Option<&PointRecord>,
+    depth: usize,
+) -> Vec<PointRecord> {
+    if let Some(secondary) = secondary_step {
+        let mut deltas = Vec::new();
+        for primary_index in 0..=depth {
+            for secondary_index in 0..=depth - primary_index {
+                deltas.push(PointRecord {
+                    x: step.x * primary_index as f64 + secondary.x * secondary_index as f64,
+                    y: step.y * primary_index as f64 + secondary.y * secondary_index as f64,
+                });
+            }
+        }
+        return deltas;
+    }
+
+    (0..=depth)
+        .map(|index| PointRecord {
+            x: step.x * index as f64,
+            y: step.y * index as f64,
+        })
+        .collect()
 }
 
 fn carried_iteration_depth(file: &GspFile, iter_group: &ObjectGroup, default_depth: usize) -> usize {
@@ -889,7 +973,11 @@ pub(super) fn collect_carried_iteration_polygons(
                 .iter()
                 .map(|ordinal| anchors.get(ordinal.checked_sub(1)?).cloned().flatten())
                 .collect::<Option<Vec<_>>>()?;
-            let step = carried_iteration_step(file, groups, iter_group, anchors)?;
+            let steps = carried_iteration_steps(file, groups, iter_group, anchors);
+            let Some(step) = steps.first().cloned() else {
+                return None;
+            };
+            let secondary_step = steps.get(1).cloned();
             let depth = iter_group
                 .records
                 .iter()
@@ -901,12 +989,9 @@ pub(super) fn collect_carried_iteration_polygons(
             let color =
                 fill_color_from_styles(source_group.header.style_a, source_group.header.style_b);
             Some(
-                (0..=depth)
-                    .map(|index| {
-                        let delta = PointRecord {
-                            x: step.x * index as f64,
-                            y: step.y * index as f64,
-                        };
+                carried_iteration_polygon_deltas(&step, secondary_step.as_ref(), depth)
+                    .into_iter()
+                    .map(|delta| {
                         PolygonShape {
                             points: points
                                 .iter()
@@ -952,7 +1037,11 @@ pub(super) fn collect_carried_polygon_iteration_families(
                 .iter()
                 .map(|ordinal| group_to_point_index.get(ordinal.checked_sub(1)?).copied().flatten())
                 .collect::<Option<Vec<_>>>()?;
-            let step = carried_iteration_step(file, groups, iter_group, anchors)?;
+            let steps = carried_iteration_steps(file, groups, iter_group, anchors);
+            let Some(step) = steps.first().cloned() else {
+                return None;
+            };
+            let secondary_step = steps.get(1).cloned();
             let depth = carried_iteration_depth(file, iter_group, 3);
             if depth == 0 {
                 return None;
@@ -961,6 +1050,8 @@ pub(super) fn collect_carried_polygon_iteration_families(
                 vertex_indices,
                 dx: step.x,
                 dy: step.y,
+                secondary_dx: secondary_step.as_ref().map(|step| step.x),
+                secondary_dy: secondary_step.as_ref().map(|step| step.y),
                 depth,
                 parameter_name: carried_iteration_parameter_name(file, groups, iter_group),
                 color: fill_color_from_styles(source_group.header.style_a, source_group.header.style_b),

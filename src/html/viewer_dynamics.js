@@ -423,7 +423,13 @@
     if (families.length === 0) {
       return;
     }
-    const exportedDepth = families.reduce((sum, family) => sum + (family.depth || 0), 0);
+    const exportedDepth = families.reduce((sum, family) => {
+      const depth = family.depth || 0;
+      if (Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy)) {
+        return sum + (((depth + 1) * (depth + 2)) / 2 - 1);
+      }
+      return sum + depth;
+    }, 0);
     const baseCount = Math.max(0, env.sourceScene.lines.length - exportedDepth);
     scene.lines = scene.lines.slice(0, baseCount);
 
@@ -437,9 +443,29 @@
       if (!start || !end) {
         return;
       }
-      for (let step = 1; step <= depth; step += 1) {
-        const dx = family.dx * step;
-        const dy = family.dy * step;
+      const hasSecondary = Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy);
+      const deltas = [];
+      if (hasSecondary) {
+        for (let primary = 0; primary <= depth; primary += 1) {
+          for (let secondary = 0; secondary <= depth - primary; secondary += 1) {
+            if (primary === 0 && secondary === 0) {
+              continue;
+            }
+            deltas.push({
+              dx: family.dx * primary + family.secondaryDx * secondary,
+              dy: family.dy * primary + family.secondaryDy * secondary,
+            });
+          }
+        }
+      } else {
+        for (let step = 1; step <= depth; step += 1) {
+          deltas.push({
+            dx: family.dx * step,
+            dy: family.dy * step,
+          });
+        }
+      }
+      deltas.forEach(({ dx, dy }) => {
         scene.lines.push({
           points: [
             { x: start.x + dx, y: start.y + dy },
@@ -449,7 +475,7 @@
           dashed: !!family.dashed,
           binding: null,
         });
-      }
+      });
     });
   }
 
@@ -459,7 +485,13 @@
     if (families.length === 0) {
       return;
     }
-    const exportedDepth = families.reduce((sum, family) => sum + ((family.depth || 0) + 1), 0);
+    const exportedDepth = families.reduce((sum, family) => {
+      const depth = family.depth || 0;
+      if (Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy)) {
+        return sum + (((depth + 1) * (depth + 2)) / 2);
+      }
+      return sum + (depth + 1);
+    }, 0);
     const baseCount = Math.max(0, env.sourceScene.polygons.length - exportedDepth);
     scene.polygons = scene.polygons.slice(0, baseCount);
 
@@ -474,16 +506,33 @@
       if (seedVertices.length !== family.vertexIndices.length) {
         return;
       }
-      for (let step = 0; step <= depth; step += 1) {
-        const dx = family.dx * step;
-        const dy = family.dy * step;
+      const hasSecondary = Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy);
+      const deltas = [];
+      if (hasSecondary) {
+        for (let primary = 0; primary <= depth; primary += 1) {
+          for (let secondary = 0; secondary <= depth - primary; secondary += 1) {
+            deltas.push({
+              dx: family.dx * primary + family.secondaryDx * secondary,
+              dy: family.dy * primary + family.secondaryDy * secondary,
+            });
+          }
+        }
+      } else {
+        for (let step = 0; step <= depth; step += 1) {
+          deltas.push({
+            dx: family.dx * step,
+            dy: family.dy * step,
+          });
+        }
+      }
+      deltas.forEach(({ dx, dy }) => {
         scene.polygons.push({
           points: seedVertices.map((point) => ({ x: point.x + dx, y: point.y + dy })),
           color: family.color,
           outlineColor: darken(family.color, 80),
           binding: null,
         });
-      }
+      });
     });
   }
 

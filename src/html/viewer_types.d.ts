@@ -77,6 +77,8 @@ type SceneData = {
     endIndex: number;
     dx: number;
     dy: number;
+    secondaryDx?: number | null;
+    secondaryDy?: number | null;
     depth: number;
     parameterName?: string | null;
     color: [number, number, number, number];
@@ -87,6 +89,8 @@ type SceneData = {
     vertexIndices: number[];
     dx: number;
     dy: number;
+    secondaryDx?: number | null;
+    secondaryDy?: number | null;
     depth: number;
     parameterName?: string | null;
     color: [number, number, number, number];
