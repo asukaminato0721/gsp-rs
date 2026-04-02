@@ -3,8 +3,11 @@ use super::constraints::{
     RawPointConstraint, decode_parameter_controlled_point, decode_point_constraint,
     decode_translated_point_constraint,
 };
-use super::*;
-use crate::runtime::geometry::{lerp_point, reflect_across_line, rotate_around};
+use super::{
+    GspFile, ObjectGroup, PointRecord, TransformBindingKind,
+    decode_non_graph_parameter_value_for_group, decode_parameter_rotation_binding, read_f64,
+};
+use crate::runtime::geometry::{GraphTransform, lerp_point, reflect_across_line, rotate_around};
 
 pub(crate) fn decode_regular_polygon_vertex_anchor_raw(
     file: &GspFile,

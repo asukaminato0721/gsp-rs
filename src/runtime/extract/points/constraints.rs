@@ -1,13 +1,14 @@
 use std::collections::BTreeMap;
 
-use super::super::decode::find_indexed_path;
+use super::super::decode::{decode_label_name, find_indexed_path};
 use super::anchors::{resolve_circle_point_raw, resolve_polygon_boundary_point_raw};
-use super::*;
+use super::decode_non_graph_parameter_value_for_group;
+use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
 use crate::runtime::functions::{
     BinaryOp, FunctionExpr, FunctionTerm, ParsedFunctionExpr, decode_function_expr,
     decode_function_plot_descriptor, evaluate_expr_with_parameters, sample_function_points,
 };
-use crate::runtime::geometry::{lerp_point, to_raw_from_world};
+use crate::runtime::geometry::{GraphTransform, lerp_point, to_raw_from_world};
 
 pub(crate) struct PointOnSegmentConstraint {
     pub(crate) start_group_index: usize,

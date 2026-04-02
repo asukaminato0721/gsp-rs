@@ -1,19 +1,21 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use super::CircleShape;
 use super::decode::{
     decode_0907_anchor, decode_group_label_text, decode_label_anchor, decode_label_name,
     decode_label_name_raw, decode_link_button_url, decode_measurement_value, decode_text_anchor,
     find_indexed_path, is_action_button_group,
 };
 use super::points::{
-    decode_non_graph_parameter_value_for_group, is_editable_non_graph_parameter_name,
+    RawPointConstraint, decode_non_graph_parameter_value_for_group, decode_point_constraint,
+    is_editable_non_graph_parameter_name, regular_polygon_angle_expr,
 };
-use super::*;
+use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
 use crate::runtime::functions::{
     decode_function_expr, evaluate_expr_with_parameters, function_expr_label,
 };
 use crate::runtime::geometry::format_number;
-use crate::runtime::scene::LabelIterationFamily;
+use crate::runtime::scene::{LabelIterationFamily, TextLabel, TextLabelBinding};
 
 pub(super) fn collect_labels(
     file: &GspFile,

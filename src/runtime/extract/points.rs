@@ -1,5 +1,6 @@
 use super::decode::decode_label_name;
-use super::*;
+use crate::format::{GspFile, ObjectGroup, PointRecord, decode_point_record, read_f64, read_u16};
+use crate::runtime::scene::{SceneParameter, TextLabel};
 
 mod anchors;
 mod bindings;

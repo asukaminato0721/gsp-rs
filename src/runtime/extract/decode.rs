@@ -1,4 +1,8 @@
-use super::*;
+use super::points::{TransformBindingKind, decode_transform_binding};
+use crate::format::{
+    GspFile, IndexedPathRecord, ObjectGroup, PointRecord, collect_strings, decode_indexed_path,
+    read_f64, read_i16, read_u16, read_u32,
+};
 
 pub(crate) fn is_action_button_group(group: &ObjectGroup) -> bool {
     (group.header.class_id & 0xffff) == 62
