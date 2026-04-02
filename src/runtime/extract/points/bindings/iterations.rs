@@ -1,0 +1,277 @@
+use super::*;
+
+pub(crate) fn collect_point_iteration_points(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group_to_point_index: &[Option<usize>],
+) -> (Vec<ScenePoint>, Vec<RawPointIterationFamily>) {
+    let mut derived_points = Vec::new();
+    let mut families = Vec::new();
+
+    for group in groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 77)
+    {
+        let Some(path) = find_indexed_path(file, group) else {
+            continue;
+        };
+        if path.refs.len() < 2 {
+            continue;
+        }
+        let Some(seed_group_index) = path.refs[0].checked_sub(1) else {
+            continue;
+        };
+        let Some(iter_group_index) = path.refs[1].checked_sub(1) else {
+            continue;
+        };
+        let Some(seed_index) = group_to_point_index
+            .get(seed_group_index)
+            .and_then(|mapped_index| *mapped_index)
+        else {
+            continue;
+        };
+        let Some(iter_group) = groups.get(iter_group_index) else {
+            continue;
+        };
+        match iter_group.header.class_id & 0xffff {
+            76 => {
+                let depth = iteration_depth(file, iter_group, 3);
+                if depth == 0 {
+                    continue;
+                }
+                let seed_group = &groups[seed_group_index];
+                if matches!(seed_group.header.class_id & 0xffff, 27 | 29) {
+                    let rotation = if (seed_group.header.class_id & 0xffff) == 29 {
+                        decode_parameter_rotation_binding(file, groups, seed_group)
+                    } else {
+                        decode_transform_binding(file, seed_group)
+                    };
+                    if let Some(binding) = rotation {
+                        let Some(center_index) = group_to_point_index
+                            .get(binding.center_group_index)
+                            .and_then(|mapped_index| *mapped_index)
+                        else {
+                            continue;
+                        };
+                        let TransformBindingKind::Rotate { angle_degrees } = binding.kind else {
+                            continue;
+                        };
+                        let Some(center_position) =
+                            anchors.get(binding.center_group_index).cloned().flatten()
+                        else {
+                            continue;
+                        };
+                        let Some(seed_position) = anchors.get(seed_group_index).cloned().flatten()
+                        else {
+                            continue;
+                        };
+
+                        let mut previous_index = seed_index;
+                        let mut current_position = seed_position;
+                        for _ in 0..depth {
+                            current_position = rotate_around(
+                                &current_position,
+                                &center_position,
+                                angle_degrees.to_radians(),
+                            );
+                            derived_points.push(ScenePoint {
+                                position: current_position.clone(),
+                                constraint: ScenePointConstraint::Free,
+                                binding: Some(ScenePointBinding::Rotate {
+                                    source_index: previous_index,
+                                    center_index,
+                                    angle_degrees,
+                                }),
+                            });
+                            previous_index = seed_index + derived_points.len();
+                        }
+                        families.push(RawPointIterationFamily::RotateChain {
+                            seed_index,
+                            center_index,
+                            angle_degrees,
+                            depth,
+                        });
+                        continue;
+                    }
+                }
+                let Some(iter_path) = find_indexed_path(file, iter_group) else {
+                    continue;
+                };
+                if iter_path.refs.len() < 2 {
+                    continue;
+                }
+                let Some(base_start) = anchors
+                    .get(iter_path.refs[0].saturating_sub(1))
+                    .cloned()
+                    .flatten()
+                else {
+                    continue;
+                };
+                let Some(base_end) = anchors
+                    .get(iter_path.refs[1].saturating_sub(1))
+                    .cloned()
+                    .flatten()
+                else {
+                    continue;
+                };
+                let dx = base_end.x - base_start.x;
+                let dy = base_end.y - base_start.y;
+                let Some(seed_position) = anchors.get(seed_group_index).cloned().flatten() else {
+                    continue;
+                };
+
+                let mut previous_index = seed_index + derived_points.len();
+                let mut current_position = seed_position;
+                for _ in 0..depth {
+                    current_position += PointRecord { x: dx, y: dy };
+                    derived_points.push(ScenePoint {
+                        position: current_position.clone(),
+                        constraint: ScenePointConstraint::Offset {
+                            origin_index: previous_index,
+                            dx,
+                            dy,
+                        },
+                        binding: None,
+                    });
+                    previous_index = seed_index + derived_points.len();
+                }
+                families.push(RawPointIterationFamily::Offset {
+                    seed_index,
+                    dx,
+                    dy,
+                    depth,
+                    parameter_name: None,
+                });
+            }
+            89 => {
+                let Some(iter_path) = find_indexed_path(file, iter_group) else {
+                    continue;
+                };
+                let depth = iteration_depth(file, iter_group, 3);
+                if depth == 0 {
+                    continue;
+                }
+                if let Some((parameter_name, dx, dy)) =
+                    parameter_iteration_step(groups, iter_group, anchors, file)
+                {
+                    let Some(seed_position) = anchors.get(seed_group_index).cloned().flatten()
+                    else {
+                        continue;
+                    };
+                    let mut previous_index = seed_index + derived_points.len();
+                    let mut current_position = seed_position;
+                    for _ in 0..depth {
+                        current_position += PointRecord { x: dx, y: dy };
+                        derived_points.push(ScenePoint {
+                            position: current_position.clone(),
+                            constraint: ScenePointConstraint::Offset {
+                                origin_index: previous_index,
+                                dx,
+                                dy,
+                            },
+                            binding: None,
+                        });
+                        previous_index = seed_index + derived_points.len();
+                    }
+                    families.push(RawPointIterationFamily::Offset {
+                        seed_index,
+                        dx,
+                        dy,
+                        depth,
+                        parameter_name: is_editable_non_graph_parameter_name(&parameter_name)
+                            .then_some(parameter_name),
+                    });
+                } else if let Some((center_group_index, _angle_expr, parameter_name, n)) =
+                    regular_polygon_iteration_step(file, groups, iter_group)
+                {
+                    let Some(center_index) = group_to_point_index
+                        .get(center_group_index)
+                        .and_then(|mapped_index| *mapped_index)
+                    else {
+                        continue;
+                    };
+                    let Some(seed_position) = anchors.get(seed_group_index).cloned().flatten()
+                    else {
+                        continue;
+                    };
+                    let Some(center_position) = anchors.get(center_group_index).cloned().flatten()
+                    else {
+                        continue;
+                    };
+                    let angle_degrees = -360.0 / n;
+                    for step in 1..=depth {
+                        let radians = (angle_degrees * step as f64).to_radians();
+                        let cos = radians.cos();
+                        let sin = radians.sin();
+                        let dx = seed_position.x - center_position.x;
+                        let dy = seed_position.y - center_position.y;
+                        let position = PointRecord {
+                            x: center_position.x + dx * cos + dy * sin,
+                            y: center_position.y - dx * sin + dy * cos,
+                        };
+                        derived_points.push(ScenePoint {
+                            position,
+                            constraint: ScenePointConstraint::Free,
+                            binding: Some(ScenePointBinding::Rotate {
+                                source_index: seed_index,
+                                center_index,
+                                angle_degrees: angle_degrees * step as f64,
+                            }),
+                        });
+                    }
+                    let angle_expr = regular_polygon_angle_expr(&parameter_name, n);
+                    families.push(RawPointIterationFamily::Rotate {
+                        source_index: seed_index,
+                        center_index,
+                        angle_expr,
+                        depth,
+                        parameter_name: is_editable_non_graph_parameter_name(&parameter_name)
+                            .then_some(parameter_name),
+                    });
+                } else if iter_path.refs.len() >= 2 {
+                    let _ = iter_path;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    (derived_points, families)
+}
+
+fn parameter_iteration_step(
+    groups: &[ObjectGroup],
+    iter_group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+    file: &GspFile,
+) -> Option<(String, f64, f64)> {
+    let path = find_indexed_path(file, iter_group)?;
+    if path.refs.len() < 3 {
+        return None;
+    }
+    let parameter_group = groups.get(path.refs[0].checked_sub(1)?)?;
+    if (parameter_group.header.class_id & 0xffff) != 0 {
+        return None;
+    }
+    let parameter_name = decode_label_name(file, parameter_group)?;
+    if let Some((dx, dy)) = path
+        .refs
+        .iter()
+        .skip(1)
+        .filter_map(|ordinal| ordinal.checked_sub(1).and_then(|index| groups.get(index)))
+        .find_map(|group| {
+            decode_translated_point_constraint(file, group)
+                .map(|constraint| (constraint.dx, constraint.dy))
+        })
+    {
+        return Some((parameter_name, dx, dy));
+    }
+    let base_start = anchors.get(path.refs[1].checked_sub(1)?)?.clone()?;
+    let base_end = anchors.get(path.refs[2].checked_sub(1)?)?.clone()?;
+    Some((
+        parameter_name,
+        base_end.x - base_start.x,
+        base_end.y - base_start.y,
+    ))
+}
