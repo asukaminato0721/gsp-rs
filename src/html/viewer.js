@@ -171,6 +171,13 @@
     return { x: point.x, y: point.y };
   }
 
+  function attachPointCenteredLabelAnchor(label, hydratedLines) {
+    if (typeof label.binding?.pointIndex === "number") {
+      return { pointIndex: label.binding.pointIndex };
+    }
+    return attachLabelAnchor(label.anchor, hydratedLines);
+  }
+
   function hydrateScene(scene) {
     const hydratedLines = scene.lines.map((line) => ({
       color: line.color,
@@ -208,9 +215,14 @@
         text: label.text,
         color: label.color,
         visible: true,
-        anchor: label.screenSpace ? { ...label.anchor } : attachLabelAnchor(label.anchor, hydratedLines),
+        anchor: label.screenSpace
+          ? { ...label.anchor }
+          : label.binding?.kind === "point-expression-value"
+            ? attachPointCenteredLabelAnchor(label, hydratedLines)
+            : attachLabelAnchor(label.anchor, hydratedLines),
         binding: label.binding ? { ...label.binding } : null,
         screenSpace: !!label.screenSpace,
+        centeredOnAnchor: label.binding?.kind === "point-expression-value",
       })),
     };
   }

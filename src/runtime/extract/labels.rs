@@ -223,6 +223,7 @@ fn collect_point_expression_label(
     if path.refs.len() < 2 {
         return None;
     }
+    let point_group_index = path.refs.first()?.checked_sub(1)?;
     let expr_group = groups.get(path.refs[1].checked_sub(1)?)?;
     if (expr_group.header.class_id & 0xffff) != 48 {
         return None;
@@ -246,6 +247,7 @@ fn collect_point_expression_label(
         text: format_number(value),
         color: [30, 30, 30, 255],
         binding: Some(TextLabelBinding::PointExpressionValue {
+            point_index: point_group_index,
             parameter_name,
             expr,
         }),

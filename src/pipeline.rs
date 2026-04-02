@@ -81,7 +81,9 @@ mod tests {
         assert!(html.contains("\"name\":\"n\""));
         assert!(html.contains("\"name\":\"a\""));
         assert!(html.contains("\"kind\":\"parameter-value\",\"name\":\"a\""));
-        assert!(html.contains("\"kind\":\"point-expression-value\",\"parameterName\":\"a\""));
+        assert!(html.contains("\"kind\":\"point-expression-value\""));
+        assert!(html.contains("\"parameterName\":\"a\""));
+        assert!(html.contains("\"pointIndex\":1"));
         assert!(html.contains("\"kind\":\"expression-value\",\"parameterName\":\"a\""));
         assert!(html.contains("\"labelIterations\":["));
     }

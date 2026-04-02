@@ -326,6 +326,7 @@ pub(crate) enum TextLabelBinding {
         expr: FunctionExpr,
     },
     PointExpressionValue {
+        point_index: usize,
         parameter_name: String,
         expr: FunctionExpr,
     },

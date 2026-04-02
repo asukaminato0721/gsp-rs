@@ -635,6 +635,8 @@ enum LabelBindingJson {
     },
     #[serde(rename = "point-expression-value")]
     PointExpressionValue {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
         #[serde(rename = "parameterName")]
         parameter_name: String,
         expr: FunctionExprJson,
@@ -684,9 +686,11 @@ impl LabelBindingJson {
                 expr: FunctionExprJson::from_expr(expr),
             },
             TextLabelBinding::PointExpressionValue {
+                point_index,
                 parameter_name,
                 expr,
             } => Self::PointExpressionValue {
+                point_index: *point_index,
                 parameter_name: parameter_name.clone(),
                 expr: FunctionExprJson::from_expr(expr),
             },

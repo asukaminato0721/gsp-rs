@@ -60,6 +60,16 @@
       ? { x: label.anchor.x, y: label.anchor.y }
       : env.toScreen(env.resolvePoint(label.anchor));
     const metrics = labelMetrics(env, label.text);
+    if (label.centeredOnAnchor) {
+      return {
+        screen,
+        lines: metrics.lines,
+        width: metrics.width,
+        height: metrics.height,
+        left: screen.x - metrics.width / 2 - 4,
+        top: screen.y - metrics.height / 2,
+      };
+    }
     return {
       screen,
       lines: metrics.lines,
@@ -250,7 +260,7 @@
       const bounds = labelBounds(env, label);
       env.ctx.fillStyle = env.rgba(label.color);
       bounds.lines.forEach((line, index) => {
-        env.ctx.fillText(line, bounds.screen.x + 6, bounds.screen.y - 10 + index * 22);
+        env.ctx.fillText(line, bounds.left + 4, bounds.top + index * 22);
       });
     }
   }

@@ -388,13 +388,25 @@ pub(crate) fn remap_label_bindings(
         let Some(binding) = label.binding.as_mut() else {
             continue;
         };
+        if let TextLabelBinding::PointExpressionValue { point_index, .. } = binding {
+            let Some(mapped_index) = group_to_point_index
+                .get(*point_index)
+                .and_then(|mapped_index| *mapped_index)
+            else {
+                label.binding = None;
+                continue;
+            };
+            *point_index = mapped_index;
+            continue;
+        }
         let point_index = match binding {
-            TextLabelBinding::ParameterValue { .. }
-            | TextLabelBinding::ExpressionValue { .. }
-            | TextLabelBinding::PointExpressionValue { .. } => continue,
+            TextLabelBinding::ParameterValue { .. } | TextLabelBinding::ExpressionValue { .. } => {
+                continue;
+            }
             TextLabelBinding::PolygonBoundaryParameter { point_index, .. } => point_index,
             TextLabelBinding::SegmentParameter { point_index, .. } => point_index,
             TextLabelBinding::CircleParameter { point_index, .. } => point_index,
+            TextLabelBinding::PointExpressionValue { .. } => unreachable!(),
         };
         let Some(mapped_index) = group_to_point_index
             .get(*point_index)
