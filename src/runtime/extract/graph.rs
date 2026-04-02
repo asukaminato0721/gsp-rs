@@ -1,7 +1,7 @@
 use super::decode::{decode_measurement_value, find_indexed_path};
 use super::*;
 use crate::runtime::functions::{FunctionExpr, decode_function_expr};
-use crate::runtime::geometry::read_f32_unaligned;
+use crate::runtime::geometry::{Bounds, read_f32_unaligned};
 
 pub(super) fn collect_saved_viewport(file: &GspFile, groups: &[ObjectGroup]) -> Option<Bounds> {
     let (min_x, max_x) = collect_graph_window_x_hint(file, groups)?;

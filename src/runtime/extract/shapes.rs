@@ -744,13 +744,11 @@ pub(super) fn collect_carried_iteration_lines(
             Some(
                 carried_iteration_line_deltas(&step, secondary_step.as_ref(), depth)
                     .into_iter()
-                    .map(|delta| {
-                        LineShape {
-                            points: vec![start.clone() + delta.clone(), end.clone() + delta],
-                            color,
-                            dashed: false,
-                            binding: None,
-                        }
+                    .map(|delta| LineShape {
+                        points: vec![start.clone() + delta.clone(), end.clone() + delta],
+                        color,
+                        dashed: false,
+                        binding: None,
                     })
                     .collect::<Vec<_>>(),
             )
@@ -922,7 +920,11 @@ fn carried_iteration_polygon_deltas(
         .collect()
 }
 
-fn carried_iteration_depth(file: &GspFile, iter_group: &ObjectGroup, default_depth: usize) -> usize {
+fn carried_iteration_depth(
+    file: &GspFile,
+    iter_group: &ObjectGroup,
+    default_depth: usize,
+) -> usize {
     iter_group
         .records
         .iter()
@@ -991,16 +993,14 @@ pub(super) fn collect_carried_iteration_polygons(
             Some(
                 carried_iteration_polygon_deltas(&step, secondary_step.as_ref(), depth)
                     .into_iter()
-                    .map(|delta| {
-                        PolygonShape {
-                            points: points
-                                .iter()
-                                .cloned()
-                                .map(|point| point + delta.clone())
-                                .collect(),
-                            color,
-                            binding: None,
-                        }
+                    .map(|delta| PolygonShape {
+                        points: points
+                            .iter()
+                            .cloned()
+                            .map(|point| point + delta.clone())
+                            .collect(),
+                        color,
+                        binding: None,
                     })
                     .collect::<Vec<_>>(),
             )
@@ -1035,7 +1035,12 @@ pub(super) fn collect_carried_polygon_iteration_families(
             let vertex_indices = source_path
                 .refs
                 .iter()
-                .map(|ordinal| group_to_point_index.get(ordinal.checked_sub(1)?).copied().flatten())
+                .map(|ordinal| {
+                    group_to_point_index
+                        .get(ordinal.checked_sub(1)?)
+                        .copied()
+                        .flatten()
+                })
                 .collect::<Option<Vec<_>>>()?;
             let steps = carried_iteration_steps(file, groups, iter_group, anchors);
             let Some(step) = steps.first().cloned() else {
@@ -1054,7 +1059,10 @@ pub(super) fn collect_carried_polygon_iteration_families(
                 secondary_dy: secondary_step.as_ref().map(|step| step.y),
                 depth,
                 parameter_name: carried_iteration_parameter_name(file, groups, iter_group),
-                color: fill_color_from_styles(source_group.header.style_a, source_group.header.style_b),
+                color: fill_color_from_styles(
+                    source_group.header.style_a,
+                    source_group.header.style_b,
+                ),
             })
         })
         .collect()
