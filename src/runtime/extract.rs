@@ -118,6 +118,17 @@ struct BindingMaps {
     line_group_to_index: Vec<Option<usize>>,
 }
 
+struct WorldData {
+    world_points: Vec<ScenePoint>,
+    world_point_positions: Vec<PointRecord>,
+    point_iterations: Vec<PointIterationFamily>,
+}
+
+struct BoundsData {
+    bounds: Bounds,
+    use_saved_viewport: bool,
+}
+
 fn analyze_scene(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -487,53 +498,12 @@ fn remap_scene_bindings(
     )
 }
 
-pub(crate) fn build_scene(file: &GspFile) -> Scene {
-    let groups = file.object_groups();
-    let point_map = collect_point_objects(file, &groups);
-    let analysis = analyze_scene(file, &groups, &point_map);
-    let mut shapes = collect_scene_shapes(file, &groups, &point_map, &analysis);
-    let (mut labels, label_group_to_index) =
-        collect_scene_labels(file, &groups, &analysis, &shapes);
-
-    let (visible_points, group_to_point_index) = collect_visible_points(
-        file,
-        &groups,
-        &point_map,
-        &analysis.raw_anchors,
-        &analysis.graph_ref,
-    );
-    let (derived_iteration_points, raw_point_iterations) =
-        collect_point_iteration_points(file, &groups, &analysis.raw_anchors, &group_to_point_index);
-    let label_iterations =
-        collect_label_iterations(file, &groups, &label_group_to_index, &group_to_point_index)
-            .into_iter()
-            .map(|family| match family {
-                LabelIterationFamily::PointExpression {
-                    seed_label_index,
-                    point_seed_index,
-                    parameter_name,
-                    expr,
-                    depth,
-                    depth_parameter_name,
-                } => LabelIterationFamily::PointExpression {
-                    seed_label_index,
-                    point_seed_index,
-                    parameter_name,
-                    expr,
-                    depth,
-                    depth_parameter_name,
-                },
-            })
-            .collect::<Vec<_>>();
-    remap_label_bindings(&mut labels, &group_to_point_index);
-    let (binding_maps, line_iterations, polygon_iterations) = remap_scene_bindings(
-        file,
-        &groups,
-        &analysis.raw_anchors,
-        &group_to_point_index,
-        &mut shapes,
-    );
-
+fn build_world_data(
+    analysis: &SceneAnalysis,
+    visible_points: &[ScenePoint],
+    derived_iteration_points: &[ScenePoint],
+    raw_point_iterations: Vec<RawPointIterationFamily>,
+) -> WorldData {
     let world_points = visible_points
         .iter()
         .chain(derived_iteration_points.iter())
@@ -664,6 +634,19 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         })
         .collect::<Vec<_>>();
 
+    WorldData {
+        world_points,
+        world_point_positions,
+        point_iterations,
+    }
+}
+
+fn compute_scene_bounds(
+    analysis: &SceneAnalysis,
+    shapes: &CollectedShapes,
+    labels: &[TextLabel],
+    world_point_positions: &[PointRecord],
+) -> BoundsData {
     let bounds_lines = shapes
         .rotational_iteration_lines
         .iter()
@@ -708,8 +691,8 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         &[],
         &bounds_polygons,
         &bounds_circles,
-        &labels,
-        &world_point_positions,
+        labels,
+        world_point_positions,
     );
     include_line_bounds(&mut bounds, &analysis.function_plots, &analysis.graph_ref);
     include_line_bounds(&mut bounds, &shapes.synthetic_axes, &analysis.graph_ref);
@@ -729,36 +712,25 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         expand_bounds(&mut bounds);
     }
 
-    let mut parameters = if analysis.graph_mode {
-        collect_scene_parameters(file, &groups, &labels)
-    } else {
-        Vec::new()
-    };
-    parameters.extend(collect_non_graph_parameters(file, &groups, &mut labels));
-    let buttons = collect_buttons(
-        file,
-        &groups,
-        &analysis.raw_anchors,
-        &group_to_point_index,
-        &binding_maps.line_group_to_index,
-        &binding_maps.circle_group_to_index,
-        &binding_maps.polygon_group_to_index,
-    );
-    let functions = if analysis.graph_mode {
-        collect_scene_functions(
-            file,
-            &groups,
-            &labels,
-            &world_points,
-            shapes.polylines.len()
-                + shapes.derived_segments.len()
-                + shapes.measurements.len()
-                + shapes.axes.len(),
-        )
-    } else {
-        Vec::new()
-    };
+    BoundsData {
+        bounds,
+        use_saved_viewport,
+    }
+}
 
+fn assemble_scene(
+    analysis: SceneAnalysis,
+    shapes: CollectedShapes,
+    labels: Vec<TextLabel>,
+    world_data: WorldData,
+    bounds_data: BoundsData,
+    line_iterations: Vec<LineIterationFamily>,
+    polygon_iterations: Vec<PolygonIterationFamily>,
+    label_iterations: Vec<LabelIterationFamily>,
+    buttons: Vec<super::scene::SceneButton>,
+    parameters: Vec<super::scene::SceneParameter>,
+    functions: Vec<super::scene::SceneFunction>,
+) -> Scene {
     let raw_lines = dedupe_line_shapes(
         shapes
             .polylines
@@ -783,16 +755,16 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     Scene {
         graph_mode: analysis.graph_mode,
         pi_mode: analysis.pi_mode,
-        saved_viewport: use_saved_viewport,
+        saved_viewport: bounds_data.use_saved_viewport,
         y_up: analysis.graph_mode,
         origin: analysis
             .graph_ref
             .as_ref()
             .map(|transform| to_world(&transform.origin_raw, &analysis.graph_ref)),
-        bounds,
+        bounds: bounds_data.bounds,
         lines: raw_lines
             .into_iter()
-            .map(|line| world_line_shape(line, &analysis.graph_ref, &bounds))
+            .map(|line| world_line_shape(line, &analysis.graph_ref, &bounds_data.bounds))
             .collect(),
         polygons: shapes
             .polygons
@@ -840,8 +812,8 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
                 screen_space: label.screen_space,
             })
             .collect(),
-        points: world_points,
-        point_iterations,
+        points: world_data.world_points,
+        point_iterations: world_data.point_iterations,
         line_iterations: line_iterations
             .into_iter()
             .map(|family| world_line_iteration_family(family, &analysis.graph_ref))
@@ -855,4 +827,107 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         parameters,
         functions,
     }
+}
+
+pub(crate) fn build_scene(file: &GspFile) -> Scene {
+    let groups = file.object_groups();
+    let point_map = collect_point_objects(file, &groups);
+    let analysis = analyze_scene(file, &groups, &point_map);
+    let mut shapes = collect_scene_shapes(file, &groups, &point_map, &analysis);
+    let (mut labels, label_group_to_index) =
+        collect_scene_labels(file, &groups, &analysis, &shapes);
+
+    let (visible_points, group_to_point_index) = collect_visible_points(
+        file,
+        &groups,
+        &point_map,
+        &analysis.raw_anchors,
+        &analysis.graph_ref,
+    );
+    let (derived_iteration_points, raw_point_iterations) =
+        collect_point_iteration_points(file, &groups, &analysis.raw_anchors, &group_to_point_index);
+    let label_iterations =
+        collect_label_iterations(file, &groups, &label_group_to_index, &group_to_point_index)
+            .into_iter()
+            .map(|family| match family {
+                LabelIterationFamily::PointExpression {
+                    seed_label_index,
+                    point_seed_index,
+                    parameter_name,
+                    expr,
+                    depth,
+                    depth_parameter_name,
+                } => LabelIterationFamily::PointExpression {
+                    seed_label_index,
+                    point_seed_index,
+                    parameter_name,
+                    expr,
+                    depth,
+                    depth_parameter_name,
+                },
+            })
+            .collect::<Vec<_>>();
+    remap_label_bindings(&mut labels, &group_to_point_index);
+    let (binding_maps, line_iterations, polygon_iterations) = remap_scene_bindings(
+        file,
+        &groups,
+        &analysis.raw_anchors,
+        &group_to_point_index,
+        &mut shapes,
+    );
+    let world_data = build_world_data(
+        &analysis,
+        &visible_points,
+        &derived_iteration_points,
+        raw_point_iterations,
+    );
+    let bounds_data = compute_scene_bounds(
+        &analysis,
+        &shapes,
+        &labels,
+        &world_data.world_point_positions,
+    );
+
+    let mut parameters = if analysis.graph_mode {
+        collect_scene_parameters(file, &groups, &labels)
+    } else {
+        Vec::new()
+    };
+    parameters.extend(collect_non_graph_parameters(file, &groups, &mut labels));
+    let buttons = collect_buttons(
+        file,
+        &groups,
+        &analysis.raw_anchors,
+        &group_to_point_index,
+        &binding_maps.line_group_to_index,
+        &binding_maps.circle_group_to_index,
+        &binding_maps.polygon_group_to_index,
+    );
+    let functions = if analysis.graph_mode {
+        collect_scene_functions(
+            file,
+            &groups,
+            &labels,
+            &world_data.world_points,
+            shapes.polylines.len()
+                + shapes.derived_segments.len()
+                + shapes.measurements.len()
+                + shapes.axes.len(),
+        )
+    } else {
+        Vec::new()
+    };
+    assemble_scene(
+        analysis,
+        shapes,
+        labels,
+        world_data,
+        bounds_data,
+        line_iterations,
+        polygon_iterations,
+        label_iterations,
+        buttons,
+        parameters,
+        functions,
+    )
 }
