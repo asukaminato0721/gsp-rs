@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 mod buttons;
 mod decode;
@@ -52,10 +52,11 @@ use super::functions::{
     collect_scene_parameters, function_uses_pi_scale, synthesize_function_axes,
     synthesize_function_labels,
 };
-use super::geometry::{GraphTransform, distance_world, include_line_bounds, to_world};
+use super::geometry::{Bounds, GraphTransform, distance_world, include_line_bounds, to_world};
 use super::scene::{
-    LabelIterationFamily, LineShape, PointIterationFamily, PolygonShape, Scene, SceneCircle,
-    ScenePoint, ScenePointConstraint, TextLabel,
+    LabelIterationFamily, LineIterationFamily, LineShape, PointIterationFamily,
+    PolygonIterationFamily, PolygonShape, Scene, SceneCircle, ScenePoint, ScenePointConstraint,
+    TextLabel,
 };
 
 pub(crate) use self::decode::find_indexed_path;
@@ -68,31 +69,82 @@ struct CircleShape {
     binding: Option<super::scene::ShapeBinding>,
 }
 
-pub(crate) fn build_scene(file: &GspFile) -> Scene {
-    let groups = file.object_groups();
-    let point_map = collect_point_objects(file, &groups);
-    let raw_anchors_for_graph = collect_raw_object_anchors(file, &groups, &point_map, None);
-    let graph = detect_graph_transform(file, &groups, &raw_anchors_for_graph);
-    let graph_mode = graph.is_some() && has_graph_classes(&groups);
+struct SceneAnalysis {
+    graph_mode: bool,
+    graph_ref: Option<GraphTransform>,
+    saved_viewport: Option<Bounds>,
+    pi_mode: bool,
+    function_plot_domain: Option<(f64, f64)>,
+    function_plots: Vec<LineShape>,
+    has_function_plots: bool,
+    has_coordinate_objects: bool,
+    has_iteration_helpers: bool,
+    large_non_graph: bool,
+    raw_anchors: Vec<Option<PointRecord>>,
+}
+
+struct CollectedShapes {
+    polylines: Vec<LineShape>,
+    direct_lines: Vec<LineShape>,
+    rays: Vec<LineShape>,
+    derived_segments: Vec<LineShape>,
+    rotated_lines: Vec<LineShape>,
+    scaled_lines: Vec<LineShape>,
+    reflected_lines: Vec<LineShape>,
+    rotational_iteration_lines: Vec<LineShape>,
+    carried_iteration_lines: Vec<LineShape>,
+    carried_iteration_polygons: Vec<PolygonShape>,
+    measurements: Vec<LineShape>,
+    coordinate_traces: Vec<LineShape>,
+    axes: Vec<LineShape>,
+    iteration_polygon_indices: BTreeSet<usize>,
+    polygons: Vec<PolygonShape>,
+    circles: Vec<CircleShape>,
+    rotated_circles: Vec<CircleShape>,
+    transformed_circles: Vec<CircleShape>,
+    reflected_circles: Vec<CircleShape>,
+    translated_polygons: Vec<PolygonShape>,
+    rotated_polygons: Vec<PolygonShape>,
+    transformed_polygons: Vec<PolygonShape>,
+    reflected_polygons: Vec<PolygonShape>,
+    iteration_lines: Vec<LineShape>,
+    iteration_polygons: Vec<PolygonShape>,
+    synthetic_axes: Vec<LineShape>,
+}
+
+struct BindingMaps {
+    circle_group_to_index: Vec<Option<usize>>,
+    polygon_group_to_index: Vec<Option<usize>>,
+    line_group_to_index: Vec<Option<usize>>,
+}
+
+fn analyze_scene(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    point_map: &[Option<PointRecord>],
+) -> SceneAnalysis {
+    let raw_anchors_for_graph = collect_raw_object_anchors(file, groups, point_map, None);
+    let graph = detect_graph_transform(file, groups, &raw_anchors_for_graph);
+    let graph_mode = graph.is_some() && has_graph_classes(groups);
     let graph_ref = if graph_mode { graph.clone() } else { None };
-    let raw_anchors = collect_raw_object_anchors(file, &groups, &point_map, graph_ref.as_ref());
+    let raw_anchors = collect_raw_object_anchors(file, groups, point_map, graph_ref.as_ref());
     let saved_viewport = if graph_mode {
-        collect_saved_viewport(file, &groups)
+        collect_saved_viewport(file, groups)
     } else {
         None
     };
     let pi_mode = if graph_mode {
-        saved_viewport.is_some() || function_uses_pi_scale(file, &groups)
+        saved_viewport.is_some() || function_uses_pi_scale(file, groups)
     } else {
         false
     };
     let function_plot_domain = if graph_mode {
-        collect_function_plot_domain(file, &groups)
+        collect_function_plot_domain(file, groups)
     } else {
         None
     };
     let function_plots = if graph_mode {
-        collect_function_plots(file, &groups, &graph_ref)
+        collect_function_plots(file, groups, &graph_ref)
     } else {
         Vec::new()
     };
@@ -105,55 +157,67 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         .any(|group| matches!(group.header.class_id & 0xffff, 76 | 77 | 89));
     let large_non_graph = !graph_mode && file.records.len() > 10_000;
 
+    SceneAnalysis {
+        graph_mode,
+        graph_ref,
+        saved_viewport,
+        pi_mode,
+        function_plot_domain,
+        function_plots,
+        has_function_plots,
+        has_coordinate_objects,
+        has_iteration_helpers,
+        large_non_graph,
+        raw_anchors,
+    }
+}
+
+fn collect_scene_shapes(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    point_map: &[Option<PointRecord>],
+    analysis: &SceneAnalysis,
+) -> CollectedShapes {
     let polylines = collect_line_shapes(
         file,
-        &groups,
-        &raw_anchors,
+        groups,
+        &analysis.raw_anchors,
         &[2],
-        !graph_mode && !large_non_graph,
+        !analysis.graph_mode && !analysis.large_non_graph,
     );
-    let mut direct_lines = collect_bound_line_shapes(file, &groups, &raw_anchors, 63);
-    let mut rays = collect_bound_line_shapes(file, &groups, &raw_anchors, 64);
-    let derived_segments = if large_non_graph {
-        collect_derived_segments(file, &groups, &point_map, &[24])
+    let direct_lines = collect_bound_line_shapes(file, groups, &analysis.raw_anchors, 63);
+    let rays = collect_bound_line_shapes(file, groups, &analysis.raw_anchors, 64);
+    let derived_segments = if analysis.large_non_graph {
+        collect_derived_segments(file, groups, point_map, &[24])
     } else {
         Vec::new()
     };
-    let mut rotated_lines = collect_rotated_line_shapes(file, &groups, &raw_anchors);
-    let mut scaled_lines = collect_scaled_line_shapes(file, &groups, &raw_anchors);
-    let mut reflected_lines = collect_reflected_line_shapes(file, &groups, &raw_anchors);
-    let mut rotational_iteration_lines =
-        collect_rotational_iteration_lines(file, &groups, &raw_anchors);
-    let carried_iteration_lines = collect_carried_iteration_lines(file, &groups, &raw_anchors);
+    let rotated_lines = collect_rotated_line_shapes(file, groups, &analysis.raw_anchors);
+    let scaled_lines = collect_scaled_line_shapes(file, groups, &analysis.raw_anchors);
+    let reflected_lines = collect_reflected_line_shapes(file, groups, &analysis.raw_anchors);
+    let rotational_iteration_lines =
+        collect_rotational_iteration_lines(file, groups, &analysis.raw_anchors);
+    let carried_iteration_lines =
+        collect_carried_iteration_lines(file, groups, &analysis.raw_anchors);
     let carried_iteration_polygons =
-        collect_carried_iteration_polygons(file, &groups, &raw_anchors);
-    let measurements = if graph_mode {
-        collect_line_shapes(file, &groups, &raw_anchors, &[58], false)
+        collect_carried_iteration_polygons(file, groups, &analysis.raw_anchors);
+    let measurements = if analysis.graph_mode {
+        collect_line_shapes(file, groups, &analysis.raw_anchors, &[58], false)
     } else {
         Vec::new()
     };
-    let coordinate_traces = if graph_mode {
-        collect_coordinate_traces(file, &groups, &graph_ref)
+    let coordinate_traces = if analysis.graph_mode {
+        collect_coordinate_traces(file, groups, &analysis.graph_ref)
     } else {
         Vec::new()
     };
-    let axes = if graph_mode {
-        collect_line_shapes(file, &groups, &raw_anchors, &[61], false)
+    let axes = if analysis.graph_mode {
+        collect_line_shapes(file, groups, &analysis.raw_anchors, &[61], false)
     } else {
         Vec::new()
     };
-    let iteration_polygon_indices: BTreeSet<usize> = groups
-        .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 89)
-        .filter_map(|group| find_indexed_path(file, group))
-        .flat_map(|path| path.refs)
-        .filter_map(|obj_ref| {
-            let index = obj_ref.checked_sub(1)?;
-            let group = groups.get(index)?;
-            ((group.header.class_id & 0xffff) == 8).then_some(index)
-        })
-        .collect();
-    let polygons = collect_polygon_shapes(file, &groups, &raw_anchors, &[8])
+    let iteration_polygon_indices = collect_iteration_polygon_indices(file, groups);
+    let polygons = collect_polygon_shapes(file, groups, &analysis.raw_anchors, &[8])
         .into_iter()
         .enumerate()
         .filter_map(|(ordinal, polygon)| {
@@ -166,63 +230,133 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
             (!iteration_polygon_indices.contains(&group_index)).then_some(polygon)
         })
         .collect::<Vec<_>>();
-    let circles = collect_circle_shapes(file, &groups, &raw_anchors);
-    let mut rotated_circles = collect_rotated_circle_shapes(file, &groups, &raw_anchors);
-    let mut transformed_circles = collect_transformed_circle_shapes(file, &groups, &raw_anchors);
-    let mut reflected_circles = collect_reflected_circle_shapes(file, &groups, &raw_anchors);
-    let mut translated_polygons = collect_translated_polygon_shapes(file, &groups, &raw_anchors);
-    let mut rotated_polygons = collect_rotated_polygon_shapes(file, &groups, &raw_anchors);
-    let mut transformed_polygons = collect_transformed_polygon_shapes(file, &groups, &raw_anchors);
-    let mut reflected_polygons = collect_reflected_polygon_shapes(file, &groups, &raw_anchors);
-    let (iteration_lines, iteration_polygons) = collect_iteration_shapes(file, &groups, &circles);
-    let synthetic_axes = if graph_mode && has_function_plots && axes.is_empty() {
+    let circles = collect_circle_shapes(file, groups, &analysis.raw_anchors);
+    let rotated_circles = collect_rotated_circle_shapes(file, groups, &analysis.raw_anchors);
+    let transformed_circles =
+        collect_transformed_circle_shapes(file, groups, &analysis.raw_anchors);
+    let reflected_circles = collect_reflected_circle_shapes(file, groups, &analysis.raw_anchors);
+    let translated_polygons =
+        collect_translated_polygon_shapes(file, groups, &analysis.raw_anchors);
+    let rotated_polygons = collect_rotated_polygon_shapes(file, groups, &analysis.raw_anchors);
+    let transformed_polygons =
+        collect_transformed_polygon_shapes(file, groups, &analysis.raw_anchors);
+    let reflected_polygons = collect_reflected_polygon_shapes(file, groups, &analysis.raw_anchors);
+    let (iteration_lines, iteration_polygons) = collect_iteration_shapes(file, groups, &circles);
+    let synthetic_axes = synthesize_axes_if_needed(analysis, &axes);
+
+    CollectedShapes {
+        polylines,
+        direct_lines,
+        rays,
+        derived_segments,
+        rotated_lines,
+        scaled_lines,
+        reflected_lines,
+        rotational_iteration_lines,
+        carried_iteration_lines,
+        carried_iteration_polygons,
+        measurements,
+        coordinate_traces,
+        axes,
+        iteration_polygon_indices,
+        polygons,
+        circles,
+        rotated_circles,
+        transformed_circles,
+        reflected_circles,
+        translated_polygons,
+        rotated_polygons,
+        transformed_polygons,
+        reflected_polygons,
+        iteration_lines,
+        iteration_polygons,
+        synthetic_axes,
+    }
+}
+
+fn collect_iteration_polygon_indices(file: &GspFile, groups: &[ObjectGroup]) -> BTreeSet<usize> {
+    groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 89)
+        .filter_map(|group| find_indexed_path(file, group))
+        .flat_map(|path| path.refs)
+        .filter_map(|obj_ref| {
+            let index = obj_ref.checked_sub(1)?;
+            let group = groups.get(index)?;
+            ((group.header.class_id & 0xffff) == 8).then_some(index)
+        })
+        .collect()
+}
+
+fn synthesize_axes_if_needed(analysis: &SceneAnalysis, axes: &[LineShape]) -> Vec<LineShape> {
+    if analysis.graph_mode && analysis.has_function_plots && axes.is_empty() {
         synthesize_function_axes(
-            &function_plots,
-            function_plot_domain,
-            saved_viewport,
-            &graph_ref,
+            &analysis.function_plots,
+            analysis.function_plot_domain,
+            analysis.saved_viewport,
+            &analysis.graph_ref,
         )
     } else {
         Vec::new()
-    };
+    }
+}
+
+fn collect_scene_labels(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    analysis: &SceneAnalysis,
+    shapes: &CollectedShapes,
+) -> (Vec<TextLabel>, BTreeMap<usize, usize>) {
     let (mut labels, label_group_to_index) = collect_labels(
         file,
-        &groups,
-        &raw_anchors,
-        graph_mode,
-        !has_function_plots && !has_coordinate_objects,
+        groups,
+        &analysis.raw_anchors,
+        analysis.graph_mode,
+        !analysis.has_function_plots && !analysis.has_coordinate_objects,
     );
-    if has_coordinate_objects || has_iteration_helpers {
-        labels.extend(collect_coordinate_labels(file, &groups));
+    if analysis.has_coordinate_objects || analysis.has_iteration_helpers {
+        labels.extend(collect_coordinate_labels(file, groups));
     }
     labels.extend(collect_polygon_parameter_labels(
         file,
-        &groups,
-        &raw_anchors,
+        groups,
+        &analysis.raw_anchors,
     ));
-    labels.extend(collect_segment_parameter_labels(file, &groups));
-    labels.extend(collect_circle_parameter_labels(file, &groups, &raw_anchors));
-    labels.extend(compute_iteration_labels(file, &groups, &circles));
-    if graph_mode && has_function_plots {
+    labels.extend(collect_segment_parameter_labels(file, groups));
+    labels.extend(collect_circle_parameter_labels(
+        file,
+        groups,
+        &analysis.raw_anchors,
+    ));
+    labels.extend(compute_iteration_labels(file, groups, &shapes.circles));
+    if analysis.graph_mode && analysis.has_function_plots {
         labels.extend(synthesize_function_labels(
             file,
-            &groups,
-            &function_plots,
-            saved_viewport,
-            &graph_ref,
+            groups,
+            &analysis.function_plots,
+            analysis.saved_viewport,
+            &analysis.graph_ref,
         ));
     }
+    append_circle_perimeter_label(&mut labels, &shapes.circles, analysis);
+    (labels, label_group_to_index)
+}
 
-    if graph_mode
+fn append_circle_perimeter_label(
+    labels: &mut Vec<TextLabel>,
+    circles: &[CircleShape],
+    analysis: &SceneAnalysis,
+) {
+    if analysis.graph_mode
         && let (Some(circle), Some(formula_index), Some(transform)) = (
             circles.first(),
             labels.iter().position(|label| label.text.contains("AB:")),
-            graph_ref.as_ref(),
+            analysis.graph_ref.as_ref(),
         )
     {
         let circumference = 2.0
             * std::f64::consts::PI
-            * distance_world(&circle.center, &circle.radius_point, &graph_ref);
+            * distance_world(&circle.center, &circle.radius_point, &analysis.graph_ref);
         let anchor = PointRecord {
             x: labels[formula_index].anchor.x,
             y: labels[formula_index].anchor.y - 0.9 * transform.raw_per_unit,
@@ -238,11 +372,138 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
             },
         );
     }
+}
 
-    let (visible_points, group_to_point_index) =
-        collect_visible_points(file, &groups, &point_map, &raw_anchors, &graph_ref);
+fn group_shape_index_map<F>(groups: &[ObjectGroup], predicate: F) -> Vec<Option<usize>>
+where
+    F: Fn(usize, &ObjectGroup) -> bool,
+{
+    groups
+        .iter()
+        .enumerate()
+        .filter(|(index, group)| predicate(*index, group))
+        .enumerate()
+        .fold(
+            vec![None; groups.len()],
+            |mut acc, (shape_index, (group_index, _))| {
+                acc[group_index] = Some(shape_index);
+                acc
+            },
+        )
+}
+
+fn remap_scene_bindings(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    raw_anchors: &[Option<PointRecord>],
+    group_to_point_index: &[Option<usize>],
+    shapes: &mut CollectedShapes,
+) -> (
+    BindingMaps,
+    Vec<LineIterationFamily>,
+    Vec<PolygonIterationFamily>,
+) {
+    let circle_group_to_index =
+        group_shape_index_map(groups, |_, group| (group.header.class_id & 0xffff) == 3);
+    let polygon_group_to_index = group_shape_index_map(groups, |index, group| {
+        (group.header.class_id & 0xffff) == 8 && !shapes.iteration_polygon_indices.contains(&index)
+    });
+    remap_circle_bindings(
+        &mut shapes.rotated_circles,
+        group_to_point_index,
+        &circle_group_to_index,
+    );
+    remap_circle_bindings(
+        &mut shapes.transformed_circles,
+        group_to_point_index,
+        &circle_group_to_index,
+    );
+    remap_circle_bindings(
+        &mut shapes.reflected_circles,
+        group_to_point_index,
+        &circle_group_to_index,
+    );
+    remap_polygon_bindings(
+        &mut shapes.translated_polygons,
+        group_to_point_index,
+        &polygon_group_to_index,
+    );
+    remap_polygon_bindings(
+        &mut shapes.rotated_polygons,
+        group_to_point_index,
+        &polygon_group_to_index,
+    );
+    remap_polygon_bindings(
+        &mut shapes.transformed_polygons,
+        group_to_point_index,
+        &polygon_group_to_index,
+    );
+    remap_polygon_bindings(
+        &mut shapes.reflected_polygons,
+        group_to_point_index,
+        &polygon_group_to_index,
+    );
+    let line_group_to_index =
+        group_shape_index_map(groups, |_, group| (group.header.class_id & 0xffff) == 2);
+    remap_line_bindings(
+        &mut shapes.direct_lines,
+        group_to_point_index,
+        &line_group_to_index,
+    );
+    remap_line_bindings(&mut shapes.rays, group_to_point_index, &line_group_to_index);
+    remap_line_bindings(
+        &mut shapes.rotated_lines,
+        group_to_point_index,
+        &line_group_to_index,
+    );
+    remap_line_bindings(
+        &mut shapes.scaled_lines,
+        group_to_point_index,
+        &line_group_to_index,
+    );
+    remap_line_bindings(
+        &mut shapes.reflected_lines,
+        group_to_point_index,
+        &line_group_to_index,
+    );
+    remap_line_bindings(
+        &mut shapes.rotational_iteration_lines,
+        group_to_point_index,
+        &line_group_to_index,
+    );
+    let line_iterations =
+        collect_carried_line_iteration_families(file, groups, raw_anchors, group_to_point_index);
+    let polygon_iterations =
+        collect_carried_polygon_iteration_families(file, groups, raw_anchors, group_to_point_index);
+
+    (
+        BindingMaps {
+            circle_group_to_index,
+            polygon_group_to_index,
+            line_group_to_index,
+        },
+        line_iterations,
+        polygon_iterations,
+    )
+}
+
+pub(crate) fn build_scene(file: &GspFile) -> Scene {
+    let groups = file.object_groups();
+    let point_map = collect_point_objects(file, &groups);
+    let analysis = analyze_scene(file, &groups, &point_map);
+    let mut shapes = collect_scene_shapes(file, &groups, &point_map, &analysis);
+    let (mut labels, label_group_to_index) =
+        collect_scene_labels(file, &groups, &analysis, &shapes);
+
+    let (visible_points, group_to_point_index) = collect_visible_points(
+        file,
+        &groups,
+        &point_map,
+        &analysis.raw_anchors,
+        &analysis.graph_ref,
+    );
     let (derived_iteration_points, raw_point_iterations) =
-        collect_point_iteration_points(file, &groups, &raw_anchors, &group_to_point_index);
+        collect_point_iteration_points(file, &groups, &analysis.raw_anchors, &group_to_point_index);
     let label_iterations =
         collect_label_iterations(file, &groups, &label_group_to_index, &group_to_point_index)
             .into_iter()
@@ -265,119 +526,19 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
             })
             .collect::<Vec<_>>();
     remap_label_bindings(&mut labels, &group_to_point_index);
-    let circle_group_to_index = groups
-        .iter()
-        .enumerate()
-        .filter(|(_, group)| (group.header.class_id & 0xffff) == 3)
-        .enumerate()
-        .fold(
-            vec![None; groups.len()],
-            |mut acc, (shape_index, (group_index, _))| {
-                acc[group_index] = Some(shape_index);
-                acc
-            },
-        );
-    let polygon_group_to_index = groups
-        .iter()
-        .enumerate()
-        .filter(|(index, group)| {
-            (group.header.class_id & 0xffff) == 8 && !iteration_polygon_indices.contains(index)
-        })
-        .enumerate()
-        .fold(
-            vec![None; groups.len()],
-            |mut acc, (shape_index, (group_index, _))| {
-                acc[group_index] = Some(shape_index);
-                acc
-            },
-        );
-    remap_circle_bindings(
-        &mut rotated_circles,
-        &group_to_point_index,
-        &circle_group_to_index,
-    );
-    remap_circle_bindings(
-        &mut transformed_circles,
-        &group_to_point_index,
-        &circle_group_to_index,
-    );
-    remap_circle_bindings(
-        &mut reflected_circles,
-        &group_to_point_index,
-        &circle_group_to_index,
-    );
-    remap_polygon_bindings(
-        &mut translated_polygons,
-        &group_to_point_index,
-        &polygon_group_to_index,
-    );
-    remap_polygon_bindings(
-        &mut rotated_polygons,
-        &group_to_point_index,
-        &polygon_group_to_index,
-    );
-    remap_polygon_bindings(
-        &mut transformed_polygons,
-        &group_to_point_index,
-        &polygon_group_to_index,
-    );
-    remap_polygon_bindings(
-        &mut reflected_polygons,
-        &group_to_point_index,
-        &polygon_group_to_index,
-    );
-    let line_group_to_index = groups
-        .iter()
-        .enumerate()
-        .filter(|(_, group)| (group.header.class_id & 0xffff) == 2)
-        .enumerate()
-        .fold(
-            vec![None; groups.len()],
-            |mut acc, (line_index, (group_index, _))| {
-                acc[group_index] = Some(line_index);
-                acc
-            },
-        );
-    remap_line_bindings(
-        &mut direct_lines,
-        &group_to_point_index,
-        &line_group_to_index,
-    );
-    remap_line_bindings(&mut rays, &group_to_point_index, &line_group_to_index);
-    remap_line_bindings(
-        &mut rotated_lines,
-        &group_to_point_index,
-        &line_group_to_index,
-    );
-    remap_line_bindings(
-        &mut scaled_lines,
-        &group_to_point_index,
-        &line_group_to_index,
-    );
-    remap_line_bindings(
-        &mut reflected_lines,
-        &group_to_point_index,
-        &line_group_to_index,
-    );
-    remap_line_bindings(
-        &mut rotational_iteration_lines,
-        &group_to_point_index,
-        &line_group_to_index,
-    );
-    let line_iterations =
-        collect_carried_line_iteration_families(file, &groups, &raw_anchors, &group_to_point_index);
-    let polygon_iterations = collect_carried_polygon_iteration_families(
+    let (binding_maps, line_iterations, polygon_iterations) = remap_scene_bindings(
         file,
         &groups,
-        &raw_anchors,
+        &analysis.raw_anchors,
         &group_to_point_index,
+        &mut shapes,
     );
 
     let world_points = visible_points
         .iter()
         .chain(derived_iteration_points.iter())
         .map(|point| ScenePoint {
-            position: to_world(&point.position, &graph_ref),
+            position: to_world(&point.position, &analysis.graph_ref),
             constraint: match &point.constraint {
                 ScenePointConstraint::Free => ScenePointConstraint::Free,
                 ScenePointConstraint::Offset {
@@ -385,7 +546,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
                     dx,
                     dy,
                 } => {
-                    let (dx, dy) = if let Some(transform) = &graph_ref {
+                    let (dx, dy) = if let Some(transform) = &analysis.graph_ref {
                         (dx / transform.raw_per_unit, -dy / transform.raw_per_unit)
                     } else {
                         (*dx, *dy)
@@ -414,7 +575,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
                     function_key: *function_key,
                     points: points
                         .iter()
-                        .map(|point| to_world(point, &graph_ref))
+                        .map(|point| to_world(point, &analysis.graph_ref))
                         .collect(),
                     segment_index: *segment_index,
                     t: *t,
@@ -437,7 +598,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
                     center_index: *center_index,
                     radius_index: *radius_index,
                     unit_x: *unit_x,
-                    unit_y: if graph_ref.is_some() {
+                    unit_y: if analysis.graph_ref.is_some() {
                         *unit_y
                     } else {
                         -*unit_y
@@ -463,7 +624,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
                 depth,
                 parameter_name,
             } => {
-                let (dx, dy) = if let Some(transform) = &graph_ref {
+                let (dx, dy) = if let Some(transform) = &analysis.graph_ref {
                     (dx / transform.raw_per_unit, -dy / transform.raw_per_unit)
                 } else {
                     (dx, dy)
@@ -503,42 +664,45 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         })
         .collect::<Vec<_>>();
 
-    let bounds_lines = rotational_iteration_lines
+    let bounds_lines = shapes
+        .rotational_iteration_lines
         .iter()
-        .chain(polylines.iter())
-        .chain(direct_lines.iter())
-        .chain(rays.iter())
-        .chain(rotated_lines.iter())
-        .chain(scaled_lines.iter())
-        .chain(reflected_lines.iter())
-        .chain(derived_segments.iter())
-        .chain(measurements.iter())
-        .chain(coordinate_traces.iter())
-        .chain(axes.iter())
-        .chain(iteration_lines.iter())
-        .chain(carried_iteration_lines.iter())
+        .chain(shapes.polylines.iter())
+        .chain(shapes.direct_lines.iter())
+        .chain(shapes.rays.iter())
+        .chain(shapes.rotated_lines.iter())
+        .chain(shapes.scaled_lines.iter())
+        .chain(shapes.reflected_lines.iter())
+        .chain(shapes.derived_segments.iter())
+        .chain(shapes.measurements.iter())
+        .chain(shapes.coordinate_traces.iter())
+        .chain(shapes.axes.iter())
+        .chain(shapes.iteration_lines.iter())
+        .chain(shapes.carried_iteration_lines.iter())
         .cloned()
         .collect::<Vec<_>>();
-    let bounds_polygons = polygons
+    let bounds_polygons = shapes
+        .polygons
         .iter()
-        .chain(translated_polygons.iter())
-        .chain(rotated_polygons.iter())
-        .chain(transformed_polygons.iter())
-        .chain(reflected_polygons.iter())
-        .chain(iteration_polygons.iter())
-        .chain(carried_iteration_polygons.iter())
+        .chain(shapes.translated_polygons.iter())
+        .chain(shapes.rotated_polygons.iter())
+        .chain(shapes.transformed_polygons.iter())
+        .chain(shapes.reflected_polygons.iter())
+        .chain(shapes.iteration_polygons.iter())
+        .chain(shapes.carried_iteration_polygons.iter())
         .cloned()
         .collect::<Vec<_>>();
-    let bounds_circles = circles
+    let bounds_circles = shapes
+        .circles
         .iter()
-        .chain(rotated_circles.iter())
-        .chain(transformed_circles.iter())
-        .chain(reflected_circles.iter())
+        .chain(shapes.rotated_circles.iter())
+        .chain(shapes.transformed_circles.iter())
+        .chain(shapes.reflected_circles.iter())
         .cloned()
         .collect::<Vec<_>>();
 
     let mut bounds = collect_bounds(
-        &graph_ref,
+        &analysis.graph_ref,
         &bounds_lines,
         &[],
         &[],
@@ -547,15 +711,16 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         &labels,
         &world_point_positions,
     );
-    include_line_bounds(&mut bounds, &function_plots, &graph_ref);
-    include_line_bounds(&mut bounds, &synthetic_axes, &graph_ref);
-    let use_saved_viewport = saved_viewport
+    include_line_bounds(&mut bounds, &analysis.function_plots, &analysis.graph_ref);
+    include_line_bounds(&mut bounds, &shapes.synthetic_axes, &analysis.graph_ref);
+    let use_saved_viewport = analysis
+        .saved_viewport
         .filter(|viewport| bounds_within(viewport, &bounds))
         .is_some();
-    if let Some(viewport) = saved_viewport.filter(|_| use_saved_viewport) {
+    if let Some(viewport) = analysis.saved_viewport.filter(|_| use_saved_viewport) {
         bounds = viewport;
     } else {
-        if let Some((domain_min_x, domain_max_x)) = function_plot_domain {
+        if let Some((domain_min_x, domain_max_x)) = analysis.function_plot_domain {
             bounds.min_x = bounds.min_x.min(domain_min_x);
             bounds.max_x = bounds.max_x.max(domain_max_x);
             bounds.min_y = bounds.min_y.min(0.0);
@@ -564,7 +729,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         expand_bounds(&mut bounds);
     }
 
-    let mut parameters = if graph_mode {
+    let mut parameters = if analysis.graph_mode {
         collect_scene_parameters(file, &groups, &labels)
     } else {
         Vec::new()
@@ -573,83 +738,90 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     let buttons = collect_buttons(
         file,
         &groups,
-        &raw_anchors,
+        &analysis.raw_anchors,
         &group_to_point_index,
-        &line_group_to_index,
-        &circle_group_to_index,
-        &polygon_group_to_index,
+        &binding_maps.line_group_to_index,
+        &binding_maps.circle_group_to_index,
+        &binding_maps.polygon_group_to_index,
     );
-    let functions = if graph_mode {
+    let functions = if analysis.graph_mode {
         collect_scene_functions(
             file,
             &groups,
             &labels,
             &world_points,
-            polylines.len() + derived_segments.len() + measurements.len() + axes.len(),
+            shapes.polylines.len()
+                + shapes.derived_segments.len()
+                + shapes.measurements.len()
+                + shapes.axes.len(),
         )
     } else {
         Vec::new()
     };
 
     let raw_lines = dedupe_line_shapes(
-        polylines
+        shapes
+            .polylines
             .into_iter()
-            .chain(direct_lines)
-            .chain(rays)
-            .chain(rotated_lines)
-            .chain(scaled_lines)
-            .chain(reflected_lines)
-            .chain(derived_segments)
-            .chain(measurements)
-            .chain(coordinate_traces)
-            .chain(axes)
-            .chain(function_plots)
-            .chain(synthetic_axes)
-            .chain(iteration_lines)
-            .chain(rotational_iteration_lines)
-            .chain(carried_iteration_lines)
+            .chain(shapes.direct_lines)
+            .chain(shapes.rays)
+            .chain(shapes.rotated_lines)
+            .chain(shapes.scaled_lines)
+            .chain(shapes.reflected_lines)
+            .chain(shapes.derived_segments)
+            .chain(shapes.measurements)
+            .chain(shapes.coordinate_traces)
+            .chain(shapes.axes)
+            .chain(analysis.function_plots)
+            .chain(shapes.synthetic_axes)
+            .chain(shapes.iteration_lines)
+            .chain(shapes.rotational_iteration_lines)
+            .chain(shapes.carried_iteration_lines)
             .collect(),
     );
 
     Scene {
-        graph_mode,
-        pi_mode,
+        graph_mode: analysis.graph_mode,
+        pi_mode: analysis.pi_mode,
         saved_viewport: use_saved_viewport,
-        y_up: graph_mode,
-        origin: graph_ref
+        y_up: analysis.graph_mode,
+        origin: analysis
+            .graph_ref
             .as_ref()
-            .map(|transform| to_world(&transform.origin_raw, &graph_ref)),
+            .map(|transform| to_world(&transform.origin_raw, &analysis.graph_ref)),
         bounds,
         lines: raw_lines
             .into_iter()
-            .map(|line| world_line_shape(line, &graph_ref, &bounds))
+            .map(|line| world_line_shape(line, &analysis.graph_ref, &bounds))
             .collect(),
-        polygons: polygons
+        polygons: shapes
+            .polygons
             .into_iter()
-            .chain(translated_polygons)
-            .chain(rotated_polygons)
-            .chain(transformed_polygons)
-            .chain(reflected_polygons)
-            .chain(iteration_polygons)
-            .chain(carried_iteration_polygons)
+            .chain(shapes.translated_polygons)
+            .chain(shapes.rotated_polygons)
+            .chain(shapes.transformed_polygons)
+            .chain(shapes.reflected_polygons)
+            .chain(shapes.iteration_polygons)
+            .chain(shapes.carried_iteration_polygons)
             .map(|polygon| PolygonShape {
                 points: polygon
                     .points
                     .into_iter()
-                    .map(|point| to_world(&point, &graph_ref))
+                    .map(|point| to_world(&point, &analysis.graph_ref))
                     .collect(),
                 color: polygon.color,
                 binding: polygon.binding,
             })
             .collect(),
-        circles: circles
+        circles: shapes
+            .circles
             .into_iter()
-            .chain(rotated_circles)
-            .chain(transformed_circles)
-            .chain(reflected_circles)
+            .chain(shapes.rotated_circles)
+            .chain(shapes.transformed_circles)
+            .chain(shapes.reflected_circles)
             .map(|circle| SceneCircle {
-                center: to_world(&circle.center, &graph_ref),
-                radius_point: to_world(&circle.radius_point, &graph_ref),
+                center: to_world(&circle.center, &analysis.graph_ref),
+                radius_point: to_world(&circle.radius_point, &analysis.graph_ref),
                 color: circle.color,
                 binding: circle.binding,
             })
@@ -660,7 +832,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
                 anchor: if label.screen_space {
                     label.anchor
                 } else {
-                    to_world(&label.anchor, &graph_ref)
+                    to_world(&label.anchor, &analysis.graph_ref)
                 },
                 text: label.text,
                 color: label.color,
@@ -672,11 +844,11 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         point_iterations,
         line_iterations: line_iterations
             .into_iter()
-            .map(|family| world_line_iteration_family(family, &graph_ref))
+            .map(|family| world_line_iteration_family(family, &analysis.graph_ref))
             .collect(),
         polygon_iterations: polygon_iterations
             .into_iter()
-            .map(|family| world_polygon_iteration_family(family, &graph_ref))
+            .map(|family| world_polygon_iteration_family(family, &analysis.graph_ref))
             .collect(),
         label_iterations,
         buttons,
