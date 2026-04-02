@@ -5,12 +5,15 @@ use super::decode::{
     decode_label_name_raw, decode_link_button_url, decode_measurement_value, decode_text_anchor,
     find_indexed_path, is_action_button_group,
 };
-use super::points::decode_non_graph_parameter_value_for_group;
+use super::points::{
+    decode_non_graph_parameter_value_for_group, is_editable_non_graph_parameter_name,
+};
 use super::*;
 use crate::runtime::functions::{
     decode_function_expr, evaluate_expr_with_parameters, function_expr_label,
 };
 use crate::runtime::geometry::format_number;
+use crate::runtime::scene::LabelIterationFamily;
 
 pub(super) fn collect_labels(
     file: &GspFile,
@@ -18,12 +21,13 @@ pub(super) fn collect_labels(
     anchors: &[Option<PointRecord>],
     graph_mode: bool,
     include_measurements: bool,
-) -> Vec<TextLabel> {
+) -> (Vec<TextLabel>, BTreeMap<usize, usize>) {
     let mut labels = Vec::new();
+    let mut label_group_to_index = BTreeMap::new();
     for group in groups {
         let kind = group.header.class_id & 0xffff;
         match kind {
-            0 | 2 | 15 | 40 | 51 | 62 | 73 => {
+            0 | 2 | 15 | 40 | 51 | 62 | 73 | 90 => {
                 if kind == 0 && decode_link_button_url(file, group).is_some() {
                     continue;
                 }
@@ -38,6 +42,15 @@ pub(super) fn collect_labels(
                 {
                     continue;
                 }
+                if kind == 90 {
+                    if let Some(label) =
+                        collect_point_expression_label(file, groups, group, anchors)
+                    {
+                        label_group_to_index.insert(group.ordinal, labels.len());
+                        labels.push(label);
+                    }
+                    continue;
+                }
                 let text = decode_group_label_text(file, group).or_else(|| {
                     (!graph_mode
                         && matches!(kind, 0 | 2 | 15)
@@ -48,6 +61,7 @@ pub(super) fn collect_labels(
                 if let Some(text) = text {
                     let anchor = decode_label_anchor(file, group, anchors);
                     if let Some(anchor) = anchor {
+                        label_group_to_index.insert(group.ordinal, labels.len());
                         labels.push(TextLabel {
                             anchor,
                             text,
@@ -100,7 +114,7 @@ pub(super) fn collect_labels(
             _ => {}
         }
     }
-    labels
+    (labels, label_group_to_index)
 }
 
 pub(super) fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) -> Vec<TextLabel> {
@@ -197,6 +211,48 @@ fn is_non_graph_parameter_group(group: &ObjectGroup) -> bool {
             .records
             .iter()
             .any(|record| record.record_type == 0x0899)
+}
+
+fn collect_point_expression_label(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<TextLabel> {
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() < 2 {
+        return None;
+    }
+    let point_group_index = path.refs.first()?.checked_sub(1)?;
+    let expr_group = groups.get(path.refs[1].checked_sub(1)?)?;
+    if (expr_group.header.class_id & 0xffff) != 48 {
+        return None;
+    }
+    let expr = decode_function_expr(file, groups, expr_group)?;
+    let expr_path = find_indexed_path(file, expr_group)?;
+    let parameter_group = groups.get(expr_path.refs.first()?.checked_sub(1)?)?;
+    let parameter_name = decode_label_name(file, parameter_group)?;
+    if !is_editable_non_graph_parameter_name(&parameter_name) {
+        return None;
+    }
+    let parameter_value = decode_non_graph_parameter_value_for_group(file, parameter_group)?;
+    let value = evaluate_expr_with_parameters(
+        &expr,
+        0.0,
+        &BTreeMap::from([(parameter_name.clone(), parameter_value)]),
+    )?;
+    let anchor = decode_label_anchor(file, group, anchors)?;
+    Some(TextLabel {
+        anchor,
+        text: format_number(value),
+        color: [30, 30, 30, 255],
+        binding: Some(TextLabelBinding::PointExpressionValue {
+            point_index: point_group_index,
+            parameter_name,
+            expr,
+        }),
+        screen_space: false,
+    })
 }
 
 pub(super) fn collect_polygon_parameter_labels(
@@ -355,6 +411,67 @@ pub(super) fn collect_circle_parameter_labels(
                     circle_name,
                 }),
                 screen_space: false,
+            })
+        })
+        .collect()
+}
+
+pub(super) fn collect_label_iterations(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    label_group_to_index: &BTreeMap<usize, usize>,
+    group_to_point_index: &[Option<usize>],
+) -> Vec<LabelIterationFamily> {
+    groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 77)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            if path.refs.len() < 2 {
+                return None;
+            }
+            let seed_group = groups.get(path.refs[0].checked_sub(1)?)?;
+            if (seed_group.header.class_id & 0xffff) != 90 {
+                return None;
+            }
+            let seed_path = find_indexed_path(file, seed_group)?;
+            let point_group_index = seed_path.refs.first()?.checked_sub(1)?;
+            let point_seed_index = group_to_point_index
+                .get(point_group_index)
+                .and_then(|mapped_index| *mapped_index)?;
+            let expr_group = groups.get(seed_path.refs.get(1)?.checked_sub(1)?)?;
+            if (expr_group.header.class_id & 0xffff) != 48 {
+                return None;
+            }
+            let expr = decode_function_expr(file, groups, expr_group)?;
+            let expr_path = find_indexed_path(file, expr_group)?;
+            let parameter_group = groups.get(expr_path.refs.first()?.checked_sub(1)?)?;
+            let parameter_name = decode_label_name(file, parameter_group)?;
+            let seed_label_index = *label_group_to_index.get(&seed_group.ordinal)?;
+
+            let iter_group = groups.get(path.refs[1].checked_sub(1)?)?;
+            let depth = iter_group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x090a)
+                .map(|record| record.payload(&file.data))
+                .filter(|payload| payload.len() >= 20)
+                .map(|payload| read_u32(payload, 16) as usize)
+                .unwrap_or(3);
+            let depth_parameter_name = find_indexed_path(file, iter_group)
+                .and_then(|iter_path| iter_path.refs.first().copied())
+                .and_then(|ordinal| groups.get(ordinal.checked_sub(1)?))
+                .filter(|group| is_non_graph_parameter_group(group))
+                .and_then(|parameter_group| decode_label_name(file, parameter_group))
+                .filter(|name| is_editable_non_graph_parameter_name(name));
+
+            Some(LabelIterationFamily::PointExpression {
+                seed_label_index,
+                point_seed_index,
+                parameter_name,
+                expr,
+                depth,
+                depth_parameter_name,
             })
         })
         .collect()

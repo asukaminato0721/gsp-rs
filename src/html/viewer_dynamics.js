@@ -289,6 +289,309 @@
     }
   }
 
+  function pointIterationDepth(family, parameters) {
+    const rawValue = family.parameterName ? parameters.get(family.parameterName) : family.depth;
+    const fallback = Number.isFinite(family.depth) ? family.depth : 0;
+    const depth = Number.isFinite(rawValue) ? rawValue : fallback;
+    return Math.max(0, Math.round(depth));
+  }
+
+  function formatSequenceValue(value) {
+    if (!Number.isFinite(value)) {
+      return "-";
+    }
+    return Math.abs(value - Math.round(value)) < 0.005
+      ? String(Math.round(value))
+      : value.toFixed(2);
+  }
+
+  function darken(color, amount) {
+    return [
+      Math.max(0, color[0] - amount),
+      Math.max(0, color[1] - amount),
+      Math.max(0, color[2] - amount),
+      color[3],
+    ];
+  }
+
+  function evaluateRecursiveExpression(expr, parameterName, currentValue, parameters) {
+    const nextParameters = new Map(parameters);
+    nextParameters.set(parameterName, currentValue);
+    return evaluateExpr(expr, 0, nextParameters);
+  }
+
+  /** @param {ViewerEnv} env */
+  function rebuildIterationPoints(env, scene, parameters) {
+    const families = env.sourceScene.pointIterations || [];
+    if (families.length === 0) {
+      return;
+    }
+    const exportedDepth = families.reduce((sum, family) => sum + (family.depth || 0), 0);
+    const baseCount = Math.max(0, env.sourceScene.points.length - exportedDepth);
+    scene.points = scene.points.slice(0, baseCount);
+
+    families.forEach((family) => {
+      const depth = pointIterationDepth(family, parameters);
+      if (depth <= 0) {
+        return;
+      }
+      if (family.kind === "offset") {
+        let previousIndex = family.seedIndex;
+        for (let step = 0; step < depth; step += 1) {
+          const origin = scene.points[previousIndex];
+          if (!origin) {
+            break;
+          }
+          scene.points.push({
+            x: origin.x + family.dx,
+            y: origin.y + family.dy,
+            visible: true,
+            constraint: {
+              kind: "offset",
+              originIndex: previousIndex,
+              dx: family.dx,
+              dy: family.dy,
+            },
+            binding: null,
+          });
+          previousIndex = scene.points.length - 1;
+        }
+        return;
+      }
+
+      if (family.kind === "rotate-chain") {
+        const center = scene.points[family.centerIndex];
+        let previousIndex = family.seedIndex;
+        if (!center) {
+          return;
+        }
+        for (let step = 0; step < depth; step += 1) {
+          const source = scene.points[previousIndex];
+          if (!source) {
+            break;
+          }
+          const rotated = rotateAround(source, center, family.angleDegrees * Math.PI / 180);
+          scene.points.push({
+            x: rotated.x,
+            y: rotated.y,
+            visible: true,
+            constraint: null,
+            binding: {
+              kind: "rotate",
+              sourceIndex: previousIndex,
+              centerIndex: family.centerIndex,
+              angleDegrees: family.angleDegrees,
+            },
+          });
+          previousIndex = scene.points.length - 1;
+        }
+        return;
+      }
+
+      if (family.kind === "rotate") {
+        const source = scene.points[family.sourceIndex];
+        const center = scene.points[family.centerIndex];
+        if (!source || !center) {
+          return;
+        }
+        const angleDegrees = evaluateExpr(family.angleExpr, 0, parameters);
+        if (!Number.isFinite(angleDegrees)) {
+          return;
+        }
+        for (let step = 1; step <= depth; step += 1) {
+          const rotated = rotateAround(source, center, (angleDegrees * step) * Math.PI / 180);
+          scene.points.push({
+            x: rotated.x,
+            y: rotated.y,
+            visible: true,
+            constraint: null,
+            binding: {
+              kind: "rotate",
+              sourceIndex: family.sourceIndex,
+              centerIndex: family.centerIndex,
+              angleDegrees: angleDegrees * step,
+            },
+          });
+        }
+      }
+    });
+  }
+
+  /** @param {ViewerEnv} env */
+  function rebuildIteratedLines(env, scene, parameters) {
+    const families = env.sourceScene.lineIterations || [];
+    if (families.length === 0) {
+      return;
+    }
+    const exportedDepth = families.reduce((sum, family) => {
+      const depth = family.depth || 0;
+      if (Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy)) {
+        return sum + (((depth + 1) * (depth + 2)) / 2 - 1);
+      }
+      return sum + depth;
+    }, 0);
+    const baseCount = Math.max(0, env.sourceScene.lines.length - exportedDepth);
+    scene.lines = scene.lines.slice(0, baseCount);
+
+    families.forEach((family) => {
+      const depth = pointIterationDepth(family, parameters);
+      if (depth <= 0 || family.kind !== "translate") {
+        return;
+      }
+      const start = scene.points[family.startIndex];
+      const end = scene.points[family.endIndex];
+      if (!start || !end) {
+        return;
+      }
+      const hasSecondary = Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy);
+      const deltas = [];
+      if (hasSecondary) {
+        for (let primary = 0; primary <= depth; primary += 1) {
+          for (let secondary = 0; secondary <= depth - primary; secondary += 1) {
+            if (primary === 0 && secondary === 0) {
+              continue;
+            }
+            deltas.push({
+              dx: family.dx * primary + family.secondaryDx * secondary,
+              dy: family.dy * primary + family.secondaryDy * secondary,
+            });
+          }
+        }
+      } else {
+        for (let step = 1; step <= depth; step += 1) {
+          deltas.push({
+            dx: family.dx * step,
+            dy: family.dy * step,
+          });
+        }
+      }
+      deltas.forEach(({ dx, dy }) => {
+        scene.lines.push({
+          points: [
+            { x: start.x + dx, y: start.y + dy },
+            { x: end.x + dx, y: end.y + dy },
+          ],
+          color: family.color,
+          dashed: !!family.dashed,
+          binding: null,
+        });
+      });
+    });
+  }
+
+  /** @param {ViewerEnv} env */
+  function rebuildIteratedPolygons(env, scene, parameters) {
+    const families = env.sourceScene.polygonIterations || [];
+    if (families.length === 0) {
+      return;
+    }
+    const exportedDepth = families.reduce((sum, family) => {
+      const depth = family.depth || 0;
+      if (Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy)) {
+        return sum + (((depth + 1) * (depth + 2)) / 2);
+      }
+      return sum + (depth + 1);
+    }, 0);
+    const baseCount = Math.max(0, env.sourceScene.polygons.length - exportedDepth);
+    scene.polygons = scene.polygons.slice(0, baseCount);
+
+    families.forEach((family) => {
+      const depth = pointIterationDepth(family, parameters);
+      if (family.kind !== "translate" || family.vertexIndices.length < 3) {
+        return;
+      }
+      const seedVertices = family.vertexIndices
+        .map((index) => scene.points[index])
+        .filter(Boolean);
+      if (seedVertices.length !== family.vertexIndices.length) {
+        return;
+      }
+      const hasSecondary = Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy);
+      const deltas = [];
+      if (hasSecondary) {
+        for (let primary = 0; primary <= depth; primary += 1) {
+          for (let secondary = 0; secondary <= depth - primary; secondary += 1) {
+            deltas.push({
+              dx: family.dx * primary + family.secondaryDx * secondary,
+              dy: family.dy * primary + family.secondaryDy * secondary,
+            });
+          }
+        }
+      } else {
+        for (let step = 0; step <= depth; step += 1) {
+          deltas.push({
+            dx: family.dx * step,
+            dy: family.dy * step,
+          });
+        }
+      }
+      deltas.forEach(({ dx, dy }) => {
+        scene.polygons.push({
+          points: seedVertices.map((point) => ({ x: point.x + dx, y: point.y + dy })),
+          color: family.color,
+          outlineColor: darken(family.color, 80),
+          binding: null,
+        });
+      });
+    });
+  }
+
+  /** @param {ViewerEnv} env */
+  function rebuildIteratedLabels(env, scene, parameters) {
+    const families = env.sourceScene.labelIterations || [];
+    if (families.length === 0) {
+      return;
+    }
+    const baseCount = env.sourceScene.labels.length;
+    scene.labels = scene.labels.slice(0, baseCount);
+
+    families.forEach((family) => {
+      if (family.kind !== "point-expression") {
+        return;
+      }
+      const seedLabel = scene.labels[family.seedLabelIndex];
+      const seedAnchor = seedLabel?.anchor;
+      if (!seedLabel || typeof seedAnchor?.pointIndex !== "number") {
+        return;
+      }
+      const depth = pointIterationDepth({
+        depth: family.depth,
+        parameterName: family.depthParameterName,
+      }, parameters);
+      let currentValue = parameters.get(family.parameterName);
+      if (!Number.isFinite(currentValue)) {
+        return;
+      }
+      for (let step = 0; step <= depth; step += 1) {
+        const value = evaluateRecursiveExpression(
+          family.expr,
+          family.parameterName,
+          currentValue,
+          parameters,
+        );
+        if (!Number.isFinite(value)) {
+          break;
+        }
+        const pointIndex = family.pointSeedIndex + step;
+        if (!scene.points[pointIndex]) {
+          break;
+        }
+        if (step === 0) {
+          seedLabel.text = formatSequenceValue(value);
+          seedLabel.anchor = { ...seedAnchor, pointIndex };
+        } else {
+          scene.labels.push({
+            ...seedLabel,
+            text: formatSequenceValue(value),
+            binding: null,
+            anchor: { ...seedAnchor, pointIndex },
+          });
+        }
+        currentValue = value;
+      }
+    });
+  }
+
   /** @param {ViewerEnv} env */
   function refreshDerivedPoints(env, scene) {
     const bounds = env.getViewBounds ? env.getViewBounds() : (scene.bounds || env.sourceScene.bounds);
@@ -519,6 +822,19 @@
         if (value !== null && value !== undefined) {
           label.text = `${label.binding.name} = ${env.formatNumber(value)}`;
         }
+      } else if (label.binding.kind === "point-expression-value") {
+        const currentValue = parameters.get(label.binding.parameterName);
+        if (Number.isFinite(currentValue)) {
+          const value = evaluateRecursiveExpression(
+            label.binding.expr,
+            label.binding.parameterName,
+            currentValue,
+            parameters,
+          );
+          if (value !== null) {
+            label.text = formatSequenceValue(value);
+          }
+        }
       } else if (label.binding.kind === "expression-value") {
         const value = evaluateExpr(label.binding.expr, 0, parameters);
         if (value !== null) {
@@ -593,6 +909,10 @@
           }
         });
       });
+      rebuildIterationPoints(env, draft, parameters);
+      rebuildIteratedLines(env, draft, parameters);
+      rebuildIteratedPolygons(env, draft, parameters);
+      rebuildIteratedLabels(env, draft, parameters);
     });
   }
 
@@ -604,13 +924,13 @@
       env.inputTag({
         type: "number",
         step: parameter.name === "n" ? "1" : "0.1",
-        min: parameter.name === "n" ? "2" : undefined,
+        min: parameter.name === "n" ? "0" : undefined,
         value: parameter.value.toFixed(2),
         oninput: (event) => {
           let value = Number.parseFloat(event.target.value);
           if (Number.isFinite(value)) {
             if (parameter.name === "n") {
-              value = Math.max(2, Math.round(value));
+              value = Math.max(0, Math.round(value));
             }
             env.updateDynamics((draft) => {
               draft.parameters[index].value = value;

@@ -60,6 +60,16 @@
       ? { x: label.anchor.x, y: label.anchor.y }
       : env.toScreen(env.resolvePoint(label.anchor));
     const metrics = labelMetrics(env, label.text);
+    if (label.centeredOnAnchor) {
+      return {
+        screen,
+        lines: metrics.lines,
+        width: metrics.width,
+        height: metrics.height,
+        left: screen.x - metrics.width / 2,
+        top: screen.y - metrics.height / 2,
+      };
+    }
     return {
       screen,
       lines: metrics.lines,
@@ -244,15 +254,27 @@
 
   function drawLabels(env) {
     env.ctx.font = "18px \"Noto Sans\", \"Segoe UI\", sans-serif";
-    env.ctx.textBaseline = "top";
     for (const label of env.currentScene().labels) {
       if (label.visible === false) continue;
       const bounds = labelBounds(env, label);
       env.ctx.fillStyle = env.rgba(label.color);
-      bounds.lines.forEach((line, index) => {
-        env.ctx.fillText(line, bounds.screen.x + 6, bounds.screen.y - 10 + index * 22);
-      });
+      if (label.centeredOnAnchor) {
+        env.ctx.textAlign = "center";
+        env.ctx.textBaseline = "middle";
+        const midOffset = (bounds.lines.length - 1) / 2;
+        bounds.lines.forEach((line, index) => {
+          env.ctx.fillText(line, bounds.screen.x, bounds.screen.y + (index - midOffset) * 22);
+        });
+      } else {
+        env.ctx.textAlign = "left";
+        env.ctx.textBaseline = "top";
+        bounds.lines.forEach((line, index) => {
+          env.ctx.fillText(line, bounds.left + 4, bounds.top + index * 22);
+        });
+      }
     }
+    env.ctx.textAlign = "left";
+    env.ctx.textBaseline = "alphabetic";
   }
 
   function draw(env) {

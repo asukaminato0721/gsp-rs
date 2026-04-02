@@ -46,6 +46,64 @@ type SceneData = {
   polygons: any[];
   circles: any[];
   labels: any[];
+  pointIterations?: Array<
+    | {
+        kind: "offset";
+        seedIndex: number;
+        dx: number;
+        dy: number;
+        depth: number;
+        parameterName?: string | null;
+      }
+    | {
+        kind: "rotate-chain";
+        seedIndex: number;
+        centerIndex: number;
+        angleDegrees: number;
+        depth: number;
+      }
+    | {
+        kind: "rotate";
+        sourceIndex: number;
+        centerIndex: number;
+        angleExpr: any;
+        depth: number;
+        parameterName?: string | null;
+      }
+  >;
+  lineIterations?: Array<{
+    kind: "translate";
+    startIndex: number;
+    endIndex: number;
+    dx: number;
+    dy: number;
+    secondaryDx?: number | null;
+    secondaryDy?: number | null;
+    depth: number;
+    parameterName?: string | null;
+    color: [number, number, number, number];
+    dashed: boolean;
+  }>;
+  polygonIterations?: Array<{
+    kind: "translate";
+    vertexIndices: number[];
+    dx: number;
+    dy: number;
+    secondaryDx?: number | null;
+    secondaryDy?: number | null;
+    depth: number;
+    parameterName?: string | null;
+    color: [number, number, number, number];
+  }>;
+  labelIterations?: Array<{
+    kind: "point-expression";
+    seedLabelIndex: number;
+    pointSeedIndex: number;
+    parameterName: string;
+    expr: any;
+    depth: number;
+    depthParameterName?: string | null;
+  }>;
   buttons?: Array<{
     text: string;
     x: number;

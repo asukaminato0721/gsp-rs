@@ -16,6 +16,10 @@ pub(crate) struct Scene {
     pub(crate) circles: Vec<SceneCircle>,
     pub(crate) labels: Vec<TextLabel>,
     pub(crate) points: Vec<ScenePoint>,
+    pub(crate) point_iterations: Vec<PointIterationFamily>,
+    pub(crate) line_iterations: Vec<LineIterationFamily>,
+    pub(crate) polygon_iterations: Vec<PolygonIterationFamily>,
+    pub(crate) label_iterations: Vec<LabelIterationFamily>,
     pub(crate) buttons: Vec<SceneButton>,
     pub(crate) parameters: Vec<SceneParameter>,
     pub(crate) functions: Vec<SceneFunction>,
@@ -80,6 +84,68 @@ pub(crate) struct ScenePoint {
     pub(crate) position: PointRecord,
     pub(crate) constraint: ScenePointConstraint,
     pub(crate) binding: Option<ScenePointBinding>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum PointIterationFamily {
+    Offset {
+        seed_index: usize,
+        dx: f64,
+        dy: f64,
+        depth: usize,
+        parameter_name: Option<String>,
+    },
+    RotateChain {
+        seed_index: usize,
+        center_index: usize,
+        angle_degrees: f64,
+        depth: usize,
+    },
+    Rotate {
+        source_index: usize,
+        center_index: usize,
+        angle_expr: FunctionExpr,
+        depth: usize,
+        parameter_name: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct LineIterationFamily {
+    pub(crate) start_index: usize,
+    pub(crate) end_index: usize,
+    pub(crate) dx: f64,
+    pub(crate) dy: f64,
+    pub(crate) secondary_dx: Option<f64>,
+    pub(crate) secondary_dy: Option<f64>,
+    pub(crate) depth: usize,
+    pub(crate) parameter_name: Option<String>,
+    pub(crate) color: [u8; 4],
+    pub(crate) dashed: bool,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PolygonIterationFamily {
+    pub(crate) vertex_indices: Vec<usize>,
+    pub(crate) dx: f64,
+    pub(crate) dy: f64,
+    pub(crate) secondary_dx: Option<f64>,
+    pub(crate) secondary_dy: Option<f64>,
+    pub(crate) depth: usize,
+    pub(crate) parameter_name: Option<String>,
+    pub(crate) color: [u8; 4],
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum LabelIterationFamily {
+    PointExpression {
+        seed_label_index: usize,
+        point_seed_index: usize,
+        parameter_name: String,
+        expr: FunctionExpr,
+        depth: usize,
+        depth_parameter_name: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -291,6 +357,11 @@ pub(crate) enum TextLabelBinding {
     ExpressionValue {
         parameter_name: String,
         expr_label: String,
+        expr: FunctionExpr,
+    },
+    PointExpressionValue {
+        point_index: usize,
+        parameter_name: String,
         expr: FunctionExpr,
     },
     PolygonBoundaryParameter {

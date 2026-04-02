@@ -1,3 +1,4 @@
+use super::super::decode::decode_label_name;
 use super::anchors::{
     decode_reflection_anchor_raw, reflection_line_group_indices,
     translation_point_pair_group_indices,
@@ -8,6 +9,8 @@ use super::constraints::{
     regular_polygon_iteration_step,
 };
 use super::*;
+use crate::runtime::functions::FunctionExpr;
+use crate::runtime::geometry::rotate_around;
 use crate::runtime::scene::{LineBinding, ShapeBinding};
 
 pub(crate) struct TransformBinding {
@@ -19,6 +22,40 @@ pub(crate) struct TransformBinding {
 pub(crate) enum TransformBindingKind {
     Rotate { angle_degrees: f64 },
     Scale { factor: f64 },
+}
+
+fn iteration_depth(file: &GspFile, group: &ObjectGroup, default_depth: usize) -> usize {
+    group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x090a)
+        .map(|record| record.payload(&file.data))
+        .filter(|payload| payload.len() >= 20)
+        .map(|payload| read_u32(payload, 16) as usize)
+        .unwrap_or(default_depth)
+}
+
+pub(crate) enum RawPointIterationFamily {
+    Offset {
+        seed_index: usize,
+        dx: f64,
+        dy: f64,
+        depth: usize,
+        parameter_name: Option<String>,
+    },
+    RotateChain {
+        seed_index: usize,
+        center_index: usize,
+        angle_degrees: f64,
+        depth: usize,
+    },
+    Rotate {
+        source_index: usize,
+        center_index: usize,
+        angle_expr: FunctionExpr,
+        depth: usize,
+        parameter_name: Option<String>,
+    },
 }
 
 pub(crate) fn collect_visible_points(
@@ -43,7 +80,7 @@ pub(crate) fn collect_visible_points(
                     constraint: ScenePointConstraint::Free,
                     binding: None,
                 }),
-            21 => decode_translated_point_constraint(file, group).and_then(|constraint| {
+            17 | 21 => decode_translated_point_constraint(file, group).and_then(|constraint| {
                 let origin_index = group_to_point_index
                     .get(constraint.origin_group_index)
                     .and_then(|point_index| *point_index)?;
@@ -358,6 +395,17 @@ pub(crate) fn remap_label_bindings(
         let Some(binding) = label.binding.as_mut() else {
             continue;
         };
+        if let TextLabelBinding::PointExpressionValue { point_index, .. } = binding {
+            let Some(mapped_index) = group_to_point_index
+                .get(*point_index)
+                .and_then(|mapped_index| *mapped_index)
+            else {
+                label.binding = None;
+                continue;
+            };
+            *point_index = mapped_index;
+            continue;
+        }
         let point_index = match binding {
             TextLabelBinding::ParameterValue { .. } | TextLabelBinding::ExpressionValue { .. } => {
                 continue;
@@ -365,6 +413,7 @@ pub(crate) fn remap_label_bindings(
             TextLabelBinding::PolygonBoundaryParameter { point_index, .. } => point_index,
             TextLabelBinding::SegmentParameter { point_index, .. } => point_index,
             TextLabelBinding::CircleParameter { point_index, .. } => point_index,
+            TextLabelBinding::PointExpressionValue { .. } => unreachable!(),
         };
         let Some(mapped_index) = group_to_point_index
             .get(*point_index)
@@ -716,8 +765,9 @@ pub(crate) fn collect_point_iteration_points(
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
     group_to_point_index: &[Option<usize>],
-) -> Vec<ScenePoint> {
+) -> (Vec<ScenePoint>, Vec<RawPointIterationFamily>) {
     let mut derived_points = Vec::new();
+    let mut families = Vec::new();
 
     for group in groups
         .iter()
@@ -746,6 +796,65 @@ pub(crate) fn collect_point_iteration_points(
         };
         match iter_group.header.class_id & 0xffff {
             76 => {
+                let depth = iteration_depth(file, iter_group, 3);
+                if depth == 0 {
+                    continue;
+                }
+                let seed_group = &groups[seed_group_index];
+                if matches!(seed_group.header.class_id & 0xffff, 27 | 29) {
+                    let rotation = if (seed_group.header.class_id & 0xffff) == 29 {
+                        decode_parameter_rotation_binding(file, groups, seed_group)
+                    } else {
+                        decode_transform_binding(file, seed_group)
+                    };
+                    if let Some(binding) = rotation {
+                        let Some(center_index) = group_to_point_index
+                            .get(binding.center_group_index)
+                            .and_then(|mapped_index| *mapped_index)
+                        else {
+                            continue;
+                        };
+                        let TransformBindingKind::Rotate { angle_degrees } = binding.kind else {
+                            continue;
+                        };
+                        let Some(center_position) =
+                            anchors.get(binding.center_group_index).cloned().flatten()
+                        else {
+                            continue;
+                        };
+                        let Some(seed_position) = anchors.get(seed_group_index).cloned().flatten()
+                        else {
+                            continue;
+                        };
+
+                        let mut previous_index = seed_index;
+                        let mut current_position = seed_position;
+                        for _ in 0..depth {
+                            current_position = rotate_around(
+                                &current_position,
+                                &center_position,
+                                angle_degrees.to_radians(),
+                            );
+                            derived_points.push(ScenePoint {
+                                position: current_position.clone(),
+                                constraint: ScenePointConstraint::Free,
+                                binding: Some(ScenePointBinding::Rotate {
+                                    source_index: previous_index,
+                                    center_index,
+                                    angle_degrees,
+                                }),
+                            });
+                            previous_index = seed_index + derived_points.len();
+                        }
+                        families.push(RawPointIterationFamily::RotateChain {
+                            seed_index,
+                            center_index,
+                            angle_degrees,
+                            depth,
+                        });
+                        continue;
+                    }
+                }
                 let Some(iter_path) = find_indexed_path(file, iter_group) else {
                     continue;
                 };
@@ -768,17 +877,6 @@ pub(crate) fn collect_point_iteration_points(
                 };
                 let dx = base_end.x - base_start.x;
                 let dy = base_end.y - base_start.y;
-                let depth = iter_group
-                    .records
-                    .iter()
-                    .find(|record| record.record_type == 0x090a)
-                    .map(|record| record.payload(&file.data))
-                    .filter(|payload| payload.len() >= 20)
-                    .map(|payload| read_u32(payload, 16) as usize)
-                    .unwrap_or(0);
-                if depth == 0 {
-                    continue;
-                }
                 let Some(seed_position) = anchors.get(seed_group_index).cloned().flatten() else {
                     continue;
                 };
@@ -798,23 +896,24 @@ pub(crate) fn collect_point_iteration_points(
                     });
                     previous_index = seed_index + derived_points.len();
                 }
+                families.push(RawPointIterationFamily::Offset {
+                    seed_index,
+                    dx,
+                    dy,
+                    depth,
+                    parameter_name: None,
+                });
             }
             89 => {
                 let Some(iter_path) = find_indexed_path(file, iter_group) else {
                     continue;
                 };
-                let depth = iter_group
-                    .records
-                    .iter()
-                    .find(|record| record.record_type == 0x090a)
-                    .map(|record| record.payload(&file.data))
-                    .filter(|payload| payload.len() >= 20)
-                    .map(|payload| read_u32(payload, 16) as usize)
-                    .unwrap_or(0);
+                let depth = iteration_depth(file, iter_group, 3);
                 if depth == 0 {
                     continue;
                 }
-                if let Some((dx, dy)) = parameter_iteration_step(groups, iter_group, anchors, file)
+                if let Some((parameter_name, dx, dy)) =
+                    parameter_iteration_step(groups, iter_group, anchors, file)
                 {
                     let Some(seed_position) = anchors.get(seed_group_index).cloned().flatten()
                     else {
@@ -835,7 +934,15 @@ pub(crate) fn collect_point_iteration_points(
                         });
                         previous_index = seed_index + derived_points.len();
                     }
-                } else if let Some((center_group_index, _angle_expr, _parameter_name, n)) =
+                    families.push(RawPointIterationFamily::Offset {
+                        seed_index,
+                        dx,
+                        dy,
+                        depth,
+                        parameter_name: is_editable_non_graph_parameter_name(&parameter_name)
+                            .then_some(parameter_name),
+                    });
+                } else if let Some((center_group_index, _angle_expr, parameter_name, n)) =
                     regular_polygon_iteration_step(file, groups, iter_group)
                 {
                     let Some(center_index) = group_to_point_index
@@ -873,6 +980,15 @@ pub(crate) fn collect_point_iteration_points(
                             }),
                         });
                     }
+                    let angle_expr = regular_polygon_angle_expr(&parameter_name, n);
+                    families.push(RawPointIterationFamily::Rotate {
+                        source_index: seed_index,
+                        center_index,
+                        angle_expr,
+                        depth,
+                        parameter_name: is_editable_non_graph_parameter_name(&parameter_name)
+                            .then_some(parameter_name),
+                    });
                 } else if iter_path.refs.len() >= 2 {
                     let _ = iter_path;
                 }
@@ -881,7 +997,7 @@ pub(crate) fn collect_point_iteration_points(
         }
     }
 
-    derived_points
+    (derived_points, families)
 }
 
 fn parameter_iteration_step(
@@ -889,7 +1005,7 @@ fn parameter_iteration_step(
     iter_group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
     file: &GspFile,
-) -> Option<(f64, f64)> {
+) -> Option<(String, f64, f64)> {
     let path = find_indexed_path(file, iter_group)?;
     if path.refs.len() < 3 {
         return None;
@@ -898,9 +1014,26 @@ fn parameter_iteration_step(
     if (parameter_group.header.class_id & 0xffff) != 0 {
         return None;
     }
+    let parameter_name = decode_label_name(file, parameter_group)?;
+    if let Some((dx, dy)) = path
+        .refs
+        .iter()
+        .skip(1)
+        .filter_map(|ordinal| ordinal.checked_sub(1).and_then(|index| groups.get(index)))
+        .find_map(|group| {
+            decode_translated_point_constraint(file, group)
+                .map(|constraint| (constraint.dx, constraint.dy))
+        })
+    {
+        return Some((parameter_name, dx, dy));
+    }
     let base_start = anchors.get(path.refs[1].checked_sub(1)?)?.clone()?;
     let base_end = anchors.get(path.refs[2].checked_sub(1)?)?.clone()?;
-    Some((base_end.x - base_start.x, base_end.y - base_start.y))
+    Some((
+        parameter_name,
+        base_end.x - base_start.x,
+        base_end.y - base_start.y,
+    ))
 }
 
 pub(crate) fn decode_transform_binding(

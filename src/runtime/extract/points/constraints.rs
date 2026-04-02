@@ -141,10 +141,6 @@ pub(crate) fn decode_translated_point_constraint(
     file: &GspFile,
     group: &ObjectGroup,
 ) -> Option<TranslatedPointConstraint> {
-    if (group.header.class_id & 0xffff) != 21 {
-        return None;
-    }
-
     let path = find_indexed_path(file, group)?;
     let origin_group_index = path.refs.first()?.checked_sub(1)?;
     let payload = group
@@ -152,24 +148,52 @@ pub(crate) fn decode_translated_point_constraint(
         .iter()
         .find(|record| record.record_type == 0x07d3)
         .map(|record| record.payload(&file.data))?;
-    if payload.len() < 48 {
-        return None;
-    }
+    match group.header.class_id & 0xffff {
+        21 => {
+            if payload.len() < 48 {
+                return None;
+            }
 
-    let angle_degrees = read_f64(payload, 20);
-    let units_to_raw = read_f64(payload, 32);
-    let distance = read_f64(payload, 40);
-    if !angle_degrees.is_finite() || !units_to_raw.is_finite() || !distance.is_finite() {
-        return None;
-    }
+            let angle_degrees = read_f64(payload, 20);
+            let units_to_raw = read_f64(payload, 32);
+            let distance = read_f64(payload, 40);
+            if !angle_degrees.is_finite() || !units_to_raw.is_finite() || !distance.is_finite() {
+                return None;
+            }
 
-    let angle_radians = angle_degrees.to_radians();
-    let step = units_to_raw * distance;
-    Some(TranslatedPointConstraint {
-        origin_group_index,
-        dx: step * angle_radians.cos(),
-        dy: -step * angle_radians.sin(),
-    })
+            let angle_radians = angle_degrees.to_radians();
+            let step = units_to_raw * distance;
+            Some(TranslatedPointConstraint {
+                origin_group_index,
+                dx: step * angle_radians.cos(),
+                dy: -step * angle_radians.sin(),
+            })
+        }
+        17 => {
+            if payload.len() < 40 {
+                return None;
+            }
+            let x_units_to_raw = read_f64(payload, 4);
+            let x_distance = read_f64(payload, 12);
+            let y_units_to_raw = read_f64(payload, 24);
+            let y_distance = read_f64(payload, 32);
+            if !x_units_to_raw.is_finite()
+                || !x_distance.is_finite()
+                || !y_units_to_raw.is_finite()
+                || !y_distance.is_finite()
+            {
+                return None;
+            }
+            // Legacy simple-iteration seeds store independent horizontal and vertical offsets
+            // instead of the angle+distance layout used by class 21 translated points.
+            Some(TranslatedPointConstraint {
+                origin_group_index,
+                dx: x_units_to_raw * x_distance,
+                dy: -(y_units_to_raw * y_distance),
+            })
+        }
+        _ => None,
+    }
 }
 
 fn decode_point_on_segment_constraint(

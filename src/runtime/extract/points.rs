@@ -14,13 +14,13 @@ pub(super) use anchors::{
     translation_point_pair_group_indices,
 };
 pub(super) use bindings::{
-    TransformBindingKind, collect_point_iteration_points, collect_visible_points,
-    decode_parameter_rotation_binding, decode_transform_binding, remap_circle_bindings,
-    remap_label_bindings, remap_line_bindings, remap_polygon_bindings,
+    RawPointIterationFamily, TransformBindingKind, collect_point_iteration_points,
+    collect_visible_points, decode_parameter_rotation_binding, decode_transform_binding,
+    remap_circle_bindings, remap_label_bindings, remap_line_bindings, remap_polygon_bindings,
 };
 pub(super) use constraints::{
-    RawPointConstraint, decode_point_constraint, regular_polygon_angle_expr,
-    regular_polygon_iteration_step,
+    RawPointConstraint, decode_point_constraint, decode_translated_point_constraint,
+    regular_polygon_angle_expr, regular_polygon_iteration_step,
 };
 
 pub(super) fn collect_point_objects(
@@ -94,7 +94,12 @@ fn is_slider_parameter_name(name: &str) -> bool {
 }
 
 pub(super) fn is_editable_non_graph_parameter_name(name: &str) -> bool {
-    is_slider_parameter_name(name) || name == "n"
+    is_slider_parameter_name(name)
+        || (name.chars().count() == 1
+            && name
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_ascii_alphabetic()))
 }
 
 fn decode_non_graph_parameter_value(payload: &[u8]) -> Option<f64> {

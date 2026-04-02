@@ -16,29 +16,31 @@ use self::graph::{
     detect_graph_transform, expand_bounds, has_graph_classes,
 };
 use self::labels::{
-    collect_circle_parameter_labels, collect_coordinate_labels, collect_labels,
-    collect_polygon_parameter_labels, collect_segment_parameter_labels, compute_iteration_labels,
+    collect_circle_parameter_labels, collect_coordinate_labels, collect_label_iterations,
+    collect_labels, collect_polygon_parameter_labels, collect_segment_parameter_labels,
+    compute_iteration_labels,
 };
 use self::points::{
-    RawPointConstraint, TransformBindingKind, collect_non_graph_parameters,
-    collect_point_iteration_points, collect_point_objects, collect_visible_points,
-    decode_offset_anchor_raw, decode_parameter_controlled_anchor_raw,
+    RawPointConstraint, RawPointIterationFamily, TransformBindingKind,
+    collect_non_graph_parameters, collect_point_iteration_points, collect_point_objects,
+    collect_visible_points, decode_offset_anchor_raw, decode_parameter_controlled_anchor_raw,
     decode_parameter_rotation_anchor_raw, decode_parameter_rotation_binding,
     decode_point_constraint, decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,
     decode_point_pair_translation_anchor_raw, decode_reflection_anchor_raw,
     decode_regular_polygon_vertex_anchor_raw, decode_transform_binding,
-    decode_translated_point_anchor_raw, is_editable_non_graph_parameter_name,
-    reflection_line_group_indices, regular_polygon_angle_expr, regular_polygon_iteration_step,
-    remap_circle_bindings, remap_label_bindings, remap_line_bindings, remap_polygon_bindings,
-    translation_point_pair_group_indices,
+    decode_translated_point_anchor_raw, reflection_line_group_indices, regular_polygon_angle_expr,
+    regular_polygon_iteration_step, remap_circle_bindings, remap_label_bindings,
+    remap_line_bindings, remap_polygon_bindings, translation_point_pair_group_indices,
 };
 use self::shapes::{
-    collect_bound_line_shapes, collect_circle_shapes, collect_coordinate_traces,
-    collect_derived_segments, collect_iteration_shapes, collect_line_shapes,
-    collect_polygon_shapes, collect_raw_object_anchors, collect_reflected_circle_shapes,
-    collect_reflected_line_shapes, collect_reflected_polygon_shapes, collect_rotated_circle_shapes,
-    collect_rotated_line_shapes, collect_rotated_polygon_shapes,
-    collect_rotational_iteration_lines, collect_scaled_line_shapes,
+    collect_bound_line_shapes, collect_carried_iteration_lines,
+    collect_carried_iteration_polygons, collect_carried_line_iteration_families,
+    collect_carried_polygon_iteration_families, collect_circle_shapes,
+    collect_coordinate_traces, collect_derived_segments, collect_iteration_shapes,
+    collect_line_shapes, collect_polygon_shapes, collect_raw_object_anchors,
+    collect_reflected_circle_shapes, collect_reflected_line_shapes,
+    collect_reflected_polygon_shapes, collect_rotated_circle_shapes, collect_rotated_line_shapes,
+    collect_rotated_polygon_shapes, collect_rotational_iteration_lines, collect_scaled_line_shapes,
     collect_transformed_circle_shapes, collect_transformed_polygon_shapes,
     collect_translated_polygon_shapes,
 };
@@ -53,7 +55,8 @@ use super::geometry::{
     include_line_bounds, to_world,
 };
 use super::scene::{
-    ButtonAction, LineBinding, LineShape, PolygonShape, Scene, SceneButton, SceneCircle,
+    ButtonAction, LabelIterationFamily, LineBinding, LineIterationFamily, LineShape,
+    PointIterationFamily, PolygonIterationFamily, PolygonShape, Scene, SceneButton, SceneCircle,
     SceneParameter, ScenePoint, ScenePointBinding, ScenePointConstraint, ScreenPoint, ScreenRect,
     TextLabel, TextLabelBinding,
 };
@@ -124,6 +127,9 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     let mut reflected_lines = collect_reflected_line_shapes(file, &groups, &raw_anchors);
     let mut rotational_iteration_lines =
         collect_rotational_iteration_lines(file, &groups, &raw_anchors);
+    let carried_iteration_lines = collect_carried_iteration_lines(file, &groups, &raw_anchors);
+    let carried_iteration_polygons =
+        collect_carried_iteration_polygons(file, &groups, &raw_anchors);
     let measurements = if graph_mode {
         collect_line_shapes(file, &groups, &raw_anchors, &[58], false)
     } else {
@@ -182,7 +188,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     } else {
         Vec::new()
     };
-    let mut labels = collect_labels(
+    let (mut labels, label_group_to_index) = collect_labels(
         file,
         &groups,
         &raw_anchors,
@@ -238,8 +244,29 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
 
     let (visible_points, group_to_point_index) =
         collect_visible_points(file, &groups, &point_map, &raw_anchors, &graph_ref);
-    let derived_iteration_points =
+    let (derived_iteration_points, raw_point_iterations) =
         collect_point_iteration_points(file, &groups, &raw_anchors, &group_to_point_index);
+    let label_iterations =
+        collect_label_iterations(file, &groups, &label_group_to_index, &group_to_point_index)
+            .into_iter()
+            .map(|family| match family {
+                LabelIterationFamily::PointExpression {
+                    seed_label_index,
+                    point_seed_index,
+                    parameter_name,
+                    expr,
+                    depth,
+                    depth_parameter_name,
+                } => LabelIterationFamily::PointExpression {
+                    seed_label_index,
+                    point_seed_index,
+                    parameter_name,
+                    expr,
+                    depth,
+                    depth_parameter_name,
+                },
+            })
+            .collect::<Vec<_>>();
     remap_label_bindings(&mut labels, &group_to_point_index);
     let circle_group_to_index = groups
         .iter()
@@ -340,6 +367,18 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         &group_to_point_index,
         &line_group_to_index,
     );
+    let line_iterations = collect_carried_line_iteration_families(
+        file,
+        &groups,
+        &raw_anchors,
+        &group_to_point_index,
+    );
+    let polygon_iterations = collect_carried_polygon_iteration_families(
+        file,
+        &groups,
+        &raw_anchors,
+        &group_to_point_index,
+    );
 
     let world_points = visible_points
         .iter()
@@ -421,6 +460,56 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         .map(|point| point.position.clone())
         .collect::<Vec<_>>();
 
+    let point_iterations = raw_point_iterations
+        .into_iter()
+        .map(|family| match family {
+            RawPointIterationFamily::Offset {
+                seed_index,
+                dx,
+                dy,
+                depth,
+                parameter_name,
+            } => {
+                let (dx, dy) = if let Some(transform) = &graph_ref {
+                    (dx / transform.raw_per_unit, -dy / transform.raw_per_unit)
+                } else {
+                    (dx, dy)
+                };
+                PointIterationFamily::Offset {
+                    seed_index,
+                    dx,
+                    dy,
+                    depth,
+                    parameter_name,
+                }
+            }
+            RawPointIterationFamily::RotateChain {
+                seed_index,
+                center_index,
+                angle_degrees,
+                depth,
+            } => PointIterationFamily::RotateChain {
+                seed_index,
+                center_index,
+                angle_degrees,
+                depth,
+            },
+            RawPointIterationFamily::Rotate {
+                source_index,
+                center_index,
+                angle_expr,
+                depth,
+                parameter_name,
+            } => PointIterationFamily::Rotate {
+                source_index,
+                center_index,
+                angle_expr,
+                depth,
+                parameter_name,
+            },
+        })
+        .collect::<Vec<_>>();
+
     let bounds_lines = rotational_iteration_lines
         .iter()
         .chain(polylines.iter())
@@ -434,6 +523,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         .chain(coordinate_traces.iter())
         .chain(axes.iter())
         .chain(iteration_lines.iter())
+        .chain(carried_iteration_lines.iter())
         .cloned()
         .collect::<Vec<_>>();
     let bounds_polygons = polygons
@@ -443,6 +533,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         .chain(transformed_polygons.iter())
         .chain(reflected_polygons.iter())
         .chain(iteration_polygons.iter())
+        .chain(carried_iteration_polygons.iter())
         .cloned()
         .collect::<Vec<_>>();
     let bounds_circles = circles
@@ -523,6 +614,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
             .chain(synthetic_axes)
             .chain(iteration_lines)
             .chain(rotational_iteration_lines)
+            .chain(carried_iteration_lines)
             .collect(),
     );
 
@@ -546,6 +638,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
             .chain(transformed_polygons)
             .chain(reflected_polygons)
             .chain(iteration_polygons)
+            .chain(carried_iteration_polygons)
             .map(|polygon| PolygonShape {
                 points: polygon
                     .points
@@ -583,6 +676,16 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
             })
             .collect(),
         points: world_points,
+        point_iterations,
+        line_iterations: line_iterations
+            .into_iter()
+            .map(|family| world_line_iteration_family(family, &graph_ref))
+            .collect(),
+        polygon_iterations: polygon_iterations
+            .into_iter()
+            .map(|family| world_polygon_iteration_family(family, &graph_ref))
+            .collect(),
+        label_iterations,
         buttons,
         parameters,
         functions,
@@ -620,6 +723,76 @@ fn world_line_shape(
         color: line.color,
         dashed: line.dashed,
         binding: line.binding,
+    }
+}
+
+fn world_delta(delta: &PointRecord, graph_ref: &Option<GraphTransform>) -> PointRecord {
+    let zero = PointRecord { x: 0.0, y: 0.0 };
+    let world_zero = to_world(&zero, graph_ref);
+    let world_delta = to_world(delta, graph_ref);
+    PointRecord {
+        x: world_delta.x - world_zero.x,
+        y: world_delta.y - world_zero.y,
+    }
+}
+
+fn world_line_iteration_family(
+    family: LineIterationFamily,
+    graph_ref: &Option<GraphTransform>,
+) -> LineIterationFamily {
+    let delta = world_delta(
+        &PointRecord {
+            x: family.dx,
+            y: family.dy,
+        },
+        graph_ref,
+    );
+    LineIterationFamily {
+        dx: delta.x,
+        dy: delta.y,
+        secondary_dx: match (family.secondary_dx, family.secondary_dy) {
+            (Some(dx), Some(dy)) => Some(
+                world_delta(&PointRecord { x: dx, y: dy }, graph_ref).x,
+            ),
+            _ => None,
+        },
+        secondary_dy: match (family.secondary_dx, family.secondary_dy) {
+            (Some(dx), Some(dy)) => Some(
+                world_delta(&PointRecord { x: dx, y: dy }, graph_ref).y,
+            ),
+            _ => None,
+        },
+        ..family
+    }
+}
+
+fn world_polygon_iteration_family(
+    family: PolygonIterationFamily,
+    graph_ref: &Option<GraphTransform>,
+) -> PolygonIterationFamily {
+    let delta = world_delta(
+        &PointRecord {
+            x: family.dx,
+            y: family.dy,
+        },
+        graph_ref,
+    );
+    PolygonIterationFamily {
+        dx: delta.x,
+        dy: delta.y,
+        secondary_dx: match (family.secondary_dx, family.secondary_dy) {
+            (Some(dx), Some(dy)) => Some(
+                world_delta(&PointRecord { x: dx, y: dy }, graph_ref).x,
+            ),
+            _ => None,
+        },
+        secondary_dy: match (family.secondary_dx, family.secondary_dy) {
+            (Some(dx), Some(dy)) => Some(
+                world_delta(&PointRecord { x: dx, y: dy }, graph_ref).y,
+            ),
+            _ => None,
+        },
+        ..family
     }
 }
 
@@ -1468,6 +1641,350 @@ mod tests {
                         .is_some_and(|point| (point.y - 2.0).abs() < 0.001)
             }),
             "expected sampled coordinate trace line"
+        );
+    }
+
+    #[test]
+    fn preserves_parameter_driven_point_iteration_family() {
+        let data =
+            include_bytes!("../../tests/fixtures/gsp/static/简单迭代/原象点初象点深度5迭代.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.parameters.len(), 1, "expected n parameter");
+        assert_eq!(scene.parameters[0].name, "n");
+        assert_eq!(
+            scene.point_iterations.len(),
+            1,
+            "expected one point iteration family"
+        );
+        match &scene.point_iterations[0] {
+            PointIterationFamily::Offset {
+                seed_index,
+                depth,
+                parameter_name,
+                ..
+            } => {
+                assert_eq!(
+                    *seed_index, 1,
+                    "expected initial image point as iteration seed"
+                );
+                assert_eq!(*depth, 5, "expected exported depth");
+                assert_eq!(parameter_name.as_deref(), Some("n"));
+            }
+            family => panic!("expected offset iteration family, got {family:?}"),
+        }
+        assert_eq!(
+            scene.points.len(),
+            7,
+            "expected original point, initial point, and 5 iterates"
+        );
+    }
+
+    #[test]
+    fn preserves_non_graph_parameter_and_expression_labels_in_iteration_fixture() {
+        let data = include_bytes!(
+            "../../tests/fixtures/gsp/static/简单迭代/原象点和参数初象点和数值深度5迭代.gsp"
+        );
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        let parameter_names = scene
+            .parameters
+            .iter()
+            .map(|parameter| parameter.name.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            parameter_names.contains(&"n"),
+            "expected n parameter, got {parameter_names:?}"
+        );
+        assert!(
+            parameter_names.contains(&"a"),
+            "expected a parameter, got {parameter_names:?}"
+        );
+        assert!(scene.labels.iter().any(|label| {
+            matches!(
+                label.binding,
+                Some(TextLabelBinding::ParameterValue { ref name }) if name == "a"
+            )
+        }));
+        assert!(scene.labels.iter().any(|label| {
+            matches!(
+                label.binding,
+                Some(TextLabelBinding::PointExpressionValue {
+                    ref parameter_name,
+                    ..
+                }) if parameter_name == "a"
+            )
+        }));
+        assert!(scene.labels.iter().any(|label| {
+            matches!(
+                label.binding,
+                Some(TextLabelBinding::ExpressionValue {
+                    ref parameter_name,
+                    ref expr_label,
+                    ..
+                }) if parameter_name == "a" && expr_label == "a + 1"
+            )
+        }));
+        assert!(scene.point_iterations.iter().any(|family| {
+            matches!(
+                family,
+                PointIterationFamily::Offset {
+                    dx,
+                    dy,
+                    parameter_name,
+                    ..
+                } if parameter_name.as_deref() == Some("n")
+                    && (*dx - 37.79527559055118).abs() < 1e-6
+                    && dy.abs() < 1e-6
+            )
+        }));
+        assert!(scene.label_iterations.iter().any(|family| {
+            matches!(
+                family,
+                LabelIterationFamily::PointExpression {
+                    parameter_name,
+                    depth_parameter_name,
+                    ..
+                } if parameter_name == "a" && depth_parameter_name.as_deref() == Some("n")
+            )
+        }));
+    }
+
+    #[test]
+    fn preserves_default_depth_non_graph_iteration_fixture() {
+        let data = include_bytes!(
+            "../../tests/fixtures/gsp/static/简单迭代/原象点和参数初象点和数值默认深度迭代.gsp"
+        );
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        let parameter_names = scene
+            .parameters
+            .iter()
+            .map(|parameter| parameter.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(parameter_names, vec!["a"]);
+        assert!(scene.point_iterations.iter().any(|family| {
+            matches!(
+                family,
+                PointIterationFamily::RotateChain {
+                    seed_index,
+                    center_index,
+                    angle_degrees,
+                    depth,
+                } if *seed_index == 2
+                    && *center_index == 0
+                    && (*angle_degrees - 30.0).abs() < 1e-6
+                    && *depth == 3
+
+            )
+        }));
+        assert!(scene.label_iterations.iter().any(|family| {
+            matches!(
+                family,
+                LabelIterationFamily::PointExpression {
+                    parameter_name,
+                    depth,
+                    depth_parameter_name,
+                    ..
+                } if parameter_name == "a"
+                    && *depth == 3
+                    && depth_parameter_name.is_none()
+            )
+        }));
+    }
+
+    #[test]
+    fn preserves_carried_segment_default_depth_iteration_fixture() {
+        let data = include_bytes!(
+            "../../tests/fixtures/gsp/static/简单迭代/原象点初象携带线段默认深度3迭代.gsp"
+        );
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(
+            scene.lines.len(),
+            4,
+            "expected original segment plus three carried copies"
+        );
+        assert_eq!(
+            scene.points.len(),
+            5,
+            "expected original point, seed point, and three iterates"
+        );
+        let starts = scene
+            .lines
+            .iter()
+            .map(|line| line.points.first().cloned().expect("segment start"))
+            .collect::<Vec<_>>();
+        assert!(
+            starts
+                .iter()
+                .any(|point| { (point.x - 168.0).abs() < 1e-6 && (point.y - 376.0).abs() < 1e-6 })
+        );
+        assert!(starts.iter().any(|point| {
+            (point.x - 205.79527559055117).abs() < 1e-6
+                && (point.y - 338.20472440944883).abs() < 1e-6
+        }));
+        assert!(starts.iter().any(|point| {
+            (point.x - 243.59055118110234).abs() < 1e-6
+                && (point.y - 300.40944881889766).abs() < 1e-6
+        }));
+        assert!(starts.iter().any(|point| {
+            (point.x - 281.3858267716535).abs() < 1e-6 && (point.y - 262.6141732283465).abs() < 1e-6
+        }));
+    }
+
+    #[test]
+    fn preserves_carried_polygon_iteration_fixture() {
+        let data = include_bytes!(
+            "../../tests/fixtures/gsp/static/简单迭代/原象点初象携带多边形双映射深度4迭代.gsp"
+        );
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(
+            scene.polygons.len(),
+            15,
+            "expected triangular lattice of seed polygon plus carried copies"
+        );
+        assert_eq!(
+            scene.lines.len(),
+            45,
+            "expected triangular lattice of carried line copies"
+        );
+        assert!(
+            scene
+                .parameters
+                .iter()
+                .any(|parameter| parameter.name == "n")
+        );
+        assert_eq!(scene.line_iterations.len(), 3);
+        assert!(scene.line_iterations.iter().all(|family| {
+            family.parameter_name.as_deref() == Some("n")
+                && family.depth == 4
+                && family.secondary_dx.is_some()
+                && family.secondary_dy.is_some()
+                && (family.dy + 37.79527559055118).abs() < 1e-6
+        }));
+        assert_eq!(scene.polygon_iterations.len(), 1);
+        assert!(
+            scene.polygon_iterations.iter().any(|family| {
+                family.parameter_name.as_deref() == Some("n")
+                    && family.depth == 4
+                    && family.vertex_indices == vec![0, 2, 1]
+                    && family.secondary_dx.is_some()
+                    && family.secondary_dy.is_some()
+                    && family.dx.abs() < 1e-6
+                    && (family.dy + 37.79527559055118).abs() < 1e-6
+            })
+        );
+        assert_eq!(
+            scene.points.len(),
+            3,
+            "expected base point plus two mapped vertices"
+        );
+        assert!(matches!(
+            scene.points[1].constraint,
+            ScenePointConstraint::Offset {
+                origin_index: 0,
+                dx,
+                dy,
+            } if (dx - 37.79527559055118).abs() < 1e-6
+                && (dy + 37.79527559055118).abs() < 1e-6
+        ));
+        assert!(matches!(
+            scene.points[2].constraint,
+            ScenePointConstraint::Offset {
+                origin_index: 0,
+                dx,
+                dy,
+            } if dx.abs() < 1e-6
+                && (dy + 37.79527559055118).abs() < 1e-6
+        ));
+        let first_vertices = scene
+            .polygons
+            .iter()
+            .map(|polygon| polygon.points.first().cloned().expect("polygon vertex"))
+            .collect::<Vec<_>>();
+        assert!(
+            first_vertices
+                .iter()
+                .any(|point| { (point.x - 168.0).abs() < 1e-6 && (point.y - 376.0).abs() < 1e-6 })
+        );
+        assert!(first_vertices.iter().any(|point| {
+            (point.x - 168.0).abs() < 1e-6 && (point.y - 338.20472440944883).abs() < 1e-6
+        }));
+        assert!(first_vertices.iter().any(|point| {
+            (point.x - 168.0).abs() < 1e-6 && (point.y - 300.40944881889766).abs() < 1e-6
+        }));
+        assert!(first_vertices.iter().any(|point| {
+            (point.x - 168.0).abs() < 1e-6 && (point.y - 262.6141732283465).abs() < 1e-6
+        }));
+        assert!(first_vertices.iter().any(|point| {
+            (point.x - 168.0).abs() < 1e-6 && (point.y - 224.81889763779532).abs() < 1e-6
+        }));
+        assert!(first_vertices.iter().any(|point| {
+            (point.x - 205.79527559055117).abs() < 1e-6
+                && (point.y - 300.40944881889766).abs() < 1e-6
+        }));
+        assert!(first_vertices.iter().any(|point| {
+            (point.x - 243.59055118110234).abs() < 1e-6
+                && (point.y - 262.6141732283465).abs() < 1e-6
+        }));
+    }
+
+    #[test]
+    fn preserves_default_depth_point_iteration_family() {
+        let data = include_bytes!(
+            "../../tests/fixtures/gsp/static/简单迭代/原象点初象点默认深度3迭代.gsp"
+        );
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert!(
+            scene.parameters.is_empty(),
+            "expected default-depth fixture without editable parameters"
+        );
+        assert_eq!(
+            scene.point_iterations.len(),
+            1,
+            "expected one default-depth point iteration family"
+        );
+        match &scene.point_iterations[0] {
+            PointIterationFamily::Offset {
+                seed_index,
+                depth,
+                parameter_name,
+                ..
+            } => {
+                assert_eq!(
+                    *seed_index, 1,
+                    "expected initial image point as iteration seed"
+                );
+                assert_eq!(*depth, 3, "expected default depth of three");
+                assert_eq!(parameter_name, &None);
+            }
+            family => panic!("expected offset iteration family, got {family:?}"),
+        }
+        assert_eq!(
+            scene.points.len(),
+            5,
+            "expected original point, initial point, and three default iterates"
+        );
+        assert!(
+            matches!(
+                scene.points[1].constraint,
+                ScenePointConstraint::Offset {
+                    origin_index: 0,
+                    dx,
+                    dy
+                } if (dx - 37.79527559055118).abs() < 1e-6
+                    && (dy + 37.79527559055118).abs() < 1e-6
+            ),
+            "expected legacy initial image point to preserve its 1cm horizontal and vertical offsets"
         );
     }
 
