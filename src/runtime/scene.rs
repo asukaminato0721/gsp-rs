@@ -93,6 +93,12 @@ pub(crate) enum PointIterationFamily {
         depth: usize,
         parameter_name: Option<String>,
     },
+    RotateChain {
+        seed_index: usize,
+        center_index: usize,
+        angle_degrees: f64,
+        depth: usize,
+    },
     Rotate {
         source_index: usize,
         center_index: usize,

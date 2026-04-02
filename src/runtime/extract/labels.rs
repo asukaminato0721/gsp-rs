@@ -461,6 +461,7 @@ pub(super) fn collect_label_iterations(
             let depth_parameter_name = find_indexed_path(file, iter_group)
                 .and_then(|iter_path| iter_path.refs.first().copied())
                 .and_then(|ordinal| groups.get(ordinal.checked_sub(1)?))
+                .filter(|group| is_non_graph_parameter_group(group))
                 .and_then(|parameter_group| decode_label_name(file, parameter_group))
                 .filter(|name| is_editable_non_graph_parameter_name(name));
 

@@ -756,6 +756,15 @@ enum PointIterationJson {
         #[serde(rename = "parameterName")]
         parameter_name: Option<String>,
     },
+    RotateChain {
+        #[serde(rename = "seedIndex")]
+        seed_index: usize,
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "angleDegrees")]
+        angle_degrees: f64,
+        depth: usize,
+    },
     Rotate {
         #[serde(rename = "sourceIndex")]
         source_index: usize,
@@ -784,6 +793,17 @@ impl PointIterationJson {
                 dy: *dy,
                 depth: *depth,
                 parameter_name: parameter_name.clone(),
+            },
+            PointIterationFamily::RotateChain {
+                seed_index,
+                center_index,
+                angle_degrees,
+                depth,
+            } => Self::RotateChain {
+                seed_index: *seed_index,
+                center_index: *center_index,
+                angle_degrees: *angle_degrees,
+                depth: *depth,
             },
             PointIterationFamily::Rotate {
                 source_index,

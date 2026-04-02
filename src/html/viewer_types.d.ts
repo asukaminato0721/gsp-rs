@@ -56,6 +56,13 @@ type SceneData = {
         parameterName?: string | null;
       }
     | {
+        kind: "rotate-chain";
+        seedIndex: number;
+        centerIndex: number;
+        angleDegrees: number;
+        depth: number;
+      }
+    | {
         kind: "rotate";
         sourceIndex: number;
         centerIndex: number;

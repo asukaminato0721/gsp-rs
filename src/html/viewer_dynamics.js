@@ -350,6 +350,35 @@
         return;
       }
 
+      if (family.kind === "rotate-chain") {
+        const center = scene.points[family.centerIndex];
+        let previousIndex = family.seedIndex;
+        if (!center) {
+          return;
+        }
+        for (let step = 0; step < depth; step += 1) {
+          const source = scene.points[previousIndex];
+          if (!source) {
+            break;
+          }
+          const rotated = rotateAround(source, center, family.angleDegrees * Math.PI / 180);
+          scene.points.push({
+            x: rotated.x,
+            y: rotated.y,
+            visible: true,
+            constraint: null,
+            binding: {
+              kind: "rotate",
+              sourceIndex: previousIndex,
+              centerIndex: family.centerIndex,
+              angleDegrees: family.angleDegrees,
+            },
+          });
+          previousIndex = scene.points.length - 1;
+        }
+        return;
+      }
+
       if (family.kind === "rotate") {
         const source = scene.points[family.sourceIndex];
         const center = scene.points[family.centerIndex];

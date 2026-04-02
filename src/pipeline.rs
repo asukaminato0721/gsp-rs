@@ -100,4 +100,22 @@ mod tests {
         assert!(html.contains("\"pointIterations\":["));
         assert!(html.contains("\"depth\":3"));
     }
+
+    #[test]
+    fn exports_default_depth_non_graph_iteration_fixture_metadata() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!(
+                "../tests/fixtures/gsp/static/简单迭代/原象点和参数初象点和数值默认深度迭代.gsp"
+            ),
+            800,
+            600,
+        )
+        .expect("default non-graph iteration fixture should compile");
+
+        assert!(html.contains("\"name\":\"a\""));
+        assert!(html.contains("\"pointIterations\":["));
+        assert!(html.contains("\"labelIterations\":["));
+        assert!(html.contains("\"depth\":3"));
+        assert!(!html.contains("\"depthParameterName\":\"B\""));
+    }
 }

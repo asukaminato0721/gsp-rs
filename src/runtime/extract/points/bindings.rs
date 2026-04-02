@@ -10,6 +10,7 @@ use super::constraints::{
 };
 use super::*;
 use crate::runtime::functions::FunctionExpr;
+use crate::runtime::geometry::rotate_around;
 use crate::runtime::scene::{LineBinding, ShapeBinding};
 
 pub(crate) struct TransformBinding {
@@ -41,6 +42,12 @@ pub(crate) enum RawPointIterationFamily {
         dy: f64,
         depth: usize,
         parameter_name: Option<String>,
+    },
+    RotateChain {
+        seed_index: usize,
+        center_index: usize,
+        angle_degrees: f64,
+        depth: usize,
     },
     Rotate {
         source_index: usize,
@@ -789,6 +796,65 @@ pub(crate) fn collect_point_iteration_points(
         };
         match iter_group.header.class_id & 0xffff {
             76 => {
+                let depth = iteration_depth(file, iter_group, 3);
+                if depth == 0 {
+                    continue;
+                }
+                let seed_group = &groups[seed_group_index];
+                if matches!(seed_group.header.class_id & 0xffff, 27 | 29) {
+                    let rotation = if (seed_group.header.class_id & 0xffff) == 29 {
+                        decode_parameter_rotation_binding(file, groups, seed_group)
+                    } else {
+                        decode_transform_binding(file, seed_group)
+                    };
+                    if let Some(binding) = rotation {
+                        let Some(center_index) = group_to_point_index
+                            .get(binding.center_group_index)
+                            .and_then(|mapped_index| *mapped_index)
+                        else {
+                            continue;
+                        };
+                        let TransformBindingKind::Rotate { angle_degrees } = binding.kind else {
+                            continue;
+                        };
+                        let Some(center_position) =
+                            anchors.get(binding.center_group_index).cloned().flatten()
+                        else {
+                            continue;
+                        };
+                        let Some(seed_position) = anchors.get(seed_group_index).cloned().flatten()
+                        else {
+                            continue;
+                        };
+
+                        let mut previous_index = seed_index;
+                        let mut current_position = seed_position;
+                        for _ in 0..depth {
+                            current_position = rotate_around(
+                                &current_position,
+                                &center_position,
+                                angle_degrees.to_radians(),
+                            );
+                            derived_points.push(ScenePoint {
+                                position: current_position.clone(),
+                                constraint: ScenePointConstraint::Free,
+                                binding: Some(ScenePointBinding::Rotate {
+                                    source_index: previous_index,
+                                    center_index,
+                                    angle_degrees,
+                                }),
+                            });
+                            previous_index = seed_index + derived_points.len();
+                        }
+                        families.push(RawPointIterationFamily::RotateChain {
+                            seed_index,
+                            center_index,
+                            angle_degrees,
+                            depth,
+                        });
+                        continue;
+                    }
+                }
                 let Some(iter_path) = find_indexed_path(file, iter_group) else {
                     continue;
                 };
@@ -811,10 +877,6 @@ pub(crate) fn collect_point_iteration_points(
                 };
                 let dx = base_end.x - base_start.x;
                 let dy = base_end.y - base_start.y;
-                let depth = iteration_depth(file, iter_group, 3);
-                if depth == 0 {
-                    continue;
-                }
                 let Some(seed_position) = anchors.get(seed_group_index).cloned().flatten() else {
                     continue;
                 };

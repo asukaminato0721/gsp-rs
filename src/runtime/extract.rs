@@ -465,6 +465,17 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
                     parameter_name,
                 }
             }
+            RawPointIterationFamily::RotateChain {
+                seed_index,
+                center_index,
+                angle_degrees,
+                depth,
+            } => PointIterationFamily::RotateChain {
+                seed_index,
+                center_index,
+                angle_degrees,
+                depth,
+            },
             RawPointIterationFamily::Rotate {
                 source_index,
                 center_index,
@@ -1637,6 +1648,50 @@ mod tests {
                     depth_parameter_name,
                     ..
                 } if parameter_name == "a" && depth_parameter_name.as_deref() == Some("n")
+            )
+        }));
+    }
+
+    #[test]
+    fn preserves_default_depth_non_graph_iteration_fixture() {
+        let data = include_bytes!(
+            "../../tests/fixtures/gsp/static/简单迭代/原象点和参数初象点和数值默认深度迭代.gsp"
+        );
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        let parameter_names = scene
+            .parameters
+            .iter()
+            .map(|parameter| parameter.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(parameter_names, vec!["a"]);
+        assert!(scene.point_iterations.iter().any(|family| {
+            matches!(
+                family,
+                PointIterationFamily::RotateChain {
+                    seed_index,
+                    center_index,
+                    angle_degrees,
+                    depth,
+                } if *seed_index == 2
+                    && *center_index == 0
+                    && (*angle_degrees - 30.0).abs() < 1e-6
+                    && *depth == 3
+
+            )
+        }));
+        assert!(scene.label_iterations.iter().any(|family| {
+            matches!(
+                family,
+                LabelIterationFamily::PointExpression {
+                    parameter_name,
+                    depth,
+                    depth_parameter_name,
+                    ..
+                } if parameter_name == "a"
+                    && *depth == 3
+                    && depth_parameter_name.is_none()
             )
         }));
     }
