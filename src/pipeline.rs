@@ -66,4 +66,17 @@ mod tests {
         assert!(html.contains("\"pointIterations\":["));
         assert!(html.contains("\"parameterName\":\"n\""));
     }
+
+    #[test]
+    fn exports_default_depth_iteration_metadata_into_html() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/gsp/static/简单迭代/原象点初象点默认深度3迭代.gsp"),
+            800,
+            600,
+        )
+        .expect("default iteration fixture should compile");
+
+        assert!(html.contains("\"pointIterations\":["));
+        assert!(html.contains("\"depth\":3"));
+    }
 }

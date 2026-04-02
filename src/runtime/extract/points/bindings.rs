@@ -23,6 +23,17 @@ pub(crate) enum TransformBindingKind {
     Scale { factor: f64 },
 }
 
+fn iteration_depth(file: &GspFile, group: &ObjectGroup, default_depth: usize) -> usize {
+    group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x090a)
+        .map(|record| record.payload(&file.data))
+        .filter(|payload| payload.len() >= 20)
+        .map(|payload| read_u32(payload, 16) as usize)
+        .unwrap_or(default_depth)
+}
+
 pub(crate) enum RawPointIterationFamily {
     Offset {
         seed_index: usize,
@@ -62,7 +73,7 @@ pub(crate) fn collect_visible_points(
                     constraint: ScenePointConstraint::Free,
                     binding: None,
                 }),
-            21 => decode_translated_point_constraint(file, group).and_then(|constraint| {
+            17 | 21 => decode_translated_point_constraint(file, group).and_then(|constraint| {
                 let origin_index = group_to_point_index
                     .get(constraint.origin_group_index)
                     .and_then(|point_index| *point_index)?;
@@ -788,14 +799,7 @@ pub(crate) fn collect_point_iteration_points(
                 };
                 let dx = base_end.x - base_start.x;
                 let dy = base_end.y - base_start.y;
-                let depth = iter_group
-                    .records
-                    .iter()
-                    .find(|record| record.record_type == 0x090a)
-                    .map(|record| record.payload(&file.data))
-                    .filter(|payload| payload.len() >= 20)
-                    .map(|payload| read_u32(payload, 16) as usize)
-                    .unwrap_or(0);
+                let depth = iteration_depth(file, iter_group, 3);
                 if depth == 0 {
                     continue;
                 }
@@ -830,14 +834,7 @@ pub(crate) fn collect_point_iteration_points(
                 let Some(iter_path) = find_indexed_path(file, iter_group) else {
                     continue;
                 };
-                let depth = iter_group
-                    .records
-                    .iter()
-                    .find(|record| record.record_type == 0x090a)
-                    .map(|record| record.payload(&file.data))
-                    .filter(|payload| payload.len() >= 20)
-                    .map(|payload| read_u32(payload, 16) as usize)
-                    .unwrap_or(0);
+                let depth = iteration_depth(file, iter_group, 3);
                 if depth == 0 {
                     continue;
                 }

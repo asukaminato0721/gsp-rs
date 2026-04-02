@@ -1549,6 +1549,58 @@ mod tests {
     }
 
     #[test]
+    fn preserves_default_depth_point_iteration_family() {
+        let data = include_bytes!(
+            "../../tests/fixtures/gsp/static/简单迭代/原象点初象点默认深度3迭代.gsp"
+        );
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert!(
+            scene.parameters.is_empty(),
+            "expected default-depth fixture without editable parameters"
+        );
+        assert_eq!(
+            scene.point_iterations.len(),
+            1,
+            "expected one default-depth point iteration family"
+        );
+        match &scene.point_iterations[0] {
+            PointIterationFamily::Offset {
+                seed_index,
+                depth,
+                parameter_name,
+                ..
+            } => {
+                assert_eq!(
+                    *seed_index, 1,
+                    "expected initial image point as iteration seed"
+                );
+                assert_eq!(*depth, 3, "expected default depth of three");
+                assert_eq!(parameter_name, &None);
+            }
+            family => panic!("expected offset iteration family, got {family:?}"),
+        }
+        assert_eq!(
+            scene.points.len(),
+            5,
+            "expected original point, initial point, and three default iterates"
+        );
+        assert!(
+            matches!(
+                scene.points[1].constraint,
+                ScenePointConstraint::Offset {
+                    origin_index: 0,
+                    dx,
+                    dy
+                } if (dx - 37.79527559055118).abs() < 1e-6
+                    && (dy + 37.79527559055118).abs() < 1e-6
+            ),
+            "expected legacy initial image point to preserve its 1cm horizontal and vertical offsets"
+        );
+    }
+
+    #[test]
     fn preserves_scaled_point_and_single_parameter_label_in_scale_gsp() {
         let data = include_bytes!("../../tests/fixtures/gsp/static/scale.gsp");
         let file = GspFile::parse(data).expect("fixture parses");
