@@ -9,9 +9,9 @@ use super::constraints::{
     regular_polygon_iteration_step,
 };
 use super::*;
+use crate::format::read_u32;
 use crate::runtime::functions::FunctionExpr;
 use crate::runtime::geometry::rotate_around;
-use crate::runtime::scene::{LineBinding, ShapeBinding};
 
 #[path = "bindings/decode.rs"]
 mod decode;

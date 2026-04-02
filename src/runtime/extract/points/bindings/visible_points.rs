@@ -1,11 +1,13 @@
 use super::{
-    CoordinatePoint, GraphTransform, GspFile, ObjectGroup, ParameterControlledPoint, PointRecord,
-    RawPointConstraint, ScenePoint, ScenePointBinding, ScenePointConstraint, TransformBindingKind,
-    decode_coordinate_point, decode_parameter_controlled_point, decode_parameter_rotation_binding,
-    decode_point_constraint, decode_reflection_anchor_raw, decode_transform_binding,
-    decode_translated_point_constraint, find_indexed_path, reflection_line_group_indices,
-    translation_point_pair_group_indices,
+    CoordinatePoint, GspFile, ObjectGroup, ParameterControlledPoint, PointRecord,
+    RawPointConstraint, TransformBindingKind, decode_coordinate_point,
+    decode_parameter_controlled_point, decode_parameter_rotation_binding, decode_point_constraint,
+    decode_reflection_anchor_raw, decode_transform_binding, decode_translated_point_constraint,
+    reflection_line_group_indices, translation_point_pair_group_indices,
 };
+use crate::runtime::extract::find_indexed_path;
+use crate::runtime::geometry::GraphTransform;
+use crate::runtime::scene::{ScenePoint, ScenePointBinding, ScenePointConstraint};
 
 pub(crate) fn collect_visible_points(
     file: &GspFile,

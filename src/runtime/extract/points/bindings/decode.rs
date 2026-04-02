@@ -1,7 +1,8 @@
 use super::{
     GspFile, ObjectGroup, TransformBinding, TransformBindingKind,
-    decode_angle_parameter_value_for_group, find_indexed_path,
+    decode_angle_parameter_value_for_group,
 };
+use crate::runtime::extract::find_indexed_path;
 
 pub(crate) fn decode_transform_binding(
     file: &GspFile,

@@ -1,13 +1,14 @@
 use super::{
-    GspFile, ObjectGroup, PointRecord, RawPointIterationFamily, ScenePoint, ScenePointBinding,
-    ScenePointConstraint, TransformBindingKind, decode_label_name,
-    decode_parameter_rotation_binding, decode_transform_binding,
-    decode_translated_point_constraint, find_indexed_path, iteration_depth,
-    regular_polygon_iteration_step, rotate_around,
+    GspFile, ObjectGroup, PointRecord, RawPointIterationFamily, TransformBindingKind,
+    decode_label_name, decode_parameter_rotation_binding, decode_transform_binding,
+    decode_translated_point_constraint, iteration_depth, regular_polygon_iteration_step,
+    rotate_around,
 };
+use crate::runtime::extract::find_indexed_path;
 use crate::runtime::extract::points::{
     is_editable_non_graph_parameter_name, regular_polygon_angle_expr,
 };
+use crate::runtime::scene::{ScenePoint, ScenePointBinding, ScenePointConstraint};
 
 pub(crate) fn collect_point_iteration_points(
     file: &GspFile,
@@ -77,7 +78,7 @@ pub(crate) fn collect_point_iteration_points(
                         };
 
                         let mut previous_index = seed_index;
-                        let mut current_position = seed_position;
+                        let mut current_position: PointRecord = seed_position;
                         for _ in 0..depth {
                             current_position = rotate_around(
                                 &current_position,
@@ -169,7 +170,7 @@ pub(crate) fn collect_point_iteration_points(
                         continue;
                     };
                     let mut previous_index = seed_index + derived_points.len();
-                    let mut current_position = seed_position;
+                    let mut current_position: PointRecord = seed_position;
                     for _ in 0..depth {
                         current_position += PointRecord { x: dx, y: dy };
                         derived_points.push(ScenePoint {
@@ -268,7 +269,7 @@ fn parameter_iteration_step(
         .refs
         .iter()
         .skip(1)
-        .filter_map(|ordinal| ordinal.checked_sub(1).and_then(|index| groups.get(index)))
+        .filter_map(|ordinal: &usize| ordinal.checked_sub(1).and_then(|index| groups.get(index)))
         .find_map(|group| {
             decode_translated_point_constraint(file, group)
                 .map(|constraint| (constraint.dx, constraint.dy))

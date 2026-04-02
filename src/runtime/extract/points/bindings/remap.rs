@@ -1,5 +1,6 @@
-use super::{
-    CircleShape, LineBinding, LineShape, PolygonShape, ShapeBinding, TextLabel, TextLabelBinding,
+use crate::runtime::extract::CircleShape;
+use crate::runtime::scene::{
+    LineBinding, LineShape, PolygonShape, ShapeBinding, TextLabel, TextLabelBinding,
 };
 
 pub(crate) fn remap_label_bindings(

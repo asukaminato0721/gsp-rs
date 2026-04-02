@@ -11,10 +11,7 @@ mod tests;
 mod world;
 
 use self::buttons::collect_buttons;
-use crate::format::{
-    GspFile, IndexedPathRecord, ObjectGroup, PointRecord, collect_strings, decode_indexed_path,
-    decode_point_record, read_f64, read_i16, read_u16, read_u32,
-};
+use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
 
 use self::graph::{
     bounds_within, collect_bounds, collect_saved_viewport, dedupe_line_shapes,
@@ -26,14 +23,14 @@ use self::labels::{
     compute_iteration_labels,
 };
 use self::points::{
-    RawPointConstraint, RawPointIterationFamily, TransformBindingKind,
-    collect_non_graph_parameters, collect_point_iteration_points, collect_point_objects,
-    collect_visible_points, decode_offset_anchor_raw, decode_parameter_controlled_anchor_raw,
+    RawPointIterationFamily, TransformBindingKind, collect_non_graph_parameters,
+    collect_point_iteration_points, collect_point_objects, collect_visible_points,
+    decode_offset_anchor_raw, decode_parameter_controlled_anchor_raw,
     decode_parameter_rotation_anchor_raw, decode_parameter_rotation_binding,
-    decode_point_constraint, decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,
+    decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,
     decode_point_pair_translation_anchor_raw, decode_reflection_anchor_raw,
     decode_regular_polygon_vertex_anchor_raw, decode_transform_binding,
-    decode_translated_point_anchor_raw, reflection_line_group_indices, regular_polygon_angle_expr,
+    decode_translated_point_anchor_raw, reflection_line_group_indices,
     regular_polygon_iteration_step, remap_circle_bindings, remap_label_bindings,
     remap_line_bindings, remap_polygon_bindings, translation_point_pair_group_indices,
 };
@@ -58,8 +55,7 @@ use super::functions::{
 use super::geometry::{GraphTransform, distance_world, include_line_bounds, to_world};
 use super::scene::{
     LabelIterationFamily, LineShape, PointIterationFamily, PolygonShape, Scene, SceneCircle,
-    SceneParameter, ScenePoint, ScenePointBinding, ScenePointConstraint, TextLabel,
-    TextLabelBinding,
+    ScenePoint, ScenePointConstraint, TextLabel,
 };
 
 pub(crate) use self::decode::find_indexed_path;
