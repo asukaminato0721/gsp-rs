@@ -1,4 +1,13 @@
-use super::*;
+use super::{
+    GspFile, ObjectGroup, PointRecord, RawPointIterationFamily, ScenePoint, ScenePointBinding,
+    ScenePointConstraint, TransformBindingKind, decode_label_name,
+    decode_parameter_rotation_binding, decode_transform_binding,
+    decode_translated_point_constraint, find_indexed_path, iteration_depth,
+    regular_polygon_iteration_step, rotate_around,
+};
+use crate::runtime::extract::points::{
+    is_editable_non_graph_parameter_name, regular_polygon_angle_expr,
+};
 
 pub(crate) fn collect_point_iteration_points(
     file: &GspFile,

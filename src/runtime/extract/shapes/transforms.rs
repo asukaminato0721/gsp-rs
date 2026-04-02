@@ -1,4 +1,10 @@
-use super::*;
+use super::{
+    CircleShape, GspFile, LineBinding, LineShape, ObjectGroup, PointRecord, PolygonShape,
+    ShapeBinding, TransformBindingKind, color_from_style, decode_parameter_rotation_binding,
+    decode_transform_binding, fill_color_from_styles, find_indexed_path, has_distinct_points,
+    reflect_across_line, reflection_line_group_indices, rotate_around, scale_around,
+    translation_point_pair_group_indices,
+};
 
 pub(crate) fn collect_rotated_line_shapes(
     file: &GspFile,

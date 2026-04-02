@@ -1,4 +1,9 @@
-use super::*;
+use super::{
+    CircleShape, GspFile, LineBinding, LineIterationFamily, LineShape, ObjectGroup, PointRecord,
+    PolygonIterationFamily, PolygonShape, color_from_style, decode_label_name,
+    decode_translated_point_constraint, fill_color_from_styles, find_indexed_path,
+    regular_polygon_iteration_step, rotate_around,
+};
 
 pub(crate) fn collect_rotational_iteration_lines(
     file: &GspFile,
@@ -36,7 +41,7 @@ pub(crate) fn collect_rotational_iteration_lines(
                 .find(|record| record.record_type == 0x090a)
                 .map(|record| record.payload(&file.data))
                 .filter(|payload| payload.len() >= 20)
-                .map(|payload| read_u32(payload, 16) as usize)
+                .map(|payload| super::read_u32(payload, 16) as usize)
                 .unwrap_or(0);
             let mut lines = Vec::new();
             let rotate = |point: &PointRecord, step: usize| {
@@ -101,7 +106,7 @@ pub(crate) fn collect_carried_iteration_lines(
                 .find(|record| record.record_type == 0x090a)
                 .map(|record| record.payload(&file.data))
                 .filter(|payload| payload.len() >= 20)
-                .map(|payload| read_u32(payload, 16) as usize)
+                .map(|payload| super::read_u32(payload, 16) as usize)
                 .unwrap_or(3);
             let color = color_from_style(source_group.header.style_b);
             Some(
@@ -294,7 +299,7 @@ fn carried_iteration_depth(
         .find(|record| record.record_type == 0x090a)
         .map(|record| record.payload(&file.data))
         .filter(|payload| payload.len() >= 20)
-        .map(|payload| read_u32(payload, 16) as usize)
+        .map(|payload| super::read_u32(payload, 16) as usize)
         .unwrap_or(default_depth)
 }
 
@@ -349,7 +354,7 @@ pub(crate) fn collect_carried_iteration_polygons(
                 .find(|record| record.record_type == 0x090a)
                 .map(|record| record.payload(&file.data))
                 .filter(|payload| payload.len() >= 20)
-                .map(|payload| read_u32(payload, 16) as usize)
+                .map(|payload| super::read_u32(payload, 16) as usize)
                 .unwrap_or(3);
             let color =
                 fill_color_from_styles(source_group.header.style_a, source_group.header.style_b);
@@ -462,7 +467,7 @@ pub(crate) fn collect_iteration_shapes(
 
         let depth = iter_data
             .filter(|payload| payload.len() >= 20)
-            .map(|payload| read_u32(payload, 16) as usize)
+            .map(|payload| super::read_u32(payload, 16) as usize)
             .unwrap_or(0);
         if depth == 0 {
             continue;
@@ -505,7 +510,7 @@ pub(crate) fn collect_iteration_shapes(
                     .iter()
                     .find(|record| record.record_type == 0x07d3)
                     .map(|record| record.payload(&file.data))?;
-                (payload.len() >= 40).then(|| read_f64(payload, 32))
+                (payload.len() >= 40).then(|| super::read_f64(payload, 32))
             })
             .filter(|v| v.is_finite() && *v > 1.0)
             .unwrap_or(37.79527559055118);
@@ -519,7 +524,7 @@ pub(crate) fn collect_iteration_shapes(
                     .iter()
                     .find(|record| record.record_type == 0x07d3)
                     .map(|record| record.payload(&file.data))?;
-                (payload.len() >= 20).then(|| read_f64(payload, 12))
+                (payload.len() >= 20).then(|| super::read_f64(payload, 12))
             })
             .filter(|v| v.is_finite() && *v > 0.0)
             .unwrap_or(1.0);

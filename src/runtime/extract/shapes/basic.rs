@@ -1,6 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::*;
+use super::{
+    CircleShape, GraphTransform, GspFile, LineBinding, LineShape, ObjectGroup, PointRecord,
+    PolygonShape, color_from_style, decode_function_expr, decode_function_plot_descriptor,
+    decode_label_name, evaluate_expr_with_parameters, fill_color_from_styles, find_indexed_path,
+    has_distinct_points, to_raw_from_world,
+};
 
 pub(crate) fn collect_line_shapes(
     file: &GspFile,

@@ -1,4 +1,11 @@
-use super::*;
+use super::{
+    GraphTransform, GspFile, ObjectGroup, PointRecord, decode_bbox_anchor_raw,
+    decode_offset_anchor_raw, decode_parameter_controlled_anchor_raw,
+    decode_parameter_rotation_anchor_raw, decode_point_constraint_anchor,
+    decode_point_on_ray_anchor_raw, decode_point_pair_translation_anchor_raw,
+    decode_reflection_anchor_raw, decode_regular_polygon_vertex_anchor_raw,
+    decode_transform_anchor_raw, decode_translated_point_anchor_raw, find_indexed_path,
+};
 
 pub(crate) fn collect_raw_object_anchors(
     file: &GspFile,

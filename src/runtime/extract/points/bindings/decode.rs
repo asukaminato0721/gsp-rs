@@ -1,4 +1,7 @@
-use super::*;
+use super::{
+    GspFile, ObjectGroup, TransformBinding, TransformBindingKind,
+    decode_angle_parameter_value_for_group, find_indexed_path,
+};
 
 pub(crate) fn decode_transform_binding(
     file: &GspFile,
@@ -17,15 +20,15 @@ pub(crate) fn decode_transform_binding(
     let kind = match kind {
         27 => {
             let angle_degrees = if payload.len() >= 28 {
-                let angle = read_f64(payload, 20);
+                let angle = super::read_f64(payload, 20);
                 if angle.is_finite() {
                     angle
                 } else {
                     return None;
                 }
             } else {
-                let cos = read_f64(payload, 4);
-                let sin = read_f64(payload, 12);
+                let cos = super::read_f64(payload, 4);
+                let sin = super::read_f64(payload, 12);
                 sin.atan2(cos).to_degrees()
             };
             TransformBindingKind::Rotate { angle_degrees }
@@ -34,7 +37,7 @@ pub(crate) fn decode_transform_binding(
             if payload.len() < 12 {
                 return None;
             }
-            let factor = read_f64(payload, 4);
+            let factor = super::read_f64(payload, 4);
             if !factor.is_finite() {
                 return None;
             }

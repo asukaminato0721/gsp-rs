@@ -1,4 +1,6 @@
-use super::*;
+use super::{
+    CircleShape, LineBinding, LineShape, PolygonShape, ShapeBinding, TextLabel, TextLabelBinding,
+};
 
 pub(crate) fn remap_label_bindings(
     labels: &mut [TextLabel],
