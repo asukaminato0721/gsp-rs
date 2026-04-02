@@ -20,9 +20,9 @@ use self::labels::{
     collect_polygon_parameter_labels, collect_segment_parameter_labels, compute_iteration_labels,
 };
 use self::points::{
-    RawPointConstraint, TransformBindingKind, collect_non_graph_parameters,
-    collect_point_iteration_points, collect_point_objects, collect_visible_points,
-    decode_offset_anchor_raw, decode_parameter_controlled_anchor_raw,
+    RawPointConstraint, RawPointIterationFamily, TransformBindingKind,
+    collect_non_graph_parameters, collect_point_iteration_points, collect_point_objects,
+    collect_visible_points, decode_offset_anchor_raw, decode_parameter_controlled_anchor_raw,
     decode_parameter_rotation_anchor_raw, decode_parameter_rotation_binding,
     decode_point_constraint, decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,
     decode_point_pair_translation_anchor_raw, decode_reflection_anchor_raw,
@@ -53,9 +53,9 @@ use super::geometry::{
     include_line_bounds, to_world,
 };
 use super::scene::{
-    ButtonAction, LineBinding, LineShape, PolygonShape, Scene, SceneButton, SceneCircle,
-    SceneParameter, ScenePoint, ScenePointBinding, ScenePointConstraint, ScreenPoint, ScreenRect,
-    TextLabel, TextLabelBinding,
+    ButtonAction, LineBinding, LineShape, PointIterationFamily, PolygonShape, Scene, SceneButton,
+    SceneCircle, SceneParameter, ScenePoint, ScenePointBinding, ScenePointConstraint, ScreenPoint,
+    ScreenRect, TextLabel, TextLabelBinding,
 };
 
 pub(crate) use self::decode::find_indexed_path;
@@ -238,7 +238,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
 
     let (visible_points, group_to_point_index) =
         collect_visible_points(file, &groups, &point_map, &raw_anchors, &graph_ref);
-    let derived_iteration_points =
+    let (derived_iteration_points, raw_point_iterations) =
         collect_point_iteration_points(file, &groups, &raw_anchors, &group_to_point_index);
     remap_label_bindings(&mut labels, &group_to_point_index);
     let circle_group_to_index = groups
@@ -421,6 +421,45 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         .map(|point| point.position.clone())
         .collect::<Vec<_>>();
 
+    let point_iterations = raw_point_iterations
+        .into_iter()
+        .map(|family| match family {
+            RawPointIterationFamily::Offset {
+                seed_index,
+                dx,
+                dy,
+                depth,
+                parameter_name,
+            } => {
+                let (dx, dy) = if let Some(transform) = &graph_ref {
+                    (dx / transform.raw_per_unit, -dy / transform.raw_per_unit)
+                } else {
+                    (dx, dy)
+                };
+                PointIterationFamily::Offset {
+                    seed_index,
+                    dx,
+                    dy,
+                    depth,
+                    parameter_name,
+                }
+            }
+            RawPointIterationFamily::Rotate {
+                source_index,
+                center_index,
+                angle_expr,
+                depth,
+                parameter_name,
+            } => PointIterationFamily::Rotate {
+                source_index,
+                center_index,
+                angle_expr,
+                depth,
+                parameter_name,
+            },
+        })
+        .collect::<Vec<_>>();
+
     let bounds_lines = rotational_iteration_lines
         .iter()
         .chain(polylines.iter())
@@ -583,6 +622,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
             })
             .collect(),
         points: world_points,
+        point_iterations,
         buttons,
         parameters,
         functions,
@@ -1468,6 +1508,43 @@ mod tests {
                         .is_some_and(|point| (point.y - 2.0).abs() < 0.001)
             }),
             "expected sampled coordinate trace line"
+        );
+    }
+
+    #[test]
+    fn preserves_parameter_driven_point_iteration_family() {
+        let data =
+            include_bytes!("../../tests/fixtures/gsp/static/简单迭代/原象点初象点深度5迭代.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.parameters.len(), 1, "expected n parameter");
+        assert_eq!(scene.parameters[0].name, "n");
+        assert_eq!(
+            scene.point_iterations.len(),
+            1,
+            "expected one point iteration family"
+        );
+        match &scene.point_iterations[0] {
+            PointIterationFamily::Offset {
+                seed_index,
+                depth,
+                parameter_name,
+                ..
+            } => {
+                assert_eq!(
+                    *seed_index, 1,
+                    "expected initial image point as iteration seed"
+                );
+                assert_eq!(*depth, 5, "expected exported depth");
+                assert_eq!(parameter_name.as_deref(), Some("n"));
+            }
+            family => panic!("expected offset iteration family, got {family:?}"),
+        }
+        assert_eq!(
+            scene.points.len(),
+            7,
+            "expected original point, initial point, and 5 iterates"
         );
     }
 

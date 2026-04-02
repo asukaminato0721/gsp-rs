@@ -1,3 +1,4 @@
+use super::super::decode::decode_label_name;
 use super::anchors::{
     decode_reflection_anchor_raw, reflection_line_group_indices,
     translation_point_pair_group_indices,
@@ -8,6 +9,7 @@ use super::constraints::{
     regular_polygon_iteration_step,
 };
 use super::*;
+use crate::runtime::functions::FunctionExpr;
 use crate::runtime::scene::{LineBinding, ShapeBinding};
 
 pub(crate) struct TransformBinding {
@@ -19,6 +21,23 @@ pub(crate) struct TransformBinding {
 pub(crate) enum TransformBindingKind {
     Rotate { angle_degrees: f64 },
     Scale { factor: f64 },
+}
+
+pub(crate) enum RawPointIterationFamily {
+    Offset {
+        seed_index: usize,
+        dx: f64,
+        dy: f64,
+        depth: usize,
+        parameter_name: Option<String>,
+    },
+    Rotate {
+        source_index: usize,
+        center_index: usize,
+        angle_expr: FunctionExpr,
+        depth: usize,
+        parameter_name: Option<String>,
+    },
 }
 
 pub(crate) fn collect_visible_points(
@@ -716,8 +735,9 @@ pub(crate) fn collect_point_iteration_points(
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
     group_to_point_index: &[Option<usize>],
-) -> Vec<ScenePoint> {
+) -> (Vec<ScenePoint>, Vec<RawPointIterationFamily>) {
     let mut derived_points = Vec::new();
+    let mut families = Vec::new();
 
     for group in groups
         .iter()
@@ -798,6 +818,13 @@ pub(crate) fn collect_point_iteration_points(
                     });
                     previous_index = seed_index + derived_points.len();
                 }
+                families.push(RawPointIterationFamily::Offset {
+                    seed_index,
+                    dx,
+                    dy,
+                    depth,
+                    parameter_name: None,
+                });
             }
             89 => {
                 let Some(iter_path) = find_indexed_path(file, iter_group) else {
@@ -814,7 +841,8 @@ pub(crate) fn collect_point_iteration_points(
                 if depth == 0 {
                     continue;
                 }
-                if let Some((dx, dy)) = parameter_iteration_step(groups, iter_group, anchors, file)
+                if let Some((parameter_name, dx, dy)) =
+                    parameter_iteration_step(groups, iter_group, anchors, file)
                 {
                     let Some(seed_position) = anchors.get(seed_group_index).cloned().flatten()
                     else {
@@ -835,7 +863,15 @@ pub(crate) fn collect_point_iteration_points(
                         });
                         previous_index = seed_index + derived_points.len();
                     }
-                } else if let Some((center_group_index, _angle_expr, _parameter_name, n)) =
+                    families.push(RawPointIterationFamily::Offset {
+                        seed_index,
+                        dx,
+                        dy,
+                        depth,
+                        parameter_name: is_editable_non_graph_parameter_name(&parameter_name)
+                            .then_some(parameter_name),
+                    });
+                } else if let Some((center_group_index, _angle_expr, parameter_name, n)) =
                     regular_polygon_iteration_step(file, groups, iter_group)
                 {
                     let Some(center_index) = group_to_point_index
@@ -873,6 +909,15 @@ pub(crate) fn collect_point_iteration_points(
                             }),
                         });
                     }
+                    let angle_expr = regular_polygon_angle_expr(&parameter_name, n);
+                    families.push(RawPointIterationFamily::Rotate {
+                        source_index: seed_index,
+                        center_index,
+                        angle_expr,
+                        depth,
+                        parameter_name: is_editable_non_graph_parameter_name(&parameter_name)
+                            .then_some(parameter_name),
+                    });
                 } else if iter_path.refs.len() >= 2 {
                     let _ = iter_path;
                 }
@@ -881,7 +926,7 @@ pub(crate) fn collect_point_iteration_points(
         }
     }
 
-    derived_points
+    (derived_points, families)
 }
 
 fn parameter_iteration_step(
@@ -889,7 +934,7 @@ fn parameter_iteration_step(
     iter_group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
     file: &GspFile,
-) -> Option<(f64, f64)> {
+) -> Option<(String, f64, f64)> {
     let path = find_indexed_path(file, iter_group)?;
     if path.refs.len() < 3 {
         return None;
@@ -898,9 +943,14 @@ fn parameter_iteration_step(
     if (parameter_group.header.class_id & 0xffff) != 0 {
         return None;
     }
+    let parameter_name = decode_label_name(file, parameter_group)?;
     let base_start = anchors.get(path.refs[1].checked_sub(1)?)?.clone()?;
     let base_end = anchors.get(path.refs[2].checked_sub(1)?)?.clone()?;
-    Some((base_end.x - base_start.x, base_end.y - base_start.y))
+    Some((
+        parameter_name,
+        base_end.x - base_start.x,
+        base_end.y - base_start.y,
+    ))
 }
 
 pub(crate) fn decode_transform_binding(

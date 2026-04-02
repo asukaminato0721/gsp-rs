@@ -2,8 +2,8 @@ use crate::format::PointRecord;
 use crate::runtime::functions::{BinaryOp, FunctionExpr, FunctionTerm, UnaryFunction};
 use crate::runtime::geometry::darken;
 use crate::runtime::scene::{
-    ButtonAction, LineBinding, Scene, SceneButton, ScenePointBinding, ScenePointConstraint,
-    ShapeBinding, TextLabelBinding,
+    ButtonAction, LineBinding, PointIterationFamily, Scene, SceneButton, ScenePointBinding,
+    ScenePointConstraint, ShapeBinding, TextLabelBinding,
 };
 use serde::Serialize;
 
@@ -28,6 +28,7 @@ struct SceneJson {
     circles: Vec<CircleJson>,
     labels: Vec<LabelJson>,
     points: Vec<ScenePointJson>,
+    point_iterations: Vec<PointIterationJson>,
     buttons: Vec<ButtonJson>,
     parameters: Vec<ParameterJson>,
     functions: Vec<FunctionJson>,
@@ -56,6 +57,11 @@ impl SceneJson {
                 .points
                 .iter()
                 .map(ScenePointJson::from_scene_point)
+                .collect(),
+            point_iterations: scene
+                .point_iterations
+                .iter()
+                .map(PointIterationJson::from_family)
                 .collect(),
             buttons: scene.buttons.iter().map(ButtonJson::from_button).collect(),
             parameters: scene
@@ -711,6 +717,64 @@ impl ScenePointJson {
             y: point.position.y,
             constraint: PointConstraintJson::from_constraint(&point.constraint),
             binding: point.binding.as_ref().map(PointBindingJson::from_binding),
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+enum PointIterationJson {
+    Offset {
+        #[serde(rename = "seedIndex")]
+        seed_index: usize,
+        dx: f64,
+        dy: f64,
+        depth: usize,
+        #[serde(rename = "parameterName")]
+        parameter_name: Option<String>,
+    },
+    Rotate {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "angleExpr")]
+        angle_expr: FunctionExprJson,
+        depth: usize,
+        #[serde(rename = "parameterName")]
+        parameter_name: Option<String>,
+    },
+}
+
+impl PointIterationJson {
+    fn from_family(family: &PointIterationFamily) -> Self {
+        match family {
+            PointIterationFamily::Offset {
+                seed_index,
+                dx,
+                dy,
+                depth,
+                parameter_name,
+            } => Self::Offset {
+                seed_index: *seed_index,
+                dx: *dx,
+                dy: *dy,
+                depth: *depth,
+                parameter_name: parameter_name.clone(),
+            },
+            PointIterationFamily::Rotate {
+                source_index,
+                center_index,
+                angle_expr,
+                depth,
+                parameter_name,
+            } => Self::Rotate {
+                source_index: *source_index,
+                center_index: *center_index,
+                angle_expr: FunctionExprJson::from_expr(angle_expr),
+                depth: *depth,
+                parameter_name: parameter_name.clone(),
+            },
         }
     }
 }

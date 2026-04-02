@@ -46,6 +46,24 @@ type SceneData = {
   polygons: any[];
   circles: any[];
   labels: any[];
+  pointIterations?: Array<
+    | {
+        kind: "offset";
+        seedIndex: number;
+        dx: number;
+        dy: number;
+        depth: number;
+        parameterName?: string | null;
+      }
+    | {
+        kind: "rotate";
+        sourceIndex: number;
+        centerIndex: number;
+        angleExpr: any;
+        depth: number;
+        parameterName?: string | null;
+      }
+  >;
   buttons?: Array<{
     text: string;
     x: number;

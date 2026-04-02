@@ -289,6 +289,81 @@
     }
   }
 
+  function pointIterationDepth(family, parameters) {
+    const rawValue = family.parameterName ? parameters.get(family.parameterName) : family.depth;
+    const fallback = Number.isFinite(family.depth) ? family.depth : 0;
+    const depth = Number.isFinite(rawValue) ? rawValue : fallback;
+    return Math.max(0, Math.round(depth));
+  }
+
+  /** @param {ViewerEnv} env */
+  function rebuildIterationPoints(env, scene, parameters) {
+    const families = env.sourceScene.pointIterations || [];
+    if (families.length === 0) {
+      return;
+    }
+    const exportedDepth = families.reduce((sum, family) => sum + (family.depth || 0), 0);
+    const baseCount = Math.max(0, env.sourceScene.points.length - exportedDepth);
+    scene.points = scene.points.slice(0, baseCount);
+
+    families.forEach((family) => {
+      const depth = pointIterationDepth(family, parameters);
+      if (depth <= 0) {
+        return;
+      }
+      if (family.kind === "offset") {
+        let previousIndex = family.seedIndex;
+        for (let step = 0; step < depth; step += 1) {
+          const origin = scene.points[previousIndex];
+          if (!origin) {
+            break;
+          }
+          scene.points.push({
+            x: origin.x + family.dx,
+            y: origin.y + family.dy,
+            visible: true,
+            constraint: {
+              kind: "offset",
+              originIndex: previousIndex,
+              dx: family.dx,
+              dy: family.dy,
+            },
+            binding: null,
+          });
+          previousIndex = scene.points.length - 1;
+        }
+        return;
+      }
+
+      if (family.kind === "rotate") {
+        const source = scene.points[family.sourceIndex];
+        const center = scene.points[family.centerIndex];
+        if (!source || !center) {
+          return;
+        }
+        const angleDegrees = evaluateExpr(family.angleExpr, 0, parameters);
+        if (!Number.isFinite(angleDegrees)) {
+          return;
+        }
+        for (let step = 1; step <= depth; step += 1) {
+          const rotated = rotateAround(source, center, (angleDegrees * step) * Math.PI / 180);
+          scene.points.push({
+            x: rotated.x,
+            y: rotated.y,
+            visible: true,
+            constraint: null,
+            binding: {
+              kind: "rotate",
+              sourceIndex: family.sourceIndex,
+              centerIndex: family.centerIndex,
+              angleDegrees: angleDegrees * step,
+            },
+          });
+        }
+      }
+    });
+  }
+
   /** @param {ViewerEnv} env */
   function refreshDerivedPoints(env, scene) {
     const bounds = env.getViewBounds ? env.getViewBounds() : (scene.bounds || env.sourceScene.bounds);
@@ -593,6 +668,7 @@
           }
         });
       });
+      rebuildIterationPoints(env, draft, parameters);
     });
   }
 
@@ -604,13 +680,13 @@
       env.inputTag({
         type: "number",
         step: parameter.name === "n" ? "1" : "0.1",
-        min: parameter.name === "n" ? "2" : undefined,
+        min: parameter.name === "n" ? "0" : undefined,
         value: parameter.value.toFixed(2),
         oninput: (event) => {
           let value = Number.parseFloat(event.target.value);
           if (Number.isFinite(value)) {
             if (parameter.name === "n") {
-              value = Math.max(2, Math.round(value));
+              value = Math.max(0, Math.round(value));
             }
             env.updateDynamics((draft) => {
               draft.parameters[index].value = value;

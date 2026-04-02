@@ -14,9 +14,9 @@ pub(super) use anchors::{
     translation_point_pair_group_indices,
 };
 pub(super) use bindings::{
-    TransformBindingKind, collect_point_iteration_points, collect_visible_points,
-    decode_parameter_rotation_binding, decode_transform_binding, remap_circle_bindings,
-    remap_label_bindings, remap_line_bindings, remap_polygon_bindings,
+    RawPointIterationFamily, TransformBindingKind, collect_point_iteration_points,
+    collect_visible_points, decode_parameter_rotation_binding, decode_transform_binding,
+    remap_circle_bindings, remap_label_bindings, remap_line_bindings, remap_polygon_bindings,
 };
 pub(super) use constraints::{
     RawPointConstraint, decode_point_constraint, regular_polygon_angle_expr,

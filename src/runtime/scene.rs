@@ -16,6 +16,7 @@ pub(crate) struct Scene {
     pub(crate) circles: Vec<SceneCircle>,
     pub(crate) labels: Vec<TextLabel>,
     pub(crate) points: Vec<ScenePoint>,
+    pub(crate) point_iterations: Vec<PointIterationFamily>,
     pub(crate) buttons: Vec<SceneButton>,
     pub(crate) parameters: Vec<SceneParameter>,
     pub(crate) functions: Vec<SceneFunction>,
@@ -80,6 +81,24 @@ pub(crate) struct ScenePoint {
     pub(crate) position: PointRecord,
     pub(crate) constraint: ScenePointConstraint,
     pub(crate) binding: Option<ScenePointBinding>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum PointIterationFamily {
+    Offset {
+        seed_index: usize,
+        dx: f64,
+        dy: f64,
+        depth: usize,
+        parameter_name: Option<String>,
+    },
+    Rotate {
+        source_index: usize,
+        center_index: usize,
+        angle_expr: FunctionExpr,
+        depth: usize,
+        parameter_name: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone)]
