@@ -305,6 +305,15 @@
       : value.toFixed(2);
   }
 
+  function darken(color, amount) {
+    return [
+      Math.max(0, color[0] - amount),
+      Math.max(0, color[1] - amount),
+      Math.max(0, color[2] - amount),
+      color[3],
+    ];
+  }
+
   function evaluateRecursiveExpression(expr, parameterName, currentValue, parameters) {
     const nextParameters = new Map(parameters);
     nextParameters.set(parameterName, currentValue);
@@ -404,6 +413,76 @@
             },
           });
         }
+      }
+    });
+  }
+
+  /** @param {ViewerEnv} env */
+  function rebuildIteratedLines(env, scene, parameters) {
+    const families = env.sourceScene.lineIterations || [];
+    if (families.length === 0) {
+      return;
+    }
+    const exportedDepth = families.reduce((sum, family) => sum + (family.depth || 0), 0);
+    const baseCount = Math.max(0, env.sourceScene.lines.length - exportedDepth);
+    scene.lines = scene.lines.slice(0, baseCount);
+
+    families.forEach((family) => {
+      const depth = pointIterationDepth(family, parameters);
+      if (depth <= 0 || family.kind !== "translate") {
+        return;
+      }
+      const start = scene.points[family.startIndex];
+      const end = scene.points[family.endIndex];
+      if (!start || !end) {
+        return;
+      }
+      for (let step = 1; step <= depth; step += 1) {
+        const dx = family.dx * step;
+        const dy = family.dy * step;
+        scene.lines.push({
+          points: [
+            { x: start.x + dx, y: start.y + dy },
+            { x: end.x + dx, y: end.y + dy },
+          ],
+          color: family.color,
+          dashed: !!family.dashed,
+          binding: null,
+        });
+      }
+    });
+  }
+
+  /** @param {ViewerEnv} env */
+  function rebuildIteratedPolygons(env, scene, parameters) {
+    const families = env.sourceScene.polygonIterations || [];
+    if (families.length === 0) {
+      return;
+    }
+    const exportedDepth = families.reduce((sum, family) => sum + ((family.depth || 0) + 1), 0);
+    const baseCount = Math.max(0, env.sourceScene.polygons.length - exportedDepth);
+    scene.polygons = scene.polygons.slice(0, baseCount);
+
+    families.forEach((family) => {
+      const depth = pointIterationDepth(family, parameters);
+      if (family.kind !== "translate" || family.vertexIndices.length < 3) {
+        return;
+      }
+      const seedVertices = family.vertexIndices
+        .map((index) => scene.points[index])
+        .filter(Boolean);
+      if (seedVertices.length !== family.vertexIndices.length) {
+        return;
+      }
+      for (let step = 0; step <= depth; step += 1) {
+        const dx = family.dx * step;
+        const dy = family.dy * step;
+        scene.polygons.push({
+          points: seedVertices.map((point) => ({ x: point.x + dx, y: point.y + dy })),
+          color: family.color,
+          outlineColor: darken(family.color, 80),
+          binding: null,
+        });
       }
     });
   }
@@ -782,6 +861,8 @@
         });
       });
       rebuildIterationPoints(env, draft, parameters);
+      rebuildIteratedLines(env, draft, parameters);
+      rebuildIteratedPolygons(env, draft, parameters);
       rebuildIteratedLabels(env, draft, parameters);
     });
   }

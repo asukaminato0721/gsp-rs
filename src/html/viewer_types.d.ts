@@ -71,6 +71,26 @@ type SceneData = {
         parameterName?: string | null;
       }
   >;
+  lineIterations?: Array<{
+    kind: "translate";
+    startIndex: number;
+    endIndex: number;
+    dx: number;
+    dy: number;
+    depth: number;
+    parameterName?: string | null;
+    color: [number, number, number, number];
+    dashed: boolean;
+  }>;
+  polygonIterations?: Array<{
+    kind: "translate";
+    vertexIndices: number[];
+    dx: number;
+    dy: number;
+    depth: number;
+    parameterName?: string | null;
+    color: [number, number, number, number];
+  }>;
   labelIterations?: Array<{
     kind: "point-expression";
     seedLabelIndex: number;

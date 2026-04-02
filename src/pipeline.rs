@@ -118,4 +118,21 @@ mod tests {
         assert!(html.contains("\"depth\":3"));
         assert!(!html.contains("\"depthParameterName\":\"B\""));
     }
+
+    #[test]
+    fn exports_carried_polygon_iteration_metadata_into_html() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!(
+                "../tests/fixtures/gsp/static/简单迭代/原象点初象携带多边形双映射深度4迭代.gsp"
+            ),
+            800,
+            600,
+        )
+        .expect("carried polygon iteration fixture should compile");
+
+        assert!(html.contains("\"lineIterations\":["));
+        assert!(html.contains("\"polygonIterations\":["));
+        assert!(html.contains("\"parameterName\":\"n\""));
+        assert!(html.contains("\"vertexIndices\":[0,2,1]"));
+    }
 }

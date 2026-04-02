@@ -2,8 +2,9 @@ use crate::format::PointRecord;
 use crate::runtime::functions::{BinaryOp, FunctionExpr, FunctionTerm, UnaryFunction};
 use crate::runtime::geometry::darken;
 use crate::runtime::scene::{
-    ButtonAction, LabelIterationFamily, LineBinding, PointIterationFamily, Scene, SceneButton,
-    ScenePointBinding, ScenePointConstraint, ShapeBinding, TextLabelBinding,
+    ButtonAction, LabelIterationFamily, LineBinding, LineIterationFamily, PointIterationFamily,
+    PolygonIterationFamily, Scene, SceneButton, ScenePointBinding, ScenePointConstraint,
+    ShapeBinding, TextLabelBinding,
 };
 use serde::Serialize;
 
@@ -29,6 +30,8 @@ struct SceneJson {
     labels: Vec<LabelJson>,
     points: Vec<ScenePointJson>,
     point_iterations: Vec<PointIterationJson>,
+    line_iterations: Vec<LineIterationJson>,
+    polygon_iterations: Vec<PolygonIterationJson>,
     label_iterations: Vec<LabelIterationJson>,
     buttons: Vec<ButtonJson>,
     parameters: Vec<ParameterJson>,
@@ -63,6 +66,16 @@ impl SceneJson {
                 .point_iterations
                 .iter()
                 .map(PointIterationJson::from_family)
+                .collect(),
+            line_iterations: scene
+                .line_iterations
+                .iter()
+                .map(LineIterationJson::from_family)
+                .collect(),
+            polygon_iterations: scene
+                .polygon_iterations
+                .iter()
+                .map(PolygonIterationJson::from_family)
                 .collect(),
             label_iterations: scene
                 .label_iterations
@@ -818,6 +831,67 @@ impl PointIterationJson {
                 depth: *depth,
                 parameter_name: parameter_name.clone(),
             },
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+enum LineIterationJson {
+    Translate {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+        dx: f64,
+        dy: f64,
+        depth: usize,
+        #[serde(rename = "parameterName")]
+        parameter_name: Option<String>,
+        color: [u8; 4],
+        dashed: bool,
+    },
+}
+
+impl LineIterationJson {
+    fn from_family(family: &LineIterationFamily) -> Self {
+        Self::Translate {
+            start_index: family.start_index,
+            end_index: family.end_index,
+            dx: family.dx,
+            dy: family.dy,
+            depth: family.depth,
+            parameter_name: family.parameter_name.clone(),
+            color: family.color,
+            dashed: family.dashed,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+enum PolygonIterationJson {
+    Translate {
+        #[serde(rename = "vertexIndices")]
+        vertex_indices: Vec<usize>,
+        dx: f64,
+        dy: f64,
+        depth: usize,
+        #[serde(rename = "parameterName")]
+        parameter_name: Option<String>,
+        color: [u8; 4],
+    },
+}
+
+impl PolygonIterationJson {
+    fn from_family(family: &PolygonIterationFamily) -> Self {
+        Self::Translate {
+            vertex_indices: family.vertex_indices.clone(),
+            dx: family.dx,
+            dy: family.dy,
+            depth: family.depth,
+            parameter_name: family.parameter_name.clone(),
+            color: family.color,
         }
     }
 }

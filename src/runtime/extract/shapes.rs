@@ -4,6 +4,7 @@ use super::decode::{
     decode_bbox_anchor_raw, decode_label_name, decode_transform_anchor_raw, find_indexed_path,
 };
 use super::*;
+use crate::runtime::extract::points::decode_translated_point_constraint;
 use crate::runtime::functions::{
     decode_function_expr, decode_function_plot_descriptor, evaluate_expr_with_parameters,
 };
@@ -11,7 +12,9 @@ use crate::runtime::geometry::{
     color_from_style, fill_color_from_styles, has_distinct_points, reflect_across_line,
     rotate_around, scale_around, to_raw_from_world,
 };
-use crate::runtime::scene::{LineBinding, ShapeBinding};
+use crate::runtime::scene::{
+    LineBinding, LineIterationFamily, PolygonIterationFamily, ShapeBinding,
+};
 
 pub(super) fn collect_raw_object_anchors(
     file: &GspFile,
@@ -715,11 +718,7 @@ pub(super) fn collect_carried_iteration_lines(
                 return None;
             }
             let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
-            if (iter_group.header.class_id & 0xffff) != 76 {
-                return None;
-            }
-            let iter_path = find_indexed_path(file, iter_group)?;
-            if iter_path.refs.len() < 2 {
+            if !matches!(iter_group.header.class_id & 0xffff, 76 | 89) {
                 return None;
             }
             let source_path = find_indexed_path(file, source_group)?;
@@ -728,12 +727,7 @@ pub(super) fn collect_carried_iteration_lines(
             }
             let start = anchors.get(source_path.refs[0].checked_sub(1)?)?.clone()?;
             let end = anchors.get(source_path.refs[1].checked_sub(1)?)?.clone()?;
-            let base_start = anchors.get(iter_path.refs[0].checked_sub(1)?)?.clone()?;
-            let base_end = anchors.get(iter_path.refs[1].checked_sub(1)?)?.clone()?;
-            let step = PointRecord {
-                x: base_end.x - base_start.x,
-                y: base_end.y - base_start.y,
-            };
+            let step = carried_iteration_step(file, groups, iter_group, anchors)?;
             let depth = iter_group
                 .records
                 .iter()
@@ -761,6 +755,217 @@ pub(super) fn collect_carried_iteration_lines(
             )
         })
         .flatten()
+        .collect()
+}
+
+pub(super) fn collect_carried_line_iteration_families(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group_to_point_index: &[Option<usize>],
+) -> Vec<LineIterationFamily> {
+    groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 77)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            let source_group_index = path.refs.first()?.checked_sub(1)?;
+            let source_group = groups.get(source_group_index)?;
+            if (source_group.header.class_id & 0xffff) != 2 {
+                return None;
+            }
+            let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+            if !matches!(iter_group.header.class_id & 0xffff, 76 | 89) {
+                return None;
+            }
+            let source_path = find_indexed_path(file, source_group)?;
+            if source_path.refs.len() != 2 {
+                return None;
+            }
+            let start_index = group_to_point_index
+                .get(source_path.refs[0].checked_sub(1)?)
+                .copied()
+                .flatten()?;
+            let end_index = group_to_point_index
+                .get(source_path.refs[1].checked_sub(1)?)
+                .copied()
+                .flatten()?;
+            let step = carried_iteration_step(file, groups, iter_group, anchors)?;
+            let depth = carried_iteration_depth(file, iter_group, 3);
+            if depth == 0 {
+                return None;
+            }
+            Some(LineIterationFamily {
+                start_index,
+                end_index,
+                dx: step.x,
+                dy: step.y,
+                depth,
+                parameter_name: carried_iteration_parameter_name(file, groups, iter_group),
+                color: color_from_style(source_group.header.style_b),
+                dashed: false,
+            })
+        })
+        .collect()
+}
+
+fn carried_iteration_step(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    iter_group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    let iter_path = find_indexed_path(file, iter_group)?;
+    if let Some(constraint) = iter_path
+        .refs
+        .iter()
+        .filter_map(|ordinal| ordinal.checked_sub(1).and_then(|index| groups.get(index)))
+        .find_map(|group| decode_translated_point_constraint(file, group))
+    {
+        return Some(PointRecord {
+            x: constraint.dx,
+            y: constraint.dy,
+        });
+    }
+    if iter_path.refs.len() < 2 {
+        return None;
+    }
+    let base_start = anchors.get(iter_path.refs[0].checked_sub(1)?)?.clone()?;
+    let base_end = anchors.get(iter_path.refs[1].checked_sub(1)?)?.clone()?;
+    Some(PointRecord {
+        x: base_end.x - base_start.x,
+        y: base_end.y - base_start.y,
+    })
+}
+
+fn carried_iteration_depth(file: &GspFile, iter_group: &ObjectGroup, default_depth: usize) -> usize {
+    iter_group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x090a)
+        .map(|record| record.payload(&file.data))
+        .filter(|payload| payload.len() >= 20)
+        .map(|payload| read_u32(payload, 16) as usize)
+        .unwrap_or(default_depth)
+}
+
+fn carried_iteration_parameter_name(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    iter_group: &ObjectGroup,
+) -> Option<String> {
+    let iter_path = find_indexed_path(file, iter_group)?;
+    let parameter_group = groups.get(iter_path.refs.first()?.checked_sub(1)?)?;
+    ((parameter_group.header.class_id & 0xffff) == 0)
+        .then(|| decode_label_name(file, parameter_group))
+        .flatten()
+        .filter(|name| super::points::is_editable_non_graph_parameter_name(name))
+}
+
+pub(super) fn collect_carried_iteration_polygons(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+) -> Vec<PolygonShape> {
+    groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 77)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            if (source_group.header.class_id & 0xffff) != 8 {
+                return None;
+            }
+            let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+            if !matches!(iter_group.header.class_id & 0xffff, 76 | 89) {
+                return None;
+            }
+            let source_path = find_indexed_path(file, source_group)?;
+            if source_path.refs.len() < 3 {
+                return None;
+            }
+            let points = source_path
+                .refs
+                .iter()
+                .map(|ordinal| anchors.get(ordinal.checked_sub(1)?).cloned().flatten())
+                .collect::<Option<Vec<_>>>()?;
+            let step = carried_iteration_step(file, groups, iter_group, anchors)?;
+            let depth = iter_group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x090a)
+                .map(|record| record.payload(&file.data))
+                .filter(|payload| payload.len() >= 20)
+                .map(|payload| read_u32(payload, 16) as usize)
+                .unwrap_or(3);
+            let color =
+                fill_color_from_styles(source_group.header.style_a, source_group.header.style_b);
+            Some(
+                (0..=depth)
+                    .map(|index| {
+                        let delta = PointRecord {
+                            x: step.x * index as f64,
+                            y: step.y * index as f64,
+                        };
+                        PolygonShape {
+                            points: points
+                                .iter()
+                                .cloned()
+                                .map(|point| point + delta.clone())
+                                .collect(),
+                            color,
+                            binding: None,
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .flatten()
+        .collect()
+}
+
+pub(super) fn collect_carried_polygon_iteration_families(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group_to_point_index: &[Option<usize>],
+) -> Vec<PolygonIterationFamily> {
+    groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 77)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            if (source_group.header.class_id & 0xffff) != 8 {
+                return None;
+            }
+            let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+            if !matches!(iter_group.header.class_id & 0xffff, 76 | 89) {
+                return None;
+            }
+            let source_path = find_indexed_path(file, source_group)?;
+            if source_path.refs.len() < 3 {
+                return None;
+            }
+            let vertex_indices = source_path
+                .refs
+                .iter()
+                .map(|ordinal| group_to_point_index.get(ordinal.checked_sub(1)?).copied().flatten())
+                .collect::<Option<Vec<_>>>()?;
+            let step = carried_iteration_step(file, groups, iter_group, anchors)?;
+            let depth = carried_iteration_depth(file, iter_group, 3);
+            if depth == 0 {
+                return None;
+            }
+            Some(PolygonIterationFamily {
+                vertex_indices,
+                dx: step.x,
+                dy: step.y,
+                depth,
+                parameter_name: carried_iteration_parameter_name(file, groups, iter_group),
+                color: fill_color_from_styles(source_group.header.style_a, source_group.header.style_b),
+            })
+        })
         .collect()
 }
 

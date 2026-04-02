@@ -17,6 +17,8 @@ pub(crate) struct Scene {
     pub(crate) labels: Vec<TextLabel>,
     pub(crate) points: Vec<ScenePoint>,
     pub(crate) point_iterations: Vec<PointIterationFamily>,
+    pub(crate) line_iterations: Vec<LineIterationFamily>,
+    pub(crate) polygon_iterations: Vec<PolygonIterationFamily>,
     pub(crate) label_iterations: Vec<LabelIterationFamily>,
     pub(crate) buttons: Vec<SceneButton>,
     pub(crate) parameters: Vec<SceneParameter>,
@@ -106,6 +108,28 @@ pub(crate) enum PointIterationFamily {
         depth: usize,
         parameter_name: Option<String>,
     },
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct LineIterationFamily {
+    pub(crate) start_index: usize,
+    pub(crate) end_index: usize,
+    pub(crate) dx: f64,
+    pub(crate) dy: f64,
+    pub(crate) depth: usize,
+    pub(crate) parameter_name: Option<String>,
+    pub(crate) color: [u8; 4],
+    pub(crate) dashed: bool,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PolygonIterationFamily {
+    pub(crate) vertex_indices: Vec<usize>,
+    pub(crate) dx: f64,
+    pub(crate) dy: f64,
+    pub(crate) depth: usize,
+    pub(crate) parameter_name: Option<String>,
+    pub(crate) color: [u8; 4],
 }
 
 #[derive(Debug, Clone)]

@@ -33,7 +33,9 @@ use self::points::{
     remap_line_bindings, remap_polygon_bindings, translation_point_pair_group_indices,
 };
 use self::shapes::{
-    collect_bound_line_shapes, collect_carried_iteration_lines, collect_circle_shapes,
+    collect_bound_line_shapes, collect_carried_iteration_lines,
+    collect_carried_iteration_polygons, collect_carried_line_iteration_families,
+    collect_carried_polygon_iteration_families, collect_circle_shapes,
     collect_coordinate_traces, collect_derived_segments, collect_iteration_shapes,
     collect_line_shapes, collect_polygon_shapes, collect_raw_object_anchors,
     collect_reflected_circle_shapes, collect_reflected_line_shapes,
@@ -53,9 +55,10 @@ use super::geometry::{
     include_line_bounds, to_world,
 };
 use super::scene::{
-    ButtonAction, LabelIterationFamily, LineBinding, LineShape, PointIterationFamily, PolygonShape,
-    Scene, SceneButton, SceneCircle, SceneParameter, ScenePoint, ScenePointBinding,
-    ScenePointConstraint, ScreenPoint, ScreenRect, TextLabel, TextLabelBinding,
+    ButtonAction, LabelIterationFamily, LineBinding, LineIterationFamily, LineShape,
+    PointIterationFamily, PolygonIterationFamily, PolygonShape, Scene, SceneButton, SceneCircle,
+    SceneParameter, ScenePoint, ScenePointBinding, ScenePointConstraint, ScreenPoint, ScreenRect,
+    TextLabel, TextLabelBinding,
 };
 
 pub(crate) use self::decode::find_indexed_path;
@@ -125,6 +128,8 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     let mut rotational_iteration_lines =
         collect_rotational_iteration_lines(file, &groups, &raw_anchors);
     let carried_iteration_lines = collect_carried_iteration_lines(file, &groups, &raw_anchors);
+    let carried_iteration_polygons =
+        collect_carried_iteration_polygons(file, &groups, &raw_anchors);
     let measurements = if graph_mode {
         collect_line_shapes(file, &groups, &raw_anchors, &[58], false)
     } else {
@@ -362,6 +367,18 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         &group_to_point_index,
         &line_group_to_index,
     );
+    let line_iterations = collect_carried_line_iteration_families(
+        file,
+        &groups,
+        &raw_anchors,
+        &group_to_point_index,
+    );
+    let polygon_iterations = collect_carried_polygon_iteration_families(
+        file,
+        &groups,
+        &raw_anchors,
+        &group_to_point_index,
+    );
 
     let world_points = visible_points
         .iter()
@@ -516,6 +533,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         .chain(transformed_polygons.iter())
         .chain(reflected_polygons.iter())
         .chain(iteration_polygons.iter())
+        .chain(carried_iteration_polygons.iter())
         .cloned()
         .collect::<Vec<_>>();
     let bounds_circles = circles
@@ -620,6 +638,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
             .chain(transformed_polygons)
             .chain(reflected_polygons)
             .chain(iteration_polygons)
+            .chain(carried_iteration_polygons)
             .map(|polygon| PolygonShape {
                 points: polygon
                     .points
@@ -658,6 +677,14 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
             .collect(),
         points: world_points,
         point_iterations,
+        line_iterations: line_iterations
+            .into_iter()
+            .map(|family| world_line_iteration_family(family, &graph_ref))
+            .collect(),
+        polygon_iterations: polygon_iterations
+            .into_iter()
+            .map(|family| world_polygon_iteration_family(family, &graph_ref))
+            .collect(),
         label_iterations,
         buttons,
         parameters,
@@ -696,6 +723,52 @@ fn world_line_shape(
         color: line.color,
         dashed: line.dashed,
         binding: line.binding,
+    }
+}
+
+fn world_delta(delta: &PointRecord, graph_ref: &Option<GraphTransform>) -> PointRecord {
+    let zero = PointRecord { x: 0.0, y: 0.0 };
+    let world_zero = to_world(&zero, graph_ref);
+    let world_delta = to_world(delta, graph_ref);
+    PointRecord {
+        x: world_delta.x - world_zero.x,
+        y: world_delta.y - world_zero.y,
+    }
+}
+
+fn world_line_iteration_family(
+    family: LineIterationFamily,
+    graph_ref: &Option<GraphTransform>,
+) -> LineIterationFamily {
+    let delta = world_delta(
+        &PointRecord {
+            x: family.dx,
+            y: family.dy,
+        },
+        graph_ref,
+    );
+    LineIterationFamily {
+        dx: delta.x,
+        dy: delta.y,
+        ..family
+    }
+}
+
+fn world_polygon_iteration_family(
+    family: PolygonIterationFamily,
+    graph_ref: &Option<GraphTransform>,
+) -> PolygonIterationFamily {
+    let delta = world_delta(
+        &PointRecord {
+            x: family.dx,
+            y: family.dy,
+        },
+        graph_ref,
+    );
+    PolygonIterationFamily {
+        dx: delta.x,
+        dy: delta.y,
+        ..family
     }
 }
 
@@ -1737,6 +1810,93 @@ mod tests {
         }));
         assert!(starts.iter().any(|point| {
             (point.x - 281.3858267716535).abs() < 1e-6 && (point.y - 262.6141732283465).abs() < 1e-6
+        }));
+    }
+
+    #[test]
+    fn preserves_carried_polygon_iteration_fixture() {
+        let data = include_bytes!(
+            "../../tests/fixtures/gsp/static/简单迭代/原象点初象携带多边形双映射深度4迭代.gsp"
+        );
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(
+            scene.polygons.len(),
+            5,
+            "expected seed polygon plus four iterated copies"
+        );
+        assert_eq!(
+            scene.lines.len(),
+            15,
+            "expected seed edges plus four carried copies"
+        );
+        assert!(
+            scene
+                .parameters
+                .iter()
+                .any(|parameter| parameter.name == "n")
+        );
+        assert_eq!(scene.line_iterations.len(), 3);
+        assert!(scene.line_iterations.iter().all(|family| {
+            family.parameter_name.as_deref() == Some("n")
+                && family.depth == 4
+                && (family.dy + 37.79527559055118).abs() < 1e-6
+        }));
+        assert_eq!(scene.polygon_iterations.len(), 1);
+        assert!(
+            scene.polygon_iterations.iter().any(|family| {
+                family.parameter_name.as_deref() == Some("n")
+                    && family.depth == 4
+                    && family.vertex_indices == vec![0, 2, 1]
+                    && family.dx.abs() < 1e-6
+                    && (family.dy + 37.79527559055118).abs() < 1e-6
+            })
+        );
+        assert_eq!(
+            scene.points.len(),
+            3,
+            "expected base point plus two mapped vertices"
+        );
+        assert!(matches!(
+            scene.points[1].constraint,
+            ScenePointConstraint::Offset {
+                origin_index: 0,
+                dx,
+                dy,
+            } if (dx - 37.79527559055118).abs() < 1e-6
+                && (dy + 37.79527559055118).abs() < 1e-6
+        ));
+        assert!(matches!(
+            scene.points[2].constraint,
+            ScenePointConstraint::Offset {
+                origin_index: 0,
+                dx,
+                dy,
+            } if dx.abs() < 1e-6
+                && (dy + 37.79527559055118).abs() < 1e-6
+        ));
+        let first_vertices = scene
+            .polygons
+            .iter()
+            .map(|polygon| polygon.points.first().cloned().expect("polygon vertex"))
+            .collect::<Vec<_>>();
+        assert!(
+            first_vertices
+                .iter()
+                .any(|point| { (point.x - 168.0).abs() < 1e-6 && (point.y - 376.0).abs() < 1e-6 })
+        );
+        assert!(first_vertices.iter().any(|point| {
+            (point.x - 168.0).abs() < 1e-6 && (point.y - 338.20472440944883).abs() < 1e-6
+        }));
+        assert!(first_vertices.iter().any(|point| {
+            (point.x - 168.0).abs() < 1e-6 && (point.y - 300.40944881889766).abs() < 1e-6
+        }));
+        assert!(first_vertices.iter().any(|point| {
+            (point.x - 168.0).abs() < 1e-6 && (point.y - 262.6141732283465).abs() < 1e-6
+        }));
+        assert!(first_vertices.iter().any(|point| {
+            (point.x - 168.0).abs() < 1e-6 && (point.y - 224.81889763779532).abs() < 1e-6
         }));
     }
 
