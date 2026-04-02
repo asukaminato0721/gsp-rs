@@ -1620,9 +1620,13 @@ mod tests {
             matches!(
                 family,
                 PointIterationFamily::Offset {
+                    dx,
+                    dy,
                     parameter_name,
                     ..
                 } if parameter_name.as_deref() == Some("n")
+                    && (*dx - 37.79527559055118).abs() < 1e-6
+                    && dy.abs() < 1e-6
             )
         }));
         assert!(scene.label_iterations.iter().any(|family| {

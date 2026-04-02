@@ -941,6 +941,18 @@ fn parameter_iteration_step(
         return None;
     }
     let parameter_name = decode_label_name(file, parameter_group)?;
+    if let Some((dx, dy)) = path
+        .refs
+        .iter()
+        .skip(1)
+        .filter_map(|ordinal| ordinal.checked_sub(1).and_then(|index| groups.get(index)))
+        .find_map(|group| {
+            decode_translated_point_constraint(file, group)
+                .map(|constraint| (constraint.dx, constraint.dy))
+        })
+    {
+        return Some((parameter_name, dx, dy));
+    }
     let base_start = anchors.get(path.refs[1].checked_sub(1)?)?.clone()?;
     let base_end = anchors.get(path.refs[2].checked_sub(1)?)?.clone()?;
     Some((
