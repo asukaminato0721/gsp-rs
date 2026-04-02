@@ -700,6 +700,70 @@ pub(super) fn collect_rotational_iteration_lines(
         .collect()
 }
 
+pub(super) fn collect_carried_iteration_lines(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+) -> Vec<LineShape> {
+    groups
+        .iter()
+        .filter(|group| (group.header.class_id & 0xffff) == 77)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            if (source_group.header.class_id & 0xffff) != 2 {
+                return None;
+            }
+            let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+            if (iter_group.header.class_id & 0xffff) != 76 {
+                return None;
+            }
+            let iter_path = find_indexed_path(file, iter_group)?;
+            if iter_path.refs.len() < 2 {
+                return None;
+            }
+            let source_path = find_indexed_path(file, source_group)?;
+            if source_path.refs.len() != 2 {
+                return None;
+            }
+            let start = anchors.get(source_path.refs[0].checked_sub(1)?)?.clone()?;
+            let end = anchors.get(source_path.refs[1].checked_sub(1)?)?.clone()?;
+            let base_start = anchors.get(iter_path.refs[0].checked_sub(1)?)?.clone()?;
+            let base_end = anchors.get(iter_path.refs[1].checked_sub(1)?)?.clone()?;
+            let step = PointRecord {
+                x: base_end.x - base_start.x,
+                y: base_end.y - base_start.y,
+            };
+            let depth = iter_group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x090a)
+                .map(|record| record.payload(&file.data))
+                .filter(|payload| payload.len() >= 20)
+                .map(|payload| read_u32(payload, 16) as usize)
+                .unwrap_or(3);
+            let color = color_from_style(source_group.header.style_b);
+            Some(
+                (1..=depth)
+                    .map(|index| {
+                        let delta = PointRecord {
+                            x: step.x * index as f64,
+                            y: step.y * index as f64,
+                        };
+                        LineShape {
+                            points: vec![start.clone() + delta.clone(), end.clone() + delta],
+                            color,
+                            dashed: false,
+                            binding: None,
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .flatten()
+        .collect()
+}
+
 pub(super) fn collect_iteration_shapes(
     file: &GspFile,
     groups: &[ObjectGroup],

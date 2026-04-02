@@ -33,12 +33,12 @@ use self::points::{
     remap_line_bindings, remap_polygon_bindings, translation_point_pair_group_indices,
 };
 use self::shapes::{
-    collect_bound_line_shapes, collect_circle_shapes, collect_coordinate_traces,
-    collect_derived_segments, collect_iteration_shapes, collect_line_shapes,
-    collect_polygon_shapes, collect_raw_object_anchors, collect_reflected_circle_shapes,
-    collect_reflected_line_shapes, collect_reflected_polygon_shapes, collect_rotated_circle_shapes,
-    collect_rotated_line_shapes, collect_rotated_polygon_shapes,
-    collect_rotational_iteration_lines, collect_scaled_line_shapes,
+    collect_bound_line_shapes, collect_carried_iteration_lines, collect_circle_shapes,
+    collect_coordinate_traces, collect_derived_segments, collect_iteration_shapes,
+    collect_line_shapes, collect_polygon_shapes, collect_raw_object_anchors,
+    collect_reflected_circle_shapes, collect_reflected_line_shapes,
+    collect_reflected_polygon_shapes, collect_rotated_circle_shapes, collect_rotated_line_shapes,
+    collect_rotated_polygon_shapes, collect_rotational_iteration_lines, collect_scaled_line_shapes,
     collect_transformed_circle_shapes, collect_transformed_polygon_shapes,
     collect_translated_polygon_shapes,
 };
@@ -124,6 +124,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     let mut reflected_lines = collect_reflected_line_shapes(file, &groups, &raw_anchors);
     let mut rotational_iteration_lines =
         collect_rotational_iteration_lines(file, &groups, &raw_anchors);
+    let carried_iteration_lines = collect_carried_iteration_lines(file, &groups, &raw_anchors);
     let measurements = if graph_mode {
         collect_line_shapes(file, &groups, &raw_anchors, &[58], false)
     } else {
@@ -505,6 +506,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         .chain(coordinate_traces.iter())
         .chain(axes.iter())
         .chain(iteration_lines.iter())
+        .chain(carried_iteration_lines.iter())
         .cloned()
         .collect::<Vec<_>>();
     let bounds_polygons = polygons
@@ -594,6 +596,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
             .chain(synthetic_axes)
             .chain(iteration_lines)
             .chain(rotational_iteration_lines)
+            .chain(carried_iteration_lines)
             .collect(),
     );
 
@@ -1693,6 +1696,47 @@ mod tests {
                     && *depth == 3
                     && depth_parameter_name.is_none()
             )
+        }));
+    }
+
+    #[test]
+    fn preserves_carried_segment_default_depth_iteration_fixture() {
+        let data = include_bytes!(
+            "../../tests/fixtures/gsp/static/简单迭代/原象点初象携带线段默认深度3迭代.gsp"
+        );
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(
+            scene.lines.len(),
+            4,
+            "expected original segment plus three carried copies"
+        );
+        assert_eq!(
+            scene.points.len(),
+            5,
+            "expected original point, seed point, and three iterates"
+        );
+        let starts = scene
+            .lines
+            .iter()
+            .map(|line| line.points.first().cloned().expect("segment start"))
+            .collect::<Vec<_>>();
+        assert!(
+            starts
+                .iter()
+                .any(|point| { (point.x - 168.0).abs() < 1e-6 && (point.y - 376.0).abs() < 1e-6 })
+        );
+        assert!(starts.iter().any(|point| {
+            (point.x - 205.79527559055117).abs() < 1e-6
+                && (point.y - 338.20472440944883).abs() < 1e-6
+        }));
+        assert!(starts.iter().any(|point| {
+            (point.x - 243.59055118110234).abs() < 1e-6
+                && (point.y - 300.40944881889766).abs() < 1e-6
+        }));
+        assert!(starts.iter().any(|point| {
+            (point.x - 281.3858267716535).abs() < 1e-6 && (point.y - 262.6141732283465).abs() < 1e-6
         }));
     }
 
