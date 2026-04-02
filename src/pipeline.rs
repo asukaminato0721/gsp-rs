@@ -68,6 +68,25 @@ mod tests {
     }
 
     #[test]
+    fn exports_non_graph_iteration_parameters_and_expression_bindings_into_html() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!(
+                "../tests/fixtures/gsp/static/简单迭代/原象点和参数初象点和数值深度5迭代.gsp"
+            ),
+            800,
+            600,
+        )
+        .expect("non-graph iteration fixture should compile");
+
+        assert!(html.contains("\"name\":\"n\""));
+        assert!(html.contains("\"name\":\"a\""));
+        assert!(html.contains("\"kind\":\"parameter-value\",\"name\":\"a\""));
+        assert!(html.contains("\"kind\":\"point-expression-value\",\"parameterName\":\"a\""));
+        assert!(html.contains("\"kind\":\"expression-value\",\"parameterName\":\"a\""));
+        assert!(html.contains("\"labelIterations\":["));
+    }
+
+    #[test]
     fn exports_default_depth_iteration_metadata_into_html() {
         let html = compile_bytes_to_html_document(
             include_bytes!("../tests/fixtures/gsp/static/简单迭代/原象点初象点默认深度3迭代.gsp"),

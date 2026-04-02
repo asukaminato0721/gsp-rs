@@ -17,6 +17,7 @@ pub(crate) struct Scene {
     pub(crate) labels: Vec<TextLabel>,
     pub(crate) points: Vec<ScenePoint>,
     pub(crate) point_iterations: Vec<PointIterationFamily>,
+    pub(crate) label_iterations: Vec<LabelIterationFamily>,
     pub(crate) buttons: Vec<SceneButton>,
     pub(crate) parameters: Vec<SceneParameter>,
     pub(crate) functions: Vec<SceneFunction>,
@@ -98,6 +99,18 @@ pub(crate) enum PointIterationFamily {
         angle_expr: FunctionExpr,
         depth: usize,
         parameter_name: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum LabelIterationFamily {
+    PointExpression {
+        seed_label_index: usize,
+        point_seed_index: usize,
+        parameter_name: String,
+        expr: FunctionExpr,
+        depth: usize,
+        depth_parameter_name: Option<String>,
     },
 }
 
@@ -310,6 +323,10 @@ pub(crate) enum TextLabelBinding {
     ExpressionValue {
         parameter_name: String,
         expr_label: String,
+        expr: FunctionExpr,
+    },
+    PointExpressionValue {
+        parameter_name: String,
         expr: FunctionExpr,
     },
     PolygonBoundaryParameter {

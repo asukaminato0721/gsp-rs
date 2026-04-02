@@ -64,6 +64,15 @@ type SceneData = {
         parameterName?: string | null;
       }
   >;
+  labelIterations?: Array<{
+    kind: "point-expression";
+    seedLabelIndex: number;
+    pointSeedIndex: number;
+    parameterName: string;
+    expr: any;
+    depth: number;
+    depthParameterName?: string | null;
+  }>;
   buttons?: Array<{
     text: string;
     x: number;

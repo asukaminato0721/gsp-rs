@@ -94,7 +94,12 @@ fn is_slider_parameter_name(name: &str) -> bool {
 }
 
 pub(super) fn is_editable_non_graph_parameter_name(name: &str) -> bool {
-    is_slider_parameter_name(name) || name == "n"
+    is_slider_parameter_name(name)
+        || (name.chars().count() == 1
+            && name
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_ascii_alphabetic()))
 }
 
 fn decode_non_graph_parameter_value(payload: &[u8]) -> Option<f64> {

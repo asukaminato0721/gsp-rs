@@ -2,8 +2,8 @@ use crate::format::PointRecord;
 use crate::runtime::functions::{BinaryOp, FunctionExpr, FunctionTerm, UnaryFunction};
 use crate::runtime::geometry::darken;
 use crate::runtime::scene::{
-    ButtonAction, LineBinding, PointIterationFamily, Scene, SceneButton, ScenePointBinding,
-    ScenePointConstraint, ShapeBinding, TextLabelBinding,
+    ButtonAction, LabelIterationFamily, LineBinding, PointIterationFamily, Scene, SceneButton,
+    ScenePointBinding, ScenePointConstraint, ShapeBinding, TextLabelBinding,
 };
 use serde::Serialize;
 
@@ -29,6 +29,7 @@ struct SceneJson {
     labels: Vec<LabelJson>,
     points: Vec<ScenePointJson>,
     point_iterations: Vec<PointIterationJson>,
+    label_iterations: Vec<LabelIterationJson>,
     buttons: Vec<ButtonJson>,
     parameters: Vec<ParameterJson>,
     functions: Vec<FunctionJson>,
@@ -62,6 +63,11 @@ impl SceneJson {
                 .point_iterations
                 .iter()
                 .map(PointIterationJson::from_family)
+                .collect(),
+            label_iterations: scene
+                .label_iterations
+                .iter()
+                .map(LabelIterationJson::from_family)
                 .collect(),
             buttons: scene.buttons.iter().map(ButtonJson::from_button).collect(),
             parameters: scene
@@ -627,6 +633,12 @@ enum LabelBindingJson {
         expr_label: String,
         expr: FunctionExprJson,
     },
+    #[serde(rename = "point-expression-value")]
+    PointExpressionValue {
+        #[serde(rename = "parameterName")]
+        parameter_name: String,
+        expr: FunctionExprJson,
+    },
     #[serde(rename = "polygon-boundary-parameter")]
     PolygonBoundaryParameter {
         #[serde(rename = "pointIndex")]
@@ -669,6 +681,13 @@ impl LabelBindingJson {
             } => Self::ExpressionValue {
                 parameter_name: parameter_name.clone(),
                 expr_label: expr_label.clone(),
+                expr: FunctionExprJson::from_expr(expr),
+            },
+            TextLabelBinding::PointExpressionValue {
+                parameter_name,
+                expr,
+            } => Self::PointExpressionValue {
+                parameter_name: parameter_name.clone(),
                 expr: FunctionExprJson::from_expr(expr),
             },
             TextLabelBinding::PolygonBoundaryParameter {
@@ -774,6 +793,45 @@ impl PointIterationJson {
                 angle_expr: FunctionExprJson::from_expr(angle_expr),
                 depth: *depth,
                 parameter_name: parameter_name.clone(),
+            },
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+enum LabelIterationJson {
+    PointExpression {
+        #[serde(rename = "seedLabelIndex")]
+        seed_label_index: usize,
+        #[serde(rename = "pointSeedIndex")]
+        point_seed_index: usize,
+        #[serde(rename = "parameterName")]
+        parameter_name: String,
+        expr: FunctionExprJson,
+        depth: usize,
+        #[serde(rename = "depthParameterName")]
+        depth_parameter_name: Option<String>,
+    },
+}
+
+impl LabelIterationJson {
+    fn from_family(family: &LabelIterationFamily) -> Self {
+        match family {
+            LabelIterationFamily::PointExpression {
+                seed_label_index,
+                point_seed_index,
+                parameter_name,
+                expr,
+                depth,
+                depth_parameter_name,
+            } => Self::PointExpression {
+                seed_label_index: *seed_label_index,
+                point_seed_index: *point_seed_index,
+                parameter_name: parameter_name.clone(),
+                expr: FunctionExprJson::from_expr(expr),
+                depth: *depth,
+                depth_parameter_name: depth_parameter_name.clone(),
             },
         }
     }

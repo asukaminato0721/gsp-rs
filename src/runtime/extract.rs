@@ -16,8 +16,9 @@ use self::graph::{
     detect_graph_transform, expand_bounds, has_graph_classes,
 };
 use self::labels::{
-    collect_circle_parameter_labels, collect_coordinate_labels, collect_labels,
-    collect_polygon_parameter_labels, collect_segment_parameter_labels, compute_iteration_labels,
+    collect_circle_parameter_labels, collect_coordinate_labels, collect_label_iterations,
+    collect_labels, collect_polygon_parameter_labels, collect_segment_parameter_labels,
+    compute_iteration_labels,
 };
 use self::points::{
     RawPointConstraint, RawPointIterationFamily, TransformBindingKind,
@@ -27,10 +28,9 @@ use self::points::{
     decode_point_constraint, decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,
     decode_point_pair_translation_anchor_raw, decode_reflection_anchor_raw,
     decode_regular_polygon_vertex_anchor_raw, decode_transform_binding,
-    decode_translated_point_anchor_raw, is_editable_non_graph_parameter_name,
-    reflection_line_group_indices, regular_polygon_angle_expr, regular_polygon_iteration_step,
-    remap_circle_bindings, remap_label_bindings, remap_line_bindings, remap_polygon_bindings,
-    translation_point_pair_group_indices,
+    decode_translated_point_anchor_raw, reflection_line_group_indices, regular_polygon_angle_expr,
+    regular_polygon_iteration_step, remap_circle_bindings, remap_label_bindings,
+    remap_line_bindings, remap_polygon_bindings, translation_point_pair_group_indices,
 };
 use self::shapes::{
     collect_bound_line_shapes, collect_circle_shapes, collect_coordinate_traces,
@@ -53,9 +53,9 @@ use super::geometry::{
     include_line_bounds, to_world,
 };
 use super::scene::{
-    ButtonAction, LineBinding, LineShape, PointIterationFamily, PolygonShape, Scene, SceneButton,
-    SceneCircle, SceneParameter, ScenePoint, ScenePointBinding, ScenePointConstraint, ScreenPoint,
-    ScreenRect, TextLabel, TextLabelBinding,
+    ButtonAction, LabelIterationFamily, LineBinding, LineShape, PointIterationFamily, PolygonShape,
+    Scene, SceneButton, SceneCircle, SceneParameter, ScenePoint, ScenePointBinding,
+    ScenePointConstraint, ScreenPoint, ScreenRect, TextLabel, TextLabelBinding,
 };
 
 pub(crate) use self::decode::find_indexed_path;
@@ -182,7 +182,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     } else {
         Vec::new()
     };
-    let mut labels = collect_labels(
+    let (mut labels, label_group_to_index) = collect_labels(
         file,
         &groups,
         &raw_anchors,
@@ -240,6 +240,27 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         collect_visible_points(file, &groups, &point_map, &raw_anchors, &graph_ref);
     let (derived_iteration_points, raw_point_iterations) =
         collect_point_iteration_points(file, &groups, &raw_anchors, &group_to_point_index);
+    let label_iterations =
+        collect_label_iterations(file, &groups, &label_group_to_index, &group_to_point_index)
+            .into_iter()
+            .map(|family| match family {
+                LabelIterationFamily::PointExpression {
+                    seed_label_index,
+                    point_seed_index,
+                    parameter_name,
+                    expr,
+                    depth,
+                    depth_parameter_name,
+                } => LabelIterationFamily::PointExpression {
+                    seed_label_index,
+                    point_seed_index,
+                    parameter_name,
+                    expr,
+                    depth,
+                    depth_parameter_name,
+                },
+            })
+            .collect::<Vec<_>>();
     remap_label_bindings(&mut labels, &group_to_point_index);
     let circle_group_to_index = groups
         .iter()
@@ -623,6 +644,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
             .collect(),
         points: world_points,
         point_iterations,
+        label_iterations,
         buttons,
         parameters,
         functions,
@@ -1546,6 +1568,73 @@ mod tests {
             7,
             "expected original point, initial point, and 5 iterates"
         );
+    }
+
+    #[test]
+    fn preserves_non_graph_parameter_and_expression_labels_in_iteration_fixture() {
+        let data = include_bytes!(
+            "../../tests/fixtures/gsp/static/简单迭代/原象点和参数初象点和数值深度5迭代.gsp"
+        );
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        let parameter_names = scene
+            .parameters
+            .iter()
+            .map(|parameter| parameter.name.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            parameter_names.contains(&"n"),
+            "expected n parameter, got {parameter_names:?}"
+        );
+        assert!(
+            parameter_names.contains(&"a"),
+            "expected a parameter, got {parameter_names:?}"
+        );
+        assert!(scene.labels.iter().any(|label| {
+            matches!(
+                label.binding,
+                Some(TextLabelBinding::ParameterValue { ref name }) if name == "a"
+            )
+        }));
+        assert!(scene.labels.iter().any(|label| {
+            matches!(
+                label.binding,
+                Some(TextLabelBinding::PointExpressionValue {
+                    ref parameter_name,
+                    ..
+                }) if parameter_name == "a"
+            )
+        }));
+        assert!(scene.labels.iter().any(|label| {
+            matches!(
+                label.binding,
+                Some(TextLabelBinding::ExpressionValue {
+                    ref parameter_name,
+                    ref expr_label,
+                    ..
+                }) if parameter_name == "a" && expr_label == "a + 1"
+            )
+        }));
+        assert!(scene.point_iterations.iter().any(|family| {
+            matches!(
+                family,
+                PointIterationFamily::Offset {
+                    parameter_name,
+                    ..
+                } if parameter_name.as_deref() == Some("n")
+            )
+        }));
+        assert!(scene.label_iterations.iter().any(|family| {
+            matches!(
+                family,
+                LabelIterationFamily::PointExpression {
+                    parameter_name,
+                    depth_parameter_name,
+                    ..
+                } if parameter_name == "a" && depth_parameter_name.as_deref() == Some("n")
+            )
+        }));
     }
 
     #[test]

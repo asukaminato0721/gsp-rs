@@ -389,9 +389,9 @@ pub(crate) fn remap_label_bindings(
             continue;
         };
         let point_index = match binding {
-            TextLabelBinding::ParameterValue { .. } | TextLabelBinding::ExpressionValue { .. } => {
-                continue;
-            }
+            TextLabelBinding::ParameterValue { .. }
+            | TextLabelBinding::ExpressionValue { .. }
+            | TextLabelBinding::PointExpressionValue { .. } => continue,
             TextLabelBinding::PolygonBoundaryParameter { point_index, .. } => point_index,
             TextLabelBinding::SegmentParameter { point_index, .. } => point_index,
             TextLabelBinding::CircleParameter { point_index, .. } => point_index,

@@ -296,6 +296,21 @@
     return Math.max(0, Math.round(depth));
   }
 
+  function formatSequenceValue(value) {
+    if (!Number.isFinite(value)) {
+      return "-";
+    }
+    return Math.abs(value - Math.round(value)) < 0.005
+      ? String(Math.round(value))
+      : value.toFixed(2);
+  }
+
+  function evaluateRecursiveExpression(expr, parameterName, currentValue, parameters) {
+    const nextParameters = new Map(parameters);
+    nextParameters.set(parameterName, currentValue);
+    return evaluateExpr(expr, 0, nextParameters);
+  }
+
   /** @param {ViewerEnv} env */
   function rebuildIterationPoints(env, scene, parameters) {
     const families = env.sourceScene.pointIterations || [];
@@ -360,6 +375,62 @@
             },
           });
         }
+      }
+    });
+  }
+
+  /** @param {ViewerEnv} env */
+  function rebuildIteratedLabels(env, scene, parameters) {
+    const families = env.sourceScene.labelIterations || [];
+    if (families.length === 0) {
+      return;
+    }
+    const baseCount = env.sourceScene.labels.length;
+    scene.labels = scene.labels.slice(0, baseCount);
+
+    families.forEach((family) => {
+      if (family.kind !== "point-expression") {
+        return;
+      }
+      const seedLabel = scene.labels[family.seedLabelIndex];
+      const seedAnchor = seedLabel?.anchor;
+      if (!seedLabel || typeof seedAnchor?.pointIndex !== "number") {
+        return;
+      }
+      const depth = pointIterationDepth({
+        depth: family.depth,
+        parameterName: family.depthParameterName,
+      }, parameters);
+      let currentValue = parameters.get(family.parameterName);
+      if (!Number.isFinite(currentValue)) {
+        return;
+      }
+      for (let step = 0; step <= depth; step += 1) {
+        const value = evaluateRecursiveExpression(
+          family.expr,
+          family.parameterName,
+          currentValue,
+          parameters,
+        );
+        if (!Number.isFinite(value)) {
+          break;
+        }
+        const pointIndex = family.pointSeedIndex + step;
+        if (!scene.points[pointIndex]) {
+          break;
+        }
+        if (step === 0) {
+          seedLabel.text = formatSequenceValue(value);
+          seedLabel.anchor = { ...seedAnchor, pointIndex };
+        } else {
+          scene.labels.push({
+            ...seedLabel,
+            text: formatSequenceValue(value),
+            binding: null,
+            anchor: { ...seedAnchor, pointIndex },
+          });
+        }
+        currentValue = value;
       }
     });
   }
@@ -594,6 +665,19 @@
         if (value !== null && value !== undefined) {
           label.text = `${label.binding.name} = ${env.formatNumber(value)}`;
         }
+      } else if (label.binding.kind === "point-expression-value") {
+        const currentValue = parameters.get(label.binding.parameterName);
+        if (Number.isFinite(currentValue)) {
+          const value = evaluateRecursiveExpression(
+            label.binding.expr,
+            label.binding.parameterName,
+            currentValue,
+            parameters,
+          );
+          if (value !== null) {
+            label.text = formatSequenceValue(value);
+          }
+        }
       } else if (label.binding.kind === "expression-value") {
         const value = evaluateExpr(label.binding.expr, 0, parameters);
         if (value !== null) {
@@ -669,6 +753,7 @@
         });
       });
       rebuildIterationPoints(env, draft, parameters);
+      rebuildIteratedLabels(env, draft, parameters);
     });
   }
 
