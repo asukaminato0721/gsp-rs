@@ -41,7 +41,13 @@ pub(crate) fn decode_label_name_raw(file: &GspFile, group: &ObjectGroup) -> Opti
         return None;
     }
     let name_bytes = &payload[24..24 + name_len];
-    Some(String::from_utf8_lossy(name_bytes).to_string())
+    Some(
+        String::from_utf8_lossy(name_bytes)
+            .replace("[1]", "₁")
+            .replace("[2]", "₂")
+            .replace("[3]", "₃")
+            .replace("[4]", "₄"),
+    )
 }
 
 pub(crate) fn decode_0907_anchor(file: &GspFile, group: &ObjectGroup) -> Option<PointRecord> {
@@ -244,7 +250,7 @@ pub(crate) fn decode_transform_anchor_raw(
             let binding = decode_transform_binding(file, group)?;
             let source = anchors.get(binding.source_group_index)?.clone()?;
             let center = anchors.get(binding.center_group_index)?.clone()?;
-            let TransformBindingKind::Rotate { angle_degrees } = binding.kind else {
+            let TransformBindingKind::Rotate { angle_degrees, .. } = binding.kind else {
                 return None;
             };
             let radians = angle_degrees.to_radians();

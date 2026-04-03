@@ -1021,6 +1021,14 @@ fn preserves_translation_and_right_angle_rotation_in_transform_fixture() {
     let file = GspFile::parse(data).expect("fixture parses");
     let scene = build_scene(&file);
 
+    assert_eq!(
+        scene.lines.len(),
+        1,
+        "expected only the reflection axis line"
+    );
+    assert_eq!(scene.parameters.len(), 1, "expected one angle parameter");
+    assert_eq!(scene.parameters[0].name, "t₁");
+    assert!((scene.parameters[0].value - 90.0).abs() < 1e-6);
     assert!(
         scene
             .points
@@ -1032,9 +1040,14 @@ fn preserves_translation_and_right_angle_rotation_in_transform_fixture() {
         Some(crate::runtime::scene::ShapeBinding::TranslatePolygon { .. })
     )));
     assert!(scene.polygons.iter().any(|polygon| matches!(
-        polygon.binding,
-        Some(crate::runtime::scene::ShapeBinding::RotatePolygon { angle_degrees, .. })
-            if (angle_degrees - 90.0).abs() < 1e-3
+        &polygon.binding,
+        Some(crate::runtime::scene::ShapeBinding::RotatePolygon {
+            angle_degrees,
+            parameter_name,
+            ..
+        })
+            if parameter_name.as_deref() == Some("t₁")
+                && (angle_degrees - 90.0).abs() < 1e-3
     )));
 }
 

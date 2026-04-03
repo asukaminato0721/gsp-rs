@@ -40,6 +40,7 @@ pub(crate) fn collect_rotated_line_shapes(
                     source_index: path.refs.first()?.checked_sub(1)?,
                     center_index: binding.center_group_index,
                     angle_degrees: binding_angle_degrees(&binding.kind)?,
+                    parameter_name: binding_parameter_name(&binding.kind),
                 }),
             })
         })
@@ -160,6 +161,7 @@ pub(crate) fn collect_rotated_circle_shapes(
                     source_index: path.refs.first()?.checked_sub(1)?,
                     center_index: binding.center_group_index,
                     angle_degrees: binding_angle_degrees(&binding.kind)?,
+                    parameter_name: binding_parameter_name(&binding.kind),
                 }),
             })
         })
@@ -285,6 +287,7 @@ pub(crate) fn collect_rotated_polygon_shapes(
                     source_index: path.refs.first()?.checked_sub(1)?,
                     center_index: binding.center_group_index,
                     angle_degrees: binding_angle_degrees(&binding.kind)?,
+                    parameter_name: binding_parameter_name(&binding.kind),
                 }),
             })
         })
@@ -417,13 +420,20 @@ pub(crate) fn collect_reflected_polygon_shapes(
 
 fn binding_angle_degrees(binding: &TransformBindingKind) -> Option<f64> {
     match binding {
-        TransformBindingKind::Rotate { angle_degrees } => Some(*angle_degrees),
+        TransformBindingKind::Rotate { angle_degrees, .. } => Some(*angle_degrees),
         TransformBindingKind::Scale { .. } => None,
     }
 }
 
 fn binding_angle_radians(binding: &TransformBindingKind) -> Option<f64> {
     binding_angle_degrees(binding).map(f64::to_radians)
+}
+
+fn binding_parameter_name(binding: &TransformBindingKind) -> Option<String> {
+    match binding {
+        TransformBindingKind::Rotate { parameter_name, .. } => parameter_name.clone(),
+        TransformBindingKind::Scale { .. } => None,
+    }
 }
 
 fn translation_delta(

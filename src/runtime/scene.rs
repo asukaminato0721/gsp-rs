@@ -226,6 +226,7 @@ pub(crate) enum LineBinding {
         source_index: usize,
         center_index: usize,
         angle_degrees: f64,
+        parameter_name: Option<String>,
     },
     ScaleLine {
         source_index: usize,
@@ -283,6 +284,7 @@ pub(crate) enum ScenePointBinding {
         source_index: usize,
         center_index: usize,
         angle_degrees: f64,
+        parameter_name: Option<String>,
     },
     Scale {
         source_index: usize,
@@ -331,11 +333,13 @@ pub(crate) enum ShapeBinding {
         source_index: usize,
         center_index: usize,
         angle_degrees: f64,
+        parameter_name: Option<String>,
     },
     RotateCircle {
         source_index: usize,
         center_index: usize,
         angle_degrees: f64,
+        parameter_name: Option<String>,
     },
     ScalePolygon {
         source_index: usize,

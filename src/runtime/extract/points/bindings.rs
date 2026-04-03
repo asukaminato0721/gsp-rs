@@ -35,8 +35,13 @@ pub(crate) struct TransformBinding {
 }
 
 pub(crate) enum TransformBindingKind {
-    Rotate { angle_degrees: f64 },
-    Scale { factor: f64 },
+    Rotate {
+        angle_degrees: f64,
+        parameter_name: Option<String>,
+    },
+    Scale {
+        factor: f64,
+    },
 }
 
 fn iteration_depth(file: &GspFile, group: &ObjectGroup, default_depth: usize) -> usize {

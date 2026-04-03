@@ -1,4 +1,4 @@
-use super::decode::decode_label_name;
+use super::decode::{decode_label_name, find_indexed_path};
 use crate::format::{GspFile, ObjectGroup, PointRecord, decode_point_record, read_f64, read_u16};
 use crate::runtime::scene::{SceneParameter, TextLabel};
 
@@ -50,17 +50,26 @@ pub(super) fn collect_non_graph_parameters(
 ) -> Vec<SceneParameter> {
     groups
         .iter()
-        .filter_map(|group| decode_non_graph_parameter(file, group, labels))
+        .enumerate()
+        .filter_map(|(group_index, group)| {
+            decode_non_graph_parameter(file, groups, group_index, group, labels)
+        })
         .collect()
 }
 
 fn decode_non_graph_parameter(
     file: &GspFile,
+    groups: &[ObjectGroup],
+    group_index: usize,
     group: &ObjectGroup,
     labels: &mut [TextLabel],
 ) -> Option<SceneParameter> {
     let name = editable_non_graph_parameter_name_for_group(file, group)?;
-    let value = decode_non_graph_parameter_value_for_group(file, group)?;
+    let value = if is_angle_parameter_group(file, groups, group_index) {
+        decode_angle_parameter_value_for_group(file, group)?
+    } else {
+        decode_non_graph_parameter_value_for_group(file, group)?
+    };
     let label_index = labels.iter().position(|label| label.text == name);
     if let Some(index) = label_index {
         labels[index].text = format!("{name} = {:.2}", value);
@@ -74,6 +83,15 @@ fn decode_non_graph_parameter(
 
 fn is_slider_parameter_name(name: &str) -> bool {
     name.contains('₁') || name.contains('₂') || name.contains('₃') || name.contains('₄')
+}
+
+fn is_angle_parameter_group(file: &GspFile, groups: &[ObjectGroup], target_index: usize) -> bool {
+    let target_ordinal = target_index + 1;
+    groups.iter().any(|group| {
+        (group.header.class_id & 0xffff) == 29
+            && find_indexed_path(file, group)
+                .is_some_and(|path| path.refs.get(2).copied() == Some(target_ordinal))
+    })
 }
 
 pub(super) fn is_non_graph_parameter_group(group: &ObjectGroup) -> bool {
@@ -155,8 +173,8 @@ pub(super) fn decode_angle_parameter_value_for_group(
         && (step - std::f64::consts::FRAC_PI_4).abs() < 1e-6
         && current < step * 0.5
     {
-        return Some(step * 2.0);
+        return Some((step * 2.0).to_degrees());
     }
 
-    Some(current)
+    Some(current.to_degrees())
 }

@@ -43,7 +43,7 @@ pub(crate) fn decode_parameter_rotation_anchor_raw(
     let binding = decode_parameter_rotation_binding(file, groups, group)?;
     let source = anchors.get(binding.source_group_index)?.clone()?;
     let center = anchors.get(binding.center_group_index)?.clone()?;
-    let TransformBindingKind::Rotate { angle_degrees } = binding.kind else {
+    let TransformBindingKind::Rotate { angle_degrees, .. } = binding.kind else {
         return None;
     };
     Some(rotate_around(&source, &center, angle_degrees.to_radians()))

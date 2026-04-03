@@ -55,7 +55,7 @@ use super::functions::{
 };
 use super::geometry::{Bounds, GraphTransform, distance_world, include_line_bounds, to_world};
 use super::scene::{
-    LabelIterationFamily, LineIterationFamily, LineShape, PointIterationFamily,
+    LabelIterationFamily, LineBinding, LineIterationFamily, LineShape, PointIterationFamily,
     PolygonIterationFamily, PolygonShape, Scene, SceneCircle, ScenePoint, ScenePointConstraint,
     TextLabel,
 };
@@ -761,25 +761,66 @@ fn assemble_scene(
     parameters: Vec<super::scene::SceneParameter>,
     functions: Vec<super::scene::SceneFunction>,
 ) -> Scene {
-    let raw_lines = dedupe_line_shapes(
-        shapes
-            .rotational_iteration_lines
-            .into_iter()
-            .chain(shapes.polylines)
-            .chain(shapes.direct_lines)
-            .chain(shapes.rays)
-            .chain(shapes.rotated_lines)
-            .chain(shapes.scaled_lines)
-            .chain(shapes.reflected_lines)
-            .chain(shapes.derived_segments)
-            .chain(shapes.measurements)
-            .chain(shapes.coordinate_traces)
-            .chain(shapes.axes)
-            .chain(analysis.function_plots)
-            .chain(shapes.synthetic_axes)
-            .chain(shapes.iteration_lines)
-            .chain(shapes.carried_iteration_lines)
-            .collect(),
+    let CollectedShapes {
+        polylines,
+        direct_lines,
+        rays,
+        derived_segments,
+        rotated_lines,
+        scaled_lines,
+        reflected_lines,
+        rotational_iteration_lines,
+        carried_iteration_lines,
+        carried_iteration_polygons,
+        measurements,
+        coordinate_traces,
+        axes,
+        iteration_polygon_indices: _,
+        polygons,
+        circles,
+        rotated_circles,
+        transformed_circles,
+        reflected_circles,
+        translated_polygons,
+        rotated_polygons,
+        transformed_polygons,
+        reflected_polygons,
+        iteration_lines,
+        iteration_polygons,
+        synthetic_axes,
+    } = shapes;
+
+    let raw_polygons = polygons
+        .into_iter()
+        .chain(translated_polygons)
+        .chain(rotated_polygons)
+        .chain(transformed_polygons)
+        .chain(reflected_polygons)
+        .chain(iteration_polygons)
+        .chain(carried_iteration_polygons)
+        .collect::<Vec<_>>();
+
+    let raw_lines = suppress_polygon_edge_segments(
+        dedupe_line_shapes(
+            rotational_iteration_lines
+                .into_iter()
+                .chain(polylines)
+                .chain(direct_lines)
+                .chain(rays)
+                .chain(rotated_lines)
+                .chain(scaled_lines)
+                .chain(reflected_lines)
+                .chain(derived_segments)
+                .chain(measurements)
+                .chain(coordinate_traces)
+                .chain(axes)
+                .chain(analysis.function_plots)
+                .chain(synthetic_axes)
+                .chain(iteration_lines)
+                .chain(carried_iteration_lines)
+                .collect(),
+        ),
+        &raw_polygons,
     );
 
     Scene {
@@ -796,15 +837,8 @@ fn assemble_scene(
             .into_iter()
             .map(|line| world_line_shape(line, &analysis.graph_ref, &bounds_data.bounds))
             .collect(),
-        polygons: shapes
-            .polygons
+        polygons: raw_polygons
             .into_iter()
-            .chain(shapes.translated_polygons)
-            .chain(shapes.rotated_polygons)
-            .chain(shapes.transformed_polygons)
-            .chain(shapes.reflected_polygons)
-            .chain(shapes.iteration_polygons)
-            .chain(shapes.carried_iteration_polygons)
             .map(|polygon| PolygonShape {
                 points: polygon
                     .points
@@ -815,12 +849,11 @@ fn assemble_scene(
                 binding: polygon.binding,
             })
             .collect(),
-        circles: shapes
-            .circles
+        circles: circles
             .into_iter()
-            .chain(shapes.rotated_circles)
-            .chain(shapes.transformed_circles)
-            .chain(shapes.reflected_circles)
+            .chain(rotated_circles)
+            .chain(transformed_circles)
+            .chain(reflected_circles)
             .map(|circle| SceneCircle {
                 center: to_world(&circle.center, &analysis.graph_ref),
                 radius_point: to_world(&circle.radius_point, &analysis.graph_ref),
@@ -857,6 +890,49 @@ fn assemble_scene(
         parameters,
         functions,
     }
+}
+fn suppress_polygon_edge_segments(
+    lines: Vec<LineShape>,
+    polygons: &[PolygonShape],
+) -> Vec<LineShape> {
+    lines
+        .into_iter()
+        .filter(|line| {
+            matches!(line.binding, Some(LineBinding::Segment { .. }))
+                .then(|| {
+                    !polygons
+                        .iter()
+                        .any(|polygon| polygon_has_matching_edge(polygon, line))
+                })
+                .unwrap_or(true)
+        })
+        .collect()
+}
+
+fn polygon_has_matching_edge(polygon: &PolygonShape, line: &LineShape) -> bool {
+    if polygon.points.len() < 3 || line.points.len() != 2 {
+        return false;
+    }
+    polygon
+        .points
+        .iter()
+        .zip(polygon.points.iter().cycle().skip(1))
+        .take(polygon.points.len())
+        .any(|(start, end)| points_match_segment(start, end, &line.points[0], &line.points[1]))
+}
+
+fn points_match_segment(
+    left_start: &crate::format::PointRecord,
+    left_end: &crate::format::PointRecord,
+    right_start: &crate::format::PointRecord,
+    right_end: &crate::format::PointRecord,
+) -> bool {
+    points_equal(left_start, right_start) && points_equal(left_end, right_end)
+        || points_equal(left_start, right_end) && points_equal(left_end, right_start)
+}
+
+fn points_equal(left: &crate::format::PointRecord, right: &crate::format::PointRecord) -> bool {
+    (left.x - right.x).abs() < 1e-6 && (left.y - right.y).abs() < 1e-6
 }
 
 pub(crate) fn build_scene(file: &GspFile) -> Scene {
