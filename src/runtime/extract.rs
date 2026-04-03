@@ -41,7 +41,7 @@ use self::shapes::{
     collect_derived_segments, collect_iteration_shapes, collect_line_shapes,
     collect_polygon_shapes, collect_raw_object_anchors, collect_reflected_circle_shapes,
     collect_reflected_line_shapes, collect_reflected_polygon_shapes, collect_rotated_circle_shapes,
-    collect_rotated_line_shapes, collect_rotated_polygon_shapes,
+    collect_rotated_line_shapes, collect_rotated_polygon_shapes, collect_three_point_arc_shapes,
     collect_rotational_iteration_lines, collect_scaled_line_shapes,
     collect_transformed_circle_shapes, collect_transformed_polygon_shapes,
     collect_translated_polygon_shapes,
@@ -56,8 +56,8 @@ use super::functions::{
 use super::geometry::{Bounds, GraphTransform, distance_world, include_line_bounds, to_world};
 use super::scene::{
     LabelIterationFamily, LineBinding, LineIterationFamily, LineShape, PointIterationFamily,
-    PolygonIterationFamily, PolygonShape, Scene, SceneCircle, ScenePoint, ScenePointConstraint,
-    TextLabel,
+    PolygonIterationFamily, PolygonShape, Scene, SceneArc, SceneCircle, ScenePoint,
+    ScenePointConstraint, TextLabel,
 };
 
 pub(crate) use self::decode::find_indexed_path;
@@ -68,6 +68,12 @@ struct CircleShape {
     radius_point: PointRecord,
     color: [u8; 4],
     binding: Option<super::scene::ShapeBinding>,
+}
+
+#[derive(Debug, Clone)]
+struct ArcShape {
+    points: [PointRecord; 3],
+    color: [u8; 4],
 }
 
 struct SceneAnalysis {
@@ -101,6 +107,7 @@ struct CollectedShapes {
     iteration_polygon_indices: BTreeSet<usize>,
     polygons: Vec<PolygonShape>,
     circles: Vec<CircleShape>,
+    arcs: Vec<ArcShape>,
     rotated_circles: Vec<CircleShape>,
     transformed_circles: Vec<CircleShape>,
     reflected_circles: Vec<CircleShape>,
@@ -292,6 +299,7 @@ fn collect_scene_shapes(
     })
     .collect::<Vec<_>>();
     let circles = collect_circle_shapes(file, groups, &analysis.raw_anchors);
+    let arcs = collect_three_point_arc_shapes(file, groups, &analysis.raw_anchors);
     let rotated_circles = collect_rotated_circle_shapes(file, groups, &analysis.raw_anchors);
     let transformed_circles =
         collect_transformed_circle_shapes(file, groups, &analysis.raw_anchors);
@@ -322,6 +330,7 @@ fn collect_scene_shapes(
         iteration_polygon_indices,
         polygons,
         circles,
+        arcs,
         rotated_circles,
         transformed_circles,
         reflected_circles,
@@ -635,6 +644,17 @@ fn build_world_data(
                         -*unit_y
                     },
                 },
+                ScenePointConstraint::OnArc {
+                    start_index,
+                    mid_index,
+                    end_index,
+                    t,
+                } => ScenePointConstraint::OnArc {
+                    start_index: *start_index,
+                    mid_index: *mid_index,
+                    end_index: *end_index,
+                    t: *t,
+                },
             },
             binding: point.binding.clone(),
         })
@@ -744,6 +764,7 @@ fn compute_scene_bounds(
         .chain(shapes.reflected_circles.iter())
         .cloned()
         .collect::<Vec<_>>();
+    let bounds_arcs = shapes.arcs.clone();
 
     let mut bounds = collect_bounds(
         &analysis.graph_ref,
@@ -752,6 +773,7 @@ fn compute_scene_bounds(
         &[],
         &bounds_polygons,
         &bounds_circles,
+        &bounds_arcs,
         labels,
         world_point_positions,
     );
@@ -809,6 +831,7 @@ fn assemble_scene(
         iteration_polygon_indices: _,
         polygons,
         circles,
+        arcs,
         rotated_circles,
         transformed_circles,
         reflected_circles,
@@ -890,6 +913,13 @@ fn assemble_scene(
                 radius_point: to_world(&circle.radius_point, &analysis.graph_ref),
                 color: circle.color,
                 binding: circle.binding,
+            })
+            .collect(),
+        arcs: arcs
+            .into_iter()
+            .map(|arc| SceneArc {
+                points: arc.points.map(|point| to_world(&point, &analysis.graph_ref)),
+                color: arc.color,
             })
             .collect(),
         labels: labels

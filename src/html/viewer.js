@@ -211,6 +211,11 @@
         radiusPoint: attachPointRef(circle.radiusPoint),
         binding: circle.binding ? { ...circle.binding } : null,
       })),
+      arcs: (scene.arcs || []).map((arc) => ({
+        color: arc.color,
+        visible: true,
+        points: arc.points.map(attachPointRef),
+      })),
       labels: scene.labels.map((label) => ({
         text: label.text,
         color: label.color,

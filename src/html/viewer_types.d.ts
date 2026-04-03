@@ -45,6 +45,7 @@ type SceneData = {
   lines: any[];
   polygons: any[];
   circles: any[];
+  arcs: any[];
   labels: any[];
   pointIterations?: Array<
     | {
@@ -200,6 +201,17 @@ type ViewerSceneModule = {
   projectToSegment: (
     point: Point,
     start: Point,
+    end: Point,
+  ) => {
+    t: number;
+    projected: Point;
+    distanceSquared: number;
+  } | null;
+  pointOnThreePointArc: (start: Point, mid: Point, end: Point, t: number) => Point | null;
+  projectToThreePointArc: (
+    point: Point,
+    start: Point,
+    mid: Point,
     end: Point,
   ) => {
     t: number;

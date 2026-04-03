@@ -234,6 +234,7 @@ pub enum GroupKind {
     LabelIterationSeed,
     ParameterAnchor,
     ParameterControlledPoint,
+    ThreePointArc,
     CoordinateTrace,
     AxisLine,
     DerivedSegment75,
@@ -282,6 +283,7 @@ impl From<u16> for GroupKind {
             90 => Self::LabelIterationSeed,
             94 => Self::ParameterAnchor,
             95 => Self::ParameterControlledPoint,
+            81 => Self::ThreePointArc,
             97 => Self::CoordinateTrace,
             other => Self::Unknown(other),
         }
@@ -330,6 +332,7 @@ impl GroupKind {
             Self::LabelIterationSeed => 90,
             Self::ParameterAnchor => 94,
             Self::ParameterControlledPoint => 95,
+            Self::ThreePointArc => 81,
             Self::CoordinateTrace => 97,
             Self::Unknown(other) => other,
         }

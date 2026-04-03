@@ -14,7 +14,7 @@ pub(super) fn render_standalone_html_document(scene: &Scene, width: u32, height:
         format!("{VIEWER_SCENE_JS}\n{VIEWER_RENDER_JS}\n{VIEWER_DRAG_JS}\n{VIEWER_DYNAMICS_JS}");
     let frame_width = width + 40;
     let shape_count =
-        scene.lines.len() + scene.polygons.len() + scene.circles.len() + scene.labels.len();
+        scene.lines.len() + scene.polygons.len() + scene.circles.len() + scene.arcs.len() + scene.labels.len();
     let _ = write!(
         html,
         r#"<!doctype html>

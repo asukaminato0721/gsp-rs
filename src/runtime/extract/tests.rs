@@ -427,6 +427,49 @@ fn preserves_bisector_gsp() {
 }
 
 #[test]
+fn preserves_three_point_arc_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/static/three_point_arc.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.points.len(), 3, "expected three defining points");
+    assert_eq!(scene.arcs.len(), 1, "expected one three-point arc");
+    assert!(scene.lines.is_empty(), "expected arc fixture not to fall back to a line");
+
+    let arc = &scene.arcs[0];
+    assert_eq!(arc.color, [0, 128, 0, 255]);
+    assert!(
+        arc.points
+            .iter()
+            .zip(scene.points.iter())
+            .all(|(arc_point, scene_point)| {
+                (arc_point.x - scene_point.position.x).abs() < 1e-6
+                    && (arc_point.y - scene_point.position.y).abs() < 1e-6
+            }),
+        "expected arc to preserve the three source points"
+    );
+}
+
+#[test]
+fn preserves_three_point_arc_point_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/static/three_point_arc_point.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.arcs.len(), 1, "expected one three-point arc");
+    assert_eq!(scene.points.len(), 4, "expected three defining points and one constrained point");
+    assert!(scene.points.iter().any(|point| matches!(
+        point.constraint,
+        ScenePointConstraint::OnArc {
+            start_index: 0,
+            mid_index: 1,
+            end_index: 2,
+            t,
+        } if (t - 0.201784919136623).abs() < 1e-9
+    )));
+}
+
+#[test]
 fn preserves_point_segment_value_segment_point_gsp() {
     let data =
         include_bytes!("../../../tests/fixtures/gsp/static/point_segment_value_segment_point.gsp");

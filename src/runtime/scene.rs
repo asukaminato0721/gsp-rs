@@ -14,6 +14,7 @@ pub(crate) struct Scene {
     pub(crate) lines: Vec<LineShape>,
     pub(crate) polygons: Vec<PolygonShape>,
     pub(crate) circles: Vec<SceneCircle>,
+    pub(crate) arcs: Vec<SceneArc>,
     pub(crate) labels: Vec<TextLabel>,
     pub(crate) points: Vec<ScenePoint>,
     pub(crate) point_iterations: Vec<PointIterationFamily>,
@@ -193,6 +194,12 @@ pub(crate) enum ScenePointConstraint {
         unit_x: f64,
         unit_y: f64,
     },
+    OnArc {
+        start_index: usize,
+        mid_index: usize,
+        end_index: usize,
+        t: f64,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -325,6 +332,12 @@ pub(crate) struct SceneCircle {
     pub(crate) radius_point: PointRecord,
     pub(crate) color: [u8; 4],
     pub(crate) binding: Option<ShapeBinding>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SceneArc {
+    pub(crate) points: [PointRecord; 3],
+    pub(crate) color: [u8; 4],
 }
 
 #[derive(Debug, Clone)]

@@ -7,7 +7,9 @@ use super::{
     GspFile, ObjectGroup, PointRecord, TransformBindingKind,
     decode_non_graph_parameter_value_for_group, decode_parameter_rotation_binding, read_f64,
 };
-use crate::runtime::geometry::{GraphTransform, lerp_point, reflect_across_line, rotate_around};
+use crate::runtime::geometry::{
+    GraphTransform, lerp_point, point_on_three_point_arc, reflect_across_line, rotate_around,
+};
 
 pub(crate) fn decode_regular_polygon_vertex_anchor_raw(
     file: &GspFile,
@@ -333,6 +335,12 @@ pub(crate) fn decode_point_constraint_anchor(
                 constraint.unit_x,
                 constraint.unit_y,
             ))
+        }
+        RawPointConstraint::Arc(constraint) => {
+            let start = anchors.get(constraint.start_group_index)?.clone()?;
+            let mid = anchors.get(constraint.mid_group_index)?.clone()?;
+            let end = anchors.get(constraint.end_group_index)?.clone()?;
+            point_on_three_point_arc(&start, &mid, &end, constraint.t)
         }
     }
 }
