@@ -209,6 +209,16 @@ pub(crate) enum LineBinding {
         start_index: usize,
         end_index: usize,
     },
+    AngleBisectorRay {
+        start_index: usize,
+        vertex_index: usize,
+        end_index: usize,
+    },
+    PerpendicularLine {
+        through_index: usize,
+        line_start_index: usize,
+        line_end_index: usize,
+    },
     Line {
         start_index: usize,
         end_index: usize,

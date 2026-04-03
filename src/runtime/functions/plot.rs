@@ -23,7 +23,7 @@ pub(crate) fn collect_function_plots(
     let mut plots = Vec::new();
     for group in groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 72)
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::FunctionPlot)
     {
         let Some(path) = find_indexed_path(file, group) else {
             continue;
@@ -80,7 +80,7 @@ pub(crate) fn collect_function_plot_domain(
     let mut found = false;
     for group in groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 72)
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::FunctionPlot)
     {
         let Some(descriptor) = group
             .records
@@ -198,7 +198,7 @@ pub(crate) fn synthesize_function_labels(
 
     let parameter_entries = groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 72)
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::FunctionPlot)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let definition_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
@@ -219,7 +219,7 @@ pub(crate) fn synthesize_function_labels(
 
     let base_entries = groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 72)
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::FunctionPlot)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let definition_ordinal = *path.refs.first()?;
@@ -277,13 +277,15 @@ pub(crate) fn synthesize_function_labels(
 
     let derivative_entries = groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 78)
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::DerivativeFunction)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let base_definition_ordinal = *path.refs.first()?;
             let base_index = groups
                 .iter()
-                .filter(|candidate| (candidate.header.class_id & 0xffff) == 72)
+                .filter(|candidate| {
+                    (candidate.header.kind()) == crate::format::GroupKind::FunctionPlot
+                })
                 .filter_map(|candidate| {
                     find_indexed_path(file, candidate)
                         .and_then(|candidate_path| candidate_path.refs.first().copied())

@@ -333,6 +333,100 @@ fn preserves_ray_gsp() {
 }
 
 #[test]
+fn preserves_perpendicular_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/static/perpendicular.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.lines.len(), 2, "expected base segment and perpendicular line");
+    assert_eq!(scene.points.len(), 2, "expected two defining points");
+
+    let base = scene
+        .lines
+        .iter()
+        .find(|line| matches!(line.binding, Some(LineBinding::Segment { .. })))
+        .expect("expected source segment");
+    let perpendicular = scene
+        .lines
+        .iter()
+        .find(|line| matches!(line.binding, Some(LineBinding::PerpendicularLine { .. })))
+        .expect("expected synthesized perpendicular line");
+
+    let base_dx = base.points[1].x - base.points[0].x;
+    let base_dy = base.points[1].y - base.points[0].y;
+    let perp_dx = perpendicular.points[1].x - perpendicular.points[0].x;
+    let perp_dy = perpendicular.points[1].y - perpendicular.points[0].y;
+    let base_len = (base_dx * base_dx + base_dy * base_dy).sqrt();
+    let perp_len = (perp_dx * perp_dx + perp_dy * perp_dy).sqrt();
+    let dot = base_dx * perp_dx + base_dy * perp_dy;
+
+    assert!(
+        (dot / (base_len * perp_len)).abs() < 1e-6,
+        "expected perpendicular directions, got base=({base_dx},{base_dy}) and line=({perp_dx},{perp_dy})"
+    );
+
+    let through = &scene.points[1].position;
+    let distance = ((through.x - perpendicular.points[0].x) * perp_dy
+        - (through.y - perpendicular.points[0].y) * perp_dx)
+        .abs()
+        / perp_len;
+    assert!(
+        distance < 1e-6,
+        "expected perpendicular line to pass through point B, distance={distance}"
+    );
+}
+
+#[test]
+fn preserves_bisector_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/static/bisector.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.lines.len(), 1, "expected one angle bisector");
+    assert_eq!(scene.points.len(), 3, "expected three defining points");
+
+    let bisector = scene
+        .lines
+        .iter()
+        .find(|line| matches!(line.binding, Some(LineBinding::AngleBisectorRay { .. })))
+        .expect("expected synthesized angle bisector ray");
+
+    let start = &scene.points[0].position;
+    let vertex = &scene.points[1].position;
+    let end = &scene.points[2].position;
+    assert!(
+        (bisector.points[0].x - vertex.x).abs() < 1e-6
+            && (bisector.points[0].y - vertex.y).abs() < 1e-6,
+        "expected bisector ray to start at the vertex"
+    );
+    let bisector_dx = bisector.points[1].x - bisector.points[0].x;
+    let bisector_dy = bisector.points[1].y - bisector.points[0].y;
+    let bisector_len = (bisector_dx * bisector_dx + bisector_dy * bisector_dy).sqrt();
+    let start_dx = start.x - vertex.x;
+    let start_dy = start.y - vertex.y;
+    let start_len = (start_dx * start_dx + start_dy * start_dy).sqrt();
+    let end_dx = end.x - vertex.x;
+    let end_dy = end.y - vertex.y;
+    let end_len = (end_dx * end_dx + end_dy * end_dy).sqrt();
+
+    let distance = ((vertex.x - bisector.points[0].x) * bisector_dy
+        - (vertex.y - bisector.points[0].y) * bisector_dx)
+        .abs()
+        / bisector_len;
+    assert!(
+        distance < 1e-6,
+        "expected bisector ray to pass through the vertex, distance={distance}"
+    );
+
+    let start_alignment = (start_dx * bisector_dx + start_dy * bisector_dy) / (start_len * bisector_len);
+    let end_alignment = (end_dx * bisector_dx + end_dy * bisector_dy) / (end_len * bisector_len);
+    assert!(
+        (start_alignment - end_alignment).abs() < 1e-6,
+        "expected equal angles to both rays, got start={start_alignment} end={end_alignment}"
+    );
+}
+
+#[test]
 fn preserves_point_segment_value_segment_point_gsp() {
     let data =
         include_bytes!("../../../tests/fixtures/gsp/static/point_segment_value_segment_point.gsp");

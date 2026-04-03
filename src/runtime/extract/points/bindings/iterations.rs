@@ -22,7 +22,7 @@ pub(crate) fn collect_point_iteration_points(
 
     for group in groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 77)
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::IterationBinding)
     {
         let Some(path) = find_indexed_path(file, group) else {
             continue;
@@ -45,15 +45,21 @@ pub(crate) fn collect_point_iteration_points(
         let Some(iter_group) = groups.get(iter_group_index) else {
             continue;
         };
-        match iter_group.header.class_id & 0xffff {
-            76 => {
+        match iter_group.header.kind() {
+            crate::format::GroupKind::AffineIteration => {
                 let depth = iteration_depth(file, iter_group, 3);
                 if depth == 0 {
                     continue;
                 }
                 let seed_group = &groups[seed_group_index];
-                if matches!(seed_group.header.class_id & 0xffff, 27 | 29) {
-                    let rotation = if (seed_group.header.class_id & 0xffff) == 29 {
+                if matches!(
+                    seed_group.header.kind(),
+                    crate::format::GroupKind::Rotation
+                        | crate::format::GroupKind::ParameterRotation
+                ) {
+                    let rotation = if (seed_group.header.kind())
+                        == crate::format::GroupKind::ParameterRotation
+                    {
                         decode_parameter_rotation_binding(file, groups, seed_group)
                     } else {
                         decode_transform_binding(file, seed_group)
@@ -157,7 +163,7 @@ pub(crate) fn collect_point_iteration_points(
                     parameter_name: None,
                 });
             }
-            89 => {
+            crate::format::GroupKind::RegularPolygonIteration => {
                 let Some(iter_path) = find_indexed_path(file, iter_group) else {
                     continue;
                 };
@@ -265,7 +271,7 @@ fn parameter_iteration_step(
         return None;
     }
     let parameter_group = groups.get(path.refs[0].checked_sub(1)?)?;
-    if (parameter_group.header.class_id & 0xffff) != 0 {
+    if (parameter_group.header.kind()) != crate::format::GroupKind::Point {
         return None;
     }
     let parameter_name = editable_non_graph_parameter_name_for_group(file, parameter_group)?;

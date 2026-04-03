@@ -161,12 +161,20 @@ fn analyze_scene(
         Vec::new()
     };
     let has_function_plots = !function_plots.is_empty();
-    let has_coordinate_objects = groups
-        .iter()
-        .any(|group| matches!(group.header.class_id & 0xffff, 69 | 97));
-    let has_iteration_helpers = groups
-        .iter()
-        .any(|group| matches!(group.header.class_id & 0xffff, 76 | 77 | 89));
+    let has_coordinate_objects = groups.iter().any(|group| {
+        matches!(
+            group.header.kind(),
+            crate::format::GroupKind::CoordinatePoint | crate::format::GroupKind::CoordinateTrace
+        )
+    });
+    let has_iteration_helpers = groups.iter().any(|group| {
+        matches!(
+            group.header.kind(),
+            crate::format::GroupKind::AffineIteration
+                | crate::format::GroupKind::IterationBinding
+                | crate::format::GroupKind::RegularPolygonIteration
+        )
+    });
     let large_non_graph = !graph_mode && file.records.len() > 10_000;
 
     SceneAnalysis {
@@ -196,14 +204,29 @@ fn collect_scene_shapes(
         file,
         groups,
         &analysis.raw_anchors,
-        &[2],
+        &[crate::format::GroupKind::Segment],
         !analysis.graph_mode && !analysis.large_non_graph,
         &suppressed_carried_polygon_segments,
     );
-    let direct_lines = collect_bound_line_shapes(file, groups, &analysis.raw_anchors, 63);
-    let rays = collect_bound_line_shapes(file, groups, &analysis.raw_anchors, 64);
+    let direct_lines = collect_bound_line_shapes(
+        file,
+        groups,
+        &analysis.raw_anchors,
+        crate::format::GroupKind::Line,
+    );
+    let rays = collect_bound_line_shapes(
+        file,
+        groups,
+        &analysis.raw_anchors,
+        crate::format::GroupKind::Ray,
+    );
     let derived_segments = if analysis.large_non_graph {
-        collect_derived_segments(file, groups, point_map, &[24])
+        collect_derived_segments(
+            file,
+            groups,
+            point_map,
+            &[crate::format::GroupKind::DerivedSegment24],
+        )
     } else {
         Vec::new()
     };
@@ -225,7 +248,7 @@ fn collect_scene_shapes(
             file,
             groups,
             &analysis.raw_anchors,
-            &[58],
+            &[crate::format::GroupKind::MeasurementLine],
             false,
             &BTreeSet::new(),
         )
@@ -242,7 +265,7 @@ fn collect_scene_shapes(
             file,
             groups,
             &analysis.raw_anchors,
-            &[61],
+            &[crate::format::GroupKind::AxisLine],
             false,
             &BTreeSet::new(),
         )
@@ -250,19 +273,24 @@ fn collect_scene_shapes(
         Vec::new()
     };
     let iteration_polygon_indices = collect_iteration_polygon_indices(file, groups);
-    let polygons = collect_polygon_shapes(file, groups, &analysis.raw_anchors, &[8])
-        .into_iter()
-        .enumerate()
-        .filter_map(|(ordinal, polygon)| {
-            let group_index = groups
-                .iter()
-                .enumerate()
-                .filter(|(_, group)| (group.header.class_id & 0xffff) == 8)
-                .nth(ordinal)
-                .map(|(index, _)| index)?;
-            (!iteration_polygon_indices.contains(&group_index)).then_some(polygon)
-        })
-        .collect::<Vec<_>>();
+    let polygons = collect_polygon_shapes(
+        file,
+        groups,
+        &analysis.raw_anchors,
+        &[crate::format::GroupKind::Polygon],
+    )
+    .into_iter()
+    .enumerate()
+    .filter_map(|(ordinal, polygon)| {
+        let group_index = groups
+            .iter()
+            .enumerate()
+            .filter(|(_, group)| (group.header.kind()) == crate::format::GroupKind::Polygon)
+            .nth(ordinal)
+            .map(|(index, _)| index)?;
+        (!iteration_polygon_indices.contains(&group_index)).then_some(polygon)
+    })
+    .collect::<Vec<_>>();
     let circles = collect_circle_shapes(file, groups, &analysis.raw_anchors);
     let rotated_circles = collect_rotated_circle_shapes(file, groups, &analysis.raw_anchors);
     let transformed_circles =
@@ -310,13 +338,13 @@ fn collect_scene_shapes(
 fn collect_iteration_polygon_indices(file: &GspFile, groups: &[ObjectGroup]) -> BTreeSet<usize> {
     groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 89)
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::RegularPolygonIteration)
         .filter_map(|group| find_indexed_path(file, group))
         .flat_map(|path| path.refs)
         .filter_map(|obj_ref| {
             let index = obj_ref.checked_sub(1)?;
             let group = groups.get(index)?;
-            ((group.header.class_id & 0xffff) == 8).then_some(index)
+            ((group.header.kind()) == crate::format::GroupKind::Polygon).then_some(index)
         })
         .collect()
 }
@@ -438,10 +466,12 @@ fn remap_scene_bindings(
 ) {
     let suppressed_carried_polygon_segments =
         collect_carried_polygon_edge_segment_groups(file, groups);
-    let circle_group_to_index =
-        group_shape_index_map(groups, |_, group| (group.header.class_id & 0xffff) == 3);
+    let circle_group_to_index = group_shape_index_map(groups, |_, group| {
+        (group.header.kind()) == crate::format::GroupKind::Circle
+    });
     let polygon_group_to_index = group_shape_index_map(groups, |index, group| {
-        (group.header.class_id & 0xffff) == 8 && !shapes.iteration_polygon_indices.contains(&index)
+        (group.header.kind()) == crate::format::GroupKind::Polygon
+            && !shapes.iteration_polygon_indices.contains(&index)
     });
     remap_circle_bindings(
         &mut shapes.rotated_circles,
@@ -478,8 +508,9 @@ fn remap_scene_bindings(
         group_to_point_index,
         &polygon_group_to_index,
     );
-    let line_group_to_index =
-        group_shape_index_map(groups, |_, group| (group.header.class_id & 0xffff) == 2);
+    let line_group_to_index = group_shape_index_map(groups, |_, group| {
+        (group.header.kind()) == crate::format::GroupKind::Segment
+    });
     remap_line_bindings(
         &mut shapes.direct_lines,
         group_to_point_index,

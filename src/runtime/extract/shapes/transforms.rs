@@ -13,12 +13,12 @@ pub(crate) fn collect_rotated_line_shapes(
 ) -> Vec<LineShape> {
     groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 29)
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::ParameterRotation)
         .filter_map(|group| {
             let binding = decode_parameter_rotation_binding(file, groups, group)?;
             let path = find_indexed_path(file, group)?;
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            if (source_group.header.class_id & 0xffff) != 2 {
+            if (source_group.header.kind()) != crate::format::GroupKind::Segment {
                 return None;
             }
             let source_path = find_indexed_path(file, source_group)?;
@@ -54,7 +54,7 @@ pub(crate) fn collect_scaled_line_shapes(
 ) -> Vec<LineShape> {
     groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 30)
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::Scale)
         .filter_map(|group| {
             let binding = decode_transform_binding(file, group)?;
             let TransformBindingKind::Scale { factor } = binding.kind else {
@@ -62,7 +62,7 @@ pub(crate) fn collect_scaled_line_shapes(
             };
             let path = find_indexed_path(file, group)?;
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            if (source_group.header.class_id & 0xffff) != 2 {
+            if (source_group.header.kind()) != crate::format::GroupKind::Segment {
                 return None;
             }
             let source_path = find_indexed_path(file, source_group)?;
@@ -96,11 +96,16 @@ pub(crate) fn collect_reflected_line_shapes(
 ) -> Vec<LineShape> {
     groups
         .iter()
-        .filter(|group| matches!(group.header.class_id & 0xffff, 16 | 34))
+        .filter(|group| {
+            matches!(
+                group.header.kind(),
+                crate::format::GroupKind::Translation | crate::format::GroupKind::Reflection
+            )
+        })
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            if (source_group.header.class_id & 0xffff) != 2 {
+            if (source_group.header.kind()) != crate::format::GroupKind::Segment {
                 return None;
             }
             let (line_start_group_index, line_end_group_index) =
@@ -137,12 +142,12 @@ pub(crate) fn collect_rotated_circle_shapes(
 ) -> Vec<CircleShape> {
     groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 29)
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::ParameterRotation)
         .filter_map(|group| {
             let binding = decode_parameter_rotation_binding(file, groups, group)?;
             let path = find_indexed_path(file, group)?;
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            if (source_group.header.class_id & 0xffff) != 3 {
+            if (source_group.header.kind()) != crate::format::GroupKind::Circle {
                 return None;
             }
             let source_path = find_indexed_path(file, source_group)?;
@@ -175,11 +180,11 @@ pub(crate) fn collect_translated_polygon_shapes(
 ) -> Vec<PolygonShape> {
     groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 16)
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::Translation)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            if (source_group.header.class_id & 0xffff) != 8 {
+            if (source_group.header.kind()) != crate::format::GroupKind::Polygon {
                 return None;
             }
             let (dx, dy, vector_start_index, vector_end_index) =
@@ -219,7 +224,7 @@ pub(crate) fn collect_transformed_circle_shapes(
 ) -> Vec<CircleShape> {
     groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 30)
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::Scale)
         .filter_map(|group| {
             let binding = decode_transform_binding(file, group)?;
             let TransformBindingKind::Scale { factor } = binding.kind else {
@@ -227,7 +232,7 @@ pub(crate) fn collect_transformed_circle_shapes(
             };
             let path = find_indexed_path(file, group)?;
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            if (source_group.header.class_id & 0xffff) != 3 {
+            if (source_group.header.kind()) != crate::format::GroupKind::Circle {
                 return None;
             }
             let source_path = find_indexed_path(file, source_group)?;
@@ -258,12 +263,12 @@ pub(crate) fn collect_rotated_polygon_shapes(
 ) -> Vec<PolygonShape> {
     groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 29)
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::ParameterRotation)
         .filter_map(|group| {
             let binding = decode_parameter_rotation_binding(file, groups, group)?;
             let path = find_indexed_path(file, group)?;
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            if (source_group.header.class_id & 0xffff) != 8 {
+            if (source_group.header.kind()) != crate::format::GroupKind::Polygon {
                 return None;
             }
             let source_path = find_indexed_path(file, source_group)?;
@@ -301,7 +306,7 @@ pub(crate) fn collect_transformed_polygon_shapes(
 ) -> Vec<PolygonShape> {
     groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 30)
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::Scale)
         .filter_map(|group| {
             let binding = decode_transform_binding(file, group)?;
             let TransformBindingKind::Scale { factor } = binding.kind else {
@@ -309,7 +314,7 @@ pub(crate) fn collect_transformed_polygon_shapes(
             };
             let path = find_indexed_path(file, group)?;
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            if (source_group.header.class_id & 0xffff) != 8 {
+            if (source_group.header.kind()) != crate::format::GroupKind::Polygon {
                 return None;
             }
             let source_path = find_indexed_path(file, source_group)?;
@@ -345,11 +350,11 @@ pub(crate) fn collect_reflected_circle_shapes(
 ) -> Vec<CircleShape> {
     groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 34)
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::Reflection)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            if (source_group.header.class_id & 0xffff) != 3 {
+            if (source_group.header.kind()) != crate::format::GroupKind::Circle {
                 return None;
             }
             let (line_start_group_index, line_end_group_index) =
@@ -382,11 +387,11 @@ pub(crate) fn collect_reflected_polygon_shapes(
 ) -> Vec<PolygonShape> {
     groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 34)
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::Reflection)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            if (source_group.header.class_id & 0xffff) != 8 {
+            if (source_group.header.kind()) != crate::format::GroupKind::Polygon {
                 return None;
             }
             let (line_start_group_index, line_end_group_index) =

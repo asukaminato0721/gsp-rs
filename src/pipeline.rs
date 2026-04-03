@@ -136,4 +136,34 @@ mod tests {
         assert!(html.contains("\"vertexIndices\":[0,2,1]"));
         assert!(html.contains("\"secondaryDx\":37.79527559055118"));
     }
+
+    #[test]
+    fn exports_perpendicular_line_binding_into_html() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/gsp/static/perpendicular.gsp"),
+            800,
+            600,
+        )
+        .expect("perpendicular fixture should compile");
+
+        assert!(html.contains("\"kind\":\"perpendicular-line\""));
+        assert!(html.contains("\"throughIndex\":1"));
+        assert!(html.contains("\"lineStartIndex\":0"));
+        assert!(html.contains("\"lineEndIndex\":1"));
+    }
+
+    #[test]
+    fn exports_angle_bisector_ray_binding_into_html() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/gsp/static/bisector.gsp"),
+            800,
+            600,
+        )
+        .expect("bisector fixture should compile");
+
+        assert!(html.contains("\"kind\":\"angle-bisector-ray\""));
+        assert!(html.contains("\"startIndex\":0"));
+        assert!(html.contains("\"vertexIndex\":1"));
+        assert!(html.contains("\"endIndex\":2"));
+    }
 }

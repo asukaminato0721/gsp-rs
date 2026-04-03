@@ -238,6 +238,66 @@ pub(crate) fn remap_line_bindings(
             continue;
         };
         match binding {
+            LineBinding::AngleBisectorRay {
+                start_index,
+                vertex_index,
+                end_index,
+            } => {
+                let Some(mapped_start_index) = group_to_point_index
+                    .get(*start_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                let Some(mapped_vertex_index) = group_to_point_index
+                    .get(*vertex_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                let Some(mapped_end_index) = group_to_point_index
+                    .get(*end_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                *start_index = mapped_start_index;
+                *vertex_index = mapped_vertex_index;
+                *end_index = mapped_end_index;
+            }
+            LineBinding::PerpendicularLine {
+                through_index,
+                line_start_index,
+                line_end_index,
+            } => {
+                let Some(mapped_through_index) = group_to_point_index
+                    .get(*through_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                let Some(mapped_line_start_index) = group_to_point_index
+                    .get(*line_start_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                let Some(mapped_line_end_index) = group_to_point_index
+                    .get(*line_end_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                *through_index = mapped_through_index;
+                *line_start_index = mapped_line_start_index;
+                *line_end_index = mapped_line_end_index;
+            }
             LineBinding::TranslateLine {
                 source_index,
                 vector_start_index,
