@@ -10,7 +10,7 @@ use crate::runtime::functions::{
     BinaryOp, FunctionExpr, FunctionTerm, ParsedFunctionExpr, decode_function_expr,
     decode_function_plot_descriptor, evaluate_expr_with_parameters, sample_function_points,
 };
-use crate::runtime::geometry::{GraphTransform, lerp_point, to_raw_from_world};
+use crate::runtime::geometry::{GraphTransform, lerp_point, point_on_three_point_arc, to_raw_from_world};
 
 pub(crate) struct PointOnSegmentConstraint {
     pub(crate) start_group_index: usize,
@@ -23,6 +23,13 @@ pub(crate) struct PointOnCircleConstraint {
     pub(crate) radius_group_index: usize,
     pub(crate) unit_x: f64,
     pub(crate) unit_y: f64,
+}
+
+pub(crate) struct PointOnArcConstraint {
+    pub(crate) start_group_index: usize,
+    pub(crate) mid_group_index: usize,
+    pub(crate) end_group_index: usize,
+    pub(crate) t: f64,
 }
 
 pub(crate) struct TranslatedPointConstraint {
@@ -45,6 +52,7 @@ pub(crate) enum RawPointConstraint {
         t: f64,
     },
     Circle(PointOnCircleConstraint),
+    Arc(PointOnArcConstraint),
 }
 
 pub(crate) struct ParameterControlledPoint {
@@ -284,6 +292,7 @@ pub(crate) fn decode_parameter_controlled_point(
                     constraint.unit_x,
                     constraint.unit_y,
                 )?,
+                RawPointConstraint::Arc(_) => return None,
                 RawPointConstraint::Polyline { .. } => return None,
             };
             (String::new(), t.clamp(0.0, 1.0), Some(point_group_index))
@@ -357,6 +366,31 @@ pub(crate) fn decode_parameter_controlled_point(
                     radius_group_index,
                     unit_x,
                     unit_y,
+                }),
+                parameter_name,
+                source_point_group_index,
+            })
+        }
+        crate::format::GroupKind::ThreePointArc => {
+            let host_path = find_indexed_path(file, host_group)?;
+            if host_path.refs.len() != 3 {
+                return None;
+            }
+            let start_group_index = host_path.refs[0].checked_sub(1)?;
+            let mid_group_index = host_path.refs[1].checked_sub(1)?;
+            let end_group_index = host_path.refs[2].checked_sub(1)?;
+            let start = anchors.get(start_group_index)?.clone()?;
+            let mid = anchors.get(mid_group_index)?.clone()?;
+            let end = anchors.get(end_group_index)?.clone()?;
+            let position =
+                point_on_three_point_arc(&start, &mid, &end, parameter_value)?;
+            Some(ParameterControlledPoint {
+                position,
+                constraint: RawPointConstraint::Arc(PointOnArcConstraint {
+                    start_group_index,
+                    mid_group_index,
+                    end_group_index,
+                    t: parameter_value,
                 }),
                 parameter_name,
                 source_point_group_index,
@@ -471,6 +505,22 @@ pub(crate) fn decode_point_constraint(
         }
         (crate::format::GroupKind::FunctionPlot, 12) => {
             decode_point_on_function_constraint(file, groups, host_group, payload, graph)
+        }
+        (crate::format::GroupKind::ThreePointArc, 12) => {
+            let host_path = find_indexed_path(file, host_group)?;
+            if host_path.refs.len() != 3 {
+                return None;
+            }
+            let t = read_f64(payload, 4);
+            if !t.is_finite() {
+                return None;
+            }
+            Some(RawPointConstraint::Arc(PointOnArcConstraint {
+                start_group_index: host_path.refs[0].checked_sub(1)?,
+                mid_group_index: host_path.refs[1].checked_sub(1)?,
+                end_group_index: host_path.refs[2].checked_sub(1)?,
+                t,
+            }))
         }
         _ => {
             decode_point_on_segment_constraint(file, groups, group).map(RawPointConstraint::Segment)

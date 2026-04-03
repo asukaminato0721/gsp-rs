@@ -451,6 +451,25 @@ fn preserves_three_point_arc_gsp() {
 }
 
 #[test]
+fn preserves_three_point_arc_point_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/static/three_point_arc_point.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.arcs.len(), 1, "expected one three-point arc");
+    assert_eq!(scene.points.len(), 4, "expected three defining points and one constrained point");
+    assert!(scene.points.iter().any(|point| matches!(
+        point.constraint,
+        ScenePointConstraint::OnArc {
+            start_index: 0,
+            mid_index: 1,
+            end_index: 2,
+            t,
+        } if (t - 0.201784919136623).abs() < 1e-9
+    )));
+}
+
+#[test]
 fn preserves_point_segment_value_segment_point_gsp() {
     let data =
         include_bytes!("../../../tests/fixtures/gsp/static/point_segment_value_segment_point.gsp");

@@ -194,6 +194,12 @@ pub(crate) enum ScenePointConstraint {
         unit_x: f64,
         unit_y: f64,
     },
+    OnArc {
+        start_index: usize,
+        mid_index: usize,
+        end_index: usize,
+        t: f64,
+    },
 }
 
 #[derive(Debug, Clone)]

@@ -98,6 +98,19 @@
           point.constraint.unitX = dx / length;
           point.constraint.unitY = dy / length;
         }
+      } else if (point.constraint && point.constraint.kind === "arc") {
+        const start = env.resolveScenePoint(point.constraint.startIndex);
+        const mid = env.resolveScenePoint(point.constraint.midIndex);
+        const end = env.resolveScenePoint(point.constraint.endIndex);
+        const projection = window.GspViewerModules.scene.projectToThreePointArc(
+          world,
+          start,
+          mid,
+          end,
+        );
+        if (projection) {
+          point.constraint.t = projection.t;
+        }
       } else {
         point.x = world.x;
         point.y = world.y;

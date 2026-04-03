@@ -180,4 +180,19 @@ mod tests {
         assert!(html.contains("\"color\":[0,128,0,255]"));
         assert!(html.contains("\"points\":[{\"x\":323.0,\"y\":217.0}"));
     }
+
+    #[test]
+    fn exports_three_point_arc_point_constraint_into_html() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/gsp/static/three_point_arc_point.gsp"),
+            800,
+            600,
+        )
+        .expect("three-point arc point fixture should compile");
+
+        assert!(html.contains("\"kind\":\"arc\""));
+        assert!(html.contains("\"startIndex\":0"));
+        assert!(html.contains("\"midIndex\":1"));
+        assert!(html.contains("\"endIndex\":2"));
+    }
 }

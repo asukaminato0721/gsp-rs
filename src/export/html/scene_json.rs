@@ -1251,6 +1251,16 @@ enum PointConstraintJson {
         #[serde(rename = "unitY")]
         unit_y: f64,
     },
+    #[serde(rename = "arc")]
+    Arc {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "midIndex")]
+        mid_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+        t: f64,
+    },
 }
 
 impl PointConstraintJson {
@@ -1305,6 +1315,17 @@ impl PointConstraintJson {
                 radius_index: *radius_index,
                 unit_x: *unit_x,
                 unit_y: *unit_y,
+            }),
+            ScenePointConstraint::OnArc {
+                start_index,
+                mid_index,
+                end_index,
+                t,
+            } => Some(Self::Arc {
+                start_index: *start_index,
+                mid_index: *mid_index,
+                end_index: *end_index,
+                t: *t,
             }),
         }
     }

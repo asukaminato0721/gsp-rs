@@ -644,6 +644,17 @@ fn build_world_data(
                         -*unit_y
                     },
                 },
+                ScenePointConstraint::OnArc {
+                    start_index,
+                    mid_index,
+                    end_index,
+                    t,
+                } => ScenePointConstraint::OnArc {
+                    start_index: *start_index,
+                    mid_index: *mid_index,
+                    end_index: *end_index,
+                    t: *t,
+                },
             },
             binding: point.binding.clone(),
         })

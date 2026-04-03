@@ -262,6 +262,27 @@ fn scene_point_from_constraint(
                 binding: None,
             })
         }
+        RawPointConstraint::Arc(constraint) => {
+            let start_index = group_to_point_index
+                .get(constraint.start_group_index)
+                .and_then(|point_index| *point_index)?;
+            let mid_index = group_to_point_index
+                .get(constraint.mid_group_index)
+                .and_then(|point_index| *point_index)?;
+            let end_index = group_to_point_index
+                .get(constraint.end_group_index)
+                .and_then(|point_index| *point_index)?;
+            Some(ScenePoint {
+                position,
+                constraint: ScenePointConstraint::OnArc {
+                    start_index,
+                    mid_index,
+                    end_index,
+                    t: constraint.t,
+                },
+                binding: None,
+            })
+        }
     }
 }
 
@@ -325,6 +346,27 @@ fn scene_point_from_parameter_controlled(
                     radius_index,
                     unit_x: constraint.unit_x,
                     unit_y: constraint.unit_y,
+                },
+                binding,
+            })
+        }
+        RawPointConstraint::Arc(constraint) => {
+            let start_index = group_to_point_index
+                .get(constraint.start_group_index)
+                .and_then(|point_index| *point_index)?;
+            let mid_index = group_to_point_index
+                .get(constraint.mid_group_index)
+                .and_then(|point_index| *point_index)?;
+            let end_index = group_to_point_index
+                .get(constraint.end_group_index)
+                .and_then(|point_index| *point_index)?;
+            Some(ScenePoint {
+                position: parameter_point.position,
+                constraint: ScenePointConstraint::OnArc {
+                    start_index,
+                    mid_index,
+                    end_index,
+                    t: constraint.t,
                 },
                 binding,
             })

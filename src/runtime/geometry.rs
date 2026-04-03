@@ -360,6 +360,27 @@ pub(crate) fn arc_sample_points(
     Some(points)
 }
 
+pub(crate) fn point_on_three_point_arc(
+    start: &PointRecord,
+    mid: &PointRecord,
+    end: &PointRecord,
+    t: f64,
+) -> Option<PointRecord> {
+    let geometry = three_point_arc_geometry(start, mid, end)?;
+    let ccw_span = normalized_angle_delta(geometry.start_angle, geometry.end_angle);
+    let ccw_mid = normalized_angle_delta(geometry.start_angle, mid_angle(&geometry.center, mid));
+    let clamped_t = t.clamp(0.0, 1.0);
+    let angle = if ccw_mid <= ccw_span + 1e-9 {
+        geometry.start_angle + ccw_span * clamped_t
+    } else {
+        geometry.start_angle - normalized_angle_delta(geometry.end_angle, geometry.start_angle) * clamped_t
+    };
+    Some(PointRecord {
+        x: geometry.center.x + geometry.radius * angle.cos(),
+        y: geometry.center.y + geometry.radius * angle.sin(),
+    })
+}
+
 fn angle_lies_on_arc(
     angle: f64,
     start_angle: f64,
@@ -378,4 +399,8 @@ fn angle_lies_on_arc(
 fn normalized_angle_delta(from: f64, to: f64) -> f64 {
     let tau = std::f64::consts::TAU;
     (to - from).rem_euclid(tau)
+}
+
+fn mid_angle(center: &PointRecord, point: &PointRecord) -> f64 {
+    (point.y - center.y).atan2(point.x - center.x)
 }

@@ -3,6 +3,11 @@
 (function() {
   const modules = window.GspViewerModules || (window.GspViewerModules = {});
 
+  function normalizeAngleDelta(from, to) {
+    const tau = Math.PI * 2;
+    return ((to - from) % tau + tau) % tau;
+  }
+
   function lerpPoint(start, end, t) {
     return {
       x: start.x + (end.x - start.x) * t,
@@ -89,6 +94,62 @@
     return { x: -startDy / startLen, y: startDx / startLen };
   }
 
+  function pointOnThreePointArc(start, mid, end, t) {
+    const determinant = 2 * (
+      start.x * (mid.y - end.y)
+      + mid.x * (end.y - start.y)
+      + end.x * (start.y - mid.y)
+    );
+    if (Math.abs(determinant) <= 1e-9) return null;
+
+    const startSq = start.x * start.x + start.y * start.y;
+    const midSq = mid.x * mid.x + mid.y * mid.y;
+    const endSq = end.x * end.x + end.y * end.y;
+    const center = {
+      x: (
+        startSq * (mid.y - end.y)
+        + midSq * (end.y - start.y)
+        + endSq * (start.y - mid.y)
+      ) / determinant,
+      y: (
+        startSq * (end.x - mid.x)
+        + midSq * (start.x - end.x)
+        + endSq * (mid.x - start.x)
+      ) / determinant,
+    };
+    const radius = Math.hypot(start.x - center.x, start.y - center.y);
+    if (radius <= 1e-9) return null;
+
+    const startAngle = Math.atan2(start.y - center.y, start.x - center.x);
+    const midAngle = Math.atan2(mid.y - center.y, mid.x - center.x);
+    const endAngle = Math.atan2(end.y - center.y, end.x - center.x);
+    const ccwSpan = normalizeAngleDelta(startAngle, endAngle);
+    const ccwMid = normalizeAngleDelta(startAngle, midAngle);
+    const clampedT = Math.max(0, Math.min(1, t));
+    const angle = ccwMid <= ccwSpan + 1e-9
+      ? startAngle + ccwSpan * clampedT
+      : startAngle - normalizeAngleDelta(endAngle, startAngle) * clampedT;
+    return {
+      x: center.x + radius * Math.cos(angle),
+      y: center.y + radius * Math.sin(angle),
+    };
+  }
+
+  function projectToThreePointArc(point, start, mid, end) {
+    let best = null;
+    const steps = 256;
+    for (let step = 0; step <= steps; step += 1) {
+      const t = step / steps;
+      const projected = pointOnThreePointArc(start, mid, end, t);
+      if (!projected) return null;
+      const distanceSquared = (point.x - projected.x) ** 2 + (point.y - projected.y) ** 2;
+      if (!best || distanceSquared < best.distanceSquared) {
+        best = { t, projected, distanceSquared };
+      }
+    }
+    return best;
+  }
+
   /** @param {ViewerEnv} env */
   function getViewBounds(env) {
     const spanX = env.baseSpanX / env.view.zoom;
@@ -142,6 +203,12 @@
         x: center.x + radius * constraint.unitX,
         y: center.y + radius * constraint.unitY,
       };
+    }
+    if (constraint.kind === "arc") {
+      const start = resolveFn(constraint.startIndex);
+      const mid = resolveFn(constraint.midIndex);
+      const end = resolveFn(constraint.endIndex);
+      return pointOnThreePointArc(start, mid, end, constraint.t);
     }
     return null;
   }
@@ -425,6 +492,8 @@
     chooseGridStep,
     lerpPoint,
     projectToSegment,
+    pointOnThreePointArc,
+    projectToThreePointArc,
     drawGrid,
   };
 })();

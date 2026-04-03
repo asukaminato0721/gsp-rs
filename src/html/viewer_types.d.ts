@@ -207,6 +207,17 @@ type ViewerSceneModule = {
     projected: Point;
     distanceSquared: number;
   } | null;
+  pointOnThreePointArc: (start: Point, mid: Point, end: Point, t: number) => Point | null;
+  projectToThreePointArc: (
+    point: Point,
+    start: Point,
+    mid: Point,
+    end: Point,
+  ) => {
+    t: number;
+    projected: Point;
+    distanceSquared: number;
+  } | null;
   drawGrid: (env: ViewerEnv) => void;
 };
 
