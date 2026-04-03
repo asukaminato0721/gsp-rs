@@ -189,6 +189,24 @@
       const end = resolveScenePoint(env, line.binding.endIndex);
       return [start, end];
     }
+    if (line.binding?.kind === "perpendicular-line") {
+      const through = resolveScenePoint(env, line.binding.throughIndex);
+      const lineStart = resolveScenePoint(env, line.binding.lineStartIndex);
+      const lineEnd = resolveScenePoint(env, line.binding.lineEndIndex);
+      const dx = lineEnd.x - lineStart.x;
+      const dy = lineEnd.y - lineStart.y;
+      const len = Math.hypot(dx, dy);
+      if (len <= 1e-9) return null;
+      return clipParametricLineToBounds(
+        through,
+        {
+          x: through.x - dy / len,
+          y: through.y + dx / len,
+        },
+        getViewBounds(env),
+        false,
+      );
+    }
     if (line.binding?.kind === "line") {
       const start = resolveScenePoint(env, line.binding.startIndex);
       const end = resolveScenePoint(env, line.binding.endIndex);

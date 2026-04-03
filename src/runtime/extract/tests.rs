@@ -333,6 +333,50 @@ fn preserves_ray_gsp() {
 }
 
 #[test]
+fn preserves_perpendicular_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/static/perpendicular.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.lines.len(), 2, "expected base segment and perpendicular line");
+    assert_eq!(scene.points.len(), 2, "expected two defining points");
+
+    let base = scene
+        .lines
+        .iter()
+        .find(|line| matches!(line.binding, Some(LineBinding::Segment { .. })))
+        .expect("expected source segment");
+    let perpendicular = scene
+        .lines
+        .iter()
+        .find(|line| matches!(line.binding, Some(LineBinding::PerpendicularLine { .. })))
+        .expect("expected synthesized perpendicular line");
+
+    let base_dx = base.points[1].x - base.points[0].x;
+    let base_dy = base.points[1].y - base.points[0].y;
+    let perp_dx = perpendicular.points[1].x - perpendicular.points[0].x;
+    let perp_dy = perpendicular.points[1].y - perpendicular.points[0].y;
+    let base_len = (base_dx * base_dx + base_dy * base_dy).sqrt();
+    let perp_len = (perp_dx * perp_dx + perp_dy * perp_dy).sqrt();
+    let dot = base_dx * perp_dx + base_dy * perp_dy;
+
+    assert!(
+        (dot / (base_len * perp_len)).abs() < 1e-6,
+        "expected perpendicular directions, got base=({base_dx},{base_dy}) and line=({perp_dx},{perp_dy})"
+    );
+
+    let through = &scene.points[1].position;
+    let distance = ((through.x - perpendicular.points[0].x) * perp_dy
+        - (through.y - perpendicular.points[0].y) * perp_dx)
+        .abs()
+        / perp_len;
+    assert!(
+        distance < 1e-6,
+        "expected perpendicular line to pass through point B, distance={distance}"
+    );
+}
+
+#[test]
 fn preserves_point_segment_value_segment_point_gsp() {
     let data =
         include_bytes!("../../../tests/fixtures/gsp/static/point_segment_value_segment_point.gsp");

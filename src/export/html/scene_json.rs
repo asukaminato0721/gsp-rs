@@ -286,6 +286,15 @@ enum LineBindingJson {
         #[serde(rename = "endIndex")]
         end_index: usize,
     },
+    #[serde(rename = "perpendicular-line")]
+    PerpendicularLine {
+        #[serde(rename = "throughIndex")]
+        through_index: usize,
+        #[serde(rename = "lineStartIndex")]
+        line_start_index: usize,
+        #[serde(rename = "lineEndIndex")]
+        line_end_index: usize,
+    },
     #[serde(rename = "line")]
     Line {
         #[serde(rename = "startIndex")]
@@ -363,6 +372,15 @@ impl LineBindingJson {
             } => Self::Segment {
                 start_index: *start_index,
                 end_index: *end_index,
+            },
+            LineBinding::PerpendicularLine {
+                through_index,
+                line_start_index,
+                line_end_index,
+            } => Self::PerpendicularLine {
+                through_index: *through_index,
+                line_start_index: *line_start_index,
+                line_end_index: *line_end_index,
             },
             LineBinding::Line {
                 start_index,

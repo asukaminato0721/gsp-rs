@@ -38,6 +38,9 @@ pub(crate) fn collect_line_shapes(
                         .unwrap_or(false))
         })
         .filter_map(|(_, group)| {
+            if (group.header.kind()) == crate::format::GroupKind::LineKind5 {
+                return resolve_perpendicular_line_shape(file, groups, anchors, group);
+            }
             let path = find_indexed_path(file, group)?;
             let points = path
                 .refs
@@ -68,6 +71,69 @@ pub(crate) fn collect_line_shapes(
             })
         })
         .collect()
+}
+
+fn resolve_perpendicular_line_shape(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group: &ObjectGroup,
+) -> Option<LineShape> {
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() != 2 {
+        return None;
+    }
+
+    let through_index = path.refs[0].checked_sub(1)?;
+    let host_index = path.refs[1].checked_sub(1)?;
+    let through = anchors.get(through_index)?.clone()?;
+    let (line_start_index, line_end_index, host_start, host_end) =
+        resolve_host_line_points(file, groups, anchors, host_index)?;
+
+    let dx = host_end.x - host_start.x;
+    let dy = host_end.y - host_start.y;
+    let host_len = (dx * dx + dy * dy).sqrt();
+    if host_len <= 1e-9 {
+        return None;
+    }
+
+    let perp_x = -dy / host_len;
+    let perp_y = dx / host_len;
+    let start = through.clone();
+    let end = PointRecord {
+        x: through.x + perp_x,
+        y: through.y + perp_y,
+    };
+
+    has_distinct_points(&[start.clone(), end.clone()]).then_some(LineShape {
+        points: vec![start, end],
+        color: color_from_style(group.header.style_b),
+        dashed: false,
+        binding: Some(LineBinding::PerpendicularLine {
+            through_index,
+            line_start_index,
+            line_end_index,
+        }),
+    })
+}
+
+fn resolve_host_line_points(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group_index: usize,
+) -> Option<(usize, usize, PointRecord, PointRecord)> {
+    let group = groups.get(group_index)?;
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() != 2 {
+        return None;
+    }
+
+    let start_index = path.refs[0].checked_sub(1)?;
+    let end_index = path.refs[1].checked_sub(1)?;
+    let start = anchors.get(start_index)?.clone()?;
+    let end = anchors.get(end_index)?.clone()?;
+    has_distinct_points(&[start.clone(), end.clone()]).then_some((start_index, end_index, start, end))
 }
 
 pub(crate) fn collect_bound_line_shapes(

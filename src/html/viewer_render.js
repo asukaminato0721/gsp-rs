@@ -186,9 +186,30 @@
     for (const line of env.currentScene().lines) {
       if (line.visible === false) continue;
       let screenPoints = null;
-      if (line.binding?.kind === "line" || line.binding?.kind === "ray") {
-        const start = env.toScreen(env.resolveScenePoint(line.binding.startIndex));
-        const end = env.toScreen(env.resolveScenePoint(line.binding.endIndex));
+      if (
+        line.binding?.kind === "line"
+        || line.binding?.kind === "ray"
+        || line.binding?.kind === "perpendicular-line"
+      ) {
+        const start = line.binding.kind === "perpendicular-line"
+          ? env.toScreen(env.resolveScenePoint(line.binding.throughIndex))
+          : env.toScreen(env.resolveScenePoint(line.binding.startIndex));
+        const end = line.binding.kind === "perpendicular-line"
+          ? (() => {
+              const through = env.resolveScenePoint(line.binding.throughIndex);
+              const lineStart = env.resolveScenePoint(line.binding.lineStartIndex);
+              const lineEnd = env.resolveScenePoint(line.binding.lineEndIndex);
+              const dx = lineEnd.x - lineStart.x;
+              const dy = lineEnd.y - lineStart.y;
+              const len = Math.hypot(dx, dy);
+              if (len <= 1e-9) return null;
+              return env.toScreen({
+                x: through.x - dy / len,
+                y: through.y + dx / len,
+              });
+            })()
+          : env.toScreen(env.resolveScenePoint(line.binding.endIndex));
+        if (!end) continue;
         screenPoints = clipParametricLineToRect(
           start,
           end,
