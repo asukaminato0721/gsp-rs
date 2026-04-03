@@ -8,7 +8,7 @@ use crate::runtime::functions::{
 };
 use crate::runtime::geometry::{
     color_from_style, fill_color_from_styles, has_distinct_points, reflect_across_line,
-    rotate_around, scale_around, to_raw_from_world,
+    rotate_around, scale_around, three_point_arc_geometry, to_raw_from_world,
 };
 use crate::runtime::scene::{
     LineBinding, LineIterationFamily, PolygonIterationFamily, ShapeBinding,
@@ -27,6 +27,7 @@ pub(super) use anchors::collect_raw_object_anchors;
 pub(super) use basic::{
     collect_bound_line_shapes, collect_circle_shapes, collect_coordinate_traces,
     collect_derived_segments, collect_line_shapes, collect_polygon_shapes,
+    collect_three_point_arc_shapes,
 };
 pub(super) use iterations::{
     collect_carried_iteration_lines, collect_carried_iteration_polygons,

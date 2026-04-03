@@ -1,6 +1,52 @@
 (function() {
   const modules = window.GspViewerModules || (window.GspViewerModules = {});
 
+  function arcGeometryFromPoints(start, mid, end) {
+    const determinant = 2 * (
+      start.x * (mid.y - end.y)
+      + mid.x * (end.y - start.y)
+      + end.x * (start.y - mid.y)
+    );
+    if (Math.abs(determinant) <= 1e-9) return null;
+
+    const startSq = start.x * start.x + start.y * start.y;
+    const midSq = mid.x * mid.x + mid.y * mid.y;
+    const endSq = end.x * end.x + end.y * end.y;
+    const center = {
+      x: (
+        startSq * (mid.y - end.y)
+        + midSq * (end.y - start.y)
+        + endSq * (start.y - mid.y)
+      ) / determinant,
+      y: (
+        startSq * (end.x - mid.x)
+        + midSq * (start.x - end.x)
+        + endSq * (mid.x - start.x)
+      ) / determinant,
+    };
+    const radius = Math.hypot(start.x - center.x, start.y - center.y);
+    if (radius <= 1e-9) return null;
+
+    const startAngle = Math.atan2(start.y - center.y, start.x - center.x);
+    const midAngle = Math.atan2(mid.y - center.y, mid.x - center.x);
+    const endAngle = Math.atan2(end.y - center.y, end.x - center.x);
+    const forwardSpan = normalizeAngleDelta(startAngle, endAngle);
+    const forwardMid = normalizeAngleDelta(startAngle, midAngle);
+
+    return {
+      center,
+      radius,
+      startAngle,
+      endAngle,
+      counterClockwise: forwardMid > forwardSpan + 1e-9,
+    };
+  }
+
+  function normalizeAngleDelta(from, to) {
+    const tau = Math.PI * 2;
+    return ((to - from) % tau + tau) % tau;
+  }
+
   function clipParametricLineToRect(start, end, width, height, rayOnly) {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
@@ -286,6 +332,27 @@
     }
   }
 
+  function drawArcs(env) {
+    for (const arc of env.currentScene().arcs || []) {
+      if (arc.visible === false || !Array.isArray(arc.points) || arc.points.length !== 3) continue;
+      const screenPoints = arc.points.map((handle) => env.toScreen(env.resolvePoint(handle)));
+      const geometry = arcGeometryFromPoints(screenPoints[0], screenPoints[1], screenPoints[2]);
+      if (!geometry) continue;
+      env.ctx.beginPath();
+      env.ctx.arc(
+        geometry.center.x,
+        geometry.center.y,
+        geometry.radius,
+        geometry.startAngle,
+        geometry.endAngle,
+        geometry.counterClockwise,
+      );
+      env.ctx.strokeStyle = env.rgba(arc.color);
+      env.ctx.lineWidth = 2;
+      env.ctx.stroke();
+    }
+  }
+
   function drawPoints(env) {
     env.currentScene().points.forEach((point, index) => {
       if (point.visible === false) {
@@ -332,6 +399,7 @@
     drawPolygons(env);
     drawLines(env);
     drawCircles(env);
+    drawArcs(env);
     drawPoints(env);
     drawLabels(env);
   }
@@ -345,6 +413,7 @@
     drawPolygons,
     drawLines,
     drawCircles,
+    drawArcs,
     drawPoints,
     drawLabels,
     draw,

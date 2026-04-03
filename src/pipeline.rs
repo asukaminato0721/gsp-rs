@@ -166,4 +166,18 @@ mod tests {
         assert!(html.contains("\"vertexIndex\":1"));
         assert!(html.contains("\"endIndex\":2"));
     }
+
+    #[test]
+    fn exports_three_point_arc_into_html() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/gsp/static/three_point_arc.gsp"),
+            800,
+            600,
+        )
+        .expect("three-point arc fixture should compile");
+
+        assert!(html.contains("\"arcs\":["));
+        assert!(html.contains("\"color\":[0,128,0,255]"));
+        assert!(html.contains("\"points\":[{\"x\":323.0,\"y\":217.0}"));
+    }
 }

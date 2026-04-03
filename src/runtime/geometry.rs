@@ -3,6 +3,15 @@ use crate::format::PointRecord;
 use super::scene::LineShape;
 
 #[derive(Debug, Clone)]
+pub(crate) struct ThreePointArcGeometry {
+    pub(crate) center: PointRecord,
+    pub(crate) radius: f64,
+    pub(crate) start_angle: f64,
+    pub(crate) end_angle: f64,
+    pub(crate) counterclockwise: bool,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct GraphTransform {
     pub(super) origin_raw: PointRecord,
     pub(super) raw_per_unit: f64,
@@ -275,4 +284,98 @@ pub(super) fn has_distinct_points(points: &[PointRecord]) -> bool {
         let dy = delta.y;
         dx.abs() > 1e-6 || dy.abs() > 1e-6
     })
+}
+
+pub(crate) fn three_point_arc_geometry(
+    start: &PointRecord,
+    mid: &PointRecord,
+    end: &PointRecord,
+) -> Option<ThreePointArcGeometry> {
+    let determinant = 2.0
+        * (start.x * (mid.y - end.y)
+            + mid.x * (end.y - start.y)
+            + end.x * (start.y - mid.y));
+    if determinant.abs() <= 1e-9 {
+        return None;
+    }
+
+    let start_sq = start.x * start.x + start.y * start.y;
+    let mid_sq = mid.x * mid.x + mid.y * mid.y;
+    let end_sq = end.x * end.x + end.y * end.y;
+    let center = PointRecord {
+        x: (start_sq * (mid.y - end.y)
+            + mid_sq * (end.y - start.y)
+            + end_sq * (start.y - mid.y))
+            / determinant,
+        y: (start_sq * (end.x - mid.x)
+            + mid_sq * (start.x - end.x)
+            + end_sq * (mid.x - start.x))
+            / determinant,
+    };
+    let radius = ((start.x - center.x).powi(2) + (start.y - center.y).powi(2)).sqrt();
+    if radius <= 1e-9 {
+        return None;
+    }
+
+    let start_angle = (start.y - center.y).atan2(start.x - center.x);
+    let mid_angle = (mid.y - center.y).atan2(mid.x - center.x);
+    let end_angle = (end.y - center.y).atan2(end.x - center.x);
+    let ccw_span = normalized_angle_delta(start_angle, end_angle);
+    let ccw_mid = normalized_angle_delta(start_angle, mid_angle);
+
+    Some(ThreePointArcGeometry {
+        center,
+        radius,
+        start_angle,
+        end_angle,
+        counterclockwise: ccw_mid > ccw_span + 1e-9,
+    })
+}
+
+pub(crate) fn arc_sample_points(
+    start: &PointRecord,
+    mid: &PointRecord,
+    end: &PointRecord,
+) -> Option<Vec<PointRecord>> {
+    let geometry = three_point_arc_geometry(start, mid, end)?;
+    let mut points = vec![start.clone(), mid.clone(), end.clone()];
+    for angle in [
+        0.0,
+        std::f64::consts::FRAC_PI_2,
+        std::f64::consts::PI,
+        std::f64::consts::PI * 1.5,
+    ] {
+        if angle_lies_on_arc(
+            angle,
+            geometry.start_angle,
+            geometry.end_angle,
+            geometry.counterclockwise,
+        ) {
+            points.push(PointRecord {
+                x: geometry.center.x + geometry.radius * angle.cos(),
+                y: geometry.center.y + geometry.radius * angle.sin(),
+            });
+        }
+    }
+    Some(points)
+}
+
+fn angle_lies_on_arc(
+    angle: f64,
+    start_angle: f64,
+    end_angle: f64,
+    counterclockwise: bool,
+) -> bool {
+    if counterclockwise {
+        normalized_angle_delta(angle, start_angle)
+            <= normalized_angle_delta(end_angle, start_angle) + 1e-9
+    } else {
+        normalized_angle_delta(start_angle, angle)
+            <= normalized_angle_delta(start_angle, end_angle) + 1e-9
+    }
+}
+
+fn normalized_angle_delta(from: f64, to: f64) -> f64 {
+    let tau = std::f64::consts::TAU;
+    (to - from).rem_euclid(tau)
 }

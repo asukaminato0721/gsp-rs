@@ -1,10 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::{
-    CircleShape, GraphTransform, GspFile, LineBinding, LineShape, ObjectGroup, PointRecord,
-    PolygonShape, color_from_style, decode_function_expr, decode_function_plot_descriptor,
-    decode_label_name, evaluate_expr_with_parameters, fill_color_from_styles, find_indexed_path,
-    has_distinct_points, to_raw_from_world,
+    ArcShape, CircleShape, GraphTransform, GspFile, LineBinding, LineShape, ObjectGroup,
+    PointRecord, PolygonShape, color_from_style, decode_function_expr,
+    decode_function_plot_descriptor, decode_label_name, evaluate_expr_with_parameters,
+    fill_color_from_styles, find_indexed_path, has_distinct_points, three_point_arc_geometry,
+    to_raw_from_world,
 };
 
 pub(crate) fn collect_line_shapes(
@@ -285,6 +286,33 @@ pub(crate) fn collect_circle_shapes(
                 radius_point,
                 color: color_from_style(group.header.style_b),
                 binding: None,
+            })
+        })
+        .collect()
+}
+
+pub(crate) fn collect_three_point_arc_shapes(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+) -> Vec<ArcShape> {
+    groups
+        .iter()
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::ThreePointArc)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            if path.refs.len() != 3 {
+                return None;
+            }
+            let points = [
+                anchors.get(path.refs[0].saturating_sub(1))?.clone()?,
+                anchors.get(path.refs[1].saturating_sub(1))?.clone()?,
+                anchors.get(path.refs[2].saturating_sub(1))?.clone()?,
+            ];
+            three_point_arc_geometry(&points[0], &points[1], &points[2])?;
+            Some(ArcShape {
+                points,
+                color: color_from_style(group.header.style_b),
             })
         })
         .collect()

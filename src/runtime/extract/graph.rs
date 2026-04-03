@@ -1,8 +1,8 @@
-use super::CircleShape;
+use super::{ArcShape, CircleShape};
 use super::decode::{decode_measurement_value, find_indexed_path};
 use crate::format::{GspFile, ObjectGroup, PointRecord};
 use crate::runtime::functions::{FunctionExpr, decode_function_expr};
-use crate::runtime::geometry::{Bounds, GraphTransform, read_f32_unaligned, to_world};
+use crate::runtime::geometry::{Bounds, GraphTransform, arc_sample_points, read_f32_unaligned, to_world};
 use crate::runtime::scene::{LineShape, PolygonShape, TextLabel, TextLabelBinding};
 
 pub(super) fn collect_saved_viewport(file: &GspFile, groups: &[ObjectGroup]) -> Option<Bounds> {
@@ -131,6 +131,7 @@ pub(super) fn collect_bounds(
     axes: &[LineShape],
     polygons: &[PolygonShape],
     circles: &[CircleShape],
+    arcs: &[ArcShape],
     labels: &[TextLabel],
     points_only: &[PointRecord],
 ) -> Bounds {
@@ -148,6 +149,13 @@ pub(super) fn collect_bounds(
     for circle in circles {
         points.push(circle.center.clone());
         points.push(circle.radius_point.clone());
+    }
+    for arc in arcs {
+        if let Some(samples) = arc_sample_points(&arc.points[0], &arc.points[1], &arc.points[2]) {
+            points.extend(samples);
+        } else {
+            points.extend(arc.points.iter().cloned());
+        }
     }
     for label in labels {
         if matches!(

@@ -27,6 +27,7 @@ struct SceneJson {
     lines: Vec<LineJson>,
     polygons: Vec<PolygonJson>,
     circles: Vec<CircleJson>,
+    arcs: Vec<ArcJson>,
     labels: Vec<LabelJson>,
     points: Vec<ScenePointJson>,
     point_iterations: Vec<PointIterationJson>,
@@ -56,6 +57,7 @@ impl SceneJson {
                 .map(PolygonJson::from_polygon)
                 .collect(),
             circles: scene.circles.iter().map(CircleJson::from_circle).collect(),
+            arcs: scene.arcs.iter().map(ArcJson::from_arc).collect(),
             labels: scene.labels.iter().map(LabelJson::from_label).collect(),
             points: scene
                 .points
@@ -507,6 +509,21 @@ impl CircleJson {
             radius_point: PointJson::from_point(&circle.radius_point),
             color: circle.color,
             binding: circle.binding.as_ref().map(ShapeBindingJson::from_binding),
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct ArcJson {
+    points: Vec<PointJson>,
+    color: [u8; 4],
+}
+
+impl ArcJson {
+    fn from_arc(arc: &crate::runtime::scene::SceneArc) -> Self {
+        Self {
+            points: arc.points.iter().map(PointJson::from_point).collect(),
+            color: arc.color,
         }
     }
 }

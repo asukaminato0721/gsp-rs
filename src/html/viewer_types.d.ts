@@ -45,6 +45,7 @@ type SceneData = {
   lines: any[];
   polygons: any[];
   circles: any[];
+  arcs: any[];
   labels: any[];
   pointIterations?: Array<
     | {
