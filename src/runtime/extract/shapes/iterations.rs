@@ -57,15 +57,15 @@ pub(crate) fn collect_rotational_iteration_lines(
 ) -> Vec<LineShape> {
     groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 77)
+        .filter(|group| (group.header.kind()) == 77)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            if (source_group.header.class_id & 0xffff) != 2 {
+            if (source_group.header.kind()) != 2 {
                 return None;
             }
             let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
-            if (iter_group.header.class_id & 0xffff) != 89 {
+            if (iter_group.header.kind()) != 89 {
                 return None;
             }
             let (center_group_index, angle_expr, parameter_name, n) =
@@ -124,7 +124,7 @@ pub(crate) fn collect_carried_iteration_lines(
 ) -> Vec<LineShape> {
     groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 77)
+        .filter(|group| (group.header.kind()) == 77)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let source_group_index = path.refs.first()?.checked_sub(1)?;
@@ -132,14 +132,14 @@ pub(crate) fn collect_carried_iteration_lines(
                 return None;
             }
             let source_group = groups.get(source_group_index)?;
-            if (source_group.header.class_id & 0xffff) != 2 {
+            if (source_group.header.kind()) != 2 {
                 return None;
             }
             let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
-            if !matches!(iter_group.header.class_id & 0xffff, 76 | 89) {
+            if !matches!(iter_group.header.kind(), 76 | 89) {
                 return None;
             }
-            if (iter_group.header.class_id & 0xffff) == 89
+            if (iter_group.header.kind()) == 89
                 && regular_polygon_iteration_step(file, groups, iter_group).is_some()
             {
                 return None;
@@ -204,7 +204,7 @@ pub(crate) fn collect_carried_line_iteration_families(
 ) -> Vec<LineIterationFamily> {
     groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 77)
+        .filter(|group| (group.header.kind()) == 77)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let source_group_index = path.refs.first()?.checked_sub(1)?;
@@ -212,14 +212,14 @@ pub(crate) fn collect_carried_line_iteration_families(
                 return None;
             }
             let source_group = groups.get(source_group_index)?;
-            if (source_group.header.class_id & 0xffff) != 2 {
+            if (source_group.header.kind()) != 2 {
                 return None;
             }
             let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
-            if !matches!(iter_group.header.class_id & 0xffff, 76 | 89) {
+            if !matches!(iter_group.header.kind(), 76 | 89) {
                 return None;
             }
-            if (iter_group.header.class_id & 0xffff) == 89
+            if (iter_group.header.kind()) == 89
                 && regular_polygon_iteration_step(file, groups, iter_group).is_some()
             {
                 return None;
@@ -304,18 +304,18 @@ pub(crate) fn collect_carried_polygon_edge_segment_groups(
 ) -> BTreeSet<usize> {
     let carried_polygon_edges = groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 77)
+        .filter(|group| (group.header.kind()) == 77)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            if (source_group.header.class_id & 0xffff) != 8 {
+            if (source_group.header.kind()) != 8 {
                 return None;
             }
             let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
-            if !matches!(iter_group.header.class_id & 0xffff, 76 | 89) {
+            if !matches!(iter_group.header.kind(), 76 | 89) {
                 return None;
             }
-            if (iter_group.header.class_id & 0xffff) == 89
+            if (iter_group.header.kind()) == 89
                 && regular_polygon_iteration_step(file, groups, iter_group).is_some()
             {
                 return None;
@@ -337,7 +337,7 @@ pub(crate) fn collect_carried_polygon_edge_segment_groups(
         .iter()
         .enumerate()
         .filter_map(|(group_index, group)| {
-            if (group.header.class_id & 0xffff) != 2 {
+            if (group.header.kind()) != 2 {
                 return None;
             }
             let path = find_indexed_path(file, group)?;
@@ -496,7 +496,7 @@ fn carried_iteration_point_map(
     iter_group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
 ) -> Option<AffinePointMap> {
-    if (iter_group.header.class_id & 0xffff) != 76 {
+    if (iter_group.header.kind()) != 76 {
         return None;
     }
 
@@ -514,7 +514,7 @@ fn carried_iteration_point_map(
     if !source_indices.iter().all(|index| {
         groups
             .get(*index)
-            .is_some_and(|group| (group.header.class_id & 0xffff) == 0)
+            .is_some_and(|group| (group.header.kind()) == 0)
     }) {
         return None;
     }
@@ -546,7 +546,7 @@ fn carried_iteration_affine_handles(
     anchors: &[Option<PointRecord>],
 ) -> Option<([usize; 3], [IterationPointHandle; 3])> {
     let iter_path = find_indexed_path(file, iter_group)?;
-    if (iter_group.header.class_id & 0xffff) != 76 || iter_path.refs.len() < 6 {
+    if (iter_group.header.kind()) != 76 || iter_path.refs.len() < 6 {
         return None;
     }
 
@@ -578,7 +578,7 @@ fn carried_iteration_affine_handles(
             continue;
         }
         let group = groups.get(group_index)?;
-        if (group.header.class_id & 0xffff) == 1 {
+        if (group.header.kind()) == 1 {
             let midpoint_path = find_indexed_path(file, group)?;
             let host_group_index = midpoint_path.refs.first()?.checked_sub(1)?;
             let line_index = line_group_to_index
@@ -606,18 +606,18 @@ pub(crate) fn collect_carried_iteration_polygons(
 ) -> Vec<PolygonShape> {
     groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 77)
+        .filter(|group| (group.header.kind()) == 77)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            if (source_group.header.class_id & 0xffff) != 8 {
+            if (source_group.header.kind()) != 8 {
                 return None;
             }
             let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
-            if !matches!(iter_group.header.class_id & 0xffff, 76 | 89) {
+            if !matches!(iter_group.header.kind(), 76 | 89) {
                 return None;
             }
-            if (iter_group.header.class_id & 0xffff) == 89
+            if (iter_group.header.kind()) == 89
                 && regular_polygon_iteration_step(file, groups, iter_group).is_some()
             {
                 return None;
@@ -673,18 +673,18 @@ pub(crate) fn collect_carried_polygon_iteration_families(
 ) -> Vec<PolygonIterationFamily> {
     groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 77)
+        .filter(|group| (group.header.kind()) == 77)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            if (source_group.header.class_id & 0xffff) != 8 {
+            if (source_group.header.kind()) != 8 {
                 return None;
             }
             let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
-            if !matches!(iter_group.header.class_id & 0xffff, 76 | 89) {
+            if !matches!(iter_group.header.kind(), 76 | 89) {
                 return None;
             }
-            if (iter_group.header.class_id & 0xffff) == 89
+            if (iter_group.header.kind()) == 89
                 && regular_polygon_iteration_step(file, groups, iter_group).is_some()
             {
                 return None;
@@ -737,17 +737,12 @@ pub(crate) fn collect_iteration_shapes(
     let mut lines = Vec::new();
     let polygons = Vec::new();
 
-    let has_iteration = groups
-        .iter()
-        .any(|group| (group.header.class_id & 0xffff) == 89);
+    let has_iteration = groups.iter().any(|group| (group.header.kind()) == 89);
     if !has_iteration {
         return (lines, polygons);
     }
 
-    for iter_group in groups
-        .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 89)
-    {
+    for iter_group in groups.iter().filter(|group| (group.header.kind()) == 89) {
         let Some(iter_path) = find_indexed_path(file, iter_group) else {
             continue;
         };
@@ -769,7 +764,7 @@ pub(crate) fn collect_iteration_shapes(
         let polygon_group_index = iter_path.refs.iter().find_map(|&obj_ref| {
             let index = obj_ref.checked_sub(1)?;
             let group = groups.get(index)?;
-            ((group.header.class_id & 0xffff) == 8).then_some(index)
+            ((group.header.kind()) == 8).then_some(index)
         });
 
         let Some(polygon_index) = polygon_group_index else {
@@ -796,7 +791,7 @@ pub(crate) fn collect_iteration_shapes(
 
         let px_per_cm = groups
             .iter()
-            .filter(|group| (group.header.class_id & 0xffff) == 21)
+            .filter(|group| (group.header.kind()) == 21)
             .find_map(|group| {
                 let payload = group
                     .records
@@ -810,7 +805,7 @@ pub(crate) fn collect_iteration_shapes(
 
         let param_value = groups
             .iter()
-            .filter(|group| (group.header.class_id & 0xffff) == 21)
+            .filter(|group| (group.header.kind()) == 21)
             .find_map(|group| {
                 let payload = group
                     .records

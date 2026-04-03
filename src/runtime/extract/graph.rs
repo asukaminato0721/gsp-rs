@@ -19,7 +19,7 @@ pub(super) fn collect_saved_viewport(file: &GspFile, groups: &[ObjectGroup]) -> 
 fn collect_graph_window_x_hint(file: &GspFile, groups: &[ObjectGroup]) -> Option<(f64, f64)> {
     groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 58)
+        .filter(|group| (group.header.kind()) == 58)
         .find_map(|group| {
             let payload = group
                 .records
@@ -48,7 +48,7 @@ fn collect_graph_window_y_hint(file: &GspFile, groups: &[ObjectGroup]) -> Option
         .and_then(|group| decode_function_expr(file, groups, group))?;
     let plot_payload = groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 72)
+        .filter(|group| (group.header.kind()) == 72)
         .find_map(|group| {
             group
                 .records
@@ -73,7 +73,7 @@ pub(super) fn detect_graph_transform(
 ) -> Option<GraphTransform> {
     let raw_per_unit = groups
         .iter()
-        .filter(|group| matches!(group.header.class_id & 0xffff, 52 | 54))
+        .filter(|group| matches!(group.header.kind(), 52 | 54))
         .find_map(|group| {
             group
                 .records
@@ -84,7 +84,7 @@ pub(super) fn detect_graph_transform(
 
     let origin_raw = groups
         .iter()
-        .find(|group| matches!(group.header.class_id & 0xffff, 52 | 54))
+        .find(|group| matches!(group.header.kind(), 52 | 54))
         .and_then(|group| {
             find_indexed_path(file, group).and_then(|path| {
                 path.refs.iter().find_map(|object_ref| {
@@ -102,7 +102,7 @@ pub(super) fn detect_graph_transform(
 pub(super) fn has_graph_classes(groups: &[ObjectGroup]) -> bool {
     groups
         .iter()
-        .any(|group| matches!(group.header.class_id & 0xffff, 40 | 52 | 54 | 58 | 61))
+        .any(|group| matches!(group.header.kind(), 40 | 52 | 54 | 58 | 61))
 }
 
 pub(super) fn collect_bounds(

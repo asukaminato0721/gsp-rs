@@ -163,10 +163,10 @@ fn analyze_scene(
     let has_function_plots = !function_plots.is_empty();
     let has_coordinate_objects = groups
         .iter()
-        .any(|group| matches!(group.header.class_id & 0xffff, 69 | 97));
+        .any(|group| matches!(group.header.kind(), 69 | 97));
     let has_iteration_helpers = groups
         .iter()
-        .any(|group| matches!(group.header.class_id & 0xffff, 76 | 77 | 89));
+        .any(|group| matches!(group.header.kind(), 76 | 77 | 89));
     let large_non_graph = !graph_mode && file.records.len() > 10_000;
 
     SceneAnalysis {
@@ -257,7 +257,7 @@ fn collect_scene_shapes(
             let group_index = groups
                 .iter()
                 .enumerate()
-                .filter(|(_, group)| (group.header.class_id & 0xffff) == 8)
+                .filter(|(_, group)| (group.header.kind()) == 8)
                 .nth(ordinal)
                 .map(|(index, _)| index)?;
             (!iteration_polygon_indices.contains(&group_index)).then_some(polygon)
@@ -310,13 +310,13 @@ fn collect_scene_shapes(
 fn collect_iteration_polygon_indices(file: &GspFile, groups: &[ObjectGroup]) -> BTreeSet<usize> {
     groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 89)
+        .filter(|group| (group.header.kind()) == 89)
         .filter_map(|group| find_indexed_path(file, group))
         .flat_map(|path| path.refs)
         .filter_map(|obj_ref| {
             let index = obj_ref.checked_sub(1)?;
             let group = groups.get(index)?;
-            ((group.header.class_id & 0xffff) == 8).then_some(index)
+            ((group.header.kind()) == 8).then_some(index)
         })
         .collect()
 }
@@ -439,9 +439,9 @@ fn remap_scene_bindings(
     let suppressed_carried_polygon_segments =
         collect_carried_polygon_edge_segment_groups(file, groups);
     let circle_group_to_index =
-        group_shape_index_map(groups, |_, group| (group.header.class_id & 0xffff) == 3);
+        group_shape_index_map(groups, |_, group| (group.header.kind()) == 3);
     let polygon_group_to_index = group_shape_index_map(groups, |index, group| {
-        (group.header.class_id & 0xffff) == 8 && !shapes.iteration_polygon_indices.contains(&index)
+        (group.header.kind()) == 8 && !shapes.iteration_polygon_indices.contains(&index)
     });
     remap_circle_bindings(
         &mut shapes.rotated_circles,
@@ -478,8 +478,7 @@ fn remap_scene_bindings(
         group_to_point_index,
         &polygon_group_to_index,
     );
-    let line_group_to_index =
-        group_shape_index_map(groups, |_, group| (group.header.class_id & 0xffff) == 2);
+    let line_group_to_index = group_shape_index_map(groups, |_, group| (group.header.kind()) == 2);
     remap_line_bindings(
         &mut shapes.direct_lines,
         group_to_point_index,

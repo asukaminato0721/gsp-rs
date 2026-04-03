@@ -70,7 +70,7 @@ pub(crate) fn regular_polygon_iteration_step(
         return None;
     }
     let seed_group = groups.get(path.refs[2].checked_sub(1)?)?;
-    if (seed_group.header.class_id & 0xffff) != 29 {
+    if (seed_group.header.kind()) != 29 {
         return None;
     }
     let seed_path = find_indexed_path(file, seed_group)?;
@@ -151,7 +151,7 @@ pub(crate) fn decode_translated_point_constraint(
         .iter()
         .find(|record| record.record_type == 0x07d3)
         .map(|record| record.payload(&file.data))?;
-    match group.header.class_id & 0xffff {
+    match group.header.kind() {
         21 => {
             if payload.len() < 48 {
                 return None;
@@ -204,7 +204,7 @@ fn decode_point_on_segment_constraint(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> Option<PointOnSegmentConstraint> {
-    if (group.header.class_id & 0xffff) != 15 {
+    if (group.header.kind()) != 15 {
         return None;
     }
 
@@ -243,7 +243,7 @@ pub(crate) fn decode_parameter_controlled_point(
     group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
 ) -> Option<ParameterControlledPoint> {
-    if (group.header.class_id & 0xffff) != 95 {
+    if (group.header.kind()) != 95 {
         return None;
     }
 
@@ -255,13 +255,13 @@ pub(crate) fn decode_parameter_controlled_point(
     let source_group = groups.get(path.refs[0].checked_sub(1)?)?;
     let host_group = groups.get(path.refs[1].checked_sub(1)?)?;
     let (parameter_name, parameter_value, source_point_group_index) =
-        if (source_group.header.class_id & 0xffff) == 0 {
+        if (source_group.header.kind()) == 0 {
             (
                 decode_label_name(file, source_group)?,
                 decode_non_graph_parameter_value_for_group(file, source_group)?.clamp(0.0, 1.0),
                 None,
             )
-        } else if (source_group.header.class_id & 0xffff) == 94 {
+        } else if (source_group.header.kind()) == 94 {
             let path = find_indexed_path(file, source_group)?;
             let point_group_index = path.refs.first()?.checked_sub(1)?;
             let point_group = groups.get(point_group_index)?;
@@ -291,7 +291,7 @@ pub(crate) fn decode_parameter_controlled_point(
             return None;
         };
 
-    match host_group.header.class_id & 0xffff {
+    match host_group.header.kind() {
         2 => {
             let host_path = find_indexed_path(file, host_group)?;
             if host_path.refs.len() != 2 {
@@ -372,7 +372,7 @@ pub(crate) fn decode_coordinate_point(
     group: &ObjectGroup,
     graph: &Option<GraphTransform>,
 ) -> Option<CoordinatePoint> {
-    if (group.header.class_id & 0xffff) != 69 {
+    if (group.header.kind()) != 69 {
         return None;
     }
 
@@ -411,7 +411,7 @@ pub(crate) fn decode_point_constraint(
     group: &ObjectGroup,
     graph: &Option<GraphTransform>,
 ) -> Option<RawPointConstraint> {
-    if (group.header.class_id & 0xffff) != 15 {
+    if (group.header.kind()) != 15 {
         return None;
     }
 
@@ -421,7 +421,7 @@ pub(crate) fn decode_point_constraint(
         .copied()
         .filter(|ordinal| *ordinal > 0)?;
     let host_group = groups.get(host_ref - 1)?;
-    let host_kind = host_group.header.class_id & 0xffff;
+    let host_kind = host_group.header.kind();
     let payload = group
         .records
         .iter()

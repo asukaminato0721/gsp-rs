@@ -31,7 +31,7 @@ pub(super) fn collect_point_objects(
     groups
         .iter()
         .map(|group| {
-            if (group.header.class_id & 0xffff) != 0 {
+            if (group.header.kind()) != 0 {
                 return None;
             }
             group.records.iter().find_map(|record| {
@@ -88,14 +88,14 @@ fn is_slider_parameter_name(name: &str) -> bool {
 fn is_angle_parameter_group(file: &GspFile, groups: &[ObjectGroup], target_index: usize) -> bool {
     let target_ordinal = target_index + 1;
     groups.iter().any(|group| {
-        (group.header.class_id & 0xffff) == 29
+        (group.header.kind()) == 29
             && find_indexed_path(file, group)
                 .is_some_and(|path| path.refs.get(2).copied() == Some(target_ordinal))
     })
 }
 
 pub(super) fn is_non_graph_parameter_group(group: &ObjectGroup) -> bool {
-    (group.header.class_id & 0xffff) == 0
+    (group.header.kind()) == 0
         && group
             .records
             .iter()

@@ -11,7 +11,7 @@ pub(crate) fn collect_line_shapes(
     file: &GspFile,
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
-    kinds: &[u32],
+    kinds: &[u16],
     fallback_generic: bool,
     suppressed_group_indices: &BTreeSet<usize>,
 ) -> Vec<LineShape> {
@@ -23,7 +23,7 @@ pub(crate) fn collect_line_shapes(
             if suppressed_group_indices.contains(group_index) {
                 return false;
             }
-            let kind = group.header.class_id & 0xffff;
+            let kind = group.header.kind();
             kinds.contains(&kind)
                 || (fallback_generic
                     && matches!(kind, 2 | 5 | 6 | 7)
@@ -44,17 +44,13 @@ pub(crate) fn collect_line_shapes(
             let end_group_index = path.refs.get(1).and_then(|ordinal| ordinal.checked_sub(1));
             (points.len() >= 2 && has_distinct_points(&points)).then_some(LineShape {
                 points,
-                color: if fallback_generic && !kinds.contains(&(group.header.class_id & 0xffff)) {
+                color: if fallback_generic && !kinds.contains(&(group.header.kind())) {
                     [40, 40, 40, 255]
                 } else {
                     color_from_style(group.header.style_b)
                 },
-                dashed: (group.header.class_id & 0xffff) == 58,
-                binding: match (
-                    group.header.class_id & 0xffff,
-                    start_group_index,
-                    end_group_index,
-                ) {
+                dashed: (group.header.kind()) == 58,
+                binding: match (group.header.kind(), start_group_index, end_group_index) {
                     (2, Some(start_index), Some(end_index)) => Some(LineBinding::Segment {
                         start_index,
                         end_index,
@@ -70,11 +66,11 @@ pub(crate) fn collect_bound_line_shapes(
     file: &GspFile,
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
-    kind: u32,
+    kind: u16,
 ) -> Vec<LineShape> {
     groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == kind)
+        .filter(|group| (group.header.kind()) == kind)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             if path.refs.len() != 2 {
@@ -108,11 +104,11 @@ pub(crate) fn collect_polygon_shapes(
     file: &GspFile,
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
-    kinds: &[u32],
+    kinds: &[u16],
 ) -> Vec<PolygonShape> {
     groups
         .iter()
-        .filter(|group| kinds.contains(&(group.header.class_id & 0xffff)))
+        .filter(|group| kinds.contains(&(group.header.kind())))
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let points = path
@@ -138,7 +134,7 @@ pub(crate) fn collect_circle_shapes(
 ) -> Vec<CircleShape> {
     groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 3)
+        .filter(|group| (group.header.kind()) == 3)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             if path.refs.len() != 2 {
@@ -160,7 +156,7 @@ pub(crate) fn collect_derived_segments(
     file: &GspFile,
     groups: &[ObjectGroup],
     point_map: &[Option<PointRecord>],
-    kinds: &[u32],
+    kinds: &[u16],
 ) -> Vec<LineShape> {
     let refs = groups
         .iter()
@@ -172,7 +168,7 @@ pub(crate) fn collect_derived_segments(
         .collect::<Vec<_>>();
     let class_ids = groups
         .iter()
-        .map(|group| group.header.class_id & 0xffff)
+        .map(|group| group.header.kind())
         .collect::<Vec<_>>();
 
     fn descend_points(
@@ -274,7 +270,7 @@ pub(crate) fn collect_coordinate_traces(
 ) -> Vec<LineShape> {
     groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 97)
+        .filter(|group| (group.header.kind()) == 97)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             if path.refs.len() < 3 {

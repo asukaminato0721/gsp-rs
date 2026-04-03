@@ -5,7 +5,7 @@ use crate::format::{
 };
 
 pub(crate) fn is_action_button_group(group: &ObjectGroup) -> bool {
-    (group.header.class_id & 0xffff) == 62
+    (group.header.kind()) == 62
         && group
             .records
             .iter()
@@ -118,7 +118,7 @@ pub(crate) fn decode_group_label_text(file: &GspFile, group: &ObjectGroup) -> Op
         .iter()
         .find_map(|record| match record.record_type {
             0x08fc => extract_rich_text(record.payload(&file.data)),
-            0x07d5 if matches!(group.header.class_id & 0xffff, 62) => {
+            0x07d5 if matches!(group.header.kind(), 62) => {
                 collect_strings(record.payload(&file.data))
                     .into_iter()
                     .map(|entry| entry.text.trim().to_string())
@@ -133,7 +133,7 @@ pub(crate) fn decode_label_anchor(
     group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
 ) -> Option<PointRecord> {
-    let kind = group.header.class_id & 0xffff;
+    let kind = group.header.kind();
     let offset = decode_label_offset(file, group).unwrap_or((0.0, 0.0));
     let base = group
         .records
@@ -244,7 +244,7 @@ pub(crate) fn decode_transform_anchor_raw(
     group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
 ) -> Option<PointRecord> {
-    let kind = group.header.class_id & 0xffff;
+    let kind = group.header.kind();
     match kind {
         27 => {
             let binding = decode_transform_binding(file, group)?;

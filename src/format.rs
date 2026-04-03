@@ -204,6 +204,12 @@ pub struct ObjectGroupHeader {
     pub style_c: u32,
 }
 
+impl ObjectGroupHeader {
+    pub fn kind(&self) -> u16 {
+        self.class_id as u16
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ObjectGroup {
     #[allow(dead_code)]

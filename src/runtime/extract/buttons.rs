@@ -53,7 +53,7 @@ pub(super) fn collect_buttons(
 ) -> Vec<SceneButton> {
     let button_label_groups = groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 73)
+        .filter(|group| (group.header.kind()) == 73)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let button_ordinal = *path.refs.first()?;
@@ -64,7 +64,7 @@ pub(super) fn collect_buttons(
 
     let mut raw_buttons = Vec::<RawButton>::new();
     for group in groups {
-        let kind = group.header.class_id & 0xffff;
+        let kind = group.header.kind();
         if kind == 0
             && !group
                 .records

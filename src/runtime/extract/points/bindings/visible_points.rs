@@ -20,7 +20,7 @@ pub(crate) fn collect_visible_points(
     let mut points = Vec::<ScenePoint>::new();
 
     for (index, group) in groups.iter().enumerate() {
-        let kind = group.header.class_id & 0xffff;
+        let kind = group.header.kind();
         let scene_point = match kind {
             0 => point_map
                 .get(index)
@@ -73,7 +73,7 @@ pub(crate) fn collect_visible_points(
                     .and_then(|point_index| *point_index)?;
                 groups
                     .get(source_group_index)
-                    .filter(|source_group| (source_group.header.class_id & 0xffff) == 0)
+                    .filter(|source_group| (source_group.header.kind()) == 0)
                     .map(|_| ScenePoint {
                         position,
                         constraint: ScenePointConstraint::Free,
@@ -100,7 +100,7 @@ pub(crate) fn collect_visible_points(
                     .and_then(|point_index| *point_index)?;
                 groups
                     .get(source_group_index)
-                    .filter(|source_group| (source_group.header.class_id & 0xffff) == 0)
+                    .filter(|source_group| (source_group.header.kind()) == 0)
                     .map(|_| ScenePoint {
                         position,
                         constraint: ScenePointConstraint::Free,

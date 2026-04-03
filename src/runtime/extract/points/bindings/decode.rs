@@ -9,7 +9,7 @@ pub(crate) fn decode_transform_binding(
     file: &GspFile,
     group: &ObjectGroup,
 ) -> Option<TransformBinding> {
-    let kind = group.header.class_id & 0xffff;
+    let kind = group.header.kind();
     let path = find_indexed_path(file, group)?;
     let source_group_index = path.refs.first()?.checked_sub(1)?;
     let center_group_index = path.refs.get(1)?.checked_sub(1)?;
@@ -63,14 +63,14 @@ pub(crate) fn decode_parameter_rotation_binding(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> Option<TransformBinding> {
-    if (group.header.class_id & 0xffff) != 29 {
+    if (group.header.kind()) != 29 {
         return None;
     }
     let path = find_indexed_path(file, group)?;
     let source_group_index = path.refs.first()?.checked_sub(1)?;
     let center_group_index = path.refs.get(1)?.checked_sub(1)?;
     let angle_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
-    if (angle_group.header.class_id & 0xffff) != 0 {
+    if (angle_group.header.kind()) != 0 {
         return None;
     }
     let angle_degrees = decode_angle_parameter_value_for_group(file, angle_group)?;

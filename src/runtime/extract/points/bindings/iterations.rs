@@ -20,10 +20,7 @@ pub(crate) fn collect_point_iteration_points(
     let mut derived_points = Vec::new();
     let mut families = Vec::new();
 
-    for group in groups
-        .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 77)
-    {
+    for group in groups.iter().filter(|group| (group.header.kind()) == 77) {
         let Some(path) = find_indexed_path(file, group) else {
             continue;
         };
@@ -45,15 +42,15 @@ pub(crate) fn collect_point_iteration_points(
         let Some(iter_group) = groups.get(iter_group_index) else {
             continue;
         };
-        match iter_group.header.class_id & 0xffff {
+        match iter_group.header.kind() {
             76 => {
                 let depth = iteration_depth(file, iter_group, 3);
                 if depth == 0 {
                     continue;
                 }
                 let seed_group = &groups[seed_group_index];
-                if matches!(seed_group.header.class_id & 0xffff, 27 | 29) {
-                    let rotation = if (seed_group.header.class_id & 0xffff) == 29 {
+                if matches!(seed_group.header.kind(), 27 | 29) {
+                    let rotation = if (seed_group.header.kind()) == 29 {
                         decode_parameter_rotation_binding(file, groups, seed_group)
                     } else {
                         decode_transform_binding(file, seed_group)
@@ -265,7 +262,7 @@ fn parameter_iteration_step(
         return None;
     }
     let parameter_group = groups.get(path.refs[0].checked_sub(1)?)?;
-    if (parameter_group.header.class_id & 0xffff) != 0 {
+    if (parameter_group.header.kind()) != 0 {
         return None;
     }
     let parameter_name = editable_non_graph_parameter_name_for_group(file, parameter_group)?;

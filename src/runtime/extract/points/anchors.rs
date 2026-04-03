@@ -15,7 +15,7 @@ pub(crate) fn decode_regular_polygon_vertex_anchor_raw(
     group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
 ) -> Option<PointRecord> {
-    if (group.header.class_id & 0xffff) != 29 {
+    if (group.header.kind()) != 29 {
         return None;
     }
     let path = find_indexed_path(file, group)?;
@@ -55,13 +55,13 @@ pub(crate) fn decode_reflection_anchor_raw(
     group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
 ) -> Option<PointRecord> {
-    if (group.header.class_id & 0xffff) != 34 {
+    if (group.header.kind()) != 34 {
         return None;
     }
     let path = find_indexed_path(file, group)?;
     let source_group_index = path.refs.first()?.checked_sub(1)?;
     let source_group = groups.get(source_group_index)?;
-    if (source_group.header.class_id & 0xffff) != 0 {
+    if (source_group.header.kind()) != 0 {
         return None;
     }
     let source = anchors.get(source_group_index)?.clone()?;
@@ -78,13 +78,13 @@ pub(crate) fn decode_point_pair_translation_anchor_raw(
     group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
 ) -> Option<PointRecord> {
-    if (group.header.class_id & 0xffff) != 16 {
+    if (group.header.kind()) != 16 {
         return None;
     }
     let path = find_indexed_path(file, group)?;
     let source_group_index = path.refs.first()?.checked_sub(1)?;
     let source_group = groups.get(source_group_index)?;
-    if (source_group.header.class_id & 0xffff) != 0 {
+    if (source_group.header.kind()) != 0 {
         return None;
     }
     let (vector_start_group_index, vector_end_group_index) =
@@ -114,7 +114,7 @@ pub(crate) fn reflection_line_group_indices(
 ) -> Option<(usize, usize)> {
     let path = find_indexed_path(file, group)?;
     let line_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
-    if !matches!(line_group.header.class_id & 0xffff, 2 | 63 | 64) {
+    if !matches!(line_group.header.kind(), 2 | 63 | 64) {
         return None;
     }
     let line_path = find_indexed_path(file, line_group)?;
@@ -128,7 +128,7 @@ pub(crate) fn translation_point_pair_group_indices(
     file: &GspFile,
     group: &ObjectGroup,
 ) -> Option<(usize, usize)> {
-    if (group.header.class_id & 0xffff) != 16 {
+    if (group.header.kind()) != 16 {
         return None;
     }
     let path = find_indexed_path(file, group)?;
@@ -152,7 +152,7 @@ pub(crate) fn decode_point_on_ray_anchor_raw(
     group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
 ) -> Option<PointRecord> {
-    if (group.header.class_id & 0xffff) != 15 {
+    if (group.header.kind()) != 15 {
         return None;
     }
 
@@ -162,7 +162,7 @@ pub(crate) fn decode_point_on_ray_anchor_raw(
         .copied()
         .filter(|ordinal| *ordinal > 0)?;
     let host_group = groups.get(host_ref - 1)?;
-    if (host_group.header.class_id & 0xffff) != 64 {
+    if (host_group.header.kind()) != 64 {
         return None;
     }
 
@@ -226,13 +226,13 @@ pub(crate) fn decode_line_midpoint_anchor_raw(
     group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
 ) -> Option<PointRecord> {
-    if (group.header.class_id & 0xffff) != 1 {
+    if (group.header.kind()) != 1 {
         return None;
     }
 
     let path = find_indexed_path(file, group)?;
     let host_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-    if !matches!(host_group.header.class_id & 0xffff, 2 | 63 | 64) {
+    if !matches!(host_group.header.kind(), 2 | 63 | 64) {
         return None;
     }
 
@@ -254,7 +254,7 @@ pub(crate) fn decode_offset_anchor_raw(
     group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
 ) -> Option<PointRecord> {
-    if (group.header.class_id & 0xffff) != 67 {
+    if (group.header.kind()) != 67 {
         return None;
     }
 

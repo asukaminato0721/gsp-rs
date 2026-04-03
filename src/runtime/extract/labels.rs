@@ -28,7 +28,7 @@ pub(super) fn collect_labels(
     let mut labels = Vec::new();
     let mut label_group_to_index = BTreeMap::new();
     for group in groups {
-        let kind = group.header.class_id & 0xffff;
+        let kind = group.header.kind();
         match kind {
             0 | 2 | 15 | 40 | 51 | 62 | 73 | 90 => {
                 if kind == 0 && decode_link_button_url(file, group).is_some() {
@@ -123,7 +123,7 @@ pub(super) fn collect_labels(
 pub(super) fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) -> Vec<TextLabel> {
     let mut labels = Vec::new();
     for group in groups {
-        let kind = group.header.class_id & 0xffff;
+        let kind = group.header.kind();
         if kind == 0
             && group
                 .records
@@ -217,7 +217,7 @@ fn collect_point_expression_label(
     }
     let point_group_index = path.refs.first()?.checked_sub(1)?;
     let expr_group = groups.get(path.refs[1].checked_sub(1)?)?;
-    if (expr_group.header.class_id & 0xffff) != 48 {
+    if (expr_group.header.kind()) != 48 {
         return None;
     }
     let expr = decode_function_expr(file, groups, expr_group)?;
@@ -251,7 +251,7 @@ pub(super) fn collect_polygon_parameter_labels(
 ) -> Vec<TextLabel> {
     groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 94)
+        .filter(|group| (group.header.kind()) == 94)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             if path.refs.len() < 2 {
@@ -260,9 +260,7 @@ pub(super) fn collect_polygon_parameter_labels(
 
             let point_group = groups.get(path.refs[0].checked_sub(1)?)?;
             let polygon_group = groups.get(path.refs[1].checked_sub(1)?)?;
-            if (point_group.header.class_id & 0xffff) != 15
-                || (polygon_group.header.class_id & 0xffff) != 8
-            {
+            if (point_group.header.kind()) != 15 || (polygon_group.header.kind()) != 8 {
                 return None;
             }
 
@@ -305,7 +303,7 @@ pub(super) fn collect_segment_parameter_labels(
 ) -> Vec<TextLabel> {
     groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 94)
+        .filter(|group| (group.header.kind()) == 94)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             if path.refs.len() < 2 {
@@ -314,9 +312,7 @@ pub(super) fn collect_segment_parameter_labels(
 
             let point_group = groups.get(path.refs[0].checked_sub(1)?)?;
             let segment_group = groups.get(path.refs[1].checked_sub(1)?)?;
-            if (point_group.header.class_id & 0xffff) != 15
-                || (segment_group.header.class_id & 0xffff) != 2
-            {
+            if (point_group.header.kind()) != 15 || (segment_group.header.kind()) != 2 {
                 return None;
             }
 
@@ -355,7 +351,7 @@ pub(super) fn collect_circle_parameter_labels(
 ) -> Vec<TextLabel> {
     groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 94)
+        .filter(|group| (group.header.kind()) == 94)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             if path.refs.len() < 2 {
@@ -364,9 +360,7 @@ pub(super) fn collect_circle_parameter_labels(
 
             let point_group = groups.get(path.refs[0].checked_sub(1)?)?;
             let circle_group = groups.get(path.refs[1].checked_sub(1)?)?;
-            if (point_group.header.class_id & 0xffff) != 15
-                || (circle_group.header.class_id & 0xffff) != 3
-            {
+            if (point_group.header.kind()) != 15 || (circle_group.header.kind()) != 3 {
                 return None;
             }
 
@@ -413,14 +407,14 @@ pub(super) fn collect_label_iterations(
 ) -> Vec<LabelIterationFamily> {
     groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 77)
+        .filter(|group| (group.header.kind()) == 77)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             if path.refs.len() < 2 {
                 return None;
             }
             let seed_group = groups.get(path.refs[0].checked_sub(1)?)?;
-            if (seed_group.header.class_id & 0xffff) != 90 {
+            if (seed_group.header.kind()) != 90 {
                 return None;
             }
             let seed_path = find_indexed_path(file, seed_group)?;
@@ -429,7 +423,7 @@ pub(super) fn collect_label_iterations(
                 .get(point_group_index)
                 .and_then(|mapped_index| *mapped_index)?;
             let expr_group = groups.get(seed_path.refs.get(1)?.checked_sub(1)?)?;
-            if (expr_group.header.class_id & 0xffff) != 48 {
+            if (expr_group.header.kind()) != 48 {
                 return None;
             }
             let expr = decode_function_expr(file, groups, expr_group)?;
@@ -572,9 +566,7 @@ pub(super) fn compute_iteration_labels(
 ) -> Vec<TextLabel> {
     let mut labels = Vec::new();
 
-    let has_iteration = groups
-        .iter()
-        .any(|group| (group.header.class_id & 0xffff) == 89);
+    let has_iteration = groups.iter().any(|group| (group.header.kind()) == 89);
     if !has_iteration {
         return labels;
     }
@@ -589,7 +581,7 @@ pub(super) fn compute_iteration_labels(
 
     let px_per_cm = groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 21)
+        .filter(|group| (group.header.kind()) == 21)
         .find_map(|group| {
             let payload = group
                 .records
@@ -603,7 +595,7 @@ pub(super) fn compute_iteration_labels(
 
     let param_value = groups
         .iter()
-        .filter(|group| (group.header.class_id & 0xffff) == 21)
+        .filter(|group| (group.header.kind()) == 21)
         .find_map(|group| {
             let payload = group
                 .records
@@ -649,7 +641,7 @@ pub(super) fn compute_iteration_labels(
                 .records
                 .iter()
                 .any(|record| record.record_type == 0x0907)
-                && (group.header.class_id & 0xffff) == 0
+                && (group.header.kind()) == 0
                 && !computed_values.contains_key(&name)
             {
                 computed_values.insert(name, t1);
@@ -658,7 +650,7 @@ pub(super) fn compute_iteration_labels(
     }
 
     for group in groups {
-        let kind = group.header.class_id & 0xffff;
+        let kind = group.header.kind();
         let has_0907 = group
             .records
             .iter()
