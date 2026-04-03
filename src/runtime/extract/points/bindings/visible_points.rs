@@ -29,9 +29,13 @@ pub(crate) fn collect_visible_points(
                     .flatten()
                     .map(|position| ScenePoint {
                         position,
+                        visible: true,
                         constraint: ScenePointConstraint::Free,
                         binding: None,
                     })
+            }
+            crate::format::GroupKind::Midpoint => {
+                scene_point_from_midpoint(index, file, groups, anchors, &group_to_point_index)
             }
             crate::format::GroupKind::CartesianOffsetPoint
             | crate::format::GroupKind::PolarOffsetPoint => {
@@ -42,6 +46,7 @@ pub(crate) fn collect_visible_points(
                     let position = anchors.get(index).cloned().flatten()?;
                     Some(ScenePoint {
                         position,
+                        visible: true,
                         constraint: ScenePointConstraint::Offset {
                             origin_index,
                             dx: constraint.dx,
@@ -91,6 +96,7 @@ pub(crate) fn collect_visible_points(
                         })
                         .map(|_| ScenePoint {
                             position,
+                            visible: true,
                             constraint: ScenePointConstraint::Free,
                             binding: Some(ScenePointBinding::Reflect {
                                 source_index,
@@ -122,6 +128,7 @@ pub(crate) fn collect_visible_points(
                         })
                         .map(|_| ScenePoint {
                             position,
+                            visible: true,
                             constraint: ScenePointConstraint::Free,
                             binding: Some(ScenePointBinding::Translate {
                                 source_index,
@@ -149,6 +156,7 @@ pub(crate) fn collect_visible_points(
                         .and_then(|point_index| *point_index)?;
                     Some(ScenePoint {
                         position,
+                        visible: true,
                         constraint: ScenePointConstraint::Free,
                         binding: Some(match binding.kind {
                             TransformBindingKind::Rotate {
@@ -198,6 +206,7 @@ fn scene_point_from_constraint(
                 .and_then(|point_index| *point_index)?;
             Some(ScenePoint {
                 position,
+                visible: true,
                 constraint: ScenePointConstraint::OnSegment {
                     start_index,
                     end_index,
@@ -213,6 +222,7 @@ fn scene_point_from_constraint(
             t,
         } => Some(ScenePoint {
             position,
+            visible: true,
             constraint: ScenePointConstraint::OnPolyline {
                 function_key,
                 points,
@@ -236,6 +246,7 @@ fn scene_point_from_constraint(
                 .collect::<Option<Vec<_>>>()?;
             Some(ScenePoint {
                 position,
+                visible: true,
                 constraint: ScenePointConstraint::OnPolygonBoundary {
                     vertex_indices,
                     edge_index,
@@ -253,6 +264,7 @@ fn scene_point_from_constraint(
                 .and_then(|point_index| *point_index)?;
             Some(ScenePoint {
                 position,
+                visible: true,
                 constraint: ScenePointConstraint::OnCircle {
                     center_index,
                     radius_index,
@@ -274,6 +286,7 @@ fn scene_point_from_constraint(
                 .and_then(|point_index| *point_index)?;
             Some(ScenePoint {
                 position,
+                visible: true,
                 constraint: ScenePointConstraint::OnArc {
                     start_index,
                     mid_index,
@@ -301,6 +314,7 @@ fn scene_point_from_parameter_controlled(
                 .and_then(|point_index| *point_index)?;
             Some(ScenePoint {
                 position: parameter_point.position.clone(),
+                visible: true,
                 constraint: ScenePointConstraint::OnSegment {
                     start_index,
                     end_index,
@@ -324,6 +338,7 @@ fn scene_point_from_parameter_controlled(
                 .collect::<Option<Vec<_>>>()?;
             Some(ScenePoint {
                 position: parameter_point.position.clone(),
+                visible: true,
                 constraint: ScenePointConstraint::OnPolygonBoundary {
                     vertex_indices,
                     edge_index: *edge_index,
@@ -341,6 +356,7 @@ fn scene_point_from_parameter_controlled(
                 .and_then(|point_index| *point_index)?;
             Some(ScenePoint {
                 position: parameter_point.position,
+                visible: true,
                 constraint: ScenePointConstraint::OnCircle {
                     center_index,
                     radius_index,
@@ -362,6 +378,7 @@ fn scene_point_from_parameter_controlled(
                 .and_then(|point_index| *point_index)?;
             Some(ScenePoint {
                 position: parameter_point.position,
+                visible: true,
                 constraint: ScenePointConstraint::OnArc {
                     start_index,
                     mid_index,
@@ -396,10 +413,45 @@ fn parameter_point_binding(
 fn scene_point_from_coordinate(point: CoordinatePoint) -> ScenePoint {
     ScenePoint {
         position: point.position,
+        visible: true,
         constraint: ScenePointConstraint::Free,
         binding: Some(ScenePointBinding::Coordinate {
             name: point.parameter_name,
             expr: point.expr,
         }),
     }
+}
+
+fn scene_point_from_midpoint(
+    index: usize,
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group_to_point_index: &[Option<usize>],
+) -> Option<ScenePoint> {
+    let group = groups.get(index)?;
+    let path = find_indexed_path(file, group)?;
+    let host_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+    if !matches!(
+        host_group.header.kind(),
+        crate::format::GroupKind::Segment
+            | crate::format::GroupKind::Line
+            | crate::format::GroupKind::Ray
+    ) {
+        return None;
+    }
+    let host_path = find_indexed_path(file, host_group)?;
+    let start_index = (*group_to_point_index.get(host_path.refs.first()?.checked_sub(1)?)?)?;
+    let end_index = (*group_to_point_index.get(host_path.refs.get(1)?.checked_sub(1)?)?)?;
+    let position = anchors.get(index).cloned().flatten()?;
+    Some(ScenePoint {
+        position,
+        visible: true,
+        constraint: ScenePointConstraint::OnSegment {
+            start_index,
+            end_index,
+            t: 0.5,
+        },
+        binding: None,
+    })
 }

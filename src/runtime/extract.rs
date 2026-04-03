@@ -523,6 +523,7 @@ fn remap_scene_bindings(
     let line_group_to_index = group_shape_index_map(groups, |_, group| {
         (group.header.kind()) == crate::format::GroupKind::Segment
     });
+    remap_line_bindings(&mut shapes.polylines, group_to_point_index, &line_group_to_index);
     remap_line_bindings(
         &mut shapes.direct_lines,
         group_to_point_index,
@@ -582,6 +583,7 @@ fn build_world_data(
         .chain(derived_iteration_points.iter())
         .map(|point| ScenePoint {
             position: to_world(&point.position, &analysis.graph_ref),
+            visible: point.visible,
             constraint: match &point.constraint {
                 ScenePointConstraint::Free => ScenePointConstraint::Free,
                 ScenePointConstraint::Offset {

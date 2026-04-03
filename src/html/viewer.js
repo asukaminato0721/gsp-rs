@@ -191,7 +191,7 @@
       points: scene.points.map((point) => ({
         x: point.x,
         y: point.y,
-        visible: true,
+        visible: point.visible !== false,
         constraint: point.constraint ? { ...point.constraint } : null,
         binding: point.binding ? { ...point.binding } : null,
       })),

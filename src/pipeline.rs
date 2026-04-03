@@ -168,6 +168,20 @@ mod tests {
     }
 
     #[test]
+    fn exports_perpendicular_bisector_fixture_into_html() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/gsp/中垂线.gsp"),
+            800,
+            600,
+        )
+        .expect("perpendicular bisector fixture should compile");
+
+        assert!(html.contains("\"kind\":\"perpendicular-line\""));
+        assert!(html.contains("\"throughIndex\":2"));
+        assert!(html.contains("\"constraint\":{\"kind\":\"segment\",\"startIndex\":0,\"endIndex\":1,\"t\":0.5}"));
+    }
+
+    #[test]
     fn exports_three_point_arc_into_html() {
         let html = compile_bytes_to_html_document(
             include_bytes!("../tests/fixtures/gsp/static/three_point_arc.gsp"),

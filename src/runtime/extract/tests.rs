@@ -394,6 +394,55 @@ fn preserves_perpendicular_gsp() {
 }
 
 #[test]
+fn preserves_perpendicular_bisector_midpoint_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/中垂线.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(
+        scene.lines.len(),
+        2,
+        "expected source segment and perpendicular bisector"
+    );
+    assert_eq!(scene.points.len(), 3, "expected endpoints plus visible midpoint");
+
+    let midpoint_index = scene
+        .points
+        .iter()
+        .enumerate()
+        .find_map(|(index, point)| match point.constraint {
+            ScenePointConstraint::OnSegment {
+                start_index,
+                end_index,
+                t,
+            } if start_index == 0 && end_index == 1 && (t - 0.5).abs() < 1e-9 => Some(index),
+            _ => None,
+        })
+        .expect("expected midpoint point on the source segment");
+    assert!(
+        scene.points[midpoint_index].visible,
+        "expected midpoint to be rendered as a visible point"
+    );
+
+    let perpendicular = scene
+        .lines
+        .iter()
+        .find_map(|line| match line.binding {
+            Some(LineBinding::PerpendicularLine {
+                through_index,
+                line_start_index,
+                line_end_index,
+            }) => Some((through_index, line_start_index, line_end_index)),
+            _ => None,
+        })
+        .expect("expected synthesized perpendicular line");
+
+    assert_eq!(perpendicular.0, midpoint_index);
+    assert_eq!(perpendicular.1, 0);
+    assert_eq!(perpendicular.2, 1);
+}
+
+#[test]
 fn preserves_bisector_gsp() {
     let data = include_bytes!("../../../tests/fixtures/gsp/static/bisector.gsp");
     let file = GspFile::parse(data).expect("fixture parses");
