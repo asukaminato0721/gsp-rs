@@ -220,6 +220,31 @@ pub(crate) fn decode_translated_point_anchor_raw(
     })
 }
 
+pub(crate) fn decode_line_midpoint_anchor_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    if (group.header.class_id & 0xffff) != 1 {
+        return None;
+    }
+
+    let path = find_indexed_path(file, group)?;
+    let host_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+    if !matches!(host_group.header.class_id & 0xffff, 2 | 63 | 64) {
+        return None;
+    }
+
+    let host_path = find_indexed_path(file, host_group)?;
+    let start = anchors.get(host_path.refs.first()?.checked_sub(1)?)?.clone()?;
+    let end = anchors.get(host_path.refs.get(1)?.checked_sub(1)?)?.clone()?;
+    Some(PointRecord {
+        x: (start.x + end.x) * 0.5,
+        y: (start.y + end.y) * 0.5,
+    })
+}
+
 pub(crate) fn decode_offset_anchor_raw(
     file: &GspFile,
     group: &ObjectGroup,

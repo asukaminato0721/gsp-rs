@@ -11,7 +11,8 @@ pub(super) use anchors::{
     decode_parameter_rotation_anchor_raw, decode_point_constraint_anchor,
     decode_point_on_ray_anchor_raw, decode_point_pair_translation_anchor_raw,
     decode_reflection_anchor_raw, decode_regular_polygon_vertex_anchor_raw,
-    decode_translated_point_anchor_raw, reflection_line_group_indices,
+    decode_translated_point_anchor_raw, decode_line_midpoint_anchor_raw,
+    reflection_line_group_indices,
     translation_point_pair_group_indices,
 };
 pub(super) use bindings::{
@@ -59,25 +60,7 @@ fn decode_non_graph_parameter(
     group: &ObjectGroup,
     labels: &mut [TextLabel],
 ) -> Option<SceneParameter> {
-    if (group.header.class_id & 0xffff) != 0 {
-        return None;
-    }
-    if group
-        .records
-        .iter()
-        .any(|record| record.record_type == 0x0899)
-    {
-        return None;
-    }
-    let _payload = group
-        .records
-        .iter()
-        .find(|record| record.record_type == 0x0907)
-        .map(|record| record.payload(&file.data))?;
-    let name = decode_label_name(file, group)?;
-    if !is_editable_non_graph_parameter_name(&name) {
-        return None;
-    }
+    let name = editable_non_graph_parameter_name_for_group(file, group)?;
     let value = decode_non_graph_parameter_value_for_group(file, group)?;
     let label_index = labels.iter().position(|label| label.text == name);
     if let Some(index) = label_index {
@@ -94,6 +77,18 @@ fn is_slider_parameter_name(name: &str) -> bool {
     name.contains('₁') || name.contains('₂') || name.contains('₃') || name.contains('₄')
 }
 
+pub(super) fn is_non_graph_parameter_group(group: &ObjectGroup) -> bool {
+    (group.header.class_id & 0xffff) == 0
+        && group
+            .records
+            .iter()
+            .any(|record| record.record_type == 0x0907)
+        && !group
+            .records
+            .iter()
+            .any(|record| record.record_type == 0x0899)
+}
+
 pub(super) fn is_editable_non_graph_parameter_name(name: &str) -> bool {
     is_slider_parameter_name(name)
         || (name.chars().count() == 1
@@ -101,6 +96,16 @@ pub(super) fn is_editable_non_graph_parameter_name(name: &str) -> bool {
                 .chars()
                 .next()
                 .is_some_and(|ch| ch.is_ascii_alphabetic()))
+}
+
+pub(super) fn editable_non_graph_parameter_name_for_group(
+    file: &GspFile,
+    group: &ObjectGroup,
+) -> Option<String> {
+    is_non_graph_parameter_group(group)
+        .then(|| decode_label_name(file, group))
+        .flatten()
+        .filter(|name| is_editable_non_graph_parameter_name(name))
 }
 
 fn decode_non_graph_parameter_value(payload: &[u8]) -> Option<f64> {

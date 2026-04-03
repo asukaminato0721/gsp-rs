@@ -1,9 +1,53 @@
 use super::{
     CircleShape, GspFile, LineBinding, LineIterationFamily, LineShape, ObjectGroup, PointRecord,
-    PolygonIterationFamily, PolygonShape, color_from_style, decode_label_name,
+    PolygonIterationFamily, PolygonShape, color_from_style,
     decode_translated_point_constraint, fill_color_from_styles, find_indexed_path,
     regular_polygon_iteration_step, rotate_around,
 };
+use crate::runtime::scene::IterationPointHandle;
+use crate::runtime::extract::points::editable_non_graph_parameter_name_for_group;
+
+#[derive(Clone)]
+struct AffinePointMap {
+    source_origin: PointRecord,
+    source_u: PointRecord,
+    source_v: PointRecord,
+    target_origin: PointRecord,
+    target_u: PointRecord,
+    target_v: PointRecord,
+}
+
+impl AffinePointMap {
+    fn from_triangles(source: &[PointRecord], target: &[PointRecord]) -> Option<Self> {
+        if source.len() < 3 || target.len() < 3 {
+            return None;
+        }
+        let source_origin = source[0].clone();
+        let source_u = source[1].clone() - source_origin.clone();
+        let source_v = source[2].clone() - source_origin.clone();
+        let det = source_u.x * source_v.y - source_u.y * source_v.x;
+        if det.abs() < 1e-9 {
+            return None;
+        }
+        let target_origin = target[0].clone();
+        Some(Self {
+            source_origin,
+            source_u,
+            source_v,
+            target_origin: target_origin.clone(),
+            target_u: target[1].clone() - target_origin.clone(),
+            target_v: target[2].clone() - target_origin,
+        })
+    }
+
+    fn map_point(&self, point: &PointRecord) -> PointRecord {
+        let relative = point.clone() - self.source_origin.clone();
+        let det = self.source_u.x * self.source_v.y - self.source_u.y * self.source_v.x;
+        let u = (relative.x * self.source_v.y - relative.y * self.source_v.x) / det;
+        let v = (self.source_u.x * relative.y - self.source_u.y * relative.x) / det;
+        self.target_origin.clone() + self.target_u.clone() * u + self.target_v.clone() * v
+    }
+}
 
 pub(crate) fn collect_rotational_iteration_lines(
     file: &GspFile,
@@ -89,25 +133,43 @@ pub(crate) fn collect_carried_iteration_lines(
             if !matches!(iter_group.header.class_id & 0xffff, 76 | 89) {
                 return None;
             }
+            if (iter_group.header.class_id & 0xffff) == 89
+                && regular_polygon_iteration_step(file, groups, iter_group).is_some()
+            {
+                return None;
+            }
             let source_path = find_indexed_path(file, source_group)?;
             if source_path.refs.len() != 2 {
                 return None;
             }
             let start = anchors.get(source_path.refs[0].checked_sub(1)?)?.clone()?;
             let end = anchors.get(source_path.refs[1].checked_sub(1)?)?.clone()?;
+            let depth = carried_iteration_depth(file, iter_group, 3);
+            if depth == 0 {
+                return None;
+            }
+            if let Some(point_map) = carried_iteration_point_map(file, groups, iter_group, anchors) {
+                let color = color_from_style(source_group.header.style_b);
+                let mut current_start = start.clone();
+                let mut current_end = end.clone();
+                let mut lines = Vec::with_capacity(depth);
+                for _ in 0..depth {
+                    current_start = point_map.map_point(&current_start);
+                    current_end = point_map.map_point(&current_end);
+                    lines.push(LineShape {
+                        points: vec![current_start.clone(), current_end.clone()],
+                        color,
+                        dashed: false,
+                        binding: None,
+                    });
+                }
+                return Some(lines);
+            }
             let steps = carried_iteration_steps(file, groups, iter_group, anchors);
             let Some(step) = steps.first().cloned() else {
                 return None;
             };
             let secondary_step = steps.get(1).cloned();
-            let depth = iter_group
-                .records
-                .iter()
-                .find(|record| record.record_type == 0x090a)
-                .map(|record| record.payload(&file.data))
-                .filter(|payload| payload.len() >= 20)
-                .map(|payload| super::read_u32(payload, 16) as usize)
-                .unwrap_or(3);
             let color = color_from_style(source_group.header.style_b);
             Some(
                 carried_iteration_line_deltas(&step, secondary_step.as_ref(), depth)
@@ -130,6 +192,7 @@ pub(crate) fn collect_carried_line_iteration_families(
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
     group_to_point_index: &[Option<usize>],
+    line_group_to_index: &[Option<usize>],
 ) -> Vec<LineIterationFamily> {
     groups
         .iter()
@@ -145,9 +208,49 @@ pub(crate) fn collect_carried_line_iteration_families(
             if !matches!(iter_group.header.class_id & 0xffff, 76 | 89) {
                 return None;
             }
+            if (iter_group.header.class_id & 0xffff) == 89
+                && regular_polygon_iteration_step(file, groups, iter_group).is_some()
+            {
+                return None;
+            }
             let source_path = find_indexed_path(file, source_group)?;
             if source_path.refs.len() != 2 {
                 return None;
+            }
+            if let Some((source_indices, target_handles)) = carried_iteration_affine_handles(
+                file,
+                groups,
+                iter_group,
+                group_to_point_index,
+                line_group_to_index,
+                anchors,
+            ) {
+                let start_index = group_to_point_index
+                    .get(source_path.refs[0].checked_sub(1)?)
+                    .copied()
+                    .flatten()?;
+                let end_index = group_to_point_index
+                    .get(source_path.refs[1].checked_sub(1)?)
+                    .copied()
+                    .flatten()?;
+                let depth = carried_iteration_depth(file, iter_group, 3);
+                if depth == 0 {
+                    return None;
+                }
+                return Some(LineIterationFamily {
+                    start_index,
+                    end_index,
+                    dx: 0.0,
+                    dy: 0.0,
+                    secondary_dx: None,
+                    secondary_dy: None,
+                    depth,
+                    parameter_name: None,
+                    color: color_from_style(source_group.header.style_b),
+                    dashed: false,
+                    affine_source_indices: Some(source_indices),
+                    affine_target_handles: Some(target_handles),
+                });
             }
             let start_index = group_to_point_index
                 .get(source_path.refs[0].checked_sub(1)?)
@@ -177,6 +280,8 @@ pub(crate) fn collect_carried_line_iteration_families(
                 parameter_name: carried_iteration_parameter_name(file, groups, iter_group),
                 color: color_from_style(source_group.header.style_b),
                 dashed: false,
+                affine_source_indices: None,
+                affine_target_handles: None,
             })
         })
         .collect()
@@ -310,10 +415,104 @@ fn carried_iteration_parameter_name(
 ) -> Option<String> {
     let iter_path = find_indexed_path(file, iter_group)?;
     let parameter_group = groups.get(iter_path.refs.first()?.checked_sub(1)?)?;
-    ((parameter_group.header.class_id & 0xffff) == 0)
-        .then(|| decode_label_name(file, parameter_group))
-        .flatten()
-        .filter(|name| super::super::points::is_editable_non_graph_parameter_name(name))
+    editable_non_graph_parameter_name_for_group(file, parameter_group)
+}
+
+fn carried_iteration_point_map(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    iter_group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<AffinePointMap> {
+    if (iter_group.header.class_id & 0xffff) != 76 {
+        return None;
+    }
+
+    let iter_path = find_indexed_path(file, iter_group)?;
+    if iter_path.refs.len() < 6 {
+        return None;
+    }
+
+    let source_indices = iter_path
+        .refs
+        .iter()
+        .take(3)
+        .map(|ordinal| ordinal.checked_sub(1))
+        .collect::<Option<Vec<_>>>()?;
+    if !source_indices.iter().all(|index| {
+        groups
+            .get(*index)
+            .is_some_and(|group| (group.header.class_id & 0xffff) == 0)
+    }) {
+        return None;
+    }
+
+    let image_indices = iter_path
+        .refs
+        .iter()
+        .skip(3)
+        .take(3)
+        .map(|ordinal| ordinal.checked_sub(1))
+        .collect::<Option<Vec<_>>>()?;
+    let source = source_indices
+        .iter()
+        .map(|index| anchors.get(*index)?.clone())
+        .collect::<Option<Vec<_>>>()?;
+    let target = image_indices
+        .iter()
+        .map(|index| anchors.get(*index)?.clone())
+        .collect::<Option<Vec<_>>>()?;
+    AffinePointMap::from_triangles(&source, &target)
+}
+
+fn carried_iteration_affine_handles(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    iter_group: &ObjectGroup,
+    group_to_point_index: &[Option<usize>],
+    line_group_to_index: &[Option<usize>],
+    anchors: &[Option<PointRecord>],
+) -> Option<([usize; 3], [IterationPointHandle; 3])> {
+    let iter_path = find_indexed_path(file, iter_group)?;
+    if (iter_group.header.class_id & 0xffff) != 76 || iter_path.refs.len() < 6 {
+        return None;
+    }
+
+    let source_group_indices = [
+        iter_path.refs[0].checked_sub(1)?,
+        iter_path.refs[1].checked_sub(1)?,
+        iter_path.refs[2].checked_sub(1)?,
+    ];
+    let source_indices = [
+        group_to_point_index.get(source_group_indices[0]).copied().flatten()?,
+        group_to_point_index.get(source_group_indices[1]).copied().flatten()?,
+        group_to_point_index.get(source_group_indices[2]).copied().flatten()?,
+    ];
+
+    let mut target_handles = Vec::with_capacity(3);
+    for ordinal in iter_path.refs.iter().skip(3).take(3) {
+        let group_index = ordinal.checked_sub(1)?;
+        if let Some(point_index) = group_to_point_index.get(group_index).copied().flatten() {
+            target_handles.push(IterationPointHandle::Point { point_index });
+            continue;
+        }
+        let group = groups.get(group_index)?;
+        if (group.header.class_id & 0xffff) == 1 {
+            let midpoint_path = find_indexed_path(file, group)?;
+            let host_group_index = midpoint_path.refs.first()?.checked_sub(1)?;
+            let line_index = line_group_to_index.get(host_group_index).copied().flatten()?;
+            target_handles.push(IterationPointHandle::LinePoint {
+                line_index,
+                segment_index: 0,
+                t: 0.5,
+            });
+            continue;
+        }
+        let fixed = anchors.get(group_index).cloned().flatten()?;
+        target_handles.push(IterationPointHandle::Fixed(fixed));
+    }
+    let target_handles: [IterationPointHandle; 3] = target_handles.try_into().ok()?;
+    Some((source_indices, target_handles))
 }
 
 pub(crate) fn collect_carried_iteration_polygons(
@@ -332,6 +531,11 @@ pub(crate) fn collect_carried_iteration_polygons(
             }
             let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
             if !matches!(iter_group.header.class_id & 0xffff, 76 | 89) {
+                return None;
+            }
+            if (iter_group.header.class_id & 0xffff) == 89
+                && regular_polygon_iteration_step(file, groups, iter_group).is_some()
+            {
                 return None;
             }
             let source_path = find_indexed_path(file, source_group)?;
@@ -394,6 +598,11 @@ pub(crate) fn collect_carried_polygon_iteration_families(
             }
             let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
             if !matches!(iter_group.header.class_id & 0xffff, 76 | 89) {
+                return None;
+            }
+            if (iter_group.header.class_id & 0xffff) == 89
+                && regular_polygon_iteration_step(file, groups, iter_group).is_some()
+            {
                 return None;
             }
             let source_path = find_indexed_path(file, source_group)?;

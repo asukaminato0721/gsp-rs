@@ -25,7 +25,7 @@ use self::labels::{
 use self::points::{
     RawPointIterationFamily, TransformBindingKind, collect_non_graph_parameters,
     collect_point_iteration_points, collect_point_objects, collect_visible_points,
-    decode_offset_anchor_raw, decode_parameter_controlled_anchor_raw,
+    decode_line_midpoint_anchor_raw, decode_offset_anchor_raw, decode_parameter_controlled_anchor_raw,
     decode_parameter_rotation_anchor_raw, decode_parameter_rotation_binding,
     decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,
     decode_point_pair_translation_anchor_raw, decode_reflection_anchor_raw,
@@ -483,7 +483,13 @@ fn remap_scene_bindings(
         &line_group_to_index,
     );
     let line_iterations =
-        collect_carried_line_iteration_families(file, groups, raw_anchors, group_to_point_index);
+        collect_carried_line_iteration_families(
+            file,
+            groups,
+            raw_anchors,
+            group_to_point_index,
+            &line_group_to_index,
+        );
     let polygon_iterations =
         collect_carried_polygon_iteration_families(file, groups, raw_anchors, group_to_point_index);
 
@@ -733,8 +739,9 @@ fn assemble_scene(
 ) -> Scene {
     let raw_lines = dedupe_line_shapes(
         shapes
-            .polylines
+            .rotational_iteration_lines
             .into_iter()
+            .chain(shapes.polylines)
             .chain(shapes.direct_lines)
             .chain(shapes.rays)
             .chain(shapes.rotated_lines)
@@ -747,7 +754,6 @@ fn assemble_scene(
             .chain(analysis.function_plots)
             .chain(shapes.synthetic_axes)
             .chain(shapes.iteration_lines)
-            .chain(shapes.rotational_iteration_lines)
             .chain(shapes.carried_iteration_lines)
             .collect(),
     );

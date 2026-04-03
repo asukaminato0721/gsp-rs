@@ -1,4 +1,3 @@
-use super::super::decode::decode_label_name;
 use super::anchors::{
     decode_reflection_anchor_raw, reflection_line_group_indices,
     translation_point_pair_group_indices,

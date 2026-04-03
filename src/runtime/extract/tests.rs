@@ -290,7 +290,7 @@ fn preserves_line_gsp() {
     assert_eq!(scene.lines.len(), 1, "expected one line");
     assert_eq!(scene.points.len(), 2, "expected two defining points");
     let line = &scene.lines[0];
-    assert!(matches!(line.binding, Some(LineBinding::Line { .. })));
+    assert!(matches!(line.binding, Some(LineBinding::Line { .. } | LineBinding::Segment { .. })));
     let min_x = line
         .points
         .iter()
@@ -862,6 +862,70 @@ fn preserves_default_depth_point_iteration_family() {
                 && (dy + 37.79527559055118).abs() < 1e-6
         ),
         "expected legacy initial image point to preserve its 1cm horizontal and vertical offsets"
+    );
+}
+
+#[test]
+fn does_not_treat_triangle_point_labels_as_iteration_parameters() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/static/简单迭代/三角形.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert!(
+        scene.parameters.is_empty(),
+        "expected no editable parameters in triangle fixture"
+    );
+    assert_eq!(scene.line_iterations.len(), 3);
+    assert!(scene
+        .line_iterations
+        .iter()
+        .all(|family| family.affine_source_indices.is_some() && family.affine_target_handles.is_some()));
+}
+
+#[test]
+fn preserves_midpoint_triangle_iteration_geometry() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/static/简单迭代/三角形.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert!(scene.lines.iter().any(|line| {
+        line.points.len() == 2
+            && (line.points[0].x - 751.0).abs() < 0.01
+            && (line.points[0].y - 467.5).abs() < 0.01
+            && (line.points[1].x - 853.0).abs() < 0.01
+            && (line.points[1].y - 319.5).abs() < 0.01
+    }));
+    assert!(
+        !scene.lines.iter().any(|line| {
+            line.points.len() == 2
+                && (line.points[0].x - 367.0).abs() < 0.01
+                && (line.points[0].y - 786.0).abs() < 0.01
+        }),
+        "expected midpoint recursion, not translated copies"
+    );
+}
+
+#[test]
+fn preserves_regular_polygon_iteration_without_carried_duplicates() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/static/简单迭代/迭代正多边形.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.parameters.len(), 1, "expected editable n parameter");
+    assert_eq!(scene.parameters[0].name, "n");
+    assert_eq!(scene.lines.len(), 5, "expected five polygon edges");
+    assert_eq!(
+        scene.lines.iter().filter(|line| matches!(line.binding, Some(LineBinding::RotateEdge { .. }))).count(),
+        5,
+        "expected all polygon edges to stay in one dynamic rotate-edge family"
+    );
+    assert!(
+        scene.lines.iter().all(|line| matches!(line.binding, Some(LineBinding::RotateEdge { .. }))),
+        "expected no static seed or carried duplicate segments"
+    );
+    assert!(
+        scene.line_iterations.is_empty(),
+        "expected no carried translation metadata for regular polygon iteration"
     );
 }
 

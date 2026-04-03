@@ -2,9 +2,9 @@ use crate::format::PointRecord;
 use crate::runtime::functions::{BinaryOp, FunctionExpr, FunctionTerm, UnaryFunction};
 use crate::runtime::geometry::darken;
 use crate::runtime::scene::{
-    ButtonAction, LabelIterationFamily, LineBinding, LineIterationFamily, PointIterationFamily,
-    PolygonIterationFamily, Scene, SceneButton, ScenePointBinding, ScenePointConstraint,
-    ShapeBinding, TextLabelBinding,
+    ButtonAction, IterationPointHandle, LabelIterationFamily, LineBinding, LineIterationFamily,
+    PointIterationFamily, PolygonIterationFamily, Scene, SceneButton, ScenePointBinding,
+    ScenePointConstraint, ShapeBinding, TextLabelBinding,
 };
 use serde::Serialize;
 
@@ -279,6 +279,13 @@ impl LineJson {
 #[derive(Serialize)]
 #[serde(tag = "kind")]
 enum LineBindingJson {
+    #[serde(rename = "segment")]
+    Segment {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+    },
     #[serde(rename = "line")]
     Line {
         #[serde(rename = "startIndex")]
@@ -348,6 +355,13 @@ enum LineBindingJson {
 impl LineBindingJson {
     fn from_binding(binding: &LineBinding) -> Self {
         match binding {
+            LineBinding::Segment {
+                start_index,
+                end_index,
+            } => Self::Segment {
+                start_index: *start_index,
+                end_index: *end_index,
+            },
             LineBinding::Line {
                 start_index,
                 end_index,
@@ -855,10 +869,39 @@ enum LineIterationJson {
         color: [u8; 4],
         dashed: bool,
     },
+    Affine {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+        #[serde(rename = "sourceTriangleIndices")]
+        source_triangle_indices: [usize; 3],
+        #[serde(rename = "targetTriangle")]
+        target_triangle: [IterationPointHandleJson; 3],
+        depth: usize,
+        color: [u8; 4],
+        dashed: bool,
+    },
 }
 
 impl LineIterationJson {
     fn from_family(family: &LineIterationFamily) -> Self {
+        if let (Some(source_triangle_indices), Some(target_triangle)) = (
+            family.affine_source_indices,
+            family.affine_target_handles.as_ref(),
+        ) {
+            return Self::Affine {
+                start_index: family.start_index,
+                end_index: family.end_index,
+                source_triangle_indices,
+                target_triangle: target_triangle.clone().map(|handle| {
+                    IterationPointHandleJson::from_handle(&handle)
+                }),
+                depth: family.depth,
+                color: family.color,
+                dashed: family.dashed,
+            };
+        }
         Self::Translate {
             start_index: family.start_index,
             end_index: family.end_index,
@@ -870,6 +913,49 @@ impl LineIterationJson {
             parameter_name: family.parameter_name.clone(),
             color: family.color,
             dashed: family.dashed,
+        }
+    }
+}
+
+#[derive(Serialize, Clone)]
+#[serde(untagged)]
+enum IterationPointHandleJson {
+    Point {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+    },
+    LinePoint {
+        #[serde(rename = "lineIndex")]
+        line_index: usize,
+        #[serde(rename = "segmentIndex")]
+        segment_index: usize,
+        t: f64,
+    },
+    Fixed {
+        x: f64,
+        y: f64,
+    },
+}
+
+impl IterationPointHandleJson {
+    fn from_handle(handle: &IterationPointHandle) -> Self {
+        match handle {
+            IterationPointHandle::Point { point_index } => Self::Point {
+                point_index: *point_index,
+            },
+            IterationPointHandle::LinePoint {
+                line_index,
+                segment_index,
+                t,
+            } => Self::LinePoint {
+                line_index: *line_index,
+                segment_index: *segment_index,
+                t: *t,
+            },
+            IterationPointHandle::Fixed(point) => Self::Fixed {
+                x: point.x,
+                y: point.y,
+            },
         }
     }
 }
