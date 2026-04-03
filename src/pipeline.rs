@@ -130,7 +130,7 @@ mod tests {
         )
         .expect("carried polygon iteration fixture should compile");
 
-        assert!(html.contains("\"lineIterations\":["));
+        assert!(html.contains("\"lineIterations\":[]"));
         assert!(html.contains("\"polygonIterations\":["));
         assert!(html.contains("\"parameterName\":\"n\""));
         assert!(html.contains("\"vertexIndices\":[0,2,1]"));

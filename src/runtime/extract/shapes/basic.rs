@@ -13,10 +13,16 @@ pub(crate) fn collect_line_shapes(
     anchors: &[Option<PointRecord>],
     kinds: &[u32],
     fallback_generic: bool,
+    suppressed_group_indices: &BTreeSet<usize>,
 ) -> Vec<LineShape> {
     groups
         .iter()
+        .enumerate()
         .filter(|group| {
+            let (group_index, group) = group;
+            if suppressed_group_indices.contains(group_index) {
+                return false;
+            }
             let kind = group.header.class_id & 0xffff;
             kinds.contains(&kind)
                 || (fallback_generic
@@ -25,7 +31,7 @@ pub(crate) fn collect_line_shapes(
                         .map(|path| path.refs.len() == 2)
                         .unwrap_or(false))
         })
-        .filter_map(|group| {
+        .filter_map(|(_, group)| {
             let path = find_indexed_path(file, group)?;
             let points = path
                 .refs

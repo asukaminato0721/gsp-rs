@@ -25,23 +25,24 @@ use self::labels::{
 use self::points::{
     RawPointIterationFamily, TransformBindingKind, collect_non_graph_parameters,
     collect_point_iteration_points, collect_point_objects, collect_visible_points,
-    decode_line_midpoint_anchor_raw, decode_offset_anchor_raw, decode_parameter_controlled_anchor_raw,
-    decode_parameter_rotation_anchor_raw, decode_parameter_rotation_binding,
-    decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,
-    decode_point_pair_translation_anchor_raw, decode_reflection_anchor_raw,
-    decode_regular_polygon_vertex_anchor_raw, decode_transform_binding,
-    decode_translated_point_anchor_raw, reflection_line_group_indices,
+    decode_line_midpoint_anchor_raw, decode_offset_anchor_raw,
+    decode_parameter_controlled_anchor_raw, decode_parameter_rotation_anchor_raw,
+    decode_parameter_rotation_binding, decode_point_constraint_anchor,
+    decode_point_on_ray_anchor_raw, decode_point_pair_translation_anchor_raw,
+    decode_reflection_anchor_raw, decode_regular_polygon_vertex_anchor_raw,
+    decode_transform_binding, decode_translated_point_anchor_raw, reflection_line_group_indices,
     regular_polygon_iteration_step, remap_circle_bindings, remap_label_bindings,
     remap_line_bindings, remap_polygon_bindings, translation_point_pair_group_indices,
 };
 use self::shapes::{
     collect_bound_line_shapes, collect_carried_iteration_lines, collect_carried_iteration_polygons,
-    collect_carried_line_iteration_families, collect_carried_polygon_iteration_families,
-    collect_circle_shapes, collect_coordinate_traces, collect_derived_segments,
-    collect_iteration_shapes, collect_line_shapes, collect_polygon_shapes,
-    collect_raw_object_anchors, collect_reflected_circle_shapes, collect_reflected_line_shapes,
-    collect_reflected_polygon_shapes, collect_rotated_circle_shapes, collect_rotated_line_shapes,
-    collect_rotated_polygon_shapes, collect_rotational_iteration_lines, collect_scaled_line_shapes,
+    collect_carried_line_iteration_families, collect_carried_polygon_edge_segment_groups,
+    collect_carried_polygon_iteration_families, collect_circle_shapes, collect_coordinate_traces,
+    collect_derived_segments, collect_iteration_shapes, collect_line_shapes,
+    collect_polygon_shapes, collect_raw_object_anchors, collect_reflected_circle_shapes,
+    collect_reflected_line_shapes, collect_reflected_polygon_shapes, collect_rotated_circle_shapes,
+    collect_rotated_line_shapes, collect_rotated_polygon_shapes,
+    collect_rotational_iteration_lines, collect_scaled_line_shapes,
     collect_transformed_circle_shapes, collect_transformed_polygon_shapes,
     collect_translated_polygon_shapes,
 };
@@ -54,7 +55,7 @@ use super::functions::{
 };
 use super::geometry::{Bounds, GraphTransform, distance_world, include_line_bounds, to_world};
 use super::scene::{
-    LabelIterationFamily, LineIterationFamily, LineShape, PointIterationFamily,
+    LabelIterationFamily, LineBinding, LineIterationFamily, LineShape, PointIterationFamily,
     PolygonIterationFamily, PolygonShape, Scene, SceneCircle, ScenePoint, ScenePointConstraint,
     TextLabel,
 };
@@ -189,12 +190,15 @@ fn collect_scene_shapes(
     point_map: &[Option<PointRecord>],
     analysis: &SceneAnalysis,
 ) -> CollectedShapes {
+    let suppressed_carried_polygon_segments =
+        collect_carried_polygon_edge_segment_groups(file, groups);
     let polylines = collect_line_shapes(
         file,
         groups,
         &analysis.raw_anchors,
         &[2],
         !analysis.graph_mode && !analysis.large_non_graph,
+        &suppressed_carried_polygon_segments,
     );
     let direct_lines = collect_bound_line_shapes(file, groups, &analysis.raw_anchors, 63);
     let rays = collect_bound_line_shapes(file, groups, &analysis.raw_anchors, 64);
@@ -208,12 +212,23 @@ fn collect_scene_shapes(
     let reflected_lines = collect_reflected_line_shapes(file, groups, &analysis.raw_anchors);
     let rotational_iteration_lines =
         collect_rotational_iteration_lines(file, groups, &analysis.raw_anchors);
-    let carried_iteration_lines =
-        collect_carried_iteration_lines(file, groups, &analysis.raw_anchors);
+    let carried_iteration_lines = collect_carried_iteration_lines(
+        file,
+        groups,
+        &analysis.raw_anchors,
+        &suppressed_carried_polygon_segments,
+    );
     let carried_iteration_polygons =
         collect_carried_iteration_polygons(file, groups, &analysis.raw_anchors);
     let measurements = if analysis.graph_mode {
-        collect_line_shapes(file, groups, &analysis.raw_anchors, &[58], false)
+        collect_line_shapes(
+            file,
+            groups,
+            &analysis.raw_anchors,
+            &[58],
+            false,
+            &BTreeSet::new(),
+        )
     } else {
         Vec::new()
     };
@@ -223,7 +238,14 @@ fn collect_scene_shapes(
         Vec::new()
     };
     let axes = if analysis.graph_mode {
-        collect_line_shapes(file, groups, &analysis.raw_anchors, &[61], false)
+        collect_line_shapes(
+            file,
+            groups,
+            &analysis.raw_anchors,
+            &[61],
+            false,
+            &BTreeSet::new(),
+        )
     } else {
         Vec::new()
     };
@@ -414,6 +436,8 @@ fn remap_scene_bindings(
     Vec<LineIterationFamily>,
     Vec<PolygonIterationFamily>,
 ) {
+    let suppressed_carried_polygon_segments =
+        collect_carried_polygon_edge_segment_groups(file, groups);
     let circle_group_to_index =
         group_shape_index_map(groups, |_, group| (group.header.class_id & 0xffff) == 3);
     let polygon_group_to_index = group_shape_index_map(groups, |index, group| {
@@ -482,14 +506,14 @@ fn remap_scene_bindings(
         group_to_point_index,
         &line_group_to_index,
     );
-    let line_iterations =
-        collect_carried_line_iteration_families(
-            file,
-            groups,
-            raw_anchors,
-            group_to_point_index,
-            &line_group_to_index,
-        );
+    let line_iterations = collect_carried_line_iteration_families(
+        file,
+        groups,
+        raw_anchors,
+        group_to_point_index,
+        &line_group_to_index,
+        &suppressed_carried_polygon_segments,
+    );
     let polygon_iterations =
         collect_carried_polygon_iteration_families(file, groups, raw_anchors, group_to_point_index);
 
@@ -737,25 +761,66 @@ fn assemble_scene(
     parameters: Vec<super::scene::SceneParameter>,
     functions: Vec<super::scene::SceneFunction>,
 ) -> Scene {
-    let raw_lines = dedupe_line_shapes(
-        shapes
-            .rotational_iteration_lines
-            .into_iter()
-            .chain(shapes.polylines)
-            .chain(shapes.direct_lines)
-            .chain(shapes.rays)
-            .chain(shapes.rotated_lines)
-            .chain(shapes.scaled_lines)
-            .chain(shapes.reflected_lines)
-            .chain(shapes.derived_segments)
-            .chain(shapes.measurements)
-            .chain(shapes.coordinate_traces)
-            .chain(shapes.axes)
-            .chain(analysis.function_plots)
-            .chain(shapes.synthetic_axes)
-            .chain(shapes.iteration_lines)
-            .chain(shapes.carried_iteration_lines)
-            .collect(),
+    let CollectedShapes {
+        polylines,
+        direct_lines,
+        rays,
+        derived_segments,
+        rotated_lines,
+        scaled_lines,
+        reflected_lines,
+        rotational_iteration_lines,
+        carried_iteration_lines,
+        carried_iteration_polygons,
+        measurements,
+        coordinate_traces,
+        axes,
+        iteration_polygon_indices: _,
+        polygons,
+        circles,
+        rotated_circles,
+        transformed_circles,
+        reflected_circles,
+        translated_polygons,
+        rotated_polygons,
+        transformed_polygons,
+        reflected_polygons,
+        iteration_lines,
+        iteration_polygons,
+        synthetic_axes,
+    } = shapes;
+
+    let raw_polygons = polygons
+        .into_iter()
+        .chain(translated_polygons)
+        .chain(rotated_polygons)
+        .chain(transformed_polygons)
+        .chain(reflected_polygons)
+        .chain(iteration_polygons)
+        .chain(carried_iteration_polygons)
+        .collect::<Vec<_>>();
+
+    let raw_lines = suppress_polygon_edge_segments(
+        dedupe_line_shapes(
+            rotational_iteration_lines
+                .into_iter()
+                .chain(polylines)
+                .chain(direct_lines)
+                .chain(rays)
+                .chain(rotated_lines)
+                .chain(scaled_lines)
+                .chain(reflected_lines)
+                .chain(derived_segments)
+                .chain(measurements)
+                .chain(coordinate_traces)
+                .chain(axes)
+                .chain(analysis.function_plots)
+                .chain(synthetic_axes)
+                .chain(iteration_lines)
+                .chain(carried_iteration_lines)
+                .collect(),
+        ),
+        &raw_polygons,
     );
 
     Scene {
@@ -772,15 +837,8 @@ fn assemble_scene(
             .into_iter()
             .map(|line| world_line_shape(line, &analysis.graph_ref, &bounds_data.bounds))
             .collect(),
-        polygons: shapes
-            .polygons
+        polygons: raw_polygons
             .into_iter()
-            .chain(shapes.translated_polygons)
-            .chain(shapes.rotated_polygons)
-            .chain(shapes.transformed_polygons)
-            .chain(shapes.reflected_polygons)
-            .chain(shapes.iteration_polygons)
-            .chain(shapes.carried_iteration_polygons)
             .map(|polygon| PolygonShape {
                 points: polygon
                     .points
@@ -791,12 +849,11 @@ fn assemble_scene(
                 binding: polygon.binding,
             })
             .collect(),
-        circles: shapes
-            .circles
+        circles: circles
             .into_iter()
-            .chain(shapes.rotated_circles)
-            .chain(shapes.transformed_circles)
-            .chain(shapes.reflected_circles)
+            .chain(rotated_circles)
+            .chain(transformed_circles)
+            .chain(reflected_circles)
             .map(|circle| SceneCircle {
                 center: to_world(&circle.center, &analysis.graph_ref),
                 radius_point: to_world(&circle.radius_point, &analysis.graph_ref),
@@ -833,6 +890,49 @@ fn assemble_scene(
         parameters,
         functions,
     }
+}
+fn suppress_polygon_edge_segments(
+    lines: Vec<LineShape>,
+    polygons: &[PolygonShape],
+) -> Vec<LineShape> {
+    lines
+        .into_iter()
+        .filter(|line| {
+            matches!(line.binding, Some(LineBinding::Segment { .. }))
+                .then(|| {
+                    !polygons
+                        .iter()
+                        .any(|polygon| polygon_has_matching_edge(polygon, line))
+                })
+                .unwrap_or(true)
+        })
+        .collect()
+}
+
+fn polygon_has_matching_edge(polygon: &PolygonShape, line: &LineShape) -> bool {
+    if polygon.points.len() < 3 || line.points.len() != 2 {
+        return false;
+    }
+    polygon
+        .points
+        .iter()
+        .zip(polygon.points.iter().cycle().skip(1))
+        .take(polygon.points.len())
+        .any(|(start, end)| points_match_segment(start, end, &line.points[0], &line.points[1]))
+}
+
+fn points_match_segment(
+    left_start: &crate::format::PointRecord,
+    left_end: &crate::format::PointRecord,
+    right_start: &crate::format::PointRecord,
+    right_end: &crate::format::PointRecord,
+) -> bool {
+    points_equal(left_start, right_start) && points_equal(left_end, right_end)
+        || points_equal(left_start, right_end) && points_equal(left_end, right_start)
+}
+
+fn points_equal(left: &crate::format::PointRecord, right: &crate::format::PointRecord) -> bool {
+    (left.x - right.x).abs() < 1e-6 && (left.y - right.y).abs() < 1e-6
 }
 
 pub(crate) fn build_scene(file: &GspFile) -> Scene {

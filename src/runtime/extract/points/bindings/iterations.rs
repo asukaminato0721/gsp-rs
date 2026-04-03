@@ -1,7 +1,8 @@
 use super::{
     GspFile, ObjectGroup, PointRecord, RawPointIterationFamily, TransformBindingKind,
-    decode_parameter_rotation_binding, decode_transform_binding, decode_translated_point_constraint,
-    iteration_depth, regular_polygon_iteration_step, rotate_around,
+    decode_parameter_rotation_binding, decode_transform_binding,
+    decode_translated_point_constraint, iteration_depth, regular_polygon_iteration_step,
+    rotate_around,
 };
 use crate::runtime::extract::find_indexed_path;
 use crate::runtime::extract::points::{
@@ -64,7 +65,8 @@ pub(crate) fn collect_point_iteration_points(
                         else {
                             continue;
                         };
-                        let TransformBindingKind::Rotate { angle_degrees } = binding.kind else {
+                        let TransformBindingKind::Rotate { angle_degrees, .. } = binding.kind
+                        else {
                             continue;
                         };
                         let Some(center_position) =
@@ -92,6 +94,7 @@ pub(crate) fn collect_point_iteration_points(
                                     source_index: previous_index,
                                     center_index,
                                     angle_degrees,
+                                    parameter_name: None,
                                 }),
                             });
                             previous_index = seed_index + derived_points.len();
@@ -227,6 +230,7 @@ pub(crate) fn collect_point_iteration_points(
                                 source_index: seed_index,
                                 center_index,
                                 angle_degrees: angle_degrees * step as f64,
+                                parameter_name: None,
                             }),
                         });
                     }

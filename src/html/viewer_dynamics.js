@@ -673,6 +673,7 @@
   /** @param {ViewerEnv} env */
   function refreshDerivedPoints(env, scene) {
     const bounds = env.getViewBounds ? env.getViewBounds() : (scene.bounds || env.sourceScene.bounds);
+    const parameters = parameterMap(env);
     const resolveHandle = (handle) => {
       if (typeof handle?.pointIndex === "number") {
         return scene.points[handle.pointIndex] || { x: 0, y: 0 };
@@ -705,7 +706,11 @@
         const source = scene.points[point.binding.sourceIndex];
         const center = scene.points[point.binding.centerIndex];
         if (!source || !center) return;
-        const rotated = rotateAround(source, center, point.binding.angleDegrees * Math.PI / 180);
+        const angleDegrees = point.binding.parameterName
+          ? parameters.get(point.binding.parameterName)
+          : point.binding.angleDegrees;
+        if (!Number.isFinite(angleDegrees)) return;
+        const rotated = rotateAround(source, center, angleDegrees * Math.PI / 180);
         point.x = rotated.x;
         point.y = rotated.y;
       } else if (point.binding?.kind === "scale") {
@@ -725,7 +730,11 @@
         if (!source || !center) return;
         const sourceCenter = resolveHandle(source.center);
         const sourceRadius = resolveHandle(source.radiusPoint);
-        const radians = circle.binding.angleDegrees * Math.PI / 180;
+        const angleDegrees = circle.binding.parameterName
+          ? parameters.get(circle.binding.parameterName)
+          : circle.binding.angleDegrees;
+        if (!Number.isFinite(angleDegrees)) return;
+        const radians = angleDegrees * Math.PI / 180;
         circle.center = rotateAround(sourceCenter, center, radians);
         circle.radiusPoint = rotateAround(sourceRadius, center, radians);
       } else if (circle.binding?.kind === "scale-circle") {
@@ -762,7 +771,11 @@
         const source = scene.polygons[polygon.binding.sourceIndex];
         const center = scene.points[polygon.binding.centerIndex];
         if (!source || !center) return;
-        const radians = polygon.binding.angleDegrees * Math.PI / 180;
+        const angleDegrees = polygon.binding.parameterName
+          ? parameters.get(polygon.binding.parameterName)
+          : polygon.binding.angleDegrees;
+        if (!Number.isFinite(angleDegrees)) return;
+        const radians = angleDegrees * Math.PI / 180;
         polygon.points = source.points.map((handle) => {
           const point = resolveHandle(handle);
           return rotateAround(point, center, radians);
@@ -789,7 +802,6 @@
 
     const preservedLines = [];
     const rotateFamilies = new Map();
-    const parameters = parameterMap(env);
     scene.lines.forEach((line) => {
       if (line.binding?.kind === "segment") {
         const start = scene.points[line.binding.startIndex];
@@ -820,7 +832,13 @@
         const source = scene.lines[line.binding.sourceIndex];
         const center = scene.points[line.binding.centerIndex];
         if (source && center) {
-          const radians = line.binding.angleDegrees * Math.PI / 180;
+          const angleDegrees = line.binding.parameterName
+            ? parameters.get(line.binding.parameterName)
+            : line.binding.angleDegrees;
+          if (!Number.isFinite(angleDegrees)) {
+            return;
+          }
+          const radians = angleDegrees * Math.PI / 180;
           line.points = source.points.map((point) => rotateAround(point, center, radians));
         }
         preservedLines.push(line);

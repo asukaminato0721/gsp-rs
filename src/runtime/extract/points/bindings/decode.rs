@@ -3,6 +3,7 @@ use super::{
     decode_angle_parameter_value_for_group,
 };
 use crate::runtime::extract::find_indexed_path;
+use crate::runtime::extract::points::editable_non_graph_parameter_name_for_group;
 
 pub(crate) fn decode_transform_binding(
     file: &GspFile,
@@ -32,7 +33,10 @@ pub(crate) fn decode_transform_binding(
                 let sin = super::read_f64(payload, 12);
                 sin.atan2(cos).to_degrees()
             };
-            TransformBindingKind::Rotate { angle_degrees }
+            TransformBindingKind::Rotate {
+                angle_degrees,
+                parameter_name: None,
+            }
         }
         30 => {
             if payload.len() < 12 {
@@ -69,16 +73,18 @@ pub(crate) fn decode_parameter_rotation_binding(
     if (angle_group.header.class_id & 0xffff) != 0 {
         return None;
     }
-    let angle_radians = decode_angle_parameter_value_for_group(file, angle_group)?;
-    if !angle_radians.is_finite() {
+    let angle_degrees = decode_angle_parameter_value_for_group(file, angle_group)?;
+    if !angle_degrees.is_finite() {
         return None;
     }
+    let parameter_name = editable_non_graph_parameter_name_for_group(file, angle_group);
 
     Some(TransformBinding {
         source_group_index,
         center_group_index,
         kind: TransformBindingKind::Rotate {
-            angle_degrees: angle_radians.to_degrees(),
+            angle_degrees,
+            parameter_name,
         },
     })
 }

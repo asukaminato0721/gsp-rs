@@ -129,13 +129,15 @@ pub(crate) fn collect_visible_points(
                         position,
                         constraint: ScenePointConstraint::Free,
                         binding: Some(match binding.kind {
-                            TransformBindingKind::Rotate { angle_degrees } => {
-                                ScenePointBinding::Rotate {
-                                    source_index,
-                                    center_index,
-                                    angle_degrees,
-                                }
-                            }
+                            TransformBindingKind::Rotate {
+                                angle_degrees,
+                                parameter_name,
+                            } => ScenePointBinding::Rotate {
+                                source_index,
+                                center_index,
+                                angle_degrees,
+                                parameter_name,
+                            },
                             TransformBindingKind::Scale { factor } => ScenePointBinding::Scale {
                                 source_index,
                                 center_index,

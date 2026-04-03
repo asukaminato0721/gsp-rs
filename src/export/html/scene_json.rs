@@ -317,6 +317,8 @@ enum LineBindingJson {
         center_index: usize,
         #[serde(rename = "angleDegrees")]
         angle_degrees: f64,
+        #[serde(rename = "parameterName")]
+        parameter_name: Option<String>,
     },
     #[serde(rename = "scale-line")]
     ScaleLine {
@@ -389,10 +391,12 @@ impl LineBindingJson {
                 source_index,
                 center_index,
                 angle_degrees,
+                parameter_name,
             } => Self::RotateLine {
                 source_index: *source_index,
                 center_index: *center_index,
                 angle_degrees: *angle_degrees,
+                parameter_name: parameter_name.clone(),
             },
             LineBinding::ScaleLine {
                 source_index,
@@ -500,6 +504,8 @@ enum ShapeBindingJson {
         center_index: usize,
         #[serde(rename = "angleDegrees")]
         angle_degrees: f64,
+        #[serde(rename = "parameterName")]
+        parameter_name: Option<String>,
     },
     #[serde(rename = "rotate-circle")]
     RotateCircle {
@@ -509,6 +515,8 @@ enum ShapeBindingJson {
         center_index: usize,
         #[serde(rename = "angleDegrees")]
         angle_degrees: f64,
+        #[serde(rename = "parameterName")]
+        parameter_name: Option<String>,
     },
     #[serde(rename = "scale-polygon")]
     ScalePolygon {
@@ -571,19 +579,23 @@ impl ShapeBindingJson {
                 source_index,
                 center_index,
                 angle_degrees,
+                parameter_name,
             } => Self::RotatePolygon {
                 source_index: *source_index,
                 center_index: *center_index,
                 angle_degrees: *angle_degrees,
+                parameter_name: parameter_name.clone(),
             },
             ShapeBinding::RotateCircle {
                 source_index,
                 center_index,
                 angle_degrees,
+                parameter_name,
             } => Self::RotateCircle {
                 source_index: *source_index,
                 center_index: *center_index,
                 angle_degrees: *angle_degrees,
+                parameter_name: parameter_name.clone(),
             },
             ShapeBinding::ScalePolygon {
                 source_index,
@@ -894,9 +906,9 @@ impl LineIterationJson {
                 start_index: family.start_index,
                 end_index: family.end_index,
                 source_triangle_indices,
-                target_triangle: target_triangle.clone().map(|handle| {
-                    IterationPointHandleJson::from_handle(&handle)
-                }),
+                target_triangle: target_triangle
+                    .clone()
+                    .map(|handle| IterationPointHandleJson::from_handle(&handle)),
                 depth: family.depth,
                 color: family.color,
                 dashed: family.dashed,
@@ -1069,6 +1081,8 @@ enum PointBindingJson {
         center_index: usize,
         #[serde(rename = "angleDegrees")]
         angle_degrees: f64,
+        #[serde(rename = "parameterName")]
+        parameter_name: Option<String>,
     },
     #[serde(rename = "scale")]
     Scale {
@@ -1114,10 +1128,12 @@ impl PointBindingJson {
                 source_index,
                 center_index,
                 angle_degrees,
+                parameter_name,
             } => Self::Rotate {
                 source_index: *source_index,
                 center_index: *center_index,
                 angle_degrees: *angle_degrees,
+                parameter_name: parameter_name.clone(),
             },
             ScenePointBinding::Scale {
                 source_index,

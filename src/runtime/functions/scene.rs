@@ -183,13 +183,11 @@ fn decode_parameter_binding(file: &GspFile, group: &ObjectGroup) -> Option<Param
         .find(|record| record.record_type == 0x07d5)
         .map(|record| record.payload(&file.data))?;
     let name = decode_parameter_name(label_payload)?;
-    let value =
-        if name.contains('₁') || name.contains('₂') || name.contains('₃') || name.contains('₄')
-        {
-            read_f64(payload, 52)
-        } else {
-            f64::from(read_u16(payload, payload.len().checked_sub(2)?))
-        };
+    let value = if is_slider_parameter_name(&name) {
+        read_f64(payload, 52)
+    } else {
+        f64::from(read_u16(payload, payload.len().checked_sub(2)?))
+    };
     if !value.is_finite() {
         return None;
     }
@@ -217,4 +215,12 @@ fn decode_parameter_name(label_payload: &[u8]) -> Option<String> {
         .filter(|ch| ch.is_ascii_alphabetic())?
         .to_string()
         .into()
+}
+
+fn is_slider_parameter_name(name: &str) -> bool {
+    name.contains('₁')
+        || name.contains('₂')
+        || name.contains('₃')
+        || name.contains('₄')
+        || (name.contains('[') && name.ends_with(']'))
 }
