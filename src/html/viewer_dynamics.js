@@ -268,6 +268,9 @@
     if (constraint.kind === "circle") {
       return circleParameterFromPoint(scene, pointIndex);
     }
+    if (constraint.kind === "arc") {
+      return constraint.t;
+    }
     return null;
   }
 
@@ -305,6 +308,8 @@
       const angle = Math.PI * 2 * clamped;
       point.constraint.unitX = Math.cos(angle);
       point.constraint.unitY = -Math.sin(angle);
+    } else if (point.constraint.kind === "arc") {
+      point.constraint.t = clamped;
     }
   }
 
