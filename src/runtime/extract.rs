@@ -41,8 +41,8 @@ use self::shapes::{
     collect_derived_segments, collect_iteration_shapes, collect_line_shapes,
     collect_polygon_shapes, collect_raw_object_anchors, collect_reflected_circle_shapes,
     collect_reflected_line_shapes, collect_reflected_polygon_shapes, collect_rotated_circle_shapes,
-    collect_rotated_line_shapes, collect_rotated_polygon_shapes, collect_three_point_arc_shapes,
-    collect_rotational_iteration_lines, collect_scaled_line_shapes,
+    collect_rotated_line_shapes, collect_rotated_polygon_shapes,
+    collect_rotational_iteration_lines, collect_scaled_line_shapes, collect_three_point_arc_shapes,
     collect_transformed_circle_shapes, collect_transformed_polygon_shapes,
     collect_translated_polygon_shapes,
 };
@@ -67,6 +67,7 @@ struct CircleShape {
     center: PointRecord,
     radius_point: PointRecord,
     color: [u8; 4],
+    dashed: bool,
     binding: Option<super::scene::ShapeBinding>,
 }
 
@@ -74,6 +75,8 @@ struct CircleShape {
 struct ArcShape {
     points: [PointRecord; 3],
     color: [u8; 4],
+    center: Option<PointRecord>,
+    counterclockwise: bool,
 }
 
 struct SceneAnalysis {
@@ -912,14 +915,19 @@ fn assemble_scene(
                 center: to_world(&circle.center, &analysis.graph_ref),
                 radius_point: to_world(&circle.radius_point, &analysis.graph_ref),
                 color: circle.color,
+                dashed: circle.dashed,
                 binding: circle.binding,
             })
             .collect(),
         arcs: arcs
             .into_iter()
             .map(|arc| SceneArc {
-                points: arc.points.map(|point| to_world(&point, &analysis.graph_ref)),
+                points: arc
+                    .points
+                    .map(|point| to_world(&point, &analysis.graph_ref)),
                 color: arc.color,
+                center: arc.center.map(|center| to_world(&center, &analysis.graph_ref)),
+                counterclockwise: arc.counterclockwise,
             })
             .collect(),
         labels: labels

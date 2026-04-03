@@ -7,6 +7,7 @@ use super::{
     fill_color_from_styles, find_indexed_path, has_distinct_points, three_point_arc_geometry,
     to_raw_from_world,
 };
+use crate::runtime::geometry::arc_on_circle_control_points;
 
 pub(crate) fn collect_line_shapes(
     file: &GspFile,
@@ -198,7 +199,12 @@ fn resolve_host_line_points(
     let end_index = path.refs[1].checked_sub(1)?;
     let start = anchors.get(start_index)?.clone()?;
     let end = anchors.get(end_index)?.clone()?;
-    has_distinct_points(&[start.clone(), end.clone()]).then_some((start_index, end_index, start, end))
+    has_distinct_points(&[start.clone(), end.clone()]).then_some((
+        start_index,
+        end_index,
+        start,
+        end,
+    ))
 }
 
 pub(crate) fn collect_bound_line_shapes(
@@ -271,10 +277,18 @@ pub(crate) fn collect_circle_shapes(
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
 ) -> Vec<CircleShape> {
+    let dashed_circle_indices = groups
+        .iter()
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::ArcOnCircle)
+        .filter_map(|group| find_indexed_path(file, group))
+        .filter_map(|path| path.refs.first().and_then(|ordinal| ordinal.checked_sub(1)))
+        .collect::<BTreeSet<_>>();
+
     groups
         .iter()
-        .filter(|group| (group.header.kind()) == crate::format::GroupKind::Circle)
-        .filter_map(|group| {
+        .enumerate()
+        .filter(|(_, group)| (group.header.kind()) == crate::format::GroupKind::Circle)
+        .filter_map(|(group_index, group)| {
             let path = find_indexed_path(file, group)?;
             if path.refs.len() != 2 {
                 return None;
@@ -285,6 +299,7 @@ pub(crate) fn collect_circle_shapes(
                 center,
                 radius_point,
                 color: color_from_style(group.header.style_b),
+                dashed: dashed_circle_indices.contains(&group_index),
                 binding: None,
             })
         })
@@ -298,21 +313,59 @@ pub(crate) fn collect_three_point_arc_shapes(
 ) -> Vec<ArcShape> {
     groups
         .iter()
-        .filter(|group| (group.header.kind()) == crate::format::GroupKind::ThreePointArc)
+        .filter(|group| {
+            matches!(
+                group.header.kind(),
+                crate::format::GroupKind::ThreePointArc | crate::format::GroupKind::ArcOnCircle
+            )
+        })
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
-            if path.refs.len() != 3 {
-                return None;
-            }
-            let points = [
-                anchors.get(path.refs[0].saturating_sub(1))?.clone()?,
-                anchors.get(path.refs[1].saturating_sub(1))?.clone()?,
-                anchors.get(path.refs[2].saturating_sub(1))?.clone()?,
-            ];
+            let points = match group.header.kind() {
+                crate::format::GroupKind::ThreePointArc => {
+                    if path.refs.len() != 3 {
+                        return None;
+                    }
+                    [
+                        anchors.get(path.refs[0].saturating_sub(1))?.clone()?,
+                        anchors.get(path.refs[1].saturating_sub(1))?.clone()?,
+                        anchors.get(path.refs[2].saturating_sub(1))?.clone()?,
+                    ]
+                }
+                crate::format::GroupKind::ArcOnCircle => {
+                    if path.refs.len() != 3 {
+                        return None;
+                    }
+                    let circle_group = groups.get(path.refs[0].checked_sub(1)?)?;
+                    if (circle_group.header.kind()) != crate::format::GroupKind::Circle {
+                        return None;
+                    }
+                    let circle_path = find_indexed_path(file, circle_group)?;
+                    if circle_path.refs.len() != 2 {
+                        return None;
+                    }
+                    let center = anchors
+                        .get(circle_path.refs[0].saturating_sub(1))?
+                        .clone()?;
+                    let start = anchors.get(path.refs[1].saturating_sub(1))?.clone()?;
+                    let end = anchors.get(path.refs[2].saturating_sub(1))?.clone()?;
+                    arc_on_circle_control_points(&center, &start, &end)?
+                }
+                _ => return None,
+            };
             three_point_arc_geometry(&points[0], &points[1], &points[2])?;
             Some(ArcShape {
                 points,
                 color: color_from_style(group.header.style_b),
+                center: match group.header.kind() {
+                    crate::format::GroupKind::ArcOnCircle => {
+                        let circle_group = groups.get(path.refs[0].checked_sub(1)?)?;
+                        let circle_path = find_indexed_path(file, circle_group)?;
+                        Some(anchors.get(circle_path.refs[0].saturating_sub(1))?.clone()?)
+                    }
+                    _ => None,
+                },
+                counterclockwise: (group.header.kind()) == crate::format::GroupKind::ArcOnCircle,
             })
         })
         .collect()

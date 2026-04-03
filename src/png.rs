@@ -196,6 +196,27 @@ impl Canvas {
         }
     }
 
+    fn draw_dashed_circle_outline(
+        &mut self,
+        cx: i32,
+        cy: i32,
+        radius: i32,
+        rgba: [u8; 4],
+        dash_len: i32,
+    ) {
+        let circumference = ((radius as f64) * std::f64::consts::TAU).max(1.0);
+        let steps = circumference.ceil() as i32;
+        for step in 0..steps {
+            if (step / dash_len) % 2 != 0 {
+                continue;
+            }
+            let angle = std::f64::consts::TAU * step as f64 / steps as f64;
+            let x = cx + (radius as f64 * angle.cos()).round() as i32;
+            let y = cy + (radius as f64 * angle.sin()).round() as i32;
+            self.set_pixel(x, y, rgba);
+        }
+    }
+
     fn draw_text(&mut self, x: i32, y: i32, text: &str, rgba: [u8; 4]) {
         self.draw_text_bitmap(x, y, text, rgba);
     }
@@ -512,7 +533,11 @@ pub fn render_points_to_png(
         let radius_pixels =
             (radius_world * screen_scale(width, height, margin, &scene.bounds)).round() as i32;
         if radius_pixels >= 4 {
-            canvas.draw_circle_outline(center.0, center.1, radius_pixels, circle.color);
+            if circle.dashed {
+                canvas.draw_dashed_circle_outline(center.0, center.1, radius_pixels, circle.color, 8);
+            } else {
+                canvas.draw_circle_outline(center.0, center.1, radius_pixels, circle.color);
+            }
         }
     }
 

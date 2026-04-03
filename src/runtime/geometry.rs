@@ -291,10 +291,8 @@ pub(crate) fn three_point_arc_geometry(
     mid: &PointRecord,
     end: &PointRecord,
 ) -> Option<ThreePointArcGeometry> {
-    let determinant = 2.0
-        * (start.x * (mid.y - end.y)
-            + mid.x * (end.y - start.y)
-            + end.x * (start.y - mid.y));
+    let determinant =
+        2.0 * (start.x * (mid.y - end.y) + mid.x * (end.y - start.y) + end.x * (start.y - mid.y));
     if determinant.abs() <= 1e-9 {
         return None;
     }
@@ -303,13 +301,9 @@ pub(crate) fn three_point_arc_geometry(
     let mid_sq = mid.x * mid.x + mid.y * mid.y;
     let end_sq = end.x * end.x + end.y * end.y;
     let center = PointRecord {
-        x: (start_sq * (mid.y - end.y)
-            + mid_sq * (end.y - start.y)
-            + end_sq * (start.y - mid.y))
+        x: (start_sq * (mid.y - end.y) + mid_sq * (end.y - start.y) + end_sq * (start.y - mid.y))
             / determinant,
-        y: (start_sq * (end.x - mid.x)
-            + mid_sq * (start.x - end.x)
-            + end_sq * (mid.x - start.x))
+        y: (start_sq * (end.x - mid.x) + mid_sq * (start.x - end.x) + end_sq * (mid.x - start.x))
             / determinant,
     };
     let radius = ((start.x - center.x).powi(2) + (start.y - center.y).powi(2)).sqrt();
@@ -373,7 +367,8 @@ pub(crate) fn point_on_three_point_arc(
     let angle = if ccw_mid <= ccw_span + 1e-9 {
         geometry.start_angle + ccw_span * clamped_t
     } else {
-        geometry.start_angle - normalized_angle_delta(geometry.end_angle, geometry.start_angle) * clamped_t
+        geometry.start_angle
+            - normalized_angle_delta(geometry.end_angle, geometry.start_angle) * clamped_t
     };
     Some(PointRecord {
         x: geometry.center.x + geometry.radius * angle.cos(),
@@ -381,12 +376,35 @@ pub(crate) fn point_on_three_point_arc(
     })
 }
 
-fn angle_lies_on_arc(
-    angle: f64,
-    start_angle: f64,
-    end_angle: f64,
-    counterclockwise: bool,
-) -> bool {
+pub(crate) fn arc_on_circle_control_points(
+    center: &PointRecord,
+    start: &PointRecord,
+    end: &PointRecord,
+) -> Option<[PointRecord; 3]> {
+    let start_dx = start.x - center.x;
+    let start_dy = start.y - center.y;
+    let end_dx = end.x - center.x;
+    let end_dy = end.y - center.y;
+    let start_radius = (start_dx * start_dx + start_dy * start_dy).sqrt();
+    let end_radius = (end_dx * end_dx + end_dy * end_dy).sqrt();
+    let radius = (start_radius + end_radius) * 0.5;
+    if radius <= 1e-9 {
+        return None;
+    }
+
+    let start_angle = (-start_dy).atan2(start_dx);
+    let end_angle = (-end_dy).atan2(end_dx);
+    let ccw_span = normalized_angle_delta(start_angle, end_angle);
+    let midpoint_angle = start_angle + ccw_span * 0.5;
+    let mid = PointRecord {
+        x: center.x + radius * midpoint_angle.cos(),
+        y: center.y - radius * midpoint_angle.sin(),
+    };
+
+    Some([start.clone(), mid, end.clone()])
+}
+
+fn angle_lies_on_arc(angle: f64, start_angle: f64, end_angle: f64, counterclockwise: bool) -> bool {
     if counterclockwise {
         normalized_angle_delta(angle, start_angle)
             <= normalized_angle_delta(end_angle, start_angle) + 1e-9

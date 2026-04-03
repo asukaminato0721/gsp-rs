@@ -206,6 +206,7 @@
       })),
       circles: scene.circles.map((circle) => ({
         color: circle.color,
+        dashed: !!circle.dashed,
         visible: true,
         center: attachPointRef(circle.center),
         radiusPoint: attachPointRef(circle.radiusPoint),
@@ -215,6 +216,8 @@
         color: arc.color,
         visible: true,
         points: arc.points.map(attachPointRef),
+        center: arc.center ? attachPointRef(arc.center) : null,
+        counterclockwise: !!arc.counterclockwise,
       })),
       labels: scene.labels.map((label) => ({
         text: label.text,

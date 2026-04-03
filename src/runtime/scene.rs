@@ -331,6 +331,7 @@ pub(crate) struct SceneCircle {
     pub(crate) center: PointRecord,
     pub(crate) radius_point: PointRecord,
     pub(crate) color: [u8; 4],
+    pub(crate) dashed: bool,
     pub(crate) binding: Option<ShapeBinding>,
 }
 
@@ -338,6 +339,8 @@ pub(crate) struct SceneCircle {
 pub(crate) struct SceneArc {
     pub(crate) points: [PointRecord; 3],
     pub(crate) color: [u8; 4],
+    pub(crate) center: Option<PointRecord>,
+    pub(crate) counterclockwise: bool,
 }
 
 #[derive(Debug, Clone)]

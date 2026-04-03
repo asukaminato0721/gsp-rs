@@ -45,7 +45,13 @@ type SceneData = {
   lines: any[];
   polygons: any[];
   circles: any[];
-  arcs: any[];
+  arcs: Array<{
+    color: [number, number, number, number];
+    visible?: boolean;
+    points: PointHandle[];
+    center?: PointHandle | null;
+    counterclockwise?: boolean;
+  }>;
   labels: any[];
   pointIterations?: Array<
     | {

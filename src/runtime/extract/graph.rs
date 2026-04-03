@@ -1,8 +1,10 @@
-use super::{ArcShape, CircleShape};
 use super::decode::{decode_measurement_value, find_indexed_path};
+use super::{ArcShape, CircleShape};
 use crate::format::{GspFile, ObjectGroup, PointRecord};
 use crate::runtime::functions::{FunctionExpr, decode_function_expr};
-use crate::runtime::geometry::{Bounds, GraphTransform, arc_sample_points, read_f32_unaligned, to_world};
+use crate::runtime::geometry::{
+    Bounds, GraphTransform, arc_sample_points, read_f32_unaligned, to_world,
+};
 use crate::runtime::scene::{LineShape, PolygonShape, TextLabel, TextLabelBinding};
 
 pub(super) fn collect_saved_viewport(file: &GspFile, groups: &[ObjectGroup]) -> Option<Bounds> {
