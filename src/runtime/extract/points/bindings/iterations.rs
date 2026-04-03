@@ -1,12 +1,12 @@
 use super::{
     GspFile, ObjectGroup, PointRecord, RawPointIterationFamily, TransformBindingKind,
-    decode_label_name, decode_parameter_rotation_binding, decode_transform_binding,
-    decode_translated_point_constraint, iteration_depth, regular_polygon_iteration_step,
-    rotate_around,
+    decode_parameter_rotation_binding, decode_transform_binding, decode_translated_point_constraint,
+    iteration_depth, regular_polygon_iteration_step, rotate_around,
 };
 use crate::runtime::extract::find_indexed_path;
 use crate::runtime::extract::points::{
-    is_editable_non_graph_parameter_name, regular_polygon_angle_expr,
+    editable_non_graph_parameter_name_for_group, is_editable_non_graph_parameter_name,
+    regular_polygon_angle_expr,
 };
 use crate::runtime::scene::{ScenePoint, ScenePointBinding, ScenePointConstraint};
 
@@ -264,7 +264,7 @@ fn parameter_iteration_step(
     if (parameter_group.header.class_id & 0xffff) != 0 {
         return None;
     }
-    let parameter_name = decode_label_name(file, parameter_group)?;
+    let parameter_name = editable_non_graph_parameter_name_for_group(file, parameter_group)?;
     if let Some((dx, dy)) = path
         .refs
         .iter()

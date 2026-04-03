@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use super::super::decode::{decode_label_name, find_indexed_path};
 use super::anchors::{resolve_circle_point_raw, resolve_polygon_boundary_point_raw};
-use super::decode_non_graph_parameter_value_for_group;
+use super::{decode_non_graph_parameter_value_for_group, editable_non_graph_parameter_name_for_group};
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
 use crate::runtime::functions::{
     BinaryOp, FunctionExpr, FunctionTerm, ParsedFunctionExpr, decode_function_expr,
@@ -79,7 +79,7 @@ pub(crate) fn regular_polygon_iteration_step(
     let calc_group = groups.get(seed_path.refs[2].checked_sub(1)?)?;
     let calc_path = find_indexed_path(file, calc_group)?;
     let parameter_group = groups.get(calc_path.refs.first()?.checked_sub(1)?)?;
-    let parameter_name = decode_label_name(file, parameter_group)?;
+    let parameter_name = editable_non_graph_parameter_name_for_group(file, parameter_group)?;
     let n = decode_non_graph_parameter_value_for_group(file, parameter_group)?;
     (n.abs() >= 1.0).then_some((
         center_group_index,

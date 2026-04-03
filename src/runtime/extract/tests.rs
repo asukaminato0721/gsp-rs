@@ -866,6 +866,45 @@ fn preserves_default_depth_point_iteration_family() {
 }
 
 #[test]
+fn does_not_treat_triangle_point_labels_as_iteration_parameters() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/static/简单迭代/三角形.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert!(
+        scene.parameters.is_empty(),
+        "expected no editable parameters in triangle fixture"
+    );
+    assert!(
+        scene.line_iterations.is_empty(),
+        "expected no translation metadata for midpoint iteration"
+    );
+}
+
+#[test]
+fn preserves_midpoint_triangle_iteration_geometry() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/static/简单迭代/三角形.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert!(scene.lines.iter().any(|line| {
+        line.points.len() == 2
+            && (line.points[0].x - 751.0).abs() < 0.01
+            && (line.points[0].y - 467.5).abs() < 0.01
+            && (line.points[1].x - 853.0).abs() < 0.01
+            && (line.points[1].y - 319.5).abs() < 0.01
+    }));
+    assert!(
+        !scene.lines.iter().any(|line| {
+            line.points.len() == 2
+                && (line.points[0].x - 367.0).abs() < 0.01
+                && (line.points[0].y - 786.0).abs() < 0.01
+        }),
+        "expected midpoint recursion, not translated copies"
+    );
+}
+
+#[test]
 fn preserves_scaled_point_and_single_parameter_label_in_scale_gsp() {
     let data = include_bytes!("../../../tests/fixtures/gsp/static/scale.gsp");
     let file = GspFile::parse(data).expect("fixture parses");
