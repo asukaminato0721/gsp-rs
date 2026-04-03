@@ -38,6 +38,19 @@ fn builds_function_plot_for_f_gsp() {
 }
 
 #[test]
+fn preserves_multiline_text_labels() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/多行文本.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.labels.len(), 1);
+    assert_eq!(
+        scene.labels[0].text,
+        "线段中垂线\n垂线\n平行线\n直角三角形\n点的轨迹\n圆上的弧\n过三点的弧"
+    );
+}
+
+#[test]
 fn preserves_constrained_points_in_edge_gsp() {
     let data = include_bytes!("../../../../edge.gsp");
     let file = GspFile::parse(data).expect("fixture parses");

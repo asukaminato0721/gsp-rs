@@ -210,4 +210,18 @@ mod tests {
         assert!(html.contains("\"counterclockwise\":true"));
         assert!(html.contains("\"points\":[{\"x\":411.18946322164174"));
     }
+
+    #[test]
+    fn exports_multiline_text_into_html() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/gsp/多行文本.gsp"),
+            800,
+            600,
+        )
+        .expect("multiline text fixture should compile");
+
+        assert!(html.contains(
+            "\"text\":\"线段中垂线\\n垂线\\n平行线\\n直角三角形\\n点的轨迹\\n圆上的弧\\n过三点的弧\""
+        ));
+    }
 }

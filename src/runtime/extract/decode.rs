@@ -326,11 +326,22 @@ fn extract_rich_text(payload: &[u8]) -> Option<String> {
 }
 
 fn extract_simple_text(markup: &str) -> Option<String> {
-    let start = markup.find("<T")?;
-    let tail = &markup[start + 2..];
-    let x_index = tail.find('x')?;
-    let end = tail[x_index + 1..].find('>')?;
-    Some(tail[x_index + 1..x_index + 1 + end].to_string())
+    let mut lines = Vec::new();
+    let mut rest = markup;
+
+    while let Some(start) = rest.find("<T") {
+        let tail = &rest[start + 2..];
+        let Some(end) = tail.find('>') else {
+            break;
+        };
+        let token = &tail[..end];
+        if let Some(x_index) = token.find('x') {
+            lines.push(token[x_index + 1..].to_string());
+        }
+        rest = &tail[end + 1..];
+    }
+
+    (!lines.is_empty()).then(|| lines.join("\n"))
 }
 
 fn parse_markup(markup: &str) -> String {
