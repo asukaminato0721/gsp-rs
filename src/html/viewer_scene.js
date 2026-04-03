@@ -70,6 +70,25 @@
     return [hits[0].point, hits[hits.length - 1].point];
   }
 
+  function angleBisectorDirection(start, vertex, end) {
+    const startDx = start.x - vertex.x;
+    const startDy = start.y - vertex.y;
+    const startLen = Math.hypot(startDx, startDy);
+    const endDx = end.x - vertex.x;
+    const endDy = end.y - vertex.y;
+    const endLen = Math.hypot(endDx, endDy);
+    if (startLen <= 1e-9 || endLen <= 1e-9) return null;
+
+    const sumX = startDx / startLen + endDx / endLen;
+    const sumY = startDy / startLen + endDy / endLen;
+    const sumLen = Math.hypot(sumX, sumY);
+    if (sumLen > 1e-9) {
+      return { x: sumX / sumLen, y: sumY / sumLen };
+    }
+
+    return { x: -startDy / startLen, y: startDx / startLen };
+  }
+
   /** @param {ViewerEnv} env */
   function getViewBounds(env) {
     const spanX = env.baseSpanX / env.view.zoom;
@@ -188,6 +207,22 @@
       const start = resolveScenePoint(env, line.binding.startIndex);
       const end = resolveScenePoint(env, line.binding.endIndex);
       return [start, end];
+    }
+    if (line.binding?.kind === "angle-bisector-ray") {
+      const start = resolveScenePoint(env, line.binding.startIndex);
+      const vertex = resolveScenePoint(env, line.binding.vertexIndex);
+      const end = resolveScenePoint(env, line.binding.endIndex);
+      const direction = angleBisectorDirection(start, vertex, end);
+      if (!direction) return null;
+      return clipParametricLineToBounds(
+        vertex,
+        {
+          x: vertex.x + direction.x,
+          y: vertex.y + direction.y,
+        },
+        getViewBounds(env),
+        true,
+      );
     }
     if (line.binding?.kind === "perpendicular-line") {
       const through = resolveScenePoint(env, line.binding.throughIndex);

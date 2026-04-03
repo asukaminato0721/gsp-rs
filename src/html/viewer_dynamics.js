@@ -96,6 +96,25 @@
     return clipParametricLineToBounds(start, end, bounds, true);
   }
 
+  function angleBisectorDirection(start, vertex, end) {
+    const startDx = start.x - vertex.x;
+    const startDy = start.y - vertex.y;
+    const startLen = Math.hypot(startDx, startDy);
+    const endDx = end.x - vertex.x;
+    const endDy = end.y - vertex.y;
+    const endLen = Math.hypot(endDx, endDy);
+    if (startLen <= 1e-9 || endLen <= 1e-9) return null;
+
+    const sumX = startDx / startLen + endDx / endLen;
+    const sumY = startDy / startLen + endDy / endLen;
+    const sumLen = Math.hypot(sumX, sumY);
+    if (sumLen > 1e-9) {
+      return { x: sumX / sumLen, y: sumY / sumLen };
+    }
+
+    return { x: -startDy / startLen, y: startDx / startLen };
+  }
+
   function evaluateUnary(op, x) {
     switch (op) {
       case "sin": return Math.sin(x);
@@ -808,6 +827,24 @@
         const end = scene.points[line.binding.endIndex];
         if (start && end) {
           line.points = [{ x: start.x, y: start.y }, { x: end.x, y: end.y }];
+        }
+        preservedLines.push(line);
+        return;
+      }
+      if (line.binding?.kind === "angle-bisector-ray") {
+        const start = scene.points[line.binding.startIndex];
+        const vertex = scene.points[line.binding.vertexIndex];
+        const end = scene.points[line.binding.endIndex];
+        if (start && vertex && end) {
+          const direction = angleBisectorDirection(start, vertex, end);
+          const clipped = direction
+            ? clipRayToBounds(
+                vertex,
+                { x: vertex.x + direction.x, y: vertex.y + direction.y },
+                bounds,
+              )
+            : null;
+          if (clipped) line.points = clipped;
         }
         preservedLines.push(line);
         return;

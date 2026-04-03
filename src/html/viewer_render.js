@@ -189,10 +189,13 @@
       if (
         line.binding?.kind === "line"
         || line.binding?.kind === "ray"
+        || line.binding?.kind === "angle-bisector-ray"
         || line.binding?.kind === "perpendicular-line"
       ) {
         const start = line.binding.kind === "perpendicular-line"
           ? env.toScreen(env.resolveScenePoint(line.binding.throughIndex))
+          : line.binding.kind === "angle-bisector-ray"
+            ? env.toScreen(env.resolveScenePoint(line.binding.vertexIndex))
           : env.toScreen(env.resolveScenePoint(line.binding.startIndex));
         const end = line.binding.kind === "perpendicular-line"
           ? (() => {
@@ -208,6 +211,29 @@
                 y: through.y + dx / len,
               });
             })()
+          : line.binding.kind === "angle-bisector-ray"
+            ? (() => {
+                const startPoint = env.resolveScenePoint(line.binding.startIndex);
+                const vertex = env.resolveScenePoint(line.binding.vertexIndex);
+                const endPoint = env.resolveScenePoint(line.binding.endIndex);
+                const startDx = startPoint.x - vertex.x;
+                const startDy = startPoint.y - vertex.y;
+                const startLen = Math.hypot(startDx, startDy);
+                const endDx = endPoint.x - vertex.x;
+                const endDy = endPoint.y - vertex.y;
+                const endLen = Math.hypot(endDx, endDy);
+                if (startLen <= 1e-9 || endLen <= 1e-9) return null;
+                const sumX = startDx / startLen + endDx / endLen;
+                const sumY = startDy / startLen + endDy / endLen;
+                const sumLen = Math.hypot(sumX, sumY);
+                const direction = sumLen > 1e-9
+                  ? { x: sumX / sumLen, y: sumY / sumLen }
+                  : { x: -startDy / startLen, y: startDx / startLen };
+                return env.toScreen({
+                  x: vertex.x + direction.x,
+                  y: vertex.y + direction.y,
+                });
+              })()
           : env.toScreen(env.resolveScenePoint(line.binding.endIndex));
         if (!end) continue;
         screenPoints = clipParametricLineToRect(
@@ -215,7 +241,7 @@
           end,
           env.sourceScene.width,
           env.sourceScene.height,
-          line.binding.kind === "ray",
+          line.binding.kind === "ray" || line.binding.kind === "angle-bisector-ray",
         );
       } else {
         const points = env.resolveLinePoints

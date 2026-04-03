@@ -33,13 +33,17 @@ pub(crate) fn collect_line_shapes(
                             | crate::format::GroupKind::LineKind6
                             | crate::format::GroupKind::LineKind7
                     )
-                    && find_indexed_path(file, group)
-                        .map(|path| path.refs.len() == 2)
-                        .unwrap_or(false))
+                    && find_indexed_path(file, group).is_some())
         })
         .filter_map(|(_, group)| {
-            if (group.header.kind()) == crate::format::GroupKind::LineKind5 {
-                return resolve_perpendicular_line_shape(file, groups, anchors, group);
+            match group.header.kind() {
+                crate::format::GroupKind::LineKind5 => {
+                    return resolve_perpendicular_line_shape(file, groups, anchors, group);
+                }
+                crate::format::GroupKind::LineKind7 => {
+                    return resolve_angle_bisector_ray_shape(file, anchors, group);
+                }
+                _ => {}
             }
             let path = find_indexed_path(file, group)?;
             let points = path
@@ -71,6 +75,41 @@ pub(crate) fn collect_line_shapes(
             })
         })
         .collect()
+}
+
+fn resolve_angle_bisector_ray_shape(
+    file: &GspFile,
+    anchors: &[Option<PointRecord>],
+    group: &ObjectGroup,
+) -> Option<LineShape> {
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() != 3 {
+        return None;
+    }
+
+    let start_index = path.refs[0].checked_sub(1)?;
+    let vertex_index = path.refs[1].checked_sub(1)?;
+    let end_index = path.refs[2].checked_sub(1)?;
+    let start = anchors.get(start_index)?.clone()?;
+    let vertex = anchors.get(vertex_index)?.clone()?;
+    let end = anchors.get(end_index)?.clone()?;
+
+    let (dir_x, dir_y) = angle_bisector_direction(&start, &vertex, &end)?;
+    let bisector_end = PointRecord {
+        x: vertex.x + dir_x,
+        y: vertex.y + dir_y,
+    };
+
+    has_distinct_points(&[vertex.clone(), bisector_end.clone()]).then_some(LineShape {
+        points: vec![vertex.clone(), bisector_end],
+        color: color_from_style(group.header.style_b),
+        dashed: false,
+        binding: Some(LineBinding::AngleBisectorRay {
+            start_index,
+            vertex_index,
+            end_index,
+        }),
+    })
 }
 
 fn resolve_perpendicular_line_shape(
@@ -115,6 +154,31 @@ fn resolve_perpendicular_line_shape(
             line_end_index,
         }),
     })
+}
+
+fn angle_bisector_direction(
+    start: &PointRecord,
+    vertex: &PointRecord,
+    end: &PointRecord,
+) -> Option<(f64, f64)> {
+    let first = normalize_direction(vertex, start)?;
+    let second = normalize_direction(vertex, end)?;
+    let sum_x = first.0 + second.0;
+    let sum_y = first.1 + second.1;
+    let sum_len = (sum_x * sum_x + sum_y * sum_y).sqrt();
+    if sum_len > 1e-9 {
+        return Some((sum_x / sum_len, sum_y / sum_len));
+    }
+
+    // A straight angle still has a deterministic bisector: the perpendicular through the vertex.
+    Some((-first.1, first.0))
+}
+
+fn normalize_direction(from: &PointRecord, to: &PointRecord) -> Option<(f64, f64)> {
+    let dx = to.x - from.x;
+    let dy = to.y - from.y;
+    let len = (dx * dx + dy * dy).sqrt();
+    (len > 1e-9).then_some((dx / len, dy / len))
 }
 
 fn resolve_host_line_points(

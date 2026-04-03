@@ -377,6 +377,56 @@ fn preserves_perpendicular_gsp() {
 }
 
 #[test]
+fn preserves_bisector_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/static/bisector.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.lines.len(), 1, "expected one angle bisector");
+    assert_eq!(scene.points.len(), 3, "expected three defining points");
+
+    let bisector = scene
+        .lines
+        .iter()
+        .find(|line| matches!(line.binding, Some(LineBinding::AngleBisectorRay { .. })))
+        .expect("expected synthesized angle bisector ray");
+
+    let start = &scene.points[0].position;
+    let vertex = &scene.points[1].position;
+    let end = &scene.points[2].position;
+    assert!(
+        (bisector.points[0].x - vertex.x).abs() < 1e-6
+            && (bisector.points[0].y - vertex.y).abs() < 1e-6,
+        "expected bisector ray to start at the vertex"
+    );
+    let bisector_dx = bisector.points[1].x - bisector.points[0].x;
+    let bisector_dy = bisector.points[1].y - bisector.points[0].y;
+    let bisector_len = (bisector_dx * bisector_dx + bisector_dy * bisector_dy).sqrt();
+    let start_dx = start.x - vertex.x;
+    let start_dy = start.y - vertex.y;
+    let start_len = (start_dx * start_dx + start_dy * start_dy).sqrt();
+    let end_dx = end.x - vertex.x;
+    let end_dy = end.y - vertex.y;
+    let end_len = (end_dx * end_dx + end_dy * end_dy).sqrt();
+
+    let distance = ((vertex.x - bisector.points[0].x) * bisector_dy
+        - (vertex.y - bisector.points[0].y) * bisector_dx)
+        .abs()
+        / bisector_len;
+    assert!(
+        distance < 1e-6,
+        "expected bisector ray to pass through the vertex, distance={distance}"
+    );
+
+    let start_alignment = (start_dx * bisector_dx + start_dy * bisector_dy) / (start_len * bisector_len);
+    let end_alignment = (end_dx * bisector_dx + end_dy * bisector_dy) / (end_len * bisector_len);
+    assert!(
+        (start_alignment - end_alignment).abs() < 1e-6,
+        "expected equal angles to both rays, got start={start_alignment} end={end_alignment}"
+    );
+}
+
+#[test]
 fn preserves_point_segment_value_segment_point_gsp() {
     let data =
         include_bytes!("../../../tests/fixtures/gsp/static/point_segment_value_segment_point.gsp");

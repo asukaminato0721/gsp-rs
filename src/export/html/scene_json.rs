@@ -286,6 +286,15 @@ enum LineBindingJson {
         #[serde(rename = "endIndex")]
         end_index: usize,
     },
+    #[serde(rename = "angle-bisector-ray")]
+    AngleBisectorRay {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "vertexIndex")]
+        vertex_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+    },
     #[serde(rename = "perpendicular-line")]
     PerpendicularLine {
         #[serde(rename = "throughIndex")]
@@ -371,6 +380,15 @@ impl LineBindingJson {
                 end_index,
             } => Self::Segment {
                 start_index: *start_index,
+                end_index: *end_index,
+            },
+            LineBinding::AngleBisectorRay {
+                start_index,
+                vertex_index,
+                end_index,
+            } => Self::AngleBisectorRay {
+                start_index: *start_index,
+                vertex_index: *vertex_index,
                 end_index: *end_index,
             },
             LineBinding::PerpendicularLine {
