@@ -10,7 +10,9 @@ use crate::runtime::functions::{
     BinaryOp, FunctionExpr, FunctionTerm, ParsedFunctionExpr, decode_function_expr,
     decode_function_plot_descriptor, evaluate_expr_with_parameters, sample_function_points,
 };
-use crate::runtime::geometry::{GraphTransform, lerp_point, point_on_three_point_arc, to_raw_from_world};
+use crate::runtime::geometry::{
+    GraphTransform, lerp_point, point_on_three_point_arc, to_raw_from_world,
+};
 
 pub(crate) struct PointOnSegmentConstraint {
     pub(crate) start_group_index: usize,
@@ -382,8 +384,7 @@ pub(crate) fn decode_parameter_controlled_point(
             let start = anchors.get(start_group_index)?.clone()?;
             let mid = anchors.get(mid_group_index)?.clone()?;
             let end = anchors.get(end_group_index)?.clone()?;
-            let position =
-                point_on_three_point_arc(&start, &mid, &end, parameter_value)?;
+            let position = point_on_three_point_arc(&start, &mid, &end, parameter_value)?;
             Some(ParameterControlledPoint {
                 position,
                 constraint: RawPointConstraint::Arc(PointOnArcConstraint {

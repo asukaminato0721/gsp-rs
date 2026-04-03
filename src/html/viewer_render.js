@@ -47,6 +47,22 @@
     return ((to - from) % tau + tau) % tau;
   }
 
+  function midpointOnCircleWorld(start, end, center, counterclockwise, yUp) {
+    const ySign = yUp ? 1 : -1;
+    const startAngle = Math.atan2((start.y - center.y) * ySign, start.x - center.x);
+    const endAngle = Math.atan2((end.y - center.y) * ySign, end.x - center.x);
+    const radius = (Math.hypot(start.x - center.x, start.y - center.y) + Math.hypot(end.x - center.x, end.y - center.y)) / 2;
+    if (radius <= 1e-9) return null;
+    const span = counterclockwise
+      ? normalizeAngleDelta(startAngle, endAngle)
+      : -normalizeAngleDelta(endAngle, startAngle);
+    const midpointAngle = startAngle + span * 0.5;
+    return {
+      x: center.x + radius * Math.cos(midpointAngle),
+      y: center.y + ySign * radius * Math.sin(midpointAngle),
+    };
+  }
+
   function clipParametricLineToRect(start, end, width, height, rayOnly) {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
@@ -328,14 +344,36 @@
       env.ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
       env.ctx.strokeStyle = env.rgba(circle.color);
       env.ctx.lineWidth = 2;
+      env.ctx.setLineDash(circle.dashed ? [8, 8] : []);
       env.ctx.stroke();
     }
+    env.ctx.setLineDash([]);
   }
 
   function drawArcs(env) {
     for (const arc of env.currentScene().arcs || []) {
       if (arc.visible === false || !Array.isArray(arc.points) || arc.points.length !== 3) continue;
-      const screenPoints = arc.points.map((handle) => env.toScreen(env.resolvePoint(handle)));
+      let screenPoints;
+      if (arc.center) {
+        const startWorld = env.resolvePoint(arc.points[0]);
+        const endWorld = env.resolvePoint(arc.points[2]);
+        const centerWorld = env.resolvePoint(arc.center);
+        const midpointWorld = midpointOnCircleWorld(
+          startWorld,
+          endWorld,
+          centerWorld,
+          arc.counterclockwise !== false,
+          !!env.sourceScene.yUp,
+        );
+        if (!midpointWorld) continue;
+        screenPoints = [
+          env.toScreen(startWorld),
+          env.toScreen(midpointWorld),
+          env.toScreen(endWorld),
+        ];
+      } else {
+        screenPoints = arc.points.map((handle) => env.toScreen(env.resolvePoint(handle)));
+      }
       const geometry = arcGeometryFromPoints(screenPoints[0], screenPoints[1], screenPoints[2]);
       if (!geometry) continue;
       env.ctx.beginPath();

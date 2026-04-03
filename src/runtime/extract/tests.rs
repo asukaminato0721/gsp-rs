@@ -338,7 +338,11 @@ fn preserves_perpendicular_gsp() {
     let file = GspFile::parse(data).expect("fixture parses");
     let scene = build_scene(&file);
 
-    assert_eq!(scene.lines.len(), 2, "expected base segment and perpendicular line");
+    assert_eq!(
+        scene.lines.len(),
+        2,
+        "expected base segment and perpendicular line"
+    );
     assert_eq!(scene.points.len(), 2, "expected two defining points");
 
     let base = scene
@@ -418,7 +422,8 @@ fn preserves_bisector_gsp() {
         "expected bisector ray to pass through the vertex, distance={distance}"
     );
 
-    let start_alignment = (start_dx * bisector_dx + start_dy * bisector_dy) / (start_len * bisector_len);
+    let start_alignment =
+        (start_dx * bisector_dx + start_dy * bisector_dy) / (start_len * bisector_len);
     let end_alignment = (end_dx * bisector_dx + end_dy * bisector_dy) / (end_len * bisector_len);
     assert!(
         (start_alignment - end_alignment).abs() < 1e-6,
@@ -434,7 +439,10 @@ fn preserves_three_point_arc_gsp() {
 
     assert_eq!(scene.points.len(), 3, "expected three defining points");
     assert_eq!(scene.arcs.len(), 1, "expected one three-point arc");
-    assert!(scene.lines.is_empty(), "expected arc fixture not to fall back to a line");
+    assert!(
+        scene.lines.is_empty(),
+        "expected arc fixture not to fall back to a line"
+    );
 
     let arc = &scene.arcs[0];
     assert_eq!(arc.color, [0, 128, 0, 255]);
@@ -457,7 +465,11 @@ fn preserves_three_point_arc_point_gsp() {
     let scene = build_scene(&file);
 
     assert_eq!(scene.arcs.len(), 1, "expected one three-point arc");
-    assert_eq!(scene.points.len(), 4, "expected three defining points and one constrained point");
+    assert_eq!(
+        scene.points.len(),
+        4,
+        "expected three defining points and one constrained point"
+    );
     assert!(scene.points.iter().any(|point| matches!(
         point.constraint,
         ScenePointConstraint::OnArc {
@@ -467,6 +479,52 @@ fn preserves_three_point_arc_point_gsp() {
             t,
         } if (t - 0.201784919136623).abs() < 1e-9
     )));
+}
+
+#[test]
+fn preserves_arc_on_circle_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/static/arc_on_circle.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.circles.len(), 1, "expected one supporting circle");
+    assert!(
+        scene.circles[0].dashed,
+        "expected supporting circle to render dashed"
+    );
+    assert_eq!(scene.arcs.len(), 1, "expected one arc on the source circle");
+    assert_eq!(
+        scene.points.len(),
+        4,
+        "expected center, radius, and two arc endpoints"
+    );
+
+    let arc = &scene.arcs[0];
+    let start = &scene.points[2].position;
+    let end = &scene.points[3].position;
+    let midpoint = &arc.points[1];
+    let center = &scene.circles[0].center;
+    let radius = ((scene.circles[0].radius_point.x - center.x).powi(2)
+        + (scene.circles[0].radius_point.y - center.y).powi(2))
+    .sqrt();
+    let start_angle = (-(start.y - center.y)).atan2(start.x - center.x);
+    let end_angle = (-(end.y - center.y)).atan2(end.x - center.x);
+    let midpoint_angle = (-(midpoint.y - center.y)).atan2(midpoint.x - center.x);
+    let ccw_span = (end_angle - start_angle).rem_euclid(std::f64::consts::TAU);
+    let ccw_mid = (midpoint_angle - start_angle).rem_euclid(std::f64::consts::TAU);
+
+    assert!((arc.points[0].x - start.x).abs() < 1e-6 && (arc.points[0].y - start.y).abs() < 1e-6);
+    assert!((arc.points[2].x - end.x).abs() < 1e-6 && (arc.points[2].y - end.y).abs() < 1e-6);
+    assert!(
+        ((((midpoint.x - center.x).powi(2) + (midpoint.y - center.y).powi(2)).sqrt()) - radius)
+            .abs()
+            < 1e-6,
+        "expected synthesized midpoint to remain on the source circle"
+    );
+    assert!(
+        (ccw_mid - ccw_span * 0.5).abs() < 1e-6,
+        "expected synthesized midpoint to bisect the counterclockwise sweep"
+    );
 }
 
 #[test]

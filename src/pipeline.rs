@@ -195,4 +195,19 @@ mod tests {
         assert!(html.contains("\"midIndex\":1"));
         assert!(html.contains("\"endIndex\":2"));
     }
+
+    #[test]
+    fn exports_arc_on_circle_into_html() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/gsp/static/arc_on_circle.gsp"),
+            800,
+            600,
+        )
+        .expect("arc-on-circle fixture should compile");
+
+        assert!(html.contains("\"arcs\":["));
+        assert!(html.contains("\"dashed\":true"));
+        assert!(html.contains("\"counterclockwise\":true"));
+        assert!(html.contains("\"points\":[{\"x\":411.18946322164174"));
+    }
 }

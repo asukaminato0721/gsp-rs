@@ -499,6 +499,7 @@ struct CircleJson {
     center: PointJson,
     radius_point: PointJson,
     color: [u8; 4],
+    dashed: bool,
     binding: Option<ShapeBindingJson>,
 }
 
@@ -508,6 +509,7 @@ impl CircleJson {
             center: PointJson::from_point(&circle.center),
             radius_point: PointJson::from_point(&circle.radius_point),
             color: circle.color,
+            dashed: circle.dashed,
             binding: circle.binding.as_ref().map(ShapeBindingJson::from_binding),
         }
     }
@@ -517,6 +519,8 @@ impl CircleJson {
 struct ArcJson {
     points: Vec<PointJson>,
     color: [u8; 4],
+    center: Option<PointJson>,
+    counterclockwise: bool,
 }
 
 impl ArcJson {
@@ -524,6 +528,8 @@ impl ArcJson {
         Self {
             points: arc.points.iter().map(PointJson::from_point).collect(),
             color: arc.color,
+            center: arc.center.as_ref().map(PointJson::from_point),
+            counterclockwise: arc.counterclockwise,
         }
     }
 }
