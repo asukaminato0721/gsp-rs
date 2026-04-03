@@ -739,8 +739,9 @@ fn assemble_scene(
 ) -> Scene {
     let raw_lines = dedupe_line_shapes(
         shapes
-            .polylines
+            .rotational_iteration_lines
             .into_iter()
+            .chain(shapes.polylines)
             .chain(shapes.direct_lines)
             .chain(shapes.rays)
             .chain(shapes.rotated_lines)
@@ -753,7 +754,6 @@ fn assemble_scene(
             .chain(analysis.function_plots)
             .chain(shapes.synthetic_axes)
             .chain(shapes.iteration_lines)
-            .chain(shapes.rotational_iteration_lines)
             .chain(shapes.carried_iteration_lines)
             .collect(),
     );

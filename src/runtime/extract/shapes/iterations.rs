@@ -133,6 +133,11 @@ pub(crate) fn collect_carried_iteration_lines(
             if !matches!(iter_group.header.class_id & 0xffff, 76 | 89) {
                 return None;
             }
+            if (iter_group.header.class_id & 0xffff) == 89
+                && regular_polygon_iteration_step(file, groups, iter_group).is_some()
+            {
+                return None;
+            }
             let source_path = find_indexed_path(file, source_group)?;
             if source_path.refs.len() != 2 {
                 return None;
@@ -201,6 +206,11 @@ pub(crate) fn collect_carried_line_iteration_families(
             }
             let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
             if !matches!(iter_group.header.class_id & 0xffff, 76 | 89) {
+                return None;
+            }
+            if (iter_group.header.class_id & 0xffff) == 89
+                && regular_polygon_iteration_step(file, groups, iter_group).is_some()
+            {
                 return None;
             }
             let source_path = find_indexed_path(file, source_group)?;
@@ -523,6 +533,11 @@ pub(crate) fn collect_carried_iteration_polygons(
             if !matches!(iter_group.header.class_id & 0xffff, 76 | 89) {
                 return None;
             }
+            if (iter_group.header.class_id & 0xffff) == 89
+                && regular_polygon_iteration_step(file, groups, iter_group).is_some()
+            {
+                return None;
+            }
             let source_path = find_indexed_path(file, source_group)?;
             if source_path.refs.len() < 3 {
                 return None;
@@ -583,6 +598,11 @@ pub(crate) fn collect_carried_polygon_iteration_families(
             }
             let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
             if !matches!(iter_group.header.class_id & 0xffff, 76 | 89) {
+                return None;
+            }
+            if (iter_group.header.class_id & 0xffff) == 89
+                && regular_polygon_iteration_step(file, groups, iter_group).is_some()
+            {
                 return None;
             }
             let source_path = find_indexed_path(file, source_group)?;

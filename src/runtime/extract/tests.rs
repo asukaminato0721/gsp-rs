@@ -906,6 +906,30 @@ fn preserves_midpoint_triangle_iteration_geometry() {
 }
 
 #[test]
+fn preserves_regular_polygon_iteration_without_carried_duplicates() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/static/简单迭代/迭代正多边形.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.parameters.len(), 1, "expected editable n parameter");
+    assert_eq!(scene.parameters[0].name, "n");
+    assert_eq!(scene.lines.len(), 5, "expected five polygon edges");
+    assert_eq!(
+        scene.lines.iter().filter(|line| matches!(line.binding, Some(LineBinding::RotateEdge { .. }))).count(),
+        5,
+        "expected all polygon edges to stay in one dynamic rotate-edge family"
+    );
+    assert!(
+        scene.lines.iter().all(|line| matches!(line.binding, Some(LineBinding::RotateEdge { .. }))),
+        "expected no static seed or carried duplicate segments"
+    );
+    assert!(
+        scene.line_iterations.is_empty(),
+        "expected no carried translation metadata for regular polygon iteration"
+    );
+}
+
+#[test]
 fn preserves_scaled_point_and_single_parameter_label_in_scale_gsp() {
     let data = include_bytes!("../../../tests/fixtures/gsp/static/scale.gsp");
     let file = GspFile::parse(data).expect("fixture parses");
