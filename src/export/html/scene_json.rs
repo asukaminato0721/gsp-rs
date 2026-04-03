@@ -894,9 +894,9 @@ impl LineIterationJson {
                 start_index: family.start_index,
                 end_index: family.end_index,
                 source_triangle_indices,
-                target_triangle: target_triangle.clone().map(|handle| {
-                    IterationPointHandleJson::from_handle(&handle)
-                }),
+                target_triangle: target_triangle
+                    .clone()
+                    .map(|handle| IterationPointHandleJson::from_handle(&handle)),
                 depth: family.depth,
                 color: family.color,
                 dashed: family.dashed,

@@ -1,7 +1,8 @@
 use super::{
     GspFile, ObjectGroup, PointRecord, RawPointIterationFamily, TransformBindingKind,
-    decode_parameter_rotation_binding, decode_transform_binding, decode_translated_point_constraint,
-    iteration_depth, regular_polygon_iteration_step, rotate_around,
+    decode_parameter_rotation_binding, decode_transform_binding,
+    decode_translated_point_constraint, iteration_depth, regular_polygon_iteration_step,
+    rotate_around,
 };
 use crate::runtime::extract::find_indexed_path;
 use crate::runtime::extract::points::{

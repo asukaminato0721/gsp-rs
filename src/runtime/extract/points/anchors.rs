@@ -237,8 +237,12 @@ pub(crate) fn decode_line_midpoint_anchor_raw(
     }
 
     let host_path = find_indexed_path(file, host_group)?;
-    let start = anchors.get(host_path.refs.first()?.checked_sub(1)?)?.clone()?;
-    let end = anchors.get(host_path.refs.get(1)?.checked_sub(1)?)?.clone()?;
+    let start = anchors
+        .get(host_path.refs.first()?.checked_sub(1)?)?
+        .clone()?;
+    let end = anchors
+        .get(host_path.refs.get(1)?.checked_sub(1)?)?
+        .clone()?;
     Some(PointRecord {
         x: (start.x + end.x) * 0.5,
         y: (start.y + end.y) * 0.5,

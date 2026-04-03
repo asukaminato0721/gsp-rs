@@ -290,7 +290,10 @@ fn preserves_line_gsp() {
     assert_eq!(scene.lines.len(), 1, "expected one line");
     assert_eq!(scene.points.len(), 2, "expected two defining points");
     let line = &scene.lines[0];
-    assert!(matches!(line.binding, Some(LineBinding::Line { .. } | LineBinding::Segment { .. })));
+    assert!(matches!(
+        line.binding,
+        Some(LineBinding::Line { .. } | LineBinding::Segment { .. })
+    ));
     let min_x = line
         .points
         .iter()
@@ -735,8 +738,8 @@ fn preserves_carried_polygon_iteration_fixture() {
     );
     assert_eq!(
         scene.lines.len(),
-        45,
-        "expected triangular lattice of carried line copies"
+        0,
+        "expected polygon edges to render via polygons without duplicate carried segments"
     );
     assert!(
         scene
@@ -744,14 +747,10 @@ fn preserves_carried_polygon_iteration_fixture() {
             .iter()
             .any(|parameter| parameter.name == "n")
     );
-    assert_eq!(scene.line_iterations.len(), 3);
-    assert!(scene.line_iterations.iter().all(|family| {
-        family.parameter_name.as_deref() == Some("n")
-            && family.depth == 4
-            && family.secondary_dx.is_some()
-            && family.secondary_dy.is_some()
-            && (family.dy + 37.79527559055118).abs() < 1e-6
-    }));
+    assert!(
+        scene.line_iterations.is_empty(),
+        "expected carried polygon fixture to avoid duplicate line iteration metadata"
+    );
     assert_eq!(scene.polygon_iterations.len(), 1);
     assert!(scene.polygon_iterations.iter().any(|family| {
         family.parameter_name.as_deref() == Some("n")
@@ -876,10 +875,13 @@ fn does_not_treat_triangle_point_labels_as_iteration_parameters() {
         "expected no editable parameters in triangle fixture"
     );
     assert_eq!(scene.line_iterations.len(), 3);
-    assert!(scene
-        .line_iterations
-        .iter()
-        .all(|family| family.affine_source_indices.is_some() && family.affine_target_handles.is_some()));
+    assert!(
+        scene
+            .line_iterations
+            .iter()
+            .all(|family| family.affine_source_indices.is_some()
+                && family.affine_target_handles.is_some())
+    );
 }
 
 #[test]
@@ -915,12 +917,19 @@ fn preserves_regular_polygon_iteration_without_carried_duplicates() {
     assert_eq!(scene.parameters[0].name, "n");
     assert_eq!(scene.lines.len(), 5, "expected five polygon edges");
     assert_eq!(
-        scene.lines.iter().filter(|line| matches!(line.binding, Some(LineBinding::RotateEdge { .. }))).count(),
+        scene
+            .lines
+            .iter()
+            .filter(|line| matches!(line.binding, Some(LineBinding::RotateEdge { .. })))
+            .count(),
         5,
         "expected all polygon edges to stay in one dynamic rotate-edge family"
     );
     assert!(
-        scene.lines.iter().all(|line| matches!(line.binding, Some(LineBinding::RotateEdge { .. }))),
+        scene
+            .lines
+            .iter()
+            .all(|line| matches!(line.binding, Some(LineBinding::RotateEdge { .. }))),
         "expected no static seed or carried duplicate segments"
     );
     assert!(
