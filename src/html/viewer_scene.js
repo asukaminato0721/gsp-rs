@@ -184,6 +184,11 @@
   function resolveLinePoints(env, lineOrIndex) {
     const line = typeof lineOrIndex === "number" ? env.currentScene().lines[lineOrIndex] : lineOrIndex;
     if (!line) return null;
+    if (line.binding?.kind === "segment") {
+      const start = resolveScenePoint(env, line.binding.startIndex);
+      const end = resolveScenePoint(env, line.binding.endIndex);
+      return [start, end];
+    }
     if (line.binding?.kind === "line") {
       const start = resolveScenePoint(env, line.binding.startIndex);
       const end = resolveScenePoint(env, line.binding.endIndex);

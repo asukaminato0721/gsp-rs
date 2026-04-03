@@ -122,6 +122,21 @@ pub(crate) struct LineIterationFamily {
     pub(crate) parameter_name: Option<String>,
     pub(crate) color: [u8; 4],
     pub(crate) dashed: bool,
+    pub(crate) affine_source_indices: Option<[usize; 3]>,
+    pub(crate) affine_target_handles: Option<[IterationPointHandle; 3]>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum IterationPointHandle {
+    Point {
+        point_index: usize,
+    },
+    LinePoint {
+        line_index: usize,
+        segment_index: usize,
+        t: f64,
+    },
+    Fixed(PointRecord),
 }
 
 #[derive(Debug, Clone)]
@@ -190,6 +205,10 @@ pub(crate) struct LineShape {
 
 #[derive(Debug, Clone)]
 pub(crate) enum LineBinding {
+    Segment {
+        start_index: usize,
+        end_index: usize,
+    },
     Line {
         start_index: usize,
         end_index: usize,

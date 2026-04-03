@@ -296,6 +296,40 @@
     return Math.max(0, Math.round(depth));
   }
 
+  function affineMapFromTriangles(sourceTriangle, targetTriangle) {
+    const sourceOrigin = sourceTriangle[0];
+    const su = {
+      x: sourceTriangle[1].x - sourceOrigin.x,
+      y: sourceTriangle[1].y - sourceOrigin.y,
+    };
+    const sv = {
+      x: sourceTriangle[2].x - sourceOrigin.x,
+      y: sourceTriangle[2].y - sourceOrigin.y,
+    };
+    const det = su.x * sv.y - su.y * sv.x;
+    if (Math.abs(det) <= 1e-9) {
+      return null;
+    }
+    const targetOrigin = targetTriangle[0];
+    const tu = {
+      x: targetTriangle[1].x - targetOrigin.x,
+      y: targetTriangle[1].y - targetOrigin.y,
+    };
+    const tv = {
+      x: targetTriangle[2].x - targetOrigin.x,
+      y: targetTriangle[2].y - targetOrigin.y,
+    };
+    return (point) => {
+      const relative = { x: point.x - sourceOrigin.x, y: point.y - sourceOrigin.y };
+      const u = (relative.x * sv.y - relative.y * sv.x) / det;
+      const v = (su.x * relative.y - su.y * relative.x) / det;
+      return {
+        x: targetOrigin.x + tu.x * u + tv.x * v,
+        y: targetOrigin.y + tu.y * u + tv.y * v,
+      };
+    };
+  }
+
   function formatSequenceValue(value) {
     if (!Number.isFinite(value)) {
       return "-";
@@ -425,6 +459,9 @@
     }
     const exportedDepth = families.reduce((sum, family) => {
       const depth = family.depth || 0;
+      if (family.kind === "affine") {
+        return sum + depth;
+      }
       if (Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy)) {
         return sum + (((depth + 1) * (depth + 2)) / 2 - 1);
       }
@@ -435,14 +472,55 @@
 
     families.forEach((family) => {
       const depth = pointIterationDepth(family, parameters);
-      if (depth <= 0 || family.kind !== "translate") {
+      if (depth <= 0) {
         return;
       }
       const start = scene.points[family.startIndex];
       const end = scene.points[family.endIndex];
-      if (!start || !end) {
+      if (!start || !end) return;
+      if (family.kind === "affine") {
+        const resolveHandle = (handle) => {
+          if (typeof handle?.pointIndex === "number") {
+            return scene.points[handle.pointIndex] || { x: 0, y: 0 };
+          }
+          if (typeof handle?.lineIndex === "number") {
+            const line = scene.lines[handle.lineIndex];
+            if (!line?.points || line.points.length < 2) return handle;
+            const segmentIndex = Math.max(0, Math.min(line.points.length - 2, handle.segmentIndex || 0));
+            const t = typeof handle.t === "number" ? handle.t : 0.5;
+            const p0 = line.points[segmentIndex];
+            const p1 = line.points[segmentIndex + 1];
+            return {
+              x: p0.x + (p1.x - p0.x) * t,
+              y: p0.y + (p1.y - p0.y) * t,
+            };
+          }
+          return handle || { x: 0, y: 0 };
+        };
+        const sourceTriangle = family.sourceTriangleIndices.map((index) => scene.points[index]);
+        const targetTriangle = family.targetTriangle.map((handle) => resolveHandle(handle));
+        if (sourceTriangle.some((point) => !point) || targetTriangle.some((point) => !point)) {
+          return;
+        }
+        const mapPoint = affineMapFromTriangles(sourceTriangle, targetTriangle);
+        if (!mapPoint) {
+          return;
+        }
+        let currentStart = { ...start };
+        let currentEnd = { ...end };
+        for (let step = 0; step < depth; step += 1) {
+          currentStart = mapPoint(currentStart);
+          currentEnd = mapPoint(currentEnd);
+          scene.lines.push({
+            points: [{ ...currentStart }, { ...currentEnd }],
+            color: family.color,
+            dashed: !!family.dashed,
+            binding: null,
+          });
+        }
         return;
       }
+      if (family.kind !== "translate") return;
       const hasSecondary = Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy);
       const deltas = [];
       if (hasSecondary) {
@@ -713,6 +791,15 @@
     const rotateFamilies = new Map();
     const parameters = parameterMap(env);
     scene.lines.forEach((line) => {
+      if (line.binding?.kind === "segment") {
+        const start = scene.points[line.binding.startIndex];
+        const end = scene.points[line.binding.endIndex];
+        if (start && end) {
+          line.points = [{ x: start.x, y: start.y }, { x: end.x, y: end.y }];
+        }
+        preservedLines.push(line);
+        return;
+      }
       if (line.binding?.kind === "line") {
         const start = scene.points[line.binding.startIndex];
         const end = scene.points[line.binding.endIndex];
@@ -868,8 +955,8 @@
 
   /** @param {ViewerEnv} env */
   function syncDynamicScene(env) {
-    const parameters = parameterMap(env);
     env.updateScene((draft) => {
+      const parameters = parameterMap(env);
       env.currentDynamics().parameters.forEach((parameter) => {
         if (typeof parameter.labelIndex === "number" && draft.labels[parameter.labelIndex]) {
           draft.labels[parameter.labelIndex].text = `${parameter.name} = ${parameter.value.toFixed(2)}`;
@@ -909,11 +996,20 @@
           }
         });
       });
-      rebuildIterationPoints(env, draft, parameters);
-      rebuildIteratedLines(env, draft, parameters);
-      rebuildIteratedPolygons(env, draft, parameters);
-      rebuildIteratedLabels(env, draft, parameters);
+      refreshIterationGeometry(env, draft, parameters);
     });
+  }
+
+  /**
+   * @param {ViewerEnv} env
+   * @param {any} scene
+   * @param {Map<string, number>} parameters
+   */
+  function refreshIterationGeometry(env, scene, parameters) {
+    rebuildIterationPoints(env, scene, parameters);
+    rebuildIteratedLines(env, scene, parameters);
+    rebuildIteratedPolygons(env, scene, parameters);
+    rebuildIteratedLabels(env, scene, parameters);
   }
 
   /** @param {ViewerEnv} env */
@@ -951,6 +1047,7 @@
     formatExpr,
     refreshDerivedPoints,
     refreshDynamicLabels,
+    refreshIterationGeometry,
     syncDynamicScene,
   };
 })();

@@ -272,6 +272,10 @@ pub(crate) fn remap_line_bindings(
                 start_index,
                 end_index,
             }
+            | LineBinding::Segment {
+                start_index,
+                end_index,
+            }
             | LineBinding::Ray {
                 start_index,
                 end_index,

@@ -483,7 +483,13 @@ fn remap_scene_bindings(
         &line_group_to_index,
     );
     let line_iterations =
-        collect_carried_line_iteration_families(file, groups, raw_anchors, group_to_point_index);
+        collect_carried_line_iteration_families(
+            file,
+            groups,
+            raw_anchors,
+            group_to_point_index,
+            &line_group_to_index,
+        );
     let polygon_iterations =
         collect_carried_polygon_iteration_families(file, groups, raw_anchors, group_to_point_index);
 

@@ -1,8 +1,10 @@
 use super::{
     CircleShape, GspFile, LineBinding, LineIterationFamily, LineShape, ObjectGroup, PointRecord,
-    PolygonIterationFamily, PolygonShape, color_from_style, decode_translated_point_constraint,
-    fill_color_from_styles, find_indexed_path, regular_polygon_iteration_step, rotate_around,
+    PolygonIterationFamily, PolygonShape, color_from_style,
+    decode_translated_point_constraint, fill_color_from_styles, find_indexed_path,
+    regular_polygon_iteration_step, rotate_around,
 };
+use crate::runtime::scene::IterationPointHandle;
 use crate::runtime::extract::points::editable_non_graph_parameter_name_for_group;
 
 #[derive(Clone)]
@@ -185,6 +187,7 @@ pub(crate) fn collect_carried_line_iteration_families(
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
     group_to_point_index: &[Option<usize>],
+    line_group_to_index: &[Option<usize>],
 ) -> Vec<LineIterationFamily> {
     groups
         .iter()
@@ -204,8 +207,40 @@ pub(crate) fn collect_carried_line_iteration_families(
             if source_path.refs.len() != 2 {
                 return None;
             }
-            if carried_iteration_point_map(file, groups, iter_group, anchors).is_some() {
-                return None;
+            if let Some((source_indices, target_handles)) = carried_iteration_affine_handles(
+                file,
+                groups,
+                iter_group,
+                group_to_point_index,
+                line_group_to_index,
+                anchors,
+            ) {
+                let start_index = group_to_point_index
+                    .get(source_path.refs[0].checked_sub(1)?)
+                    .copied()
+                    .flatten()?;
+                let end_index = group_to_point_index
+                    .get(source_path.refs[1].checked_sub(1)?)
+                    .copied()
+                    .flatten()?;
+                let depth = carried_iteration_depth(file, iter_group, 3);
+                if depth == 0 {
+                    return None;
+                }
+                return Some(LineIterationFamily {
+                    start_index,
+                    end_index,
+                    dx: 0.0,
+                    dy: 0.0,
+                    secondary_dx: None,
+                    secondary_dy: None,
+                    depth,
+                    parameter_name: None,
+                    color: color_from_style(source_group.header.style_b),
+                    dashed: false,
+                    affine_source_indices: Some(source_indices),
+                    affine_target_handles: Some(target_handles),
+                });
             }
             let start_index = group_to_point_index
                 .get(source_path.refs[0].checked_sub(1)?)
@@ -235,6 +270,8 @@ pub(crate) fn collect_carried_line_iteration_families(
                 parameter_name: carried_iteration_parameter_name(file, groups, iter_group),
                 color: color_from_style(source_group.header.style_b),
                 dashed: false,
+                affine_source_indices: None,
+                affine_target_handles: None,
             })
         })
         .collect()
@@ -416,6 +453,56 @@ fn carried_iteration_point_map(
         .map(|index| anchors.get(*index)?.clone())
         .collect::<Option<Vec<_>>>()?;
     AffinePointMap::from_triangles(&source, &target)
+}
+
+fn carried_iteration_affine_handles(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    iter_group: &ObjectGroup,
+    group_to_point_index: &[Option<usize>],
+    line_group_to_index: &[Option<usize>],
+    anchors: &[Option<PointRecord>],
+) -> Option<([usize; 3], [IterationPointHandle; 3])> {
+    let iter_path = find_indexed_path(file, iter_group)?;
+    if (iter_group.header.class_id & 0xffff) != 76 || iter_path.refs.len() < 6 {
+        return None;
+    }
+
+    let source_group_indices = [
+        iter_path.refs[0].checked_sub(1)?,
+        iter_path.refs[1].checked_sub(1)?,
+        iter_path.refs[2].checked_sub(1)?,
+    ];
+    let source_indices = [
+        group_to_point_index.get(source_group_indices[0]).copied().flatten()?,
+        group_to_point_index.get(source_group_indices[1]).copied().flatten()?,
+        group_to_point_index.get(source_group_indices[2]).copied().flatten()?,
+    ];
+
+    let mut target_handles = Vec::with_capacity(3);
+    for ordinal in iter_path.refs.iter().skip(3).take(3) {
+        let group_index = ordinal.checked_sub(1)?;
+        if let Some(point_index) = group_to_point_index.get(group_index).copied().flatten() {
+            target_handles.push(IterationPointHandle::Point { point_index });
+            continue;
+        }
+        let group = groups.get(group_index)?;
+        if (group.header.class_id & 0xffff) == 1 {
+            let midpoint_path = find_indexed_path(file, group)?;
+            let host_group_index = midpoint_path.refs.first()?.checked_sub(1)?;
+            let line_index = line_group_to_index.get(host_group_index).copied().flatten()?;
+            target_handles.push(IterationPointHandle::LinePoint {
+                line_index,
+                segment_index: 0,
+                t: 0.5,
+            });
+            continue;
+        }
+        let fixed = anchors.get(group_index).cloned().flatten()?;
+        target_handles.push(IterationPointHandle::Fixed(fixed));
+    }
+    let target_handles: [IterationPointHandle; 3] = target_handles.try_into().ok()?;
+    Some((source_indices, target_handles))
 }
 
 pub(crate) fn collect_carried_iteration_polygons(

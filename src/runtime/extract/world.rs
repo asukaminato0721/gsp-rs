@@ -17,6 +17,7 @@ pub(super) fn world_line_shape(
 
     if let Some(binding) = &line.binding {
         let clipped = match binding {
+            LineBinding::Segment { .. } => None,
             LineBinding::Line { .. } if world_points.len() >= 2 => {
                 clip_line_to_bounds(&world_points[0], &world_points[1], bounds)
             }

@@ -34,6 +34,8 @@ pub(crate) fn collect_line_shapes(
                     anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
                 })
                 .collect::<Vec<_>>();
+            let start_group_index = path.refs.first().and_then(|ordinal| ordinal.checked_sub(1));
+            let end_group_index = path.refs.get(1).and_then(|ordinal| ordinal.checked_sub(1));
             (points.len() >= 2 && has_distinct_points(&points)).then_some(LineShape {
                 points,
                 color: if fallback_generic && !kinds.contains(&(group.header.class_id & 0xffff)) {
@@ -42,7 +44,17 @@ pub(crate) fn collect_line_shapes(
                     color_from_style(group.header.style_b)
                 },
                 dashed: (group.header.class_id & 0xffff) == 58,
-                binding: None,
+                binding: match (
+                    group.header.class_id & 0xffff,
+                    start_group_index,
+                    end_group_index,
+                ) {
+                    (2, Some(start_index), Some(end_index)) => Some(LineBinding::Segment {
+                        start_index,
+                        end_index,
+                    }),
+                    _ => None,
+                },
             })
         })
         .collect()

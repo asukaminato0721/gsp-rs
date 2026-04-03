@@ -83,7 +83,17 @@ type SceneData = {
     parameterName?: string | null;
     color: [number, number, number, number];
     dashed: boolean;
+  } | {
+    kind: "affine";
+    startIndex: number;
+    endIndex: number;
+    sourceTriangleIndices: [number, number, number];
+    targetTriangle: [PointHandle, PointHandle, PointHandle];
+    depth: number;
+    color: [number, number, number, number];
+    dashed: boolean;
   }>;
+  // line binding kinds are structural in JS; no explicit TS alias here.
   polygonIterations?: Array<{
     kind: "translate";
     vertexIndices: number[];
@@ -226,6 +236,7 @@ type ViewerDynamicsModule = {
   evaluateExpr: (expr: any, x: number, parameters: Map<string, number>) => number | null;
   formatExpr: (expr: any, formatAxisNumber: (value: number) => string) => string;
   refreshDerivedPoints: (env: ViewerEnv, scene: any) => void;
+  refreshIterationGeometry: (env: ViewerEnv, scene: any, parameters: Map<string, number>) => void;
   refreshDynamicLabels: (env: ViewerEnv, scene: any) => void;
   syncDynamicScene: (env: ViewerEnv) => void;
 };

@@ -290,7 +290,7 @@ fn preserves_line_gsp() {
     assert_eq!(scene.lines.len(), 1, "expected one line");
     assert_eq!(scene.points.len(), 2, "expected two defining points");
     let line = &scene.lines[0];
-    assert!(matches!(line.binding, Some(LineBinding::Line { .. })));
+    assert!(matches!(line.binding, Some(LineBinding::Line { .. } | LineBinding::Segment { .. })));
     let min_x = line
         .points
         .iter()
@@ -875,10 +875,11 @@ fn does_not_treat_triangle_point_labels_as_iteration_parameters() {
         scene.parameters.is_empty(),
         "expected no editable parameters in triangle fixture"
     );
-    assert!(
-        scene.line_iterations.is_empty(),
-        "expected no translation metadata for midpoint iteration"
-    );
+    assert_eq!(scene.line_iterations.len(), 3);
+    assert!(scene
+        .line_iterations
+        .iter()
+        .all(|family| family.affine_source_indices.is_some() && family.affine_target_handles.is_some()));
 }
 
 #[test]

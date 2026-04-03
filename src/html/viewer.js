@@ -252,6 +252,9 @@
     const next = sceneState.val;
     mutator(next);
     dynamicsModule.refreshDerivedPoints(viewerEnv, next);
+    dynamicsModule.refreshIterationGeometry(viewerEnv, next, new Map(
+      viewerEnv.currentDynamics().parameters.map((parameter) => [parameter.name, parameter.value]),
+    ));
     dynamicsModule.refreshDynamicLabels(viewerEnv, next);
     sceneState.val = { ...next };
   }
