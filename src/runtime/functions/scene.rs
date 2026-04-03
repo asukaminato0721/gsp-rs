@@ -25,7 +25,7 @@ pub(crate) fn collect_scene_parameters(
 ) -> Vec<SceneParameter> {
     groups
         .iter()
-        .filter(|group| (group.header.kind()) == 72)
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::FunctionPlot)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let definition_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
@@ -59,7 +59,7 @@ pub(crate) fn collect_scene_functions(
 ) -> Vec<SceneFunction> {
     let base_entries: Vec<(usize, FunctionExpr, FunctionPlotDescriptor)> = groups
         .iter()
-        .filter(|group| (group.header.kind()) == 72)
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::FunctionPlot)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let definition_ordinal = *path.refs.first()?;
@@ -110,7 +110,7 @@ pub(crate) fn collect_scene_functions(
     functions.extend(
         groups
             .iter()
-            .filter(|group| (group.header.kind()) == 78)
+            .filter(|group| (group.header.kind()) == crate::format::GroupKind::DerivativeFunction)
             .filter_map(|group| {
                 let path = find_indexed_path(file, group)?;
                 let base_definition_ordinal = *path.refs.first()?;
@@ -142,7 +142,7 @@ pub(crate) fn collect_scene_functions(
 pub(crate) fn function_uses_pi_scale(file: &GspFile, groups: &[ObjectGroup]) -> bool {
     groups
         .iter()
-        .filter(|group| (group.header.kind()) == 72)
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::FunctionPlot)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let definition_group = groups.get(path.refs.first()?.checked_sub(1)?)?;

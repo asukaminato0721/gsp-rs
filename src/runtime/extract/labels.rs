@@ -30,14 +30,23 @@ pub(super) fn collect_labels(
     for group in groups {
         let kind = group.header.kind();
         match kind {
-            0 | 2 | 15 | 40 | 51 | 62 | 73 | 90 => {
-                if kind == 0 && decode_link_button_url(file, group).is_some() {
+            crate::format::GroupKind::Point
+            | crate::format::GroupKind::Segment
+            | crate::format::GroupKind::PointConstraint
+            | crate::format::GroupKind::GraphObject40
+            | crate::format::GroupKind::Kind51
+            | crate::format::GroupKind::ActionButton
+            | crate::format::GroupKind::ButtonLabel
+            | crate::format::GroupKind::LabelIterationSeed => {
+                if kind == crate::format::GroupKind::Point
+                    && decode_link_button_url(file, group).is_some()
+                {
                     continue;
                 }
-                if kind == 62 && is_action_button_group(group) {
+                if kind == crate::format::GroupKind::ActionButton && is_action_button_group(group) {
                     continue;
                 }
-                if kind == 73
+                if kind == crate::format::GroupKind::ButtonLabel
                     && find_indexed_path(file, group)
                         .and_then(|path| path.refs.first().copied())
                         .and_then(|ordinal| groups.get(ordinal.checked_sub(1)?))
@@ -45,7 +54,7 @@ pub(super) fn collect_labels(
                 {
                     continue;
                 }
-                if kind == 90 {
+                if kind == crate::format::GroupKind::LabelIterationSeed {
                     if let Some(label) =
                         collect_point_expression_label(file, groups, group, anchors)
                     {
@@ -56,7 +65,12 @@ pub(super) fn collect_labels(
                 }
                 let text = decode_group_label_text(file, group).or_else(|| {
                     (!graph_mode
-                        && matches!(kind, 0 | 2 | 15)
+                        && matches!(
+                            kind,
+                            crate::format::GroupKind::Point
+                                | crate::format::GroupKind::Segment
+                                | crate::format::GroupKind::PointConstraint
+                        )
                         && !is_non_graph_parameter_group(group))
                     .then(|| decode_label_name(file, group))
                     .flatten()
@@ -75,8 +89,9 @@ pub(super) fn collect_labels(
                     }
                 }
             }
-            48 => {}
-            52 | 54 => {
+            crate::format::GroupKind::FunctionExpr => {}
+            crate::format::GroupKind::GraphCalibrationX
+            | crate::format::GroupKind::GraphCalibrationY => {
                 if !include_measurements {
                     continue;
                 }
@@ -124,7 +139,7 @@ pub(super) fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) 
     let mut labels = Vec::new();
     for group in groups {
         let kind = group.header.kind();
-        if kind == 0
+        if kind == crate::format::GroupKind::Point
             && group
                 .records
                 .iter()
@@ -146,7 +161,7 @@ pub(super) fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) 
                 binding,
                 screen_space: true,
             });
-        } else if kind == 48
+        } else if kind == crate::format::GroupKind::FunctionExpr
             && let Some(expr) = decode_function_expr(file, groups, group)
             && let Some(path) = find_indexed_path(file, group)
             && let Some(parameter_ref) = path.refs.first().copied()
@@ -217,7 +232,7 @@ fn collect_point_expression_label(
     }
     let point_group_index = path.refs.first()?.checked_sub(1)?;
     let expr_group = groups.get(path.refs[1].checked_sub(1)?)?;
-    if (expr_group.header.kind()) != 48 {
+    if (expr_group.header.kind()) != crate::format::GroupKind::FunctionExpr {
         return None;
     }
     let expr = decode_function_expr(file, groups, expr_group)?;
@@ -251,7 +266,7 @@ pub(super) fn collect_polygon_parameter_labels(
 ) -> Vec<TextLabel> {
     groups
         .iter()
-        .filter(|group| (group.header.kind()) == 94)
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::ParameterAnchor)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             if path.refs.len() < 2 {
@@ -260,7 +275,9 @@ pub(super) fn collect_polygon_parameter_labels(
 
             let point_group = groups.get(path.refs[0].checked_sub(1)?)?;
             let polygon_group = groups.get(path.refs[1].checked_sub(1)?)?;
-            if (point_group.header.kind()) != 15 || (polygon_group.header.kind()) != 8 {
+            if (point_group.header.kind()) != crate::format::GroupKind::PointConstraint
+                || (polygon_group.header.kind()) != crate::format::GroupKind::Polygon
+            {
                 return None;
             }
 
@@ -303,7 +320,7 @@ pub(super) fn collect_segment_parameter_labels(
 ) -> Vec<TextLabel> {
     groups
         .iter()
-        .filter(|group| (group.header.kind()) == 94)
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::ParameterAnchor)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             if path.refs.len() < 2 {
@@ -312,7 +329,9 @@ pub(super) fn collect_segment_parameter_labels(
 
             let point_group = groups.get(path.refs[0].checked_sub(1)?)?;
             let segment_group = groups.get(path.refs[1].checked_sub(1)?)?;
-            if (point_group.header.kind()) != 15 || (segment_group.header.kind()) != 2 {
+            if (point_group.header.kind()) != crate::format::GroupKind::PointConstraint
+                || (segment_group.header.kind()) != crate::format::GroupKind::Segment
+            {
                 return None;
             }
 
@@ -351,7 +370,7 @@ pub(super) fn collect_circle_parameter_labels(
 ) -> Vec<TextLabel> {
     groups
         .iter()
-        .filter(|group| (group.header.kind()) == 94)
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::ParameterAnchor)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             if path.refs.len() < 2 {
@@ -360,7 +379,9 @@ pub(super) fn collect_circle_parameter_labels(
 
             let point_group = groups.get(path.refs[0].checked_sub(1)?)?;
             let circle_group = groups.get(path.refs[1].checked_sub(1)?)?;
-            if (point_group.header.kind()) != 15 || (circle_group.header.kind()) != 3 {
+            if (point_group.header.kind()) != crate::format::GroupKind::PointConstraint
+                || (circle_group.header.kind()) != crate::format::GroupKind::Circle
+            {
                 return None;
             }
 
@@ -407,14 +428,14 @@ pub(super) fn collect_label_iterations(
 ) -> Vec<LabelIterationFamily> {
     groups
         .iter()
-        .filter(|group| (group.header.kind()) == 77)
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::IterationBinding)
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             if path.refs.len() < 2 {
                 return None;
             }
             let seed_group = groups.get(path.refs[0].checked_sub(1)?)?;
-            if (seed_group.header.kind()) != 90 {
+            if (seed_group.header.kind()) != crate::format::GroupKind::LabelIterationSeed {
                 return None;
             }
             let seed_path = find_indexed_path(file, seed_group)?;
@@ -423,7 +444,7 @@ pub(super) fn collect_label_iterations(
                 .get(point_group_index)
                 .and_then(|mapped_index| *mapped_index)?;
             let expr_group = groups.get(seed_path.refs.get(1)?.checked_sub(1)?)?;
-            if (expr_group.header.kind()) != 48 {
+            if (expr_group.header.kind()) != crate::format::GroupKind::FunctionExpr {
                 return None;
             }
             let expr = decode_function_expr(file, groups, expr_group)?;
@@ -566,7 +587,9 @@ pub(super) fn compute_iteration_labels(
 ) -> Vec<TextLabel> {
     let mut labels = Vec::new();
 
-    let has_iteration = groups.iter().any(|group| (group.header.kind()) == 89);
+    let has_iteration = groups
+        .iter()
+        .any(|group| (group.header.kind()) == crate::format::GroupKind::RegularPolygonIteration);
     if !has_iteration {
         return labels;
     }
@@ -581,7 +604,7 @@ pub(super) fn compute_iteration_labels(
 
     let px_per_cm = groups
         .iter()
-        .filter(|group| (group.header.kind()) == 21)
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::PolarOffsetPoint)
         .find_map(|group| {
             let payload = group
                 .records
@@ -595,7 +618,7 @@ pub(super) fn compute_iteration_labels(
 
     let param_value = groups
         .iter()
-        .filter(|group| (group.header.kind()) == 21)
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::PolarOffsetPoint)
         .find_map(|group| {
             let payload = group
                 .records
@@ -641,7 +664,7 @@ pub(super) fn compute_iteration_labels(
                 .records
                 .iter()
                 .any(|record| record.record_type == 0x0907)
-                && (group.header.kind()) == 0
+                && (group.header.kind()) == crate::format::GroupKind::Point
                 && !computed_values.contains_key(&name)
             {
                 computed_values.insert(name, t1);
@@ -655,7 +678,12 @@ pub(super) fn compute_iteration_labels(
             .records
             .iter()
             .any(|record| record.record_type == 0x0907);
-        if !has_0907 || !matches!(kind, 0 | 48) {
+        if !has_0907
+            || !matches!(
+                kind,
+                crate::format::GroupKind::Point | crate::format::GroupKind::FunctionExpr
+            )
+        {
             continue;
         }
         if group
@@ -685,7 +713,7 @@ pub(super) fn compute_iteration_labels(
 
         let mut lines = Vec::new();
 
-        if kind == 0 {
+        if kind == crate::format::GroupKind::Point {
             if let Some(name) = &own_label
                 && let Some(&val) = computed_values.get(name.as_str())
             {

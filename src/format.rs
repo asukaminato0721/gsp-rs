@@ -195,6 +195,147 @@ pub struct IndexedPathRecord {
     pub refs: Vec<usize>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum GroupKind {
+    Point,
+    Midpoint,
+    Segment,
+    Circle,
+    LineKind5,
+    LineKind6,
+    LineKind7,
+    Polygon,
+    PointConstraint,
+    Translation,
+    CartesianOffsetPoint,
+    PolarOffsetPoint,
+    Rotation,
+    ParameterRotation,
+    Scale,
+    Reflection,
+    GraphObject40,
+    Kind51,
+    FunctionExpr,
+    GraphCalibrationX,
+    GraphCalibrationY,
+    MeasurementLine,
+    ActionButton,
+    Line,
+    Ray,
+    OffsetAnchor,
+    CoordinatePoint,
+    FunctionPlot,
+    ButtonLabel,
+    DerivedSegment24,
+    AffineIteration,
+    IterationBinding,
+    DerivativeFunction,
+    RegularPolygonIteration,
+    LabelIterationSeed,
+    ParameterAnchor,
+    ParameterControlledPoint,
+    CoordinateTrace,
+    AxisLine,
+    DerivedSegment75,
+    Unknown(u16),
+}
+
+impl From<u16> for GroupKind {
+    fn from(value: u16) -> Self {
+        match value {
+            0 => Self::Point,
+            1 => Self::Midpoint,
+            2 => Self::Segment,
+            3 => Self::Circle,
+            5 => Self::LineKind5,
+            6 => Self::LineKind6,
+            7 => Self::LineKind7,
+            8 => Self::Polygon,
+            15 => Self::PointConstraint,
+            16 => Self::Translation,
+            17 => Self::CartesianOffsetPoint,
+            21 => Self::PolarOffsetPoint,
+            24 => Self::DerivedSegment24,
+            27 => Self::Rotation,
+            29 => Self::ParameterRotation,
+            30 => Self::Scale,
+            34 => Self::Reflection,
+            40 => Self::GraphObject40,
+            51 => Self::Kind51,
+            48 => Self::FunctionExpr,
+            52 => Self::GraphCalibrationX,
+            54 => Self::GraphCalibrationY,
+            58 => Self::MeasurementLine,
+            61 => Self::AxisLine,
+            62 => Self::ActionButton,
+            63 => Self::Line,
+            64 => Self::Ray,
+            67 => Self::OffsetAnchor,
+            69 => Self::CoordinatePoint,
+            72 => Self::FunctionPlot,
+            73 => Self::ButtonLabel,
+            75 => Self::DerivedSegment75,
+            76 => Self::AffineIteration,
+            77 => Self::IterationBinding,
+            78 => Self::DerivativeFunction,
+            89 => Self::RegularPolygonIteration,
+            90 => Self::LabelIterationSeed,
+            94 => Self::ParameterAnchor,
+            95 => Self::ParameterControlledPoint,
+            97 => Self::CoordinateTrace,
+            other => Self::Unknown(other),
+        }
+    }
+}
+
+impl GroupKind {
+    pub fn raw(self) -> u16 {
+        match self {
+            Self::Point => 0,
+            Self::Midpoint => 1,
+            Self::Segment => 2,
+            Self::Circle => 3,
+            Self::LineKind5 => 5,
+            Self::LineKind6 => 6,
+            Self::LineKind7 => 7,
+            Self::Polygon => 8,
+            Self::PointConstraint => 15,
+            Self::Translation => 16,
+            Self::CartesianOffsetPoint => 17,
+            Self::PolarOffsetPoint => 21,
+            Self::DerivedSegment24 => 24,
+            Self::Rotation => 27,
+            Self::ParameterRotation => 29,
+            Self::Scale => 30,
+            Self::Reflection => 34,
+            Self::GraphObject40 => 40,
+            Self::Kind51 => 51,
+            Self::FunctionExpr => 48,
+            Self::GraphCalibrationX => 52,
+            Self::GraphCalibrationY => 54,
+            Self::MeasurementLine => 58,
+            Self::AxisLine => 61,
+            Self::ActionButton => 62,
+            Self::Line => 63,
+            Self::Ray => 64,
+            Self::OffsetAnchor => 67,
+            Self::CoordinatePoint => 69,
+            Self::FunctionPlot => 72,
+            Self::ButtonLabel => 73,
+            Self::DerivedSegment75 => 75,
+            Self::AffineIteration => 76,
+            Self::IterationBinding => 77,
+            Self::DerivativeFunction => 78,
+            Self::RegularPolygonIteration => 89,
+            Self::LabelIterationSeed => 90,
+            Self::ParameterAnchor => 94,
+            Self::ParameterControlledPoint => 95,
+            Self::CoordinateTrace => 97,
+            Self::Unknown(other) => other,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ObjectGroupHeader {
     pub class_id: u32,
@@ -205,8 +346,12 @@ pub struct ObjectGroupHeader {
 }
 
 impl ObjectGroupHeader {
-    pub fn kind(&self) -> u16 {
-        self.class_id as u16
+    pub fn kind(&self) -> GroupKind {
+        GroupKind::from(self.class_id as u16)
+    }
+
+    pub fn kind_id(&self) -> u16 {
+        self.kind().raw()
     }
 }
 

@@ -20,7 +20,7 @@ pub(crate) fn decode_transform_binding(
         .map(|record| record.payload(&file.data))?;
 
     let kind = match kind {
-        27 => {
+        crate::format::GroupKind::Rotation => {
             let angle_degrees = if payload.len() >= 28 {
                 let angle = super::read_f64(payload, 20);
                 if angle.is_finite() {
@@ -38,7 +38,7 @@ pub(crate) fn decode_transform_binding(
                 parameter_name: None,
             }
         }
-        30 => {
+        crate::format::GroupKind::Scale => {
             if payload.len() < 12 {
                 return None;
             }
@@ -63,14 +63,14 @@ pub(crate) fn decode_parameter_rotation_binding(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> Option<TransformBinding> {
-    if (group.header.kind()) != 29 {
+    if (group.header.kind()) != crate::format::GroupKind::ParameterRotation {
         return None;
     }
     let path = find_indexed_path(file, group)?;
     let source_group_index = path.refs.first()?.checked_sub(1)?;
     let center_group_index = path.refs.get(1)?.checked_sub(1)?;
     let angle_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
-    if (angle_group.header.kind()) != 0 {
+    if (angle_group.header.kind()) != crate::format::GroupKind::Point {
         return None;
     }
     let angle_degrees = decode_angle_parameter_value_for_group(file, angle_group)?;

@@ -70,7 +70,7 @@ pub(crate) fn regular_polygon_iteration_step(
         return None;
     }
     let seed_group = groups.get(path.refs[2].checked_sub(1)?)?;
-    if (seed_group.header.kind()) != 29 {
+    if (seed_group.header.kind()) != crate::format::GroupKind::ParameterRotation {
         return None;
     }
     let seed_path = find_indexed_path(file, seed_group)?;
@@ -152,7 +152,7 @@ pub(crate) fn decode_translated_point_constraint(
         .find(|record| record.record_type == 0x07d3)
         .map(|record| record.payload(&file.data))?;
     match group.header.kind() {
-        21 => {
+        crate::format::GroupKind::PolarOffsetPoint => {
             if payload.len() < 48 {
                 return None;
             }
@@ -172,7 +172,7 @@ pub(crate) fn decode_translated_point_constraint(
                 dy: -step * angle_radians.sin(),
             })
         }
-        17 => {
+        crate::format::GroupKind::CartesianOffsetPoint => {
             if payload.len() < 40 {
                 return None;
             }
@@ -204,7 +204,7 @@ fn decode_point_on_segment_constraint(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> Option<PointOnSegmentConstraint> {
-    if (group.header.kind()) != 15 {
+    if (group.header.kind()) != crate::format::GroupKind::PointConstraint {
         return None;
     }
 
@@ -243,7 +243,7 @@ pub(crate) fn decode_parameter_controlled_point(
     group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
 ) -> Option<ParameterControlledPoint> {
-    if (group.header.kind()) != 95 {
+    if (group.header.kind()) != crate::format::GroupKind::ParameterControlledPoint {
         return None;
     }
 
@@ -255,13 +255,13 @@ pub(crate) fn decode_parameter_controlled_point(
     let source_group = groups.get(path.refs[0].checked_sub(1)?)?;
     let host_group = groups.get(path.refs[1].checked_sub(1)?)?;
     let (parameter_name, parameter_value, source_point_group_index) =
-        if (source_group.header.kind()) == 0 {
+        if (source_group.header.kind()) == crate::format::GroupKind::Point {
             (
                 decode_label_name(file, source_group)?,
                 decode_non_graph_parameter_value_for_group(file, source_group)?.clamp(0.0, 1.0),
                 None,
             )
-        } else if (source_group.header.kind()) == 94 {
+        } else if (source_group.header.kind()) == crate::format::GroupKind::ParameterAnchor {
             let path = find_indexed_path(file, source_group)?;
             let point_group_index = path.refs.first()?.checked_sub(1)?;
             let point_group = groups.get(point_group_index)?;
@@ -292,7 +292,7 @@ pub(crate) fn decode_parameter_controlled_point(
         };
 
     match host_group.header.kind() {
-        2 => {
+        crate::format::GroupKind::Segment => {
             let host_path = find_indexed_path(file, host_group)?;
             if host_path.refs.len() != 2 {
                 return None;
@@ -313,7 +313,7 @@ pub(crate) fn decode_parameter_controlled_point(
                 source_point_group_index,
             })
         }
-        8 => {
+        crate::format::GroupKind::Polygon => {
             let host_path = find_indexed_path(file, host_group)?;
             let vertex_group_indices = host_path
                 .refs
@@ -337,7 +337,7 @@ pub(crate) fn decode_parameter_controlled_point(
                 source_point_group_index,
             })
         }
-        3 => {
+        crate::format::GroupKind::Circle => {
             let host_path = find_indexed_path(file, host_group)?;
             if host_path.refs.len() != 2 {
                 return None;
@@ -372,7 +372,7 @@ pub(crate) fn decode_coordinate_point(
     group: &ObjectGroup,
     graph: &Option<GraphTransform>,
 ) -> Option<CoordinatePoint> {
-    if (group.header.kind()) != 69 {
+    if (group.header.kind()) != crate::format::GroupKind::CoordinatePoint {
         return None;
     }
 
@@ -411,7 +411,7 @@ pub(crate) fn decode_point_constraint(
     group: &ObjectGroup,
     graph: &Option<GraphTransform>,
 ) -> Option<RawPointConstraint> {
-    if (group.header.kind()) != 15 {
+    if (group.header.kind()) != crate::format::GroupKind::PointConstraint {
         return None;
     }
 
@@ -429,7 +429,7 @@ pub(crate) fn decode_point_constraint(
         .map(|record| record.payload(&file.data))?;
 
     match (host_kind, payload.len()) {
-        (3, 20) => {
+        (crate::format::GroupKind::Circle, 20) => {
             let host_path = find_indexed_path(file, host_group)?;
             if host_path.refs.len() != 2 {
                 return None;
@@ -448,7 +448,7 @@ pub(crate) fn decode_point_constraint(
                 unit_y,
             }))
         }
-        (8, 20) => {
+        (crate::format::GroupKind::Polygon, 20) => {
             let host_path = find_indexed_path(file, host_group)?;
             if host_path.refs.len() < 2 {
                 return None;
@@ -469,7 +469,9 @@ pub(crate) fn decode_point_constraint(
                 t,
             })
         }
-        (72, 12) => decode_point_on_function_constraint(file, groups, host_group, payload, graph),
+        (crate::format::GroupKind::FunctionPlot, 12) => {
+            decode_point_on_function_constraint(file, groups, host_group, payload, graph)
+        }
         _ => {
             decode_point_on_segment_constraint(file, groups, group).map(RawPointConstraint::Segment)
         }
