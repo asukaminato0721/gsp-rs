@@ -97,6 +97,7 @@ mod tests {
 
         assert!(html.contains("\"x\":416.3160761196899"));
         assert!(html.contains("\"y\":321.2222079835971"));
+        assert!(html.contains("\"kind\":\"line-intersection\""));
     }
 
     #[test]

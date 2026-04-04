@@ -1290,6 +1290,12 @@ fn preserves_linear_intersection_points_in_insection_fixtures() {
         let scene = build_scene(&file);
 
         assert_eq!(scene.points.len(), 5, "expected derived intersection point for {name}");
+        assert!(scene.points.iter().any(|point| {
+            matches!(
+                point.constraint,
+                ScenePointConstraint::LineIntersection { .. }
+            )
+        }));
         assert!(
             scene.points.iter().any(|point| {
                 (point.position.x - 416.3160761196899).abs() < 1e-6
@@ -1308,12 +1314,37 @@ fn preserves_circle_circle_intersection_points() {
 
     assert_eq!(scene.points.len(), 6, "expected both circle-circle intersections");
     assert!(scene.points.iter().any(|point| {
+        matches!(
+            point.constraint,
+            ScenePointConstraint::CircleCircleIntersection { .. }
+        )
+    }));
+    assert!(scene.points.iter().any(|point| {
         (point.position.x - 421.3993346591643).abs() < 1e-6
             && (point.position.y - 189.66291724683578).abs() < 1e-6
     }));
     assert!(scene.points.iter().any(|point| {
         (point.position.x - 445.71654184257966).abs() < 1e-6
             && (point.position.y - 470.02601183209464).abs() < 1e-6
+    }));
+}
+
+#[test]
+fn preserves_line_circle_intersection_points() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/insection/circle_insection.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.points.len(), 5, "expected derived line-circle intersection");
+    assert!(scene.points.iter().any(|point| {
+        matches!(
+            point.constraint,
+            ScenePointConstraint::LineCircleIntersection { .. }
+        )
+    }));
+    assert!(scene.points.iter().any(|point| {
+        (point.position.x - 167.5150597569313).abs() < 1e-6
+            && (point.position.y - 204.5902707856141).abs() < 1e-6
     }));
 }
 

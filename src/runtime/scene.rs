@@ -201,6 +201,36 @@ pub(crate) enum ScenePointConstraint {
         end_index: usize,
         t: f64,
     },
+    LineIntersection {
+        left_kind: LineLikeKind,
+        left_start_index: usize,
+        left_end_index: usize,
+        right_kind: LineLikeKind,
+        right_start_index: usize,
+        right_end_index: usize,
+    },
+    LineCircleIntersection {
+        line_kind: LineLikeKind,
+        line_start_index: usize,
+        line_end_index: usize,
+        center_index: usize,
+        radius_index: usize,
+        variant: usize,
+    },
+    CircleCircleIntersection {
+        left_center_index: usize,
+        left_radius_index: usize,
+        right_center_index: usize,
+        right_radius_index: usize,
+        variant: usize,
+    },
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum LineLikeKind {
+    Segment,
+    Line,
+    Ray,
 }
 
 #[derive(Debug, Clone)]

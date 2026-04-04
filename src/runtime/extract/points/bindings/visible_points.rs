@@ -7,7 +7,7 @@ use super::{
 };
 use crate::runtime::extract::find_indexed_path;
 use crate::runtime::geometry::GraphTransform;
-use crate::runtime::scene::{ScenePoint, ScenePointBinding, ScenePointConstraint};
+use crate::runtime::scene::{LineLikeKind, ScenePoint, ScenePointBinding, ScenePointConstraint};
 
 pub(crate) fn collect_visible_points(
     file: &GspFile,
@@ -39,16 +39,16 @@ pub(crate) fn collect_visible_points(
             | crate::format::GroupKind::IntersectionPoint1
             | crate::format::GroupKind::IntersectionPoint2
             | crate::format::GroupKind::CircleCircleIntersectionPoint1
-            | crate::format::GroupKind::CircleCircleIntersectionPoint2 => anchors
-                .get(index)
-                .cloned()
-                .flatten()
-                .map(|position| ScenePoint {
-                    position,
+            | crate::format::GroupKind::CircleCircleIntersectionPoint2 => {
+                scene_point_from_intersection(
+                    index,
+                    file,
+                    groups,
+                    anchors,
+                    &group_to_point_index,
                     visible,
-                    constraint: ScenePointConstraint::Free,
-                    binding: None,
-                }),
+                )
+            }
             crate::format::GroupKind::Midpoint => {
                 scene_point_from_midpoint(
                     index,
@@ -490,4 +490,169 @@ fn scene_point_from_midpoint(
             end_index,
         }),
     })
+}
+
+fn scene_point_from_intersection(
+    index: usize,
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group_to_point_index: &[Option<usize>],
+    visible: bool,
+) -> Option<ScenePoint> {
+    let group = groups.get(index)?;
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() != 2 {
+        return None;
+    }
+
+    let left_group = groups.get(path.refs[0].checked_sub(1)?)?;
+    let right_group = groups.get(path.refs[1].checked_sub(1)?)?;
+    let position = anchors.get(index).cloned().flatten()?;
+
+    if let (
+        Some((left_start_index, left_end_index, left_kind)),
+        Some((right_start_index, right_end_index, right_kind)),
+    ) = (
+        resolve_line_like_point_indices(file, groups, left_group, group_to_point_index),
+        resolve_line_like_point_indices(file, groups, right_group, group_to_point_index),
+    ) {
+        return Some(ScenePoint {
+            position,
+            visible,
+            constraint: ScenePointConstraint::LineIntersection {
+                left_kind,
+                left_start_index,
+                left_end_index,
+                right_kind,
+                right_start_index,
+                right_end_index,
+            },
+            binding: None,
+        });
+    }
+
+    let variant = intersection_variant(group.header.kind());
+    if let (Some((line_start_index, line_end_index, line_kind)), Some((center_index, radius_index))) = (
+        resolve_line_like_point_indices(file, groups, left_group, group_to_point_index),
+        resolve_circle_point_indices(file, groups, right_group, group_to_point_index),
+    ) {
+        return Some(ScenePoint {
+            position,
+            visible,
+            constraint: ScenePointConstraint::LineCircleIntersection {
+                line_kind,
+                line_start_index,
+                line_end_index,
+                center_index,
+                radius_index,
+                variant,
+            },
+            binding: None,
+        });
+    }
+
+    if let (Some((center_index, radius_index)), Some((line_start_index, line_end_index, line_kind))) = (
+        resolve_circle_point_indices(file, groups, left_group, group_to_point_index),
+        resolve_line_like_point_indices(file, groups, right_group, group_to_point_index),
+    ) {
+        return Some(ScenePoint {
+            position,
+            visible,
+            constraint: ScenePointConstraint::LineCircleIntersection {
+                line_kind,
+                line_start_index,
+                line_end_index,
+                center_index,
+                radius_index,
+                variant,
+            },
+            binding: None,
+        });
+    }
+
+    if let (Some((left_center_index, left_radius_index)), Some((right_center_index, right_radius_index))) = (
+        resolve_circle_point_indices(file, groups, left_group, group_to_point_index),
+        resolve_circle_point_indices(file, groups, right_group, group_to_point_index),
+    ) {
+        return Some(ScenePoint {
+            position,
+            visible,
+            constraint: ScenePointConstraint::CircleCircleIntersection {
+                left_center_index,
+                left_radius_index,
+                right_center_index,
+                right_radius_index,
+                variant,
+            },
+            binding: None,
+        });
+    }
+
+    Some(ScenePoint {
+        position,
+        visible,
+        constraint: ScenePointConstraint::Free,
+        binding: None,
+    })
+}
+
+fn resolve_line_like_point_indices(
+    file: &GspFile,
+    _groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    group_to_point_index: &[Option<usize>],
+) -> Option<(usize, usize, LineLikeKind)> {
+    let path = find_indexed_path(file, group)?;
+    match group.header.kind() {
+        crate::format::GroupKind::Segment
+        | crate::format::GroupKind::Line
+        | crate::format::GroupKind::Ray
+        | crate::format::GroupKind::MeasurementLine
+        | crate::format::GroupKind::AxisLine => {
+            if path.refs.len() != 2 {
+                return None;
+            }
+            let start_index = (*group_to_point_index.get(path.refs[0].checked_sub(1)?)?)?;
+            let end_index = (*group_to_point_index.get(path.refs[1].checked_sub(1)?)?)?;
+            Some((
+                start_index,
+                end_index,
+                match group.header.kind() {
+                    crate::format::GroupKind::Segment => LineLikeKind::Segment,
+                    crate::format::GroupKind::Ray => LineLikeKind::Ray,
+                    _ => LineLikeKind::Line,
+                },
+            ))
+        }
+        _ => None,
+    }
+}
+
+fn resolve_circle_point_indices(
+    file: &GspFile,
+    _groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    group_to_point_index: &[Option<usize>],
+) -> Option<(usize, usize)> {
+    let path = find_indexed_path(file, group)?;
+    match group.header.kind() {
+        crate::format::GroupKind::Circle => {
+            if path.refs.len() != 2 {
+                return None;
+            }
+            let center_index = (*group_to_point_index.get(path.refs[0].checked_sub(1)?)?)?;
+            let radius_index = (*group_to_point_index.get(path.refs[1].checked_sub(1)?)?)?;
+            Some((center_index, radius_index))
+        }
+        _ => None,
+    }
+}
+
+fn intersection_variant(kind: crate::format::GroupKind) -> usize {
+    match kind {
+        crate::format::GroupKind::IntersectionPoint1
+        | crate::format::GroupKind::CircleCircleIntersectionPoint1 => 1,
+        _ => 0,
+    }
 }
