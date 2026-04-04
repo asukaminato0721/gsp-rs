@@ -834,6 +834,21 @@
 
     const preservedLines = [];
     const rotateFamilies = new Map();
+    const resolveHostLinePoints = (binding) => {
+      if (typeof binding?.lineIndex === "number") {
+        const hostLine = scene.lines[binding.lineIndex];
+        return hostLine?.points?.length >= 2 ? hostLine.points : null;
+      }
+      if (
+        typeof binding?.lineStartIndex === "number"
+        && typeof binding?.lineEndIndex === "number"
+      ) {
+        const start = scene.points[binding.lineStartIndex];
+        const end = scene.points[binding.lineEndIndex];
+        return start && end ? [start, end] : null;
+      }
+      return null;
+    };
     scene.lines.forEach((line) => {
       if (line.binding?.kind === "segment") {
         const start = scene.points[line.binding.startIndex];
@@ -864,8 +879,9 @@
       }
       if (line.binding?.kind === "perpendicular-line") {
         const through = scene.points[line.binding.throughIndex];
-        const lineStart = scene.points[line.binding.lineStartIndex];
-        const lineEnd = scene.points[line.binding.lineEndIndex];
+        const hostLine = resolveHostLinePoints(line.binding);
+        const lineStart = hostLine?.[0];
+        const lineEnd = hostLine?.[1];
         if (through && lineStart && lineEnd) {
           const dx = lineEnd.x - lineStart.x;
           const dy = lineEnd.y - lineStart.y;
@@ -884,8 +900,9 @@
       }
       if (line.binding?.kind === "parallel-line") {
         const through = scene.points[line.binding.throughIndex];
-        const lineStart = scene.points[line.binding.lineStartIndex];
-        const lineEnd = scene.points[line.binding.lineEndIndex];
+        const hostLine = resolveHostLinePoints(line.binding);
+        const lineStart = hostLine?.[0];
+        const lineEnd = hostLine?.[1];
         if (through && lineStart && lineEnd) {
           const dx = lineEnd.x - lineStart.x;
           const dy = lineEnd.y - lineStart.y;

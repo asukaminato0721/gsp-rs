@@ -156,8 +156,9 @@ fn resolve_perpendicular_line_shape(
         dashed: false,
         binding: Some(LineBinding::PerpendicularLine {
             through_index,
-            line_start_index,
-            line_end_index,
+            line_start_index: Some(line_start_index),
+            line_end_index: Some(line_end_index),
+            line_index: Some(host_index),
         }),
     })
 }
@@ -198,8 +199,9 @@ fn resolve_parallel_line_shape(
         dashed: false,
         binding: Some(LineBinding::ParallelLine {
             through_index,
-            line_start_index,
-            line_end_index,
+            line_start_index: Some(line_start_index),
+            line_end_index: Some(line_end_index),
+            line_index: Some(host_index),
         }),
     })
 }

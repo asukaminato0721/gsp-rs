@@ -301,19 +301,23 @@ enum LineBindingJson {
     PerpendicularLine {
         #[serde(rename = "throughIndex")]
         through_index: usize,
-        #[serde(rename = "lineStartIndex")]
-        line_start_index: usize,
-        #[serde(rename = "lineEndIndex")]
-        line_end_index: usize,
+        #[serde(rename = "lineStartIndex", skip_serializing_if = "Option::is_none")]
+        line_start_index: Option<usize>,
+        #[serde(rename = "lineEndIndex", skip_serializing_if = "Option::is_none")]
+        line_end_index: Option<usize>,
+        #[serde(rename = "lineIndex", skip_serializing_if = "Option::is_none")]
+        line_index: Option<usize>,
     },
     #[serde(rename = "parallel-line")]
     ParallelLine {
         #[serde(rename = "throughIndex")]
         through_index: usize,
-        #[serde(rename = "lineStartIndex")]
-        line_start_index: usize,
-        #[serde(rename = "lineEndIndex")]
-        line_end_index: usize,
+        #[serde(rename = "lineStartIndex", skip_serializing_if = "Option::is_none")]
+        line_start_index: Option<usize>,
+        #[serde(rename = "lineEndIndex", skip_serializing_if = "Option::is_none")]
+        line_end_index: Option<usize>,
+        #[serde(rename = "lineIndex", skip_serializing_if = "Option::is_none")]
+        line_index: Option<usize>,
     },
     #[serde(rename = "line")]
     Line {
@@ -406,19 +410,23 @@ impl LineBindingJson {
                 through_index,
                 line_start_index,
                 line_end_index,
+                line_index,
             } => Self::PerpendicularLine {
                 through_index: *through_index,
                 line_start_index: *line_start_index,
                 line_end_index: *line_end_index,
+                line_index: *line_index,
             },
             LineBinding::ParallelLine {
                 through_index,
                 line_start_index,
                 line_end_index,
+                line_index,
             } => Self::ParallelLine {
                 through_index: *through_index,
                 line_start_index: *line_start_index,
                 line_end_index: *line_end_index,
+                line_index: *line_index,
             },
             LineBinding::Line {
                 start_index,

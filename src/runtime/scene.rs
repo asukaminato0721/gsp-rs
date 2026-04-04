@@ -224,13 +224,15 @@ pub(crate) enum LineBinding {
     },
     PerpendicularLine {
         through_index: usize,
-        line_start_index: usize,
-        line_end_index: usize,
+        line_start_index: Option<usize>,
+        line_end_index: Option<usize>,
+        line_index: Option<usize>,
     },
     ParallelLine {
         through_index: usize,
-        line_start_index: usize,
-        line_end_index: usize,
+        line_start_index: Option<usize>,
+        line_end_index: Option<usize>,
+        line_index: Option<usize>,
     },
     Line {
         start_index: usize,

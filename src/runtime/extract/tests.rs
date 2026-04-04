@@ -488,14 +488,76 @@ fn preserves_perpendicular_bisector_midpoint_gsp() {
                 through_index,
                 line_start_index,
                 line_end_index,
+                ..
             }) => Some((through_index, line_start_index, line_end_index)),
             _ => None,
         })
         .expect("expected synthesized perpendicular line");
 
     assert_eq!(perpendicular.0, midpoint_index);
-    assert_eq!(perpendicular.1, 0);
-    assert_eq!(perpendicular.2, 1);
+    assert_eq!(perpendicular.1, Some(0));
+    assert_eq!(perpendicular.2, Some(1));
+}
+
+#[test]
+fn preserves_nested_perpendicular_parallel_bindings_in_pert_vert_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/pert_vert.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(
+        scene.lines.len(),
+        4,
+        "expected base line, bisector, and marker strokes"
+    );
+    assert_eq!(
+        scene.points.len(),
+        4,
+        "expected free anchor point plus midpoint construction"
+    );
+
+    let base_index = scene
+        .lines
+        .iter()
+        .position(|line| matches!(line.binding, Some(LineBinding::Segment { .. })))
+        .expect("expected source segment");
+    let main_perpendicular_index = scene
+        .lines
+        .iter()
+        .position(|line| {
+            matches!(
+                line.binding,
+                Some(LineBinding::PerpendicularLine {
+                    through_index: 3,
+                    line_index: Some(0),
+                    ..
+                })
+            )
+        })
+        .expect("expected midpoint perpendicular line bound to the source segment");
+    assert_eq!(main_perpendicular_index, 1);
+    assert_eq!(base_index, 0);
+
+    assert!(scene.lines.iter().any(|line| {
+        matches!(
+            line.binding,
+            Some(LineBinding::PerpendicularLine {
+                through_index: 1,
+                line_index: Some(1),
+                ..
+            })
+        )
+    }));
+    assert!(scene.lines.iter().any(|line| {
+        matches!(
+            line.binding,
+            Some(LineBinding::ParallelLine {
+                through_index: 1,
+                line_index: Some(1),
+                ..
+            })
+        )
+    }));
 }
 
 #[test]

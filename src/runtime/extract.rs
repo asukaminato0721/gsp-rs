@@ -528,7 +528,13 @@ fn remap_scene_bindings(
         &polygon_group_to_index,
     );
     let line_group_to_index = group_shape_index_map(groups, |_, group| {
-        (group.header.kind()) == crate::format::GroupKind::Segment
+        matches!(
+            group.header.kind(),
+            crate::format::GroupKind::Segment
+                | crate::format::GroupKind::LineKind5
+                | crate::format::GroupKind::LineKind6
+                | crate::format::GroupKind::LineKind7
+        )
     });
     remap_line_bindings(
         &mut shapes.polylines,

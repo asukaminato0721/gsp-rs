@@ -199,6 +199,21 @@ mod tests {
     }
 
     #[test]
+    fn exports_nested_perpendicular_parallel_marker_bindings_into_html() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/gsp/pert_vert.gsp"),
+            800,
+            600,
+        )
+        .expect("pert_vert fixture should compile");
+
+        assert!(html.contains("\"kind\":\"perpendicular-line\",\"throughIndex\":3"));
+        assert!(html.contains("\"kind\":\"perpendicular-line\",\"throughIndex\":1"));
+        assert!(html.contains("\"kind\":\"parallel-line\",\"throughIndex\":1"));
+        assert!(html.contains("\"lineIndex\":1"));
+    }
+
+    #[test]
     fn exports_three_point_arc_into_html() {
         let html = compile_bytes_to_html_document(
             include_bytes!("../tests/fixtures/gsp/static/three_point_arc.gsp"),

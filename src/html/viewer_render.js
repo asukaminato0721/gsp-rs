@@ -248,6 +248,21 @@
     for (const line of env.currentScene().lines) {
       if (line.visible === false) continue;
       let screenPoints = null;
+      const resolveHostLinePoints = (binding) => {
+        if (typeof binding?.lineIndex === "number") {
+          return env.resolveLinePoints(binding.lineIndex);
+        }
+        if (
+          typeof binding?.lineStartIndex === "number"
+          && typeof binding?.lineEndIndex === "number"
+        ) {
+          return [
+            env.resolveScenePoint(binding.lineStartIndex),
+            env.resolveScenePoint(binding.lineEndIndex),
+          ];
+        }
+        return null;
+      };
       if (
         line.binding?.kind === "line"
         || line.binding?.kind === "ray"
@@ -263,8 +278,9 @@
         const end = line.binding.kind === "perpendicular-line"
           ? (() => {
               const through = env.resolveScenePoint(line.binding.throughIndex);
-              const lineStart = env.resolveScenePoint(line.binding.lineStartIndex);
-              const lineEnd = env.resolveScenePoint(line.binding.lineEndIndex);
+              const hostLine = resolveHostLinePoints(line.binding);
+              if (!hostLine) return null;
+              const [lineStart, lineEnd] = hostLine;
               const dx = lineEnd.x - lineStart.x;
               const dy = lineEnd.y - lineStart.y;
               const len = Math.hypot(dx, dy);
@@ -277,8 +293,9 @@
           : line.binding.kind === "parallel-line"
             ? (() => {
                 const through = env.resolveScenePoint(line.binding.throughIndex);
-                const lineStart = env.resolveScenePoint(line.binding.lineStartIndex);
-                const lineEnd = env.resolveScenePoint(line.binding.lineEndIndex);
+                const hostLine = resolveHostLinePoints(line.binding);
+                if (!hostLine) return null;
+                const [lineStart, lineEnd] = hostLine;
                 const dx = lineEnd.x - lineStart.x;
                 const dy = lineEnd.y - lineStart.y;
                 const len = Math.hypot(dx, dy);
