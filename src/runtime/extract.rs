@@ -534,6 +534,7 @@ fn remap_scene_bindings(
         matches!(
             group.header.kind(),
             crate::format::GroupKind::Segment
+                | crate::format::GroupKind::AngleMarker
                 | crate::format::GroupKind::LineKind5
                 | crate::format::GroupKind::LineKind6
                 | crate::format::GroupKind::LineKind7

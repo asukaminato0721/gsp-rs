@@ -561,6 +561,76 @@ fn preserves_nested_perpendicular_parallel_bindings_in_pert_vert_gsp() {
 }
 
 #[test]
+fn preserves_nested_line_indices_in_basic_shapes_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/基本图形.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    let base_segment_index = scene
+        .lines
+        .iter()
+        .position(|line| {
+            matches!(
+                line.binding,
+                Some(LineBinding::Segment {
+                    start_index: 8,
+                    end_index: 0,
+                })
+            )
+        })
+        .expect("expected base segment for midpoint construction");
+
+    let midpoint_perpendicular_index = scene
+        .lines
+        .iter()
+        .position(|line| {
+            matches!(
+                line.binding,
+                Some(LineBinding::PerpendicularLine {
+                    through_index: 9,
+                    line_start_index: Some(8),
+                    line_end_index: Some(0),
+                    line_index: Some(_),
+                })
+            )
+        })
+        .expect("expected midpoint perpendicular line");
+
+    assert_eq!(midpoint_perpendicular_index, base_segment_index + 1);
+    assert!(matches!(
+        scene.lines[midpoint_perpendicular_index].binding,
+        Some(LineBinding::PerpendicularLine {
+            line_index: Some(line_index),
+            ..
+        }) if line_index == base_segment_index
+    ));
+
+    let nested_host_index = midpoint_perpendicular_index;
+    assert!(scene.lines.iter().any(|line| {
+        matches!(
+            line.binding,
+            Some(LineBinding::PerpendicularLine {
+                through_index: 1,
+                line_start_index: Some(9),
+                line_end_index: None,
+                line_index: Some(line_index),
+            }) if line_index == nested_host_index
+        )
+    }));
+    assert!(scene.lines.iter().any(|line| {
+        matches!(
+            line.binding,
+            Some(LineBinding::ParallelLine {
+                through_index: 1,
+                line_start_index: Some(9),
+                line_end_index: None,
+                line_index: Some(line_index),
+            }) if line_index == nested_host_index
+        )
+    }));
+}
+
+#[test]
 fn preserves_bisector_gsp() {
     let data = include_bytes!("../../../tests/fixtures/gsp/static/bisector.gsp");
     let file = GspFile::parse(data).expect("fixture parses");
