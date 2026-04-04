@@ -4,6 +4,9 @@
   function dragModeFor(env, pointIndex, labelIndex, polygonIndex) {
     if (pointIndex !== null) {
       const point = env.currentScene().points[pointIndex];
+      if (point?.binding?.kind === "midpoint") {
+        return "pan";
+      }
       if (point?.binding?.kind === "coordinate") {
         return "pan";
       }

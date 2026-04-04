@@ -452,6 +452,9 @@ fn scene_point_from_midpoint(
             end_index,
             t: 0.5,
         },
-        binding: None,
+        binding: Some(ScenePointBinding::Midpoint {
+            start_index,
+            end_index,
+        }),
     })
 }

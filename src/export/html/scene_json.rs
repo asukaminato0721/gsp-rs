@@ -1171,6 +1171,13 @@ enum PointBindingJson {
         center_index: usize,
         factor: f64,
     },
+    #[serde(rename = "midpoint")]
+    Midpoint {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+    },
     #[serde(rename = "coordinate")]
     Coordinate {
         name: String,
@@ -1222,6 +1229,13 @@ impl PointBindingJson {
                 source_index: *source_index,
                 center_index: *center_index,
                 factor: *factor,
+            },
+            ScenePointBinding::Midpoint {
+                start_index,
+                end_index,
+            } => Self::Midpoint {
+                start_index: *start_index,
+                end_index: *end_index,
             },
             ScenePointBinding::Coordinate { name, expr } => Self::Coordinate {
                 name: name.clone(),

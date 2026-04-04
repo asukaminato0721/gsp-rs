@@ -837,6 +837,60 @@ fn preserves_coordinate_trace_in_cood_trace_gsp() {
 }
 
 #[test]
+fn preserves_midpoint_binding_and_trace_in_trace_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/trace.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    let midpoint_index = scene
+        .points
+        .iter()
+        .enumerate()
+        .find_map(|(index, point)| match (&point.constraint, &point.binding) {
+            (
+                ScenePointConstraint::OnSegment {
+                    start_index,
+                    end_index,
+                    t,
+                },
+                Some(ScenePointBinding::Midpoint {
+                    start_index: binding_start,
+                    end_index: binding_end,
+                }),
+            ) if *start_index == 4
+                && *end_index == 0
+                && *binding_start == 4
+                && *binding_end == 0
+                && (*t - 0.5).abs() < 1e-9 =>
+            {
+                Some(index)
+            }
+            _ => None,
+        })
+        .expect("expected derived midpoint point");
+    assert!(scene.points[midpoint_index].visible);
+
+    assert!(
+        scene.lines.iter().any(|line| {
+            if line.points.len() < 100 {
+                return false;
+            }
+            let first = line.points.first().expect("non-empty line");
+            let last = line.points.last().expect("non-empty line");
+            ((first.x - 846.5).abs() < 0.01
+                && (first.y - 480.0).abs() < 0.01
+                && (last.x - 766.0).abs() < 0.01
+                && (last.y - 359.25).abs() < 0.01)
+                || ((last.x - 846.5).abs() < 0.01
+                    && (last.y - 480.0).abs() < 0.01
+                    && (first.x - 766.0).abs() < 0.01
+                    && (first.y - 359.25).abs() < 0.01)
+        }),
+        "expected sampled midpoint trace line"
+    );
+}
+
+#[test]
 fn preserves_parameter_driven_point_iteration_family() {
     let data =
         include_bytes!("../../../tests/fixtures/gsp/static/简单迭代/原象点初象点深度5迭代.gsp");
