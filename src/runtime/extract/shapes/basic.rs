@@ -2,11 +2,12 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::{
     ArcShape, CircleShape, GraphTransform, GspFile, LineBinding, LineShape, ObjectGroup,
-    PointRecord, PolygonShape, color_from_style, decode_function_expr,
+    PointRecord, PolygonShape, ShapeBinding, color_from_style, decode_function_expr,
     decode_function_plot_descriptor, decode_label_name, evaluate_expr_with_parameters,
     fill_color_from_styles, find_indexed_path, has_distinct_points, three_point_arc_geometry,
     to_raw_from_world,
 };
+use crate::runtime::extract::decode::{is_circle_group_kind, resolve_circle_points_raw};
 use crate::runtime::geometry::arc_on_circle_control_points;
 
 pub(crate) fn collect_line_shapes(
@@ -42,8 +43,14 @@ pub(crate) fn collect_line_shapes(
                 crate::format::GroupKind::LineKind5 => {
                     return resolve_perpendicular_line_shape(file, groups, anchors, group);
                 }
+                crate::format::GroupKind::LineKind6 => {
+                    return resolve_parallel_line_shape(file, groups, anchors, group);
+                }
                 crate::format::GroupKind::LineKind7 => {
                     return resolve_angle_bisector_ray_shape(file, anchors, group);
+                }
+                crate::format::GroupKind::AngleMarker => {
+                    return resolve_angle_marker_shape(file, anchors, group);
                 }
                 _ => {}
             }
@@ -77,6 +84,52 @@ pub(crate) fn collect_line_shapes(
             })
         })
         .collect()
+}
+
+fn resolve_angle_marker_shape(
+    file: &GspFile,
+    anchors: &[Option<PointRecord>],
+    group: &ObjectGroup,
+) -> Option<LineShape> {
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() != 3 {
+        return None;
+    }
+
+    let start = anchors.get(path.refs[0].checked_sub(1)?)?.clone()?;
+    let vertex = anchors.get(path.refs[1].checked_sub(1)?)?.clone()?;
+    let end = anchors.get(path.refs[2].checked_sub(1)?)?.clone()?;
+
+    let first = normalize_direction(&vertex, &start)?;
+    let second = normalize_direction(&vertex, &end)?;
+    let first_len = ((start.x - vertex.x).powi(2) + (start.y - vertex.y).powi(2)).sqrt();
+    let second_len = ((end.x - vertex.x).powi(2) + (end.y - vertex.y).powi(2)).sqrt();
+    let shortest_len = first_len.min(second_len);
+    let side = (shortest_len * 0.125).clamp(10.0, 28.0).min(shortest_len * 0.5);
+    if side <= 1e-9 {
+        return None;
+    }
+
+    let start_on_first = PointRecord {
+        x: vertex.x + first.0 * side,
+        y: vertex.y + first.1 * side,
+    };
+    let corner = PointRecord {
+        x: vertex.x + (first.0 + second.0) * side,
+        y: vertex.y + (first.1 + second.1) * side,
+    };
+    let end_on_second = PointRecord {
+        x: vertex.x + second.0 * side,
+        y: vertex.y + second.1 * side,
+    };
+    let points = vec![start_on_first, corner, end_on_second];
+
+    has_distinct_points(&points).then_some(LineShape {
+        points,
+        color: color_from_style(group.header.style_b),
+        dashed: false,
+        binding: None,
+    })
 }
 
 fn resolve_angle_bisector_ray_shape(
@@ -152,8 +205,52 @@ fn resolve_perpendicular_line_shape(
         dashed: false,
         binding: Some(LineBinding::PerpendicularLine {
             through_index,
-            line_start_index,
-            line_end_index,
+            line_start_index: Some(line_start_index),
+            line_end_index: Some(line_end_index),
+            line_index: Some(host_index),
+        }),
+    })
+}
+
+fn resolve_parallel_line_shape(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group: &ObjectGroup,
+) -> Option<LineShape> {
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() != 2 {
+        return None;
+    }
+
+    let through_index = path.refs[0].checked_sub(1)?;
+    let host_index = path.refs[1].checked_sub(1)?;
+    let through = anchors.get(through_index)?.clone()?;
+    let (line_start_index, line_end_index, host_start, host_end) =
+        resolve_host_line_points(file, groups, anchors, host_index)?;
+
+    let dx = host_end.x - host_start.x;
+    let dy = host_end.y - host_start.y;
+    let host_len = (dx * dx + dy * dy).sqrt();
+    if host_len <= 1e-9 {
+        return None;
+    }
+
+    let start = through.clone();
+    let end = PointRecord {
+        x: through.x + dx / host_len,
+        y: through.y + dy / host_len,
+    };
+
+    has_distinct_points(&[start.clone(), end.clone()]).then_some(LineShape {
+        points: vec![start, end],
+        color: color_from_style(group.header.style_b),
+        dashed: false,
+        binding: Some(LineBinding::ParallelLine {
+            through_index,
+            line_start_index: Some(line_start_index),
+            line_end_index: Some(line_end_index),
+            line_index: Some(host_index),
         }),
     })
 }
@@ -287,20 +384,35 @@ pub(crate) fn collect_circle_shapes(
     groups
         .iter()
         .enumerate()
-        .filter(|(_, group)| (group.header.kind()) == crate::format::GroupKind::Circle)
+        .filter(|(_, group)| is_circle_group_kind(group.header.kind()))
         .filter_map(|(group_index, group)| {
-            let path = find_indexed_path(file, group)?;
-            if path.refs.len() != 2 {
-                return None;
-            }
-            let center = anchors.get(path.refs[0].saturating_sub(1))?.clone()?;
-            let radius_point = anchors.get(path.refs[1].saturating_sub(1))?.clone()?;
+            let (center, radius_point) = resolve_circle_points_raw(file, groups, anchors, group)?;
+            let binding = match group.header.kind() {
+                crate::format::GroupKind::CircleCenterRadius => {
+                    let path = find_indexed_path(file, group)?;
+                    if path.refs.len() != 2 {
+                        return None;
+                    }
+                    let center_index = path.refs[0].checked_sub(1)?;
+                    let segment_group = groups.get(path.refs[1].checked_sub(1)?)?;
+                    let segment_path = find_indexed_path(file, segment_group)?;
+                    if segment_path.refs.len() != 2 {
+                        return None;
+                    }
+                    Some(ShapeBinding::SegmentRadiusCircle {
+                        center_index,
+                        line_start_index: segment_path.refs[0].checked_sub(1)?,
+                        line_end_index: segment_path.refs[1].checked_sub(1)?,
+                    })
+                }
+                _ => None,
+            };
             Some(CircleShape {
                 center,
                 radius_point,
                 color: color_from_style(group.header.style_b),
                 dashed: dashed_circle_indices.contains(&group_index),
-                binding: None,
+                binding,
             })
         })
         .collect()
@@ -337,16 +449,11 @@ pub(crate) fn collect_three_point_arc_shapes(
                         return None;
                     }
                     let circle_group = groups.get(path.refs[0].checked_sub(1)?)?;
-                    if (circle_group.header.kind()) != crate::format::GroupKind::Circle {
+                    if !is_circle_group_kind(circle_group.header.kind()) {
                         return None;
                     }
-                    let circle_path = find_indexed_path(file, circle_group)?;
-                    if circle_path.refs.len() != 2 {
-                        return None;
-                    }
-                    let center = anchors
-                        .get(circle_path.refs[0].saturating_sub(1))?
-                        .clone()?;
+                    let (center, _) =
+                        resolve_circle_points_raw(file, groups, anchors, circle_group)?;
                     let start = anchors.get(path.refs[1].saturating_sub(1))?.clone()?;
                     let end = anchors.get(path.refs[2].saturating_sub(1))?.clone()?;
                     arc_on_circle_control_points(&center, &start, &end)?
@@ -360,8 +467,9 @@ pub(crate) fn collect_three_point_arc_shapes(
                 center: match group.header.kind() {
                     crate::format::GroupKind::ArcOnCircle => {
                         let circle_group = groups.get(path.refs[0].checked_sub(1)?)?;
-                        let circle_path = find_indexed_path(file, circle_group)?;
-                        Some(anchors.get(circle_path.refs[0].saturating_sub(1))?.clone()?)
+                        let (center, _) =
+                            resolve_circle_points_raw(file, groups, anchors, circle_group)?;
+                        Some(center)
                     }
                     _ => None,
                 },

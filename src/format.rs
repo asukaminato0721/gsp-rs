@@ -201,6 +201,7 @@ pub enum GroupKind {
     Midpoint,
     Segment,
     Circle,
+    CircleCenterRadius,
     LineKind5,
     LineKind6,
     LineKind7,
@@ -213,6 +214,7 @@ pub enum GroupKind {
     ParameterRotation,
     Scale,
     Reflection,
+    PointTrace,
     GraphObject40,
     Kind51,
     FunctionExpr,
@@ -238,6 +240,7 @@ pub enum GroupKind {
     ThreePointArc,
     CoordinateTrace,
     AxisLine,
+    AngleMarker,
     DerivedSegment75,
     Unknown(u16),
 }
@@ -249,6 +252,7 @@ impl From<u16> for GroupKind {
             1 => Self::Midpoint,
             2 => Self::Segment,
             3 => Self::Circle,
+            4 => Self::CircleCenterRadius,
             5 => Self::LineKind5,
             6 => Self::LineKind6,
             7 => Self::LineKind7,
@@ -262,6 +266,7 @@ impl From<u16> for GroupKind {
             29 => Self::ParameterRotation,
             30 => Self::Scale,
             34 => Self::Reflection,
+            35 => Self::PointTrace,
             40 => Self::GraphObject40,
             51 => Self::Kind51,
             48 => Self::FunctionExpr,
@@ -287,6 +292,7 @@ impl From<u16> for GroupKind {
             79 => Self::ArcOnCircle,
             81 => Self::ThreePointArc,
             97 => Self::CoordinateTrace,
+            113 => Self::AngleMarker,
             other => Self::Unknown(other),
         }
     }
@@ -299,6 +305,7 @@ impl GroupKind {
             Self::Midpoint => 1,
             Self::Segment => 2,
             Self::Circle => 3,
+            Self::CircleCenterRadius => 4,
             Self::LineKind5 => 5,
             Self::LineKind6 => 6,
             Self::LineKind7 => 7,
@@ -312,6 +319,7 @@ impl GroupKind {
             Self::ParameterRotation => 29,
             Self::Scale => 30,
             Self::Reflection => 34,
+            Self::PointTrace => 35,
             Self::GraphObject40 => 40,
             Self::Kind51 => 51,
             Self::FunctionExpr => 48,
@@ -337,6 +345,7 @@ impl GroupKind {
             Self::ArcOnCircle => 79,
             Self::ThreePointArc => 81,
             Self::CoordinateTrace => 97,
+            Self::AngleMarker => 113,
             Self::Unknown(other) => other,
         }
     }
@@ -358,6 +367,10 @@ impl ObjectGroupHeader {
 
     pub fn kind_id(&self) -> u16 {
         self.kind().raw()
+    }
+
+    pub fn is_hidden(&self) -> bool {
+        (self.class_id & 0x0001_0000) != 0
     }
 }
 

@@ -21,6 +21,7 @@ pub(crate) fn collect_visible_points(
 
     for (index, group) in groups.iter().enumerate() {
         let kind = group.header.kind();
+        let visible = !group.header.is_hidden();
         let scene_point = match kind {
             crate::format::GroupKind::Point => {
                 point_map
@@ -29,9 +30,20 @@ pub(crate) fn collect_visible_points(
                     .flatten()
                     .map(|position| ScenePoint {
                         position,
+                        visible,
                         constraint: ScenePointConstraint::Free,
                         binding: None,
                     })
+            }
+            crate::format::GroupKind::Midpoint => {
+                scene_point_from_midpoint(
+                    index,
+                    file,
+                    groups,
+                    anchors,
+                    &group_to_point_index,
+                    visible,
+                )
             }
             crate::format::GroupKind::CartesianOffsetPoint
             | crate::format::GroupKind::PolarOffsetPoint => {
@@ -42,6 +54,7 @@ pub(crate) fn collect_visible_points(
                     let position = anchors.get(index).cloned().flatten()?;
                     Some(ScenePoint {
                         position,
+                        visible,
                         constraint: ScenePointConstraint::Offset {
                             origin_index,
                             dx: constraint.dx,
@@ -53,7 +66,13 @@ pub(crate) fn collect_visible_points(
             }
             crate::format::GroupKind::PointConstraint => {
                 decode_point_constraint(file, groups, group, graph).and_then(|constraint| {
-                    scene_point_from_constraint(index, anchors, &group_to_point_index, constraint)
+                    scene_point_from_constraint(
+                        index,
+                        anchors,
+                        &group_to_point_index,
+                        constraint,
+                        visible,
+                    )
                 })
             }
             crate::format::GroupKind::ParameterControlledPoint => {
@@ -62,12 +81,14 @@ pub(crate) fn collect_visible_points(
                         scene_point_from_parameter_controlled(
                             &group_to_point_index,
                             parameter_point,
+                            visible,
                         )
                     },
                 )
             }
             crate::format::GroupKind::CoordinatePoint => {
-                decode_coordinate_point(file, groups, group, graph).map(scene_point_from_coordinate)
+                decode_coordinate_point(file, groups, group, graph)
+                    .map(|point| scene_point_from_coordinate(point, visible))
             }
             crate::format::GroupKind::Reflection => {
                 decode_reflection_anchor_raw(file, groups, group, anchors).and_then(|position| {
@@ -91,6 +112,7 @@ pub(crate) fn collect_visible_points(
                         })
                         .map(|_| ScenePoint {
                             position,
+                            visible,
                             constraint: ScenePointConstraint::Free,
                             binding: Some(ScenePointBinding::Reflect {
                                 source_index,
@@ -122,6 +144,7 @@ pub(crate) fn collect_visible_points(
                         })
                         .map(|_| ScenePoint {
                             position,
+                            visible,
                             constraint: ScenePointConstraint::Free,
                             binding: Some(ScenePointBinding::Translate {
                                 source_index,
@@ -149,6 +172,7 @@ pub(crate) fn collect_visible_points(
                         .and_then(|point_index| *point_index)?;
                     Some(ScenePoint {
                         position,
+                        visible,
                         constraint: ScenePointConstraint::Free,
                         binding: Some(match binding.kind {
                             TransformBindingKind::Rotate {
@@ -186,6 +210,7 @@ fn scene_point_from_constraint(
     anchors: &[Option<PointRecord>],
     group_to_point_index: &[Option<usize>],
     constraint: RawPointConstraint,
+    visible: bool,
 ) -> Option<ScenePoint> {
     let position = anchors.get(index).cloned().flatten()?;
     match constraint {
@@ -198,6 +223,7 @@ fn scene_point_from_constraint(
                 .and_then(|point_index| *point_index)?;
             Some(ScenePoint {
                 position,
+                visible,
                 constraint: ScenePointConstraint::OnSegment {
                     start_index,
                     end_index,
@@ -213,6 +239,7 @@ fn scene_point_from_constraint(
             t,
         } => Some(ScenePoint {
             position,
+            visible,
             constraint: ScenePointConstraint::OnPolyline {
                 function_key,
                 points,
@@ -236,6 +263,7 @@ fn scene_point_from_constraint(
                 .collect::<Option<Vec<_>>>()?;
             Some(ScenePoint {
                 position,
+                visible,
                 constraint: ScenePointConstraint::OnPolygonBoundary {
                     vertex_indices,
                     edge_index,
@@ -253,6 +281,7 @@ fn scene_point_from_constraint(
                 .and_then(|point_index| *point_index)?;
             Some(ScenePoint {
                 position,
+                visible,
                 constraint: ScenePointConstraint::OnCircle {
                     center_index,
                     radius_index,
@@ -274,6 +303,7 @@ fn scene_point_from_constraint(
                 .and_then(|point_index| *point_index)?;
             Some(ScenePoint {
                 position,
+                visible,
                 constraint: ScenePointConstraint::OnArc {
                     start_index,
                     mid_index,
@@ -289,6 +319,7 @@ fn scene_point_from_constraint(
 fn scene_point_from_parameter_controlled(
     group_to_point_index: &[Option<usize>],
     parameter_point: ParameterControlledPoint,
+    visible: bool,
 ) -> Option<ScenePoint> {
     let binding = parameter_point_binding(group_to_point_index, &parameter_point)?;
     match &parameter_point.constraint {
@@ -301,6 +332,7 @@ fn scene_point_from_parameter_controlled(
                 .and_then(|point_index| *point_index)?;
             Some(ScenePoint {
                 position: parameter_point.position.clone(),
+                visible,
                 constraint: ScenePointConstraint::OnSegment {
                     start_index,
                     end_index,
@@ -324,6 +356,7 @@ fn scene_point_from_parameter_controlled(
                 .collect::<Option<Vec<_>>>()?;
             Some(ScenePoint {
                 position: parameter_point.position.clone(),
+                visible,
                 constraint: ScenePointConstraint::OnPolygonBoundary {
                     vertex_indices,
                     edge_index: *edge_index,
@@ -341,6 +374,7 @@ fn scene_point_from_parameter_controlled(
                 .and_then(|point_index| *point_index)?;
             Some(ScenePoint {
                 position: parameter_point.position,
+                visible,
                 constraint: ScenePointConstraint::OnCircle {
                     center_index,
                     radius_index,
@@ -362,6 +396,7 @@ fn scene_point_from_parameter_controlled(
                 .and_then(|point_index| *point_index)?;
             Some(ScenePoint {
                 position: parameter_point.position,
+                visible,
                 constraint: ScenePointConstraint::OnArc {
                     start_index,
                     mid_index,
@@ -393,13 +428,52 @@ fn parameter_point_binding(
     }
 }
 
-fn scene_point_from_coordinate(point: CoordinatePoint) -> ScenePoint {
+fn scene_point_from_coordinate(point: CoordinatePoint, visible: bool) -> ScenePoint {
     ScenePoint {
         position: point.position,
+        visible,
         constraint: ScenePointConstraint::Free,
         binding: Some(ScenePointBinding::Coordinate {
             name: point.parameter_name,
             expr: point.expr,
         }),
     }
+}
+
+fn scene_point_from_midpoint(
+    index: usize,
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group_to_point_index: &[Option<usize>],
+    visible: bool,
+) -> Option<ScenePoint> {
+    let group = groups.get(index)?;
+    let path = find_indexed_path(file, group)?;
+    let host_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+    if !matches!(
+        host_group.header.kind(),
+        crate::format::GroupKind::Segment
+            | crate::format::GroupKind::Line
+            | crate::format::GroupKind::Ray
+    ) {
+        return None;
+    }
+    let host_path = find_indexed_path(file, host_group)?;
+    let start_index = (*group_to_point_index.get(host_path.refs.first()?.checked_sub(1)?)?)?;
+    let end_index = (*group_to_point_index.get(host_path.refs.get(1)?.checked_sub(1)?)?)?;
+    let position = anchors.get(index).cloned().flatten()?;
+    Some(ScenePoint {
+        position,
+        visible,
+        constraint: ScenePointConstraint::OnSegment {
+            start_index,
+            end_index,
+            t: 0.5,
+        },
+        binding: Some(ScenePointBinding::Midpoint {
+            start_index,
+            end_index,
+        }),
+    })
 }

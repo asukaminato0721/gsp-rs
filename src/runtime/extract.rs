@@ -50,17 +50,20 @@ use self::shapes::{
 use self::world::{world_line_iteration_family, world_line_shape, world_polygon_iteration_family};
 use super::functions::{
     collect_function_plot_domain, collect_function_plots, collect_scene_functions,
-    collect_scene_parameters, function_uses_pi_scale, synthesize_function_axes,
-    synthesize_function_labels,
+    collect_scene_parameters, decode_function_plot_descriptor, function_uses_pi_scale,
+    synthesize_function_axes, synthesize_function_labels,
 };
-use super::geometry::{Bounds, GraphTransform, distance_world, include_line_bounds, to_world};
+use super::geometry::{
+    Bounds, GraphTransform, distance_world, include_line_bounds, lerp_point,
+    point_on_three_point_arc, reflect_across_line, rotate_around, scale_around, to_world,
+};
 use super::scene::{
     LabelIterationFamily, LineBinding, LineIterationFamily, LineShape, PointIterationFamily,
     PolygonIterationFamily, PolygonShape, Scene, SceneArc, SceneCircle, ScenePoint,
-    ScenePointConstraint, TextLabel,
+    ScenePointBinding, ScenePointConstraint, TextLabel,
 };
 
-pub(crate) use self::decode::find_indexed_path;
+pub(crate) use self::decode::{find_indexed_path, is_circle_group_kind};
 
 #[derive(Debug, Clone)]
 struct CircleShape {
@@ -214,7 +217,10 @@ fn collect_scene_shapes(
         file,
         groups,
         &analysis.raw_anchors,
-        &[crate::format::GroupKind::Segment],
+        &[
+            crate::format::GroupKind::Segment,
+            crate::format::GroupKind::AngleMarker,
+        ],
         !analysis.graph_mode && !analysis.large_non_graph,
         &suppressed_carried_polygon_segments,
     );
@@ -478,9 +484,13 @@ fn remap_scene_bindings(
 ) {
     let suppressed_carried_polygon_segments =
         collect_carried_polygon_edge_segment_groups(file, groups);
-    let circle_group_to_index = group_shape_index_map(groups, |_, group| {
-        (group.header.kind()) == crate::format::GroupKind::Circle
-    });
+    let circle_group_to_index =
+        group_shape_index_map(groups, |_, group| is_circle_group_kind(group.header.kind()));
+    remap_circle_bindings(
+        &mut shapes.circles,
+        group_to_point_index,
+        &circle_group_to_index,
+    );
     let polygon_group_to_index = group_shape_index_map(groups, |index, group| {
         (group.header.kind()) == crate::format::GroupKind::Polygon
             && !shapes.iteration_polygon_indices.contains(&index)
@@ -521,8 +531,19 @@ fn remap_scene_bindings(
         &polygon_group_to_index,
     );
     let line_group_to_index = group_shape_index_map(groups, |_, group| {
-        (group.header.kind()) == crate::format::GroupKind::Segment
+        matches!(
+            group.header.kind(),
+            crate::format::GroupKind::Segment
+                | crate::format::GroupKind::LineKind5
+                | crate::format::GroupKind::LineKind6
+                | crate::format::GroupKind::LineKind7
+        )
     });
+    remap_line_bindings(
+        &mut shapes.polylines,
+        group_to_point_index,
+        &line_group_to_index,
+    );
     remap_line_bindings(
         &mut shapes.direct_lines,
         group_to_point_index,
@@ -582,6 +603,7 @@ fn build_world_data(
         .chain(derived_iteration_points.iter())
         .map(|point| ScenePoint {
             position: to_world(&point.position, &analysis.graph_ref),
+            visible: point.visible,
             constraint: match &point.constraint {
                 ScenePointConstraint::Free => ScenePointConstraint::Free,
                 ScenePointConstraint::Offset {
@@ -665,6 +687,7 @@ fn build_world_data(
 
     let world_point_positions = world_points
         .iter()
+        .filter(|point| point.visible)
         .map(|point| point.position.clone())
         .collect::<Vec<_>>();
 
@@ -723,6 +746,253 @@ fn build_world_data(
         world_point_positions,
         point_iterations,
     }
+}
+
+fn point_accepts_trace_parameter(point: &ScenePoint) -> bool {
+    if matches!(point.binding, Some(ScenePointBinding::Midpoint { .. })) {
+        return false;
+    }
+    matches!(
+        point.constraint,
+        ScenePointConstraint::OnSegment { .. }
+            | ScenePointConstraint::OnPolygonBoundary { .. }
+            | ScenePointConstraint::OnCircle { .. }
+            | ScenePointConstraint::OnArc { .. }
+    )
+}
+
+fn apply_trace_parameter(point: &mut ScenePoint, value: f64) {
+    let clamped = value.clamp(0.0, 1.0);
+    match &mut point.constraint {
+        ScenePointConstraint::OnSegment { t, .. } => {
+            *t = clamped;
+        }
+        ScenePointConstraint::OnPolygonBoundary {
+            vertex_indices,
+            edge_index,
+            t,
+        } => {
+            if vertex_indices.len() < 2 {
+                return;
+            }
+            let scaled = clamped * vertex_indices.len() as f64;
+            let next_edge = scaled.floor() as usize;
+            *edge_index = next_edge.min(vertex_indices.len() - 1);
+            *t = scaled.fract();
+        }
+        ScenePointConstraint::OnCircle { unit_x, unit_y, .. } => {
+            let angle = std::f64::consts::TAU * clamped;
+            *unit_x = angle.cos();
+            *unit_y = -angle.sin();
+        }
+        ScenePointConstraint::OnArc { t, .. } => {
+            *t = clamped;
+        }
+        _ => {}
+    }
+}
+
+fn resolve_trace_point(
+    points: &[ScenePoint],
+    index: usize,
+    visiting: &mut BTreeSet<usize>,
+) -> Option<PointRecord> {
+    if !visiting.insert(index) {
+        return None;
+    }
+
+    let point = points.get(index)?;
+    let resolved = match &point.binding {
+        Some(ScenePointBinding::Translate {
+            source_index,
+            vector_start_index,
+            vector_end_index,
+        }) => {
+            let source = resolve_trace_point(points, *source_index, visiting)?;
+            let vector_start = resolve_trace_point(points, *vector_start_index, visiting)?;
+            let vector_end = resolve_trace_point(points, *vector_end_index, visiting)?;
+            Some(PointRecord {
+                x: source.x + (vector_end.x - vector_start.x),
+                y: source.y + (vector_end.y - vector_start.y),
+            })
+        }
+        Some(ScenePointBinding::Reflect {
+            source_index,
+            line_start_index,
+            line_end_index,
+        }) => {
+            let source = resolve_trace_point(points, *source_index, visiting)?;
+            let line_start = resolve_trace_point(points, *line_start_index, visiting)?;
+            let line_end = resolve_trace_point(points, *line_end_index, visiting)?;
+            reflect_across_line(&source, &line_start, &line_end)
+        }
+        Some(ScenePointBinding::Rotate {
+            source_index,
+            center_index,
+            angle_degrees,
+            ..
+        }) => {
+            let source = resolve_trace_point(points, *source_index, visiting)?;
+            let center = resolve_trace_point(points, *center_index, visiting)?;
+            Some(rotate_around(&source, &center, angle_degrees.to_radians()))
+        }
+        Some(ScenePointBinding::Scale {
+            source_index,
+            center_index,
+            factor,
+        }) => {
+            let source = resolve_trace_point(points, *source_index, visiting)?;
+            let center = resolve_trace_point(points, *center_index, visiting)?;
+            Some(scale_around(&source, &center, *factor))
+        }
+        Some(ScenePointBinding::Midpoint {
+            start_index,
+            end_index,
+        }) => {
+            let start = resolve_trace_point(points, *start_index, visiting)?;
+            let end = resolve_trace_point(points, *end_index, visiting)?;
+            Some(lerp_point(&start, &end, 0.5))
+        }
+        _ => match &point.constraint {
+            ScenePointConstraint::Free => Some(point.position.clone()),
+            ScenePointConstraint::Offset {
+                origin_index,
+                dx,
+                dy,
+            } => {
+                let origin = resolve_trace_point(points, *origin_index, visiting)?;
+                Some(PointRecord {
+                    x: origin.x + dx,
+                    y: origin.y + dy,
+                })
+            }
+            ScenePointConstraint::OnSegment {
+                start_index,
+                end_index,
+                t,
+            } => {
+                let start = resolve_trace_point(points, *start_index, visiting)?;
+                let end = resolve_trace_point(points, *end_index, visiting)?;
+                Some(lerp_point(&start, &end, *t))
+            }
+            ScenePointConstraint::OnPolyline {
+                points,
+                segment_index,
+                t,
+                ..
+            } => {
+                if points.len() < 2 {
+                    None
+                } else {
+                    let start = &points[(*segment_index).min(points.len() - 2)];
+                    let end = &points[(*segment_index).min(points.len() - 2) + 1];
+                    Some(lerp_point(start, end, *t))
+                }
+            }
+            ScenePointConstraint::OnPolygonBoundary {
+                vertex_indices,
+                edge_index,
+                t,
+            } => {
+                if vertex_indices.len() < 2 {
+                    None
+                } else {
+                    let start = resolve_trace_point(
+                        points,
+                        vertex_indices[*edge_index % vertex_indices.len()],
+                        visiting,
+                    )?;
+                    let end = resolve_trace_point(
+                        points,
+                        vertex_indices[(*edge_index + 1) % vertex_indices.len()],
+                        visiting,
+                    )?;
+                    Some(lerp_point(&start, &end, *t))
+                }
+            }
+            ScenePointConstraint::OnCircle {
+                center_index,
+                radius_index,
+                unit_x,
+                unit_y,
+            } => {
+                let center = resolve_trace_point(points, *center_index, visiting)?;
+                let radius_point = resolve_trace_point(points, *radius_index, visiting)?;
+                let radius = ((radius_point.x - center.x).powi(2)
+                    + (radius_point.y - center.y).powi(2))
+                .sqrt();
+                Some(PointRecord {
+                    x: center.x + radius * unit_x,
+                    y: center.y + radius * unit_y,
+                })
+            }
+            ScenePointConstraint::OnArc {
+                start_index,
+                mid_index,
+                end_index,
+                t,
+            } => {
+                let start = resolve_trace_point(points, *start_index, visiting)?;
+                let mid = resolve_trace_point(points, *mid_index, visiting)?;
+                let end = resolve_trace_point(points, *end_index, visiting)?;
+                point_on_three_point_arc(&start, &mid, &end, *t)
+            }
+        },
+    };
+
+    visiting.remove(&index);
+    resolved
+}
+
+fn collect_point_traces(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    visible_points: &[ScenePoint],
+    group_to_point_index: &[Option<usize>],
+) -> Vec<LineShape> {
+    groups
+        .iter()
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::PointTrace)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            let target_group_index = path.refs.first()?.checked_sub(1)?;
+            let target_point_index = (*group_to_point_index.get(target_group_index)?)?;
+            let driver_point_index = path.refs.iter().find_map(|ordinal| {
+                let group_index = ordinal.checked_sub(1)?;
+                let point_index = (*group_to_point_index.get(group_index)?)?;
+                let point = visible_points.get(point_index)?;
+                point_accepts_trace_parameter(point).then_some(point_index)
+            })?;
+            let payload = group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x0902)
+                .map(|record| record.payload(&file.data))?;
+            let descriptor = decode_function_plot_descriptor(payload)?;
+
+            let mut points = Vec::with_capacity(descriptor.sample_count);
+            let last = descriptor.sample_count.saturating_sub(1).max(1) as f64;
+            for sample_index in 0..descriptor.sample_count {
+                let t = sample_index as f64 / last;
+                let parameter = descriptor.x_min + (descriptor.x_max - descriptor.x_min) * t;
+                let mut sampled_points = visible_points.to_vec();
+                let driver_point = sampled_points.get_mut(driver_point_index)?;
+                apply_trace_parameter(driver_point, parameter);
+                points.push(resolve_trace_point(
+                    &sampled_points,
+                    target_point_index,
+                    &mut BTreeSet::new(),
+                )?);
+            }
+
+            (points.len() >= 2).then_some(LineShape {
+                points,
+                color: crate::runtime::geometry::color_from_style(group.header.style_b),
+                dashed: false,
+                binding: None,
+            })
+        })
+        .collect()
 }
 
 fn compute_scene_bounds(
@@ -926,7 +1196,9 @@ fn assemble_scene(
                     .points
                     .map(|point| to_world(&point, &analysis.graph_ref)),
                 color: arc.color,
-                center: arc.center.map(|center| to_world(&center, &analysis.graph_ref)),
+                center: arc
+                    .center
+                    .map(|center| to_world(&center, &analysis.graph_ref)),
                 counterclockwise: arc.counterclockwise,
             })
             .collect(),
@@ -1019,6 +1291,14 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         &analysis.raw_anchors,
         &analysis.graph_ref,
     );
+    if !analysis.graph_mode {
+        shapes.coordinate_traces.extend(collect_point_traces(
+            file,
+            &groups,
+            &visible_points,
+            &group_to_point_index,
+        ));
+    }
     let (derived_iteration_points, raw_point_iterations) =
         collect_point_iteration_points(file, &groups, &analysis.raw_anchors, &group_to_point_index);
     let label_iterations =

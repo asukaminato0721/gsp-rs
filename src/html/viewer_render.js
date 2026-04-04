@@ -248,13 +248,29 @@
     for (const line of env.currentScene().lines) {
       if (line.visible === false) continue;
       let screenPoints = null;
+      const resolveHostLinePoints = (binding) => {
+        if (typeof binding?.lineIndex === "number") {
+          return env.resolveLinePoints(binding.lineIndex);
+        }
+        if (
+          typeof binding?.lineStartIndex === "number"
+          && typeof binding?.lineEndIndex === "number"
+        ) {
+          return [
+            env.resolveScenePoint(binding.lineStartIndex),
+            env.resolveScenePoint(binding.lineEndIndex),
+          ];
+        }
+        return null;
+      };
       if (
         line.binding?.kind === "line"
         || line.binding?.kind === "ray"
         || line.binding?.kind === "angle-bisector-ray"
         || line.binding?.kind === "perpendicular-line"
+        || line.binding?.kind === "parallel-line"
       ) {
-        const start = line.binding.kind === "perpendicular-line"
+        const start = line.binding.kind === "perpendicular-line" || line.binding.kind === "parallel-line"
           ? env.toScreen(env.resolveScenePoint(line.binding.throughIndex))
           : line.binding.kind === "angle-bisector-ray"
             ? env.toScreen(env.resolveScenePoint(line.binding.vertexIndex))
@@ -262,8 +278,9 @@
         const end = line.binding.kind === "perpendicular-line"
           ? (() => {
               const through = env.resolveScenePoint(line.binding.throughIndex);
-              const lineStart = env.resolveScenePoint(line.binding.lineStartIndex);
-              const lineEnd = env.resolveScenePoint(line.binding.lineEndIndex);
+              const hostLine = resolveHostLinePoints(line.binding);
+              if (!hostLine) return null;
+              const [lineStart, lineEnd] = hostLine;
               const dx = lineEnd.x - lineStart.x;
               const dy = lineEnd.y - lineStart.y;
               const len = Math.hypot(dx, dy);
@@ -273,6 +290,21 @@
                 y: through.y + dx / len,
               });
             })()
+          : line.binding.kind === "parallel-line"
+            ? (() => {
+                const through = env.resolveScenePoint(line.binding.throughIndex);
+                const hostLine = resolveHostLinePoints(line.binding);
+                if (!hostLine) return null;
+                const [lineStart, lineEnd] = hostLine;
+                const dx = lineEnd.x - lineStart.x;
+                const dy = lineEnd.y - lineStart.y;
+                const len = Math.hypot(dx, dy);
+                if (len <= 1e-9) return null;
+                return env.toScreen({
+                  x: through.x + dx / len,
+                  y: through.y + dy / len,
+                });
+              })()
           : line.binding.kind === "angle-bisector-ray"
             ? (() => {
                 const startPoint = env.resolveScenePoint(line.binding.startIndex);

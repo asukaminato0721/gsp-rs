@@ -95,6 +95,7 @@ pub(crate) fn collect_point_iteration_points(
                             );
                             derived_points.push(ScenePoint {
                                 position: current_position.clone(),
+                                visible: true,
                                 constraint: ScenePointConstraint::Free,
                                 binding: Some(ScenePointBinding::Rotate {
                                     source_index: previous_index,
@@ -146,6 +147,7 @@ pub(crate) fn collect_point_iteration_points(
                     current_position += PointRecord { x: dx, y: dy };
                     derived_points.push(ScenePoint {
                         position: current_position.clone(),
+                        visible: true,
                         constraint: ScenePointConstraint::Offset {
                             origin_index: previous_index,
                             dx,
@@ -184,6 +186,7 @@ pub(crate) fn collect_point_iteration_points(
                         current_position += PointRecord { x: dx, y: dy };
                         derived_points.push(ScenePoint {
                             position: current_position.clone(),
+                            visible: true,
                             constraint: ScenePointConstraint::Offset {
                                 origin_index: previous_index,
                                 dx,
@@ -231,6 +234,7 @@ pub(crate) fn collect_point_iteration_points(
                         };
                         derived_points.push(ScenePoint {
                             position,
+                            visible: true,
                             constraint: ScenePointConstraint::Free,
                             binding: Some(ScenePointBinding::Rotate {
                                 source_index: seed_index,

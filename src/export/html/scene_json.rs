@@ -301,10 +301,23 @@ enum LineBindingJson {
     PerpendicularLine {
         #[serde(rename = "throughIndex")]
         through_index: usize,
-        #[serde(rename = "lineStartIndex")]
-        line_start_index: usize,
-        #[serde(rename = "lineEndIndex")]
-        line_end_index: usize,
+        #[serde(rename = "lineStartIndex", skip_serializing_if = "Option::is_none")]
+        line_start_index: Option<usize>,
+        #[serde(rename = "lineEndIndex", skip_serializing_if = "Option::is_none")]
+        line_end_index: Option<usize>,
+        #[serde(rename = "lineIndex", skip_serializing_if = "Option::is_none")]
+        line_index: Option<usize>,
+    },
+    #[serde(rename = "parallel-line")]
+    ParallelLine {
+        #[serde(rename = "throughIndex")]
+        through_index: usize,
+        #[serde(rename = "lineStartIndex", skip_serializing_if = "Option::is_none")]
+        line_start_index: Option<usize>,
+        #[serde(rename = "lineEndIndex", skip_serializing_if = "Option::is_none")]
+        line_end_index: Option<usize>,
+        #[serde(rename = "lineIndex", skip_serializing_if = "Option::is_none")]
+        line_index: Option<usize>,
     },
     #[serde(rename = "line")]
     Line {
@@ -397,10 +410,23 @@ impl LineBindingJson {
                 through_index,
                 line_start_index,
                 line_end_index,
+                line_index,
             } => Self::PerpendicularLine {
                 through_index: *through_index,
                 line_start_index: *line_start_index,
                 line_end_index: *line_end_index,
+                line_index: *line_index,
+            },
+            LineBinding::ParallelLine {
+                through_index,
+                line_start_index,
+                line_end_index,
+                line_index,
+            } => Self::ParallelLine {
+                through_index: *through_index,
+                line_start_index: *line_start_index,
+                line_end_index: *line_end_index,
+                line_index: *line_index,
             },
             LineBinding::Line {
                 start_index,
@@ -537,6 +563,15 @@ impl ArcJson {
 #[derive(Serialize)]
 #[serde(tag = "kind")]
 enum ShapeBindingJson {
+    #[serde(rename = "segment-radius-circle")]
+    SegmentRadiusCircle {
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "lineStartIndex")]
+        line_start_index: usize,
+        #[serde(rename = "lineEndIndex")]
+        line_end_index: usize,
+    },
     #[serde(rename = "translate-polygon")]
     TranslatePolygon {
         #[serde(rename = "sourceIndex")]
@@ -616,6 +651,15 @@ enum ShapeBindingJson {
 impl ShapeBindingJson {
     fn from_binding(binding: &ShapeBinding) -> Self {
         match binding {
+            ShapeBinding::SegmentRadiusCircle {
+                center_index,
+                line_start_index,
+                line_end_index,
+            } => Self::SegmentRadiusCircle {
+                center_index: *center_index,
+                line_start_index: *line_start_index,
+                line_end_index: *line_end_index,
+            },
             ShapeBinding::TranslatePolygon {
                 source_index,
                 vector_start_index,
@@ -827,6 +871,7 @@ impl LabelBindingJson {
 struct ScenePointJson {
     x: f64,
     y: f64,
+    visible: bool,
     constraint: Option<PointConstraintJson>,
     binding: Option<PointBindingJson>,
 }
@@ -836,6 +881,7 @@ impl ScenePointJson {
         Self {
             x: point.position.x,
             y: point.position.y,
+            visible: point.visible,
             constraint: PointConstraintJson::from_constraint(&point.constraint),
             binding: point.binding.as_ref().map(PointBindingJson::from_binding),
         }
@@ -1151,6 +1197,13 @@ enum PointBindingJson {
         center_index: usize,
         factor: f64,
     },
+    #[serde(rename = "midpoint")]
+    Midpoint {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+    },
     #[serde(rename = "coordinate")]
     Coordinate {
         name: String,
@@ -1202,6 +1255,13 @@ impl PointBindingJson {
                 source_index: *source_index,
                 center_index: *center_index,
                 factor: *factor,
+            },
+            ScenePointBinding::Midpoint {
+                start_index,
+                end_index,
+            } => Self::Midpoint {
+                start_index: *start_index,
+                end_index: *end_index,
             },
             ScenePointBinding::Coordinate { name, expr } => Self::Coordinate {
                 name: name.clone(),

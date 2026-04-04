@@ -83,6 +83,7 @@ pub(crate) struct ScreenRect {
 #[derive(Debug, Clone)]
 pub(crate) struct ScenePoint {
     pub(crate) position: PointRecord,
+    pub(crate) visible: bool,
     pub(crate) constraint: ScenePointConstraint,
     pub(crate) binding: Option<ScenePointBinding>,
 }
@@ -223,8 +224,15 @@ pub(crate) enum LineBinding {
     },
     PerpendicularLine {
         through_index: usize,
-        line_start_index: usize,
-        line_end_index: usize,
+        line_start_index: Option<usize>,
+        line_end_index: Option<usize>,
+        line_index: Option<usize>,
+    },
+    ParallelLine {
+        through_index: usize,
+        line_start_index: Option<usize>,
+        line_end_index: Option<usize>,
+        line_index: Option<usize>,
     },
     Line {
         start_index: usize,
@@ -308,6 +316,10 @@ pub(crate) enum ScenePointBinding {
         center_index: usize,
         factor: f64,
     },
+    Midpoint {
+        start_index: usize,
+        end_index: usize,
+    },
     Coordinate {
         name: String,
         expr: FunctionExpr,
@@ -345,6 +357,11 @@ pub(crate) struct SceneArc {
 
 #[derive(Debug, Clone)]
 pub(crate) enum ShapeBinding {
+    SegmentRadiusCircle {
+        center_index: usize,
+        line_start_index: usize,
+        line_end_index: usize,
+    },
     TranslatePolygon {
         source_index: usize,
         vector_start_index: usize,

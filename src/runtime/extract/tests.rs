@@ -38,6 +38,19 @@ fn builds_function_plot_for_f_gsp() {
 }
 
 #[test]
+fn preserves_multiline_text_labels() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/多行文本.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.labels.len(), 1);
+    assert_eq!(
+        scene.labels[0].text,
+        "线段中垂线\n垂线\n平行线\n直角三角形\n点的轨迹\n圆上的弧\n过三点的弧"
+    );
+}
+
+#[test]
 fn preserves_constrained_points_in_edge_gsp() {
     let data = include_bytes!("../../../../edge.gsp");
     let file = GspFile::parse(data).expect("fixture parses");
@@ -381,6 +394,173 @@ fn preserves_perpendicular_gsp() {
 }
 
 #[test]
+fn preserves_parallel_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/parallel.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(
+        scene.lines.len(),
+        2,
+        "expected base segment and parallel line"
+    );
+    assert_eq!(
+        scene.points.len(),
+        3,
+        "expected two base points plus through point"
+    );
+
+    let base = scene
+        .lines
+        .iter()
+        .find(|line| matches!(line.binding, Some(LineBinding::Segment { .. })))
+        .expect("expected source segment");
+    let parallel = scene
+        .lines
+        .iter()
+        .find(|line| matches!(line.binding, Some(LineBinding::ParallelLine { .. })))
+        .expect("expected synthesized parallel line");
+
+    let base_dx = base.points[1].x - base.points[0].x;
+    let base_dy = base.points[1].y - base.points[0].y;
+    let parallel_dx = parallel.points[1].x - parallel.points[0].x;
+    let parallel_dy = parallel.points[1].y - parallel.points[0].y;
+    let base_len = (base_dx * base_dx + base_dy * base_dy).sqrt();
+    let parallel_len = (parallel_dx * parallel_dx + parallel_dy * parallel_dy).sqrt();
+    let cross = base_dx * parallel_dy - base_dy * parallel_dx;
+
+    assert!(
+        (cross / (base_len * parallel_len)).abs() < 1e-6,
+        "expected parallel directions, got base=({base_dx},{base_dy}) and line=({parallel_dx},{parallel_dy})"
+    );
+
+    let through = &scene.points[2].position;
+    let distance = ((through.x - parallel.points[0].x) * parallel_dy
+        - (through.y - parallel.points[0].y) * parallel_dx)
+        .abs()
+        / parallel_len;
+    assert!(
+        distance < 1e-6,
+        "expected parallel line to pass through point C, distance={distance}"
+    );
+}
+
+#[test]
+fn preserves_perpendicular_bisector_midpoint_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/中垂线.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(
+        scene.lines.len(),
+        2,
+        "expected source segment and perpendicular bisector"
+    );
+    assert_eq!(
+        scene.points.len(),
+        3,
+        "expected endpoints plus visible midpoint"
+    );
+
+    let midpoint_index = scene
+        .points
+        .iter()
+        .enumerate()
+        .find_map(|(index, point)| match point.constraint {
+            ScenePointConstraint::OnSegment {
+                start_index,
+                end_index,
+                t,
+            } if start_index == 0 && end_index == 1 && (t - 0.5).abs() < 1e-9 => Some(index),
+            _ => None,
+        })
+        .expect("expected midpoint point on the source segment");
+    assert!(
+        scene.points[midpoint_index].visible,
+        "expected midpoint to be rendered as a visible point"
+    );
+
+    let perpendicular = scene
+        .lines
+        .iter()
+        .find_map(|line| match line.binding {
+            Some(LineBinding::PerpendicularLine {
+                through_index,
+                line_start_index,
+                line_end_index,
+                ..
+            }) => Some((through_index, line_start_index, line_end_index)),
+            _ => None,
+        })
+        .expect("expected synthesized perpendicular line");
+
+    assert_eq!(perpendicular.0, midpoint_index);
+    assert_eq!(perpendicular.1, Some(0));
+    assert_eq!(perpendicular.2, Some(1));
+}
+
+#[test]
+fn preserves_nested_perpendicular_parallel_bindings_in_pert_vert_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/pert_vert.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(
+        scene.lines.len(),
+        4,
+        "expected base line, bisector, and marker strokes"
+    );
+    assert_eq!(
+        scene.points.len(),
+        4,
+        "expected free anchor point plus midpoint construction"
+    );
+
+    let base_index = scene
+        .lines
+        .iter()
+        .position(|line| matches!(line.binding, Some(LineBinding::Segment { .. })))
+        .expect("expected source segment");
+    let main_perpendicular_index = scene
+        .lines
+        .iter()
+        .position(|line| {
+            matches!(
+                line.binding,
+                Some(LineBinding::PerpendicularLine {
+                    through_index: 3,
+                    line_index: Some(0),
+                    ..
+                })
+            )
+        })
+        .expect("expected midpoint perpendicular line bound to the source segment");
+    assert_eq!(main_perpendicular_index, 1);
+    assert_eq!(base_index, 0);
+
+    assert!(scene.lines.iter().any(|line| {
+        matches!(
+            line.binding,
+            Some(LineBinding::PerpendicularLine {
+                through_index: 1,
+                line_index: Some(1),
+                ..
+            })
+        )
+    }));
+    assert!(scene.lines.iter().any(|line| {
+        matches!(
+            line.binding,
+            Some(LineBinding::ParallelLine {
+                through_index: 1,
+                line_index: Some(1),
+                ..
+            })
+        )
+    }));
+}
+
+#[test]
 fn preserves_bisector_gsp() {
     let data = include_bytes!("../../../tests/fixtures/gsp/static/bisector.gsp");
     let file = GspFile::parse(data).expect("fixture parses");
@@ -524,6 +704,162 @@ fn preserves_arc_on_circle_gsp() {
     assert!(
         (ccw_mid - ccw_span * 0.5).abs() < 1e-6,
         "expected synthesized midpoint to bisect the counterclockwise sweep"
+    );
+}
+
+#[test]
+fn preserves_angle_sign_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/angle-sign.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(
+        scene.lines.len(),
+        3,
+        "expected angle rays plus synthesized angle marker"
+    );
+    assert_eq!(scene.points.len(), 4, "expected anchor, ray endpoint, and marker points");
+    assert_eq!(scene.labels.len(), 1, "expected one point label");
+    assert_eq!(scene.labels[0].text, "A");
+
+    assert!(matches!(scene.points[0].constraint, ScenePointConstraint::Free));
+    assert!(matches!(scene.points[1].constraint, ScenePointConstraint::Free));
+    assert!(matches!(
+        scene.points[2].binding,
+        Some(ScenePointBinding::Rotate {
+            source_index: 1,
+            center_index: 0,
+            angle_degrees,
+            parameter_name: None,
+        }) if (angle_degrees - 90.0).abs() < 1e-6
+    ));
+    assert!(
+        !scene.points[2].visible,
+        "expected intermediate rotated helper point to stay hidden"
+    );
+    assert!(matches!(
+        scene.points[3].binding,
+        Some(ScenePointBinding::Scale {
+            source_index: 2,
+            center_index: 0,
+            factor,
+        }) if (factor - 1.5).abs() < 1e-6
+    ));
+    assert!(scene.points[3].visible, "expected scaled endpoint to remain visible");
+
+    assert!(matches!(
+        scene.lines[0].binding,
+        Some(LineBinding::Segment {
+            start_index: 0,
+            end_index: 1,
+        })
+    ));
+    assert!(matches!(
+        scene.lines[1].binding,
+        Some(LineBinding::Segment {
+            start_index: 3,
+            end_index: 0,
+        })
+    ));
+
+    let marker = scene
+        .lines
+        .iter()
+        .find(|line| line.binding.is_none() && line.points.len() == 3)
+        .expect("expected synthesized angle marker polyline");
+
+    let anchor = &scene.points[0].position;
+    let base = &scene.points[1].position;
+    let rotated = &scene.points[2].position;
+    let scaled = &scene.points[3].position;
+
+    let base_dx = base.x - anchor.x;
+    let base_dy = base.y - anchor.y;
+    let rotated_dx = rotated.x - anchor.x;
+    let rotated_dy = rotated.y - anchor.y;
+    assert!(
+        (base_dx * rotated_dx + base_dy * rotated_dy).abs() < 1e-6,
+        "expected rotated point to form a right angle with the base segment"
+    );
+
+    let rotated_len = (rotated_dx * rotated_dx + rotated_dy * rotated_dy).sqrt();
+    let scaled_dx = scaled.x - anchor.x;
+    let scaled_dy = scaled.y - anchor.y;
+    let scaled_len = (scaled_dx * scaled_dx + scaled_dy * scaled_dy).sqrt();
+    assert!(
+        (scaled_len - rotated_len * 1.5).abs() < 1e-6,
+        "expected scaled point to extend the rotated marker arm"
+    );
+
+    assert!(
+        marker.points[0].x > anchor.x
+            && marker.points[0].x < base.x
+            && (marker.points[0].y - anchor.y).abs() < 1e-6,
+        "expected marker to start partway along the horizontal ray"
+    );
+    assert!(
+        (marker.points[2].x - anchor.x).abs() < 1e-6
+            && marker.points[2].y < anchor.y
+            && marker.points[2].y > rotated.y,
+        "expected marker to end partway along the vertical ray"
+    );
+    assert!(
+        (marker.points[1].x - marker.points[0].x).abs() < 1e-6
+            && (marker.points[1].y - marker.points[2].y).abs() < 1e-6,
+        "expected marker corner to form the missing square corner"
+    );
+
+    let marker_dx = marker.points[0].x - anchor.x;
+    let marker_dy = anchor.y - marker.points[2].y;
+    assert!(
+        (marker_dx - marker_dy).abs() < 1e-6,
+        "expected marker arms to use the same inset length"
+    );
+}
+
+#[test]
+fn preserves_point_hidden_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/static/point_hidden.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.points.len(), 1, "expected one point in the fixture");
+    assert!(
+        !scene.points[0].visible,
+        "expected fixture point to inherit hidden state from source metadata"
+    );
+    assert!(scene.lines.is_empty());
+    assert!(scene.labels.is_empty());
+}
+
+#[test]
+fn preserves_circle_center_radius_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/circle_center_radius.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.circles.len(), 1, "expected one circle");
+    assert_eq!(scene.lines.len(), 1, "expected one segment");
+    assert_eq!(scene.points.len(), 3, "expected three visible points");
+
+    let circle = &scene.circles[0];
+    assert!((circle.center.x - 348.0).abs() < 1e-6);
+    assert!((circle.center.y - 177.0).abs() < 1e-6);
+    assert!(matches!(
+        circle.binding,
+        Some(crate::runtime::scene::ShapeBinding::SegmentRadiusCircle {
+            center_index: 2,
+            line_start_index: 0,
+            line_end_index: 1,
+        })
+    ));
+
+    let radius = ((circle.radius_point.x - circle.center.x).powi(2)
+        + (circle.radius_point.y - circle.center.y).powi(2))
+    .sqrt();
+    assert!(
+        (radius - ((85.0_f64).powi(2) + 1.0_f64).sqrt()).abs() < 1e-6,
+        "expected circle radius to match the referenced segment length"
     );
 }
 
@@ -727,6 +1063,60 @@ fn preserves_coordinate_trace_in_cood_trace_gsp() {
                     .is_some_and(|point| (point.y - 2.0).abs() < 0.001)
         }),
         "expected sampled coordinate trace line"
+    );
+}
+
+#[test]
+fn preserves_midpoint_binding_and_trace_in_trace_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/trace.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    let midpoint_index = scene
+        .points
+        .iter()
+        .enumerate()
+        .find_map(|(index, point)| match (&point.constraint, &point.binding) {
+            (
+                ScenePointConstraint::OnSegment {
+                    start_index,
+                    end_index,
+                    t,
+                },
+                Some(ScenePointBinding::Midpoint {
+                    start_index: binding_start,
+                    end_index: binding_end,
+                }),
+            ) if *start_index == 4
+                && *end_index == 0
+                && *binding_start == 4
+                && *binding_end == 0
+                && (*t - 0.5).abs() < 1e-9 =>
+            {
+                Some(index)
+            }
+            _ => None,
+        })
+        .expect("expected derived midpoint point");
+    assert!(scene.points[midpoint_index].visible);
+
+    assert!(
+        scene.lines.iter().any(|line| {
+            if line.points.len() < 100 {
+                return false;
+            }
+            let first = line.points.first().expect("non-empty line");
+            let last = line.points.last().expect("non-empty line");
+            ((first.x - 846.5).abs() < 0.01
+                && (first.y - 480.0).abs() < 0.01
+                && (last.x - 766.0).abs() < 0.01
+                && (last.y - 359.25).abs() < 0.01)
+                || ((last.x - 846.5).abs() < 0.01
+                    && (last.y - 480.0).abs() < 0.01
+                    && (first.x - 766.0).abs() < 0.01
+                    && (first.y - 359.25).abs() < 0.01)
+        }),
+        "expected sampled midpoint trace line"
     );
 }
 

@@ -748,7 +748,15 @@
     });
 
     scene.circles.forEach((circle) => {
-      if (circle.binding?.kind === "rotate-circle") {
+      if (circle.binding?.kind === "segment-radius-circle") {
+        const center = scene.points[circle.binding.centerIndex];
+        const lineStart = scene.points[circle.binding.lineStartIndex];
+        const lineEnd = scene.points[circle.binding.lineEndIndex];
+        if (!center || !lineStart || !lineEnd) return;
+        const radius = Math.hypot(lineEnd.x - lineStart.x, lineEnd.y - lineStart.y);
+        circle.center = { x: center.x, y: center.y };
+        circle.radiusPoint = { x: center.x + radius, y: center.y };
+      } else if (circle.binding?.kind === "rotate-circle") {
         const source = scene.circles[circle.binding.sourceIndex];
         const center = scene.points[circle.binding.centerIndex];
         if (!source || !center) return;
@@ -826,6 +834,21 @@
 
     const preservedLines = [];
     const rotateFamilies = new Map();
+    const resolveHostLinePoints = (binding) => {
+      if (typeof binding?.lineIndex === "number") {
+        const hostLine = scene.lines[binding.lineIndex];
+        return hostLine?.points?.length >= 2 ? hostLine.points : null;
+      }
+      if (
+        typeof binding?.lineStartIndex === "number"
+        && typeof binding?.lineEndIndex === "number"
+      ) {
+        const start = scene.points[binding.lineStartIndex];
+        const end = scene.points[binding.lineEndIndex];
+        return start && end ? [start, end] : null;
+      }
+      return null;
+    };
     scene.lines.forEach((line) => {
       if (line.binding?.kind === "segment") {
         const start = scene.points[line.binding.startIndex];
@@ -856,8 +879,9 @@
       }
       if (line.binding?.kind === "perpendicular-line") {
         const through = scene.points[line.binding.throughIndex];
-        const lineStart = scene.points[line.binding.lineStartIndex];
-        const lineEnd = scene.points[line.binding.lineEndIndex];
+        const hostLine = resolveHostLinePoints(line.binding);
+        const lineStart = hostLine?.[0];
+        const lineEnd = hostLine?.[1];
         if (through && lineStart && lineEnd) {
           const dx = lineEnd.x - lineStart.x;
           const dy = lineEnd.y - lineStart.y;
@@ -866,6 +890,27 @@
             ? clipLineToBounds(
                 through,
                 { x: through.x - dy / len, y: through.y + dx / len },
+                bounds,
+              )
+            : null;
+          if (clipped) line.points = clipped;
+        }
+        preservedLines.push(line);
+        return;
+      }
+      if (line.binding?.kind === "parallel-line") {
+        const through = scene.points[line.binding.throughIndex];
+        const hostLine = resolveHostLinePoints(line.binding);
+        const lineStart = hostLine?.[0];
+        const lineEnd = hostLine?.[1];
+        if (through && lineStart && lineEnd) {
+          const dx = lineEnd.x - lineStart.x;
+          const dy = lineEnd.y - lineStart.y;
+          const len = Math.hypot(dx, dy);
+          const clipped = len > 1e-9
+            ? clipLineToBounds(
+                through,
+                { x: through.x + dx / len, y: through.y + dy / len },
                 bounds,
               )
             : null;
