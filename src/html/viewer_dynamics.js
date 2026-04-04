@@ -874,6 +874,26 @@
         preservedLines.push(line);
         return;
       }
+      if (line.binding?.kind === "parallel-line") {
+        const through = scene.points[line.binding.throughIndex];
+        const lineStart = scene.points[line.binding.lineStartIndex];
+        const lineEnd = scene.points[line.binding.lineEndIndex];
+        if (through && lineStart && lineEnd) {
+          const dx = lineEnd.x - lineStart.x;
+          const dy = lineEnd.y - lineStart.y;
+          const len = Math.hypot(dx, dy);
+          const clipped = len > 1e-9
+            ? clipLineToBounds(
+                through,
+                { x: through.x + dx / len, y: through.y + dy / len },
+                bounds,
+              )
+            : null;
+          if (clipped) line.points = clipped;
+        }
+        preservedLines.push(line);
+        return;
+      }
       if (line.binding?.kind === "line") {
         const start = scene.points[line.binding.startIndex];
         const end = scene.points[line.binding.endIndex];

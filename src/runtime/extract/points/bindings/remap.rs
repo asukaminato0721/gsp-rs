@@ -298,6 +298,36 @@ pub(crate) fn remap_line_bindings(
                 *line_start_index = mapped_line_start_index;
                 *line_end_index = mapped_line_end_index;
             }
+            LineBinding::ParallelLine {
+                through_index,
+                line_start_index,
+                line_end_index,
+            } => {
+                let Some(mapped_through_index) = group_to_point_index
+                    .get(*through_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                let Some(mapped_line_start_index) = group_to_point_index
+                    .get(*line_start_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                let Some(mapped_line_end_index) = group_to_point_index
+                    .get(*line_end_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                *through_index = mapped_through_index;
+                *line_start_index = mapped_line_start_index;
+                *line_end_index = mapped_line_end_index;
+            }
             LineBinding::TranslateLine {
                 source_index,
                 vector_start_index,

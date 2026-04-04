@@ -394,6 +394,50 @@ fn preserves_perpendicular_gsp() {
 }
 
 #[test]
+fn preserves_parallel_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/parallel.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.lines.len(), 2, "expected base segment and parallel line");
+    assert_eq!(scene.points.len(), 3, "expected two base points plus through point");
+
+    let base = scene
+        .lines
+        .iter()
+        .find(|line| matches!(line.binding, Some(LineBinding::Segment { .. })))
+        .expect("expected source segment");
+    let parallel = scene
+        .lines
+        .iter()
+        .find(|line| matches!(line.binding, Some(LineBinding::ParallelLine { .. })))
+        .expect("expected synthesized parallel line");
+
+    let base_dx = base.points[1].x - base.points[0].x;
+    let base_dy = base.points[1].y - base.points[0].y;
+    let parallel_dx = parallel.points[1].x - parallel.points[0].x;
+    let parallel_dy = parallel.points[1].y - parallel.points[0].y;
+    let base_len = (base_dx * base_dx + base_dy * base_dy).sqrt();
+    let parallel_len = (parallel_dx * parallel_dx + parallel_dy * parallel_dy).sqrt();
+    let cross = base_dx * parallel_dy - base_dy * parallel_dx;
+
+    assert!(
+        (cross / (base_len * parallel_len)).abs() < 1e-6,
+        "expected parallel directions, got base=({base_dx},{base_dy}) and line=({parallel_dx},{parallel_dy})"
+    );
+
+    let through = &scene.points[2].position;
+    let distance = ((through.x - parallel.points[0].x) * parallel_dy
+        - (through.y - parallel.points[0].y) * parallel_dx)
+        .abs()
+        / parallel_len;
+    assert!(
+        distance < 1e-6,
+        "expected parallel line to pass through point C, distance={distance}"
+    );
+}
+
+#[test]
 fn preserves_perpendicular_bisector_midpoint_gsp() {
     let data = include_bytes!("../../../tests/fixtures/gsp/中垂线.gsp");
     let file = GspFile::parse(data).expect("fixture parses");

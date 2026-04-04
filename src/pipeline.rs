@@ -153,6 +153,21 @@ mod tests {
     }
 
     #[test]
+    fn exports_parallel_line_binding_into_html() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/gsp/parallel.gsp"),
+            800,
+            600,
+        )
+        .expect("parallel fixture should compile");
+
+        assert!(html.contains("\"kind\":\"parallel-line\""));
+        assert!(html.contains("\"throughIndex\":2"));
+        assert!(html.contains("\"lineStartIndex\":0"));
+        assert!(html.contains("\"lineEndIndex\":1"));
+    }
+
+    #[test]
     fn exports_angle_bisector_ray_binding_into_html() {
         let html = compile_bytes_to_html_document(
             include_bytes!("../tests/fixtures/gsp/static/bisector.gsp"),

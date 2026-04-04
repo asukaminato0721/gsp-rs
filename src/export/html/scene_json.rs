@@ -306,6 +306,15 @@ enum LineBindingJson {
         #[serde(rename = "lineEndIndex")]
         line_end_index: usize,
     },
+    #[serde(rename = "parallel-line")]
+    ParallelLine {
+        #[serde(rename = "throughIndex")]
+        through_index: usize,
+        #[serde(rename = "lineStartIndex")]
+        line_start_index: usize,
+        #[serde(rename = "lineEndIndex")]
+        line_end_index: usize,
+    },
     #[serde(rename = "line")]
     Line {
         #[serde(rename = "startIndex")]
@@ -398,6 +407,15 @@ impl LineBindingJson {
                 line_start_index,
                 line_end_index,
             } => Self::PerpendicularLine {
+                through_index: *through_index,
+                line_start_index: *line_start_index,
+                line_end_index: *line_end_index,
+            },
+            LineBinding::ParallelLine {
+                through_index,
+                line_start_index,
+                line_end_index,
+            } => Self::ParallelLine {
                 through_index: *through_index,
                 line_start_index: *line_start_index,
                 line_end_index: *line_end_index,

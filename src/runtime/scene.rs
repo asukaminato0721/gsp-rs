@@ -227,6 +227,11 @@ pub(crate) enum LineBinding {
         line_start_index: usize,
         line_end_index: usize,
     },
+    ParallelLine {
+        through_index: usize,
+        line_start_index: usize,
+        line_end_index: usize,
+    },
     Line {
         start_index: usize,
         end_index: usize,

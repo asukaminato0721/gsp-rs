@@ -42,6 +42,9 @@ pub(crate) fn collect_line_shapes(
                 crate::format::GroupKind::LineKind5 => {
                     return resolve_perpendicular_line_shape(file, groups, anchors, group);
                 }
+                crate::format::GroupKind::LineKind6 => {
+                    return resolve_parallel_line_shape(file, groups, anchors, group);
+                }
                 crate::format::GroupKind::LineKind7 => {
                     return resolve_angle_bisector_ray_shape(file, anchors, group);
                 }
@@ -151,6 +154,48 @@ fn resolve_perpendicular_line_shape(
         color: color_from_style(group.header.style_b),
         dashed: false,
         binding: Some(LineBinding::PerpendicularLine {
+            through_index,
+            line_start_index,
+            line_end_index,
+        }),
+    })
+}
+
+fn resolve_parallel_line_shape(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group: &ObjectGroup,
+) -> Option<LineShape> {
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() != 2 {
+        return None;
+    }
+
+    let through_index = path.refs[0].checked_sub(1)?;
+    let host_index = path.refs[1].checked_sub(1)?;
+    let through = anchors.get(through_index)?.clone()?;
+    let (line_start_index, line_end_index, host_start, host_end) =
+        resolve_host_line_points(file, groups, anchors, host_index)?;
+
+    let dx = host_end.x - host_start.x;
+    let dy = host_end.y - host_start.y;
+    let host_len = (dx * dx + dy * dy).sqrt();
+    if host_len <= 1e-9 {
+        return None;
+    }
+
+    let start = through.clone();
+    let end = PointRecord {
+        x: through.x + dx / host_len,
+        y: through.y + dy / host_len,
+    };
+
+    has_distinct_points(&[start.clone(), end.clone()]).then_some(LineShape {
+        points: vec![start, end],
+        color: color_from_style(group.header.style_b),
+        dashed: false,
+        binding: Some(LineBinding::ParallelLine {
             through_index,
             line_start_index,
             line_end_index,
