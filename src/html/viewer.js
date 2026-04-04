@@ -71,15 +71,18 @@
   const hoverPointIndex = van?.state ? van.state(null) : { val: null };
   const buttonsState = van?.state ? van.state((sourceScene.buttons || []).map((button) => ({
     ...button,
+    baseText: button.text,
     visible: true,
     active: false,
   }))) : { val: (sourceScene.buttons || []).map((button) => ({
     ...button,
+    baseText: button.text,
     visible: true,
     active: false,
   })) };
   const buttonTimers = new Map();
   const buttonAnimations = new Map();
+  const hotspotFlashesState = van?.state ? van.state([]) : { val: [] };
   let buttonPointerState = null;
   const labelAttachDistance = 40;
   const coordText = van.derive(() => {
@@ -245,6 +248,10 @@
         binding: label.binding ? { ...label.binding } : null,
         screenSpace: !!label.screenSpace,
         centeredOnAnchor: label.binding?.kind === "point-expression-value",
+        hotspots: (label.hotspots || []).map((hotspot) => ({
+          ...hotspot,
+          action: hotspot.action ? { ...hotspot.action } : null,
+        })),
       })),
     };
   }
@@ -537,7 +544,7 @@
     updateReadout();
   }
 
-  function renderButtons() {
+  function renderOverlays() {
     if (!buttonOverlays) {
       return;
     }
@@ -570,6 +577,27 @@
         beginButtonPointer(buttonIndex, event);
       });
       buttonOverlays.append(anchor);
+    });
+
+    currentScene().labels.forEach((label) => {
+      if (label.visible === false || !label.hotspots?.length) {
+        return;
+      }
+      renderModule.labelHotspotRects(viewerEnv, label).forEach((rect) => {
+        const hotspot = document.createElement("button");
+        hotspot.className = "scene-hotspot";
+        hotspot.type = "button";
+        hotspot.setAttribute("aria-label", rect.text);
+        hotspot.style.left = `${(rect.left / sourceScene.width) * 100}%`;
+        hotspot.style.top = `${(rect.top / sourceScene.height) * 100}%`;
+        hotspot.style.width = `${(rect.width / sourceScene.width) * 100}%`;
+        hotspot.style.height = `${(rect.height / sourceScene.height) * 100}%`;
+        hotspot.addEventListener("click", (event) => {
+          event.preventDefault();
+          runHotspotAction(rect.action);
+        });
+        buttonOverlays.append(hotspot);
+      });
     });
   }
 
@@ -661,6 +689,92 @@
     });
   }
 
+  function visibilityTargetsMatch(action, visible) {
+    const scene = currentScene();
+    const pointsMatch = (action.pointIndices || []).every((index) => scene.points[index]?.visible === visible);
+    const linesMatch = (action.lineIndices || []).every((index) => scene.lines[index]?.visible === visible);
+    const circlesMatch = (action.circleIndices || []).every((index) => scene.circles[index]?.visible === visible);
+    const polygonsMatch = (action.polygonIndices || []).every((index) => scene.polygons[index]?.visible === visible);
+    return pointsMatch && linesMatch && circlesMatch && polygonsMatch;
+  }
+
+  function toggledVisibilityText(baseText, targetsVisible) {
+    if (typeof baseText !== "string" || !baseText) {
+      return baseText;
+    }
+    if (targetsVisible) {
+      if (baseText.includes("显示")) {
+        return baseText.replace("显示", "隐藏");
+      }
+    } else if (baseText.includes("隐藏")) {
+      return baseText.replace("隐藏", "显示");
+    }
+    return baseText;
+  }
+
+  function updateLinkedButtonLabels(buttonIndex, nextText) {
+    updateScene((scene) => {
+      scene.labels.forEach((label) => {
+        if (!label.hotspots?.length) {
+          return;
+        }
+        let lines = label.text.split("\n").map((line) => Array.from(line));
+        let changed = false;
+        const relevantHotspots = label.hotspots
+          .filter((hotspot) =>
+            hotspot.action?.kind === "button" && hotspot.action.buttonIndex === buttonIndex
+          )
+          .sort((left, right) => right.line - left.line || right.start - left.start);
+        relevantHotspots.forEach((hotspot) => {
+          const line = lines[hotspot.line];
+          if (!line) {
+            return;
+          }
+          line.splice(hotspot.start, hotspot.end - hotspot.start, ...Array.from(nextText));
+          hotspot.end = hotspot.start + Array.from(nextText).length;
+          hotspot.text = nextText;
+          changed = true;
+        });
+        if (changed) {
+          label.text = lines.map((line) => line.join("")).join("\n");
+        }
+      });
+    });
+  }
+
+  function syncVisibilityButtonState(buttonIndex, action) {
+    if (typeof buttonIndex !== "number") {
+      return;
+    }
+    let active = false;
+    if (action.kind === "toggle-visibility") {
+      active = visibilityTargetsMatch(action, true);
+    } else if (action.kind === "set-visibility") {
+      active = visibilityTargetsMatch(action, !!action.visible);
+    } else if (action.kind === "show-hide-visibility") {
+      active = visibilityTargetsMatch(action, true);
+    } else {
+      return;
+    }
+    updateButtons((buttons) => {
+      if (buttons[buttonIndex]) {
+        buttons[buttonIndex].active = active;
+        if (action.kind === "show-hide-visibility" || action.kind === "toggle-visibility") {
+          buttons[buttonIndex].text = toggledVisibilityText(
+            buttons[buttonIndex].baseText || buttons[buttonIndex].text,
+            active,
+          );
+        }
+      }
+    });
+    if (action.kind === "show-hide-visibility" || action.kind === "toggle-visibility") {
+      const button = buttonsState.val[buttonIndex];
+      if (button) {
+        updateLinkedButtonLabels(buttonIndex, button.text);
+      }
+    }
+  }
+
   function toggleTargetsVisibility(action) {
     const scene = currentScene();
     const hiddenPoint = (action.pointIndices || []).some((index) => scene.points[index]?.visible === false);
@@ -668,6 +782,50 @@
     const hiddenCircle = (action.circleIndices || []).some((index) => scene.circles[index]?.visible === false);
     const hiddenPolygon = (action.polygonIndices || []).some((index) => scene.polygons[index]?.visible === false);
     setTargetsVisibility(action, hiddenPoint || hiddenLine || hiddenCircle || hiddenPolygon);
+  }
+
+  function updateHotspotFlashes(mutator) {
+    const next = hotspotFlashesState.val.slice();
+    mutator(next);
+    hotspotFlashesState.val = next;
+  }
+
+  function hotspotFlashKey(action) {
+    switch (action.kind) {
+      case "button":
+        return `button:${action.buttonIndex}`;
+      case "point":
+        return `point:${action.pointIndex}`;
+      case "segment":
+        return `segment:${action.startPointIndex}:${action.endPointIndex}`;
+      case "angle-marker":
+        return `angle:${action.startPointIndex}:${action.vertexPointIndex}:${action.endPointIndex}`;
+      case "circle":
+        return `circle:${action.circleIndex}`;
+      case "polygon":
+        return `polygon:${action.polygonIndex}`;
+      default:
+        return JSON.stringify(action);
+    }
+  }
+
+  function flashHotspotAction(action) {
+    const key = hotspotFlashKey(action);
+    updateHotspotFlashes((flashes) => {
+      const existingIndex = flashes.findIndex((flash) => flash.key === key);
+      if (existingIndex >= 0) {
+        flashes.splice(existingIndex, 1);
+      }
+      flashes.push({ key, action });
+    });
+    window.setTimeout(() => {
+      updateHotspotFlashes((flashes) => {
+        const index = flashes.findIndex((flash) => flash.key === key);
+        if (index >= 0) {
+          flashes.splice(index, 1);
+        }
+      });
+    }, 180);
   }
 
   function stopButtonAnimation(buttonIndex) {
@@ -811,10 +969,18 @@
         break;
       case "toggle-visibility":
         toggleTargetsVisibility(action);
+        syncVisibilityButtonState(buttonIndex, action);
         break;
       case "set-visibility":
         setTargetsVisibility(action, !!action.visible);
+        syncVisibilityButtonState(buttonIndex, action);
         break;
+      case "show-hide-visibility": {
+        const nextVisible = !visibilityTargetsMatch(action, true);
+        setTargetsVisibility(action, nextVisible);
+        syncVisibilityButtonState(buttonIndex, action);
+        break;
+      }
       case "move-point":
         if (typeof action.pointIndex === "number") {
           toggleAnimatedPoint(
@@ -849,6 +1015,17 @@
       default:
         break;
     }
+  }
+
+  function runHotspotAction(action) {
+    if (!action) {
+      return;
+    }
+    if (action.kind === "button" && typeof action.buttonIndex === "number") {
+      runButtonAction(action.buttonIndex);
+      return;
+    }
+    flashHotspotAction(action);
   }
 
   function findHitPoint(screenX, screenY) {
@@ -908,6 +1085,7 @@
     view,
     currentScene,
     currentDynamics,
+    currentHotspotFlashes: () => hotspotFlashesState.val,
     resolveScenePoint: (index) => sceneModule.resolveScenePoint(viewerEnv, index),
     resolvePoint: (handle) => sceneModule.resolvePoint(viewerEnv, handle),
     resolveAnchorBase: (handle) => sceneModule.resolveAnchorBase(viewerEnv, handle),
@@ -982,7 +1160,7 @@
   });
 
   van.derive(() => {
-    renderButtons();
+    renderOverlays();
     return 0;
   });
 

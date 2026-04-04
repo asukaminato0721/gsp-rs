@@ -51,6 +51,83 @@ fn preserves_multiline_text_labels() {
 }
 
 #[test]
+fn preserves_hot_text_actions_in_rich_text_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/热文本.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    let rich_label = scene
+        .labels
+        .iter()
+        .find(|label| label.text.contains("BAC"))
+        .expect("expected hot text label");
+    assert_eq!(rich_label.text, "在ACB中，CA=AB，BAC=CBA");
+    assert_eq!(
+        rich_label
+            .hotspots
+            .iter()
+            .map(|hotspot| hotspot.text.as_str())
+            .collect::<Vec<_>>(),
+        vec!["ACB", "CA", "AB", "BAC", "CBA"]
+    );
+    assert!(matches!(
+        rich_label.hotspots[0].action,
+        crate::runtime::scene::TextLabelHotspotAction::Polygon { .. }
+    ));
+    assert!(matches!(
+        rich_label.hotspots[1].action,
+        crate::runtime::scene::TextLabelHotspotAction::Segment { .. }
+    ));
+    assert!(matches!(
+        rich_label.hotspots[2].action,
+        crate::runtime::scene::TextLabelHotspotAction::Segment { .. }
+    ));
+    assert!(matches!(
+        rich_label.hotspots[3].action,
+        crate::runtime::scene::TextLabelHotspotAction::AngleMarker { .. }
+    ));
+    assert!(matches!(
+        rich_label.hotspots[4].action,
+        crate::runtime::scene::TextLabelHotspotAction::AngleMarker { .. }
+    ));
+    assert_eq!(scene.buttons.len(), 1, "expected linked action button");
+    assert_eq!(scene.buttons[0].text, "隐藏三角形 ACB");
+}
+
+#[test]
+fn preserves_info_gsp_button_and_hidden_point() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/info.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.points.len(), 1);
+    assert!(!scene.points[0].visible, "point should start hidden");
+    assert_eq!(scene.labels.len(), 1, "expected linked text label");
+    assert_eq!(scene.labels[0].text, "显示点");
+    assert_eq!(scene.labels[0].hotspots.len(), 1);
+    assert!(matches!(
+        scene.labels[0].hotspots[0].action,
+        crate::runtime::scene::TextLabelHotspotAction::Button { button_index: 0 }
+    ));
+    assert_eq!(scene.buttons.len(), 1);
+    assert_eq!(scene.buttons[0].text, "显示点");
+    match &scene.buttons[0].action {
+        crate::runtime::scene::ButtonAction::ShowHideVisibility {
+            point_indices,
+            line_indices,
+            circle_indices,
+            polygon_indices,
+        } => {
+            assert_eq!(point_indices, &vec![0]);
+            assert!(line_indices.is_empty());
+            assert!(circle_indices.is_empty());
+            assert!(polygon_indices.is_empty());
+        }
+        other => panic!("unexpected button action: {other:?}"),
+    }
+}
+
+#[test]
 fn preserves_constrained_points_in_edge_gsp() {
     let data = include_bytes!("../../../../edge.gsp");
     let file = GspFile::parse(data).expect("fixture parses");

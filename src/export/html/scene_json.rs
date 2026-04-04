@@ -5,7 +5,7 @@ use crate::runtime::scene::{
     ButtonAction, IterationPointHandle, LabelIterationFamily, LineBinding, LineIterationFamily,
     LineLikeKind,
     PointIterationFamily, PolygonIterationFamily, Scene, SceneButton, ScenePointBinding,
-    ScenePointConstraint, ShapeBinding, TextLabelBinding,
+    ScenePointConstraint, ShapeBinding, TextLabelBinding, TextLabelHotspotAction,
 };
 use serde::Serialize;
 
@@ -155,6 +155,16 @@ enum ButtonActionJson {
         #[serde(rename = "polygonIndices")]
         polygon_indices: Vec<usize>,
     },
+    ShowHideVisibility {
+        #[serde(rename = "pointIndices")]
+        point_indices: Vec<usize>,
+        #[serde(rename = "lineIndices")]
+        line_indices: Vec<usize>,
+        #[serde(rename = "circleIndices")]
+        circle_indices: Vec<usize>,
+        #[serde(rename = "polygonIndices")]
+        polygon_indices: Vec<usize>,
+    },
     MovePoint {
         #[serde(rename = "pointIndex")]
         point_index: usize,
@@ -200,6 +210,17 @@ impl ButtonActionJson {
                 polygon_indices,
             } => Self::SetVisibility {
                 visible: *visible,
+                point_indices: point_indices.clone(),
+                line_indices: line_indices.clone(),
+                circle_indices: circle_indices.clone(),
+                polygon_indices: polygon_indices.clone(),
+            },
+            ButtonAction::ShowHideVisibility {
+                point_indices,
+                line_indices,
+                circle_indices,
+                polygon_indices,
+            } => Self::ShowHideVisibility {
                 point_indices: point_indices.clone(),
                 line_indices: line_indices.clone(),
                 circle_indices: circle_indices.clone(),
@@ -794,6 +815,7 @@ struct LabelJson {
     text: String,
     color: [u8; 4],
     binding: Option<LabelBindingJson>,
+    hotspots: Vec<LabelHotspotJson>,
     #[serde(rename = "screenSpace")]
     screen_space: bool,
 }
@@ -805,7 +827,104 @@ impl LabelJson {
             text: label.text.clone(),
             color: label.color,
             binding: label.binding.as_ref().map(LabelBindingJson::from_binding),
+            hotspots: label
+                .hotspots
+                .iter()
+                .map(LabelHotspotJson::from_hotspot)
+                .collect(),
             screen_space: label.screen_space,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LabelHotspotJson {
+    line: usize,
+    start: usize,
+    end: usize,
+    text: String,
+    action: LabelHotspotActionJson,
+}
+
+impl LabelHotspotJson {
+    fn from_hotspot(hotspot: &crate::runtime::scene::TextLabelHotspot) -> Self {
+        Self {
+            line: hotspot.line,
+            start: hotspot.start,
+            end: hotspot.end,
+            text: hotspot.text.clone(),
+            action: LabelHotspotActionJson::from_action(&hotspot.action),
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+enum LabelHotspotActionJson {
+    Button {
+        #[serde(rename = "buttonIndex")]
+        button_index: usize,
+    },
+    Point {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+    },
+    Segment {
+        #[serde(rename = "startPointIndex")]
+        start_point_index: usize,
+        #[serde(rename = "endPointIndex")]
+        end_point_index: usize,
+    },
+    AngleMarker {
+        #[serde(rename = "startPointIndex")]
+        start_point_index: usize,
+        #[serde(rename = "vertexPointIndex")]
+        vertex_point_index: usize,
+        #[serde(rename = "endPointIndex")]
+        end_point_index: usize,
+    },
+    Circle {
+        #[serde(rename = "circleIndex")]
+        circle_index: usize,
+    },
+    Polygon {
+        #[serde(rename = "polygonIndex")]
+        polygon_index: usize,
+    },
+}
+
+impl LabelHotspotActionJson {
+    fn from_action(action: &TextLabelHotspotAction) -> Self {
+        match action {
+            TextLabelHotspotAction::Button { button_index } => Self::Button {
+                button_index: *button_index,
+            },
+            TextLabelHotspotAction::Point { point_index } => Self::Point {
+                point_index: *point_index,
+            },
+            TextLabelHotspotAction::Segment {
+                start_point_index,
+                end_point_index,
+            } => Self::Segment {
+                start_point_index: *start_point_index,
+                end_point_index: *end_point_index,
+            },
+            TextLabelHotspotAction::AngleMarker {
+                start_point_index,
+                vertex_point_index,
+                end_point_index,
+            } => Self::AngleMarker {
+                start_point_index: *start_point_index,
+                vertex_point_index: *vertex_point_index,
+                end_point_index: *end_point_index,
+            },
+            TextLabelHotspotAction::Circle { circle_index } => Self::Circle {
+                circle_index: *circle_index,
+            },
+            TextLabelHotspotAction::Polygon { polygon_index } => Self::Polygon {
+                polygon_index: *polygon_index,
+            },
         }
     }
 }

@@ -68,7 +68,29 @@ type SceneData = {
     center?: PointHandle | null;
     counterclockwise?: boolean;
   }>;
-  labels: any[];
+  labels: Array<{
+    anchor: Point;
+    text: string;
+    color: [number, number, number, number];
+    binding?: any;
+    screenSpace?: boolean;
+    hotspots?: Array<{
+      line: number;
+      start: number;
+      end: number;
+      text: string;
+      action: {
+        kind: "button" | "point" | "segment" | "angle-marker" | "circle" | "polygon";
+        buttonIndex?: number;
+        pointIndex?: number;
+        startPointIndex?: number;
+        vertexPointIndex?: number;
+        endPointIndex?: number;
+        circleIndex?: number;
+        polygonIndex?: number;
+      };
+    }>;
+  }>;
   pointIterations?: Array<
     | {
         kind: "offset";
@@ -179,6 +201,7 @@ type ViewerEnv = {
     parameters: Array<{ name: string; value: number; labelIndex?: number | null }>;
     functions: any[];
   };
+  currentHotspotFlashes: () => Array<{ key: string; action: any }>;
   resolveScenePoint: (index: number) => Point;
   resolvePoint: (handle: PointHandle) => Point;
   resolveAnchorBase: (handle: PointHandle) => Point;
@@ -245,6 +268,20 @@ type ViewerSceneModule = {
 
 type ViewerRenderModule = {
   draw: (env: ViewerEnv) => void;
+  labelHotspotRects: (
+    env: ViewerEnv,
+    label: SceneData["labels"][number],
+  ) => Array<{
+    line: number;
+    start: number;
+    end: number;
+    text: string;
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+    action: any;
+  }>;
   findHitPoint: (env: ViewerEnv, screenX: number, screenY: number) => number | null;
   findHitLabel: (env: ViewerEnv, screenX: number, screenY: number) => number | null;
   findHitPolygon: (env: ViewerEnv, screenX: number, screenY: number) => number | null;

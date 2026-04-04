@@ -246,6 +246,7 @@ pub(crate) fn synthesize_function_labels(
                 color: [30, 30, 30, 255],
                 binding: None,
                 screen_space: false,
+                hotspots: Vec::new(),
             }
         })
         .collect::<Vec<_>>();
@@ -271,6 +272,7 @@ pub(crate) fn synthesize_function_labels(
                     color: [30, 30, 30, 255],
                     binding: None,
                     screen_space: false,
+                    hotspots: Vec::new(),
                 }
             }),
     );
@@ -316,6 +318,7 @@ pub(crate) fn synthesize_function_labels(
                 color: [30, 30, 30, 255],
                 binding: None,
                 screen_space: false,
+                hotspots: Vec::new(),
             }
         },
     ));

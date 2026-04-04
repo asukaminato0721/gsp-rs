@@ -2,9 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::CircleShape;
 use super::decode::{
-    decode_0907_anchor, decode_group_label_text, decode_label_anchor, decode_label_name,
-    decode_label_name_raw, decode_link_button_url, decode_measurement_value, decode_text_anchor,
-    find_indexed_path, is_action_button_group,
+    decode_0907_anchor, decode_group_label_text, decode_group_rich_text, decode_label_anchor,
+    decode_label_name, decode_label_name_raw, decode_link_button_url, decode_measurement_value,
+    decode_text_anchor, find_indexed_path, is_action_button_group,
 };
 use super::points::{
     RawPointConstraint, decode_non_graph_parameter_value_for_group, decode_point_constraint,
@@ -16,7 +16,19 @@ use crate::runtime::functions::{
     decode_function_expr, evaluate_expr_with_parameters, function_expr_label,
 };
 use crate::runtime::geometry::format_number;
-use crate::runtime::scene::{LabelIterationFamily, TextLabel, TextLabelBinding};
+use crate::runtime::scene::{
+    LabelIterationFamily, TextLabel, TextLabelBinding, TextLabelHotspot, TextLabelHotspotAction,
+};
+
+#[derive(Debug, Clone)]
+pub(super) struct PendingLabelHotspot {
+    pub(super) label_index: usize,
+    pub(super) line: usize,
+    pub(super) start: usize,
+    pub(super) end: usize,
+    pub(super) text: String,
+    pub(super) group_ordinal: usize,
+}
 
 pub(super) fn collect_labels(
     file: &GspFile,
@@ -24,9 +36,10 @@ pub(super) fn collect_labels(
     anchors: &[Option<PointRecord>],
     graph_mode: bool,
     include_measurements: bool,
-) -> (Vec<TextLabel>, BTreeMap<usize, usize>) {
+) -> (Vec<TextLabel>, BTreeMap<usize, usize>, Vec<PendingLabelHotspot>) {
     let mut labels = Vec::new();
     let mut label_group_to_index = BTreeMap::new();
+    let mut pending_hotspots = Vec::new();
     for group in groups {
         let kind = group.header.kind();
         match kind {
@@ -51,14 +64,6 @@ pub(super) fn collect_labels(
                 if kind == crate::format::GroupKind::ActionButton && is_action_button_group(group) {
                     continue;
                 }
-                if kind == crate::format::GroupKind::ButtonLabel
-                    && find_indexed_path(file, group)
-                        .and_then(|path| path.refs.first().copied())
-                        .and_then(|ordinal| groups.get(ordinal.checked_sub(1)?))
-                        .is_some_and(is_action_button_group)
-                {
-                    continue;
-                }
                 if kind == crate::format::GroupKind::LabelIterationSeed {
                     if let Some(label) =
                         collect_point_expression_label(file, groups, group, anchors)
@@ -68,7 +73,10 @@ pub(super) fn collect_labels(
                     }
                     continue;
                 }
-                let text = decode_group_label_text(file, group).or_else(|| {
+                let rich_text = decode_group_rich_text(file, group);
+                let text = rich_text.as_ref().map(|content| content.text.clone()).or_else(|| {
+                    decode_group_label_text(file, group)
+                }).or_else(|| {
                     (!graph_mode
                         && matches!(
                             kind,
@@ -88,14 +96,32 @@ pub(super) fn collect_labels(
                 if let Some(text) = text {
                     let anchor = decode_label_anchor(file, group, anchors);
                     if let Some(anchor) = anchor {
-                        label_group_to_index.insert(group.ordinal, labels.len());
+                        let label_index = labels.len();
+                        label_group_to_index.insert(group.ordinal, label_index);
                         labels.push(TextLabel {
                             anchor,
                             text,
                             color: [30, 30, 30, 255],
                             binding: None,
                             screen_space: false,
+                            hotspots: Vec::new(),
                         });
+                        if let (Some(content), Some(path)) = (rich_text.as_ref(), find_indexed_path(file, group)) {
+                            for hotspot in &content.hotspots {
+                                if let Some(group_ordinal) =
+                                    path.refs.get(hotspot.path_slot.saturating_sub(1)).copied()
+                                {
+                                    pending_hotspots.push(PendingLabelHotspot {
+                                        label_index,
+                                        line: hotspot.line,
+                                        start: hotspot.start,
+                                        end: hotspot.end,
+                                        text: hotspot.text.clone(),
+                                        group_ordinal,
+                                    });
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -135,6 +161,7 @@ pub(super) fn collect_labels(
                             color: [60, 60, 60, 255],
                             binding: None,
                             screen_space: false,
+                            hotspots: Vec::new(),
                         });
                     }
                 }
@@ -142,7 +169,7 @@ pub(super) fn collect_labels(
             _ => {}
         }
     }
-    (labels, label_group_to_index)
+    (labels, label_group_to_index, pending_hotspots)
 }
 
 pub(super) fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) -> Vec<TextLabel> {
@@ -170,6 +197,7 @@ pub(super) fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) 
                 color: [30, 30, 30, 255],
                 binding,
                 screen_space: true,
+                hotspots: Vec::new(),
             });
         } else if kind == crate::format::GroupKind::FunctionExpr
             && let Some(expr) = decode_function_expr(file, groups, group)
@@ -224,10 +252,101 @@ pub(super) fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) 
                 color: [30, 30, 30, 255],
                 binding,
                 screen_space: true,
+                hotspots: Vec::new(),
             });
         }
     }
     labels
+}
+
+pub(super) fn resolve_label_hotspots(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    labels: &mut [TextLabel],
+    pending_hotspots: &[PendingLabelHotspot],
+    group_to_point_index: &[Option<usize>],
+    circle_group_to_index: &[Option<usize>],
+    polygon_group_to_index: &[Option<usize>],
+    button_group_to_index: &BTreeMap<usize, usize>,
+) {
+    for pending in pending_hotspots {
+        let Some(label) = labels.get_mut(pending.label_index) else {
+            continue;
+        };
+
+        let Some(group) = groups.get(pending.group_ordinal.saturating_sub(1)) else {
+            continue;
+        };
+        let action = match group.header.kind() {
+            crate::format::GroupKind::ActionButton => button_group_to_index
+                .get(&pending.group_ordinal)
+                .copied()
+                .map(|button_index| TextLabelHotspotAction::Button { button_index }),
+            crate::format::GroupKind::ButtonLabel => find_indexed_path(file, group)
+                .and_then(|path| path.refs.first().copied())
+                .and_then(|ordinal| button_group_to_index.get(&ordinal).copied())
+                .map(|button_index| TextLabelHotspotAction::Button { button_index }),
+            crate::format::GroupKind::Point => group_to_point_index
+                .get(pending.group_ordinal.saturating_sub(1))
+                .copied()
+                .flatten()
+                .map(|point_index| TextLabelHotspotAction::Point { point_index }),
+            crate::format::GroupKind::Segment => find_indexed_path(file, group).and_then(|path| {
+                let start_point_index = group_to_point_index
+                    .get(path.refs.first()?.saturating_sub(1))
+                    .copied()
+                    .flatten()?;
+                let end_point_index = group_to_point_index
+                    .get(path.refs.get(1)?.saturating_sub(1))
+                    .copied()
+                    .flatten()?;
+                Some(TextLabelHotspotAction::Segment {
+                    start_point_index,
+                    end_point_index,
+                })
+            }),
+            crate::format::GroupKind::AngleMarker => find_indexed_path(file, group).and_then(|path| {
+                let start_point_index = group_to_point_index
+                    .get(path.refs.first()?.saturating_sub(1))
+                    .copied()
+                    .flatten()?;
+                let vertex_point_index = group_to_point_index
+                    .get(path.refs.get(1)?.saturating_sub(1))
+                    .copied()
+                    .flatten()?;
+                let end_point_index = group_to_point_index
+                    .get(path.refs.get(2)?.saturating_sub(1))
+                    .copied()
+                    .flatten()?;
+                Some(TextLabelHotspotAction::AngleMarker {
+                    start_point_index,
+                    vertex_point_index,
+                    end_point_index,
+                })
+            }),
+            kind if super::decode::is_circle_group_kind(kind) => circle_group_to_index
+                .get(pending.group_ordinal.saturating_sub(1))
+                .copied()
+                .flatten()
+                .map(|circle_index| TextLabelHotspotAction::Circle { circle_index }),
+            crate::format::GroupKind::Polygon => polygon_group_to_index
+                .get(pending.group_ordinal.saturating_sub(1))
+                .copied()
+                .flatten()
+                .map(|polygon_index| TextLabelHotspotAction::Polygon { polygon_index }),
+            _ => None,
+        };
+        let Some(action) = action else {
+            continue;
+        };
+        label.hotspots.push(TextLabelHotspot {
+            line: pending.line,
+            start: pending.start,
+            end: pending.end,
+            text: pending.text.clone(),
+            action,
+        });
+    }
 }
 
 fn collect_point_expression_label(
@@ -266,6 +385,7 @@ fn collect_point_expression_label(
             expr,
         }),
         screen_space: false,
+        hotspots: Vec::new(),
     })
 }
 
@@ -319,6 +439,7 @@ pub(super) fn collect_polygon_parameter_labels(
                     polygon_name,
                 }),
                 screen_space: false,
+                hotspots: Vec::new(),
             })
         })
         .collect()
@@ -368,6 +489,7 @@ pub(super) fn collect_segment_parameter_labels(
                     segment_name,
                 }),
                 screen_space: false,
+                hotspots: Vec::new(),
             })
         })
         .collect()
@@ -425,6 +547,7 @@ pub(super) fn collect_circle_parameter_labels(
                     circle_name,
                 }),
                 screen_space: false,
+                hotspots: Vec::new(),
             })
         })
         .collect()
@@ -772,6 +895,7 @@ pub(super) fn compute_iteration_labels(
                 color: [30, 30, 30, 255],
                 binding: None,
                 screen_space: false,
+                hotspots: Vec::new(),
             });
         }
     }

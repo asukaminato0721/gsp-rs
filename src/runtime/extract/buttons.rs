@@ -17,6 +17,9 @@ enum RawButtonAction {
         refs: Vec<usize>,
         visible: bool,
     },
+    ShowHideVisibility {
+        refs: Vec<usize>,
+    },
     MovePoint {
         point_group_ordinal: usize,
         target_group_ordinal: Option<usize>,
@@ -50,7 +53,7 @@ pub(super) fn collect_buttons(
     line_group_to_index: &[Option<usize>],
     circle_group_to_index: &[Option<usize>],
     polygon_group_to_index: &[Option<usize>],
-) -> Vec<SceneButton> {
+) -> (Vec<SceneButton>, BTreeMap<usize, usize>) {
     let button_label_groups = groups
         .iter()
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::ButtonLabel)
@@ -135,6 +138,7 @@ pub(super) fn collect_buttons(
                     target_group_ordinal: refs.get(1).copied(),
                 }),
             (0, 7) => Some(RawButtonAction::ToggleVisibility { refs }),
+            (1, 7) => Some(RawButtonAction::ShowHideVisibility { refs }),
             (1, 3) => Some(RawButtonAction::SetVisibility {
                 refs,
                 visible: true,
@@ -149,10 +153,8 @@ pub(super) fn collect_buttons(
             continue;
         };
 
-        let anchor = button_label_groups
-            .get(&group.ordinal)
-            .cloned()
-            .or_else(|| decode::decode_button_screen_anchor(file, group))
+        let anchor = decode::decode_button_screen_anchor(file, group)
+            .or_else(|| button_label_groups.get(&group.ordinal).cloned())
             .unwrap_or(PointRecord { x: 24.0, y: 24.0 });
         let text = decode::decode_label_name_raw(file, group)
             .filter(|label| !label.trim().is_empty())
@@ -176,7 +178,7 @@ pub(super) fn collect_buttons(
         .map(|(button_index, button)| (button.group_ordinal, button_index))
         .collect::<BTreeMap<usize, usize>>();
 
-    raw_buttons
+    let buttons = raw_buttons
         .into_iter()
         .filter_map(|button| {
             let action = match button.action {
@@ -208,6 +210,22 @@ pub(super) fn collect_buttons(
                         );
                     ButtonAction::SetVisibility {
                         visible,
+                        point_indices,
+                        line_indices,
+                        circle_indices,
+                        polygon_indices,
+                    }
+                }
+                RawButtonAction::ShowHideVisibility { refs } => {
+                    let (point_indices, line_indices, circle_indices, polygon_indices) =
+                        resolve_visibility_targets(
+                            &refs,
+                            group_to_point_index,
+                            line_group_to_index,
+                            circle_group_to_index,
+                            polygon_group_to_index,
+                        );
+                    ButtonAction::ShowHideVisibility {
                         point_indices,
                         line_indices,
                         circle_indices,
@@ -264,7 +282,8 @@ pub(super) fn collect_buttons(
                 action,
             })
         })
-        .collect()
+        .collect::<Vec<_>>();
+    (buttons, button_index_by_ordinal)
 }
 
 fn resolve_visibility_targets(

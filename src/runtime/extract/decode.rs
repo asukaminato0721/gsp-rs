@@ -164,7 +164,7 @@ pub(crate) fn decode_group_label_text(file: &GspFile, group: &ObjectGroup) -> Op
         .records
         .iter()
         .find_map(|record| match record.record_type {
-            0x08fc => extract_rich_text(record.payload(&file.data)),
+            0x08fc => decode_rich_text(record.payload(&file.data)).map(|content| content.text),
             0x07d5 if matches!(group.header.kind(), crate::format::GroupKind::ActionButton) => {
                 collect_strings(record.payload(&file.data))
                     .into_iter()
@@ -173,6 +173,29 @@ pub(crate) fn decode_group_label_text(file: &GspFile, group: &ObjectGroup) -> Op
             }
             _ => None,
         })
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RichTextContent {
+    pub(crate) text: String,
+    pub(crate) hotspots: Vec<RichTextHotspotRef>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RichTextHotspotRef {
+    pub(crate) line: usize,
+    pub(crate) start: usize,
+    pub(crate) end: usize,
+    pub(crate) text: String,
+    pub(crate) path_slot: usize,
+}
+
+pub(crate) fn decode_group_rich_text(file: &GspFile, group: &ObjectGroup) -> Option<RichTextContent> {
+    group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x08fc)
+        .and_then(|record| decode_rich_text(record.payload(&file.data)))
 }
 
 pub(crate) fn decode_label_anchor(
@@ -281,8 +304,8 @@ pub(crate) fn decode_button_screen_anchor(
         .find(|record| record.record_type == 0x0906)
         .map(|record| record.payload(&file.data))?;
     (payload.len() >= 24).then(|| PointRecord {
-        x: read_u16(payload, payload.len() - 4) as f64,
-        y: read_u16(payload, payload.len() - 2) as f64,
+        x: read_i16(payload, payload.len() - 4) as f64,
+        y: read_i16(payload, payload.len() - 2) as f64,
     })
 }
 
@@ -341,13 +364,13 @@ pub(crate) fn decode_text_anchor(payload: &[u8]) -> Option<PointRecord> {
     })
 }
 
-fn extract_rich_text(payload: &[u8]) -> Option<String> {
+fn decode_rich_text(payload: &[u8]) -> Option<RichTextContent> {
     let text = String::from_utf8_lossy(payload);
     let start = text.find('<')?;
     let markup = text[start..].trim_end_matches('\0');
 
     if markup.starts_with("<VL") {
-        return extract_simple_text(markup);
+        return extract_visual_rich_text(markup);
     }
 
     let parsed = parse_markup(markup);
@@ -369,26 +392,199 @@ fn extract_rich_text(payload: &[u8]) -> Option<String> {
         .trim()
         .to_string();
 
-    (!cleaned.is_empty()).then_some(cleaned)
+    (!cleaned.is_empty()).then_some(RichTextContent {
+        text: cleaned,
+        hotspots: Vec::new(),
+    })
 }
 
-fn extract_simple_text(markup: &str) -> Option<String> {
-    let mut lines = Vec::new();
-    let mut rest = markup;
+#[derive(Debug, Clone)]
+struct RichMarkupNode {
+    name: String,
+    children: Vec<RichMarkupNode>,
+}
 
-    while let Some(start) = rest.find("<T") {
-        let tail = &rest[start + 2..];
-        let Some(end) = tail.find('>') else {
-            break;
-        };
-        let token = &tail[..end];
-        if let Some(x_index) = token.find('x') {
-            lines.push(token[x_index + 1..].to_string());
+#[derive(Debug, Clone)]
+struct RichMarkupRun {
+    text: String,
+    path_slot: Option<usize>,
+}
+
+fn extract_visual_rich_text(markup: &str) -> Option<RichTextContent> {
+    let nodes = parse_markup_nodes(markup);
+    let lines = render_markup_nodes(&nodes, None);
+    let mut text_lines = Vec::new();
+    let mut hotspots = Vec::new();
+
+    for (line_index, line_runs) in lines.iter().enumerate() {
+        let mut line_text = String::new();
+        for run in line_runs {
+            let cleaned = run
+                .text
+                .replace(['\u{2013}', '\u{2014}'], "-")
+                .replace("厘米", "cm");
+            if cleaned.is_empty() {
+                continue;
+            }
+            let start = line_text.chars().count();
+            line_text.push_str(&cleaned);
+            let end = line_text.chars().count();
+            if let Some(path_slot) = run.path_slot {
+                hotspots.push(RichTextHotspotRef {
+                    line: line_index,
+                    start,
+                    end,
+                    text: cleaned.clone(),
+                    path_slot,
+                });
+            }
         }
-        rest = &tail[end + 1..];
+        text_lines.push(line_text);
     }
 
-    (!lines.is_empty()).then(|| lines.join("\n"))
+    let text = text_lines.join("\n");
+    text.chars()
+        .any(|ch| !ch.is_whitespace())
+        .then_some(RichTextContent { text, hotspots })
+}
+
+fn parse_markup_nodes(markup: &str) -> Vec<RichMarkupNode> {
+    fn parse_seq(s: &str, mut index: usize, stop_on_gt: bool) -> (Vec<RichMarkupNode>, usize) {
+        let bytes = s.as_bytes();
+        let mut nodes = Vec::new();
+        while index < bytes.len() {
+            if stop_on_gt && bytes[index] == b'>' {
+                return (nodes, index + 1);
+            }
+            if bytes[index] != b'<' {
+                index += 1;
+                continue;
+            }
+            index += 1;
+            let name_start = index;
+            while index < bytes.len() && bytes[index] != b'<' && bytes[index] != b'>' {
+                index += 1;
+            }
+            let name = s[name_start..index].to_string();
+            let children = if index < bytes.len() && bytes[index] == b'<' {
+                let (children, next_index) = parse_seq(s, index, true);
+                index = next_index;
+                children
+            } else {
+                if index < bytes.len() && bytes[index] == b'>' {
+                    index += 1;
+                }
+                Vec::new()
+            };
+            nodes.push(RichMarkupNode { name, children });
+        }
+        (nodes, index)
+    }
+
+    let (nodes, _) = parse_seq(markup, 0, false);
+    nodes
+}
+
+fn render_markup_nodes(nodes: &[RichMarkupNode], active_slot: Option<usize>) -> Vec<Vec<RichMarkupRun>> {
+    let mut lines = vec![Vec::new()];
+    for node in nodes {
+        let node_lines = render_markup_node(node, active_slot);
+        append_markup_lines(&mut lines, node_lines);
+    }
+    lines
+        .into_iter()
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+}
+
+fn render_markup_node(node: &RichMarkupNode, active_slot: Option<usize>) -> Vec<Vec<RichMarkupRun>> {
+    if let Some(text) = decode_markup_text(&node.name) {
+        return vec![vec![RichMarkupRun {
+            text,
+            path_slot: active_slot,
+        }]];
+    }
+    if node.name.starts_with('!') {
+        return vec![Vec::new()];
+    }
+    if node.name == "VL" {
+        return node
+            .children
+            .iter()
+            .flat_map(|child| render_markup_node(child, active_slot))
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<_>>();
+    }
+    if let Some(path_slot) = decode_markup_path_slot(&node.name) {
+        return render_markup_nodes(&node.children, Some(path_slot));
+    }
+    if node.name.starts_with('+') {
+        let lines = render_markup_nodes(&node.children, active_slot);
+        let joined = lines
+            .into_iter()
+            .flatten()
+            .map(|run| run.text)
+            .collect::<String>();
+        if joined.is_empty() {
+            return vec![Vec::new()];
+        }
+        let chars = joined.chars().collect::<Vec<_>>();
+        let split = chars
+            .iter()
+            .rposition(|ch| !ch.is_ascii_digit())
+            .map(|index| index + 1)
+            .unwrap_or(0);
+        let text = if split < chars.len() {
+            let exponent = chars[split..].iter().collect::<String>();
+            let mut base = chars[..split].iter().collect::<String>();
+            base.push('^');
+            base.push_str(&exponent);
+            base
+        } else {
+            joined
+        };
+        return vec![vec![RichMarkupRun {
+            text,
+            path_slot: active_slot,
+        }]];
+    }
+    render_markup_nodes(&node.children, active_slot)
+}
+
+fn append_markup_lines(target: &mut Vec<Vec<RichMarkupRun>>, lines: Vec<Vec<RichMarkupRun>>) {
+    if lines.is_empty() {
+        return;
+    }
+    if target.is_empty() {
+        target.extend(lines);
+        return;
+    }
+    let mut iter = lines.into_iter();
+    if let Some(first_line) = iter.next() {
+        target.last_mut().expect("target has at least one line").extend(first_line);
+    }
+    target.extend(iter);
+}
+
+fn decode_markup_text(token: &str) -> Option<String> {
+    let stripped = token.strip_prefix('T')?;
+    let x_index = stripped.find('x')?;
+    Some(stripped[x_index + 1..].to_string())
+}
+
+fn decode_markup_path_slot(token: &str) -> Option<usize> {
+    let reference = token.strip_prefix("?1x")?;
+    if reference.chars().all(|ch| ch.is_ascii_digit()) {
+        return reference.parse::<usize>().ok().filter(|slot| *slot > 0);
+    }
+    if let Some(slot) = reference
+        .strip_prefix('B')
+        .filter(|suffix| !suffix.is_empty() && suffix.chars().all(|ch| ch.is_ascii_digit()))
+        .and_then(|suffix| suffix.parse::<usize>().ok())
+    {
+        return (slot > 0).then_some(slot);
+    }
+    None
 }
 
 fn parse_markup(markup: &str) -> String {

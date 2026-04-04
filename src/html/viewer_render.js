@@ -146,6 +146,49 @@
     };
   }
 
+  function labelHotspotRects(env, label) {
+    if (!label.hotspots?.length) {
+      return [];
+    }
+    env.ctx.save();
+    env.ctx.font = "18px \"Noto Sans\", \"Segoe UI\", sans-serif";
+    env.ctx.textBaseline = "top";
+    const bounds = labelBounds(env, label);
+    if (!bounds) {
+      env.ctx.restore();
+      return [];
+    }
+    const rects = label.hotspots
+      .map((hotspot) => {
+        const line = bounds.lines[hotspot.line];
+        if (typeof line !== "string") {
+          return null;
+        }
+        const glyphs = Array.from(line);
+        const start = Math.max(0, Math.min(glyphs.length, hotspot.start));
+        const end = Math.max(start, Math.min(glyphs.length, hotspot.end));
+        const prefix = glyphs.slice(0, start).join("");
+        const text = glyphs.slice(start, end).join("");
+        if (!text) {
+          return null;
+        }
+        return {
+          line: hotspot.line,
+          start,
+          end,
+          text: hotspot.text || text,
+          left: bounds.left + 4 + env.ctx.measureText(prefix).width,
+          top: bounds.top + hotspot.line * 22,
+          width: Math.max(1, env.ctx.measureText(text).width),
+          height: 22,
+          action: hotspot.action,
+        };
+      })
+      .filter(Boolean);
+    env.ctx.restore();
+    return rects;
+  }
+
   function findHitPoint(env, screenX, screenY) {
     let bestIndex = null;
     let bestDistanceSquared = env.pointHitRadius * env.pointHitRadius;
@@ -601,6 +644,105 @@
     env.ctx.textBaseline = "alphabetic";
   }
 
+  function drawHotspotFlashes(env) {
+    const flashes = env.currentHotspotFlashes ? env.currentHotspotFlashes() : [];
+    if (!flashes?.length) {
+      return;
+    }
+
+    const strokePolyline = (points) => {
+      if (!points || points.length < 2) return;
+      env.ctx.beginPath();
+      points.forEach((point, index) => {
+        const screen = env.toScreen(point);
+        if (index === 0) env.ctx.moveTo(screen.x, screen.y);
+        else env.ctx.lineTo(screen.x, screen.y);
+      });
+      env.ctx.stroke();
+    };
+
+    env.ctx.save();
+    env.ctx.strokeStyle = "rgba(255, 176, 32, 0.95)";
+    env.ctx.fillStyle = "rgba(255, 210, 80, 0.22)";
+    env.ctx.lineWidth = 5;
+    env.ctx.lineJoin = "round";
+    env.ctx.lineCap = "round";
+
+    flashes.forEach((flash) => {
+      const action = flash.action || {};
+      switch (action.kind) {
+        case "point": {
+          const point = env.resolveScenePoint(action.pointIndex);
+          if (!point) break;
+          const screen = env.toScreen(point);
+          env.ctx.beginPath();
+          env.ctx.arc(screen.x, screen.y, 9, 0, Math.PI * 2);
+          env.ctx.fill();
+          env.ctx.stroke();
+          break;
+        }
+        case "segment": {
+          const start = env.resolveScenePoint(action.startPointIndex);
+          const end = env.resolveScenePoint(action.endPointIndex);
+          if (!start || !end) break;
+          strokePolyline([start, end]);
+          break;
+        }
+        case "angle-marker": {
+          const line = env.currentScene().lines.find((candidate) =>
+            candidate.binding?.kind === "angle-marker"
+            && candidate.binding.startIndex === action.startPointIndex
+            && candidate.binding.vertexIndex === action.vertexPointIndex
+            && candidate.binding.endIndex === action.endPointIndex
+          );
+          if (!line) break;
+          const points = env.resolveLinePoints(line);
+          strokePolyline(points || []);
+          break;
+        }
+        case "circle": {
+          const circle = env.currentScene().circles[action.circleIndex];
+          if (!circle) break;
+          const center = env.resolvePoint(circle.center);
+          const radiusPoint = env.resolvePoint(circle.radiusPoint);
+          if (!center || !radiusPoint) break;
+          const screenCenter = env.toScreen(center);
+          const screenRadiusPoint = env.toScreen(radiusPoint);
+          env.ctx.beginPath();
+          env.ctx.arc(
+            screenCenter.x,
+            screenCenter.y,
+            Math.hypot(screenRadiusPoint.x - screenCenter.x, screenRadiusPoint.y - screenCenter.y),
+            0,
+            Math.PI * 2,
+          );
+          env.ctx.stroke();
+          break;
+        }
+        case "polygon": {
+          const polygon = env.currentScene().polygons[action.polygonIndex];
+          if (!polygon || polygon.points.length < 3) break;
+          const points = polygon.points.map((handle) => env.resolvePoint(handle));
+          if (points.some((point) => !point)) break;
+          env.ctx.beginPath();
+          points.forEach((point, index) => {
+            const screen = env.toScreen(point);
+            if (index === 0) env.ctx.moveTo(screen.x, screen.y);
+            else env.ctx.lineTo(screen.x, screen.y);
+          });
+          env.ctx.closePath();
+          env.ctx.fill();
+          env.ctx.stroke();
+          break;
+        }
+        default:
+          break;
+      }
+    });
+
+    env.ctx.restore();
+  }
+
   function draw(env) {
     env.ctx.clearRect(0, 0, env.sourceScene.width, env.sourceScene.height);
     env.ctx.fillStyle = "rgb(250,250,248)";
@@ -612,11 +754,13 @@
     drawArcs(env);
     drawPoints(env);
     drawLabels(env);
+    drawHotspotFlashes(env);
   }
 
   modules.render = {
     labelMetrics,
     labelBounds,
+    labelHotspotRects,
     findHitPoint,
     findHitLabel,
     findHitPolygon,
