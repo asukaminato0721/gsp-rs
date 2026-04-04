@@ -2,3 +2,5 @@ a (web) render for https://sketchpad.keycurriculum.com/
 
 cargo run ./path/to/your.gsp
 cargo run ./path/to/one.gsp ./path/to/two.gsp
+
+Open the generated html and click `Debug` to inspect the extracted hierarchy as a graph or raw JSON.

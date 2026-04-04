@@ -118,9 +118,13 @@
   }
 
   function labelBounds(env, label) {
-    const screen = label.screenSpace
+    const worldAnchor = label.screenSpace
       ? { x: label.anchor.x, y: label.anchor.y }
-      : env.toScreen(env.resolvePoint(label.anchor));
+      : env.resolvePoint(label.anchor);
+    if (!worldAnchor) return null;
+    const screen = label.screenSpace
+      ? worldAnchor
+      : env.toScreen(worldAnchor);
     const metrics = labelMetrics(env, label.text);
     if (label.centeredOnAnchor) {
       return {
@@ -149,7 +153,9 @@
       if (point.visible === false) {
         return;
       }
-      const screen = env.toScreen(env.resolveScenePoint(index));
+      const resolved = env.resolveScenePoint(index);
+      if (!resolved) return;
+      const screen = env.toScreen(resolved);
       const dx = screen.x - screenX;
       const dy = screen.y - screenY;
       const distanceSquared = dx * dx + dy * dy;
@@ -171,6 +177,7 @@
         continue;
       }
       const bounds = labelBounds(env, label);
+      if (!bounds) continue;
       if (
         screenX >= bounds.left &&
         screenX <= bounds.left + bounds.width + 8 &&
@@ -213,7 +220,9 @@
     for (let index = env.currentScene().polygons.length - 1; index >= 0; index -= 1) {
       const polygon = env.currentScene().polygons[index];
       if (polygon.visible === false || !isFreePolygon(env, polygon)) continue;
-      const screenPoints = polygon.points.map((handle) => env.toScreen(env.resolvePoint(handle)));
+      const worldPoints = polygon.points.map((handle) => env.resolvePoint(handle));
+      if (worldPoints.some((point) => !point)) continue;
+      const screenPoints = worldPoints.map((point) => env.toScreen(point));
       if (screenPoints.length < 3) continue;
       if (pointInPolygon({ x: screenX, y: screenY }, screenPoints)) {
         return index;
@@ -226,9 +235,11 @@
     for (const polygon of env.currentScene().polygons) {
       if (polygon.visible === false) continue;
       if (polygon.points.length < 3) continue;
+      const worldPoints = polygon.points.map((handle) => env.resolvePoint(handle));
+      if (worldPoints.some((point) => !point)) continue;
       env.ctx.beginPath();
-      polygon.points.forEach((handle, index) => {
-        const screen = env.toScreen(env.resolvePoint(handle));
+      worldPoints.forEach((point, index) => {
+        const screen = env.toScreen(point);
         if (index === 0) {
           env.ctx.moveTo(screen.x, screen.y);
         } else {
@@ -289,6 +300,7 @@
       const start = env.resolveScenePoint(line.binding.startIndex);
       const vertex = env.resolveScenePoint(line.binding.vertexIndex);
       const end = env.resolveScenePoint(line.binding.endIndex);
+      if (!start || !vertex || !end) return;
       const firstDx = start.x - vertex.x;
       const firstDy = start.y - vertex.y;
       const secondDx = end.x - vertex.x;
@@ -312,6 +324,7 @@
     const drawSegmentMarker = (line) => {
       const start = env.resolveScenePoint(line.binding.startIndex);
       const end = env.resolveScenePoint(line.binding.endIndex);
+      if (!start || !end) return;
       const dx = end.x - start.x;
       const dy = end.y - start.y;
       const len = Math.hypot(dx, dy);
@@ -376,13 +389,23 @@
         || line.binding?.kind === "parallel-line"
       ) {
         const start = line.binding.kind === "perpendicular-line" || line.binding.kind === "parallel-line"
-          ? env.toScreen(env.resolveScenePoint(line.binding.throughIndex))
+          ? (() => {
+              const through = env.resolveScenePoint(line.binding.throughIndex);
+              return through ? env.toScreen(through) : null;
+            })()
           : line.binding.kind === "angle-bisector-ray"
-            ? env.toScreen(env.resolveScenePoint(line.binding.vertexIndex))
-          : env.toScreen(env.resolveScenePoint(line.binding.startIndex));
+            ? (() => {
+                const vertex = env.resolveScenePoint(line.binding.vertexIndex);
+                return vertex ? env.toScreen(vertex) : null;
+              })()
+          : (() => {
+              const startPoint = env.resolveScenePoint(line.binding.startIndex);
+              return startPoint ? env.toScreen(startPoint) : null;
+            })();
         const end = line.binding.kind === "perpendicular-line"
           ? (() => {
               const through = env.resolveScenePoint(line.binding.throughIndex);
+              if (!through) return null;
               const hostLine = resolveHostLinePoints(line.binding);
               if (!hostLine) return null;
               const [lineStart, lineEnd] = hostLine;
@@ -398,6 +421,7 @@
           : line.binding.kind === "parallel-line"
             ? (() => {
                 const through = env.resolveScenePoint(line.binding.throughIndex);
+                if (!through) return null;
                 const hostLine = resolveHostLinePoints(line.binding);
                 if (!hostLine) return null;
                 const [lineStart, lineEnd] = hostLine;
@@ -415,6 +439,7 @@
                 const startPoint = env.resolveScenePoint(line.binding.startIndex);
                 const vertex = env.resolveScenePoint(line.binding.vertexIndex);
                 const endPoint = env.resolveScenePoint(line.binding.endIndex);
+                if (!startPoint || !vertex || !endPoint) return null;
                 const startDx = startPoint.x - vertex.x;
                 const startDy = startPoint.y - vertex.y;
                 const startLen = Math.hypot(startDx, startDy);
@@ -433,8 +458,11 @@
                   y: vertex.y + direction.y,
                 });
               })()
-          : env.toScreen(env.resolveScenePoint(line.binding.endIndex));
-        if (!end) continue;
+          : (() => {
+              const endPoint = env.resolveScenePoint(line.binding.endIndex);
+              return endPoint ? env.toScreen(endPoint) : null;
+            })();
+        if (!start || !end) continue;
         screenPoints = clipParametricLineToRect(
           start,
           end,
@@ -472,6 +500,7 @@
       if (circle.visible === false) continue;
       const centerWorld = env.resolvePoint(circle.center);
       const radiusPointWorld = env.resolvePoint(circle.radiusPoint);
+      if (!centerWorld || !radiusPointWorld) continue;
       const center = env.toScreen(centerWorld);
       const radius = Math.hypot(
         radiusPointWorld.x - centerWorld.x,
@@ -495,6 +524,7 @@
         const startWorld = env.resolvePoint(arc.points[0]);
         const endWorld = env.resolvePoint(arc.points[2]);
         const centerWorld = env.resolvePoint(arc.center);
+        if (!startWorld || !endWorld || !centerWorld) continue;
         const midpointWorld = midpointOnCircleWorld(
           startWorld,
           endWorld,
@@ -509,7 +539,9 @@
           env.toScreen(endWorld),
         ];
       } else {
-        screenPoints = arc.points.map((handle) => env.toScreen(env.resolvePoint(handle)));
+        const worldPoints = arc.points.map((handle) => env.resolvePoint(handle));
+        if (worldPoints.some((point) => !point)) continue;
+        screenPoints = worldPoints.map((point) => env.toScreen(point));
       }
       const geometry = arcGeometryFromPoints(screenPoints[0], screenPoints[1], screenPoints[2]);
       if (!geometry) continue;
@@ -533,7 +565,9 @@
       if (point.visible === false) {
         return;
       }
-      const screen = env.toScreen(env.resolveScenePoint(index));
+      const resolved = env.resolveScenePoint(index);
+      if (!resolved) return;
+      const screen = env.toScreen(resolved);
       env.ctx.beginPath();
       env.ctx.arc(screen.x, screen.y, index === env.hoverPointIndex.val ? 6 : 4, 0, Math.PI * 2);
       env.ctx.fillStyle = index === env.hoverPointIndex.val ? "rgba(255, 120, 20, 1)" : "rgba(255, 60, 40, 1)";
@@ -546,6 +580,7 @@
     for (const label of env.currentScene().labels) {
       if (label.visible === false) continue;
       const bounds = labelBounds(env, label);
+      if (!bounds) continue;
       env.ctx.fillStyle = env.rgba(label.color);
       if (label.centeredOnAnchor) {
         env.ctx.textAlign = "center";

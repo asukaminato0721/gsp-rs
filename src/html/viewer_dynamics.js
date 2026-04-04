@@ -547,13 +547,15 @@
       if (depth <= 0) {
         return;
       }
-      const start = scene.points[family.startIndex];
-      const end = scene.points[family.endIndex];
-      if (!start || !end) return;
+      const start = env.resolveScenePoint(family.startIndex);
+      const end = env.resolveScenePoint(family.endIndex);
+      if (!start || !end) {
+        return;
+      }
       if (family.kind === "affine") {
         const resolveHandle = (handle) => {
           if (typeof handle?.pointIndex === "number") {
-            return scene.points[handle.pointIndex] || { x: 0, y: 0 };
+            return env.resolveScenePoint(handle.pointIndex);
           }
           if (typeof handle?.lineIndex === "number") {
             const line = scene.lines[handle.lineIndex];
@@ -569,7 +571,7 @@
           }
           return handle || { x: 0, y: 0 };
         };
-        const sourceTriangle = family.sourceTriangleIndices.map((index) => scene.points[index]);
+        const sourceTriangle = family.sourceTriangleIndices.map((index) => env.resolveScenePoint(index));
         const targetTriangle = family.targetTriangle.map((handle) => resolveHandle(handle));
         if (sourceTriangle.some((point) => !point) || targetTriangle.some((point) => !point)) {
           return;
@@ -651,9 +653,8 @@
         return;
       }
       const seedVertices = family.vertexIndices
-        .map((index) => scene.points[index])
-        .filter(Boolean);
-      if (seedVertices.length !== family.vertexIndices.length) {
+        .map((index) => env.resolveScenePoint(index));
+      if (seedVertices.some((point) => !point)) {
         return;
       }
       const hasSecondary = Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy);
@@ -748,7 +749,7 @@
     const parameters = parameterMap(env);
     const resolveHandle = (handle) => {
       if (typeof handle?.pointIndex === "number") {
-        return scene.points[handle.pointIndex] || { x: 0, y: 0 };
+        return env.resolveScenePoint(handle.pointIndex);
       }
       return handle || { x: 0, y: 0 };
     };
@@ -760,23 +761,23 @@
           applyNormalizedParameterToPoint(point, scene, value);
         }
       } else if (point.binding?.kind === "translate") {
-        const source = scene.points[point.binding.sourceIndex];
-        const vectorStart = scene.points[point.binding.vectorStartIndex];
-        const vectorEnd = scene.points[point.binding.vectorEndIndex];
+        const source = env.resolveScenePoint(point.binding.sourceIndex);
+        const vectorStart = env.resolveScenePoint(point.binding.vectorStartIndex);
+        const vectorEnd = env.resolveScenePoint(point.binding.vectorEndIndex);
         if (!source || !vectorStart || !vectorEnd) return;
         point.x = source.x + (vectorEnd.x - vectorStart.x);
         point.y = source.y + (vectorEnd.y - vectorStart.y);
       } else if (point.binding?.kind === "reflect") {
-        const source = scene.points[point.binding.sourceIndex];
-        const lineStart = scene.points[point.binding.lineStartIndex];
-        const lineEnd = scene.points[point.binding.lineEndIndex];
+        const source = env.resolveScenePoint(point.binding.sourceIndex);
+        const lineStart = env.resolveScenePoint(point.binding.lineStartIndex);
+        const lineEnd = env.resolveScenePoint(point.binding.lineEndIndex);
         if (!source || !lineStart || !lineEnd) return;
         const reflected = reflectAcrossLine(source, lineStart, lineEnd);
         point.x = reflected.x;
         point.y = reflected.y;
       } else if (point.binding?.kind === "rotate") {
-        const source = scene.points[point.binding.sourceIndex];
-        const center = scene.points[point.binding.centerIndex];
+        const source = env.resolveScenePoint(point.binding.sourceIndex);
+        const center = env.resolveScenePoint(point.binding.centerIndex);
         if (!source || !center) return;
         const angleDegrees = point.binding.parameterName
           ? parameters.get(point.binding.parameterName)
@@ -786,8 +787,8 @@
         point.x = rotated.x;
         point.y = rotated.y;
       } else if (point.binding?.kind === "scale") {
-        const source = scene.points[point.binding.sourceIndex];
-        const center = scene.points[point.binding.centerIndex];
+        const source = env.resolveScenePoint(point.binding.sourceIndex);
+        const center = env.resolveScenePoint(point.binding.centerIndex);
         if (!source || !center) return;
         const scaled = scaleAround(source, center, point.binding.factor);
         point.x = scaled.x;
@@ -797,9 +798,9 @@
 
     scene.circles.forEach((circle) => {
       if (circle.binding?.kind === "segment-radius-circle") {
-        const center = scene.points[circle.binding.centerIndex];
-        const lineStart = scene.points[circle.binding.lineStartIndex];
-        const lineEnd = scene.points[circle.binding.lineEndIndex];
+        const center = env.resolveScenePoint(circle.binding.centerIndex);
+        const lineStart = env.resolveScenePoint(circle.binding.lineStartIndex);
+        const lineEnd = env.resolveScenePoint(circle.binding.lineEndIndex);
         if (!center || !lineStart || !lineEnd) return;
         const radius = Math.hypot(lineEnd.x - lineStart.x, lineEnd.y - lineStart.y);
         circle.center = { x: center.x, y: center.y };

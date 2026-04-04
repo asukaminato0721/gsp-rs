@@ -7,6 +7,9 @@ use super::{
     decode_regular_polygon_vertex_anchor_raw, decode_transform_anchor_raw,
     decode_translated_point_anchor_raw, find_indexed_path,
 };
+use crate::runtime::extract::points::{
+    decode_graph_calibration_anchor_raw, decode_intersection_anchor_raw,
+};
 
 pub(crate) fn collect_raw_object_anchors(
     file: &GspFile,
@@ -18,8 +21,14 @@ pub(crate) fn collect_raw_object_anchors(
     for (index, group) in groups.iter().enumerate() {
         let anchor = if let Some(point) = point_map.get(index).and_then(|point| point.clone()) {
             Some(point)
+        } else if let Some(anchor) = decode_graph_calibration_anchor_raw(group, graph) {
+            Some(anchor)
         } else if let Some(anchor) =
             decode_point_constraint_anchor(file, groups, group, &anchors, graph)
+        {
+            Some(anchor)
+        } else if let Some(anchor) =
+            decode_intersection_anchor_raw(file, groups, group, &anchors)
         {
             Some(anchor)
         } else if let Some(anchor) = decode_point_on_ray_anchor_raw(file, groups, group, &anchors) {

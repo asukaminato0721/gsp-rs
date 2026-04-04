@@ -698,6 +698,49 @@ fn build_world_data(
                     end_index: *end_index,
                     t: *t,
                 },
+                ScenePointConstraint::LineIntersection {
+                    left_kind,
+                    left_start_index,
+                    left_end_index,
+                    right_kind,
+                    right_start_index,
+                    right_end_index,
+                } => ScenePointConstraint::LineIntersection {
+                    left_kind: *left_kind,
+                    left_start_index: *left_start_index,
+                    left_end_index: *left_end_index,
+                    right_kind: *right_kind,
+                    right_start_index: *right_start_index,
+                    right_end_index: *right_end_index,
+                },
+                ScenePointConstraint::LineCircleIntersection {
+                    line_kind,
+                    line_start_index,
+                    line_end_index,
+                    center_index,
+                    radius_index,
+                    variant,
+                } => ScenePointConstraint::LineCircleIntersection {
+                    line_kind: *line_kind,
+                    line_start_index: *line_start_index,
+                    line_end_index: *line_end_index,
+                    center_index: *center_index,
+                    radius_index: *radius_index,
+                    variant: *variant,
+                },
+                ScenePointConstraint::CircleCircleIntersection {
+                    left_center_index,
+                    left_radius_index,
+                    right_center_index,
+                    right_radius_index,
+                    variant,
+                } => ScenePointConstraint::CircleCircleIntersection {
+                    left_center_index: *left_center_index,
+                    left_radius_index: *left_radius_index,
+                    right_center_index: *right_center_index,
+                    right_radius_index: *right_radius_index,
+                    variant: *variant,
+                },
             },
             binding: point.binding.clone(),
         })
@@ -955,11 +998,222 @@ fn resolve_trace_point(
                 let end = resolve_trace_point(points, *end_index, visiting)?;
                 point_on_three_point_arc(&start, &mid, &end, *t)
             }
+            ScenePointConstraint::LineIntersection {
+                left_kind,
+                left_start_index,
+                left_end_index,
+                right_kind,
+                right_start_index,
+                right_end_index,
+            } => {
+                let left_start = resolve_trace_point(points, *left_start_index, visiting)?;
+                let left_end = resolve_trace_point(points, *left_end_index, visiting)?;
+                let right_start = resolve_trace_point(points, *right_start_index, visiting)?;
+                let right_end = resolve_trace_point(points, *right_end_index, visiting)?;
+                trace_line_line_intersection(
+                    &left_start,
+                    &left_end,
+                    *left_kind,
+                    &right_start,
+                    &right_end,
+                    *right_kind,
+                )
+            }
+            ScenePointConstraint::LineCircleIntersection {
+                line_kind,
+                line_start_index,
+                line_end_index,
+                center_index,
+                radius_index,
+                variant,
+            } => {
+                let line_start = resolve_trace_point(points, *line_start_index, visiting)?;
+                let line_end = resolve_trace_point(points, *line_end_index, visiting)?;
+                let center = resolve_trace_point(points, *center_index, visiting)?;
+                let radius_point = resolve_trace_point(points, *radius_index, visiting)?;
+                trace_line_circle_intersection(
+                    &line_start,
+                    &line_end,
+                    *line_kind,
+                    &center,
+                    &radius_point,
+                    *variant,
+                )
+            }
+            ScenePointConstraint::CircleCircleIntersection {
+                left_center_index,
+                left_radius_index,
+                right_center_index,
+                right_radius_index,
+                variant,
+            } => {
+                let left_center = resolve_trace_point(points, *left_center_index, visiting)?;
+                let left_radius = resolve_trace_point(points, *left_radius_index, visiting)?;
+                let right_center = resolve_trace_point(points, *right_center_index, visiting)?;
+                let right_radius = resolve_trace_point(points, *right_radius_index, visiting)?;
+                trace_circle_circle_intersection(
+                    &left_center,
+                    &left_radius,
+                    &right_center,
+                    &right_radius,
+                    *variant,
+                )
+            }
         },
     };
 
     visiting.remove(&index);
     resolved
+}
+
+fn trace_line_line_intersection(
+    left_start: &PointRecord,
+    left_end: &PointRecord,
+    left_kind: crate::runtime::scene::LineLikeKind,
+    right_start: &PointRecord,
+    right_end: &PointRecord,
+    right_kind: crate::runtime::scene::LineLikeKind,
+) -> Option<PointRecord> {
+    let left_dx = left_end.x - left_start.x;
+    let left_dy = left_end.y - left_start.y;
+    let right_dx = right_end.x - right_start.x;
+    let right_dy = right_end.y - right_start.y;
+    let determinant = left_dx * right_dy - left_dy * right_dx;
+    if determinant.abs() <= 1e-9 {
+        return None;
+    }
+    let delta_x = right_start.x - left_start.x;
+    let delta_y = right_start.y - left_start.y;
+    let t = (delta_x * right_dy - delta_y * right_dx) / determinant;
+    let point = PointRecord {
+        x: left_start.x + t * left_dx,
+        y: left_start.y + t * left_dy,
+    };
+    (trace_line_like_contains(left_start, left_end, left_kind, &point)
+        && trace_line_like_contains(right_start, right_end, right_kind, &point))
+        .then_some(point)
+}
+
+fn trace_line_circle_intersection(
+    line_start: &PointRecord,
+    line_end: &PointRecord,
+    line_kind: crate::runtime::scene::LineLikeKind,
+    center: &PointRecord,
+    radius_point: &PointRecord,
+    variant: usize,
+) -> Option<PointRecord> {
+    let dx = line_end.x - line_start.x;
+    let dy = line_end.y - line_start.y;
+    let a = dx * dx + dy * dy;
+    if a <= 1e-9 {
+        return None;
+    }
+    let radius = ((radius_point.x - center.x).powi(2) + (radius_point.y - center.y).powi(2)).sqrt();
+    if radius <= 1e-9 {
+        return None;
+    }
+    let fx = line_start.x - center.x;
+    let fy = line_start.y - center.y;
+    let b = 2.0 * (fx * dx + fy * dy);
+    let c = fx * fx + fy * fy - radius * radius;
+    let discriminant = b * b - 4.0 * a * c;
+    if discriminant < -1e-9 {
+        return None;
+    }
+    let root = discriminant.max(0.0).sqrt();
+    let mut ts = [(-b - root) / (2.0 * a), (-b + root) / (2.0 * a)]
+        .into_iter()
+        .filter(|t| trace_param_in_line_like(*t, line_kind))
+        .collect::<Vec<_>>();
+    if ts.is_empty() {
+        return None;
+    }
+    ts.sort_by(|left, right| left.total_cmp(right));
+    let t = ts[variant.min(ts.len() - 1)];
+    Some(PointRecord {
+        x: line_start.x + dx * t,
+        y: line_start.y + dy * t,
+    })
+}
+
+fn trace_line_like_contains(
+    start: &PointRecord,
+    end: &PointRecord,
+    kind: crate::runtime::scene::LineLikeKind,
+    point: &PointRecord,
+) -> bool {
+    let dx = end.x - start.x;
+    let dy = end.y - start.y;
+    let len_sq = dx * dx + dy * dy;
+    if len_sq <= 1e-9 {
+        return false;
+    }
+    let t = ((point.x - start.x) * dx + (point.y - start.y) * dy) / len_sq;
+    trace_param_in_line_like(t, kind)
+}
+
+fn trace_param_in_line_like(t: f64, kind: crate::runtime::scene::LineLikeKind) -> bool {
+    match kind {
+        crate::runtime::scene::LineLikeKind::Line => true,
+        crate::runtime::scene::LineLikeKind::Ray => t >= -1e-9,
+        crate::runtime::scene::LineLikeKind::Segment => (-1e-9..=1.0 + 1e-9).contains(&t),
+    }
+}
+
+fn trace_circle_circle_intersection(
+    left_center: &PointRecord,
+    left_radius_point: &PointRecord,
+    right_center: &PointRecord,
+    right_radius_point: &PointRecord,
+    variant: usize,
+) -> Option<PointRecord> {
+    let left_radius =
+        ((left_radius_point.x - left_center.x).powi(2) + (left_radius_point.y - left_center.y).powi(2))
+            .sqrt();
+    let right_radius = ((right_radius_point.x - right_center.x).powi(2)
+        + (right_radius_point.y - right_center.y).powi(2))
+    .sqrt();
+    if left_radius <= 1e-9 || right_radius <= 1e-9 {
+        return None;
+    }
+    let dx = right_center.x - left_center.x;
+    let dy = right_center.y - left_center.y;
+    let distance = (dx * dx + dy * dy).sqrt();
+    if distance <= 1e-9
+        || distance > left_radius + right_radius + 1e-9
+        || distance < (left_radius - right_radius).abs() - 1e-9
+    {
+        return None;
+    }
+    let along = (left_radius * left_radius - right_radius * right_radius + distance * distance)
+        / (2.0 * distance);
+    let height_sq = left_radius * left_radius - along * along;
+    if height_sq < -1e-9 {
+        return None;
+    }
+    let height = height_sq.max(0.0).sqrt();
+    let ux = dx / distance;
+    let uy = dy / distance;
+    let base = PointRecord {
+        x: left_center.x + along * ux,
+        y: left_center.y + along * uy,
+    };
+    let mut ordered = [
+        PointRecord {
+            x: base.x - height * uy,
+            y: base.y + height * ux,
+        },
+        PointRecord {
+            x: base.x + height * uy,
+            y: base.y - height * ux,
+        },
+    ];
+    ordered.sort_by(|left, right| {
+        left.y
+            .total_cmp(&right.y)
+            .then_with(|| left.x.total_cmp(&right.x))
+    });
+    Some(ordered[variant.min(1)].clone())
 }
 
 fn collect_point_traces(
@@ -1315,14 +1569,12 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         &analysis.raw_anchors,
         &analysis.graph_ref,
     );
-    if !analysis.graph_mode {
-        shapes.coordinate_traces.extend(collect_point_traces(
-            file,
-            &groups,
-            &visible_points,
-            &group_to_point_index,
-        ));
-    }
+    shapes.coordinate_traces.extend(collect_point_traces(
+        file,
+        &groups,
+        &visible_points,
+        &group_to_point_index,
+    ));
     let (derived_iteration_points, raw_point_iterations) =
         collect_point_iteration_points(file, &groups, &analysis.raw_anchors, &group_to_point_index);
     let label_iterations =

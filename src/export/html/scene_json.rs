@@ -3,6 +3,7 @@ use crate::runtime::functions::{BinaryOp, FunctionExpr, FunctionTerm, UnaryFunct
 use crate::runtime::geometry::darken;
 use crate::runtime::scene::{
     ButtonAction, IterationPointHandle, LabelIterationFamily, LineBinding, LineIterationFamily,
+    LineLikeKind,
     PointIterationFamily, PolygonIterationFamily, Scene, SceneButton, ScenePointBinding,
     ScenePointConstraint, ShapeBinding, TextLabelBinding,
 };
@@ -1374,6 +1375,47 @@ enum PointConstraintJson {
         end_index: usize,
         t: f64,
     },
+    #[serde(rename = "line-intersection")]
+    LineIntersection {
+        #[serde(rename = "leftKind")]
+        left_kind: LineLikeKindJson,
+        #[serde(rename = "leftStartIndex")]
+        left_start_index: usize,
+        #[serde(rename = "leftEndIndex")]
+        left_end_index: usize,
+        #[serde(rename = "rightKind")]
+        right_kind: LineLikeKindJson,
+        #[serde(rename = "rightStartIndex")]
+        right_start_index: usize,
+        #[serde(rename = "rightEndIndex")]
+        right_end_index: usize,
+    },
+    #[serde(rename = "line-circle-intersection")]
+    LineCircleIntersection {
+        #[serde(rename = "lineKind")]
+        line_kind: LineLikeKindJson,
+        #[serde(rename = "lineStartIndex")]
+        line_start_index: usize,
+        #[serde(rename = "lineEndIndex")]
+        line_end_index: usize,
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "radiusIndex")]
+        radius_index: usize,
+        variant: usize,
+    },
+    #[serde(rename = "circle-circle-intersection")]
+    CircleCircleIntersection {
+        #[serde(rename = "leftCenterIndex")]
+        left_center_index: usize,
+        #[serde(rename = "leftRadiusIndex")]
+        left_radius_index: usize,
+        #[serde(rename = "rightCenterIndex")]
+        right_center_index: usize,
+        #[serde(rename = "rightRadiusIndex")]
+        right_radius_index: usize,
+        variant: usize,
+    },
 }
 
 impl PointConstraintJson {
@@ -1440,6 +1482,67 @@ impl PointConstraintJson {
                 end_index: *end_index,
                 t: *t,
             }),
+            ScenePointConstraint::LineIntersection {
+                left_kind,
+                left_start_index,
+                left_end_index,
+                right_kind,
+                right_start_index,
+                right_end_index,
+            } => Some(Self::LineIntersection {
+                left_kind: LineLikeKindJson::from_kind(*left_kind),
+                left_start_index: *left_start_index,
+                left_end_index: *left_end_index,
+                right_kind: LineLikeKindJson::from_kind(*right_kind),
+                right_start_index: *right_start_index,
+                right_end_index: *right_end_index,
+            }),
+            ScenePointConstraint::LineCircleIntersection {
+                line_kind,
+                line_start_index,
+                line_end_index,
+                center_index,
+                radius_index,
+                variant,
+            } => Some(Self::LineCircleIntersection {
+                line_kind: LineLikeKindJson::from_kind(*line_kind),
+                line_start_index: *line_start_index,
+                line_end_index: *line_end_index,
+                center_index: *center_index,
+                radius_index: *radius_index,
+                variant: *variant,
+            }),
+            ScenePointConstraint::CircleCircleIntersection {
+                left_center_index,
+                left_radius_index,
+                right_center_index,
+                right_radius_index,
+                variant,
+            } => Some(Self::CircleCircleIntersection {
+                left_center_index: *left_center_index,
+                left_radius_index: *left_radius_index,
+                right_center_index: *right_center_index,
+                right_radius_index: *right_radius_index,
+                variant: *variant,
+            }),
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum LineLikeKindJson {
+    Segment,
+    Line,
+    Ray,
+}
+
+impl LineLikeKindJson {
+    fn from_kind(kind: LineLikeKind) -> Self {
+        match kind {
+            LineLikeKind::Segment => Self::Segment,
+            LineLikeKind::Line => Self::Line,
+            LineLikeKind::Ray => Self::Ray,
         }
     }
 }
