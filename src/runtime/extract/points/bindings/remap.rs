@@ -442,6 +442,59 @@ pub(crate) fn remap_line_bindings(
                 *start_index = mapped_start_index;
                 *end_index = mapped_end_index;
             }
+            LineBinding::AngleMarker {
+                start_index,
+                vertex_index,
+                end_index,
+                ..
+            } => {
+                let Some(mapped_start_index) = group_to_point_index
+                    .get(*start_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                let Some(mapped_vertex_index) = group_to_point_index
+                    .get(*vertex_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                let Some(mapped_end_index) = group_to_point_index
+                    .get(*end_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                *start_index = mapped_start_index;
+                *vertex_index = mapped_vertex_index;
+                *end_index = mapped_end_index;
+            }
+            LineBinding::SegmentMarker {
+                start_index,
+                end_index,
+                ..
+            } => {
+                let Some(mapped_start_index) = group_to_point_index
+                    .get(*start_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                let Some(mapped_end_index) = group_to_point_index
+                    .get(*end_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                *start_index = mapped_start_index;
+                *end_index = mapped_end_index;
+            }
             LineBinding::RotateLine {
                 source_index,
                 center_index,

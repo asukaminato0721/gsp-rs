@@ -835,8 +835,8 @@ fn preserves_angle_sign_gsp() {
     let marker = scene
         .lines
         .iter()
-        .find(|line| line.binding.is_none() && line.points.len() == 3)
-        .expect("expected synthesized angle marker polyline");
+        .find(|line| matches!(line.binding, Some(LineBinding::AngleMarker { .. })) && line.points.len() == 3)
+        .expect("expected reactive angle marker polyline");
 
     let anchor = &scene.points[0].position;
     let base = &scene.points[1].position;
@@ -1751,8 +1751,8 @@ fn preserves_translated_triangle_segments_in_congruent_triangle_fixture() {
 
     assert_eq!(
         scene.lines.len(),
-        10,
-        "expected three source edges, three translated edges, and four congruence markers"
+        16,
+        "expected source and translated edges plus angle and segment congruence markers"
     );
     assert_eq!(
         scene
@@ -1762,6 +1762,24 @@ fn preserves_translated_triangle_segments_in_congruent_triangle_fixture() {
             .count(),
         3,
         "expected the translated triangle to contribute three translated segment bindings"
+    );
+    assert_eq!(
+        scene
+            .lines
+            .iter()
+            .filter(|line| matches!(line.binding, Some(LineBinding::AngleMarker { .. })))
+            .count(),
+        4,
+        "expected four reactive angle markers"
+    );
+    assert_eq!(
+        scene
+            .lines
+            .iter()
+            .filter(|line| matches!(line.binding, Some(LineBinding::SegmentMarker { .. })))
+            .count(),
+        6,
+        "expected six segment congruence markers from payload"
     );
     assert!(scene.lines.iter().any(|line| {
         matches!(
@@ -1777,6 +1795,13 @@ fn preserves_translated_triangle_segments_in_congruent_triangle_fixture() {
             && (line.points[1].x - 467.0).abs() < 1e-6
             && (line.points[1].y - 250.0).abs() < 1e-6
     }));
+    assert!(scene.lines.iter().any(|line| matches!(
+        line.binding,
+        Some(LineBinding::SegmentMarker {
+            marker_class: 3,
+            ..
+        })
+    )));
     assert!(
         scene.labels.iter().any(|label| label.text == "B'"),
         "expected translated point label B'"

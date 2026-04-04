@@ -7,6 +7,7 @@ use super::{
     fill_color_from_styles, find_indexed_path, has_distinct_points, three_point_arc_geometry,
     to_raw_from_world,
 };
+use crate::format::{read_f64, read_u32};
 use crate::runtime::extract::decode::{is_circle_group_kind, resolve_circle_points_raw};
 use crate::runtime::geometry::arc_on_circle_control_points;
 
@@ -86,6 +87,38 @@ pub(crate) fn collect_line_shapes(
         .collect()
 }
 
+pub(crate) fn collect_segment_marker_shapes(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+) -> Vec<LineShape> {
+    groups
+        .iter()
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::SegmentMarker)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            let host_group_index = path.refs.first()?.checked_sub(1)?;
+            let (start_group_index, end_group_index) =
+                resolve_segment_marker_endpoint_groups(file, groups, host_group_index)?;
+            let start = anchors.get(start_group_index)?.clone()?;
+            let end = anchors.get(end_group_index)?.clone()?;
+            let (t, marker_class) = decode_segment_marker_payload(file, group)?;
+            let points = resolve_segment_marker_points(&start, &end, t, marker_class)?;
+            Some(LineShape {
+                points,
+                color: color_from_style(group.header.style_b),
+                dashed: false,
+                binding: Some(LineBinding::SegmentMarker {
+                    start_index: start_group_index,
+                    end_index: end_group_index,
+                    t,
+                    marker_class,
+                }),
+            })
+        })
+        .collect()
+}
+
 fn resolve_angle_marker_shape(
     file: &GspFile,
     anchors: &[Option<PointRecord>],
@@ -105,6 +138,53 @@ fn resolve_angle_marker_shape(
     let first_len = ((start.x - vertex.x).powi(2) + (start.y - vertex.y).powi(2)).sqrt();
     let second_len = ((end.x - vertex.x).powi(2) + (end.y - vertex.y).powi(2)).sqrt();
     let shortest_len = first_len.min(second_len);
+    if shortest_len <= 1e-9 {
+        return None;
+    }
+
+    let marker_class = decode_angle_marker_class(file, group).max(1);
+    let points = resolve_angle_marker_points(
+        &vertex,
+        first,
+        second,
+        shortest_len,
+        marker_class,
+    )?;
+
+    has_distinct_points(&points).then_some(LineShape {
+        points,
+        color: color_from_style(group.header.style_b),
+        dashed: false,
+        binding: Some(LineBinding::AngleMarker {
+            start_index: path.refs[0].checked_sub(1)?,
+            vertex_index: path.refs[1].checked_sub(1)?,
+            end_index: path.refs[2].checked_sub(1)?,
+            marker_class,
+        }),
+    })
+}
+
+pub(crate) fn resolve_angle_marker_points(
+    vertex: &PointRecord,
+    first: (f64, f64),
+    second: (f64, f64),
+    shortest_len: f64,
+    marker_class: u32,
+) -> Option<Vec<PointRecord>> {
+    let dot = (first.0 * second.0 + first.1 * second.1).clamp(-1.0, 1.0);
+    let cross = first.0 * second.1 - first.1 * second.0;
+    if dot.abs() <= 0.12 {
+        return resolve_right_angle_marker_points(vertex, first, second, shortest_len);
+    }
+    resolve_arc_angle_marker_points(vertex, first, shortest_len, cross, dot, marker_class)
+}
+
+fn resolve_right_angle_marker_points(
+    vertex: &PointRecord,
+    first: (f64, f64),
+    second: (f64, f64),
+    shortest_len: f64,
+) -> Option<Vec<PointRecord>> {
     let side = (shortest_len * 0.125).clamp(10.0, 28.0).min(shortest_len * 0.5);
     if side <= 1e-9 {
         return None;
@@ -122,13 +202,169 @@ fn resolve_angle_marker_shape(
         x: vertex.x + second.0 * side,
         y: vertex.y + second.1 * side,
     };
-    let points = vec![start_on_first, corner, end_on_second];
 
-    has_distinct_points(&points).then_some(LineShape {
-        points,
-        color: color_from_style(group.header.style_b),
-        dashed: false,
-        binding: None,
+    Some(vec![start_on_first, corner, end_on_second])
+}
+
+fn resolve_arc_angle_marker_points(
+    vertex: &PointRecord,
+    first: (f64, f64),
+    shortest_len: f64,
+    cross: f64,
+    dot: f64,
+    marker_class: u32,
+) -> Option<Vec<PointRecord>> {
+    let class_scale = 1.0 + 0.18 * (marker_class.saturating_sub(1) as f64);
+    let radius = ((shortest_len * 0.12).clamp(10.0, 28.0) * class_scale).min(shortest_len * 0.42);
+    if radius <= 1e-9 {
+        return None;
+    }
+    let delta = cross.atan2(dot);
+    if delta.abs() <= 1e-6 {
+        return None;
+    }
+    let start_angle = first.1.atan2(first.0);
+    let samples = 9usize;
+    Some(
+        (0..samples)
+            .map(|index| {
+                let t = index as f64 / (samples - 1) as f64;
+                let angle = start_angle + delta * t;
+                PointRecord {
+                    x: vertex.x + radius * angle.cos(),
+                    y: vertex.y + radius * angle.sin(),
+                }
+            })
+            .collect(),
+    )
+}
+
+fn decode_angle_marker_class(file: &GspFile, group: &ObjectGroup) -> u32 {
+    group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x090e)
+        .map(|record| record.payload(&file.data))
+        .filter(|payload| payload.len() >= 4)
+        .map(|payload| read_u32(payload, 0))
+        .unwrap_or(1)
+}
+
+fn decode_segment_marker_payload(file: &GspFile, group: &ObjectGroup) -> Option<(f64, u32)> {
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x090f)
+        .map(|record| record.payload(&file.data))?;
+    (payload.len() >= 12).then(|| (read_f64(payload, 0), read_u32(payload, 8)))
+}
+
+pub(crate) fn resolve_segment_marker_points(
+    start: &PointRecord,
+    end: &PointRecord,
+    t: f64,
+    marker_class: u32,
+) -> Option<Vec<PointRecord>> {
+    let dx = end.x - start.x;
+    let dy = end.y - start.y;
+    let len = (dx * dx + dy * dy).sqrt();
+    if len <= 1e-9 {
+        return None;
+    }
+    let tangent = (dx / len, dy / len);
+    let normal = (-tangent.1, tangent.0);
+    let center_t = t.clamp(0.0, 1.0);
+    let center = PointRecord {
+        x: start.x + dx * center_t,
+        y: start.y + dy * center_t,
+    };
+    let slash_dir_x = tangent.0 * 0.55 + normal.0;
+    let slash_dir_y = tangent.1 * 0.55 + normal.1;
+    let slash_dir_len = (slash_dir_x * slash_dir_x + slash_dir_y * slash_dir_y).sqrt();
+    if slash_dir_len <= 1e-9 {
+        return None;
+    }
+    let slash_dir = (slash_dir_x / slash_dir_len, slash_dir_y / slash_dir_len);
+    let half_len = (len * 0.06).clamp(5.0, 10.0);
+    let spacing = (len * 0.05).clamp(6.0, 11.0);
+    let offset = (marker_class.saturating_sub(1) as f64) * -0.5;
+    let center_offset = offset * spacing;
+    let slash_center = PointRecord {
+        x: center.x + tangent.0 * center_offset,
+        y: center.y + tangent.1 * center_offset,
+    };
+    Some(vec![
+        PointRecord {
+            x: slash_center.x - slash_dir.0 * half_len,
+            y: slash_center.y - slash_dir.1 * half_len,
+        },
+        PointRecord {
+            x: slash_center.x + slash_dir.0 * half_len,
+            y: slash_center.y + slash_dir.1 * half_len,
+        },
+    ])
+}
+
+fn resolve_segment_marker_endpoint_groups(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    host_group_index: usize,
+) -> Option<(usize, usize)> {
+    let host_group = groups.get(host_group_index)?;
+    match host_group.header.kind() {
+        crate::format::GroupKind::Segment => {
+            let path = find_indexed_path(file, host_group)?;
+            Some((path.refs.first()?.checked_sub(1)?, path.refs.get(1)?.checked_sub(1)?))
+        }
+        crate::format::GroupKind::Translation => {
+            let path = find_indexed_path(file, host_group)?;
+            let source_segment_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            if (source_segment_group.header.kind()) != crate::format::GroupKind::Segment {
+                return None;
+            }
+            let source_path = find_indexed_path(file, source_segment_group)?;
+            let vector_start_group_index = path.refs.get(1)?.checked_sub(1)?;
+            let vector_end_group_index = path.refs.get(2)?.checked_sub(1)?;
+            let start_group_index = resolve_translated_endpoint_group(
+                file,
+                groups,
+                source_path.refs.first()?.checked_sub(1)?,
+                vector_start_group_index,
+                vector_end_group_index,
+            )?;
+            let end_group_index = resolve_translated_endpoint_group(
+                file,
+                groups,
+                source_path.refs.get(1)?.checked_sub(1)?,
+                vector_start_group_index,
+                vector_end_group_index,
+            )?;
+            Some((start_group_index, end_group_index))
+        }
+        _ => None,
+    }
+}
+
+fn resolve_translated_endpoint_group(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    source_point_group_index: usize,
+    vector_start_group_index: usize,
+    vector_end_group_index: usize,
+) -> Option<usize> {
+    if source_point_group_index == vector_start_group_index {
+        return Some(vector_end_group_index);
+    }
+    groups.iter().enumerate().find_map(|(group_index, group)| {
+        if (group.header.kind()) != crate::format::GroupKind::Translation {
+            return None;
+        }
+        let path = find_indexed_path(file, group)?;
+        (path.refs.len() >= 3
+            && path.refs[0].checked_sub(1)? == source_point_group_index
+            && path.refs[1].checked_sub(1)? == vector_start_group_index
+            && path.refs[2].checked_sub(1)? == vector_end_group_index)
+            .then_some(group_index)
     })
 }
 

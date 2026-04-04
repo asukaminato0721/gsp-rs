@@ -217,6 +217,18 @@ pub(crate) enum LineBinding {
         start_index: usize,
         end_index: usize,
     },
+    AngleMarker {
+        start_index: usize,
+        vertex_index: usize,
+        end_index: usize,
+        marker_class: u32,
+    },
+    SegmentMarker {
+        start_index: usize,
+        end_index: usize,
+        t: f64,
+        marker_class: u32,
+    },
     AngleBisectorRay {
         start_index: usize,
         vertex_index: usize,

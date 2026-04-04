@@ -358,6 +358,8 @@ mod tests {
         .expect("congruent triangle fixture should compile");
 
         assert!(html.contains("\"kind\":\"translate-line\""));
+        assert!(html.contains("\"kind\":\"angle-marker\""));
+        assert!(html.contains("\"kind\":\"segment-marker\""));
         assert!(html.contains("\"vectorStartIndex\":0,\"vectorEndIndex\":3"));
         assert!(html.contains("\"text\":\"B'\""));
         assert!(html.contains("\"text\":\"C'\""));

@@ -245,8 +245,117 @@
   }
 
   function drawLines(env) {
+    const resolveRightAngleMarkerPoints = (vertex, first, second, shortestLen, layerIndex, layerCount) => {
+      const sideBase = Math.min(Math.max(shortestLen * 0.125, 10), 28, shortestLen * 0.5);
+      const side = sideBase + layerIndex * 5;
+      if (side <= 1e-9) return null;
+      return [
+        { x: vertex.x + first.x * side, y: vertex.y + first.y * side },
+        { x: vertex.x + (first.x + second.x) * side, y: vertex.y + (first.y + second.y) * side },
+        { x: vertex.x + second.x * side, y: vertex.y + second.y * side },
+      ];
+    };
+    const resolveArcAngleMarkerPoints = (vertex, first, shortestLen, cross, dot, layerIndex, layerCount) => {
+      const radius = Math.min(Math.max(shortestLen * 0.12, 10), 28) + layerIndex * 5;
+      const clampedRadius = Math.min(radius, shortestLen * (0.42 + layerIndex * 0.06));
+      if (clampedRadius <= 1e-9) return null;
+      const delta = Math.atan2(cross, dot);
+      if (Math.abs(delta) <= 1e-6) return null;
+      const startAngle = Math.atan2(first.y, first.x);
+      const samples = 9;
+      return Array.from({ length: samples }, (_, index) => {
+        const t = index / (samples - 1);
+        const angle = startAngle + delta * t;
+        return {
+          x: vertex.x + clampedRadius * Math.cos(angle),
+          y: vertex.y + clampedRadius * Math.sin(angle),
+        };
+      });
+    };
+    const drawPolyline = (worldPoints, color, dashed) => {
+      const screenPoints = worldPoints.map((point) => env.toScreen(point));
+      if (screenPoints.length < 2) return;
+      env.ctx.beginPath();
+      screenPoints.forEach((screen, index) => {
+        if (index === 0) env.ctx.moveTo(screen.x, screen.y);
+        else env.ctx.lineTo(screen.x, screen.y);
+      });
+      env.ctx.strokeStyle = env.rgba(color);
+      env.ctx.lineWidth = 2;
+      env.ctx.setLineDash(dashed ? [8, 8] : []);
+      env.ctx.stroke();
+    };
+    const drawAngleMarker = (line) => {
+      const start = env.resolveScenePoint(line.binding.startIndex);
+      const vertex = env.resolveScenePoint(line.binding.vertexIndex);
+      const end = env.resolveScenePoint(line.binding.endIndex);
+      const firstDx = start.x - vertex.x;
+      const firstDy = start.y - vertex.y;
+      const secondDx = end.x - vertex.x;
+      const secondDy = end.y - vertex.y;
+      const firstLen = Math.hypot(firstDx, firstDy);
+      const secondLen = Math.hypot(secondDx, secondDy);
+      const shortestLen = Math.min(firstLen, secondLen);
+      if (firstLen <= 1e-9 || secondLen <= 1e-9 || shortestLen <= 1e-9) return;
+      const first = { x: firstDx / firstLen, y: firstDy / firstLen };
+      const second = { x: secondDx / secondLen, y: secondDy / secondLen };
+      const dot = Math.max(-1, Math.min(1, first.x * second.x + first.y * second.y));
+      const cross = first.x * second.y - first.y * second.x;
+      const layerCount = Math.max(1, line.binding.markerClass || 1);
+      for (let layerIndex = 0; layerIndex < layerCount; layerIndex += 1) {
+        const points = Math.abs(dot) <= 0.12
+          ? resolveRightAngleMarkerPoints(vertex, first, second, shortestLen, layerIndex, layerCount)
+          : resolveArcAngleMarkerPoints(vertex, first, shortestLen, cross, dot, layerIndex, layerCount);
+        if (points) drawPolyline(points, line.color, line.dashed);
+      }
+    };
+    const drawSegmentMarker = (line) => {
+      const start = env.resolveScenePoint(line.binding.startIndex);
+      const end = env.resolveScenePoint(line.binding.endIndex);
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const len = Math.hypot(dx, dy);
+      if (len <= 1e-9) return;
+      const tangent = { x: dx / len, y: dy / len };
+      const normal = { x: -tangent.y, y: tangent.x };
+      const centerT = Math.max(0, Math.min(1, line.binding.t));
+      const center = { x: start.x + dx * centerT, y: start.y + dy * centerT };
+      const slashDirRaw = { x: tangent.x * 0.55 + normal.x, y: tangent.y * 0.55 + normal.y };
+      const slashDirLen = Math.hypot(slashDirRaw.x, slashDirRaw.y);
+      if (slashDirLen <= 1e-9) return;
+      const slashDir = { x: slashDirRaw.x / slashDirLen, y: slashDirRaw.y / slashDirLen };
+      const halfLen = Math.min(Math.max(len * 0.06, 5), 10);
+      const spacing = Math.min(Math.max(len * 0.05, 6), 11);
+      const layerCount = Math.max(1, line.binding.markerClass || 1);
+      const offsetBase = -(layerCount - 1) / 2;
+      for (let layerIndex = 0; layerIndex < layerCount; layerIndex += 1) {
+        const offset = (offsetBase + layerIndex) * spacing;
+        const slashCenter = {
+          x: center.x + tangent.x * offset,
+          y: center.y + tangent.y * offset,
+        };
+        drawPolyline([
+          {
+            x: slashCenter.x - slashDir.x * halfLen,
+            y: slashCenter.y - slashDir.y * halfLen,
+          },
+          {
+            x: slashCenter.x + slashDir.x * halfLen,
+            y: slashCenter.y + slashDir.y * halfLen,
+          },
+        ], line.color, line.dashed);
+      }
+    };
     for (const line of env.currentScene().lines) {
       if (line.visible === false) continue;
+      if (line.binding?.kind === "angle-marker") {
+        drawAngleMarker(line);
+        continue;
+      }
+      if (line.binding?.kind === "segment-marker") {
+        drawSegmentMarker(line);
+        continue;
+      }
       let screenPoints = null;
       const resolveHostLinePoints = (binding) => {
         if (typeof binding?.lineIndex === "number") {

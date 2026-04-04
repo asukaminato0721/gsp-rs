@@ -292,6 +292,27 @@ enum LineBindingJson {
         #[serde(rename = "endIndex")]
         end_index: usize,
     },
+    #[serde(rename = "angle-marker")]
+    AngleMarker {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "vertexIndex")]
+        vertex_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+        #[serde(rename = "markerClass")]
+        marker_class: u32,
+    },
+    #[serde(rename = "segment-marker")]
+    SegmentMarker {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+        t: f64,
+        #[serde(rename = "markerClass")]
+        marker_class: u32,
+    },
     #[serde(rename = "angle-bisector-ray")]
     AngleBisectorRay {
         #[serde(rename = "startIndex")]
@@ -400,6 +421,28 @@ impl LineBindingJson {
             } => Self::Segment {
                 start_index: *start_index,
                 end_index: *end_index,
+            },
+            LineBinding::AngleMarker {
+                start_index,
+                vertex_index,
+                end_index,
+                marker_class,
+            } => Self::AngleMarker {
+                start_index: *start_index,
+                vertex_index: *vertex_index,
+                end_index: *end_index,
+                marker_class: *marker_class,
+            },
+            LineBinding::SegmentMarker {
+                start_index,
+                end_index,
+                t,
+                marker_class,
+            } => Self::SegmentMarker {
+                start_index: *start_index,
+                end_index: *end_index,
+                t: *t,
+                marker_class: *marker_class,
             },
             LineBinding::AngleBisectorRay {
                 start_index,
