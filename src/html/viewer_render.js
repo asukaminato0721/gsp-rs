@@ -320,10 +320,6 @@
       const normal = { x: -tangent.y, y: tangent.x };
       const centerT = Math.max(0, Math.min(1, line.binding.t));
       const center = { x: start.x + dx * centerT, y: start.y + dy * centerT };
-      const slashDirRaw = { x: tangent.x * 0.55 + normal.x, y: tangent.y * 0.55 + normal.y };
-      const slashDirLen = Math.hypot(slashDirRaw.x, slashDirRaw.y);
-      if (slashDirLen <= 1e-9) return;
-      const slashDir = { x: slashDirRaw.x / slashDirLen, y: slashDirRaw.y / slashDirLen };
       const halfLen = Math.min(Math.max(len * 0.06, 5), 10);
       const spacing = Math.min(Math.max(len * 0.05, 6), 11);
       const layerCount = Math.max(1, line.binding.markerClass || 1);
@@ -336,12 +332,12 @@
         };
         drawPolyline([
           {
-            x: slashCenter.x - slashDir.x * halfLen,
-            y: slashCenter.y - slashDir.y * halfLen,
+            x: slashCenter.x - normal.x * halfLen,
+            y: slashCenter.y - normal.y * halfLen,
           },
           {
-            x: slashCenter.x + slashDir.x * halfLen,
-            y: slashCenter.y + slashDir.y * halfLen,
+            x: slashCenter.x + normal.x * halfLen,
+            y: slashCenter.y + normal.y * halfLen,
           },
         ], line.color, line.dashed);
       }

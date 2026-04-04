@@ -278,13 +278,6 @@ pub(crate) fn resolve_segment_marker_points(
         x: start.x + dx * center_t,
         y: start.y + dy * center_t,
     };
-    let slash_dir_x = tangent.0 * 0.55 + normal.0;
-    let slash_dir_y = tangent.1 * 0.55 + normal.1;
-    let slash_dir_len = (slash_dir_x * slash_dir_x + slash_dir_y * slash_dir_y).sqrt();
-    if slash_dir_len <= 1e-9 {
-        return None;
-    }
-    let slash_dir = (slash_dir_x / slash_dir_len, slash_dir_y / slash_dir_len);
     let half_len = (len * 0.06).clamp(5.0, 10.0);
     let spacing = (len * 0.05).clamp(6.0, 11.0);
     let offset = (marker_class.saturating_sub(1) as f64) * -0.5;
@@ -295,12 +288,12 @@ pub(crate) fn resolve_segment_marker_points(
     };
     Some(vec![
         PointRecord {
-            x: slash_center.x - slash_dir.0 * half_len,
-            y: slash_center.y - slash_dir.1 * half_len,
+            x: slash_center.x - normal.0 * half_len,
+            y: slash_center.y - normal.1 * half_len,
         },
         PointRecord {
-            x: slash_center.x + slash_dir.0 * half_len,
-            y: slash_center.y + slash_dir.1 * half_len,
+            x: slash_center.x + normal.0 * half_len,
+            y: slash_center.y + normal.1 * half_len,
         },
     ])
 }

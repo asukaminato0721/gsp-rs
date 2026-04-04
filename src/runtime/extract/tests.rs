@@ -1802,6 +1802,24 @@ fn preserves_translated_triangle_segments_in_congruent_triangle_fixture() {
             ..
         })
     )));
+    let perpendicular_marker = scene
+        .lines
+        .iter()
+        .find(|line| matches!(line.binding, Some(LineBinding::SegmentMarker {
+            start_index: 0,
+            end_index: 1,
+            marker_class: 1,
+            ..
+        })))
+        .expect("expected segment marker on translated base edge");
+    let marker_dx = perpendicular_marker.points[1].x - perpendicular_marker.points[0].x;
+    let marker_dy = perpendicular_marker.points[1].y - perpendicular_marker.points[0].y;
+    let segment_dx = scene.points[1].position.x - scene.points[0].position.x;
+    let segment_dy = scene.points[1].position.y - scene.points[0].position.y;
+    assert!(
+        (marker_dx * segment_dx + marker_dy * segment_dy).abs() < 1e-6,
+        "expected segment marker to be perpendicular to its host segment"
+    );
     assert!(
         scene.labels.iter().any(|label| label.text == "B'"),
         "expected translated point label B'"
