@@ -29,14 +29,25 @@ impl Config {
             return Err(Self::usage());
         }
 
-        let jobs = raw_args
-            .into_iter()
-            .map(PathBuf::from)
-            .map(|gsp_path| RenderJob {
-                html_path: gsp_path.with_extension("html"),
-                gsp_path,
-            })
-            .collect();
+        let mut jobs = Vec::new();
+        for arg in raw_args {
+            match arg.to_string_lossy().as_ref() {
+                value if value.starts_with('-') => {
+                    return Err(format!("unknown flag: {value}\n{}", Self::usage()));
+                }
+                _ => {
+                    let gsp_path = PathBuf::from(arg);
+                    jobs.push(RenderJob {
+                        html_path: gsp_path.with_extension("html"),
+                        gsp_path,
+                    });
+                }
+            }
+        }
+
+        if jobs.is_empty() {
+            return Err(Self::usage());
+        }
 
         Ok(Self {
             jobs,
@@ -71,6 +82,12 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn rejects_unknown_flags() {
+        let error = Config::parse(["--wat", "a.gsp"].into_iter()).expect_err("unknown flag");
+        assert!(error.contains("unknown flag: --wat"));
     }
 
     #[test]

@@ -34,3 +34,12 @@ pub(crate) fn write_standalone_html(output_path: &Path, html: &str) -> Result<()
 pub(crate) fn render_standalone_html_document(scene: &Scene, width: u32, height: u32) -> String {
     document::render_standalone_html_document(scene, width, height)
 }
+
+pub(crate) fn render_scene_json(
+    scene: &Scene,
+    width: u32,
+    height: u32,
+    pretty: bool,
+) -> String {
+    scene_json::scene_to_json(scene, width, height, pretty)
+}

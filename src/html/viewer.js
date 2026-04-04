@@ -16,10 +16,22 @@
   const ctx = canvas.getContext("2d");
   /** @type {HTMLButtonElement} */
   const resetButton = /** @type {HTMLButtonElement} */ (document.getElementById("reset-view"));
+  /** @type {HTMLButtonElement} */
+  const debugToggleButton = /** @type {HTMLButtonElement} */ (document.getElementById("toggle-debug"));
   /** @type {HTMLElement} */
   const parameterControls = /** @type {HTMLElement} */ (document.getElementById("parameter-controls"));
   /** @type {HTMLElement} */
   const buttonOverlays = /** @type {HTMLElement} */ (document.getElementById("button-overlays"));
+  /** @type {HTMLElement} */
+  const debugPanel = /** @type {HTMLElement} */ (document.getElementById("debug-panel"));
+  /** @type {HTMLElement} */
+  const debugOutput = /** @type {HTMLElement} */ (document.getElementById("debug-output"));
+  /** @type {HTMLButtonElement} */
+  const debugDumpConsoleButton = /** @type {HTMLButtonElement} */ (document.getElementById("debug-dump-console"));
+  /** @type {HTMLButtonElement[]} */
+  const debugTabButtons = /** @type {HTMLButtonElement[]} */ (Array.from(
+    document.querySelectorAll("[data-debug-tab]"),
+  ));
   /** @type {HTMLElement} */
   const coordReadout = /** @type {HTMLElement} */ (document.getElementById("coord-readout"));
   /** @type {HTMLElement} */
@@ -35,7 +47,9 @@
   const minZoom = 0.05;
   const pointHitRadius = 10;
   const pointMatchTolerance = 1e-3;
+  const autoOpenDebug = new URLSearchParams(window.location.search).get("debug") === "1";
   const pointerWorldState = van.state(null);
+  const debugViewState = van?.state ? van.state("graph") : { val: "graph" };
   const viewState = van?.state ? van.state({
     centerX: baseCenterX,
     centerY: baseCenterY,
@@ -303,6 +317,208 @@
       return multiple === 1 ? `${sign}\u03c0` : `${sign}${multiple}\u03c0`;
     }
     return absIndex === 1 ? `${sign}\u03c0/2` : `${sign}${absIndex}\u03c0/2`;
+  }
+
+  function cloneForDebug(value) {
+    if (typeof structuredClone === "function") {
+      return structuredClone(value);
+    }
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  function buildDebugJson() {
+    return JSON.stringify(sourceScene, null, 2);
+  }
+
+  function formatReference(key, value) {
+    if (!Number.isInteger(value)) {
+      return null;
+    }
+    switch (key) {
+      case "buttonIndices":
+        return `buttons[${value}]`;
+      case "circleIndices":
+      case "circleIndex":
+        return `circles[${value}]`;
+      case "lineIndices":
+      case "lineIndex":
+        return `lines[${value}]`;
+      case "polygonIndices":
+      case "polygonIndex":
+        return `polygons[${value}]`;
+      case "seedLabelIndex":
+      case "labelIndex":
+        return `labels[${value}]`;
+      case "functionKey":
+        return `functions[${value}]`;
+      case "segmentIndex":
+        return null;
+      default:
+        if (
+          key === "pointIndex"
+          || key === "targetPointIndex"
+          || key === "pointSeedIndex"
+          || key === "seedIndex"
+          || key === "sourceIndex"
+          || key === "centerIndex"
+          || key === "originIndex"
+          || key === "radiusIndex"
+          || key === "startIndex"
+          || key === "endIndex"
+          || key === "midIndex"
+          || key === "throughIndex"
+          || key === "vertexIndex"
+          || key === "lineStartIndex"
+          || key === "lineEndIndex"
+        ) {
+          return `points[${value}]`;
+        }
+        return null;
+    }
+  }
+
+  function collectReferenceTokens(value) {
+    /** @type {string[]} */
+    const refs = [];
+    function visit(node) {
+      if (!node || typeof node !== "object") {
+        return;
+      }
+      if (Array.isArray(node)) {
+        node.forEach(visit);
+        return;
+      }
+      Object.entries(node).forEach(([key, child]) => {
+        if (typeof child === "number") {
+          const ref = formatReference(key, child);
+          if (ref) {
+            refs.push(ref);
+          }
+          return;
+        }
+        if (Array.isArray(child)) {
+          const directRefs = child
+            .map((item) => (typeof item === "number" ? formatReference(key, item) : null))
+            .filter(Boolean);
+          refs.push(...directRefs);
+          child.forEach(visit);
+          return;
+        }
+        visit(child);
+      });
+    }
+    visit(value);
+    return [...new Set(refs)];
+  }
+
+  function summarizeDebugEntity(entity) {
+    const parts = [];
+    if (typeof entity.text === "string") {
+      parts.push(JSON.stringify(entity.text));
+    }
+    if (typeof entity.name === "string") {
+      parts.push(`name=${entity.name}`);
+    }
+    if (typeof entity.kind === "string") {
+      parts.push(`kind=${entity.kind}`);
+    }
+    if (typeof entity.visible === "boolean") {
+      parts.push(entity.visible ? "visible" : "hidden");
+    }
+    if (typeof entity.depth === "number") {
+      parts.push(`depth=${entity.depth}`);
+    }
+    if (typeof entity.parameterName === "string" && entity.parameterName.length > 0) {
+      parts.push(`param=${entity.parameterName}`);
+    }
+    if (typeof entity.x === "number" && typeof entity.y === "number" && !entity.kind) {
+      parts.push(`@ (${formatNumber(entity.x)}, ${formatNumber(entity.y)})`);
+    }
+    return parts.join(" ");
+  }
+
+  function appendGraphSection(lines, title, itemLabel, items) {
+    lines.push(`${title} (${items.length})`);
+    items.forEach((item, index) => {
+      const summary = summarizeDebugEntity(item);
+      const refs = collectReferenceTokens(item);
+      lines.push(`  ${itemLabel}[${index}]${summary ? ` ${summary}` : ""}`);
+      if (refs.length > 0) {
+        lines.push(`    -> ${refs.join(", ")}`);
+      }
+    });
+  }
+
+  function buildDebugGraph(scene) {
+    const lines = [
+      "Scene",
+      `  size ${scene.width}x${scene.height}`,
+      `  modes graph=${!!scene.graphMode} pi=${!!scene.piMode} savedViewport=${!!scene.savedViewport} yUp=${!!scene.yUp}`,
+      `  bounds [${formatNumber(scene.bounds.minX)}, ${formatNumber(scene.bounds.minY)}] -> [${formatNumber(scene.bounds.maxX)}, ${formatNumber(scene.bounds.maxY)}]`,
+    ];
+    if (scene.origin) {
+      lines.push(`  origin -> ${collectReferenceTokens({ origin: scene.origin }).join(", ") || "raw point"}`);
+    }
+    appendGraphSection(lines, "Points", "point", scene.points || []);
+    appendGraphSection(lines, "Lines", "line", scene.lines || []);
+    appendGraphSection(lines, "Polygons", "polygon", scene.polygons || []);
+    appendGraphSection(lines, "Circles", "circle", scene.circles || []);
+    appendGraphSection(lines, "Arcs", "arc", scene.arcs || []);
+    appendGraphSection(lines, "Labels", "label", scene.labels || []);
+    appendGraphSection(lines, "Point Iterations", "pointIteration", scene.pointIterations || []);
+    appendGraphSection(lines, "Line Iterations", "lineIteration", scene.lineIterations || []);
+    appendGraphSection(lines, "Polygon Iterations", "polygonIteration", scene.polygonIterations || []);
+    appendGraphSection(lines, "Label Iterations", "labelIteration", scene.labelIterations || []);
+    appendGraphSection(lines, "Buttons", "button", scene.buttons || []);
+    appendGraphSection(lines, "Parameters", "parameter", scene.parameters || []);
+    appendGraphSection(lines, "Functions", "function", scene.functions || []);
+    return lines.join("\n");
+  }
+
+  function buildRuntimeSnapshot() {
+    return cloneForDebug({
+      view: { ...viewState.val },
+      scene: currentScene(),
+      dynamics: currentDynamics(),
+      buttons: buttonsState.val,
+    });
+  }
+
+  function renderDebugOutput() {
+    if (!debugOutput) {
+      return;
+    }
+    const activeTab = debugViewState.val === "json" ? "json" : "graph";
+    debugOutput.textContent = activeTab === "json"
+      ? buildDebugJson()
+      : buildDebugGraph(sourceScene);
+    debugTabButtons.forEach((button) => {
+      const isActive = button.dataset.debugTab === activeTab;
+      button.setAttribute("aria-pressed", isActive ? "true" : "false");
+      button.classList.toggle("is-active", isActive);
+    });
+  }
+
+  function setDebugPanelOpen(open) {
+    if (!debugPanel || !debugToggleButton) {
+      return;
+    }
+    debugPanel.hidden = !open;
+    debugToggleButton.setAttribute("aria-expanded", open ? "true" : "false");
+    debugToggleButton.classList.toggle("is-active", open);
+    if (open) {
+      renderDebugOutput();
+    }
+  }
+
+  function dumpDebugToConsole() {
+    const graph = buildDebugGraph(sourceScene);
+    const runtime = buildRuntimeSnapshot();
+    console.groupCollapsed("gspDebug");
+    console.log(graph);
+    console.log("sourceScene", cloneForDebug(sourceScene));
+    console.log("runtime", runtime);
+    console.groupEnd();
   }
 
   function updateReadout(screenX = null, screenY = null) {
@@ -714,6 +930,52 @@
     drawGrid: () => sceneModule.drawGrid(viewerEnv),
   };
 
+  window.gspDebug = {
+    sourceScene,
+    viewerEnv,
+    get runtime() {
+      return buildRuntimeSnapshot();
+    },
+    json() {
+      return buildDebugJson();
+    },
+    graph() {
+      return buildDebugGraph(sourceScene);
+    },
+    dumpJson() {
+      console.log(buildDebugJson());
+    },
+    dumpGraph() {
+      console.log(buildDebugGraph(sourceScene));
+    },
+    dump() {
+      dumpDebugToConsole();
+    },
+    openPanel() {
+      setDebugPanelOpen(true);
+    },
+    closePanel() {
+      setDebugPanelOpen(false);
+    },
+    togglePanel() {
+      setDebugPanelOpen(debugPanel?.hidden !== false);
+    },
+  };
+
+  debugToggleButton?.addEventListener("click", () => {
+    setDebugPanelOpen(debugPanel?.hidden !== false);
+  });
+  debugDumpConsoleButton?.addEventListener("click", () => {
+    dumpDebugToConsole();
+  });
+  debugTabButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      debugViewState.val = button.dataset.debugTab === "json" ? "json" : "graph";
+      renderDebugOutput();
+    });
+  });
+  renderDebugOutput();
+
   van.derive(() => {
     draw();
     return 0;
@@ -794,10 +1056,19 @@
   window.addEventListener("keydown", (event) => {
     if (event.key === "0") {
       resetView();
+      return;
+    }
+    if (event.key === "D" && event.shiftKey) {
+      event.preventDefault();
+      setDebugPanelOpen(debugPanel?.hidden !== false);
     }
   });
 
   dynamicsModule.syncDynamicScene(viewerEnv);
   dynamicsModule.buildParameterControls(viewerEnv);
   resetView();
+  if (autoOpenDebug) {
+    setDebugPanelOpen(true);
+    dumpDebugToConsole();
+  }
 })();

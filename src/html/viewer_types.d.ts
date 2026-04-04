@@ -1,5 +1,21 @@
 declare const van: any;
 
+interface Window {
+  gspDebug?: {
+    sourceScene: SceneData;
+    viewerEnv: ViewerEnv;
+    readonly runtime: any;
+    json: () => string;
+    graph: () => string;
+    dumpJson: () => void;
+    dumpGraph: () => void;
+    dump: () => void;
+    openPanel: () => void;
+    closePanel: () => void;
+    togglePanel: () => void;
+  };
+}
+
 type Point = {
   x: number;
   y: number;

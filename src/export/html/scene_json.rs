@@ -8,9 +8,13 @@ use crate::runtime::scene::{
 };
 use serde::Serialize;
 
-pub(super) fn scene_to_json(scene: &Scene, width: u32, height: u32) -> String {
-    serde_json::to_string(&SceneJson::from_scene(scene, width, height))
-        .expect("scene JSON serialization should succeed")
+pub(super) fn scene_to_json(scene: &Scene, width: u32, height: u32, pretty: bool) -> String {
+    if pretty {
+        serde_json::to_string_pretty(&SceneJson::from_scene(scene, width, height))
+    } else {
+        serde_json::to_string(&SceneJson::from_scene(scene, width, height))
+    }
+    .expect("scene JSON serialization should succeed")
 }
 
 #[derive(Serialize)]
