@@ -1678,8 +1678,17 @@ fn preserves_translation_and_right_angle_rotation_in_transform_fixture() {
 
     assert_eq!(
         scene.lines.len(),
-        1,
-        "expected only the reflection axis line"
+        5,
+        "expected the reflection axis plus four translated polygon edges"
+    );
+    assert_eq!(
+        scene
+            .lines
+            .iter()
+            .filter(|line| matches!(line.binding, Some(LineBinding::TranslateLine { .. })))
+            .count(),
+        4,
+        "expected translated edges for the translated quadrilateral"
     );
     assert_eq!(scene.parameters.len(), 1, "expected one angle parameter");
     assert_eq!(scene.parameters[0].name, "t₁");
@@ -1732,6 +1741,50 @@ fn preserves_reflect_then_translate_in_translation_fixture() {
         }) if reflected_points.contains(&vector_start_index)
             && reflected_points.contains(&vector_end_index)
     )));
+}
+
+#[test]
+fn preserves_translated_triangle_segments_in_congruent_triangle_fixture() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/两个三角形标记全等.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(
+        scene.lines.len(),
+        10,
+        "expected three source edges, three translated edges, and four congruence markers"
+    );
+    assert_eq!(
+        scene
+            .lines
+            .iter()
+            .filter(|line| matches!(line.binding, Some(LineBinding::TranslateLine { .. })))
+            .count(),
+        3,
+        "expected the translated triangle to contribute three translated segment bindings"
+    );
+    assert!(scene.lines.iter().any(|line| {
+        matches!(
+            line.binding,
+            Some(LineBinding::TranslateLine {
+                vector_start_index: 0,
+                vector_end_index: 3,
+                ..
+            })
+        ) && line.points.len() == 2
+            && (line.points[0].x - 298.0).abs() < 1e-6
+            && (line.points[0].y - 237.0).abs() < 1e-6
+            && (line.points[1].x - 467.0).abs() < 1e-6
+            && (line.points[1].y - 250.0).abs() < 1e-6
+    }));
+    assert!(
+        scene.labels.iter().any(|label| label.text == "B'"),
+        "expected translated point label B'"
+    );
+    assert!(
+        scene.labels.iter().any(|label| label.text == "C'"),
+        "expected translated point label C'"
+    );
 }
 
 #[test]

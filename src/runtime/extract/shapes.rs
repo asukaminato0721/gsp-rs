@@ -39,5 +39,6 @@ pub(super) use transforms::{
     collect_reflected_circle_shapes, collect_reflected_line_shapes,
     collect_reflected_polygon_shapes, collect_rotated_circle_shapes, collect_rotated_line_shapes,
     collect_rotated_polygon_shapes, collect_scaled_line_shapes, collect_transformed_circle_shapes,
-    collect_transformed_polygon_shapes, collect_translated_polygon_shapes,
+    collect_transformed_polygon_shapes, collect_translated_line_shapes,
+    collect_translated_polygon_shapes,
 };

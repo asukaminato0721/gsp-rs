@@ -44,6 +44,7 @@ use self::shapes::{
     collect_rotated_line_shapes, collect_rotated_polygon_shapes,
     collect_rotational_iteration_lines, collect_scaled_line_shapes, collect_three_point_arc_shapes,
     collect_transformed_circle_shapes, collect_transformed_polygon_shapes,
+    collect_translated_line_shapes,
     collect_translated_polygon_shapes,
 };
 
@@ -100,6 +101,7 @@ struct CollectedShapes {
     polylines: Vec<LineShape>,
     direct_lines: Vec<LineShape>,
     rays: Vec<LineShape>,
+    translated_lines: Vec<LineShape>,
     derived_segments: Vec<LineShape>,
     rotated_lines: Vec<LineShape>,
     scaled_lines: Vec<LineShape>,
@@ -236,6 +238,7 @@ fn collect_scene_shapes(
         &analysis.raw_anchors,
         crate::format::GroupKind::Ray,
     );
+    let translated_lines = collect_translated_line_shapes(file, groups, &analysis.raw_anchors);
     let derived_segments = if analysis.large_non_graph {
         collect_derived_segments(
             file,
@@ -326,6 +329,7 @@ fn collect_scene_shapes(
         polylines,
         direct_lines,
         rays,
+        translated_lines,
         derived_segments,
         rotated_lines,
         scaled_lines,
@@ -551,6 +555,11 @@ fn remap_scene_bindings(
         &line_group_to_index,
     );
     remap_line_bindings(&mut shapes.rays, group_to_point_index, &line_group_to_index);
+    remap_line_bindings(
+        &mut shapes.translated_lines,
+        group_to_point_index,
+        &line_group_to_index,
+    );
     remap_line_bindings(
         &mut shapes.rotated_lines,
         group_to_point_index,
@@ -1008,6 +1017,7 @@ fn compute_scene_bounds(
         .chain(shapes.polylines.iter())
         .chain(shapes.direct_lines.iter())
         .chain(shapes.rays.iter())
+        .chain(shapes.translated_lines.iter())
         .chain(shapes.rotated_lines.iter())
         .chain(shapes.scaled_lines.iter())
         .chain(shapes.reflected_lines.iter())
@@ -1092,6 +1102,7 @@ fn assemble_scene(
         polylines,
         direct_lines,
         rays,
+        translated_lines,
         derived_segments,
         rotated_lines,
         scaled_lines,
@@ -1135,6 +1146,7 @@ fn assemble_scene(
                 .chain(polylines)
                 .chain(direct_lines)
                 .chain(rays)
+                .chain(translated_lines)
                 .chain(rotated_lines)
                 .chain(scaled_lines)
                 .chain(reflected_lines)
