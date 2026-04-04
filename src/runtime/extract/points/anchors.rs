@@ -35,9 +35,13 @@ pub(crate) fn decode_intersection_anchor_raw(
     group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
 ) -> Option<PointRecord> {
-    let variant = match group.header.kind() {
-        crate::format::GroupKind::IntersectionPoint1 => 1,
-        crate::format::GroupKind::IntersectionPoint2 => 0,
+    let kind = group.header.kind();
+    let variant = match kind {
+        crate::format::GroupKind::LinearIntersectionPoint => None,
+        crate::format::GroupKind::IntersectionPoint1 => Some(1),
+        crate::format::GroupKind::IntersectionPoint2 => Some(0),
+        crate::format::GroupKind::CircleCircleIntersectionPoint1 => Some(1),
+        crate::format::GroupKind::CircleCircleIntersectionPoint2 => Some(0),
         _ => return None,
     };
 
@@ -53,14 +57,26 @@ pub(crate) fn decode_intersection_anchor_raw(
         resolve_line_like_points_raw(file, groups, anchors, left_group),
         resolve_circle_like_raw(file, groups, anchors, right_group),
     ) {
-        return select_line_circle_intersection(line_start, line_end, center, radius, variant);
+        return select_line_circle_intersection(
+            line_start,
+            line_end,
+            center,
+            radius,
+            variant.unwrap_or(0),
+        );
     }
 
     if let (Some((center, radius)), Some((line_start, line_end))) = (
         resolve_circle_like_raw(file, groups, anchors, left_group),
         resolve_line_like_points_raw(file, groups, anchors, right_group),
     ) {
-        return select_line_circle_intersection(line_start, line_end, center, radius, variant);
+        return select_line_circle_intersection(
+            line_start,
+            line_end,
+            center,
+            radius,
+            variant.unwrap_or(0),
+        );
     }
 
     if let (Some((left_center, left_radius)), Some((right_center, right_radius))) = (
@@ -72,8 +88,15 @@ pub(crate) fn decode_intersection_anchor_raw(
             left_radius,
             right_center,
             right_radius,
-            variant,
+            variant.unwrap_or(0),
         );
+    }
+
+    if variant.is_none() {
+        let (left_start, left_end) = resolve_line_like_points_raw(file, groups, anchors, left_group)?;
+        let (right_start, right_end) =
+            resolve_line_like_points_raw(file, groups, anchors, right_group)?;
+        return line_line_intersection(&left_start, &left_end, &right_start, &right_end);
     }
 
     let (left_start, left_end) = resolve_line_like_points_raw(file, groups, anchors, left_group)?;

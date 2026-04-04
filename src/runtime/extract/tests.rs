@@ -1270,6 +1270,54 @@ fn preserves_parameter_driven_point_iteration_family() {
 }
 
 #[test]
+fn preserves_linear_intersection_points_in_insection_fixtures() {
+    for (name, data) in [
+        (
+            "segment",
+            include_bytes!("../../../tests/fixtures/gsp/insection/segment_insection.gsp")
+                .as_slice(),
+        ),
+        (
+            "line",
+            include_bytes!("../../../tests/fixtures/gsp/insection/line_insection.gsp").as_slice(),
+        ),
+        (
+            "ray",
+            include_bytes!("../../../tests/fixtures/gsp/insection/ray_insection.gsp").as_slice(),
+        ),
+    ] {
+        let file = GspFile::parse(data).expect("fixture parses");
+        let scene = build_scene(&file);
+
+        assert_eq!(scene.points.len(), 5, "expected derived intersection point for {name}");
+        assert!(
+            scene.points.iter().any(|point| {
+                (point.position.x - 416.3160761196899).abs() < 1e-6
+                    && (point.position.y - 321.2222079835971).abs() < 1e-6
+            }),
+            "expected derived intersection coordinates for {name}"
+        );
+    }
+}
+
+#[test]
+fn preserves_circle_circle_intersection_points() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/insection/circle_circle_insection.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.points.len(), 6, "expected both circle-circle intersections");
+    assert!(scene.points.iter().any(|point| {
+        (point.position.x - 421.3993346591643).abs() < 1e-6
+            && (point.position.y - 189.66291724683578).abs() < 1e-6
+    }));
+    assert!(scene.points.iter().any(|point| {
+        (point.position.x - 445.71654184257966).abs() < 1e-6
+            && (point.position.y - 470.02601183209464).abs() < 1e-6
+    }));
+}
+
+#[test]
 fn preserves_non_graph_parameter_and_expression_labels_in_iteration_fixture() {
     let data = include_bytes!(
         "../../../tests/fixtures/gsp/static/简单迭代/原象点和参数初象点和数值深度5迭代.gsp"

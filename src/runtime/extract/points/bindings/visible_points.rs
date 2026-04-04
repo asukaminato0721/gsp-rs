@@ -35,8 +35,11 @@ pub(crate) fn collect_visible_points(
                         binding: None,
                     })
             }
-            crate::format::GroupKind::IntersectionPoint1
-            | crate::format::GroupKind::IntersectionPoint2 => anchors
+            crate::format::GroupKind::LinearIntersectionPoint
+            | crate::format::GroupKind::IntersectionPoint1
+            | crate::format::GroupKind::IntersectionPoint2
+            | crate::format::GroupKind::CircleCircleIntersectionPoint1
+            | crate::format::GroupKind::CircleCircleIntersectionPoint2 => anchors
                 .get(index)
                 .cloned()
                 .flatten()

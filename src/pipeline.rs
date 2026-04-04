@@ -87,6 +87,19 @@ mod tests {
     }
 
     #[test]
+    fn exports_segment_intersection_fixture_into_html() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/gsp/insection/segment_insection.gsp"),
+            800,
+            600,
+        )
+        .expect("segment intersection fixture should compile");
+
+        assert!(html.contains("\"x\":416.3160761196899"));
+        assert!(html.contains("\"y\":321.2222079835971"));
+    }
+
+    #[test]
     fn exports_point_iteration_metadata_into_html() {
         let html = compile_bytes_to_html_document(
             include_bytes!("../tests/fixtures/gsp/static/简单迭代/原象点初象点深度5迭代.gsp"),
