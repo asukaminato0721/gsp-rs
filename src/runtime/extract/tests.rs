@@ -708,6 +708,131 @@ fn preserves_arc_on_circle_gsp() {
 }
 
 #[test]
+fn preserves_angle_sign_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/angle-sign.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(
+        scene.lines.len(),
+        3,
+        "expected angle rays plus synthesized angle marker"
+    );
+    assert_eq!(scene.points.len(), 4, "expected anchor, ray endpoint, and marker points");
+    assert_eq!(scene.labels.len(), 1, "expected one point label");
+    assert_eq!(scene.labels[0].text, "A");
+
+    assert!(matches!(scene.points[0].constraint, ScenePointConstraint::Free));
+    assert!(matches!(scene.points[1].constraint, ScenePointConstraint::Free));
+    assert!(matches!(
+        scene.points[2].binding,
+        Some(ScenePointBinding::Rotate {
+            source_index: 1,
+            center_index: 0,
+            angle_degrees,
+            parameter_name: None,
+        }) if (angle_degrees - 90.0).abs() < 1e-6
+    ));
+    assert!(
+        !scene.points[2].visible,
+        "expected intermediate rotated helper point to stay hidden"
+    );
+    assert!(matches!(
+        scene.points[3].binding,
+        Some(ScenePointBinding::Scale {
+            source_index: 2,
+            center_index: 0,
+            factor,
+        }) if (factor - 1.5).abs() < 1e-6
+    ));
+    assert!(scene.points[3].visible, "expected scaled endpoint to remain visible");
+
+    assert!(matches!(
+        scene.lines[0].binding,
+        Some(LineBinding::Segment {
+            start_index: 0,
+            end_index: 1,
+        })
+    ));
+    assert!(matches!(
+        scene.lines[1].binding,
+        Some(LineBinding::Segment {
+            start_index: 3,
+            end_index: 0,
+        })
+    ));
+
+    let marker = scene
+        .lines
+        .iter()
+        .find(|line| line.binding.is_none() && line.points.len() == 3)
+        .expect("expected synthesized angle marker polyline");
+
+    let anchor = &scene.points[0].position;
+    let base = &scene.points[1].position;
+    let rotated = &scene.points[2].position;
+    let scaled = &scene.points[3].position;
+
+    let base_dx = base.x - anchor.x;
+    let base_dy = base.y - anchor.y;
+    let rotated_dx = rotated.x - anchor.x;
+    let rotated_dy = rotated.y - anchor.y;
+    assert!(
+        (base_dx * rotated_dx + base_dy * rotated_dy).abs() < 1e-6,
+        "expected rotated point to form a right angle with the base segment"
+    );
+
+    let rotated_len = (rotated_dx * rotated_dx + rotated_dy * rotated_dy).sqrt();
+    let scaled_dx = scaled.x - anchor.x;
+    let scaled_dy = scaled.y - anchor.y;
+    let scaled_len = (scaled_dx * scaled_dx + scaled_dy * scaled_dy).sqrt();
+    assert!(
+        (scaled_len - rotated_len * 1.5).abs() < 1e-6,
+        "expected scaled point to extend the rotated marker arm"
+    );
+
+    assert!(
+        marker.points[0].x > anchor.x
+            && marker.points[0].x < base.x
+            && (marker.points[0].y - anchor.y).abs() < 1e-6,
+        "expected marker to start partway along the horizontal ray"
+    );
+    assert!(
+        (marker.points[2].x - anchor.x).abs() < 1e-6
+            && marker.points[2].y < anchor.y
+            && marker.points[2].y > rotated.y,
+        "expected marker to end partway along the vertical ray"
+    );
+    assert!(
+        (marker.points[1].x - marker.points[0].x).abs() < 1e-6
+            && (marker.points[1].y - marker.points[2].y).abs() < 1e-6,
+        "expected marker corner to form the missing square corner"
+    );
+
+    let marker_dx = marker.points[0].x - anchor.x;
+    let marker_dy = anchor.y - marker.points[2].y;
+    assert!(
+        (marker_dx - marker_dy).abs() < 1e-6,
+        "expected marker arms to use the same inset length"
+    );
+}
+
+#[test]
+fn preserves_point_hidden_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/static/point_hidden.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.points.len(), 1, "expected one point in the fixture");
+    assert!(
+        !scene.points[0].visible,
+        "expected fixture point to inherit hidden state from source metadata"
+    );
+    assert!(scene.lines.is_empty());
+    assert!(scene.labels.is_empty());
+}
+
+#[test]
 fn preserves_circle_center_radius_gsp() {
     let data = include_bytes!("../../../tests/fixtures/gsp/circle_center_radius.gsp");
     let file = GspFile::parse(data).expect("fixture parses");

@@ -240,6 +240,7 @@ pub enum GroupKind {
     ThreePointArc,
     CoordinateTrace,
     AxisLine,
+    AngleMarker,
     DerivedSegment75,
     Unknown(u16),
 }
@@ -291,6 +292,7 @@ impl From<u16> for GroupKind {
             79 => Self::ArcOnCircle,
             81 => Self::ThreePointArc,
             97 => Self::CoordinateTrace,
+            113 => Self::AngleMarker,
             other => Self::Unknown(other),
         }
     }
@@ -343,6 +345,7 @@ impl GroupKind {
             Self::ArcOnCircle => 79,
             Self::ThreePointArc => 81,
             Self::CoordinateTrace => 97,
+            Self::AngleMarker => 113,
             Self::Unknown(other) => other,
         }
     }
@@ -364,6 +367,10 @@ impl ObjectGroupHeader {
 
     pub fn kind_id(&self) -> u16 {
         self.kind().raw()
+    }
+
+    pub fn is_hidden(&self) -> bool {
+        (self.class_id & 0x0001_0000) != 0
     }
 }
 

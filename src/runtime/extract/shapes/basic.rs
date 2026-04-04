@@ -49,6 +49,9 @@ pub(crate) fn collect_line_shapes(
                 crate::format::GroupKind::LineKind7 => {
                     return resolve_angle_bisector_ray_shape(file, anchors, group);
                 }
+                crate::format::GroupKind::AngleMarker => {
+                    return resolve_angle_marker_shape(file, anchors, group);
+                }
                 _ => {}
             }
             let path = find_indexed_path(file, group)?;
@@ -81,6 +84,52 @@ pub(crate) fn collect_line_shapes(
             })
         })
         .collect()
+}
+
+fn resolve_angle_marker_shape(
+    file: &GspFile,
+    anchors: &[Option<PointRecord>],
+    group: &ObjectGroup,
+) -> Option<LineShape> {
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() != 3 {
+        return None;
+    }
+
+    let start = anchors.get(path.refs[0].checked_sub(1)?)?.clone()?;
+    let vertex = anchors.get(path.refs[1].checked_sub(1)?)?.clone()?;
+    let end = anchors.get(path.refs[2].checked_sub(1)?)?.clone()?;
+
+    let first = normalize_direction(&vertex, &start)?;
+    let second = normalize_direction(&vertex, &end)?;
+    let first_len = ((start.x - vertex.x).powi(2) + (start.y - vertex.y).powi(2)).sqrt();
+    let second_len = ((end.x - vertex.x).powi(2) + (end.y - vertex.y).powi(2)).sqrt();
+    let shortest_len = first_len.min(second_len);
+    let side = (shortest_len * 0.125).clamp(10.0, 28.0).min(shortest_len * 0.5);
+    if side <= 1e-9 {
+        return None;
+    }
+
+    let start_on_first = PointRecord {
+        x: vertex.x + first.0 * side,
+        y: vertex.y + first.1 * side,
+    };
+    let corner = PointRecord {
+        x: vertex.x + (first.0 + second.0) * side,
+        y: vertex.y + (first.1 + second.1) * side,
+    };
+    let end_on_second = PointRecord {
+        x: vertex.x + second.0 * side,
+        y: vertex.y + second.1 * side,
+    };
+    let points = vec![start_on_first, corner, end_on_second];
+
+    has_distinct_points(&points).then_some(LineShape {
+        points,
+        color: color_from_style(group.header.style_b),
+        dashed: false,
+        binding: None,
+    })
 }
 
 fn resolve_angle_bisector_ray_shape(

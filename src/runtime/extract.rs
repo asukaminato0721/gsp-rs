@@ -217,7 +217,10 @@ fn collect_scene_shapes(
         file,
         groups,
         &analysis.raw_anchors,
-        &[crate::format::GroupKind::Segment],
+        &[
+            crate::format::GroupKind::Segment,
+            crate::format::GroupKind::AngleMarker,
+        ],
         !analysis.graph_mode && !analysis.large_non_graph,
         &suppressed_carried_polygon_segments,
     );
@@ -684,6 +687,7 @@ fn build_world_data(
 
     let world_point_positions = world_points
         .iter()
+        .filter(|point| point.visible)
         .map(|point| point.position.clone())
         .collect::<Vec<_>>();
 
