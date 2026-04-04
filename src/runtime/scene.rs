@@ -355,6 +355,11 @@ pub(crate) struct SceneArc {
 
 #[derive(Debug, Clone)]
 pub(crate) enum ShapeBinding {
+    SegmentRadiusCircle {
+        center_index: usize,
+        line_start_index: usize,
+        line_end_index: usize,
+    },
     TranslatePolygon {
         source_index: usize,
         vector_start_index: usize,

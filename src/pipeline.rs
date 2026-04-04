@@ -193,7 +193,9 @@ mod tests {
 
         assert!(html.contains("\"kind\":\"perpendicular-line\""));
         assert!(html.contains("\"throughIndex\":2"));
-        assert!(html.contains("\"constraint\":{\"kind\":\"segment\",\"startIndex\":0,\"endIndex\":1,\"t\":0.5}"));
+        assert!(html.contains(
+            "\"constraint\":{\"kind\":\"segment\",\"startIndex\":0,\"endIndex\":1,\"t\":0.5}"
+        ));
     }
 
     #[test]
@@ -238,6 +240,22 @@ mod tests {
         assert!(html.contains("\"dashed\":true"));
         assert!(html.contains("\"counterclockwise\":true"));
         assert!(html.contains("\"points\":[{\"x\":411.18946322164174"));
+    }
+
+    #[test]
+    fn exports_circle_center_radius_into_html() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/gsp/circle_center_radius.gsp"),
+            800,
+            600,
+        )
+        .expect("circle-center-radius fixture should compile");
+
+        assert!(html.contains("\"circles\":[{\"center\":{\"x\":348.0,\"y\":177.0}"));
+        assert!(html.contains("\"kind\":\"segment-radius-circle\""));
+        assert!(html.contains(
+            "\"lines\":[{\"points\":[{\"x\":318.0,\"y\":391.0},{\"x\":403.0,\"y\":390.0}]"
+        ));
     }
 
     #[test]

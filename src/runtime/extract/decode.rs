@@ -1,8 +1,55 @@
 use super::points::{TransformBindingKind, decode_transform_binding};
 use crate::format::{
-    GspFile, IndexedPathRecord, ObjectGroup, PointRecord, collect_strings, decode_indexed_path,
-    read_f64, read_i16, read_u16, read_u32,
+    GroupKind, GspFile, IndexedPathRecord, ObjectGroup, PointRecord, collect_strings,
+    decode_indexed_path, read_f64, read_i16, read_u16, read_u32,
 };
+
+pub(crate) fn is_circle_group_kind(kind: GroupKind) -> bool {
+    matches!(kind, GroupKind::Circle | GroupKind::CircleCenterRadius)
+}
+
+pub(crate) fn resolve_circle_points_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group: &ObjectGroup,
+) -> Option<(PointRecord, PointRecord)> {
+    let path = find_indexed_path(file, group)?;
+    match group.header.kind() {
+        GroupKind::Circle => {
+            if path.refs.len() != 2 {
+                return None;
+            }
+            let center = anchors.get(path.refs[0].checked_sub(1)?)?.clone()?;
+            let radius_point = anchors.get(path.refs[1].checked_sub(1)?)?.clone()?;
+            Some((center, radius_point))
+        }
+        GroupKind::CircleCenterRadius => {
+            if path.refs.len() != 2 {
+                return None;
+            }
+            let center = anchors.get(path.refs[0].checked_sub(1)?)?.clone()?;
+            let segment_group = groups.get(path.refs[1].checked_sub(1)?)?;
+            let segment_path = find_indexed_path(file, segment_group)?;
+            if segment_path.refs.len() != 2 {
+                return None;
+            }
+            let start = anchors.get(segment_path.refs[0].checked_sub(1)?)?.clone()?;
+            let end = anchors.get(segment_path.refs[1].checked_sub(1)?)?.clone()?;
+            let radius = ((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt();
+            radius.is_finite().then(|| {
+                (
+                    center.clone(),
+                    PointRecord {
+                        x: center.x + radius,
+                        y: center.y,
+                    },
+                )
+            })
+        }
+        _ => None,
+    }
+}
 
 pub(crate) fn is_action_button_group(group: &ObjectGroup) -> bool {
     (group.header.kind()) == crate::format::GroupKind::ActionButton

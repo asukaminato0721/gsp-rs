@@ -748,7 +748,15 @@
     });
 
     scene.circles.forEach((circle) => {
-      if (circle.binding?.kind === "rotate-circle") {
+      if (circle.binding?.kind === "segment-radius-circle") {
+        const center = scene.points[circle.binding.centerIndex];
+        const lineStart = scene.points[circle.binding.lineStartIndex];
+        const lineEnd = scene.points[circle.binding.lineEndIndex];
+        if (!center || !lineStart || !lineEnd) return;
+        const radius = Math.hypot(lineEnd.x - lineStart.x, lineEnd.y - lineStart.y);
+        circle.center = { x: center.x, y: center.y };
+        circle.radiusPoint = { x: center.x + radius, y: center.y };
+      } else if (circle.binding?.kind === "rotate-circle") {
         const source = scene.circles[circle.binding.sourceIndex];
         const center = scene.points[circle.binding.centerIndex];
         if (!source || !center) return;

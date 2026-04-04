@@ -5,6 +5,7 @@ use super::{
     reflect_across_line, reflection_line_group_indices, rotate_around, scale_around,
     translation_point_pair_group_indices,
 };
+use crate::runtime::extract::decode::{is_circle_group_kind, resolve_circle_points_raw};
 
 pub(crate) fn collect_rotated_line_shapes(
     file: &GspFile,
@@ -147,17 +148,13 @@ pub(crate) fn collect_rotated_circle_shapes(
             let binding = decode_parameter_rotation_binding(file, groups, group)?;
             let path = find_indexed_path(file, group)?;
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            if (source_group.header.kind()) != crate::format::GroupKind::Circle {
-                return None;
-            }
-            let source_path = find_indexed_path(file, source_group)?;
-            if source_path.refs.len() != 2 {
+            if !is_circle_group_kind(source_group.header.kind()) {
                 return None;
             }
             let center = anchors.get(binding.center_group_index)?.clone()?;
             let radians = binding_angle_radians(&binding.kind)?;
-            let source_center = anchors.get(source_path.refs[0].checked_sub(1)?)?.clone()?;
-            let source_radius = anchors.get(source_path.refs[1].checked_sub(1)?)?.clone()?;
+            let (source_center, source_radius) =
+                resolve_circle_points_raw(file, groups, anchors, source_group)?;
             Some(CircleShape {
                 center: rotate_around(&source_center, &center, radians),
                 radius_point: rotate_around(&source_radius, &center, radians),
@@ -233,16 +230,12 @@ pub(crate) fn collect_transformed_circle_shapes(
             };
             let path = find_indexed_path(file, group)?;
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            if (source_group.header.kind()) != crate::format::GroupKind::Circle {
-                return None;
-            }
-            let source_path = find_indexed_path(file, source_group)?;
-            if source_path.refs.len() != 2 {
+            if !is_circle_group_kind(source_group.header.kind()) {
                 return None;
             }
             let scale_center = anchors.get(binding.center_group_index)?.clone()?;
-            let source_center = anchors.get(source_path.refs[0].checked_sub(1)?)?.clone()?;
-            let source_radius = anchors.get(source_path.refs[1].checked_sub(1)?)?.clone()?;
+            let (source_center, source_radius) =
+                resolve_circle_points_raw(file, groups, anchors, source_group)?;
             Some(CircleShape {
                 center: scale_around(&source_center, &scale_center, factor),
                 radius_point: scale_around(&source_radius, &scale_center, factor),
@@ -356,14 +349,13 @@ pub(crate) fn collect_reflected_circle_shapes(
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            if (source_group.header.kind()) != crate::format::GroupKind::Circle {
+            if !is_circle_group_kind(source_group.header.kind()) {
                 return None;
             }
             let (line_start_group_index, line_end_group_index) =
                 reflection_line_group_indices(file, groups, group)?;
-            let source_path = find_indexed_path(file, source_group)?;
-            let source_center = anchors.get(source_path.refs[0].checked_sub(1)?)?.clone()?;
-            let source_radius = anchors.get(source_path.refs[1].checked_sub(1)?)?.clone()?;
+            let (source_center, source_radius) =
+                resolve_circle_points_raw(file, groups, anchors, source_group)?;
             let line_start = anchors.get(line_start_group_index)?.clone()?;
             let line_end = anchors.get(line_end_group_index)?.clone()?;
             let center = reflect_across_line(&source_center, &line_start, &line_end)?;

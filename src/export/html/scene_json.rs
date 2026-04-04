@@ -555,6 +555,15 @@ impl ArcJson {
 #[derive(Serialize)]
 #[serde(tag = "kind")]
 enum ShapeBindingJson {
+    #[serde(rename = "segment-radius-circle")]
+    SegmentRadiusCircle {
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "lineStartIndex")]
+        line_start_index: usize,
+        #[serde(rename = "lineEndIndex")]
+        line_end_index: usize,
+    },
     #[serde(rename = "translate-polygon")]
     TranslatePolygon {
         #[serde(rename = "sourceIndex")]
@@ -634,6 +643,15 @@ enum ShapeBindingJson {
 impl ShapeBindingJson {
     fn from_binding(binding: &ShapeBinding) -> Self {
         match binding {
+            ShapeBinding::SegmentRadiusCircle {
+                center_index,
+                line_start_index,
+                line_end_index,
+            } => Self::SegmentRadiusCircle {
+                center_index: *center_index,
+                line_start_index: *line_start_index,
+                line_end_index: *line_end_index,
+            },
             ShapeBinding::TranslatePolygon {
                 source_index,
                 vector_start_index,

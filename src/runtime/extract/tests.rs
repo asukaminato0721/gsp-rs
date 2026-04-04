@@ -399,8 +399,16 @@ fn preserves_parallel_gsp() {
     let file = GspFile::parse(data).expect("fixture parses");
     let scene = build_scene(&file);
 
-    assert_eq!(scene.lines.len(), 2, "expected base segment and parallel line");
-    assert_eq!(scene.points.len(), 3, "expected two base points plus through point");
+    assert_eq!(
+        scene.lines.len(),
+        2,
+        "expected base segment and parallel line"
+    );
+    assert_eq!(
+        scene.points.len(),
+        3,
+        "expected two base points plus through point"
+    );
 
     let base = scene
         .lines
@@ -448,7 +456,11 @@ fn preserves_perpendicular_bisector_midpoint_gsp() {
         2,
         "expected source segment and perpendicular bisector"
     );
-    assert_eq!(scene.points.len(), 3, "expected endpoints plus visible midpoint");
+    assert_eq!(
+        scene.points.len(),
+        3,
+        "expected endpoints plus visible midpoint"
+    );
 
     let midpoint_index = scene
         .points
@@ -630,6 +642,37 @@ fn preserves_arc_on_circle_gsp() {
     assert!(
         (ccw_mid - ccw_span * 0.5).abs() < 1e-6,
         "expected synthesized midpoint to bisect the counterclockwise sweep"
+    );
+}
+
+#[test]
+fn preserves_circle_center_radius_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/circle_center_radius.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.circles.len(), 1, "expected one circle");
+    assert_eq!(scene.lines.len(), 1, "expected one segment");
+    assert_eq!(scene.points.len(), 3, "expected three visible points");
+
+    let circle = &scene.circles[0];
+    assert!((circle.center.x - 348.0).abs() < 1e-6);
+    assert!((circle.center.y - 177.0).abs() < 1e-6);
+    assert!(matches!(
+        circle.binding,
+        Some(crate::runtime::scene::ShapeBinding::SegmentRadiusCircle {
+            center_index: 2,
+            line_start_index: 0,
+            line_end_index: 1,
+        })
+    ));
+
+    let radius = ((circle.radius_point.x - circle.center.x).powi(2)
+        + (circle.radius_point.y - circle.center.y).powi(2))
+    .sqrt();
+    assert!(
+        (radius - ((85.0_f64).powi(2) + 1.0_f64).sqrt()).abs() < 1e-6,
+        "expected circle radius to match the referenced segment length"
     );
 }
 
