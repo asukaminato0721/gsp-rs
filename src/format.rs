@@ -241,6 +241,7 @@ pub enum GroupKind {
     CoordinateTrace,
     AxisLine,
     AngleMarker,
+    SegmentMarker,
     DerivedSegment75,
     Unknown(u16),
 }
@@ -293,6 +294,7 @@ impl From<u16> for GroupKind {
             81 => Self::ThreePointArc,
             97 => Self::CoordinateTrace,
             113 => Self::AngleMarker,
+            121 => Self::SegmentMarker,
             other => Self::Unknown(other),
         }
     }
@@ -346,6 +348,7 @@ impl GroupKind {
             Self::ThreePointArc => 81,
             Self::CoordinateTrace => 97,
             Self::AngleMarker => 113,
+            Self::SegmentMarker => 121,
             Self::Unknown(other) => other,
         }
     }

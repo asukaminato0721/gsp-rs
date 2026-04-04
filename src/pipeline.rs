@@ -347,4 +347,21 @@ mod tests {
         assert!(html.contains("\"points\":[{\"x\":323.0,\"y\":217.0,\"visible\":false"));
         assert!(html.contains("\"lines\":[]"));
     }
+
+    #[test]
+    fn exports_translated_triangle_segments_into_html() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/gsp/两个三角形标记全等.gsp"),
+            800,
+            600,
+        )
+        .expect("congruent triangle fixture should compile");
+
+        assert!(html.contains("\"kind\":\"translate-line\""));
+        assert!(html.contains("\"kind\":\"angle-marker\""));
+        assert!(html.contains("\"kind\":\"segment-marker\""));
+        assert!(html.contains("\"vectorStartIndex\":0,\"vectorEndIndex\":3"));
+        assert!(html.contains("\"text\":\"B'\""));
+        assert!(html.contains("\"text\":\"C'\""));
+    }
 }

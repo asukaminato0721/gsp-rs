@@ -835,8 +835,8 @@ fn preserves_angle_sign_gsp() {
     let marker = scene
         .lines
         .iter()
-        .find(|line| line.binding.is_none() && line.points.len() == 3)
-        .expect("expected synthesized angle marker polyline");
+        .find(|line| matches!(line.binding, Some(LineBinding::AngleMarker { .. })) && line.points.len() == 3)
+        .expect("expected reactive angle marker polyline");
 
     let anchor = &scene.points[0].position;
     let base = &scene.points[1].position;
@@ -1678,8 +1678,17 @@ fn preserves_translation_and_right_angle_rotation_in_transform_fixture() {
 
     assert_eq!(
         scene.lines.len(),
-        1,
-        "expected only the reflection axis line"
+        5,
+        "expected the reflection axis plus four translated polygon edges"
+    );
+    assert_eq!(
+        scene
+            .lines
+            .iter()
+            .filter(|line| matches!(line.binding, Some(LineBinding::TranslateLine { .. })))
+            .count(),
+        4,
+        "expected translated edges for the translated quadrilateral"
     );
     assert_eq!(scene.parameters.len(), 1, "expected one angle parameter");
     assert_eq!(scene.parameters[0].name, "t₁");
@@ -1732,6 +1741,93 @@ fn preserves_reflect_then_translate_in_translation_fixture() {
         }) if reflected_points.contains(&vector_start_index)
             && reflected_points.contains(&vector_end_index)
     )));
+}
+
+#[test]
+fn preserves_translated_triangle_segments_in_congruent_triangle_fixture() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/两个三角形标记全等.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(
+        scene.lines.len(),
+        16,
+        "expected source and translated edges plus angle and segment congruence markers"
+    );
+    assert_eq!(
+        scene
+            .lines
+            .iter()
+            .filter(|line| matches!(line.binding, Some(LineBinding::TranslateLine { .. })))
+            .count(),
+        3,
+        "expected the translated triangle to contribute three translated segment bindings"
+    );
+    assert_eq!(
+        scene
+            .lines
+            .iter()
+            .filter(|line| matches!(line.binding, Some(LineBinding::AngleMarker { .. })))
+            .count(),
+        4,
+        "expected four reactive angle markers"
+    );
+    assert_eq!(
+        scene
+            .lines
+            .iter()
+            .filter(|line| matches!(line.binding, Some(LineBinding::SegmentMarker { .. })))
+            .count(),
+        6,
+        "expected six segment congruence markers from payload"
+    );
+    assert!(scene.lines.iter().any(|line| {
+        matches!(
+            line.binding,
+            Some(LineBinding::TranslateLine {
+                vector_start_index: 0,
+                vector_end_index: 3,
+                ..
+            })
+        ) && line.points.len() == 2
+            && (line.points[0].x - 298.0).abs() < 1e-6
+            && (line.points[0].y - 237.0).abs() < 1e-6
+            && (line.points[1].x - 467.0).abs() < 1e-6
+            && (line.points[1].y - 250.0).abs() < 1e-6
+    }));
+    assert!(scene.lines.iter().any(|line| matches!(
+        line.binding,
+        Some(LineBinding::SegmentMarker {
+            marker_class: 3,
+            ..
+        })
+    )));
+    let perpendicular_marker = scene
+        .lines
+        .iter()
+        .find(|line| matches!(line.binding, Some(LineBinding::SegmentMarker {
+            start_index: 0,
+            end_index: 1,
+            marker_class: 1,
+            ..
+        })))
+        .expect("expected segment marker on translated base edge");
+    let marker_dx = perpendicular_marker.points[1].x - perpendicular_marker.points[0].x;
+    let marker_dy = perpendicular_marker.points[1].y - perpendicular_marker.points[0].y;
+    let segment_dx = scene.points[1].position.x - scene.points[0].position.x;
+    let segment_dy = scene.points[1].position.y - scene.points[0].position.y;
+    assert!(
+        (marker_dx * segment_dx + marker_dy * segment_dy).abs() < 1e-6,
+        "expected segment marker to be perpendicular to its host segment"
+    );
+    assert!(
+        scene.labels.iter().any(|label| label.text == "B'"),
+        "expected translated point label B'"
+    );
+    assert!(
+        scene.labels.iter().any(|label| label.text == "C'"),
+        "expected translated point label C'"
+    );
 }
 
 #[test]

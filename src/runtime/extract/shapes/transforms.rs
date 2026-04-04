@@ -48,6 +48,49 @@ pub(crate) fn collect_rotated_line_shapes(
         .collect()
 }
 
+pub(crate) fn collect_translated_line_shapes(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+) -> Vec<LineShape> {
+    groups
+        .iter()
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::Translation)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            let source_group_index = path.refs.first()?.checked_sub(1)?;
+            let source_group = groups.get(source_group_index)?;
+            if (source_group.header.kind()) != crate::format::GroupKind::Segment {
+                return None;
+            }
+            let (dx, dy, vector_start_index, vector_end_index) =
+                translation_delta(file, group, anchors)?;
+            let source_path = find_indexed_path(file, source_group)?;
+            let points = source_path
+                .refs
+                .iter()
+                .filter_map(|object_ref| {
+                    anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
+                })
+                .map(|point| PointRecord {
+                    x: point.x + dx,
+                    y: point.y + dy,
+                })
+                .collect::<Vec<_>>();
+            (points.len() >= 2 && has_distinct_points(&points)).then_some(LineShape {
+                points,
+                color: color_from_style(source_group.header.style_b),
+                dashed: false,
+                binding: Some(LineBinding::TranslateLine {
+                    source_index: source_group_index,
+                    vector_start_index,
+                    vector_end_index,
+                }),
+            })
+        })
+        .collect()
+}
+
 pub(crate) fn collect_scaled_line_shapes(
     file: &GspFile,
     groups: &[ObjectGroup],

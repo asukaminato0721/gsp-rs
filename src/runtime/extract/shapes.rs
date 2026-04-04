@@ -27,6 +27,7 @@ pub(super) use anchors::collect_raw_object_anchors;
 pub(super) use basic::{
     collect_bound_line_shapes, collect_circle_shapes, collect_coordinate_traces,
     collect_derived_segments, collect_line_shapes, collect_polygon_shapes,
+    collect_segment_marker_shapes,
     collect_three_point_arc_shapes,
 };
 pub(super) use iterations::{
@@ -39,5 +40,6 @@ pub(super) use transforms::{
     collect_reflected_circle_shapes, collect_reflected_line_shapes,
     collect_reflected_polygon_shapes, collect_rotated_circle_shapes, collect_rotated_line_shapes,
     collect_rotated_polygon_shapes, collect_scaled_line_shapes, collect_transformed_circle_shapes,
-    collect_transformed_polygon_shapes, collect_translated_polygon_shapes,
+    collect_transformed_polygon_shapes, collect_translated_line_shapes,
+    collect_translated_polygon_shapes,
 };

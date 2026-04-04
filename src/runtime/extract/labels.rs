@@ -31,6 +31,11 @@ pub(super) fn collect_labels(
         let kind = group.header.kind();
         match kind {
             crate::format::GroupKind::Point
+            | crate::format::GroupKind::Translation
+            | crate::format::GroupKind::Reflection
+            | crate::format::GroupKind::Rotation
+            | crate::format::GroupKind::ParameterRotation
+            | crate::format::GroupKind::Scale
             | crate::format::GroupKind::Segment
             | crate::format::GroupKind::PointConstraint
             | crate::format::GroupKind::GraphObject40
@@ -68,6 +73,11 @@ pub(super) fn collect_labels(
                         && matches!(
                             kind,
                             crate::format::GroupKind::Point
+                                | crate::format::GroupKind::Translation
+                                | crate::format::GroupKind::Reflection
+                                | crate::format::GroupKind::Rotation
+                                | crate::format::GroupKind::ParameterRotation
+                                | crate::format::GroupKind::Scale
                                 | crate::format::GroupKind::Segment
                                 | crate::format::GroupKind::PointConstraint
                         )
