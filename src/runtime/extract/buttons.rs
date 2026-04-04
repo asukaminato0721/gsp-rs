@@ -50,7 +50,7 @@ pub(super) fn collect_buttons(
     line_group_to_index: &[Option<usize>],
     circle_group_to_index: &[Option<usize>],
     polygon_group_to_index: &[Option<usize>],
-) -> Vec<SceneButton> {
+) -> (Vec<SceneButton>, BTreeMap<usize, usize>) {
     let button_label_groups = groups
         .iter()
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::ButtonLabel)
@@ -176,7 +176,7 @@ pub(super) fn collect_buttons(
         .map(|(button_index, button)| (button.group_ordinal, button_index))
         .collect::<BTreeMap<usize, usize>>();
 
-    raw_buttons
+    let buttons = raw_buttons
         .into_iter()
         .filter_map(|button| {
             let action = match button.action {
@@ -264,7 +264,8 @@ pub(super) fn collect_buttons(
                 action,
             })
         })
-        .collect()
+        .collect::<Vec<_>>();
+    (buttons, button_index_by_ordinal)
 }
 
 fn resolve_visibility_targets(

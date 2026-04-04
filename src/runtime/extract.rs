@@ -20,7 +20,7 @@ use self::graph::{
 use self::labels::{
     collect_circle_parameter_labels, collect_coordinate_labels, collect_label_iterations,
     collect_labels, collect_polygon_parameter_labels, collect_segment_parameter_labels,
-    compute_iteration_labels,
+    compute_iteration_labels, resolve_label_hotspots, PendingLabelHotspot,
 };
 use self::points::{
     RawPointIterationFamily, TransformBindingKind, collect_non_graph_parameters,
@@ -392,8 +392,8 @@ fn collect_scene_labels(
     groups: &[ObjectGroup],
     analysis: &SceneAnalysis,
     shapes: &CollectedShapes,
-) -> (Vec<TextLabel>, BTreeMap<usize, usize>) {
-    let (mut labels, label_group_to_index) = collect_labels(
+) -> (Vec<TextLabel>, BTreeMap<usize, usize>, Vec<PendingLabelHotspot>) {
+    let (mut labels, label_group_to_index, mut pending_hotspots) = collect_labels(
         file,
         groups,
         &analysis.raw_anchors,
@@ -424,12 +424,13 @@ fn collect_scene_labels(
             &analysis.graph_ref,
         ));
     }
-    append_circle_perimeter_label(&mut labels, &shapes.circles, analysis);
-    (labels, label_group_to_index)
+    append_circle_perimeter_label(&mut labels, &mut pending_hotspots, &shapes.circles, analysis);
+    (labels, label_group_to_index, pending_hotspots)
 }
 
 fn append_circle_perimeter_label(
     labels: &mut Vec<TextLabel>,
+    pending_hotspots: &mut [PendingLabelHotspot],
     circles: &[CircleShape],
     analysis: &SceneAnalysis,
 ) {
@@ -447,6 +448,11 @@ fn append_circle_perimeter_label(
             x: labels[formula_index].anchor.x,
             y: labels[formula_index].anchor.y - 0.9 * transform.raw_per_unit,
         };
+        for hotspot in pending_hotspots.iter_mut() {
+            if hotspot.label_index >= formula_index {
+                hotspot.label_index += 1;
+            }
+        }
         labels.insert(
             formula_index,
             TextLabel {
@@ -455,6 +461,7 @@ fn append_circle_perimeter_label(
                 color: [30, 30, 30, 255],
                 binding: None,
                 screen_space: false,
+                hotspots: Vec::new(),
             },
         );
     }
@@ -1492,6 +1499,7 @@ fn assemble_scene(
                 color: label.color,
                 binding: label.binding,
                 screen_space: label.screen_space,
+                hotspots: label.hotspots,
             })
             .collect(),
         points: world_data.world_points,
@@ -1559,7 +1567,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     let point_map = collect_point_objects(file, &groups);
     let analysis = analyze_scene(file, &groups, &point_map);
     let mut shapes = collect_scene_shapes(file, &groups, &point_map, &analysis);
-    let (mut labels, label_group_to_index) =
+    let (mut labels, label_group_to_index, pending_hotspots) =
         collect_scene_labels(file, &groups, &analysis, &shapes);
 
     let (visible_points, group_to_point_index) = collect_visible_points(
@@ -1625,7 +1633,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         Vec::new()
     };
     parameters.extend(collect_non_graph_parameters(file, &groups, &mut labels));
-    let buttons = collect_buttons(
+    let (buttons, button_group_to_index) = collect_buttons(
         file,
         &groups,
         &analysis.raw_anchors,
@@ -1633,6 +1641,16 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         &binding_maps.line_group_to_index,
         &binding_maps.circle_group_to_index,
         &binding_maps.polygon_group_to_index,
+    );
+    resolve_label_hotspots(
+        file,
+        &groups,
+        &mut labels,
+        &pending_hotspots,
+        &group_to_point_index,
+        &binding_maps.circle_group_to_index,
+        &binding_maps.polygon_group_to_index,
+        &button_group_to_index,
     );
     let functions = if analysis.graph_mode {
         collect_scene_functions(

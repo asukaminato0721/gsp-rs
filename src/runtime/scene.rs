@@ -455,6 +455,41 @@ pub(crate) struct TextLabel {
     pub(crate) color: [u8; 4],
     pub(crate) binding: Option<TextLabelBinding>,
     pub(crate) screen_space: bool,
+    pub(crate) hotspots: Vec<TextLabelHotspot>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct TextLabelHotspot {
+    pub(crate) line: usize,
+    pub(crate) start: usize,
+    pub(crate) end: usize,
+    pub(crate) text: String,
+    pub(crate) action: TextLabelHotspotAction,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum TextLabelHotspotAction {
+    Button {
+        button_index: usize,
+    },
+    Point {
+        point_index: usize,
+    },
+    Segment {
+        start_point_index: usize,
+        end_point_index: usize,
+    },
+    AngleMarker {
+        start_point_index: usize,
+        vertex_point_index: usize,
+        end_point_index: usize,
+    },
+    Circle {
+        circle_index: usize,
+    },
+    Polygon {
+        polygon_index: usize,
+    },
 }
 
 #[derive(Debug, Clone)]
