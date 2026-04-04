@@ -52,6 +52,12 @@ pub(crate) enum ButtonAction {
         circle_indices: Vec<usize>,
         polygon_indices: Vec<usize>,
     },
+    ShowHideVisibility {
+        point_indices: Vec<usize>,
+        line_indices: Vec<usize>,
+        circle_indices: Vec<usize>,
+        polygon_indices: Vec<usize>,
+    },
     MovePoint {
         point_index: usize,
         target_point_index: Option<usize>,

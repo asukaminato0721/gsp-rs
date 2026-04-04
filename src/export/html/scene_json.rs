@@ -155,6 +155,16 @@ enum ButtonActionJson {
         #[serde(rename = "polygonIndices")]
         polygon_indices: Vec<usize>,
     },
+    ShowHideVisibility {
+        #[serde(rename = "pointIndices")]
+        point_indices: Vec<usize>,
+        #[serde(rename = "lineIndices")]
+        line_indices: Vec<usize>,
+        #[serde(rename = "circleIndices")]
+        circle_indices: Vec<usize>,
+        #[serde(rename = "polygonIndices")]
+        polygon_indices: Vec<usize>,
+    },
     MovePoint {
         #[serde(rename = "pointIndex")]
         point_index: usize,
@@ -200,6 +210,17 @@ impl ButtonActionJson {
                 polygon_indices,
             } => Self::SetVisibility {
                 visible: *visible,
+                point_indices: point_indices.clone(),
+                line_indices: line_indices.clone(),
+                circle_indices: circle_indices.clone(),
+                polygon_indices: polygon_indices.clone(),
+            },
+            ButtonAction::ShowHideVisibility {
+                point_indices,
+                line_indices,
+                circle_indices,
+                polygon_indices,
+            } => Self::ShowHideVisibility {
                 point_indices: point_indices.clone(),
                 line_indices: line_indices.clone(),
                 circle_indices: circle_indices.clone(),

@@ -71,10 +71,12 @@
   const hoverPointIndex = van?.state ? van.state(null) : { val: null };
   const buttonsState = van?.state ? van.state((sourceScene.buttons || []).map((button) => ({
     ...button,
+    baseText: button.text,
     visible: true,
     active: false,
   }))) : { val: (sourceScene.buttons || []).map((button) => ({
     ...button,
+    baseText: button.text,
     visible: true,
     active: false,
   })) };
@@ -687,6 +689,92 @@
     });
   }
 
+  function visibilityTargetsMatch(action, visible) {
+    const scene = currentScene();
+    const pointsMatch = (action.pointIndices || []).every((index) => scene.points[index]?.visible === visible);
+    const linesMatch = (action.lineIndices || []).every((index) => scene.lines[index]?.visible === visible);
+    const circlesMatch = (action.circleIndices || []).every((index) => scene.circles[index]?.visible === visible);
+    const polygonsMatch = (action.polygonIndices || []).every((index) => scene.polygons[index]?.visible === visible);
+    return pointsMatch && linesMatch && circlesMatch && polygonsMatch;
+  }
+
+  function toggledVisibilityText(baseText, targetsVisible) {
+    if (typeof baseText !== "string" || !baseText) {
+      return baseText;
+    }
+    if (targetsVisible) {
+      if (baseText.includes("显示")) {
+        return baseText.replace("显示", "隐藏");
+      }
+    } else if (baseText.includes("隐藏")) {
+      return baseText.replace("隐藏", "显示");
+    }
+    return baseText;
+  }
+
+  function updateLinkedButtonLabels(buttonIndex, nextText) {
+    updateScene((scene) => {
+      scene.labels.forEach((label) => {
+        if (!label.hotspots?.length) {
+          return;
+        }
+        let lines = label.text.split("\n").map((line) => Array.from(line));
+        let changed = false;
+        const relevantHotspots = label.hotspots
+          .filter((hotspot) =>
+            hotspot.action?.kind === "button" && hotspot.action.buttonIndex === buttonIndex
+          )
+          .sort((left, right) => right.line - left.line || right.start - left.start);
+        relevantHotspots.forEach((hotspot) => {
+          const line = lines[hotspot.line];
+          if (!line) {
+            return;
+          }
+          line.splice(hotspot.start, hotspot.end - hotspot.start, ...Array.from(nextText));
+          hotspot.end = hotspot.start + Array.from(nextText).length;
+          hotspot.text = nextText;
+          changed = true;
+        });
+        if (changed) {
+          label.text = lines.map((line) => line.join("")).join("\n");
+        }
+      });
+    });
+  }
+
+  function syncVisibilityButtonState(buttonIndex, action) {
+    if (typeof buttonIndex !== "number") {
+      return;
+    }
+    let active = false;
+    if (action.kind === "toggle-visibility") {
+      active = visibilityTargetsMatch(action, true);
+    } else if (action.kind === "set-visibility") {
+      active = visibilityTargetsMatch(action, !!action.visible);
+    } else if (action.kind === "show-hide-visibility") {
+      active = visibilityTargetsMatch(action, true);
+    } else {
+      return;
+    }
+    updateButtons((buttons) => {
+      if (buttons[buttonIndex]) {
+        buttons[buttonIndex].active = active;
+        if (action.kind === "show-hide-visibility" || action.kind === "toggle-visibility") {
+          buttons[buttonIndex].text = toggledVisibilityText(
+            buttons[buttonIndex].baseText || buttons[buttonIndex].text,
+            active,
+          );
+        }
+      }
+    });
+    if (action.kind === "show-hide-visibility" || action.kind === "toggle-visibility") {
+      const button = buttonsState.val[buttonIndex];
+      if (button) {
+        updateLinkedButtonLabels(buttonIndex, button.text);
+      }
+    }
+  }
+
   function toggleTargetsVisibility(action) {
     const scene = currentScene();
     const hiddenPoint = (action.pointIndices || []).some((index) => scene.points[index]?.visible === false);
@@ -881,10 +969,18 @@
         break;
       case "toggle-visibility":
         toggleTargetsVisibility(action);
+        syncVisibilityButtonState(buttonIndex, action);
         break;
       case "set-visibility":
         setTargetsVisibility(action, !!action.visible);
+        syncVisibilityButtonState(buttonIndex, action);
         break;
+      case "show-hide-visibility": {
+        const nextVisible = !visibilityTargetsMatch(action, true);
+        setTargetsVisibility(action, nextVisible);
+        syncVisibilityButtonState(buttonIndex, action);
+        break;
+      }
       case "move-point":
         if (typeof action.pointIndex === "number") {
           toggleAnimatedPoint(

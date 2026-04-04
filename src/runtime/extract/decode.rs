@@ -304,8 +304,8 @@ pub(crate) fn decode_button_screen_anchor(
         .find(|record| record.record_type == 0x0906)
         .map(|record| record.payload(&file.data))?;
     (payload.len() >= 24).then(|| PointRecord {
-        x: read_u16(payload, payload.len() - 4) as f64,
-        y: read_u16(payload, payload.len() - 2) as f64,
+        x: read_i16(payload, payload.len() - 4) as f64,
+        y: read_i16(payload, payload.len() - 2) as f64,
     })
 }
 

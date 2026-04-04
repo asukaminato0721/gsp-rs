@@ -105,6 +105,11 @@ canvas.is-dragging {
   pointer-events: auto;
 }
 
+.scene-link-button.is-active {
+  background: rgb(224, 236, 255);
+  border-color: rgb(128, 160, 220);
+}
+
 .scene-hotspot {
   position: absolute;
   pointer-events: auto;

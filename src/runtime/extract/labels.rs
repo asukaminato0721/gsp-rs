@@ -64,14 +64,6 @@ pub(super) fn collect_labels(
                 if kind == crate::format::GroupKind::ActionButton && is_action_button_group(group) {
                     continue;
                 }
-                if kind == crate::format::GroupKind::ButtonLabel
-                    && find_indexed_path(file, group)
-                        .and_then(|path| path.refs.first().copied())
-                        .and_then(|ordinal| groups.get(ordinal.checked_sub(1)?))
-                        .is_some_and(is_action_button_group)
-                {
-                    continue;
-                }
                 if kind == crate::format::GroupKind::LabelIterationSeed {
                     if let Some(label) =
                         collect_point_expression_label(file, groups, group, anchors)

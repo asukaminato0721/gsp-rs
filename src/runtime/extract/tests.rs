@@ -95,6 +95,39 @@ fn preserves_hot_text_actions_in_rich_text_gsp() {
 }
 
 #[test]
+fn preserves_info_gsp_button_and_hidden_point() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/info.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.points.len(), 1);
+    assert!(!scene.points[0].visible, "point should start hidden");
+    assert_eq!(scene.labels.len(), 1, "expected linked text label");
+    assert_eq!(scene.labels[0].text, "显示点");
+    assert_eq!(scene.labels[0].hotspots.len(), 1);
+    assert!(matches!(
+        scene.labels[0].hotspots[0].action,
+        crate::runtime::scene::TextLabelHotspotAction::Button { button_index: 0 }
+    ));
+    assert_eq!(scene.buttons.len(), 1);
+    assert_eq!(scene.buttons[0].text, "显示点");
+    match &scene.buttons[0].action {
+        crate::runtime::scene::ButtonAction::ShowHideVisibility {
+            point_indices,
+            line_indices,
+            circle_indices,
+            polygon_indices,
+        } => {
+            assert_eq!(point_indices, &vec![0]);
+            assert!(line_indices.is_empty());
+            assert!(circle_indices.is_empty());
+            assert!(polygon_indices.is_empty());
+        }
+        other => panic!("unexpected button action: {other:?}"),
+    }
+}
+
+#[test]
 fn preserves_constrained_points_in_edge_gsp() {
     let data = include_bytes!("../../../../edge.gsp");
     let file = GspFile::parse(data).expect("fixture parses");
