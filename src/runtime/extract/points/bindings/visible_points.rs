@@ -35,6 +35,17 @@ pub(crate) fn collect_visible_points(
                         binding: None,
                     })
             }
+            crate::format::GroupKind::IntersectionPoint1
+            | crate::format::GroupKind::IntersectionPoint2 => anchors
+                .get(index)
+                .cloned()
+                .flatten()
+                .map(|position| ScenePoint {
+                    position,
+                    visible,
+                    constraint: ScenePointConstraint::Free,
+                    binding: None,
+                }),
             crate::format::GroupKind::Midpoint => {
                 scene_point_from_midpoint(
                     index,

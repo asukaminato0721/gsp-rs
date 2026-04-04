@@ -1191,6 +1191,48 @@ fn preserves_midpoint_binding_and_trace_in_trace_gsp() {
 }
 
 #[test]
+fn preserves_trace1_graph_geometry_and_traces() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/trace1.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert!(scene.graph_mode, "expected graph scene");
+    assert_eq!(scene.points.len(), 6, "expected origin plus derived intersections");
+    assert_eq!(scene.circles.len(), 2, "expected two circles");
+    assert_eq!(scene.polygons.len(), 2, "expected two filled polygons");
+    assert!(
+        scene.lines.len() >= 5,
+        "expected measurement, construction, and trace lines"
+    );
+
+    let has_point = |x: f64, y: f64| {
+        scene.points.iter().any(|point| {
+            (point.position.x - x).abs() < 1e-6 && (point.position.y - y).abs() < 1e-6
+        })
+    };
+    assert!(has_point(0.0, 0.0), "expected origin point");
+    assert!(has_point(0.0, 1.0), "expected arc point");
+    assert!(has_point(0.0, 2.0), "expected translated top point");
+    assert!(has_point(-1.0, 1.0), "expected left trace endpoint");
+    assert!(has_point(1.0, 1.0), "expected right trace endpoint");
+
+    assert!(
+        scene.lines.iter().any(|line| {
+            line.points.first().is_some_and(|point| (point.x - 0.0).abs() < 1e-6 && (point.y - 1.0).abs() < 1e-6)
+                && line.points.last().is_some_and(|point| (point.x + 1.0).abs() < 1e-6 && (point.y - 1.0).abs() < 1e-6)
+        }),
+        "expected left horizontal trace"
+    );
+    assert!(
+        scene.lines.iter().any(|line| {
+            line.points.first().is_some_and(|point| (point.x - 0.0).abs() < 1e-6 && (point.y - 1.0).abs() < 1e-6)
+                && line.points.last().is_some_and(|point| (point.x - 1.0).abs() < 1e-6 && (point.y - 1.0).abs() < 1e-6)
+        }),
+        "expected right horizontal trace"
+    );
+}
+
+#[test]
 fn preserves_parameter_driven_point_iteration_family() {
     let data =
         include_bytes!("../../../tests/fixtures/gsp/static/简单迭代/原象点初象点深度5迭代.gsp");

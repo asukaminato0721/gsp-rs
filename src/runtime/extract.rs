@@ -1315,14 +1315,12 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         &analysis.raw_anchors,
         &analysis.graph_ref,
     );
-    if !analysis.graph_mode {
-        shapes.coordinate_traces.extend(collect_point_traces(
-            file,
-            &groups,
-            &visible_points,
-            &group_to_point_index,
-        ));
-    }
+    shapes.coordinate_traces.extend(collect_point_traces(
+        file,
+        &groups,
+        &visible_points,
+        &group_to_point_index,
+    ));
     let (derived_iteration_points, raw_point_iterations) =
         collect_point_iteration_points(file, &groups, &analysis.raw_anchors, &group_to_point_index);
     let label_iterations =
