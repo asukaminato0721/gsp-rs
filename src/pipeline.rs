@@ -320,6 +320,19 @@ mod tests {
     }
 
     #[test]
+    fn exports_center_arc_fixture_into_html() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/gsp/未实现1(1).gsp"),
+            800,
+            600,
+        )
+        .expect("center-arc fixture should compile");
+
+        assert!(html.contains("\"arcs\":["));
+        assert!(html.contains("\"kind\":\"circle-arc\""));
+    }
+
+    #[test]
     fn exports_circle_center_radius_into_html() {
         let html = compile_bytes_to_html_document(
             include_bytes!("../tests/fixtures/gsp/circle_center_radius.gsp"),

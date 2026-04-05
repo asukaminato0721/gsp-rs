@@ -878,6 +878,30 @@ fn preserves_point_on_circle_arc_gsp() {
 }
 
 #[test]
+fn preserves_center_arc_and_point_on_arc_in_unimplemented_fixture() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/未实现1(1).gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.circles.len(), 1, "expected one circle");
+    assert_eq!(scene.arcs.len(), 1, "expected one center-based arc");
+    assert_eq!(
+        scene.points.len(),
+        5,
+        "expected base points plus constrained arc point"
+    );
+    assert!(scene.points.iter().any(|point| matches!(
+        point.constraint,
+        ScenePointConstraint::OnCircleArc {
+            center_index: 0,
+            start_index: 1,
+            end_index: 3,
+            ..
+        }
+    )));
+}
+
+#[test]
 fn preserves_angle_sign_gsp() {
     let data = include_bytes!("../../../tests/fixtures/gsp/angle-sign.gsp");
     let file = GspFile::parse(data).expect("fixture parses");

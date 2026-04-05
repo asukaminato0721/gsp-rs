@@ -438,6 +438,30 @@ pub(crate) fn decode_parameter_controlled_point(
                 source_point_group_index,
             })
         }
+        crate::format::GroupKind::CenterArc => {
+            let host_path = find_indexed_path(file, host_group)?;
+            if host_path.refs.len() != 3 {
+                return None;
+            }
+            let center_group_index = host_path.refs[0].checked_sub(1)?;
+            let start_group_index = host_path.refs[1].checked_sub(1)?;
+            let end_group_index = host_path.refs[2].checked_sub(1)?;
+            let center = anchors.get(center_group_index)?.clone()?;
+            let start = anchors.get(start_group_index)?.clone()?;
+            let end = anchors.get(end_group_index)?.clone()?;
+            let position = point_on_circle_arc(&center, &start, &end, parameter_value)?;
+            Some(ParameterControlledPoint {
+                position,
+                constraint: RawPointConstraint::CircleArc(PointOnCircleArcConstraint {
+                    center_group_index,
+                    start_group_index,
+                    end_group_index,
+                    t: parameter_value,
+                }),
+                parameter_name,
+                source_point_group_index,
+            })
+        }
         _ => None,
     }
 }
@@ -583,6 +607,22 @@ pub(crate) fn decode_point_constraint(
             }
             Some(RawPointConstraint::CircleArc(PointOnCircleArcConstraint {
                 center_group_index: circle_path.refs[0].checked_sub(1)?,
+                start_group_index: host_path.refs[1].checked_sub(1)?,
+                end_group_index: host_path.refs[2].checked_sub(1)?,
+                t,
+            }))
+        }
+        (crate::format::GroupKind::CenterArc, 12) => {
+            let host_path = find_indexed_path(file, host_group)?;
+            if host_path.refs.len() != 3 {
+                return None;
+            }
+            let t = read_f64(payload, 4);
+            if !t.is_finite() {
+                return None;
+            }
+            Some(RawPointConstraint::CircleArc(PointOnCircleArcConstraint {
+                center_group_index: host_path.refs[0].checked_sub(1)?,
                 start_group_index: host_path.refs[1].checked_sub(1)?,
                 end_group_index: host_path.refs[2].checked_sub(1)?,
                 t,
