@@ -8,7 +8,8 @@ use super::{
     decode_non_graph_parameter_value_for_group, decode_parameter_rotation_binding, read_f64,
 };
 use crate::runtime::geometry::{
-    GraphTransform, lerp_point, point_on_three_point_arc, reflect_across_line, rotate_around,
+    GraphTransform, lerp_point, point_on_circle_arc, point_on_three_point_arc, reflect_across_line,
+    rotate_around,
 };
 
 pub(crate) fn decode_graph_calibration_anchor_raw(
@@ -93,7 +94,8 @@ pub(crate) fn decode_intersection_anchor_raw(
     }
 
     if variant.is_none() {
-        let (left_start, left_end) = resolve_line_like_points_raw(file, groups, anchors, left_group)?;
+        let (left_start, left_end) =
+            resolve_line_like_points_raw(file, groups, anchors, left_group)?;
         let (right_start, right_end) =
             resolve_line_like_points_raw(file, groups, anchors, right_group)?;
         return line_line_intersection(&left_start, &left_end, &right_start, &right_end);
@@ -119,8 +121,8 @@ fn resolve_circle_like_raw(
             }
             let center = anchors.get(path.refs[0].checked_sub(1)?)?.clone()?;
             let radius_point = anchors.get(path.refs[1].checked_sub(1)?)?.clone()?;
-            let radius = ((radius_point.x - center.x).powi(2) + (radius_point.y - center.y).powi(2))
-                .sqrt();
+            let radius =
+                ((radius_point.x - center.x).powi(2) + (radius_point.y - center.y).powi(2)).sqrt();
             (radius > 1e-9).then_some((center, radius))
         }
         crate::format::GroupKind::CircleCenterRadius => {
@@ -168,7 +170,8 @@ fn resolve_line_like_points_raw(
             }
             let through = anchors.get(path.refs[0].checked_sub(1)?)?.clone()?;
             let host_group = groups.get(path.refs[1].checked_sub(1)?)?;
-            let (host_start, host_end) = resolve_line_like_points_raw(file, groups, anchors, host_group)?;
+            let (host_start, host_end) =
+                resolve_line_like_points_raw(file, groups, anchors, host_group)?;
             let dx = host_end.x - host_start.x;
             let dy = host_end.y - host_start.y;
             let len = (dx * dx + dy * dy).sqrt();
@@ -189,7 +192,8 @@ fn resolve_line_like_points_raw(
             }
             let through = anchors.get(path.refs[0].checked_sub(1)?)?.clone()?;
             let host_group = groups.get(path.refs[1].checked_sub(1)?)?;
-            let (host_start, host_end) = resolve_line_like_points_raw(file, groups, anchors, host_group)?;
+            let (host_start, host_end) =
+                resolve_line_like_points_raw(file, groups, anchors, host_group)?;
             let dx = host_end.x - host_start.x;
             let dy = host_end.y - host_start.y;
             let len = (dx * dx + dy * dy).sqrt();
@@ -241,8 +245,7 @@ fn resolve_line_like_points_raw(
 }
 
 fn distinct_pair(start: PointRecord, end: PointRecord) -> Option<(PointRecord, PointRecord)> {
-    (((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt() > 1e-9)
-        .then_some((start, end))
+    (((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt() > 1e-9).then_some((start, end))
 }
 
 fn select_line_circle_intersection(
@@ -672,6 +675,12 @@ pub(crate) fn decode_point_constraint_anchor(
                 constraint.unit_x,
                 constraint.unit_y,
             ))
+        }
+        RawPointConstraint::CircleArc(constraint) => {
+            let center = anchors.get(constraint.center_group_index)?.clone()?;
+            let start = anchors.get(constraint.start_group_index)?.clone()?;
+            let end = anchors.get(constraint.end_group_index)?.clone()?;
+            point_on_circle_arc(&center, &start, &end, constraint.t)
         }
         RawPointConstraint::Arc(constraint) => {
             let start = anchors.get(constraint.start_group_index)?.clone()?;

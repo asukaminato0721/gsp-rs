@@ -27,9 +27,7 @@ pub(crate) fn collect_raw_object_anchors(
             decode_point_constraint_anchor(file, groups, group, &anchors, graph)
         {
             Some(anchor)
-        } else if let Some(anchor) =
-            decode_intersection_anchor_raw(file, groups, group, &anchors)
-        {
+        } else if let Some(anchor) = decode_intersection_anchor_raw(file, groups, group, &anchors) {
             Some(anchor)
         } else if let Some(anchor) = decode_point_on_ray_anchor_raw(file, groups, group, &anchors) {
             Some(anchor)

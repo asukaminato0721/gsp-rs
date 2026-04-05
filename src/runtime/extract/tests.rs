@@ -855,6 +855,29 @@ fn preserves_arc_on_circle_gsp() {
 }
 
 #[test]
+fn preserves_point_on_circle_arc_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/point_on_arc1.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.arcs.len(), 1, "expected one arc on the source circle");
+    assert_eq!(
+        scene.points.len(),
+        5,
+        "expected center, radius, arc endpoints, and one constrained point"
+    );
+    assert!(scene.points.iter().any(|point| matches!(
+        point.constraint,
+        ScenePointConstraint::OnCircleArc {
+            center_index: 0,
+            start_index: 2,
+            end_index: 3,
+            t,
+        } if (t - 0.2648281634562194).abs() < 1e-9
+    )));
+}
+
+#[test]
 fn preserves_angle_sign_gsp() {
     let data = include_bytes!("../../../tests/fixtures/gsp/angle-sign.gsp");
     let file = GspFile::parse(data).expect("fixture parses");
@@ -865,12 +888,22 @@ fn preserves_angle_sign_gsp() {
         3,
         "expected angle rays plus synthesized angle marker"
     );
-    assert_eq!(scene.points.len(), 4, "expected anchor, ray endpoint, and marker points");
+    assert_eq!(
+        scene.points.len(),
+        4,
+        "expected anchor, ray endpoint, and marker points"
+    );
     assert_eq!(scene.labels.len(), 1, "expected one point label");
     assert_eq!(scene.labels[0].text, "A");
 
-    assert!(matches!(scene.points[0].constraint, ScenePointConstraint::Free));
-    assert!(matches!(scene.points[1].constraint, ScenePointConstraint::Free));
+    assert!(matches!(
+        scene.points[0].constraint,
+        ScenePointConstraint::Free
+    ));
+    assert!(matches!(
+        scene.points[1].constraint,
+        ScenePointConstraint::Free
+    ));
     assert!(matches!(
         scene.points[2].binding,
         Some(ScenePointBinding::Rotate {
@@ -892,7 +925,10 @@ fn preserves_angle_sign_gsp() {
             factor,
         }) if (factor - 1.5).abs() < 1e-6
     ));
-    assert!(scene.points[3].visible, "expected scaled endpoint to remain visible");
+    assert!(
+        scene.points[3].visible,
+        "expected scaled endpoint to remain visible"
+    );
 
     assert!(matches!(
         scene.lines[0].binding,
@@ -912,7 +948,9 @@ fn preserves_angle_sign_gsp() {
     let marker = scene
         .lines
         .iter()
-        .find(|line| matches!(line.binding, Some(LineBinding::AngleMarker { .. })) && line.points.len() == 3)
+        .find(|line| {
+            matches!(line.binding, Some(LineBinding::AngleMarker { .. })) && line.points.len() == 3
+        })
         .expect("expected reactive angle marker polyline");
 
     let anchor = &scene.points[0].position;
@@ -1274,7 +1312,11 @@ fn preserves_trace1_graph_geometry_and_traces() {
     let scene = build_scene(&file);
 
     assert!(scene.graph_mode, "expected graph scene");
-    assert_eq!(scene.points.len(), 6, "expected origin plus derived intersections");
+    assert_eq!(
+        scene.points.len(),
+        6,
+        "expected origin plus derived intersections"
+    );
     assert_eq!(scene.circles.len(), 2, "expected two circles");
     assert_eq!(scene.polygons.len(), 2, "expected two filled polygons");
     assert!(
@@ -1283,9 +1325,10 @@ fn preserves_trace1_graph_geometry_and_traces() {
     );
 
     let has_point = |x: f64, y: f64| {
-        scene.points.iter().any(|point| {
-            (point.position.x - x).abs() < 1e-6 && (point.position.y - y).abs() < 1e-6
-        })
+        scene
+            .points
+            .iter()
+            .any(|point| (point.position.x - x).abs() < 1e-6 && (point.position.y - y).abs() < 1e-6)
     };
     assert!(has_point(0.0, 0.0), "expected origin point");
     assert!(has_point(0.0, 1.0), "expected arc point");
@@ -1295,15 +1338,23 @@ fn preserves_trace1_graph_geometry_and_traces() {
 
     assert!(
         scene.lines.iter().any(|line| {
-            line.points.first().is_some_and(|point| (point.x - 0.0).abs() < 1e-6 && (point.y - 1.0).abs() < 1e-6)
-                && line.points.last().is_some_and(|point| (point.x + 1.0).abs() < 1e-6 && (point.y - 1.0).abs() < 1e-6)
+            line.points
+                .first()
+                .is_some_and(|point| (point.x - 0.0).abs() < 1e-6 && (point.y - 1.0).abs() < 1e-6)
+                && line.points.last().is_some_and(|point| {
+                    (point.x + 1.0).abs() < 1e-6 && (point.y - 1.0).abs() < 1e-6
+                })
         }),
         "expected left horizontal trace"
     );
     assert!(
         scene.lines.iter().any(|line| {
-            line.points.first().is_some_and(|point| (point.x - 0.0).abs() < 1e-6 && (point.y - 1.0).abs() < 1e-6)
-                && line.points.last().is_some_and(|point| (point.x - 1.0).abs() < 1e-6 && (point.y - 1.0).abs() < 1e-6)
+            line.points
+                .first()
+                .is_some_and(|point| (point.x - 0.0).abs() < 1e-6 && (point.y - 1.0).abs() < 1e-6)
+                && line.points.last().is_some_and(|point| {
+                    (point.x - 1.0).abs() < 1e-6 && (point.y - 1.0).abs() < 1e-6
+                })
         }),
         "expected right horizontal trace"
     );
@@ -1366,7 +1417,11 @@ fn preserves_linear_intersection_points_in_insection_fixtures() {
         let file = GspFile::parse(data).expect("fixture parses");
         let scene = build_scene(&file);
 
-        assert_eq!(scene.points.len(), 5, "expected derived intersection point for {name}");
+        assert_eq!(
+            scene.points.len(),
+            5,
+            "expected derived intersection point for {name}"
+        );
         assert!(scene.points.iter().any(|point| {
             matches!(
                 point.constraint,
@@ -1389,7 +1444,11 @@ fn preserves_circle_circle_intersection_points() {
     let file = GspFile::parse(data).expect("fixture parses");
     let scene = build_scene(&file);
 
-    assert_eq!(scene.points.len(), 6, "expected both circle-circle intersections");
+    assert_eq!(
+        scene.points.len(),
+        6,
+        "expected both circle-circle intersections"
+    );
     assert!(scene.points.iter().any(|point| {
         matches!(
             point.constraint,
@@ -1412,7 +1471,11 @@ fn preserves_line_circle_intersection_points() {
     let file = GspFile::parse(data).expect("fixture parses");
     let scene = build_scene(&file);
 
-    assert_eq!(scene.points.len(), 5, "expected derived line-circle intersection");
+    assert_eq!(
+        scene.points.len(),
+        5,
+        "expected derived line-circle intersection"
+    );
     assert!(scene.points.iter().any(|point| {
         matches!(
             point.constraint,
@@ -2003,12 +2066,17 @@ fn preserves_translated_triangle_segments_in_congruent_triangle_fixture() {
     let perpendicular_marker = scene
         .lines
         .iter()
-        .find(|line| matches!(line.binding, Some(LineBinding::SegmentMarker {
-            start_index: 0,
-            end_index: 1,
-            marker_class: 1,
-            ..
-        })))
+        .find(|line| {
+            matches!(
+                line.binding,
+                Some(LineBinding::SegmentMarker {
+                    start_index: 0,
+                    end_index: 1,
+                    marker_class: 1,
+                    ..
+                })
+            )
+        })
         .expect("expected segment marker on translated base edge");
     let marker_dx = perpendicular_marker.points[1].x - perpendicular_marker.points[0].x;
     let marker_dy = perpendicular_marker.points[1].y - perpendicular_marker.points[0].y;

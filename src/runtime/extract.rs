@@ -18,9 +18,9 @@ use self::graph::{
     detect_graph_transform, expand_bounds, has_graph_classes,
 };
 use self::labels::{
-    collect_circle_parameter_labels, collect_coordinate_labels, collect_label_iterations,
-    collect_labels, collect_polygon_parameter_labels, collect_segment_parameter_labels,
-    compute_iteration_labels, resolve_label_hotspots, PendingLabelHotspot,
+    PendingLabelHotspot, collect_circle_parameter_labels, collect_coordinate_labels,
+    collect_label_iterations, collect_labels, collect_polygon_parameter_labels,
+    collect_segment_parameter_labels, compute_iteration_labels, resolve_label_hotspots,
 };
 use self::points::{
     RawPointIterationFamily, TransformBindingKind, collect_non_graph_parameters,
@@ -42,9 +42,9 @@ use self::shapes::{
     collect_polygon_shapes, collect_raw_object_anchors, collect_reflected_circle_shapes,
     collect_reflected_line_shapes, collect_reflected_polygon_shapes, collect_rotated_circle_shapes,
     collect_rotated_line_shapes, collect_rotated_polygon_shapes,
-    collect_rotational_iteration_lines, collect_scaled_line_shapes, collect_three_point_arc_shapes,
-    collect_segment_marker_shapes, collect_transformed_circle_shapes, collect_transformed_polygon_shapes,
-    collect_translated_line_shapes,
+    collect_rotational_iteration_lines, collect_scaled_line_shapes, collect_segment_marker_shapes,
+    collect_three_point_arc_shapes, collect_transformed_circle_shapes,
+    collect_transformed_polygon_shapes, collect_translated_line_shapes,
     collect_translated_polygon_shapes,
 };
 
@@ -55,7 +55,7 @@ use super::functions::{
     synthesize_function_axes, synthesize_function_labels,
 };
 use super::geometry::{
-    Bounds, GraphTransform, distance_world, include_line_bounds, lerp_point,
+    Bounds, GraphTransform, distance_world, include_line_bounds, lerp_point, point_on_circle_arc,
     point_on_three_point_arc, reflect_across_line, rotate_around, scale_around, to_world,
 };
 use super::scene::{
@@ -392,7 +392,11 @@ fn collect_scene_labels(
     groups: &[ObjectGroup],
     analysis: &SceneAnalysis,
     shapes: &CollectedShapes,
-) -> (Vec<TextLabel>, BTreeMap<usize, usize>, Vec<PendingLabelHotspot>) {
+) -> (
+    Vec<TextLabel>,
+    BTreeMap<usize, usize>,
+    Vec<PendingLabelHotspot>,
+) {
     let (mut labels, label_group_to_index, mut pending_hotspots) = collect_labels(
         file,
         groups,
@@ -424,7 +428,12 @@ fn collect_scene_labels(
             &analysis.graph_ref,
         ));
     }
-    append_circle_perimeter_label(&mut labels, &mut pending_hotspots, &shapes.circles, analysis);
+    append_circle_perimeter_label(
+        &mut labels,
+        &mut pending_hotspots,
+        &shapes.circles,
+        analysis,
+    );
     (labels, label_group_to_index, pending_hotspots)
 }
 
@@ -694,6 +703,17 @@ fn build_world_data(
                         -*unit_y
                     },
                 },
+                ScenePointConstraint::OnCircleArc {
+                    center_index,
+                    start_index,
+                    end_index,
+                    t,
+                } => ScenePointConstraint::OnCircleArc {
+                    center_index: *center_index,
+                    start_index: *start_index,
+                    end_index: *end_index,
+                    t: *t,
+                },
                 ScenePointConstraint::OnArc {
                     start_index,
                     mid_index,
@@ -825,6 +845,7 @@ fn point_accepts_trace_parameter(point: &ScenePoint) -> bool {
         ScenePointConstraint::OnSegment { .. }
             | ScenePointConstraint::OnPolygonBoundary { .. }
             | ScenePointConstraint::OnCircle { .. }
+            | ScenePointConstraint::OnCircleArc { .. }
             | ScenePointConstraint::OnArc { .. }
     )
 }
@@ -852,6 +873,9 @@ fn apply_trace_parameter(point: &mut ScenePoint, value: f64) {
             let angle = std::f64::consts::TAU * clamped;
             *unit_x = angle.cos();
             *unit_y = -angle.sin();
+        }
+        ScenePointConstraint::OnCircleArc { t, .. } => {
+            *t = clamped;
         }
         ScenePointConstraint::OnArc { t, .. } => {
             *t = clamped;
@@ -994,6 +1018,17 @@ fn resolve_trace_point(
                     y: center.y + radius * unit_y,
                 })
             }
+            ScenePointConstraint::OnCircleArc {
+                center_index,
+                start_index,
+                end_index,
+                t,
+            } => {
+                let center = resolve_trace_point(points, *center_index, visiting)?;
+                let start = resolve_trace_point(points, *start_index, visiting)?;
+                let end = resolve_trace_point(points, *end_index, visiting)?;
+                point_on_circle_arc(&center, &start, &end, *t)
+            }
             ScenePointConstraint::OnArc {
                 start_index,
                 mid_index,
@@ -1098,7 +1133,7 @@ fn trace_line_line_intersection(
     };
     (trace_line_like_contains(left_start, left_end, left_kind, &point)
         && trace_line_like_contains(right_start, right_end, right_kind, &point))
-        .then_some(point)
+    .then_some(point)
 }
 
 fn trace_line_circle_intersection(
@@ -1174,9 +1209,9 @@ fn trace_circle_circle_intersection(
     right_radius_point: &PointRecord,
     variant: usize,
 ) -> Option<PointRecord> {
-    let left_radius =
-        ((left_radius_point.x - left_center.x).powi(2) + (left_radius_point.y - left_center.y).powi(2))
-            .sqrt();
+    let left_radius = ((left_radius_point.x - left_center.x).powi(2)
+        + (left_radius_point.y - left_center.y).powi(2))
+    .sqrt();
     let right_radius = ((right_radius_point.x - right_center.x).powi(2)
         + (right_radius_point.y - right_center.y).powi(2))
     .sqrt();

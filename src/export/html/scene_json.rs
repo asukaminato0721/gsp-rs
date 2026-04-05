@@ -3,9 +3,9 @@ use crate::runtime::functions::{BinaryOp, FunctionExpr, FunctionTerm, UnaryFunct
 use crate::runtime::geometry::darken;
 use crate::runtime::scene::{
     ButtonAction, IterationPointHandle, LabelIterationFamily, LineBinding, LineIterationFamily,
-    LineLikeKind,
-    PointIterationFamily, PolygonIterationFamily, Scene, SceneButton, ScenePointBinding,
-    ScenePointConstraint, ShapeBinding, TextLabelBinding, TextLabelHotspotAction,
+    LineLikeKind, PointIterationFamily, PolygonIterationFamily, Scene, SceneButton,
+    ScenePointBinding, ScenePointConstraint, ShapeBinding, TextLabelBinding,
+    TextLabelHotspotAction,
 };
 use serde::Serialize;
 
@@ -1484,6 +1484,16 @@ enum PointConstraintJson {
         #[serde(rename = "unitY")]
         unit_y: f64,
     },
+    #[serde(rename = "circle-arc")]
+    CircleArc {
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+        t: f64,
+    },
     #[serde(rename = "arc")]
     Arc {
         #[serde(rename = "startIndex")]
@@ -1589,6 +1599,17 @@ impl PointConstraintJson {
                 radius_index: *radius_index,
                 unit_x: *unit_x,
                 unit_y: *unit_y,
+            }),
+            ScenePointConstraint::OnCircleArc {
+                center_index,
+                start_index,
+                end_index,
+                t,
+            } => Some(Self::CircleArc {
+                center_index: *center_index,
+                start_index: *start_index,
+                end_index: *end_index,
+                t: *t,
             }),
             ScenePointConstraint::OnArc {
                 start_index,

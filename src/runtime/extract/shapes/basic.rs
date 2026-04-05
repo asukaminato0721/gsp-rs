@@ -143,13 +143,7 @@ fn resolve_angle_marker_shape(
     }
 
     let marker_class = decode_angle_marker_class(file, group).max(1);
-    let points = resolve_angle_marker_points(
-        &vertex,
-        first,
-        second,
-        shortest_len,
-        marker_class,
-    )?;
+    let points = resolve_angle_marker_points(&vertex, first, second, shortest_len, marker_class)?;
 
     has_distinct_points(&points).then_some(LineShape {
         points,
@@ -185,7 +179,9 @@ fn resolve_right_angle_marker_points(
     second: (f64, f64),
     shortest_len: f64,
 ) -> Option<Vec<PointRecord>> {
-    let side = (shortest_len * 0.125).clamp(10.0, 28.0).min(shortest_len * 0.5);
+    let side = (shortest_len * 0.125)
+        .clamp(10.0, 28.0)
+        .min(shortest_len * 0.5);
     if side <= 1e-9 {
         return None;
     }
@@ -307,7 +303,10 @@ fn resolve_segment_marker_endpoint_groups(
     match host_group.header.kind() {
         crate::format::GroupKind::Segment => {
             let path = find_indexed_path(file, host_group)?;
-            Some((path.refs.first()?.checked_sub(1)?, path.refs.get(1)?.checked_sub(1)?))
+            Some((
+                path.refs.first()?.checked_sub(1)?,
+                path.refs.get(1)?.checked_sub(1)?,
+            ))
         }
         crate::format::GroupKind::Translation => {
             let path = find_indexed_path(file, host_group)?;

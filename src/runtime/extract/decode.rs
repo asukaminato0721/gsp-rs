@@ -190,7 +190,10 @@ pub(crate) struct RichTextHotspotRef {
     pub(crate) path_slot: usize,
 }
 
-pub(crate) fn decode_group_rich_text(file: &GspFile, group: &ObjectGroup) -> Option<RichTextContent> {
+pub(crate) fn decode_group_rich_text(
+    file: &GspFile,
+    group: &ObjectGroup,
+) -> Option<RichTextContent> {
     group
         .records
         .iter()
@@ -485,7 +488,10 @@ fn parse_markup_nodes(markup: &str) -> Vec<RichMarkupNode> {
     nodes
 }
 
-fn render_markup_nodes(nodes: &[RichMarkupNode], active_slot: Option<usize>) -> Vec<Vec<RichMarkupRun>> {
+fn render_markup_nodes(
+    nodes: &[RichMarkupNode],
+    active_slot: Option<usize>,
+) -> Vec<Vec<RichMarkupRun>> {
     let mut lines = vec![Vec::new()];
     for node in nodes {
         let node_lines = render_markup_node(node, active_slot);
@@ -497,7 +503,10 @@ fn render_markup_nodes(nodes: &[RichMarkupNode], active_slot: Option<usize>) -> 
         .collect::<Vec<_>>()
 }
 
-fn render_markup_node(node: &RichMarkupNode, active_slot: Option<usize>) -> Vec<Vec<RichMarkupRun>> {
+fn render_markup_node(
+    node: &RichMarkupNode,
+    active_slot: Option<usize>,
+) -> Vec<Vec<RichMarkupRun>> {
     if let Some(text) = decode_markup_text(&node.name) {
         return vec![vec![RichMarkupRun {
             text,
@@ -561,7 +570,10 @@ fn append_markup_lines(target: &mut Vec<Vec<RichMarkupRun>>, lines: Vec<Vec<Rich
     }
     let mut iter = lines.into_iter();
     if let Some(first_line) = iter.next() {
-        target.last_mut().expect("target has at least one line").extend(first_line);
+        target
+            .last_mut()
+            .expect("target has at least one line")
+            .extend(first_line);
     }
     target.extend(iter);
 }

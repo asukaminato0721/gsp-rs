@@ -376,6 +376,16 @@ pub(crate) fn point_on_three_point_arc(
     })
 }
 
+pub(crate) fn point_on_circle_arc(
+    center: &PointRecord,
+    start: &PointRecord,
+    end: &PointRecord,
+    t: f64,
+) -> Option<PointRecord> {
+    let [start, mid, end] = arc_on_circle_control_points(center, start, end)?;
+    point_on_three_point_arc(&start, &mid, &end, t)
+}
+
 pub(crate) fn arc_on_circle_control_points(
     center: &PointRecord,
     start: &PointRecord,
