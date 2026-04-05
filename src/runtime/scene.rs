@@ -411,6 +411,10 @@ pub(crate) struct SceneArc {
 
 #[derive(Debug, Clone)]
 pub(crate) enum ShapeBinding {
+    PointRadiusCircle {
+        center_index: usize,
+        radius_index: usize,
+    },
     SegmentRadiusCircle {
         center_index: usize,
         line_start_index: usize,

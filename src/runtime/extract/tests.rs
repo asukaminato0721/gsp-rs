@@ -1489,6 +1489,29 @@ fn preserves_line_circle_intersection_points() {
 }
 
 #[test]
+fn preserves_circle_y_intersection_points() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/circle_y_intersection.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert!(
+        scene.points.iter().any(|point| {
+            matches!(
+                point.constraint,
+                ScenePointConstraint::LineCircleIntersection { .. }
+            ) && (point.position.x - 0.0).abs() < 1e-6
+                && (point.position.y - 1.0).abs() < 1e-6
+        }),
+        "expected y-axis circle intersection point, got {:?}",
+        scene
+            .points
+            .iter()
+            .map(|point| (&point.position.x, &point.position.y, &point.constraint))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn preserves_non_graph_parameter_and_expression_labels_in_iteration_fixture() {
     let data = include_bytes!(
         "../../../tests/fixtures/gsp/static/简单迭代/原象点和参数初象点和数值深度5迭代.gsp"

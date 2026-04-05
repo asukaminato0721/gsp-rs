@@ -52,6 +52,28 @@ pub(crate) fn remap_circle_bindings(
             continue;
         };
         let (source_index, center_index) = match binding {
+            ShapeBinding::PointRadiusCircle {
+                center_index,
+                radius_index,
+            } => {
+                let Some(mapped_center_index) = group_to_point_index
+                    .get(*center_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    circle.binding = None;
+                    continue;
+                };
+                let Some(mapped_radius_index) = group_to_point_index
+                    .get(*radius_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    circle.binding = None;
+                    continue;
+                };
+                *center_index = mapped_center_index;
+                *radius_index = mapped_radius_index;
+                continue;
+            }
             ShapeBinding::SegmentRadiusCircle {
                 center_index,
                 line_start_index,

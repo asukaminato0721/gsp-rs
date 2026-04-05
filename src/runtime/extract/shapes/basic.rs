@@ -80,6 +80,15 @@ pub(crate) fn collect_line_shapes(
                             end_index,
                         })
                     }
+                    (
+                        crate::format::GroupKind::MeasurementLine
+                        | crate::format::GroupKind::AxisLine,
+                        Some(start_index),
+                        Some(end_index),
+                    ) => Some(LineBinding::Segment {
+                        start_index,
+                        end_index,
+                    }),
                     _ => None,
                 },
             })
@@ -616,6 +625,16 @@ pub(crate) fn collect_circle_shapes(
         .filter_map(|(group_index, group)| {
             let (center, radius_point) = resolve_circle_points_raw(file, groups, anchors, group)?;
             let binding = match group.header.kind() {
+                crate::format::GroupKind::Circle => {
+                    let path = find_indexed_path(file, group)?;
+                    if path.refs.len() != 2 {
+                        return None;
+                    }
+                    Some(ShapeBinding::PointRadiusCircle {
+                        center_index: path.refs[0].checked_sub(1)?,
+                        radius_index: path.refs[1].checked_sub(1)?,
+                    })
+                }
                 crate::format::GroupKind::CircleCenterRadius => {
                     let path = find_indexed_path(file, group)?;
                     if path.refs.len() != 2 {

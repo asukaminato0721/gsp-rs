@@ -802,7 +802,13 @@
     });
 
     scene.circles.forEach((circle) => {
-      if (circle.binding?.kind === "segment-radius-circle") {
+      if (circle.binding?.kind === "point-radius-circle") {
+        const center = env.resolveScenePoint(circle.binding.centerIndex);
+        const radiusPoint = env.resolveScenePoint(circle.binding.radiusIndex);
+        if (!center || !radiusPoint) return;
+        circle.center = { x: center.x, y: center.y };
+        circle.radiusPoint = { x: radiusPoint.x, y: radiusPoint.y };
+      } else if (circle.binding?.kind === "segment-radius-circle") {
         const center = env.resolveScenePoint(circle.binding.centerIndex);
         const lineStart = env.resolveScenePoint(circle.binding.lineStartIndex);
         const lineEnd = env.resolveScenePoint(circle.binding.lineEndIndex);

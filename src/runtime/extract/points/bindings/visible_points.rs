@@ -35,6 +35,17 @@ pub(crate) fn collect_visible_points(
                         binding: None,
                     })
             }
+            crate::format::GroupKind::GraphCalibrationX
+            | crate::format::GroupKind::GraphCalibrationY => anchors
+                .get(index)
+                .cloned()
+                .flatten()
+                .map(|position| ScenePoint {
+                    position,
+                    visible: false,
+                    constraint: ScenePointConstraint::Free,
+                    binding: None,
+                }),
             crate::format::GroupKind::LinearIntersectionPoint
             | crate::format::GroupKind::IntersectionPoint1
             | crate::format::GroupKind::IntersectionPoint2
