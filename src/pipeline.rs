@@ -330,6 +330,8 @@ mod tests {
 
         assert!(html.contains("\"arcs\":["));
         assert!(html.contains("\"kind\":\"circle-arc\""));
+        assert!(html.contains("\"x\":0.5678243582014604"));
+        assert!(html.contains("\"y\":0.8231497422906086"));
     }
 
     #[test]

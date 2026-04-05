@@ -135,7 +135,7 @@
     };
   }
 
-  function circleArcControlPoints(center, start, end) {
+  function circleArcControlPoints(center, start, end, yUp) {
     const startDx = start.x - center.x;
     const startDy = start.y - center.y;
     const endDx = end.x - center.x;
@@ -145,22 +145,23 @@
     const radius = (startRadius + endRadius) * 0.5;
     if (radius <= 1e-9) return null;
 
-    const startAngle = Math.atan2(-startDy, startDx);
-    const endAngle = Math.atan2(-endDy, endDx);
+    const ySign = yUp ? 1 : -1;
+    const startAngle = Math.atan2(startDy * ySign, startDx);
+    const endAngle = Math.atan2(endDy * ySign, endDx);
     const ccwSpan = normalizeAngleDelta(startAngle, endAngle);
     const midpointAngle = startAngle + ccwSpan * 0.5;
     return {
       start,
       mid: {
         x: center.x + radius * Math.cos(midpointAngle),
-        y: center.y - radius * Math.sin(midpointAngle),
+        y: center.y + ySign * radius * Math.sin(midpointAngle),
       },
       end,
     };
   }
 
-  function pointOnCircleArc(center, start, end, t) {
-    const controls = circleArcControlPoints(center, start, end);
+  function pointOnCircleArc(center, start, end, t, yUp) {
+    const controls = circleArcControlPoints(center, start, end, yUp);
     if (!controls) return null;
     return pointOnThreePointArc(controls.start, controls.mid, controls.end, t);
   }
@@ -180,8 +181,8 @@
     return best;
   }
 
-  function projectToCircleArc(point, center, start, end) {
-    const controls = circleArcControlPoints(center, start, end);
+  function projectToCircleArc(point, center, start, end, yUp) {
+    const controls = circleArcControlPoints(center, start, end, yUp);
     if (!controls) return null;
     return projectToThreePointArc(point, controls.start, controls.mid, controls.end);
   }
@@ -341,7 +342,7 @@
       const start = resolveFn(constraint.startIndex);
       const end = resolveFn(constraint.endIndex);
       if (!center || !start || !end) return null;
-      return pointOnCircleArc(center, start, end, constraint.t);
+      return pointOnCircleArc(center, start, end, constraint.t, !!env?.sourceScene?.yUp);
     }
     if (constraint.kind === "arc") {
       const start = resolveFn(constraint.startIndex);

@@ -107,7 +107,7 @@
       return { x: 0, y: 0 };
     }
     const resolved = sceneModule.resolveConstrainedPoint(
-      null,
+      { sourceScene },
       point.constraint,
       resolveSourcePoint,
     );

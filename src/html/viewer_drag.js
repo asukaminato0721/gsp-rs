@@ -113,6 +113,7 @@
           center,
           start,
           end,
+          !!env.sourceScene.yUp,
         );
         if (projection) {
           point.constraint.t = projection.t;

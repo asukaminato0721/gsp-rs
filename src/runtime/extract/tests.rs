@@ -898,15 +898,18 @@ fn preserves_center_arc_and_point_on_arc_in_unimplemented_fixture() {
         scene.arcs[0].center.is_none(),
         "expected center-arc fixture to render from explicit control points"
     );
-    assert!(scene.points.iter().any(|point| matches!(
-        point.constraint,
-        ScenePointConstraint::OnCircleArc {
-            center_index: 0,
-            start_index: 1,
-            end_index: 3,
-            ..
-        }
-    )));
+    assert!(scene.points.iter().any(|point| {
+        matches!(
+            point.constraint,
+            ScenePointConstraint::OnCircleArc {
+                center_index: 0,
+                start_index: 1,
+                end_index: 3,
+                t,
+            } if (t - 0.6155705493685956).abs() < 1e-9
+        ) && (point.position.x - 0.5678243582014604).abs() < 1e-6
+            && (point.position.y - 0.8231497422906086).abs() < 1e-6
+    }));
 }
 
 #[test]

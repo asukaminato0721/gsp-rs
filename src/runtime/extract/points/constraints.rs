@@ -449,14 +449,15 @@ pub(crate) fn decode_parameter_controlled_point(
             let center = anchors.get(center_group_index)?.clone()?;
             let start = anchors.get(start_group_index)?.clone()?;
             let end = anchors.get(end_group_index)?.clone()?;
-            let position = point_on_circle_arc(&center, &start, &end, parameter_value)?;
+            let reversed_t = 1.0 - parameter_value;
+            let position = point_on_circle_arc(&center, &start, &end, reversed_t)?;
             Some(ParameterControlledPoint {
                 position,
                 constraint: RawPointConstraint::CircleArc(PointOnCircleArcConstraint {
                     center_group_index,
                     start_group_index,
                     end_group_index,
-                    t: parameter_value,
+                    t: reversed_t,
                 }),
                 parameter_name,
                 source_point_group_index,
@@ -621,11 +622,12 @@ pub(crate) fn decode_point_constraint(
             if !t.is_finite() {
                 return None;
             }
+            let reversed_t = 1.0 - t;
             Some(RawPointConstraint::CircleArc(PointOnCircleArcConstraint {
                 center_group_index: host_path.refs[0].checked_sub(1)?,
                 start_group_index: host_path.refs[1].checked_sub(1)?,
                 end_group_index: host_path.refs[2].checked_sub(1)?,
-                t,
+                t: reversed_t,
             }))
         }
         _ => {
