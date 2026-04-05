@@ -1,0 +1,97 @@
+macro_rules! define_group_kinds {
+    ($($name:ident = $value:literal,)+) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        pub enum GroupKind {
+            $($name,)+
+            Unknown(u16),
+        }
+
+        impl From<u16> for GroupKind {
+            fn from(value: u16) -> Self {
+                match value {
+                    $($value => Self::$name,)+
+                    other => Self::Unknown(other),
+                }
+            }
+        }
+
+        impl GroupKind {
+            pub fn raw(self) -> u16 {
+                match self {
+                    $(Self::$name => $value,)+
+                    Self::Unknown(other) => other,
+                }
+            }
+        }
+    };
+}
+
+define_group_kinds! {
+    Point = 0,
+    Midpoint = 1,
+    Segment = 2,
+    Circle = 3,
+    CircleCenterRadius = 4,
+    LineKind5 = 5,
+    LineKind6 = 6,
+    LineKind7 = 7,
+    Polygon = 8,
+    LinearIntersectionPoint = 9,
+    IntersectionPoint1 = 11,
+    IntersectionPoint2 = 12,
+    CircleCircleIntersectionPoint1 = 13,
+    CircleCircleIntersectionPoint2 = 14,
+    PointConstraint = 15,
+    Translation = 16,
+    CartesianOffsetPoint = 17,
+    PolarOffsetPoint = 21,
+    DerivedSegment24 = 24,
+    Rotation = 27,
+    ParameterRotation = 29,
+    Scale = 30,
+    Reflection = 34,
+    PointTrace = 35,
+    GraphObject40 = 40,
+    FunctionExpr = 48,
+    Kind51 = 51,
+    GraphCalibrationX = 52,
+    GraphCalibrationY = 54,
+    MeasurementLine = 58,
+    AxisLine = 61,
+    ActionButton = 62,
+    Line = 63,
+    Ray = 64,
+    OffsetAnchor = 67,
+    CoordinatePoint = 69,
+    FunctionPlot = 72,
+    ButtonLabel = 73,
+    DerivedSegment75 = 75,
+    AffineIteration = 76,
+    IterationBinding = 77,
+    DerivativeFunction = 78,
+    ArcOnCircle = 79,
+    CenterArc = 80,
+    ThreePointArc = 81,
+    RegularPolygonIteration = 89,
+    LabelIterationSeed = 90,
+    ParameterAnchor = 94,
+    ParameterControlledPoint = 95,
+    CoordinateTrace = 97,
+    AngleMarker = 113,
+    SegmentMarker = 121,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GroupKind;
+
+    #[test]
+    fn round_trips_known_and_unknown_kind_ids() {
+        assert_eq!(GroupKind::from(0), GroupKind::Point);
+        assert_eq!(GroupKind::Point.raw(), 0);
+        assert_eq!(GroupKind::from(121), GroupKind::SegmentMarker);
+        assert_eq!(GroupKind::SegmentMarker.raw(), 121);
+        assert_eq!(GroupKind::from(999), GroupKind::Unknown(999));
+        assert_eq!(GroupKind::Unknown(999).raw(), 999);
+    }
+}
