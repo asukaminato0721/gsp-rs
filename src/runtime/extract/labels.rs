@@ -36,7 +36,11 @@ pub(super) fn collect_labels(
     anchors: &[Option<PointRecord>],
     graph_mode: bool,
     include_measurements: bool,
-) -> (Vec<TextLabel>, BTreeMap<usize, usize>, Vec<PendingLabelHotspot>) {
+) -> (
+    Vec<TextLabel>,
+    BTreeMap<usize, usize>,
+    Vec<PendingLabelHotspot>,
+) {
     let mut labels = Vec::new();
     let mut label_group_to_index = BTreeMap::new();
     let mut pending_hotspots = Vec::new();
@@ -74,25 +78,27 @@ pub(super) fn collect_labels(
                     continue;
                 }
                 let rich_text = decode_group_rich_text(file, group);
-                let text = rich_text.as_ref().map(|content| content.text.clone()).or_else(|| {
-                    decode_group_label_text(file, group)
-                }).or_else(|| {
-                    (!graph_mode
-                        && matches!(
-                            kind,
-                            crate::format::GroupKind::Point
-                                | crate::format::GroupKind::Translation
-                                | crate::format::GroupKind::Reflection
-                                | crate::format::GroupKind::Rotation
-                                | crate::format::GroupKind::ParameterRotation
-                                | crate::format::GroupKind::Scale
-                                | crate::format::GroupKind::Segment
-                                | crate::format::GroupKind::PointConstraint
-                        )
-                        && !is_non_graph_parameter_group(group))
-                    .then(|| decode_label_name(file, group))
-                    .flatten()
-                });
+                let text = rich_text
+                    .as_ref()
+                    .map(|content| content.text.clone())
+                    .or_else(|| decode_group_label_text(file, group))
+                    .or_else(|| {
+                        (!graph_mode
+                            && matches!(
+                                kind,
+                                crate::format::GroupKind::Point
+                                    | crate::format::GroupKind::Translation
+                                    | crate::format::GroupKind::Reflection
+                                    | crate::format::GroupKind::Rotation
+                                    | crate::format::GroupKind::ParameterRotation
+                                    | crate::format::GroupKind::Scale
+                                    | crate::format::GroupKind::Segment
+                                    | crate::format::GroupKind::PointConstraint
+                            )
+                            && !is_non_graph_parameter_group(group))
+                        .then(|| decode_label_name(file, group))
+                        .flatten()
+                    });
                 if let Some(text) = text {
                     let anchor = decode_label_anchor(file, group, anchors);
                     if let Some(anchor) = anchor {
@@ -106,7 +112,9 @@ pub(super) fn collect_labels(
                             screen_space: false,
                             hotspots: Vec::new(),
                         });
-                        if let (Some(content), Some(path)) = (rich_text.as_ref(), find_indexed_path(file, group)) {
+                        if let (Some(content), Some(path)) =
+                            (rich_text.as_ref(), find_indexed_path(file, group))
+                        {
                             for hotspot in &content.hotspots {
                                 if let Some(group_ordinal) =
                                     path.refs.get(hotspot.path_slot.saturating_sub(1)).copied()
@@ -148,22 +156,25 @@ pub(super) fn collect_labels(
                 {
                     continue;
                 }
-                if let Some(value) = group
-                    .records
-                    .iter()
-                    .find(|record| record.record_type == 0x07d3 && record.length == 12)
-                    .and_then(|record| decode_measurement_value(record.payload(&file.data)))
-                {
-                    if let Some(anchor) = anchor {
-                        labels.push(TextLabel {
-                            anchor,
-                            text: format_number(value),
-                            color: [60, 60, 60, 255],
-                            binding: None,
-                            screen_space: false,
-                            hotspots: Vec::new(),
-                        });
-                    }
+                let text = decode_group_label_text(file, group)
+                    .or_else(|| decode_label_name(file, group))
+                    .or_else(|| {
+                        group
+                            .records
+                            .iter()
+                            .find(|record| record.record_type == 0x07d3 && record.length == 12)
+                            .and_then(|record| decode_measurement_value(record.payload(&file.data)))
+                            .map(format_number)
+                    });
+                if let (Some(anchor), Some(text)) = (anchor, text) {
+                    labels.push(TextLabel {
+                        anchor,
+                        text,
+                        color: [60, 60, 60, 255],
+                        binding: None,
+                        screen_space: false,
+                        hotspots: Vec::new(),
+                    });
                 }
             }
             _ => {}
@@ -305,25 +316,27 @@ pub(super) fn resolve_label_hotspots(
                     end_point_index,
                 })
             }),
-            crate::format::GroupKind::AngleMarker => find_indexed_path(file, group).and_then(|path| {
-                let start_point_index = group_to_point_index
-                    .get(path.refs.first()?.saturating_sub(1))
-                    .copied()
-                    .flatten()?;
-                let vertex_point_index = group_to_point_index
-                    .get(path.refs.get(1)?.saturating_sub(1))
-                    .copied()
-                    .flatten()?;
-                let end_point_index = group_to_point_index
-                    .get(path.refs.get(2)?.saturating_sub(1))
-                    .copied()
-                    .flatten()?;
-                Some(TextLabelHotspotAction::AngleMarker {
-                    start_point_index,
-                    vertex_point_index,
-                    end_point_index,
+            crate::format::GroupKind::AngleMarker => {
+                find_indexed_path(file, group).and_then(|path| {
+                    let start_point_index = group_to_point_index
+                        .get(path.refs.first()?.saturating_sub(1))
+                        .copied()
+                        .flatten()?;
+                    let vertex_point_index = group_to_point_index
+                        .get(path.refs.get(1)?.saturating_sub(1))
+                        .copied()
+                        .flatten()?;
+                    let end_point_index = group_to_point_index
+                        .get(path.refs.get(2)?.saturating_sub(1))
+                        .copied()
+                        .flatten()?;
+                    Some(TextLabelHotspotAction::AngleMarker {
+                        start_point_index,
+                        vertex_point_index,
+                        end_point_index,
+                    })
                 })
-            }),
+            }
             kind if super::decode::is_circle_group_kind(kind) => circle_group_to_index
                 .get(pending.group_ordinal.saturating_sub(1))
                 .copied()

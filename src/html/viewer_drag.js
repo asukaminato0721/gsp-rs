@@ -4,6 +4,9 @@
   function dragModeFor(env, pointIndex, labelIndex, polygonIndex) {
     if (pointIndex !== null) {
       const point = env.currentScene().points[pointIndex];
+      if (point?.binding?.kind === "graph-calibration") {
+        return "pan";
+      }
       if (point?.binding?.kind === "midpoint") {
         return "pan";
       }
@@ -100,6 +103,20 @@
         if (length > 1e-9) {
           point.constraint.unitX = dx / length;
           point.constraint.unitY = dy / length;
+        }
+      } else if (point.constraint && point.constraint.kind === "circle-arc") {
+        const center = env.resolveScenePoint(point.constraint.centerIndex);
+        const start = env.resolveScenePoint(point.constraint.startIndex);
+        const end = env.resolveScenePoint(point.constraint.endIndex);
+        const projection = window.GspViewerModules.scene.projectToCircleArc(
+          world,
+          center,
+          start,
+          end,
+          !!env.sourceScene.yUp,
+        );
+        if (projection) {
+          point.constraint.t = projection.t;
         }
       } else if (point.constraint && point.constraint.kind === "arc") {
         const start = env.resolveScenePoint(point.constraint.startIndex);

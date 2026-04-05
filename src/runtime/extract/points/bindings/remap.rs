@@ -52,6 +52,28 @@ pub(crate) fn remap_circle_bindings(
             continue;
         };
         let (source_index, center_index) = match binding {
+            ShapeBinding::PointRadiusCircle {
+                center_index,
+                radius_index,
+            } => {
+                let Some(mapped_center_index) = group_to_point_index
+                    .get(*center_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    circle.binding = None;
+                    continue;
+                };
+                let Some(mapped_radius_index) = group_to_point_index
+                    .get(*radius_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    circle.binding = None;
+                    continue;
+                };
+                *center_index = mapped_center_index;
+                *radius_index = mapped_radius_index;
+                continue;
+            }
             ShapeBinding::SegmentRadiusCircle {
                 center_index,
                 line_start_index,
@@ -269,6 +291,27 @@ pub(crate) fn remap_line_bindings(
             continue;
         };
         match binding {
+            LineBinding::GraphHelperLine {
+                start_index,
+                end_index,
+            } => {
+                let Some(mapped_start_index) = group_to_point_index
+                    .get(*start_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                let Some(mapped_end_index) = group_to_point_index
+                    .get(*end_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                *start_index = mapped_start_index;
+                *end_index = mapped_end_index;
+            }
             LineBinding::AngleBisectorRay {
                 start_index,
                 vertex_index,

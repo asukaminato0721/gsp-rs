@@ -5,7 +5,7 @@ use super::{
     decode_reflection_anchor_raw, decode_transform_binding, decode_translated_point_constraint,
     reflection_line_group_indices, translation_point_pair_group_indices,
 };
-use crate::runtime::extract::find_indexed_path;
+use crate::runtime::extract::{decode::decode_label_name, find_indexed_path};
 use crate::runtime::geometry::GraphTransform;
 use crate::runtime::scene::{LineLikeKind, ScenePoint, ScenePointBinding, ScenePointConstraint};
 
@@ -35,6 +35,17 @@ pub(crate) fn collect_visible_points(
                         binding: None,
                     })
             }
+            crate::format::GroupKind::GraphCalibrationX
+            | crate::format::GroupKind::GraphCalibrationY => anchors
+                .get(index)
+                .cloned()
+                .flatten()
+                .map(|position| ScenePoint {
+                    position,
+                    visible: visible && decode_label_name(file, group).is_some(),
+                    constraint: ScenePointConstraint::Free,
+                    binding: Some(ScenePointBinding::GraphCalibration),
+                }),
             crate::format::GroupKind::LinearIntersectionPoint
             | crate::format::GroupKind::IntersectionPoint1
             | crate::format::GroupKind::IntersectionPoint2
@@ -49,16 +60,14 @@ pub(crate) fn collect_visible_points(
                     visible,
                 )
             }
-            crate::format::GroupKind::Midpoint => {
-                scene_point_from_midpoint(
-                    index,
-                    file,
-                    groups,
-                    anchors,
-                    &group_to_point_index,
-                    visible,
-                )
-            }
+            crate::format::GroupKind::Midpoint => scene_point_from_midpoint(
+                index,
+                file,
+                groups,
+                anchors,
+                &group_to_point_index,
+                visible,
+            ),
             crate::format::GroupKind::CartesianOffsetPoint
             | crate::format::GroupKind::PolarOffsetPoint => {
                 decode_translated_point_constraint(file, group).and_then(|constraint| {
@@ -305,6 +314,28 @@ fn scene_point_from_constraint(
                 binding: None,
             })
         }
+        RawPointConstraint::CircleArc(constraint) => {
+            let center_index = group_to_point_index
+                .get(constraint.center_group_index)
+                .and_then(|point_index| *point_index)?;
+            let start_index = group_to_point_index
+                .get(constraint.start_group_index)
+                .and_then(|point_index| *point_index)?;
+            let end_index = group_to_point_index
+                .get(constraint.end_group_index)
+                .and_then(|point_index| *point_index)?;
+            Some(ScenePoint {
+                position,
+                visible,
+                constraint: ScenePointConstraint::OnCircleArc {
+                    center_index,
+                    start_index,
+                    end_index,
+                    t: constraint.t,
+                },
+                binding: None,
+            })
+        }
         RawPointConstraint::Arc(constraint) => {
             let start_index = group_to_point_index
                 .get(constraint.start_group_index)
@@ -394,6 +425,28 @@ fn scene_point_from_parameter_controlled(
                     radius_index,
                     unit_x: constraint.unit_x,
                     unit_y: constraint.unit_y,
+                },
+                binding,
+            })
+        }
+        RawPointConstraint::CircleArc(constraint) => {
+            let center_index = group_to_point_index
+                .get(constraint.center_group_index)
+                .and_then(|point_index| *point_index)?;
+            let start_index = group_to_point_index
+                .get(constraint.start_group_index)
+                .and_then(|point_index| *point_index)?;
+            let end_index = group_to_point_index
+                .get(constraint.end_group_index)
+                .and_then(|point_index| *point_index)?;
+            Some(ScenePoint {
+                position: parameter_point.position,
+                visible,
+                constraint: ScenePointConstraint::OnCircleArc {
+                    center_index,
+                    start_index,
+                    end_index,
+                    t: constraint.t,
                 },
                 binding,
             })
@@ -533,7 +586,10 @@ fn scene_point_from_intersection(
     }
 
     let variant = intersection_variant(group.header.kind());
-    if let (Some((line_start_index, line_end_index, line_kind)), Some((center_index, radius_index))) = (
+    if let (
+        Some((line_start_index, line_end_index, line_kind)),
+        Some((center_index, radius_index)),
+    ) = (
         resolve_line_like_point_indices(file, groups, left_group, group_to_point_index),
         resolve_circle_point_indices(file, groups, right_group, group_to_point_index),
     ) {
@@ -552,7 +608,10 @@ fn scene_point_from_intersection(
         });
     }
 
-    if let (Some((center_index, radius_index)), Some((line_start_index, line_end_index, line_kind))) = (
+    if let (
+        Some((center_index, radius_index)),
+        Some((line_start_index, line_end_index, line_kind)),
+    ) = (
         resolve_circle_point_indices(file, groups, left_group, group_to_point_index),
         resolve_line_like_point_indices(file, groups, right_group, group_to_point_index),
     ) {
@@ -571,7 +630,10 @@ fn scene_point_from_intersection(
         });
     }
 
-    if let (Some((left_center_index, left_radius_index)), Some((right_center_index, right_radius_index))) = (
+    if let (
+        Some((left_center_index, left_radius_index)),
+        Some((right_center_index, right_radius_index)),
+    ) = (
         resolve_circle_point_indices(file, groups, left_group, group_to_point_index),
         resolve_circle_point_indices(file, groups, right_group, group_to_point_index),
     ) {

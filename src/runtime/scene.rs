@@ -201,6 +201,12 @@ pub(crate) enum ScenePointConstraint {
         unit_x: f64,
         unit_y: f64,
     },
+    OnCircleArc {
+        center_index: usize,
+        start_index: usize,
+        end_index: usize,
+        t: f64,
+    },
     OnArc {
         start_index: usize,
         mid_index: usize,
@@ -249,6 +255,10 @@ pub(crate) struct LineShape {
 
 #[derive(Debug, Clone)]
 pub(crate) enum LineBinding {
+    GraphHelperLine {
+        start_index: usize,
+        end_index: usize,
+    },
     Segment {
         start_index: usize,
         end_index: usize,
@@ -337,6 +347,7 @@ pub(crate) struct SceneParameter {
 
 #[derive(Debug, Clone)]
 pub(crate) enum ScenePointBinding {
+    GraphCalibration,
     Parameter {
         name: String,
     },
@@ -405,6 +416,10 @@ pub(crate) struct SceneArc {
 
 #[derive(Debug, Clone)]
 pub(crate) enum ShapeBinding {
+    PointRadiusCircle {
+        center_index: usize,
+        radius_index: usize,
+    },
     SegmentRadiusCircle {
         center_index: usize,
         line_start_index: usize,

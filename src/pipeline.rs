@@ -1,4 +1,6 @@
-use crate::export::html::{render_scene_json, render_standalone_html_document, write_standalone_html};
+use crate::export::html::{
+    render_scene_json, render_standalone_html_document, write_standalone_html,
+};
 use crate::gsp;
 use crate::runtime::build_scene;
 use std::fs;
@@ -45,11 +47,7 @@ pub fn compile_bytes_to_html_document(
     Ok(render_standalone_html_document(&scene, width, height))
 }
 
-pub fn compile_bytes_to_scene_json(
-    data: &[u8],
-    width: u32,
-    height: u32,
-) -> Result<String, String> {
+pub fn compile_bytes_to_scene_json(data: &[u8], width: u32, height: u32) -> Result<String, String> {
     let file = gsp::parse(data)?;
     let scene = build_scene(&file);
     Ok(render_scene_json(&scene, width, height, true))
@@ -78,9 +76,12 @@ mod tests {
 
     #[test]
     fn exports_scene_json_for_console_debugging() {
-        let scene_json =
-            compile_bytes_to_scene_json(include_bytes!("../tests/fixtures/gsp/static/point.gsp"), 800, 600)
-                .expect("fixture should compile");
+        let scene_json = compile_bytes_to_scene_json(
+            include_bytes!("../tests/fixtures/gsp/static/point.gsp"),
+            800,
+            600,
+        )
+        .expect("fixture should compile");
 
         assert!(scene_json.contains("\n  \"width\": 800,"));
         assert!(scene_json.contains("\"points\": ["));
@@ -304,6 +305,36 @@ mod tests {
     }
 
     #[test]
+    fn exports_point_on_circle_arc_constraint_into_html() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/gsp/point_on_arc1.gsp"),
+            800,
+            600,
+        )
+        .expect("point-on-circle-arc fixture should compile");
+
+        assert!(html.contains("\"kind\":\"circle-arc\""));
+        assert!(html.contains("\"centerIndex\":0"));
+        assert!(html.contains("\"startIndex\":2"));
+        assert!(html.contains("\"endIndex\":3"));
+    }
+
+    #[test]
+    fn exports_center_arc_fixture_into_html() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/gsp/未实现1(1).gsp"),
+            800,
+            600,
+        )
+        .expect("center-arc fixture should compile");
+
+        assert!(html.contains("\"arcs\":["));
+        assert!(html.contains("\"kind\":\"circle-arc\""));
+        assert!(html.contains("\"x\":0.5678243582014604"));
+        assert!(html.contains("\"y\":0.8231497422906086"));
+    }
+
+    #[test]
     fn exports_circle_center_radius_into_html() {
         let html = compile_bytes_to_html_document(
             include_bytes!("../tests/fixtures/gsp/circle_center_radius.gsp"),
@@ -343,8 +374,12 @@ mod tests {
         .expect("angle-sign fixture should compile");
 
         assert!(html.contains("\"labels\":[{\"anchor\":{\"x\":774.0,\"y\":485.0},\"text\":\"A\""));
-        assert!(html.contains("\"kind\":\"rotate\",\"sourceIndex\":1,\"centerIndex\":0,\"angleDegrees\":90.0"));
-        assert!(html.contains("\"kind\":\"scale\",\"sourceIndex\":2,\"centerIndex\":0,\"factor\":1.5"));
+        assert!(html.contains(
+            "\"kind\":\"rotate\",\"sourceIndex\":1,\"centerIndex\":0,\"angleDegrees\":90.0"
+        ));
+        assert!(
+            html.contains("\"kind\":\"scale\",\"sourceIndex\":2,\"centerIndex\":0,\"factor\":1.5")
+        );
         assert!(html.contains("\"kind\":\"segment\",\"startIndex\":3,\"endIndex\":0"));
         assert!(html.contains("\"points\":[{\"x\":786.125,\"y\":480.0},{\"x\":786.125,\"y\":459.875},{\"x\":766.0,\"y\":459.875}]"));
     }

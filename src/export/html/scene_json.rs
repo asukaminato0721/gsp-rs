@@ -3,9 +3,9 @@ use crate::runtime::functions::{BinaryOp, FunctionExpr, FunctionTerm, UnaryFunct
 use crate::runtime::geometry::darken;
 use crate::runtime::scene::{
     ButtonAction, IterationPointHandle, LabelIterationFamily, LineBinding, LineIterationFamily,
-    LineLikeKind,
-    PointIterationFamily, PolygonIterationFamily, Scene, SceneButton, ScenePointBinding,
-    ScenePointConstraint, ShapeBinding, TextLabelBinding, TextLabelHotspotAction,
+    LineLikeKind, PointIterationFamily, PolygonIterationFamily, Scene, SceneButton,
+    ScenePointBinding, ScenePointConstraint, ShapeBinding, TextLabelBinding,
+    TextLabelHotspotAction,
 };
 use serde::Serialize;
 
@@ -307,6 +307,13 @@ impl LineJson {
 #[derive(Serialize)]
 #[serde(tag = "kind")]
 enum LineBindingJson {
+    #[serde(rename = "graph-helper-line")]
+    GraphHelperLine {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+    },
     #[serde(rename = "segment")]
     Segment {
         #[serde(rename = "startIndex")]
@@ -437,6 +444,13 @@ enum LineBindingJson {
 impl LineBindingJson {
     fn from_binding(binding: &LineBinding) -> Self {
         match binding {
+            LineBinding::GraphHelperLine {
+                start_index,
+                end_index,
+            } => Self::GraphHelperLine {
+                start_index: *start_index,
+                end_index: *end_index,
+            },
             LineBinding::Segment {
                 start_index,
                 end_index,
@@ -632,6 +646,13 @@ impl ArcJson {
 #[derive(Serialize)]
 #[serde(tag = "kind")]
 enum ShapeBindingJson {
+    #[serde(rename = "point-radius-circle")]
+    PointRadiusCircle {
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "radiusIndex")]
+        radius_index: usize,
+    },
     #[serde(rename = "segment-radius-circle")]
     SegmentRadiusCircle {
         #[serde(rename = "centerIndex")]
@@ -720,6 +741,13 @@ enum ShapeBindingJson {
 impl ShapeBindingJson {
     fn from_binding(binding: &ShapeBinding) -> Self {
         match binding {
+            ShapeBinding::PointRadiusCircle {
+                center_index,
+                radius_index,
+            } => Self::PointRadiusCircle {
+                center_index: *center_index,
+                radius_index: *radius_index,
+            },
             ShapeBinding::SegmentRadiusCircle {
                 center_index,
                 line_start_index,
@@ -1320,6 +1348,8 @@ impl LabelIterationJson {
 #[derive(Serialize)]
 #[serde(tag = "kind")]
 enum PointBindingJson {
+    #[serde(rename = "graph-calibration")]
+    GraphCalibration,
     #[serde(rename = "parameter")]
     Parameter { name: String },
     #[serde(rename = "derived-parameter")]
@@ -1381,6 +1411,7 @@ enum PointBindingJson {
 impl PointBindingJson {
     fn from_binding(binding: &ScenePointBinding) -> Self {
         match binding {
+            ScenePointBinding::GraphCalibration => Self::GraphCalibration,
             ScenePointBinding::Parameter { name } => Self::Parameter { name: name.clone() },
             ScenePointBinding::DerivedParameter { source_index } => Self::DerivedParameter {
                 source_index: *source_index,
@@ -1483,6 +1514,16 @@ enum PointConstraintJson {
         unit_x: f64,
         #[serde(rename = "unitY")]
         unit_y: f64,
+    },
+    #[serde(rename = "circle-arc")]
+    CircleArc {
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+        t: f64,
     },
     #[serde(rename = "arc")]
     Arc {
@@ -1589,6 +1630,17 @@ impl PointConstraintJson {
                 radius_index: *radius_index,
                 unit_x: *unit_x,
                 unit_y: *unit_y,
+            }),
+            ScenePointConstraint::OnCircleArc {
+                center_index,
+                start_index,
+                end_index,
+                t,
+            } => Some(Self::CircleArc {
+                center_index: *center_index,
+                start_index: *start_index,
+                end_index: *end_index,
+                t: *t,
             }),
             ScenePointConstraint::OnArc {
                 start_index,

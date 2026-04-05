@@ -252,6 +252,17 @@ type ViewerSceneModule = {
     projected: Point;
     distanceSquared: number;
   } | null;
+  pointOnCircleArc: (center: Point, start: Point, end: Point, t: number) => Point | null;
+  projectToCircleArc: (
+    point: Point,
+    center: Point,
+    start: Point,
+    end: Point,
+  ) => {
+    t: number;
+    projected: Point;
+    distanceSquared: number;
+  } | null;
   pointOnThreePointArc: (start: Point, mid: Point, end: Point, t: number) => Point | null;
   projectToThreePointArc: (
     point: Point,

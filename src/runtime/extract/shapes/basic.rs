@@ -80,6 +80,15 @@ pub(crate) fn collect_line_shapes(
                             end_index,
                         })
                     }
+                    (
+                        crate::format::GroupKind::MeasurementLine
+                        | crate::format::GroupKind::AxisLine,
+                        Some(start_index),
+                        Some(end_index),
+                    ) => Some(LineBinding::GraphHelperLine {
+                        start_index,
+                        end_index,
+                    }),
                     _ => None,
                 },
             })
@@ -143,13 +152,7 @@ fn resolve_angle_marker_shape(
     }
 
     let marker_class = decode_angle_marker_class(file, group).max(1);
-    let points = resolve_angle_marker_points(
-        &vertex,
-        first,
-        second,
-        shortest_len,
-        marker_class,
-    )?;
+    let points = resolve_angle_marker_points(&vertex, first, second, shortest_len, marker_class)?;
 
     has_distinct_points(&points).then_some(LineShape {
         points,
@@ -185,7 +188,9 @@ fn resolve_right_angle_marker_points(
     second: (f64, f64),
     shortest_len: f64,
 ) -> Option<Vec<PointRecord>> {
-    let side = (shortest_len * 0.125).clamp(10.0, 28.0).min(shortest_len * 0.5);
+    let side = (shortest_len * 0.125)
+        .clamp(10.0, 28.0)
+        .min(shortest_len * 0.5);
     if side <= 1e-9 {
         return None;
     }
@@ -307,7 +312,10 @@ fn resolve_segment_marker_endpoint_groups(
     match host_group.header.kind() {
         crate::format::GroupKind::Segment => {
             let path = find_indexed_path(file, host_group)?;
-            Some((path.refs.first()?.checked_sub(1)?, path.refs.get(1)?.checked_sub(1)?))
+            Some((
+                path.refs.first()?.checked_sub(1)?,
+                path.refs.get(1)?.checked_sub(1)?,
+            ))
         }
         crate::format::GroupKind::Translation => {
             let path = find_indexed_path(file, host_group)?;
@@ -605,9 +613,28 @@ pub(crate) fn collect_circle_shapes(
 ) -> Vec<CircleShape> {
     let dashed_circle_indices = groups
         .iter()
-        .filter(|group| (group.header.kind()) == crate::format::GroupKind::ArcOnCircle)
-        .filter_map(|group| find_indexed_path(file, group))
-        .filter_map(|path| path.refs.first().and_then(|ordinal| ordinal.checked_sub(1)))
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            match group.header.kind() {
+                crate::format::GroupKind::ArcOnCircle => {
+                    path.refs.first().and_then(|ordinal| ordinal.checked_sub(1))
+                }
+                crate::format::GroupKind::CenterArc => {
+                    if path.refs.len() < 2 {
+                        return None;
+                    }
+                    let arc_prefix = &path.refs[..2];
+                    groups.iter().enumerate().find_map(|(index, candidate)| {
+                        ((candidate.header.kind()) == crate::format::GroupKind::Circle)
+                            .then(|| find_indexed_path(file, candidate))
+                            .flatten()
+                            .filter(|circle_path| circle_path.refs.as_slice() == arc_prefix)
+                            .map(|_| index)
+                    })
+                }
+                _ => None,
+            }
+        })
         .collect::<BTreeSet<_>>();
 
     groups
@@ -617,6 +644,16 @@ pub(crate) fn collect_circle_shapes(
         .filter_map(|(group_index, group)| {
             let (center, radius_point) = resolve_circle_points_raw(file, groups, anchors, group)?;
             let binding = match group.header.kind() {
+                crate::format::GroupKind::Circle => {
+                    let path = find_indexed_path(file, group)?;
+                    if path.refs.len() != 2 {
+                        return None;
+                    }
+                    Some(ShapeBinding::PointRadiusCircle {
+                        center_index: path.refs[0].checked_sub(1)?,
+                        radius_index: path.refs[1].checked_sub(1)?,
+                    })
+                }
                 crate::format::GroupKind::CircleCenterRadius => {
                     let path = find_indexed_path(file, group)?;
                     if path.refs.len() != 2 {
@@ -657,7 +694,9 @@ pub(crate) fn collect_three_point_arc_shapes(
         .filter(|group| {
             matches!(
                 group.header.kind(),
-                crate::format::GroupKind::ThreePointArc | crate::format::GroupKind::ArcOnCircle
+                crate::format::GroupKind::ThreePointArc
+                    | crate::format::GroupKind::ArcOnCircle
+                    | crate::format::GroupKind::CenterArc
             )
         })
         .filter_map(|group| {
@@ -687,6 +726,15 @@ pub(crate) fn collect_three_point_arc_shapes(
                     let end = anchors.get(path.refs[2].saturating_sub(1))?.clone()?;
                     arc_on_circle_control_points(&center, &start, &end)?
                 }
+                crate::format::GroupKind::CenterArc => {
+                    if path.refs.len() != 3 {
+                        return None;
+                    }
+                    let center = anchors.get(path.refs[0].saturating_sub(1))?.clone()?;
+                    let start = anchors.get(path.refs[1].saturating_sub(1))?.clone()?;
+                    let end = anchors.get(path.refs[2].saturating_sub(1))?.clone()?;
+                    arc_on_circle_control_points(&center, &start, &end)?
+                }
                 _ => return None,
             };
             three_point_arc_geometry(&points[0], &points[1], &points[2])?;
@@ -702,7 +750,10 @@ pub(crate) fn collect_three_point_arc_shapes(
                     }
                     _ => None,
                 },
-                counterclockwise: (group.header.kind()) == crate::format::GroupKind::ArcOnCircle,
+                counterclockwise: matches!(
+                    group.header.kind(),
+                    crate::format::GroupKind::ArcOnCircle | crate::format::GroupKind::CenterArc
+                ),
             })
         })
         .collect()
