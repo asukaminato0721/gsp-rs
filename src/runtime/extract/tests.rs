@@ -884,11 +884,19 @@ fn preserves_center_arc_and_point_on_arc_in_unimplemented_fixture() {
     let scene = build_scene(&file);
 
     assert_eq!(scene.circles.len(), 1, "expected one circle");
+    assert!(
+        scene.circles[0].dashed,
+        "expected supporting circle to render dashed"
+    );
     assert_eq!(scene.arcs.len(), 1, "expected one center-based arc");
     assert_eq!(
         scene.points.len(),
         5,
         "expected base points plus constrained arc point"
+    );
+    assert!(
+        scene.arcs[0].center.is_none(),
+        "expected center-arc fixture to render from explicit control points"
     );
     assert!(scene.points.iter().any(|point| matches!(
         point.constraint,

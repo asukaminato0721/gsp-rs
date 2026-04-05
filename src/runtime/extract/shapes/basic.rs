@@ -613,9 +613,28 @@ pub(crate) fn collect_circle_shapes(
 ) -> Vec<CircleShape> {
     let dashed_circle_indices = groups
         .iter()
-        .filter(|group| (group.header.kind()) == crate::format::GroupKind::ArcOnCircle)
-        .filter_map(|group| find_indexed_path(file, group))
-        .filter_map(|path| path.refs.first().and_then(|ordinal| ordinal.checked_sub(1)))
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            match group.header.kind() {
+                crate::format::GroupKind::ArcOnCircle => {
+                    path.refs.first().and_then(|ordinal| ordinal.checked_sub(1))
+                }
+                crate::format::GroupKind::CenterArc => {
+                    if path.refs.len() < 2 {
+                        return None;
+                    }
+                    let arc_prefix = &path.refs[..2];
+                    groups.iter().enumerate().find_map(|(index, candidate)| {
+                        ((candidate.header.kind()) == crate::format::GroupKind::Circle)
+                            .then(|| find_indexed_path(file, candidate))
+                            .flatten()
+                            .filter(|circle_path| circle_path.refs.as_slice() == arc_prefix)
+                            .map(|_| index)
+                    })
+                }
+                _ => None,
+            }
+        })
         .collect::<BTreeSet<_>>();
 
     groups
@@ -723,16 +742,10 @@ pub(crate) fn collect_three_point_arc_shapes(
                 points,
                 color: color_from_style(group.header.style_b),
                 center: match group.header.kind() {
-                    crate::format::GroupKind::ArcOnCircle | crate::format::GroupKind::CenterArc => {
-                        let center =
-                            if (group.header.kind()) == crate::format::GroupKind::ArcOnCircle {
-                                let circle_group = groups.get(path.refs[0].checked_sub(1)?)?;
-                                let (center, _) =
-                                    resolve_circle_points_raw(file, groups, anchors, circle_group)?;
-                                center
-                            } else {
-                                anchors.get(path.refs[0].saturating_sub(1))?.clone()?
-                            };
+                    crate::format::GroupKind::ArcOnCircle => {
+                        let circle_group = groups.get(path.refs[0].checked_sub(1)?)?;
+                        let (center, _) =
+                            resolve_circle_points_raw(file, groups, anchors, circle_group)?;
                         Some(center)
                     }
                     _ => None,
