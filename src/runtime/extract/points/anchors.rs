@@ -456,12 +456,7 @@ pub(crate) fn reflection_line_group_indices(
 ) -> Option<(usize, usize)> {
     let path = find_indexed_path(file, group)?;
     let line_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
-    if !matches!(
-        line_group.header.kind(),
-        crate::format::GroupKind::Segment
-            | crate::format::GroupKind::Line
-            | crate::format::GroupKind::Ray
-    ) {
+    if !line_group.header.kind().is_line_like() {
         return None;
     }
     let line_path = find_indexed_path(file, line_group)?;
@@ -579,12 +574,7 @@ pub(crate) fn decode_line_midpoint_anchor_raw(
 
     let path = find_indexed_path(file, group)?;
     let host_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-    if !matches!(
-        host_group.header.kind(),
-        crate::format::GroupKind::Segment
-            | crate::format::GroupKind::Line
-            | crate::format::GroupKind::Ray
-    ) {
+    if !host_group.header.kind().is_line_like() {
         return None;
     }
 

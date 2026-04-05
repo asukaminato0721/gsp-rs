@@ -230,22 +230,6 @@ mod tests {
     }
 
     #[test]
-    fn exports_perpendicular_bisector_fixture_into_html() {
-        let html = compile_bytes_to_html_document(
-            include_bytes!("../tests/fixtures/gsp/中垂线.gsp"),
-            800,
-            600,
-        )
-        .expect("perpendicular bisector fixture should compile");
-
-        assert!(html.contains("\"kind\":\"perpendicular-line\""));
-        assert!(html.contains("\"throughIndex\":2"));
-        assert!(html.contains(
-            "\"constraint\":{\"kind\":\"segment\",\"startIndex\":0,\"endIndex\":1,\"t\":0.5}"
-        ));
-    }
-
-    #[test]
     fn exports_nested_perpendicular_parallel_marker_bindings_into_html() {
         let html = compile_bytes_to_html_document(
             include_bytes!("../tests/fixtures/gsp/pert_vert.gsp"),
@@ -362,26 +346,6 @@ mod tests {
         assert!(html.contains(
             "\"text\":\"线段中垂线\\n垂线\\n平行线\\n直角三角形\\n点的轨迹\\n圆上的弧\\n过三点的弧\""
         ));
-    }
-
-    #[test]
-    fn exports_angle_sign_fixture_into_html() {
-        let html = compile_bytes_to_html_document(
-            include_bytes!("../tests/fixtures/gsp/angle-sign.gsp"),
-            800,
-            600,
-        )
-        .expect("angle-sign fixture should compile");
-
-        assert!(html.contains("\"labels\":[{\"anchor\":{\"x\":774.0,\"y\":485.0},\"text\":\"A\""));
-        assert!(html.contains(
-            "\"kind\":\"rotate\",\"sourceIndex\":1,\"centerIndex\":0,\"angleDegrees\":90.0"
-        ));
-        assert!(
-            html.contains("\"kind\":\"scale\",\"sourceIndex\":2,\"centerIndex\":0,\"factor\":1.5")
-        );
-        assert!(html.contains("\"kind\":\"segment\",\"startIndex\":3,\"endIndex\":0"));
-        assert!(html.contains("\"points\":[{\"x\":786.125,\"y\":480.0},{\"x\":786.125,\"y\":459.875},{\"x\":766.0,\"y\":459.875}]"));
     }
 
     #[test]

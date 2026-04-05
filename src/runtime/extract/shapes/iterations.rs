@@ -136,11 +136,7 @@ pub(crate) fn collect_carried_iteration_lines(
                 return None;
             }
             let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
-            if !matches!(
-                iter_group.header.kind(),
-                crate::format::GroupKind::AffineIteration
-                    | crate::format::GroupKind::RegularPolygonIteration
-            ) {
+            if !iter_group.header.kind().is_carried_iteration() {
                 return None;
             }
             if (iter_group.header.kind()) == crate::format::GroupKind::RegularPolygonIteration
@@ -220,11 +216,7 @@ pub(crate) fn collect_carried_line_iteration_families(
                 return None;
             }
             let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
-            if !matches!(
-                iter_group.header.kind(),
-                crate::format::GroupKind::AffineIteration
-                    | crate::format::GroupKind::RegularPolygonIteration
-            ) {
+            if !iter_group.header.kind().is_carried_iteration() {
                 return None;
             }
             if (iter_group.header.kind()) == crate::format::GroupKind::RegularPolygonIteration

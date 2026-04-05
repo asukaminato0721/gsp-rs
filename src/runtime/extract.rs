@@ -172,20 +172,12 @@ fn analyze_scene(
         Vec::new()
     };
     let has_function_plots = !function_plots.is_empty();
-    let has_coordinate_objects = groups.iter().any(|group| {
-        matches!(
-            group.header.kind(),
-            crate::format::GroupKind::CoordinatePoint | crate::format::GroupKind::CoordinateTrace
-        )
-    });
-    let has_iteration_helpers = groups.iter().any(|group| {
-        matches!(
-            group.header.kind(),
-            crate::format::GroupKind::AffineIteration
-                | crate::format::GroupKind::IterationBinding
-                | crate::format::GroupKind::RegularPolygonIteration
-        )
-    });
+    let has_coordinate_objects = groups
+        .iter()
+        .any(|group| group.header.kind().is_coordinate_object());
+    let has_iteration_helpers = groups
+        .iter()
+        .any(|group| group.header.kind().is_iteration_helper());
     let large_non_graph = !graph_mode && file.records.len() > 10_000;
 
     SceneAnalysis {
@@ -549,14 +541,7 @@ fn remap_scene_bindings(
         &polygon_group_to_index,
     );
     let line_group_to_index = group_shape_index_map(groups, |_, group| {
-        matches!(
-            group.header.kind(),
-            crate::format::GroupKind::Segment
-                | crate::format::GroupKind::AngleMarker
-                | crate::format::GroupKind::LineKind5
-                | crate::format::GroupKind::LineKind6
-                | crate::format::GroupKind::LineKind7
-        )
+        group.header.kind().is_rendered_line_group()
     });
     remap_line_bindings(
         &mut shapes.polylines,

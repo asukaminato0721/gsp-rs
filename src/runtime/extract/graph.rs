@@ -75,13 +75,7 @@ pub(super) fn detect_graph_transform(
 ) -> Option<GraphTransform> {
     let raw_per_unit = groups
         .iter()
-        .filter(|group| {
-            matches!(
-                group.header.kind(),
-                crate::format::GroupKind::GraphCalibrationX
-                    | crate::format::GroupKind::GraphCalibrationY
-            )
-        })
+        .filter(|group| group.header.kind().is_graph_calibration())
         .find_map(|group| {
             group
                 .records
@@ -92,13 +86,7 @@ pub(super) fn detect_graph_transform(
 
     let origin_raw = groups
         .iter()
-        .find(|group| {
-            matches!(
-                group.header.kind(),
-                crate::format::GroupKind::GraphCalibrationX
-                    | crate::format::GroupKind::GraphCalibrationY
-            )
-        })
+        .find(|group| group.header.kind().is_graph_calibration())
         .and_then(|group| {
             find_indexed_path(file, group).and_then(|path| {
                 path.refs.iter().find_map(|object_ref| {
@@ -114,16 +102,9 @@ pub(super) fn detect_graph_transform(
 }
 
 pub(super) fn has_graph_classes(groups: &[ObjectGroup]) -> bool {
-    groups.iter().any(|group| {
-        matches!(
-            group.header.kind(),
-            crate::format::GroupKind::GraphObject40
-                | crate::format::GroupKind::GraphCalibrationX
-                | crate::format::GroupKind::GraphCalibrationY
-                | crate::format::GroupKind::MeasurementLine
-                | crate::format::GroupKind::AxisLine
-        )
-    })
+    groups
+        .iter()
+        .any(|group| group.header.kind().is_graph_object())
 }
 
 pub(super) fn collect_bounds(

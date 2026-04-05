@@ -22,6 +22,47 @@ macro_rules! define_group_kinds {
                     Self::Unknown(other) => other,
                 }
             }
+
+            pub fn is_line_like(self) -> bool {
+                matches!(self, Self::Segment | Self::Line | Self::Ray)
+            }
+
+            pub fn is_rendered_line_group(self) -> bool {
+                matches!(
+                    self,
+                    Self::Segment | Self::AngleMarker | Self::LineKind5 | Self::LineKind6 | Self::LineKind7
+                )
+            }
+
+            pub fn is_coordinate_object(self) -> bool {
+                matches!(self, Self::CoordinatePoint | Self::CoordinateTrace)
+            }
+
+            pub fn is_iteration_helper(self) -> bool {
+                matches!(
+                    self,
+                    Self::AffineIteration | Self::IterationBinding | Self::RegularPolygonIteration
+                )
+            }
+
+            pub fn is_carried_iteration(self) -> bool {
+                matches!(self, Self::AffineIteration | Self::RegularPolygonIteration)
+            }
+
+            pub fn is_graph_calibration(self) -> bool {
+                matches!(self, Self::GraphCalibrationX | Self::GraphCalibrationY)
+            }
+
+            pub fn is_graph_object(self) -> bool {
+                matches!(
+                    self,
+                    Self::GraphObject40
+                        | Self::GraphCalibrationX
+                        | Self::GraphCalibrationY
+                        | Self::MeasurementLine
+                        | Self::AxisLine
+                )
+            }
         }
     };
 }
@@ -93,5 +134,22 @@ mod tests {
         assert_eq!(GroupKind::SegmentMarker.raw(), 121);
         assert_eq!(GroupKind::from(999), GroupKind::Unknown(999));
         assert_eq!(GroupKind::Unknown(999).raw(), 999);
+    }
+
+    #[test]
+    fn categorizes_common_group_kind_families() {
+        assert!(GroupKind::Segment.is_line_like());
+        assert!(GroupKind::Ray.is_line_like());
+        assert!(!GroupKind::AngleMarker.is_line_like());
+
+        assert!(GroupKind::AngleMarker.is_rendered_line_group());
+        assert!(GroupKind::LineKind6.is_rendered_line_group());
+        assert!(!GroupKind::Line.is_rendered_line_group());
+
+        assert!(GroupKind::CoordinateTrace.is_coordinate_object());
+        assert!(GroupKind::RegularPolygonIteration.is_iteration_helper());
+        assert!(GroupKind::AffineIteration.is_carried_iteration());
+        assert!(GroupKind::GraphCalibrationX.is_graph_calibration());
+        assert!(GroupKind::MeasurementLine.is_graph_object());
     }
 }
