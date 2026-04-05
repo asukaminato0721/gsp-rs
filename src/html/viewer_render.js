@@ -400,6 +400,7 @@
     };
     for (const line of env.currentScene().lines) {
       if (line.visible === false) continue;
+      if (line.binding?.kind === "graph-helper-line") continue;
       if (line.binding?.kind === "angle-marker") {
         drawAngleMarker(line);
         continue;

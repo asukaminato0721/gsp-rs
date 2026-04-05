@@ -156,22 +156,25 @@ pub(super) fn collect_labels(
                 {
                     continue;
                 }
-                if let Some(value) = group
-                    .records
-                    .iter()
-                    .find(|record| record.record_type == 0x07d3 && record.length == 12)
-                    .and_then(|record| decode_measurement_value(record.payload(&file.data)))
-                {
-                    if let Some(anchor) = anchor {
-                        labels.push(TextLabel {
-                            anchor,
-                            text: format_number(value),
-                            color: [60, 60, 60, 255],
-                            binding: None,
-                            screen_space: false,
-                            hotspots: Vec::new(),
-                        });
-                    }
+                let text = decode_group_label_text(file, group)
+                    .or_else(|| decode_label_name(file, group))
+                    .or_else(|| {
+                        group
+                            .records
+                            .iter()
+                            .find(|record| record.record_type == 0x07d3 && record.length == 12)
+                            .and_then(|record| decode_measurement_value(record.payload(&file.data)))
+                            .map(format_number)
+                    });
+                if let (Some(anchor), Some(text)) = (anchor, text) {
+                    labels.push(TextLabel {
+                        anchor,
+                        text,
+                        color: [60, 60, 60, 255],
+                        binding: None,
+                        screen_space: false,
+                        hotspots: Vec::new(),
+                    });
                 }
             }
             _ => {}

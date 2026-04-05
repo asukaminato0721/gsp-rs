@@ -1494,6 +1494,16 @@ fn preserves_circle_y_intersection_points() {
     let file = GspFile::parse(data).expect("fixture parses");
     let scene = build_scene(&file);
 
+    assert!(scene.points.iter().any(|point| {
+        point.visible
+            && (point.position.x - 1.0).abs() < 1e-6
+            && (point.position.y - 0.0).abs() < 1e-6
+            && matches!(
+                point.binding,
+                Some(crate::runtime::scene::ScenePointBinding::GraphCalibration)
+            )
+    }));
+    assert!(scene.labels.iter().any(|label| label.text == "G"));
     assert!(
         scene.points.iter().any(|point| {
             matches!(

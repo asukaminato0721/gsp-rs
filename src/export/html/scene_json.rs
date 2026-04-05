@@ -307,6 +307,13 @@ impl LineJson {
 #[derive(Serialize)]
 #[serde(tag = "kind")]
 enum LineBindingJson {
+    #[serde(rename = "graph-helper-line")]
+    GraphHelperLine {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+    },
     #[serde(rename = "segment")]
     Segment {
         #[serde(rename = "startIndex")]
@@ -437,6 +444,13 @@ enum LineBindingJson {
 impl LineBindingJson {
     fn from_binding(binding: &LineBinding) -> Self {
         match binding {
+            LineBinding::GraphHelperLine {
+                start_index,
+                end_index,
+            } => Self::GraphHelperLine {
+                start_index: *start_index,
+                end_index: *end_index,
+            },
             LineBinding::Segment {
                 start_index,
                 end_index,
@@ -1334,6 +1348,8 @@ impl LabelIterationJson {
 #[derive(Serialize)]
 #[serde(tag = "kind")]
 enum PointBindingJson {
+    #[serde(rename = "graph-calibration")]
+    GraphCalibration,
     #[serde(rename = "parameter")]
     Parameter { name: String },
     #[serde(rename = "derived-parameter")]
@@ -1395,6 +1411,7 @@ enum PointBindingJson {
 impl PointBindingJson {
     fn from_binding(binding: &ScenePointBinding) -> Self {
         match binding {
+            ScenePointBinding::GraphCalibration => Self::GraphCalibration,
             ScenePointBinding::Parameter { name } => Self::Parameter { name: name.clone() },
             ScenePointBinding::DerivedParameter { source_index } => Self::DerivedParameter {
                 source_index: *source_index,

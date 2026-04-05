@@ -5,7 +5,7 @@ use super::{
     decode_reflection_anchor_raw, decode_transform_binding, decode_translated_point_constraint,
     reflection_line_group_indices, translation_point_pair_group_indices,
 };
-use crate::runtime::extract::find_indexed_path;
+use crate::runtime::extract::{decode::decode_label_name, find_indexed_path};
 use crate::runtime::geometry::GraphTransform;
 use crate::runtime::scene::{LineLikeKind, ScenePoint, ScenePointBinding, ScenePointConstraint};
 
@@ -42,9 +42,9 @@ pub(crate) fn collect_visible_points(
                 .flatten()
                 .map(|position| ScenePoint {
                     position,
-                    visible: false,
+                    visible: visible && decode_label_name(file, group).is_some(),
                     constraint: ScenePointConstraint::Free,
-                    binding: None,
+                    binding: Some(ScenePointBinding::GraphCalibration),
                 }),
             crate::format::GroupKind::LinearIntersectionPoint
             | crate::format::GroupKind::IntersectionPoint1

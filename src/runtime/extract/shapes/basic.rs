@@ -85,7 +85,7 @@ pub(crate) fn collect_line_shapes(
                         | crate::format::GroupKind::AxisLine,
                         Some(start_index),
                         Some(end_index),
-                    ) => Some(LineBinding::Segment {
+                    ) => Some(LineBinding::GraphHelperLine {
                         start_index,
                         end_index,
                     }),

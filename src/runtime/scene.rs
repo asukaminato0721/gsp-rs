@@ -255,6 +255,10 @@ pub(crate) struct LineShape {
 
 #[derive(Debug, Clone)]
 pub(crate) enum LineBinding {
+    GraphHelperLine {
+        start_index: usize,
+        end_index: usize,
+    },
     Segment {
         start_index: usize,
         end_index: usize,
@@ -343,6 +347,7 @@ pub(crate) struct SceneParameter {
 
 #[derive(Debug, Clone)]
 pub(crate) enum ScenePointBinding {
+    GraphCalibration,
     Parameter {
         name: String,
     },
