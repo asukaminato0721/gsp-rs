@@ -8,14 +8,33 @@ use crate::runtime::scene::{
 
 use super::decode::{decode_function_expr, decode_function_plot_descriptor};
 use super::expr::{
-    FunctionExpr, FunctionPlotDescriptor, function_expr_label, function_expr_uses_trig,
-    function_name_for_index,
+    FunctionExpr, FunctionPlotDescriptor, function_expr_uses_trig, function_name_for_index,
 };
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct ParameterBinding {
     pub(super) name: String,
     pub(super) value: f64,
+}
+
+fn source_function_name(file: &GspFile, group: &ObjectGroup) -> Option<String> {
+    group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x07d5)
+        .and_then(|record| decode_parameter_name(record.payload(&file.data)))
+        .filter(|name| name.chars().all(|ch| ch.is_ascii_alphabetic()))
+}
+
+pub(crate) fn function_name_for_definition(
+    file: &GspFile,
+    group: &ObjectGroup,
+    index: usize,
+    total: usize,
+    expr: &FunctionExpr,
+) -> String {
+    source_function_name(file, group)
+        .unwrap_or_else(|| function_name_for_index(index, total, expr).to_string())
 }
 
 pub(crate) fn collect_scene_parameters(
@@ -39,8 +58,14 @@ pub(crate) fn collect_scene_parameters(
         })
         .into_iter()
         .filter_map(|(name, value)| {
-            let text = format!("{name} = {:.2}", value);
-            let label_index = labels.iter().position(|label| label.text == text)?;
+            let label_index = labels.iter().position(|label| {
+                matches!(
+                    label.binding.as_ref(),
+                    Some(crate::runtime::scene::TextLabelBinding::ParameterValue {
+                        name: label_name,
+                    }) if label_name == &name
+                )
+            })?;
             Some(SceneParameter {
                 name,
                 value,
@@ -57,7 +82,7 @@ pub(crate) fn collect_scene_functions(
     points: &[ScenePoint],
     plot_line_offset: usize,
 ) -> Vec<SceneFunction> {
-    let base_entries: Vec<(usize, FunctionExpr, FunctionPlotDescriptor)> = groups
+    let base_entries: Vec<(usize, String, FunctionExpr, FunctionPlotDescriptor)> = groups
         .iter()
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::FunctionPlot)
         .filter_map(|group| {
@@ -70,7 +95,8 @@ pub(crate) fn collect_scene_functions(
                 .iter()
                 .find(|record| record.record_type == 0x0902)
                 .and_then(|record| decode_function_plot_descriptor(record.payload(&file.data)))?;
-            Some((definition_ordinal, expr, descriptor))
+            let name = source_function_name(file, definition_group).unwrap_or_default();
+            Some((definition_ordinal, name, expr, descriptor))
         })
         .collect();
 
@@ -78,33 +104,47 @@ pub(crate) fn collect_scene_functions(
     let mut functions = base_entries
         .iter()
         .enumerate()
-        .filter_map(|(index, (definition_ordinal, expr, descriptor))| {
-            let name = function_name_for_index(index, total, expr).to_string();
-            let label_text = format!("{name}(x) = {}", function_expr_label(expr.clone()));
-            let label_index = labels.iter().position(|label| label.text == label_text)?;
-            let constrained_point_indices = points
-                .iter()
-                .enumerate()
-                .filter_map(|(point_index, point)| match &point.constraint {
-                    ScenePointConstraint::OnPolyline { function_key, .. }
-                        if function_key == definition_ordinal =>
-                    {
-                        Some(point_index)
-                    }
-                    _ => None,
+        .filter_map(
+            |(index, (definition_ordinal, source_name, expr, descriptor))| {
+                let name = if source_name.is_empty() {
+                    let definition_group = groups.get(definition_ordinal.checked_sub(1)?)?;
+                    function_name_for_definition(file, definition_group, index, total, expr)
+                } else {
+                    source_name.clone()
+                };
+                let label_index = labels.iter().position(|label| {
+                    matches!(
+                        label.binding.as_ref(),
+                        Some(crate::runtime::scene::TextLabelBinding::FunctionLabel {
+                            function_key,
+                            derivative,
+                        }) if *function_key == *definition_ordinal && !derivative
+                    )
+                })?;
+                let constrained_point_indices = points
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(point_index, point)| match &point.constraint {
+                        ScenePointConstraint::OnPolyline { function_key, .. }
+                            if function_key == definition_ordinal =>
+                        {
+                            Some(point_index)
+                        }
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                Some(SceneFunction {
+                    key: *definition_ordinal,
+                    name,
+                    derivative: false,
+                    expr: expr.clone(),
+                    domain: descriptor.clone(),
+                    line_index: Some(plot_line_offset + index),
+                    label_index,
+                    constrained_point_indices,
                 })
-                .collect::<Vec<_>>();
-            Some(SceneFunction {
-                key: *definition_ordinal,
-                name,
-                derivative: false,
-                expr: expr.clone(),
-                domain: descriptor.clone(),
-                line_index: Some(plot_line_offset + index),
-                label_index,
-                constrained_point_indices,
-            })
-        })
+            },
+        )
         .collect::<Vec<_>>();
 
     functions.extend(
@@ -114,21 +154,36 @@ pub(crate) fn collect_scene_functions(
             .filter_map(|group| {
                 let path = find_indexed_path(file, group)?;
                 let base_definition_ordinal = *path.refs.first()?;
-                let base_index = base_entries.iter().position(|(definition_ordinal, _, _)| {
-                    *definition_ordinal == base_definition_ordinal
-                })?;
-                let base_name =
-                    function_name_for_index(base_index, total, &base_entries[base_index].1);
+                let base_index =
+                    base_entries
+                        .iter()
+                        .position(|(definition_ordinal, _, _, _)| {
+                            *definition_ordinal == base_definition_ordinal
+                        })?;
+                let definition_group = groups.get(base_definition_ordinal.checked_sub(1)?)?;
+                let base_name = function_name_for_definition(
+                    file,
+                    definition_group,
+                    base_index,
+                    total,
+                    &base_entries[base_index].2,
+                );
                 let expr = decode_function_expr(file, groups, group)?;
-                let label_text =
-                    format!("{}'(x) = {}", base_name, function_expr_label(expr.clone()));
-                let label_index = labels.iter().position(|label| label.text == label_text)?;
+                let label_index = labels.iter().position(|label| {
+                    matches!(
+                        label.binding.as_ref(),
+                        Some(crate::runtime::scene::TextLabelBinding::FunctionLabel {
+                            function_key,
+                            derivative,
+                        }) if *function_key == base_definition_ordinal && *derivative
+                    )
+                })?;
                 Some(SceneFunction {
                     key: base_definition_ordinal,
-                    name: base_name.to_string(),
+                    name: base_name,
                     derivative: true,
                     expr,
-                    domain: base_entries[base_index].2.clone(),
+                    domain: base_entries[base_index].3.clone(),
                     line_index: None,
                     label_index,
                     constrained_point_indices: Vec::new(),

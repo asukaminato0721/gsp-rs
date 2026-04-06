@@ -1,15 +1,15 @@
-use super::decode::{decode_measurement_value, find_indexed_path};
+use super::decode::{decode_label_name, decode_measurement_value, find_indexed_path};
 use super::{ArcShape, CircleShape};
 use crate::format::{GspFile, ObjectGroup, PointRecord};
-use crate::runtime::functions::{FunctionExpr, decode_function_expr};
 use crate::runtime::geometry::{
     Bounds, GraphTransform, arc_sample_points, read_f32_unaligned, to_world,
 };
 use crate::runtime::scene::{LineShape, PolygonShape, TextLabel, TextLabelBinding};
 
 pub(super) fn collect_saved_viewport(file: &GspFile, groups: &[ObjectGroup]) -> Option<Bounds> {
-    let (min_x, max_x) = collect_graph_window_x_hint(file, groups)?;
-    let (min_y, max_y) = collect_graph_window_y_hint(file, groups)?;
+    let (min_x, max_x) = collect_graph_window_hint(file, groups, "x")?;
+    let (min_y, max_y) = collect_graph_window_hint(file, groups, "y")
+        .or_else(|| collect_graph_window_hint(file, groups, "x"))?;
     Some(Bounds {
         min_x,
         max_x,
@@ -18,11 +18,23 @@ pub(super) fn collect_saved_viewport(file: &GspFile, groups: &[ObjectGroup]) -> 
     })
 }
 
-fn collect_graph_window_x_hint(file: &GspFile, groups: &[ObjectGroup]) -> Option<(f64, f64)> {
+fn collect_graph_window_hint(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    axis_name: &str,
+) -> Option<(f64, f64)> {
     groups
         .iter()
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::MeasurementLine)
         .find_map(|group| {
+            if decode_label_name(file, group)
+                .as_deref()
+                .map(str::to_ascii_lowercase)
+                .as_deref()
+                != Some(axis_name)
+            {
+                return None;
+            }
             let payload = group
                 .records
                 .iter()
@@ -36,36 +48,6 @@ fn collect_graph_window_x_hint(file: &GspFile, groups: &[ObjectGroup]) -> Option
             (min_x.is_finite() && max_x.is_finite() && min_x < max_x && (max_x - min_x) > 1.0)
                 .then_some((f64::from(min_x), f64::from(max_x)))
         })
-}
-
-fn collect_graph_window_y_hint(file: &GspFile, groups: &[ObjectGroup]) -> Option<(f64, f64)> {
-    let expr = groups
-        .iter()
-        .find(|group| {
-            group
-                .records
-                .iter()
-                .any(|record| record.record_type == 0x0907)
-        })
-        .and_then(|group| decode_function_expr(file, groups, group))?;
-    let plot_payload = groups
-        .iter()
-        .filter(|group| (group.header.kind()) == crate::format::GroupKind::FunctionPlot)
-        .find_map(|group| {
-            group
-                .records
-                .iter()
-                .find(|record| record.record_type == 0x0902)
-                .map(|record| record.payload(&file.data))
-        })?;
-
-    match expr {
-        FunctionExpr::Parsed(_) => {
-            let max_y = read_f32_unaligned(plot_payload, 11)?;
-            (max_y.is_finite() && max_y > 0.0).then_some((-1.0, f64::from(max_y)))
-        }
-        _ => None,
-    }
 }
 
 pub(super) fn detect_graph_transform(

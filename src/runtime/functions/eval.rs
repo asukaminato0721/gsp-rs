@@ -3,7 +3,8 @@ use std::collections::BTreeMap;
 use crate::format::PointRecord;
 
 use super::expr::{
-    BinaryOp, FunctionExpr, FunctionPlotDescriptor, FunctionTerm, ParsedFunctionExpr, UnaryFunction,
+    BinaryOp, FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode, FunctionTerm,
+    ParsedFunctionExpr, UnaryFunction,
 };
 
 pub(crate) fn sample_function_points(
@@ -33,7 +34,14 @@ pub(crate) fn sample_function_points(
             FunctionExpr::Parsed(parsed) => evaluate_function_expr(parsed, x),
         };
         if let Some(y) = y {
-            points.push(PointRecord { x, y });
+            let point = match descriptor.mode {
+                FunctionPlotMode::Cartesian => PointRecord { x, y },
+                FunctionPlotMode::Polar => PointRecord {
+                    x: y * x.cos(),
+                    y: y * x.sin(),
+                },
+            };
+            points.push(point);
         } else if points.len() >= 2 {
             segments.push(std::mem::take(&mut points));
         } else {
@@ -130,6 +138,12 @@ fn evaluate_function_term_with_parameters(
             evaluate_function_term_with_parameters(*left, x, parameters)?
                 * evaluate_function_term_with_parameters(*right, x, parameters)?,
         ),
+        FunctionTerm::Power(base, exponent) => {
+            let base = evaluate_function_term_with_parameters(*base, x, parameters)?;
+            let exponent = evaluate_function_term_with_parameters(*exponent, x, parameters)?;
+            let value = base.powf(exponent);
+            value.is_finite().then_some(value)
+        }
     }
 }
 
@@ -161,6 +175,11 @@ fn evaluate_function_term(term: FunctionTerm, x: f64) -> Option<f64> {
         },
         FunctionTerm::Product(left, right) => {
             Some(evaluate_function_term(*left, x)? * evaluate_function_term(*right, x)?)
+        }
+        FunctionTerm::Power(base, exponent) => {
+            let value =
+                evaluate_function_term(*base, x)?.powf(evaluate_function_term(*exponent, x)?);
+            value.is_finite().then_some(value)
         }
     }
 }

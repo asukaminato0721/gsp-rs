@@ -491,7 +491,7 @@ fn carried_iteration_parameter_name(
 ) -> Option<String> {
     let iter_path = find_indexed_path(file, iter_group)?;
     let parameter_group = groups.get(iter_path.refs.first()?.checked_sub(1)?)?;
-    editable_non_graph_parameter_name_for_group(file, parameter_group)
+    editable_non_graph_parameter_name_for_group(file, groups, parameter_group)
 }
 
 fn carried_iteration_point_map(

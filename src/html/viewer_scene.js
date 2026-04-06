@@ -222,6 +222,54 @@
       : null;
   }
 
+  function resolveLineConstraint(env, constraint, resolveFn) {
+    if (!constraint) return null;
+    if (constraint.kind === "segment" || constraint.kind === "line" || constraint.kind === "ray") {
+      const start = resolveFn(constraint.startIndex);
+      const end = resolveFn(constraint.endIndex);
+      if (!start || !end) return null;
+      return { start, end, kind: constraint.kind };
+    }
+    if (constraint.kind === "perpendicular-line" || constraint.kind === "parallel-line") {
+      const through = resolveFn(constraint.throughIndex);
+      const lineStart = resolveFn(constraint.lineStartIndex);
+      const lineEnd = resolveFn(constraint.lineEndIndex);
+      if (!through || !lineStart || !lineEnd) return null;
+      const dx = lineEnd.x - lineStart.x;
+      const dy = lineEnd.y - lineStart.y;
+      const len = Math.hypot(dx, dy);
+      if (len <= 1e-9) return null;
+      return constraint.kind === "perpendicular-line"
+        ? {
+            start: through,
+            end: { x: through.x - dy / len, y: through.y + dx / len },
+            kind: "line",
+          }
+        : {
+            start: through,
+            end: { x: through.x + dx / len, y: through.y + dy / len },
+            kind: "line",
+          };
+    }
+    if (constraint.kind === "angle-bisector-ray") {
+      const start = resolveFn(constraint.startIndex);
+      const vertex = resolveFn(constraint.vertexIndex);
+      const end = resolveFn(constraint.endIndex);
+      if (!start || !vertex || !end) return null;
+      const direction = angleBisectorDirection(start, vertex, end);
+      if (!direction) return null;
+      return {
+        start: vertex,
+        end: {
+          x: vertex.x + direction.x,
+          y: vertex.y + direction.y,
+        },
+        kind: "ray",
+      };
+    }
+    return null;
+  }
+
   function lineCircleIntersection(lineStart, lineEnd, lineKind, center, radiusPoint, variant) {
     const dx = lineEnd.x - lineStart.x;
     const dy = lineEnd.y - lineStart.y;
@@ -352,30 +400,27 @@
       return pointOnThreePointArc(start, mid, end, constraint.t);
     }
     if (constraint.kind === "line-intersection") {
-      const leftStart = resolveFn(constraint.leftStartIndex);
-      const leftEnd = resolveFn(constraint.leftEndIndex);
-      const rightStart = resolveFn(constraint.rightStartIndex);
-      const rightEnd = resolveFn(constraint.rightEndIndex);
-      if (!leftStart || !leftEnd || !rightStart || !rightEnd) return null;
+      const left = resolveLineConstraint(env, constraint.left, resolveFn);
+      const right = resolveLineConstraint(env, constraint.right, resolveFn);
+      if (!left || !right) return null;
       return lineLineIntersection(
-        leftStart,
-        leftEnd,
-        constraint.leftKind,
-        rightStart,
-        rightEnd,
-        constraint.rightKind,
+        left.start,
+        left.end,
+        left.kind,
+        right.start,
+        right.end,
+        right.kind,
       );
     }
     if (constraint.kind === "line-circle-intersection") {
-      const lineStart = resolveFn(constraint.lineStartIndex);
-      const lineEnd = resolveFn(constraint.lineEndIndex);
+      const line = resolveLineConstraint(env, constraint.line, resolveFn);
       const center = resolveFn(constraint.centerIndex);
       const radiusPoint = resolveFn(constraint.radiusIndex);
-      if (!lineStart || !lineEnd || !center || !radiusPoint) return null;
+      if (!line || !center || !radiusPoint) return null;
       return lineCircleIntersection(
-        lineStart,
-        lineEnd,
-        constraint.lineKind,
+        line.start,
+        line.end,
+        line.kind,
         center,
         radiusPoint,
         constraint.variant,
@@ -657,10 +702,88 @@
     return magnitude * 10;
   }
 
+  function hasPolarPlot(env) {
+    return !!env.currentDynamics().functions?.some((functionDef) => functionDef.domain?.plotMode === "polar");
+  }
+
+  function maxVisibleRadius(bounds) {
+    return Math.max(
+      Math.hypot(bounds.minX, bounds.minY),
+      Math.hypot(bounds.minX, bounds.maxY),
+      Math.hypot(bounds.maxX, bounds.minY),
+      Math.hypot(bounds.maxX, bounds.maxY),
+    );
+  }
+
+  function drawPolarGrid(env, bounds) {
+    const origin = env.currentScene().origin
+      ? resolvePoint(env, env.currentScene().origin)
+      : { x: 0, y: 0 };
+    const originScreen = toScreen(env, origin);
+    const maxRadius = maxVisibleRadius(bounds);
+    const radialMinorStep = chooseGridStep(maxRadius, 10);
+    const radialMajorStep = chooseGridStep(maxRadius, 5);
+    const circleCount = Math.ceil(maxRadius / radialMinorStep);
+    const minorAngleStep = Math.PI / 12;
+    const majorEvery = 2;
+
+    env.ctx.save();
+    env.ctx.lineWidth = 1;
+    env.ctx.font = "12px \"Noto Sans\", \"Segoe UI\", sans-serif";
+    env.ctx.fillStyle = "rgb(20,20,20)";
+
+    for (let circleIndex = 1; circleIndex <= circleCount; circleIndex += 1) {
+      const radius = circleIndex * radialMinorStep;
+      const radiusScreen = Math.abs(toScreen(env, { x: origin.x + radius, y: origin.y }).x - originScreen.x);
+      const major = Math.abs((radius / radialMajorStep) - Math.round(radius / radialMajorStep)) < 1e-6;
+      env.ctx.strokeStyle = major ? "rgb(200,200,200)" : "rgb(225,225,225)";
+      env.ctx.beginPath();
+      env.ctx.arc(originScreen.x, originScreen.y, radiusScreen, 0, Math.PI * 2);
+      env.ctx.stroke();
+      if (major) {
+        const top = toScreen(env, { x: origin.x, y: origin.y + radius });
+        const left = toScreen(env, { x: origin.x - radius, y: origin.y });
+        const label = env.formatAxisNumber(radius);
+        const width = env.ctx.measureText(label).width;
+        env.ctx.fillText(label, top.x + 6, top.y - 4);
+        env.ctx.fillText(label, left.x - width - 6, left.y - 4);
+      }
+    }
+
+    const spokeCount = Math.round((Math.PI * 2) / minorAngleStep);
+    for (let index = 0; index < spokeCount; index += 1) {
+      const angle = index * minorAngleStep;
+      const endpoint = {
+        x: origin.x + maxRadius * Math.cos(angle),
+        y: origin.y + maxRadius * Math.sin(angle),
+      };
+      const endScreen = toScreen(env, endpoint);
+      const major = index % majorEvery === 0;
+      env.ctx.strokeStyle = major ? "rgb(190,190,190)" : "rgb(225,225,225)";
+      if (index % 6 === 0) {
+        env.ctx.strokeStyle = "rgb(40,40,40)";
+      }
+      env.ctx.beginPath();
+      env.ctx.moveTo(originScreen.x, originScreen.y);
+      env.ctx.lineTo(endScreen.x, endScreen.y);
+      env.ctx.stroke();
+    }
+
+    env.ctx.fillStyle = "rgba(255, 60, 40, 1)";
+    env.ctx.beginPath();
+    env.ctx.arc(originScreen.x, originScreen.y, 3, 0, Math.PI * 2);
+    env.ctx.fill();
+    env.ctx.restore();
+  }
+
   /** @param {ViewerEnv} env */
   function drawGrid(env) {
     if (!env.currentScene().graphMode) return;
     const bounds = getViewBounds(env);
+    if (hasPolarPlot(env)) {
+      drawPolarGrid(env, bounds);
+      return;
+    }
     const spanY = bounds.maxY - bounds.minY;
     const yMinorStep = env.savedViewportMode ? 1 : chooseGridStep(spanY, 14);
     const yMajorStep = env.savedViewportMode ? 2 : chooseGridStep(spanY, 7);
@@ -707,12 +830,17 @@
       }
     } else {
       const spanX = bounds.maxX - bounds.minX;
-      const xLabelStep = spanX > 20 ? 5 : 2;
-      const minX = Math.floor(bounds.minX);
-      const maxX = Math.ceil(bounds.maxX);
-      for (let x = minX; x <= maxX; x += 1) {
+      const xMinorStep = env.savedViewportMode ? 1 : chooseGridStep(spanX, 14);
+      const xMajorStep = env.savedViewportMode ? 2 : chooseGridStep(spanX, 7);
+      const minXIndex = Math.floor(bounds.minX / xMinorStep);
+      const maxXIndex = Math.ceil(bounds.maxX / xMinorStep);
+      for (let xIndex = minXIndex; xIndex <= maxXIndex; xIndex += 1) {
+        const x = xIndex * xMinorStep;
         const screen = toScreen(env, { x, y: bounds.minY });
-        env.ctx.strokeStyle = x === 0 ? "rgb(40,40,40)" : "rgb(200,200,200)";
+        const major = Math.abs((x / xMajorStep) - Math.round(x / xMajorStep)) < 1e-6;
+        env.ctx.strokeStyle = Math.abs(x) < 1e-6
+          ? "rgb(40,40,40)"
+          : major ? "rgb(200,200,200)" : "rgb(225,225,225)";
         env.ctx.beginPath();
         env.ctx.moveTo(screen.x, 0);
         env.ctx.lineTo(screen.x, env.sourceScene.height);
@@ -720,12 +848,12 @@
         if (bounds.minY <= 0 && 0 <= bounds.maxY) {
           env.ctx.strokeStyle = "rgb(40,40,40)";
           env.ctx.beginPath();
-          env.ctx.moveTo(screen.x, xAxisY - (x === 0 ? 6 : 4));
-          env.ctx.lineTo(screen.x, xAxisY + (x === 0 ? 6 : 4));
+          env.ctx.moveTo(screen.x, xAxisY - (Math.abs(x) < 1e-6 ? 6 : major ? 4 : 2));
+          env.ctx.lineTo(screen.x, xAxisY + (Math.abs(x) < 1e-6 ? 6 : major ? 4 : 2));
           env.ctx.stroke();
         }
-        if (x !== 0 && x % xLabelStep === 0) {
-          const label = String(x);
+        if (major && Math.abs(x) >= 1e-6) {
+          const label = env.formatAxisNumber(x);
           const width = env.ctx.measureText(label).width;
           env.ctx.fillText(label, screen.x - width / 2, Math.min(env.sourceScene.height - 4, xAxisY + 16));
         }

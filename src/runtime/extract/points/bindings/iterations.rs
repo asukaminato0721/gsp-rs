@@ -278,7 +278,8 @@ fn parameter_iteration_step(
     if (parameter_group.header.kind()) != crate::format::GroupKind::Point {
         return None;
     }
-    let parameter_name = editable_non_graph_parameter_name_for_group(file, parameter_group)?;
+    let parameter_name =
+        editable_non_graph_parameter_name_for_group(file, groups, parameter_group)?;
     if let Some((dx, dy)) = path
         .refs
         .iter()

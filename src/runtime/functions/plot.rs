@@ -9,7 +9,7 @@ use crate::runtime::scene::{LineShape, TextLabel};
 
 use super::decode::{decode_function_expr, decode_function_plot_descriptor};
 use super::eval::sample_function_points;
-use super::expr::{function_expr_label, function_name_for_index};
+use super::expr::{FunctionPlotMode, function_expr_label_with_variable, function_variable_symbol};
 
 pub(crate) fn collect_function_plots(
     file: &GspFile,
@@ -90,6 +90,9 @@ pub(crate) fn collect_function_plot_domain(
         else {
             continue;
         };
+        if descriptor.mode != FunctionPlotMode::Cartesian {
+            continue;
+        }
         min_x = min_x.min(descriptor.x_min);
         max_x = max_x.max(descriptor.x_max);
         found = true;
@@ -225,7 +228,27 @@ pub(crate) fn synthesize_function_labels(
             let definition_ordinal = *path.refs.first()?;
             let definition_group = groups.get(definition_ordinal.checked_sub(1)?)?;
             let expr = decode_function_expr(file, groups, definition_group)?;
-            Some((definition_ordinal, expr))
+            let descriptor = group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x0902)
+                .and_then(|record| decode_function_plot_descriptor(record.payload(&file.data)))?;
+            let name = definition_group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x07d5)
+                .and_then(|record| {
+                    let payload = record.payload(&file.data);
+                    (payload.len() >= 24).then(|| {
+                        let len = crate::format::read_u16(payload, 22) as usize;
+                        (24 + len <= payload.len())
+                            .then(|| String::from_utf8_lossy(&payload[24..24 + len]).to_string())
+                    })
+                })
+                .flatten()
+                .filter(|candidate| candidate.chars().all(|ch| ch.is_ascii_alphabetic()))
+                .unwrap_or_default();
+            Some((definition_ordinal, name, expr, descriptor))
         })
         .collect::<Vec<_>>();
 
@@ -244,38 +267,63 @@ pub(crate) fn synthesize_function_labels(
                 anchor: to_raw_from_world(&world_anchor, transform),
                 text: format!("{name} = {:.2}", value),
                 color: [30, 30, 30, 255],
-                binding: None,
+                binding: Some(crate::runtime::scene::TextLabelBinding::ParameterValue {
+                    name: name.clone(),
+                }),
                 screen_space: false,
                 hotspots: Vec::new(),
             }
         })
         .collect::<Vec<_>>();
     let parameter_count = labels.len();
-    labels.extend(
-        base_entries
-            .into_iter()
-            .enumerate()
-            .map(|(index, (_, expr))| {
-                let span_x = (bounds.max_x - bounds.min_x).max(1.0);
-                let span_y = (bounds.max_y - bounds.min_y).max(1.0);
-                let world_anchor = PointRecord {
-                    x: bounds.min_x + span_x * 0.18,
-                    y: bounds.max_y - span_y * (0.16 + 0.11 * (index + parameter_count) as f64),
-                };
-                TextLabel {
-                    anchor: to_raw_from_world(&world_anchor, transform),
-                    text: format!(
-                        "{}(x) = {}",
-                        function_name_for_index(index, total, &expr),
-                        function_expr_label(expr)
-                    ),
-                    color: [30, 30, 30, 255],
-                    binding: None,
-                    screen_space: false,
-                    hotspots: Vec::new(),
-                }
-            }),
-    );
+    labels.extend(base_entries.iter().enumerate().map(
+        |(index, (definition_ordinal, source_name, expr, descriptor))| {
+            let span_x = (bounds.max_x - bounds.min_x).max(1.0);
+            let span_y = (bounds.max_y - bounds.min_y).max(1.0);
+            let world_anchor = PointRecord {
+                x: bounds.min_x + span_x * 0.18,
+                y: bounds.max_y - span_y * (0.16 + 0.11 * (index + parameter_count) as f64),
+            };
+            let definition_group = groups
+                .get(definition_ordinal.saturating_sub(1))
+                .expect("function definition ordinal should resolve");
+            let name = if source_name.is_empty() {
+                super::scene::function_name_for_definition(
+                    file,
+                    definition_group,
+                    index,
+                    total,
+                    expr,
+                )
+            } else {
+                source_name.clone()
+            };
+            let variable = function_variable_symbol(descriptor.mode);
+            let text = if descriptor.mode == FunctionPlotMode::Polar {
+                format!(
+                    "r = {}",
+                    function_expr_label_with_variable(expr.clone(), variable)
+                )
+            } else {
+                format!(
+                    "{}({variable}) = {}",
+                    name,
+                    function_expr_label_with_variable(expr.clone(), variable)
+                )
+            };
+            TextLabel {
+                anchor: to_raw_from_world(&world_anchor, transform),
+                text,
+                color: [30, 30, 30, 255],
+                binding: Some(crate::runtime::scene::TextLabelBinding::FunctionLabel {
+                    function_key: *definition_ordinal,
+                    derivative: false,
+                }),
+                screen_space: false,
+                hotspots: Vec::new(),
+            }
+        },
+    ));
 
     let derivative_entries = groups
         .iter()
@@ -283,16 +331,11 @@ pub(crate) fn synthesize_function_labels(
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let base_definition_ordinal = *path.refs.first()?;
-            let base_index = groups
+            let base_index = base_entries
                 .iter()
-                .filter(|candidate| {
-                    (candidate.header.kind()) == crate::format::GroupKind::FunctionPlot
-                })
-                .filter_map(|candidate| {
-                    find_indexed_path(file, candidate)
-                        .and_then(|candidate_path| candidate_path.refs.first().copied())
-                })
-                .position(|ordinal| ordinal == base_definition_ordinal)?;
+                .position(|(definition_ordinal, _, _, _)| {
+                    *definition_ordinal == base_definition_ordinal
+                })?;
             let expr = decode_function_expr(file, groups, group)?;
             Some((base_index, expr))
         })
@@ -310,13 +353,31 @@ pub(crate) fn synthesize_function_labels(
             };
             TextLabel {
                 anchor: to_raw_from_world(&world_anchor, transform),
-                text: format!(
-                    "{}'(x) = {}",
-                    function_name_for_index(base_index, total.max(1), &expr),
-                    function_expr_label(expr)
-                ),
+                text: if base_entries[base_index].3.mode == FunctionPlotMode::Polar {
+                    format!(
+                        "r'({}) = {}",
+                        function_variable_symbol(base_entries[base_index].3.mode),
+                        function_expr_label_with_variable(
+                            expr,
+                            function_variable_symbol(base_entries[base_index].3.mode),
+                        )
+                    )
+                } else {
+                    format!(
+                        "{}'({}) = {}",
+                        base_entries[base_index].1,
+                        function_variable_symbol(base_entries[base_index].3.mode),
+                        function_expr_label_with_variable(
+                            expr,
+                            function_variable_symbol(base_entries[base_index].3.mode),
+                        )
+                    )
+                },
                 color: [30, 30, 30, 255],
-                binding: None,
+                binding: Some(crate::runtime::scene::TextLabelBinding::FunctionLabel {
+                    function_key: base_entries[base_index].0,
+                    derivative: true,
+                }),
                 screen_space: false,
                 hotspots: Vec::new(),
             }

@@ -1,12 +1,12 @@
 use crate::format::PointRecord;
 use crate::runtime::geometry::{include_line_bounds, to_world};
 use crate::runtime::scene::{
-    LabelIterationFamily, LineBinding, LineIterationFamily, LineShape, PointIterationFamily,
-    PolygonIterationFamily, PolygonShape, Scene, SceneArc, SceneCircle, ScenePoint,
-    ScenePointConstraint, TextLabel,
+    LabelIterationFamily, LineBinding, LineConstraint, LineIterationFamily, LineShape,
+    PointIterationFamily, PolygonIterationFamily, PolygonShape, Scene, SceneArc, SceneCircle,
+    SceneImage, ScenePoint, ScenePointConstraint, TextLabel,
 };
 
-use super::graph::{bounds_within, collect_bounds, dedupe_line_shapes, expand_bounds};
+use super::graph::{collect_bounds, dedupe_line_shapes, expand_bounds};
 use super::world::{world_line_iteration_family, world_line_shape, world_polygon_iteration_family};
 use super::{BoundsData, CollectedShapes, SceneAnalysis, WorldData};
 
@@ -109,32 +109,19 @@ pub(super) fn build_world_data(
                     end_index: *end_index,
                     t: *t,
                 },
-                ScenePointConstraint::LineIntersection {
-                    left_kind,
-                    left_start_index,
-                    left_end_index,
-                    right_kind,
-                    right_start_index,
-                    right_end_index,
-                } => ScenePointConstraint::LineIntersection {
-                    left_kind: *left_kind,
-                    left_start_index: *left_start_index,
-                    left_end_index: *left_end_index,
-                    right_kind: *right_kind,
-                    right_start_index: *right_start_index,
-                    right_end_index: *right_end_index,
-                },
+                ScenePointConstraint::LineIntersection { left, right } => {
+                    ScenePointConstraint::LineIntersection {
+                        left: clone_line_constraint(left),
+                        right: clone_line_constraint(right),
+                    }
+                }
                 ScenePointConstraint::LineCircleIntersection {
-                    line_kind,
-                    line_start_index,
-                    line_end_index,
+                    line,
                     center_index,
                     radius_index,
                     variant,
                 } => ScenePointConstraint::LineCircleIntersection {
-                    line_kind: *line_kind,
-                    line_start_index: *line_start_index,
-                    line_end_index: *line_end_index,
+                    line: clone_line_constraint(line),
                     center_index: *center_index,
                     radius_index: *radius_index,
                     variant: *variant,
@@ -220,6 +207,59 @@ pub(super) fn build_world_data(
     }
 }
 
+fn clone_line_constraint(constraint: &LineConstraint) -> LineConstraint {
+    match constraint {
+        LineConstraint::Segment {
+            start_index,
+            end_index,
+        } => LineConstraint::Segment {
+            start_index: *start_index,
+            end_index: *end_index,
+        },
+        LineConstraint::Line {
+            start_index,
+            end_index,
+        } => LineConstraint::Line {
+            start_index: *start_index,
+            end_index: *end_index,
+        },
+        LineConstraint::Ray {
+            start_index,
+            end_index,
+        } => LineConstraint::Ray {
+            start_index: *start_index,
+            end_index: *end_index,
+        },
+        LineConstraint::PerpendicularLine {
+            through_index,
+            line_start_index,
+            line_end_index,
+        } => LineConstraint::PerpendicularLine {
+            through_index: *through_index,
+            line_start_index: *line_start_index,
+            line_end_index: *line_end_index,
+        },
+        LineConstraint::ParallelLine {
+            through_index,
+            line_start_index,
+            line_end_index,
+        } => LineConstraint::ParallelLine {
+            through_index: *through_index,
+            line_start_index: *line_start_index,
+            line_end_index: *line_end_index,
+        },
+        LineConstraint::AngleBisectorRay {
+            start_index,
+            vertex_index,
+            end_index,
+        } => LineConstraint::AngleBisectorRay {
+            start_index: *start_index,
+            vertex_index: *vertex_index,
+            end_index: *end_index,
+        },
+    }
+}
+
 pub(super) fn compute_scene_bounds(
     analysis: &SceneAnalysis,
     shapes: &CollectedShapes,
@@ -279,10 +319,7 @@ pub(super) fn compute_scene_bounds(
     );
     include_line_bounds(&mut bounds, &analysis.function_plots, &analysis.graph_ref);
     include_line_bounds(&mut bounds, &shapes.synthetic_axes, &analysis.graph_ref);
-    let use_saved_viewport = analysis
-        .saved_viewport
-        .filter(|viewport| bounds_within(viewport, &bounds))
-        .is_some();
+    let use_saved_viewport = analysis.saved_viewport.is_some();
     if let Some(viewport) = analysis.saved_viewport.filter(|_| use_saved_viewport) {
         bounds = viewport;
     } else {
@@ -311,6 +348,7 @@ pub(super) fn assemble_scene(
     polygon_iterations: Vec<PolygonIterationFamily>,
     label_iterations: Vec<LabelIterationFamily>,
     buttons: Vec<crate::runtime::scene::SceneButton>,
+    images: Vec<SceneImage>,
     parameters: Vec<crate::runtime::scene::SceneParameter>,
     functions: Vec<crate::runtime::scene::SceneFunction>,
 ) -> Scene {
@@ -391,6 +429,23 @@ pub(super) fn assemble_scene(
             .as_ref()
             .map(|transform| to_world(&transform.origin_raw, &analysis.graph_ref)),
         bounds: bounds_data.bounds,
+        images: images
+            .into_iter()
+            .map(|image| SceneImage {
+                top_left: if image.screen_space {
+                    image.top_left
+                } else {
+                    to_world(&image.top_left, &analysis.graph_ref)
+                },
+                bottom_right: if image.screen_space {
+                    image.bottom_right
+                } else {
+                    to_world(&image.bottom_right, &analysis.graph_ref)
+                },
+                src: image.src,
+                screen_space: image.screen_space,
+            })
+            .collect(),
         lines: raw_lines
             .into_iter()
             .map(|line| world_line_shape(line, &analysis.graph_ref, &bounds_data.bounds))

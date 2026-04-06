@@ -11,6 +11,7 @@ pub(crate) struct Scene {
     pub(crate) y_up: bool,
     pub(crate) origin: Option<PointRecord>,
     pub(crate) bounds: Bounds,
+    pub(crate) images: Vec<SceneImage>,
     pub(crate) lines: Vec<LineShape>,
     pub(crate) polygons: Vec<PolygonShape>,
     pub(crate) circles: Vec<SceneCircle>,
@@ -24,6 +25,14 @@ pub(crate) struct Scene {
     pub(crate) buttons: Vec<SceneButton>,
     pub(crate) parameters: Vec<SceneParameter>,
     pub(crate) functions: Vec<SceneFunction>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SceneImage {
+    pub(crate) top_left: PointRecord,
+    pub(crate) bottom_right: PointRecord,
+    pub(crate) src: String,
+    pub(crate) screen_space: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -214,17 +223,11 @@ pub(crate) enum ScenePointConstraint {
         t: f64,
     },
     LineIntersection {
-        left_kind: LineLikeKind,
-        left_start_index: usize,
-        left_end_index: usize,
-        right_kind: LineLikeKind,
-        right_start_index: usize,
-        right_end_index: usize,
+        left: LineConstraint,
+        right: LineConstraint,
     },
     LineCircleIntersection {
-        line_kind: LineLikeKind,
-        line_start_index: usize,
-        line_end_index: usize,
+        line: LineConstraint,
         center_index: usize,
         radius_index: usize,
         variant: usize,
@@ -243,6 +246,37 @@ pub(crate) enum LineLikeKind {
     Segment,
     Line,
     Ray,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum LineConstraint {
+    Segment {
+        start_index: usize,
+        end_index: usize,
+    },
+    Line {
+        start_index: usize,
+        end_index: usize,
+    },
+    Ray {
+        start_index: usize,
+        end_index: usize,
+    },
+    PerpendicularLine {
+        through_index: usize,
+        line_start_index: usize,
+        line_end_index: usize,
+    },
+    ParallelLine {
+        through_index: usize,
+        line_start_index: usize,
+        line_end_index: usize,
+    },
+    AngleBisectorRay {
+        start_index: usize,
+        vertex_index: usize,
+        end_index: usize,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -517,6 +551,10 @@ pub(crate) enum TextLabelHotspotAction {
 pub(crate) enum TextLabelBinding {
     ParameterValue {
         name: String,
+    },
+    FunctionLabel {
+        function_key: usize,
+        derivative: bool,
     },
     ExpressionValue {
         parameter_name: String,

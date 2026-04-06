@@ -1,9 +1,11 @@
 use crate::format::PointRecord;
-use crate::runtime::functions::{BinaryOp, FunctionExpr, FunctionTerm, UnaryFunction};
+use crate::runtime::functions::{
+    BinaryOp, FunctionExpr, FunctionPlotMode, FunctionTerm, UnaryFunction,
+};
 use crate::runtime::geometry::darken;
 use crate::runtime::scene::{
-    ButtonAction, IterationPointHandle, LabelIterationFamily, LineBinding, LineIterationFamily,
-    LineLikeKind, PointIterationFamily, PolygonIterationFamily, Scene, SceneButton,
+    ButtonAction, IterationPointHandle, LabelIterationFamily, LineBinding, LineConstraint,
+    LineIterationFamily, PointIterationFamily, PolygonIterationFamily, Scene, SceneButton,
     ScenePointBinding, ScenePointConstraint, ShapeBinding, TextLabelBinding,
     TextLabelHotspotAction,
 };
@@ -29,6 +31,7 @@ struct SceneJson {
     y_up: bool,
     bounds: BoundsJson,
     origin: Option<PointJson>,
+    images: Vec<ImageJson>,
     lines: Vec<LineJson>,
     polygons: Vec<PolygonJson>,
     circles: Vec<CircleJson>,
@@ -55,6 +58,7 @@ impl SceneJson {
             y_up: scene.y_up,
             bounds: BoundsJson::from_scene(scene),
             origin: scene.origin.as_ref().map(PointJson::from_point),
+            images: scene.images.iter().map(ImageJson::from_image).collect(),
             lines: scene.lines.iter().map(LineJson::from_line).collect(),
             polygons: scene
                 .polygons
@@ -100,6 +104,26 @@ impl SceneJson {
                 .iter()
                 .map(FunctionJson::from_function)
                 .collect(),
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImageJson {
+    top_left: PointJson,
+    bottom_right: PointJson,
+    src: String,
+    screen_space: bool,
+}
+
+impl ImageJson {
+    fn from_image(image: &crate::runtime::scene::SceneImage) -> Self {
+        Self {
+            top_left: PointJson::from_point(&image.top_left),
+            bottom_right: PointJson::from_point(&image.bottom_right),
+            src: image.src.clone(),
+            screen_space: image.screen_space,
         }
     }
 }
@@ -962,6 +986,12 @@ impl LabelHotspotActionJson {
 enum LabelBindingJson {
     #[serde(rename = "parameter-value")]
     ParameterValue { name: String },
+    #[serde(rename = "function-label")]
+    FunctionLabel {
+        #[serde(rename = "functionKey")]
+        function_key: usize,
+        derivative: bool,
+    },
     #[serde(rename = "expression-value")]
     ExpressionValue {
         #[serde(rename = "parameterName")]
@@ -1013,6 +1043,13 @@ impl LabelBindingJson {
             TextLabelBinding::ParameterValue { name } => {
                 Self::ParameterValue { name: name.clone() }
             }
+            TextLabelBinding::FunctionLabel {
+                function_key,
+                derivative,
+            } => Self::FunctionLabel {
+                function_key: *function_key,
+                derivative: *derivative,
+            },
             TextLabelBinding::ExpressionValue {
                 parameter_name,
                 expr_label,
@@ -1537,27 +1574,12 @@ enum PointConstraintJson {
     },
     #[serde(rename = "line-intersection")]
     LineIntersection {
-        #[serde(rename = "leftKind")]
-        left_kind: LineLikeKindJson,
-        #[serde(rename = "leftStartIndex")]
-        left_start_index: usize,
-        #[serde(rename = "leftEndIndex")]
-        left_end_index: usize,
-        #[serde(rename = "rightKind")]
-        right_kind: LineLikeKindJson,
-        #[serde(rename = "rightStartIndex")]
-        right_start_index: usize,
-        #[serde(rename = "rightEndIndex")]
-        right_end_index: usize,
+        left: LineConstraintJson,
+        right: LineConstraintJson,
     },
     #[serde(rename = "line-circle-intersection")]
     LineCircleIntersection {
-        #[serde(rename = "lineKind")]
-        line_kind: LineLikeKindJson,
-        #[serde(rename = "lineStartIndex")]
-        line_start_index: usize,
-        #[serde(rename = "lineEndIndex")]
-        line_end_index: usize,
+        line: LineConstraintJson,
         #[serde(rename = "centerIndex")]
         center_index: usize,
         #[serde(rename = "radiusIndex")]
@@ -1653,32 +1675,19 @@ impl PointConstraintJson {
                 end_index: *end_index,
                 t: *t,
             }),
-            ScenePointConstraint::LineIntersection {
-                left_kind,
-                left_start_index,
-                left_end_index,
-                right_kind,
-                right_start_index,
-                right_end_index,
-            } => Some(Self::LineIntersection {
-                left_kind: LineLikeKindJson::from_kind(*left_kind),
-                left_start_index: *left_start_index,
-                left_end_index: *left_end_index,
-                right_kind: LineLikeKindJson::from_kind(*right_kind),
-                right_start_index: *right_start_index,
-                right_end_index: *right_end_index,
-            }),
+            ScenePointConstraint::LineIntersection { left, right } => {
+                Some(Self::LineIntersection {
+                    left: LineConstraintJson::from_constraint(left),
+                    right: LineConstraintJson::from_constraint(right),
+                })
+            }
             ScenePointConstraint::LineCircleIntersection {
-                line_kind,
-                line_start_index,
-                line_end_index,
+                line,
                 center_index,
                 radius_index,
                 variant,
             } => Some(Self::LineCircleIntersection {
-                line_kind: LineLikeKindJson::from_kind(*line_kind),
-                line_start_index: *line_start_index,
-                line_end_index: *line_end_index,
+                line: LineConstraintJson::from_constraint(line),
                 center_index: *center_index,
                 radius_index: *radius_index,
                 variant: *variant,
@@ -1701,19 +1710,106 @@ impl PointConstraintJson {
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-enum LineLikeKindJson {
-    Segment,
-    Line,
-    Ray,
+#[serde(tag = "kind", rename_all = "kebab-case")]
+enum LineConstraintJson {
+    Segment {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+    },
+    Line {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+    },
+    Ray {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+    },
+    #[serde(rename = "perpendicular-line")]
+    PerpendicularLine {
+        #[serde(rename = "throughIndex")]
+        through_index: usize,
+        #[serde(rename = "lineStartIndex")]
+        line_start_index: usize,
+        #[serde(rename = "lineEndIndex")]
+        line_end_index: usize,
+    },
+    #[serde(rename = "parallel-line")]
+    ParallelLine {
+        #[serde(rename = "throughIndex")]
+        through_index: usize,
+        #[serde(rename = "lineStartIndex")]
+        line_start_index: usize,
+        #[serde(rename = "lineEndIndex")]
+        line_end_index: usize,
+    },
+    #[serde(rename = "angle-bisector-ray")]
+    AngleBisectorRay {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "vertexIndex")]
+        vertex_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+    },
 }
 
-impl LineLikeKindJson {
-    fn from_kind(kind: LineLikeKind) -> Self {
-        match kind {
-            LineLikeKind::Segment => Self::Segment,
-            LineLikeKind::Line => Self::Line,
-            LineLikeKind::Ray => Self::Ray,
+impl LineConstraintJson {
+    fn from_constraint(constraint: &LineConstraint) -> Self {
+        match constraint {
+            LineConstraint::Segment {
+                start_index,
+                end_index,
+            } => Self::Segment {
+                start_index: *start_index,
+                end_index: *end_index,
+            },
+            LineConstraint::Line {
+                start_index,
+                end_index,
+            } => Self::Line {
+                start_index: *start_index,
+                end_index: *end_index,
+            },
+            LineConstraint::Ray {
+                start_index,
+                end_index,
+            } => Self::Ray {
+                start_index: *start_index,
+                end_index: *end_index,
+            },
+            LineConstraint::PerpendicularLine {
+                through_index,
+                line_start_index,
+                line_end_index,
+            } => Self::PerpendicularLine {
+                through_index: *through_index,
+                line_start_index: *line_start_index,
+                line_end_index: *line_end_index,
+            },
+            LineConstraint::ParallelLine {
+                through_index,
+                line_start_index,
+                line_end_index,
+            } => Self::ParallelLine {
+                through_index: *through_index,
+                line_start_index: *line_start_index,
+                line_end_index: *line_end_index,
+            },
+            LineConstraint::AngleBisectorRay {
+                start_index,
+                vertex_index,
+                end_index,
+            } => Self::AngleBisectorRay {
+                start_index: *start_index,
+                vertex_index: *vertex_index,
+                end_index: *end_index,
+            },
         }
     }
 }
@@ -1759,6 +1855,10 @@ impl FunctionJson {
                 x_min: function_def.domain.x_min,
                 x_max: function_def.domain.x_max,
                 sample_count: function_def.domain.sample_count,
+                plot_mode: match function_def.domain.mode {
+                    FunctionPlotMode::Cartesian => PlotModeJson::Cartesian,
+                    FunctionPlotMode::Polar => PlotModeJson::Polar,
+                },
             },
             line_index: function_def.line_index,
             label_index: function_def.label_index,
@@ -1774,6 +1874,14 @@ struct DomainJson {
     x_min: f64,
     x_max: f64,
     sample_count: usize,
+    plot_mode: PlotModeJson,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum PlotModeJson {
+    Cartesian,
+    Polar,
 }
 
 #[derive(Serialize)]
@@ -1850,6 +1958,11 @@ enum FunctionTermJson {
         left: Box<FunctionTermJson>,
         right: Box<FunctionTermJson>,
     },
+    #[serde(rename = "power")]
+    Power {
+        base: Box<FunctionTermJson>,
+        exponent: Box<FunctionTermJson>,
+    },
 }
 
 impl FunctionTermJson {
@@ -1867,6 +1980,10 @@ impl FunctionTermJson {
             FunctionTerm::Product(left, right) => Self::Product {
                 left: Box::new(Self::from_term(left)),
                 right: Box::new(Self::from_term(right)),
+            },
+            FunctionTerm::Power(base, exponent) => Self::Power {
+                base: Box::new(Self::from_term(base)),
+                exponent: Box::new(Self::from_term(exponent)),
             },
         }
     }

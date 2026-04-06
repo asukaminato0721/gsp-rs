@@ -7,7 +7,7 @@ use super::{
 };
 use crate::runtime::extract::{decode::decode_label_name, find_indexed_path};
 use crate::runtime::geometry::GraphTransform;
-use crate::runtime::scene::{LineLikeKind, ScenePoint, ScenePointBinding, ScenePointConstraint};
+use crate::runtime::scene::{LineConstraint, ScenePoint, ScenePointBinding, ScenePointConstraint};
 
 pub(crate) fn collect_visible_points(
     file: &GspFile,
@@ -563,43 +563,28 @@ fn scene_point_from_intersection(
     let right_group = groups.get(path.refs[1].checked_sub(1)?)?;
     let position = anchors.get(index).cloned().flatten()?;
 
-    if let (
-        Some((left_start_index, left_end_index, left_kind)),
-        Some((right_start_index, right_end_index, right_kind)),
-    ) = (
-        resolve_line_like_point_indices(file, groups, left_group, group_to_point_index),
-        resolve_line_like_point_indices(file, groups, right_group, group_to_point_index),
+    if let (Some(left), Some(right)) = (
+        resolve_line_constraint(file, groups, left_group, group_to_point_index),
+        resolve_line_constraint(file, groups, right_group, group_to_point_index),
     ) {
         return Some(ScenePoint {
             position,
             visible,
-            constraint: ScenePointConstraint::LineIntersection {
-                left_kind,
-                left_start_index,
-                left_end_index,
-                right_kind,
-                right_start_index,
-                right_end_index,
-            },
+            constraint: ScenePointConstraint::LineIntersection { left, right },
             binding: None,
         });
     }
 
     let variant = intersection_variant(group.header.kind());
-    if let (
-        Some((line_start_index, line_end_index, line_kind)),
-        Some((center_index, radius_index)),
-    ) = (
-        resolve_line_like_point_indices(file, groups, left_group, group_to_point_index),
+    if let (Some(line), Some((center_index, radius_index))) = (
+        resolve_line_constraint(file, groups, left_group, group_to_point_index),
         resolve_circle_point_indices(file, groups, right_group, group_to_point_index),
     ) {
         return Some(ScenePoint {
             position,
             visible,
             constraint: ScenePointConstraint::LineCircleIntersection {
-                line_kind,
-                line_start_index,
-                line_end_index,
+                line,
                 center_index,
                 radius_index,
                 variant,
@@ -608,20 +593,15 @@ fn scene_point_from_intersection(
         });
     }
 
-    if let (
-        Some((center_index, radius_index)),
-        Some((line_start_index, line_end_index, line_kind)),
-    ) = (
+    if let (Some((center_index, radius_index)), Some(line)) = (
         resolve_circle_point_indices(file, groups, left_group, group_to_point_index),
-        resolve_line_like_point_indices(file, groups, right_group, group_to_point_index),
+        resolve_line_constraint(file, groups, right_group, group_to_point_index),
     ) {
         return Some(ScenePoint {
             position,
             visible,
             constraint: ScenePointConstraint::LineCircleIntersection {
-                line_kind,
-                line_start_index,
-                line_end_index,
+                line,
                 center_index,
                 radius_index,
                 variant,
@@ -659,12 +639,12 @@ fn scene_point_from_intersection(
     })
 }
 
-fn resolve_line_like_point_indices(
+fn resolve_line_constraint(
     file: &GspFile,
-    _groups: &[ObjectGroup],
+    groups: &[ObjectGroup],
     group: &ObjectGroup,
     group_to_point_index: &[Option<usize>],
-) -> Option<(usize, usize, LineLikeKind)> {
+) -> Option<LineConstraint> {
     let path = find_indexed_path(file, group)?;
     match group.header.kind() {
         crate::format::GroupKind::Segment
@@ -677,15 +657,57 @@ fn resolve_line_like_point_indices(
             }
             let start_index = (*group_to_point_index.get(path.refs[0].checked_sub(1)?)?)?;
             let end_index = (*group_to_point_index.get(path.refs[1].checked_sub(1)?)?)?;
-            Some((
-                start_index,
-                end_index,
-                match group.header.kind() {
-                    crate::format::GroupKind::Segment => LineLikeKind::Segment,
-                    crate::format::GroupKind::Ray => LineLikeKind::Ray,
-                    _ => LineLikeKind::Line,
+            Some(match group.header.kind() {
+                crate::format::GroupKind::Segment => LineConstraint::Segment {
+                    start_index,
+                    end_index,
                 },
-            ))
+                crate::format::GroupKind::Ray => LineConstraint::Ray {
+                    start_index,
+                    end_index,
+                },
+                _ => LineConstraint::Line {
+                    start_index,
+                    end_index,
+                },
+            })
+        }
+        crate::format::GroupKind::LineKind5 | crate::format::GroupKind::LineKind6 => {
+            if path.refs.len() != 2 {
+                return None;
+            }
+            let through_index = (*group_to_point_index.get(path.refs[0].checked_sub(1)?)?)?;
+            let host_group = groups.get(path.refs[1].checked_sub(1)?)?;
+            let host_path = find_indexed_path(file, host_group)?;
+            if host_path.refs.len() != 2 {
+                return None;
+            }
+            let line_start_index =
+                (*group_to_point_index.get(host_path.refs[0].checked_sub(1)?)?)?;
+            let line_end_index = (*group_to_point_index.get(host_path.refs[1].checked_sub(1)?)?)?;
+            Some(match group.header.kind() {
+                crate::format::GroupKind::LineKind5 => LineConstraint::PerpendicularLine {
+                    through_index,
+                    line_start_index,
+                    line_end_index,
+                },
+                crate::format::GroupKind::LineKind6 => LineConstraint::ParallelLine {
+                    through_index,
+                    line_start_index,
+                    line_end_index,
+                },
+                _ => unreachable!(),
+            })
+        }
+        crate::format::GroupKind::LineKind7 => {
+            if path.refs.len() != 3 {
+                return None;
+            }
+            Some(LineConstraint::AngleBisectorRay {
+                start_index: (*group_to_point_index.get(path.refs[0].checked_sub(1)?)?)?,
+                vertex_index: (*group_to_point_index.get(path.refs[1].checked_sub(1)?)?)?,
+                end_index: (*group_to_point_index.get(path.refs[2].checked_sub(1)?)?)?,
+            })
         }
         _ => None,
     }

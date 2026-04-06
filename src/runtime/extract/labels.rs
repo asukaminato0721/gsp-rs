@@ -95,7 +95,7 @@ pub(super) fn collect_labels(
                                     | crate::format::GroupKind::Segment
                                     | crate::format::GroupKind::PointConstraint
                             )
-                            && !is_non_graph_parameter_group(group))
+                            && !is_non_graph_parameter_group(file, groups, group))
                         .then(|| decode_label_name(file, group))
                         .flatten()
                     });
@@ -188,14 +188,7 @@ pub(super) fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) 
     for group in groups {
         let kind = group.header.kind();
         if kind == crate::format::GroupKind::Point
-            && group
-                .records
-                .iter()
-                .any(|record| record.record_type == 0x0907)
-            && !group
-                .records
-                .iter()
-                .any(|record| record.record_type == 0x0899)
+            && is_non_graph_parameter_group(file, groups, group)
             && let Some(name) = decode_label_name(file, group)
             && let Some(value) = decode_non_graph_parameter_value_for_group(file, group)
             && let Some(anchor) = decode_0907_anchor(file, group)
@@ -218,7 +211,7 @@ pub(super) fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) 
                 .checked_sub(1)
                 .and_then(|index| groups.get(index))
             && let Some(parameter_name) =
-                editable_non_graph_parameter_name_for_group(file, parameter_group)
+                editable_non_graph_parameter_name_for_group(file, groups, parameter_group)
             && let Some(parameter_value) =
                 decode_non_graph_parameter_value_for_group(file, parameter_group)
             && let Some(anchor) = decode_0907_anchor(file, group)
@@ -380,7 +373,8 @@ fn collect_point_expression_label(
     let expr = decode_function_expr(file, groups, expr_group)?;
     let expr_path = find_indexed_path(file, expr_group)?;
     let parameter_group = groups.get(expr_path.refs.first()?.checked_sub(1)?)?;
-    let parameter_name = editable_non_graph_parameter_name_for_group(file, parameter_group)?;
+    let parameter_name =
+        editable_non_graph_parameter_name_for_group(file, groups, parameter_group)?;
     let parameter_value = decode_non_graph_parameter_value_for_group(file, parameter_group)?;
     let value = evaluate_expr_with_parameters(
         &expr,
@@ -612,7 +606,7 @@ pub(super) fn collect_label_iterations(
                 .and_then(|iter_path| iter_path.refs.first().copied())
                 .and_then(|ordinal| groups.get(ordinal.checked_sub(1)?))
                 .and_then(|parameter_group| {
-                    editable_non_graph_parameter_name_for_group(file, parameter_group)
+                    editable_non_graph_parameter_name_for_group(file, groups, parameter_group)
                 });
 
             Some(LabelIterationFamily::PointExpression {

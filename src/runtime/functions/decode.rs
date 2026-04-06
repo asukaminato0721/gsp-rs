@@ -4,8 +4,9 @@ use crate::format::{GspFile, ObjectGroup, read_f64, read_u16, read_u32};
 use crate::runtime::extract::find_indexed_path;
 
 use super::expr::{
-    BinaryOp, FunctionExpr, FunctionPlotDescriptor, FunctionTerm, ParsedFunctionExpr,
-    canonicalize_function_expr, decode_unary_function, function_term_contains_symbol,
+    BinaryOp, FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode, FunctionTerm,
+    ParsedFunctionExpr, canonicalize_function_expr, decode_unary_function,
+    function_term_contains_symbol,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -42,13 +43,17 @@ pub(crate) fn decode_function_expr(
 }
 
 pub(crate) fn decode_function_plot_descriptor(payload: &[u8]) -> Option<FunctionPlotDescriptor> {
-    if payload.len() < 20 {
+    if payload.len() < 24 {
         return None;
     }
 
     let x_min = read_f64(payload, 0);
     let x_max = read_f64(payload, 8);
     let sample_count = read_u32(payload, 16) as usize;
+    let mode = match read_u32(payload, 20) & 0xffff {
+        2 => FunctionPlotMode::Polar,
+        _ => FunctionPlotMode::Cartesian,
+    };
     if !x_min.is_finite() || !x_max.is_finite() || x_min == x_max {
         return None;
     }
@@ -57,6 +62,7 @@ pub(crate) fn decode_function_plot_descriptor(payload: &[u8]) -> Option<Function
         x_min,
         x_max,
         sample_count: sample_count.clamp(2, 4096),
+        mode,
     })
 }
 
@@ -228,6 +234,20 @@ fn parse_function_term(
 }
 
 fn parse_atomic_term(
+    words: &[u16],
+    index: &mut usize,
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Option<FunctionTerm> {
+    let mut term = parse_atomic_base(words, index, parameters)?;
+    while *index < words.len() && words[*index] == 0x1004 {
+        *index += 1;
+        let exponent = parse_atomic_base(words, index, parameters)?;
+        term = FunctionTerm::Power(Box::new(term), Box::new(exponent));
+    }
+    Some(term)
+}
+
+fn parse_atomic_base(
     words: &[u16],
     index: &mut usize,
     parameters: &BTreeMap<u16, ParameterBinding>,

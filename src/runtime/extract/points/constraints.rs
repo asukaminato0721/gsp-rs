@@ -99,7 +99,8 @@ pub(crate) fn regular_polygon_iteration_step(
     let calc_group = groups.get(seed_path.refs[2].checked_sub(1)?)?;
     let calc_path = find_indexed_path(file, calc_group)?;
     let parameter_group = groups.get(calc_path.refs.first()?.checked_sub(1)?)?;
-    let parameter_name = editable_non_graph_parameter_name_for_group(file, parameter_group)?;
+    let parameter_name =
+        editable_non_graph_parameter_name_for_group(file, groups, parameter_group)?;
     let n = decode_non_graph_parameter_value_for_group(file, parameter_group)?;
     (n.abs() >= 1.0).then_some((
         center_group_index,

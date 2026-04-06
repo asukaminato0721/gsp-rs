@@ -57,6 +57,12 @@ type SceneData = {
     maxY: number;
   };
   origin?: PointHandle | null;
+  images?: Array<{
+    topLeft: Point;
+    bottomRight: Point;
+    src: string;
+    screenSpace?: boolean;
+  }>;
   points: any[];
   lines: any[];
   polygons: any[];
@@ -199,7 +205,20 @@ type ViewerEnv = {
   currentScene: () => any;
   currentDynamics: () => {
     parameters: Array<{ name: string; value: number; labelIndex?: number | null }>;
-    functions: any[];
+    functions: Array<{
+      name: string;
+      derivative: boolean;
+      labelIndex: number;
+      lineIndex?: number | null;
+      expr: any;
+      domain: {
+        xMin: number;
+        xMax: number;
+        sampleCount: number;
+        plotMode: "cartesian" | "polar";
+      };
+      constrainedPointIndices: number[];
+    }>;
   };
   currentHotspotFlashes: () => Array<{ key: string; action: any }>;
   resolveScenePoint: (index: number) => Point;

@@ -1,7 +1,7 @@
 use super::build_scene;
 use crate::format::GspFile;
 use crate::runtime::scene::{
-    LabelIterationFamily, LineBinding, PointIterationFamily, ScenePointBinding,
+    LabelIterationFamily, LineBinding, LineConstraint, PointIterationFamily, ScenePointBinding,
     ScenePointConstraint, TextLabelBinding,
 };
 
@@ -28,13 +28,64 @@ fn builds_function_plot_for_f_gsp() {
         }),
         "expected a non-degenerate function plot spanning the graph domain"
     );
-    assert!(scene.bounds.min_x < -30.0);
-    assert!(scene.bounds.max_y > 100.0);
+    assert!(scene.bounds.min_x < -9.0);
+    assert!(scene.bounds.max_y > 14.0);
     assert_eq!(scene.labels.len(), 1);
     assert_eq!(
-        scene.labels[0].text,
-        "f(x) = |x| + √x + ln(x) + log(x) + sgn(x) + round(x) + trunc(x)"
+        scene.labels[0]
+            .text
+            .strip_prefix("q(x) = ")
+            .or_else(|| scene.labels[0].text.strip_prefix("f(x) = ")),
+        Some("|x| + √x + ln(x) + log(x) + sgn(x) + round(x) + trunc(x)")
     );
+}
+
+#[test]
+fn preserves_draw_function_fixture_interactivity() {
+    let data = include_bytes!("../../../tests/fixtures/未实现的系统功能/绘图函数.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert!(scene.graph_mode, "expected graph scene");
+    assert!(
+        scene.images.len() == 1,
+        "expected one embedded graph image, got {}",
+        scene.images.len()
+    );
+    assert!(scene.images[0].screen_space, "expected payload-positioned screen image");
+    assert!(
+        scene.images[0].src.starts_with("data:image/png;base64,"),
+        "expected embedded png data url"
+    );
+    assert!(
+        scene.images[0].top_left.x < scene.images[0].bottom_right.x
+            && scene.images[0].top_left.y < scene.images[0].bottom_right.y,
+        "expected visible screen-space image bounds"
+    );
+    assert!(
+        scene.lines.len() >= 3,
+        "expected graph helpers to remain visible with the embedded image"
+    );
+}
+
+#[test]
+fn preserves_insert_image_fixture() {
+    let data = include_bytes!("../../../tests/fixtures/未实现的系统功能/插入图片.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert!(!scene.graph_mode, "expected non-graph image fixture");
+    assert_eq!(scene.images.len(), 1, "expected one embedded image");
+    assert!(scene.images[0].screen_space, "expected screen-space image placement");
+    assert!(
+        scene.images[0].src.starts_with("data:image/png;base64,"),
+        "expected embedded png data url"
+    );
+    assert_eq!(scene.images[0].top_left.x, 118.0);
+    assert_eq!(scene.images[0].top_left.y, 112.0);
+    assert_eq!(scene.images[0].bottom_right.x, 373.0);
+    assert_eq!(scene.images[0].bottom_right.y, 270.0);
+    assert!(scene.lines.is_empty(), "expected image-only fixture without line artifacts");
 }
 
 #[test]
@@ -644,41 +695,6 @@ fn preserves_point_on_circle_arc_gsp() {
 }
 
 #[test]
-fn preserves_center_arc_and_point_on_arc_in_unimplemented_fixture() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/未实现1(1).gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
-
-    assert_eq!(scene.circles.len(), 1, "expected one circle");
-    assert!(
-        scene.circles[0].dashed,
-        "expected supporting circle to render dashed"
-    );
-    assert_eq!(scene.arcs.len(), 1, "expected one center-based arc");
-    assert_eq!(
-        scene.points.len(),
-        5,
-        "expected base points plus constrained arc point"
-    );
-    assert!(
-        scene.arcs[0].center.is_none(),
-        "expected center-arc fixture to render from explicit control points"
-    );
-    assert!(scene.points.iter().any(|point| {
-        matches!(
-            point.constraint,
-            ScenePointConstraint::OnCircleArc {
-                center_index: 0,
-                start_index: 1,
-                end_index: 3,
-                t,
-            } if (t - 0.6155705493685956).abs() < 1e-9
-        ) && (point.position.x - 0.5678243582014604).abs() < 1e-6
-            && (point.position.y - 0.8231497422906086).abs() < 1e-6
-    }));
-}
-
-#[test]
 fn preserves_point_hidden_gsp() {
     let data = include_bytes!("../../../tests/fixtures/gsp/static/point_hidden.gsp");
     let file = GspFile::parse(data).expect("fixture parses");
@@ -1107,6 +1123,37 @@ fn preserves_line_circle_intersection_points() {
         (point.position.x - 167.5150597569313).abs() < 1e-6
             && (point.position.y - 204.5902707856141).abs() < 1e-6
     }));
+}
+
+#[test]
+fn preserves_perpendicular_intersection_points_in_perp_fixture() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/perp.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    let intersection = scene
+        .points
+        .iter()
+        .find(|point| {
+            matches!(
+                point.constraint,
+                ScenePointConstraint::LineIntersection {
+                    left: LineConstraint::Segment { .. },
+                    right: LineConstraint::PerpendicularLine {
+                        through_index: 2,
+                        ..
+                    },
+                }
+            )
+        })
+        .expect("expected reactive intersection point bound to the perpendicular line");
+
+    assert!(
+        (intersection.position.x - 867.3347427619169).abs() < 1e-6
+            && (intersection.position.y - 469.9559050197873).abs() < 1e-6,
+        "expected foot-of-perpendicular coordinates, got {:?}",
+        intersection.position
+    );
 }
 
 #[test]

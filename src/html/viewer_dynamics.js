@@ -190,6 +190,13 @@
         const right = evaluateExprTerm(term.right, x, parameters);
         return left === null || right === null ? null : left * right;
       }
+      case "power": {
+        const base = evaluateExprTerm(term.base, x, parameters);
+        const exponent = evaluateExprTerm(term.exponent, x, parameters);
+        if (base === null || exponent === null) return null;
+        const value = Math.pow(base, exponent);
+        return Number.isFinite(value) ? value : null;
+      }
       default: return null;
     }
   }
@@ -215,31 +222,34 @@
     return Number.isFinite(value) ? value : null;
   }
 
-  function formatExprTerm(term, formatAxisNumber) {
+  function formatExprTerm(term, formatAxisNumber, variableLabel = "x") {
     switch (term.kind) {
-      case "variable": return "x";
+      case "variable": return variableLabel;
       case "constant": return formatAxisNumber(term.value);
       case "parameter": return term.name;
-      case "unary_x": return `${term.op}(x)`;
-      case "product": return `${formatExprTerm(term.left, formatAxisNumber)}*${formatExprTerm(term.right, formatAxisNumber)}`;
+      case "unary_x": return `${term.op}(${variableLabel})`;
+      case "product":
+        return `${formatExprTerm(term.left, formatAxisNumber, variableLabel)}*${formatExprTerm(term.right, formatAxisNumber, variableLabel)}`;
+      case "power":
+        return `${formatExprTerm(term.base, formatAxisNumber, variableLabel)}^${formatExprTerm(term.exponent, formatAxisNumber, variableLabel)}`;
       default: return "?";
     }
   }
 
-  function formatExpr(expr, formatAxisNumber) {
+  function formatExpr(expr, formatAxisNumber, variableLabel = "x") {
     if (expr.kind === "constant") return formatAxisNumber(expr.value);
-    if (expr.kind === "identity") return "x";
+    if (expr.kind === "identity") return variableLabel;
     if (expr.kind === "parsed") {
-      let text = formatExprTerm(expr.head, formatAxisNumber);
+      let text = formatExprTerm(expr.head, formatAxisNumber, variableLabel);
       for (const part of expr.tail) {
         text += part.op === "sub"
           ? " - "
           : part.op === "mul"
             ? " * "
-            : part.op === "div"
+          : part.op === "div"
               ? " / "
               : " + ";
-        text += formatExprTerm(part.term, formatAxisNumber);
+        text += formatExprTerm(part.term, formatAxisNumber, variableLabel);
       }
       return text;
     }
@@ -259,7 +269,14 @@
       const x = functionDef.domain.xMin + (functionDef.domain.xMax - functionDef.domain.xMin) * t;
       const y = evaluateExpr(functionDef.expr, x, parameters);
       if (y === null) continue;
-      points.push({ x, y });
+      if (functionDef.domain.plotMode === "polar") {
+        points.push({
+          x: y * Math.cos(x),
+          y: y * Math.sin(x),
+        });
+      } else {
+        points.push({ x, y });
+      }
     }
     return points;
   }
@@ -1179,8 +1196,13 @@
       });
       env.currentDynamics().functions.forEach((functionDef) => {
         if (draft.labels[functionDef.labelIndex]) {
-          const head = functionDef.derivative ? `${functionDef.name}'(x)` : `${functionDef.name}(x)`;
-          draft.labels[functionDef.labelIndex].text = `${head} = ${formatExpr(functionDef.expr, env.formatAxisNumber)}`;
+          const variableLabel = functionDef.domain.plotMode === "polar" ? "θ" : "x";
+          const head = functionDef.domain.plotMode === "polar"
+            ? (functionDef.derivative ? `r'(${variableLabel})` : "r")
+            : (functionDef.derivative
+              ? `${functionDef.name}'(${variableLabel})`
+              : `${functionDef.name}(${variableLabel})`);
+          draft.labels[functionDef.labelIndex].text = `${head} = ${formatExpr(functionDef.expr, env.formatAxisNumber, variableLabel)}`;
         }
         const sampled = sampleDynamicFunction(functionDef, parameters);
         if (typeof functionDef.lineIndex === "number" && draft.lines[functionDef.lineIndex]) {

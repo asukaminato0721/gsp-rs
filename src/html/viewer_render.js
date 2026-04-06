@@ -1,5 +1,22 @@
 (function() {
   const modules = window.GspViewerModules || (window.GspViewerModules = {});
+  const imageCache = new Map();
+
+  function loadImage(src, env) {
+    let entry = imageCache.get(src);
+    if (entry) return entry;
+    const img = new Image();
+    entry = { img, loaded: false };
+    img.onload = () => {
+      entry.loaded = true;
+      if (env?.ctx) {
+        requestAnimationFrame(() => draw(env));
+      }
+    };
+    img.src = src;
+    imageCache.set(src, entry);
+    return entry;
+  }
 
   function arcGeometryFromPoints(start, mid, end) {
     const determinant = 2 * (
@@ -295,6 +312,29 @@
       env.ctx.lineWidth = 1.5;
       env.ctx.fill();
       env.ctx.stroke();
+    }
+  }
+
+  function drawImages(env) {
+    for (const image of env.currentScene().images || []) {
+      const entry = loadImage(image.src, env);
+      if (!entry.loaded) continue;
+
+      const topLeft = image.screenSpace
+        ? image.topLeft
+        : env.toScreen(image.topLeft);
+      const bottomRight = image.screenSpace
+        ? image.bottomRight
+        : env.toScreen(image.bottomRight);
+      if (!topLeft || !bottomRight) continue;
+
+      const left = Math.min(topLeft.x, bottomRight.x);
+      const top = Math.min(topLeft.y, bottomRight.y);
+      const width = Math.abs(bottomRight.x - topLeft.x);
+      const height = Math.abs(bottomRight.y - topLeft.y);
+      if (width <= 1e-6 || height <= 1e-6) continue;
+
+      env.ctx.drawImage(entry.img, left, top, width, height);
     }
   }
 
@@ -749,6 +789,7 @@
     env.ctx.fillStyle = "rgb(250,250,248)";
     env.ctx.fillRect(0, 0, env.sourceScene.width, env.sourceScene.height);
     env.drawGrid();
+    drawImages(env);
     drawPolygons(env);
     drawLines(env);
     drawCircles(env);
@@ -765,6 +806,7 @@
     findHitPoint,
     findHitLabel,
     findHitPolygon,
+    drawImages,
     drawPolygons,
     drawLines,
     drawCircles,
