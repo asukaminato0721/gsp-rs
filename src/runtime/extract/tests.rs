@@ -1,7 +1,7 @@
 use super::build_scene;
 use crate::format::GspFile;
 use crate::runtime::scene::{
-    LabelIterationFamily, LineBinding, PointIterationFamily, ScenePointBinding,
+    LabelIterationFamily, LineBinding, LineConstraint, PointIterationFamily, ScenePointBinding,
     ScenePointConstraint, TextLabelBinding,
 };
 
@@ -1107,6 +1107,37 @@ fn preserves_line_circle_intersection_points() {
         (point.position.x - 167.5150597569313).abs() < 1e-6
             && (point.position.y - 204.5902707856141).abs() < 1e-6
     }));
+}
+
+#[test]
+fn preserves_perpendicular_intersection_points_in_perp_fixture() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/perp.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    let intersection = scene
+        .points
+        .iter()
+        .find(|point| {
+            matches!(
+                point.constraint,
+                ScenePointConstraint::LineIntersection {
+                    left: LineConstraint::Segment { .. },
+                    right: LineConstraint::PerpendicularLine {
+                        through_index: 2,
+                        ..
+                    },
+                }
+            )
+        })
+        .expect("expected reactive intersection point bound to the perpendicular line");
+
+    assert!(
+        (intersection.position.x - 867.3347427619169).abs() < 1e-6
+            && (intersection.position.y - 469.9559050197873).abs() < 1e-6,
+        "expected foot-of-perpendicular coordinates, got {:?}",
+        intersection.position
+    );
 }
 
 #[test]

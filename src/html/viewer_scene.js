@@ -222,6 +222,54 @@
       : null;
   }
 
+  function resolveLineConstraint(env, constraint, resolveFn) {
+    if (!constraint) return null;
+    if (constraint.kind === "segment" || constraint.kind === "line" || constraint.kind === "ray") {
+      const start = resolveFn(constraint.startIndex);
+      const end = resolveFn(constraint.endIndex);
+      if (!start || !end) return null;
+      return { start, end, kind: constraint.kind };
+    }
+    if (constraint.kind === "perpendicular-line" || constraint.kind === "parallel-line") {
+      const through = resolveFn(constraint.throughIndex);
+      const lineStart = resolveFn(constraint.lineStartIndex);
+      const lineEnd = resolveFn(constraint.lineEndIndex);
+      if (!through || !lineStart || !lineEnd) return null;
+      const dx = lineEnd.x - lineStart.x;
+      const dy = lineEnd.y - lineStart.y;
+      const len = Math.hypot(dx, dy);
+      if (len <= 1e-9) return null;
+      return constraint.kind === "perpendicular-line"
+        ? {
+            start: through,
+            end: { x: through.x - dy / len, y: through.y + dx / len },
+            kind: "line",
+          }
+        : {
+            start: through,
+            end: { x: through.x + dx / len, y: through.y + dy / len },
+            kind: "line",
+          };
+    }
+    if (constraint.kind === "angle-bisector-ray") {
+      const start = resolveFn(constraint.startIndex);
+      const vertex = resolveFn(constraint.vertexIndex);
+      const end = resolveFn(constraint.endIndex);
+      if (!start || !vertex || !end) return null;
+      const direction = angleBisectorDirection(start, vertex, end);
+      if (!direction) return null;
+      return {
+        start: vertex,
+        end: {
+          x: vertex.x + direction.x,
+          y: vertex.y + direction.y,
+        },
+        kind: "ray",
+      };
+    }
+    return null;
+  }
+
   function lineCircleIntersection(lineStart, lineEnd, lineKind, center, radiusPoint, variant) {
     const dx = lineEnd.x - lineStart.x;
     const dy = lineEnd.y - lineStart.y;
@@ -352,30 +400,27 @@
       return pointOnThreePointArc(start, mid, end, constraint.t);
     }
     if (constraint.kind === "line-intersection") {
-      const leftStart = resolveFn(constraint.leftStartIndex);
-      const leftEnd = resolveFn(constraint.leftEndIndex);
-      const rightStart = resolveFn(constraint.rightStartIndex);
-      const rightEnd = resolveFn(constraint.rightEndIndex);
-      if (!leftStart || !leftEnd || !rightStart || !rightEnd) return null;
+      const left = resolveLineConstraint(env, constraint.left, resolveFn);
+      const right = resolveLineConstraint(env, constraint.right, resolveFn);
+      if (!left || !right) return null;
       return lineLineIntersection(
-        leftStart,
-        leftEnd,
-        constraint.leftKind,
-        rightStart,
-        rightEnd,
-        constraint.rightKind,
+        left.start,
+        left.end,
+        left.kind,
+        right.start,
+        right.end,
+        right.kind,
       );
     }
     if (constraint.kind === "line-circle-intersection") {
-      const lineStart = resolveFn(constraint.lineStartIndex);
-      const lineEnd = resolveFn(constraint.lineEndIndex);
+      const line = resolveLineConstraint(env, constraint.line, resolveFn);
       const center = resolveFn(constraint.centerIndex);
       const radiusPoint = resolveFn(constraint.radiusIndex);
-      if (!lineStart || !lineEnd || !center || !radiusPoint) return null;
+      if (!line || !center || !radiusPoint) return null;
       return lineCircleIntersection(
-        lineStart,
-        lineEnd,
-        constraint.lineKind,
+        line.start,
+        line.end,
+        line.kind,
         center,
         radiusPoint,
         constraint.variant,

@@ -102,6 +102,21 @@ mod tests {
     }
 
     #[test]
+    fn exports_perpendicular_intersection_fixture_into_html() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/gsp/perp.gsp"),
+            800,
+            600,
+        )
+        .expect("perp fixture should compile");
+
+        assert!(html.contains("\"x\":867.3347427619169"));
+        assert!(html.contains("\"y\":469.9559050197873"));
+        assert!(html.contains("\"kind\":\"line-intersection\""));
+        assert!(html.contains("\"right\":{\"kind\":\"perpendicular-line\",\"throughIndex\":2"));
+    }
+
+    #[test]
     fn exports_point_iteration_metadata_into_html() {
         let html = compile_bytes_to_html_document(
             include_bytes!("../tests/fixtures/gsp/static/简单迭代/原象点初象点深度5迭代.gsp"),

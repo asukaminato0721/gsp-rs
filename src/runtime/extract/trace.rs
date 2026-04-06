@@ -5,7 +5,9 @@ use crate::runtime::geometry::{
     lerp_point, point_on_circle_arc, point_on_three_point_arc, reflect_across_line, rotate_around,
     scale_around,
 };
-use crate::runtime::scene::{LineLikeKind, ScenePoint, ScenePointBinding, ScenePointConstraint};
+use crate::runtime::scene::{
+    LineConstraint, LineLikeKind, ScenePoint, ScenePointBinding, ScenePointConstraint,
+};
 
 use super::find_indexed_path;
 
@@ -264,43 +266,34 @@ fn resolve_trace_point(
                 let end = resolve_trace_point(points, *end_index, visiting)?;
                 point_on_three_point_arc(&start, &mid, &end, *t)
             }
-            ScenePointConstraint::LineIntersection {
-                left_kind,
-                left_start_index,
-                left_end_index,
-                right_kind,
-                right_start_index,
-                right_end_index,
-            } => {
-                let left_start = resolve_trace_point(points, *left_start_index, visiting)?;
-                let left_end = resolve_trace_point(points, *left_end_index, visiting)?;
-                let right_start = resolve_trace_point(points, *right_start_index, visiting)?;
-                let right_end = resolve_trace_point(points, *right_end_index, visiting)?;
+            ScenePointConstraint::LineIntersection { left, right } => {
+                let (left_start, left_end, left_kind) =
+                    resolve_trace_line_constraint(points, left, visiting)?;
+                let (right_start, right_end, right_kind) =
+                    resolve_trace_line_constraint(points, right, visiting)?;
                 trace_line_line_intersection(
                     &left_start,
                     &left_end,
-                    *left_kind,
+                    left_kind,
                     &right_start,
                     &right_end,
-                    *right_kind,
+                    right_kind,
                 )
             }
             ScenePointConstraint::LineCircleIntersection {
-                line_kind,
-                line_start_index,
-                line_end_index,
+                line,
                 center_index,
                 radius_index,
                 variant,
             } => {
-                let line_start = resolve_trace_point(points, *line_start_index, visiting)?;
-                let line_end = resolve_trace_point(points, *line_end_index, visiting)?;
+                let (line_start, line_end, line_kind) =
+                    resolve_trace_line_constraint(points, line, visiting)?;
                 let center = resolve_trace_point(points, *center_index, visiting)?;
                 let radius_point = resolve_trace_point(points, *radius_index, visiting)?;
                 trace_line_circle_intersection(
                     &line_start,
                     &line_end,
-                    *line_kind,
+                    line_kind,
                     &center,
                     &radius_point,
                     *variant,
@@ -330,6 +323,113 @@ fn resolve_trace_point(
 
     visiting.remove(&index);
     resolved
+}
+
+fn resolve_trace_line_constraint(
+    points: &[ScenePoint],
+    constraint: &LineConstraint,
+    visiting: &mut BTreeSet<usize>,
+) -> Option<(PointRecord, PointRecord, LineLikeKind)> {
+    match constraint {
+        LineConstraint::Segment {
+            start_index,
+            end_index,
+        } => Some((
+            resolve_trace_point(points, *start_index, visiting)?,
+            resolve_trace_point(points, *end_index, visiting)?,
+            LineLikeKind::Segment,
+        )),
+        LineConstraint::Line {
+            start_index,
+            end_index,
+        } => Some((
+            resolve_trace_point(points, *start_index, visiting)?,
+            resolve_trace_point(points, *end_index, visiting)?,
+            LineLikeKind::Line,
+        )),
+        LineConstraint::Ray {
+            start_index,
+            end_index,
+        } => Some((
+            resolve_trace_point(points, *start_index, visiting)?,
+            resolve_trace_point(points, *end_index, visiting)?,
+            LineLikeKind::Ray,
+        )),
+        LineConstraint::PerpendicularLine {
+            through_index,
+            line_start_index,
+            line_end_index,
+        } => {
+            let through = resolve_trace_point(points, *through_index, visiting)?;
+            let host_start = resolve_trace_point(points, *line_start_index, visiting)?;
+            let host_end = resolve_trace_point(points, *line_end_index, visiting)?;
+            let dx = host_end.x - host_start.x;
+            let dy = host_end.y - host_start.y;
+            let len = (dx * dx + dy * dy).sqrt();
+            (len > 1e-9).then_some((
+                through.clone(),
+                PointRecord {
+                    x: through.x - dy / len,
+                    y: through.y + dx / len,
+                },
+                LineLikeKind::Line,
+            ))
+        }
+        LineConstraint::ParallelLine {
+            through_index,
+            line_start_index,
+            line_end_index,
+        } => {
+            let through = resolve_trace_point(points, *through_index, visiting)?;
+            let host_start = resolve_trace_point(points, *line_start_index, visiting)?;
+            let host_end = resolve_trace_point(points, *line_end_index, visiting)?;
+            let dx = host_end.x - host_start.x;
+            let dy = host_end.y - host_start.y;
+            let len = (dx * dx + dy * dy).sqrt();
+            (len > 1e-9).then_some((
+                through.clone(),
+                PointRecord {
+                    x: through.x + dx / len,
+                    y: through.y + dy / len,
+                },
+                LineLikeKind::Line,
+            ))
+        }
+        LineConstraint::AngleBisectorRay {
+            start_index,
+            vertex_index,
+            end_index,
+        } => {
+            let start = resolve_trace_point(points, *start_index, visiting)?;
+            let vertex = resolve_trace_point(points, *vertex_index, visiting)?;
+            let end = resolve_trace_point(points, *end_index, visiting)?;
+            let first_dx = start.x - vertex.x;
+            let first_dy = start.y - vertex.y;
+            let second_dx = end.x - vertex.x;
+            let second_dy = end.y - vertex.y;
+            let first_len = (first_dx * first_dx + first_dy * first_dy).sqrt();
+            let second_len = (second_dx * second_dx + second_dy * second_dy).sqrt();
+            if first_len <= 1e-9 || second_len <= 1e-9 {
+                return None;
+            }
+            let sum_x = first_dx / first_len + second_dx / second_len;
+            let sum_y = first_dy / first_len + second_dy / second_len;
+            let sum_len = (sum_x * sum_x + sum_y * sum_y).sqrt();
+            let (dir_x, dir_y) = if sum_len > 1e-9 {
+                (sum_x / sum_len, sum_y / sum_len)
+            } else {
+                (-first_dy / first_len, first_dx / first_len)
+            };
+            Some((
+                vertex.clone(),
+                PointRecord {
+                    x: vertex.x + dir_x,
+                    y: vertex.y + dir_y,
+                },
+                LineLikeKind::Ray,
+            ))
+        }
+    }
 }
 
 fn trace_line_line_intersection(

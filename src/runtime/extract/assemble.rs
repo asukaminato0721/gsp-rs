@@ -1,9 +1,9 @@
 use crate::format::PointRecord;
 use crate::runtime::geometry::{include_line_bounds, to_world};
 use crate::runtime::scene::{
-    LabelIterationFamily, LineBinding, LineIterationFamily, LineShape, PointIterationFamily,
-    PolygonIterationFamily, PolygonShape, Scene, SceneArc, SceneCircle, ScenePoint,
-    ScenePointConstraint, TextLabel,
+    LabelIterationFamily, LineBinding, LineConstraint, LineIterationFamily, LineShape,
+    PointIterationFamily, PolygonIterationFamily, PolygonShape, Scene, SceneArc, SceneCircle,
+    ScenePoint, ScenePointConstraint, TextLabel,
 };
 
 use super::graph::{bounds_within, collect_bounds, dedupe_line_shapes, expand_bounds};
@@ -109,32 +109,19 @@ pub(super) fn build_world_data(
                     end_index: *end_index,
                     t: *t,
                 },
-                ScenePointConstraint::LineIntersection {
-                    left_kind,
-                    left_start_index,
-                    left_end_index,
-                    right_kind,
-                    right_start_index,
-                    right_end_index,
-                } => ScenePointConstraint::LineIntersection {
-                    left_kind: *left_kind,
-                    left_start_index: *left_start_index,
-                    left_end_index: *left_end_index,
-                    right_kind: *right_kind,
-                    right_start_index: *right_start_index,
-                    right_end_index: *right_end_index,
-                },
+                ScenePointConstraint::LineIntersection { left, right } => {
+                    ScenePointConstraint::LineIntersection {
+                        left: clone_line_constraint(left),
+                        right: clone_line_constraint(right),
+                    }
+                }
                 ScenePointConstraint::LineCircleIntersection {
-                    line_kind,
-                    line_start_index,
-                    line_end_index,
+                    line,
                     center_index,
                     radius_index,
                     variant,
                 } => ScenePointConstraint::LineCircleIntersection {
-                    line_kind: *line_kind,
-                    line_start_index: *line_start_index,
-                    line_end_index: *line_end_index,
+                    line: clone_line_constraint(line),
                     center_index: *center_index,
                     radius_index: *radius_index,
                     variant: *variant,
@@ -217,6 +204,59 @@ pub(super) fn build_world_data(
         world_points,
         world_point_positions,
         point_iterations,
+    }
+}
+
+fn clone_line_constraint(constraint: &LineConstraint) -> LineConstraint {
+    match constraint {
+        LineConstraint::Segment {
+            start_index,
+            end_index,
+        } => LineConstraint::Segment {
+            start_index: *start_index,
+            end_index: *end_index,
+        },
+        LineConstraint::Line {
+            start_index,
+            end_index,
+        } => LineConstraint::Line {
+            start_index: *start_index,
+            end_index: *end_index,
+        },
+        LineConstraint::Ray {
+            start_index,
+            end_index,
+        } => LineConstraint::Ray {
+            start_index: *start_index,
+            end_index: *end_index,
+        },
+        LineConstraint::PerpendicularLine {
+            through_index,
+            line_start_index,
+            line_end_index,
+        } => LineConstraint::PerpendicularLine {
+            through_index: *through_index,
+            line_start_index: *line_start_index,
+            line_end_index: *line_end_index,
+        },
+        LineConstraint::ParallelLine {
+            through_index,
+            line_start_index,
+            line_end_index,
+        } => LineConstraint::ParallelLine {
+            through_index: *through_index,
+            line_start_index: *line_start_index,
+            line_end_index: *line_end_index,
+        },
+        LineConstraint::AngleBisectorRay {
+            start_index,
+            vertex_index,
+            end_index,
+        } => LineConstraint::AngleBisectorRay {
+            start_index: *start_index,
+            vertex_index: *vertex_index,
+            end_index: *end_index,
+        },
     }
 }
 

@@ -2,8 +2,8 @@ use crate::format::PointRecord;
 use crate::runtime::functions::{BinaryOp, FunctionExpr, FunctionTerm, UnaryFunction};
 use crate::runtime::geometry::darken;
 use crate::runtime::scene::{
-    ButtonAction, IterationPointHandle, LabelIterationFamily, LineBinding, LineIterationFamily,
-    LineLikeKind, PointIterationFamily, PolygonIterationFamily, Scene, SceneButton,
+    ButtonAction, IterationPointHandle, LabelIterationFamily, LineBinding, LineConstraint,
+    LineIterationFamily, PointIterationFamily, PolygonIterationFamily, Scene, SceneButton,
     ScenePointBinding, ScenePointConstraint, ShapeBinding, TextLabelBinding,
     TextLabelHotspotAction,
 };
@@ -1537,27 +1537,12 @@ enum PointConstraintJson {
     },
     #[serde(rename = "line-intersection")]
     LineIntersection {
-        #[serde(rename = "leftKind")]
-        left_kind: LineLikeKindJson,
-        #[serde(rename = "leftStartIndex")]
-        left_start_index: usize,
-        #[serde(rename = "leftEndIndex")]
-        left_end_index: usize,
-        #[serde(rename = "rightKind")]
-        right_kind: LineLikeKindJson,
-        #[serde(rename = "rightStartIndex")]
-        right_start_index: usize,
-        #[serde(rename = "rightEndIndex")]
-        right_end_index: usize,
+        left: LineConstraintJson,
+        right: LineConstraintJson,
     },
     #[serde(rename = "line-circle-intersection")]
     LineCircleIntersection {
-        #[serde(rename = "lineKind")]
-        line_kind: LineLikeKindJson,
-        #[serde(rename = "lineStartIndex")]
-        line_start_index: usize,
-        #[serde(rename = "lineEndIndex")]
-        line_end_index: usize,
+        line: LineConstraintJson,
         #[serde(rename = "centerIndex")]
         center_index: usize,
         #[serde(rename = "radiusIndex")]
@@ -1653,32 +1638,19 @@ impl PointConstraintJson {
                 end_index: *end_index,
                 t: *t,
             }),
-            ScenePointConstraint::LineIntersection {
-                left_kind,
-                left_start_index,
-                left_end_index,
-                right_kind,
-                right_start_index,
-                right_end_index,
-            } => Some(Self::LineIntersection {
-                left_kind: LineLikeKindJson::from_kind(*left_kind),
-                left_start_index: *left_start_index,
-                left_end_index: *left_end_index,
-                right_kind: LineLikeKindJson::from_kind(*right_kind),
-                right_start_index: *right_start_index,
-                right_end_index: *right_end_index,
-            }),
+            ScenePointConstraint::LineIntersection { left, right } => {
+                Some(Self::LineIntersection {
+                    left: LineConstraintJson::from_constraint(left),
+                    right: LineConstraintJson::from_constraint(right),
+                })
+            }
             ScenePointConstraint::LineCircleIntersection {
-                line_kind,
-                line_start_index,
-                line_end_index,
+                line,
                 center_index,
                 radius_index,
                 variant,
             } => Some(Self::LineCircleIntersection {
-                line_kind: LineLikeKindJson::from_kind(*line_kind),
-                line_start_index: *line_start_index,
-                line_end_index: *line_end_index,
+                line: LineConstraintJson::from_constraint(line),
                 center_index: *center_index,
                 radius_index: *radius_index,
                 variant: *variant,
@@ -1701,19 +1673,106 @@ impl PointConstraintJson {
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-enum LineLikeKindJson {
-    Segment,
-    Line,
-    Ray,
+#[serde(tag = "kind", rename_all = "kebab-case")]
+enum LineConstraintJson {
+    Segment {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+    },
+    Line {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+    },
+    Ray {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+    },
+    #[serde(rename = "perpendicular-line")]
+    PerpendicularLine {
+        #[serde(rename = "throughIndex")]
+        through_index: usize,
+        #[serde(rename = "lineStartIndex")]
+        line_start_index: usize,
+        #[serde(rename = "lineEndIndex")]
+        line_end_index: usize,
+    },
+    #[serde(rename = "parallel-line")]
+    ParallelLine {
+        #[serde(rename = "throughIndex")]
+        through_index: usize,
+        #[serde(rename = "lineStartIndex")]
+        line_start_index: usize,
+        #[serde(rename = "lineEndIndex")]
+        line_end_index: usize,
+    },
+    #[serde(rename = "angle-bisector-ray")]
+    AngleBisectorRay {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "vertexIndex")]
+        vertex_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+    },
 }
 
-impl LineLikeKindJson {
-    fn from_kind(kind: LineLikeKind) -> Self {
-        match kind {
-            LineLikeKind::Segment => Self::Segment,
-            LineLikeKind::Line => Self::Line,
-            LineLikeKind::Ray => Self::Ray,
+impl LineConstraintJson {
+    fn from_constraint(constraint: &LineConstraint) -> Self {
+        match constraint {
+            LineConstraint::Segment {
+                start_index,
+                end_index,
+            } => Self::Segment {
+                start_index: *start_index,
+                end_index: *end_index,
+            },
+            LineConstraint::Line {
+                start_index,
+                end_index,
+            } => Self::Line {
+                start_index: *start_index,
+                end_index: *end_index,
+            },
+            LineConstraint::Ray {
+                start_index,
+                end_index,
+            } => Self::Ray {
+                start_index: *start_index,
+                end_index: *end_index,
+            },
+            LineConstraint::PerpendicularLine {
+                through_index,
+                line_start_index,
+                line_end_index,
+            } => Self::PerpendicularLine {
+                through_index: *through_index,
+                line_start_index: *line_start_index,
+                line_end_index: *line_end_index,
+            },
+            LineConstraint::ParallelLine {
+                through_index,
+                line_start_index,
+                line_end_index,
+            } => Self::ParallelLine {
+                through_index: *through_index,
+                line_start_index: *line_start_index,
+                line_end_index: *line_end_index,
+            },
+            LineConstraint::AngleBisectorRay {
+                start_index,
+                vertex_index,
+                end_index,
+            } => Self::AngleBisectorRay {
+                start_index: *start_index,
+                vertex_index: *vertex_index,
+                end_index: *end_index,
+            },
         }
     }
 }
