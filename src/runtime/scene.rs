@@ -11,6 +11,7 @@ pub(crate) struct Scene {
     pub(crate) y_up: bool,
     pub(crate) origin: Option<PointRecord>,
     pub(crate) bounds: Bounds,
+    pub(crate) images: Vec<SceneImage>,
     pub(crate) lines: Vec<LineShape>,
     pub(crate) polygons: Vec<PolygonShape>,
     pub(crate) circles: Vec<SceneCircle>,
@@ -24,6 +25,14 @@ pub(crate) struct Scene {
     pub(crate) buttons: Vec<SceneButton>,
     pub(crate) parameters: Vec<SceneParameter>,
     pub(crate) functions: Vec<SceneFunction>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SceneImage {
+    pub(crate) top_left: PointRecord,
+    pub(crate) bottom_right: PointRecord,
+    pub(crate) src: String,
+    pub(crate) screen_space: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -542,6 +551,10 @@ pub(crate) enum TextLabelHotspotAction {
 pub(crate) enum TextLabelBinding {
     ParameterValue {
         name: String,
+    },
+    FunctionLabel {
+        function_key: usize,
+        derivative: bool,
     },
     ExpressionValue {
         parameter_name: String,

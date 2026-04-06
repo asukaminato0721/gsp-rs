@@ -267,7 +267,9 @@ pub(crate) fn synthesize_function_labels(
                 anchor: to_raw_from_world(&world_anchor, transform),
                 text: format!("{name} = {:.2}", value),
                 color: [30, 30, 30, 255],
-                binding: None,
+                binding: Some(crate::runtime::scene::TextLabelBinding::ParameterValue {
+                    name: name.clone(),
+                }),
                 screen_space: false,
                 hotspots: Vec::new(),
             }
@@ -313,7 +315,10 @@ pub(crate) fn synthesize_function_labels(
                 anchor: to_raw_from_world(&world_anchor, transform),
                 text,
                 color: [30, 30, 30, 255],
-                binding: None,
+                binding: Some(crate::runtime::scene::TextLabelBinding::FunctionLabel {
+                    function_key: *definition_ordinal,
+                    derivative: false,
+                }),
                 screen_space: false,
                 hotspots: Vec::new(),
             }
@@ -369,7 +374,10 @@ pub(crate) fn synthesize_function_labels(
                     )
                 },
                 color: [30, 30, 30, 255],
-                binding: None,
+                binding: Some(crate::runtime::scene::TextLabelBinding::FunctionLabel {
+                    function_key: base_entries[base_index].0,
+                    derivative: true,
+                }),
                 screen_space: false,
                 hotspots: Vec::new(),
             }

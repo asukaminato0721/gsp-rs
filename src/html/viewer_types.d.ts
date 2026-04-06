@@ -57,6 +57,12 @@ type SceneData = {
     maxY: number;
   };
   origin?: PointHandle | null;
+  images?: Array<{
+    topLeft: Point;
+    bottomRight: Point;
+    src: string;
+    screenSpace?: boolean;
+  }>;
   points: any[];
   lines: any[];
   polygons: any[];

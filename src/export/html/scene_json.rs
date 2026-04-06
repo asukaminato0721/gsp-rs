@@ -31,6 +31,7 @@ struct SceneJson {
     y_up: bool,
     bounds: BoundsJson,
     origin: Option<PointJson>,
+    images: Vec<ImageJson>,
     lines: Vec<LineJson>,
     polygons: Vec<PolygonJson>,
     circles: Vec<CircleJson>,
@@ -57,6 +58,7 @@ impl SceneJson {
             y_up: scene.y_up,
             bounds: BoundsJson::from_scene(scene),
             origin: scene.origin.as_ref().map(PointJson::from_point),
+            images: scene.images.iter().map(ImageJson::from_image).collect(),
             lines: scene.lines.iter().map(LineJson::from_line).collect(),
             polygons: scene
                 .polygons
@@ -102,6 +104,26 @@ impl SceneJson {
                 .iter()
                 .map(FunctionJson::from_function)
                 .collect(),
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImageJson {
+    top_left: PointJson,
+    bottom_right: PointJson,
+    src: String,
+    screen_space: bool,
+}
+
+impl ImageJson {
+    fn from_image(image: &crate::runtime::scene::SceneImage) -> Self {
+        Self {
+            top_left: PointJson::from_point(&image.top_left),
+            bottom_right: PointJson::from_point(&image.bottom_right),
+            src: image.src.clone(),
+            screen_space: image.screen_space,
         }
     }
 }
@@ -964,6 +986,12 @@ impl LabelHotspotActionJson {
 enum LabelBindingJson {
     #[serde(rename = "parameter-value")]
     ParameterValue { name: String },
+    #[serde(rename = "function-label")]
+    FunctionLabel {
+        #[serde(rename = "functionKey")]
+        function_key: usize,
+        derivative: bool,
+    },
     #[serde(rename = "expression-value")]
     ExpressionValue {
         #[serde(rename = "parameterName")]
@@ -1015,6 +1043,13 @@ impl LabelBindingJson {
             TextLabelBinding::ParameterValue { name } => {
                 Self::ParameterValue { name: name.clone() }
             }
+            TextLabelBinding::FunctionLabel {
+                function_key,
+                derivative,
+            } => Self::FunctionLabel {
+                function_key: *function_key,
+                derivative: *derivative,
+            },
             TextLabelBinding::ExpressionValue {
                 parameter_name,
                 expr_label,

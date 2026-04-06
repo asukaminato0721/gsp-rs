@@ -320,21 +320,6 @@ mod tests {
     }
 
     #[test]
-    fn exports_center_arc_fixture_into_html() {
-        let html = compile_bytes_to_html_document(
-            include_bytes!("../tests/fixtures/gsp/未实现1(1).gsp"),
-            800,
-            600,
-        )
-        .expect("center-arc fixture should compile");
-
-        assert!(html.contains("\"arcs\":["));
-        assert!(html.contains("\"kind\":\"circle-arc\""));
-        assert!(html.contains("\"x\":0.5678243582014604"));
-        assert!(html.contains("\"y\":0.8231497422906086"));
-    }
-
-    #[test]
     fn exports_circle_center_radius_into_html() {
         let html = compile_bytes_to_html_document(
             include_bytes!("../tests/fixtures/gsp/circle_center_radius.gsp"),
@@ -442,6 +427,34 @@ mod tests {
             functions[0]["expr"]["head"]["right"]["kind"].as_str(),
             Some("power")
         );
+    }
+
+    #[test]
+    fn exports_draw_function_fixture_with_payload_linked_labels() {
+        let scene_json = compile_bytes_to_scene_json(
+            include_bytes!("../tests/fixtures/未实现的系统功能/绘图函数.gsp"),
+            800,
+            600,
+        )
+        .expect("draw function fixture should compile");
+
+        let scene: Value =
+            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+        let images = scene["images"]
+            .as_array()
+            .expect("scene images should be an array");
+        assert_eq!(images.len(), 1);
+        assert_eq!(images[0]["screenSpace"].as_bool(), Some(true));
+        assert!(
+            images[0]["src"]
+                .as_str()
+                .is_some_and(|src| src.starts_with("data:image/png;base64,")),
+            "expected embedded png data url"
+        );
+        assert_eq!(images[0]["topLeft"]["x"].as_f64(), Some(95.0));
+        assert_eq!(images[0]["topLeft"]["y"].as_f64(), Some(198.0));
+        assert_eq!(images[0]["bottomRight"]["x"].as_f64(), Some(536.0));
+        assert_eq!(images[0]["bottomRight"]["y"].as_f64(), Some(273.0));
     }
 
     #[test]

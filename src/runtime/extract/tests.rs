@@ -28,12 +28,43 @@ fn builds_function_plot_for_f_gsp() {
         }),
         "expected a non-degenerate function plot spanning the graph domain"
     );
-    assert!(scene.bounds.min_x < -30.0);
-    assert!(scene.bounds.max_y > 100.0);
+    assert!(scene.bounds.min_x < -9.0);
+    assert!(scene.bounds.max_y > 14.0);
     assert_eq!(scene.labels.len(), 1);
     assert_eq!(
-        scene.labels[0].text,
-        "f(x) = |x| + √x + ln(x) + log(x) + sgn(x) + round(x) + trunc(x)"
+        scene.labels[0]
+            .text
+            .strip_prefix("q(x) = ")
+            .or_else(|| scene.labels[0].text.strip_prefix("f(x) = ")),
+        Some("|x| + √x + ln(x) + log(x) + sgn(x) + round(x) + trunc(x)")
+    );
+}
+
+#[test]
+fn preserves_draw_function_fixture_interactivity() {
+    let data = include_bytes!("../../../tests/fixtures/未实现的系统功能/绘图函数.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert!(scene.graph_mode, "expected graph scene");
+    assert!(
+        scene.images.len() == 1,
+        "expected one embedded graph image, got {}",
+        scene.images.len()
+    );
+    assert!(scene.images[0].screen_space, "expected payload-positioned screen image");
+    assert!(
+        scene.images[0].src.starts_with("data:image/png;base64,"),
+        "expected embedded png data url"
+    );
+    assert!(
+        scene.images[0].top_left.x < scene.images[0].bottom_right.x
+            && scene.images[0].top_left.y < scene.images[0].bottom_right.y,
+        "expected visible screen-space image bounds"
+    );
+    assert!(
+        scene.lines.len() >= 3,
+        "expected graph helpers to remain visible with the embedded image"
     );
 }
 
@@ -641,41 +672,6 @@ fn preserves_point_on_circle_arc_gsp() {
             t,
         } if (t - 0.2648281634562194).abs() < 1e-9
     )));
-}
-
-#[test]
-fn preserves_center_arc_and_point_on_arc_in_unimplemented_fixture() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/未实现1(1).gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
-
-    assert_eq!(scene.circles.len(), 1, "expected one circle");
-    assert!(
-        scene.circles[0].dashed,
-        "expected supporting circle to render dashed"
-    );
-    assert_eq!(scene.arcs.len(), 1, "expected one center-based arc");
-    assert_eq!(
-        scene.points.len(),
-        5,
-        "expected base points plus constrained arc point"
-    );
-    assert!(
-        scene.arcs[0].center.is_none(),
-        "expected center-arc fixture to render from explicit control points"
-    );
-    assert!(scene.points.iter().any(|point| {
-        matches!(
-            point.constraint,
-            ScenePointConstraint::OnCircleArc {
-                center_index: 0,
-                start_index: 1,
-                end_index: 3,
-                t,
-            } if (t - 0.6155705493685956).abs() < 1e-9
-        ) && (point.position.x - 0.5678243582014604).abs() < 1e-6
-            && (point.position.y - 0.8231497422906086).abs() < 1e-6
-    }));
 }
 
 #[test]

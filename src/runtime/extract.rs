@@ -4,6 +4,7 @@ mod assemble;
 mod buttons;
 mod decode;
 mod graph;
+mod images;
 mod labels;
 mod points;
 mod shapes;
@@ -17,6 +18,7 @@ use self::buttons::collect_buttons;
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
 
 use self::graph::{collect_saved_viewport, detect_graph_transform, has_graph_classes};
+use self::images::collect_scene_images;
 use self::labels::{
     PendingLabelHotspot, collect_circle_parameter_labels, collect_coordinate_labels,
     collect_label_iterations, collect_labels, collect_polygon_parameter_labels,
@@ -611,6 +613,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     let point_map = collect_point_objects(file, &groups);
     let analysis = analyze_scene(file, &groups, &point_map);
     let mut shapes = collect_scene_shapes(file, &groups, &point_map, &analysis);
+    let images = collect_scene_images(file, &groups, &analysis.graph_ref);
     let (mut labels, label_group_to_index, pending_hotspots) =
         collect_scene_labels(file, &groups, &analysis, &shapes);
 
@@ -720,6 +723,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         polygon_iterations,
         label_iterations,
         buttons,
+        images,
         parameters,
         functions,
     )

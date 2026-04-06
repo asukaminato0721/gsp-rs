@@ -3,7 +3,7 @@ use crate::runtime::geometry::{include_line_bounds, to_world};
 use crate::runtime::scene::{
     LabelIterationFamily, LineBinding, LineConstraint, LineIterationFamily, LineShape,
     PointIterationFamily, PolygonIterationFamily, PolygonShape, Scene, SceneArc, SceneCircle,
-    ScenePoint, ScenePointConstraint, TextLabel,
+    SceneImage, ScenePoint, ScenePointConstraint, TextLabel,
 };
 
 use super::graph::{collect_bounds, dedupe_line_shapes, expand_bounds};
@@ -348,6 +348,7 @@ pub(super) fn assemble_scene(
     polygon_iterations: Vec<PolygonIterationFamily>,
     label_iterations: Vec<LabelIterationFamily>,
     buttons: Vec<crate::runtime::scene::SceneButton>,
+    images: Vec<SceneImage>,
     parameters: Vec<crate::runtime::scene::SceneParameter>,
     functions: Vec<crate::runtime::scene::SceneFunction>,
 ) -> Scene {
@@ -428,6 +429,23 @@ pub(super) fn assemble_scene(
             .as_ref()
             .map(|transform| to_world(&transform.origin_raw, &analysis.graph_ref)),
         bounds: bounds_data.bounds,
+        images: images
+            .into_iter()
+            .map(|image| SceneImage {
+                top_left: if image.screen_space {
+                    image.top_left
+                } else {
+                    to_world(&image.top_left, &analysis.graph_ref)
+                },
+                bottom_right: if image.screen_space {
+                    image.bottom_right
+                } else {
+                    to_world(&image.bottom_right, &analysis.graph_ref)
+                },
+                src: image.src,
+                screen_space: image.screen_space,
+            })
+            .collect(),
         lines: raw_lines
             .into_iter()
             .map(|line| world_line_shape(line, &analysis.graph_ref, &bounds_data.bounds))

@@ -8,8 +8,7 @@ use crate::runtime::scene::{
 
 use super::decode::{decode_function_expr, decode_function_plot_descriptor};
 use super::expr::{
-    FunctionExpr, FunctionPlotDescriptor, function_expr_label_with_variable,
-    function_expr_uses_trig, function_name_for_index, function_variable_symbol,
+    FunctionExpr, FunctionPlotDescriptor, function_expr_uses_trig, function_name_for_index,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -59,8 +58,14 @@ pub(crate) fn collect_scene_parameters(
         })
         .into_iter()
         .filter_map(|(name, value)| {
-            let text = format!("{name} = {:.2}", value);
-            let label_index = labels.iter().position(|label| label.text == text)?;
+            let label_index = labels.iter().position(|label| {
+                matches!(
+                    label.binding.as_ref(),
+                    Some(crate::runtime::scene::TextLabelBinding::ParameterValue {
+                        name: label_name,
+                    }) if label_name == &name
+                )
+            })?;
             Some(SceneParameter {
                 name,
                 value,
@@ -107,19 +112,15 @@ pub(crate) fn collect_scene_functions(
                 } else {
                     source_name.clone()
                 };
-                let variable = function_variable_symbol(descriptor.mode);
-                let label_text = if descriptor.mode == super::expr::FunctionPlotMode::Polar {
-                    format!(
-                        "r = {}",
-                        function_expr_label_with_variable(expr.clone(), variable)
+                let label_index = labels.iter().position(|label| {
+                    matches!(
+                        label.binding.as_ref(),
+                        Some(crate::runtime::scene::TextLabelBinding::FunctionLabel {
+                            function_key,
+                            derivative,
+                        }) if *function_key == *definition_ordinal && !derivative
                     )
-                } else {
-                    format!(
-                        "{name}({variable}) = {}",
-                        function_expr_label_with_variable(expr.clone(), variable)
-                    )
-                };
-                let label_index = labels.iter().position(|label| label.text == label_text)?;
+                })?;
                 let constrained_point_indices = points
                     .iter()
                     .enumerate()
@@ -168,21 +169,15 @@ pub(crate) fn collect_scene_functions(
                     &base_entries[base_index].2,
                 );
                 let expr = decode_function_expr(file, groups, group)?;
-                let variable = function_variable_symbol(base_entries[base_index].3.mode);
-                let label_text =
-                    if base_entries[base_index].3.mode == super::expr::FunctionPlotMode::Polar {
-                        format!(
-                            "r'({variable}) = {}",
-                            function_expr_label_with_variable(expr.clone(), variable)
-                        )
-                    } else {
-                        format!(
-                            "{}'({variable}) = {}",
-                            base_name,
-                            function_expr_label_with_variable(expr.clone(), variable)
-                        )
-                    };
-                let label_index = labels.iter().position(|label| label.text == label_text)?;
+                let label_index = labels.iter().position(|label| {
+                    matches!(
+                        label.binding.as_ref(),
+                        Some(crate::runtime::scene::TextLabelBinding::FunctionLabel {
+                            function_key,
+                            derivative,
+                        }) if *function_key == base_definition_ordinal && *derivative
+                    )
+                })?;
                 Some(SceneFunction {
                     key: base_definition_ordinal,
                     name: base_name,

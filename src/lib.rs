@@ -4,6 +4,7 @@ mod config;
 pub(crate) mod export;
 mod format;
 pub(crate) mod runtime;
+pub(crate) mod util;
 
 pub mod pipeline;
 

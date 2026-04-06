@@ -215,6 +215,12 @@
     return {
       graphMode: scene.graphMode,
       bounds: scene.bounds ? { ...scene.bounds } : null,
+      images: (scene.images || []).map((image) => ({
+        topLeft: { ...image.topLeft },
+        bottomRight: { ...image.bottomRight },
+        src: image.src,
+        screenSpace: !!image.screenSpace,
+      })),
       points: scene.points.map((point) => ({
         x: point.x,
         y: point.y,
