@@ -702,10 +702,88 @@
     return magnitude * 10;
   }
 
+  function hasPolarPlot(env) {
+    return !!env.currentDynamics().functions?.some((functionDef) => functionDef.domain?.plotMode === "polar");
+  }
+
+  function maxVisibleRadius(bounds) {
+    return Math.max(
+      Math.hypot(bounds.minX, bounds.minY),
+      Math.hypot(bounds.minX, bounds.maxY),
+      Math.hypot(bounds.maxX, bounds.minY),
+      Math.hypot(bounds.maxX, bounds.maxY),
+    );
+  }
+
+  function drawPolarGrid(env, bounds) {
+    const origin = env.currentScene().origin
+      ? resolvePoint(env, env.currentScene().origin)
+      : { x: 0, y: 0 };
+    const originScreen = toScreen(env, origin);
+    const maxRadius = maxVisibleRadius(bounds);
+    const radialMinorStep = chooseGridStep(maxRadius, 10);
+    const radialMajorStep = chooseGridStep(maxRadius, 5);
+    const circleCount = Math.ceil(maxRadius / radialMinorStep);
+    const minorAngleStep = Math.PI / 12;
+    const majorEvery = 2;
+
+    env.ctx.save();
+    env.ctx.lineWidth = 1;
+    env.ctx.font = "12px \"Noto Sans\", \"Segoe UI\", sans-serif";
+    env.ctx.fillStyle = "rgb(20,20,20)";
+
+    for (let circleIndex = 1; circleIndex <= circleCount; circleIndex += 1) {
+      const radius = circleIndex * radialMinorStep;
+      const radiusScreen = Math.abs(toScreen(env, { x: origin.x + radius, y: origin.y }).x - originScreen.x);
+      const major = Math.abs((radius / radialMajorStep) - Math.round(radius / radialMajorStep)) < 1e-6;
+      env.ctx.strokeStyle = major ? "rgb(200,200,200)" : "rgb(225,225,225)";
+      env.ctx.beginPath();
+      env.ctx.arc(originScreen.x, originScreen.y, radiusScreen, 0, Math.PI * 2);
+      env.ctx.stroke();
+      if (major) {
+        const top = toScreen(env, { x: origin.x, y: origin.y + radius });
+        const left = toScreen(env, { x: origin.x - radius, y: origin.y });
+        const label = env.formatAxisNumber(radius);
+        const width = env.ctx.measureText(label).width;
+        env.ctx.fillText(label, top.x + 6, top.y - 4);
+        env.ctx.fillText(label, left.x - width - 6, left.y - 4);
+      }
+    }
+
+    const spokeCount = Math.round((Math.PI * 2) / minorAngleStep);
+    for (let index = 0; index < spokeCount; index += 1) {
+      const angle = index * minorAngleStep;
+      const endpoint = {
+        x: origin.x + maxRadius * Math.cos(angle),
+        y: origin.y + maxRadius * Math.sin(angle),
+      };
+      const endScreen = toScreen(env, endpoint);
+      const major = index % majorEvery === 0;
+      env.ctx.strokeStyle = major ? "rgb(190,190,190)" : "rgb(225,225,225)";
+      if (index % 6 === 0) {
+        env.ctx.strokeStyle = "rgb(40,40,40)";
+      }
+      env.ctx.beginPath();
+      env.ctx.moveTo(originScreen.x, originScreen.y);
+      env.ctx.lineTo(endScreen.x, endScreen.y);
+      env.ctx.stroke();
+    }
+
+    env.ctx.fillStyle = "rgba(255, 60, 40, 1)";
+    env.ctx.beginPath();
+    env.ctx.arc(originScreen.x, originScreen.y, 3, 0, Math.PI * 2);
+    env.ctx.fill();
+    env.ctx.restore();
+  }
+
   /** @param {ViewerEnv} env */
   function drawGrid(env) {
     if (!env.currentScene().graphMode) return;
     const bounds = getViewBounds(env);
+    if (hasPolarPlot(env)) {
+      drawPolarGrid(env, bounds);
+      return;
+    }
     const spanY = bounds.maxY - bounds.minY;
     const yMinorStep = env.savedViewportMode ? 1 : chooseGridStep(spanY, 14);
     const yMajorStep = env.savedViewportMode ? 2 : chooseGridStep(spanY, 7);

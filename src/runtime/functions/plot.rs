@@ -300,13 +300,18 @@ pub(crate) fn synthesize_function_labels(
                     source_name.clone()
                 };
                 let variable = function_variable_symbol(descriptor.mode);
-                TextLabel {
-                    anchor: to_raw_from_world(&world_anchor, transform),
-                    text: format!(
+                let text = if descriptor.mode == FunctionPlotMode::Polar {
+                    format!("r = {}", function_expr_label_with_variable(expr.clone(), variable))
+                } else {
+                    format!(
                         "{}({variable}) = {}",
                         name,
                         function_expr_label_with_variable(expr.clone(), variable)
-                    ),
+                    )
+                };
+                TextLabel {
+                    anchor: to_raw_from_world(&world_anchor, transform),
+                    text,
                     color: [30, 30, 30, 255],
                     binding: None,
                     screen_space: false,
@@ -341,15 +346,26 @@ pub(crate) fn synthesize_function_labels(
             };
             TextLabel {
                 anchor: to_raw_from_world(&world_anchor, transform),
-                text: format!(
-                    "{}'({}) = {}",
-                    base_entries[base_index].1,
-                    function_variable_symbol(base_entries[base_index].3.mode),
-                    function_expr_label_with_variable(
-                        expr,
+                text: if base_entries[base_index].3.mode == FunctionPlotMode::Polar {
+                    format!(
+                        "r'({}) = {}",
                         function_variable_symbol(base_entries[base_index].3.mode),
+                        function_expr_label_with_variable(
+                            expr,
+                            function_variable_symbol(base_entries[base_index].3.mode),
+                        )
                     )
-                ),
+                } else {
+                    format!(
+                        "{}'({}) = {}",
+                        base_entries[base_index].1,
+                        function_variable_symbol(base_entries[base_index].3.mode),
+                        function_expr_label_with_variable(
+                            expr,
+                            function_variable_symbol(base_entries[base_index].3.mode),
+                        )
+                    )
+                },
                 color: [30, 30, 30, 255],
                 binding: None,
                 screen_space: false,

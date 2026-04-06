@@ -77,7 +77,7 @@ pub(crate) fn decode_parameter_rotation_binding(
     if !angle_degrees.is_finite() {
         return None;
     }
-    let parameter_name = editable_non_graph_parameter_name_for_group(file, angle_group);
+    let parameter_name = editable_non_graph_parameter_name_for_group(file, groups, angle_group);
 
     Some(TransformBinding {
         source_group_index,

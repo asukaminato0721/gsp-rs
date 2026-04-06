@@ -106,10 +106,14 @@ pub(crate) fn collect_scene_functions(
                 source_name.clone()
             };
             let variable = function_variable_symbol(descriptor.mode);
-            let label_text = format!(
-                "{name}({variable}) = {}",
-                function_expr_label_with_variable(expr.clone(), variable)
-            );
+            let label_text = if descriptor.mode == super::expr::FunctionPlotMode::Polar {
+                format!("r = {}", function_expr_label_with_variable(expr.clone(), variable))
+            } else {
+                format!(
+                    "{name}({variable}) = {}",
+                    function_expr_label_with_variable(expr.clone(), variable)
+                )
+            };
             let label_index = labels.iter().position(|label| label.text == label_text)?;
             let constrained_point_indices = points
                 .iter()
@@ -156,11 +160,20 @@ pub(crate) fn collect_scene_functions(
                 );
                 let expr = decode_function_expr(file, groups, group)?;
                 let variable = function_variable_symbol(base_entries[base_index].3.mode);
-                let label_text = format!(
-                    "{}'({variable}) = {}",
-                    base_name,
-                    function_expr_label_with_variable(expr.clone(), variable)
-                );
+                let label_text = if base_entries[base_index].3.mode
+                    == super::expr::FunctionPlotMode::Polar
+                {
+                    format!(
+                        "r'({variable}) = {}",
+                        function_expr_label_with_variable(expr.clone(), variable)
+                    )
+                } else {
+                    format!(
+                        "{}'({variable}) = {}",
+                        base_name,
+                        function_expr_label_with_variable(expr.clone(), variable)
+                    )
+                };
                 let label_index = labels.iter().position(|label| label.text == label_text)?;
                 Some(SceneFunction {
                     key: base_definition_ordinal,

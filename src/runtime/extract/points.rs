@@ -65,7 +65,7 @@ fn decode_non_graph_parameter(
     group: &ObjectGroup,
     labels: &mut [TextLabel],
 ) -> Option<SceneParameter> {
-    let name = editable_non_graph_parameter_name_for_group(file, group)?;
+    let name = editable_non_graph_parameter_name_for_group(file, groups, group)?;
     let value = if is_angle_parameter_group(file, groups, group_index) {
         decode_angle_parameter_value_for_group(file, group)?
     } else {
@@ -95,7 +95,24 @@ fn is_angle_parameter_group(file: &GspFile, groups: &[ObjectGroup], target_index
     })
 }
 
-pub(super) fn is_non_graph_parameter_group(group: &ObjectGroup) -> bool {
+fn is_function_plot_definition_group(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    target_ordinal: usize,
+) -> bool {
+    groups.iter().any(|group| {
+        (group.header.kind()) == crate::format::GroupKind::FunctionPlot
+            && find_indexed_path(file, group)
+                .and_then(|path| path.refs.first().copied())
+                == Some(target_ordinal)
+    })
+}
+
+pub(super) fn is_non_graph_parameter_group(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> bool {
     (group.header.kind()) == crate::format::GroupKind::Point
         && group
             .records
@@ -105,6 +122,7 @@ pub(super) fn is_non_graph_parameter_group(group: &ObjectGroup) -> bool {
             .records
             .iter()
             .any(|record| record.record_type == 0x0899)
+        && !is_function_plot_definition_group(file, groups, group.ordinal)
 }
 
 pub(super) fn is_editable_non_graph_parameter_name(name: &str) -> bool {
@@ -118,9 +136,10 @@ pub(super) fn is_editable_non_graph_parameter_name(name: &str) -> bool {
 
 pub(super) fn editable_non_graph_parameter_name_for_group(
     file: &GspFile,
+    groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> Option<String> {
-    is_non_graph_parameter_group(group)
+    is_non_graph_parameter_group(file, groups, group)
         .then(|| decode_label_name(file, group))
         .flatten()
         .filter(|name| is_editable_non_graph_parameter_name(name))

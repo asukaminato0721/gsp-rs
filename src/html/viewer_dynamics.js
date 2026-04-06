@@ -1188,9 +1188,11 @@
       env.currentDynamics().functions.forEach((functionDef) => {
         if (draft.labels[functionDef.labelIndex]) {
           const variableLabel = functionDef.domain.plotMode === "polar" ? "θ" : "x";
-          const head = functionDef.derivative
-            ? `${functionDef.name}'(${variableLabel})`
-            : `${functionDef.name}(${variableLabel})`;
+          const head = functionDef.domain.plotMode === "polar"
+            ? (functionDef.derivative ? `r'(${variableLabel})` : "r")
+            : (functionDef.derivative
+              ? `${functionDef.name}'(${variableLabel})`
+              : `${functionDef.name}(${variableLabel})`);
           draft.labels[functionDef.labelIndex].text = `${head} = ${formatExpr(functionDef.expr, env.formatAxisNumber, variableLabel)}`;
         }
         const sampled = sampleDynamicFunction(functionDef, parameters);

@@ -386,7 +386,7 @@ mod tests {
         .expect("polar fixture should compile");
 
         assert!(html.contains("\"plotMode\":\"polar\""));
-        assert!(html.contains("\"text\":\"g(θ) = 1 + cos(θ)\""));
+        assert!(html.contains("\"text\":\"r = 1 + cos(θ)\""));
         assert!(html.contains("\"name\":\"g\""));
         assert!(html.contains("\"x\":-0.24999414519673077"));
     }
