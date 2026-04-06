@@ -3,7 +3,8 @@ use std::collections::BTreeMap;
 use crate::format::PointRecord;
 
 use super::expr::{
-    BinaryOp, FunctionExpr, FunctionPlotDescriptor, FunctionTerm, ParsedFunctionExpr, UnaryFunction,
+    BinaryOp, FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode, FunctionTerm,
+    ParsedFunctionExpr, UnaryFunction,
 };
 
 pub(crate) fn sample_function_points(
@@ -33,7 +34,14 @@ pub(crate) fn sample_function_points(
             FunctionExpr::Parsed(parsed) => evaluate_function_expr(parsed, x),
         };
         if let Some(y) = y {
-            points.push(PointRecord { x, y });
+            let point = match descriptor.mode {
+                FunctionPlotMode::Cartesian => PointRecord { x, y },
+                FunctionPlotMode::Polar => PointRecord {
+                    x: y * x.cos(),
+                    y: y * x.sin(),
+                },
+            };
+            points.push(point);
         } else if points.len() >= 2 {
             segments.push(std::mem::take(&mut points));
         } else {

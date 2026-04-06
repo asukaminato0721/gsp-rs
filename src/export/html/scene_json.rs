@@ -1,5 +1,7 @@
 use crate::format::PointRecord;
-use crate::runtime::functions::{BinaryOp, FunctionExpr, FunctionTerm, UnaryFunction};
+use crate::runtime::functions::{
+    BinaryOp, FunctionExpr, FunctionPlotMode, FunctionTerm, UnaryFunction,
+};
 use crate::runtime::geometry::darken;
 use crate::runtime::scene::{
     ButtonAction, IterationPointHandle, LabelIterationFamily, LineBinding, LineConstraint,
@@ -1818,6 +1820,10 @@ impl FunctionJson {
                 x_min: function_def.domain.x_min,
                 x_max: function_def.domain.x_max,
                 sample_count: function_def.domain.sample_count,
+                plot_mode: match function_def.domain.mode {
+                    FunctionPlotMode::Cartesian => PlotModeJson::Cartesian,
+                    FunctionPlotMode::Polar => PlotModeJson::Polar,
+                },
             },
             line_index: function_def.line_index,
             label_index: function_def.label_index,
@@ -1833,6 +1839,14 @@ struct DomainJson {
     x_min: f64,
     x_max: f64,
     sample_count: usize,
+    plot_mode: PlotModeJson,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum PlotModeJson {
+    Cartesian,
+    Polar,
 }
 
 #[derive(Serialize)]

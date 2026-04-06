@@ -7,8 +7,8 @@ mod scene;
 pub(crate) use decode::{decode_function_expr, decode_function_plot_descriptor};
 pub(crate) use eval::{evaluate_expr_with_parameters, sample_function_points};
 pub(crate) use expr::{
-    BinaryOp, FunctionExpr, FunctionPlotDescriptor, FunctionTerm, ParsedFunctionExpr,
-    UnaryFunction, function_expr_label,
+    BinaryOp, FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode, FunctionTerm,
+    ParsedFunctionExpr, UnaryFunction, function_expr_label,
 };
 pub(crate) use plot::{
     collect_function_plot_domain, collect_function_plots, synthesize_function_axes,

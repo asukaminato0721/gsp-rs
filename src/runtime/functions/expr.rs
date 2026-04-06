@@ -1,10 +1,17 @@
 use crate::runtime::geometry::format_number;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FunctionPlotMode {
+    Cartesian,
+    Polar,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct FunctionPlotDescriptor {
     pub(crate) x_min: f64,
     pub(crate) x_max: f64,
     pub(crate) sample_count: usize,
+    pub(crate) mode: FunctionPlotMode,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -55,14 +62,22 @@ pub(crate) struct ParsedFunctionExpr {
 }
 
 pub(crate) fn function_expr_label(expr: FunctionExpr) -> String {
+    function_expr_label_with_variable(expr, "x")
+}
+
+pub(crate) fn function_expr_label_with_variable(expr: FunctionExpr, variable: &str) -> String {
     match expr {
         FunctionExpr::Constant(value) => format_number(value),
-        FunctionExpr::Identity => "x".to_string(),
-        FunctionExpr::SinIdentity => "sin(x)".to_string(),
-        FunctionExpr::CosIdentityPlus(offset) => format!("cos(x) + {}", format_number(offset)),
-        FunctionExpr::TanIdentityMinus(offset) => format!("tan(x) - {}", format_number(offset)),
+        FunctionExpr::Identity => variable.to_string(),
+        FunctionExpr::SinIdentity => format!("sin({variable})"),
+        FunctionExpr::CosIdentityPlus(offset) => {
+            format!("cos({variable}) + {}", format_number(offset))
+        }
+        FunctionExpr::TanIdentityMinus(offset) => {
+            format!("tan({variable}) - {}", format_number(offset))
+        }
         FunctionExpr::Parsed(parsed) => {
-            let mut text = format_function_term(parsed.head);
+            let mut text = format_function_term(parsed.head, variable);
             for (op, term) in parsed.tail {
                 text.push_str(match op {
                     BinaryOp::Add => " + ",
@@ -70,7 +85,7 @@ pub(crate) fn function_expr_label(expr: FunctionExpr) -> String {
                     BinaryOp::Mul => " * ",
                     BinaryOp::Div => " / ",
                 });
-                text.push_str(&format_function_term(term));
+                text.push_str(&format_function_term(term, variable));
             }
             text
         }
@@ -92,30 +107,37 @@ pub(crate) fn function_name_for_index(
     }
 }
 
-fn format_function_term(term: FunctionTerm) -> String {
+fn format_function_term(term: FunctionTerm, variable: &str) -> String {
     match term {
-        FunctionTerm::Variable => "x".to_string(),
+        FunctionTerm::Variable => variable.to_string(),
         FunctionTerm::Constant(value) => format_number(value),
         FunctionTerm::Parameter(name, _) => name,
         FunctionTerm::UnaryX(op) => match op {
-            UnaryFunction::Sin => "sin(x)".to_string(),
-            UnaryFunction::Cos => "cos(x)".to_string(),
-            UnaryFunction::Tan => "tan(x)".to_string(),
-            UnaryFunction::Abs => "|x|".to_string(),
-            UnaryFunction::Sqrt => "√x".to_string(),
-            UnaryFunction::Ln => "ln(x)".to_string(),
-            UnaryFunction::Log10 => "log(x)".to_string(),
-            UnaryFunction::Sign => "sgn(x)".to_string(),
-            UnaryFunction::Round => "round(x)".to_string(),
-            UnaryFunction::Trunc => "trunc(x)".to_string(),
+            UnaryFunction::Sin => format!("sin({variable})"),
+            UnaryFunction::Cos => format!("cos({variable})"),
+            UnaryFunction::Tan => format!("tan({variable})"),
+            UnaryFunction::Abs => format!("|{variable}|"),
+            UnaryFunction::Sqrt => format!("√{variable}"),
+            UnaryFunction::Ln => format!("ln({variable})"),
+            UnaryFunction::Log10 => format!("log({variable})"),
+            UnaryFunction::Sign => format!("sgn({variable})"),
+            UnaryFunction::Round => format!("round({variable})"),
+            UnaryFunction::Trunc => format!("trunc({variable})"),
         },
         FunctionTerm::Product(left, right) => {
             format!(
                 "{}*{}",
-                format_function_term(*left),
-                format_function_term(*right)
+                format_function_term(*left, variable),
+                format_function_term(*right, variable)
             )
         }
+    }
+}
+
+pub(crate) fn function_variable_symbol(mode: FunctionPlotMode) -> &'static str {
+    match mode {
+        FunctionPlotMode::Cartesian => "x",
+        FunctionPlotMode::Polar => "θ",
     }
 }
 

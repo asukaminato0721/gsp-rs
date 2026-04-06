@@ -377,6 +377,21 @@ mod tests {
     }
 
     #[test]
+    fn exports_polar_function_fixture_into_html() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/未实现的系统功能/极坐标.gsp"),
+            800,
+            600,
+        )
+        .expect("polar fixture should compile");
+
+        assert!(html.contains("\"plotMode\":\"polar\""));
+        assert!(html.contains("\"text\":\"g(θ) = 1 + cos(θ)\""));
+        assert!(html.contains("\"name\":\"g\""));
+        assert!(html.contains("\"x\":-0.24999414519673077"));
+    }
+
+    #[test]
     fn exports_translated_triangle_segments_into_html() {
         let html = compile_bytes_to_html_document(
             include_bytes!("../tests/fixtures/gsp/两个三角形标记全等.gsp"),

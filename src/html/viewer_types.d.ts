@@ -199,7 +199,20 @@ type ViewerEnv = {
   currentScene: () => any;
   currentDynamics: () => {
     parameters: Array<{ name: string; value: number; labelIndex?: number | null }>;
-    functions: any[];
+    functions: Array<{
+      name: string;
+      derivative: boolean;
+      labelIndex: number;
+      lineIndex?: number | null;
+      expr: any;
+      domain: {
+        xMin: number;
+        xMax: number;
+        sampleCount: number;
+        plotMode: "cartesian" | "polar";
+      };
+      constrainedPointIndices: number[];
+    }>;
   };
   currentHotspotFlashes: () => Array<{ key: string; action: any }>;
   resolveScenePoint: (index: number) => Point;
