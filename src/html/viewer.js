@@ -42,8 +42,18 @@
   const baseBounds = sourceScene.bounds;
   const baseCenterX = (baseBounds.minX + baseBounds.maxX) / 2;
   const baseCenterY = (baseBounds.minY + baseBounds.maxY) / 2;
-  const baseSpanX = Math.max(1e-6, baseBounds.maxX - baseBounds.minX);
-  const baseSpanY = Math.max(1e-6, baseBounds.maxY - baseBounds.minY);
+  const rawBaseSpanX = Math.max(1e-6, baseBounds.maxX - baseBounds.minX);
+  const rawBaseSpanY = Math.max(1e-6, baseBounds.maxY - baseBounds.minY);
+  const usableWidth = Math.max(1, sourceScene.width - margin * 2);
+  const usableHeight = Math.max(1, sourceScene.height - margin * 2);
+  const canvasAspect = usableWidth / usableHeight;
+  const boundsAspect = rawBaseSpanX / rawBaseSpanY;
+  const baseSpanX = boundsAspect < canvasAspect
+    ? rawBaseSpanY * canvasAspect
+    : rawBaseSpanX;
+  const baseSpanY = boundsAspect > canvasAspect
+    ? rawBaseSpanX / canvasAspect
+    : rawBaseSpanY;
   const minZoom = 0.05;
   const pointHitRadius = 10;
   const pointMatchTolerance = 1e-3;
