@@ -138,6 +138,12 @@ fn evaluate_function_term_with_parameters(
             evaluate_function_term_with_parameters(*left, x, parameters)?
                 * evaluate_function_term_with_parameters(*right, x, parameters)?,
         ),
+        FunctionTerm::Power(base, exponent) => {
+            let base = evaluate_function_term_with_parameters(*base, x, parameters)?;
+            let exponent = evaluate_function_term_with_parameters(*exponent, x, parameters)?;
+            let value = base.powf(exponent);
+            value.is_finite().then_some(value)
+        }
     }
 }
 
@@ -169,6 +175,11 @@ fn evaluate_function_term(term: FunctionTerm, x: f64) -> Option<f64> {
         },
         FunctionTerm::Product(left, right) => {
             Some(evaluate_function_term(*left, x)? * evaluate_function_term(*right, x)?)
+        }
+        FunctionTerm::Power(base, exponent) => {
+            let value =
+                evaluate_function_term(*base, x)?.powf(evaluate_function_term(*exponent, x)?);
+            value.is_finite().then_some(value)
         }
     }
 }

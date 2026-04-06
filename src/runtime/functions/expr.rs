@@ -53,6 +53,7 @@ pub(crate) enum FunctionTerm {
     Parameter(String, f64),
     UnaryX(UnaryFunction),
     Product(Box<FunctionTerm>, Box<FunctionTerm>),
+    Power(Box<FunctionTerm>, Box<FunctionTerm>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -131,6 +132,13 @@ fn format_function_term(term: FunctionTerm, variable: &str) -> String {
                 format_function_term(*right, variable)
             )
         }
+        FunctionTerm::Power(base, exponent) => {
+            format!(
+                "{}^{}",
+                format_function_term(*base, variable),
+                format_function_term(*exponent, variable)
+            )
+        }
     }
 }
 
@@ -163,6 +171,9 @@ fn function_term_uses_trig(term: &FunctionTerm) -> bool {
         FunctionTerm::Product(left, right) => {
             function_term_uses_trig(left) || function_term_uses_trig(right)
         }
+        FunctionTerm::Power(base, exponent) => {
+            function_term_uses_trig(base) || function_term_uses_trig(exponent)
+        }
         _ => false,
     }
 }
@@ -172,6 +183,9 @@ pub(super) fn function_term_contains_symbol(term: &FunctionTerm) -> bool {
         FunctionTerm::Variable | FunctionTerm::UnaryX(_) | FunctionTerm::Parameter(_, _) => true,
         FunctionTerm::Product(left, right) => {
             function_term_contains_symbol(left) || function_term_contains_symbol(right)
+        }
+        FunctionTerm::Power(base, exponent) => {
+            function_term_contains_symbol(base) || function_term_contains_symbol(exponent)
         }
         FunctionTerm::Constant(_) => false,
     }

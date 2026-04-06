@@ -19,7 +19,8 @@ pub(super) struct ParameterBinding {
 }
 
 fn source_function_name(file: &GspFile, group: &ObjectGroup) -> Option<String> {
-    group.records
+    group
+        .records
         .iter()
         .find(|record| record.record_type == 0x07d5)
         .and_then(|record| decode_parameter_name(record.payload(&file.data)))
@@ -98,46 +99,51 @@ pub(crate) fn collect_scene_functions(
     let mut functions = base_entries
         .iter()
         .enumerate()
-        .filter_map(|(index, (definition_ordinal, source_name, expr, descriptor))| {
-            let name = if source_name.is_empty() {
-                let definition_group = groups.get(definition_ordinal.checked_sub(1)?)?;
-                function_name_for_definition(file, definition_group, index, total, expr)
-            } else {
-                source_name.clone()
-            };
-            let variable = function_variable_symbol(descriptor.mode);
-            let label_text = if descriptor.mode == super::expr::FunctionPlotMode::Polar {
-                format!("r = {}", function_expr_label_with_variable(expr.clone(), variable))
-            } else {
-                format!(
-                    "{name}({variable}) = {}",
-                    function_expr_label_with_variable(expr.clone(), variable)
-                )
-            };
-            let label_index = labels.iter().position(|label| label.text == label_text)?;
-            let constrained_point_indices = points
-                .iter()
-                .enumerate()
-                .filter_map(|(point_index, point)| match &point.constraint {
-                    ScenePointConstraint::OnPolyline { function_key, .. }
-                        if function_key == definition_ordinal =>
-                    {
-                        Some(point_index)
-                    }
-                    _ => None,
+        .filter_map(
+            |(index, (definition_ordinal, source_name, expr, descriptor))| {
+                let name = if source_name.is_empty() {
+                    let definition_group = groups.get(definition_ordinal.checked_sub(1)?)?;
+                    function_name_for_definition(file, definition_group, index, total, expr)
+                } else {
+                    source_name.clone()
+                };
+                let variable = function_variable_symbol(descriptor.mode);
+                let label_text = if descriptor.mode == super::expr::FunctionPlotMode::Polar {
+                    format!(
+                        "r = {}",
+                        function_expr_label_with_variable(expr.clone(), variable)
+                    )
+                } else {
+                    format!(
+                        "{name}({variable}) = {}",
+                        function_expr_label_with_variable(expr.clone(), variable)
+                    )
+                };
+                let label_index = labels.iter().position(|label| label.text == label_text)?;
+                let constrained_point_indices = points
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(point_index, point)| match &point.constraint {
+                        ScenePointConstraint::OnPolyline { function_key, .. }
+                            if function_key == definition_ordinal =>
+                        {
+                            Some(point_index)
+                        }
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                Some(SceneFunction {
+                    key: *definition_ordinal,
+                    name,
+                    derivative: false,
+                    expr: expr.clone(),
+                    domain: descriptor.clone(),
+                    line_index: Some(plot_line_offset + index),
+                    label_index,
+                    constrained_point_indices,
                 })
-                .collect::<Vec<_>>();
-            Some(SceneFunction {
-                key: *definition_ordinal,
-                name,
-                derivative: false,
-                expr: expr.clone(),
-                domain: descriptor.clone(),
-                line_index: Some(plot_line_offset + index),
-                label_index,
-                constrained_point_indices,
-            })
-        })
+            },
+        )
         .collect::<Vec<_>>();
 
     functions.extend(
@@ -147,9 +153,12 @@ pub(crate) fn collect_scene_functions(
             .filter_map(|group| {
                 let path = find_indexed_path(file, group)?;
                 let base_definition_ordinal = *path.refs.first()?;
-                let base_index = base_entries.iter().position(|(definition_ordinal, _, _, _)| {
-                    *definition_ordinal == base_definition_ordinal
-                })?;
+                let base_index =
+                    base_entries
+                        .iter()
+                        .position(|(definition_ordinal, _, _, _)| {
+                            *definition_ordinal == base_definition_ordinal
+                        })?;
                 let definition_group = groups.get(base_definition_ordinal.checked_sub(1)?)?;
                 let base_name = function_name_for_definition(
                     file,
@@ -160,20 +169,19 @@ pub(crate) fn collect_scene_functions(
                 );
                 let expr = decode_function_expr(file, groups, group)?;
                 let variable = function_variable_symbol(base_entries[base_index].3.mode);
-                let label_text = if base_entries[base_index].3.mode
-                    == super::expr::FunctionPlotMode::Polar
-                {
-                    format!(
-                        "r'({variable}) = {}",
-                        function_expr_label_with_variable(expr.clone(), variable)
-                    )
-                } else {
-                    format!(
-                        "{}'({variable}) = {}",
-                        base_name,
-                        function_expr_label_with_variable(expr.clone(), variable)
-                    )
-                };
+                let label_text =
+                    if base_entries[base_index].3.mode == super::expr::FunctionPlotMode::Polar {
+                        format!(
+                            "r'({variable}) = {}",
+                            function_expr_label_with_variable(expr.clone(), variable)
+                        )
+                    } else {
+                        format!(
+                            "{}'({variable}) = {}",
+                            base_name,
+                            function_expr_label_with_variable(expr.clone(), variable)
+                        )
+                    };
                 let label_index = labels.iter().position(|label| label.text == label_text)?;
                 Some(SceneFunction {
                     key: base_definition_ordinal,

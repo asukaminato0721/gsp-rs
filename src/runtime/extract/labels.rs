@@ -373,7 +373,8 @@ fn collect_point_expression_label(
     let expr = decode_function_expr(file, groups, expr_group)?;
     let expr_path = find_indexed_path(file, expr_group)?;
     let parameter_group = groups.get(expr_path.refs.first()?.checked_sub(1)?)?;
-    let parameter_name = editable_non_graph_parameter_name_for_group(file, groups, parameter_group)?;
+    let parameter_name =
+        editable_non_graph_parameter_name_for_group(file, groups, parameter_group)?;
     let parameter_value = decode_non_graph_parameter_value_for_group(file, parameter_group)?;
     let value = evaluate_expr_with_parameters(
         &expr,

@@ -102,10 +102,25 @@ fn is_function_plot_definition_group(
 ) -> bool {
     groups.iter().any(|group| {
         (group.header.kind()) == crate::format::GroupKind::FunctionPlot
-            && find_indexed_path(file, group)
-                .and_then(|path| path.refs.first().copied())
+            && find_indexed_path(file, group).and_then(|path| path.refs.first().copied())
                 == Some(target_ordinal)
     })
+}
+
+fn is_function_plot_parameter_group(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    target_ordinal: usize,
+) -> bool {
+    groups
+        .iter()
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::FunctionPlot)
+        .filter_map(|group| find_indexed_path(file, group))
+        .filter_map(|path| groups.get(path.refs.first()?.checked_sub(1)?))
+        .any(|definition_group| {
+            find_indexed_path(file, definition_group)
+                .is_some_and(|path| path.refs.contains(&target_ordinal))
+        })
 }
 
 pub(super) fn is_non_graph_parameter_group(
@@ -123,6 +138,7 @@ pub(super) fn is_non_graph_parameter_group(
             .iter()
             .any(|record| record.record_type == 0x0899)
         && !is_function_plot_definition_group(file, groups, group.ordinal)
+        && !is_function_plot_parameter_group(file, groups, group.ordinal)
 }
 
 pub(super) fn is_editable_non_graph_parameter_name(name: &str) -> bool {

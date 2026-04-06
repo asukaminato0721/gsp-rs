@@ -274,51 +274,51 @@ pub(crate) fn synthesize_function_labels(
         })
         .collect::<Vec<_>>();
     let parameter_count = labels.len();
-    labels.extend(
-        base_entries
-            .iter()
-            .enumerate()
-            .map(|(index, (definition_ordinal, source_name, expr, descriptor))| {
-                let span_x = (bounds.max_x - bounds.min_x).max(1.0);
-                let span_y = (bounds.max_y - bounds.min_y).max(1.0);
-                let world_anchor = PointRecord {
-                    x: bounds.min_x + span_x * 0.18,
-                    y: bounds.max_y - span_y * (0.16 + 0.11 * (index + parameter_count) as f64),
-                };
-                let definition_group = groups
-                    .get(definition_ordinal.saturating_sub(1))
-                    .expect("function definition ordinal should resolve");
-                let name = if source_name.is_empty() {
-                    super::scene::function_name_for_definition(
-                        file,
-                        definition_group,
-                        index,
-                        total,
-                        expr,
-                    )
-                } else {
-                    source_name.clone()
-                };
-                let variable = function_variable_symbol(descriptor.mode);
-                let text = if descriptor.mode == FunctionPlotMode::Polar {
-                    format!("r = {}", function_expr_label_with_variable(expr.clone(), variable))
-                } else {
-                    format!(
-                        "{}({variable}) = {}",
-                        name,
-                        function_expr_label_with_variable(expr.clone(), variable)
-                    )
-                };
-                TextLabel {
-                    anchor: to_raw_from_world(&world_anchor, transform),
-                    text,
-                    color: [30, 30, 30, 255],
-                    binding: None,
-                    screen_space: false,
-                    hotspots: Vec::new(),
-                }
-            }),
-    );
+    labels.extend(base_entries.iter().enumerate().map(
+        |(index, (definition_ordinal, source_name, expr, descriptor))| {
+            let span_x = (bounds.max_x - bounds.min_x).max(1.0);
+            let span_y = (bounds.max_y - bounds.min_y).max(1.0);
+            let world_anchor = PointRecord {
+                x: bounds.min_x + span_x * 0.18,
+                y: bounds.max_y - span_y * (0.16 + 0.11 * (index + parameter_count) as f64),
+            };
+            let definition_group = groups
+                .get(definition_ordinal.saturating_sub(1))
+                .expect("function definition ordinal should resolve");
+            let name = if source_name.is_empty() {
+                super::scene::function_name_for_definition(
+                    file,
+                    definition_group,
+                    index,
+                    total,
+                    expr,
+                )
+            } else {
+                source_name.clone()
+            };
+            let variable = function_variable_symbol(descriptor.mode);
+            let text = if descriptor.mode == FunctionPlotMode::Polar {
+                format!(
+                    "r = {}",
+                    function_expr_label_with_variable(expr.clone(), variable)
+                )
+            } else {
+                format!(
+                    "{}({variable}) = {}",
+                    name,
+                    function_expr_label_with_variable(expr.clone(), variable)
+                )
+            };
+            TextLabel {
+                anchor: to_raw_from_world(&world_anchor, transform),
+                text,
+                color: [30, 30, 30, 255],
+                binding: None,
+                screen_space: false,
+                hotspots: Vec::new(),
+            }
+        },
+    ));
 
     let derivative_entries = groups
         .iter()
@@ -328,7 +328,9 @@ pub(crate) fn synthesize_function_labels(
             let base_definition_ordinal = *path.refs.first()?;
             let base_index = base_entries
                 .iter()
-                .position(|(definition_ordinal, _, _, _)| *definition_ordinal == base_definition_ordinal)?;
+                .position(|(definition_ordinal, _, _, _)| {
+                    *definition_ordinal == base_definition_ordinal
+                })?;
             let expr = decode_function_expr(file, groups, group)?;
             Some((base_index, expr))
         })

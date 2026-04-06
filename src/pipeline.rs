@@ -56,6 +56,7 @@ pub fn compile_bytes_to_scene_json(data: &[u8], width: u32, height: u32) -> Resu
 #[cfg(test)]
 mod tests {
     use super::{compile_bytes_to_html_document, compile_bytes_to_scene_json};
+    use serde_json::Value;
 
     #[test]
     fn compiles_fixture_into_standalone_html() {
@@ -389,6 +390,56 @@ mod tests {
         assert!(html.contains("\"text\":\"r = 1 + cos(θ)\""));
         assert!(html.contains("\"name\":\"g\""));
         assert!(html.contains("\"x\":-0.24999414519673077"));
+    }
+
+    #[test]
+    fn exports_parameterized_function_fixture_with_unique_parameters() {
+        let scene_json = compile_bytes_to_scene_json(
+            include_bytes!("../tests/fixtures/未实现的系统功能/函数.gsp"),
+            800,
+            600,
+        )
+        .expect("parameterized function fixture should compile");
+
+        let scene: Value =
+            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+        let parameters = scene["parameters"]
+            .as_array()
+            .expect("scene parameters should be an array");
+        let parameter_names = parameters
+            .iter()
+            .map(|parameter| {
+                parameter["name"]
+                    .as_str()
+                    .expect("parameter name should be a string")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(parameter_names, vec!["a", "b", "c"]);
+        assert!(
+            parameters
+                .iter()
+                .all(|parameter| parameter["labelIndex"].as_u64().is_some()),
+            "graph parameters should keep label bindings for interactive updates"
+        );
+
+        let functions = scene["functions"]
+            .as_array()
+            .expect("scene functions should be an array");
+        assert_eq!(functions.len(), 1);
+        assert_eq!(functions[0]["name"].as_str(), Some("f"));
+        assert_eq!(functions[0]["lineIndex"].as_u64(), Some(3));
+        assert_eq!(
+            scene["labels"][3]["text"].as_str(),
+            Some("f(x) = a*x^2 + b*x + c")
+        );
+        assert_eq!(
+            functions[0]["expr"]["head"]["kind"].as_str(),
+            Some("product")
+        );
+        assert_eq!(
+            functions[0]["expr"]["head"]["right"]["kind"].as_str(),
+            Some("power")
+        );
     }
 
     #[test]

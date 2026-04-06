@@ -1923,6 +1923,11 @@ enum FunctionTermJson {
         left: Box<FunctionTermJson>,
         right: Box<FunctionTermJson>,
     },
+    #[serde(rename = "power")]
+    Power {
+        base: Box<FunctionTermJson>,
+        exponent: Box<FunctionTermJson>,
+    },
 }
 
 impl FunctionTermJson {
@@ -1940,6 +1945,10 @@ impl FunctionTermJson {
             FunctionTerm::Product(left, right) => Self::Product {
                 left: Box::new(Self::from_term(left)),
                 right: Box::new(Self::from_term(right)),
+            },
+            FunctionTerm::Power(base, exponent) => Self::Power {
+                base: Box::new(Self::from_term(base)),
+                exponent: Box::new(Self::from_term(exponent)),
             },
         }
     }

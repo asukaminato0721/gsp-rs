@@ -238,6 +238,20 @@ fn parse_atomic_term(
     index: &mut usize,
     parameters: &BTreeMap<u16, ParameterBinding>,
 ) -> Option<FunctionTerm> {
+    let mut term = parse_atomic_base(words, index, parameters)?;
+    while *index < words.len() && words[*index] == 0x1004 {
+        *index += 1;
+        let exponent = parse_atomic_base(words, index, parameters)?;
+        term = FunctionTerm::Power(Box::new(term), Box::new(exponent));
+    }
+    Some(term)
+}
+
+fn parse_atomic_base(
+    words: &[u16],
+    index: &mut usize,
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Option<FunctionTerm> {
     if *index >= words.len() {
         return None;
     }

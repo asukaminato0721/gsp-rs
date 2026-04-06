@@ -190,6 +190,13 @@
         const right = evaluateExprTerm(term.right, x, parameters);
         return left === null || right === null ? null : left * right;
       }
+      case "power": {
+        const base = evaluateExprTerm(term.base, x, parameters);
+        const exponent = evaluateExprTerm(term.exponent, x, parameters);
+        if (base === null || exponent === null) return null;
+        const value = Math.pow(base, exponent);
+        return Number.isFinite(value) ? value : null;
+      }
       default: return null;
     }
   }
@@ -223,6 +230,8 @@
       case "unary_x": return `${term.op}(${variableLabel})`;
       case "product":
         return `${formatExprTerm(term.left, formatAxisNumber, variableLabel)}*${formatExprTerm(term.right, formatAxisNumber, variableLabel)}`;
+      case "power":
+        return `${formatExprTerm(term.base, formatAxisNumber, variableLabel)}^${formatExprTerm(term.exponent, formatAxisNumber, variableLabel)}`;
       default: return "?";
     }
   }
