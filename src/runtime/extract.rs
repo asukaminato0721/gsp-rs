@@ -157,7 +157,7 @@ fn analyze_scene(
         None
     };
     let pi_mode = if graph_mode {
-        saved_viewport.is_some() || function_uses_pi_scale(file, groups)
+        function_uses_pi_scale(file, groups)
     } else {
         false
     };

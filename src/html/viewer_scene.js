@@ -830,12 +830,17 @@
       }
     } else {
       const spanX = bounds.maxX - bounds.minX;
-      const xLabelStep = spanX > 20 ? 5 : 2;
-      const minX = Math.floor(bounds.minX);
-      const maxX = Math.ceil(bounds.maxX);
-      for (let x = minX; x <= maxX; x += 1) {
+      const xMinorStep = env.savedViewportMode ? 1 : chooseGridStep(spanX, 14);
+      const xMajorStep = env.savedViewportMode ? 2 : chooseGridStep(spanX, 7);
+      const minXIndex = Math.floor(bounds.minX / xMinorStep);
+      const maxXIndex = Math.ceil(bounds.maxX / xMinorStep);
+      for (let xIndex = minXIndex; xIndex <= maxXIndex; xIndex += 1) {
+        const x = xIndex * xMinorStep;
         const screen = toScreen(env, { x, y: bounds.minY });
-        env.ctx.strokeStyle = x === 0 ? "rgb(40,40,40)" : "rgb(200,200,200)";
+        const major = Math.abs((x / xMajorStep) - Math.round(x / xMajorStep)) < 1e-6;
+        env.ctx.strokeStyle = Math.abs(x) < 1e-6
+          ? "rgb(40,40,40)"
+          : major ? "rgb(200,200,200)" : "rgb(225,225,225)";
         env.ctx.beginPath();
         env.ctx.moveTo(screen.x, 0);
         env.ctx.lineTo(screen.x, env.sourceScene.height);
@@ -843,12 +848,12 @@
         if (bounds.minY <= 0 && 0 <= bounds.maxY) {
           env.ctx.strokeStyle = "rgb(40,40,40)";
           env.ctx.beginPath();
-          env.ctx.moveTo(screen.x, xAxisY - (x === 0 ? 6 : 4));
-          env.ctx.lineTo(screen.x, xAxisY + (x === 0 ? 6 : 4));
+          env.ctx.moveTo(screen.x, xAxisY - (Math.abs(x) < 1e-6 ? 6 : major ? 4 : 2));
+          env.ctx.lineTo(screen.x, xAxisY + (Math.abs(x) < 1e-6 ? 6 : major ? 4 : 2));
           env.ctx.stroke();
         }
-        if (x !== 0 && x % xLabelStep === 0) {
-          const label = String(x);
+        if (major && Math.abs(x) >= 1e-6) {
+          const label = env.formatAxisNumber(x);
           const width = env.ctx.measureText(label).width;
           env.ctx.fillText(label, screen.x - width / 2, Math.min(env.sourceScene.height - 4, xAxisY + 16));
         }

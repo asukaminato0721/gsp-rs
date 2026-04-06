@@ -6,7 +6,7 @@ use crate::runtime::scene::{
     ScenePoint, ScenePointConstraint, TextLabel,
 };
 
-use super::graph::{bounds_within, collect_bounds, dedupe_line_shapes, expand_bounds};
+use super::graph::{collect_bounds, dedupe_line_shapes, expand_bounds};
 use super::world::{world_line_iteration_family, world_line_shape, world_polygon_iteration_family};
 use super::{BoundsData, CollectedShapes, SceneAnalysis, WorldData};
 
@@ -319,10 +319,7 @@ pub(super) fn compute_scene_bounds(
     );
     include_line_bounds(&mut bounds, &analysis.function_plots, &analysis.graph_ref);
     include_line_bounds(&mut bounds, &shapes.synthetic_axes, &analysis.graph_ref);
-    let use_saved_viewport = analysis
-        .saved_viewport
-        .filter(|viewport| bounds_within(viewport, &bounds))
-        .is_some();
+    let use_saved_viewport = analysis.saved_viewport.is_some();
     if let Some(viewport) = analysis.saved_viewport.filter(|_| use_saved_viewport) {
         bounds = viewport;
     } else {

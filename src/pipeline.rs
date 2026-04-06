@@ -403,6 +403,8 @@ mod tests {
 
         let scene: Value =
             serde_json::from_str(&scene_json).expect("scene json should be valid json");
+        assert_eq!(scene["piMode"].as_bool(), Some(false));
+        assert_eq!(scene["savedViewport"].as_bool(), Some(true));
         let parameters = scene["parameters"]
             .as_array()
             .expect("scene parameters should be an array");
