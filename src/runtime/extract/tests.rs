@@ -69,6 +69,26 @@ fn preserves_draw_function_fixture_interactivity() {
 }
 
 #[test]
+fn preserves_insert_image_fixture() {
+    let data = include_bytes!("../../../tests/fixtures/未实现的系统功能/插入图片.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert!(!scene.graph_mode, "expected non-graph image fixture");
+    assert_eq!(scene.images.len(), 1, "expected one embedded image");
+    assert!(scene.images[0].screen_space, "expected screen-space image placement");
+    assert!(
+        scene.images[0].src.starts_with("data:image/png;base64,"),
+        "expected embedded png data url"
+    );
+    assert_eq!(scene.images[0].top_left.x, 118.0);
+    assert_eq!(scene.images[0].top_left.y, 112.0);
+    assert_eq!(scene.images[0].bottom_right.x, 373.0);
+    assert_eq!(scene.images[0].bottom_right.y, 270.0);
+    assert!(scene.lines.is_empty(), "expected image-only fixture without line artifacts");
+}
+
+#[test]
 fn preserves_multiline_text_labels() {
     let data = include_bytes!("../../../tests/fixtures/gsp/多行文本.gsp");
     let file = GspFile::parse(data).expect("fixture parses");

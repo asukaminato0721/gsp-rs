@@ -458,6 +458,34 @@ mod tests {
     }
 
     #[test]
+    fn exports_insert_image_fixture() {
+        let scene_json = compile_bytes_to_scene_json(
+            include_bytes!("../tests/fixtures/未实现的系统功能/插入图片.gsp"),
+            800,
+            600,
+        )
+        .expect("insert image fixture should compile");
+
+        let scene: Value =
+            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+        let images = scene["images"]
+            .as_array()
+            .expect("scene images should be an array");
+        assert_eq!(images.len(), 1);
+        assert_eq!(images[0]["screenSpace"].as_bool(), Some(true));
+        assert!(
+            images[0]["src"]
+                .as_str()
+                .is_some_and(|src| src.starts_with("data:image/png;base64,")),
+            "expected embedded png data url"
+        );
+        assert_eq!(images[0]["topLeft"]["x"].as_f64(), Some(118.0));
+        assert_eq!(images[0]["topLeft"]["y"].as_f64(), Some(112.0));
+        assert_eq!(images[0]["bottomRight"]["x"].as_f64(), Some(373.0));
+        assert_eq!(images[0]["bottomRight"]["y"].as_f64(), Some(270.0));
+    }
+
+    #[test]
     fn exports_translated_triangle_segments_into_html() {
         let html = compile_bytes_to_html_document(
             include_bytes!("../tests/fixtures/gsp/两个三角形标记全等.gsp"),
