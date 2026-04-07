@@ -514,4 +514,21 @@ mod tests {
         assert!(html.contains("\"kind\":\"polyline\""));
         assert!(html.contains("\"lines\":[{\"points\":["));
     }
+
+    #[test]
+    fn exports_custom_transform_fixture_with_interactive_point_binding() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/未实现的系统功能/自定义变换.gsp"),
+            800,
+            600,
+        )
+        .expect("custom transform fixture should compile");
+
+        assert!(html.contains("\"text\":\"Q\""));
+        assert!(html.contains("\"kind\":\"custom-transform\""));
+        assert!(html.contains("\"sourceIndex\":2"));
+        assert!(html.contains("\"name\":\"__param_anchor_5\""));
+        assert!(html.contains("1厘米"));
+        assert!(html.contains("100°"));
+    }
 }

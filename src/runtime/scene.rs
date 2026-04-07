@@ -355,6 +355,12 @@ pub(crate) enum LineBinding {
         line_start_index: usize,
         line_end_index: usize,
     },
+    CustomTransformTrace {
+        point_index: usize,
+        x_min: f64,
+        x_max: f64,
+        sample_count: usize,
+    },
     RotateEdge {
         center_index: usize,
         vertex_index: usize,
@@ -431,6 +437,15 @@ pub(crate) enum ScenePointBinding {
     Coordinate {
         name: String,
         expr: FunctionExpr,
+    },
+    CustomTransform {
+        source_index: usize,
+        origin_index: usize,
+        axis_end_index: usize,
+        distance_expr: FunctionExpr,
+        angle_expr: FunctionExpr,
+        distance_raw_scale: f64,
+        angle_degrees_scale: f64,
     },
 }
 
@@ -595,5 +610,12 @@ pub(crate) enum TextLabelBinding {
         point_index: usize,
         point_name: String,
         circle_name: String,
+    },
+    CustomTransformValue {
+        point_index: usize,
+        expr_label: String,
+        expr: FunctionExpr,
+        value_scale: f64,
+        value_suffix: String,
     },
 }

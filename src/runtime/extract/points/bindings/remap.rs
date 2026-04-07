@@ -11,7 +11,9 @@ pub(crate) fn remap_label_bindings(
         let Some(binding) = label.binding.as_mut() else {
             continue;
         };
-        if let TextLabelBinding::PointExpressionValue { point_index, .. } = binding {
+        if let TextLabelBinding::PointExpressionValue { point_index, .. }
+        | TextLabelBinding::CustomTransformValue { point_index, .. } = binding
+        {
             let Some(mapped_index) = group_to_point_index
                 .get(*point_index)
                 .and_then(|mapped_index| *mapped_index)
@@ -29,6 +31,7 @@ pub(crate) fn remap_label_bindings(
             TextLabelBinding::PolygonBoundaryParameter { point_index, .. } => point_index,
             TextLabelBinding::SegmentParameter { point_index, .. } => point_index,
             TextLabelBinding::CircleParameter { point_index, .. } => point_index,
+            TextLabelBinding::CustomTransformValue { .. } => unreachable!(),
             TextLabelBinding::PointExpressionValue { .. } => unreachable!(),
         };
         let Some(mapped_index) = group_to_point_index
@@ -594,6 +597,16 @@ pub(crate) fn remap_line_bindings(
                 *source_index = mapped_source_index;
                 *line_start_index = mapped_line_start_index;
                 *line_end_index = mapped_line_end_index;
+            }
+            LineBinding::CustomTransformTrace { point_index, .. } => {
+                let Some(mapped_point_index) = group_to_point_index
+                    .get(*point_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                *point_index = mapped_point_index;
             }
             LineBinding::RotateEdge {
                 center_index,

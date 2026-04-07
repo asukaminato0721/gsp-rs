@@ -87,6 +87,7 @@ define_group_kinds! {
     CartesianOffsetPoint = 17,
     PolarOffsetPoint = 21,
     DerivedSegment24 = 24,
+    CustomTransformPoint = 26,
     Rotation = 27,
     ParameterRotation = 29,
     Scale = 30,
@@ -120,6 +121,7 @@ define_group_kinds! {
     ParameterAnchor = 94,
     ParameterControlledPoint = 95,
     CoordinateTrace = 97,
+    CustomTransformTrace = 102,
     AngleMarker = 113,
     SegmentMarker = 121,
 }

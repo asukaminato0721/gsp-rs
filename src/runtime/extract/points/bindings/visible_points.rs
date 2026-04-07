@@ -1,6 +1,7 @@
 use super::{
     CoordinatePoint, GspFile, ObjectGroup, ParameterControlledPoint, PointRecord,
     RawPointConstraint, TransformBindingKind, decode_coordinate_point,
+    decode_custom_transform_binding,
     decode_parameter_controlled_point, decode_parameter_rotation_binding, decode_point_constraint,
     decode_reflection_anchor_raw, decode_transform_binding, decode_translated_point_constraint,
     reflection_line_group_indices, translation_point_pair_group_indices,
@@ -113,6 +114,36 @@ pub(crate) fn collect_visible_points(
                 decode_coordinate_point(file, groups, group, graph)
                     .map(|point| scene_point_from_coordinate(point, visible))
             }
+            crate::format::GroupKind::CustomTransformPoint => anchors
+                .get(index)
+                .cloned()
+                .flatten()
+                .and_then(|position| {
+                    let binding = decode_custom_transform_binding(file, groups, group.ordinal)?;
+                    let source_index = group_to_point_index
+                        .get(binding.source_group_index)
+                        .and_then(|point_index| *point_index)?;
+                    let origin_index = group_to_point_index
+                        .get(binding.origin_group_index)
+                        .and_then(|point_index| *point_index)?;
+                    let axis_end_index = group_to_point_index
+                        .get(binding.axis_end_group_index)
+                        .and_then(|point_index| *point_index)?;
+                    Some(ScenePoint {
+                        position,
+                        visible,
+                        constraint: ScenePointConstraint::Free,
+                        binding: Some(ScenePointBinding::CustomTransform {
+                            source_index,
+                            origin_index,
+                            axis_end_index,
+                            distance_expr: binding.distance_expr,
+                            angle_expr: binding.angle_expr,
+                            distance_raw_scale: binding.distance_raw_scale,
+                            angle_degrees_scale: binding.angle_degrees_scale,
+                        }),
+                    })
+                }),
             crate::format::GroupKind::Reflection => {
                 decode_reflection_anchor_raw(file, groups, group, anchors).and_then(|position| {
                     let path = find_indexed_path(file, group)?;

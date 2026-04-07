@@ -235,6 +235,48 @@ fn preserves_circular_segment_boundary_point_interactivity() {
 }
 
 #[test]
+fn preserves_custom_transform_point_interactivity() {
+    let data = include_bytes!("../../../tests/fixtures/未实现的系统功能/自定义变换.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.points.len(), 4, "expected custom transform point Q");
+    assert!(
+        scene.lines.iter().any(|line| line.points.len() > 100),
+        "expected sampled custom transform trace"
+    );
+    assert!(
+        scene.labels.iter().any(|label| label.text == "Q"),
+        "expected custom transform point label"
+    );
+    assert!(
+        scene
+            .labels
+            .iter()
+            .any(|label| label.text.contains("1厘米") || label.text.contains("100°")),
+        "expected payload-derived custom transform expression labels"
+    );
+    assert!(matches!(
+        &scene.points[3].binding,
+        Some(ScenePointBinding::CustomTransform {
+            source_index,
+            ..
+        }) if *source_index == 2
+    ));
+    let (source_t, origin_index) = match scene.points[2].constraint {
+        ScenePointConstraint::OnSegment { t, start_index, .. } => (t, start_index),
+        ref constraint => panic!("expected source point to stay constrained on segment, got {constraint:?}"),
+    };
+    let origin = &scene.points[origin_index];
+    assert!(
+        scene.points[3].position.x > origin.position.x
+            && scene.points[3].position.y < origin.position.y
+            && source_t > 0.0,
+        "expected payload-defined custom transform to place Q above/right of O using P's normalized parameter"
+    );
+}
+
+#[test]
 fn preserves_polygon_in_poly_gsp() {
     let data = include_bytes!("../../../tests/fixtures/gsp/static/poly.gsp");
     let file = GspFile::parse(data).expect("fixture parses");

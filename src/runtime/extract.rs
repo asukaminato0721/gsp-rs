@@ -21,13 +21,15 @@ use self::graph::{collect_saved_viewport, detect_graph_transform, has_graph_clas
 use self::images::collect_scene_images;
 use self::labels::{
     PendingLabelHotspot, collect_circle_parameter_labels, collect_coordinate_labels,
-    collect_label_iterations, collect_labels, collect_polygon_parameter_labels,
+    collect_custom_transform_expression_labels, collect_label_iterations, collect_labels,
+    collect_polygon_parameter_labels,
     collect_segment_parameter_labels, compute_iteration_labels, resolve_label_hotspots,
 };
 use self::points::{
     TransformBindingKind, collect_non_graph_parameters, collect_point_iteration_points,
     collect_point_objects, collect_visible_points, decode_line_midpoint_anchor_raw,
-    decode_offset_anchor_raw, decode_parameter_controlled_anchor_raw,
+    decode_offset_anchor_raw,
+    decode_parameter_controlled_anchor_raw,
     decode_parameter_rotation_anchor_raw, decode_parameter_rotation_binding,
     decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,
     decode_point_pair_translation_anchor_raw, decode_reflection_anchor_raw,
@@ -403,6 +405,11 @@ fn collect_scene_labels(
         &analysis.raw_anchors,
     ));
     labels.extend(collect_segment_parameter_labels(file, groups));
+    labels.extend(collect_custom_transform_expression_labels(
+        file,
+        groups,
+        &analysis.raw_anchors,
+    ));
     labels.extend(collect_circle_parameter_labels(
         file,
         groups,

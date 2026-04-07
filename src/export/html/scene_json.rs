@@ -448,6 +448,17 @@ enum LineBindingJson {
         #[serde(rename = "lineEndIndex")]
         line_end_index: usize,
     },
+    #[serde(rename = "custom-transform-trace")]
+    CustomTransformTrace {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+        #[serde(rename = "xMin")]
+        x_min: f64,
+        #[serde(rename = "xMax")]
+        x_max: f64,
+        #[serde(rename = "sampleCount")]
+        sample_count: usize,
+    },
     #[serde(rename = "rotate-edge")]
     RotateEdge {
         #[serde(rename = "centerIndex")]
@@ -602,6 +613,17 @@ impl LineBindingJson {
                 source_index: *source_index,
                 line_start_index: *line_start_index,
                 line_end_index: *line_end_index,
+            },
+            LineBinding::CustomTransformTrace {
+                point_index,
+                x_min,
+                x_max,
+                sample_count,
+            } => Self::CustomTransformTrace {
+                point_index: *point_index,
+                x_min: *x_min,
+                x_max: *x_max,
+                sample_count: *sample_count,
             },
             LineBinding::RotateEdge {
                 center_index,
@@ -1084,6 +1106,18 @@ enum LabelBindingJson {
         #[serde(rename = "circleName")]
         circle_name: String,
     },
+    #[serde(rename = "custom-transform-value")]
+    CustomTransformValue {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+        #[serde(rename = "exprLabel")]
+        expr_label: String,
+        expr: FunctionExprJson,
+        #[serde(rename = "valueScale")]
+        value_scale: f64,
+        #[serde(rename = "valueSuffix")]
+        value_suffix: String,
+    },
 }
 
 impl LabelBindingJson {
@@ -1143,6 +1177,19 @@ impl LabelBindingJson {
                 point_index: *point_index,
                 point_name: point_name.clone(),
                 circle_name: circle_name.clone(),
+            },
+            TextLabelBinding::CustomTransformValue {
+                point_index,
+                expr_label,
+                expr,
+                value_scale,
+                value_suffix,
+            } => Self::CustomTransformValue {
+                point_index: *point_index,
+                expr_label: expr_label.clone(),
+                expr: FunctionExprJson::from_expr(expr),
+                value_scale: *value_scale,
+                value_suffix: value_suffix.clone(),
             },
         }
     }
@@ -1492,6 +1539,23 @@ enum PointBindingJson {
         name: String,
         expr: FunctionExprJson,
     },
+    #[serde(rename = "custom-transform")]
+    CustomTransform {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        #[serde(rename = "originIndex")]
+        origin_index: usize,
+        #[serde(rename = "axisEndIndex")]
+        axis_end_index: usize,
+        #[serde(rename = "distanceExpr")]
+        distance_expr: FunctionExprJson,
+        #[serde(rename = "angleExpr")]
+        angle_expr: FunctionExprJson,
+        #[serde(rename = "distanceRawScale")]
+        distance_raw_scale: f64,
+        #[serde(rename = "angleDegreesScale")]
+        angle_degrees_scale: f64,
+    },
 }
 
 impl PointBindingJson {
@@ -1550,6 +1614,23 @@ impl PointBindingJson {
             ScenePointBinding::Coordinate { name, expr } => Self::Coordinate {
                 name: name.clone(),
                 expr: FunctionExprJson::from_expr(expr),
+            },
+            ScenePointBinding::CustomTransform {
+                source_index,
+                origin_index,
+                axis_end_index,
+                distance_expr,
+                angle_expr,
+                distance_raw_scale,
+                angle_degrees_scale,
+            } => Self::CustomTransform {
+                source_index: *source_index,
+                origin_index: *origin_index,
+                axis_end_index: *axis_end_index,
+                distance_expr: FunctionExprJson::from_expr(distance_expr),
+                angle_expr: FunctionExprJson::from_expr(angle_expr),
+                distance_raw_scale: *distance_raw_scale,
+                angle_degrees_scale: *angle_degrees_scale,
             },
         }
     }

@@ -48,6 +48,7 @@ pub(super) fn collect_labels(
         let kind = group.header.kind();
         match kind {
             crate::format::GroupKind::Point
+            | crate::format::GroupKind::CustomTransformPoint
             | crate::format::GroupKind::Translation
             | crate::format::GroupKind::Reflection
             | crate::format::GroupKind::Rotation
@@ -87,6 +88,7 @@ pub(super) fn collect_labels(
                             && matches!(
                                 kind,
                                 crate::format::GroupKind::Point
+                                    | crate::format::GroupKind::CustomTransformPoint
                                     | crate::format::GroupKind::Translation
                                     | crate::format::GroupKind::Reflection
                                     | crate::format::GroupKind::Rotation
@@ -558,6 +560,101 @@ pub(super) fn collect_circle_parameter_labels(
             })
         })
         .collect()
+}
+
+pub(super) fn collect_custom_transform_expression_labels(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+) -> Vec<TextLabel> {
+    groups
+        .iter()
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::CustomTransformTrace)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            if path.refs.len() < 6 {
+                return None;
+            }
+            let source_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
+            let parameter_anchor_group = groups.get(path.refs.get(3)?.checked_sub(1)?)?;
+            let distance_expr_group = groups.get(path.refs.get(4)?.checked_sub(1)?)?;
+            let angle_expr_group = groups.get(path.refs.get(5)?.checked_sub(1)?)?;
+            let base_label = custom_transform_parameter_anchor_label(file, groups, parameter_anchor_group)?;
+            let t = match decode_point_constraint(file, groups, source_group, Some(anchors), &None)? {
+                RawPointConstraint::Segment(constraint) => constraint.t,
+                _ => return None,
+            };
+
+            let mut labels = Vec::new();
+            for (expr_group, suffix, multiplier_text, display_scale, value_suffix, decimals) in [
+                (distance_expr_group, custom_transform_expr_suffix(file, distance_expr_group), "1厘米", 1.0, " 厘米", 4usize),
+                (angle_expr_group, custom_transform_expr_suffix(file, angle_expr_group), "100°", 100.0, "°", 5usize),
+            ] {
+                let suffix_code = suffix?;
+                if !matches!(suffix_code, 0x0201 | 0x0101) {
+                    continue;
+                }
+                let anchor = decode_0907_anchor(file, expr_group)?;
+                let expr = decode_function_expr(file, groups, expr_group)?;
+                let value = evaluate_expr_with_parameters(
+                    &expr,
+                    t,
+                    &BTreeMap::from([(format!("__param_anchor_{}", parameter_anchor_group.ordinal), t)]),
+                )? * display_scale;
+                labels.push(TextLabel {
+                    anchor,
+                    text: format!("{base_label}·{multiplier_text} = {value:.decimals$}{value_suffix}"),
+                    color: [30, 30, 30, 255],
+                    binding: Some(TextLabelBinding::CustomTransformValue {
+                        point_index: path.refs.get(2)?.checked_sub(1)?,
+                        expr_label: format!("{base_label}·{multiplier_text}"),
+                        expr,
+                        value_scale: display_scale,
+                        value_suffix: value_suffix.to_string(),
+                    }),
+                    screen_space: false,
+                    hotspots: Vec::new(),
+                });
+            }
+            Some(labels)
+        })
+        .flatten()
+        .collect()
+}
+
+fn custom_transform_parameter_anchor_label(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<String> {
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() < 2 {
+        return None;
+    }
+    let point_group = groups.get(path.refs[0].checked_sub(1)?)?;
+    let segment_group = groups.get(path.refs[1].checked_sub(1)?)?;
+    if (point_group.header.kind()) != crate::format::GroupKind::PointConstraint
+        || (segment_group.header.kind()) != crate::format::GroupKind::Segment
+    {
+        return None;
+    }
+    Some(format!(
+        "{}在{}上的t值",
+        decode_label_name(file, point_group)?,
+        segment_name(file, groups, segment_group)?
+    ))
+}
+
+fn custom_transform_expr_suffix(file: &GspFile, expr_group: &ObjectGroup) -> Option<u16> {
+    let payload = expr_group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x0907)
+        .map(|record| record.payload(&file.data))?;
+    payload
+        .chunks_exact(2)
+        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+        .last()
 }
 
 pub(super) fn collect_label_iterations(

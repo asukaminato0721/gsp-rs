@@ -10,6 +10,9 @@ use crate::runtime::scene::{
 };
 
 use super::find_indexed_path;
+use super::points::{
+    custom_transform_expression_parameter_map, custom_transform_trace_parameter,
+};
 
 pub(super) fn collect_point_traces(
     file: &GspFile,
@@ -19,7 +22,13 @@ pub(super) fn collect_point_traces(
 ) -> Vec<crate::runtime::scene::LineShape> {
     groups
         .iter()
-        .filter(|group| (group.header.kind()) == crate::format::GroupKind::PointTrace)
+        .filter(|group| {
+            matches!(
+                group.header.kind(),
+                crate::format::GroupKind::PointTrace
+                    | crate::format::GroupKind::CustomTransformTrace
+            )
+        })
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let target_group_index = path.refs.first()?.checked_sub(1)?;
@@ -56,7 +65,16 @@ pub(super) fn collect_point_traces(
                 points,
                 color: crate::runtime::geometry::color_from_style(group.header.style_b),
                 dashed: false,
-                binding: None,
+                binding: if (group.header.kind()) == crate::format::GroupKind::CustomTransformTrace {
+                    Some(crate::runtime::scene::LineBinding::CustomTransformTrace {
+                        point_index: target_group_index,
+                        x_min: descriptor.x_min,
+                        x_max: descriptor.x_max,
+                        sample_count: descriptor.sample_count,
+                    })
+                } else {
+                    None
+                },
             })
         })
         .collect()
@@ -170,6 +188,38 @@ fn resolve_trace_point(
             let start = resolve_trace_point(points, *start_index, visiting)?;
             let end = resolve_trace_point(points, *end_index, visiting)?;
             Some(lerp_point(&start, &end, 0.5))
+        }
+        Some(ScenePointBinding::CustomTransform {
+            source_index,
+            origin_index,
+            axis_end_index,
+            distance_expr,
+            angle_expr,
+            distance_raw_scale,
+            angle_degrees_scale,
+        }) => {
+            let source_point = points.get(*source_index)?;
+            let t = custom_transform_trace_parameter(source_point)?;
+            let origin = resolve_trace_point(points, *origin_index, visiting)?;
+            let axis_end = resolve_trace_point(points, *axis_end_index, visiting)?;
+            let parameters =
+                custom_transform_expression_parameter_map(distance_expr, angle_expr, t);
+            let distance = crate::runtime::functions::evaluate_expr_with_parameters(
+                distance_expr,
+                t,
+                &parameters,
+            )? * distance_raw_scale;
+            let angle_degrees = crate::runtime::functions::evaluate_expr_with_parameters(
+                angle_expr,
+                t,
+                &parameters,
+            )? * angle_degrees_scale;
+            let base_angle = (-(axis_end.y - origin.y)).atan2(axis_end.x - origin.x).to_degrees();
+            let radians = (base_angle + angle_degrees).to_radians();
+            Some(PointRecord {
+                x: origin.x + distance * radians.cos(),
+                y: origin.y - distance * radians.sin(),
+            })
         }
         _ => match &point.constraint {
             ScenePointConstraint::Free => Some(point.position.clone()),
