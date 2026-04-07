@@ -816,8 +816,8 @@ fn preserves_intersection_labels_and_payload_text_colors_in_triangle_centers_gsp
         .expect("expected point label A");
     assert_eq!(
         point_a.color,
-        [255, 0, 0, 255],
-        "expected point labels to preserve payload color"
+        [30, 30, 30, 255],
+        "expected geometric point labels to keep black default text color"
     );
 
     let caption = scene
@@ -831,12 +831,27 @@ fn preserves_intersection_labels_and_payload_text_colors_in_triangle_centers_gsp
         "expected caption to preserve payload color"
     );
 
+    let center_labels = scene
+        .labels
+        .iter()
+        .filter(|label| matches!(label.text.as_str(), "G" | "O" | "H"))
+        .collect::<Vec<_>>();
+    assert!(
+        center_labels
+            .iter()
+            .all(|label| label.color == [30, 30, 30, 255]),
+        "expected constructed center labels to keep black default text color"
+    );
     assert!(
         scene
             .points
             .iter()
             .any(|point| point.color == [0, 255, 0, 255]),
         "expected triangle-center points to preserve green payload color"
+    );
+    assert!(
+        scene.labels.iter().any(|label| label.text == "M"),
+        "expected midpoint label M from payload-marked midpoint"
     );
 }
 
@@ -868,6 +883,7 @@ fn preserves_dashed_segment_pattern_from_payload_style() {
         "expected perpendicular helper lines to keep dashed style"
     );
 }
+
 
 #[test]
 fn preserves_point_hidden_gsp() {

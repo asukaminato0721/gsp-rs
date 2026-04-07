@@ -55,6 +55,24 @@ fn supports_payload_label(kind: crate::format::GroupKind) -> bool {
     )
 }
 
+fn midpoint_has_explicit_label(group: &ObjectGroup) -> bool {
+    (group.header.style_c >> 16) != 0
+}
+
+fn label_color_for_group(group: &ObjectGroup) -> [u8; 4] {
+    match group.header.kind() {
+        crate::format::GroupKind::Point
+            if !group
+                .records
+                .iter()
+                .any(|record| record.record_type == 0x0899) =>
+        {
+            color_from_style(group.header.style_b)
+        }
+        _ => [30, 30, 30, 255],
+    }
+}
+
 pub(super) fn collect_labels(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -72,6 +90,46 @@ pub(super) fn collect_labels(
     for group in groups {
         let kind = group.header.kind();
         match kind {
+            crate::format::GroupKind::Midpoint if midpoint_has_explicit_label(group) => {
+                let rich_text = decode_group_rich_text(file, group);
+                let text = rich_text
+                    .as_ref()
+                    .map(|content| content.text.clone())
+                    .or_else(|| decode_group_label_text(file, group))
+                    .or_else(|| decode_label_name(file, group));
+                if let Some(text) = text
+                    && let Some(anchor) = decode_label_anchor(file, group, anchors)
+                {
+                    let label_index = labels.len();
+                    label_group_to_index.insert(group.ordinal, label_index);
+                    labels.push(TextLabel {
+                        anchor,
+                        text,
+                        color: [30, 30, 30, 255],
+                        binding: None,
+                        screen_space: false,
+                        hotspots: Vec::new(),
+                    });
+                    if let (Some(content), Some(path)) =
+                        (rich_text.as_ref(), find_indexed_path(file, group))
+                    {
+                        for hotspot in &content.hotspots {
+                            if let Some(group_ordinal) =
+                                path.refs.get(hotspot.path_slot.saturating_sub(1)).copied()
+                            {
+                                pending_hotspots.push(PendingLabelHotspot {
+                                    label_index,
+                                    line: hotspot.line,
+                                    start: hotspot.start,
+                                    end: hotspot.end,
+                                    text: hotspot.text.clone(),
+                                    group_ordinal,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
             kind if supports_payload_label(kind) => {
                 if kind == crate::format::GroupKind::Point
                     && decode_link_button_url(file, group).is_some()
@@ -126,7 +184,7 @@ pub(super) fn collect_labels(
                         labels.push(TextLabel {
                             anchor,
                             text,
-                            color: color_from_style(group.header.style_b),
+                            color: label_color_for_group(group),
                             binding: None,
                             screen_space: false,
                             hotspots: Vec::new(),
