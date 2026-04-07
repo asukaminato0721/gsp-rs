@@ -854,6 +854,24 @@
         const scaled = scaleAround(source, center, point.binding.factor);
         point.x = scaled.x;
         point.y = scaled.y;
+      } else if (point.binding?.kind === "custom-transform") {
+        const value = parameterValueFromPoint(scene, point.binding.sourceIndex);
+        if (!Number.isFinite(value)) return;
+        const exprParameters = new Map(parameters);
+        const names = new Set();
+        collectExprParameterNames(point.binding.distanceExpr, names);
+        collectExprParameterNames(point.binding.angleExpr, names);
+        names.forEach((name) => exprParameters.set(name, value));
+        const distanceValue = evaluateExpr(point.binding.distanceExpr, value, exprParameters);
+        const angleValue = evaluateExpr(point.binding.angleExpr, value, exprParameters);
+        const origin = env.resolveScenePoint(point.binding.originIndex);
+        const axisEnd = env.resolveScenePoint(point.binding.axisEndIndex);
+        if (distanceValue === null || angleValue === null || !origin || !axisEnd) return;
+        const baseAngle = Math.atan2(-(axisEnd.y - origin.y), axisEnd.x - origin.x) * 180 / Math.PI;
+        const radians = (baseAngle + angleValue * point.binding.angleDegreesScale) * Math.PI / 180;
+        const distance = distanceValue * point.binding.distanceRawScale;
+        point.x = origin.x + distance * Math.cos(radians);
+        point.y = origin.y - distance * Math.sin(radians);
       }
     });
 
