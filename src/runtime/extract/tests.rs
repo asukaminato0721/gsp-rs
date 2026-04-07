@@ -195,6 +195,39 @@ fn preserves_translated_points_in_point_translation_gsp() {
 }
 
 #[test]
+fn preserves_circular_segment_boundary_point_interactivity() {
+    let data = include_bytes!("../../../tests/fixtures/未实现的系统功能/弓形周界动点.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    let boundary_point = scene
+        .points
+        .iter()
+        .find(|point| matches!(point.constraint, ScenePointConstraint::OnPolyline { .. }))
+        .expect("expected boundary point constrained to rendered perimeter");
+    match &boundary_point.constraint {
+        ScenePointConstraint::OnPolyline {
+            points,
+            segment_index,
+            t,
+            ..
+        } => {
+            assert!(points.len() >= 4, "expected sampled boundary polyline");
+            assert!(
+                *segment_index < points.len() - 1,
+                "segment index should reference a valid boundary segment"
+            );
+            assert!((0.0..=1.0).contains(t), "polyline parameter should stay normalized");
+        }
+        _ => unreachable!(),
+    }
+    assert!(
+        scene.lines.iter().any(|line| line.points.len() >= 4),
+        "expected perimeter shape to be rendered as an interactive polyline"
+    );
+}
+
+#[test]
 fn preserves_polygon_in_poly_gsp() {
     let data = include_bytes!("../../../tests/fixtures/gsp/static/poly.gsp");
     let file = GspFile::parse(data).expect("fixture parses");

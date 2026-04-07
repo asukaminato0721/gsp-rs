@@ -113,6 +113,8 @@ define_group_kinds! {
     ArcOnCircle = 79,
     CenterArc = 80,
     ThreePointArc = 81,
+    SectorBoundary = 82,
+    CircularSegmentBoundary = 83,
     RegularPolygonIteration = 89,
     LabelIterationSeed = 90,
     ParameterAnchor = 94,

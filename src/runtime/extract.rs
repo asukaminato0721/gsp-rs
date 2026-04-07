@@ -45,7 +45,7 @@ use self::shapes::{
     collect_reflected_line_shapes, collect_reflected_polygon_shapes, collect_rotated_circle_shapes,
     collect_rotated_line_shapes, collect_rotated_polygon_shapes,
     collect_rotational_iteration_lines, collect_scaled_line_shapes, collect_segment_marker_shapes,
-    collect_three_point_arc_shapes, collect_transformed_circle_shapes,
+    collect_arc_boundary_shapes, collect_three_point_arc_shapes, collect_transformed_circle_shapes,
     collect_transformed_polygon_shapes, collect_translated_line_shapes,
     collect_translated_polygon_shapes,
 };
@@ -216,6 +216,7 @@ fn collect_scene_shapes(
         !analysis.graph_mode && !analysis.large_non_graph,
         &suppressed_carried_polygon_segments,
     );
+    let boundary_lines = collect_arc_boundary_shapes(file, groups, &analysis.raw_anchors);
     let direct_lines = collect_bound_line_shapes(
         file,
         groups,
@@ -317,7 +318,7 @@ fn collect_scene_shapes(
     let synthetic_axes = synthesize_axes_if_needed(analysis, &axes);
 
     CollectedShapes {
-        polylines,
+        polylines: polylines.into_iter().chain(boundary_lines).collect(),
         direct_lines,
         rays,
         translated_lines,

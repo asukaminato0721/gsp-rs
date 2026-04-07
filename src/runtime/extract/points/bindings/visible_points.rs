@@ -88,7 +88,7 @@ pub(crate) fn collect_visible_points(
                 })
             }
             crate::format::GroupKind::PointConstraint => {
-                decode_point_constraint(file, groups, group, graph).and_then(|constraint| {
+                decode_point_constraint(file, groups, group, Some(anchors), graph).and_then(|constraint| {
                     scene_point_from_constraint(
                         index,
                         anchors,

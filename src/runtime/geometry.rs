@@ -386,6 +386,56 @@ pub(crate) fn point_on_circle_arc(
     point_on_three_point_arc(&start, &mid, &end, t)
 }
 
+pub(crate) fn sample_three_point_arc(
+    start: &PointRecord,
+    mid: &PointRecord,
+    end: &PointRecord,
+    subdivisions: usize,
+) -> Option<Vec<PointRecord>> {
+    let segment_count = subdivisions.max(2);
+    (0..=segment_count)
+        .map(|index| point_on_three_point_arc(start, mid, end, index as f64 / segment_count as f64))
+        .collect()
+}
+
+pub(crate) fn locate_polyline_parameter_by_length(
+    points: &[PointRecord],
+    normalized_t: f64,
+) -> Option<(usize, f64)> {
+    if points.len() < 2 {
+        return None;
+    }
+
+    let lengths = points
+        .windows(2)
+        .map(|segment| {
+            let dx = segment[1].x - segment[0].x;
+            let dy = segment[1].y - segment[0].y;
+            (dx * dx + dy * dy).sqrt()
+        })
+        .collect::<Vec<_>>();
+    let total_length: f64 = lengths.iter().sum();
+    if total_length <= 1e-9 {
+        return None;
+    }
+
+    let target = normalized_t.clamp(0.0, 1.0) * total_length;
+    let mut traveled = 0.0;
+    for (segment_index, length) in lengths.iter().enumerate() {
+        if traveled + length >= target || segment_index == lengths.len() - 1 {
+            let local_t = if *length <= 1e-9 {
+                0.0
+            } else {
+                ((target - traveled) / length).clamp(0.0, 1.0)
+            };
+            return Some((segment_index, local_t));
+        }
+        traveled += length;
+    }
+
+    None
+}
+
 pub(crate) fn arc_on_circle_control_points(
     center: &PointRecord,
     start: &PointRecord,

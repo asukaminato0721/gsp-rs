@@ -9,7 +9,9 @@ use super::{
 };
 use crate::format::{read_f64, read_u32};
 use crate::runtime::extract::decode::{is_circle_group_kind, resolve_circle_points_raw};
-use crate::runtime::geometry::arc_on_circle_control_points;
+use crate::runtime::geometry::{arc_on_circle_control_points, sample_three_point_arc};
+
+const ARC_BOUNDARY_SUBDIVISIONS: usize = 48;
 
 pub(crate) fn collect_line_shapes(
     file: &GspFile,
@@ -123,6 +125,32 @@ pub(crate) fn collect_segment_marker_shapes(
                     t,
                     marker_class,
                 }),
+            })
+        })
+        .collect()
+}
+
+pub(crate) fn collect_arc_boundary_shapes(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+) -> Vec<LineShape> {
+    groups
+        .iter()
+        .filter(|group| {
+            matches!(
+                group.header.kind(),
+                crate::format::GroupKind::SectorBoundary
+                    | crate::format::GroupKind::CircularSegmentBoundary
+            )
+        })
+        .filter_map(|group| {
+            let points = resolve_arc_boundary_points(file, groups, anchors, group)?;
+            has_distinct_points(&points).then_some(LineShape {
+                points,
+                color: color_from_style(group.header.style_b),
+                dashed: false,
+                binding: None,
             })
         })
         .collect()
@@ -757,6 +785,98 @@ pub(crate) fn collect_three_point_arc_shapes(
             })
         })
         .collect()
+}
+
+fn resolve_arc_boundary_points(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group: &ObjectGroup,
+) -> Option<Vec<PointRecord>> {
+    let (center, [start, mid, end], starts_from_end) =
+        resolve_boundary_arc_components(file, groups, anchors, group)?;
+    let arc_points = sample_three_point_arc(&start, &mid, &end, ARC_BOUNDARY_SUBDIVISIONS)?;
+    match group.header.kind() {
+        crate::format::GroupKind::SectorBoundary => {
+            let center = center?;
+            let mut points = if starts_from_end {
+                vec![end.clone(), center.clone(), start.clone()]
+            } else {
+                vec![center.clone(), start.clone()]
+            };
+            points.extend(arc_points.into_iter().skip(1));
+            if !starts_from_end {
+                points.push(center);
+            }
+            Some(points)
+        }
+        crate::format::GroupKind::CircularSegmentBoundary => {
+            let mut points = if starts_from_end {
+                vec![end.clone(), start.clone()]
+            } else {
+                vec![start.clone()]
+            };
+            points.extend(arc_points.into_iter().skip(1));
+            if !starts_from_end {
+                points.push(start);
+            }
+            Some(points)
+        }
+        _ => None,
+    }
+}
+
+fn resolve_boundary_arc_components(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group: &ObjectGroup,
+) -> Option<(Option<PointRecord>, [PointRecord; 3], bool)> {
+    let path = find_indexed_path(file, group)?;
+    let arc_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+    match arc_group.header.kind() {
+        crate::format::GroupKind::CenterArc => {
+            let arc_path = find_indexed_path(file, arc_group)?;
+            if arc_path.refs.len() != 3 {
+                return None;
+            }
+            let center = anchors.get(arc_path.refs[0].checked_sub(1)?)?.clone()?;
+            let start = anchors.get(arc_path.refs[1].checked_sub(1)?)?.clone()?;
+            let end = anchors.get(arc_path.refs[2].checked_sub(1)?)?.clone()?;
+            Some((
+                Some(center.clone()),
+                arc_on_circle_control_points(&center, &start, &end)?,
+                true,
+            ))
+        }
+        crate::format::GroupKind::ArcOnCircle => {
+            let arc_path = find_indexed_path(file, arc_group)?;
+            if arc_path.refs.len() != 3 {
+                return None;
+            }
+            let circle_group = groups.get(arc_path.refs[0].checked_sub(1)?)?;
+            let (center, _) = resolve_circle_points_raw(file, groups, anchors, circle_group)?;
+            let start = anchors.get(arc_path.refs[1].checked_sub(1)?)?.clone()?;
+            let end = anchors.get(arc_path.refs[2].checked_sub(1)?)?.clone()?;
+            Some((
+                Some(center.clone()),
+                arc_on_circle_control_points(&center, &start, &end)?,
+                false,
+            ))
+        }
+        crate::format::GroupKind::ThreePointArc => {
+            let arc_path = find_indexed_path(file, arc_group)?;
+            if arc_path.refs.len() != 3 {
+                return None;
+            }
+            let start = anchors.get(arc_path.refs[0].checked_sub(1)?)?.clone()?;
+            let mid = anchors.get(arc_path.refs[1].checked_sub(1)?)?.clone()?;
+            let end = anchors.get(arc_path.refs[2].checked_sub(1)?)?.clone()?;
+            let center = three_point_arc_geometry(&start, &mid, &end).map(|geometry| geometry.center);
+            Some((center, [start, mid, end], false))
+        }
+        _ => None,
+    }
 }
 
 pub(crate) fn collect_derived_segments(

@@ -501,4 +501,17 @@ mod tests {
         assert!(html.contains("\"text\":\"B'\""));
         assert!(html.contains("\"text\":\"C'\""));
     }
+
+    #[test]
+    fn exports_circular_segment_boundary_fixture_with_polyline_constraint() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/未实现的系统功能/弓形周界动点.gsp"),
+            800,
+            600,
+        )
+        .expect("circular segment boundary fixture should compile");
+
+        assert!(html.contains("\"kind\":\"polyline\""));
+        assert!(html.contains("\"lines\":[{\"points\":["));
+    }
 }

@@ -631,7 +631,7 @@ pub(crate) fn decode_point_constraint_anchor(
     graph: Option<&GraphTransform>,
 ) -> Option<PointRecord> {
     let graph = graph.cloned();
-    match decode_point_constraint(file, groups, group, &graph)? {
+    match decode_point_constraint(file, groups, group, Some(anchors), &graph)? {
         RawPointConstraint::Segment(constraint) => {
             let start = anchors.get(constraint.start_group_index)?.clone()?;
             let end = anchors.get(constraint.end_group_index)?.clone()?;

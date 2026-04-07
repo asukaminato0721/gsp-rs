@@ -429,7 +429,7 @@ pub(super) fn collect_polygon_parameter_labels(
                 vertex_group_indices,
                 edge_index,
                 t,
-            } = decode_point_constraint(file, groups, point_group, &None)?
+            } = decode_point_constraint(file, groups, point_group, None, &None)?
             else {
                 return None;
             };
@@ -481,7 +481,7 @@ pub(super) fn collect_segment_parameter_labels(
                 .find(|record| record.record_type == 0x0903)
                 .and_then(|record| decode_text_anchor(record.payload(&file.data)))?;
             let RawPointConstraint::Segment(constraint) =
-                decode_point_constraint(file, groups, point_group, &None)?
+                decode_point_constraint(file, groups, point_group, None, &None)?
             else {
                 return None;
             };
@@ -532,7 +532,7 @@ pub(super) fn collect_circle_parameter_labels(
                 .find(|record| record.record_type == 0x0903)
                 .and_then(|record| decode_text_anchor(record.payload(&file.data)))?;
             let RawPointConstraint::Circle(constraint) =
-                decode_point_constraint(file, groups, point_group, &None)?
+                decode_point_constraint(file, groups, point_group, None, &None)?
             else {
                 return None;
             };
