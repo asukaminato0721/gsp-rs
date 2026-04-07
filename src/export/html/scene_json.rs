@@ -4,7 +4,7 @@ use crate::runtime::functions::{
 };
 use crate::runtime::geometry::darken;
 use crate::runtime::scene::{
-    ButtonAction, IterationPointHandle, LabelIterationFamily, LineBinding, LineConstraint,
+    ArcBoundaryKind, ButtonAction, IterationPointHandle, LabelIterationFamily, LineBinding, LineConstraint,
     LineIterationFamily, PointIterationFamily, PolygonIterationFamily, Scene, SceneButton,
     ScenePointBinding, ScenePointConstraint, ShapeBinding, TextLabelBinding,
     TextLabelHotspotAction,
@@ -448,6 +448,17 @@ enum LineBindingJson {
         #[serde(rename = "lineEndIndex")]
         line_end_index: usize,
     },
+    #[serde(rename = "custom-transform-trace")]
+    CustomTransformTrace {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+        #[serde(rename = "xMin")]
+        x_min: f64,
+        #[serde(rename = "xMax")]
+        x_max: f64,
+        #[serde(rename = "sampleCount")]
+        sample_count: usize,
+    },
     #[serde(rename = "rotate-edge")]
     RotateEdge {
         #[serde(rename = "centerIndex")]
@@ -462,6 +473,22 @@ enum LineBindingJson {
         start_step: usize,
         #[serde(rename = "endStep")]
         end_step: usize,
+    },
+    #[serde(rename = "arc-boundary")]
+    ArcBoundary {
+        #[serde(rename = "hostKey")]
+        host_key: usize,
+        #[serde(rename = "boundaryKind")]
+        boundary_kind: ArcBoundaryKindJson,
+        #[serde(rename = "centerIndex", skip_serializing_if = "Option::is_none")]
+        center_index: Option<usize>,
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "midIndex", skip_serializing_if = "Option::is_none")]
+        mid_index: Option<usize>,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+        reversed: bool,
     },
 }
 
@@ -587,6 +614,17 @@ impl LineBindingJson {
                 line_start_index: *line_start_index,
                 line_end_index: *line_end_index,
             },
+            LineBinding::CustomTransformTrace {
+                point_index,
+                x_min,
+                x_max,
+                sample_count,
+            } => Self::CustomTransformTrace {
+                point_index: *point_index,
+                x_min: *x_min,
+                x_max: *x_max,
+                sample_count: *sample_count,
+            },
             LineBinding::RotateEdge {
                 center_index,
                 vertex_index,
@@ -602,6 +640,39 @@ impl LineBindingJson {
                 start_step: *start_step,
                 end_step: *end_step,
             },
+            LineBinding::ArcBoundary {
+                host_key,
+                boundary_kind,
+                center_index,
+                start_index,
+                mid_index,
+                end_index,
+                reversed,
+            } => Self::ArcBoundary {
+                host_key: *host_key,
+                boundary_kind: ArcBoundaryKindJson::from_kind(*boundary_kind),
+                center_index: *center_index,
+                start_index: *start_index,
+                mid_index: *mid_index,
+                end_index: *end_index,
+                reversed: *reversed,
+            },
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum ArcBoundaryKindJson {
+    Sector,
+    CircularSegment,
+}
+
+impl ArcBoundaryKindJson {
+    fn from_kind(kind: ArcBoundaryKind) -> Self {
+        match kind {
+            ArcBoundaryKind::Sector => Self::Sector,
+            ArcBoundaryKind::CircularSegment => Self::CircularSegment,
         }
     }
 }
@@ -1035,6 +1106,18 @@ enum LabelBindingJson {
         #[serde(rename = "circleName")]
         circle_name: String,
     },
+    #[serde(rename = "custom-transform-value")]
+    CustomTransformValue {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+        #[serde(rename = "exprLabel")]
+        expr_label: String,
+        expr: FunctionExprJson,
+        #[serde(rename = "valueScale")]
+        value_scale: f64,
+        #[serde(rename = "valueSuffix")]
+        value_suffix: String,
+    },
 }
 
 impl LabelBindingJson {
@@ -1095,6 +1178,19 @@ impl LabelBindingJson {
                 point_name: point_name.clone(),
                 circle_name: circle_name.clone(),
             },
+            TextLabelBinding::CustomTransformValue {
+                point_index,
+                expr_label,
+                expr,
+                value_scale,
+                value_suffix,
+            } => Self::CustomTransformValue {
+                point_index: *point_index,
+                expr_label: expr_label.clone(),
+                expr: FunctionExprJson::from_expr(expr),
+                value_scale: *value_scale,
+                value_suffix: value_suffix.clone(),
+            },
         }
     }
 }
@@ -1103,6 +1199,7 @@ impl LabelBindingJson {
 struct ScenePointJson {
     x: f64,
     y: f64,
+    color: [u8; 4],
     visible: bool,
     constraint: Option<PointConstraintJson>,
     binding: Option<PointBindingJson>,
@@ -1113,6 +1210,7 @@ impl ScenePointJson {
         Self {
             x: point.position.x,
             y: point.position.y,
+            color: point.color,
             visible: point.visible,
             constraint: PointConstraintJson::from_constraint(&point.constraint),
             binding: point.binding.as_ref().map(PointBindingJson::from_binding),
@@ -1443,6 +1541,23 @@ enum PointBindingJson {
         name: String,
         expr: FunctionExprJson,
     },
+    #[serde(rename = "custom-transform")]
+    CustomTransform {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        #[serde(rename = "originIndex")]
+        origin_index: usize,
+        #[serde(rename = "axisEndIndex")]
+        axis_end_index: usize,
+        #[serde(rename = "distanceExpr")]
+        distance_expr: FunctionExprJson,
+        #[serde(rename = "angleExpr")]
+        angle_expr: FunctionExprJson,
+        #[serde(rename = "distanceRawScale")]
+        distance_raw_scale: f64,
+        #[serde(rename = "angleDegreesScale")]
+        angle_degrees_scale: f64,
+    },
 }
 
 impl PointBindingJson {
@@ -1501,6 +1616,23 @@ impl PointBindingJson {
             ScenePointBinding::Coordinate { name, expr } => Self::Coordinate {
                 name: name.clone(),
                 expr: FunctionExprJson::from_expr(expr),
+            },
+            ScenePointBinding::CustomTransform {
+                source_index,
+                origin_index,
+                axis_end_index,
+                distance_expr,
+                angle_expr,
+                distance_raw_scale,
+                angle_degrees_scale,
+            } => Self::CustomTransform {
+                source_index: *source_index,
+                origin_index: *origin_index,
+                axis_end_index: *axis_end_index,
+                distance_expr: FunctionExprJson::from_expr(distance_expr),
+                angle_expr: FunctionExprJson::from_expr(angle_expr),
+                distance_raw_scale: *distance_raw_scale,
+                angle_degrees_scale: *angle_degrees_scale,
             },
         }
     }

@@ -8,6 +8,7 @@ use super::{
     decode_translated_point_anchor_raw, find_indexed_path,
 };
 use crate::runtime::extract::points::{
+    decode_custom_transform_anchor_raw,
     decode_graph_calibration_anchor_raw, decode_intersection_anchor_raw,
 };
 
@@ -44,6 +45,10 @@ pub(crate) fn collect_raw_object_anchors(
             Some(anchor)
         } else if let Some(anchor) =
             decode_point_pair_translation_anchor_raw(file, groups, group, &anchors)
+        {
+            Some(anchor)
+        } else if let Some(anchor) =
+            decode_custom_transform_anchor_raw(file, groups, group, &anchors)
         {
             Some(anchor)
         } else if let Some(anchor) = decode_reflection_anchor_raw(file, groups, group, &anchors) {

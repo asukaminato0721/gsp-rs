@@ -358,7 +358,7 @@ mod tests {
         )
         .expect("hidden-point fixture should compile");
 
-        assert!(html.contains("\"points\":[{\"x\":323.0,\"y\":217.0,\"visible\":false"));
+        assert!(html.contains("\"points\":[{\"x\":323.0,\"y\":217.0,\"color\":[255,0,0,255],\"visible\":false"));
         assert!(html.contains("\"lines\":[]"));
     }
 
@@ -500,5 +500,35 @@ mod tests {
         assert!(html.contains("\"vectorStartIndex\":0,\"vectorEndIndex\":3"));
         assert!(html.contains("\"text\":\"B'\""));
         assert!(html.contains("\"text\":\"C'\""));
+    }
+
+    #[test]
+    fn exports_circular_segment_boundary_fixture_with_polyline_constraint() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/未实现的系统功能/弓形周界动点.gsp"),
+            800,
+            600,
+        )
+        .expect("circular segment boundary fixture should compile");
+
+        assert!(html.contains("\"kind\":\"polyline\""));
+        assert!(html.contains("\"lines\":[{\"points\":["));
+    }
+
+    #[test]
+    fn exports_custom_transform_fixture_with_interactive_point_binding() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/未实现的系统功能/自定义变换.gsp"),
+            800,
+            600,
+        )
+        .expect("custom transform fixture should compile");
+
+        assert!(html.contains("\"text\":\"Q\""));
+        assert!(html.contains("\"kind\":\"custom-transform\""));
+        assert!(html.contains("\"sourceIndex\":2"));
+        assert!(html.contains("\"name\":\"__param_anchor_5\""));
+        assert!(html.contains("1厘米"));
+        assert!(html.contains("100°"));
     }
 }

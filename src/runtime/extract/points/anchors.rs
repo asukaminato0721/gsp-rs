@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use super::super::decode::find_indexed_path;
 use super::constraints::{
     RawPointConstraint, decode_parameter_controlled_point, decode_point_constraint,
@@ -11,6 +13,20 @@ use crate::runtime::geometry::{
     GraphTransform, lerp_point, point_on_circle_arc, point_on_three_point_arc, reflect_across_line,
     rotate_around,
 };
+use crate::runtime::functions::{decode_function_expr, evaluate_expr_with_parameters};
+
+const PX_PER_CM: f64 = 37.79527559055118;
+
+#[derive(Clone)]
+pub(crate) struct CustomTransformBindingDef {
+    pub(crate) source_group_index: usize,
+    pub(crate) origin_group_index: usize,
+    pub(crate) axis_end_group_index: usize,
+    pub(crate) distance_expr: crate::runtime::functions::FunctionExpr,
+    pub(crate) angle_expr: crate::runtime::functions::FunctionExpr,
+    pub(crate) distance_raw_scale: f64,
+    pub(crate) angle_degrees_scale: f64,
+}
 
 pub(crate) fn decode_graph_calibration_anchor_raw(
     group: &ObjectGroup,
@@ -376,6 +392,259 @@ pub(crate) fn decode_regular_polygon_vertex_anchor_raw(
     Some(rotate_around(&source, &center, (-360.0 / n).to_radians()))
 }
 
+pub(crate) fn decode_custom_transform_anchor_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    if (group.header.kind()) != crate::format::GroupKind::CustomTransformPoint {
+        return None;
+    }
+    let binding = decode_custom_transform_binding(file, groups, group.ordinal)?;
+    let t = decode_custom_transform_parameter(file, groups, binding.source_group_index, anchors)?;
+    resolve_custom_transform_point(anchors, &binding, t)
+}
+
+pub(crate) fn decode_custom_transform_binding(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    target_ordinal: usize,
+) -> Option<CustomTransformBindingDef> {
+    let transform_group = groups.iter().find(|candidate| {
+        (candidate.header.kind()) == crate::format::GroupKind::CustomTransformTrace
+            && find_indexed_path(file, candidate).is_some_and(|path| {
+                path.refs.first().copied() == Some(target_ordinal)
+                    || path.refs.last().copied() == Some(target_ordinal)
+            })
+    })?;
+    let path = find_indexed_path(file, transform_group)?;
+    if path.refs.len() < 6 {
+        return None;
+    }
+    let source_group_index = path.refs.get(2)?.checked_sub(1)?;
+    let (origin_group_index, axis_end_group_index) =
+        custom_transform_basis_indices(file, groups, source_group_index)
+            .or_else(|| {
+                let axis_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+                let axis_path = find_indexed_path(file, axis_group)?;
+                Some((
+                    axis_path.refs.first()?.checked_sub(1)?,
+                    axis_path.refs.get(1)?.checked_sub(1)?,
+                ))
+            })?;
+    let distance_expr_group = groups.get(path.refs.get(4)?.checked_sub(1)?)?;
+    let angle_expr_group = groups.get(path.refs.get(5)?.checked_sub(1)?)?;
+    let distance_expr = decode_function_expr(file, groups, distance_expr_group)?;
+    let angle_expr = decode_function_expr(file, groups, angle_expr_group)?;
+    Some(CustomTransformBindingDef {
+        source_group_index,
+        origin_group_index,
+        axis_end_group_index,
+        distance_expr,
+        angle_expr,
+        distance_raw_scale: decode_custom_transform_distance_scale(file, distance_expr_group)?,
+        angle_degrees_scale: decode_custom_transform_angle_scale(file, angle_expr_group)?,
+    })
+}
+
+fn custom_transform_basis_indices(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    source_group_index: usize,
+) -> Option<(usize, usize)> {
+    let source_group = groups.get(source_group_index)?;
+    match source_group.header.kind() {
+        crate::format::GroupKind::PointConstraint => {
+            let host_group = groups.get(find_indexed_path(file, source_group)?.refs.first()?.checked_sub(1)?)?;
+            if (host_group.header.kind()) != crate::format::GroupKind::Segment {
+                return None;
+            }
+            let host_path = find_indexed_path(file, host_group)?;
+            Some((
+                host_path.refs.first()?.checked_sub(1)?,
+                host_path.refs.get(1)?.checked_sub(1)?,
+            ))
+        }
+        crate::format::GroupKind::ParameterControlledPoint => {
+            let host_group = groups.get(find_indexed_path(file, source_group)?.refs.get(1)?.checked_sub(1)?)?;
+            if (host_group.header.kind()) != crate::format::GroupKind::Segment {
+                return None;
+            }
+            let host_path = find_indexed_path(file, host_group)?;
+            Some((
+                host_path.refs.first()?.checked_sub(1)?,
+                host_path.refs.get(1)?.checked_sub(1)?,
+            ))
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn resolve_custom_transform_point(
+    anchors: &[Option<PointRecord>],
+    binding: &CustomTransformBindingDef,
+    t: f64,
+) -> Option<PointRecord> {
+    let origin = anchors.get(binding.origin_group_index)?.clone()?;
+    let axis_end = anchors.get(binding.axis_end_group_index)?.clone()?;
+    let parameters = expression_parameter_map(&binding.distance_expr, &binding.angle_expr, t);
+    let distance = evaluate_expr_with_parameters(&binding.distance_expr, t, &parameters)?
+        * binding.distance_raw_scale;
+    let angle_degrees =
+        evaluate_expr_with_parameters(&binding.angle_expr, t, &parameters)? * binding.angle_degrees_scale;
+    let base_angle =
+        (-(axis_end.y - origin.y)).atan2(axis_end.x - origin.x).to_degrees();
+    let total_radians = (base_angle + angle_degrees).to_radians();
+    Some(PointRecord {
+        x: origin.x + distance * total_radians.cos(),
+        y: origin.y - distance * total_radians.sin(),
+    })
+}
+
+pub(crate) fn decode_custom_transform_parameter(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    source_group_index: usize,
+    anchors: &[Option<PointRecord>],
+) -> Option<f64> {
+    let source_group = groups.get(source_group_index)?;
+    match source_group.header.kind() {
+        crate::format::GroupKind::PointConstraint => match decode_point_constraint(
+            file,
+            groups,
+            source_group,
+            Some(anchors),
+            &None,
+        )? {
+            RawPointConstraint::Segment(constraint) => Some(constraint.t),
+            RawPointConstraint::Polyline { t, .. } => Some(t),
+            RawPointConstraint::PolygonBoundary { t, .. } => Some(t),
+            RawPointConstraint::Circle(constraint) => {
+                let angle = (-constraint.unit_y).atan2(constraint.unit_x);
+                let tau = std::f64::consts::TAU;
+                Some(((angle % tau) + tau) % tau / tau)
+            }
+            RawPointConstraint::CircleArc(constraint) => Some(constraint.t),
+            RawPointConstraint::Arc(constraint) => Some(constraint.t),
+        },
+        crate::format::GroupKind::ParameterControlledPoint => {
+            let parameter_point =
+                decode_parameter_controlled_point(file, groups, source_group, anchors)?;
+            match parameter_point.constraint {
+                RawPointConstraint::Segment(constraint) => Some(constraint.t),
+                RawPointConstraint::Polyline { t, .. } => Some(t),
+                RawPointConstraint::PolygonBoundary { t, .. } => Some(t),
+                RawPointConstraint::Circle(constraint) => {
+                    let angle = (-constraint.unit_y).atan2(constraint.unit_x);
+                    let tau = std::f64::consts::TAU;
+                    Some(((angle % tau) + tau) % tau / tau)
+                }
+                RawPointConstraint::CircleArc(constraint) => Some(constraint.t),
+                RawPointConstraint::Arc(constraint) => Some(constraint.t),
+            }
+        }
+        _ => None,
+    }
+}
+
+fn decode_custom_transform_distance_scale(file: &GspFile, expr_group: &ObjectGroup) -> Option<f64> {
+    Some(match custom_transform_suffix(file, expr_group)? {
+        0x0201 => PX_PER_CM,
+        _ => 1.0,
+    })
+}
+
+fn decode_custom_transform_angle_scale(file: &GspFile, expr_group: &ObjectGroup) -> Option<f64> {
+    Some(match custom_transform_suffix(file, expr_group)? {
+        0x0101 => 100.0,
+        _ => 1.0,
+    })
+}
+
+fn custom_transform_suffix(file: &GspFile, expr_group: &ObjectGroup) -> Option<u16> {
+    let payload = expr_group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x0907)?
+        .payload(&file.data);
+    let words = payload
+        .chunks_exact(2)
+        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+        .collect::<Vec<_>>();
+    words.last().copied().or_else(|| {
+        (words.len() >= 3 && words[words.len() - 3..] == [0x0000, 0x0000, 0x0101])
+            .then_some(0x0101)
+    })
+}
+
+fn expression_parameter_map(
+    left: &crate::runtime::functions::FunctionExpr,
+    right: &crate::runtime::functions::FunctionExpr,
+    t: f64,
+) -> BTreeMap<String, f64> {
+    let mut parameters = BTreeMap::new();
+    collect_expr_parameter_names(left, &mut parameters, t);
+    collect_expr_parameter_names(right, &mut parameters, t);
+    parameters
+}
+
+pub(crate) fn custom_transform_expression_parameter_map(
+    left: &crate::runtime::functions::FunctionExpr,
+    right: &crate::runtime::functions::FunctionExpr,
+    t: f64,
+) -> BTreeMap<String, f64> {
+    expression_parameter_map(left, right, t)
+}
+
+pub(crate) fn custom_transform_trace_parameter(
+    point: &crate::runtime::scene::ScenePoint,
+) -> Option<f64> {
+    match &point.constraint {
+        crate::runtime::scene::ScenePointConstraint::OnSegment { t, .. }
+        | crate::runtime::scene::ScenePointConstraint::OnCircleArc { t, .. }
+        | crate::runtime::scene::ScenePointConstraint::OnArc { t, .. } => Some(*t),
+        crate::runtime::scene::ScenePointConstraint::OnPolygonBoundary { t, .. } => Some(*t),
+        crate::runtime::scene::ScenePointConstraint::OnCircle { unit_x, unit_y, .. } => {
+            let angle = (-*unit_y).atan2(*unit_x);
+            let tau = std::f64::consts::TAU;
+            Some(((angle % tau) + tau) % tau / tau)
+        }
+        _ => None,
+    }
+}
+
+fn collect_expr_parameter_names(
+    expr: &crate::runtime::functions::FunctionExpr,
+    parameters: &mut BTreeMap<String, f64>,
+    value: f64,
+) {
+    if let crate::runtime::functions::FunctionExpr::Parsed(parsed) = expr {
+        collect_term_parameter_names(&parsed.head, parameters, value);
+        for (_, term) in &parsed.tail {
+            collect_term_parameter_names(term, parameters, value);
+        }
+    }
+}
+
+fn collect_term_parameter_names(
+    term: &crate::runtime::functions::FunctionTerm,
+    parameters: &mut BTreeMap<String, f64>,
+    value: f64,
+) {
+    match term {
+        crate::runtime::functions::FunctionTerm::Parameter(name, _) => {
+            parameters.insert(name.clone(), value);
+        }
+        crate::runtime::functions::FunctionTerm::Product(left, right)
+        | crate::runtime::functions::FunctionTerm::Power(left, right) => {
+            collect_term_parameter_names(left, parameters, value);
+            collect_term_parameter_names(right, parameters, value);
+        }
+        _ => {}
+    }
+}
+
 pub(crate) fn decode_parameter_rotation_anchor_raw(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -631,7 +900,7 @@ pub(crate) fn decode_point_constraint_anchor(
     graph: Option<&GraphTransform>,
 ) -> Option<PointRecord> {
     let graph = graph.cloned();
-    match decode_point_constraint(file, groups, group, &graph)? {
+    match decode_point_constraint(file, groups, group, Some(anchors), &graph)? {
         RawPointConstraint::Segment(constraint) => {
             let start = anchors.get(constraint.start_group_index)?.clone()?;
             let end = anchors.get(constraint.end_group_index)?.clone()?;

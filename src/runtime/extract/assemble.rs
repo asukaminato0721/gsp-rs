@@ -21,6 +21,7 @@ pub(super) fn build_world_data(
         .chain(derived_iteration_points.iter())
         .map(|point| ScenePoint {
             position: to_world(&point.position, &analysis.graph_ref),
+            color: point.color,
             visible: point.visible,
             constraint: match &point.constraint {
                 ScenePointConstraint::Free => ScenePointConstraint::Free,

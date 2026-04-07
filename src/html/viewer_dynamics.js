@@ -261,6 +261,40 @@
     return new Map(env.currentDynamics().parameters.map((parameter) => [parameter.name, parameter.value]));
   }
 
+  /**
+   * @param {any} expr
+   * @param {Set<string>} names
+   */
+  function collectExprParameterNames(expr, names) {
+    if (!expr || typeof expr !== "object") return;
+    if (expr.kind === "parameter" && typeof expr.name === "string") {
+      names.add(expr.name);
+      return;
+    }
+    if (expr.kind === "parsed") {
+      collectExprTermParameterNames(expr.head, names);
+      for (const part of expr.tail || []) {
+        collectExprTermParameterNames(part.term, names);
+      }
+    }
+  }
+
+  /**
+   * @param {any} term
+   * @param {Set<string>} names
+   */
+  function collectExprTermParameterNames(term, names) {
+    if (!term || typeof term !== "object") return;
+    if (term.kind === "parameter" && typeof term.name === "string") {
+      names.add(term.name);
+      return;
+    }
+    if (term.kind === "product" || term.kind === "power") {
+      collectExprTermParameterNames(term.left, names);
+      collectExprTermParameterNames(term.right, names);
+    }
+  }
+
   function sampleDynamicFunction(functionDef, parameters) {
     const points = [];
     const last = Math.max(1, functionDef.domain.sampleCount - 1);
@@ -327,6 +361,9 @@
     if (constraint.kind === "segment") {
       return constraint.t;
     }
+    if (constraint.kind === "polyline") {
+      return constraint.t;
+    }
     if (constraint.kind === "polygon-boundary") {
       return polygonBoundaryParameterFromPoint(scene, pointIndex);
     }
@@ -346,6 +383,8 @@
     if (!point.constraint) return;
     const clamped = Math.max(0, Math.min(1, value));
     if (point.constraint.kind === "segment") {
+      point.constraint.t = clamped;
+    } else if (point.constraint.kind === "polyline") {
       point.constraint.t = clamped;
     } else if (point.constraint.kind === "polygon-boundary") {
       const count = point.constraint.vertexIndices.length;
@@ -815,6 +854,24 @@
         const scaled = scaleAround(source, center, point.binding.factor);
         point.x = scaled.x;
         point.y = scaled.y;
+      } else if (point.binding?.kind === "custom-transform") {
+        const value = parameterValueFromPoint(scene, point.binding.sourceIndex);
+        if (!Number.isFinite(value)) return;
+        const exprParameters = new Map(parameters);
+        const names = new Set();
+        collectExprParameterNames(point.binding.distanceExpr, names);
+        collectExprParameterNames(point.binding.angleExpr, names);
+        names.forEach((name) => exprParameters.set(name, value));
+        const distanceValue = evaluateExpr(point.binding.distanceExpr, value, exprParameters);
+        const angleValue = evaluateExpr(point.binding.angleExpr, value, exprParameters);
+        const origin = env.resolveScenePoint(point.binding.originIndex);
+        const axisEnd = env.resolveScenePoint(point.binding.axisEndIndex);
+        if (distanceValue === null || angleValue === null || !origin || !axisEnd) return;
+        const baseAngle = Math.atan2(-(axisEnd.y - origin.y), axisEnd.x - origin.x) * 180 / Math.PI;
+        const radians = (baseAngle + angleValue * point.binding.angleDegreesScale) * Math.PI / 180;
+        const distance = distanceValue * point.binding.distanceRawScale;
+        point.x = origin.x + distance * Math.cos(radians);
+        point.y = origin.y - distance * Math.sin(radians);
       }
     });
 
@@ -1025,6 +1082,14 @@
         preservedLines.push(line);
         return;
       }
+      if (line.binding?.kind === "arc-boundary") {
+        const sampled = window.GspViewerModules.scene.sampleArcBoundaryPoints(env, line.binding);
+        if (sampled) {
+          line.points = sampled;
+        }
+        preservedLines.push(line);
+        return;
+      }
       if (line.binding?.kind === "rotate-line") {
         const source = scene.lines[line.binding.sourceIndex];
         const center = scene.points[line.binding.centerIndex];
@@ -1056,6 +1121,43 @@
         const lineEnd = scene.points[line.binding.lineEndIndex];
         if (source && lineStart && lineEnd) {
           line.points = source.points.map((point) => reflectAcrossLine(point, lineStart, lineEnd));
+        }
+        preservedLines.push(line);
+        return;
+      }
+      if (line.binding?.kind === "custom-transform-trace") {
+        const point = scene.points[line.binding.pointIndex];
+        const binding = point?.binding;
+        if (binding?.kind === "custom-transform") {
+          const origin = scene.points[binding.originIndex];
+          const axisEnd = scene.points[binding.axisEndIndex];
+          const traceMax = parameterValueFromPoint(scene, binding.sourceIndex);
+          if (origin && axisEnd && Number.isFinite(traceMax)) {
+            const sampled = [];
+            const last = Math.max(1, line.binding.sampleCount - 1);
+            const maxValue = Math.max(line.binding.xMin, Math.min(line.binding.xMax, traceMax));
+            for (let index = 0; index < line.binding.sampleCount; index += 1) {
+              const value = line.binding.xMin + (maxValue - line.binding.xMin) * (index / last);
+              const exprParameters = new Map(parameters);
+              const names = new Set();
+              collectExprParameterNames(binding.distanceExpr, names);
+              collectExprParameterNames(binding.angleExpr, names);
+              names.forEach((name) => exprParameters.set(name, value));
+              const distanceValue = evaluateExpr(binding.distanceExpr, value, exprParameters);
+              const angleValue = evaluateExpr(binding.angleExpr, value, exprParameters);
+              if (distanceValue === null || angleValue === null) continue;
+              const baseAngle = Math.atan2(-(axisEnd.y - origin.y), axisEnd.x - origin.x) * 180 / Math.PI;
+              const radians = (baseAngle + angleValue * binding.angleDegreesScale) * Math.PI / 180;
+              const distance = distanceValue * binding.distanceRawScale;
+              sampled.push({
+                x: origin.x + distance * Math.cos(radians),
+                y: origin.y - distance * Math.sin(radians),
+              });
+            }
+            if (sampled.length >= 2) {
+              line.points = sampled;
+            }
+          }
         }
         preservedLines.push(line);
         return;
@@ -1164,6 +1266,18 @@
           const value = ((pointAngle % tau) + tau) % tau / tau;
           label.text = `${label.binding.pointName}在⊙${label.binding.circleName}上的值 = ${env.formatNumber(value)}`;
         }
+      } else if (label.binding.kind === "custom-transform-value") {
+        const value = parameterValueFromPoint(scene, label.binding.pointIndex);
+        if (Number.isFinite(value)) {
+          const exprParameters = new Map(parameters);
+          const names = new Set();
+          collectExprParameterNames(label.binding.expr, names);
+          names.forEach((name) => exprParameters.set(name, value));
+          const evaluated = evaluateExpr(label.binding.expr, value, exprParameters);
+          if (evaluated !== null) {
+            label.text = `${label.binding.exprLabel} = ${env.formatNumber(evaluated * label.binding.valueScale)}${label.binding.valueSuffix}`;
+          }
+        }
       }
     });
   }
@@ -1186,6 +1300,28 @@
             const y = evaluateExpr(point.binding.expr, 0, parameters);
             if (y !== null) {
               point.y = y;
+            }
+          } else if (point.binding?.kind === "custom-transform") {
+            const value = parameterValueFromPoint(draft, point.binding.sourceIndex);
+            if (!Number.isFinite(value)) return;
+            const exprParameters = new Map(parameters);
+            const names = new Set();
+            collectExprParameterNames(point.binding.distanceExpr, names);
+            collectExprParameterNames(point.binding.angleExpr, names);
+            names.forEach((name) => exprParameters.set(name, value));
+            const distanceValue = evaluateExpr(point.binding.distanceExpr, value, exprParameters);
+            const angleValue = evaluateExpr(point.binding.angleExpr, value, exprParameters);
+            const origin = draft.points[point.binding.originIndex];
+            const axisEnd = draft.points[point.binding.axisEndIndex];
+            if (
+              distanceValue !== null && angleValue !== null &&
+              origin && axisEnd
+            ) {
+              const baseAngle = Math.atan2(-(axisEnd.y - origin.y), axisEnd.x - origin.x) * 180 / Math.PI;
+              const radians = (baseAngle + angleValue * point.binding.angleDegreesScale) * Math.PI / 180;
+              const distance = distanceValue * point.binding.distanceRawScale;
+              point.x = origin.x + distance * Math.cos(radians);
+              point.y = origin.y - distance * Math.sin(radians);
             }
           }
           return;

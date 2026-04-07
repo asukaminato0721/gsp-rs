@@ -56,13 +56,24 @@
           point.constraint.t = projection.t;
         }
       } else if (point.constraint && point.constraint.kind === "polyline") {
-        const count = point.constraint.points.length;
+        const points = typeof point.constraint.functionKey === "number"
+          ? window.GspViewerModules.scene.resolveLinePoints(
+              env,
+              env.currentScene().lines.find((line) =>
+                line?.binding?.kind === "arc-boundary" && line.binding.hostKey === point.constraint.functionKey
+              ),
+            ) || point.constraint.points
+          : point.constraint.points;
+        const count = points.length;
         let bestSegmentIndex = point.constraint.segmentIndex;
         let bestT = point.constraint.t;
         let bestDistanceSquared = Number.POSITIVE_INFINITY;
         for (let segmentIndex = 0; segmentIndex < count - 1; segmentIndex += 1) {
-          const start = point.constraint.points[segmentIndex];
-          const end = point.constraint.points[segmentIndex + 1];
+          const start = window.GspViewerModules.scene.resolvePoint(env, points[segmentIndex]);
+          const end = window.GspViewerModules.scene.resolvePoint(env, points[segmentIndex + 1]);
+          if (!start || !end) {
+            continue;
+          }
           const projection = window.GspViewerModules.scene.projectToSegment(world, start, end);
           if (!projection) {
             continue;

@@ -224,8 +224,16 @@
       points: scene.points.map((point) => ({
         x: point.x,
         y: point.y,
+        color: point.color,
         visible: point.visible !== false,
-        constraint: point.constraint ? { ...point.constraint } : null,
+        constraint: point.constraint
+          ? {
+              ...point.constraint,
+              ...(point.constraint.kind === "polyline"
+                ? { points: point.constraint.points.map(attachPointRef) }
+                : null),
+            }
+          : null,
         binding: point.binding ? { ...point.binding } : null,
       })),
       origin: scene.origin ? attachPointRef(scene.origin) : null,

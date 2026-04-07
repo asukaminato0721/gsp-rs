@@ -1,13 +1,34 @@
 use super::{
     CoordinatePoint, GspFile, ObjectGroup, ParameterControlledPoint, PointRecord,
     RawPointConstraint, TransformBindingKind, decode_coordinate_point,
+    decode_custom_transform_binding,
     decode_parameter_controlled_point, decode_parameter_rotation_binding, decode_point_constraint,
     decode_reflection_anchor_raw, decode_transform_binding, decode_translated_point_constraint,
     reflection_line_group_indices, translation_point_pair_group_indices,
 };
 use crate::runtime::extract::{decode::decode_label_name, find_indexed_path};
-use crate::runtime::geometry::GraphTransform;
+use crate::runtime::geometry::{GraphTransform, color_from_style};
 use crate::runtime::scene::{LineConstraint, ScenePoint, ScenePointBinding, ScenePointConstraint};
+
+fn group_color(group: &ObjectGroup) -> [u8; 4] {
+    color_from_style(group.header.style_b)
+}
+
+fn scene_point(
+    position: PointRecord,
+    color: [u8; 4],
+    visible: bool,
+    constraint: ScenePointConstraint,
+    binding: Option<ScenePointBinding>,
+) -> ScenePoint {
+    ScenePoint {
+        position,
+        color,
+        visible,
+        constraint,
+        binding,
+    }
+}
 
 pub(crate) fn collect_visible_points(
     file: &GspFile,
@@ -28,11 +49,14 @@ pub(crate) fn collect_visible_points(
                     .get(index)
                     .cloned()
                     .flatten()
-                    .map(|position| ScenePoint {
-                        position,
-                        visible,
-                        constraint: ScenePointConstraint::Free,
-                        binding: None,
+                    .map(|position| {
+                        scene_point(
+                            position,
+                            group_color(group),
+                            visible,
+                            ScenePointConstraint::Free,
+                            None,
+                        )
                     })
             }
             crate::format::GroupKind::GraphCalibrationX
@@ -40,11 +64,14 @@ pub(crate) fn collect_visible_points(
                 .get(index)
                 .cloned()
                 .flatten()
-                .map(|position| ScenePoint {
-                    position,
-                    visible: visible && decode_label_name(file, group).is_some(),
-                    constraint: ScenePointConstraint::Free,
-                    binding: Some(ScenePointBinding::GraphCalibration),
+                .map(|position| {
+                    scene_point(
+                        position,
+                        group_color(group),
+                        visible && decode_label_name(file, group).is_some(),
+                        ScenePointConstraint::Free,
+                        Some(ScenePointBinding::GraphCalibration),
+                    )
                 }),
             crate::format::GroupKind::LinearIntersectionPoint
             | crate::format::GroupKind::IntersectionPoint1
@@ -75,22 +102,24 @@ pub(crate) fn collect_visible_points(
                         .get(constraint.origin_group_index)
                         .and_then(|point_index| *point_index)?;
                     let position = anchors.get(index).cloned().flatten()?;
-                    Some(ScenePoint {
+                    Some(scene_point(
                         position,
+                        group_color(group),
                         visible,
-                        constraint: ScenePointConstraint::Offset {
+                        ScenePointConstraint::Offset {
                             origin_index,
                             dx: constraint.dx,
                             dy: constraint.dy,
                         },
-                        binding: None,
-                    })
+                        None,
+                    ))
                 })
             }
             crate::format::GroupKind::PointConstraint => {
-                decode_point_constraint(file, groups, group, graph).and_then(|constraint| {
+                decode_point_constraint(file, groups, group, Some(anchors), graph).and_then(|constraint| {
                     scene_point_from_constraint(
                         index,
+                        group_color(group),
                         anchors,
                         &group_to_point_index,
                         constraint,
@@ -104,6 +133,7 @@ pub(crate) fn collect_visible_points(
                         scene_point_from_parameter_controlled(
                             &group_to_point_index,
                             parameter_point,
+                            group_color(group),
                             visible,
                         )
                     },
@@ -111,8 +141,39 @@ pub(crate) fn collect_visible_points(
             }
             crate::format::GroupKind::CoordinatePoint => {
                 decode_coordinate_point(file, groups, group, graph)
-                    .map(|point| scene_point_from_coordinate(point, visible))
+                    .map(|point| scene_point_from_coordinate(point, group_color(group), visible))
             }
+            crate::format::GroupKind::CustomTransformPoint => anchors
+                .get(index)
+                .cloned()
+                .flatten()
+                .and_then(|position| {
+                    let binding = decode_custom_transform_binding(file, groups, group.ordinal)?;
+                    let source_index = group_to_point_index
+                        .get(binding.source_group_index)
+                        .and_then(|point_index| *point_index)?;
+                    let origin_index = group_to_point_index
+                        .get(binding.origin_group_index)
+                        .and_then(|point_index| *point_index)?;
+                    let axis_end_index = group_to_point_index
+                        .get(binding.axis_end_group_index)
+                        .and_then(|point_index| *point_index)?;
+                    Some(scene_point(
+                        position,
+                        group_color(group),
+                        visible,
+                        ScenePointConstraint::Free,
+                        Some(ScenePointBinding::CustomTransform {
+                            source_index,
+                            origin_index,
+                            axis_end_index,
+                            distance_expr: binding.distance_expr,
+                            angle_expr: binding.angle_expr,
+                            distance_raw_scale: binding.distance_raw_scale,
+                            angle_degrees_scale: binding.angle_degrees_scale,
+                        }),
+                    ))
+                }),
             crate::format::GroupKind::Reflection => {
                 decode_reflection_anchor_raw(file, groups, group, anchors).and_then(|position| {
                     let path = find_indexed_path(file, group)?;
@@ -133,15 +194,18 @@ pub(crate) fn collect_visible_points(
                         .filter(|source_group| {
                             (source_group.header.kind()) == crate::format::GroupKind::Point
                         })
-                        .map(|_| ScenePoint {
-                            position,
-                            visible,
-                            constraint: ScenePointConstraint::Free,
-                            binding: Some(ScenePointBinding::Reflect {
-                                source_index,
-                                line_start_index,
-                                line_end_index,
-                            }),
+                        .map(|_| {
+                            scene_point(
+                                position,
+                                group_color(group),
+                                visible,
+                                ScenePointConstraint::Free,
+                                Some(ScenePointBinding::Reflect {
+                                    source_index,
+                                    line_start_index,
+                                    line_end_index,
+                                }),
+                            )
                         })
                 })
             }
@@ -165,15 +229,18 @@ pub(crate) fn collect_visible_points(
                         .filter(|source_group| {
                             (source_group.header.kind()) == crate::format::GroupKind::Point
                         })
-                        .map(|_| ScenePoint {
-                            position,
-                            visible,
-                            constraint: ScenePointConstraint::Free,
-                            binding: Some(ScenePointBinding::Translate {
-                                source_index,
-                                vector_start_index,
-                                vector_end_index,
-                            }),
+                        .map(|_| {
+                            scene_point(
+                                position,
+                                group_color(group),
+                                visible,
+                                ScenePointConstraint::Free,
+                                Some(ScenePointBinding::Translate {
+                                    source_index,
+                                    vector_start_index,
+                                    vector_end_index,
+                                }),
+                            )
                         })
                 })
             }
@@ -193,11 +260,12 @@ pub(crate) fn collect_visible_points(
                     let center_index = group_to_point_index
                         .get(binding.center_group_index)
                         .and_then(|point_index| *point_index)?;
-                    Some(ScenePoint {
+                    Some(scene_point(
                         position,
+                        group_color(group),
                         visible,
-                        constraint: ScenePointConstraint::Free,
-                        binding: Some(match binding.kind {
+                        ScenePointConstraint::Free,
+                        Some(match binding.kind {
                             TransformBindingKind::Rotate {
                                 angle_degrees,
                                 parameter_name,
@@ -213,7 +281,7 @@ pub(crate) fn collect_visible_points(
                                 factor,
                             },
                         }),
-                    })
+                    ))
                 })
             }
             _ => None,
@@ -230,6 +298,7 @@ pub(crate) fn collect_visible_points(
 
 fn scene_point_from_constraint(
     index: usize,
+    color: [u8; 4],
     anchors: &[Option<PointRecord>],
     group_to_point_index: &[Option<usize>],
     constraint: RawPointConstraint,
@@ -244,33 +313,35 @@ fn scene_point_from_constraint(
             let end_index = group_to_point_index
                 .get(constraint.end_group_index)
                 .and_then(|point_index| *point_index)?;
-            Some(ScenePoint {
+            Some(scene_point(
                 position,
+                color,
                 visible,
-                constraint: ScenePointConstraint::OnSegment {
+                ScenePointConstraint::OnSegment {
                     start_index,
                     end_index,
                     t: constraint.t,
                 },
-                binding: None,
-            })
+                None,
+            ))
         }
         RawPointConstraint::Polyline {
             function_key,
             points,
             segment_index,
             t,
-        } => Some(ScenePoint {
+        } => Some(scene_point(
             position,
+            color,
             visible,
-            constraint: ScenePointConstraint::OnPolyline {
+            ScenePointConstraint::OnPolyline {
                 function_key,
                 points,
                 segment_index,
                 t,
             },
-            binding: None,
-        }),
+            None,
+        )),
         RawPointConstraint::PolygonBoundary {
             vertex_group_indices,
             edge_index,
@@ -284,16 +355,17 @@ fn scene_point_from_constraint(
                         .and_then(|point_index| *point_index)
                 })
                 .collect::<Option<Vec<_>>>()?;
-            Some(ScenePoint {
+            Some(scene_point(
                 position,
+                color,
                 visible,
-                constraint: ScenePointConstraint::OnPolygonBoundary {
+                ScenePointConstraint::OnPolygonBoundary {
                     vertex_indices,
                     edge_index,
                     t,
                 },
-                binding: None,
-            })
+                None,
+            ))
         }
         RawPointConstraint::Circle(constraint) => {
             let center_index = group_to_point_index
@@ -302,17 +374,18 @@ fn scene_point_from_constraint(
             let radius_index = group_to_point_index
                 .get(constraint.radius_group_index)
                 .and_then(|point_index| *point_index)?;
-            Some(ScenePoint {
+            Some(scene_point(
                 position,
+                color,
                 visible,
-                constraint: ScenePointConstraint::OnCircle {
+                ScenePointConstraint::OnCircle {
                     center_index,
                     radius_index,
                     unit_x: constraint.unit_x,
                     unit_y: constraint.unit_y,
                 },
-                binding: None,
-            })
+                None,
+            ))
         }
         RawPointConstraint::CircleArc(constraint) => {
             let center_index = group_to_point_index
@@ -324,17 +397,18 @@ fn scene_point_from_constraint(
             let end_index = group_to_point_index
                 .get(constraint.end_group_index)
                 .and_then(|point_index| *point_index)?;
-            Some(ScenePoint {
+            Some(scene_point(
                 position,
+                color,
                 visible,
-                constraint: ScenePointConstraint::OnCircleArc {
+                ScenePointConstraint::OnCircleArc {
                     center_index,
                     start_index,
                     end_index,
                     t: constraint.t,
                 },
-                binding: None,
-            })
+                None,
+            ))
         }
         RawPointConstraint::Arc(constraint) => {
             let start_index = group_to_point_index
@@ -346,17 +420,18 @@ fn scene_point_from_constraint(
             let end_index = group_to_point_index
                 .get(constraint.end_group_index)
                 .and_then(|point_index| *point_index)?;
-            Some(ScenePoint {
+            Some(scene_point(
                 position,
+                color,
                 visible,
-                constraint: ScenePointConstraint::OnArc {
+                ScenePointConstraint::OnArc {
                     start_index,
                     mid_index,
                     end_index,
                     t: constraint.t,
                 },
-                binding: None,
-            })
+                None,
+            ))
         }
     }
 }
@@ -364,6 +439,7 @@ fn scene_point_from_constraint(
 fn scene_point_from_parameter_controlled(
     group_to_point_index: &[Option<usize>],
     parameter_point: ParameterControlledPoint,
+    color: [u8; 4],
     visible: bool,
 ) -> Option<ScenePoint> {
     let binding = parameter_point_binding(group_to_point_index, &parameter_point)?;
@@ -375,16 +451,17 @@ fn scene_point_from_parameter_controlled(
             let end_index = group_to_point_index
                 .get(constraint.end_group_index)
                 .and_then(|point_index| *point_index)?;
-            Some(ScenePoint {
-                position: parameter_point.position.clone(),
+            Some(scene_point(
+                parameter_point.position.clone(),
+                color,
                 visible,
-                constraint: ScenePointConstraint::OnSegment {
+                ScenePointConstraint::OnSegment {
                     start_index,
                     end_index,
                     t: constraint.t,
                 },
                 binding,
-            })
+            ))
         }
         RawPointConstraint::PolygonBoundary {
             vertex_group_indices,
@@ -399,16 +476,17 @@ fn scene_point_from_parameter_controlled(
                         .and_then(|point_index| *point_index)
                 })
                 .collect::<Option<Vec<_>>>()?;
-            Some(ScenePoint {
-                position: parameter_point.position.clone(),
+            Some(scene_point(
+                parameter_point.position.clone(),
+                color,
                 visible,
-                constraint: ScenePointConstraint::OnPolygonBoundary {
+                ScenePointConstraint::OnPolygonBoundary {
                     vertex_indices,
                     edge_index: *edge_index,
                     t: *t,
                 },
                 binding,
-            })
+            ))
         }
         RawPointConstraint::Circle(constraint) => {
             let center_index = group_to_point_index
@@ -417,17 +495,18 @@ fn scene_point_from_parameter_controlled(
             let radius_index = group_to_point_index
                 .get(constraint.radius_group_index)
                 .and_then(|point_index| *point_index)?;
-            Some(ScenePoint {
-                position: parameter_point.position,
+            Some(scene_point(
+                parameter_point.position,
+                color,
                 visible,
-                constraint: ScenePointConstraint::OnCircle {
+                ScenePointConstraint::OnCircle {
                     center_index,
                     radius_index,
                     unit_x: constraint.unit_x,
                     unit_y: constraint.unit_y,
                 },
                 binding,
-            })
+            ))
         }
         RawPointConstraint::CircleArc(constraint) => {
             let center_index = group_to_point_index
@@ -439,17 +518,18 @@ fn scene_point_from_parameter_controlled(
             let end_index = group_to_point_index
                 .get(constraint.end_group_index)
                 .and_then(|point_index| *point_index)?;
-            Some(ScenePoint {
-                position: parameter_point.position,
+            Some(scene_point(
+                parameter_point.position,
+                color,
                 visible,
-                constraint: ScenePointConstraint::OnCircleArc {
+                ScenePointConstraint::OnCircleArc {
                     center_index,
                     start_index,
                     end_index,
                     t: constraint.t,
                 },
                 binding,
-            })
+            ))
         }
         RawPointConstraint::Arc(constraint) => {
             let start_index = group_to_point_index
@@ -461,17 +541,18 @@ fn scene_point_from_parameter_controlled(
             let end_index = group_to_point_index
                 .get(constraint.end_group_index)
                 .and_then(|point_index| *point_index)?;
-            Some(ScenePoint {
-                position: parameter_point.position,
+            Some(scene_point(
+                parameter_point.position,
+                color,
                 visible,
-                constraint: ScenePointConstraint::OnArc {
+                ScenePointConstraint::OnArc {
                     start_index,
                     mid_index,
                     end_index,
                     t: constraint.t,
                 },
                 binding,
-            })
+            ))
         }
         RawPointConstraint::Polyline { .. } => None,
     }
@@ -495,16 +576,21 @@ fn parameter_point_binding(
     }
 }
 
-fn scene_point_from_coordinate(point: CoordinatePoint, visible: bool) -> ScenePoint {
-    ScenePoint {
-        position: point.position,
+fn scene_point_from_coordinate(
+    point: CoordinatePoint,
+    color: [u8; 4],
+    visible: bool,
+) -> ScenePoint {
+    scene_point(
+        point.position,
+        color,
         visible,
-        constraint: ScenePointConstraint::Free,
-        binding: Some(ScenePointBinding::Coordinate {
+        ScenePointConstraint::Free,
+        Some(ScenePointBinding::Coordinate {
             name: point.parameter_name,
             expr: point.expr,
         }),
-    }
+    )
 }
 
 fn scene_point_from_midpoint(
@@ -530,19 +616,20 @@ fn scene_point_from_midpoint(
     let start_index = (*group_to_point_index.get(host_path.refs.first()?.checked_sub(1)?)?)?;
     let end_index = (*group_to_point_index.get(host_path.refs.get(1)?.checked_sub(1)?)?)?;
     let position = anchors.get(index).cloned().flatten()?;
-    Some(ScenePoint {
+    Some(scene_point(
         position,
+        group_color(group),
         visible,
-        constraint: ScenePointConstraint::OnSegment {
+        ScenePointConstraint::OnSegment {
             start_index,
             end_index,
             t: 0.5,
         },
-        binding: Some(ScenePointBinding::Midpoint {
+        Some(ScenePointBinding::Midpoint {
             start_index,
             end_index,
         }),
-    })
+    ))
 }
 
 fn scene_point_from_intersection(
@@ -567,12 +654,13 @@ fn scene_point_from_intersection(
         resolve_line_constraint(file, groups, left_group, group_to_point_index),
         resolve_line_constraint(file, groups, right_group, group_to_point_index),
     ) {
-        return Some(ScenePoint {
+        return Some(scene_point(
             position,
+            group_color(group),
             visible,
-            constraint: ScenePointConstraint::LineIntersection { left, right },
-            binding: None,
-        });
+            ScenePointConstraint::LineIntersection { left, right },
+            None,
+        ));
     }
 
     let variant = intersection_variant(group.header.kind());
@@ -580,34 +668,36 @@ fn scene_point_from_intersection(
         resolve_line_constraint(file, groups, left_group, group_to_point_index),
         resolve_circle_point_indices(file, groups, right_group, group_to_point_index),
     ) {
-        return Some(ScenePoint {
+        return Some(scene_point(
             position,
+            group_color(group),
             visible,
-            constraint: ScenePointConstraint::LineCircleIntersection {
+            ScenePointConstraint::LineCircleIntersection {
                 line,
                 center_index,
                 radius_index,
                 variant,
             },
-            binding: None,
-        });
+            None,
+        ));
     }
 
     if let (Some((center_index, radius_index)), Some(line)) = (
         resolve_circle_point_indices(file, groups, left_group, group_to_point_index),
         resolve_line_constraint(file, groups, right_group, group_to_point_index),
     ) {
-        return Some(ScenePoint {
+        return Some(scene_point(
             position,
+            group_color(group),
             visible,
-            constraint: ScenePointConstraint::LineCircleIntersection {
+            ScenePointConstraint::LineCircleIntersection {
                 line,
                 center_index,
                 radius_index,
                 variant,
             },
-            binding: None,
-        });
+            None,
+        ));
     }
 
     if let (
@@ -617,26 +707,28 @@ fn scene_point_from_intersection(
         resolve_circle_point_indices(file, groups, left_group, group_to_point_index),
         resolve_circle_point_indices(file, groups, right_group, group_to_point_index),
     ) {
-        return Some(ScenePoint {
+        return Some(scene_point(
             position,
+            group_color(group),
             visible,
-            constraint: ScenePointConstraint::CircleCircleIntersection {
+            ScenePointConstraint::CircleCircleIntersection {
                 left_center_index,
                 left_radius_index,
                 right_center_index,
                 right_radius_index,
                 variant,
             },
-            binding: None,
-        });
+            None,
+        ));
     }
 
-    Some(ScenePoint {
+    Some(scene_point(
         position,
+        group_color(group),
         visible,
-        constraint: ScenePointConstraint::Free,
-        binding: None,
-    })
+        ScenePointConstraint::Free,
+        None,
+    ))
 }
 
 fn resolve_line_constraint(

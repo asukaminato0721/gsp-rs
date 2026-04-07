@@ -2,8 +2,8 @@ use super::{
     CircleShape, GspFile, LineBinding, LineShape, ObjectGroup, PointRecord, PolygonShape,
     ShapeBinding, TransformBindingKind, color_from_style, decode_parameter_rotation_binding,
     decode_transform_binding, fill_color_from_styles, find_indexed_path, has_distinct_points,
-    reflect_across_line, reflection_line_group_indices, rotate_around, scale_around,
-    translation_point_pair_group_indices,
+    line_is_dashed, reflect_across_line, reflection_line_group_indices, rotate_around,
+    scale_around, translation_point_pair_group_indices,
 };
 use crate::runtime::extract::decode::{is_circle_group_kind, resolve_circle_points_raw};
 
@@ -36,7 +36,7 @@ pub(crate) fn collect_rotated_line_shapes(
             (points.len() >= 2 && has_distinct_points(&points)).then_some(LineShape {
                 points,
                 color: color_from_style(source_group.header.style_b),
-                dashed: false,
+                dashed: line_is_dashed(source_group.header.style_a),
                 binding: Some(LineBinding::RotateLine {
                     source_index: path.refs.first()?.checked_sub(1)?,
                     center_index: binding.center_group_index,
@@ -80,7 +80,7 @@ pub(crate) fn collect_translated_line_shapes(
             (points.len() >= 2 && has_distinct_points(&points)).then_some(LineShape {
                 points,
                 color: color_from_style(source_group.header.style_b),
-                dashed: false,
+                dashed: line_is_dashed(source_group.header.style_a),
                 binding: Some(LineBinding::TranslateLine {
                     source_index: source_group_index,
                     vector_start_index,
@@ -122,7 +122,7 @@ pub(crate) fn collect_scaled_line_shapes(
             (points.len() >= 2 && has_distinct_points(&points)).then_some(LineShape {
                 points,
                 color: color_from_style(source_group.header.style_b),
-                dashed: false,
+                dashed: line_is_dashed(source_group.header.style_a),
                 binding: Some(LineBinding::ScaleLine {
                     source_index: path.refs.first()?.checked_sub(1)?,
                     center_index: binding.center_group_index,
@@ -168,7 +168,7 @@ pub(crate) fn collect_reflected_line_shapes(
             (points.len() >= 2 && has_distinct_points(&points)).then_some(LineShape {
                 points,
                 color: color_from_style(source_group.header.style_b),
-                dashed: false,
+                dashed: line_is_dashed(source_group.header.style_a),
                 binding: Some(LineBinding::ReflectLine {
                     source_index: path.refs.first()?.checked_sub(1)?,
                     line_start_index: line_start_group_index,
@@ -202,7 +202,7 @@ pub(crate) fn collect_rotated_circle_shapes(
                 center: rotate_around(&source_center, &center, radians),
                 radius_point: rotate_around(&source_radius, &center, radians),
                 color: color_from_style(source_group.header.style_b),
-                dashed: false,
+                dashed: line_is_dashed(source_group.header.style_a),
                 binding: Some(ShapeBinding::RotateCircle {
                     source_index: path.refs.first()?.checked_sub(1)?,
                     center_index: binding.center_group_index,
@@ -283,7 +283,7 @@ pub(crate) fn collect_transformed_circle_shapes(
                 center: scale_around(&source_center, &scale_center, factor),
                 radius_point: scale_around(&source_radius, &scale_center, factor),
                 color: color_from_style(source_group.header.style_b),
-                dashed: false,
+                dashed: line_is_dashed(source_group.header.style_a),
                 binding: Some(ShapeBinding::ScaleCircle {
                     source_index: path.refs.first()?.checked_sub(1)?,
                     center_index: binding.center_group_index,
@@ -407,7 +407,7 @@ pub(crate) fn collect_reflected_circle_shapes(
                 center,
                 radius_point,
                 color: color_from_style(source_group.header.style_b),
-                dashed: false,
+                dashed: line_is_dashed(source_group.header.style_a),
                 binding: Some(ShapeBinding::ReflectCircle {
                     source_index: path.refs.first()?.checked_sub(1)?,
                     line_start_index: line_start_group_index,

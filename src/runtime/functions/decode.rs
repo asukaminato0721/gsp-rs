@@ -87,6 +87,10 @@ fn collect_parameter_bindings(
 }
 
 fn decode_parameter_binding(file: &GspFile, group: &ObjectGroup) -> Option<ParameterBinding> {
+    if (group.header.kind()) == crate::format::GroupKind::ParameterAnchor {
+        return decode_parameter_anchor_binding(file, group);
+    }
+
     let payload = group
         .records
         .iter()
@@ -107,6 +111,37 @@ fn decode_parameter_binding(file: &GspFile, group: &ObjectGroup) -> Option<Param
         return None;
     }
     Some(ParameterBinding { name, value })
+}
+
+fn decode_parameter_anchor_binding(file: &GspFile, group: &ObjectGroup) -> Option<ParameterBinding> {
+    let groups = file.object_groups();
+    let path = find_indexed_path(file, group)?;
+    let point_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+    let value = match point_group.header.kind() {
+        crate::format::GroupKind::PointConstraint => point_group
+            .records
+            .iter()
+            .find(|record| record.record_type == 0x07d3 && record.length == 12)
+            .map(|record| read_f64(record.payload(&file.data), 4))
+            .filter(|value| value.is_finite())?,
+        crate::format::GroupKind::Point => {
+            let payload = point_group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x0907)
+                .map(|record| record.payload(&file.data))?;
+            if payload.len() >= 60 {
+                read_f64(payload, 52)
+            } else {
+                f64::from(read_u16(payload, payload.len().checked_sub(2)?))
+            }
+        }
+        _ => return None,
+    };
+    Some(ParameterBinding {
+        name: format!("__param_anchor_{}", group.ordinal),
+        value,
+    })
 }
 
 fn decode_parameter_name(label_payload: &[u8]) -> Option<String> {
@@ -207,8 +242,17 @@ fn find_fallback_function_expr(
     (0..words.len())
         .filter_map(|start| parse_function_expr_from(words, start, parameters))
         .find_map(|(parsed, end)| {
-            (end == words.len() && parsed_contains_symbol(&parsed)).then_some(parsed)
+            (parsed_contains_symbol(&parsed) && has_ignorable_expr_suffix(words, end))
+                .then_some(parsed)
         })
+}
+
+fn has_ignorable_expr_suffix(words: &[u16], end: usize) -> bool {
+    if end >= words.len() {
+        return true;
+    }
+    let suffix = &words[end..];
+    matches!(suffix, [0x0201] | [0x0101] | [0x0000, 0x0101] | [0x0000, 0x0000, 0x0101])
 }
 
 fn parsed_contains_symbol(parsed: &ParsedFunctionExpr) -> bool {

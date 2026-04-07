@@ -4,12 +4,15 @@ use super::{
     ArcShape, CircleShape, GraphTransform, GspFile, LineBinding, LineShape, ObjectGroup,
     PointRecord, PolygonShape, ShapeBinding, color_from_style, decode_function_expr,
     decode_function_plot_descriptor, decode_label_name, evaluate_expr_with_parameters,
-    fill_color_from_styles, find_indexed_path, has_distinct_points, three_point_arc_geometry,
-    to_raw_from_world,
+    fill_color_from_styles, find_indexed_path, has_distinct_points, line_is_dashed,
+    three_point_arc_geometry, to_raw_from_world,
 };
 use crate::format::{read_f64, read_u32};
 use crate::runtime::extract::decode::{is_circle_group_kind, resolve_circle_points_raw};
-use crate::runtime::geometry::arc_on_circle_control_points;
+use crate::runtime::geometry::{arc_on_circle_control_points, sample_three_point_arc};
+use crate::runtime::scene::ArcBoundaryKind;
+
+const ARC_BOUNDARY_SUBDIVISIONS: usize = 48;
 
 pub(crate) fn collect_line_shapes(
     file: &GspFile,
@@ -72,7 +75,8 @@ pub(crate) fn collect_line_shapes(
                 } else {
                     color_from_style(group.header.style_b)
                 },
-                dashed: (group.header.kind()) == crate::format::GroupKind::MeasurementLine,
+                dashed: (group.header.kind()) == crate::format::GroupKind::MeasurementLine
+                    || line_is_dashed(group.header.style_a),
                 binding: match (group.header.kind(), start_group_index, end_group_index) {
                     (crate::format::GroupKind::Segment, Some(start_index), Some(end_index)) => {
                         Some(LineBinding::Segment {
@@ -116,13 +120,40 @@ pub(crate) fn collect_segment_marker_shapes(
             Some(LineShape {
                 points,
                 color: color_from_style(group.header.style_b),
-                dashed: false,
+                dashed: line_is_dashed(group.header.style_a),
                 binding: Some(LineBinding::SegmentMarker {
                     start_index: start_group_index,
                     end_index: end_group_index,
                     t,
                     marker_class,
                 }),
+            })
+        })
+        .collect()
+}
+
+pub(crate) fn collect_arc_boundary_shapes(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+) -> Vec<LineShape> {
+    groups
+        .iter()
+        .filter(|group| {
+            matches!(
+                group.header.kind(),
+                crate::format::GroupKind::SectorBoundary
+                    | crate::format::GroupKind::CircularSegmentBoundary
+            )
+        })
+        .filter_map(|group| {
+            let points = resolve_arc_boundary_points(file, groups, anchors, group)?;
+            let binding = resolve_arc_boundary_binding(file, groups, group)?;
+            has_distinct_points(&points).then_some(LineShape {
+                points,
+                color: color_from_style(group.header.style_b),
+                dashed: line_is_dashed(group.header.style_a),
+                binding: Some(binding),
             })
         })
         .collect()
@@ -157,7 +188,7 @@ fn resolve_angle_marker_shape(
     has_distinct_points(&points).then_some(LineShape {
         points,
         color: color_from_style(group.header.style_b),
-        dashed: false,
+        dashed: line_is_dashed(group.header.style_a),
         binding: Some(LineBinding::AngleMarker {
             start_index: path.refs[0].checked_sub(1)?,
             vertex_index: path.refs[1].checked_sub(1)?,
@@ -395,7 +426,7 @@ fn resolve_angle_bisector_ray_shape(
     has_distinct_points(&[vertex.clone(), bisector_end.clone()]).then_some(LineShape {
         points: vec![vertex.clone(), bisector_end],
         color: color_from_style(group.header.style_b),
-        dashed: false,
+        dashed: line_is_dashed(group.header.style_a),
         binding: Some(LineBinding::AngleBisectorRay {
             start_index,
             vertex_index,
@@ -439,7 +470,7 @@ fn resolve_perpendicular_line_shape(
     has_distinct_points(&[start.clone(), end.clone()]).then_some(LineShape {
         points: vec![start, end],
         color: color_from_style(group.header.style_b),
-        dashed: false,
+        dashed: line_is_dashed(group.header.style_a),
         binding: Some(LineBinding::PerpendicularLine {
             through_index,
             line_start_index: Some(line_start_index),
@@ -482,7 +513,7 @@ fn resolve_parallel_line_shape(
     has_distinct_points(&[start.clone(), end.clone()]).then_some(LineShape {
         points: vec![start, end],
         color: color_from_style(group.header.style_b),
-        dashed: false,
+        dashed: line_is_dashed(group.header.style_a),
         binding: Some(LineBinding::ParallelLine {
             through_index,
             line_start_index: Some(line_start_index),
@@ -562,7 +593,7 @@ pub(crate) fn collect_bound_line_shapes(
             has_distinct_points(&[start.clone(), end.clone()]).then_some(LineShape {
                 points: vec![start, end],
                 color: color_from_style(group.header.style_b),
-                dashed: false,
+                dashed: line_is_dashed(group.header.style_a),
                 binding: Some(match kind {
                     crate::format::GroupKind::Line => LineBinding::Line {
                         start_index: start_group_index,
@@ -748,6 +779,9 @@ pub(crate) fn collect_three_point_arc_shapes(
                             resolve_circle_points_raw(file, groups, anchors, circle_group)?;
                         Some(center)
                     }
+                    crate::format::GroupKind::CenterArc => {
+                        Some(anchors.get(path.refs[0].checked_sub(1)?)?.clone()?)
+                    }
                     _ => None,
                 },
                 counterclockwise: matches!(
@@ -757,6 +791,159 @@ pub(crate) fn collect_three_point_arc_shapes(
             })
         })
         .collect()
+}
+
+fn resolve_arc_boundary_points(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group: &ObjectGroup,
+) -> Option<Vec<PointRecord>> {
+    let (center, [start, mid, end], starts_from_end) =
+        resolve_boundary_arc_components(file, groups, anchors, group)?;
+    let arc_points = sample_three_point_arc(&start, &mid, &end, ARC_BOUNDARY_SUBDIVISIONS)?;
+    match group.header.kind() {
+        crate::format::GroupKind::SectorBoundary => {
+            let center = center?;
+            let mut points = if starts_from_end {
+                vec![end.clone(), center.clone(), start.clone()]
+            } else {
+                vec![center.clone(), start.clone()]
+            };
+            points.extend(arc_points.into_iter().skip(1));
+            if !starts_from_end {
+                points.push(center);
+            }
+            Some(points)
+        }
+        crate::format::GroupKind::CircularSegmentBoundary => {
+            let mut points = if starts_from_end {
+                vec![end.clone(), start.clone()]
+            } else {
+                vec![start.clone()]
+            };
+            points.extend(arc_points.into_iter().skip(1));
+            if !starts_from_end {
+                points.push(start);
+            }
+            Some(points)
+        }
+        _ => None,
+    }
+}
+
+fn resolve_boundary_arc_components(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group: &ObjectGroup,
+) -> Option<(Option<PointRecord>, [PointRecord; 3], bool)> {
+    let path = find_indexed_path(file, group)?;
+    let arc_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+    match arc_group.header.kind() {
+        crate::format::GroupKind::CenterArc => {
+            let arc_path = find_indexed_path(file, arc_group)?;
+            if arc_path.refs.len() != 3 {
+                return None;
+            }
+            let center = anchors.get(arc_path.refs[0].checked_sub(1)?)?.clone()?;
+            let start = anchors.get(arc_path.refs[1].checked_sub(1)?)?.clone()?;
+            let end = anchors.get(arc_path.refs[2].checked_sub(1)?)?.clone()?;
+            Some((
+                Some(center.clone()),
+                arc_on_circle_control_points(&center, &start, &end)?,
+                true,
+            ))
+        }
+        crate::format::GroupKind::ArcOnCircle => {
+            let arc_path = find_indexed_path(file, arc_group)?;
+            if arc_path.refs.len() != 3 {
+                return None;
+            }
+            let circle_group = groups.get(arc_path.refs[0].checked_sub(1)?)?;
+            let (center, _) = resolve_circle_points_raw(file, groups, anchors, circle_group)?;
+            let start = anchors.get(arc_path.refs[1].checked_sub(1)?)?.clone()?;
+            let end = anchors.get(arc_path.refs[2].checked_sub(1)?)?.clone()?;
+            Some((
+                Some(center.clone()),
+                arc_on_circle_control_points(&center, &start, &end)?,
+                false,
+            ))
+        }
+        crate::format::GroupKind::ThreePointArc => {
+            let arc_path = find_indexed_path(file, arc_group)?;
+            if arc_path.refs.len() != 3 {
+                return None;
+            }
+            let start = anchors.get(arc_path.refs[0].checked_sub(1)?)?.clone()?;
+            let mid = anchors.get(arc_path.refs[1].checked_sub(1)?)?.clone()?;
+            let end = anchors.get(arc_path.refs[2].checked_sub(1)?)?.clone()?;
+            let center = three_point_arc_geometry(&start, &mid, &end).map(|geometry| geometry.center);
+            Some((center, [start, mid, end], false))
+        }
+        _ => None,
+    }
+}
+
+fn resolve_arc_boundary_binding(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<LineBinding> {
+    let path = find_indexed_path(file, group)?;
+    let arc_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+    let boundary_kind = match group.header.kind() {
+        crate::format::GroupKind::SectorBoundary => ArcBoundaryKind::Sector,
+        crate::format::GroupKind::CircularSegmentBoundary => ArcBoundaryKind::CircularSegment,
+        _ => return None,
+    };
+    match arc_group.header.kind() {
+        crate::format::GroupKind::CenterArc => {
+            let arc_path = find_indexed_path(file, arc_group)?;
+            (arc_path.refs.len() == 3).then_some(LineBinding::ArcBoundary {
+                host_key: group.ordinal,
+                boundary_kind,
+                center_index: Some(arc_path.refs[0].checked_sub(1)?),
+                start_index: arc_path.refs[1].checked_sub(1)?,
+                mid_index: None,
+                end_index: arc_path.refs[2].checked_sub(1)?,
+                reversed: true,
+            })
+        }
+        crate::format::GroupKind::ArcOnCircle => {
+            let arc_path = find_indexed_path(file, arc_group)?;
+            if arc_path.refs.len() != 3 {
+                return None;
+            }
+            let circle_group = groups.get(arc_path.refs[0].checked_sub(1)?)?;
+            let circle_path = find_indexed_path(file, circle_group)?;
+            if circle_path.refs.len() != 2 {
+                return None;
+            }
+            Some(LineBinding::ArcBoundary {
+                host_key: group.ordinal,
+                boundary_kind,
+                center_index: Some(circle_path.refs[0].checked_sub(1)?),
+                start_index: arc_path.refs[1].checked_sub(1)?,
+                mid_index: None,
+                end_index: arc_path.refs[2].checked_sub(1)?,
+                reversed: false,
+            })
+        }
+        crate::format::GroupKind::ThreePointArc => {
+            let arc_path = find_indexed_path(file, arc_group)?;
+            (arc_path.refs.len() == 3).then_some(LineBinding::ArcBoundary {
+                host_key: group.ordinal,
+                boundary_kind,
+                center_index: None,
+                start_index: arc_path.refs[0].checked_sub(1)?,
+                mid_index: Some(arc_path.refs[1].checked_sub(1)?),
+                end_index: arc_path.refs[2].checked_sub(1)?,
+                reversed: false,
+            })
+        }
+        _ => None,
+    }
 }
 
 pub(crate) fn collect_derived_segments(
@@ -913,7 +1100,7 @@ pub(crate) fn collect_coordinate_traces(
             (points.len() >= 2).then_some(LineShape {
                 points,
                 color: color_from_style(group.header.style_b),
-                dashed: false,
+                dashed: line_is_dashed(group.header.style_a),
                 binding: None,
             })
         })

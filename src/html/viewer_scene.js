@@ -15,6 +15,14 @@
     };
   }
 
+  function resolvePolylinePoint(env, handle, resolveFn) {
+    if (!handle) return null;
+    if (typeof handle.pointIndex === "number") {
+      return resolveFn(handle.pointIndex);
+    }
+    return handle;
+  }
+
   function projectToSegment(point, start, end) {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
@@ -164,6 +172,67 @@
     const controls = circleArcControlPoints(center, start, end, yUp);
     if (!controls) return null;
     return pointOnThreePointArc(controls.start, controls.mid, controls.end, t);
+  }
+
+  function sampleArcBoundaryPoints(env, binding) {
+    const steps = 48;
+    const start = resolveScenePoint(env, binding.startIndex);
+    const end = resolveScenePoint(env, binding.endIndex);
+    if (!start || !end) return null;
+    const reversed = !!binding.reversed;
+    const sampledArc = [];
+
+    if (typeof binding.centerIndex === "number") {
+      const center = resolveScenePoint(env, binding.centerIndex);
+      if (!center) return null;
+      for (let step = 0; step <= steps; step += 1) {
+        const point = pointOnCircleArc(center, start, end, step / steps, !!env.sourceScene.yUp);
+        if (!point) return null;
+        sampledArc.push(point);
+      }
+      if (binding.boundaryKind === "sector") {
+        return reversed
+          ? [end, center, start, ...sampledArc.slice(1)]
+          : [center, start, ...sampledArc.slice(1), center];
+      }
+      return reversed
+        ? [end, start, ...sampledArc.slice(1)]
+        : [start, ...sampledArc.slice(1), start];
+    }
+
+    if (typeof binding.midIndex !== "number") return null;
+    const mid = resolveScenePoint(env, binding.midIndex);
+    if (!mid) return null;
+    for (let step = 0; step <= steps; step += 1) {
+      const point = pointOnThreePointArc(start, mid, end, step / steps);
+      if (!point) return null;
+      sampledArc.push(point);
+    }
+    if (binding.boundaryKind === "sector") {
+      return reversed
+        ? [end, mid, start, ...sampledArc.slice(1)]
+        : [start, ...sampledArc.slice(1)];
+    }
+    return reversed
+      ? [end, start, ...sampledArc.slice(1)]
+      : [start, ...sampledArc.slice(1), start];
+  }
+
+  function resolvePolylineConstraintPoints(env, constraint, resolveFn) {
+    const hasRuntimeScene = typeof env?.currentScene === "function";
+    const scene = hasRuntimeScene ? env.currentScene() : env?.sourceScene;
+    if (typeof constraint.functionKey === "number") {
+      const hostLine = scene?.lines?.find((line) =>
+        line?.binding?.kind === "arc-boundary" && line.binding.hostKey === constraint.functionKey
+      );
+      if (hostLine?.binding?.kind === "arc-boundary") {
+        if (hasRuntimeScene) {
+          return sampleArcBoundaryPoints(env, hostLine.binding);
+        }
+        return hostLine.points.map((handle) => resolvePolylinePoint(env, handle, resolveFn));
+      }
+    }
+    return constraint.points.map((handle) => resolvePolylinePoint(env, handle, resolveFn));
   }
 
   function projectToThreePointArc(point, start, mid, end) {
@@ -360,11 +429,14 @@
       return lerpPoint(start, end, constraint.t);
     }
     if (constraint.kind === "polyline") {
-      const count = constraint.points.length;
+      const points = resolvePolylineConstraintPoints(env, constraint, resolveFn);
+      if (!points) return null;
+      const count = points.length;
       if (count < 2) return null;
       const segmentIndex = Math.max(0, Math.min(count - 2, constraint.segmentIndex));
-      const start = constraint.points[segmentIndex];
-      const end = constraint.points[segmentIndex + 1];
+      const start = points[segmentIndex];
+      const end = points[segmentIndex + 1];
+      if (!start || !end) return null;
       return lerpPoint(start, end, constraint.t);
     }
     if (constraint.kind === "polygon-boundary") {
@@ -649,6 +721,9 @@
       if (!start || !end) return null;
       return clipParametricLineToBounds(start, end, getViewBounds(env), true);
     }
+    if (line.binding?.kind === "arc-boundary") {
+      return sampleArcBoundaryPoints(env, line.binding);
+    }
     const points = line.points.map((handle) => resolvePoint(env, handle));
     return points.every(Boolean) ? points : null;
   }
@@ -910,6 +985,7 @@
     projectToCircleArc,
     pointOnThreePointArc,
     projectToThreePointArc,
+    sampleArcBoundaryPoints,
     lineLineIntersection,
     lineCircleIntersection,
     circleCircleIntersection,

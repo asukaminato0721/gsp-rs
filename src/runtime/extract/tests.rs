@@ -195,6 +195,101 @@ fn preserves_translated_points_in_point_translation_gsp() {
 }
 
 #[test]
+fn preserves_circular_segment_boundary_point_interactivity() {
+    let data = include_bytes!("../../../tests/fixtures/未实现的系统功能/弓形周界动点.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    let boundary_point = scene
+        .points
+        .iter()
+        .find(|point| matches!(point.constraint, ScenePointConstraint::OnPolyline { .. }))
+        .expect("expected boundary point constrained to rendered perimeter");
+    match &boundary_point.constraint {
+        ScenePointConstraint::OnPolyline {
+            points,
+            segment_index,
+            t,
+            ..
+        } => {
+            assert!(points.len() >= 4, "expected sampled boundary polyline");
+            assert!(
+                *segment_index < points.len() - 1,
+                "segment index should reference a valid boundary segment"
+            );
+            assert!((0.0..=1.0).contains(t), "polyline parameter should stay normalized");
+        }
+        _ => unreachable!(),
+    }
+    assert!(
+        scene.lines.iter().any(|line| line.points.len() >= 4),
+        "expected perimeter shape to be rendered as an interactive polyline"
+    );
+    assert!(
+        scene
+            .lines
+            .iter()
+            .any(|line| matches!(line.binding, Some(LineBinding::ArcBoundary { .. }))),
+        "expected boundary line to stay payload-bound for reactive updates"
+    );
+}
+
+#[test]
+fn preserves_custom_transform_point_interactivity() {
+    let data = include_bytes!("../../../tests/fixtures/未实现的系统功能/自定义变换.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.points.len(), 4, "expected custom transform point Q");
+    assert!(
+        scene.lines.iter().any(|line| line.points.len() > 100),
+        "expected sampled custom transform trace"
+    );
+    let trace = scene
+        .lines
+        .iter()
+        .find(|line| matches!(line.binding, Some(LineBinding::CustomTransformTrace { .. })))
+        .expect("expected payload-bound custom transform trace");
+    assert!(
+        scene.labels.iter().any(|label| label.text == "Q"),
+        "expected custom transform point label"
+    );
+    assert!(
+        scene
+            .labels
+            .iter()
+            .any(|label| label.text.contains("1厘米") || label.text.contains("100°")),
+        "expected payload-derived custom transform expression labels"
+    );
+    assert!(matches!(
+        &scene.points[3].binding,
+        Some(ScenePointBinding::CustomTransform {
+            source_index,
+            origin_index,
+            axis_end_index,
+            ..
+        }) if *source_index == 2 && *origin_index == 0 && *axis_end_index == 1
+    ));
+    let (source_t, origin_index) = match scene.points[2].constraint {
+        ScenePointConstraint::OnSegment { t, start_index, .. } => (t, start_index),
+        ref constraint => panic!("expected source point to stay constrained on segment, got {constraint:?}"),
+    };
+    let origin = &scene.points[origin_index];
+    assert!(
+        scene.points[3].position.x > origin.position.x
+            && scene.points[3].position.y < origin.position.y
+            && source_t > 0.0,
+        "expected payload-defined custom transform to place Q above/right of O using P's normalized parameter"
+    );
+    let trace_end = trace.points.last().expect("trace endpoint");
+    assert!(
+        (trace_end.x - scene.points[3].position.x).abs() < 1e-6
+            && (trace_end.y - scene.points[3].position.y).abs() < 1e-6,
+        "expected custom transform trace to stop at Q"
+    );
+}
+
+#[test]
 fn preserves_polygon_in_poly_gsp() {
     let data = include_bytes!("../../../tests/fixtures/gsp/static/poly.gsp");
     let file = GspFile::parse(data).expect("fixture parses");
@@ -693,6 +788,102 @@ fn preserves_point_on_circle_arc_gsp() {
         } if (t - 0.2648281634562194).abs() < 1e-9
     )));
 }
+
+#[test]
+fn preserves_intersection_labels_and_payload_text_colors_in_triangle_centers_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/三角形的五心.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    let texts = scene
+        .labels
+        .iter()
+        .map(|label| label.text.as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        texts.contains(&"O"),
+        "expected circumcenter label O, got {texts:?}"
+    );
+    assert!(
+        texts.contains(&"H"),
+        "expected orthocenter label H, got {texts:?}"
+    );
+
+    let point_a = scene
+        .labels
+        .iter()
+        .find(|label| label.text == "A")
+        .expect("expected point label A");
+    assert_eq!(
+        point_a.color,
+        [30, 30, 30, 255],
+        "expected geometric point labels to keep black default text color"
+    );
+
+    let caption = scene
+        .labels
+        .iter()
+        .find(|label| label.text.starts_with("非等边三角形ABC"))
+        .expect("expected explanatory caption");
+    assert_eq!(
+        caption.color,
+        [0, 0, 255, 255],
+        "expected caption to preserve payload color"
+    );
+
+    let center_labels = scene
+        .labels
+        .iter()
+        .filter(|label| matches!(label.text.as_str(), "G" | "O" | "H"))
+        .collect::<Vec<_>>();
+    assert!(
+        center_labels
+            .iter()
+            .all(|label| label.color == [30, 30, 30, 255]),
+        "expected constructed center labels to keep black default text color"
+    );
+    assert!(
+        scene
+            .points
+            .iter()
+            .any(|point| point.color == [0, 255, 0, 255]),
+        "expected triangle-center points to preserve green payload color"
+    );
+    assert!(
+        scene.labels.iter().any(|label| label.text == "M"),
+        "expected midpoint label M from payload-marked midpoint"
+    );
+}
+
+#[test]
+fn preserves_dashed_segment_pattern_from_payload_style() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/三角形的五心.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert!(
+        scene
+            .lines
+            .iter()
+            .any(|line| line.color == [0, 0, 0, 255] && line.dashed),
+        "expected auxiliary black segments to keep dashed style"
+    );
+    assert!(
+        scene
+            .lines
+            .iter()
+            .any(|line| line.color == [0, 0, 128, 255] && !line.dashed),
+        "expected primary blue triangle edges to remain solid"
+    );
+    assert!(
+        scene
+            .lines
+            .iter()
+            .any(|line| matches!(line.binding, Some(crate::runtime::scene::LineBinding::PerpendicularLine { .. })) && line.dashed),
+        "expected perpendicular helper lines to keep dashed style"
+    );
+}
+
 
 #[test]
 fn preserves_point_hidden_gsp() {

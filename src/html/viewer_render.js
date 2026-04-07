@@ -654,7 +654,9 @@
       const screen = env.toScreen(resolved);
       env.ctx.beginPath();
       env.ctx.arc(screen.x, screen.y, index === env.hoverPointIndex.val ? 6 : 4, 0, Math.PI * 2);
-      env.ctx.fillStyle = index === env.hoverPointIndex.val ? "rgba(255, 120, 20, 1)" : "rgba(255, 60, 40, 1)";
+      env.ctx.fillStyle = index === env.hoverPointIndex.val
+        ? "rgba(255, 120, 20, 1)"
+        : env.rgba(point.color || [255, 60, 40, 255]);
       env.ctx.fill();
     });
   }

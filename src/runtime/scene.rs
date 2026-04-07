@@ -98,6 +98,7 @@ pub(crate) struct ScreenRect {
 #[derive(Debug, Clone)]
 pub(crate) struct ScenePoint {
     pub(crate) position: PointRecord,
+    pub(crate) color: [u8; 4],
     pub(crate) visible: bool,
     pub(crate) constraint: ScenePointConstraint,
     pub(crate) binding: Option<ScenePointBinding>,
@@ -355,6 +356,12 @@ pub(crate) enum LineBinding {
         line_start_index: usize,
         line_end_index: usize,
     },
+    CustomTransformTrace {
+        point_index: usize,
+        x_min: f64,
+        x_max: f64,
+        sample_count: usize,
+    },
     RotateEdge {
         center_index: usize,
         vertex_index: usize,
@@ -363,6 +370,21 @@ pub(crate) enum LineBinding {
         start_step: usize,
         end_step: usize,
     },
+    ArcBoundary {
+        host_key: usize,
+        boundary_kind: ArcBoundaryKind,
+        center_index: Option<usize>,
+        start_index: usize,
+        mid_index: Option<usize>,
+        end_index: usize,
+        reversed: bool,
+    },
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum ArcBoundaryKind {
+    Sector,
+    CircularSegment,
 }
 
 #[derive(Debug, Clone)]
@@ -416,6 +438,15 @@ pub(crate) enum ScenePointBinding {
     Coordinate {
         name: String,
         expr: FunctionExpr,
+    },
+    CustomTransform {
+        source_index: usize,
+        origin_index: usize,
+        axis_end_index: usize,
+        distance_expr: FunctionExpr,
+        angle_expr: FunctionExpr,
+        distance_raw_scale: f64,
+        angle_degrees_scale: f64,
     },
 }
 
@@ -580,5 +611,12 @@ pub(crate) enum TextLabelBinding {
         point_index: usize,
         point_name: String,
         circle_name: String,
+    },
+    CustomTransformValue {
+        point_index: usize,
+        expr_label: String,
+        expr: FunctionExpr,
+        value_scale: f64,
+        value_suffix: String,
     },
 }

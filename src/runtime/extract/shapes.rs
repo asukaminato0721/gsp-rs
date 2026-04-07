@@ -7,7 +7,8 @@ use crate::runtime::functions::{
     decode_function_expr, decode_function_plot_descriptor, evaluate_expr_with_parameters,
 };
 use crate::runtime::geometry::{
-    color_from_style, fill_color_from_styles, has_distinct_points, reflect_across_line,
+    color_from_style, fill_color_from_styles, has_distinct_points, line_is_dashed,
+    reflect_across_line,
     rotate_around, scale_around, three_point_arc_geometry, to_raw_from_world,
 };
 use crate::runtime::scene::{
@@ -25,9 +26,9 @@ mod transforms;
 
 pub(super) use anchors::collect_raw_object_anchors;
 pub(super) use basic::{
-    collect_bound_line_shapes, collect_circle_shapes, collect_coordinate_traces,
-    collect_derived_segments, collect_line_shapes, collect_polygon_shapes,
-    collect_segment_marker_shapes, collect_three_point_arc_shapes,
+    collect_arc_boundary_shapes, collect_bound_line_shapes, collect_circle_shapes,
+    collect_coordinate_traces, collect_derived_segments, collect_line_shapes,
+    collect_polygon_shapes, collect_segment_marker_shapes, collect_three_point_arc_shapes,
 };
 pub(super) use iterations::{
     collect_carried_iteration_lines, collect_carried_iteration_polygons,

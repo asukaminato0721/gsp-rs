@@ -11,7 +11,9 @@ pub(crate) fn remap_label_bindings(
         let Some(binding) = label.binding.as_mut() else {
             continue;
         };
-        if let TextLabelBinding::PointExpressionValue { point_index, .. } = binding {
+        if let TextLabelBinding::PointExpressionValue { point_index, .. }
+        | TextLabelBinding::CustomTransformValue { point_index, .. } = binding
+        {
             let Some(mapped_index) = group_to_point_index
                 .get(*point_index)
                 .and_then(|mapped_index| *mapped_index)
@@ -29,6 +31,7 @@ pub(crate) fn remap_label_bindings(
             TextLabelBinding::PolygonBoundaryParameter { point_index, .. } => point_index,
             TextLabelBinding::SegmentParameter { point_index, .. } => point_index,
             TextLabelBinding::CircleParameter { point_index, .. } => point_index,
+            TextLabelBinding::CustomTransformValue { .. } => unreachable!(),
             TextLabelBinding::PointExpressionValue { .. } => unreachable!(),
         };
         let Some(mapped_index) = group_to_point_index
@@ -595,6 +598,16 @@ pub(crate) fn remap_line_bindings(
                 *line_start_index = mapped_line_start_index;
                 *line_end_index = mapped_line_end_index;
             }
+            LineBinding::CustomTransformTrace { point_index, .. } => {
+                let Some(mapped_point_index) = group_to_point_index
+                    .get(*point_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                *point_index = mapped_point_index;
+            }
             LineBinding::RotateEdge {
                 center_index,
                 vertex_index,
@@ -616,6 +629,50 @@ pub(crate) fn remap_line_bindings(
                 };
                 *center_index = mapped_center_index;
                 *vertex_index = mapped_vertex_index;
+            }
+            LineBinding::ArcBoundary {
+                center_index,
+                start_index,
+                mid_index,
+                end_index,
+                ..
+            } => {
+                let mapped_center_index = center_index.and_then(|index| {
+                    group_to_point_index
+                        .get(index)
+                        .and_then(|mapped_index| *mapped_index)
+                });
+                if center_index.is_some() && mapped_center_index.is_none() {
+                    line.binding = None;
+                    continue;
+                }
+                let Some(mapped_start_index) = group_to_point_index
+                    .get(*start_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                let mapped_mid_index = mid_index.and_then(|index| {
+                    group_to_point_index
+                        .get(index)
+                        .and_then(|mapped_index| *mapped_index)
+                });
+                if mid_index.is_some() && mapped_mid_index.is_none() {
+                    line.binding = None;
+                    continue;
+                }
+                let Some(mapped_end_index) = group_to_point_index
+                    .get(*end_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                *center_index = mapped_center_index;
+                *start_index = mapped_start_index;
+                *mid_index = mapped_mid_index;
+                *end_index = mapped_end_index;
             }
         }
     }

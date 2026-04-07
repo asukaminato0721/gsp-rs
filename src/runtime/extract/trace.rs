@@ -10,6 +10,9 @@ use crate::runtime::scene::{
 };
 
 use super::find_indexed_path;
+use super::points::{
+    custom_transform_expression_parameter_map, custom_transform_trace_parameter,
+};
 
 pub(super) fn collect_point_traces(
     file: &GspFile,
@@ -19,7 +22,13 @@ pub(super) fn collect_point_traces(
 ) -> Vec<crate::runtime::scene::LineShape> {
     groups
         .iter()
-        .filter(|group| (group.header.kind()) == crate::format::GroupKind::PointTrace)
+        .filter(|group| {
+            matches!(
+                group.header.kind(),
+                crate::format::GroupKind::PointTrace
+                    | crate::format::GroupKind::CustomTransformTrace
+            )
+        })
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let target_group_index = path.refs.first()?.checked_sub(1)?;
@@ -36,12 +45,19 @@ pub(super) fn collect_point_traces(
                 .find(|record| record.record_type == 0x0902)
                 .map(|record| record.payload(&file.data))?;
             let descriptor = crate::runtime::functions::decode_function_plot_descriptor(payload)?;
+            let trace_max = if (group.header.kind()) == crate::format::GroupKind::CustomTransformTrace
+            {
+                custom_transform_trace_parameter(visible_points.get(driver_point_index)?)?
+                    .clamp(descriptor.x_min.min(descriptor.x_max), descriptor.x_min.max(descriptor.x_max))
+            } else {
+                descriptor.x_max
+            };
 
             let mut points = Vec::with_capacity(descriptor.sample_count);
             let last = descriptor.sample_count.saturating_sub(1).max(1) as f64;
             for sample_index in 0..descriptor.sample_count {
                 let t = sample_index as f64 / last;
-                let parameter = descriptor.x_min + (descriptor.x_max - descriptor.x_min) * t;
+                let parameter = descriptor.x_min + (trace_max - descriptor.x_min) * t;
                 let mut sampled_points = visible_points.to_vec();
                 let driver_point = sampled_points.get_mut(driver_point_index)?;
                 apply_trace_parameter(driver_point, parameter);
@@ -56,7 +72,16 @@ pub(super) fn collect_point_traces(
                 points,
                 color: crate::runtime::geometry::color_from_style(group.header.style_b),
                 dashed: false,
-                binding: None,
+                binding: if (group.header.kind()) == crate::format::GroupKind::CustomTransformTrace {
+                    Some(crate::runtime::scene::LineBinding::CustomTransformTrace {
+                        point_index: target_group_index,
+                        x_min: descriptor.x_min,
+                        x_max: descriptor.x_max,
+                        sample_count: descriptor.sample_count,
+                    })
+                } else {
+                    None
+                },
             })
         })
         .collect()
@@ -170,6 +195,38 @@ fn resolve_trace_point(
             let start = resolve_trace_point(points, *start_index, visiting)?;
             let end = resolve_trace_point(points, *end_index, visiting)?;
             Some(lerp_point(&start, &end, 0.5))
+        }
+        Some(ScenePointBinding::CustomTransform {
+            source_index,
+            origin_index,
+            axis_end_index,
+            distance_expr,
+            angle_expr,
+            distance_raw_scale,
+            angle_degrees_scale,
+        }) => {
+            let source_point = points.get(*source_index)?;
+            let t = custom_transform_trace_parameter(source_point)?;
+            let origin = resolve_trace_point(points, *origin_index, visiting)?;
+            let axis_end = resolve_trace_point(points, *axis_end_index, visiting)?;
+            let parameters =
+                custom_transform_expression_parameter_map(distance_expr, angle_expr, t);
+            let distance = crate::runtime::functions::evaluate_expr_with_parameters(
+                distance_expr,
+                t,
+                &parameters,
+            )? * distance_raw_scale;
+            let angle_degrees = crate::runtime::functions::evaluate_expr_with_parameters(
+                angle_expr,
+                t,
+                &parameters,
+            )? * angle_degrees_scale;
+            let base_angle = (-(axis_end.y - origin.y)).atan2(axis_end.x - origin.x).to_degrees();
+            let radians = (base_angle + angle_degrees).to_radians();
+            Some(PointRecord {
+                x: origin.x + distance * radians.cos(),
+                y: origin.y - distance * radians.sin(),
+            })
         }
         _ => match &point.constraint {
             ScenePointConstraint::Free => Some(point.position.clone()),

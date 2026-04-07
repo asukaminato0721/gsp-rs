@@ -21,13 +21,15 @@ use self::graph::{collect_saved_viewport, detect_graph_transform, has_graph_clas
 use self::images::collect_scene_images;
 use self::labels::{
     PendingLabelHotspot, collect_circle_parameter_labels, collect_coordinate_labels,
-    collect_label_iterations, collect_labels, collect_polygon_parameter_labels,
+    collect_custom_transform_expression_labels, collect_label_iterations, collect_labels,
+    collect_polygon_parameter_labels,
     collect_segment_parameter_labels, compute_iteration_labels, resolve_label_hotspots,
 };
 use self::points::{
     TransformBindingKind, collect_non_graph_parameters, collect_point_iteration_points,
     collect_point_objects, collect_visible_points, decode_line_midpoint_anchor_raw,
-    decode_offset_anchor_raw, decode_parameter_controlled_anchor_raw,
+    decode_offset_anchor_raw,
+    decode_parameter_controlled_anchor_raw,
     decode_parameter_rotation_anchor_raw, decode_parameter_rotation_binding,
     decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,
     decode_point_pair_translation_anchor_raw, decode_reflection_anchor_raw,
@@ -45,7 +47,7 @@ use self::shapes::{
     collect_reflected_line_shapes, collect_reflected_polygon_shapes, collect_rotated_circle_shapes,
     collect_rotated_line_shapes, collect_rotated_polygon_shapes,
     collect_rotational_iteration_lines, collect_scaled_line_shapes, collect_segment_marker_shapes,
-    collect_three_point_arc_shapes, collect_transformed_circle_shapes,
+    collect_arc_boundary_shapes, collect_three_point_arc_shapes, collect_transformed_circle_shapes,
     collect_transformed_polygon_shapes, collect_translated_line_shapes,
     collect_translated_polygon_shapes,
 };
@@ -216,6 +218,7 @@ fn collect_scene_shapes(
         !analysis.graph_mode && !analysis.large_non_graph,
         &suppressed_carried_polygon_segments,
     );
+    let boundary_lines = collect_arc_boundary_shapes(file, groups, &analysis.raw_anchors);
     let direct_lines = collect_bound_line_shapes(
         file,
         groups,
@@ -317,7 +320,7 @@ fn collect_scene_shapes(
     let synthetic_axes = synthesize_axes_if_needed(analysis, &axes);
 
     CollectedShapes {
-        polylines,
+        polylines: polylines.into_iter().chain(boundary_lines).collect(),
         direct_lines,
         rays,
         translated_lines,
@@ -402,6 +405,11 @@ fn collect_scene_labels(
         &analysis.raw_anchors,
     ));
     labels.extend(collect_segment_parameter_labels(file, groups));
+    labels.extend(collect_custom_transform_expression_labels(
+        file,
+        groups,
+        &analysis.raw_anchors,
+    ));
     labels.extend(collect_circle_parameter_labels(
         file,
         groups,
@@ -583,6 +591,11 @@ fn remap_scene_bindings(
     );
     remap_line_bindings(
         &mut shapes.rotational_iteration_lines,
+        group_to_point_index,
+        &line_group_to_index,
+    );
+    remap_line_bindings(
+        &mut shapes.coordinate_traces,
         group_to_point_index,
         &line_group_to_index,
     );
