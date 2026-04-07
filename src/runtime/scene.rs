@@ -363,6 +363,21 @@ pub(crate) enum LineBinding {
         start_step: usize,
         end_step: usize,
     },
+    ArcBoundary {
+        host_key: usize,
+        boundary_kind: ArcBoundaryKind,
+        center_index: Option<usize>,
+        start_index: usize,
+        mid_index: Option<usize>,
+        end_index: usize,
+        reversed: bool,
+    },
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum ArcBoundaryKind {
+    Sector,
+    CircularSegment,
 }
 
 #[derive(Debug, Clone)]

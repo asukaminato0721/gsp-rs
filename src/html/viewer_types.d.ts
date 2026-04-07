@@ -38,6 +38,8 @@ type PointHandle =
       y?: number;
     };
 
+type ArcBoundaryKind = "sector" | "circular-segment";
+
 type ViewState = {
   centerX: number;
   centerY: number;
@@ -251,7 +253,7 @@ type ViewerEnv = {
 };
 
 type ViewerSceneModule = {
-  resolveConstrainedPoint: (env: ViewerEnv | null, constraint: any, resolveFn: (index: number) => Point) => Point | null;
+  resolveConstrainedPoint: (env: Pick<ViewerEnv, "sourceScene"> | ViewerEnv | null, constraint: any, resolveFn: (index: number) => Point) => Point | null;
   resolveScenePoint: (env: ViewerEnv, index: number) => Point;
   resolvePoint: (env: ViewerEnv, handle: PointHandle) => Point;
   resolveAnchorBase: (env: ViewerEnv, handle: PointHandle) => Point;
@@ -293,6 +295,42 @@ type ViewerSceneModule = {
     projected: Point;
     distanceSquared: number;
   } | null;
+  sampleArcBoundaryPoints: (
+    env: ViewerEnv,
+    binding: {
+      kind: "arc-boundary";
+      hostKey: number;
+      boundaryKind: ArcBoundaryKind;
+      centerIndex?: number | null;
+      startIndex: number;
+      midIndex?: number | null;
+      endIndex: number;
+      reversed: boolean;
+    },
+  ) => Point[] | null;
+  lineLineIntersection: (
+    leftStart: Point,
+    leftEnd: Point,
+    leftKind: string,
+    rightStart: Point,
+    rightEnd: Point,
+    rightKind: string,
+  ) => Point | null;
+  lineCircleIntersection: (
+    lineStart: Point,
+    lineEnd: Point,
+    lineKind: string,
+    center: Point,
+    radiusPoint: Point,
+    variant: number,
+  ) => Point | null;
+  circleCircleIntersection: (
+    leftCenter: Point,
+    leftRadiusPoint: Point,
+    rightCenter: Point,
+    rightRadiusPoint: Point,
+    variant: number,
+  ) => Point | null;
   drawGrid: (env: ViewerEnv) => void;
 };
 

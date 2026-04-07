@@ -10,6 +10,7 @@ use super::{
 use crate::format::{read_f64, read_u32};
 use crate::runtime::extract::decode::{is_circle_group_kind, resolve_circle_points_raw};
 use crate::runtime::geometry::{arc_on_circle_control_points, sample_three_point_arc};
+use crate::runtime::scene::ArcBoundaryKind;
 
 const ARC_BOUNDARY_SUBDIVISIONS: usize = 48;
 
@@ -146,11 +147,12 @@ pub(crate) fn collect_arc_boundary_shapes(
         })
         .filter_map(|group| {
             let points = resolve_arc_boundary_points(file, groups, anchors, group)?;
+            let binding = resolve_arc_boundary_binding(file, groups, group)?;
             has_distinct_points(&points).then_some(LineShape {
                 points,
                 color: color_from_style(group.header.style_b),
                 dashed: false,
-                binding: None,
+                binding: Some(binding),
             })
         })
         .collect()
@@ -776,6 +778,9 @@ pub(crate) fn collect_three_point_arc_shapes(
                             resolve_circle_points_raw(file, groups, anchors, circle_group)?;
                         Some(center)
                     }
+                    crate::format::GroupKind::CenterArc => {
+                        Some(anchors.get(path.refs[0].checked_sub(1)?)?.clone()?)
+                    }
                     _ => None,
                 },
                 counterclockwise: matches!(
@@ -874,6 +879,67 @@ fn resolve_boundary_arc_components(
             let end = anchors.get(arc_path.refs[2].checked_sub(1)?)?.clone()?;
             let center = three_point_arc_geometry(&start, &mid, &end).map(|geometry| geometry.center);
             Some((center, [start, mid, end], false))
+        }
+        _ => None,
+    }
+}
+
+fn resolve_arc_boundary_binding(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<LineBinding> {
+    let path = find_indexed_path(file, group)?;
+    let arc_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+    let boundary_kind = match group.header.kind() {
+        crate::format::GroupKind::SectorBoundary => ArcBoundaryKind::Sector,
+        crate::format::GroupKind::CircularSegmentBoundary => ArcBoundaryKind::CircularSegment,
+        _ => return None,
+    };
+    match arc_group.header.kind() {
+        crate::format::GroupKind::CenterArc => {
+            let arc_path = find_indexed_path(file, arc_group)?;
+            (arc_path.refs.len() == 3).then_some(LineBinding::ArcBoundary {
+                host_key: group.ordinal,
+                boundary_kind,
+                center_index: Some(arc_path.refs[0].checked_sub(1)?),
+                start_index: arc_path.refs[1].checked_sub(1)?,
+                mid_index: None,
+                end_index: arc_path.refs[2].checked_sub(1)?,
+                reversed: true,
+            })
+        }
+        crate::format::GroupKind::ArcOnCircle => {
+            let arc_path = find_indexed_path(file, arc_group)?;
+            if arc_path.refs.len() != 3 {
+                return None;
+            }
+            let circle_group = groups.get(arc_path.refs[0].checked_sub(1)?)?;
+            let circle_path = find_indexed_path(file, circle_group)?;
+            if circle_path.refs.len() != 2 {
+                return None;
+            }
+            Some(LineBinding::ArcBoundary {
+                host_key: group.ordinal,
+                boundary_kind,
+                center_index: Some(circle_path.refs[0].checked_sub(1)?),
+                start_index: arc_path.refs[1].checked_sub(1)?,
+                mid_index: None,
+                end_index: arc_path.refs[2].checked_sub(1)?,
+                reversed: false,
+            })
+        }
+        crate::format::GroupKind::ThreePointArc => {
+            let arc_path = find_indexed_path(file, arc_group)?;
+            (arc_path.refs.len() == 3).then_some(LineBinding::ArcBoundary {
+                host_key: group.ordinal,
+                boundary_kind,
+                center_index: None,
+                start_index: arc_path.refs[0].checked_sub(1)?,
+                mid_index: Some(arc_path.refs[1].checked_sub(1)?),
+                end_index: arc_path.refs[2].checked_sub(1)?,
+                reversed: false,
+            })
         }
         _ => None,
     }

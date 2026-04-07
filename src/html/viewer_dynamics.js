@@ -327,6 +327,9 @@
     if (constraint.kind === "segment") {
       return constraint.t;
     }
+    if (constraint.kind === "polyline") {
+      return constraint.t;
+    }
     if (constraint.kind === "polygon-boundary") {
       return polygonBoundaryParameterFromPoint(scene, pointIndex);
     }
@@ -346,6 +349,8 @@
     if (!point.constraint) return;
     const clamped = Math.max(0, Math.min(1, value));
     if (point.constraint.kind === "segment") {
+      point.constraint.t = clamped;
+    } else if (point.constraint.kind === "polyline") {
       point.constraint.t = clamped;
     } else if (point.constraint.kind === "polygon-boundary") {
       const count = point.constraint.vertexIndices.length;
@@ -1022,6 +1027,14 @@
         const end = scene.points[line.binding.endIndex];
         const clipped = start && end ? clipRayToBounds(start, end, bounds) : null;
         if (clipped) line.points = clipped;
+        preservedLines.push(line);
+        return;
+      }
+      if (line.binding?.kind === "arc-boundary") {
+        const sampled = window.GspViewerModules.scene.sampleArcBoundaryPoints(env, line.binding);
+        if (sampled) {
+          line.points = sampled;
+        }
         preservedLines.push(line);
         return;
       }

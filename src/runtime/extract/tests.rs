@@ -225,6 +225,13 @@ fn preserves_circular_segment_boundary_point_interactivity() {
         scene.lines.iter().any(|line| line.points.len() >= 4),
         "expected perimeter shape to be rendered as an interactive polyline"
     );
+    assert!(
+        scene
+            .lines
+            .iter()
+            .any(|line| matches!(line.binding, Some(LineBinding::ArcBoundary { .. }))),
+        "expected boundary line to stay payload-bound for reactive updates"
+    );
 }
 
 #[test]

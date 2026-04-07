@@ -4,7 +4,7 @@ use crate::runtime::functions::{
 };
 use crate::runtime::geometry::darken;
 use crate::runtime::scene::{
-    ButtonAction, IterationPointHandle, LabelIterationFamily, LineBinding, LineConstraint,
+    ArcBoundaryKind, ButtonAction, IterationPointHandle, LabelIterationFamily, LineBinding, LineConstraint,
     LineIterationFamily, PointIterationFamily, PolygonIterationFamily, Scene, SceneButton,
     ScenePointBinding, ScenePointConstraint, ShapeBinding, TextLabelBinding,
     TextLabelHotspotAction,
@@ -463,6 +463,22 @@ enum LineBindingJson {
         #[serde(rename = "endStep")]
         end_step: usize,
     },
+    #[serde(rename = "arc-boundary")]
+    ArcBoundary {
+        #[serde(rename = "hostKey")]
+        host_key: usize,
+        #[serde(rename = "boundaryKind")]
+        boundary_kind: ArcBoundaryKindJson,
+        #[serde(rename = "centerIndex", skip_serializing_if = "Option::is_none")]
+        center_index: Option<usize>,
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "midIndex", skip_serializing_if = "Option::is_none")]
+        mid_index: Option<usize>,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+        reversed: bool,
+    },
 }
 
 impl LineBindingJson {
@@ -602,6 +618,39 @@ impl LineBindingJson {
                 start_step: *start_step,
                 end_step: *end_step,
             },
+            LineBinding::ArcBoundary {
+                host_key,
+                boundary_kind,
+                center_index,
+                start_index,
+                mid_index,
+                end_index,
+                reversed,
+            } => Self::ArcBoundary {
+                host_key: *host_key,
+                boundary_kind: ArcBoundaryKindJson::from_kind(*boundary_kind),
+                center_index: *center_index,
+                start_index: *start_index,
+                mid_index: *mid_index,
+                end_index: *end_index,
+                reversed: *reversed,
+            },
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum ArcBoundaryKindJson {
+    Sector,
+    CircularSegment,
+}
+
+impl ArcBoundaryKindJson {
+    fn from_kind(kind: ArcBoundaryKind) -> Self {
+        match kind {
+            ArcBoundaryKind::Sector => Self::Sector,
+            ArcBoundaryKind::CircularSegment => Self::CircularSegment,
         }
     }
 }
