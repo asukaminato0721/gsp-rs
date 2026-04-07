@@ -15,7 +15,7 @@ use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
 use crate::runtime::functions::{
     decode_function_expr, evaluate_expr_with_parameters, function_expr_label,
 };
-use crate::runtime::geometry::format_number;
+use crate::runtime::geometry::{color_from_style, format_number};
 use crate::runtime::scene::{
     LabelIterationFamily, TextLabel, TextLabelBinding, TextLabelHotspot, TextLabelHotspotAction,
 };
@@ -28,6 +28,31 @@ pub(super) struct PendingLabelHotspot {
     pub(super) end: usize,
     pub(super) text: String,
     pub(super) group_ordinal: usize,
+}
+
+fn supports_payload_label(kind: crate::format::GroupKind) -> bool {
+    matches!(
+        kind,
+        crate::format::GroupKind::Point
+            | crate::format::GroupKind::CustomTransformPoint
+            | crate::format::GroupKind::Translation
+            | crate::format::GroupKind::Reflection
+            | crate::format::GroupKind::Rotation
+            | crate::format::GroupKind::ParameterRotation
+            | crate::format::GroupKind::Scale
+            | crate::format::GroupKind::PointConstraint
+            | crate::format::GroupKind::LinearIntersectionPoint
+            | crate::format::GroupKind::IntersectionPoint1
+            | crate::format::GroupKind::IntersectionPoint2
+            | crate::format::GroupKind::CircleCircleIntersectionPoint1
+            | crate::format::GroupKind::CircleCircleIntersectionPoint2
+            | crate::format::GroupKind::Segment
+            | crate::format::GroupKind::GraphObject40
+            | crate::format::GroupKind::Kind51
+            | crate::format::GroupKind::ActionButton
+            | crate::format::GroupKind::ButtonLabel
+            | crate::format::GroupKind::LabelIterationSeed
+    )
 }
 
 pub(super) fn collect_labels(
@@ -47,20 +72,7 @@ pub(super) fn collect_labels(
     for group in groups {
         let kind = group.header.kind();
         match kind {
-            crate::format::GroupKind::Point
-            | crate::format::GroupKind::CustomTransformPoint
-            | crate::format::GroupKind::Translation
-            | crate::format::GroupKind::Reflection
-            | crate::format::GroupKind::Rotation
-            | crate::format::GroupKind::ParameterRotation
-            | crate::format::GroupKind::Scale
-            | crate::format::GroupKind::Segment
-            | crate::format::GroupKind::PointConstraint
-            | crate::format::GroupKind::GraphObject40
-            | crate::format::GroupKind::Kind51
-            | crate::format::GroupKind::ActionButton
-            | crate::format::GroupKind::ButtonLabel
-            | crate::format::GroupKind::LabelIterationSeed => {
+            kind if supports_payload_label(kind) => {
                 if kind == crate::format::GroupKind::Point
                     && decode_link_button_url(file, group).is_some()
                 {
@@ -96,6 +108,11 @@ pub(super) fn collect_labels(
                                     | crate::format::GroupKind::Scale
                                     | crate::format::GroupKind::Segment
                                     | crate::format::GroupKind::PointConstraint
+                                    | crate::format::GroupKind::LinearIntersectionPoint
+                                    | crate::format::GroupKind::IntersectionPoint1
+                                    | crate::format::GroupKind::IntersectionPoint2
+                                    | crate::format::GroupKind::CircleCircleIntersectionPoint1
+                                    | crate::format::GroupKind::CircleCircleIntersectionPoint2
                             )
                             && !is_non_graph_parameter_group(file, groups, group))
                         .then(|| decode_label_name(file, group))
@@ -109,7 +126,7 @@ pub(super) fn collect_labels(
                         labels.push(TextLabel {
                             anchor,
                             text,
-                            color: [30, 30, 30, 255],
+                            color: color_from_style(group.header.style_b),
                             binding: None,
                             screen_space: false,
                             hotspots: Vec::new(),

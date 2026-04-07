@@ -4,8 +4,8 @@ use super::{
     ArcShape, CircleShape, GraphTransform, GspFile, LineBinding, LineShape, ObjectGroup,
     PointRecord, PolygonShape, ShapeBinding, color_from_style, decode_function_expr,
     decode_function_plot_descriptor, decode_label_name, evaluate_expr_with_parameters,
-    fill_color_from_styles, find_indexed_path, has_distinct_points, three_point_arc_geometry,
-    to_raw_from_world,
+    fill_color_from_styles, find_indexed_path, has_distinct_points, line_is_dashed,
+    three_point_arc_geometry, to_raw_from_world,
 };
 use crate::format::{read_f64, read_u32};
 use crate::runtime::extract::decode::{is_circle_group_kind, resolve_circle_points_raw};
@@ -75,7 +75,8 @@ pub(crate) fn collect_line_shapes(
                 } else {
                     color_from_style(group.header.style_b)
                 },
-                dashed: (group.header.kind()) == crate::format::GroupKind::MeasurementLine,
+                dashed: (group.header.kind()) == crate::format::GroupKind::MeasurementLine
+                    || line_is_dashed(group.header.style_a),
                 binding: match (group.header.kind(), start_group_index, end_group_index) {
                     (crate::format::GroupKind::Segment, Some(start_index), Some(end_index)) => {
                         Some(LineBinding::Segment {
@@ -119,7 +120,7 @@ pub(crate) fn collect_segment_marker_shapes(
             Some(LineShape {
                 points,
                 color: color_from_style(group.header.style_b),
-                dashed: false,
+                dashed: line_is_dashed(group.header.style_a),
                 binding: Some(LineBinding::SegmentMarker {
                     start_index: start_group_index,
                     end_index: end_group_index,
@@ -151,7 +152,7 @@ pub(crate) fn collect_arc_boundary_shapes(
             has_distinct_points(&points).then_some(LineShape {
                 points,
                 color: color_from_style(group.header.style_b),
-                dashed: false,
+                dashed: line_is_dashed(group.header.style_a),
                 binding: Some(binding),
             })
         })
@@ -187,7 +188,7 @@ fn resolve_angle_marker_shape(
     has_distinct_points(&points).then_some(LineShape {
         points,
         color: color_from_style(group.header.style_b),
-        dashed: false,
+        dashed: line_is_dashed(group.header.style_a),
         binding: Some(LineBinding::AngleMarker {
             start_index: path.refs[0].checked_sub(1)?,
             vertex_index: path.refs[1].checked_sub(1)?,
@@ -425,7 +426,7 @@ fn resolve_angle_bisector_ray_shape(
     has_distinct_points(&[vertex.clone(), bisector_end.clone()]).then_some(LineShape {
         points: vec![vertex.clone(), bisector_end],
         color: color_from_style(group.header.style_b),
-        dashed: false,
+        dashed: line_is_dashed(group.header.style_a),
         binding: Some(LineBinding::AngleBisectorRay {
             start_index,
             vertex_index,
@@ -469,7 +470,7 @@ fn resolve_perpendicular_line_shape(
     has_distinct_points(&[start.clone(), end.clone()]).then_some(LineShape {
         points: vec![start, end],
         color: color_from_style(group.header.style_b),
-        dashed: false,
+        dashed: line_is_dashed(group.header.style_a),
         binding: Some(LineBinding::PerpendicularLine {
             through_index,
             line_start_index: Some(line_start_index),
@@ -512,7 +513,7 @@ fn resolve_parallel_line_shape(
     has_distinct_points(&[start.clone(), end.clone()]).then_some(LineShape {
         points: vec![start, end],
         color: color_from_style(group.header.style_b),
-        dashed: false,
+        dashed: line_is_dashed(group.header.style_a),
         binding: Some(LineBinding::ParallelLine {
             through_index,
             line_start_index: Some(line_start_index),
@@ -592,7 +593,7 @@ pub(crate) fn collect_bound_line_shapes(
             has_distinct_points(&[start.clone(), end.clone()]).then_some(LineShape {
                 points: vec![start, end],
                 color: color_from_style(group.header.style_b),
-                dashed: false,
+                dashed: line_is_dashed(group.header.style_a),
                 binding: Some(match kind {
                     crate::format::GroupKind::Line => LineBinding::Line {
                         start_index: start_group_index,
@@ -1099,7 +1100,7 @@ pub(crate) fn collect_coordinate_traces(
             (points.len() >= 2).then_some(LineShape {
                 points,
                 color: color_from_style(group.header.style_b),
-                dashed: false,
+                dashed: line_is_dashed(group.header.style_a),
                 binding: None,
             })
         })

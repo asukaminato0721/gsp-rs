@@ -358,7 +358,7 @@ mod tests {
         )
         .expect("hidden-point fixture should compile");
 
-        assert!(html.contains("\"points\":[{\"x\":323.0,\"y\":217.0,\"visible\":false"));
+        assert!(html.contains("\"points\":[{\"x\":323.0,\"y\":217.0,\"color\":[255,0,0,255],\"visible\":false"));
         assert!(html.contains("\"lines\":[]"));
     }
 

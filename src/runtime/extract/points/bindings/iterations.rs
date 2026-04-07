@@ -9,6 +9,7 @@ use crate::runtime::extract::points::{
     editable_non_graph_parameter_name_for_group, is_editable_non_graph_parameter_name,
     regular_polygon_angle_expr,
 };
+use crate::runtime::geometry::color_from_style;
 use crate::runtime::scene::{ScenePoint, ScenePointBinding, ScenePointConstraint};
 
 pub(crate) fn collect_point_iteration_points(
@@ -45,6 +46,7 @@ pub(crate) fn collect_point_iteration_points(
         let Some(iter_group) = groups.get(iter_group_index) else {
             continue;
         };
+        let seed_color = color_from_style(groups[seed_group_index].header.style_b);
         match iter_group.header.kind() {
             crate::format::GroupKind::AffineIteration => {
                 let depth = iteration_depth(file, iter_group, 3);
@@ -95,6 +97,7 @@ pub(crate) fn collect_point_iteration_points(
                             );
                             derived_points.push(ScenePoint {
                                 position: current_position.clone(),
+                                color: seed_color,
                                 visible: true,
                                 constraint: ScenePointConstraint::Free,
                                 binding: Some(ScenePointBinding::Rotate {
@@ -147,6 +150,7 @@ pub(crate) fn collect_point_iteration_points(
                     current_position += PointRecord { x: dx, y: dy };
                     derived_points.push(ScenePoint {
                         position: current_position.clone(),
+                        color: seed_color,
                         visible: true,
                         constraint: ScenePointConstraint::Offset {
                             origin_index: previous_index,
@@ -186,6 +190,7 @@ pub(crate) fn collect_point_iteration_points(
                         current_position += PointRecord { x: dx, y: dy };
                         derived_points.push(ScenePoint {
                             position: current_position.clone(),
+                            color: seed_color,
                             visible: true,
                             constraint: ScenePointConstraint::Offset {
                                 origin_index: previous_index,
@@ -234,6 +239,7 @@ pub(crate) fn collect_point_iteration_points(
                         };
                         derived_points.push(ScenePoint {
                             position,
+                            color: seed_color,
                             visible: true,
                             constraint: ScenePointConstraint::Free,
                             binding: Some(ScenePointBinding::Rotate {

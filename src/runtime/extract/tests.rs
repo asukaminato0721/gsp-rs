@@ -790,6 +790,86 @@ fn preserves_point_on_circle_arc_gsp() {
 }
 
 #[test]
+fn preserves_intersection_labels_and_payload_text_colors_in_triangle_centers_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/三角形的五心.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    let texts = scene
+        .labels
+        .iter()
+        .map(|label| label.text.as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        texts.contains(&"O"),
+        "expected circumcenter label O, got {texts:?}"
+    );
+    assert!(
+        texts.contains(&"H"),
+        "expected orthocenter label H, got {texts:?}"
+    );
+
+    let point_a = scene
+        .labels
+        .iter()
+        .find(|label| label.text == "A")
+        .expect("expected point label A");
+    assert_eq!(
+        point_a.color,
+        [255, 0, 0, 255],
+        "expected point labels to preserve payload color"
+    );
+
+    let caption = scene
+        .labels
+        .iter()
+        .find(|label| label.text.starts_with("非等边三角形ABC"))
+        .expect("expected explanatory caption");
+    assert_eq!(
+        caption.color,
+        [0, 0, 255, 255],
+        "expected caption to preserve payload color"
+    );
+
+    assert!(
+        scene
+            .points
+            .iter()
+            .any(|point| point.color == [0, 255, 0, 255]),
+        "expected triangle-center points to preserve green payload color"
+    );
+}
+
+#[test]
+fn preserves_dashed_segment_pattern_from_payload_style() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/三角形的五心.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert!(
+        scene
+            .lines
+            .iter()
+            .any(|line| line.color == [0, 0, 0, 255] && line.dashed),
+        "expected auxiliary black segments to keep dashed style"
+    );
+    assert!(
+        scene
+            .lines
+            .iter()
+            .any(|line| line.color == [0, 0, 128, 255] && !line.dashed),
+        "expected primary blue triangle edges to remain solid"
+    );
+    assert!(
+        scene
+            .lines
+            .iter()
+            .any(|line| matches!(line.binding, Some(crate::runtime::scene::LineBinding::PerpendicularLine { .. })) && line.dashed),
+        "expected perpendicular helper lines to keep dashed style"
+    );
+}
+
+#[test]
 fn preserves_point_hidden_gsp() {
     let data = include_bytes!("../../../tests/fixtures/gsp/static/point_hidden.gsp");
     let file = GspFile::parse(data).expect("fixture parses");

@@ -3,7 +3,8 @@ use std::collections::BTreeSet;
 use super::{
     CircleShape, GspFile, LineBinding, LineIterationFamily, LineShape, ObjectGroup, PointRecord,
     PolygonIterationFamily, PolygonShape, color_from_style, decode_translated_point_constraint,
-    fill_color_from_styles, find_indexed_path, regular_polygon_iteration_step, rotate_around,
+    fill_color_from_styles, find_indexed_path, line_is_dashed, regular_polygon_iteration_step,
+    rotate_around,
 };
 use crate::runtime::extract::points::editable_non_graph_parameter_name_for_group;
 use crate::runtime::scene::IterationPointHandle;
@@ -99,7 +100,7 @@ pub(crate) fn collect_rotational_iteration_lines(
                         rotate(&vertex, (step + 1) % (depth + 1)),
                     ],
                     color: color_from_style(source_group.header.style_b),
-                    dashed: false,
+                    dashed: line_is_dashed(source_group.header.style_a),
                     binding: Some(LineBinding::RotateEdge {
                         center_index: center_group_index,
                         vertex_index: vertex_group_index,
@@ -166,7 +167,7 @@ pub(crate) fn collect_carried_iteration_lines(
                     lines.push(LineShape {
                         points: vec![current_start.clone(), current_end.clone()],
                         color,
-                        dashed: false,
+                        dashed: line_is_dashed(source_group.header.style_a),
                         binding: None,
                     });
                 }
@@ -184,7 +185,7 @@ pub(crate) fn collect_carried_iteration_lines(
                     .map(|delta| LineShape {
                         points: vec![start.clone() + delta.clone(), end.clone() + delta],
                         color,
-                        dashed: false,
+                        dashed: line_is_dashed(source_group.header.style_a),
                         binding: None,
                     })
                     .collect::<Vec<_>>(),
@@ -258,7 +259,7 @@ pub(crate) fn collect_carried_line_iteration_families(
                     depth,
                     parameter_name: None,
                     color: color_from_style(source_group.header.style_b),
-                    dashed: false,
+                    dashed: line_is_dashed(source_group.header.style_a),
                     affine_source_indices: Some(source_indices),
                     affine_target_handles: Some(target_handles),
                 });
@@ -290,7 +291,7 @@ pub(crate) fn collect_carried_line_iteration_families(
                 depth,
                 parameter_name: carried_iteration_parameter_name(file, groups, iter_group),
                 color: color_from_style(source_group.header.style_b),
-                dashed: false,
+                dashed: line_is_dashed(source_group.header.style_a),
                 affine_source_indices: None,
                 affine_target_handles: None,
             })

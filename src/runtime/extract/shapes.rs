@@ -7,7 +7,8 @@ use crate::runtime::functions::{
     decode_function_expr, decode_function_plot_descriptor, evaluate_expr_with_parameters,
 };
 use crate::runtime::geometry::{
-    color_from_style, fill_color_from_styles, has_distinct_points, reflect_across_line,
+    color_from_style, fill_color_from_styles, has_distinct_points, line_is_dashed,
+    reflect_across_line,
     rotate_around, scale_around, three_point_arc_geometry, to_raw_from_world,
 };
 use crate::runtime::scene::{

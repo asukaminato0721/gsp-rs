@@ -259,6 +259,14 @@ pub(super) fn color_from_style(style: u32) -> [u8; 4] {
     ]
 }
 
+pub(super) fn line_is_dashed(style: u32) -> bool {
+    // Sketchpad encodes the stroke pattern in the third byte of style_a.
+    // Observed native payloads use:
+    // - 0x12 for dashed segments
+    // - 0x11 for dashed constructed lines (perpendicular / parallel / line-like)
+    matches!(((style >> 16) & 0xff) as u8, 0x11 | 0x12)
+}
+
 pub(super) fn fill_color_from_styles(style_b: u32, style_c: u32) -> [u8; 4] {
     let mut color = color_from_style(style_b);
     let alpha = ((style_c >> 8) & 0xff) as u8;
@@ -352,6 +360,23 @@ pub(crate) fn arc_sample_points(
         }
     }
     Some(points)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::line_is_dashed;
+
+    #[test]
+    fn detects_dashed_line_like_styles() {
+        assert!(line_is_dashed(0x0112_000c), "expected dashed line style");
+        assert!(line_is_dashed(0x0112_000d), "expected dashed ray style");
+        assert!(
+            line_is_dashed(0x0111_002f),
+            "expected dashed perpendicular/parallel helper line style"
+        );
+        assert!(!line_is_dashed(0x0122_000c), "expected solid line style");
+        assert!(!line_is_dashed(0x0122_000d), "expected solid ray style");
+    }
 }
 
 pub(crate) fn point_on_three_point_arc(

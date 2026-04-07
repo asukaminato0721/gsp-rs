@@ -224,6 +224,7 @@
       points: scene.points.map((point) => ({
         x: point.x,
         y: point.y,
+        color: point.color,
         visible: point.visible !== false,
         constraint: point.constraint
           ? {

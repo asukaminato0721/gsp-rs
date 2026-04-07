@@ -98,6 +98,7 @@ pub(crate) struct ScreenRect {
 #[derive(Debug, Clone)]
 pub(crate) struct ScenePoint {
     pub(crate) position: PointRecord,
+    pub(crate) color: [u8; 4],
     pub(crate) visible: bool,
     pub(crate) constraint: ScenePointConstraint,
     pub(crate) binding: Option<ScenePointBinding>,

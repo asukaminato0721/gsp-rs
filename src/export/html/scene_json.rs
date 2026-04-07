@@ -1199,6 +1199,7 @@ impl LabelBindingJson {
 struct ScenePointJson {
     x: f64,
     y: f64,
+    color: [u8; 4],
     visible: bool,
     constraint: Option<PointConstraintJson>,
     binding: Option<PointBindingJson>,
@@ -1209,6 +1210,7 @@ impl ScenePointJson {
         Self {
             x: point.position.x,
             y: point.position.y,
+            color: point.color,
             visible: point.visible,
             constraint: PointConstraintJson::from_constraint(&point.constraint),
             binding: point.binding.as_ref().map(PointBindingJson::from_binding),
