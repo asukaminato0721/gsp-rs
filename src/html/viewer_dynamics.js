@@ -1131,11 +1131,13 @@
         if (binding?.kind === "custom-transform") {
           const origin = scene.points[binding.originIndex];
           const axisEnd = scene.points[binding.axisEndIndex];
-          if (origin && axisEnd) {
+          const traceMax = parameterValueFromPoint(scene, binding.sourceIndex);
+          if (origin && axisEnd && Number.isFinite(traceMax)) {
             const sampled = [];
             const last = Math.max(1, line.binding.sampleCount - 1);
+            const maxValue = Math.max(line.binding.xMin, Math.min(line.binding.xMax, traceMax));
             for (let index = 0; index < line.binding.sampleCount; index += 1) {
-              const value = line.binding.xMin + (line.binding.xMax - line.binding.xMin) * (index / last);
+              const value = line.binding.xMin + (maxValue - line.binding.xMin) * (index / last);
               const exprParameters = new Map(parameters);
               const names = new Set();
               collectExprParameterNames(binding.distanceExpr, names);

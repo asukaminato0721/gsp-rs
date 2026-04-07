@@ -245,6 +245,11 @@ fn preserves_custom_transform_point_interactivity() {
         scene.lines.iter().any(|line| line.points.len() > 100),
         "expected sampled custom transform trace"
     );
+    let trace = scene
+        .lines
+        .iter()
+        .find(|line| matches!(line.binding, Some(LineBinding::CustomTransformTrace { .. })))
+        .expect("expected payload-bound custom transform trace");
     assert!(
         scene.labels.iter().any(|label| label.text == "Q"),
         "expected custom transform point label"
@@ -260,8 +265,10 @@ fn preserves_custom_transform_point_interactivity() {
         &scene.points[3].binding,
         Some(ScenePointBinding::CustomTransform {
             source_index,
+            origin_index,
+            axis_end_index,
             ..
-        }) if *source_index == 2
+        }) if *source_index == 2 && *origin_index == 0 && *axis_end_index == 1
     ));
     let (source_t, origin_index) = match scene.points[2].constraint {
         ScenePointConstraint::OnSegment { t, start_index, .. } => (t, start_index),
@@ -273,6 +280,12 @@ fn preserves_custom_transform_point_interactivity() {
             && scene.points[3].position.y < origin.position.y
             && source_t > 0.0,
         "expected payload-defined custom transform to place Q above/right of O using P's normalized parameter"
+    );
+    let trace_end = trace.points.last().expect("trace endpoint");
+    assert!(
+        (trace_end.x - scene.points[3].position.x).abs() < 1e-6
+            && (trace_end.y - scene.points[3].position.y).abs() < 1e-6,
+        "expected custom transform trace to stop at Q"
     );
 }
 

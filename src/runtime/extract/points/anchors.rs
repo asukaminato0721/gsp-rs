@@ -422,24 +422,63 @@ pub(crate) fn decode_custom_transform_binding(
     if path.refs.len() < 6 {
         return None;
     }
-    let axis_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
-    let axis_path = find_indexed_path(file, axis_group)?;
-    if axis_path.refs.len() != 2 {
-        return None;
-    }
+    let source_group_index = path.refs.get(2)?.checked_sub(1)?;
+    let (origin_group_index, axis_end_group_index) =
+        custom_transform_basis_indices(file, groups, source_group_index)
+            .or_else(|| {
+                let axis_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+                let axis_path = find_indexed_path(file, axis_group)?;
+                Some((
+                    axis_path.refs.first()?.checked_sub(1)?,
+                    axis_path.refs.get(1)?.checked_sub(1)?,
+                ))
+            })?;
     let distance_expr_group = groups.get(path.refs.get(4)?.checked_sub(1)?)?;
     let angle_expr_group = groups.get(path.refs.get(5)?.checked_sub(1)?)?;
     let distance_expr = decode_function_expr(file, groups, distance_expr_group)?;
     let angle_expr = decode_function_expr(file, groups, angle_expr_group)?;
     Some(CustomTransformBindingDef {
-        source_group_index: path.refs.get(2)?.checked_sub(1)?,
-        origin_group_index: axis_path.refs.first()?.checked_sub(1)?,
-        axis_end_group_index: axis_path.refs.get(1)?.checked_sub(1)?,
+        source_group_index,
+        origin_group_index,
+        axis_end_group_index,
         distance_expr,
         angle_expr,
         distance_raw_scale: decode_custom_transform_distance_scale(file, distance_expr_group)?,
         angle_degrees_scale: decode_custom_transform_angle_scale(file, angle_expr_group)?,
     })
+}
+
+fn custom_transform_basis_indices(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    source_group_index: usize,
+) -> Option<(usize, usize)> {
+    let source_group = groups.get(source_group_index)?;
+    match source_group.header.kind() {
+        crate::format::GroupKind::PointConstraint => {
+            let host_group = groups.get(find_indexed_path(file, source_group)?.refs.first()?.checked_sub(1)?)?;
+            if (host_group.header.kind()) != crate::format::GroupKind::Segment {
+                return None;
+            }
+            let host_path = find_indexed_path(file, host_group)?;
+            Some((
+                host_path.refs.first()?.checked_sub(1)?,
+                host_path.refs.get(1)?.checked_sub(1)?,
+            ))
+        }
+        crate::format::GroupKind::ParameterControlledPoint => {
+            let host_group = groups.get(find_indexed_path(file, source_group)?.refs.get(1)?.checked_sub(1)?)?;
+            if (host_group.header.kind()) != crate::format::GroupKind::Segment {
+                return None;
+            }
+            let host_path = find_indexed_path(file, host_group)?;
+            Some((
+                host_path.refs.first()?.checked_sub(1)?,
+                host_path.refs.get(1)?.checked_sub(1)?,
+            ))
+        }
+        _ => None,
+    }
 }
 
 pub(crate) fn resolve_custom_transform_point(

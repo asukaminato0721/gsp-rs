@@ -594,6 +594,11 @@ fn remap_scene_bindings(
         group_to_point_index,
         &line_group_to_index,
     );
+    remap_line_bindings(
+        &mut shapes.coordinate_traces,
+        group_to_point_index,
+        &line_group_to_index,
+    );
     let line_iterations = collect_carried_line_iteration_families(
         file,
         groups,

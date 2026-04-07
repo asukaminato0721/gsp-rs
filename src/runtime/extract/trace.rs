@@ -45,12 +45,19 @@ pub(super) fn collect_point_traces(
                 .find(|record| record.record_type == 0x0902)
                 .map(|record| record.payload(&file.data))?;
             let descriptor = crate::runtime::functions::decode_function_plot_descriptor(payload)?;
+            let trace_max = if (group.header.kind()) == crate::format::GroupKind::CustomTransformTrace
+            {
+                custom_transform_trace_parameter(visible_points.get(driver_point_index)?)?
+                    .clamp(descriptor.x_min.min(descriptor.x_max), descriptor.x_min.max(descriptor.x_max))
+            } else {
+                descriptor.x_max
+            };
 
             let mut points = Vec::with_capacity(descriptor.sample_count);
             let last = descriptor.sample_count.saturating_sub(1).max(1) as f64;
             for sample_index in 0..descriptor.sample_count {
                 let t = sample_index as f64 / last;
-                let parameter = descriptor.x_min + (descriptor.x_max - descriptor.x_min) * t;
+                let parameter = descriptor.x_min + (trace_max - descriptor.x_min) * t;
                 let mut sampled_points = visible_points.to_vec();
                 let driver_point = sampled_points.get_mut(driver_point_index)?;
                 apply_trace_parameter(driver_point, parameter);
