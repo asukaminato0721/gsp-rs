@@ -31,6 +31,38 @@ pub(crate) fn remap_label_bindings(
             TextLabelBinding::PolygonBoundaryParameter { point_index, .. } => point_index,
             TextLabelBinding::SegmentParameter { point_index, .. } => point_index,
             TextLabelBinding::CircleParameter { point_index, .. } => point_index,
+            TextLabelBinding::AngleMarkerValue {
+                start_index,
+                vertex_index,
+                end_index,
+                ..
+            } => {
+                let Some(mapped_start_index) = group_to_point_index
+                    .get(*start_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    label.binding = None;
+                    continue;
+                };
+                let Some(mapped_vertex_index) = group_to_point_index
+                    .get(*vertex_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    label.binding = None;
+                    continue;
+                };
+                let Some(mapped_end_index) = group_to_point_index
+                    .get(*end_index)
+                    .and_then(|mapped_index| *mapped_index)
+                else {
+                    label.binding = None;
+                    continue;
+                };
+                *start_index = mapped_start_index;
+                *vertex_index = mapped_vertex_index;
+                *end_index = mapped_end_index;
+                continue;
+            }
             TextLabelBinding::CustomTransformValue { .. } => unreachable!(),
             TextLabelBinding::PointExpressionValue { .. } => unreachable!(),
         };

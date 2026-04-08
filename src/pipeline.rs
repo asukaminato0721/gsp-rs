@@ -395,6 +395,41 @@ mod tests {
     }
 
     #[test]
+    fn exports_angle_marker_label_fixture_into_html() {
+        let scene_json = compile_bytes_to_scene_json(
+            include_bytes!("../tests/fixtures/gsp/static/angle_marker_label.gsp"),
+            800,
+            600,
+        )
+        .expect("angle-marker-label fixture should compile");
+
+        let scene: Value =
+            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+        let labels = scene["labels"]
+            .as_array()
+            .expect("scene labels should be an array");
+        assert!(
+            labels
+                .iter()
+                .any(|label| label["text"].as_str() == Some("42.5")),
+            "expected exported labels to include the payload angle marker label"
+        );
+        assert!(
+            scene["lines"].as_array().is_some_and(|lines| lines.iter().any(
+                |line| line["binding"]["kind"].as_str() == Some("angle-marker")
+            )),
+            "expected exported angle marker to stay interactive"
+        );
+        assert!(labels.iter().any(|label| {
+            label["binding"]["kind"].as_str() == Some("angle-marker-value")
+                && label["binding"]["startIndex"].as_u64() == Some(1)
+                && label["binding"]["vertexIndex"].as_u64() == Some(0)
+                && label["binding"]["endIndex"].as_u64() == Some(2)
+                && label["binding"]["decimals"].as_u64() == Some(1)
+        }));
+    }
+
+    #[test]
     fn exports_polar_function_fixture_into_html() {
         let html = compile_bytes_to_html_document(
             include_bytes!("../tests/fixtures/未实现的系统功能/极坐标.gsp"),

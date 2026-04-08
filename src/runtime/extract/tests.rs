@@ -2011,6 +2011,39 @@ fn preserves_point_and_segment_labels_in_segment_label_gsp() {
 }
 
 #[test]
+fn preserves_angle_marker_label_in_angle_marker_label_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/static/angle_marker_label.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    let texts = scene
+        .labels
+        .iter()
+        .map(|label| label.text.as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        texts.contains(&"42.5"),
+        "expected payload-backed angle marker label, got {texts:?}"
+    );
+    assert!(
+        scene
+            .lines
+            .iter()
+            .any(|line| matches!(line.binding, Some(LineBinding::AngleMarker { .. }))),
+        "expected angle marker to stay interactive"
+    );
+    assert!(scene.labels.iter().any(|label| matches!(
+        label.binding,
+        Some(TextLabelBinding::AngleMarkerValue {
+            start_index: 1,
+            vertex_index: 0,
+            end_index: 2,
+            decimals: 1,
+        })
+    )));
+}
+
+#[test]
 fn keeps_control_labels_in_non_graph_sample() {
     let data = include_bytes!("../../../../Samples/个人专栏/潘建平作品/加油潘建平老师.gsp");
     let file = GspFile::parse(data).expect("fixture parses");

@@ -1266,6 +1266,32 @@
           const value = ((pointAngle % tau) + tau) % tau / tau;
           label.text = `${label.binding.pointName}在⊙${label.binding.circleName}上的值 = ${env.formatNumber(value)}`;
         }
+      } else if (label.binding.kind === "angle-marker-value") {
+        const start = scene.points[label.binding.startIndex];
+        const vertex = scene.points[label.binding.vertexIndex];
+        const end = scene.points[label.binding.endIndex];
+        if (start && vertex && end) {
+          const first = {
+            x: start.x - vertex.x,
+            y: start.y - vertex.y,
+          };
+          const second = {
+            x: end.x - vertex.x,
+            y: end.y - vertex.y,
+          };
+          const firstLen = Math.hypot(first.x, first.y);
+          const secondLen = Math.hypot(second.x, second.y);
+          if (firstLen > 1e-9 && secondLen > 1e-9) {
+            const cross = (first.x / firstLen) * (second.y / secondLen)
+              - (first.y / firstLen) * (second.x / secondLen);
+            const dot = (first.x / firstLen) * (second.x / secondLen)
+              + (first.y / firstLen) * (second.y / secondLen);
+            const value = Math.abs(Math.atan2(cross, dot)) * 180 / Math.PI;
+            if (Number.isFinite(value)) {
+              label.text = value.toFixed(label.binding.decimals);
+            }
+          }
+        }
       } else if (label.binding.kind === "custom-transform-value") {
         const value = parameterValueFromPoint(scene, label.binding.pointIndex);
         if (Number.isFinite(value)) {

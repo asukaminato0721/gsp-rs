@@ -616,6 +616,12 @@ pub(crate) enum TextLabelBinding {
         point_name: String,
         circle_name: String,
     },
+    AngleMarkerValue {
+        start_index: usize,
+        vertex_index: usize,
+        end_index: usize,
+        decimals: usize,
+    },
     CustomTransformValue {
         point_index: usize,
         expr_label: String,

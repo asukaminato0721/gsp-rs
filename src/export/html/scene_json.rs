@@ -1114,6 +1114,16 @@ enum LabelBindingJson {
         #[serde(rename = "circleName")]
         circle_name: String,
     },
+    #[serde(rename = "angle-marker-value")]
+    AngleMarkerValue {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "vertexIndex")]
+        vertex_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+        decimals: usize,
+    },
     #[serde(rename = "custom-transform-value")]
     CustomTransformValue {
         #[serde(rename = "pointIndex")]
@@ -1185,6 +1195,17 @@ impl LabelBindingJson {
                 point_index: *point_index,
                 point_name: point_name.clone(),
                 circle_name: circle_name.clone(),
+            },
+            TextLabelBinding::AngleMarkerValue {
+                start_index,
+                vertex_index,
+                end_index,
+                decimals,
+            } => Self::AngleMarkerValue {
+                start_index: *start_index,
+                vertex_index: *vertex_index,
+                end_index: *end_index,
+                decimals: *decimals,
             },
             TextLabelBinding::CustomTransformValue {
                 point_index,

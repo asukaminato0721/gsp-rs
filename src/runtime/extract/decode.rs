@@ -238,6 +238,9 @@ pub(crate) fn decode_label_anchor(
                     None
                 }
             }),
+            crate::format::GroupKind::AngleMarker => {
+                decode_angle_marker_label_anchor(file, group, anchors)
+            }
             _ => None,
         })
         .or_else(|| {
@@ -257,6 +260,129 @@ pub(crate) fn decode_label_anchor(
         x: base.x + offset.0,
         y: base.y + offset.1,
     })
+}
+
+fn decode_angle_marker_label_anchor(
+    file: &GspFile,
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() != 3 {
+        return None;
+    }
+    let start = anchors.get(path.refs[0].checked_sub(1)?)?.clone()?;
+    let vertex = anchors.get(path.refs[1].checked_sub(1)?)?.clone()?;
+    let end = anchors.get(path.refs[2].checked_sub(1)?)?.clone()?;
+
+    let first = normalize_direction(&vertex, &start)?;
+    let second = normalize_direction(&vertex, &end)?;
+    let first_len = ((start.x - vertex.x).powi(2) + (start.y - vertex.y).powi(2)).sqrt();
+    let second_len = ((end.x - vertex.x).powi(2) + (end.y - vertex.y).powi(2)).sqrt();
+    let shortest_len = first_len.min(second_len);
+    if shortest_len <= 1e-9 {
+        return None;
+    }
+
+    let marker_class = decode_angle_marker_class(file, group).max(1);
+    let points =
+        resolve_angle_marker_label_points(&vertex, first, second, shortest_len, marker_class)?;
+    points.get(points.len() / 2).cloned()
+}
+
+fn decode_angle_marker_class(file: &GspFile, group: &ObjectGroup) -> u32 {
+    group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x090e)
+        .map(|record| record.payload(&file.data))
+        .filter(|payload| payload.len() >= 4)
+        .map(|payload| read_u32(payload, 0))
+        .unwrap_or(1)
+}
+
+fn normalize_direction(origin: &PointRecord, point: &PointRecord) -> Option<(f64, f64)> {
+    let dx = point.x - origin.x;
+    let dy = point.y - origin.y;
+    let len = (dx * dx + dy * dy).sqrt();
+    (len > 1e-9).then_some((dx / len, dy / len))
+}
+
+fn resolve_angle_marker_label_points(
+    vertex: &PointRecord,
+    first: (f64, f64),
+    second: (f64, f64),
+    shortest_len: f64,
+    marker_class: u32,
+) -> Option<Vec<PointRecord>> {
+    let dot = (first.0 * second.0 + first.1 * second.1).clamp(-1.0, 1.0);
+    let cross = first.0 * second.1 - first.1 * second.0;
+    if dot.abs() <= 0.12 {
+        return resolve_right_angle_marker_label_points(vertex, first, second, shortest_len);
+    }
+    resolve_arc_angle_marker_label_points(vertex, first, shortest_len, cross, dot, marker_class)
+}
+
+fn resolve_right_angle_marker_label_points(
+    vertex: &PointRecord,
+    first: (f64, f64),
+    second: (f64, f64),
+    shortest_len: f64,
+) -> Option<Vec<PointRecord>> {
+    let side = (shortest_len * 0.125)
+        .clamp(10.0, 28.0)
+        .min(shortest_len * 0.5);
+    if side <= 1e-9 {
+        return None;
+    }
+
+    let start_on_first = PointRecord {
+        x: vertex.x + first.0 * side,
+        y: vertex.y + first.1 * side,
+    };
+    let corner = PointRecord {
+        x: vertex.x + (first.0 + second.0) * side,
+        y: vertex.y + (first.1 + second.1) * side,
+    };
+    let end_on_second = PointRecord {
+        x: vertex.x + second.0 * side,
+        y: vertex.y + second.1 * side,
+    };
+
+    Some(vec![start_on_first, corner, end_on_second])
+}
+
+fn resolve_arc_angle_marker_label_points(
+    vertex: &PointRecord,
+    first: (f64, f64),
+    shortest_len: f64,
+    cross: f64,
+    dot: f64,
+    marker_class: u32,
+) -> Option<Vec<PointRecord>> {
+    let class_scale = 1.0 + 0.18 * (marker_class.saturating_sub(1) as f64);
+    let radius = ((shortest_len * 0.12).clamp(10.0, 28.0) * class_scale).min(shortest_len * 0.42);
+    if radius <= 1e-9 {
+        return None;
+    }
+    let delta = cross.atan2(dot);
+    if delta.abs() <= 1e-6 {
+        return None;
+    }
+    let start_angle = first.1.atan2(first.0);
+    let samples = 9usize;
+    Some(
+        (0..samples)
+            .map(|index| {
+                let t = index as f64 / (samples - 1) as f64;
+                let angle = start_angle + delta * t;
+                PointRecord {
+                    x: vertex.x + radius * angle.cos(),
+                    y: vertex.y + radius * angle.sin(),
+                }
+            })
+            .collect(),
+    )
 }
 
 pub(crate) fn decode_label_offset(file: &GspFile, group: &ObjectGroup) -> Option<(f64, f64)> {

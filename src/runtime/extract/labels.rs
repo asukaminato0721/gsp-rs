@@ -50,6 +50,7 @@ fn supports_payload_label(kind: crate::format::GroupKind) -> bool {
             | crate::format::GroupKind::Segment
             | crate::format::GroupKind::GraphObject40
             | crate::format::GroupKind::Kind51
+            | crate::format::GroupKind::AngleMarker
             | crate::format::GroupKind::ActionButton
             | crate::format::GroupKind::ButtonLabel
             | crate::format::GroupKind::LabelIterationSeed
@@ -166,6 +167,7 @@ pub(super) fn collect_labels(
                                     | crate::format::GroupKind::ParameterRotation
                                     | crate::format::GroupKind::Scale
                                     | crate::format::GroupKind::Segment
+                                    | crate::format::GroupKind::AngleMarker
                                     | crate::format::GroupKind::PointConstraint
                                     | crate::format::GroupKind::PathPoint
                                     | crate::format::GroupKind::LinearIntersectionPoint
@@ -183,11 +185,12 @@ pub(super) fn collect_labels(
                     if let Some(anchor) = anchor {
                         let label_index = labels.len();
                         label_group_to_index.insert(group.ordinal, label_index);
+                        let binding = angle_marker_measurement_binding(file, group, &text);
                         labels.push(TextLabel {
                             anchor,
                             text,
                             color: label_color_for_group(group),
-                            binding: None,
+                            binding,
                             screen_space: false,
                             hotspots: Vec::new(),
                         });
@@ -260,6 +263,51 @@ pub(super) fn collect_labels(
         }
     }
     (labels, label_group_to_index, pending_hotspots)
+}
+
+fn angle_marker_measurement_binding(
+    file: &GspFile,
+    group: &ObjectGroup,
+    text: &str,
+) -> Option<TextLabelBinding> {
+    if group.header.kind() != crate::format::GroupKind::AngleMarker {
+        return None;
+    }
+    let decimals = measurement_label_decimals(text)?;
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() != 3 {
+        return None;
+    }
+    Some(TextLabelBinding::AngleMarkerValue {
+        start_index: path.refs[0].checked_sub(1)?,
+        vertex_index: path.refs[1].checked_sub(1)?,
+        end_index: path.refs[2].checked_sub(1)?,
+        decimals,
+    })
+}
+
+fn measurement_label_decimals(text: &str) -> Option<usize> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let mut dot_index = None;
+    for (index, ch) in trimmed.char_indices() {
+        if ch == '.' {
+            if dot_index.is_some() {
+                return None;
+            }
+            dot_index = Some(index);
+        } else if !(ch.is_ascii_digit() || (index == 0 && (ch == '+' || ch == '-'))) {
+            return None;
+        }
+    }
+    trimmed.parse::<f64>().ok()?;
+    Some(
+        dot_index
+            .map(|index| trimmed[index + 1..].chars().count())
+            .unwrap_or(0),
+    )
 }
 
 pub(super) fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) -> Vec<TextLabel> {
