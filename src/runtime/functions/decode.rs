@@ -118,7 +118,7 @@ fn decode_parameter_anchor_binding(file: &GspFile, group: &ObjectGroup) -> Optio
     let path = find_indexed_path(file, group)?;
     let point_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
     let value = match point_group.header.kind() {
-        crate::format::GroupKind::PointConstraint => point_group
+        kind if kind.is_point_constraint() => point_group
             .records
             .iter()
             .find(|record| record.record_type == 0x07d3 && record.length == 12)

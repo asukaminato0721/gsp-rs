@@ -227,7 +227,7 @@ fn decode_point_on_segment_constraint(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> Option<PointOnSegmentConstraint> {
-    if (group.header.kind()) != crate::format::GroupKind::PointConstraint {
+    if !group.header.kind().is_point_constraint() {
         return None;
     }
 
@@ -518,7 +518,7 @@ pub(crate) fn decode_point_constraint(
     anchors: Option<&[Option<PointRecord>]>,
     graph: &Option<GraphTransform>,
 ) -> Option<RawPointConstraint> {
-    if (group.header.kind()) != crate::format::GroupKind::PointConstraint {
+    if !group.header.kind().is_point_constraint() {
         return None;
     }
 
@@ -534,6 +534,10 @@ pub(crate) fn decode_point_constraint(
         .iter()
         .find(|record| record.record_type == 0x07d3)
         .map(|record| record.payload(&file.data))?;
+
+    if (group.header.kind()) == crate::format::GroupKind::PathPoint {
+        return decode_path_point_constraint(file, groups, host_group, payload, anchors, graph);
+    }
 
     match (host_kind, payload.len()) {
         (
@@ -657,6 +661,132 @@ pub(crate) fn decode_point_constraint(
         _ => {
             decode_point_on_segment_constraint(file, groups, group).map(RawPointConstraint::Segment)
         }
+    }
+}
+
+fn decode_path_point_constraint(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    host_group: &ObjectGroup,
+    payload: &[u8],
+    anchors: Option<&[Option<PointRecord>]>,
+    graph: &Option<GraphTransform>,
+) -> Option<RawPointConstraint> {
+    if payload.len() < 12 {
+        return None;
+    }
+
+    let normalized_t = read_f64(payload, 4);
+    if !normalized_t.is_finite() {
+        return None;
+    }
+
+    match host_group.header.kind() {
+        crate::format::GroupKind::Segment => {
+            let host_path = find_indexed_path(file, host_group)?;
+            if host_path.refs.len() != 2 {
+                return None;
+            }
+            Some(RawPointConstraint::Segment(PointOnSegmentConstraint {
+                start_group_index: host_path.refs[0].checked_sub(1)?,
+                end_group_index: host_path.refs[1].checked_sub(1)?,
+                t: normalized_t.clamp(0.0, 1.0),
+            }))
+        }
+        crate::format::GroupKind::Circle => {
+            let host_path = find_indexed_path(file, host_group)?;
+            if host_path.refs.len() != 2 {
+                return None;
+            }
+            let angle = std::f64::consts::TAU * normalized_t.clamp(0.0, 1.0);
+            Some(RawPointConstraint::Circle(PointOnCircleConstraint {
+                center_group_index: host_path.refs[0].checked_sub(1)?,
+                radius_group_index: host_path.refs[1].checked_sub(1)?,
+                unit_x: angle.cos(),
+                unit_y: angle.sin(),
+            }))
+        }
+        crate::format::GroupKind::Polygon => {
+            let host_path = find_indexed_path(file, host_group)?;
+            if host_path.refs.len() < 2 {
+                return None;
+            }
+            let anchors = anchors?;
+            let vertex_group_indices = host_path
+                .refs
+                .iter()
+                .map(|vertex| vertex.checked_sub(1))
+                .collect::<Option<Vec<_>>>()?;
+            let vertices = vertex_group_indices
+                .iter()
+                .map(|group_index| anchors.get(*group_index)?.clone())
+                .collect::<Option<Vec<_>>>()?;
+            let (edge_index, t) = polygon_parameter_to_edge(&vertices, normalized_t)?;
+            Some(RawPointConstraint::PolygonBoundary {
+                vertex_group_indices,
+                edge_index,
+                t,
+            })
+        }
+        crate::format::GroupKind::SectorBoundary
+        | crate::format::GroupKind::CircularSegmentBoundary => {
+            let points = decode_arc_boundary_polyline(file, groups, host_group, anchors?)?;
+            let (segment_index, t) = locate_polyline_parameter_by_length(&points, normalized_t)?;
+            Some(RawPointConstraint::Polyline {
+                function_key: host_group.ordinal,
+                points,
+                segment_index,
+                t,
+            })
+        }
+        crate::format::GroupKind::FunctionPlot => {
+            decode_point_on_function_constraint(file, groups, host_group, payload, graph)
+        }
+        crate::format::GroupKind::ThreePointArc => {
+            let host_path = find_indexed_path(file, host_group)?;
+            if host_path.refs.len() != 3 {
+                return None;
+            }
+            Some(RawPointConstraint::Arc(PointOnArcConstraint {
+                start_group_index: host_path.refs[0].checked_sub(1)?,
+                mid_group_index: host_path.refs[1].checked_sub(1)?,
+                end_group_index: host_path.refs[2].checked_sub(1)?,
+                t: normalized_t.clamp(0.0, 1.0),
+            }))
+        }
+        crate::format::GroupKind::ArcOnCircle => {
+            let host_path = find_indexed_path(file, host_group)?;
+            if host_path.refs.len() != 3 {
+                return None;
+            }
+            let circle_group = groups.get(host_path.refs[0].checked_sub(1)?)?;
+            if !is_circle_group_kind(circle_group.header.kind()) {
+                return None;
+            }
+            let circle_path = find_indexed_path(file, circle_group)?;
+            if circle_path.refs.len() != 2 {
+                return None;
+            }
+            Some(RawPointConstraint::CircleArc(PointOnCircleArcConstraint {
+                center_group_index: circle_path.refs[0].checked_sub(1)?,
+                start_group_index: host_path.refs[1].checked_sub(1)?,
+                end_group_index: host_path.refs[2].checked_sub(1)?,
+                t: normalized_t.clamp(0.0, 1.0),
+            }))
+        }
+        crate::format::GroupKind::CenterArc => {
+            let host_path = find_indexed_path(file, host_group)?;
+            if host_path.refs.len() != 3 {
+                return None;
+            }
+            Some(RawPointConstraint::CircleArc(PointOnCircleArcConstraint {
+                center_group_index: host_path.refs[0].checked_sub(1)?,
+                start_group_index: host_path.refs[1].checked_sub(1)?,
+                end_group_index: host_path.refs[2].checked_sub(1)?,
+                t: 1.0 - normalized_t.clamp(0.0, 1.0),
+            }))
+        }
+        _ => None,
     }
 }
 

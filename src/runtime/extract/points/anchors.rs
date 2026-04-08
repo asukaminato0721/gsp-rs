@@ -455,7 +455,7 @@ fn custom_transform_basis_indices(
 ) -> Option<(usize, usize)> {
     let source_group = groups.get(source_group_index)?;
     match source_group.header.kind() {
-        crate::format::GroupKind::PointConstraint => {
+        kind if kind.is_point_constraint() => {
             let host_group = groups.get(find_indexed_path(file, source_group)?.refs.first()?.checked_sub(1)?)?;
             if (host_group.header.kind()) != crate::format::GroupKind::Segment {
                 return None;
@@ -510,7 +510,7 @@ pub(crate) fn decode_custom_transform_parameter(
 ) -> Option<f64> {
     let source_group = groups.get(source_group_index)?;
     match source_group.header.kind() {
-        crate::format::GroupKind::PointConstraint => match decode_point_constraint(
+        kind if kind.is_point_constraint() => match decode_point_constraint(
             file,
             groups,
             source_group,
@@ -763,7 +763,7 @@ pub(crate) fn decode_point_on_ray_anchor_raw(
     group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
 ) -> Option<PointRecord> {
-    if (group.header.kind()) != crate::format::GroupKind::PointConstraint {
+    if !group.header.kind().is_point_constraint() {
         return None;
     }
 

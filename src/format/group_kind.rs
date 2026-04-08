@@ -63,6 +63,10 @@ macro_rules! define_group_kinds {
                         | Self::AxisLine
                 )
             }
+
+            pub fn is_point_constraint(self) -> bool {
+                matches!(self, Self::PointConstraint | Self::PathPoint)
+            }
         }
     };
 }
@@ -123,6 +127,7 @@ define_group_kinds! {
     CoordinateTrace = 97,
     CustomTransformTrace = 102,
     AngleMarker = 113,
+    PathPoint = 123,
     SegmentMarker = 121,
 }
 
