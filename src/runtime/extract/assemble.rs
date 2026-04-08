@@ -532,6 +532,7 @@ pub(super) fn assemble_scene(
                 },
                 text: label.text,
                 color: label.color,
+                visible: label.visible,
                 binding: label.binding,
                 screen_space: label.screen_space,
                 hotspots: label.hotspots,

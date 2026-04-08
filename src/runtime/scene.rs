@@ -561,6 +561,7 @@ pub(crate) struct TextLabel {
     pub(crate) anchor: PointRecord,
     pub(crate) text: String,
     pub(crate) color: [u8; 4],
+    pub(crate) visible: bool,
     pub(crate) binding: Option<TextLabelBinding>,
     pub(crate) screen_space: bool,
     pub(crate) hotspots: Vec<TextLabelHotspot>,

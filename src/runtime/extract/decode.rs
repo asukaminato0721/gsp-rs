@@ -149,6 +149,15 @@ pub(crate) fn decode_label_name(file: &GspFile, group: &ObjectGroup) -> Option<S
     )
 }
 
+pub(crate) fn decode_label_visible(file: &GspFile, group: &ObjectGroup) -> Option<bool> {
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x07d5)
+        .map(|record| record.payload(&file.data))?;
+    (payload.len() >= 4).then(|| read_u16(payload, 2) != 0)
+}
+
 pub(crate) fn find_indexed_path(file: &GspFile, group: &ObjectGroup) -> Option<IndexedPathRecord> {
     group
         .records
@@ -219,25 +228,9 @@ pub(crate) fn decode_label_anchor(
                 .get(group.ordinal.saturating_sub(1))
                 .cloned()
                 .flatten(),
-            crate::format::GroupKind::Segment => find_indexed_path(file, group).and_then(|path| {
-                let points = path
-                    .refs
-                    .iter()
-                    .filter_map(|object_ref| {
-                        anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
-                    })
-                    .collect::<Vec<_>>();
-                if points.len() >= 2 {
-                    let start = points.first()?;
-                    let end = points.last()?;
-                    Some(PointRecord {
-                        x: (start.x + end.x) / 2.0,
-                        y: (start.y + end.y) / 2.0,
-                    })
-                } else {
-                    None
-                }
-            }),
+            crate::format::GroupKind::Segment
+            | crate::format::GroupKind::Line
+            | crate::format::GroupKind::Ray => decode_line_like_label_anchor(file, group, anchors),
             crate::format::GroupKind::AngleMarker => {
                 decode_angle_marker_label_anchor(file, group, anchors)
             }
@@ -259,6 +252,28 @@ pub(crate) fn decode_label_anchor(
     Some(PointRecord {
         x: base.x + offset.0,
         y: base.y + offset.1,
+    })
+}
+
+fn decode_line_like_label_anchor(
+    file: &GspFile,
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    let path = find_indexed_path(file, group)?;
+    let points = path
+        .refs
+        .iter()
+        .filter_map(|object_ref| anchors.get(object_ref.saturating_sub(1)).cloned().flatten())
+        .collect::<Vec<_>>();
+    if points.len() < 2 {
+        return None;
+    }
+    let start = points.first()?;
+    let end = points.last()?;
+    Some(PointRecord {
+        x: (start.x + end.x) / 2.0,
+        y: (start.y + end.y) / 2.0,
     })
 }
 

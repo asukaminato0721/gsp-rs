@@ -444,6 +444,29 @@ mod tests {
     }
 
     #[test]
+    fn exports_ray_label_hide_fixture_into_html() {
+        let scene_json = compile_bytes_to_scene_json(
+            include_bytes!("../tests/fixtures/gsp/static/ray_label_hide.gsp"),
+            800,
+            600,
+        )
+        .expect("ray-label-hide fixture should compile");
+
+        let scene: Value =
+            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+        let labels = scene["labels"]
+            .as_array()
+            .expect("scene labels should be an array");
+        assert_eq!(labels.len(), 2, "expected both payload ray labels to export");
+        assert!(labels.iter().any(|label| {
+            label["text"].as_str() == Some("j") && label["visible"].as_bool() == Some(true)
+        }));
+        assert!(labels.iter().any(|label| {
+            label["text"].as_str() == Some("k") && label["visible"].as_bool() == Some(false)
+        }));
+    }
+
+    #[test]
     fn exports_polar_function_fixture_into_html() {
         let html = compile_bytes_to_html_document(
             include_bytes!("../tests/fixtures/未实现的系统功能/极坐标.gsp"),

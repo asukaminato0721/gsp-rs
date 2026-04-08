@@ -467,6 +467,7 @@ fn append_circle_perimeter_label(
                 anchor,
                 text: format!("AB perimeter = {:.2} cm", circumference),
                 color: [30, 30, 30, 255],
+                visible: true,
                 binding: None,
                 screen_space: false,
                 hotspots: Vec::new(),

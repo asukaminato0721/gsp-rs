@@ -946,6 +946,7 @@ struct LabelJson {
     anchor: PointJson,
     text: String,
     color: [u8; 4],
+    visible: bool,
     binding: Option<LabelBindingJson>,
     hotspots: Vec<LabelHotspotJson>,
     #[serde(rename = "screenSpace")]
@@ -958,6 +959,7 @@ impl LabelJson {
             anchor: PointJson::from_point(&label.anchor),
             text: label.text.clone(),
             color: label.color,
+            visible: label.visible,
             binding: label.binding.as_ref().map(LabelBindingJson::from_binding),
             hotspots: label
                 .hotspots

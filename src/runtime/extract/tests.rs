@@ -2072,6 +2072,33 @@ fn preserves_angle_marker_label_in_angle_marker_label_gsp() {
 }
 
 #[test]
+fn preserves_visible_and_hidden_ray_labels_from_payload() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/static/ray_label_hide.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.labels.len(), 2, "expected both ray labels in the scene");
+    assert!(
+        scene
+            .labels
+            .iter()
+            .any(|label| label.text == "j" && label.visible),
+        "expected ray label j to remain visible"
+    );
+    assert!(
+        scene
+            .labels
+            .iter()
+            .any(|label| label.text == "k" && !label.visible),
+        "expected ray label k to remain hidden based on the 0x07d5 payload flag"
+    );
+    assert!(
+        scene.lines.iter().all(|line| line.visible),
+        "expected hidden state to apply to the label only, not the ray geometry"
+    );
+}
+
+#[test]
 fn keeps_control_labels_in_non_graph_sample() {
     let data = include_bytes!("../../../../Samples/个人专栏/潘建平作品/加油潘建平老师.gsp");
     let file = GspFile::parse(data).expect("fixture parses");
