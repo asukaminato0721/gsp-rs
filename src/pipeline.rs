@@ -320,6 +320,20 @@ mod tests {
     }
 
     #[test]
+    fn exports_three_point_arc_intersection_into_html() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/gsp/static/three_point_arc_intersection.gsp"),
+            800,
+            600,
+        )
+        .expect("three-point arc intersection fixture should compile");
+
+        assert!(html.contains("\"kind\":\"circular-intersection\""));
+        assert!(html.contains("\"left\":{\"kind\":\"three-point-arc\""));
+        assert!(html.contains("\"right\":{\"kind\":\"three-point-arc\""));
+    }
+
+    #[test]
     fn exports_circle_center_radius_into_html() {
         let html = compile_bytes_to_html_document(
             include_bytes!("../tests/fixtures/gsp/circle_center_radius.gsp"),

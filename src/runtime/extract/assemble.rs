@@ -1,7 +1,7 @@
 use crate::format::PointRecord;
 use crate::runtime::geometry::{include_line_bounds, to_world};
 use crate::runtime::scene::{
-    LabelIterationFamily, LineBinding, LineConstraint, LineIterationFamily, LineShape,
+    CircularConstraint, LabelIterationFamily, LineBinding, LineConstraint, LineIterationFamily, LineShape,
     PointIterationFamily, PolygonIterationFamily, PolygonShape, Scene, SceneArc, SceneCircle,
     SceneImage, ScenePoint, ScenePointConstraint, TextLabel,
 };
@@ -140,6 +140,15 @@ pub(super) fn build_world_data(
                     right_radius_index: *right_radius_index,
                     variant: *variant,
                 },
+                ScenePointConstraint::CircularIntersection {
+                    left,
+                    right,
+                    variant,
+                } => ScenePointConstraint::CircularIntersection {
+                    left: clone_circular_constraint(left),
+                    right: clone_circular_constraint(right),
+                    variant: *variant,
+                },
             },
             binding: point.binding.clone(),
         })
@@ -205,6 +214,27 @@ pub(super) fn build_world_data(
         world_points,
         world_point_positions,
         point_iterations,
+    }
+}
+
+fn clone_circular_constraint(constraint: &CircularConstraint) -> CircularConstraint {
+    match constraint {
+        CircularConstraint::Circle {
+            center_index,
+            radius_index,
+        } => CircularConstraint::Circle {
+            center_index: *center_index,
+            radius_index: *radius_index,
+        },
+        CircularConstraint::ThreePointArc {
+            start_index,
+            mid_index,
+            end_index,
+        } => CircularConstraint::ThreePointArc {
+            start_index: *start_index,
+            mid_index: *mid_index,
+            end_index: *end_index,
+        },
     }
 }
 

@@ -240,6 +240,24 @@ pub(crate) enum ScenePointConstraint {
         right_radius_index: usize,
         variant: usize,
     },
+    CircularIntersection {
+        left: CircularConstraint,
+        right: CircularConstraint,
+        variant: usize,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum CircularConstraint {
+    Circle {
+        center_index: usize,
+        radius_index: usize,
+    },
+    ThreePointArc {
+        start_index: usize,
+        mid_index: usize,
+        end_index: usize,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]

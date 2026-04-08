@@ -4,9 +4,10 @@ use crate::runtime::functions::{
 };
 use crate::runtime::geometry::darken;
 use crate::runtime::scene::{
-    ArcBoundaryKind, ButtonAction, IterationPointHandle, LabelIterationFamily, LineBinding, LineConstraint,
-    LineIterationFamily, PointIterationFamily, PolygonIterationFamily, Scene, SceneButton,
-    ScenePointBinding, ScenePointConstraint, ShapeBinding, TextLabelBinding,
+    ArcBoundaryKind, ButtonAction, CircularConstraint, IterationPointHandle, LabelIterationFamily,
+    LineBinding, LineConstraint, LineIterationFamily, PointIterationFamily,
+    PolygonIterationFamily, Scene, SceneButton, ScenePointBinding, ScenePointConstraint,
+    ShapeBinding, TextLabelBinding,
     TextLabelHotspotAction,
 };
 use serde::Serialize;
@@ -1759,6 +1760,12 @@ enum PointConstraintJson {
         right_radius_index: usize,
         variant: usize,
     },
+    #[serde(rename = "circular-intersection")]
+    CircularIntersection {
+        left: CircularConstraintJson,
+        right: CircularConstraintJson,
+        variant: usize,
+    },
 }
 
 impl PointConstraintJson {
@@ -1866,6 +1873,57 @@ impl PointConstraintJson {
                 right_radius_index: *right_radius_index,
                 variant: *variant,
             }),
+            ScenePointConstraint::CircularIntersection {
+                left,
+                right,
+                variant,
+            } => Some(Self::CircularIntersection {
+                left: CircularConstraintJson::from_constraint(left),
+                right: CircularConstraintJson::from_constraint(right),
+                variant: *variant,
+            }),
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+enum CircularConstraintJson {
+    Circle {
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "radiusIndex")]
+        radius_index: usize,
+    },
+    ThreePointArc {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "midIndex")]
+        mid_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+    },
+}
+
+impl CircularConstraintJson {
+    fn from_constraint(constraint: &CircularConstraint) -> Self {
+        match constraint {
+            CircularConstraint::Circle {
+                center_index,
+                radius_index,
+            } => Self::Circle {
+                center_index: *center_index,
+                radius_index: *radius_index,
+            },
+            CircularConstraint::ThreePointArc {
+                start_index,
+                mid_index,
+                end_index,
+            } => Self::ThreePointArc {
+                start_index: *start_index,
+                mid_index: *mid_index,
+                end_index: *end_index,
+            },
         }
     }
 }
