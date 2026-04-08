@@ -460,6 +460,7 @@ pub(super) fn assemble_scene(
                     .map(|point| to_world(&point, &analysis.graph_ref))
                     .collect(),
                 color: polygon.color,
+                visible: polygon.visible,
                 binding: polygon.binding,
             })
             .collect(),
@@ -473,6 +474,7 @@ pub(super) fn assemble_scene(
                 radius_point: to_world(&circle.radius_point, &analysis.graph_ref),
                 color: circle.color,
                 dashed: circle.dashed,
+                visible: circle.visible,
                 binding: circle.binding,
             })
             .collect(),
@@ -487,6 +489,7 @@ pub(super) fn assemble_scene(
                     .center
                     .map(|center| to_world(&center, &analysis.graph_ref)),
                 counterclockwise: arc.counterclockwise,
+                visible: arc.visible,
             })
             .collect(),
         labels: labels

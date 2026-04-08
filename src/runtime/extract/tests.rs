@@ -931,6 +931,29 @@ fn preserves_point_hidden_gsp() {
 }
 
 #[test]
+fn preserves_hidden_ray_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/static/hide_ray.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.lines.len(), 2, "expected two rays in the fixture");
+    assert!(
+        scene.lines.iter().any(|line| !line.visible),
+        "expected one ray to inherit hidden state from the source payload"
+    );
+    assert!(
+        scene.lines.iter().any(|line| line.visible),
+        "expected the visible ray to remain interactive in the exported scene"
+    );
+    assert!(
+        scene.lines
+            .iter()
+            .all(|line| matches!(line.binding, Some(crate::runtime::scene::LineBinding::Ray { .. }))),
+        "expected both extracted line bindings to remain rays"
+    );
+}
+
+#[test]
 fn preserves_circle_center_radius_gsp() {
     let data = include_bytes!("../../../tests/fixtures/gsp/circle_center_radius.gsp");
     let file = GspFile::parse(data).expect("fixture parses");

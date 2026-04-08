@@ -285,6 +285,7 @@ pub(crate) struct LineShape {
     pub(crate) points: Vec<PointRecord>,
     pub(crate) color: [u8; 4],
     pub(crate) dashed: bool,
+    pub(crate) visible: bool,
     pub(crate) binding: Option<LineBinding>,
 }
 
@@ -391,6 +392,7 @@ pub(crate) enum ArcBoundaryKind {
 pub(crate) struct PolygonShape {
     pub(crate) points: Vec<PointRecord>,
     pub(crate) color: [u8; 4],
+    pub(crate) visible: bool,
     pub(crate) binding: Option<ShapeBinding>,
 }
 
@@ -468,6 +470,7 @@ pub(crate) struct SceneCircle {
     pub(crate) radius_point: PointRecord,
     pub(crate) color: [u8; 4],
     pub(crate) dashed: bool,
+    pub(crate) visible: bool,
     pub(crate) binding: Option<ShapeBinding>,
 }
 
@@ -477,6 +480,7 @@ pub(crate) struct SceneArc {
     pub(crate) color: [u8; 4],
     pub(crate) center: Option<PointRecord>,
     pub(crate) counterclockwise: bool,
+    pub(crate) visible: bool,
 }
 
 #[derive(Debug, Clone)]

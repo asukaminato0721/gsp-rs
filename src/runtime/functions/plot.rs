@@ -63,6 +63,7 @@ pub(crate) fn collect_function_plots(
                 points,
                 color: crate::runtime::geometry::color_from_style(group.header.style_b),
                 dashed: false,
+                visible: !group.header.is_hidden(),
                 binding: None,
             });
         }
@@ -145,6 +146,7 @@ pub(crate) fn synthesize_function_axes(
             .collect(),
             color: [192, 192, 192, 255],
             dashed: false,
+            visible: true,
             binding: None,
         });
     }
@@ -172,6 +174,7 @@ pub(crate) fn synthesize_function_axes(
             .collect(),
             color: [192, 192, 192, 255],
             dashed: false,
+            visible: true,
             binding: None,
         });
     }

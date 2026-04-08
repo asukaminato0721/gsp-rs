@@ -363,6 +363,38 @@ mod tests {
     }
 
     #[test]
+    fn exports_hidden_ray_fixture_into_html() {
+        let scene_json = compile_bytes_to_scene_json(
+            include_bytes!("../tests/fixtures/gsp/static/hide_ray.gsp"),
+            800,
+            600,
+        )
+        .expect("hidden-ray fixture should compile");
+
+        let scene: Value =
+            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+        let lines = scene["lines"]
+            .as_array()
+            .expect("scene lines should be an array");
+
+        assert_eq!(lines.len(), 2, "expected two rays in the exported scene");
+        assert!(
+            lines.iter().any(|line| line["visible"].as_bool() == Some(false)),
+            "expected one exported ray to stay hidden from the source payload"
+        );
+        assert!(
+            lines.iter().any(|line| line["visible"].as_bool() == Some(true)),
+            "expected one exported ray to stay visible"
+        );
+        assert!(
+            lines
+                .iter()
+                .all(|line| line["binding"]["kind"].as_str() == Some("ray")),
+            "expected both exported line bindings to remain rays"
+        );
+    }
+
+    #[test]
     fn exports_polar_function_fixture_into_html() {
         let html = compile_bytes_to_html_document(
             include_bytes!("../tests/fixtures/未实现的系统功能/极坐标.gsp"),

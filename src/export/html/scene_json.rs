@@ -314,6 +314,7 @@ struct LineJson {
     points: Vec<PointJson>,
     color: [u8; 4],
     dashed: bool,
+    visible: bool,
     binding: Option<LineBindingJson>,
 }
 
@@ -323,6 +324,7 @@ impl LineJson {
             points: line.points.iter().map(PointJson::from_point).collect(),
             color: line.color,
             dashed: line.dashed,
+            visible: line.visible,
             binding: line.binding.as_ref().map(LineBindingJson::from_binding),
         }
     }
@@ -683,6 +685,7 @@ struct PolygonJson {
     points: Vec<PointJson>,
     color: [u8; 4],
     outline_color: [u8; 4],
+    visible: bool,
     binding: Option<ShapeBindingJson>,
 }
 
@@ -692,6 +695,7 @@ impl PolygonJson {
             points: polygon.points.iter().map(PointJson::from_point).collect(),
             color: polygon.color,
             outline_color: darken(polygon.color, 80),
+            visible: polygon.visible,
             binding: polygon.binding.as_ref().map(ShapeBindingJson::from_binding),
         }
     }
@@ -704,6 +708,7 @@ struct CircleJson {
     radius_point: PointJson,
     color: [u8; 4],
     dashed: bool,
+    visible: bool,
     binding: Option<ShapeBindingJson>,
 }
 
@@ -714,6 +719,7 @@ impl CircleJson {
             radius_point: PointJson::from_point(&circle.radius_point),
             color: circle.color,
             dashed: circle.dashed,
+            visible: circle.visible,
             binding: circle.binding.as_ref().map(ShapeBindingJson::from_binding),
         }
     }
@@ -725,6 +731,7 @@ struct ArcJson {
     color: [u8; 4],
     center: Option<PointJson>,
     counterclockwise: bool,
+    visible: bool,
 }
 
 impl ArcJson {
@@ -734,6 +741,7 @@ impl ArcJson {
             color: arc.color,
             center: arc.center.as_ref().map(PointJson::from_point),
             counterclockwise: arc.counterclockwise,
+            visible: arc.visible,
         }
     }
 }

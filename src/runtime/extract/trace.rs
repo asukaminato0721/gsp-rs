@@ -72,6 +72,7 @@ pub(super) fn collect_point_traces(
                 points,
                 color: crate::runtime::geometry::color_from_style(group.header.style_b),
                 dashed: false,
+                visible: !group.header.is_hidden(),
                 binding: if (group.header.kind()) == crate::format::GroupKind::CustomTransformTrace {
                     Some(crate::runtime::scene::LineBinding::CustomTransformTrace {
                         point_index: target_group_index,

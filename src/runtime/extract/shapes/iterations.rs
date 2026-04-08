@@ -101,6 +101,7 @@ pub(crate) fn collect_rotational_iteration_lines(
                     ],
                     color: color_from_style(source_group.header.style_b),
                     dashed: line_is_dashed(source_group.header.style_a),
+                    visible: !iter_group.header.is_hidden(),
                     binding: Some(LineBinding::RotateEdge {
                         center_index: center_group_index,
                         vertex_index: vertex_group_index,
@@ -168,6 +169,7 @@ pub(crate) fn collect_carried_iteration_lines(
                         points: vec![current_start.clone(), current_end.clone()],
                         color,
                         dashed: line_is_dashed(source_group.header.style_a),
+                        visible: !iter_group.header.is_hidden(),
                         binding: None,
                     });
                 }
@@ -186,6 +188,7 @@ pub(crate) fn collect_carried_iteration_lines(
                         points: vec![start.clone() + delta.clone(), end.clone() + delta],
                         color,
                         dashed: line_is_dashed(source_group.header.style_a),
+                        visible: !iter_group.header.is_hidden(),
                         binding: None,
                     })
                     .collect::<Vec<_>>(),
@@ -667,6 +670,7 @@ pub(crate) fn collect_carried_iteration_polygons(
                             .map(|point| point + delta.clone())
                             .collect(),
                         color,
+                        visible: !iter_group.header.is_hidden(),
                         binding: None,
                     })
                     .collect::<Vec<_>>(),
@@ -883,6 +887,7 @@ pub(crate) fn collect_iteration_shapes(
                     points: outline,
                     color: outline_color,
                     dashed: false,
+                    visible: !iter_group.header.is_hidden(),
                     binding: None,
                 });
             }

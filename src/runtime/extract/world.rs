@@ -44,6 +44,7 @@ pub(super) fn world_line_shape(
         points: world_points,
         color: line.color,
         dashed: line.dashed,
+        visible: line.visible,
         binding: line.binding,
     }
 }
