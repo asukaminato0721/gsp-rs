@@ -264,7 +264,7 @@
       labels: scene.labels.map((label) => ({
         text: label.text,
         color: label.color,
-        visible: true,
+        visible: label.visible !== false,
         anchor: label.screenSpace
           ? { ...label.anchor }
           : label.binding?.kind === "point-expression-value"

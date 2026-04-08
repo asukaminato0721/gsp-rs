@@ -467,6 +467,25 @@ mod tests {
     }
 
     #[test]
+    fn html_viewer_preserves_label_visibility_flags() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/gsp/static/ray_label_hide.gsp"),
+            800,
+            600,
+        )
+        .expect("ray-label-hide fixture should compile to html");
+
+        assert!(
+            html.contains("\"text\":\"k\",\"color\":[30,30,30,255],\"visible\":false"),
+            "expected scene JSON embedded in html to preserve the hidden ray label"
+        );
+        assert!(
+            html.contains("visible: label.visible !== false"),
+            "expected bundled viewer runtime to hydrate label visibility from the source scene"
+        );
+    }
+
+    #[test]
     fn exports_polar_function_fixture_into_html() {
         let html = compile_bytes_to_html_document(
             include_bytes!("../tests/fixtures/未实现的系统功能/极坐标.gsp"),
