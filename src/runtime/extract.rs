@@ -71,6 +71,7 @@ struct CircleShape {
     radius_point: PointRecord,
     color: [u8; 4],
     dashed: bool,
+    visible: bool,
     binding: Option<super::scene::ShapeBinding>,
 }
 
@@ -80,6 +81,7 @@ struct ArcShape {
     color: [u8; 4],
     center: Option<PointRecord>,
     counterclockwise: bool,
+    visible: bool,
 }
 
 struct SceneAnalysis {
@@ -465,6 +467,7 @@ fn append_circle_perimeter_label(
                 anchor,
                 text: format!("AB perimeter = {:.2} cm", circumference),
                 color: [30, 30, 30, 255],
+                visible: true,
                 binding: None,
                 screen_space: false,
                 hotspots: Vec::new(),

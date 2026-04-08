@@ -77,6 +77,7 @@ pub(crate) fn collect_line_shapes(
                 },
                 dashed: (group.header.kind()) == crate::format::GroupKind::MeasurementLine
                     || line_is_dashed(group.header.style_a),
+                visible: !group.header.is_hidden(),
                 binding: match (group.header.kind(), start_group_index, end_group_index) {
                     (crate::format::GroupKind::Segment, Some(start_index), Some(end_index)) => {
                         Some(LineBinding::Segment {
@@ -121,6 +122,7 @@ pub(crate) fn collect_segment_marker_shapes(
                 points,
                 color: color_from_style(group.header.style_b),
                 dashed: line_is_dashed(group.header.style_a),
+                visible: !group.header.is_hidden(),
                 binding: Some(LineBinding::SegmentMarker {
                     start_index: start_group_index,
                     end_index: end_group_index,
@@ -153,6 +155,7 @@ pub(crate) fn collect_arc_boundary_shapes(
                 points,
                 color: color_from_style(group.header.style_b),
                 dashed: line_is_dashed(group.header.style_a),
+                visible: !group.header.is_hidden(),
                 binding: Some(binding),
             })
         })
@@ -189,6 +192,7 @@ fn resolve_angle_marker_shape(
         points,
         color: color_from_style(group.header.style_b),
         dashed: line_is_dashed(group.header.style_a),
+        visible: !group.header.is_hidden(),
         binding: Some(LineBinding::AngleMarker {
             start_index: path.refs[0].checked_sub(1)?,
             vertex_index: path.refs[1].checked_sub(1)?,
@@ -427,6 +431,7 @@ fn resolve_angle_bisector_ray_shape(
         points: vec![vertex.clone(), bisector_end],
         color: color_from_style(group.header.style_b),
         dashed: line_is_dashed(group.header.style_a),
+        visible: !group.header.is_hidden(),
         binding: Some(LineBinding::AngleBisectorRay {
             start_index,
             vertex_index,
@@ -471,6 +476,7 @@ fn resolve_perpendicular_line_shape(
         points: vec![start, end],
         color: color_from_style(group.header.style_b),
         dashed: line_is_dashed(group.header.style_a),
+        visible: !group.header.is_hidden(),
         binding: Some(LineBinding::PerpendicularLine {
             through_index,
             line_start_index: Some(line_start_index),
@@ -514,6 +520,7 @@ fn resolve_parallel_line_shape(
         points: vec![start, end],
         color: color_from_style(group.header.style_b),
         dashed: line_is_dashed(group.header.style_a),
+        visible: !group.header.is_hidden(),
         binding: Some(LineBinding::ParallelLine {
             through_index,
             line_start_index: Some(line_start_index),
@@ -594,6 +601,7 @@ pub(crate) fn collect_bound_line_shapes(
                 points: vec![start, end],
                 color: color_from_style(group.header.style_b),
                 dashed: line_is_dashed(group.header.style_a),
+                visible: !group.header.is_hidden(),
                 binding: Some(match kind {
                     crate::format::GroupKind::Line => LineBinding::Line {
                         start_index: start_group_index,
@@ -631,6 +639,7 @@ pub(crate) fn collect_polygon_shapes(
             (points.len() >= 3).then_some(PolygonShape {
                 points,
                 color: fill_color_from_styles(group.header.style_b, group.header.style_c),
+                visible: !group.header.is_hidden(),
                 binding: None,
             })
         })
@@ -709,6 +718,7 @@ pub(crate) fn collect_circle_shapes(
                 radius_point,
                 color: color_from_style(group.header.style_b),
                 dashed: dashed_circle_indices.contains(&group_index),
+                visible: !group.header.is_hidden(),
                 binding,
             })
         })
@@ -788,6 +798,7 @@ pub(crate) fn collect_three_point_arc_shapes(
                     group.header.kind(),
                     crate::format::GroupKind::ArcOnCircle | crate::format::GroupKind::CenterArc
                 ),
+                visible: !group.header.is_hidden(),
             })
         })
         .collect()
@@ -1050,6 +1061,10 @@ pub(crate) fn collect_derived_segments(
             points: vec![a, b],
             color,
             dashed: false,
+            visible: groups
+                .get(index)
+                .map(|group| !group.header.is_hidden())
+                .unwrap_or(true),
             binding: None,
         });
     }
@@ -1101,6 +1116,7 @@ pub(crate) fn collect_coordinate_traces(
                 points,
                 color: color_from_style(group.header.style_b),
                 dashed: line_is_dashed(group.header.style_a),
+                visible: !group.header.is_hidden(),
                 binding: None,
             })
         })

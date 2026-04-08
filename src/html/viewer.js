@@ -209,6 +209,7 @@
     const hydratedLines = scene.lines.map((line) => ({
       color: line.color,
       dashed: line.dashed,
+      visible: line.visible !== false,
       points: line.points.map(attachPointRef),
       binding: line.binding ? { ...line.binding } : null,
     }));
@@ -241,21 +242,21 @@
       polygons: scene.polygons.map((polygon) => ({
         color: polygon.color,
         outlineColor: polygon.outlineColor,
-        visible: true,
+        visible: polygon.visible !== false,
         points: polygon.points.map(attachPointRef),
         binding: polygon.binding ? { ...polygon.binding } : null,
       })),
       circles: scene.circles.map((circle) => ({
         color: circle.color,
         dashed: !!circle.dashed,
-        visible: true,
+        visible: circle.visible !== false,
         center: attachPointRef(circle.center),
         radiusPoint: attachPointRef(circle.radiusPoint),
         binding: circle.binding ? { ...circle.binding } : null,
       })),
       arcs: (scene.arcs || []).map((arc) => ({
         color: arc.color,
-        visible: true,
+        visible: arc.visible !== false,
         points: arc.points.map(attachPointRef),
         center: arc.center ? attachPointRef(arc.center) : null,
         counterclockwise: !!arc.counterclockwise,
@@ -263,7 +264,7 @@
       labels: scene.labels.map((label) => ({
         text: label.text,
         color: label.color,
-        visible: true,
+        visible: label.visible !== false,
         anchor: label.screenSpace
           ? { ...label.anchor }
           : label.binding?.kind === "point-expression-value"

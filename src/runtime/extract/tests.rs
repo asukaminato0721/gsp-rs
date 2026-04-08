@@ -931,6 +931,29 @@ fn preserves_point_hidden_gsp() {
 }
 
 #[test]
+fn preserves_hidden_ray_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/static/hide_ray.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.lines.len(), 2, "expected two rays in the fixture");
+    assert!(
+        scene.lines.iter().any(|line| !line.visible),
+        "expected one ray to inherit hidden state from the source payload"
+    );
+    assert!(
+        scene.lines.iter().any(|line| line.visible),
+        "expected the visible ray to remain interactive in the exported scene"
+    );
+    assert!(
+        scene.lines
+            .iter()
+            .all(|line| matches!(line.binding, Some(crate::runtime::scene::LineBinding::Ray { .. }))),
+        "expected both extracted line bindings to remain rays"
+    );
+}
+
+#[test]
 fn preserves_circle_center_radius_gsp() {
     let data = include_bytes!("../../../tests/fixtures/gsp/circle_center_radius.gsp");
     let file = GspFile::parse(data).expect("fixture parses");
@@ -1402,6 +1425,34 @@ fn preserves_circle_y_intersection_points() {
                 && (point.position.y - 1.0).abs() < 1e-6
         }),
         "expected y-axis circle intersection point, got {:?}",
+        scene
+            .points
+            .iter()
+            .map(|point| (&point.position.x, &point.position.y, &point.constraint))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn preserves_three_point_arc_intersection_points() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/static/three_point_arc_intersection.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(
+        scene.points.len(),
+        7,
+        "expected original arc control points plus one derived intersection"
+    );
+    assert!(
+        scene.points.iter().any(|point| {
+            matches!(
+                point.constraint,
+                ScenePointConstraint::CircularIntersection { .. }
+            ) && (point.position.x - 471.96614672487107).abs() < 1e-6
+                && (point.position.y - 484.54842372244576).abs() < 1e-6
+        }),
+        "expected reactive arc intersection, got {:?}",
         scene
             .points
             .iter()
@@ -1984,6 +2035,66 @@ fn preserves_point_and_segment_labels_in_segment_label_gsp() {
     assert!(
         texts.contains(&"j"),
         "expected segment label j, got {texts:?}"
+    );
+}
+
+#[test]
+fn preserves_angle_marker_label_in_angle_marker_label_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/static/angle_marker_label.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    let texts = scene
+        .labels
+        .iter()
+        .map(|label| label.text.as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        texts.contains(&"42.5"),
+        "expected payload-backed angle marker label, got {texts:?}"
+    );
+    assert!(
+        scene
+            .lines
+            .iter()
+            .any(|line| matches!(line.binding, Some(LineBinding::AngleMarker { .. }))),
+        "expected angle marker to stay interactive"
+    );
+    assert!(scene.labels.iter().any(|label| matches!(
+        label.binding,
+        Some(TextLabelBinding::AngleMarkerValue {
+            start_index: 1,
+            vertex_index: 0,
+            end_index: 2,
+            decimals: 1,
+        })
+    )));
+}
+
+#[test]
+fn preserves_visible_and_hidden_ray_labels_from_payload() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/static/ray_label_hide.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.labels.len(), 2, "expected both ray labels in the scene");
+    assert!(
+        scene
+            .labels
+            .iter()
+            .any(|label| label.text == "j" && label.visible),
+        "expected ray label j to remain visible"
+    );
+    assert!(
+        scene
+            .labels
+            .iter()
+            .any(|label| label.text == "k" && !label.visible),
+        "expected ray label k to remain hidden based on the 0x07d5 payload flag"
+    );
+    assert!(
+        scene.lines.iter().all(|line| line.visible),
+        "expected hidden state to apply to the label only, not the ray geometry"
     );
 }
 

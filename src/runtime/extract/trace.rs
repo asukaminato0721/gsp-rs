@@ -6,7 +6,8 @@ use crate::runtime::geometry::{
     scale_around,
 };
 use crate::runtime::scene::{
-    LineConstraint, LineLikeKind, ScenePoint, ScenePointBinding, ScenePointConstraint,
+    CircularConstraint, LineConstraint, LineLikeKind, ScenePoint, ScenePointBinding,
+    ScenePointConstraint,
 };
 
 use super::find_indexed_path;
@@ -72,6 +73,7 @@ pub(super) fn collect_point_traces(
                 points,
                 color: crate::runtime::geometry::color_from_style(group.header.style_b),
                 dashed: false,
+                visible: !group.header.is_hidden(),
                 binding: if (group.header.kind()) == crate::format::GroupKind::CustomTransformTrace {
                     Some(crate::runtime::scene::LineBinding::CustomTransformTrace {
                         point_index: target_group_index,
@@ -375,6 +377,15 @@ fn resolve_trace_point(
                     *variant,
                 )
             }
+            ScenePointConstraint::CircularIntersection {
+                left,
+                right,
+                variant,
+            } => {
+                let left = resolve_trace_circular_constraint(points, left, visiting)?;
+                let right = resolve_trace_circular_constraint(points, right, visiting)?;
+                trace_circular_intersection(&left, &right, *variant)
+            }
         },
     };
 
@@ -637,4 +648,175 @@ fn trace_circle_circle_intersection(
             .then_with(|| left.x.total_cmp(&right.x))
     });
     Some(ordered[variant.min(1)].clone())
+}
+
+#[derive(Clone)]
+enum TraceCircularConstraint {
+    Circle {
+        center: PointRecord,
+        radius: f64,
+    },
+    ThreePointArc {
+        start: PointRecord,
+        end: PointRecord,
+        center: PointRecord,
+        radius: f64,
+        start_angle: f64,
+        end_angle: f64,
+        ccw_span: f64,
+        ccw_mid: f64,
+    },
+}
+
+fn resolve_trace_circular_constraint(
+    points: &[ScenePoint],
+    constraint: &CircularConstraint,
+    visiting: &mut BTreeSet<usize>,
+) -> Option<TraceCircularConstraint> {
+    match constraint {
+        CircularConstraint::Circle {
+            center_index,
+            radius_index,
+        } => {
+            let center = resolve_trace_point(points, *center_index, visiting)?;
+            let radius_point = resolve_trace_point(points, *radius_index, visiting)?;
+            let radius = ((radius_point.x - center.x).powi(2) + (radius_point.y - center.y).powi(2)).sqrt();
+            (radius > 1e-9).then_some(TraceCircularConstraint::Circle { center, radius })
+        }
+        CircularConstraint::ThreePointArc {
+            start_index,
+            mid_index,
+            end_index,
+        } => {
+            let start = resolve_trace_point(points, *start_index, visiting)?;
+            let mid = resolve_trace_point(points, *mid_index, visiting)?;
+            let end = resolve_trace_point(points, *end_index, visiting)?;
+            let geometry = crate::runtime::geometry::three_point_arc_geometry(&start, &mid, &end)?;
+            let center = geometry.center.clone();
+            Some(TraceCircularConstraint::ThreePointArc {
+                start,
+                end,
+                center: center.clone(),
+                radius: geometry.radius,
+                start_angle: geometry.start_angle,
+                end_angle: geometry.end_angle,
+                ccw_span: trace_normalized_angle_delta(geometry.start_angle, geometry.end_angle),
+                ccw_mid: trace_normalized_angle_delta(
+                    geometry.start_angle,
+                    (mid.y - center.y).atan2(mid.x - center.x),
+                ),
+            })
+        }
+    }
+}
+
+fn trace_circular_intersection(
+    left: &TraceCircularConstraint,
+    right: &TraceCircularConstraint,
+    variant: usize,
+) -> Option<PointRecord> {
+    let intersections = trace_circle_circle_intersections(left, right)?;
+    let on_both = intersections
+        .iter()
+        .filter(|point| trace_point_on_circular_constraint(point, left))
+        .filter(|point| trace_point_on_circular_constraint(point, right))
+        .cloned()
+        .collect::<Vec<_>>();
+    on_both
+        .get(variant.min(on_both.len().saturating_sub(1)))
+        .cloned()
+}
+
+fn trace_circle_circle_intersections(
+    left: &TraceCircularConstraint,
+    right: &TraceCircularConstraint,
+) -> Option<Vec<PointRecord>> {
+    let (left_center, left_radius) = trace_circle_center_radius(left);
+    let (right_center, right_radius) = trace_circle_center_radius(right);
+    if left_radius <= 1e-9 || right_radius <= 1e-9 {
+        return None;
+    }
+    let dx = right_center.x - left_center.x;
+    let dy = right_center.y - left_center.y;
+    let distance = (dx * dx + dy * dy).sqrt();
+    if distance <= 1e-9
+        || distance > left_radius + right_radius + 1e-9
+        || distance < (left_radius - right_radius).abs() - 1e-9
+    {
+        return None;
+    }
+    let along = (left_radius * left_radius - right_radius * right_radius + distance * distance)
+        / (2.0 * distance);
+    let height_sq = left_radius * left_radius - along * along;
+    if height_sq < -1e-9 {
+        return None;
+    }
+    let height = height_sq.max(0.0).sqrt();
+    let ux = dx / distance;
+    let uy = dy / distance;
+    let base = PointRecord {
+        x: left_center.x + along * ux,
+        y: left_center.y + along * uy,
+    };
+    let mut intersections = vec![
+        PointRecord {
+            x: base.x - height * uy,
+            y: base.y + height * ux,
+        },
+        PointRecord {
+            x: base.x + height * uy,
+            y: base.y - height * ux,
+        },
+    ];
+    intersections.sort_by(|left, right| {
+        left.y
+            .total_cmp(&right.y)
+            .then_with(|| left.x.total_cmp(&right.x))
+    });
+    Some(intersections)
+}
+
+fn trace_circle_center_radius(constraint: &TraceCircularConstraint) -> (PointRecord, f64) {
+    match constraint {
+        TraceCircularConstraint::Circle { center, radius }
+        | TraceCircularConstraint::ThreePointArc {
+            center, radius, ..
+        } => (center.clone(), *radius),
+    }
+}
+
+fn trace_point_on_circular_constraint(
+    point: &PointRecord,
+    constraint: &TraceCircularConstraint,
+) -> bool {
+    match constraint {
+        TraceCircularConstraint::Circle { .. } => true,
+        TraceCircularConstraint::ThreePointArc {
+            start,
+            end,
+            center,
+            radius,
+            start_angle,
+            end_angle,
+            ccw_span,
+            ccw_mid,
+        } => {
+            let radial = ((point.x - center.x).powi(2) + (point.y - center.y).powi(2)).sqrt();
+            if (radial - radius).abs() > 1e-6 {
+                return false;
+            }
+            let angle = (point.y - center.y).atan2(point.x - center.x);
+            if *ccw_mid <= *ccw_span + 1e-9 {
+                return trace_normalized_angle_delta(*start_angle, angle) <= *ccw_span + 1e-9;
+            }
+            trace_normalized_angle_delta(angle, *start_angle)
+                <= trace_normalized_angle_delta(*end_angle, *start_angle) + 1e-9
+                || ((point.x - start.x).abs() < 1e-6 && (point.y - start.y).abs() < 1e-6)
+                || ((point.x - end.x).abs() < 1e-6 && (point.y - end.y).abs() < 1e-6)
+        }
+    }
+}
+
+fn trace_normalized_angle_delta(from: f64, to: f64) -> f64 {
+    (to - from).rem_euclid(std::f64::consts::TAU)
 }

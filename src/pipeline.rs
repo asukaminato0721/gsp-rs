@@ -320,6 +320,20 @@ mod tests {
     }
 
     #[test]
+    fn exports_three_point_arc_intersection_into_html() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/gsp/static/three_point_arc_intersection.gsp"),
+            800,
+            600,
+        )
+        .expect("three-point arc intersection fixture should compile");
+
+        assert!(html.contains("\"kind\":\"circular-intersection\""));
+        assert!(html.contains("\"left\":{\"kind\":\"three-point-arc\""));
+        assert!(html.contains("\"right\":{\"kind\":\"three-point-arc\""));
+    }
+
+    #[test]
     fn exports_circle_center_radius_into_html() {
         let html = compile_bytes_to_html_document(
             include_bytes!("../tests/fixtures/gsp/circle_center_radius.gsp"),
@@ -360,6 +374,115 @@ mod tests {
 
         assert!(html.contains("\"points\":[{\"x\":323.0,\"y\":217.0,\"color\":[255,0,0,255],\"visible\":false"));
         assert!(html.contains("\"lines\":[]"));
+    }
+
+    #[test]
+    fn exports_hidden_ray_fixture_into_html() {
+        let scene_json = compile_bytes_to_scene_json(
+            include_bytes!("../tests/fixtures/gsp/static/hide_ray.gsp"),
+            800,
+            600,
+        )
+        .expect("hidden-ray fixture should compile");
+
+        let scene: Value =
+            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+        let lines = scene["lines"]
+            .as_array()
+            .expect("scene lines should be an array");
+
+        assert_eq!(lines.len(), 2, "expected two rays in the exported scene");
+        assert!(
+            lines.iter().any(|line| line["visible"].as_bool() == Some(false)),
+            "expected one exported ray to stay hidden from the source payload"
+        );
+        assert!(
+            lines.iter().any(|line| line["visible"].as_bool() == Some(true)),
+            "expected one exported ray to stay visible"
+        );
+        assert!(
+            lines
+                .iter()
+                .all(|line| line["binding"]["kind"].as_str() == Some("ray")),
+            "expected both exported line bindings to remain rays"
+        );
+    }
+
+    #[test]
+    fn exports_angle_marker_label_fixture_into_html() {
+        let scene_json = compile_bytes_to_scene_json(
+            include_bytes!("../tests/fixtures/gsp/static/angle_marker_label.gsp"),
+            800,
+            600,
+        )
+        .expect("angle-marker-label fixture should compile");
+
+        let scene: Value =
+            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+        let labels = scene["labels"]
+            .as_array()
+            .expect("scene labels should be an array");
+        assert!(
+            labels
+                .iter()
+                .any(|label| label["text"].as_str() == Some("42.5")),
+            "expected exported labels to include the payload angle marker label"
+        );
+        assert!(
+            scene["lines"].as_array().is_some_and(|lines| lines.iter().any(
+                |line| line["binding"]["kind"].as_str() == Some("angle-marker")
+            )),
+            "expected exported angle marker to stay interactive"
+        );
+        assert!(labels.iter().any(|label| {
+            label["binding"]["kind"].as_str() == Some("angle-marker-value")
+                && label["binding"]["startIndex"].as_u64() == Some(1)
+                && label["binding"]["vertexIndex"].as_u64() == Some(0)
+                && label["binding"]["endIndex"].as_u64() == Some(2)
+                && label["binding"]["decimals"].as_u64() == Some(1)
+        }));
+    }
+
+    #[test]
+    fn exports_ray_label_hide_fixture_into_html() {
+        let scene_json = compile_bytes_to_scene_json(
+            include_bytes!("../tests/fixtures/gsp/static/ray_label_hide.gsp"),
+            800,
+            600,
+        )
+        .expect("ray-label-hide fixture should compile");
+
+        let scene: Value =
+            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+        let labels = scene["labels"]
+            .as_array()
+            .expect("scene labels should be an array");
+        assert_eq!(labels.len(), 2, "expected both payload ray labels to export");
+        assert!(labels.iter().any(|label| {
+            label["text"].as_str() == Some("j") && label["visible"].as_bool() == Some(true)
+        }));
+        assert!(labels.iter().any(|label| {
+            label["text"].as_str() == Some("k") && label["visible"].as_bool() == Some(false)
+        }));
+    }
+
+    #[test]
+    fn html_viewer_preserves_label_visibility_flags() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/gsp/static/ray_label_hide.gsp"),
+            800,
+            600,
+        )
+        .expect("ray-label-hide fixture should compile to html");
+
+        assert!(
+            html.contains("\"text\":\"k\",\"color\":[30,30,30,255],\"visible\":false"),
+            "expected scene JSON embedded in html to preserve the hidden ray label"
+        );
+        assert!(
+            html.contains("visible: label.visible !== false"),
+            "expected bundled viewer runtime to hydrate label visibility from the source scene"
+        );
     }
 
     #[test]

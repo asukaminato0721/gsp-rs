@@ -4,9 +4,10 @@ use crate::runtime::functions::{
 };
 use crate::runtime::geometry::darken;
 use crate::runtime::scene::{
-    ArcBoundaryKind, ButtonAction, IterationPointHandle, LabelIterationFamily, LineBinding, LineConstraint,
-    LineIterationFamily, PointIterationFamily, PolygonIterationFamily, Scene, SceneButton,
-    ScenePointBinding, ScenePointConstraint, ShapeBinding, TextLabelBinding,
+    ArcBoundaryKind, ButtonAction, CircularConstraint, IterationPointHandle, LabelIterationFamily,
+    LineBinding, LineConstraint, LineIterationFamily, PointIterationFamily,
+    PolygonIterationFamily, Scene, SceneButton, ScenePointBinding, ScenePointConstraint,
+    ShapeBinding, TextLabelBinding,
     TextLabelHotspotAction,
 };
 use serde::Serialize;
@@ -314,6 +315,7 @@ struct LineJson {
     points: Vec<PointJson>,
     color: [u8; 4],
     dashed: bool,
+    visible: bool,
     binding: Option<LineBindingJson>,
 }
 
@@ -323,6 +325,7 @@ impl LineJson {
             points: line.points.iter().map(PointJson::from_point).collect(),
             color: line.color,
             dashed: line.dashed,
+            visible: line.visible,
             binding: line.binding.as_ref().map(LineBindingJson::from_binding),
         }
     }
@@ -683,6 +686,7 @@ struct PolygonJson {
     points: Vec<PointJson>,
     color: [u8; 4],
     outline_color: [u8; 4],
+    visible: bool,
     binding: Option<ShapeBindingJson>,
 }
 
@@ -692,6 +696,7 @@ impl PolygonJson {
             points: polygon.points.iter().map(PointJson::from_point).collect(),
             color: polygon.color,
             outline_color: darken(polygon.color, 80),
+            visible: polygon.visible,
             binding: polygon.binding.as_ref().map(ShapeBindingJson::from_binding),
         }
     }
@@ -704,6 +709,7 @@ struct CircleJson {
     radius_point: PointJson,
     color: [u8; 4],
     dashed: bool,
+    visible: bool,
     binding: Option<ShapeBindingJson>,
 }
 
@@ -714,6 +720,7 @@ impl CircleJson {
             radius_point: PointJson::from_point(&circle.radius_point),
             color: circle.color,
             dashed: circle.dashed,
+            visible: circle.visible,
             binding: circle.binding.as_ref().map(ShapeBindingJson::from_binding),
         }
     }
@@ -725,6 +732,7 @@ struct ArcJson {
     color: [u8; 4],
     center: Option<PointJson>,
     counterclockwise: bool,
+    visible: bool,
 }
 
 impl ArcJson {
@@ -734,6 +742,7 @@ impl ArcJson {
             color: arc.color,
             center: arc.center.as_ref().map(PointJson::from_point),
             counterclockwise: arc.counterclockwise,
+            visible: arc.visible,
         }
     }
 }
@@ -937,6 +946,7 @@ struct LabelJson {
     anchor: PointJson,
     text: String,
     color: [u8; 4],
+    visible: bool,
     binding: Option<LabelBindingJson>,
     hotspots: Vec<LabelHotspotJson>,
     #[serde(rename = "screenSpace")]
@@ -949,6 +959,7 @@ impl LabelJson {
             anchor: PointJson::from_point(&label.anchor),
             text: label.text.clone(),
             color: label.color,
+            visible: label.visible,
             binding: label.binding.as_ref().map(LabelBindingJson::from_binding),
             hotspots: label
                 .hotspots
@@ -1106,6 +1117,16 @@ enum LabelBindingJson {
         #[serde(rename = "circleName")]
         circle_name: String,
     },
+    #[serde(rename = "angle-marker-value")]
+    AngleMarkerValue {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "vertexIndex")]
+        vertex_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+        decimals: usize,
+    },
     #[serde(rename = "custom-transform-value")]
     CustomTransformValue {
         #[serde(rename = "pointIndex")]
@@ -1177,6 +1198,17 @@ impl LabelBindingJson {
                 point_index: *point_index,
                 point_name: point_name.clone(),
                 circle_name: circle_name.clone(),
+            },
+            TextLabelBinding::AngleMarkerValue {
+                start_index,
+                vertex_index,
+                end_index,
+                decimals,
+            } => Self::AngleMarkerValue {
+                start_index: *start_index,
+                vertex_index: *vertex_index,
+                end_index: *end_index,
+                decimals: *decimals,
             },
             TextLabelBinding::CustomTransformValue {
                 point_index,
@@ -1730,6 +1762,12 @@ enum PointConstraintJson {
         right_radius_index: usize,
         variant: usize,
     },
+    #[serde(rename = "circular-intersection")]
+    CircularIntersection {
+        left: CircularConstraintJson,
+        right: CircularConstraintJson,
+        variant: usize,
+    },
 }
 
 impl PointConstraintJson {
@@ -1837,6 +1875,57 @@ impl PointConstraintJson {
                 right_radius_index: *right_radius_index,
                 variant: *variant,
             }),
+            ScenePointConstraint::CircularIntersection {
+                left,
+                right,
+                variant,
+            } => Some(Self::CircularIntersection {
+                left: CircularConstraintJson::from_constraint(left),
+                right: CircularConstraintJson::from_constraint(right),
+                variant: *variant,
+            }),
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+enum CircularConstraintJson {
+    Circle {
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "radiusIndex")]
+        radius_index: usize,
+    },
+    ThreePointArc {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "midIndex")]
+        mid_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+    },
+}
+
+impl CircularConstraintJson {
+    fn from_constraint(constraint: &CircularConstraint) -> Self {
+        match constraint {
+            CircularConstraint::Circle {
+                center_index,
+                radius_index,
+            } => Self::Circle {
+                center_index: *center_index,
+                radius_index: *radius_index,
+            },
+            CircularConstraint::ThreePointArc {
+                start_index,
+                mid_index,
+                end_index,
+            } => Self::ThreePointArc {
+                start_index: *start_index,
+                mid_index: *mid_index,
+                end_index: *end_index,
+            },
         }
     }
 }

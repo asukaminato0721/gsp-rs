@@ -11,7 +11,7 @@ use super::{
 };
 use crate::runtime::geometry::{
     GraphTransform, lerp_point, point_on_circle_arc, point_on_three_point_arc, reflect_across_line,
-    rotate_around,
+    rotate_around, three_point_arc_geometry,
 };
 use crate::runtime::functions::{decode_function_expr, evaluate_expr_with_parameters};
 
@@ -70,41 +70,39 @@ pub(crate) fn decode_intersection_anchor_raw(
     let left_group = groups.get(path.refs[0].checked_sub(1)?)?;
     let right_group = groups.get(path.refs[1].checked_sub(1)?)?;
 
-    if let (Some((line_start, line_end)), Some((center, radius))) = (
+    if let (Some((line_start, line_end)), Some(circle)) = (
         resolve_line_like_points_raw(file, groups, anchors, left_group),
         resolve_circle_like_raw(file, groups, anchors, right_group),
     ) {
         return select_line_circle_intersection(
             line_start,
             line_end,
-            center,
-            radius,
+            circle.center(),
+            circle.radius(),
             variant.unwrap_or(0),
         );
     }
 
-    if let (Some((center, radius)), Some((line_start, line_end))) = (
+    if let (Some(circle), Some((line_start, line_end))) = (
         resolve_circle_like_raw(file, groups, anchors, left_group),
         resolve_line_like_points_raw(file, groups, anchors, right_group),
     ) {
         return select_line_circle_intersection(
             line_start,
             line_end,
-            center,
-            radius,
+            circle.center(),
+            circle.radius(),
             variant.unwrap_or(0),
         );
     }
 
-    if let (Some((left_center, left_radius)), Some((right_center, right_radius))) = (
+    if let (Some(left_circle), Some(right_circle)) = (
         resolve_circle_like_raw(file, groups, anchors, left_group),
         resolve_circle_like_raw(file, groups, anchors, right_group),
     ) {
-        return select_circle_circle_intersection(
-            left_center,
-            left_radius,
-            right_center,
-            right_radius,
+        return select_circular_intersection(
+            &left_circle,
+            &right_circle,
             variant.unwrap_or(0),
         );
     }
@@ -123,12 +121,43 @@ pub(crate) fn decode_intersection_anchor_raw(
     line_line_intersection(&left_start, &left_end, &right_start, &right_end)
 }
 
+#[derive(Clone)]
+enum CircularConstraintRaw {
+    Circle {
+        center: PointRecord,
+        radius: f64,
+    },
+    ThreePointArc {
+        start: PointRecord,
+        mid: PointRecord,
+        end: PointRecord,
+        center: PointRecord,
+        radius: f64,
+        ccw_span: f64,
+        ccw_mid: f64,
+    },
+}
+
+impl CircularConstraintRaw {
+    fn center(&self) -> PointRecord {
+        match self {
+            Self::Circle { center, .. } | Self::ThreePointArc { center, .. } => center.clone(),
+        }
+    }
+
+    fn radius(&self) -> f64 {
+        match self {
+            Self::Circle { radius, .. } | Self::ThreePointArc { radius, .. } => *radius,
+        }
+    }
+}
+
 fn resolve_circle_like_raw(
     file: &GspFile,
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
     group: &ObjectGroup,
-) -> Option<(PointRecord, f64)> {
+) -> Option<CircularConstraintRaw> {
     let path = find_indexed_path(file, group)?;
     match group.header.kind() {
         crate::format::GroupKind::Circle => {
@@ -139,7 +168,7 @@ fn resolve_circle_like_raw(
             let radius_point = anchors.get(path.refs[1].checked_sub(1)?)?.clone()?;
             let radius =
                 ((radius_point.x - center.x).powi(2) + (radius_point.y - center.y).powi(2)).sqrt();
-            (radius > 1e-9).then_some((center, radius))
+            (radius > 1e-9).then_some(CircularConstraintRaw::Circle { center, radius })
         }
         crate::format::GroupKind::CircleCenterRadius => {
             if path.refs.len() != 2 {
@@ -154,7 +183,30 @@ fn resolve_circle_like_raw(
             let start = anchors.get(segment_path.refs[0].checked_sub(1)?)?.clone()?;
             let end = anchors.get(segment_path.refs[1].checked_sub(1)?)?.clone()?;
             let radius = ((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt();
-            (radius > 1e-9).then_some((center, radius))
+            (radius > 1e-9).then_some(CircularConstraintRaw::Circle { center, radius })
+        }
+        crate::format::GroupKind::ThreePointArc => {
+            if path.refs.len() != 3 {
+                return None;
+            }
+            let start = anchors.get(path.refs[0].checked_sub(1)?)?.clone()?;
+            let mid = anchors.get(path.refs[1].checked_sub(1)?)?.clone()?;
+            let end = anchors.get(path.refs[2].checked_sub(1)?)?.clone()?;
+            let geometry = three_point_arc_geometry(&start, &mid, &end)?;
+            let ccw_span = normalize_angle_delta_raw(geometry.start_angle, geometry.end_angle);
+            let ccw_mid = normalize_angle_delta_raw(
+                geometry.start_angle,
+                (mid.y - geometry.center.y).atan2(mid.x - geometry.center.x),
+            );
+            Some(CircularConstraintRaw::ThreePointArc {
+                start,
+                mid,
+                end,
+                center: geometry.center,
+                radius: geometry.radius,
+                ccw_span,
+                ccw_mid,
+            })
         }
         _ => None,
     }
@@ -295,13 +347,34 @@ fn select_line_circle_intersection(
     })
 }
 
-fn select_circle_circle_intersection(
-    left_center: PointRecord,
-    left_radius: f64,
-    right_center: PointRecord,
-    right_radius: f64,
+fn select_circular_intersection(
+    left: &CircularConstraintRaw,
+    right: &CircularConstraintRaw,
     variant: usize,
 ) -> Option<PointRecord> {
+    let intersections = circle_circle_intersections(
+        &left.center(),
+        left.radius(),
+        &right.center(),
+        right.radius(),
+    )?;
+    let on_both = intersections
+        .iter()
+        .filter(|point| point_lies_on_circular_constraint(point, left))
+        .filter(|point| point_lies_on_circular_constraint(point, right))
+        .cloned()
+        .collect::<Vec<_>>();
+    on_both
+        .get(variant.min(on_both.len().saturating_sub(1)))
+        .cloned()
+}
+
+fn circle_circle_intersections(
+    left_center: &PointRecord,
+    left_radius: f64,
+    right_center: &PointRecord,
+    right_radius: f64,
+) -> Option<Vec<PointRecord>> {
     let dx = right_center.x - left_center.x;
     let dy = right_center.y - left_center.y;
     let distance = (dx * dx + dy * dy).sqrt();
@@ -325,7 +398,7 @@ fn select_circle_circle_intersection(
         x: left_center.x + along * ux,
         y: left_center.y + along * uy,
     };
-    let intersections = [
+    let mut intersections = vec![
         PointRecord {
             x: base.x - height * uy,
             y: base.y + height * ux,
@@ -335,13 +408,56 @@ fn select_circle_circle_intersection(
             y: base.y - height * ux,
         },
     ];
-    let mut ordered = intersections;
-    ordered.sort_by(|left, right| {
+    intersections.sort_by(|left, right| {
         left.y
             .total_cmp(&right.y)
             .then_with(|| left.x.total_cmp(&right.x))
     });
-    Some(ordered[variant.min(1)].clone())
+    Some(intersections)
+}
+
+fn point_lies_on_circular_constraint(point: &PointRecord, constraint: &CircularConstraintRaw) -> bool {
+    match constraint {
+        CircularConstraintRaw::Circle { .. } => true,
+        CircularConstraintRaw::ThreePointArc {
+            start,
+            mid,
+            end,
+            center,
+            radius,
+            ccw_span,
+            ccw_mid,
+        } => {
+            let radial = ((point.x - center.x).powi(2) + (point.y - center.y).powi(2)).sqrt();
+            if (radial - radius).abs() > 1e-6 {
+                return false;
+            }
+            let angle = (point.y - center.y).atan2(point.x - center.x);
+            let on_arc = if *ccw_mid <= *ccw_span + 1e-9 {
+                normalize_angle_delta_raw(
+                    (start.y - center.y).atan2(start.x - center.x),
+                    angle,
+                ) <= *ccw_span + 1e-9
+            } else {
+                normalize_angle_delta_raw(
+                    angle,
+                    (start.y - center.y).atan2(start.x - center.x),
+                ) <= normalize_angle_delta_raw(
+                    (end.y - center.y).atan2(end.x - center.x),
+                    (start.y - center.y).atan2(start.x - center.x),
+                ) + 1e-9
+            };
+            on_arc
+                || ((point.x - start.x).abs() < 1e-6 && (point.y - start.y).abs() < 1e-6)
+                || ((point.x - mid.x).abs() < 1e-6 && (point.y - mid.y).abs() < 1e-6)
+                || ((point.x - end.x).abs() < 1e-6 && (point.y - end.y).abs() < 1e-6)
+        }
+    }
+}
+
+fn normalize_angle_delta_raw(from: f64, to: f64) -> f64 {
+    let tau = std::f64::consts::TAU;
+    (to - from).rem_euclid(tau)
 }
 
 fn line_line_intersection(
@@ -989,4 +1105,48 @@ fn resolve_polyline_point(
     let start = &points[segment_index.min(points.len() - 2)];
     let end = &points[(segment_index.min(points.len() - 2)) + 1];
     Some(lerp_point(start, end, t))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        CircularConstraintRaw, normalize_angle_delta_raw, select_circular_intersection,
+    };
+    use crate::format::PointRecord;
+    use crate::runtime::geometry::three_point_arc_geometry;
+
+    fn arc(start: PointRecord, mid: PointRecord, end: PointRecord) -> CircularConstraintRaw {
+        let geometry = three_point_arc_geometry(&start, &mid, &end).expect("valid arc");
+        CircularConstraintRaw::ThreePointArc {
+            start,
+            mid: mid.clone(),
+            end,
+            center: geometry.center.clone(),
+            radius: geometry.radius,
+            ccw_span: normalize_angle_delta_raw(geometry.start_angle, geometry.end_angle),
+            ccw_mid: normalize_angle_delta_raw(
+                geometry.start_angle,
+                (mid.y - geometry.center.y).atan2(mid.x - geometry.center.x),
+            ),
+        }
+    }
+
+    #[test]
+    fn arc_intersection_returns_none_when_only_parent_circles_intersect() {
+        let left = arc(
+            PointRecord { x: -1.0, y: 0.0 },
+            PointRecord { x: 0.0, y: 1.0 },
+            PointRecord { x: 1.0, y: 0.0 },
+        );
+        let right = arc(
+            PointRecord { x: 2.0, y: 0.0 },
+            PointRecord { x: 1.0, y: -1.0 },
+            PointRecord { x: 0.0, y: 0.0 },
+        );
+
+        assert!(
+            select_circular_intersection(&left, &right, 0).is_none(),
+            "expected no intersection when arc spans do not overlap"
+        );
+    }
 }

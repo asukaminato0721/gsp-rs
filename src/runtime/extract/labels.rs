@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::CircleShape;
 use super::decode::{
     decode_0907_anchor, decode_group_label_text, decode_group_rich_text, decode_label_anchor,
-    decode_label_name, decode_label_name_raw, decode_link_button_url, decode_measurement_value,
-    decode_text_anchor, find_indexed_path, is_action_button_group,
+    decode_label_name, decode_label_name_raw, decode_label_visible, decode_link_button_url,
+    decode_measurement_value, decode_text_anchor, find_indexed_path, is_action_button_group,
 };
 use super::points::{
     RawPointConstraint, decode_non_graph_parameter_value_for_group, decode_point_constraint,
@@ -48,8 +48,10 @@ fn supports_payload_label(kind: crate::format::GroupKind) -> bool {
             | crate::format::GroupKind::CircleCircleIntersectionPoint1
             | crate::format::GroupKind::CircleCircleIntersectionPoint2
             | crate::format::GroupKind::Segment
+            | crate::format::GroupKind::Ray
             | crate::format::GroupKind::GraphObject40
             | crate::format::GroupKind::Kind51
+            | crate::format::GroupKind::AngleMarker
             | crate::format::GroupKind::ActionButton
             | crate::format::GroupKind::ButtonLabel
             | crate::format::GroupKind::LabelIterationSeed
@@ -72,6 +74,10 @@ fn label_color_for_group(group: &ObjectGroup) -> [u8; 4] {
         }
         _ => [30, 30, 30, 255],
     }
+}
+
+fn label_visible_for_group(file: &GspFile, group: &ObjectGroup) -> bool {
+    !group.header.is_hidden() && decode_label_visible(file, group).unwrap_or(true)
 }
 
 pub(super) fn collect_labels(
@@ -101,12 +107,14 @@ pub(super) fn collect_labels(
                 if let Some(text) = text
                     && let Some(anchor) = decode_label_anchor(file, group, anchors)
                 {
+                    let visible = label_visible_for_group(file, group);
                     let label_index = labels.len();
                     label_group_to_index.insert(group.ordinal, label_index);
                     labels.push(TextLabel {
                         anchor,
                         text,
                         color: [30, 30, 30, 255],
+                        visible,
                         binding: None,
                         screen_space: false,
                         hotspots: Vec::new(),
@@ -166,6 +174,8 @@ pub(super) fn collect_labels(
                                     | crate::format::GroupKind::ParameterRotation
                                     | crate::format::GroupKind::Scale
                                     | crate::format::GroupKind::Segment
+                                    | crate::format::GroupKind::Ray
+                                    | crate::format::GroupKind::AngleMarker
                                     | crate::format::GroupKind::PointConstraint
                                     | crate::format::GroupKind::PathPoint
                                     | crate::format::GroupKind::LinearIntersectionPoint
@@ -181,13 +191,16 @@ pub(super) fn collect_labels(
                 if let Some(text) = text {
                     let anchor = decode_label_anchor(file, group, anchors);
                     if let Some(anchor) = anchor {
+                        let visible = label_visible_for_group(file, group);
                         let label_index = labels.len();
                         label_group_to_index.insert(group.ordinal, label_index);
+                        let binding = angle_marker_measurement_binding(file, group, &text);
                         labels.push(TextLabel {
                             anchor,
                             text,
                             color: label_color_for_group(group),
-                            binding: None,
+                            visible,
+                            binding,
                             screen_space: false,
                             hotspots: Vec::new(),
                         });
@@ -250,6 +263,7 @@ pub(super) fn collect_labels(
                         anchor,
                         text,
                         color: [60, 60, 60, 255],
+                        visible: label_visible_for_group(file, group),
                         binding: None,
                         screen_space: false,
                         hotspots: Vec::new(),
@@ -260,6 +274,51 @@ pub(super) fn collect_labels(
         }
     }
     (labels, label_group_to_index, pending_hotspots)
+}
+
+fn angle_marker_measurement_binding(
+    file: &GspFile,
+    group: &ObjectGroup,
+    text: &str,
+) -> Option<TextLabelBinding> {
+    if group.header.kind() != crate::format::GroupKind::AngleMarker {
+        return None;
+    }
+    let decimals = measurement_label_decimals(text)?;
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() != 3 {
+        return None;
+    }
+    Some(TextLabelBinding::AngleMarkerValue {
+        start_index: path.refs[0].checked_sub(1)?,
+        vertex_index: path.refs[1].checked_sub(1)?,
+        end_index: path.refs[2].checked_sub(1)?,
+        decimals,
+    })
+}
+
+fn measurement_label_decimals(text: &str) -> Option<usize> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let mut dot_index = None;
+    for (index, ch) in trimmed.char_indices() {
+        if ch == '.' {
+            if dot_index.is_some() {
+                return None;
+            }
+            dot_index = Some(index);
+        } else if !(ch.is_ascii_digit() || (index == 0 && (ch == '+' || ch == '-'))) {
+            return None;
+        }
+    }
+    trimmed.parse::<f64>().ok()?;
+    Some(
+        dot_index
+            .map(|index| trimmed[index + 1..].chars().count())
+            .unwrap_or(0),
+    )
 }
 
 pub(super) fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) -> Vec<TextLabel> {
@@ -278,6 +337,7 @@ pub(super) fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) 
                 anchor,
                 text: format!("{name} = {:.2}", value),
                 color: [30, 30, 30, 255],
+                visible: label_visible_for_group(file, group),
                 binding,
                 screen_space: true,
                 hotspots: Vec::new(),
@@ -333,6 +393,7 @@ pub(super) fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) 
                 anchor,
                 text,
                 color: [30, 30, 30, 255],
+                visible: label_visible_for_group(file, group),
                 binding,
                 screen_space: true,
                 hotspots: Vec::new(),
@@ -465,6 +526,7 @@ fn collect_point_expression_label(
         anchor,
         text: format_number(value),
         color: [30, 30, 30, 255],
+        visible: label_visible_for_group(file, group),
         binding: Some(TextLabelBinding::PointExpressionValue {
             point_index: point_group_index,
             parameter_name,
@@ -519,6 +581,7 @@ pub(super) fn collect_polygon_parameter_labels(
                 anchor,
                 text: format!("{point_name}在{polygon_name}上的t值 = {:.2}", global_t),
                 color: [30, 30, 30, 255],
+                visible: label_visible_for_group(file, group),
                 binding: Some(TextLabelBinding::PolygonBoundaryParameter {
                     point_index: path.refs[0].checked_sub(1)?,
                     point_name,
@@ -569,6 +632,7 @@ pub(super) fn collect_segment_parameter_labels(
                 anchor,
                 text: format!("{point_name}在{segment_name}上的t值 = {:.2}", constraint.t),
                 color: [30, 30, 30, 255],
+                visible: label_visible_for_group(file, group),
                 binding: Some(TextLabelBinding::SegmentParameter {
                     point_index: path.refs[0].checked_sub(1)?,
                     point_name,
@@ -627,6 +691,7 @@ pub(super) fn collect_circle_parameter_labels(
                 anchor,
                 text: format!("{point_name}在⊙{circle_name}上的值 = {:.2}", value),
                 color: [30, 30, 30, 255],
+                visible: label_visible_for_group(file, group),
                 binding: Some(TextLabelBinding::CircleParameter {
                     point_index: path.refs[0].checked_sub(1)?,
                     point_name,
@@ -682,6 +747,7 @@ pub(super) fn collect_custom_transform_expression_labels(
                     anchor,
                     text: format!("{base_label}·{multiplier_text} = {value:.decimals$}{value_suffix}"),
                     color: [30, 30, 30, 255],
+                    visible: label_visible_for_group(file, group),
                     binding: Some(TextLabelBinding::CustomTransformValue {
                         point_index: path.refs.get(2)?.checked_sub(1)?,
                         expr_label: format!("{base_label}·{multiplier_text}"),
@@ -1074,6 +1140,7 @@ pub(super) fn compute_iteration_labels(
                 anchor,
                 text: lines.join("\n"),
                 color: [30, 30, 30, 255],
+                visible: label_visible_for_group(file, group),
                 binding: None,
                 screen_space: false,
                 hotspots: Vec::new(),

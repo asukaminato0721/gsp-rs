@@ -8,7 +8,9 @@ use super::{
 };
 use crate::runtime::extract::{decode::decode_label_name, find_indexed_path};
 use crate::runtime::geometry::{GraphTransform, color_from_style};
-use crate::runtime::scene::{LineConstraint, ScenePoint, ScenePointBinding, ScenePointConstraint};
+use crate::runtime::scene::{
+    CircularConstraint, LineConstraint, ScenePoint, ScenePointBinding, ScenePointConstraint,
+};
 
 fn group_color(group: &ObjectGroup) -> [u8; 4] {
     color_from_style(group.header.style_b)
@@ -716,22 +718,43 @@ fn scene_point_from_intersection(
         ));
     }
 
-    if let (
-        Some((left_center_index, left_radius_index)),
-        Some((right_center_index, right_radius_index)),
-    ) = (
-        resolve_circle_point_indices(file, groups, left_group, group_to_point_index),
-        resolve_circle_point_indices(file, groups, right_group, group_to_point_index),
+    if let (Some(left), Some(right)) = (
+        resolve_circular_constraint(file, groups, left_group, group_to_point_index),
+        resolve_circular_constraint(file, groups, right_group, group_to_point_index),
     ) {
+        if let (
+            CircularConstraint::Circle {
+                center_index: left_center_index,
+                radius_index: left_radius_index,
+            },
+            CircularConstraint::Circle {
+                center_index: right_center_index,
+                radius_index: right_radius_index,
+            },
+        ) = (&left, &right)
+        {
+            return Some(scene_point(
+                position,
+                group_color(group),
+                visible,
+                ScenePointConstraint::CircleCircleIntersection {
+                    left_center_index: *left_center_index,
+                    left_radius_index: *left_radius_index,
+                    right_center_index: *right_center_index,
+                    right_radius_index: *right_radius_index,
+                    variant,
+                },
+                None,
+            ));
+        }
+
         return Some(scene_point(
             position,
             group_color(group),
             visible,
-            ScenePointConstraint::CircleCircleIntersection {
-                left_center_index,
-                left_radius_index,
-                right_center_index,
-                right_radius_index,
+            ScenePointConstraint::CircularIntersection {
+                left,
+                right,
                 variant,
             },
             None,
@@ -836,6 +859,37 @@ fn resolve_circle_point_indices(
             let center_index = (*group_to_point_index.get(path.refs[0].checked_sub(1)?)?)?;
             let radius_index = (*group_to_point_index.get(path.refs[1].checked_sub(1)?)?)?;
             Some((center_index, radius_index))
+        }
+        _ => None,
+    }
+}
+
+fn resolve_circular_constraint(
+    file: &GspFile,
+    _groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    group_to_point_index: &[Option<usize>],
+) -> Option<CircularConstraint> {
+    let path = find_indexed_path(file, group)?;
+    match group.header.kind() {
+        crate::format::GroupKind::Circle => {
+            if path.refs.len() != 2 {
+                return None;
+            }
+            Some(CircularConstraint::Circle {
+                center_index: (*group_to_point_index.get(path.refs[0].checked_sub(1)?)?)?,
+                radius_index: (*group_to_point_index.get(path.refs[1].checked_sub(1)?)?)?,
+            })
+        }
+        crate::format::GroupKind::ThreePointArc => {
+            if path.refs.len() != 3 {
+                return None;
+            }
+            Some(CircularConstraint::ThreePointArc {
+                start_index: (*group_to_point_index.get(path.refs[0].checked_sub(1)?)?)?,
+                mid_index: (*group_to_point_index.get(path.refs[1].checked_sub(1)?)?)?,
+                end_index: (*group_to_point_index.get(path.refs[2].checked_sub(1)?)?)?,
+            })
         }
         _ => None,
     }

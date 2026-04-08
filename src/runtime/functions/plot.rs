@@ -63,6 +63,7 @@ pub(crate) fn collect_function_plots(
                 points,
                 color: crate::runtime::geometry::color_from_style(group.header.style_b),
                 dashed: false,
+                visible: !group.header.is_hidden(),
                 binding: None,
             });
         }
@@ -145,6 +146,7 @@ pub(crate) fn synthesize_function_axes(
             .collect(),
             color: [192, 192, 192, 255],
             dashed: false,
+            visible: true,
             binding: None,
         });
     }
@@ -172,6 +174,7 @@ pub(crate) fn synthesize_function_axes(
             .collect(),
             color: [192, 192, 192, 255],
             dashed: false,
+            visible: true,
             binding: None,
         });
     }
@@ -267,6 +270,7 @@ pub(crate) fn synthesize_function_labels(
                 anchor: to_raw_from_world(&world_anchor, transform),
                 text: format!("{name} = {:.2}", value),
                 color: [30, 30, 30, 255],
+                visible: true,
                 binding: Some(crate::runtime::scene::TextLabelBinding::ParameterValue {
                     name: name.clone(),
                 }),
@@ -315,6 +319,7 @@ pub(crate) fn synthesize_function_labels(
                 anchor: to_raw_from_world(&world_anchor, transform),
                 text,
                 color: [30, 30, 30, 255],
+                visible: true,
                 binding: Some(crate::runtime::scene::TextLabelBinding::FunctionLabel {
                     function_key: *definition_ordinal,
                     derivative: false,
@@ -374,6 +379,7 @@ pub(crate) fn synthesize_function_labels(
                     )
                 },
                 color: [30, 30, 30, 255],
+                visible: true,
                 binding: Some(crate::runtime::scene::TextLabelBinding::FunctionLabel {
                     function_key: base_entries[base_index].0,
                     derivative: true,

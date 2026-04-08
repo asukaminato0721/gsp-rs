@@ -103,6 +103,19 @@
   }
 
   function pointOnThreePointArc(start, mid, end, t) {
+    const geometry = threePointArcGeometry(start, mid, end);
+    if (!geometry) return null;
+    const clampedT = Math.max(0, Math.min(1, t));
+    const angle = geometry.ccwMid <= geometry.ccwSpan + 1e-9
+      ? geometry.startAngle + geometry.ccwSpan * clampedT
+      : geometry.startAngle - normalizeAngleDelta(geometry.endAngle, geometry.startAngle) * clampedT;
+    return {
+      x: geometry.center.x + geometry.radius * Math.cos(angle),
+      y: geometry.center.y + geometry.radius * Math.sin(angle),
+    };
+  }
+
+  function threePointArcGeometry(start, mid, end) {
     const determinant = 2 * (
       start.x * (mid.y - end.y)
       + mid.x * (end.y - start.y)
@@ -131,15 +144,17 @@
     const startAngle = Math.atan2(start.y - center.y, start.x - center.x);
     const midAngle = Math.atan2(mid.y - center.y, mid.x - center.x);
     const endAngle = Math.atan2(end.y - center.y, end.x - center.x);
-    const ccwSpan = normalizeAngleDelta(startAngle, endAngle);
-    const ccwMid = normalizeAngleDelta(startAngle, midAngle);
-    const clampedT = Math.max(0, Math.min(1, t));
-    const angle = ccwMid <= ccwSpan + 1e-9
-      ? startAngle + ccwSpan * clampedT
-      : startAngle - normalizeAngleDelta(endAngle, startAngle) * clampedT;
     return {
-      x: center.x + radius * Math.cos(angle),
-      y: center.y + radius * Math.sin(angle),
+      start,
+      mid,
+      end,
+      center,
+      radius,
+      startAngle,
+      midAngle,
+      endAngle,
+      ccwSpan: normalizeAngleDelta(startAngle, endAngle),
+      ccwMid: normalizeAngleDelta(startAngle, midAngle),
     };
   }
 
@@ -172,6 +187,50 @@
     const controls = circleArcControlPoints(center, start, end, yUp);
     if (!controls) return null;
     return pointOnThreePointArc(controls.start, controls.mid, controls.end, t);
+  }
+
+  function circleFromConstraint(env, constraint, resolveFn) {
+    if (constraint.kind === "circle") {
+      const center = resolveFn(constraint.centerIndex);
+      const radiusPoint = resolveFn(constraint.radiusIndex);
+      if (!center || !radiusPoint) return null;
+      return {
+        kind: "circle",
+        center,
+        radius: Math.hypot(radiusPoint.x - center.x, radiusPoint.y - center.y),
+      };
+    }
+    if (constraint.kind === "three-point-arc") {
+      const start = resolveFn(constraint.startIndex);
+      const mid = resolveFn(constraint.midIndex);
+      const end = resolveFn(constraint.endIndex);
+      if (!start || !mid || !end) return null;
+      const geometry = threePointArcGeometry(start, mid, end);
+      if (!geometry) return null;
+      return {
+        kind: "three-point-arc",
+        ...geometry,
+      };
+    }
+    return null;
+  }
+
+  function pointLiesOnCircularConstraint(point, constraint) {
+    if (!constraint) return false;
+    if (constraint.kind === "circle") {
+      return true;
+    }
+    if (constraint.kind === "three-point-arc") {
+      const radial = Math.hypot(point.x - constraint.center.x, point.y - constraint.center.y);
+      if (Math.abs(radial - constraint.radius) > 1e-6) return false;
+      const angle = Math.atan2(point.y - constraint.center.y, point.x - constraint.center.x);
+      if (constraint.ccwMid <= constraint.ccwSpan + 1e-9) {
+        return normalizeAngleDelta(constraint.startAngle, angle) <= constraint.ccwSpan + 1e-9;
+      }
+      return normalizeAngleDelta(angle, constraint.startAngle)
+        <= normalizeAngleDelta(constraint.endAngle, constraint.startAngle) + 1e-9;
+    }
+    return false;
   }
 
   function sampleArcBoundaryPoints(env, binding) {
@@ -364,9 +423,7 @@
     };
   }
 
-  function circleCircleIntersection(leftCenter, leftRadiusPoint, rightCenter, rightRadiusPoint, variant) {
-    const leftRadius = Math.hypot(leftRadiusPoint.x - leftCenter.x, leftRadiusPoint.y - leftCenter.y);
-    const rightRadius = Math.hypot(rightRadiusPoint.x - rightCenter.x, rightRadiusPoint.y - rightCenter.y);
+  function circleCircleIntersections(leftCenter, leftRadius, rightCenter, rightRadius) {
     if (leftRadius <= 1e-9 || rightRadius <= 1e-9) return null;
     const dx = rightCenter.x - leftCenter.x;
     const dy = rightCenter.y - leftCenter.y;
@@ -393,7 +450,15 @@
       { x: base.x - height * uy, y: base.y + height * ux },
       { x: base.x + height * uy, y: base.y - height * ux },
     ].sort((left, right) => (left.y - right.y) || (left.x - right.x));
-    return points[Math.max(0, Math.min(1, variant || 0))];
+    return points;
+  }
+
+  function circleCircleIntersection(leftCenter, leftRadiusPoint, rightCenter, rightRadiusPoint, variant) {
+    const leftRadius = Math.hypot(leftRadiusPoint.x - leftCenter.x, leftRadiusPoint.y - leftCenter.y);
+    const rightRadius = Math.hypot(rightRadiusPoint.x - rightCenter.x, rightRadiusPoint.y - rightCenter.y);
+    const points = circleCircleIntersections(leftCenter, leftRadius, rightCenter, rightRadius);
+    if (!points || points.length === 0) return null;
+    return points[Math.max(0, Math.min(points.length - 1, variant || 0))];
   }
 
   /** @param {ViewerEnv} env */
@@ -511,6 +576,24 @@
         rightRadiusPoint,
         constraint.variant,
       );
+    }
+    if (constraint.kind === "circular-intersection") {
+      const left = circleFromConstraint(env, constraint.left, resolveFn);
+      const right = circleFromConstraint(env, constraint.right, resolveFn);
+      if (!left || !right) return null;
+      const intersections = circleCircleIntersections(
+        left.center,
+        left.radius,
+        right.center,
+        right.radius,
+      );
+      if (!intersections || intersections.length === 0) return null;
+      const onBoth = intersections.filter((point) =>
+        pointLiesOnCircularConstraint(point, left)
+        && pointLiesOnCircularConstraint(point, right)
+      );
+      if (onBoth.length === 0) return null;
+      return onBoth[Math.min(constraint.variant || 0, onBoth.length - 1)] || null;
     }
     return null;
   }
