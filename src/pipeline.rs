@@ -654,4 +654,36 @@ mod tests {
         assert!(html.contains("1厘米"));
         assert!(html.contains("100°"));
     }
+
+    #[test]
+    fn exports_circle_formation_fixture_with_rotation_iteration() {
+        let scene_json = compile_bytes_to_scene_json(
+            include_bytes!("../tests/fixtures/未实现的系统功能/圆的形成.gsp"),
+            800,
+            600,
+        )
+        .expect("circle-formation fixture should compile");
+
+        let scene: Value =
+            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+        let parameters = scene["parameters"]
+            .as_array()
+            .expect("scene parameters should be an array");
+        assert_eq!(parameters.len(), 1, "expected a single live t₂ parameter");
+        assert_eq!(parameters[0]["name"].as_str(), Some("t₂"));
+        assert_eq!(parameters[0]["value"].as_f64(), Some(5.0));
+
+        let lines = scene["lines"].as_array().expect("scene lines should be an array");
+        assert!(
+            lines.iter().any(|line| line["binding"]["kind"].as_str() == Some("rotate-edge")),
+            "expected regular-polygon iteration edges to stay interactive"
+        );
+        assert_eq!(
+            lines.iter()
+                .filter(|line| line["binding"]["kind"].as_str() == Some("rotate-edge"))
+                .count(),
+            5,
+            "expected five interactive polygon edges for the default pentagon"
+        );
+    }
 }

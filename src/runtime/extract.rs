@@ -46,6 +46,7 @@ use self::shapes::{
     collect_polygon_shapes, collect_raw_object_anchors, collect_reflected_circle_shapes,
     collect_reflected_line_shapes, collect_reflected_polygon_shapes, collect_rotated_circle_shapes,
     collect_rotated_line_shapes, collect_rotated_polygon_shapes,
+    collect_rotational_iteration_segment_groups,
     collect_rotational_iteration_lines, collect_scaled_line_shapes, collect_segment_marker_shapes,
     collect_arc_boundary_shapes, collect_three_point_arc_shapes, collect_transformed_circle_shapes,
     collect_transformed_polygon_shapes, collect_translated_line_shapes,
@@ -207,8 +208,8 @@ fn collect_scene_shapes(
     point_map: &[Option<PointRecord>],
     analysis: &SceneAnalysis,
 ) -> CollectedShapes {
-    let suppressed_carried_polygon_segments =
-        collect_carried_polygon_edge_segment_groups(file, groups);
+    let mut suppressed_segment_groups = collect_carried_polygon_edge_segment_groups(file, groups);
+    suppressed_segment_groups.extend(collect_rotational_iteration_segment_groups(file, groups));
     let polylines = collect_line_shapes(
         file,
         groups,
@@ -218,7 +219,7 @@ fn collect_scene_shapes(
             crate::format::GroupKind::AngleMarker,
         ],
         !analysis.graph_mode && !analysis.large_non_graph,
-        &suppressed_carried_polygon_segments,
+        &suppressed_segment_groups,
     );
     let boundary_lines = collect_arc_boundary_shapes(file, groups, &analysis.raw_anchors);
     let direct_lines = collect_bound_line_shapes(
@@ -254,7 +255,7 @@ fn collect_scene_shapes(
         file,
         groups,
         &analysis.raw_anchors,
-        &suppressed_carried_polygon_segments,
+        &suppressed_segment_groups,
     );
     let carried_iteration_polygons =
         collect_carried_iteration_polygons(file, groups, &analysis.raw_anchors);

@@ -118,6 +118,28 @@ pub(crate) fn collect_rotational_iteration_lines(
         .collect()
 }
 
+pub(crate) fn collect_rotational_iteration_segment_groups(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+) -> BTreeSet<usize> {
+    groups
+        .iter()
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::IterationBinding)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            let source_group_index = path.refs.first()?.checked_sub(1)?;
+            let source_group = groups.get(source_group_index)?;
+            if (source_group.header.kind()) != crate::format::GroupKind::Segment {
+                return None;
+            }
+            let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+            ((iter_group.header.kind()) == crate::format::GroupKind::RegularPolygonIteration
+                && regular_polygon_iteration_step(file, groups, iter_group).is_some())
+            .then_some(source_group_index)
+        })
+        .collect()
+}
+
 pub(crate) fn collect_carried_iteration_lines(
     file: &GspFile,
     groups: &[ObjectGroup],

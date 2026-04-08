@@ -42,6 +42,7 @@ pub(crate) fn collect_line_shapes(
                     )
                     && find_indexed_path(file, group).is_some())
         })
+        .filter(|(_, group)| !is_auxiliary_segment_group(file, groups, group))
         .filter_map(|(_, group)| {
             match group.header.kind() {
                 crate::format::GroupKind::LineKind5 => {
@@ -99,6 +100,33 @@ pub(crate) fn collect_line_shapes(
             })
         })
         .collect()
+}
+
+fn is_auxiliary_segment_group(file: &GspFile, groups: &[ObjectGroup], group: &ObjectGroup) -> bool {
+    if (group.header.kind()) != crate::format::GroupKind::Segment {
+        return false;
+    }
+    let Some(path) = find_indexed_path(file, group) else {
+        return false;
+    };
+    path.refs.iter().any(|ordinal| {
+        let Some(index) = ordinal.checked_sub(1) else {
+            return false;
+        };
+        let Some(referenced_group) = groups.get(index) else {
+            return false;
+        };
+        match referenced_group.header.kind() {
+            crate::format::GroupKind::ParameterRotation | crate::format::GroupKind::FunctionExpr => {
+                true
+            }
+            crate::format::GroupKind::Point => {
+                referenced_group.records.iter().any(|record| record.record_type == 0x0907)
+                    && !referenced_group.records.iter().any(|record| record.record_type == 0x0899)
+            }
+            _ => false,
+        }
+    })
 }
 
 pub(crate) fn collect_segment_marker_shapes(

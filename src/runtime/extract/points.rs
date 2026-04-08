@@ -125,6 +125,17 @@ fn is_function_plot_parameter_group(
         })
 }
 
+fn has_external_indexed_path_reference(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    target_ordinal: usize,
+) -> bool {
+    groups.iter().any(|group| {
+        group.ordinal != target_ordinal
+            && find_indexed_path(file, group).is_some_and(|path| path.refs.contains(&target_ordinal))
+    })
+}
+
 pub(super) fn is_non_graph_parameter_group(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -139,6 +150,7 @@ pub(super) fn is_non_graph_parameter_group(
             .records
             .iter()
             .any(|record| record.record_type == 0x0899)
+        && has_external_indexed_path_reference(file, groups, group.ordinal)
         && !is_function_plot_definition_group(file, groups, group.ordinal)
         && !is_function_plot_parameter_group(file, groups, group.ordinal)
 }
@@ -164,6 +176,10 @@ pub(super) fn editable_non_graph_parameter_name_for_group(
 }
 
 fn decode_non_graph_parameter_value(payload: &[u8]) -> Option<f64> {
+    if payload.len() == 94 {
+        return Some(f64::from(read_u16(payload, payload.len().checked_sub(2)?)));
+    }
+
     (payload.len() >= 60)
         .then(|| read_f64(payload, 52))
         .filter(|value| value.is_finite())
