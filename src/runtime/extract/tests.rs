@@ -89,6 +89,36 @@ fn preserves_insert_image_fixture() {
 }
 
 #[test]
+fn preserves_points_defined_by_path_value_fixture() {
+    let data = include_bytes!("../../../tests/fixtures/未实现的系统功能/给定的数值在路径上绘制点.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.points.len(), 6, "expected A/B/D/E plus constrained C/F");
+    assert!(
+        scene
+            .points
+            .iter()
+            .any(|point| matches!(point.constraint, ScenePointConstraint::OnCircle { .. })),
+        "expected one point constrained by the circle path payload"
+    );
+    assert!(
+        scene
+            .points
+            .iter()
+            .any(|point| matches!(point.constraint, ScenePointConstraint::OnSegment { .. })),
+        "expected one point constrained by the segment path payload"
+    );
+    let labels = scene
+        .labels
+        .iter()
+        .map(|label| label.text.as_str())
+        .collect::<Vec<_>>();
+    assert!(labels.contains(&"C"), "expected path-defined point label C, got {labels:?}");
+    assert!(labels.contains(&"F"), "expected path-defined point label F, got {labels:?}");
+}
+
+#[test]
 fn preserves_multiline_text_labels() {
     let data = include_bytes!("../../../tests/fixtures/gsp/多行文本.gsp");
     let file = GspFile::parse(data).expect("fixture parses");

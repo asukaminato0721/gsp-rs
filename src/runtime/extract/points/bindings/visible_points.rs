@@ -115,7 +115,7 @@ pub(crate) fn collect_visible_points(
                     ))
                 })
             }
-            crate::format::GroupKind::PointConstraint => {
+            crate::format::GroupKind::PointConstraint | crate::format::GroupKind::PathPoint => {
                 decode_point_constraint(file, groups, group, Some(anchors), graph).and_then(|constraint| {
                     scene_point_from_constraint(
                         index,
@@ -554,7 +554,23 @@ fn scene_point_from_parameter_controlled(
                 binding,
             ))
         }
-        RawPointConstraint::Polyline { .. } => None,
+        RawPointConstraint::Polyline {
+            function_key,
+            points,
+            segment_index,
+            t,
+        } => Some(scene_point(
+            parameter_point.position,
+            color,
+            visible,
+            ScenePointConstraint::OnPolyline {
+                function_key: *function_key,
+                points: points.clone(),
+                segment_index: *segment_index,
+                t: *t,
+            },
+            binding,
+        )),
     }
 }
 

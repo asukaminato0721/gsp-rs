@@ -41,6 +41,7 @@ fn supports_payload_label(kind: crate::format::GroupKind) -> bool {
             | crate::format::GroupKind::ParameterRotation
             | crate::format::GroupKind::Scale
             | crate::format::GroupKind::PointConstraint
+            | crate::format::GroupKind::PathPoint
             | crate::format::GroupKind::LinearIntersectionPoint
             | crate::format::GroupKind::IntersectionPoint1
             | crate::format::GroupKind::IntersectionPoint2
@@ -166,6 +167,7 @@ pub(super) fn collect_labels(
                                     | crate::format::GroupKind::Scale
                                     | crate::format::GroupKind::Segment
                                     | crate::format::GroupKind::PointConstraint
+                                    | crate::format::GroupKind::PathPoint
                                     | crate::format::GroupKind::LinearIntersectionPoint
                                     | crate::format::GroupKind::IntersectionPoint1
                                     | crate::format::GroupKind::IntersectionPoint2
@@ -489,7 +491,7 @@ pub(super) fn collect_polygon_parameter_labels(
 
             let point_group = groups.get(path.refs[0].checked_sub(1)?)?;
             let polygon_group = groups.get(path.refs[1].checked_sub(1)?)?;
-            if (point_group.header.kind()) != crate::format::GroupKind::PointConstraint
+            if !point_group.header.kind().is_point_constraint()
                 || (polygon_group.header.kind()) != crate::format::GroupKind::Polygon
             {
                 return None;
@@ -544,7 +546,7 @@ pub(super) fn collect_segment_parameter_labels(
 
             let point_group = groups.get(path.refs[0].checked_sub(1)?)?;
             let segment_group = groups.get(path.refs[1].checked_sub(1)?)?;
-            if (point_group.header.kind()) != crate::format::GroupKind::PointConstraint
+            if !point_group.header.kind().is_point_constraint()
                 || (segment_group.header.kind()) != crate::format::GroupKind::Segment
             {
                 return None;
@@ -595,7 +597,7 @@ pub(super) fn collect_circle_parameter_labels(
 
             let point_group = groups.get(path.refs[0].checked_sub(1)?)?;
             let circle_group = groups.get(path.refs[1].checked_sub(1)?)?;
-            if (point_group.header.kind()) != crate::format::GroupKind::PointConstraint
+            if !point_group.header.kind().is_point_constraint()
                 || (circle_group.header.kind()) != crate::format::GroupKind::Circle
             {
                 return None;
@@ -708,7 +710,7 @@ fn custom_transform_parameter_anchor_label(
     }
     let point_group = groups.get(path.refs[0].checked_sub(1)?)?;
     let segment_group = groups.get(path.refs[1].checked_sub(1)?)?;
-    if (point_group.header.kind()) != crate::format::GroupKind::PointConstraint
+    if !point_group.header.kind().is_point_constraint()
         || (segment_group.header.kind()) != crate::format::GroupKind::Segment
     {
         return None;
