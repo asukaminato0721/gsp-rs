@@ -97,7 +97,9 @@ fn collect_parameter_bindings(
         let Some(parameter_group) = groups.get(ordinal.saturating_sub(1)) else {
             continue;
         };
-        if let Some(binding) = decode_parameter_binding_recursive(file, groups, parameter_group, visiting) {
+        if let Some(binding) =
+            decode_parameter_binding_recursive(file, groups, parameter_group, visiting)
+        {
             bindings.insert(index as u16, binding);
         }
     }

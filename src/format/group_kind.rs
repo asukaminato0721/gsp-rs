@@ -153,10 +153,7 @@ mod tests {
     fn round_trips_known_and_unknown_kind_ids() {
         assert_eq!(GroupKind::from(0), GroupKind::Point);
         assert_eq!(GroupKind::Point.raw(), 0);
-        assert_eq!(
-            GroupKind::from(92),
-            GroupKind::IterationExpressionHelper
-        );
+        assert_eq!(GroupKind::from(92), GroupKind::IterationExpressionHelper);
         assert_eq!(GroupKind::IterationExpressionHelper.raw(), 92);
         assert_eq!(GroupKind::from(121), GroupKind::SegmentMarker);
         assert_eq!(GroupKind::SegmentMarker.raw(), 121);

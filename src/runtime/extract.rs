@@ -26,9 +26,9 @@ use self::graph::{
 use self::images::collect_scene_images;
 use self::labels::{
     PendingLabelHotspot, collect_circle_parameter_labels, collect_coordinate_labels,
-    collect_custom_transform_expression_labels, collect_iteration_tables,
-    collect_label_iterations, collect_labels, collect_polygon_parameter_labels,
-    collect_segment_parameter_labels, compute_iteration_labels, resolve_label_hotspots,
+    collect_custom_transform_expression_labels, collect_iteration_tables, collect_label_iterations,
+    collect_labels, collect_polygon_parameter_labels, collect_segment_parameter_labels,
+    compute_iteration_labels, resolve_label_hotspots,
 };
 use self::points::{
     TransformBindingKind, collect_non_graph_parameters, collect_point_iteration_points,

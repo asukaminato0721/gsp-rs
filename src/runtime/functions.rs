@@ -152,7 +152,10 @@ mod tests {
                     Box::new(FunctionTerm::Constant(2.0)),
                     Box::new(FunctionTerm::PiAngle),
                 ),
-                tail: vec![(BinaryOp::Div, FunctionTerm::Parameter("t₂".to_string(), 5.0))],
+                tail: vec![(
+                    BinaryOp::Div,
+                    FunctionTerm::Parameter("t₂".to_string(), 5.0)
+                )],
             })
         );
         assert_eq!(function_expr_label(expr), "2*180 / t₂");

@@ -5,9 +5,9 @@ use crate::runtime::functions::{
 use crate::runtime::geometry::darken;
 use crate::runtime::scene::{
     ArcBoundaryKind, ButtonAction, CircularConstraint, IterationPointHandle, IterationTable,
-    LabelIterationFamily, LineBinding, LineConstraint, LineIterationFamily,
-    PointIterationFamily, PolygonIterationFamily, Scene, SceneButton, ScenePointBinding,
-    ScenePointConstraint, ShapeBinding, TextLabelBinding, TextLabelHotspotAction,
+    LabelIterationFamily, LineBinding, LineConstraint, LineIterationFamily, PointIterationFamily,
+    PolygonIterationFamily, Scene, SceneButton, ScenePointBinding, ScenePointConstraint,
+    ShapeBinding, TextLabelBinding, TextLabelHotspotAction,
 };
 use serde::Serialize;
 

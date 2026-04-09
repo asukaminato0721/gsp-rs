@@ -688,8 +688,7 @@ fn render_markup_node(
             return vec![Vec::new()];
         };
         let numerator = render_markup_inline(std::slice::from_ref(numerator_node), active_slot);
-        let denominator =
-            render_markup_inline(denominator_node, active_slot);
+        let denominator = render_markup_inline(denominator_node, active_slot);
         if numerator.is_empty() || denominator.is_empty() {
             return vec![numerator.into_iter().chain(denominator).collect()];
         }
@@ -746,7 +745,10 @@ fn render_markup_node(
     render_markup_nodes(&node.children, active_slot)
 }
 
-fn render_markup_inline(nodes: &[RichMarkupNode], active_slot: Option<usize>) -> Vec<RichMarkupRun> {
+fn render_markup_inline(
+    nodes: &[RichMarkupNode],
+    active_slot: Option<usize>,
+) -> Vec<RichMarkupRun> {
     render_markup_nodes(nodes, active_slot)
         .into_iter()
         .enumerate()
@@ -796,8 +798,7 @@ fn decode_markup_path_slot(token: &str) -> Option<usize> {
     if let Some(slot) = reference
         .strip_prefix('B')
         .filter(|suffix| !suffix.is_empty() && suffix.chars().all(|ch| ch.is_ascii_digit()))
-        .map(|suffix| suffix.parse::<usize>().ok())
-        .flatten()
+        .and_then(|suffix| suffix.parse::<usize>().ok())
     {
         return (slot > 0).then_some(slot);
     }

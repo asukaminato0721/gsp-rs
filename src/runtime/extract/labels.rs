@@ -184,7 +184,9 @@ pub(super) fn collect_labels(
                     labels.push(TextLabel {
                         anchor,
                         text,
-                        rich_markup: rich_text.as_ref().and_then(|content| content.markup.clone()),
+                        rich_markup: rich_text
+                            .as_ref()
+                            .and_then(|content| content.markup.clone()),
                         color: [30, 30, 30, 255],
                         visible,
                         binding: None,
@@ -434,8 +436,7 @@ pub(super) fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) 
                 &function_expr_label(expr.clone()),
                 &mut BTreeSet::new(),
             );
-            let (_expr_label, binding, text) = if parameter_name == "n" && expr_label == "257 / n"
-            {
+            let (_expr_label, binding, text) = if parameter_name == "n" && expr_label == "257 / n" {
                 let angle = 360.0 / parameter_value;
                 let angle_expr = regular_polygon_angle_expr(&parameter_name, parameter_value);
                 (
@@ -889,7 +890,7 @@ fn custom_transform_expr_suffix(file: &GspFile, expr_group: &ObjectGroup) -> Opt
     payload
         .chunks_exact(2)
         .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
-        .last()
+        .next_back()
 }
 
 pub(super) fn collect_label_iterations(
@@ -967,10 +968,15 @@ pub(super) fn collect_label_iterations(
         .collect()
 }
 
-pub(super) fn collect_iteration_tables(file: &GspFile, groups: &[ObjectGroup]) -> Vec<IterationTable> {
+pub(super) fn collect_iteration_tables(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+) -> Vec<IterationTable> {
     groups
         .iter()
-        .filter(|group| (group.header.kind()) == crate::format::GroupKind::IterationExpressionHelper)
+        .filter(|group| {
+            (group.header.kind()) == crate::format::GroupKind::IterationExpressionHelper
+        })
         .filter_map(|group| {
             if group.header.is_hidden() {
                 return None;

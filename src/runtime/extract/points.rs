@@ -313,7 +313,7 @@ fn parameter_unit_for_group(
         .iter()
         .find(|record| record.record_type == 0x0907)
         .map(|record| record.payload(&file.data));
-    if let Some(unit) = payload.map(decode_parameter_unit_from_payload).flatten() {
+    if let Some(unit) = payload.and_then(decode_parameter_unit_from_payload) {
         return Some(unit.to_string());
     }
     if !allow_orphan_parameter_controls && is_angle_parameter_group(file, groups, group_index) {

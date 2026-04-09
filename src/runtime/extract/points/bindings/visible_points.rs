@@ -298,11 +298,19 @@ pub(crate) fn collect_visible_points(
     (points, group_to_point_index)
 }
 
-fn is_orphan_duplicate_point_helper(file: &GspFile, groups: &[ObjectGroup], group: &ObjectGroup) -> bool {
+fn is_orphan_duplicate_point_helper(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> bool {
     if (group.header.kind()) != crate::format::GroupKind::Point {
         return false;
     }
-    if group.records.iter().any(|record| record.record_type == 0x0907) {
+    if group
+        .records
+        .iter()
+        .any(|record| record.record_type == 0x0907)
+    {
         return false;
     }
     if decode_label_visible(file, group).unwrap_or(true) {
@@ -314,8 +322,7 @@ fn is_orphan_duplicate_point_helper(file: &GspFile, groups: &[ObjectGroup], grou
     let is_referenced = |ordinal: usize| {
         groups.iter().any(|other| {
             other.ordinal != ordinal
-                && find_indexed_path(file, other)
-                    .is_some_and(|path| path.refs.contains(&ordinal))
+                && find_indexed_path(file, other).is_some_and(|path| path.refs.contains(&ordinal))
         })
     };
     let referenced = is_referenced(group.ordinal);
@@ -327,7 +334,10 @@ fn is_orphan_duplicate_point_helper(file: &GspFile, groups: &[ObjectGroup], grou
             && decode_label_name(file, other).as_deref() == Some(name.as_str())
             && (is_referenced(other.ordinal)
                 || find_indexed_path(file, other).is_some_and(|path| !path.refs.is_empty())
-                || other.records.iter().any(|record| record.record_type == 0x0907))
+                || other
+                    .records
+                    .iter()
+                    .any(|record| record.record_type == 0x0907))
     })
 }
 
