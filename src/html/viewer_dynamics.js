@@ -825,6 +825,21 @@
         if (value !== null) {
           applyNormalizedParameterToPoint(point, scene, value);
         }
+      } else if (point.binding?.kind === "coordinate-source") {
+        const source = env.resolveScenePoint(point.binding.sourceIndex);
+        if (!source) return;
+        const exprParameters = new Map(parameters);
+        exprParameters.set(point.binding.name, parameters.get(point.binding.name));
+        const offset = evaluateExpr(point.binding.expr, 0, exprParameters);
+        if (offset !== null) {
+          if (point.binding.axis === "horizontal") {
+            point.x = source.x + offset;
+            point.y = source.y;
+          } else {
+            point.x = source.x;
+            point.y = source.y + offset;
+          }
+        }
       } else if (point.binding?.kind === "translate") {
         const source = env.resolveScenePoint(point.binding.sourceIndex);
         const vectorStart = env.resolveScenePoint(point.binding.vectorStartIndex);
@@ -1178,6 +1193,14 @@
         preservedLines.push(line);
         return;
       }
+      if (line.binding?.kind === "coordinate-trace") {
+        const sampled = window.GspViewerModules.scene.sampleCoordinateTracePoints(env, line.binding);
+        if (sampled && sampled.length >= 2) {
+          line.points = sampled;
+        }
+        preservedLines.push(line);
+        return;
+      }
       if (line.binding?.kind !== "rotate-edge") {
         preservedLines.push(line);
         return;
@@ -1342,6 +1365,21 @@
             const y = evaluateExpr(point.binding.expr, 0, parameters);
             if (y !== null) {
               point.y = y;
+            }
+          } else if (point.binding?.kind === "coordinate-source") {
+            const source = draft.points[point.binding.sourceIndex];
+            if (!source || !Number.isFinite(source.x)) return;
+            const exprParameters = new Map(parameters);
+            exprParameters.set(point.binding.name, parameters.get(point.binding.name));
+            const offset = evaluateExpr(point.binding.expr, 0, exprParameters);
+            if (offset !== null) {
+              if (point.binding.axis === "horizontal") {
+                point.x = source.x + offset;
+                point.y = source.y;
+              } else {
+                point.x = source.x;
+                point.y = source.y + offset;
+              }
             }
           } else if (point.binding?.kind === "custom-transform") {
             const value = parameterValueFromPoint(draft, point.binding.sourceIndex);

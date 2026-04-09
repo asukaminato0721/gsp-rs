@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use super::super::decode::find_indexed_path;
+use super::super::decode::{decode_label_name, find_indexed_path};
 use super::constraints::{
     RawPointConstraint, decode_parameter_controlled_point, decode_point_constraint,
     decode_translated_point_constraint,
@@ -9,11 +9,13 @@ use super::{
     GspFile, ObjectGroup, PointRecord, TransformBindingKind,
     decode_non_graph_parameter_value_for_group, decode_parameter_rotation_binding, read_f64,
 };
+use crate::runtime::functions::{
+    decode_function_expr, decode_function_plot_descriptor, evaluate_expr_with_parameters,
+};
 use crate::runtime::geometry::{
     GraphTransform, lerp_point, point_on_circle_arc, point_on_three_point_arc, reflect_across_line,
-    rotate_around, three_point_arc_geometry,
+    rotate_around, three_point_arc_geometry, to_raw_from_world, to_world,
 };
-use crate::runtime::functions::{decode_function_expr, evaluate_expr_with_parameters};
 
 const PX_PER_CM: f64 = 37.79527559055118;
 
@@ -46,11 +48,69 @@ pub(crate) fn decode_graph_calibration_anchor_raw(
     }
 }
 
+pub(crate) fn decode_coordinate_expression_anchor_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+    graph: Option<&GraphTransform>,
+) -> Option<PointRecord> {
+    if (group.header.kind()) != crate::format::GroupKind::CoordinateExpressionPoint {
+        return None;
+    }
+
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() < 2 {
+        return None;
+    }
+    let source_group_index = path.refs[0].checked_sub(1)?;
+    let calc_group = groups.get(path.refs[1].checked_sub(1)?)?;
+    let source_position = anchors.get(source_group_index)?.clone()?;
+    let source_world = to_world(&source_position, &graph.cloned());
+    let expr = decode_function_expr(file, groups, calc_group)?;
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x07d3)
+        .map(|record| record.payload(&file.data))?;
+    let axis = match (payload.len() >= 24).then(|| crate::format::read_u32(payload, 20)) {
+        Some(1) => crate::runtime::scene::CoordinateAxis::Vertical,
+        _ => crate::runtime::scene::CoordinateAxis::Horizontal,
+    };
+    let parameter_group = find_indexed_path(file, calc_group)
+        .and_then(|path| path.refs.first().copied())
+        .and_then(|ordinal| ordinal.checked_sub(1))
+        .and_then(|index| groups.get(index))?;
+    let parameter_name = decode_label_name(file, parameter_group)?;
+    let parameter_value = decode_non_graph_parameter_value_for_group(file, parameter_group)?;
+    let offset = evaluate_expr_with_parameters(
+        &expr,
+        0.0,
+        &BTreeMap::from([(parameter_name, parameter_value)]),
+    )?;
+    let world = match axis {
+        crate::runtime::scene::CoordinateAxis::Horizontal => PointRecord {
+            x: source_world.x + offset,
+            y: source_world.y,
+        },
+        crate::runtime::scene::CoordinateAxis::Vertical => PointRecord {
+            x: source_world.x,
+            y: source_world.y + offset,
+        },
+    };
+    Some(if let Some(transform) = graph {
+        to_raw_from_world(&world, transform)
+    } else {
+        world
+    })
+}
+
 pub(crate) fn decode_intersection_anchor_raw(
     file: &GspFile,
     groups: &[ObjectGroup],
     group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
+    graph: Option<&GraphTransform>,
 ) -> Option<PointRecord> {
     let kind = group.header.kind();
     let variant = match kind {
@@ -59,6 +119,7 @@ pub(crate) fn decode_intersection_anchor_raw(
         crate::format::GroupKind::IntersectionPoint2 => Some(0),
         crate::format::GroupKind::CircleCircleIntersectionPoint1 => Some(1),
         crate::format::GroupKind::CircleCircleIntersectionPoint2 => Some(0),
+        crate::format::GroupKind::CoordinateTraceIntersectionPoint => Some(0),
         _ => return None,
     };
 
@@ -69,6 +130,22 @@ pub(crate) fn decode_intersection_anchor_raw(
 
     let left_group = groups.get(path.refs[0].checked_sub(1)?)?;
     let right_group = groups.get(path.refs[1].checked_sub(1)?)?;
+
+    if kind == crate::format::GroupKind::CoordinateTraceIntersectionPoint {
+        if let (Some((line_start, line_end)), Some(trace_points)) = (
+            resolve_line_like_points_raw(file, groups, anchors, left_group),
+            sample_coordinate_trace_points_raw(file, groups, right_group, anchors, graph),
+        ) {
+            return line_polyline_intersection(line_start, line_end, &trace_points);
+        }
+
+        if let (Some(trace_points), Some((line_start, line_end))) = (
+            sample_coordinate_trace_points_raw(file, groups, left_group, anchors, graph),
+            resolve_line_like_points_raw(file, groups, anchors, right_group),
+        ) {
+            return line_polyline_intersection(line_start, line_end, &trace_points);
+        }
+    }
 
     if let (Some((line_start, line_end)), Some(circle)) = (
         resolve_line_like_points_raw(file, groups, anchors, left_group),
@@ -100,11 +177,7 @@ pub(crate) fn decode_intersection_anchor_raw(
         resolve_circle_like_raw(file, groups, anchors, left_group),
         resolve_circle_like_raw(file, groups, anchors, right_group),
     ) {
-        return select_circular_intersection(
-            &left_circle,
-            &right_circle,
-            variant.unwrap_or(0),
-        );
+        return select_circular_intersection(&left_circle, &right_circle, variant.unwrap_or(0));
     }
 
     if variant.is_none() {
@@ -119,6 +192,106 @@ pub(crate) fn decode_intersection_anchor_raw(
     let (right_start, right_end) =
         resolve_line_like_points_raw(file, groups, anchors, right_group)?;
     line_line_intersection(&left_start, &left_end, &right_start, &right_end)
+}
+
+fn sample_coordinate_trace_points_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+    graph: Option<&GraphTransform>,
+) -> Option<Vec<PointRecord>> {
+    if (group.header.kind()) != crate::format::GroupKind::CoordinateTrace {
+        return None;
+    }
+
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() < 3 {
+        return None;
+    }
+    let driver_group = groups.get(path.refs[0].checked_sub(1)?)?;
+    let parameter_group = groups.get(path.refs[1].checked_sub(1)?)?;
+    let calc_group = groups.get(path.refs[2].checked_sub(1)?)?;
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x0902)
+        .map(|record| record.payload(&file.data))?;
+    let descriptor = decode_function_plot_descriptor(payload)?;
+    let expr = decode_function_expr(file, groups, calc_group)?;
+    let parameter_name =
+        super::editable_non_graph_parameter_name_for_group(file, groups, parameter_group)
+            .or_else(|| decode_label_name(file, parameter_group))?;
+
+    let mut points = Vec::with_capacity(descriptor.sample_count);
+    let last = descriptor.sample_count.saturating_sub(1).max(1) as f64;
+    let driver =
+        if (driver_group.header.kind()) == crate::format::GroupKind::CoordinateExpressionPoint {
+            let driver_path = find_indexed_path(file, driver_group)?;
+            let source_group_index = driver_path.refs[0].checked_sub(1)?;
+            let source_position = anchors.get(source_group_index)?.clone()?;
+            let source_world = to_world(&source_position, &graph.cloned());
+            let payload = driver_group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x07d3)
+                .map(|record| record.payload(&file.data))?;
+            let axis = match (payload.len() >= 24).then(|| crate::format::read_u32(payload, 20)) {
+                Some(1) => crate::runtime::scene::CoordinateAxis::Vertical,
+                _ => crate::runtime::scene::CoordinateAxis::Horizontal,
+            };
+            Some((source_world, axis))
+        } else {
+            None
+        };
+    for index in 0..descriptor.sample_count {
+        let t = index as f64 / last;
+        let x = descriptor.x_min + (descriptor.x_max - descriptor.x_min) * t;
+        let offset = evaluate_expr_with_parameters(
+            &expr,
+            0.0,
+            &BTreeMap::from([(parameter_name.clone(), x)]),
+        )?;
+        let world = match &driver {
+            Some((source_world, crate::runtime::scene::CoordinateAxis::Horizontal)) => {
+                PointRecord {
+                    x: source_world.x + offset,
+                    y: source_world.y,
+                }
+            }
+            Some((source_world, crate::runtime::scene::CoordinateAxis::Vertical)) => PointRecord {
+                x: source_world.x,
+                y: source_world.y + offset,
+            },
+            None => match descriptor.mode {
+                crate::runtime::functions::FunctionPlotMode::Cartesian => {
+                    PointRecord { x, y: offset }
+                }
+                crate::runtime::functions::FunctionPlotMode::Polar => PointRecord {
+                    x: offset * x.cos(),
+                    y: offset * x.sin(),
+                },
+            },
+        };
+        points.push(if let Some(transform) = graph {
+            to_raw_from_world(&world, transform)
+        } else {
+            world
+        });
+    }
+    (points.len() >= 2).then_some(points)
+}
+
+fn line_polyline_intersection(
+    line_start: PointRecord,
+    line_end: PointRecord,
+    polyline: &[PointRecord],
+) -> Option<PointRecord> {
+    polyline.windows(2).find_map(|segment| {
+        let start = segment.first()?;
+        let end = segment.get(1)?;
+        line_line_intersection(&line_start, &line_end, start, end)
+    })
 }
 
 #[derive(Clone)]
@@ -416,7 +589,10 @@ fn circle_circle_intersections(
     Some(intersections)
 }
 
-fn point_lies_on_circular_constraint(point: &PointRecord, constraint: &CircularConstraintRaw) -> bool {
+fn point_lies_on_circular_constraint(
+    point: &PointRecord,
+    constraint: &CircularConstraintRaw,
+) -> bool {
     match constraint {
         CircularConstraintRaw::Circle { .. } => true,
         CircularConstraintRaw::ThreePointArc {
@@ -434,18 +610,14 @@ fn point_lies_on_circular_constraint(point: &PointRecord, constraint: &CircularC
             }
             let angle = (point.y - center.y).atan2(point.x - center.x);
             let on_arc = if *ccw_mid <= *ccw_span + 1e-9 {
-                normalize_angle_delta_raw(
-                    (start.y - center.y).atan2(start.x - center.x),
-                    angle,
-                ) <= *ccw_span + 1e-9
+                normalize_angle_delta_raw((start.y - center.y).atan2(start.x - center.x), angle)
+                    <= *ccw_span + 1e-9
             } else {
-                normalize_angle_delta_raw(
-                    angle,
-                    (start.y - center.y).atan2(start.x - center.x),
-                ) <= normalize_angle_delta_raw(
-                    (end.y - center.y).atan2(end.x - center.x),
-                    (start.y - center.y).atan2(start.x - center.x),
-                ) + 1e-9
+                normalize_angle_delta_raw(angle, (start.y - center.y).atan2(start.x - center.x))
+                    <= normalize_angle_delta_raw(
+                        (end.y - center.y).atan2(end.x - center.x),
+                        (start.y - center.y).atan2(start.x - center.x),
+                    ) + 1e-9
             };
             on_arc
                 || ((point.x - start.x).abs() < 1e-6 && (point.y - start.y).abs() < 1e-6)
@@ -540,15 +712,14 @@ pub(crate) fn decode_custom_transform_binding(
     }
     let source_group_index = path.refs.get(2)?.checked_sub(1)?;
     let (origin_group_index, axis_end_group_index) =
-        custom_transform_basis_indices(file, groups, source_group_index)
-            .or_else(|| {
-                let axis_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
-                let axis_path = find_indexed_path(file, axis_group)?;
-                Some((
-                    axis_path.refs.first()?.checked_sub(1)?,
-                    axis_path.refs.get(1)?.checked_sub(1)?,
-                ))
-            })?;
+        custom_transform_basis_indices(file, groups, source_group_index).or_else(|| {
+            let axis_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+            let axis_path = find_indexed_path(file, axis_group)?;
+            Some((
+                axis_path.refs.first()?.checked_sub(1)?,
+                axis_path.refs.get(1)?.checked_sub(1)?,
+            ))
+        })?;
     let distance_expr_group = groups.get(path.refs.get(4)?.checked_sub(1)?)?;
     let angle_expr_group = groups.get(path.refs.get(5)?.checked_sub(1)?)?;
     let distance_expr = decode_function_expr(file, groups, distance_expr_group)?;
@@ -572,7 +743,12 @@ fn custom_transform_basis_indices(
     let source_group = groups.get(source_group_index)?;
     match source_group.header.kind() {
         kind if kind.is_point_constraint() => {
-            let host_group = groups.get(find_indexed_path(file, source_group)?.refs.first()?.checked_sub(1)?)?;
+            let host_group = groups.get(
+                find_indexed_path(file, source_group)?
+                    .refs
+                    .first()?
+                    .checked_sub(1)?,
+            )?;
             if (host_group.header.kind()) != crate::format::GroupKind::Segment {
                 return None;
             }
@@ -583,7 +759,12 @@ fn custom_transform_basis_indices(
             ))
         }
         crate::format::GroupKind::ParameterControlledPoint => {
-            let host_group = groups.get(find_indexed_path(file, source_group)?.refs.get(1)?.checked_sub(1)?)?;
+            let host_group = groups.get(
+                find_indexed_path(file, source_group)?
+                    .refs
+                    .get(1)?
+                    .checked_sub(1)?,
+            )?;
             if (host_group.header.kind()) != crate::format::GroupKind::Segment {
                 return None;
             }
@@ -607,10 +788,11 @@ pub(crate) fn resolve_custom_transform_point(
     let parameters = expression_parameter_map(&binding.distance_expr, &binding.angle_expr, t);
     let distance = evaluate_expr_with_parameters(&binding.distance_expr, t, &parameters)?
         * binding.distance_raw_scale;
-    let angle_degrees =
-        evaluate_expr_with_parameters(&binding.angle_expr, t, &parameters)? * binding.angle_degrees_scale;
-    let base_angle =
-        (-(axis_end.y - origin.y)).atan2(axis_end.x - origin.x).to_degrees();
+    let angle_degrees = evaluate_expr_with_parameters(&binding.angle_expr, t, &parameters)?
+        * binding.angle_degrees_scale;
+    let base_angle = (-(axis_end.y - origin.y))
+        .atan2(axis_end.x - origin.x)
+        .to_degrees();
     let total_radians = (base_angle + angle_degrees).to_radians();
     Some(PointRecord {
         x: origin.x + distance * total_radians.cos(),
@@ -626,24 +808,20 @@ pub(crate) fn decode_custom_transform_parameter(
 ) -> Option<f64> {
     let source_group = groups.get(source_group_index)?;
     match source_group.header.kind() {
-        kind if kind.is_point_constraint() => match decode_point_constraint(
-            file,
-            groups,
-            source_group,
-            Some(anchors),
-            &None,
-        )? {
-            RawPointConstraint::Segment(constraint) => Some(constraint.t),
-            RawPointConstraint::Polyline { t, .. } => Some(t),
-            RawPointConstraint::PolygonBoundary { t, .. } => Some(t),
-            RawPointConstraint::Circle(constraint) => {
-                let angle = (-constraint.unit_y).atan2(constraint.unit_x);
-                let tau = std::f64::consts::TAU;
-                Some(((angle % tau) + tau) % tau / tau)
+        kind if kind.is_point_constraint() => {
+            match decode_point_constraint(file, groups, source_group, Some(anchors), &None)? {
+                RawPointConstraint::Segment(constraint) => Some(constraint.t),
+                RawPointConstraint::Polyline { t, .. } => Some(t),
+                RawPointConstraint::PolygonBoundary { t, .. } => Some(t),
+                RawPointConstraint::Circle(constraint) => {
+                    let angle = (-constraint.unit_y).atan2(constraint.unit_x);
+                    let tau = std::f64::consts::TAU;
+                    Some(((angle % tau) + tau) % tau / tau)
+                }
+                RawPointConstraint::CircleArc(constraint) => Some(constraint.t),
+                RawPointConstraint::Arc(constraint) => Some(constraint.t),
             }
-            RawPointConstraint::CircleArc(constraint) => Some(constraint.t),
-            RawPointConstraint::Arc(constraint) => Some(constraint.t),
-        },
+        }
         crate::format::GroupKind::ParameterControlledPoint => {
             let parameter_point =
                 decode_parameter_controlled_point(file, groups, source_group, anchors)?;
@@ -689,8 +867,7 @@ fn custom_transform_suffix(file: &GspFile, expr_group: &ObjectGroup) -> Option<u
         .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
         .collect::<Vec<_>>();
     words.last().copied().or_else(|| {
-        (words.len() >= 3 && words[words.len() - 3..] == [0x0000, 0x0000, 0x0101])
-            .then_some(0x0101)
+        (words.len() >= 3 && words[words.len() - 3..] == [0x0000, 0x0000, 0x0101]).then_some(0x0101)
     })
 }
 
@@ -1109,9 +1286,7 @@ fn resolve_polyline_point(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        CircularConstraintRaw, normalize_angle_delta_raw, select_circular_intersection,
-    };
+    use super::{CircularConstraintRaw, normalize_angle_delta_raw, select_circular_intersection};
     use crate::format::PointRecord;
     use crate::runtime::geometry::three_point_arc_geometry;
 

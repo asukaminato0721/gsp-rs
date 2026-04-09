@@ -113,7 +113,10 @@ fn decode_parameter_binding(file: &GspFile, group: &ObjectGroup) -> Option<Param
     Some(ParameterBinding { name, value })
 }
 
-fn decode_parameter_anchor_binding(file: &GspFile, group: &ObjectGroup) -> Option<ParameterBinding> {
+fn decode_parameter_anchor_binding(
+    file: &GspFile,
+    group: &ObjectGroup,
+) -> Option<ParameterBinding> {
     let groups = file.object_groups();
     let path = find_indexed_path(file, group)?;
     let point_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
@@ -252,7 +255,10 @@ fn has_ignorable_expr_suffix(words: &[u16], end: usize) -> bool {
         return true;
     }
     let suffix = &words[end..];
-    matches!(suffix, [0x0201] | [0x0101] | [0x0000, 0x0101] | [0x0000, 0x0000, 0x0101])
+    matches!(
+        suffix,
+        [0x0201] | [0x0101] | [0x0000, 0x0101] | [0x0000, 0x0000, 0x0101]
+    )
 }
 
 fn parsed_contains_symbol(parsed: &ParsedFunctionExpr) -> bool {

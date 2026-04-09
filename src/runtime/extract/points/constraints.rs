@@ -13,7 +13,7 @@ use crate::runtime::functions::{
 use crate::runtime::geometry::{
     GraphTransform, arc_on_circle_control_points, lerp_point, locate_polyline_parameter_by_length,
     point_on_circle_arc, point_on_three_point_arc, sample_three_point_arc,
-    three_point_arc_geometry, to_raw_from_world,
+    three_point_arc_geometry, to_raw_from_world, to_world,
 };
 
 pub(crate) struct PointOnSegmentConstraint {
@@ -74,9 +74,18 @@ pub(crate) struct ParameterControlledPoint {
     pub(crate) source_point_group_index: Option<usize>,
 }
 
+pub(crate) enum CoordinatePointSource {
+    Parameter(String),
+    SourcePoint {
+        source_group_index: usize,
+        parameter_name: String,
+        axis: crate::runtime::scene::CoordinateAxis,
+    },
+}
+
 pub(crate) struct CoordinatePoint {
     pub(crate) position: PointRecord,
-    pub(crate) parameter_name: String,
+    pub(crate) source: CoordinatePointSource,
     pub(crate) expr: FunctionExpr,
 }
 
@@ -313,7 +322,11 @@ pub(crate) fn decode_parameter_controlled_point(
                 RawPointConstraint::Arc(_) => return None,
                 RawPointConstraint::Polyline { .. } => return None,
             };
-            (String::new(), wrap_unit_interval(t), Some(point_group_index))
+            (
+                String::new(),
+                wrap_unit_interval(t),
+                Some(point_group_index),
+            )
         } else {
             return None;
         };
@@ -482,9 +495,15 @@ pub(crate) fn decode_coordinate_point(
     file: &GspFile,
     groups: &[ObjectGroup],
     group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
     graph: &Option<GraphTransform>,
 ) -> Option<CoordinatePoint> {
-    if (group.header.kind()) != crate::format::GroupKind::CoordinatePoint {
+    let kind = group.header.kind();
+    if !matches!(
+        kind,
+        crate::format::GroupKind::CoordinatePoint
+            | crate::format::GroupKind::CoordinateExpressionPoint
+    ) {
         return None;
     }
 
@@ -492,29 +511,86 @@ pub(crate) fn decode_coordinate_point(
     if path.refs.len() < 2 {
         return None;
     }
-    let parameter_group = groups.get(path.refs[0].checked_sub(1)?)?;
     let calc_group = groups.get(path.refs[1].checked_sub(1)?)?;
-
-    let parameter_name = decode_label_name(file, parameter_group)?;
-    let parameter_value = decode_non_graph_parameter_value_for_group(file, parameter_group)?;
     let expr = decode_function_expr(file, groups, calc_group)?;
-    let parameters = BTreeMap::from([(parameter_name.clone(), parameter_value)]);
-    let y = evaluate_expr_with_parameters(&expr, 0.0, &parameters)?;
-    let world = PointRecord {
-        x: parameter_value,
-        y,
-    };
-    let position = if let Some(transform) = graph {
-        to_raw_from_world(&world, transform)
-    } else {
-        world
-    };
 
-    Some(CoordinatePoint {
-        position,
-        parameter_name,
-        expr,
-    })
+    match kind {
+        crate::format::GroupKind::CoordinatePoint => {
+            let parameter_group = groups.get(path.refs[0].checked_sub(1)?)?;
+            let parameter_name = decode_label_name(file, parameter_group)?;
+            let parameter_value =
+                decode_non_graph_parameter_value_for_group(file, parameter_group)?;
+            let parameters = BTreeMap::from([(parameter_name.clone(), parameter_value)]);
+            let y = evaluate_expr_with_parameters(&expr, 0.0, &parameters)?;
+            let world = PointRecord {
+                x: parameter_value,
+                y,
+            };
+            let position = if let Some(transform) = graph {
+                to_raw_from_world(&world, transform)
+            } else {
+                world
+            };
+
+            Some(CoordinatePoint {
+                position,
+                source: CoordinatePointSource::Parameter(parameter_name),
+                expr,
+            })
+        }
+        crate::format::GroupKind::CoordinateExpressionPoint => {
+            let source_group_index = path.refs[0].checked_sub(1)?;
+            let source_position = anchors.get(source_group_index)?.clone()?;
+            let source_world = to_world(&source_position, graph);
+            let payload = group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x07d3)
+                .map(|record| record.payload(&file.data))?;
+            let axis = match (payload.len() >= 24).then(|| read_u32(payload, 20)) {
+                Some(1) => crate::runtime::scene::CoordinateAxis::Vertical,
+                _ => crate::runtime::scene::CoordinateAxis::Horizontal,
+            };
+            let parameter_group = find_indexed_path(file, calc_group)
+                .and_then(|path| path.refs.first().copied())
+                .and_then(|ordinal| ordinal.checked_sub(1))
+                .and_then(|index| groups.get(index))?;
+            let parameter_name = decode_label_name(file, parameter_group)?;
+            let parameter_value =
+                decode_non_graph_parameter_value_for_group(file, parameter_group)?;
+            let offset = evaluate_expr_with_parameters(
+                &expr,
+                0.0,
+                &BTreeMap::from([(parameter_name.clone(), parameter_value)]),
+            )?;
+            let world = match axis {
+                crate::runtime::scene::CoordinateAxis::Horizontal => PointRecord {
+                    x: source_world.x + offset,
+                    y: source_world.y,
+                },
+                crate::runtime::scene::CoordinateAxis::Vertical => PointRecord {
+                    x: source_world.x,
+                    y: source_world.y + offset,
+                },
+            };
+            let position = if let Some(transform) = graph {
+                to_raw_from_world(&world, transform)
+            } else {
+                world
+            };
+
+            Some(CoordinatePoint {
+                position,
+                source: CoordinatePointSource::SourcePoint {
+                    source_group_index,
+                    parameter_name,
+                    axis,
+                },
+                expr,
+            })
+        }
+        _ => None,
+    }
 }
 
 pub(crate) fn decode_point_constraint(
@@ -885,7 +961,8 @@ fn resolve_boundary_arc_geometry(
             let start = anchors.get(arc_path.refs[0].checked_sub(1)?)?.clone()?;
             let mid = anchors.get(arc_path.refs[1].checked_sub(1)?)?.clone()?;
             let end = anchors.get(arc_path.refs[2].checked_sub(1)?)?.clone()?;
-            let center = three_point_arc_geometry(&start, &mid, &end).map(|geometry| geometry.center);
+            let center =
+                three_point_arc_geometry(&start, &mid, &end).map(|geometry| geometry.center);
             Some((center, [start, mid, end], false))
         }
         _ => None,

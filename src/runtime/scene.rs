@@ -228,6 +228,13 @@ pub(crate) enum ScenePointConstraint {
         left: LineConstraint,
         right: LineConstraint,
     },
+    LineTraceIntersection {
+        line: LineConstraint,
+        point_index: usize,
+        x_min: f64,
+        x_max: f64,
+        sample_count: usize,
+    },
     LineCircleIntersection {
         line: LineConstraint,
         center_index: usize,
@@ -382,6 +389,12 @@ pub(crate) enum LineBinding {
         x_max: f64,
         sample_count: usize,
     },
+    CoordinateTrace {
+        point_index: usize,
+        x_min: f64,
+        x_max: f64,
+        sample_count: usize,
+    },
     RotateEdge {
         center_index: usize,
         vertex_index: usize,
@@ -460,6 +473,12 @@ pub(crate) enum ScenePointBinding {
         name: String,
         expr: FunctionExpr,
     },
+    CoordinateSource {
+        source_index: usize,
+        name: String,
+        expr: FunctionExpr,
+        axis: CoordinateAxis,
+    },
     CustomTransform {
         source_index: usize,
         origin_index: usize,
@@ -469,6 +488,12 @@ pub(crate) enum ScenePointBinding {
         distance_raw_scale: f64,
         angle_degrees_scale: f64,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CoordinateAxis {
+    Horizontal,
+    Vertical,
 }
 
 #[derive(Debug, Clone)]

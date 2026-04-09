@@ -11,9 +11,7 @@ use crate::runtime::scene::{
 };
 
 use super::find_indexed_path;
-use super::points::{
-    custom_transform_expression_parameter_map, custom_transform_trace_parameter,
-};
+use super::points::{custom_transform_expression_parameter_map, custom_transform_trace_parameter};
 
 pub(super) fn collect_point_traces(
     file: &GspFile,
@@ -46,10 +44,13 @@ pub(super) fn collect_point_traces(
                 .find(|record| record.record_type == 0x0902)
                 .map(|record| record.payload(&file.data))?;
             let descriptor = crate::runtime::functions::decode_function_plot_descriptor(payload)?;
-            let trace_max = if (group.header.kind()) == crate::format::GroupKind::CustomTransformTrace
+            let trace_max = if (group.header.kind())
+                == crate::format::GroupKind::CustomTransformTrace
             {
-                custom_transform_trace_parameter(visible_points.get(driver_point_index)?)?
-                    .clamp(descriptor.x_min.min(descriptor.x_max), descriptor.x_min.max(descriptor.x_max))
+                custom_transform_trace_parameter(visible_points.get(driver_point_index)?)?.clamp(
+                    descriptor.x_min.min(descriptor.x_max),
+                    descriptor.x_min.max(descriptor.x_max),
+                )
             } else {
                 descriptor.x_max
             };
@@ -74,7 +75,8 @@ pub(super) fn collect_point_traces(
                 color: crate::runtime::geometry::color_from_style(group.header.style_b),
                 dashed: false,
                 visible: !group.header.is_hidden(),
-                binding: if (group.header.kind()) == crate::format::GroupKind::CustomTransformTrace {
+                binding: if (group.header.kind()) == crate::format::GroupKind::CustomTransformTrace
+                {
                     Some(crate::runtime::scene::LineBinding::CustomTransformTrace {
                         point_index: target_group_index,
                         x_min: descriptor.x_min,
@@ -223,7 +225,9 @@ fn resolve_trace_point(
                 t,
                 &parameters,
             )? * angle_degrees_scale;
-            let base_angle = (-(axis_end.y - origin.y)).atan2(axis_end.x - origin.x).to_degrees();
+            let base_angle = (-(axis_end.y - origin.y))
+                .atan2(axis_end.x - origin.x)
+                .to_degrees();
             let radians = (base_angle + angle_degrees).to_radians();
             Some(PointRecord {
                 x: origin.x + distance * radians.cos(),
@@ -339,6 +343,7 @@ fn resolve_trace_point(
                     right_kind,
                 )
             }
+            ScenePointConstraint::LineTraceIntersection { .. } => None,
             ScenePointConstraint::LineCircleIntersection {
                 line,
                 center_index,
@@ -680,7 +685,8 @@ fn resolve_trace_circular_constraint(
         } => {
             let center = resolve_trace_point(points, *center_index, visiting)?;
             let radius_point = resolve_trace_point(points, *radius_index, visiting)?;
-            let radius = ((radius_point.x - center.x).powi(2) + (radius_point.y - center.y).powi(2)).sqrt();
+            let radius =
+                ((radius_point.x - center.x).powi(2) + (radius_point.y - center.y).powi(2)).sqrt();
             (radius > 1e-9).then_some(TraceCircularConstraint::Circle { center, radius })
         }
         CircularConstraint::ThreePointArc {
@@ -779,9 +785,9 @@ fn trace_circle_circle_intersections(
 fn trace_circle_center_radius(constraint: &TraceCircularConstraint) -> (PointRecord, f64) {
     match constraint {
         TraceCircularConstraint::Circle { center, radius }
-        | TraceCircularConstraint::ThreePointArc {
-            center, radius, ..
-        } => (center.clone(), *radius),
+        | TraceCircularConstraint::ThreePointArc { center, radius, .. } => {
+            (center.clone(), *radius)
+        }
     }
 }
 

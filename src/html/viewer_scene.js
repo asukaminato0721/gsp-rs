@@ -350,6 +350,52 @@
       : null;
   }
 
+  function linePolylineIntersection(lineStart, lineEnd, lineKind, points) {
+    if (!Array.isArray(points) || points.length < 2) return null;
+    for (let index = 0; index < points.length - 1; index += 1) {
+      const start = points[index];
+      const end = points[index + 1];
+      if (!start || !end) continue;
+      const hit = lineLineIntersection(lineStart, lineEnd, lineKind, start, end, "segment");
+      if (hit) return hit;
+    }
+    return null;
+  }
+
+  /** @param {ViewerEnv | null} env */
+  function sampleCoordinateTracePoints(env, binding) {
+    if (!binding) return null;
+    const evaluateExpr = modules.dynamics?.evaluateExpr;
+    if (typeof evaluateExpr !== "function") return null;
+    const point = env?.currentScene?.().points?.[binding.pointIndex];
+    const pointBinding = point?.binding;
+    const source = pointBinding?.sourceIndex !== undefined
+      ? env.resolveScenePoint(pointBinding.sourceIndex)
+      : null;
+    if (!source || pointBinding?.kind !== "coordinate-source") return null;
+    const parameters = env?.currentDynamics
+      ? new Map(env.currentDynamics().parameters.map((parameter) => [parameter.name, parameter.value]))
+      : new Map();
+    const points = [];
+    const last = Math.max(1, (binding.sampleCount || 0) - 1);
+    for (let index = 0; index < (binding.sampleCount || 0); index += 1) {
+      const t = index / last;
+      const value = binding.xMin + (binding.xMax - binding.xMin) * t;
+      const exprParameters = new Map(parameters);
+      if (typeof pointBinding.name === "string" && pointBinding.name.length > 0) {
+        exprParameters.set(pointBinding.name, value);
+      }
+      const offset = evaluateExpr(pointBinding.expr, 0, exprParameters);
+      if (offset === null) continue;
+      points.push(
+        pointBinding.axis === "horizontal"
+          ? { x: source.x + offset, y: source.y }
+          : { x: source.x, y: source.y + offset }
+      );
+    }
+    return points.length >= 2 ? points : null;
+  }
+
   function resolveLineConstraint(env, constraint, resolveFn) {
     if (!constraint) return null;
     if (constraint.kind === "segment" || constraint.kind === "line" || constraint.kind === "ray") {
@@ -548,6 +594,12 @@
         right.end,
         right.kind,
       );
+    }
+    if (constraint.kind === "line-trace-intersection") {
+      const line = resolveLineConstraint(env, constraint.line, resolveFn);
+      const tracePoints = sampleCoordinateTracePoints(env, constraint);
+      if (!line || !tracePoints) return null;
+      return linePolylineIntersection(line.start, line.end, line.kind, tracePoints);
     }
     if (constraint.kind === "line-circle-intersection") {
       const line = resolveLineConstraint(env, constraint.line, resolveFn);
@@ -806,6 +858,9 @@
     }
     if (line.binding?.kind === "arc-boundary") {
       return sampleArcBoundaryPoints(env, line.binding);
+    }
+    if (line.binding?.kind === "coordinate-trace") {
+      return sampleCoordinateTracePoints(env, line.binding);
     }
     const points = line.points.map((handle) => resolvePoint(env, handle));
     return points.every(Boolean) ? points : null;
@@ -1069,6 +1124,7 @@
     pointOnThreePointArc,
     projectToThreePointArc,
     sampleArcBoundaryPoints,
+    sampleCoordinateTracePoints,
     lineLineIntersection,
     lineCircleIntersection,
     circleCircleIntersection,

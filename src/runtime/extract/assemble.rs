@@ -1,9 +1,9 @@
 use crate::format::PointRecord;
 use crate::runtime::geometry::{include_line_bounds, to_world};
 use crate::runtime::scene::{
-    CircularConstraint, LabelIterationFamily, LineBinding, LineConstraint, LineIterationFamily, LineShape,
-    PointIterationFamily, PolygonIterationFamily, PolygonShape, Scene, SceneArc, SceneCircle,
-    SceneImage, ScenePoint, ScenePointConstraint, TextLabel,
+    CircularConstraint, LabelIterationFamily, LineBinding, LineConstraint, LineIterationFamily,
+    LineShape, PointIterationFamily, PolygonIterationFamily, PolygonShape, Scene, SceneArc,
+    SceneCircle, SceneImage, ScenePoint, ScenePointConstraint, TextLabel,
 };
 
 use super::graph::{collect_bounds, dedupe_line_shapes, expand_bounds};
@@ -117,6 +117,19 @@ pub(super) fn build_world_data(
                         right: clone_line_constraint(right),
                     }
                 }
+                ScenePointConstraint::LineTraceIntersection {
+                    line,
+                    point_index,
+                    x_min,
+                    x_max,
+                    sample_count,
+                } => ScenePointConstraint::LineTraceIntersection {
+                    line: clone_line_constraint(line),
+                    point_index: *point_index,
+                    x_min: *x_min,
+                    x_max: *x_max,
+                    sample_count: *sample_count,
+                },
                 ScenePointConstraint::LineCircleIntersection {
                     line,
                     center_index,

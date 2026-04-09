@@ -630,7 +630,8 @@ pub(crate) fn remap_line_bindings(
                 *line_start_index = mapped_line_start_index;
                 *line_end_index = mapped_line_end_index;
             }
-            LineBinding::CustomTransformTrace { point_index, .. } => {
+            LineBinding::CustomTransformTrace { point_index, .. }
+            | LineBinding::CoordinateTrace { point_index, .. } => {
                 let Some(mapped_point_index) = group_to_point_index
                     .get(*point_index)
                     .and_then(|mapped_index| *mapped_index)

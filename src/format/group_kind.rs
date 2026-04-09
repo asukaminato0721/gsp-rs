@@ -35,7 +35,10 @@ macro_rules! define_group_kinds {
             }
 
             pub fn is_coordinate_object(self) -> bool {
-                matches!(self, Self::CoordinatePoint | Self::CoordinateTrace)
+                matches!(
+                    self,
+                    Self::CoordinatePoint | Self::CoordinateExpressionPoint | Self::CoordinateTrace
+                )
             }
 
             pub fn is_iteration_helper(self) -> bool {
@@ -89,6 +92,7 @@ define_group_kinds! {
     PointConstraint = 15,
     Translation = 16,
     CartesianOffsetPoint = 17,
+    CoordinateExpressionPoint = 18,
     PolarOffsetPoint = 21,
     DerivedSegment24 = 24,
     CustomTransformPoint = 26,
@@ -125,6 +129,7 @@ define_group_kinds! {
     ParameterAnchor = 94,
     ParameterControlledPoint = 95,
     CoordinateTrace = 97,
+    CoordinateTraceIntersectionPoint = 98,
     CustomTransformTrace = 102,
     AngleMarker = 113,
     PathPoint = 123,

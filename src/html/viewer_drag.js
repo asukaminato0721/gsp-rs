@@ -13,6 +13,9 @@
       if (point?.binding?.kind === "coordinate") {
         return "pan";
       }
+      if (point?.binding?.kind === "coordinate-source") {
+        return "pan";
+      }
       return env.currentScene().graphMode && env.isOriginPointIndex(pointIndex) ? "origin-pan" : "point";
     }
     if (polygonIndex !== null) {

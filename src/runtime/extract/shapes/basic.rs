@@ -117,12 +117,17 @@ fn is_auxiliary_segment_group(file: &GspFile, groups: &[ObjectGroup], group: &Ob
             return false;
         };
         match referenced_group.header.kind() {
-            crate::format::GroupKind::ParameterRotation | crate::format::GroupKind::FunctionExpr => {
-                true
-            }
+            crate::format::GroupKind::ParameterRotation
+            | crate::format::GroupKind::FunctionExpr => true,
             crate::format::GroupKind::Point => {
-                referenced_group.records.iter().any(|record| record.record_type == 0x0907)
-                    && !referenced_group.records.iter().any(|record| record.record_type == 0x0899)
+                referenced_group
+                    .records
+                    .iter()
+                    .any(|record| record.record_type == 0x0907)
+                    && !referenced_group
+                        .records
+                        .iter()
+                        .any(|record| record.record_type == 0x0899)
             }
             _ => false,
         }
@@ -912,7 +917,8 @@ fn resolve_boundary_arc_components(
             let start = anchors.get(arc_path.refs[0].checked_sub(1)?)?.clone()?;
             let mid = anchors.get(arc_path.refs[1].checked_sub(1)?)?.clone()?;
             let end = anchors.get(arc_path.refs[2].checked_sub(1)?)?.clone()?;
-            let center = three_point_arc_geometry(&start, &mid, &end).map(|geometry| geometry.center);
+            let center =
+                three_point_arc_geometry(&start, &mid, &end).map(|geometry| geometry.center);
             Some((center, [start, mid, end], false))
         }
         _ => None,
@@ -1098,6 +1104,7 @@ pub(crate) fn collect_derived_segments(
 pub(crate) fn collect_coordinate_traces(
     file: &GspFile,
     groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
     graph: &Option<GraphTransform>,
 ) -> Vec<LineShape> {
     groups
@@ -1118,6 +1125,29 @@ pub(crate) fn collect_coordinate_traces(
                 .map(|record| record.payload(&file.data))?;
             let descriptor = decode_function_plot_descriptor(payload)?;
             let expr = decode_function_expr(file, groups, calc_group)?;
+            let driver_group = groups.get(path.refs[0].checked_sub(1)?)?;
+            let driver = if (driver_group.header.kind())
+                == crate::format::GroupKind::CoordinateExpressionPoint
+            {
+                let driver_path = find_indexed_path(file, driver_group)?;
+                let source_group_index = driver_path.refs[0].checked_sub(1)?;
+                let source_position = anchors.get(source_group_index)?.clone()?;
+                let source_world = crate::runtime::geometry::to_world(&source_position, graph);
+                let driver_payload = driver_group
+                    .records
+                    .iter()
+                    .find(|record| record.record_type == 0x07d3)
+                    .map(|record| record.payload(&file.data))?;
+                let axis = match (driver_payload.len() >= 24)
+                    .then(|| crate::format::read_u32(driver_payload, 20))
+                {
+                    Some(1) => crate::runtime::scene::CoordinateAxis::Vertical,
+                    _ => crate::runtime::scene::CoordinateAxis::Horizontal,
+                };
+                Some((source_world, axis))
+            } else {
+                None
+            };
 
             let mut points = Vec::with_capacity(descriptor.sample_count);
             let last = descriptor.sample_count.saturating_sub(1).max(1) as f64;
@@ -1125,8 +1155,22 @@ pub(crate) fn collect_coordinate_traces(
                 let t = index as f64 / last;
                 let x = descriptor.x_min + (descriptor.x_max - descriptor.x_min) * t;
                 let parameters = BTreeMap::from([(parameter_name.clone(), x)]);
-                let y = evaluate_expr_with_parameters(&expr, 0.0, &parameters)?;
-                let world = PointRecord { x, y };
+                let offset = evaluate_expr_with_parameters(&expr, 0.0, &parameters)?;
+                let world = match &driver {
+                    Some((source_world, crate::runtime::scene::CoordinateAxis::Horizontal)) => {
+                        PointRecord {
+                            x: source_world.x + offset,
+                            y: source_world.y,
+                        }
+                    }
+                    Some((source_world, crate::runtime::scene::CoordinateAxis::Vertical)) => {
+                        PointRecord {
+                            x: source_world.x,
+                            y: source_world.y + offset,
+                        }
+                    }
+                    None => PointRecord { x, y: offset },
+                };
                 let point = if let Some(transform) = graph {
                     to_raw_from_world(&world, transform)
                 } else {
@@ -1140,7 +1184,12 @@ pub(crate) fn collect_coordinate_traces(
                 color: color_from_style(group.header.style_b),
                 dashed: line_is_dashed(group.header.style_a),
                 visible: !group.header.is_hidden(),
-                binding: None,
+                binding: Some(LineBinding::CoordinateTrace {
+                    point_index: path.refs[0].checked_sub(1)?,
+                    x_min: descriptor.x_min,
+                    x_max: descriptor.x_max,
+                    sample_count: descriptor.sample_count,
+                }),
             })
         })
         .collect()

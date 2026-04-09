@@ -22,14 +22,13 @@ use self::images::collect_scene_images;
 use self::labels::{
     PendingLabelHotspot, collect_circle_parameter_labels, collect_coordinate_labels,
     collect_custom_transform_expression_labels, collect_label_iterations, collect_labels,
-    collect_polygon_parameter_labels,
-    collect_segment_parameter_labels, compute_iteration_labels, resolve_label_hotspots,
+    collect_polygon_parameter_labels, collect_segment_parameter_labels, compute_iteration_labels,
+    resolve_label_hotspots,
 };
 use self::points::{
     TransformBindingKind, collect_non_graph_parameters, collect_point_iteration_points,
     collect_point_objects, collect_visible_points, decode_line_midpoint_anchor_raw,
-    decode_offset_anchor_raw,
-    decode_parameter_controlled_anchor_raw,
+    decode_offset_anchor_raw, decode_parameter_controlled_anchor_raw,
     decode_parameter_rotation_anchor_raw, decode_parameter_rotation_binding,
     decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,
     decode_point_pair_translation_anchor_raw, decode_reflection_anchor_raw,
@@ -39,18 +38,18 @@ use self::points::{
     remap_line_bindings, remap_polygon_bindings, translation_point_pair_group_indices,
 };
 use self::shapes::{
-    collect_bound_line_shapes, collect_carried_iteration_lines, collect_carried_iteration_polygons,
-    collect_carried_line_iteration_families, collect_carried_polygon_edge_segment_groups,
-    collect_carried_polygon_iteration_families, collect_circle_shapes, collect_coordinate_traces,
-    collect_derived_segments, collect_iteration_shapes, collect_line_shapes,
-    collect_polygon_shapes, collect_raw_object_anchors, collect_reflected_circle_shapes,
-    collect_reflected_line_shapes, collect_reflected_polygon_shapes, collect_rotated_circle_shapes,
-    collect_rotated_line_shapes, collect_rotated_polygon_shapes,
-    collect_rotational_iteration_segment_groups,
-    collect_rotational_iteration_lines, collect_scaled_line_shapes, collect_segment_marker_shapes,
-    collect_arc_boundary_shapes, collect_three_point_arc_shapes, collect_transformed_circle_shapes,
-    collect_transformed_polygon_shapes, collect_translated_line_shapes,
-    collect_translated_polygon_shapes,
+    collect_arc_boundary_shapes, collect_bound_line_shapes, collect_carried_iteration_lines,
+    collect_carried_iteration_polygons, collect_carried_line_iteration_families,
+    collect_carried_polygon_edge_segment_groups, collect_carried_polygon_iteration_families,
+    collect_circle_shapes, collect_coordinate_traces, collect_derived_segments,
+    collect_iteration_shapes, collect_line_shapes, collect_polygon_shapes,
+    collect_raw_object_anchors, collect_reflected_circle_shapes, collect_reflected_line_shapes,
+    collect_reflected_polygon_shapes, collect_rotated_circle_shapes, collect_rotated_line_shapes,
+    collect_rotated_polygon_shapes, collect_rotational_iteration_lines,
+    collect_rotational_iteration_segment_groups, collect_scaled_line_shapes,
+    collect_segment_marker_shapes, collect_three_point_arc_shapes,
+    collect_transformed_circle_shapes, collect_transformed_polygon_shapes,
+    collect_translated_line_shapes, collect_translated_polygon_shapes,
 };
 use self::trace::collect_point_traces;
 use super::functions::{
@@ -272,7 +271,7 @@ fn collect_scene_shapes(
         Vec::new()
     };
     let coordinate_traces = if analysis.graph_mode {
-        collect_coordinate_traces(file, groups, &analysis.graph_ref)
+        collect_coordinate_traces(file, groups, &analysis.raw_anchors, &analysis.graph_ref)
     } else {
         Vec::new()
     };

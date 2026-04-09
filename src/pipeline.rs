@@ -118,6 +118,22 @@ mod tests {
     }
 
     #[test]
+    fn exports_coordinate_trace_intersection_fixture_into_html() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/gsp/insection/cood_intersection.gsp"),
+            800,
+            600,
+        )
+        .expect("coordinate trace intersection fixture should compile");
+
+        assert!(html.contains("\"kind\":\"coordinate-trace\""));
+        assert!(html.contains("\"kind\":\"coordinate-source\""));
+        assert!(html.contains("\"kind\":\"line-trace-intersection\""));
+        assert!(html.contains("\"parameterName\":\"t₁\""));
+        assert!(html.contains("\"x\":0.0,\"y\":0.0"));
+    }
+
+    #[test]
     fn exports_point_iteration_metadata_into_html() {
         let html = compile_bytes_to_html_document(
             include_bytes!("../tests/fixtures/gsp/static/简单迭代/原象点初象点深度5迭代.gsp"),
@@ -387,7 +403,9 @@ mod tests {
         )
         .expect("hidden-point fixture should compile");
 
-        assert!(html.contains("\"points\":[{\"x\":323.0,\"y\":217.0,\"color\":[255,0,0,255],\"visible\":false"));
+        assert!(html.contains(
+            "\"points\":[{\"x\":323.0,\"y\":217.0,\"color\":[255,0,0,255],\"visible\":false"
+        ));
         assert!(html.contains("\"lines\":[]"));
     }
 
@@ -408,11 +426,15 @@ mod tests {
 
         assert_eq!(lines.len(), 2, "expected two rays in the exported scene");
         assert!(
-            lines.iter().any(|line| line["visible"].as_bool() == Some(false)),
+            lines
+                .iter()
+                .any(|line| line["visible"].as_bool() == Some(false)),
             "expected one exported ray to stay hidden from the source payload"
         );
         assert!(
-            lines.iter().any(|line| line["visible"].as_bool() == Some(true)),
+            lines
+                .iter()
+                .any(|line| line["visible"].as_bool() == Some(true)),
             "expected one exported ray to stay visible"
         );
         assert!(
@@ -444,9 +466,9 @@ mod tests {
             "expected exported labels to include the payload angle marker label"
         );
         assert!(
-            scene["lines"].as_array().is_some_and(|lines| lines.iter().any(
-                |line| line["binding"]["kind"].as_str() == Some("angle-marker")
-            )),
+            scene["lines"].as_array().is_some_and(|lines| lines
+                .iter()
+                .any(|line| line["binding"]["kind"].as_str() == Some("angle-marker"))),
             "expected exported angle marker to stay interactive"
         );
         assert!(labels.iter().any(|label| {
@@ -472,7 +494,11 @@ mod tests {
         let labels = scene["labels"]
             .as_array()
             .expect("scene labels should be an array");
-        assert_eq!(labels.len(), 2, "expected both payload ray labels to export");
+        assert_eq!(
+            labels.len(),
+            2,
+            "expected both payload ray labels to export"
+        );
         assert!(labels.iter().any(|label| {
             label["text"].as_str() == Some("j") && label["visible"].as_bool() == Some(true)
         }));
@@ -688,13 +714,18 @@ mod tests {
         assert_eq!(parameters[0]["name"].as_str(), Some("t₂"));
         assert_eq!(parameters[0]["value"].as_f64(), Some(5.0));
 
-        let lines = scene["lines"].as_array().expect("scene lines should be an array");
+        let lines = scene["lines"]
+            .as_array()
+            .expect("scene lines should be an array");
         assert!(
-            lines.iter().any(|line| line["binding"]["kind"].as_str() == Some("rotate-edge")),
+            lines
+                .iter()
+                .any(|line| line["binding"]["kind"].as_str() == Some("rotate-edge")),
             "expected regular-polygon iteration edges to stay interactive"
         );
         assert_eq!(
-            lines.iter()
+            lines
+                .iter()
                 .filter(|line| line["binding"]["kind"].as_str() == Some("rotate-edge"))
                 .count(),
             5,

@@ -251,8 +251,8 @@ pub(super) fn collect_labels(
                 // Graph calibration groups may carry measurement payloads for the axis scale
                 // without any user-visible label text. Only emit a label when the payload
                 // explicitly includes text instead of synthesizing one from the scale value.
-                let text = decode_group_label_text(file, group)
-                    .or_else(|| decode_label_name(file, group));
+                let text =
+                    decode_group_label_text(file, group).or_else(|| decode_label_name(file, group));
                 if let (Some(anchor), Some(text)) = (anchor, text) {
                     labels.push(TextLabel {
                         anchor,
@@ -716,16 +716,32 @@ pub(super) fn collect_custom_transform_expression_labels(
             let parameter_anchor_group = groups.get(path.refs.get(3)?.checked_sub(1)?)?;
             let distance_expr_group = groups.get(path.refs.get(4)?.checked_sub(1)?)?;
             let angle_expr_group = groups.get(path.refs.get(5)?.checked_sub(1)?)?;
-            let base_label = custom_transform_parameter_anchor_label(file, groups, parameter_anchor_group)?;
-            let t = match decode_point_constraint(file, groups, source_group, Some(anchors), &None)? {
+            let base_label =
+                custom_transform_parameter_anchor_label(file, groups, parameter_anchor_group)?;
+            let t = match decode_point_constraint(file, groups, source_group, Some(anchors), &None)?
+            {
                 RawPointConstraint::Segment(constraint) => constraint.t,
                 _ => return None,
             };
 
             let mut labels = Vec::new();
             for (expr_group, suffix, multiplier_text, display_scale, value_suffix, decimals) in [
-                (distance_expr_group, custom_transform_expr_suffix(file, distance_expr_group), "1厘米", 1.0, " 厘米", 4usize),
-                (angle_expr_group, custom_transform_expr_suffix(file, angle_expr_group), "100°", 100.0, "°", 5usize),
+                (
+                    distance_expr_group,
+                    custom_transform_expr_suffix(file, distance_expr_group),
+                    "1厘米",
+                    1.0,
+                    " 厘米",
+                    4usize,
+                ),
+                (
+                    angle_expr_group,
+                    custom_transform_expr_suffix(file, angle_expr_group),
+                    "100°",
+                    100.0,
+                    "°",
+                    5usize,
+                ),
             ] {
                 let suffix_code = suffix?;
                 if !matches!(suffix_code, 0x0201 | 0x0101) {
@@ -736,11 +752,16 @@ pub(super) fn collect_custom_transform_expression_labels(
                 let value = evaluate_expr_with_parameters(
                     &expr,
                     t,
-                    &BTreeMap::from([(format!("__param_anchor_{}", parameter_anchor_group.ordinal), t)]),
+                    &BTreeMap::from([(
+                        format!("__param_anchor_{}", parameter_anchor_group.ordinal),
+                        t,
+                    )]),
                 )? * display_scale;
                 labels.push(TextLabel {
                     anchor,
-                    text: format!("{base_label}·{multiplier_text} = {value:.decimals$}{value_suffix}"),
+                    text: format!(
+                        "{base_label}·{multiplier_text} = {value:.decimals$}{value_suffix}"
+                    ),
                     color: [30, 30, 30, 255],
                     visible: label_visible_for_group(file, group),
                     binding: Some(TextLabelBinding::CustomTransformValue {

@@ -5,9 +5,8 @@ use crate::runtime::functions::{
 use crate::runtime::geometry::darken;
 use crate::runtime::scene::{
     ArcBoundaryKind, ButtonAction, CircularConstraint, IterationPointHandle, LabelIterationFamily,
-    LineBinding, LineConstraint, LineIterationFamily, PointIterationFamily,
-    PolygonIterationFamily, Scene, SceneButton, ScenePointBinding, ScenePointConstraint,
-    ShapeBinding, TextLabelBinding,
+    LineBinding, LineConstraint, LineIterationFamily, PointIterationFamily, PolygonIterationFamily,
+    Scene, SceneButton, ScenePointBinding, ScenePointConstraint, ShapeBinding, TextLabelBinding,
     TextLabelHotspotAction,
 };
 use serde::Serialize;
@@ -462,6 +461,17 @@ enum LineBindingJson {
         #[serde(rename = "sampleCount")]
         sample_count: usize,
     },
+    #[serde(rename = "coordinate-trace")]
+    CoordinateTrace {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+        #[serde(rename = "xMin")]
+        x_min: f64,
+        #[serde(rename = "xMax")]
+        x_max: f64,
+        #[serde(rename = "sampleCount")]
+        sample_count: usize,
+    },
     #[serde(rename = "rotate-edge")]
     RotateEdge {
         #[serde(rename = "centerIndex")]
@@ -623,6 +633,17 @@ impl LineBindingJson {
                 x_max,
                 sample_count,
             } => Self::CustomTransformTrace {
+                point_index: *point_index,
+                x_min: *x_min,
+                x_max: *x_max,
+                sample_count: *sample_count,
+            },
+            LineBinding::CoordinateTrace {
+                point_index,
+                x_min,
+                x_max,
+                sample_count,
+            } => Self::CoordinateTrace {
                 point_index: *point_index,
                 x_min: *x_min,
                 x_max: *x_max,
@@ -1575,6 +1596,14 @@ enum PointBindingJson {
         name: String,
         expr: FunctionExprJson,
     },
+    #[serde(rename = "coordinate-source")]
+    CoordinateSource {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        name: String,
+        expr: FunctionExprJson,
+        axis: CoordinateAxisJson,
+    },
     #[serde(rename = "custom-transform")]
     CustomTransform {
         #[serde(rename = "sourceIndex")]
@@ -1592,6 +1621,22 @@ enum PointBindingJson {
         #[serde(rename = "angleDegreesScale")]
         angle_degrees_scale: f64,
     },
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum CoordinateAxisJson {
+    Horizontal,
+    Vertical,
+}
+
+impl CoordinateAxisJson {
+    fn from_axis(axis: crate::runtime::scene::CoordinateAxis) -> Self {
+        match axis {
+            crate::runtime::scene::CoordinateAxis::Horizontal => Self::Horizontal,
+            crate::runtime::scene::CoordinateAxis::Vertical => Self::Vertical,
+        }
+    }
 }
 
 impl PointBindingJson {
@@ -1650,6 +1695,17 @@ impl PointBindingJson {
             ScenePointBinding::Coordinate { name, expr } => Self::Coordinate {
                 name: name.clone(),
                 expr: FunctionExprJson::from_expr(expr),
+            },
+            ScenePointBinding::CoordinateSource {
+                source_index,
+                name,
+                expr,
+                axis,
+            } => Self::CoordinateSource {
+                source_index: *source_index,
+                name: name.clone(),
+                expr: FunctionExprJson::from_expr(expr),
+                axis: CoordinateAxisJson::from_axis(*axis),
             },
             ScenePointBinding::CustomTransform {
                 source_index,
@@ -1742,6 +1798,18 @@ enum PointConstraintJson {
     LineIntersection {
         left: LineConstraintJson,
         right: LineConstraintJson,
+    },
+    #[serde(rename = "line-trace-intersection")]
+    LineTraceIntersection {
+        line: LineConstraintJson,
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+        #[serde(rename = "xMin")]
+        x_min: f64,
+        #[serde(rename = "xMax")]
+        x_max: f64,
+        #[serde(rename = "sampleCount")]
+        sample_count: usize,
     },
     #[serde(rename = "line-circle-intersection")]
     LineCircleIntersection {
@@ -1853,6 +1921,19 @@ impl PointConstraintJson {
                     right: LineConstraintJson::from_constraint(right),
                 })
             }
+            ScenePointConstraint::LineTraceIntersection {
+                line,
+                point_index,
+                x_min,
+                x_max,
+                sample_count,
+            } => Some(Self::LineTraceIntersection {
+                line: LineConstraintJson::from_constraint(line),
+                point_index: *point_index,
+                x_min: *x_min,
+                x_max: *x_max,
+                sample_count: *sample_count,
+            }),
             ScenePointConstraint::LineCircleIntersection {
                 line,
                 center_index,

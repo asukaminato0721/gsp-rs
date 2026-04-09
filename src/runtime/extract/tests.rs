@@ -52,7 +52,10 @@ fn preserves_draw_function_fixture_interactivity() {
         "expected one embedded graph image, got {}",
         scene.images.len()
     );
-    assert!(scene.images[0].screen_space, "expected payload-positioned screen image");
+    assert!(
+        scene.images[0].screen_space,
+        "expected payload-positioned screen image"
+    );
     assert!(
         scene.images[0].src.starts_with("data:image/png;base64,"),
         "expected embedded png data url"
@@ -76,7 +79,10 @@ fn preserves_insert_image_fixture() {
 
     assert!(!scene.graph_mode, "expected non-graph image fixture");
     assert_eq!(scene.images.len(), 1, "expected one embedded image");
-    assert!(scene.images[0].screen_space, "expected screen-space image placement");
+    assert!(
+        scene.images[0].screen_space,
+        "expected screen-space image placement"
+    );
     assert!(
         scene.images[0].src.starts_with("data:image/png;base64,"),
         "expected embedded png data url"
@@ -85,16 +91,24 @@ fn preserves_insert_image_fixture() {
     assert_eq!(scene.images[0].top_left.y, 112.0);
     assert_eq!(scene.images[0].bottom_right.x, 373.0);
     assert_eq!(scene.images[0].bottom_right.y, 270.0);
-    assert!(scene.lines.is_empty(), "expected image-only fixture without line artifacts");
+    assert!(
+        scene.lines.is_empty(),
+        "expected image-only fixture without line artifacts"
+    );
 }
 
 #[test]
 fn preserves_points_defined_by_path_value_fixture() {
-    let data = include_bytes!("../../../tests/fixtures/未实现的系统功能/给定的数值在路径上绘制点.gsp");
+    let data =
+        include_bytes!("../../../tests/fixtures/未实现的系统功能/给定的数值在路径上绘制点.gsp");
     let file = GspFile::parse(data).expect("fixture parses");
     let scene = build_scene(&file);
 
-    assert_eq!(scene.points.len(), 6, "expected A/B/D/E plus constrained C/F");
+    assert_eq!(
+        scene.points.len(),
+        6,
+        "expected A/B/D/E plus constrained C/F"
+    );
     assert!(
         scene
             .points
@@ -114,8 +128,14 @@ fn preserves_points_defined_by_path_value_fixture() {
         .iter()
         .map(|label| label.text.as_str())
         .collect::<Vec<_>>();
-    assert!(labels.contains(&"C"), "expected path-defined point label C, got {labels:?}");
-    assert!(labels.contains(&"F"), "expected path-defined point label F, got {labels:?}");
+    assert!(
+        labels.contains(&"C"),
+        "expected path-defined point label C, got {labels:?}"
+    );
+    assert!(
+        labels.contains(&"F"),
+        "expected path-defined point label F, got {labels:?}"
+    );
 }
 
 #[test]
@@ -247,7 +267,10 @@ fn preserves_circular_segment_boundary_point_interactivity() {
                 *segment_index < points.len() - 1,
                 "segment index should reference a valid boundary segment"
             );
-            assert!((0.0..=1.0).contains(t), "polyline parameter should stay normalized");
+            assert!(
+                (0.0..=1.0).contains(t),
+                "polyline parameter should stay normalized"
+            );
         }
         _ => unreachable!(),
     }
@@ -302,7 +325,9 @@ fn preserves_custom_transform_point_interactivity() {
     ));
     let (source_t, origin_index) = match scene.points[2].constraint {
         ScenePointConstraint::OnSegment { t, start_index, .. } => (t, start_index),
-        ref constraint => panic!("expected source point to stay constrained on segment, got {constraint:?}"),
+        ref constraint => {
+            panic!("expected source point to stay constrained on segment, got {constraint:?}")
+        }
     };
     let origin = &scene.points[origin_index];
     assert!(
@@ -826,7 +851,11 @@ fn preserves_parameter_controlled_arc_on_circle_gsp() {
     let scene = build_scene(&file);
 
     assert_eq!(scene.circles.len(), 1, "expected one supporting circle");
-    assert_eq!(scene.arcs.len(), 1, "expected one arc driven by parameter points");
+    assert_eq!(
+        scene.arcs.len(),
+        1,
+        "expected one arc driven by parameter points"
+    );
     assert_eq!(
         scene.parameters.len(),
         2,
@@ -847,7 +876,10 @@ fn preserves_parameter_controlled_arc_on_circle_gsp() {
         arc.center.is_some(),
         "expected arc-on-circle export to preserve the source center"
     );
-    assert!(arc.counterclockwise, "expected circle arc to preserve sweep direction");
+    assert!(
+        arc.counterclockwise,
+        "expected circle arc to preserve sweep direction"
+    );
     assert!(
         (arc.points[0].x - scene.points[2].position.x).abs() < 1e-6
             && (arc.points[0].y - scene.points[2].position.y).abs() < 1e-6
@@ -949,14 +981,13 @@ fn preserves_dashed_segment_pattern_from_payload_style() {
         "expected primary blue triangle edges to remain solid"
     );
     assert!(
-        scene
-            .lines
-            .iter()
-            .any(|line| matches!(line.binding, Some(crate::runtime::scene::LineBinding::PerpendicularLine { .. })) && line.dashed),
+        scene.lines.iter().any(|line| matches!(
+            line.binding,
+            Some(crate::runtime::scene::LineBinding::PerpendicularLine { .. })
+        ) && line.dashed),
         "expected perpendicular helper lines to keep dashed style"
     );
 }
-
 
 #[test]
 fn preserves_point_hidden_gsp() {
@@ -989,9 +1020,10 @@ fn preserves_hidden_ray_gsp() {
         "expected the visible ray to remain interactive in the exported scene"
     );
     assert!(
-        scene.lines
-            .iter()
-            .all(|line| matches!(line.binding, Some(crate::runtime::scene::LineBinding::Ray { .. }))),
+        scene.lines.iter().all(|line| matches!(
+            line.binding,
+            Some(crate::runtime::scene::LineBinding::Ray { .. })
+        )),
         "expected both extracted line bindings to remain rays"
     );
 }
@@ -1299,6 +1331,47 @@ fn does_not_synthesize_graph_calibration_labels_in_cood_intersection_gsp() {
 }
 
 #[test]
+fn preserves_coordinate_trace_intersection_in_cood_intersection_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/insection/cood_intersection.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert!(scene.graph_mode, "expected graph scene");
+    assert_eq!(
+        scene.points.len(),
+        6,
+        "expected source, derived, and intersection points"
+    );
+    assert!(scene.lines.iter().any(|line| {
+        matches!(
+            line.binding,
+            Some(crate::runtime::scene::LineBinding::CoordinateTrace { ref parameter_name, .. })
+                if parameter_name == "t₁"
+        )
+    }));
+    assert!(scene.points.iter().any(|point| {
+        matches!(
+            point.binding,
+            Some(crate::runtime::scene::ScenePointBinding::CoordinateSource {
+                ref name,
+                ..
+            }) if name == "t₁"
+        ) && (point.position.x - 4.021666666666667).abs() < 1e-6
+            && (point.position.y - 4.021666666666667).abs() < 1e-6
+    }));
+    assert!(scene.points.iter().any(|point| {
+        matches!(
+            point.constraint,
+            crate::runtime::scene::ScenePointConstraint::LineTraceIntersection {
+                ref parameter_name,
+                ..
+            } if parameter_name == "t₁"
+        ) && point.position.x.abs() < 1e-6
+            && point.position.y.abs() < 1e-6
+    }));
+}
+
+#[test]
 fn preserves_midpoint_binding_and_trace_in_trace_gsp() {
     let data = include_bytes!("../../../tests/fixtures/gsp/trace.gsp");
     let file = GspFile::parse(data).expect("fixture parses");
@@ -1546,7 +1619,8 @@ fn preserves_circle_y_intersection_points() {
 
 #[test]
 fn preserves_three_point_arc_intersection_points() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/three_point_arc_intersection.gsp");
+    let data =
+        include_bytes!("../../../tests/fixtures/gsp/static/three_point_arc_intersection.gsp");
     let file = GspFile::parse(data).expect("fixture parses");
     let scene = build_scene(&file);
 
@@ -2188,7 +2262,11 @@ fn preserves_visible_and_hidden_ray_labels_from_payload() {
     let file = GspFile::parse(data).expect("fixture parses");
     let scene = build_scene(&file);
 
-    assert_eq!(scene.labels.len(), 2, "expected both ray labels in the scene");
+    assert_eq!(
+        scene.labels.len(),
+        2,
+        "expected both ray labels in the scene"
+    );
     assert!(
         scene
             .labels
