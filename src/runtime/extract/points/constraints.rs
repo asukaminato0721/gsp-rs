@@ -82,6 +82,10 @@ pub(crate) struct CoordinatePoint {
 
 const ARC_BOUNDARY_SUBDIVISIONS: usize = 48;
 
+fn wrap_unit_interval(value: f64) -> f64 {
+    value.rem_euclid(1.0)
+}
+
 pub(crate) fn regular_polygon_iteration_step(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -132,7 +136,7 @@ pub(crate) fn polygon_parameter_to_edge(
     if vertices.len() < 2 {
         return None;
     }
-    let clamped = parameter.clamp(0.0, 1.0);
+    let wrapped = wrap_unit_interval(parameter);
     let lengths = (0..vertices.len())
         .map(|index| {
             let start = &vertices[index];
@@ -145,7 +149,7 @@ pub(crate) fn polygon_parameter_to_edge(
         return None;
     }
 
-    let target = clamped * perimeter;
+    let target = wrapped * perimeter;
     let mut traveled = 0.0;
     for (edge_index, length) in lengths.iter().enumerate() {
         if traveled + length >= target || edge_index == lengths.len() - 1 {
@@ -279,7 +283,7 @@ pub(crate) fn decode_parameter_controlled_point(
         if (source_group.header.kind()) == crate::format::GroupKind::Point {
             (
                 decode_label_name(file, source_group)?,
-                decode_non_graph_parameter_value_for_group(file, source_group)?.clamp(0.0, 1.0),
+                decode_non_graph_parameter_value_for_group(file, source_group)?,
                 None,
             )
         } else if (source_group.header.kind()) == crate::format::GroupKind::ParameterAnchor {
@@ -309,7 +313,7 @@ pub(crate) fn decode_parameter_controlled_point(
                 RawPointConstraint::Arc(_) => return None,
                 RawPointConstraint::Polyline { .. } => return None,
             };
-            (String::new(), t.clamp(0.0, 1.0), Some(point_group_index))
+            (String::new(), wrap_unit_interval(t), Some(point_group_index))
         } else {
             return None;
         };
@@ -320,17 +324,18 @@ pub(crate) fn decode_parameter_controlled_point(
             if host_path.refs.len() != 2 {
                 return None;
             }
+            let normalized = wrap_unit_interval(parameter_value);
             let start_group_index = host_path.refs[0].checked_sub(1)?;
             let end_group_index = host_path.refs[1].checked_sub(1)?;
             let start = anchors.get(start_group_index)?.clone()?;
             let end = anchors.get(end_group_index)?.clone()?;
-            let position = lerp_point(&start, &end, parameter_value);
+            let position = lerp_point(&start, &end, normalized);
             Some(ParameterControlledPoint {
                 position,
                 constraint: RawPointConstraint::Segment(PointOnSegmentConstraint {
                     start_group_index,
                     end_group_index,
-                    t: parameter_value,
+                    t: normalized,
                 }),
                 parameter_name,
                 source_point_group_index,
@@ -390,20 +395,21 @@ pub(crate) fn decode_parameter_controlled_point(
             if host_path.refs.len() != 3 {
                 return None;
             }
+            let normalized = wrap_unit_interval(parameter_value);
             let start_group_index = host_path.refs[0].checked_sub(1)?;
             let mid_group_index = host_path.refs[1].checked_sub(1)?;
             let end_group_index = host_path.refs[2].checked_sub(1)?;
             let start = anchors.get(start_group_index)?.clone()?;
             let mid = anchors.get(mid_group_index)?.clone()?;
             let end = anchors.get(end_group_index)?.clone()?;
-            let position = point_on_three_point_arc(&start, &mid, &end, parameter_value)?;
+            let position = point_on_three_point_arc(&start, &mid, &end, normalized)?;
             Some(ParameterControlledPoint {
                 position,
                 constraint: RawPointConstraint::Arc(PointOnArcConstraint {
                     start_group_index,
                     mid_group_index,
                     end_group_index,
-                    t: parameter_value,
+                    t: normalized,
                 }),
                 parameter_name,
                 source_point_group_index,
@@ -414,6 +420,7 @@ pub(crate) fn decode_parameter_controlled_point(
             if host_path.refs.len() != 3 {
                 return None;
             }
+            let normalized = wrap_unit_interval(parameter_value);
             let circle_group = groups.get(host_path.refs[0].checked_sub(1)?)?;
             if !is_circle_group_kind(circle_group.header.kind()) {
                 return None;
@@ -428,14 +435,14 @@ pub(crate) fn decode_parameter_controlled_point(
             let center = anchors.get(center_group_index)?.clone()?;
             let start = anchors.get(start_group_index)?.clone()?;
             let end = anchors.get(end_group_index)?.clone()?;
-            let position = point_on_circle_arc(&center, &start, &end, parameter_value)?;
+            let position = point_on_circle_arc(&center, &start, &end, normalized)?;
             Some(ParameterControlledPoint {
                 position,
                 constraint: RawPointConstraint::CircleArc(PointOnCircleArcConstraint {
                     center_group_index,
                     start_group_index,
                     end_group_index,
-                    t: parameter_value,
+                    t: normalized,
                 }),
                 parameter_name,
                 source_point_group_index,
@@ -446,13 +453,14 @@ pub(crate) fn decode_parameter_controlled_point(
             if host_path.refs.len() != 3 {
                 return None;
             }
+            let normalized = wrap_unit_interval(parameter_value);
             let center_group_index = host_path.refs[0].checked_sub(1)?;
             let start_group_index = host_path.refs[1].checked_sub(1)?;
             let end_group_index = host_path.refs[2].checked_sub(1)?;
             let center = anchors.get(center_group_index)?.clone()?;
             let start = anchors.get(start_group_index)?.clone()?;
             let end = anchors.get(end_group_index)?.clone()?;
-            let reversed_t = 1.0 - parameter_value;
+            let reversed_t = 1.0 - normalized;
             let position = point_on_circle_arc(&center, &start, &end, reversed_t)?;
             Some(ParameterControlledPoint {
                 position,
@@ -688,7 +696,7 @@ fn decode_path_point_constraint(
             Some(RawPointConstraint::Segment(PointOnSegmentConstraint {
                 start_group_index: host_path.refs[0].checked_sub(1)?,
                 end_group_index: host_path.refs[1].checked_sub(1)?,
-                t: normalized_t.clamp(0.0, 1.0),
+                t: wrap_unit_interval(normalized_t),
             }))
         }
         crate::format::GroupKind::Circle => {
@@ -696,7 +704,7 @@ fn decode_path_point_constraint(
             if host_path.refs.len() != 2 {
                 return None;
             }
-            let angle = std::f64::consts::TAU * normalized_t.clamp(0.0, 1.0);
+            let angle = std::f64::consts::TAU * wrap_unit_interval(normalized_t);
             Some(RawPointConstraint::Circle(PointOnCircleConstraint {
                 center_group_index: host_path.refs[0].checked_sub(1)?,
                 radius_group_index: host_path.refs[1].checked_sub(1)?,
@@ -749,7 +757,7 @@ fn decode_path_point_constraint(
                 start_group_index: host_path.refs[0].checked_sub(1)?,
                 mid_group_index: host_path.refs[1].checked_sub(1)?,
                 end_group_index: host_path.refs[2].checked_sub(1)?,
-                t: normalized_t.clamp(0.0, 1.0),
+                t: wrap_unit_interval(normalized_t),
             }))
         }
         crate::format::GroupKind::ArcOnCircle => {
@@ -769,7 +777,7 @@ fn decode_path_point_constraint(
                 center_group_index: circle_path.refs[0].checked_sub(1)?,
                 start_group_index: host_path.refs[1].checked_sub(1)?,
                 end_group_index: host_path.refs[2].checked_sub(1)?,
-                t: normalized_t.clamp(0.0, 1.0),
+                t: wrap_unit_interval(normalized_t),
             }))
         }
         crate::format::GroupKind::CenterArc => {
@@ -781,7 +789,7 @@ fn decode_path_point_constraint(
                 center_group_index: host_path.refs[0].checked_sub(1)?,
                 start_group_index: host_path.refs[1].checked_sub(1)?,
                 end_group_index: host_path.refs[2].checked_sub(1)?,
-                t: 1.0 - normalized_t.clamp(0.0, 1.0),
+                t: 1.0 - wrap_unit_interval(normalized_t),
             }))
         }
         _ => None,
@@ -924,8 +932,8 @@ fn locate_polyline_parameter(points: &[PointRecord], normalized_t: f64) -> Optio
         return None;
     }
 
-    let clamped_t = normalized_t.clamp(0.0, 1.0);
-    let scaled = clamped_t * (points.len() - 1) as f64;
+    let wrapped_t = wrap_unit_interval(normalized_t);
+    let scaled = wrapped_t * (points.len() - 1) as f64;
     let segment_index = scaled.floor() as usize;
     Some((segment_index.min(points.len() - 2), scaled.fract()))
 }

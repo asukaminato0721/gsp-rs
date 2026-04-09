@@ -820,6 +820,49 @@ fn preserves_point_on_circle_arc_gsp() {
 }
 
 #[test]
+fn preserves_parameter_controlled_arc_on_circle_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/static/value_point_arc_on_circle.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.circles.len(), 1, "expected one supporting circle");
+    assert_eq!(scene.arcs.len(), 1, "expected one arc driven by parameter points");
+    assert_eq!(
+        scene.parameters.len(),
+        2,
+        "expected both arc endpoint parameters to remain interactive"
+    );
+    assert_eq!(scene.parameters[0].name, "t₁");
+    assert!((scene.parameters[0].value - 1.3).abs() < 0.001);
+    assert_eq!(scene.parameters[1].name, "t₂");
+    assert!((scene.parameters[1].value - 0.4).abs() < 0.001);
+    assert_eq!(
+        scene.points.len(),
+        4,
+        "expected center, radius point, and two parameter-controlled arc endpoints"
+    );
+
+    let arc = &scene.arcs[0];
+    assert!(
+        arc.center.is_some(),
+        "expected arc-on-circle export to preserve the source center"
+    );
+    assert!(arc.counterclockwise, "expected circle arc to preserve sweep direction");
+    assert!(
+        (arc.points[0].x - scene.points[2].position.x).abs() < 1e-6
+            && (arc.points[0].y - scene.points[2].position.y).abs() < 1e-6
+            && (arc.points[2].x - scene.points[3].position.x).abs() < 1e-6
+            && (arc.points[2].y - scene.points[3].position.y).abs() < 1e-6,
+        "expected arc endpoints to stay attached to the parameter-controlled points"
+    );
+    assert!(
+        (scene.points[2].position.x - scene.points[3].position.x).abs() > 1e-6
+            || (scene.points[2].position.y - scene.points[3].position.y).abs() > 1e-6,
+        "expected distinct start and end points from the two payload values"
+    );
+}
+
+#[test]
 fn preserves_intersection_labels_and_payload_text_colors_in_triangle_centers_gsp() {
     let data = include_bytes!("../../../tests/fixtures/gsp/三角形的五心.gsp");
     let file = GspFile::parse(data).expect("fixture parses");
@@ -1077,11 +1120,11 @@ fn preserves_parameter_controlled_point_on_segment_gsp() {
     );
     assert_eq!(scene.parameters.len(), 1, "expected t parameter");
     assert_eq!(scene.parameters[0].name, "t₁");
-    assert!((scene.parameters[0].value - 0.01).abs() < 0.001);
+    assert!((scene.parameters[0].value - 0.7).abs() < 0.001);
     assert!(scene.points.iter().any(|point| {
         matches!(
             point.constraint,
-            ScenePointConstraint::OnSegment { t, .. } if (t - 0.01).abs() < 0.001
+            ScenePointConstraint::OnSegment { t, .. } if (t - 0.7).abs() < 0.001
         )
     }));
 }

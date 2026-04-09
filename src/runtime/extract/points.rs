@@ -176,6 +176,20 @@ pub(super) fn editable_non_graph_parameter_name_for_group(
 }
 
 fn decode_non_graph_parameter_value(payload: &[u8]) -> Option<f64> {
+    if payload.len() >= 98 {
+        let whole = f64::from(read_u16(payload, payload.len().checked_sub(6)?));
+        let denominator = f64::from(read_u16(payload, payload.len().checked_sub(4)?));
+        let fractional = f64::from(read_u16(payload, payload.len().checked_sub(2)?));
+        if denominator.is_finite()
+            && denominator > 0.0
+            && denominator <= 10_000.0
+            && fractional >= 0.0
+            && fractional < denominator
+        {
+            return Some(whole + fractional / denominator);
+        }
+    }
+
     if payload.len() == 94 {
         return Some(f64::from(read_u16(payload, payload.len().checked_sub(2)?)));
     }

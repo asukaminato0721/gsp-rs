@@ -315,6 +315,10 @@
     return points;
   }
 
+  function wrapUnitInterval(value) {
+    return ((value % 1) + 1) % 1;
+  }
+
   function circleParameterFromPoint(scene, pointIndex) {
     const point = scene.points[pointIndex];
     const constraint = point?.constraint;
@@ -381,11 +385,11 @@
 
   function applyNormalizedParameterToPoint(point, scene, value) {
     if (!point.constraint) return;
-    const clamped = Math.max(0, Math.min(1, value));
+    const wrapped = wrapUnitInterval(value);
     if (point.constraint.kind === "segment") {
-      point.constraint.t = clamped;
+      point.constraint.t = wrapped;
     } else if (point.constraint.kind === "polyline") {
-      point.constraint.t = clamped;
+      point.constraint.t = wrapped;
     } else if (point.constraint.kind === "polygon-boundary") {
       const count = point.constraint.vertexIndices.length;
       if (count < 2) return;
@@ -400,7 +404,7 @@
         perimeter += length;
       }
       if (perimeter <= 1e-9) return;
-      const target = clamped * perimeter;
+      const target = wrapped * perimeter;
       let traveled = 0;
       for (let edgeIndex = 0; edgeIndex < lengths.length; edgeIndex += 1) {
         const length = lengths[edgeIndex];
@@ -412,13 +416,13 @@
         traveled += length;
       }
     } else if (point.constraint.kind === "circle") {
-      const angle = Math.PI * 2 * clamped;
+      const angle = Math.PI * 2 * wrapped;
       point.constraint.unitX = Math.cos(angle);
       point.constraint.unitY = -Math.sin(angle);
     } else if (point.constraint.kind === "circle-arc") {
-      point.constraint.t = clamped;
+      point.constraint.t = wrapped;
     } else if (point.constraint.kind === "arc") {
-      point.constraint.t = clamped;
+      point.constraint.t = wrapped;
     }
   }
 

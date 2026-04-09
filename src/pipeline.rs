@@ -320,6 +320,21 @@ mod tests {
     }
 
     #[test]
+    fn exports_parameter_controlled_arc_on_circle_into_html() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/gsp/static/value_point_arc_on_circle.gsp"),
+            800,
+            600,
+        )
+        .expect("parameter-controlled arc-on-circle fixture should compile");
+
+        assert!(html.contains("\"arcs\":["));
+        assert!(html.contains("\"counterclockwise\":true"));
+        assert!(html.contains("\"name\":\"t₁\""));
+        assert!(html.contains("\"name\":\"t₂\""));
+    }
+
+    #[test]
     fn exports_three_point_arc_intersection_into_html() {
         let html = compile_bytes_to_html_document(
             include_bytes!("../tests/fixtures/gsp/static/three_point_arc_intersection.gsp"),

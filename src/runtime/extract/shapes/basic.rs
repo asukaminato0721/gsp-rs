@@ -770,16 +770,18 @@ pub(crate) fn collect_three_point_arc_shapes(
         })
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
-            let points = match group.header.kind() {
+            let (points, center, counterclockwise) = match group.header.kind() {
                 crate::format::GroupKind::ThreePointArc => {
                     if path.refs.len() != 3 {
                         return None;
                     }
-                    [
+                    let points = [
                         anchors.get(path.refs[0].saturating_sub(1))?.clone()?,
                         anchors.get(path.refs[1].saturating_sub(1))?.clone()?,
                         anchors.get(path.refs[2].saturating_sub(1))?.clone()?,
-                    ]
+                    ];
+                    three_point_arc_geometry(&points[0], &points[1], &points[2])?;
+                    (points, None, false)
                 }
                 crate::format::GroupKind::ArcOnCircle => {
                     if path.refs.len() != 3 {
@@ -793,7 +795,11 @@ pub(crate) fn collect_three_point_arc_shapes(
                         resolve_circle_points_raw(file, groups, anchors, circle_group)?;
                     let start = anchors.get(path.refs[1].saturating_sub(1))?.clone()?;
                     let end = anchors.get(path.refs[2].saturating_sub(1))?.clone()?;
-                    arc_on_circle_control_points(&center, &start, &end)?
+                    (
+                        arc_on_circle_control_points(&center, &start, &end)?,
+                        Some(center),
+                        true,
+                    )
                 }
                 crate::format::GroupKind::CenterArc => {
                     if path.refs.len() != 3 {
@@ -802,30 +808,19 @@ pub(crate) fn collect_three_point_arc_shapes(
                     let center = anchors.get(path.refs[0].saturating_sub(1))?.clone()?;
                     let start = anchors.get(path.refs[1].saturating_sub(1))?.clone()?;
                     let end = anchors.get(path.refs[2].saturating_sub(1))?.clone()?;
-                    arc_on_circle_control_points(&center, &start, &end)?
+                    (
+                        arc_on_circle_control_points(&center, &start, &end)?,
+                        Some(center),
+                        true,
+                    )
                 }
                 _ => return None,
             };
-            three_point_arc_geometry(&points[0], &points[1], &points[2])?;
             Some(ArcShape {
                 points,
                 color: color_from_style(group.header.style_b),
-                center: match group.header.kind() {
-                    crate::format::GroupKind::ArcOnCircle => {
-                        let circle_group = groups.get(path.refs[0].checked_sub(1)?)?;
-                        let (center, _) =
-                            resolve_circle_points_raw(file, groups, anchors, circle_group)?;
-                        Some(center)
-                    }
-                    crate::format::GroupKind::CenterArc => {
-                        Some(anchors.get(path.refs[0].checked_sub(1)?)?.clone()?)
-                    }
-                    _ => None,
-                },
-                counterclockwise: matches!(
-                    group.header.kind(),
-                    crate::format::GroupKind::ArcOnCircle | crate::format::GroupKind::CenterArc
-                ),
+                center,
+                counterclockwise,
                 visible: !group.header.is_hidden(),
             })
         })
