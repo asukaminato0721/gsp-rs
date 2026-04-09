@@ -811,7 +811,9 @@
   /** @param {ViewerEnv} env */
   function rebuildIterationTables(env, scene, parameters) {
     const sourceTables = env.sourceScene.iterationTables || [];
-    scene.iterationTables = sourceTables.map((table) => {
+    const currentTables = scene.iterationTables || [];
+    scene.iterationTables = sourceTables.map((table, index) => {
+      const current = currentTables[index];
       const depth = pointIterationDepth({
         depth: table.depth,
         parameterName: table.depthParameterName,
@@ -835,6 +837,8 @@
       }
       return {
         ...table,
+        x: Number.isFinite(current?.x) ? current.x : table.x,
+        y: Number.isFinite(current?.y) ? current.y : table.y,
         rows,
       };
     });
