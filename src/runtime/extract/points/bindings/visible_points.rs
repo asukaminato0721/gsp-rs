@@ -6,7 +6,7 @@ use super::{
     decode_reflection_anchor_raw, decode_transform_binding, decode_translated_point_constraint,
     reflection_line_group_indices, translation_point_pair_group_indices,
 };
-use crate::runtime::extract::{decode::decode_label_name, find_indexed_path};
+use crate::runtime::extract::find_indexed_path;
 use crate::runtime::geometry::{GraphTransform, color_from_style};
 use crate::runtime::scene::{
     CircularConstraint, LineConstraint, ScenePoint, ScenePointBinding, ScenePointConstraint,
@@ -14,6 +14,10 @@ use crate::runtime::scene::{
 
 fn group_color(group: &ObjectGroup) -> [u8; 4] {
     color_from_style(group.header.style_b)
+}
+
+fn graph_calibration_visible(group: &ObjectGroup) -> bool {
+    !group.header.is_hidden() && (group.header.class_id & 0x0004_0000) == 0
 }
 
 fn scene_point(
@@ -73,7 +77,7 @@ pub(crate) fn collect_visible_points(
                     scene_point(
                         position,
                         group_color(group),
-                        visible && decode_label_name(file, group).is_some(),
+                        visible && graph_calibration_visible(group),
                         true,
                         ScenePointConstraint::Free,
                         Some(ScenePointBinding::GraphCalibration),

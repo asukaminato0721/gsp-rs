@@ -4,7 +4,7 @@ use super::CircleShape;
 use super::decode::{
     decode_0907_anchor, decode_group_label_text, decode_group_rich_text, decode_label_anchor,
     decode_label_name, decode_label_name_raw, decode_label_visible, decode_link_button_url,
-    decode_measurement_value, decode_text_anchor, find_indexed_path, is_action_button_group,
+    decode_text_anchor, find_indexed_path, is_action_button_group,
 };
 use super::points::{
     RawPointConstraint, decode_non_graph_parameter_value_for_group, decode_point_constraint,
@@ -248,16 +248,11 @@ pub(super) fn collect_labels(
                 {
                     continue;
                 }
+                // Graph calibration groups may carry measurement payloads for the axis scale
+                // without any user-visible label text. Only emit a label when the payload
+                // explicitly includes text instead of synthesizing one from the scale value.
                 let text = decode_group_label_text(file, group)
-                    .or_else(|| decode_label_name(file, group))
-                    .or_else(|| {
-                        group
-                            .records
-                            .iter()
-                            .find(|record| record.record_type == 0x07d3 && record.length == 12)
-                            .and_then(|record| decode_measurement_value(record.payload(&file.data)))
-                            .map(format_number)
-                    });
+                    .or_else(|| decode_label_name(file, group));
                 if let (Some(anchor), Some(text)) = (anchor, text) {
                     labels.push(TextLabel {
                         anchor,

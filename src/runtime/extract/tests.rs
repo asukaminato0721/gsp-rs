@@ -1231,6 +1231,74 @@ fn preserves_coordinate_trace_in_cood_trace_gsp() {
 }
 
 #[test]
+fn does_not_synthesize_graph_calibration_labels_in_cood_intersection_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/insection/cood.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert!(
+        scene
+            .labels
+            .iter()
+            .all(|label| label.text != "37.80" && label.text != "37.8"),
+        "expected no synthesized graph calibration labels, got {:?}",
+        scene
+            .labels
+            .iter()
+            .map(|label| label.text.as_str())
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        scene.points.iter().any(|point| {
+            point.visible
+                && point.draggable
+                && (point.position.x - 1.0).abs() < 1e-6
+                && point.position.y.abs() < 1e-6
+                && matches!(
+                    point.binding,
+                    Some(crate::runtime::scene::ScenePointBinding::GraphCalibration)
+                )
+        }),
+        "expected visible interactive graph calibration point at (1,0), got {:?}",
+        scene
+            .points
+            .iter()
+            .map(|point| (
+                point.position.x,
+                point.position.y,
+                point.visible,
+                point.draggable,
+                point.binding.as_ref().map(|binding| format!("{binding:?}"))
+            ))
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        scene.points.iter().any(|point| {
+            !point.visible
+                && point.draggable
+                && point.position.x.abs() < 1e-6
+                && (point.position.y - 1.0).abs() < 1e-6
+                && matches!(
+                    point.binding,
+                    Some(crate::runtime::scene::ScenePointBinding::GraphCalibration)
+                )
+        }),
+        "expected hidden interactive graph calibration point at (0,1), got {:?}",
+        scene
+            .points
+            .iter()
+            .map(|point| (
+                point.position.x,
+                point.position.y,
+                point.visible,
+                point.draggable,
+                point.binding.as_ref().map(|binding| format!("{binding:?}"))
+            ))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn preserves_midpoint_binding_and_trace_in_trace_gsp() {
     let data = include_bytes!("../../../tests/fixtures/gsp/trace.gsp");
     let file = GspFile::parse(data).expect("fixture parses");
