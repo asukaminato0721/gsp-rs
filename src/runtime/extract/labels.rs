@@ -80,6 +80,10 @@ fn label_visible_for_group(file: &GspFile, group: &ObjectGroup) -> bool {
     !group.header.is_hidden() && decode_label_visible(file, group).unwrap_or(true)
 }
 
+fn mapped_point_index(group_to_point_index: &[Option<usize>], group_index: usize) -> Option<usize> {
+    group_to_point_index.get(group_index).copied().flatten()
+}
+
 pub(super) fn collect_labels(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -236,10 +240,9 @@ pub(super) fn collect_labels(
                     .cloned()
                     .flatten()
                     .or_else(|| {
-                        find_indexed_path(file, group).and_then(|path| {
-                            path.refs.iter().find_map(|object_ref| {
-                                anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
-                            })
+                        let path = find_indexed_path(file, group)?;
+                        path.refs.iter().find_map(|object_ref| {
+                            anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
                         })
                     });
                 if anchor
@@ -341,9 +344,8 @@ pub(super) fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) 
             && let Some(expr) = decode_function_expr(file, groups, group)
             && let Some(path) = find_indexed_path(file, group)
             && let Some(parameter_ref) = path.refs.first().copied()
-            && let Some(parameter_group) = parameter_ref
-                .checked_sub(1)
-                .and_then(|index| groups.get(index))
+            && let Some(parameter_group_index) = parameter_ref.checked_sub(1)
+            && let Some(parameter_group) = groups.get(parameter_group_index)
             && let Some(parameter_name) =
                 editable_non_graph_parameter_name_for_group(file, groups, parameter_group)
             && let Some(parameter_value) =
@@ -421,50 +423,44 @@ pub(super) fn resolve_label_hotspots(
                 .get(&pending.group_ordinal)
                 .copied()
                 .map(|button_index| TextLabelHotspotAction::Button { button_index }),
-            crate::format::GroupKind::ButtonLabel => find_indexed_path(file, group)
-                .and_then(|path| path.refs.first().copied())
-                .and_then(|ordinal| button_group_to_index.get(&ordinal).copied())
-                .map(|button_index| TextLabelHotspotAction::Button { button_index }),
+            crate::format::GroupKind::ButtonLabel => (|| {
+                let path = find_indexed_path(file, group)?;
+                let ordinal = path.refs.first().copied()?;
+                button_group_to_index
+                    .get(&ordinal)
+                    .copied()
+                    .map(|button_index| TextLabelHotspotAction::Button { button_index })
+            })(),
             crate::format::GroupKind::Point => group_to_point_index
                 .get(pending.group_ordinal.saturating_sub(1))
                 .copied()
                 .flatten()
                 .map(|point_index| TextLabelHotspotAction::Point { point_index }),
-            crate::format::GroupKind::Segment => find_indexed_path(file, group).and_then(|path| {
-                let start_point_index = group_to_point_index
-                    .get(path.refs.first()?.saturating_sub(1))
-                    .copied()
-                    .flatten()?;
-                let end_point_index = group_to_point_index
-                    .get(path.refs.get(1)?.saturating_sub(1))
-                    .copied()
-                    .flatten()?;
+            crate::format::GroupKind::Segment => (|| {
+                let path = find_indexed_path(file, group)?;
+                let start_point_index =
+                    mapped_point_index(group_to_point_index, path.refs.first()?.saturating_sub(1))?;
+                let end_point_index =
+                    mapped_point_index(group_to_point_index, path.refs.get(1)?.saturating_sub(1))?;
                 Some(TextLabelHotspotAction::Segment {
                     start_point_index,
                     end_point_index,
                 })
-            }),
-            crate::format::GroupKind::AngleMarker => {
-                find_indexed_path(file, group).and_then(|path| {
-                    let start_point_index = group_to_point_index
-                        .get(path.refs.first()?.saturating_sub(1))
-                        .copied()
-                        .flatten()?;
-                    let vertex_point_index = group_to_point_index
-                        .get(path.refs.get(1)?.saturating_sub(1))
-                        .copied()
-                        .flatten()?;
-                    let end_point_index = group_to_point_index
-                        .get(path.refs.get(2)?.saturating_sub(1))
-                        .copied()
-                        .flatten()?;
-                    Some(TextLabelHotspotAction::AngleMarker {
-                        start_point_index,
-                        vertex_point_index,
-                        end_point_index,
-                    })
+            })(),
+            crate::format::GroupKind::AngleMarker => (|| {
+                let path = find_indexed_path(file, group)?;
+                let start_point_index =
+                    mapped_point_index(group_to_point_index, path.refs.first()?.saturating_sub(1))?;
+                let vertex_point_index =
+                    mapped_point_index(group_to_point_index, path.refs.get(1)?.saturating_sub(1))?;
+                let end_point_index =
+                    mapped_point_index(group_to_point_index, path.refs.get(2)?.saturating_sub(1))?;
+                Some(TextLabelHotspotAction::AngleMarker {
+                    start_point_index,
+                    vertex_point_index,
+                    end_point_index,
                 })
-            }
+            })(),
             kind if super::decode::is_circle_group_kind(kind) => circle_group_to_index
                 .get(pending.group_ordinal.saturating_sub(1))
                 .copied()
@@ -556,11 +552,11 @@ pub(super) fn collect_polygon_parameter_labels(
 
             let point_name = decode_label_name(file, point_group)?;
             let polygon_name = polygon_vertex_name(file, groups, polygon_group)?;
-            let anchor = group
+            let anchor_record = group
                 .records
                 .iter()
-                .find(|record| record.record_type == 0x0903)
-                .and_then(|record| decode_text_anchor(record.payload(&file.data)))?;
+                .find(|record| record.record_type == 0x0903)?;
+            let anchor = decode_text_anchor(anchor_record.payload(&file.data))?;
             let RawPointConstraint::PolygonBoundary {
                 vertex_group_indices,
                 edge_index,
@@ -612,11 +608,11 @@ pub(super) fn collect_segment_parameter_labels(
 
             let point_name = decode_label_name(file, point_group)?;
             let segment_name = segment_name(file, groups, segment_group)?;
-            let anchor = group
+            let anchor_record = group
                 .records
                 .iter()
-                .find(|record| record.record_type == 0x0903)
-                .and_then(|record| decode_text_anchor(record.payload(&file.data)))?;
+                .find(|record| record.record_type == 0x0903)?;
+            let anchor = decode_text_anchor(anchor_record.payload(&file.data))?;
             let RawPointConstraint::Segment(constraint) =
                 decode_point_constraint(file, groups, point_group, None, &None)?
             else {
@@ -664,11 +660,11 @@ pub(super) fn collect_circle_parameter_labels(
 
             let point_name = decode_label_name(file, point_group)?;
             let circle_name = circle_name(file, groups, circle_group)?;
-            let anchor = group
+            let anchor_record = group
                 .records
                 .iter()
-                .find(|record| record.record_type == 0x0903)
-                .and_then(|record| decode_text_anchor(record.payload(&file.data)))?;
+                .find(|record| record.record_type == 0x0903)?;
+            let anchor = decode_text_anchor(anchor_record.payload(&file.data))?;
             let RawPointConstraint::Circle(constraint) =
                 decode_point_constraint(file, groups, point_group, None, &None)?
             else {
@@ -836,9 +832,7 @@ pub(super) fn collect_label_iterations(
             }
             let seed_path = find_indexed_path(file, seed_group)?;
             let point_group_index = seed_path.refs.first()?.checked_sub(1)?;
-            let point_seed_index = group_to_point_index
-                .get(point_group_index)
-                .and_then(|mapped_index| *mapped_index)?;
+            let point_seed_index = mapped_point_index(group_to_point_index, point_group_index)?;
             let expr_group = groups.get(seed_path.refs.get(1)?.checked_sub(1)?)?;
             if (expr_group.header.kind()) != crate::format::GroupKind::FunctionExpr {
                 return None;
@@ -858,12 +852,28 @@ pub(super) fn collect_label_iterations(
                 .filter(|payload| payload.len() >= 20)
                 .map(|payload| read_u32(payload, 16) as usize)
                 .unwrap_or(3);
-            let depth_parameter_name = find_indexed_path(file, iter_group)
-                .and_then(|iter_path| iter_path.refs.first().copied())
-                .and_then(|ordinal| groups.get(ordinal.checked_sub(1)?))
-                .and_then(|parameter_group| {
-                    editable_non_graph_parameter_name_for_group(file, groups, parameter_group)
-                });
+            let depth_parameter_name = if let Some(iter_path) = find_indexed_path(file, iter_group)
+            {
+                if let Some(ordinal) = iter_path.refs.first().copied() {
+                    if let Some(parameter_group_index) = ordinal.checked_sub(1) {
+                        if let Some(parameter_group) = groups.get(parameter_group_index) {
+                            editable_non_graph_parameter_name_for_group(
+                                file,
+                                groups,
+                                parameter_group,
+                            )
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
 
             Some(LabelIterationFamily::PointExpression {
                 seed_label_index,
@@ -887,9 +897,8 @@ fn segment_name(
         .refs
         .iter()
         .map(|&object_ref| {
-            groups
-                .get(object_ref.checked_sub(1)?)
-                .and_then(|group| decode_label_name(file, group))
+            let group = groups.get(object_ref.checked_sub(1)?)?;
+            decode_label_name(file, group)
         })
         .collect::<Option<Vec<_>>>()?;
     (names.len() >= 2).then(|| names.join(""))
@@ -905,9 +914,8 @@ fn circle_name(
         .refs
         .iter()
         .map(|&object_ref| {
-            groups
-                .get(object_ref.checked_sub(1)?)
-                .and_then(|group| decode_label_name(file, group))
+            let group = groups.get(object_ref.checked_sub(1)?)?;
+            decode_label_name(file, group)
         })
         .collect::<Option<Vec<_>>>()?;
     (names.len() >= 2).then(|| names.join(""))
@@ -936,9 +944,8 @@ fn polygon_vertex_name(
         .refs
         .iter()
         .map(|&object_ref| {
-            groups
-                .get(object_ref.checked_sub(1)?)
-                .and_then(|group| decode_label_name(file, group))
+            let group = groups.get(object_ref.checked_sub(1)?)?;
+            decode_label_name(file, group)
         })
         .collect::<Option<Vec<_>>>()?;
     (!names.is_empty()).then(|| names.join(""))

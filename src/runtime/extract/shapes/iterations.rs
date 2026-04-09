@@ -401,7 +401,10 @@ fn carried_iteration_steps(
     let translated_steps = iter_path
         .refs
         .iter()
-        .filter_map(|ordinal| ordinal.checked_sub(1).and_then(|index| groups.get(index)))
+        .filter_map(|ordinal| {
+            let index = ordinal.checked_sub(1)?;
+            groups.get(index)
+        })
         .filter_map(|group| decode_translated_point_constraint(file, group))
         .map(|constraint| PointRecord {
             x: constraint.dx,

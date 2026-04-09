@@ -3,4 +3,5 @@ pub(crate) mod functions;
 pub(crate) mod geometry;
 pub(crate) mod scene;
 
-pub(crate) use extract::build_scene;
+#[allow(unused_imports)]
+pub(crate) use extract::{build_scene, build_scene_checked};

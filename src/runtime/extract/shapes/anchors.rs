@@ -20,7 +20,7 @@ pub(crate) fn collect_raw_object_anchors(
 ) -> Vec<Option<PointRecord>> {
     let mut anchors = Vec::with_capacity(groups.len());
     for (index, group) in groups.iter().enumerate() {
-        let anchor = if let Some(point) = point_map.get(index).and_then(|point| point.clone()) {
+        let anchor = if let Some(point) = point_map.get(index).cloned().flatten() {
             Some(point)
         } else if let Some(anchor) = decode_graph_calibration_anchor_raw(group, graph) {
             Some(anchor)
@@ -72,11 +72,13 @@ pub(crate) fn collect_raw_object_anchors(
         } else if let Some(anchor) = decode_bbox_anchor_raw(file, group) {
             Some(anchor)
         } else {
-            find_indexed_path(file, group).and_then(|path| {
+            if let Some(path) = find_indexed_path(file, group) {
                 path.refs.iter().rev().find_map(|object_ref| {
                     anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
                 })
-            })
+            } else {
+                None
+            }
         };
         anchors.push(anchor);
     }

@@ -18,12 +18,14 @@ pub(super) struct ParameterBinding {
 }
 
 fn source_function_name(file: &GspFile, group: &ObjectGroup) -> Option<String> {
-    group
+    let record = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x07d5)
-        .and_then(|record| decode_parameter_name(record.payload(&file.data)))
-        .filter(|name| name.chars().all(|ch| ch.is_ascii_alphabetic()))
+        .find(|record| record.record_type == 0x07d5)?;
+    let name = decode_parameter_name(record.payload(&file.data))?;
+    name.chars()
+        .all(|ch| ch.is_ascii_alphabetic())
+        .then_some(name)
 }
 
 pub(crate) fn function_name_for_definition(
@@ -91,11 +93,12 @@ pub(crate) fn collect_scene_functions(
             let definition_ordinal = *path.refs.first()?;
             let definition_group = groups.get(definition_ordinal.checked_sub(1)?)?;
             let expr = decode_function_expr(file, groups, definition_group)?;
-            let descriptor = group
+            let descriptor_record = group
                 .records
                 .iter()
-                .find(|record| record.record_type == 0x0902)
-                .and_then(|record| decode_function_plot_descriptor(record.payload(&file.data)))?;
+                .find(|record| record.record_type == 0x0902)?;
+            let descriptor =
+                decode_function_plot_descriptor(descriptor_record.payload(&file.data))?;
             let name = source_function_name(file, definition_group).unwrap_or_default();
             Some((definition_ordinal, name, expr, descriptor))
         })

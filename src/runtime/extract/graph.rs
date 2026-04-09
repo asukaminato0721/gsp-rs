@@ -59,23 +59,22 @@ pub(super) fn detect_graph_transform(
         .iter()
         .filter(|group| group.header.kind().is_graph_calibration())
         .find_map(|group| {
-            group
+            let record = group
                 .records
                 .iter()
-                .find(|record| record.record_type == 0x07d3 && record.length == 12)
-                .and_then(|record| decode_measurement_value(record.payload(&file.data)))
+                .find(|record| record.record_type == 0x07d3 && record.length == 12)?;
+            decode_measurement_value(record.payload(&file.data))
         })?;
 
-    let origin_raw = groups
-        .iter()
-        .find(|group| group.header.kind().is_graph_calibration())
-        .and_then(|group| {
-            find_indexed_path(file, group).and_then(|path| {
-                path.refs.iter().find_map(|object_ref| {
-                    anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
-                })
-            })
-        })?;
+    let origin_raw = groups.iter().find_map(|group| {
+        if !group.header.kind().is_graph_calibration() {
+            return None;
+        }
+        let path = find_indexed_path(file, group)?;
+        path.refs
+            .iter()
+            .find_map(|object_ref| anchors.get(object_ref.saturating_sub(1)).cloned().flatten())
+    })?;
 
     Some(GraphTransform {
         origin_raw,

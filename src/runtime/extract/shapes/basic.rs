@@ -67,8 +67,16 @@ pub(crate) fn collect_line_shapes(
                     anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
                 })
                 .collect::<Vec<_>>();
-            let start_group_index = path.refs.first().and_then(|ordinal| ordinal.checked_sub(1));
-            let end_group_index = path.refs.get(1).and_then(|ordinal| ordinal.checked_sub(1));
+            let start_group_index = if let Some(ordinal) = path.refs.first() {
+                ordinal.checked_sub(1)
+            } else {
+                None
+            };
+            let end_group_index = if let Some(ordinal) = path.refs.get(1) {
+                ordinal.checked_sub(1)
+            } else {
+                None
+            };
             (points.len() >= 2 && has_distinct_points(&points)).then_some(LineShape {
                 points,
                 color: if fallback_generic && !kinds.contains(&(group.header.kind())) {
@@ -690,7 +698,11 @@ pub(crate) fn collect_circle_shapes(
             let path = find_indexed_path(file, group)?;
             match group.header.kind() {
                 crate::format::GroupKind::ArcOnCircle => {
-                    path.refs.first().and_then(|ordinal| ordinal.checked_sub(1))
+                    if let Some(ordinal) = path.refs.first() {
+                        ordinal.checked_sub(1)
+                    } else {
+                        None
+                    }
                 }
                 crate::format::GroupKind::CenterArc => {
                     if path.refs.len() < 2 {
@@ -1020,7 +1032,7 @@ pub(crate) fn collect_derived_segments(
         }
 
         let mut points = Vec::new();
-        if let Some(point) = point_map.get(ordinal - 1).and_then(|point| point.clone()) {
+        if let Some(point) = point_map.get(ordinal - 1).cloned().flatten() {
             points.push(point);
         } else {
             for child in &refs[ordinal - 1] {

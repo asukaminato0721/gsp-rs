@@ -240,12 +240,14 @@ pub(super) fn collect_buttons(
                         .get(point_group_ordinal.checked_sub(1)?)
                         .copied()
                         .flatten()?,
-                    target_point_index: target_group_ordinal.and_then(|ordinal| {
+                    target_point_index: if let Some(ordinal) = target_group_ordinal {
                         group_to_point_index
                             .get(ordinal.checked_sub(1)?)
                             .copied()
                             .flatten()
-                    }),
+                    } else {
+                        None
+                    },
                 },
                 RawButtonAction::AnimatePoint {
                     point_group_ordinal,

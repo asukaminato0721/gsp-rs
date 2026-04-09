@@ -460,8 +460,12 @@ pub fn render_points_to_png(
     width: u32,
     height: u32,
 ) -> Result<(), String> {
+    let extension = match output_path.extension() {
+        Some(ext) => ext.to_str(),
+        None => None,
+    };
     if !matches!(
-        output_path.extension().and_then(|ext| ext.to_str()),
+        extension,
         Some("png") | Some("PNG")
     ) {
         return Err(format!(
@@ -687,9 +691,11 @@ fn draw_grid(
 }
 
 pub fn encode_png_rgba(width: u32, height: u32, rgba: &[u8]) -> Result<Vec<u8>, String> {
-    let expected_len = (width as usize)
+    let pixels = (width as usize)
         .checked_mul(height as usize)
-        .and_then(|pixels| pixels.checked_mul(4))
+        .ok_or_else(|| "image dimensions overflow".to_string())?;
+    let expected_len = pixels
+        .checked_mul(4)
         .ok_or_else(|| "image dimensions overflow".to_string())?;
     if rgba.len() != expected_len {
         return Err(format!(

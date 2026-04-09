@@ -19,6 +19,17 @@ use crate::runtime::geometry::{
 
 const PX_PER_CM: f64 = 37.79527559055118;
 
+fn first_path_group<'a>(
+    file: &GspFile,
+    groups: &'a [ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<&'a ObjectGroup> {
+    let path = find_indexed_path(file, group)?;
+    let ordinal = path.refs.first().copied()?;
+    let index = ordinal.checked_sub(1)?;
+    groups.get(index)
+}
+
 #[derive(Clone)]
 pub(crate) struct CustomTransformBindingDef {
     pub(crate) source_group_index: usize,
@@ -77,14 +88,8 @@ pub(crate) fn decode_coordinate_expression_anchor_raw(
             let y_calc_group = groups.get(path.refs[2].checked_sub(1)?)?;
             let x_expr = decode_function_expr(file, groups, x_calc_group)?;
             let y_expr = decode_function_expr(file, groups, y_calc_group)?;
-            let x_parameter_group = find_indexed_path(file, x_calc_group)
-                .and_then(|path| path.refs.first().copied())
-                .and_then(|ordinal| ordinal.checked_sub(1))
-                .and_then(|index| groups.get(index))?;
-            let y_parameter_group = find_indexed_path(file, y_calc_group)
-                .and_then(|path| path.refs.first().copied())
-                .and_then(|ordinal| ordinal.checked_sub(1))
-                .and_then(|index| groups.get(index))?;
+            let x_parameter_group = first_path_group(file, groups, x_calc_group)?;
+            let y_parameter_group = first_path_group(file, groups, y_calc_group)?;
             let x_parameter_name = decode_label_name(file, x_parameter_group)?;
             let y_parameter_name = decode_label_name(file, y_parameter_group)?;
             let x_parameter_value =
@@ -123,10 +128,7 @@ pub(crate) fn decode_coordinate_expression_anchor_raw(
                     _ => crate::runtime::scene::CoordinateAxis::Horizontal,
                 },
             };
-            let parameter_group = find_indexed_path(file, calc_group)
-                .and_then(|path| path.refs.first().copied())
-                .and_then(|ordinal| ordinal.checked_sub(1))
-                .and_then(|index| groups.get(index))?;
+            let parameter_group = first_path_group(file, groups, calc_group)?;
             let parameter_name = decode_label_name(file, parameter_group)?;
             let parameter_value =
                 decode_non_graph_parameter_value_for_group(file, parameter_group)?;

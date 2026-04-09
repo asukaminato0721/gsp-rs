@@ -12,6 +12,10 @@ use crate::runtime::extract::points::{
 use crate::runtime::geometry::color_from_style;
 use crate::runtime::scene::{ScenePoint, ScenePointBinding, ScenePointConstraint};
 
+fn mapped_point_index(group_to_point_index: &[Option<usize>], group_index: usize) -> Option<usize> {
+    group_to_point_index.get(group_index).copied().flatten()
+}
+
 pub(crate) fn collect_point_iteration_points(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -37,10 +41,7 @@ pub(crate) fn collect_point_iteration_points(
         let Some(iter_group_index) = path.refs[1].checked_sub(1) else {
             continue;
         };
-        let Some(seed_index) = group_to_point_index
-            .get(seed_group_index)
-            .and_then(|mapped_index| *mapped_index)
-        else {
+        let Some(seed_index) = mapped_point_index(group_to_point_index, seed_group_index) else {
             continue;
         };
         let Some(iter_group) = groups.get(iter_group_index) else {
@@ -67,9 +68,8 @@ pub(crate) fn collect_point_iteration_points(
                         decode_transform_binding(file, seed_group)
                     };
                     if let Some(binding) = rotation {
-                        let Some(center_index) = group_to_point_index
-                            .get(binding.center_group_index)
-                            .and_then(|mapped_index| *mapped_index)
+                        let Some(center_index) =
+                            mapped_point_index(group_to_point_index, binding.center_group_index)
                         else {
                             continue;
                         };
@@ -215,9 +215,8 @@ pub(crate) fn collect_point_iteration_points(
                 } else if let Some((center_group_index, _angle_expr, parameter_name, n)) =
                     regular_polygon_iteration_step(file, groups, iter_group)
                 {
-                    let Some(center_index) = group_to_point_index
-                        .get(center_group_index)
-                        .and_then(|mapped_index| *mapped_index)
+                    let Some(center_index) =
+                        mapped_point_index(group_to_point_index, center_group_index)
                     else {
                         continue;
                     };
@@ -294,7 +293,10 @@ fn parameter_iteration_step(
         .refs
         .iter()
         .skip(1)
-        .filter_map(|ordinal: &usize| ordinal.checked_sub(1).and_then(|index| groups.get(index)))
+        .filter_map(|ordinal: &usize| {
+            let index = ordinal.checked_sub(1)?;
+            groups.get(index)
+        })
         .find_map(|group| {
             decode_translated_point_constraint(file, group)
                 .map(|constraint| (constraint.dx, constraint.dy))

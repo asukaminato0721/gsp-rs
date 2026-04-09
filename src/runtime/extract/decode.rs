@@ -203,11 +203,11 @@ pub(crate) fn decode_group_rich_text(
     file: &GspFile,
     group: &ObjectGroup,
 ) -> Option<RichTextContent> {
-    group
+    let record = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x08fc)
-        .and_then(|record| decode_rich_text(record.payload(&file.data)))
+        .find(|record| record.record_type == 0x08fc)?;
+    decode_rich_text(record.payload(&file.data))
 }
 
 pub(crate) fn decode_label_anchor(
@@ -217,11 +217,23 @@ pub(crate) fn decode_label_anchor(
 ) -> Option<PointRecord> {
     let kind = group.header.kind();
     let offset = decode_label_offset(file, group).unwrap_or((0.0, 0.0));
-    let base = group
+    let text_anchor = if let Some(record) = group
         .records
         .iter()
         .find(|record| record.record_type == 0x08fc)
-        .and_then(|record| decode_text_anchor(record.payload(&file.data)))
+    {
+        decode_text_anchor(record.payload(&file.data))
+    } else {
+        None
+    };
+    let indexed_anchor = || {
+        let path = find_indexed_path(file, group)?;
+        path.refs
+            .iter()
+            .rev()
+            .find_map(|object_ref| anchors.get(object_ref.saturating_sub(1)).cloned().flatten())
+    };
+    let base = text_anchor
         .or_else(|| decode_0907_anchor(file, group))
         .or_else(|| match kind {
             crate::format::GroupKind::Point => anchors
@@ -242,13 +254,7 @@ pub(crate) fn decode_label_anchor(
                 .cloned()
                 .flatten()
         })
-        .or_else(|| {
-            find_indexed_path(file, group).and_then(|path| {
-                path.refs.iter().rev().find_map(|object_ref| {
-                    anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
-                })
-            })
-        })?;
+        .or_else(indexed_anchor)?;
     Some(PointRecord {
         x: base.x + offset.0,
         y: base.y + offset.1,
@@ -733,7 +739,8 @@ fn decode_markup_path_slot(token: &str) -> Option<usize> {
     if let Some(slot) = reference
         .strip_prefix('B')
         .filter(|suffix| !suffix.is_empty() && suffix.chars().all(|ch| ch.is_ascii_digit()))
-        .and_then(|suffix| suffix.parse::<usize>().ok())
+        .map(|suffix| suffix.parse::<usize>().ok())
+        .flatten()
     {
         return (slot > 0).then_some(slot);
     }

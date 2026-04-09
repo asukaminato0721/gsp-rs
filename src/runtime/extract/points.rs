@@ -166,8 +166,8 @@ fn is_function_plot_definition_group(
 ) -> bool {
     groups.iter().any(|group| {
         (group.header.kind()) == crate::format::GroupKind::FunctionPlot
-            && find_indexed_path(file, group).and_then(|path| path.refs.first().copied())
-                == Some(target_ordinal)
+            && find_indexed_path(file, group)
+                .is_some_and(|path| path.refs.first().copied() == Some(target_ordinal))
     })
 }
 
@@ -293,15 +293,12 @@ fn decode_orphan_parameter_control_value_for_group(
 }
 
 fn decode_parameter_unit_from_payload(payload: &[u8]) -> Option<&'static str> {
-    payload
-        .len()
-        .checked_sub(2)
-        .map(|offset| read_u16(payload, offset))
-        .and_then(|suffix| match suffix {
-            0x0101 => Some("degree"),
-            0x0201 => Some("cm"),
-            _ => None,
-        })
+    let offset = payload.len().checked_sub(2)?;
+    match read_u16(payload, offset) {
+        0x0101 => Some("degree"),
+        0x0201 => Some("cm"),
+        _ => None,
+    }
 }
 
 fn parameter_unit_for_group(
@@ -316,7 +313,7 @@ fn parameter_unit_for_group(
         .iter()
         .find(|record| record.record_type == 0x0907)
         .map(|record| record.payload(&file.data));
-    if let Some(unit) = payload.and_then(decode_parameter_unit_from_payload) {
+    if let Some(unit) = payload.map(decode_parameter_unit_from_payload).flatten() {
         return Some(unit.to_string());
     }
     if !allow_orphan_parameter_controls && is_angle_parameter_group(file, groups, group_index) {

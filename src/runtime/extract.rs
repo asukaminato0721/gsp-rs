@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use anyhow::{Context, Result, bail};
+
 mod assemble;
 mod buttons;
 mod decode;
@@ -15,7 +17,7 @@ mod world;
 
 use self::assemble::{assemble_scene, build_world_data, compute_scene_bounds};
 use self::buttons::collect_buttons;
-use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
+use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord, read_f64, read_u16, read_u32};
 
 use self::graph::{collect_saved_viewport, detect_graph_transform, has_graph_classes};
 use self::images::collect_scene_images;
@@ -625,7 +627,12 @@ fn remap_scene_bindings(
 }
 
 pub(crate) fn build_scene(file: &GspFile) -> Scene {
+    build_scene_checked(file).unwrap_or_else(|error| panic!("{error:#}"))
+}
+
+pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
     let groups = file.object_groups();
+    validate_scene_payloads(file, &groups)?;
     let point_map = collect_point_objects(file, &groups);
     let analysis = analyze_scene(file, &groups, &point_map);
     let mut shapes = collect_scene_shapes(file, &groups, &point_map, &analysis);
@@ -729,7 +736,7 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
     } else {
         Vec::new()
     };
-    assemble_scene(
+    Ok(assemble_scene(
         analysis,
         shapes,
         labels,
@@ -742,5 +749,275 @@ pub(crate) fn build_scene(file: &GspFile) -> Scene {
         images,
         parameters,
         functions,
+    ))
+}
+
+fn validate_scene_payloads(file: &GspFile, groups: &[ObjectGroup]) -> Result<()> {
+    let mut issues = Vec::new();
+    for group in groups {
+        collect_validation_issue(&mut issues, validate_group_kind(group));
+        collect_validation_issue(&mut issues, validate_action_button_payload(file, group));
+        collect_validation_issue(&mut issues, validate_image_payload(file, group));
+        collect_validation_issue(&mut issues, validate_function_payload(file, groups, group));
+    }
+    if issues.is_empty() {
+        return Ok(());
+    }
+    bail!("unsupported payloads:\n- {}", issues.join("\n- "))
+}
+
+fn collect_validation_issue(issues: &mut Vec<String>, result: Result<()>) {
+    if let Err(error) = result {
+        issues.push(format!("{error:#}"));
+    }
+}
+
+fn validate_group_kind(group: &ObjectGroup) -> Result<()> {
+    let kind = group.header.kind();
+    if matches!(kind, GroupKind::Unknown(20)) || is_supported_group_kind(kind) {
+        return Ok(());
+    }
+    if let GroupKind::Unknown(raw) = kind {
+        bail!(
+            "unsupported payload: unknown object kind {raw} in {}",
+            describe_group(group)
+        );
+    }
+    Ok(())
+}
+
+fn validate_action_button_payload(file: &GspFile, group: &ObjectGroup) -> Result<()> {
+    if !decode::is_action_button_group(group) {
+        return Ok(());
+    }
+
+    let payload = group_record_payload(file, group, 0x0906, "action button payload")?;
+    if payload.len() < 16 {
+        bail!(
+            "unsupported payload: action button payload too short ({} bytes) in {}",
+            payload.len(),
+            describe_group(group)
+        );
+    }
+
+    let action_kind = (read_u16(payload, 12), read_u16(payload, 14));
+    if matches!(
+        action_kind,
+        (2, 0) | (4, 0) | (7, 0) | (3, 1) | (0, 7) | (1, 7) | (1, 3) | (0, 3)
+    ) {
+        return Ok(());
+    }
+
+    bail!(
+        "unsupported payload: action button uses unsupported action kind ({}, {}) in {}",
+        action_kind.0,
+        action_kind.1,
+        describe_group(group)
+    )
+}
+
+fn validate_image_payload(file: &GspFile, group: &ObjectGroup) -> Result<()> {
+    if group.header.kind() != GroupKind::Point {
+        return Ok(());
+    }
+
+    let has_image_records = [0x090c, 0x08a8, 0x1f44].into_iter().any(|record_type| {
+        group
+            .records
+            .iter()
+            .any(|record| record.record_type == record_type)
+    });
+    if !has_image_records {
+        return Ok(());
+    }
+
+    let size_payload = group_record_payload(file, group, 0x090c, "image size payload")?;
+    let transform_payload = group_record_payload(file, group, 0x08a8, "image transform payload")?;
+    let resource_payload = group_record_payload(file, group, 0x1f44, "image resource payload")?;
+    if size_payload.len() < 8 || transform_payload.len() < 48 || resource_payload.len() < 2 {
+        bail!(
+            "unsupported payload: malformed image payload in {} (size={}, transform={}, resource={})",
+            describe_group(group),
+            size_payload.len(),
+            transform_payload.len(),
+            resource_payload.len()
+        );
+    }
+
+    let width = read_u32(size_payload, 0) as f64;
+    let height = read_u32(size_payload, 4) as f64;
+    if width <= 0.0 || height <= 0.0 {
+        bail!(
+            "unsupported payload: non-positive image dimensions ({width}x{height}) in {}",
+            describe_group(group)
+        );
+    }
+
+    let shear_x = read_f64(transform_payload, 8);
+    let shear_y = read_f64(transform_payload, 24);
+    if !shear_x.is_finite() || !shear_y.is_finite() {
+        bail!(
+            "unsupported payload: non-finite image transform in {}",
+            describe_group(group)
+        );
+    }
+    if shear_x.abs() > 1e-6 || shear_y.abs() > 1e-6 {
+        bail!(
+            "unsupported payload: non-axis-aligned image transform in {}",
+            describe_group(group)
+        );
+    }
+
+    Ok(())
+}
+
+fn validate_function_payload(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Result<()> {
+    if group.header.kind() != GroupKind::FunctionPlot {
+        return Ok(());
+    }
+
+    let path = find_indexed_path(file, group).with_context(|| {
+        format!(
+            "unsupported payload: function plot is missing indexed path in {}",
+            describe_group(group)
+        )
+    })?;
+    if path.refs.len() < 2 {
+        bail!(
+            "unsupported payload: function plot path has {} refs in {}",
+            path.refs.len(),
+            describe_group(group)
+        );
+    }
+
+    let definition_ordinal = path.refs[0];
+    let definition_group = groups
+        .get(definition_ordinal.checked_sub(1).context("function plot definition ordinal underflow")?)
+        .with_context(|| {
+            format!(
+                "unsupported payload: function plot references missing definition group #{definition_ordinal} from {}",
+                describe_group(group)
+            )
+        })?;
+    let descriptor_payload = group_record_payload(file, group, 0x0902, "function plot descriptor")?;
+    super::functions::decode_function_plot_descriptor(descriptor_payload).with_context(|| {
+        format!(
+            "unsupported payload: invalid function plot descriptor in {}",
+            describe_group(group)
+        )
+    })?;
+    super::functions::decode_function_expr(file, groups, definition_group).with_context(|| {
+        format!(
+            "unsupported payload: invalid function expression in {} referenced by {}",
+            describe_group(definition_group),
+            describe_group(group)
+        )
+    })?;
+
+    Ok(())
+}
+
+fn group_record_payload<'a>(
+    file: &'a GspFile,
+    group: &'a ObjectGroup,
+    record_type: u32,
+    record_label: &str,
+) -> Result<&'a [u8]> {
+    group
+        .records
+        .iter()
+        .find(|record| record.record_type == record_type)
+        .map(|record| record.payload(&file.data))
+        .with_context(|| {
+            format!(
+                "unsupported payload: missing {record_label} (record 0x{record_type:04x}) in {}",
+                describe_group(group)
+            )
+        })
+}
+
+fn describe_group(group: &ObjectGroup) -> String {
+    let record_types = group
+        .records
+        .iter()
+        .map(|record| format!("0x{:04x}", record.record_type))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "group #{} {:?} @ 0x{:x} [{}]",
+        group.ordinal,
+        group.header.kind(),
+        group.start_offset,
+        record_types
+    )
+}
+
+fn is_supported_group_kind(kind: GroupKind) -> bool {
+    matches!(
+        kind,
+        GroupKind::Point
+            | GroupKind::Midpoint
+            | GroupKind::Segment
+            | GroupKind::Circle
+            | GroupKind::CircleCenterRadius
+            | GroupKind::LineKind5
+            | GroupKind::LineKind6
+            | GroupKind::LineKind7
+            | GroupKind::Polygon
+            | GroupKind::LinearIntersectionPoint
+            | GroupKind::IntersectionPoint1
+            | GroupKind::IntersectionPoint2
+            | GroupKind::CircleCircleIntersectionPoint1
+            | GroupKind::CircleCircleIntersectionPoint2
+            | GroupKind::PointConstraint
+            | GroupKind::Translation
+            | GroupKind::CartesianOffsetPoint
+            | GroupKind::CoordinateExpressionPoint
+            | GroupKind::CoordinateExpressionPointAlt
+            | GroupKind::PolarOffsetPoint
+            | GroupKind::DerivedSegment24
+            | GroupKind::CustomTransformPoint
+            | GroupKind::Rotation
+            | GroupKind::ParameterRotation
+            | GroupKind::Scale
+            | GroupKind::Reflection
+            | GroupKind::PointTrace
+            | GroupKind::GraphObject40
+            | GroupKind::FunctionExpr
+            | GroupKind::Kind51
+            | GroupKind::GraphCalibrationX
+            | GroupKind::GraphCalibrationY
+            | GroupKind::MeasurementLine
+            | GroupKind::AxisLine
+            | GroupKind::ActionButton
+            | GroupKind::Line
+            | GroupKind::Ray
+            | GroupKind::OffsetAnchor
+            | GroupKind::CoordinatePoint
+            | GroupKind::FunctionPlot
+            | GroupKind::ButtonLabel
+            | GroupKind::DerivedSegment75
+            | GroupKind::AffineIteration
+            | GroupKind::IterationBinding
+            | GroupKind::DerivativeFunction
+            | GroupKind::ArcOnCircle
+            | GroupKind::CenterArc
+            | GroupKind::ThreePointArc
+            | GroupKind::SectorBoundary
+            | GroupKind::CircularSegmentBoundary
+            | GroupKind::RegularPolygonIteration
+            | GroupKind::LabelIterationSeed
+            | GroupKind::ParameterAnchor
+            | GroupKind::ParameterControlledPoint
+            | GroupKind::CoordinateTrace
+            | GroupKind::CoordinateTraceIntersectionPoint
+            | GroupKind::CustomTransformTrace
+            | GroupKind::AngleMarker
+            | GroupKind::PathPoint
+            | GroupKind::SegmentMarker
     )
 }

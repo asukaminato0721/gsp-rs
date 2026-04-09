@@ -2,7 +2,7 @@ use crate::export::html::{
     render_scene_json, render_standalone_html_document, write_standalone_html,
 };
 use crate::gsp;
-use crate::runtime::build_scene;
+use crate::runtime::build_scene_checked;
 use std::fs;
 use std::path::Path;
 
@@ -43,13 +43,13 @@ pub fn compile_bytes_to_html_document(
     height: u32,
 ) -> Result<String, String> {
     let file = gsp::parse(data)?;
-    let scene = build_scene(&file);
+    let scene = build_scene_checked(&file).map_err(|error| format!("{error:#}"))?;
     Ok(render_standalone_html_document(&scene, width, height))
 }
 
 pub fn compile_bytes_to_scene_json(data: &[u8], width: u32, height: u32) -> Result<String, String> {
     let file = gsp::parse(data)?;
-    let scene = build_scene(&file);
+    let scene = build_scene_checked(&file).map_err(|error| format!("{error:#}"))?;
     Ok(render_scene_json(&scene, width, height, true))
 }
 
@@ -253,7 +253,9 @@ mod tests {
         assert_eq!(parameters[2]["name"].as_str(), Some("t₃"));
         assert_eq!(parameters[2]["value"].as_f64(), Some(1.0));
         assert_eq!(parameters[2]["unit"], Value::Null);
-        let labels = scene["labels"].as_array().expect("scene labels should be an array");
+        let labels = scene["labels"]
+            .as_array()
+            .expect("scene labels should be an array");
         assert_eq!(labels[0]["text"].as_str(), Some("t₁ = 1.00°"));
         assert_eq!(labels[0]["visible"].as_bool(), Some(true));
         assert_eq!(labels[1]["text"].as_str(), Some("t₂ = 1.00 cm"));

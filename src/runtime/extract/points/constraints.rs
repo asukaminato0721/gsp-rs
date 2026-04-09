@@ -102,6 +102,17 @@ fn wrap_unit_interval(value: f64) -> f64 {
     value.rem_euclid(1.0)
 }
 
+fn first_path_group<'a>(
+    file: &GspFile,
+    groups: &'a [ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<&'a ObjectGroup> {
+    let path = find_indexed_path(file, group)?;
+    let ordinal = path.refs.first().copied()?;
+    let index = ordinal.checked_sub(1)?;
+    groups.get(index)
+}
+
 pub(crate) fn regular_polygon_iteration_step(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -111,7 +122,10 @@ pub(crate) fn regular_polygon_iteration_step(
     let seed_group = path
         .refs
         .iter()
-        .filter_map(|ordinal| ordinal.checked_sub(1).and_then(|index| groups.get(index)))
+        .filter_map(|ordinal| {
+            let index = ordinal.checked_sub(1)?;
+            groups.get(index)
+        })
         .find(|group| (group.header.kind()) == crate::format::GroupKind::ParameterRotation)?;
     let seed_path = find_indexed_path(file, seed_group)?;
     if seed_path.refs.len() < 3 {
@@ -566,10 +580,7 @@ pub(crate) fn decode_coordinate_point(
                     _ => crate::runtime::scene::CoordinateAxis::Horizontal,
                 },
             };
-            let parameter_group = find_indexed_path(file, calc_group)
-                .and_then(|path| path.refs.first().copied())
-                .and_then(|ordinal| ordinal.checked_sub(1))
-                .and_then(|index| groups.get(index))?;
+            let parameter_group = first_path_group(file, groups, calc_group)?;
             let parameter_name = decode_label_name(file, parameter_group)?;
             let parameter_value =
                 decode_non_graph_parameter_value_for_group(file, parameter_group)?;
@@ -613,14 +624,8 @@ pub(crate) fn decode_coordinate_point(
             let x_expr = decode_function_expr(file, groups, x_calc_group)?;
             let y_expr = decode_function_expr(file, groups, y_calc_group)?;
 
-            let x_parameter_group = find_indexed_path(file, x_calc_group)
-                .and_then(|path| path.refs.first().copied())
-                .and_then(|ordinal| ordinal.checked_sub(1))
-                .and_then(|index| groups.get(index))?;
-            let y_parameter_group = find_indexed_path(file, y_calc_group)
-                .and_then(|path| path.refs.first().copied())
-                .and_then(|ordinal| ordinal.checked_sub(1))
-                .and_then(|index| groups.get(index))?;
+            let x_parameter_group = first_path_group(file, groups, x_calc_group)?;
+            let y_parameter_group = first_path_group(file, groups, y_calc_group)?;
             let x_parameter_name = decode_label_name(file, x_parameter_group)?;
             let y_parameter_name = decode_label_name(file, y_parameter_group)?;
             let x_parameter_value =
@@ -1054,11 +1059,11 @@ fn decode_point_on_function_constraint(
 
     let path = find_indexed_path(file, host_group)?;
     let definition_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-    let descriptor = host_group
+    let descriptor_record = host_group
         .records
         .iter()
-        .find(|record| record.record_type == 0x0902)
-        .and_then(|record| decode_function_plot_descriptor(record.payload(&file.data)))?;
+        .find(|record| record.record_type == 0x0902)?;
+    let descriptor = decode_function_plot_descriptor(descriptor_record.payload(&file.data))?;
     let expr = decode_function_expr(file, groups, definition_group)?;
     let points = sample_function_points(&expr, &descriptor)
         .into_iter()

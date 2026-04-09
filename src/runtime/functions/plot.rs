@@ -38,11 +38,15 @@ pub(crate) fn collect_function_plots(
         let Some(definition_group) = groups.get(definition_index) else {
             continue;
         };
-        let Some(descriptor) = group
+        let Some(descriptor_record) = group
             .records
             .iter()
             .find(|record| record.record_type == 0x0902)
-            .and_then(|record| decode_function_plot_descriptor(record.payload(&file.data)))
+        else {
+            continue;
+        };
+        let Some(descriptor) =
+            decode_function_plot_descriptor(descriptor_record.payload(&file.data))
         else {
             continue;
         };
@@ -83,11 +87,15 @@ pub(crate) fn collect_function_plot_domain(
         .iter()
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::FunctionPlot)
     {
-        let Some(descriptor) = group
+        let Some(descriptor_record) = group
             .records
             .iter()
             .find(|record| record.record_type == 0x0902)
-            .and_then(|record| decode_function_plot_descriptor(record.payload(&file.data)))
+        else {
+            continue;
+        };
+        let Some(descriptor) =
+            decode_function_plot_descriptor(descriptor_record.payload(&file.data))
         else {
             continue;
         };
@@ -231,26 +239,35 @@ pub(crate) fn synthesize_function_labels(
             let definition_ordinal = *path.refs.first()?;
             let definition_group = groups.get(definition_ordinal.checked_sub(1)?)?;
             let expr = decode_function_expr(file, groups, definition_group)?;
-            let descriptor = group
+            let descriptor_record = group
                 .records
                 .iter()
-                .find(|record| record.record_type == 0x0902)
-                .and_then(|record| decode_function_plot_descriptor(record.payload(&file.data)))?;
-            let name = definition_group
+                .find(|record| record.record_type == 0x0902)?;
+            let descriptor =
+                decode_function_plot_descriptor(descriptor_record.payload(&file.data))?;
+            let name = if let Some(record) = definition_group
                 .records
                 .iter()
                 .find(|record| record.record_type == 0x07d5)
-                .and_then(|record| {
+            {
+                let name = {
                     let payload = record.payload(&file.data);
-                    (payload.len() >= 24).then(|| {
+                    if payload.len() < 24 {
+                        None
+                    } else {
                         let len = crate::format::read_u16(payload, 22) as usize;
-                        (24 + len <= payload.len())
-                            .then(|| String::from_utf8_lossy(&payload[24..24 + len]).to_string())
-                    })
-                })
-                .flatten()
-                .filter(|candidate| candidate.chars().all(|ch| ch.is_ascii_alphabetic()))
-                .unwrap_or_default();
+                        if 24 + len > payload.len() {
+                            None
+                        } else {
+                            Some(String::from_utf8_lossy(&payload[24..24 + len]).to_string())
+                        }
+                    }
+                };
+                name.filter(|candidate| candidate.chars().all(|ch| ch.is_ascii_alphabetic()))
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
             Some((definition_ordinal, name, expr, descriptor))
         })
         .collect::<Vec<_>>();
@@ -398,25 +415,29 @@ pub(super) fn bounds_from_function_plots(
     domain: Option<(f64, f64)>,
     graph: &Option<GraphTransform>,
 ) -> Option<Bounds> {
-    let mut bounds =
-        if let Some(first) = function_plots.first().and_then(|line| line.points.first()) {
-            let first = crate::runtime::geometry::to_world(first, graph);
-            Bounds {
-                min_x: first.x,
-                max_x: first.x,
-                min_y: first.y,
-                max_y: first.y,
-            }
-        } else if let Some((min_x, max_x)) = domain {
-            Bounds {
-                min_x,
-                max_x,
-                min_y: 0.0,
-                max_y: 0.0,
-            }
-        } else {
-            return None;
-        };
+    let first = if let Some(line) = function_plots.first() {
+        line.points.first()
+    } else {
+        None
+    };
+    let mut bounds = if let Some(first) = first {
+        let first = crate::runtime::geometry::to_world(first, graph);
+        Bounds {
+            min_x: first.x,
+            max_x: first.x,
+            min_y: first.y,
+            max_y: first.y,
+        }
+    } else if let Some((min_x, max_x)) = domain {
+        Bounds {
+            min_x,
+            max_x,
+            min_y: 0.0,
+            max_y: 0.0,
+        }
+    } else {
+        return None;
+    };
     include_line_bounds(&mut bounds, function_plots, graph);
     if let Some((min_x, max_x)) = domain {
         bounds.min_x = bounds.min_x.min(min_x);

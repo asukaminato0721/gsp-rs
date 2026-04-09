@@ -7,8 +7,12 @@ use std::fs;
 use std::path::Path;
 
 pub(crate) fn write_standalone_html(output_path: &Path, html: &str) -> Result<(), String> {
+    let extension = match output_path.extension() {
+        Some(ext) => ext.to_str(),
+        None => None,
+    };
     if !matches!(
-        output_path.extension().and_then(|ext| ext.to_str()),
+        extension,
         Some("html") | Some("HTML") | Some("htm") | Some("HTM")
     ) {
         return Err(format!(
