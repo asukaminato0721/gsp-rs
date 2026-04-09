@@ -227,6 +227,7 @@
         y: point.y,
         color: point.color,
         visible: point.visible !== false,
+        draggable: point.draggable !== false,
         constraint: point.constraint
           ? {
               ...point.constraint,

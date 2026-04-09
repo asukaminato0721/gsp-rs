@@ -210,7 +210,7 @@
     let bestIndex = null;
     let bestDistanceSquared = env.pointHitRadius * env.pointHitRadius;
     env.currentScene().points.forEach((point, index) => {
-      if (point.visible === false) {
+      if (point.visible === false || point.draggable === false) {
         return;
       }
       const resolved = env.resolveScenePoint(index);

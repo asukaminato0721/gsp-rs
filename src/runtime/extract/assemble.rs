@@ -23,6 +23,7 @@ pub(super) fn build_world_data(
             position: to_world(&point.position, &analysis.graph_ref),
             color: point.color,
             visible: point.visible,
+            draggable: point.draggable,
             constraint: match &point.constraint {
                 ScenePointConstraint::Free => ScenePointConstraint::Free,
                 ScenePointConstraint::Offset {

@@ -1233,6 +1233,7 @@ struct ScenePointJson {
     y: f64,
     color: [u8; 4],
     visible: bool,
+    draggable: bool,
     constraint: Option<PointConstraintJson>,
     binding: Option<PointBindingJson>,
 }
@@ -1244,6 +1245,7 @@ impl ScenePointJson {
             y: point.position.y,
             color: point.color,
             visible: point.visible,
+            draggable: point.draggable,
             constraint: PointConstraintJson::from_constraint(&point.constraint),
             binding: point.binding.as_ref().map(PointBindingJson::from_binding),
         }

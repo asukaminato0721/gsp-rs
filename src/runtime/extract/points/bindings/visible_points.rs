@@ -20,6 +20,7 @@ fn scene_point(
     position: PointRecord,
     color: [u8; 4],
     visible: bool,
+    draggable: bool,
     constraint: ScenePointConstraint,
     binding: Option<ScenePointBinding>,
 ) -> ScenePoint {
@@ -27,6 +28,7 @@ fn scene_point(
         position,
         color,
         visible,
+        draggable,
         constraint,
         binding,
     }
@@ -56,6 +58,7 @@ pub(crate) fn collect_visible_points(
                             position,
                             group_color(group),
                             visible,
+                            true,
                             ScenePointConstraint::Free,
                             None,
                         )
@@ -71,6 +74,7 @@ pub(crate) fn collect_visible_points(
                         position,
                         group_color(group),
                         visible && decode_label_name(file, group).is_some(),
+                        true,
                         ScenePointConstraint::Free,
                         Some(ScenePointBinding::GraphCalibration),
                     )
@@ -108,6 +112,7 @@ pub(crate) fn collect_visible_points(
                         position,
                         group_color(group),
                         visible,
+                        true,
                         ScenePointConstraint::Offset {
                             origin_index,
                             dx: constraint.dx,
@@ -126,6 +131,7 @@ pub(crate) fn collect_visible_points(
                         &group_to_point_index,
                         constraint,
                         visible,
+                        kind != crate::format::GroupKind::PathPoint,
                     )
                 })
             }
@@ -164,6 +170,7 @@ pub(crate) fn collect_visible_points(
                         position,
                         group_color(group),
                         visible,
+                        true,
                         ScenePointConstraint::Free,
                         Some(ScenePointBinding::CustomTransform {
                             source_index,
@@ -201,6 +208,7 @@ pub(crate) fn collect_visible_points(
                                 position,
                                 group_color(group),
                                 visible,
+                                true,
                                 ScenePointConstraint::Free,
                                 Some(ScenePointBinding::Reflect {
                                     source_index,
@@ -236,6 +244,7 @@ pub(crate) fn collect_visible_points(
                                 position,
                                 group_color(group),
                                 visible,
+                                true,
                                 ScenePointConstraint::Free,
                                 Some(ScenePointBinding::Translate {
                                     source_index,
@@ -266,6 +275,7 @@ pub(crate) fn collect_visible_points(
                         position,
                         group_color(group),
                         visible,
+                        true,
                         ScenePointConstraint::Free,
                         Some(match binding.kind {
                             TransformBindingKind::Rotate {
@@ -305,6 +315,7 @@ fn scene_point_from_constraint(
     group_to_point_index: &[Option<usize>],
     constraint: RawPointConstraint,
     visible: bool,
+    draggable: bool,
 ) -> Option<ScenePoint> {
     let position = anchors.get(index).cloned().flatten()?;
     match constraint {
@@ -319,6 +330,7 @@ fn scene_point_from_constraint(
                 position,
                 color,
                 visible,
+                draggable,
                 ScenePointConstraint::OnSegment {
                     start_index,
                     end_index,
@@ -336,6 +348,7 @@ fn scene_point_from_constraint(
             position,
             color,
             visible,
+            draggable,
             ScenePointConstraint::OnPolyline {
                 function_key,
                 points,
@@ -361,6 +374,7 @@ fn scene_point_from_constraint(
                 position,
                 color,
                 visible,
+                draggable,
                 ScenePointConstraint::OnPolygonBoundary {
                     vertex_indices,
                     edge_index,
@@ -380,6 +394,7 @@ fn scene_point_from_constraint(
                 position,
                 color,
                 visible,
+                draggable,
                 ScenePointConstraint::OnCircle {
                     center_index,
                     radius_index,
@@ -403,6 +418,7 @@ fn scene_point_from_constraint(
                 position,
                 color,
                 visible,
+                draggable,
                 ScenePointConstraint::OnCircleArc {
                     center_index,
                     start_index,
@@ -426,6 +442,7 @@ fn scene_point_from_constraint(
                 position,
                 color,
                 visible,
+                draggable,
                 ScenePointConstraint::OnArc {
                     start_index,
                     mid_index,
@@ -457,6 +474,7 @@ fn scene_point_from_parameter_controlled(
                 parameter_point.position.clone(),
                 color,
                 visible,
+                true,
                 ScenePointConstraint::OnSegment {
                     start_index,
                     end_index,
@@ -482,6 +500,7 @@ fn scene_point_from_parameter_controlled(
                 parameter_point.position.clone(),
                 color,
                 visible,
+                true,
                 ScenePointConstraint::OnPolygonBoundary {
                     vertex_indices,
                     edge_index: *edge_index,
@@ -501,6 +520,7 @@ fn scene_point_from_parameter_controlled(
                 parameter_point.position,
                 color,
                 visible,
+                true,
                 ScenePointConstraint::OnCircle {
                     center_index,
                     radius_index,
@@ -524,6 +544,7 @@ fn scene_point_from_parameter_controlled(
                 parameter_point.position,
                 color,
                 visible,
+                true,
                 ScenePointConstraint::OnCircleArc {
                     center_index,
                     start_index,
@@ -547,6 +568,7 @@ fn scene_point_from_parameter_controlled(
                 parameter_point.position,
                 color,
                 visible,
+                true,
                 ScenePointConstraint::OnArc {
                     start_index,
                     mid_index,
@@ -565,6 +587,7 @@ fn scene_point_from_parameter_controlled(
             parameter_point.position,
             color,
             visible,
+            true,
             ScenePointConstraint::OnPolyline {
                 function_key: *function_key,
                 points: points.clone(),
@@ -603,6 +626,7 @@ fn scene_point_from_coordinate(
         point.position,
         color,
         visible,
+        true,
         ScenePointConstraint::Free,
         Some(ScenePointBinding::Coordinate {
             name: point.parameter_name,
@@ -638,6 +662,7 @@ fn scene_point_from_midpoint(
         position,
         group_color(group),
         visible,
+        true,
         ScenePointConstraint::OnSegment {
             start_index,
             end_index,
@@ -676,6 +701,7 @@ fn scene_point_from_intersection(
             position,
             group_color(group),
             visible,
+            true,
             ScenePointConstraint::LineIntersection { left, right },
             None,
         ));
@@ -690,6 +716,7 @@ fn scene_point_from_intersection(
             position,
             group_color(group),
             visible,
+            true,
             ScenePointConstraint::LineCircleIntersection {
                 line,
                 center_index,
@@ -708,6 +735,7 @@ fn scene_point_from_intersection(
             position,
             group_color(group),
             visible,
+            true,
             ScenePointConstraint::LineCircleIntersection {
                 line,
                 center_index,
@@ -737,6 +765,7 @@ fn scene_point_from_intersection(
                 position,
                 group_color(group),
                 visible,
+                true,
                 ScenePointConstraint::CircleCircleIntersection {
                     left_center_index: *left_center_index,
                     left_radius_index: *left_radius_index,
@@ -752,6 +781,7 @@ fn scene_point_from_intersection(
             position,
             group_color(group),
             visible,
+            true,
             ScenePointConstraint::CircularIntersection {
                 left,
                 right,
@@ -765,6 +795,7 @@ fn scene_point_from_intersection(
         position,
         group_color(group),
         visible,
+        true,
         ScenePointConstraint::Free,
         None,
     ))
