@@ -117,6 +117,7 @@ pub(super) fn collect_labels(
                     labels.push(TextLabel {
                         anchor,
                         text,
+                        rich_markup: rich_text.as_ref().and_then(|content| content.markup.clone()),
                         color: [30, 30, 30, 255],
                         visible,
                         binding: None,
@@ -202,6 +203,9 @@ pub(super) fn collect_labels(
                         labels.push(TextLabel {
                             anchor,
                             text,
+                            rich_markup: rich_text
+                                .as_ref()
+                                .and_then(|content| content.markup.clone()),
                             color: label_color_for_group(group),
                             visible,
                             binding,
@@ -260,6 +264,7 @@ pub(super) fn collect_labels(
                     labels.push(TextLabel {
                         anchor,
                         text,
+                        rich_markup: None,
                         color: [60, 60, 60, 255],
                         visible: label_visible_for_group(file, group),
                         binding: None,
@@ -334,6 +339,7 @@ pub(super) fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) 
             labels.push(TextLabel {
                 anchor,
                 text: format!("{name} = {:.2}", value),
+                rich_markup: None,
                 color: [30, 30, 30, 255],
                 visible: label_visible_for_group(file, group),
                 binding,
@@ -389,6 +395,7 @@ pub(super) fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) 
             labels.push(TextLabel {
                 anchor,
                 text,
+                rich_markup: None,
                 color: [30, 30, 30, 255],
                 visible: label_visible_for_group(file, group),
                 binding,
@@ -516,6 +523,7 @@ fn collect_point_expression_label(
     Some(TextLabel {
         anchor,
         text: format_number(value),
+        rich_markup: None,
         color: [30, 30, 30, 255],
         visible: label_visible_for_group(file, group),
         binding: Some(TextLabelBinding::PointExpressionValue {
@@ -571,6 +579,7 @@ pub(super) fn collect_polygon_parameter_labels(
             Some(TextLabel {
                 anchor,
                 text: format!("{point_name}在{polygon_name}上的t值 = {:.2}", global_t),
+                rich_markup: None,
                 color: [30, 30, 30, 255],
                 visible: label_visible_for_group(file, group),
                 binding: Some(TextLabelBinding::PolygonBoundaryParameter {
@@ -622,6 +631,7 @@ pub(super) fn collect_segment_parameter_labels(
             Some(TextLabel {
                 anchor,
                 text: format!("{point_name}在{segment_name}上的t值 = {:.2}", constraint.t),
+                rich_markup: None,
                 color: [30, 30, 30, 255],
                 visible: label_visible_for_group(file, group),
                 binding: Some(TextLabelBinding::SegmentParameter {
@@ -681,6 +691,7 @@ pub(super) fn collect_circle_parameter_labels(
             Some(TextLabel {
                 anchor,
                 text: format!("{point_name}在⊙{circle_name}上的值 = {:.2}", value),
+                rich_markup: None,
                 color: [30, 30, 30, 255],
                 visible: label_visible_for_group(file, group),
                 binding: Some(TextLabelBinding::CircleParameter {
@@ -758,6 +769,7 @@ pub(super) fn collect_custom_transform_expression_labels(
                     text: format!(
                         "{base_label}·{multiplier_text} = {value:.decimals$}{value_suffix}"
                     ),
+                    rich_markup: None,
                     color: [30, 30, 30, 255],
                     visible: label_visible_for_group(file, group),
                     binding: Some(TextLabelBinding::CustomTransformValue {
@@ -1162,6 +1174,7 @@ pub(super) fn compute_iteration_labels(
             labels.push(TextLabel {
                 anchor,
                 text: lines.join("\n"),
+                rich_markup: None,
                 color: [30, 30, 30, 255],
                 visible: label_visible_for_group(file, group),
                 binding: None,

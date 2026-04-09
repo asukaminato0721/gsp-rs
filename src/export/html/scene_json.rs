@@ -966,6 +966,8 @@ impl ShapeBindingJson {
 struct LabelJson {
     anchor: PointJson,
     text: String,
+    #[serde(rename = "richMarkup")]
+    rich_markup: Option<String>,
     color: [u8; 4],
     visible: bool,
     binding: Option<LabelBindingJson>,
@@ -979,6 +981,7 @@ impl LabelJson {
         Self {
             anchor: PointJson::from_point(&label.anchor),
             text: label.text.clone(),
+            rich_markup: label.rich_markup.clone(),
             color: label.color,
             visible: label.visible,
             binding: label.binding.as_ref().map(LabelBindingJson::from_binding),

@@ -594,6 +594,7 @@ pub(crate) enum ShapeBinding {
 pub(crate) struct TextLabel {
     pub(crate) anchor: PointRecord,
     pub(crate) text: String,
+    pub(crate) rich_markup: Option<String>,
     pub(crate) color: [u8; 4],
     pub(crate) visible: bool,
     pub(crate) binding: Option<TextLabelBinding>,

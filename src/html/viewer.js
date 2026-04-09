@@ -107,6 +107,196 @@
   van.add(coordReadout, coordText);
   van.add(zoomReadout, zoomText);
 
+  function cleanRichText(text) {
+    return text
+      .replaceAll("\u2013", "-")
+      .replaceAll("\u2014", "-")
+      .replaceAll("厘米", "cm");
+  }
+
+  function decodeRichMarkupText(token) {
+    if (!token.startsWith("T")) {
+      return null;
+    }
+    const xIndex = token.indexOf("x");
+    if (xIndex < 0) {
+      return null;
+    }
+    return cleanRichText(token.slice(xIndex + 1));
+  }
+
+  function parseRichMarkupNodes(markup) {
+    function parseSeq(source, start, stopOnGt) {
+      const nodes = [];
+      let index = start;
+      while (index < source.length) {
+        if (stopOnGt && source[index] === ">") {
+          return [nodes, index + 1];
+        }
+        if (source[index] !== "<") {
+          index += 1;
+          continue;
+        }
+        index += 1;
+        const nameStart = index;
+        while (index < source.length && source[index] !== "<" && source[index] !== ">") {
+          index += 1;
+        }
+        const name = source.slice(nameStart, index);
+        let children = [];
+        if (index < source.length && source[index] === "<") {
+          [children, index] = parseSeq(source, index, true);
+        } else if (index < source.length && source[index] === ">") {
+          index += 1;
+        }
+        nodes.push({ name, children });
+      }
+      return [nodes, index];
+    }
+
+    return parseSeq(markup, 0, false)[0];
+  }
+
+  function appendRichMarkupLines(target, lines) {
+    if (!lines.length) {
+      return;
+    }
+    if (!target.length) {
+      target.push(...lines);
+      return;
+    }
+    const [first, ...rest] = lines;
+    target[target.length - 1].push(...first);
+    target.push(...rest);
+  }
+
+  function renderRichMarkupInline(nodes) {
+    return renderRichMarkupNodes(nodes)
+      .flatMap((line, index) => (index === 0 ? line : [{ kind: "text", text: " " }, ...line]));
+  }
+
+  function renderRichMarkupNode(node) {
+    const text = decodeRichMarkupText(node.name);
+    if (text !== null) {
+      return text ? [[{ kind: "text", text }]] : [[]];
+    }
+    if (!node.name || node.name.startsWith("!") || node.name.startsWith("?1x")) {
+      return renderRichMarkupNodes(node.children);
+    }
+    if (node.name === "VL") {
+      return node.children.flatMap((child) => renderRichMarkupNode(child)).filter((line) => line.length);
+    }
+    if (node.name === "H") {
+      return [renderRichMarkupInline(node.children)];
+    }
+    if (node.name === "/") {
+      const [numerator, ...denominator] = node.children;
+      if (!numerator || !denominator.length) {
+        return [renderRichMarkupInline(node.children)];
+      }
+      return [[{
+        kind: "fraction",
+        numerator: renderRichMarkupInline([numerator]),
+        denominator: renderRichMarkupInline(denominator),
+      }]];
+    }
+    if (node.name === "R") {
+      return [[{
+        kind: "radical",
+        children: renderRichMarkupInline(node.children),
+      }]];
+    }
+    if (node.name === "SO2") {
+      return [[{
+        kind: "overline",
+        children: renderRichMarkupInline(node.children),
+      }]];
+    }
+    if (node.name === "SO3") {
+      return [[{
+        kind: "ray",
+        children: renderRichMarkupInline(node.children),
+      }]];
+    }
+    if (node.name === "SO4") {
+      return [[{
+        kind: "arc",
+        children: renderRichMarkupInline(node.children),
+      }]];
+    }
+    return renderRichMarkupNodes(node.children);
+  }
+
+  function renderRichMarkupNodes(nodes) {
+    const lines = [[]];
+    nodes.forEach((node) => {
+      appendRichMarkupLines(lines, renderRichMarkupNode(node));
+    });
+    return lines.filter((line) => line.length);
+  }
+
+  function appendRichMarkupItems(parent, items) {
+    items.forEach((item) => {
+      parent.append(renderRichMarkupItem(item));
+    });
+  }
+
+  function renderRichMarkupItem(item) {
+    if (item.kind === "text") {
+      const span = document.createElement("span");
+      span.textContent = item.text;
+      return span;
+    }
+    if (item.kind === "fraction") {
+      const fraction = document.createElement("span");
+      fraction.className = "scene-rich-fraction";
+      const numerator = document.createElement("span");
+      numerator.className = "scene-rich-fraction-part";
+      appendRichMarkupItems(numerator, item.numerator);
+      const bar = document.createElement("span");
+      bar.className = "scene-rich-fraction-bar";
+      const denominator = document.createElement("span");
+      denominator.className = "scene-rich-fraction-part";
+      appendRichMarkupItems(denominator, item.denominator);
+      fraction.append(numerator, bar, denominator);
+      return fraction;
+    }
+    const span = document.createElement("span");
+    if (item.kind === "radical") {
+      span.className = "scene-rich-radical";
+      const symbol = document.createElement("span");
+      symbol.className = "scene-rich-radical-symbol";
+      symbol.textContent = "\u221a";
+      const radicand = document.createElement("span");
+      radicand.className = "scene-rich-radicand";
+      appendRichMarkupItems(radicand, item.children);
+      span.append(symbol, radicand);
+      return span;
+    }
+    span.className = `scene-rich-${item.kind}`;
+    appendRichMarkupItems(span, item.children);
+    return span;
+  }
+
+  function renderRichLabel(label) {
+    if (!label.richMarkup) {
+      return null;
+    }
+    const lines = renderRichMarkupNodes(parseRichMarkupNodes(label.richMarkup));
+    if (!lines.length) {
+      return null;
+    }
+    const root = document.createElement("div");
+    root.className = "scene-rich-label";
+    lines.forEach((items) => {
+      const line = document.createElement("div");
+      line.className = "scene-rich-line";
+      appendRichMarkupItems(line, items);
+      root.append(line);
+    });
+    return root;
+  }
+
   function samePoint(left, right) {
     return Math.abs(left.x - right.x) < pointMatchTolerance
       && Math.abs(left.y - right.y) < pointMatchTolerance;
@@ -265,6 +455,7 @@
       })),
       labels: scene.labels.map((label) => ({
         text: label.text,
+        richMarkup: label.richMarkup || null,
         color: label.color,
         visible: label.visible !== false,
         anchor: label.screenSpace
@@ -615,7 +806,31 @@
     });
 
     currentScene().labels.forEach((label) => {
-      if (label.visible === false || !label.hotspots?.length) {
+      if (label.visible === false) {
+        return;
+      }
+      if (label.richMarkup && !label.hotspots?.length) {
+        const anchor = label.screenSpace
+          ? label.anchor
+          : viewerEnv.resolvePoint(label.anchor);
+        if (!anchor) {
+          return;
+        }
+        const screen = label.screenSpace ? anchor : viewerEnv.toScreen(anchor);
+        const richLabel = renderRichLabel(label);
+        if (!screen || !richLabel) {
+          return;
+        }
+        richLabel.style.color = rgba(label.color);
+        richLabel.style.left = `${(((screen.x + (label.centeredOnAnchor ? 0 : 2)) / sourceScene.width) * 100)}%`;
+        richLabel.style.top = `${(((screen.y + (label.centeredOnAnchor ? -10 : -14)) / sourceScene.height) * 100)}%`;
+        if (label.centeredOnAnchor) {
+          richLabel.style.transform = "translate(-50%, -50%)";
+        }
+        buttonOverlays.append(richLabel);
+        return;
+      }
+      if (!label.hotspots?.length) {
         return;
       }
       renderModule.labelHotspotRects(viewerEnv, label).forEach((rect) => {

@@ -664,7 +664,7 @@
   function drawLabels(env) {
     env.ctx.font = "18px \"Noto Sans\", \"Segoe UI\", sans-serif";
     for (const label of env.currentScene().labels) {
-      if (label.visible === false) continue;
+      if (label.visible === false || (label.richMarkup && !label.hotspots?.length)) continue;
       const bounds = labelBounds(env, label);
       if (!bounds) continue;
       env.ctx.fillStyle = env.rgba(label.color);

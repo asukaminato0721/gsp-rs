@@ -484,6 +484,7 @@ fn append_circle_perimeter_label(
             TextLabel {
                 anchor,
                 text: format!("AB perimeter = {:.2} cm", circumference),
+                rich_markup: None,
                 color: [30, 30, 30, 255],
                 visible: true,
                 binding: None,

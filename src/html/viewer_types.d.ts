@@ -80,6 +80,7 @@ type SceneData = {
   labels: Array<{
     anchor: Point;
     text: string;
+    richMarkup?: string | null;
     color: [number, number, number, number];
     binding?: any;
     screenSpace?: boolean;

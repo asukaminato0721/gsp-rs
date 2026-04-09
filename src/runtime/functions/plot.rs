@@ -286,6 +286,7 @@ pub(crate) fn synthesize_function_labels(
             TextLabel {
                 anchor: to_raw_from_world(&world_anchor, transform),
                 text: format!("{name} = {:.2}", value),
+                rich_markup: None,
                 color: [30, 30, 30, 255],
                 visible: true,
                 binding: Some(crate::runtime::scene::TextLabelBinding::ParameterValue {
@@ -335,6 +336,7 @@ pub(crate) fn synthesize_function_labels(
             TextLabel {
                 anchor: to_raw_from_world(&world_anchor, transform),
                 text,
+                rich_markup: None,
                 color: [30, 30, 30, 255],
                 visible: true,
                 binding: Some(crate::runtime::scene::TextLabelBinding::FunctionLabel {
@@ -395,6 +397,7 @@ pub(crate) fn synthesize_function_labels(
                         )
                     )
                 },
+                rich_markup: None,
                 color: [30, 30, 30, 255],
                 visible: true,
                 binding: Some(crate::runtime::scene::TextLabelBinding::FunctionLabel {

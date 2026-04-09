@@ -547,6 +547,7 @@ pub(super) fn assemble_scene(
                     to_world(&label.anchor, &analysis.graph_ref)
                 },
                 text: label.text,
+                rich_markup: label.rich_markup,
                 color: label.color,
                 visible: label.visible,
                 binding: label.binding,

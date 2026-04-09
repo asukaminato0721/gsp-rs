@@ -188,6 +188,7 @@ pub(crate) fn decode_group_label_text(file: &GspFile, group: &ObjectGroup) -> Op
 pub(crate) struct RichTextContent {
     pub(crate) text: String,
     pub(crate) hotspots: Vec<RichTextHotspotRef>,
+    pub(crate) markup: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -520,7 +521,10 @@ fn decode_rich_text(payload: &[u8]) -> Option<RichTextContent> {
     let markup = text[start..].trim_end_matches('\0');
 
     if markup.starts_with("<VL") {
-        return extract_visual_rich_text(markup);
+        return extract_visual_rich_text(markup).map(|mut content| {
+            content.markup = Some(markup.to_string());
+            content
+        });
     }
 
     let parsed = parse_markup(markup);
@@ -545,6 +549,7 @@ fn decode_rich_text(payload: &[u8]) -> Option<RichTextContent> {
     (!cleaned.is_empty()).then_some(RichTextContent {
         text: cleaned,
         hotspots: Vec::new(),
+        markup: None,
     })
 }
 
@@ -595,7 +600,11 @@ fn extract_visual_rich_text(markup: &str) -> Option<RichTextContent> {
     let text = text_lines.join("\n");
     text.chars()
         .any(|ch| !ch.is_whitespace())
-        .then_some(RichTextContent { text, hotspots })
+        .then_some(RichTextContent {
+            text,
+            hotspots,
+            markup: None,
+        })
 }
 
 fn parse_markup_nodes(markup: &str) -> Vec<RichMarkupNode> {
@@ -674,6 +683,36 @@ fn render_markup_node(
     if let Some(path_slot) = decode_markup_path_slot(&node.name) {
         return render_markup_nodes(&node.children, Some(path_slot));
     }
+    if node.name == "/" {
+        let Some((numerator_node, denominator_node)) = node.children.split_first() else {
+            return vec![Vec::new()];
+        };
+        let numerator = render_markup_inline(std::slice::from_ref(numerator_node), active_slot);
+        let denominator =
+            render_markup_inline(denominator_node, active_slot);
+        if numerator.is_empty() || denominator.is_empty() {
+            return vec![numerator.into_iter().chain(denominator).collect()];
+        }
+        let mut runs = numerator;
+        runs.push(RichMarkupRun {
+            text: "/".to_string(),
+            path_slot: active_slot,
+        });
+        runs.extend(denominator);
+        return vec![runs];
+    }
+    if node.name == "R" {
+        let child_runs = render_markup_inline(&node.children, active_slot);
+        if child_runs.is_empty() {
+            return vec![Vec::new()];
+        }
+        let mut runs = vec![RichMarkupRun {
+            text: "√".to_string(),
+            path_slot: active_slot,
+        }];
+        runs.extend(child_runs);
+        return vec![runs];
+    }
     if node.name.starts_with('+') {
         let lines = render_markup_nodes(&node.children, active_slot);
         let joined = lines
@@ -705,6 +744,24 @@ fn render_markup_node(
         }]];
     }
     render_markup_nodes(&node.children, active_slot)
+}
+
+fn render_markup_inline(nodes: &[RichMarkupNode], active_slot: Option<usize>) -> Vec<RichMarkupRun> {
+    render_markup_nodes(nodes, active_slot)
+        .into_iter()
+        .enumerate()
+        .flat_map(|(line_index, line)| {
+            let mut runs = Vec::new();
+            if line_index > 0 {
+                runs.push(RichMarkupRun {
+                    text: " ".to_string(),
+                    path_slot: active_slot,
+                });
+            }
+            runs.extend(line);
+            runs
+        })
+        .collect()
 }
 
 fn append_markup_lines(target: &mut Vec<Vec<RichMarkupRun>>, lines: Vec<Vec<RichMarkupRun>>) {
@@ -801,6 +858,11 @@ fn parse_markup(markup: &str) -> String {
                     index = next_index;
 
                     let mut inner = inner_parts.join("");
+                    if name == "/" && inner_parts.len() >= 2 {
+                        inner = format!("{}/{}", inner_parts[0], inner_parts[1]);
+                    } else if name == "R" && !inner.is_empty() {
+                        inner = format!("√{inner}");
+                    }
                     if name.starts_with('+') && !inner.is_empty() {
                         let chars = inner.chars().collect::<Vec<_>>();
                         let split = chars

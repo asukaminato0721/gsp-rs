@@ -142,6 +142,102 @@ canvas.is-dragging {
   cursor: pointer;
 }
 
+.scene-rich-label {
+  position: absolute;
+  pointer-events: none;
+  color: var(--ink);
+  font: 18px/1.1 "Noto Sans", "Segoe UI", sans-serif;
+  white-space: nowrap;
+}
+
+.scene-rich-line {
+  display: flex;
+  align-items: center;
+  gap: 0.08em;
+}
+
+.scene-rich-fraction {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  min-width: 1.2em;
+  margin: 0 0.08em;
+  vertical-align: middle;
+}
+
+.scene-rich-fraction-part {
+  display: block;
+  text-align: center;
+  line-height: 1;
+}
+
+.scene-rich-fraction-bar {
+  display: block;
+  border-top: 1px solid currentColor;
+  margin: 0.08em 0 0.1em;
+}
+
+.scene-rich-overline,
+.scene-rich-ray,
+.scene-rich-arc,
+.scene-rich-radicand {
+  position: relative;
+  display: inline-block;
+}
+
+.scene-rich-overline {
+  text-decoration: overline;
+  text-decoration-thickness: 1px;
+}
+
+.scene-rich-ray {
+  padding-top: 0.18em;
+  border-top: 1px solid currentColor;
+}
+
+.scene-rich-ray::after {
+  content: "";
+  position: absolute;
+  right: -0.12em;
+  top: -0.12em;
+  width: 0.24em;
+  border-top: 1px solid currentColor;
+  transform: rotate(32deg);
+  transform-origin: right center;
+}
+
+.scene-rich-arc {
+  padding-top: 0.28em;
+}
+
+.scene-rich-arc::before {
+  content: "";
+  position: absolute;
+  left: -0.04em;
+  right: -0.04em;
+  top: 0.02em;
+  height: 0.3em;
+  border-top: 1px solid currentColor;
+  border-radius: 999px 999px 0 0;
+}
+
+.scene-rich-radical {
+  display: inline-flex;
+  align-items: flex-start;
+}
+
+.scene-rich-radical-symbol {
+  line-height: 1;
+  transform: translateY(0.08em);
+}
+
+.scene-rich-radicand {
+  margin-left: 0.04em;
+  padding-left: 0.04em;
+  border-top: 1px solid currentColor;
+}
+
 .debug-panel {
   border-top: 1px solid var(--frame);
   background: rgb(252, 252, 252);
