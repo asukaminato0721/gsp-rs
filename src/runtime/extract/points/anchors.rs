@@ -59,6 +59,7 @@ pub(crate) fn decode_coordinate_expression_anchor_raw(
         group.header.kind(),
         crate::format::GroupKind::CoordinateExpressionPoint
             | crate::format::GroupKind::CoordinateExpressionPointAlt
+            | crate::format::GroupKind::Unknown(20)
     ) {
         return None;
     }
@@ -68,44 +69,83 @@ pub(crate) fn decode_coordinate_expression_anchor_raw(
         return None;
     }
     let source_group_index = path.refs[0].checked_sub(1)?;
-    let calc_group = groups.get(path.refs[1].checked_sub(1)?)?;
     let source_position = anchors.get(source_group_index)?.clone()?;
     let source_world = to_world(&source_position, &graph.cloned());
-    let expr = decode_function_expr(file, groups, calc_group)?;
-    let payload = group
-        .records
-        .iter()
-        .find(|record| record.record_type == 0x07d3)
-        .map(|record| record.payload(&file.data))?;
-    let axis = match group.header.kind() {
-        crate::format::GroupKind::CoordinateExpressionPointAlt => {
-            crate::runtime::scene::CoordinateAxis::Horizontal
+    let world = match group.header.kind() {
+        crate::format::GroupKind::Unknown(20) => {
+            let x_calc_group = groups.get(path.refs[1].checked_sub(1)?)?;
+            let y_calc_group = groups.get(path.refs[2].checked_sub(1)?)?;
+            let x_expr = decode_function_expr(file, groups, x_calc_group)?;
+            let y_expr = decode_function_expr(file, groups, y_calc_group)?;
+            let x_parameter_group = find_indexed_path(file, x_calc_group)
+                .and_then(|path| path.refs.first().copied())
+                .and_then(|ordinal| ordinal.checked_sub(1))
+                .and_then(|index| groups.get(index))?;
+            let y_parameter_group = find_indexed_path(file, y_calc_group)
+                .and_then(|path| path.refs.first().copied())
+                .and_then(|ordinal| ordinal.checked_sub(1))
+                .and_then(|index| groups.get(index))?;
+            let x_parameter_name = decode_label_name(file, x_parameter_group)?;
+            let y_parameter_name = decode_label_name(file, y_parameter_group)?;
+            let x_parameter_value =
+                decode_non_graph_parameter_value_for_group(file, x_parameter_group)?;
+            let y_parameter_value =
+                decode_non_graph_parameter_value_for_group(file, y_parameter_group)?;
+            let dx = evaluate_expr_with_parameters(
+                &x_expr,
+                0.0,
+                &BTreeMap::from([(x_parameter_name, x_parameter_value)]),
+            )?;
+            let dy = evaluate_expr_with_parameters(
+                &y_expr,
+                0.0,
+                &BTreeMap::from([(y_parameter_name, y_parameter_value)]),
+            )?;
+            PointRecord {
+                x: source_world.x + dx,
+                y: source_world.y + dy,
+            }
         }
-        _ => match (payload.len() >= 24).then(|| crate::format::read_u32(payload, 20)) {
-            Some(1) => crate::runtime::scene::CoordinateAxis::Vertical,
-            _ => crate::runtime::scene::CoordinateAxis::Horizontal,
-        },
-    };
-    let parameter_group = find_indexed_path(file, calc_group)
-        .and_then(|path| path.refs.first().copied())
-        .and_then(|ordinal| ordinal.checked_sub(1))
-        .and_then(|index| groups.get(index))?;
-    let parameter_name = decode_label_name(file, parameter_group)?;
-    let parameter_value = decode_non_graph_parameter_value_for_group(file, parameter_group)?;
-    let offset = evaluate_expr_with_parameters(
-        &expr,
-        0.0,
-        &BTreeMap::from([(parameter_name, parameter_value)]),
-    )?;
-    let world = match axis {
-        crate::runtime::scene::CoordinateAxis::Horizontal => PointRecord {
-            x: source_world.x + offset,
-            y: source_world.y,
-        },
-        crate::runtime::scene::CoordinateAxis::Vertical => PointRecord {
-            x: source_world.x,
-            y: source_world.y + offset,
-        },
+        _ => {
+            let calc_group = groups.get(path.refs[1].checked_sub(1)?)?;
+            let expr = decode_function_expr(file, groups, calc_group)?;
+            let payload = group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x07d3)
+                .map(|record| record.payload(&file.data))?;
+            let axis = match group.header.kind() {
+                crate::format::GroupKind::CoordinateExpressionPointAlt => {
+                    crate::runtime::scene::CoordinateAxis::Horizontal
+                }
+                _ => match (payload.len() >= 24).then(|| crate::format::read_u32(payload, 20)) {
+                    Some(1) => crate::runtime::scene::CoordinateAxis::Vertical,
+                    _ => crate::runtime::scene::CoordinateAxis::Horizontal,
+                },
+            };
+            let parameter_group = find_indexed_path(file, calc_group)
+                .and_then(|path| path.refs.first().copied())
+                .and_then(|ordinal| ordinal.checked_sub(1))
+                .and_then(|index| groups.get(index))?;
+            let parameter_name = decode_label_name(file, parameter_group)?;
+            let parameter_value =
+                decode_non_graph_parameter_value_for_group(file, parameter_group)?;
+            let offset = evaluate_expr_with_parameters(
+                &expr,
+                0.0,
+                &BTreeMap::from([(parameter_name, parameter_value)]),
+            )?;
+            match axis {
+                crate::runtime::scene::CoordinateAxis::Horizontal => PointRecord {
+                    x: source_world.x + offset,
+                    y: source_world.y,
+                },
+                crate::runtime::scene::CoordinateAxis::Vertical => PointRecord {
+                    x: source_world.x,
+                    y: source_world.y + offset,
+                },
+            }
+        }
     };
     Some(if let Some(transform) = graph {
         to_raw_from_world(&world, transform)
@@ -234,25 +274,46 @@ fn sample_coordinate_trace_points_raw(
 
     let mut points = Vec::with_capacity(descriptor.sample_count);
     let last = descriptor.sample_count.saturating_sub(1).max(1) as f64;
-    let driver =
-        if (driver_group.header.kind()) == crate::format::GroupKind::CoordinateExpressionPoint {
-            let driver_path = find_indexed_path(file, driver_group)?;
-            let source_group_index = driver_path.refs[0].checked_sub(1)?;
-            let source_position = anchors.get(source_group_index)?.clone()?;
-            let source_world = to_world(&source_position, &graph.cloned());
-            let payload = driver_group
-                .records
-                .iter()
-                .find(|record| record.record_type == 0x07d3)
-                .map(|record| record.payload(&file.data))?;
-            let axis = match (payload.len() >= 24).then(|| crate::format::read_u32(payload, 20)) {
-                Some(1) => crate::runtime::scene::CoordinateAxis::Vertical,
-                _ => crate::runtime::scene::CoordinateAxis::Horizontal,
-            };
-            Some((source_world, axis))
-        } else {
-            None
-        };
+    let driver = if matches!(
+        driver_group.header.kind(),
+        crate::format::GroupKind::CoordinateExpressionPoint
+            | crate::format::GroupKind::CoordinateExpressionPointAlt
+            | crate::format::GroupKind::Unknown(20)
+    ) {
+        let driver_path = find_indexed_path(file, driver_group)?;
+        let source_group_index = driver_path.refs[0].checked_sub(1)?;
+        let source_position = anchors.get(source_group_index)?.clone()?;
+        let source_world = to_world(&source_position, &graph.cloned());
+        match driver_group.header.kind() {
+            crate::format::GroupKind::Unknown(20) => {
+                let x_calc_group = groups.get(driver_path.refs[1].checked_sub(1)?)?;
+                let y_calc_group = groups.get(driver_path.refs[2].checked_sub(1)?)?;
+                let x_expr = decode_function_expr(file, groups, x_calc_group)?;
+                let y_expr = decode_function_expr(file, groups, y_calc_group)?;
+                Some((source_world, None, Some((x_expr, y_expr))))
+            }
+            crate::format::GroupKind::CoordinateExpressionPointAlt => Some((
+                source_world,
+                Some(crate::runtime::scene::CoordinateAxis::Horizontal),
+                None,
+            )),
+            _ => {
+                let payload = driver_group
+                    .records
+                    .iter()
+                    .find(|record| record.record_type == 0x07d3)
+                    .map(|record| record.payload(&file.data))?;
+                let axis = match (payload.len() >= 24).then(|| crate::format::read_u32(payload, 20))
+                {
+                    Some(1) => crate::runtime::scene::CoordinateAxis::Vertical,
+                    _ => crate::runtime::scene::CoordinateAxis::Horizontal,
+                };
+                Some((source_world, Some(axis), None))
+            }
+        }
+    } else {
+        None
+    };
     for index in 0..descriptor.sample_count {
         let t = index as f64 / last;
         let x = descriptor.x_min + (descriptor.x_max - descriptor.x_min) * t;
@@ -262,16 +323,35 @@ fn sample_coordinate_trace_points_raw(
             &BTreeMap::from([(parameter_name.clone(), x)]),
         )?;
         let world = match &driver {
-            Some((source_world, crate::runtime::scene::CoordinateAxis::Horizontal)) => {
+            Some((source_world, Some(crate::runtime::scene::CoordinateAxis::Horizontal), _)) => {
                 PointRecord {
                     x: source_world.x + offset,
                     y: source_world.y,
                 }
             }
-            Some((source_world, crate::runtime::scene::CoordinateAxis::Vertical)) => PointRecord {
-                x: source_world.x,
-                y: source_world.y + offset,
-            },
+            Some((source_world, Some(crate::runtime::scene::CoordinateAxis::Vertical), _)) => {
+                PointRecord {
+                    x: source_world.x,
+                    y: source_world.y + offset,
+                }
+            }
+            Some((source_world, None, Some((x_expr, y_expr)))) => {
+                let dx = evaluate_expr_with_parameters(
+                    x_expr,
+                    0.0,
+                    &BTreeMap::from([(parameter_name.clone(), x)]),
+                )?;
+                let dy = evaluate_expr_with_parameters(
+                    y_expr,
+                    0.0,
+                    &BTreeMap::from([(parameter_name.clone(), x)]),
+                )?;
+                PointRecord {
+                    x: source_world.x + dx,
+                    y: source_world.y + dy,
+                }
+            }
+            Some((_, None, None)) => return None,
             None => match descriptor.mode {
                 crate::runtime::functions::FunctionPlotMode::Cartesian => {
                     PointRecord { x, y: offset }

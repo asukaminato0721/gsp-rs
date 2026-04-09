@@ -840,6 +840,18 @@
             point.y = source.y + offset;
           }
         }
+      } else if (point.binding?.kind === "coordinate-source-2d") {
+        const source = env.resolveScenePoint(point.binding.sourceIndex);
+        if (!source) return;
+        const exprParameters = new Map(parameters);
+        exprParameters.set(point.binding.xName, parameters.get(point.binding.xName));
+        exprParameters.set(point.binding.yName, parameters.get(point.binding.yName));
+        const dx = evaluateExpr(point.binding.xExpr, 0, exprParameters);
+        const dy = evaluateExpr(point.binding.yExpr, 0, exprParameters);
+        if (dx !== null && dy !== null) {
+          point.x = source.x + dx;
+          point.y = source.y + dy;
+        }
       } else if (point.binding?.kind === "translate") {
         const source = env.resolveScenePoint(point.binding.sourceIndex);
         const vectorStart = env.resolveScenePoint(point.binding.vectorStartIndex);
@@ -1380,6 +1392,18 @@
                 point.x = source.x;
                 point.y = source.y + offset;
               }
+            }
+          } else if (point.binding?.kind === "coordinate-source-2d") {
+            const source = draft.points[point.binding.sourceIndex];
+            if (!source || !Number.isFinite(source.x)) return;
+            const exprParameters = new Map(parameters);
+            exprParameters.set(point.binding.xName, parameters.get(point.binding.xName));
+            exprParameters.set(point.binding.yName, parameters.get(point.binding.yName));
+            const dx = evaluateExpr(point.binding.xExpr, 0, exprParameters);
+            const dy = evaluateExpr(point.binding.yExpr, 0, exprParameters);
+            if (dx !== null && dy !== null) {
+              point.x = source.x + dx;
+              point.y = source.y + dy;
             }
           } else if (point.binding?.kind === "custom-transform") {
             const value = parameterValueFromPoint(draft, point.binding.sourceIndex);

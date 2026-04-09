@@ -40,6 +40,7 @@ macro_rules! define_group_kinds {
                     Self::CoordinatePoint
                         | Self::CoordinateExpressionPoint
                         | Self::CoordinateExpressionPointAlt
+                        | Self::Unknown(20)
                         | Self::CoordinateTrace
                 )
             }

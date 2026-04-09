@@ -1130,28 +1130,40 @@ pub(crate) fn collect_coordinate_traces(
                 driver_group.header.kind(),
                 crate::format::GroupKind::CoordinateExpressionPoint
                     | crate::format::GroupKind::CoordinateExpressionPointAlt
+                    | crate::format::GroupKind::Unknown(20)
             ) {
                 let driver_path = find_indexed_path(file, driver_group)?;
                 let source_group_index = driver_path.refs[0].checked_sub(1)?;
                 let source_position = anchors.get(source_group_index)?.clone()?;
                 let source_world = crate::runtime::geometry::to_world(&source_position, graph);
-                let driver_payload = driver_group
-                    .records
-                    .iter()
-                    .find(|record| record.record_type == 0x07d3)
-                    .map(|record| record.payload(&file.data))?;
-                let axis = match driver_group.header.kind() {
-                    crate::format::GroupKind::CoordinateExpressionPointAlt => {
-                        crate::runtime::scene::CoordinateAxis::Horizontal
+                match driver_group.header.kind() {
+                    crate::format::GroupKind::Unknown(20) => {
+                        let x_calc_group = groups.get(driver_path.refs[1].checked_sub(1)?)?;
+                        let y_calc_group = groups.get(driver_path.refs[2].checked_sub(1)?)?;
+                        let x_expr = decode_function_expr(file, groups, x_calc_group)?;
+                        let y_expr = decode_function_expr(file, groups, y_calc_group)?;
+                        Some((source_world, None, Some((x_expr, y_expr))))
                     }
-                    _ => match (driver_payload.len() >= 24)
-                        .then(|| crate::format::read_u32(driver_payload, 20))
-                    {
-                        Some(1) => crate::runtime::scene::CoordinateAxis::Vertical,
-                        _ => crate::runtime::scene::CoordinateAxis::Horizontal,
-                    },
-                };
-                Some((source_world, axis))
+                    _ => {
+                        let driver_payload = driver_group
+                            .records
+                            .iter()
+                            .find(|record| record.record_type == 0x07d3)
+                            .map(|record| record.payload(&file.data))?;
+                        let axis = match driver_group.header.kind() {
+                            crate::format::GroupKind::CoordinateExpressionPointAlt => {
+                                crate::runtime::scene::CoordinateAxis::Horizontal
+                            }
+                            _ => match (driver_payload.len() >= 24)
+                                .then(|| crate::format::read_u32(driver_payload, 20))
+                            {
+                                Some(1) => crate::runtime::scene::CoordinateAxis::Vertical,
+                                _ => crate::runtime::scene::CoordinateAxis::Horizontal,
+                            },
+                        };
+                        Some((source_world, Some(axis), None))
+                    }
+                }
             } else {
                 None
             };
@@ -1164,18 +1176,31 @@ pub(crate) fn collect_coordinate_traces(
                 let parameters = BTreeMap::from([(parameter_name.clone(), x)]);
                 let offset = evaluate_expr_with_parameters(&expr, 0.0, &parameters)?;
                 let world = match &driver {
-                    Some((source_world, crate::runtime::scene::CoordinateAxis::Horizontal)) => {
+                    Some((
+                        source_world,
+                        Some(crate::runtime::scene::CoordinateAxis::Horizontal),
+                        _,
+                    )) => PointRecord {
+                        x: source_world.x + offset,
+                        y: source_world.y,
+                    },
+                    Some((
+                        source_world,
+                        Some(crate::runtime::scene::CoordinateAxis::Vertical),
+                        _,
+                    )) => PointRecord {
+                        x: source_world.x,
+                        y: source_world.y + offset,
+                    },
+                    Some((source_world, None, Some((x_expr, y_expr)))) => {
+                        let dx = evaluate_expr_with_parameters(x_expr, 0.0, &parameters)?;
+                        let dy = evaluate_expr_with_parameters(y_expr, 0.0, &parameters)?;
                         PointRecord {
-                            x: source_world.x + offset,
-                            y: source_world.y,
+                            x: source_world.x + dx,
+                            y: source_world.y + dy,
                         }
                     }
-                    Some((source_world, crate::runtime::scene::CoordinateAxis::Vertical)) => {
-                        PointRecord {
-                            x: source_world.x,
-                            y: source_world.y + offset,
-                        }
-                    }
+                    Some((_, None, None)) => return None,
                     None => PointRecord { x, y: offset },
                 };
                 let point = if let Some(transform) = graph {

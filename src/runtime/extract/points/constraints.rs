@@ -81,6 +81,13 @@ pub(crate) enum CoordinatePointSource {
         parameter_name: String,
         axis: crate::runtime::scene::CoordinateAxis,
     },
+    SourcePoint2d {
+        source_group_index: usize,
+        x_parameter_name: String,
+        x_expr: FunctionExpr,
+        y_parameter_name: String,
+        y_expr: FunctionExpr,
+    },
 }
 
 pub(crate) struct CoordinatePoint {
@@ -504,6 +511,7 @@ pub(crate) fn decode_coordinate_point(
         crate::format::GroupKind::CoordinatePoint
             | crate::format::GroupKind::CoordinateExpressionPoint
             | crate::format::GroupKind::CoordinateExpressionPointAlt
+            | crate::format::GroupKind::Unknown(20)
     ) {
         return None;
     }
@@ -594,6 +602,61 @@ pub(crate) fn decode_coordinate_point(
                     axis,
                 },
                 expr,
+            })
+        }
+        crate::format::GroupKind::Unknown(20) => {
+            let source_group_index = path.refs[0].checked_sub(1)?;
+            let source_position = anchors.get(source_group_index)?.clone()?;
+            let source_world = to_world(&source_position, graph);
+            let x_calc_group = groups.get(path.refs[1].checked_sub(1)?)?;
+            let y_calc_group = groups.get(path.refs[2].checked_sub(1)?)?;
+            let x_expr = decode_function_expr(file, groups, x_calc_group)?;
+            let y_expr = decode_function_expr(file, groups, y_calc_group)?;
+
+            let x_parameter_group = find_indexed_path(file, x_calc_group)
+                .and_then(|path| path.refs.first().copied())
+                .and_then(|ordinal| ordinal.checked_sub(1))
+                .and_then(|index| groups.get(index))?;
+            let y_parameter_group = find_indexed_path(file, y_calc_group)
+                .and_then(|path| path.refs.first().copied())
+                .and_then(|ordinal| ordinal.checked_sub(1))
+                .and_then(|index| groups.get(index))?;
+            let x_parameter_name = decode_label_name(file, x_parameter_group)?;
+            let y_parameter_name = decode_label_name(file, y_parameter_group)?;
+            let x_parameter_value =
+                decode_non_graph_parameter_value_for_group(file, x_parameter_group)?;
+            let y_parameter_value =
+                decode_non_graph_parameter_value_for_group(file, y_parameter_group)?;
+            let dx = evaluate_expr_with_parameters(
+                &x_expr,
+                0.0,
+                &BTreeMap::from([(x_parameter_name.clone(), x_parameter_value)]),
+            )?;
+            let dy = evaluate_expr_with_parameters(
+                &y_expr,
+                0.0,
+                &BTreeMap::from([(y_parameter_name.clone(), y_parameter_value)]),
+            )?;
+            let world = PointRecord {
+                x: source_world.x + dx,
+                y: source_world.y + dy,
+            };
+            let position = if let Some(transform) = graph {
+                to_raw_from_world(&world, transform)
+            } else {
+                world
+            };
+
+            Some(CoordinatePoint {
+                position,
+                source: CoordinatePointSource::SourcePoint2d {
+                    source_group_index,
+                    x_parameter_name,
+                    x_expr: x_expr.clone(),
+                    y_parameter_name,
+                    y_expr: y_expr.clone(),
+                },
+                expr: x_expr,
             })
         }
         _ => None,

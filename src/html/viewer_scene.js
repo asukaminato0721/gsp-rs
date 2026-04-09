@@ -372,7 +372,11 @@
     const source = pointBinding?.sourceIndex !== undefined
       ? env.resolveScenePoint(pointBinding.sourceIndex)
       : null;
-    if (!source || pointBinding?.kind !== "coordinate-source") return null;
+    if (
+      !source
+      || (pointBinding?.kind !== "coordinate-source"
+        && pointBinding?.kind !== "coordinate-source-2d")
+    ) return null;
     const parameters = env?.currentDynamics
       ? new Map(env.currentDynamics().parameters.map((parameter) => [parameter.name, parameter.value]))
       : new Map();
@@ -382,16 +386,29 @@
       const t = index / last;
       const value = binding.xMin + (binding.xMax - binding.xMin) * t;
       const exprParameters = new Map(parameters);
-      if (typeof pointBinding.name === "string" && pointBinding.name.length > 0) {
-        exprParameters.set(pointBinding.name, value);
+      if (pointBinding.kind === "coordinate-source-2d") {
+        if (typeof pointBinding.xName === "string" && pointBinding.xName.length > 0) {
+          exprParameters.set(pointBinding.xName, value);
+        }
+        if (typeof pointBinding.yName === "string" && pointBinding.yName.length > 0) {
+          exprParameters.set(pointBinding.yName, value);
+        }
+        const dx = evaluateExpr(pointBinding.xExpr, 0, exprParameters);
+        const dy = evaluateExpr(pointBinding.yExpr, 0, exprParameters);
+        if (dx === null || dy === null) continue;
+        points.push({ x: source.x + dx, y: source.y + dy });
+      } else {
+        if (typeof pointBinding.name === "string" && pointBinding.name.length > 0) {
+          exprParameters.set(pointBinding.name, value);
+        }
+        const offset = evaluateExpr(pointBinding.expr, 0, exprParameters);
+        if (offset === null) continue;
+        points.push(
+          pointBinding.axis === "horizontal"
+            ? { x: source.x + offset, y: source.y }
+            : { x: source.x, y: source.y + offset }
+        );
       }
-      const offset = evaluateExpr(pointBinding.expr, 0, exprParameters);
-      if (offset === null) continue;
-      points.push(
-        pointBinding.axis === "horizontal"
-          ? { x: source.x + offset, y: source.y }
-          : { x: source.x, y: source.y + offset }
-      );
     }
     return points.length >= 2 ? points : null;
   }

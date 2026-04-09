@@ -1604,6 +1604,19 @@ enum PointBindingJson {
         expr: FunctionExprJson,
         axis: CoordinateAxisJson,
     },
+    #[serde(rename = "coordinate-source-2d")]
+    CoordinateSource2d {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        #[serde(rename = "xName")]
+        x_name: String,
+        #[serde(rename = "xExpr")]
+        x_expr: FunctionExprJson,
+        #[serde(rename = "yName")]
+        y_name: String,
+        #[serde(rename = "yExpr")]
+        y_expr: FunctionExprJson,
+    },
     #[serde(rename = "custom-transform")]
     CustomTransform {
         #[serde(rename = "sourceIndex")]
@@ -1706,6 +1719,19 @@ impl PointBindingJson {
                 name: name.clone(),
                 expr: FunctionExprJson::from_expr(expr),
                 axis: CoordinateAxisJson::from_axis(*axis),
+            },
+            ScenePointBinding::CoordinateSource2d {
+                source_index,
+                x_name,
+                x_expr,
+                y_name,
+                y_expr,
+            } => Self::CoordinateSource2d {
+                source_index: *source_index,
+                x_name: x_name.clone(),
+                x_expr: FunctionExprJson::from_expr(x_expr),
+                y_name: y_name.clone(),
+                y_expr: FunctionExprJson::from_expr(y_expr),
             },
             ScenePointBinding::CustomTransform {
                 source_index,

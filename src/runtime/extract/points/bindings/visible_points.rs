@@ -152,7 +152,8 @@ pub(crate) fn collect_visible_points(
             }
             crate::format::GroupKind::CoordinatePoint
             | crate::format::GroupKind::CoordinateExpressionPoint
-            | crate::format::GroupKind::CoordinateExpressionPointAlt => {
+            | crate::format::GroupKind::CoordinateExpressionPointAlt
+            | crate::format::GroupKind::Unknown(20) => {
                 decode_coordinate_point(file, groups, group, anchors, graph).and_then(|point| {
                     scene_point_from_coordinate(
                         point,
@@ -648,6 +649,21 @@ fn scene_point_from_coordinate(
             name: parameter_name,
             expr: point.expr,
             axis,
+        },
+        CoordinatePointSource::SourcePoint2d {
+            source_group_index,
+            x_parameter_name,
+            x_expr,
+            y_parameter_name,
+            y_expr,
+        } => ScenePointBinding::CoordinateSource2d {
+            source_index: group_to_point_index
+                .get(source_group_index)
+                .and_then(|point_index| *point_index)?,
+            x_name: x_parameter_name,
+            x_expr,
+            y_name: y_parameter_name,
+            y_expr,
         },
     };
     Some(scene_point(

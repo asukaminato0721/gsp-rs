@@ -150,6 +150,21 @@ mod tests {
     }
 
     #[test]
+    fn exports_coordinate_trace_intersection_xy_fixture_into_html() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/gsp/insection/cood_intersection_xy.gsp"),
+            800,
+            600,
+        )
+        .expect("coordinate trace xy intersection fixture should compile");
+
+        assert!(html.contains("\"kind\":\"coordinate-trace\""));
+        assert!(html.contains("\"kind\":\"coordinate-source-2d\""));
+        assert!(html.contains("\"kind\":\"line-trace-intersection\""));
+        assert!(html.contains("\"y\":3.069166666666897"));
+    }
+
+    #[test]
     fn exports_point_iteration_metadata_into_html() {
         let html = compile_bytes_to_html_document(
             include_bytes!("../tests/fixtures/gsp/static/简单迭代/原象点初象点深度5迭代.gsp"),

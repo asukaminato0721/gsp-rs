@@ -479,6 +479,13 @@ pub(crate) enum ScenePointBinding {
         expr: FunctionExpr,
         axis: CoordinateAxis,
     },
+    CoordinateSource2d {
+        source_index: usize,
+        x_name: String,
+        x_expr: FunctionExpr,
+        y_name: String,
+        y_expr: FunctionExpr,
+    },
     CustomTransform {
         source_index: usize,
         origin_index: usize,
