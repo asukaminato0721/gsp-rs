@@ -61,6 +61,7 @@ macro_rules! define_group_kinds {
                         | Self::GraphCalibrationY
                         | Self::MeasurementLine
                         | Self::AxisLine
+                        | Self::FunctionPlot
                 )
             }
 
@@ -160,5 +161,6 @@ mod tests {
         assert!(GroupKind::AffineIteration.is_carried_iteration());
         assert!(GroupKind::GraphCalibrationX.is_graph_calibration());
         assert!(GroupKind::MeasurementLine.is_graph_object());
+        assert!(GroupKind::FunctionPlot.is_graph_object());
     }
 }
