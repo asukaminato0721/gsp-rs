@@ -230,6 +230,39 @@ mod tests {
     }
 
     #[test]
+    fn exports_standalone_parameter_controls_into_html() {
+        let scene_json = compile_bytes_to_scene_json(
+            include_bytes!("../tests/fixtures/未实现的系统功能/parameter.gsp"),
+            800,
+            600,
+        )
+        .expect("standalone parameter fixture should compile");
+
+        let scene: Value =
+            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+        let parameters = scene["parameters"]
+            .as_array()
+            .expect("scene parameters should be an array");
+        assert_eq!(parameters.len(), 3);
+        assert_eq!(parameters[0]["name"].as_str(), Some("t₁"));
+        assert_eq!(parameters[0]["value"].as_f64(), Some(1.0));
+        assert_eq!(parameters[0]["unit"].as_str(), Some("degree"));
+        assert_eq!(parameters[1]["name"].as_str(), Some("t₂"));
+        assert_eq!(parameters[1]["value"].as_f64(), Some(1.0));
+        assert_eq!(parameters[1]["unit"].as_str(), Some("cm"));
+        assert_eq!(parameters[2]["name"].as_str(), Some("t₃"));
+        assert_eq!(parameters[2]["value"].as_f64(), Some(1.0));
+        assert_eq!(parameters[2]["unit"], Value::Null);
+        let labels = scene["labels"].as_array().expect("scene labels should be an array");
+        assert_eq!(labels[0]["text"].as_str(), Some("t₁ = 1.00°"));
+        assert_eq!(labels[0]["visible"].as_bool(), Some(true));
+        assert_eq!(labels[1]["text"].as_str(), Some("t₂ = 1.00 cm"));
+        assert_eq!(labels[1]["visible"].as_bool(), Some(true));
+        assert_eq!(labels[2]["text"].as_str(), Some("t₃ = 1.00"));
+        assert_eq!(labels[2]["visible"].as_bool(), Some(true));
+    }
+
+    #[test]
     fn exports_carried_polygon_iteration_metadata_into_html() {
         let html = compile_bytes_to_html_document(
             include_bytes!(

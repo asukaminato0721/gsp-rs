@@ -1365,7 +1365,8 @@
       const parameters = parameterMap(env);
       env.currentDynamics().parameters.forEach((parameter) => {
         if (typeof parameter.labelIndex === "number" && draft.labels[parameter.labelIndex]) {
-          draft.labels[parameter.labelIndex].text = `${parameter.name} = ${parameter.value.toFixed(2)}`;
+          draft.labels[parameter.labelIndex].text =
+            `${parameter.name} = ${parameter.value.toFixed(2)}${parameterValueSuffix(parameter)}`;
         }
       });
       draft.points.forEach((point) => {
@@ -1472,6 +1473,18 @@
     rebuildIteratedLabels(env, scene, parameters);
   }
 
+  /** @param {{ unit?: string | null }} parameter */
+  function parameterValueSuffix(parameter) {
+    switch (parameter.unit) {
+      case "degree":
+        return "\u00B0";
+      case "cm":
+        return " cm";
+      default:
+        return "";
+    }
+  }
+
   /** @param {ViewerEnv} env */
   function buildParameterControls(env) {
     env.parameterControls.replaceChildren();
@@ -1495,6 +1508,7 @@
           }
         },
       }),
+      parameterValueSuffix(parameter),
     ));
     if (controls.length > 0) {
       env.van.add(env.parameterControls, ...controls);

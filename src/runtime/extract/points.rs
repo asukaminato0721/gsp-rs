@@ -51,11 +51,19 @@ pub(super) fn collect_non_graph_parameters(
     groups: &[ObjectGroup],
     labels: &mut [TextLabel],
 ) -> Vec<SceneParameter> {
+    let allow_orphan_parameter_controls = groups.iter().all(has_parameter_control_payload);
     groups
         .iter()
         .enumerate()
         .filter_map(|(group_index, group)| {
-            decode_non_graph_parameter(file, groups, group_index, group, labels)
+            decode_non_graph_parameter(
+                file,
+                groups,
+                group_index,
+                group,
+                labels,
+                allow_orphan_parameter_controls,
+            )
         })
         .collect()
 }
@@ -66,26 +74,80 @@ fn decode_non_graph_parameter(
     group_index: usize,
     group: &ObjectGroup,
     labels: &mut [TextLabel],
+    allow_orphan_parameter_controls: bool,
 ) -> Option<SceneParameter> {
-    let name = editable_non_graph_parameter_name_for_group(file, groups, group)?;
-    let value = if is_angle_parameter_group(file, groups, group_index) {
+    let name = if allow_orphan_parameter_controls && has_parameter_control_payload(group) {
+        decode_label_name(file, group)?
+    } else {
+        editable_non_graph_parameter_name_for_group(file, groups, group)?
+    };
+    let unit = parameter_unit_for_group(
+        file,
+        groups,
+        group_index,
+        group,
+        allow_orphan_parameter_controls,
+    );
+    let value = if allow_orphan_parameter_controls && has_parameter_control_payload(group) {
+        decode_orphan_parameter_control_value_for_group(file, group)?
+    } else if is_angle_parameter_group(file, groups, group_index) {
         decode_angle_parameter_value_for_group(file, group)?
     } else {
         decode_non_graph_parameter_value_for_group(file, group)?
     };
     let label_index = labels.iter().position(|label| label.text == name);
     if let Some(index) = label_index {
-        labels[index].text = format!("{name} = {:.2}", value);
+        labels[index].text = format_parameter_label(&name, unit.as_deref(), value);
+        if allow_orphan_parameter_controls {
+            labels[index].visible = true;
+        }
     }
     Some(SceneParameter {
         name,
         value,
+        unit,
         label_index,
     })
 }
 
 fn is_slider_parameter_name(name: &str) -> bool {
     name.contains('₁') || name.contains('₂') || name.contains('₃') || name.contains('₄')
+}
+
+fn format_parameter_label(name: &str, unit: Option<&str>, value: f64) -> String {
+    format!("{name} = {:.2}{}", value, parameter_unit_suffix(unit))
+}
+
+fn parameter_unit_suffix(unit: Option<&str>) -> &'static str {
+    match unit {
+        Some("degree") => "\u{00b0}",
+        Some("cm") => " cm",
+        _ => "",
+    }
+}
+
+fn has_parameter_control_payload(group: &ObjectGroup) -> bool {
+    (group.header.kind()) == crate::format::GroupKind::Point
+        && group
+            .records
+            .iter()
+            .any(|record| record.record_type == 0x0907)
+        && group
+            .records
+            .iter()
+            .any(|record| record.record_type == 0x07d5)
+        && group
+            .records
+            .iter()
+            .any(|record| record.record_type == 0x07d8)
+        && group
+            .records
+            .iter()
+            .any(|record| record.record_type == 0x08a3)
+        && !group
+            .records
+            .iter()
+            .any(|record| record.record_type == 0x0899)
 }
 
 fn is_angle_parameter_group(file: &GspFile, groups: &[ObjectGroup], target_index: usize) -> bool {
@@ -142,18 +204,10 @@ pub(super) fn is_non_graph_parameter_group(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> bool {
-    (group.header.kind()) == crate::format::GroupKind::Point
-        && group
-            .records
-            .iter()
-            .any(|record| record.record_type == 0x0907)
-        && !group
-            .records
-            .iter()
-            .any(|record| record.record_type == 0x0899)
-        && has_external_indexed_path_reference(file, groups, group.ordinal)
+    has_parameter_control_payload(group)
         && !is_function_plot_definition_group(file, groups, group.ordinal)
         && !is_function_plot_parameter_group(file, groups, group.ordinal)
+        && has_external_indexed_path_reference(file, groups, group.ordinal)
 }
 
 pub(super) fn is_editable_non_graph_parameter_name(name: &str) -> bool {
@@ -216,6 +270,59 @@ pub(super) fn decode_non_graph_parameter_value_for_group(
         let value_code = read_u16(payload, payload.len().checked_sub(2)?);
         Some(f64::from(value_code))
     }
+}
+
+fn decode_orphan_parameter_control_value_for_group(
+    file: &GspFile,
+    group: &ObjectGroup,
+) -> Option<f64> {
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x0907)
+        .map(|record| record.payload(&file.data))?;
+    let control_value_offset = match payload
+        .len()
+        .checked_sub(2)
+        .map(|offset| read_u16(payload, offset))
+    {
+        Some(0x0101 | 0x0201) => payload.len().checked_sub(4)?,
+        _ => payload.len().checked_sub(2)?,
+    };
+    Some(f64::from(read_u16(payload, control_value_offset)))
+}
+
+fn decode_parameter_unit_from_payload(payload: &[u8]) -> Option<&'static str> {
+    payload
+        .len()
+        .checked_sub(2)
+        .map(|offset| read_u16(payload, offset))
+        .and_then(|suffix| match suffix {
+            0x0101 => Some("degree"),
+            0x0201 => Some("cm"),
+            _ => None,
+        })
+}
+
+fn parameter_unit_for_group(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group_index: usize,
+    group: &ObjectGroup,
+    allow_orphan_parameter_controls: bool,
+) -> Option<String> {
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x0907)
+        .map(|record| record.payload(&file.data));
+    if let Some(unit) = payload.and_then(decode_parameter_unit_from_payload) {
+        return Some(unit.to_string());
+    }
+    if !allow_orphan_parameter_controls && is_angle_parameter_group(file, groups, group_index) {
+        return Some("degree".to_string());
+    }
+    None
 }
 
 pub(super) fn decode_angle_parameter_value_for_group(

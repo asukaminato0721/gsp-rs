@@ -2149,6 +2149,7 @@ impl LineConstraintJson {
 struct ParameterJson {
     name: String,
     value: f64,
+    unit: Option<String>,
     label_index: Option<usize>,
 }
 
@@ -2157,6 +2158,7 @@ impl ParameterJson {
         Self {
             name: parameter.name.clone(),
             value: parameter.value,
+            unit: parameter.unit.clone(),
             label_index: parameter.label_index,
         }
     }

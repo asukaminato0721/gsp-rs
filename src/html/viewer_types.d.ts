@@ -206,7 +206,7 @@ type ViewerEnv = {
   view: any;
   currentScene: () => any;
   currentDynamics: () => {
-    parameters: Array<{ name: string; value: number; labelIndex?: number | null }>;
+    parameters: Array<{ name: string; value: number; unit?: string | null; labelIndex?: number | null }>;
     functions: Array<{
       name: string;
       derivative: boolean;

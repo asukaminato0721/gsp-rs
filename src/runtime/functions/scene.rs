@@ -69,6 +69,7 @@ pub(crate) fn collect_scene_parameters(
             Some(SceneParameter {
                 name,
                 value,
+                unit: None,
                 label_index: Some(label_index),
             })
         })

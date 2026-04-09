@@ -432,6 +432,7 @@ pub(crate) struct PolygonShape {
 pub(crate) struct SceneParameter {
     pub(crate) name: String,
     pub(crate) value: f64,
+    pub(crate) unit: Option<String>,
     pub(crate) label_index: Option<usize>,
 }
 
