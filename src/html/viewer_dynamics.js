@@ -875,6 +875,18 @@
       }
     });
 
+    scene.points.forEach((point, pointIndex) => {
+      if (!point.constraint) {
+        return;
+      }
+      const resolved = env.resolveScenePoint(pointIndex);
+      if (!resolved) {
+        return;
+      }
+      point.x = resolved.x;
+      point.y = resolved.y;
+    });
+
     scene.circles.forEach((circle) => {
       if (circle.binding?.kind === "point-radius-circle") {
         const center = env.resolveScenePoint(circle.binding.centerIndex);

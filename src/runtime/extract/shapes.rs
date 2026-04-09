@@ -34,6 +34,7 @@ pub(super) use iterations::{
     collect_carried_iteration_lines, collect_carried_iteration_polygons,
     collect_carried_line_iteration_families, collect_carried_polygon_edge_segment_groups,
     collect_carried_polygon_iteration_families, collect_iteration_shapes,
+    collect_rotational_iteration_segment_groups,
     collect_rotational_iteration_lines,
 };
 pub(super) use transforms::{

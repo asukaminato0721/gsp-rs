@@ -88,13 +88,11 @@ pub(crate) fn regular_polygon_iteration_step(
     iter_group: &ObjectGroup,
 ) -> Option<(usize, FunctionExpr, String, f64)> {
     let path = find_indexed_path(file, iter_group)?;
-    if path.refs.len() < 3 {
-        return None;
-    }
-    let seed_group = groups.get(path.refs[2].checked_sub(1)?)?;
-    if (seed_group.header.kind()) != crate::format::GroupKind::ParameterRotation {
-        return None;
-    }
+    let seed_group = path
+        .refs
+        .iter()
+        .filter_map(|ordinal| ordinal.checked_sub(1).and_then(|index| groups.get(index)))
+        .find(|group| (group.header.kind()) == crate::format::GroupKind::ParameterRotation)?;
     let seed_path = find_indexed_path(file, seed_group)?;
     if seed_path.refs.len() < 3 {
         return None;
