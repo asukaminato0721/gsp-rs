@@ -503,6 +503,7 @@ pub(crate) fn decode_coordinate_point(
         kind,
         crate::format::GroupKind::CoordinatePoint
             | crate::format::GroupKind::CoordinateExpressionPoint
+            | crate::format::GroupKind::CoordinateExpressionPointAlt
     ) {
         return None;
     }
@@ -538,7 +539,8 @@ pub(crate) fn decode_coordinate_point(
                 expr,
             })
         }
-        crate::format::GroupKind::CoordinateExpressionPoint => {
+        crate::format::GroupKind::CoordinateExpressionPoint
+        | crate::format::GroupKind::CoordinateExpressionPointAlt => {
             let source_group_index = path.refs[0].checked_sub(1)?;
             let source_position = anchors.get(source_group_index)?.clone()?;
             let source_world = to_world(&source_position, graph);
@@ -547,9 +549,14 @@ pub(crate) fn decode_coordinate_point(
                 .iter()
                 .find(|record| record.record_type == 0x07d3)
                 .map(|record| record.payload(&file.data))?;
-            let axis = match (payload.len() >= 24).then(|| read_u32(payload, 20)) {
-                Some(1) => crate::runtime::scene::CoordinateAxis::Vertical,
-                _ => crate::runtime::scene::CoordinateAxis::Horizontal,
+            let axis = match kind {
+                crate::format::GroupKind::CoordinateExpressionPointAlt => {
+                    crate::runtime::scene::CoordinateAxis::Horizontal
+                }
+                _ => match (payload.len() >= 24).then(|| read_u32(payload, 20)) {
+                    Some(1) => crate::runtime::scene::CoordinateAxis::Vertical,
+                    _ => crate::runtime::scene::CoordinateAxis::Horizontal,
+                },
             };
             let parameter_group = find_indexed_path(file, calc_group)
                 .and_then(|path| path.refs.first().copied())

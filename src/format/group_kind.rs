@@ -37,7 +37,10 @@ macro_rules! define_group_kinds {
             pub fn is_coordinate_object(self) -> bool {
                 matches!(
                     self,
-                    Self::CoordinatePoint | Self::CoordinateExpressionPoint | Self::CoordinateTrace
+                    Self::CoordinatePoint
+                        | Self::CoordinateExpressionPoint
+                        | Self::CoordinateExpressionPointAlt
+                        | Self::CoordinateTrace
                 )
             }
 
@@ -93,6 +96,7 @@ define_group_kinds! {
     Translation = 16,
     CartesianOffsetPoint = 17,
     CoordinateExpressionPoint = 18,
+    CoordinateExpressionPointAlt = 19,
     PolarOffsetPoint = 21,
     DerivedSegment24 = 24,
     CustomTransformPoint = 26,

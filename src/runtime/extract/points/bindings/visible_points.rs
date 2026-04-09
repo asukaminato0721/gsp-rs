@@ -151,7 +151,8 @@ pub(crate) fn collect_visible_points(
                 )
             }
             crate::format::GroupKind::CoordinatePoint
-            | crate::format::GroupKind::CoordinateExpressionPoint => {
+            | crate::format::GroupKind::CoordinateExpressionPoint
+            | crate::format::GroupKind::CoordinateExpressionPointAlt => {
                 decode_coordinate_point(file, groups, group, anchors, graph).and_then(|point| {
                     scene_point_from_coordinate(
                         point,

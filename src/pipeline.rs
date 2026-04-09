@@ -134,6 +134,22 @@ mod tests {
     }
 
     #[test]
+    fn exports_coordinate_trace_intersection_y_fixture_into_html() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/gsp/insection/cood_intersection_y.gsp"),
+            800,
+            600,
+        )
+        .expect("coordinate trace y intersection fixture should compile");
+
+        assert!(html.contains("\"kind\":\"coordinate-trace\""));
+        assert!(html.contains("\"kind\":\"coordinate-source\""));
+        assert!(html.contains("\"axis\":\"horizontal\""));
+        assert!(html.contains("\"kind\":\"line-trace-intersection\""));
+        assert!(html.contains("\"x\":0.0,\"y\":0.0"));
+    }
+
+    #[test]
     fn exports_point_iteration_metadata_into_html() {
         let html = compile_bytes_to_html_document(
             include_bytes!("../tests/fixtures/gsp/static/简单迭代/原象点初象点深度5迭代.gsp"),

@@ -1372,6 +1372,47 @@ fn preserves_coordinate_trace_intersection_in_cood_intersection_gsp() {
 }
 
 #[test]
+fn preserves_coordinate_trace_intersection_in_cood_intersection_y_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/insection/cood_intersection_y.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert!(scene.graph_mode, "expected graph scene");
+    assert_eq!(
+        scene.points.len(),
+        6,
+        "expected source, derived, and intersection points"
+    );
+    assert!(scene.lines.iter().any(|line| {
+        matches!(
+            line.binding,
+            Some(crate::runtime::scene::LineBinding::CoordinateTrace { point_index, .. })
+                if point_index == 4
+        )
+    }));
+    assert!(scene.points.iter().any(|point| {
+        matches!(
+            point.binding,
+            Some(crate::runtime::scene::ScenePointBinding::CoordinateSource {
+                ref name,
+                axis: crate::runtime::scene::CoordinateAxis::Horizontal,
+                ..
+            }) if name == "t₁"
+        ) && (point.position.x - -2.0427083333333336).abs() < 1e-6
+            && (point.position.y - -2.8839583333333336).abs() < 1e-6
+    }));
+    assert!(scene.points.iter().any(|point| {
+        matches!(
+            point.constraint,
+            crate::runtime::scene::ScenePointConstraint::LineTraceIntersection {
+                point_index, ..
+            } if point_index == 4
+        ) && point.position.x.abs() < 1e-6
+            && point.position.y.abs() < 1e-6
+    }));
+}
+
+#[test]
 fn preserves_midpoint_binding_and_trace_in_trace_gsp() {
     let data = include_bytes!("../../../tests/fixtures/gsp/trace.gsp");
     let file = GspFile::parse(data).expect("fixture parses");

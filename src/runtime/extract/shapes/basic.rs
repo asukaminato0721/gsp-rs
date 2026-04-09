@@ -1126,9 +1126,11 @@ pub(crate) fn collect_coordinate_traces(
             let descriptor = decode_function_plot_descriptor(payload)?;
             let expr = decode_function_expr(file, groups, calc_group)?;
             let driver_group = groups.get(path.refs[0].checked_sub(1)?)?;
-            let driver = if (driver_group.header.kind())
-                == crate::format::GroupKind::CoordinateExpressionPoint
-            {
+            let driver = if matches!(
+                driver_group.header.kind(),
+                crate::format::GroupKind::CoordinateExpressionPoint
+                    | crate::format::GroupKind::CoordinateExpressionPointAlt
+            ) {
                 let driver_path = find_indexed_path(file, driver_group)?;
                 let source_group_index = driver_path.refs[0].checked_sub(1)?;
                 let source_position = anchors.get(source_group_index)?.clone()?;
@@ -1138,11 +1140,16 @@ pub(crate) fn collect_coordinate_traces(
                     .iter()
                     .find(|record| record.record_type == 0x07d3)
                     .map(|record| record.payload(&file.data))?;
-                let axis = match (driver_payload.len() >= 24)
-                    .then(|| crate::format::read_u32(driver_payload, 20))
-                {
-                    Some(1) => crate::runtime::scene::CoordinateAxis::Vertical,
-                    _ => crate::runtime::scene::CoordinateAxis::Horizontal,
+                let axis = match driver_group.header.kind() {
+                    crate::format::GroupKind::CoordinateExpressionPointAlt => {
+                        crate::runtime::scene::CoordinateAxis::Horizontal
+                    }
+                    _ => match (driver_payload.len() >= 24)
+                        .then(|| crate::format::read_u32(driver_payload, 20))
+                    {
+                        Some(1) => crate::runtime::scene::CoordinateAxis::Vertical,
+                        _ => crate::runtime::scene::CoordinateAxis::Horizontal,
+                    },
                 };
                 Some((source_world, axis))
             } else {

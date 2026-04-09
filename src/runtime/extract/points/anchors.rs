@@ -55,7 +55,11 @@ pub(crate) fn decode_coordinate_expression_anchor_raw(
     anchors: &[Option<PointRecord>],
     graph: Option<&GraphTransform>,
 ) -> Option<PointRecord> {
-    if (group.header.kind()) != crate::format::GroupKind::CoordinateExpressionPoint {
+    if !matches!(
+        group.header.kind(),
+        crate::format::GroupKind::CoordinateExpressionPoint
+            | crate::format::GroupKind::CoordinateExpressionPointAlt
+    ) {
         return None;
     }
 
@@ -73,9 +77,14 @@ pub(crate) fn decode_coordinate_expression_anchor_raw(
         .iter()
         .find(|record| record.record_type == 0x07d3)
         .map(|record| record.payload(&file.data))?;
-    let axis = match (payload.len() >= 24).then(|| crate::format::read_u32(payload, 20)) {
-        Some(1) => crate::runtime::scene::CoordinateAxis::Vertical,
-        _ => crate::runtime::scene::CoordinateAxis::Horizontal,
+    let axis = match group.header.kind() {
+        crate::format::GroupKind::CoordinateExpressionPointAlt => {
+            crate::runtime::scene::CoordinateAxis::Horizontal
+        }
+        _ => match (payload.len() >= 24).then(|| crate::format::read_u32(payload, 20)) {
+            Some(1) => crate::runtime::scene::CoordinateAxis::Vertical,
+            _ => crate::runtime::scene::CoordinateAxis::Horizontal,
+        },
     };
     let parameter_group = find_indexed_path(file, calc_group)
         .and_then(|path| path.refs.first().copied())
