@@ -112,6 +112,7 @@ fn evaluate_function_term_with_parameters(
     match term {
         FunctionTerm::Variable => Some(x),
         FunctionTerm::Constant(value) => Some(value),
+        FunctionTerm::PiAngle => Some(180.0),
         FunctionTerm::Parameter(name, value) => Some(*parameters.get(&name).unwrap_or(&value)),
         FunctionTerm::UnaryX(op) => match op {
             UnaryFunction::Sin => Some(x.sin()),
@@ -151,6 +152,7 @@ fn evaluate_function_term(term: FunctionTerm, x: f64) -> Option<f64> {
     match term {
         FunctionTerm::Variable => Some(x),
         FunctionTerm::Constant(value) => Some(value),
+        FunctionTerm::PiAngle => Some(180.0),
         FunctionTerm::Parameter(_, value) => Some(value),
         FunctionTerm::UnaryX(op) => match op {
             UnaryFunction::Sin => Some(x.sin()),

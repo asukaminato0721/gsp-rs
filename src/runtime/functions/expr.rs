@@ -50,6 +50,7 @@ pub(crate) enum UnaryFunction {
 pub(crate) enum FunctionTerm {
     Variable,
     Constant(f64),
+    PiAngle,
     Parameter(String, f64),
     UnaryX(UnaryFunction),
     Product(Box<FunctionTerm>, Box<FunctionTerm>),
@@ -112,6 +113,7 @@ fn format_function_term(term: FunctionTerm, variable: &str) -> String {
     match term {
         FunctionTerm::Variable => variable.to_string(),
         FunctionTerm::Constant(value) => format_number(value),
+        FunctionTerm::PiAngle => "180".to_string(),
         FunctionTerm::Parameter(name, _) => name,
         FunctionTerm::UnaryX(op) => match op {
             UnaryFunction::Sin => format!("sin({variable})"),
@@ -187,7 +189,7 @@ pub(super) fn function_term_contains_symbol(term: &FunctionTerm) -> bool {
         FunctionTerm::Power(base, exponent) => {
             function_term_contains_symbol(base) || function_term_contains_symbol(exponent)
         }
-        FunctionTerm::Constant(_) => false,
+        FunctionTerm::Constant(_) | FunctionTerm::PiAngle => false,
     }
 }
 

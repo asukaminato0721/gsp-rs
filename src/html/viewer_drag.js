@@ -1,7 +1,7 @@
 (function() {
   const modules = window.GspViewerModules || (window.GspViewerModules = {});
 
-  function dragModeFor(env, pointIndex, labelIndex, polygonIndex) {
+  function dragModeFor(env, pointIndex, labelIndex, polygonIndex, iterationTableIndex) {
     if (pointIndex !== null) {
       const point = env.currentScene().points[pointIndex];
       if (point?.binding?.kind === "graph-calibration") {
@@ -24,16 +24,20 @@
     if (polygonIndex !== null) {
       return "polygon";
     }
+    if (iterationTableIndex !== null) {
+      return "iteration-table";
+    }
     return labelIndex !== null ? "label" : "pan";
   }
 
-  function beginDrag(env, pointerId, position, pointIndex, labelIndex, polygonIndex) {
+  function beginDrag(env, pointerId, position, pointIndex, labelIndex, polygonIndex, iterationTableIndex) {
     env.dragState.val = {
       pointerId,
-      mode: dragModeFor(env, pointIndex, labelIndex, polygonIndex),
+      mode: dragModeFor(env, pointIndex, labelIndex, polygonIndex, iterationTableIndex),
       pointIndex,
       labelIndex,
       polygonIndex,
+      iterationTableIndex,
       lastX: position.x,
       lastY: position.y,
     };
@@ -193,6 +197,15 @@
     });
   }
 
+  function updateDraggedIterationTable(env, position) {
+    env.updateScene((draft) => {
+      const table = draft.iterationTables?.[env.dragState.val.iterationTableIndex];
+      if (!table) return;
+      table.x = position.x;
+      table.y = position.y;
+    });
+  }
+
   function panFromPointerDelta(env, position) {
     const worldNow = env.toWorld(position.x, position.y);
     const worldLast = env.toWorld(env.dragState.val.lastX, env.dragState.val.lastY);
@@ -206,6 +219,7 @@
     updateDraggedPoint,
     updateDraggedLabel,
     updateDraggedPolygon,
+    updateDraggedIterationTable,
     panFromPointerDelta,
   };
 })();

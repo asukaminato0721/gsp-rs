@@ -394,6 +394,7 @@ pub(super) fn assemble_scene(
     line_iterations: Vec<LineIterationFamily>,
     polygon_iterations: Vec<PolygonIterationFamily>,
     label_iterations: Vec<LabelIterationFamily>,
+    iteration_tables: Vec<crate::runtime::scene::IterationTable>,
     buttons: Vec<crate::runtime::scene::SceneButton>,
     images: Vec<SceneImage>,
     parameters: Vec<crate::runtime::scene::SceneParameter>,
@@ -566,6 +567,7 @@ pub(super) fn assemble_scene(
             .map(|family| world_polygon_iteration_family(family, &analysis.graph_ref))
             .collect(),
         label_iterations,
+        iteration_tables,
         buttons,
         parameters,
         functions,

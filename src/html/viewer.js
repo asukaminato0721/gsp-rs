@@ -471,6 +471,10 @@
           action: hotspot.action ? { ...hotspot.action } : null,
         })),
       })),
+      iterationTables: (scene.iterationTables || []).map((table) => ({
+        ...table,
+        rows: [],
+      })),
     };
   }
 
@@ -1290,12 +1294,24 @@
     return renderModule.findHitLabel(viewerEnv, screenX, screenY);
   }
 
+  function findHitIterationTable(screenX, screenY) {
+    return renderModule.findHitIterationTable(viewerEnv, screenX, screenY);
+  }
+
   function findHitPolygon(screenX, screenY) {
     return renderModule.findHitPolygon ? renderModule.findHitPolygon(viewerEnv, screenX, screenY) : null;
   }
 
-  function beginDrag(pointerId, position, pointIndex, labelIndex, polygonIndex) {
-    dragModule.beginDrag(viewerEnv, pointerId, position, pointIndex, labelIndex, polygonIndex);
+  function beginDrag(pointerId, position, pointIndex, labelIndex, polygonIndex, iterationTableIndex) {
+    dragModule.beginDrag(
+      viewerEnv,
+      pointerId,
+      position,
+      pointIndex,
+      labelIndex,
+      polygonIndex,
+      iterationTableIndex,
+    );
   }
 
   function updateDraggedPoint(world) {
@@ -1304,6 +1320,10 @@
 
   function updateDraggedLabel(world) {
     dragModule.updateDraggedLabel(viewerEnv, world);
+  }
+
+  function updateDraggedIterationTable(position) {
+    dragModule.updateDraggedIterationTable(viewerEnv, position);
   }
 
   function updateDraggedPolygon(world) {
@@ -1417,11 +1437,17 @@
   canvas.addEventListener("pointerdown", (event) => {
     const position = sceneModule.getCanvasCoords(viewerEnv, event);
     const pointIndex = findHitPoint(position.x, position.y);
-    const labelIndex = pointIndex === null ? findHitLabel(position.x, position.y) : null;
-    const polygonIndex = pointIndex === null && labelIndex === null
+    const iterationTableIndex =
+      pointIndex === null
+        ? findHitIterationTable(position.x, position.y)
+        : null;
+    const labelIndex = pointIndex === null && iterationTableIndex === null
+      ? findHitLabel(position.x, position.y)
+      : null;
+    const polygonIndex = pointIndex === null && iterationTableIndex === null && labelIndex === null
       ? findHitPolygon(position.x, position.y)
       : null;
-    beginDrag(event.pointerId, position, pointIndex, labelIndex, polygonIndex);
+    beginDrag(event.pointerId, position, pointIndex, labelIndex, polygonIndex, iterationTableIndex);
     canvas.setPointerCapture(event.pointerId);
   });
 
@@ -1438,6 +1464,8 @@
       updateDraggedPolygon(sceneModule.toWorld(viewerEnv, position.x, position.y));
     } else if (dragState.val.mode === "label") {
       updateDraggedLabel(position);
+    } else if (dragState.val.mode === "iteration-table") {
+      updateDraggedIterationTable(position);
     } else {
       panFromPointerDelta(position);
     }

@@ -48,7 +48,10 @@ macro_rules! define_group_kinds {
             pub fn is_iteration_helper(self) -> bool {
                 matches!(
                     self,
-                    Self::AffineIteration | Self::IterationBinding | Self::RegularPolygonIteration
+                    Self::AffineIteration
+                        | Self::IterationBinding
+                        | Self::RegularPolygonIteration
+                        | Self::IterationExpressionHelper
                 )
             }
 
@@ -131,6 +134,7 @@ define_group_kinds! {
     CircularSegmentBoundary = 83,
     RegularPolygonIteration = 89,
     LabelIterationSeed = 90,
+    IterationExpressionHelper = 92,
     ParameterAnchor = 94,
     ParameterControlledPoint = 95,
     CoordinateTrace = 97,
@@ -149,6 +153,11 @@ mod tests {
     fn round_trips_known_and_unknown_kind_ids() {
         assert_eq!(GroupKind::from(0), GroupKind::Point);
         assert_eq!(GroupKind::Point.raw(), 0);
+        assert_eq!(
+            GroupKind::from(92),
+            GroupKind::IterationExpressionHelper
+        );
+        assert_eq!(GroupKind::IterationExpressionHelper.raw(), 92);
         assert_eq!(GroupKind::from(121), GroupKind::SegmentMarker);
         assert_eq!(GroupKind::SegmentMarker.raw(), 121);
         assert_eq!(GroupKind::from(999), GroupKind::Unknown(999));
@@ -167,6 +176,7 @@ mod tests {
 
         assert!(GroupKind::CoordinateTrace.is_coordinate_object());
         assert!(GroupKind::RegularPolygonIteration.is_iteration_helper());
+        assert!(GroupKind::IterationExpressionHelper.is_iteration_helper());
         assert!(GroupKind::AffineIteration.is_carried_iteration());
         assert!(GroupKind::GraphCalibrationX.is_graph_calibration());
         assert!(GroupKind::MeasurementLine.is_graph_object());

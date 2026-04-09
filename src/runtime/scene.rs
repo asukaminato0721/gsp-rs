@@ -22,6 +22,7 @@ pub(crate) struct Scene {
     pub(crate) line_iterations: Vec<LineIterationFamily>,
     pub(crate) polygon_iterations: Vec<PolygonIterationFamily>,
     pub(crate) label_iterations: Vec<LabelIterationFamily>,
+    pub(crate) iteration_tables: Vec<IterationTable>,
     pub(crate) buttons: Vec<SceneButton>,
     pub(crate) parameters: Vec<SceneParameter>,
     pub(crate) functions: Vec<SceneFunction>,
@@ -180,6 +181,17 @@ pub(crate) enum LabelIterationFamily {
         depth: usize,
         depth_parameter_name: Option<String>,
     },
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct IterationTable {
+    pub(crate) anchor: ScreenPoint,
+    pub(crate) expr_label: String,
+    pub(crate) parameter_name: String,
+    pub(crate) expr: FunctionExpr,
+    pub(crate) depth: usize,
+    pub(crate) depth_parameter_name: Option<String>,
+    pub(crate) visible: bool,
 }
 
 #[derive(Debug, Clone)]

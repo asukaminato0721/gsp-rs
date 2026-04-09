@@ -809,6 +809,38 @@
   }
 
   /** @param {ViewerEnv} env */
+  function rebuildIterationTables(env, scene, parameters) {
+    const sourceTables = env.sourceScene.iterationTables || [];
+    scene.iterationTables = sourceTables.map((table) => {
+      const depth = pointIterationDepth({
+        depth: table.depth,
+        parameterName: table.depthParameterName,
+      }, parameters);
+      let currentValue = parameters.get(table.parameterName);
+      const rows = [];
+      if (Number.isFinite(currentValue)) {
+        for (let index = 0; index <= depth; index += 1) {
+          const value = evaluateRecursiveExpression(
+            table.expr,
+            table.parameterName,
+            currentValue,
+            parameters,
+          );
+          if (!Number.isFinite(value)) {
+            break;
+          }
+          rows.push({ index, value });
+          currentValue = value;
+        }
+      }
+      return {
+        ...table,
+        rows,
+      };
+    });
+  }
+
+  /** @param {ViewerEnv} env */
   function refreshDerivedPoints(env, scene) {
     const bounds = env.getViewBounds ? env.getViewBounds() : (scene.bounds || env.sourceScene.bounds);
     const parameters = parameterMap(env);
@@ -1471,6 +1503,7 @@
     rebuildIteratedLines(env, scene, parameters);
     rebuildIteratedPolygons(env, scene, parameters);
     rebuildIteratedLabels(env, scene, parameters);
+    rebuildIterationTables(env, scene, parameters);
   }
 
   /** @param {{ unit?: string | null }} parameter */

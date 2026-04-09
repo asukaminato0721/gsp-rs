@@ -17,7 +17,8 @@ use crate::runtime::functions::{
 };
 use crate::runtime::geometry::{color_from_style, format_number};
 use crate::runtime::scene::{
-    LabelIterationFamily, TextLabel, TextLabelBinding, TextLabelHotspot, TextLabelHotspotAction,
+    IterationTable, LabelIterationFamily, ScreenPoint, TextLabel, TextLabelBinding,
+    TextLabelHotspot, TextLabelHotspotAction,
 };
 
 #[derive(Debug, Clone)]
@@ -78,6 +79,72 @@ fn label_color_for_group(group: &ObjectGroup) -> [u8; 4] {
 
 fn label_visible_for_group(file: &GspFile, group: &ObjectGroup) -> bool {
     !group.header.is_hidden() && decode_label_visible(file, group).unwrap_or(true)
+}
+
+fn resolve_function_expr_parameter(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    visiting: &mut BTreeSet<usize>,
+) -> Option<(String, f64)> {
+    if !visiting.insert(group.ordinal) {
+        return None;
+    }
+    let result = (|| {
+        let path = find_indexed_path(file, group)?;
+        let parameter_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+        if parameter_group.header.kind() == crate::format::GroupKind::FunctionExpr {
+            return resolve_function_expr_parameter(file, groups, parameter_group, visiting);
+        }
+        Some((
+            editable_non_graph_parameter_name_for_group(file, groups, parameter_group)?,
+            decode_non_graph_parameter_value_for_group(file, parameter_group)?,
+        ))
+    })();
+    visiting.remove(&group.ordinal);
+    result
+}
+
+fn payload_function_expr_label(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    fallback_expr_label: &str,
+    visiting: &mut BTreeSet<usize>,
+) -> String {
+    if !visiting.insert(group.ordinal) {
+        return fallback_expr_label.to_string();
+    }
+    let result = (|| {
+        if let Some(label) = decode_label_name(file, group) {
+            return Some(label);
+        }
+        let path = find_indexed_path(file, group)?;
+        let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+        let source_label = if source_group.header.kind() == crate::format::GroupKind::FunctionExpr {
+            payload_function_expr_label(file, groups, source_group, fallback_expr_label, visiting)
+        } else {
+            decode_label_name(file, source_group)?
+        };
+        let (parameter_name, _) =
+            resolve_function_expr_parameter(file, groups, group, &mut BTreeSet::new())?;
+        Some(fallback_expr_label.replacen(&parameter_name, &source_label, 1))
+    })()
+    .unwrap_or_else(|| fallback_expr_label.to_string());
+    visiting.remove(&group.ordinal);
+    result
+}
+
+fn decode_iteration_table_anchor(file: &GspFile, group: &ObjectGroup) -> Option<ScreenPoint> {
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x090d)
+        .map(|record| record.payload(&file.data))?;
+    (payload.len() >= 16).then(|| ScreenPoint {
+        x: crate::format::read_u16(payload, 12) as f64,
+        y: crate::format::read_u16(payload, 14) as f64,
+    })
 }
 
 fn mapped_point_index(group_to_point_index: &[Option<usize>], group_index: usize) -> Option<usize> {
@@ -328,6 +395,7 @@ pub(super) fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) 
     let mut labels = Vec::new();
     for group in groups {
         let kind = group.header.kind();
+        let helper_visible = !group.header.is_hidden();
         if kind == crate::format::GroupKind::Point
             && is_non_graph_parameter_group(file, groups, group)
             && let Some(name) = decode_label_name(file, group)
@@ -341,21 +409,15 @@ pub(super) fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) 
                 text: format!("{name} = {:.2}", value),
                 rich_markup: None,
                 color: [30, 30, 30, 255],
-                visible: label_visible_for_group(file, group),
+                visible: helper_visible,
                 binding,
                 screen_space: true,
                 hotspots: Vec::new(),
             });
         } else if kind == crate::format::GroupKind::FunctionExpr
             && let Some(expr) = decode_function_expr(file, groups, group)
-            && let Some(path) = find_indexed_path(file, group)
-            && let Some(parameter_ref) = path.refs.first().copied()
-            && let Some(parameter_group_index) = parameter_ref.checked_sub(1)
-            && let Some(parameter_group) = groups.get(parameter_group_index)
-            && let Some(parameter_name) =
-                editable_non_graph_parameter_name_for_group(file, groups, parameter_group)
-            && let Some(parameter_value) =
-                decode_non_graph_parameter_value_for_group(file, parameter_group)
+            && let Some((parameter_name, parameter_value)) =
+                resolve_function_expr_parameter(file, groups, group, &mut BTreeSet::new())
             && let Some(anchor) = decode_0907_anchor(file, group)
         {
             let Some(value) = evaluate_expr_with_parameters(
@@ -365,39 +427,45 @@ pub(super) fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) 
             ) else {
                 continue;
             };
-            let (_expr_label, binding, text) =
-                if parameter_name == "n" && function_expr_label(expr.clone()) == "257 / n" {
-                    let angle = 360.0 / parameter_value;
-                    let angle_expr = regular_polygon_angle_expr(&parameter_name, parameter_value);
-                    (
-                        "360° / n".to_string(),
-                        Some(TextLabelBinding::ExpressionValue {
+            let expr_label = payload_function_expr_label(
+                file,
+                groups,
+                group,
+                &function_expr_label(expr.clone()),
+                &mut BTreeSet::new(),
+            );
+            let (_expr_label, binding, text) = if parameter_name == "n" && expr_label == "257 / n"
+            {
+                let angle = 360.0 / parameter_value;
+                let angle_expr = regular_polygon_angle_expr(&parameter_name, parameter_value);
+                (
+                    "360° / n".to_string(),
+                    Some(TextLabelBinding::ExpressionValue {
+                        parameter_name: parameter_name.clone(),
+                        expr_label: "360° / n".to_string(),
+                        expr: angle_expr,
+                    }),
+                    format!("360°\n——— = {:.2}°\n  n", angle),
+                )
+            } else {
+                (
+                    expr_label.clone(),
+                    is_editable_non_graph_parameter_name(&parameter_name).then(|| {
+                        TextLabelBinding::ExpressionValue {
                             parameter_name: parameter_name.clone(),
-                            expr_label: "360° / n".to_string(),
-                            expr: angle_expr,
-                        }),
-                        format!("360°\n——— = {:.2}°\n  n", angle),
-                    )
-                } else {
-                    let expr_label = function_expr_label(expr.clone());
-                    (
-                        expr_label.clone(),
-                        is_editable_non_graph_parameter_name(&parameter_name).then(|| {
-                            TextLabelBinding::ExpressionValue {
-                                parameter_name: parameter_name.clone(),
-                                expr_label: expr_label.clone(),
-                                expr: expr.clone(),
-                            }
-                        }),
-                        format!("{expr_label} = {:.2}", value),
-                    )
-                };
+                            expr_label: expr_label.clone(),
+                            expr: expr.clone(),
+                        }
+                    }),
+                    format!("{expr_label} = {:.2}", value),
+                )
+            };
             labels.push(TextLabel {
                 anchor,
                 text,
                 rich_markup: None,
                 color: [30, 30, 30, 255],
-                visible: label_visible_for_group(file, group),
+                visible: helper_visible,
                 binding,
                 screen_space: true,
                 hotspots: Vec::new(),
@@ -899,6 +967,54 @@ pub(super) fn collect_label_iterations(
         .collect()
 }
 
+pub(super) fn collect_iteration_tables(file: &GspFile, groups: &[ObjectGroup]) -> Vec<IterationTable> {
+    groups
+        .iter()
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::IterationExpressionHelper)
+        .filter_map(|group| {
+            if group.header.is_hidden() {
+                return None;
+            }
+            let path = find_indexed_path(file, group)?;
+            if path.refs.len() < 2 {
+                return None;
+            }
+            let iter_group = groups.get(path.refs[0].checked_sub(1)?)?;
+            let expr_group = groups.get(path.refs[1].checked_sub(1)?)?;
+            if expr_group.header.kind() != crate::format::GroupKind::FunctionExpr {
+                return None;
+            }
+            let expr = decode_function_expr(file, groups, expr_group)?;
+            let (parameter_name, _) =
+                resolve_function_expr_parameter(file, groups, expr_group, &mut BTreeSet::new())?;
+            let expr_label = payload_function_expr_label(
+                file,
+                groups,
+                expr_group,
+                &function_expr_label(expr.clone()),
+                &mut BTreeSet::new(),
+            );
+            let depth = iter_group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x090a)
+                .map(|record| record.payload(&file.data))
+                .filter(|payload| payload.len() >= 20)
+                .map(|payload| read_u32(payload, 16) as usize)
+                .unwrap_or(3);
+            Some(IterationTable {
+                anchor: decode_iteration_table_anchor(file, group)?,
+                expr_label,
+                parameter_name,
+                expr,
+                depth,
+                depth_parameter_name: None,
+                visible: true,
+            })
+        })
+        .collect()
+}
+
 fn segment_name(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -1105,6 +1221,11 @@ pub(super) fn compute_iteration_labels(
             .records
             .iter()
             .any(|record| record.record_type == 0x08fc)
+        {
+            continue;
+        }
+        if kind == crate::format::GroupKind::FunctionExpr
+            && resolve_function_expr_parameter(file, groups, group, &mut BTreeSet::new()).is_some()
         {
             continue;
         }

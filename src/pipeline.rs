@@ -829,5 +829,16 @@ mod tests {
             5,
             "expected five interactive polygon edges for the default pentagon"
         );
+        let iteration_tables = scene["iterationTables"]
+            .as_array()
+            .expect("scene iteration tables should be an array");
+        assert_eq!(iteration_tables.len(), 1, "expected one visible iteration table");
+        assert_eq!(
+            iteration_tables[0]["exprLabel"].as_str(),
+            Some("t₁ + 1")
+        );
+        assert_eq!(iteration_tables[0]["x"].as_f64(), Some(322.0));
+        assert_eq!(iteration_tables[0]["y"].as_f64(), Some(481.0));
+        assert_eq!(iteration_tables[0]["depth"].as_u64(), Some(4));
     }
 }

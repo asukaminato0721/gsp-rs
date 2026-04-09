@@ -1,7 +1,8 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::format::{GspFile, ObjectGroup, read_f64, read_u16, read_u32};
 use crate::runtime::extract::find_indexed_path;
+use crate::runtime::functions::{evaluate_expr_with_parameters, function_expr_label};
 
 use super::expr::{
     BinaryOp, FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode, FunctionTerm,
@@ -20,26 +21,42 @@ pub(crate) fn decode_function_expr(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> Option<FunctionExpr> {
-    let payload = group
-        .records
-        .iter()
-        .find(|record| record.record_type == 0x0907)
-        .map(|record| record.payload(&file.data))?;
-    let parameters = collect_parameter_bindings(file, groups, group);
+    decode_function_expr_recursive(file, groups, group, &mut BTreeSet::new())
+}
 
-    let text = extract_inline_function_token(payload)?;
-    if text.eq_ignore_ascii_case("x") {
-        return Some(FunctionExpr::Identity);
+fn decode_function_expr_recursive(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    visiting: &mut BTreeSet<usize>,
+) -> Option<FunctionExpr> {
+    if !visiting.insert(group.ordinal) {
+        return None;
     }
-    if let Ok(value) = text.parse::<f64>() {
-        if value == 0.0
-            && let Some(expr) = decode_inner_function_expr(payload, &parameters)
-        {
-            return Some(expr);
+    let expr = (|| {
+        let payload = group
+            .records
+            .iter()
+            .find(|record| record.record_type == 0x0907)
+            .map(|record| record.payload(&file.data))?;
+        let parameters = collect_parameter_bindings(file, groups, group, visiting);
+
+        let text = extract_inline_function_token(payload)?;
+        if text.eq_ignore_ascii_case("x") {
+            Some(FunctionExpr::Identity)
+        } else if let Ok(value) = text.parse::<f64>() {
+            if value == 0.0 {
+                decode_inner_function_expr(payload, &parameters)
+                    .or(Some(FunctionExpr::Constant(value)))
+            } else {
+                Some(FunctionExpr::Constant(value))
+            }
+        } else {
+            decode_inner_function_expr(payload, &parameters)
         }
-        return Some(FunctionExpr::Constant(value));
-    }
-    decode_inner_function_expr(payload, &parameters)
+    })();
+    visiting.remove(&group.ordinal);
+    expr
 }
 
 pub(crate) fn decode_function_plot_descriptor(payload: &[u8]) -> Option<FunctionPlotDescriptor> {
@@ -70,6 +87,7 @@ fn collect_parameter_bindings(
     file: &GspFile,
     groups: &[ObjectGroup],
     group: &ObjectGroup,
+    visiting: &mut BTreeSet<usize>,
 ) -> BTreeMap<u16, ParameterBinding> {
     let mut bindings = BTreeMap::new();
     let Some(path) = find_indexed_path(file, group) else {
@@ -79,16 +97,28 @@ fn collect_parameter_bindings(
         let Some(parameter_group) = groups.get(ordinal.saturating_sub(1)) else {
             continue;
         };
-        if let Some(binding) = decode_parameter_binding(file, parameter_group) {
+        if let Some(binding) = decode_parameter_binding_recursive(file, groups, parameter_group, visiting) {
             bindings.insert(index as u16, binding);
         }
     }
     bindings
 }
 
-fn decode_parameter_binding(file: &GspFile, group: &ObjectGroup) -> Option<ParameterBinding> {
+fn decode_parameter_binding_recursive(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    visiting: &mut BTreeSet<usize>,
+) -> Option<ParameterBinding> {
     if (group.header.kind()) == crate::format::GroupKind::ParameterAnchor {
         return decode_parameter_anchor_binding(file, group);
+    }
+    if (group.header.kind()) == crate::format::GroupKind::FunctionExpr {
+        let expr = decode_function_expr_recursive(file, groups, group, visiting)?;
+        return Some(ParameterBinding {
+            name: function_expr_label(expr.clone()),
+            value: evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new())?,
+        });
     }
 
     let payload = group
@@ -325,6 +355,10 @@ fn parse_atomic_base(
     if words[*index] == 0x000f {
         *index += 1;
         return Some(FunctionTerm::Variable);
+    }
+    if *index + 1 < words.len() && words[*index] == 0x000d && words[*index + 1] == 0x0100 {
+        *index += 2;
+        return Some(FunctionTerm::PiAngle);
     }
     let value = words[*index];
     *index += 1;

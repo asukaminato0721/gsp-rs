@@ -26,9 +26,9 @@ use self::graph::{
 use self::images::collect_scene_images;
 use self::labels::{
     PendingLabelHotspot, collect_circle_parameter_labels, collect_coordinate_labels,
-    collect_custom_transform_expression_labels, collect_label_iterations, collect_labels,
-    collect_polygon_parameter_labels, collect_segment_parameter_labels, compute_iteration_labels,
-    resolve_label_hotspots,
+    collect_custom_transform_expression_labels, collect_iteration_tables,
+    collect_label_iterations, collect_labels, collect_polygon_parameter_labels,
+    collect_segment_parameter_labels, compute_iteration_labels, resolve_label_hotspots,
 };
 use self::points::{
     TransformBindingKind, collect_non_graph_parameters, collect_point_iteration_points,
@@ -693,6 +693,7 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
                 },
             })
             .collect::<Vec<_>>();
+    let iteration_tables = collect_iteration_tables(file, &groups);
     remap_label_bindings(&mut labels, &group_to_point_index);
     let (binding_maps, line_iterations, polygon_iterations) = remap_scene_bindings(
         file,
@@ -762,6 +763,7 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
         line_iterations,
         polygon_iterations,
         label_iterations,
+        iteration_tables,
         buttons,
         images,
         parameters,
@@ -1028,6 +1030,7 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::CircularSegmentBoundary
             | GroupKind::RegularPolygonIteration
             | GroupKind::LabelIterationSeed
+            | GroupKind::IterationExpressionHelper
             | GroupKind::ParameterAnchor
             | GroupKind::ParameterControlledPoint
             | GroupKind::CoordinateTrace

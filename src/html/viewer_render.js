@@ -252,6 +252,53 @@
     return null;
   }
 
+  function iterationTableBounds(env, table) {
+    if (table.visible === false || !Array.isArray(table.rows) || table.rows.length === 0) {
+      return null;
+    }
+    env.ctx.save();
+    env.ctx.font = "18px \"Noto Sans\", \"Segoe UI\", sans-serif";
+    const header = ["n", table.exprLabel];
+    const body = table.rows.map((row) => [String(row.index), env.formatNumber(row.value)]);
+    const rows = [header, ...body];
+    const colWidths = [0, 0];
+    rows.forEach((row) => {
+      row.forEach((cell, index) => {
+        colWidths[index] = Math.max(colWidths[index], env.ctx.measureText(cell).width + 18);
+      });
+    });
+    env.ctx.restore();
+    const rowHeight = 28;
+    const width = colWidths[0] + colWidths[1];
+    const height = rowHeight * rows.length;
+    return {
+      left: table.x,
+      top: table.y - height,
+      width,
+      height,
+      colWidths,
+      rowHeight,
+      rows,
+    };
+  }
+
+  function findHitIterationTable(env, screenX, screenY) {
+    for (let index = (env.currentScene().iterationTables || []).length - 1; index >= 0; index -= 1) {
+      const table = env.currentScene().iterationTables[index];
+      const bounds = iterationTableBounds(env, table);
+      if (!bounds) continue;
+      if (
+        screenX >= bounds.left &&
+        screenX <= bounds.left + bounds.width &&
+        screenY >= bounds.top &&
+        screenY <= bounds.top + bounds.height
+      ) {
+        return index;
+      }
+    }
+    return null;
+  }
+
   function pointInPolygon(point, polygon) {
     let inside = false;
     for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
@@ -687,6 +734,53 @@
     env.ctx.textBaseline = "alphabetic";
   }
 
+  function drawIterationTables(env) {
+    const tables = env.currentScene().iterationTables || [];
+    if (!tables.length) {
+      return;
+    }
+    env.ctx.save();
+    env.ctx.font = "18px \"Noto Sans\", \"Segoe UI\", sans-serif";
+    env.ctx.textAlign = "center";
+    env.ctx.textBaseline = "middle";
+    env.ctx.strokeStyle = env.rgba([32, 32, 32, 255]);
+    env.ctx.fillStyle = "rgba(255,255,255,0.92)";
+    env.ctx.lineWidth = 1;
+
+    for (const table of tables) {
+      if (table.visible === false || !Array.isArray(table.rows) || table.rows.length === 0) {
+        continue;
+      }
+      const bounds = iterationTableBounds(env, table);
+      if (!bounds) continue;
+      const { rows, colWidths, rowHeight, width, height, left, top } = bounds;
+
+      env.ctx.fillRect(left, top, width, height);
+      env.ctx.strokeRect(left, top, width, height);
+      env.ctx.beginPath();
+      env.ctx.moveTo(left + colWidths[0], top);
+      env.ctx.lineTo(left + colWidths[0], top + height);
+      for (let index = 1; index < rows.length; index += 1) {
+        const y = top + rowHeight * index;
+        env.ctx.moveTo(left, y);
+        env.ctx.lineTo(left + width, y);
+      }
+      env.ctx.stroke();
+
+      rows.forEach((row, rowIndex) => {
+        let x = left;
+        row.forEach((cell, colIndex) => {
+          const cellWidth = colWidths[colIndex];
+          env.ctx.fillStyle = env.rgba([32, 32, 32, 255]);
+          env.ctx.fillText(cell, x + cellWidth / 2, top + rowHeight * rowIndex + rowHeight / 2);
+          x += cellWidth;
+        });
+      });
+    }
+
+    env.ctx.restore();
+  }
+
   function drawHotspotFlashes(env) {
     const flashes = env.currentHotspotFlashes ? env.currentHotspotFlashes() : [];
     if (!flashes?.length) {
@@ -798,15 +892,18 @@
     drawArcs(env);
     drawPoints(env);
     drawLabels(env);
+    drawIterationTables(env);
     drawHotspotFlashes(env);
   }
 
   modules.render = {
     labelMetrics,
     labelBounds,
+    iterationTableBounds,
     labelHotspotRects,
     findHitPoint,
     findHitLabel,
+    findHitIterationTable,
     findHitPolygon,
     drawImages,
     drawPolygons,
@@ -815,6 +912,7 @@
     drawArcs,
     drawPoints,
     drawLabels,
+    drawIterationTables,
     draw,
   };
 })();

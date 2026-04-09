@@ -6,6 +6,7 @@ use super::{
     decode_transform_binding, decode_translated_point_constraint, reflection_line_group_indices,
     translation_point_pair_group_indices,
 };
+use crate::runtime::extract::decode::{decode_label_name, decode_label_visible};
 use crate::runtime::extract::find_indexed_path;
 use crate::runtime::extract::points::constraints::CoordinatePointSource;
 use crate::runtime::functions::decode_function_plot_descriptor;
@@ -59,16 +60,19 @@ pub(crate) fn collect_visible_points(
         let visible = !group.header.is_hidden();
         let scene_point = match kind {
             crate::format::GroupKind::Point => {
-                point_map.get(index).cloned().flatten().map(|position| {
-                    scene_point(
-                        position,
-                        group_color(group),
-                        visible,
-                        true,
-                        ScenePointConstraint::Free,
-                        None,
-                    )
-                })
+                (!is_orphan_duplicate_point_helper(file, groups, group))
+                    .then(|| point_map.get(index).cloned().flatten())
+                    .flatten()
+                    .map(|position| {
+                        scene_point(
+                            position,
+                            group_color(group),
+                            visible,
+                            true,
+                            ScenePointConstraint::Free,
+                            None,
+                        )
+                    })
             }
             crate::format::GroupKind::GraphCalibrationX
             | crate::format::GroupKind::GraphCalibrationY => {
@@ -292,6 +296,39 @@ pub(crate) fn collect_visible_points(
     }
 
     (points, group_to_point_index)
+}
+
+fn is_orphan_duplicate_point_helper(file: &GspFile, groups: &[ObjectGroup], group: &ObjectGroup) -> bool {
+    if (group.header.kind()) != crate::format::GroupKind::Point {
+        return false;
+    }
+    if group.records.iter().any(|record| record.record_type == 0x0907) {
+        return false;
+    }
+    if decode_label_visible(file, group).unwrap_or(true) {
+        return false;
+    }
+    let Some(name) = decode_label_name(file, group) else {
+        return false;
+    };
+    let is_referenced = |ordinal: usize| {
+        groups.iter().any(|other| {
+            other.ordinal != ordinal
+                && find_indexed_path(file, other)
+                    .is_some_and(|path| path.refs.contains(&ordinal))
+        })
+    };
+    let referenced = is_referenced(group.ordinal);
+    if referenced {
+        return false;
+    }
+    groups.iter().any(|other| {
+        other.ordinal != group.ordinal
+            && decode_label_name(file, other).as_deref() == Some(name.as_str())
+            && (is_referenced(other.ordinal)
+                || find_indexed_path(file, other).is_some_and(|path| !path.refs.is_empty())
+                || other.records.iter().any(|record| record.record_type == 0x0907))
+    })
 }
 
 fn scene_point_from_constraint(

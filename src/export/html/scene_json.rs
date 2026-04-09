@@ -4,10 +4,10 @@ use crate::runtime::functions::{
 };
 use crate::runtime::geometry::darken;
 use crate::runtime::scene::{
-    ArcBoundaryKind, ButtonAction, CircularConstraint, IterationPointHandle, LabelIterationFamily,
-    LineBinding, LineConstraint, LineIterationFamily, PointIterationFamily, PolygonIterationFamily,
-    Scene, SceneButton, ScenePointBinding, ScenePointConstraint, ShapeBinding, TextLabelBinding,
-    TextLabelHotspotAction,
+    ArcBoundaryKind, ButtonAction, CircularConstraint, IterationPointHandle, IterationTable,
+    LabelIterationFamily, LineBinding, LineConstraint, LineIterationFamily,
+    PointIterationFamily, PolygonIterationFamily, Scene, SceneButton, ScenePointBinding,
+    ScenePointConstraint, ShapeBinding, TextLabelBinding, TextLabelHotspotAction,
 };
 use serde::Serialize;
 
@@ -42,6 +42,7 @@ struct SceneJson {
     line_iterations: Vec<LineIterationJson>,
     polygon_iterations: Vec<PolygonIterationJson>,
     label_iterations: Vec<LabelIterationJson>,
+    iteration_tables: Vec<IterationTableJson>,
     buttons: Vec<ButtonJson>,
     parameters: Vec<ParameterJson>,
     functions: Vec<FunctionJson>,
@@ -92,6 +93,11 @@ impl SceneJson {
                 .label_iterations
                 .iter()
                 .map(LabelIterationJson::from_family)
+                .collect(),
+            iteration_tables: scene
+                .iteration_tables
+                .iter()
+                .map(IterationTableJson::from_table)
                 .collect(),
             buttons: scene.buttons.iter().map(ButtonJson::from_button).collect(),
             parameters: scene
@@ -1539,6 +1545,34 @@ impl LabelIterationJson {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IterationTableJson {
+    x: f64,
+    y: f64,
+    expr_label: String,
+    parameter_name: String,
+    expr: FunctionExprJson,
+    depth: usize,
+    depth_parameter_name: Option<String>,
+    visible: bool,
+}
+
+impl IterationTableJson {
+    fn from_table(table: &IterationTable) -> Self {
+        Self {
+            x: table.anchor.x,
+            y: table.anchor.y,
+            expr_label: table.expr_label.clone(),
+            parameter_name: table.parameter_name.clone(),
+            expr: FunctionExprJson::from_expr(&table.expr),
+            depth: table.depth,
+            depth_parameter_name: table.depth_parameter_name.clone(),
+            visible: table.visible,
+        }
+    }
+}
+
+#[derive(Serialize)]
 #[serde(tag = "kind")]
 enum PointBindingJson {
     #[serde(rename = "graph-calibration")]
@@ -2305,6 +2339,7 @@ impl FunctionTermJson {
         match term {
             FunctionTerm::Variable => Self::Variable,
             FunctionTerm::Constant(value) => Self::Constant { value: *value },
+            FunctionTerm::PiAngle => Self::Constant { value: 180.0 },
             FunctionTerm::Parameter(name, value) => Self::Parameter {
                 name: name.clone(),
                 value: *value,

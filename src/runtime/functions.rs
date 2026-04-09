@@ -20,7 +20,7 @@ pub(crate) use scene::{collect_scene_functions, collect_scene_parameters, functi
 mod tests {
     use super::decode::{decode_inner_function_expr, extract_inline_function_token};
     use super::*;
-    use crate::format::GspFile;
+    use crate::format::{GspFile, read_u16};
     use std::collections::BTreeMap;
 
     #[test]
@@ -85,5 +85,76 @@ mod tests {
                 ],
             }))
         );
+    }
+
+    #[test]
+    fn decodes_nested_function_expr_in_circle_formation_fixture() {
+        let data = include_bytes!("../../../tests/fixtures/圆的形成.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let groups = file.object_groups();
+        let function_group = groups
+            .iter()
+            .find(|group| {
+                group.header.kind() == crate::format::GroupKind::FunctionExpr
+                    && group
+                        .records
+                        .iter()
+                        .find(|record| record.record_type == 0x0907)
+                        .is_some_and(|record| {
+                            let payload = record.payload(&file.data);
+                            payload.len() >= 16
+                                && read_u16(payload, 12) == 322
+                                && read_u16(payload, 14) == 420
+                        })
+            })
+            .expect("nested function group");
+        assert_eq!(
+            decode_function_expr(&file, &groups, function_group),
+            Some(FunctionExpr::Parsed(ParsedFunctionExpr {
+                head: FunctionTerm::Parameter("t₂".to_string(), 5.0),
+                tail: vec![(BinaryOp::Add, FunctionTerm::Constant(1.0))],
+            }))
+        );
+        assert_eq!(
+            function_expr_label(
+                decode_function_expr(&file, &groups, function_group).expect("expression")
+            ),
+            "t₂ + 1"
+        );
+    }
+
+    #[test]
+    fn decodes_angle_function_expr_in_circle_formation_fixture() {
+        let data = include_bytes!("../../../tests/fixtures/圆的形成.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let groups = file.object_groups();
+        let function_group = groups
+            .iter()
+            .find(|group| {
+                group.header.kind() == crate::format::GroupKind::FunctionExpr
+                    && group
+                        .records
+                        .iter()
+                        .find(|record| record.record_type == 0x0907)
+                        .is_some_and(|record| {
+                            let payload = record.payload(&file.data);
+                            payload.len() >= 16
+                                && read_u16(payload, 12) == 322
+                                && read_u16(payload, 14) == 362
+                        })
+            })
+            .expect("angle function group");
+        let expr = decode_function_expr(&file, &groups, function_group).expect("expression");
+        assert_eq!(
+            expr,
+            FunctionExpr::Parsed(ParsedFunctionExpr {
+                head: FunctionTerm::Product(
+                    Box::new(FunctionTerm::Constant(2.0)),
+                    Box::new(FunctionTerm::PiAngle),
+                ),
+                tail: vec![(BinaryOp::Div, FunctionTerm::Parameter("t₂".to_string(), 5.0))],
+            })
+        );
+        assert_eq!(function_expr_label(expr), "2*180 / t₂");
     }
 }
