@@ -21,7 +21,7 @@ body {
 }
 
 main {
-  width: min(100vw, var(--frame-width));
+  width: 100vw;
   padding: 20px;
 }
 
@@ -92,6 +92,27 @@ canvas.is-dragging {
 
 .canvas-shell {
   position: relative;
+  overflow: hidden;
+  background: var(--paper);
+}
+
+.canvas-stage {
+  position: relative;
+  width: 100%;
+}
+
+.canvas-shell.is-document-layout {
+  overflow: auto;
+}
+
+.canvas-stage.is-document-layout {
+  display: inline-block;
+  width: auto;
+}
+
+.canvas-stage.is-document-layout canvas {
+  width: auto;
+  max-width: none;
 }
 
 #button-overlays {

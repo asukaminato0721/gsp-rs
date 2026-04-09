@@ -971,7 +971,10 @@ fn uses_document_canvas_bounds_for_rich_text_triangle_centers_layout() {
     assert_eq!(scene.bounds.max_x, 1850.0);
     assert_eq!(scene.bounds.max_y, 915.0);
     assert!(
-        scene.labels.iter().any(|label| label.text == "三角形的四心"),
+        scene
+            .labels
+            .iter()
+            .any(|label| label.text == "三角形的四心"),
         "expected the document title label to still be present"
     );
 }

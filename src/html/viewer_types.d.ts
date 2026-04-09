@@ -49,6 +49,7 @@ type ViewState = {
 type SceneData = {
   width: number;
   height: number;
+  graphMode?: boolean;
   yUp?: boolean;
   piMode?: boolean;
   savedViewport?: boolean;

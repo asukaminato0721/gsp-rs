@@ -58,16 +58,17 @@
   const pointHitRadius = 10;
   const pointMatchTolerance = 1e-3;
   const autoOpenDebug = new URLSearchParams(window.location.search).get("debug") === "1";
+  const defaultZoom = sourceScene.graphMode ? 1 : 0.9;
   const pointerWorldState = van.state(null);
   const debugViewState = van?.state ? van.state("graph") : { val: "graph" };
   const viewState = van?.state ? van.state({
     centerX: baseCenterX,
     centerY: baseCenterY,
-    zoom: 1,
+    zoom: defaultZoom,
   }) : { val: {
     centerX: baseCenterX,
     centerY: baseCenterY,
-    zoom: 1,
+    zoom: defaultZoom,
   } };
   /** @type {ViewState} */
   const view = new Proxy(/** @type {ViewState} */ ({}), {
@@ -573,7 +574,7 @@
   function resetView() {
     view.centerX = baseCenterX;
     view.centerY = baseCenterY;
-    view.zoom = 1;
+    view.zoom = defaultZoom;
     dynamicsModule.syncDynamicScene(viewerEnv);
     updateReadout();
   }

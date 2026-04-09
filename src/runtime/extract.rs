@@ -169,7 +169,8 @@ fn analyze_scene(
         None
     };
     let has_rich_text_layout = groups.iter().any(|group| {
-        group.records
+        group
+            .records
             .iter()
             .any(|record| record.record_type == 0x08fc)
     });

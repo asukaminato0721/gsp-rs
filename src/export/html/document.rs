@@ -6,13 +6,28 @@ use super::render_scene_json;
 use crate::runtime::scene::Scene;
 use std::fmt::Write as _;
 
-pub(super) fn render_standalone_html_document(scene: &Scene, width: u32, height: u32) -> String {
+pub(super) fn render_standalone_html_document(
+    scene: &Scene,
+    width: u32,
+    height: u32,
+    document_layout: bool,
+) -> String {
     let mut html = String::new();
     let scene_json = render_scene_json(scene, width, height, false);
     let van_js = van_runtime_to_global();
     let viewer_modules_js =
         format!("{VIEWER_SCENE_JS}\n{VIEWER_RENDER_JS}\n{VIEWER_DRAG_JS}\n{VIEWER_DYNAMICS_JS}");
     let frame_width = width + 40;
+    let canvas_shell_class = if document_layout {
+        "canvas-shell is-document-layout"
+    } else {
+        "canvas-shell"
+    };
+    let canvas_stage_class = if document_layout {
+        "canvas-stage is-document-layout"
+    } else {
+        "canvas-stage"
+    };
     let shape_count = scene.images.len()
         + scene.lines.len()
         + scene.polygons.len()
@@ -37,7 +52,7 @@ pub(super) fn render_standalone_html_document(scene: &Scene, width: u32, height:
 <body>
   <main>
     <div class="frame">
-        <div class="toolbar">
+      <div class="toolbar">
         <div class="controls">
           <button id="reset-view" type="button">Reset View</button>
           <button id="toggle-debug" type="button" aria-expanded="false">Debug</button>
@@ -45,9 +60,11 @@ pub(super) fn render_standalone_html_document(scene: &Scene, width: u32, height:
         </div>
         <span class="hint">Drag a point to edit, drag empty space to pan, wheel to zoom</span>
       </div>
-      <div class="canvas-shell">
-        <canvas id="view" width="{width}" height="{height}"></canvas>
-        <div id="button-overlays"></div>
+      <div class="{canvas_shell_class}">
+        <div class="{canvas_stage_class}">
+          <canvas id="view" width="{width}" height="{height}"></canvas>
+          <div id="button-overlays"></div>
+        </div>
       </div>
       <section id="debug-panel" class="debug-panel" hidden>
         <div class="debug-toolbar">
@@ -86,6 +103,8 @@ pub(super) fn render_standalone_html_document(scene: &Scene, width: u32, height:
         width = width,
         height = height,
         frame_width = frame_width,
+        canvas_shell_class = canvas_shell_class,
+        canvas_stage_class = canvas_stage_class,
         shape_count = shape_count,
         scene_json = scene_json,
         embedded_css = indent_asset(VIEWER_CSS, 4),

@@ -95,6 +95,20 @@ impl GspFile {
     pub fn object_groups(&self) -> Vec<ObjectGroup> {
         groups::collect_object_groups(&self.records, &self.data)
     }
+
+    pub fn document_canvas_size(&self) -> Option<(u32, u32)> {
+        let header = self
+            .records
+            .first()
+            .filter(|record| record.record_type == 0x0384)?;
+        let payload = header.payload(&self.data);
+        if payload.len() < 22 {
+            return None;
+        }
+        let width = u32::from(read_u16(payload, 18));
+        let height = u32::from(read_u16(payload, 20));
+        (width > 0 && height > 0).then_some((width, height))
+    }
 }
 
 #[derive(Debug, Clone)]

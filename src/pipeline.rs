@@ -44,13 +44,45 @@ pub fn compile_bytes_to_html_document(
 ) -> Result<String, String> {
     let file = gsp::parse(data)?;
     let scene = build_scene_checked(&file).map_err(|error| format!("{error:#}"))?;
-    Ok(render_standalone_html_document(&scene, width, height))
+    let document_layout = is_document_layout(&file, &scene);
+    let (width, height) = export_dimensions(&file, &scene, width, height);
+    Ok(render_standalone_html_document(
+        &scene,
+        width,
+        height,
+        document_layout,
+    ))
 }
 
 pub fn compile_bytes_to_scene_json(data: &[u8], width: u32, height: u32) -> Result<String, String> {
     let file = gsp::parse(data)?;
     let scene = build_scene_checked(&file).map_err(|error| format!("{error:#}"))?;
+    let (width, height) = export_dimensions(&file, &scene, width, height);
     Ok(render_scene_json(&scene, width, height, true))
+}
+
+fn export_dimensions(
+    file: &crate::format::GspFile,
+    scene: &crate::runtime::scene::Scene,
+    fallback_width: u32,
+    fallback_height: u32,
+) -> (u32, u32) {
+    if is_document_layout(file, scene)
+        && let Some((width, height)) = file.document_canvas_size()
+    {
+        return (width, height);
+    }
+    (fallback_width, fallback_height)
+}
+
+fn is_document_layout(file: &crate::format::GspFile, scene: &crate::runtime::scene::Scene) -> bool {
+    !scene.graph_mode
+        && file.object_groups().iter().any(|group| {
+            group
+                .records
+                .iter()
+                .any(|record| record.record_type == 0x08fc)
+        })
 }
 
 #[cfg(test)]
