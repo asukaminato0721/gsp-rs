@@ -826,10 +826,9 @@
     const currentTables = scene.iterationTables || [];
     scene.iterationTables = sourceTables.map((table, index) => {
       const current = currentTables[index];
-      const depth = pointIterationDepth({
-        depth: table.depth,
-        parameterName: table.depthParameterName,
-      }, parameters);
+      const depth = table.depthParameterName
+        ? Math.max(0, Math.round(parameters.get(table.depthParameterName) ?? table.depth) - 1)
+        : Math.max(0, Math.round(table.depth));
       let currentValue = parameters.get(table.parameterName);
       const rows = [];
       if (Number.isFinite(currentValue)) {

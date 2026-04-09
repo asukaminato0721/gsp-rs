@@ -1008,13 +1008,21 @@ pub(super) fn collect_iteration_tables(
                 .filter(|payload| payload.len() >= 20)
                 .map(|payload| read_u32(payload, 16) as usize)
                 .unwrap_or(3);
+            let depth_parameter_name = if (iter_group.header.kind())
+                == crate::format::GroupKind::RegularPolygonIteration
+            {
+                super::points::regular_polygon_iteration_step(file, groups, iter_group)
+                    .map(|(_, _, parameter_name, _)| parameter_name)
+            } else {
+                None
+            };
             Some(IterationTable {
                 anchor: decode_iteration_table_anchor(file, group)?,
                 expr_label,
                 parameter_name,
                 expr,
                 depth,
-                depth_parameter_name: None,
+                depth_parameter_name,
                 visible: true,
             })
         })
