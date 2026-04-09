@@ -491,6 +491,18 @@
     return evaluateExpr(expr, 0, nextParameters);
   }
 
+  function buildExpressionRichMarkup(exprLabel, value, formatNumber) {
+    if (typeof exprLabel !== "string") {
+      return null;
+    }
+    const parts = exprLabel.split(" / ");
+    if (parts.length !== 2) {
+      return null;
+    }
+    const renderPart = (text) => text.replaceAll("*", "\u00b7");
+    return `<H</<Tx${renderPart(parts[0])}><Tx${renderPart(parts[1])}>><Tx = ${formatNumber(value)}>>`;
+  }
+
   /** @param {ViewerEnv} env */
   function rebuildIterationPoints(env, scene, parameters) {
     const families = env.sourceScene.pointIterations || [];
@@ -1329,9 +1341,16 @@
       } else if (label.binding.kind === "expression-value") {
         const value = evaluateExpr(label.binding.expr, 0, parameters);
         if (value !== null) {
+          label.richMarkup = buildExpressionRichMarkup(
+            label.binding.exprLabel,
+            value,
+            env.formatNumber,
+          );
           label.text = label.binding.exprLabel === "360° / n"
             ? `360°\n——— = ${env.formatNumber(value)}°\n  n`
             : `${label.binding.exprLabel} = ${env.formatNumber(value)}`;
+        } else {
+          label.richMarkup = null;
         }
       } else if (label.binding.kind === "polygon-boundary-parameter") {
         const value = polygonBoundaryParameterFromPoint(scene, label.binding.pointIndex);
