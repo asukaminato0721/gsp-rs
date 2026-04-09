@@ -451,9 +451,6 @@
       }
       let screenPoints = null;
       const resolveHostLinePoints = (binding) => {
-        if (typeof binding?.lineIndex === "number") {
-          return env.resolveLinePoints(binding.lineIndex);
-        }
         if (
           typeof binding?.lineStartIndex === "number"
           && typeof binding?.lineEndIndex === "number"
@@ -462,6 +459,9 @@
             env.resolveScenePoint(binding.lineStartIndex),
             env.resolveScenePoint(binding.lineEndIndex),
           ];
+        }
+        if (typeof binding?.lineIndex === "number") {
+          return env.resolveLinePoints(binding.lineIndex);
         }
         return null;
       };

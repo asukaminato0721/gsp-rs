@@ -464,6 +464,14 @@
     if (typeof entity.parameterName === "string" && entity.parameterName.length > 0) {
       parts.push(`param=${entity.parameterName}`);
     }
+    if (entity.anchor && typeof entity.anchor === "object") {
+      if (typeof entity.anchor.x === "number" && typeof entity.anchor.y === "number") {
+        parts.push(`anchor @ (${formatNumber(entity.anchor.x)}, ${formatNumber(entity.anchor.y)})`);
+      }
+      if (entity.screenSpace === true) {
+        parts.push("screenSpace");
+      }
+    }
     if (typeof entity.x === "number" && typeof entity.y === "number" && !entity.kind) {
       parts.push(`@ (${formatNumber(entity.x)}, ${formatNumber(entity.y)})`);
     }

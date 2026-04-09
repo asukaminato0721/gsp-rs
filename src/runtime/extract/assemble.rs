@@ -367,6 +367,8 @@ pub(super) fn compute_scene_bounds(
     let use_saved_viewport = analysis.saved_viewport.is_some();
     if let Some(viewport) = analysis.saved_viewport.filter(|_| use_saved_viewport) {
         bounds = viewport;
+    } else if let Some(viewport) = analysis.document_viewport {
+        bounds = viewport;
     } else {
         if let Some((domain_min_x, domain_max_x)) = analysis.function_plot_domain {
             bounds.min_x = bounds.min_x.min(domain_min_x);

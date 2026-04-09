@@ -961,6 +961,22 @@ fn preserves_intersection_labels_and_payload_text_colors_in_triangle_centers_gsp
 }
 
 #[test]
+fn uses_document_canvas_bounds_for_rich_text_triangle_centers_layout() {
+    let data = include_bytes!("../../../tests/fixtures/未实现的系统功能/三角形的四心.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.bounds.min_x, 0.0);
+    assert_eq!(scene.bounds.min_y, 0.0);
+    assert_eq!(scene.bounds.max_x, 1850.0);
+    assert_eq!(scene.bounds.max_y, 915.0);
+    assert!(
+        scene.labels.iter().any(|label| label.text == "三角形的四心"),
+        "expected the document title label to still be present"
+    );
+}
+
+#[test]
 fn preserves_dashed_segment_pattern_from_payload_style() {
     let data = include_bytes!("../../../tests/fixtures/gsp/三角形的五心.gsp");
     let file = GspFile::parse(data).expect("fixture parses");

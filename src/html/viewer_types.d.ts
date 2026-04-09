@@ -308,6 +308,10 @@ type ViewerSceneModule = {
       reversed: boolean;
     },
   ) => Point[] | null;
+  sampleCoordinateTracePoints: (
+    env: ViewerEnv,
+    binding: any,
+  ) => Point[] | null;
   lineLineIntersection: (
     leftStart: Point,
     leftEnd: Point,

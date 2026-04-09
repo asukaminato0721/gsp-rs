@@ -1,6 +1,6 @@
 use super::decode::{decode_label_name, decode_measurement_value, find_indexed_path};
 use super::{ArcShape, CircleShape};
-use crate::format::{GspFile, ObjectGroup, PointRecord};
+use crate::format::{GspFile, ObjectGroup, PointRecord, read_u16};
 use crate::runtime::geometry::{
     Bounds, GraphTransform, arc_sample_points, read_f32_unaligned, to_world,
 };
@@ -15,6 +15,30 @@ pub(super) fn collect_saved_viewport(file: &GspFile, groups: &[ObjectGroup]) -> 
         max_x,
         min_y,
         max_y,
+    })
+}
+
+pub(super) fn collect_document_canvas_bounds(file: &GspFile) -> Option<Bounds> {
+    let header = file
+        .records
+        .first()
+        .filter(|record| record.record_type == 0x0384)?;
+    let payload = header.payload(&file.data);
+    if payload.len() < 22 {
+        return None;
+    }
+
+    let width = f64::from(read_u16(payload, 18));
+    let height = f64::from(read_u16(payload, 20));
+    if width <= 0.0 || height <= 0.0 {
+        return None;
+    }
+
+    Some(Bounds {
+        min_x: 0.0,
+        max_x: width,
+        min_y: 0.0,
+        max_y: height,
     })
 }
 

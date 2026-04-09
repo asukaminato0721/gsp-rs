@@ -19,7 +19,10 @@ use self::assemble::{assemble_scene, build_world_data, compute_scene_bounds};
 use self::buttons::collect_buttons;
 use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord, read_f64, read_u16, read_u32};
 
-use self::graph::{collect_saved_viewport, detect_graph_transform, has_graph_classes};
+use self::graph::{
+    collect_document_canvas_bounds, collect_saved_viewport, detect_graph_transform,
+    has_graph_classes,
+};
 use self::images::collect_scene_images;
 use self::labels::{
     PendingLabelHotspot, collect_circle_parameter_labels, collect_coordinate_labels,
@@ -90,6 +93,7 @@ struct SceneAnalysis {
     graph_mode: bool,
     graph_ref: Option<GraphTransform>,
     saved_viewport: Option<Bounds>,
+    document_viewport: Option<Bounds>,
     pi_mode: bool,
     function_plot_domain: Option<(f64, f64)>,
     function_plots: Vec<LineShape>,
@@ -164,6 +168,16 @@ fn analyze_scene(
     } else {
         None
     };
+    let has_rich_text_layout = groups.iter().any(|group| {
+        group.records
+            .iter()
+            .any(|record| record.record_type == 0x08fc)
+    });
+    let document_viewport = if !graph_mode && has_rich_text_layout {
+        collect_document_canvas_bounds(file)
+    } else {
+        None
+    };
     let pi_mode = if graph_mode {
         function_uses_pi_scale(file, groups)
     } else {
@@ -192,6 +206,7 @@ fn analyze_scene(
         graph_mode,
         graph_ref,
         saved_viewport,
+        document_viewport,
         pi_mode,
         function_plot_domain,
         function_plots,

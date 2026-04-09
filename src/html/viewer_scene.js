@@ -724,9 +724,6 @@
 
   /** @param {ViewerEnv} env */
   function resolveHostLinePoints(env, binding) {
-    if (typeof binding?.lineIndex === "number") {
-      return resolveLinePoints(env, binding.lineIndex);
-    }
     if (
       typeof binding?.lineStartIndex === "number"
       && typeof binding?.lineEndIndex === "number"
@@ -735,6 +732,9 @@
       const lineEnd = resolveScenePoint(env, binding.lineEndIndex);
       if (!lineStart || !lineEnd) return null;
       return [lineStart, lineEnd];
+    }
+    if (typeof binding?.lineIndex === "number") {
+      return resolveLinePoints(env, binding.lineIndex);
     }
     return null;
   }

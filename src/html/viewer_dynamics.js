@@ -1012,10 +1012,6 @@
     const preservedLines = [];
     const rotateFamilies = new Map();
     const resolveHostLinePoints = (binding) => {
-      if (typeof binding?.lineIndex === "number") {
-        const hostLine = scene.lines[binding.lineIndex];
-        return hostLine?.points?.length >= 2 ? hostLine.points : null;
-      }
       if (
         typeof binding?.lineStartIndex === "number"
         && typeof binding?.lineEndIndex === "number"
@@ -1023,6 +1019,10 @@
         const start = scene.points[binding.lineStartIndex];
         const end = scene.points[binding.lineEndIndex];
         return start && end ? [start, end] : null;
+      }
+      if (typeof binding?.lineIndex === "number") {
+        const hostLine = scene.lines[binding.lineIndex];
+        return hostLine?.points?.length >= 2 ? hostLine.points : null;
       }
       return null;
     };
