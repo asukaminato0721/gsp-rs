@@ -344,6 +344,40 @@ fn resolve_trace_point(
                 )
             }
             ScenePointConstraint::LineTraceIntersection { .. } => None,
+            ScenePointConstraint::PointCircularTangent {
+                point_index,
+                circle,
+                variant,
+            } => {
+                let point = resolve_trace_point(points, *point_index, visiting)?;
+                let circle = resolve_trace_circular_constraint(points, circle, visiting)?;
+                trace_point_circular_tangent(&point, &circle, *variant)
+            }
+            ScenePointConstraint::LineCircularIntersection {
+                line,
+                circle,
+                variant,
+            } => {
+                let (line_start, line_end, line_kind) =
+                    resolve_trace_line_constraint(points, line, visiting)?;
+                let circle = resolve_trace_circular_constraint(points, circle, visiting)?;
+                let (center, radius) = trace_circle_center_radius(&circle);
+                if radius <= 1e-9 {
+                    return None;
+                }
+                let radius_point = PointRecord {
+                    x: center.x + radius,
+                    y: center.y,
+                };
+                trace_line_circle_intersection(
+                    &line_start,
+                    &line_end,
+                    line_kind,
+                    &center,
+                    &radius_point,
+                    *variant,
+                )
+            }
             ScenePointConstraint::LineCircleIntersection {
                 line,
                 center_index,
@@ -500,6 +534,28 @@ fn resolve_trace_line_constraint(
                     y: vertex.y + dir_y,
                 },
                 LineLikeKind::Ray,
+            ))
+        }
+        LineConstraint::Translated {
+            line,
+            vector_start_index,
+            vector_end_index,
+        } => {
+            let (start, end, kind) = resolve_trace_line_constraint(points, line, visiting)?;
+            let vector_start = resolve_trace_point(points, *vector_start_index, visiting)?;
+            let vector_end = resolve_trace_point(points, *vector_end_index, visiting)?;
+            let dx = vector_end.x - vector_start.x;
+            let dy = vector_end.y - vector_start.y;
+            Some((
+                PointRecord {
+                    x: start.x + dx,
+                    y: start.y + dy,
+                },
+                PointRecord {
+                    x: end.x + dx,
+                    y: end.y + dy,
+                },
+                kind,
             ))
         }
     }
@@ -689,6 +745,49 @@ fn resolve_trace_circular_constraint(
                 ((radius_point.x - center.x).powi(2) + (radius_point.y - center.y).powi(2)).sqrt();
             (radius > 1e-9).then_some(TraceCircularConstraint::Circle { center, radius })
         }
+        CircularConstraint::SegmentRadiusCircle {
+            center_index,
+            line_start_index,
+            line_end_index,
+        } => {
+            let center = resolve_trace_point(points, *center_index, visiting)?;
+            let line_start = resolve_trace_point(points, *line_start_index, visiting)?;
+            let line_end = resolve_trace_point(points, *line_end_index, visiting)?;
+            let radius =
+                ((line_end.x - line_start.x).powi(2) + (line_end.y - line_start.y).powi(2)).sqrt();
+            (radius > 1e-9).then_some(TraceCircularConstraint::Circle { center, radius })
+        }
+        CircularConstraint::CircleArc {
+            center_index,
+            start_index,
+            end_index,
+        } => {
+            let center = resolve_trace_point(points, *center_index, visiting)?;
+            let start = resolve_trace_point(points, *start_index, visiting)?;
+            let end = resolve_trace_point(points, *end_index, visiting)?;
+            let controls =
+                crate::runtime::geometry::arc_on_circle_control_points(&center, &start, &end)?;
+            let start = controls[0].clone();
+            let mid = controls[1].clone();
+            let end = controls[2].clone();
+            let radius = ((start.x - center.x).powi(2) + (start.y - center.y).powi(2)).sqrt();
+            let start_angle = (start.y - center.y).atan2(start.x - center.x);
+            let end_angle = (end.y - center.y).atan2(end.x - center.x);
+            let ccw_mid = trace_normalized_angle_delta(
+                start_angle,
+                (mid.y - center.y).atan2(mid.x - center.x),
+            );
+            Some(TraceCircularConstraint::ThreePointArc {
+                start,
+                end,
+                center,
+                radius,
+                start_angle,
+                end_angle,
+                ccw_span: trace_normalized_angle_delta(start_angle, end_angle),
+                ccw_mid,
+            })
+        }
         CircularConstraint::ThreePointArc {
             start_index,
             mid_index,
@@ -789,6 +888,42 @@ fn trace_circle_center_radius(constraint: &TraceCircularConstraint) -> (PointRec
             (center.clone(), *radius)
         }
     }
+}
+
+fn trace_point_circular_tangent(
+    point: &PointRecord,
+    circle: &TraceCircularConstraint,
+    variant: usize,
+) -> Option<PointRecord> {
+    let (center, radius) = trace_circle_center_radius(circle);
+    let dx = point.x - center.x;
+    let dy = point.y - center.y;
+    let distance_sq = dx * dx + dy * dy;
+    if distance_sq <= radius * radius + 1e-9 {
+        return None;
+    }
+    let distance = distance_sq.sqrt();
+    let base_angle = dy.atan2(dx);
+    let offset = (radius / distance).acos();
+    let mut tangents = [
+        PointRecord {
+            x: center.x + radius * (base_angle - offset).cos(),
+            y: center.y + radius * (base_angle - offset).sin(),
+        },
+        PointRecord {
+            x: center.x + radius * (base_angle + offset).cos(),
+            y: center.y + radius * (base_angle + offset).sin(),
+        },
+    ];
+    tangents.sort_by(|left, right| {
+        left.y
+            .total_cmp(&right.y)
+            .then_with(|| left.x.total_cmp(&right.x))
+    });
+    tangents
+        .into_iter()
+        .filter(|candidate| trace_point_on_circular_constraint(candidate, circle))
+        .nth(variant.min(1))
 }
 
 fn trace_point_on_circular_constraint(

@@ -236,6 +236,20 @@ pub(crate) fn decode_intersection_anchor_raw(
         return select_circular_intersection(&left_circle, &right_circle, variant.unwrap_or(0));
     }
 
+    if let (Some(point), Some(circle)) = (
+        anchors.get(path.refs[0].checked_sub(1)?)?.clone(),
+        resolve_circle_like_raw(file, groups, anchors, right_group),
+    ) {
+        return select_point_circle_tangent(&point, &circle, variant.unwrap_or(0));
+    }
+
+    if let (Some(circle), Some(point)) = (
+        resolve_circle_like_raw(file, groups, anchors, left_group),
+        anchors.get(path.refs[1].checked_sub(1)?)?.clone(),
+    ) {
+        return select_point_circle_tangent(&point, &circle, variant.unwrap_or(0));
+    }
+
     if variant.is_none() {
         let (left_start, left_end) =
             resolve_line_like_points_raw(file, groups, anchors, left_group)?;
@@ -448,6 +462,61 @@ fn resolve_circle_like_raw(
             let radius = ((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt();
             (radius > 1e-9).then_some(CircularConstraintRaw::Circle { center, radius })
         }
+        crate::format::GroupKind::CenterArc => {
+            if path.refs.len() != 3 {
+                return None;
+            }
+            let center = anchors.get(path.refs[0].checked_sub(1)?)?.clone()?;
+            let start = anchors.get(path.refs[1].checked_sub(1)?)?.clone()?;
+            let end = anchors.get(path.refs[2].checked_sub(1)?)?.clone()?;
+            let [start, mid, end] =
+                crate::runtime::geometry::arc_on_circle_control_points(&center, &start, &end)?;
+            let radius = ((start.x - center.x).powi(2) + (start.y - center.y).powi(2)).sqrt();
+            let start_angle = (start.y - center.y).atan2(start.x - center.x);
+            let end_angle = (end.y - center.y).atan2(end.x - center.x);
+            let ccw_span = normalize_angle_delta_raw(start_angle, end_angle);
+            let ccw_mid =
+                normalize_angle_delta_raw(start_angle, (mid.y - center.y).atan2(mid.x - center.x));
+            Some(CircularConstraintRaw::ThreePointArc {
+                start,
+                mid,
+                end,
+                center,
+                radius,
+                ccw_span,
+                ccw_mid,
+            })
+        }
+        crate::format::GroupKind::ArcOnCircle => {
+            if path.refs.len() != 3 {
+                return None;
+            }
+            let circle_group = groups.get(path.refs[0].checked_sub(1)?)?;
+            let circle_path = find_indexed_path(file, circle_group)?;
+            if circle_path.refs.len() != 2 {
+                return None;
+            }
+            let center = anchors.get(circle_path.refs[0].checked_sub(1)?)?.clone()?;
+            let start = anchors.get(path.refs[1].checked_sub(1)?)?.clone()?;
+            let end = anchors.get(path.refs[2].checked_sub(1)?)?.clone()?;
+            let [start, mid, end] =
+                crate::runtime::geometry::arc_on_circle_control_points(&center, &start, &end)?;
+            let radius = ((start.x - center.x).powi(2) + (start.y - center.y).powi(2)).sqrt();
+            let start_angle = (start.y - center.y).atan2(start.x - center.x);
+            let end_angle = (end.y - center.y).atan2(end.x - center.x);
+            let ccw_span = normalize_angle_delta_raw(start_angle, end_angle);
+            let ccw_mid =
+                normalize_angle_delta_raw(start_angle, (mid.y - center.y).atan2(mid.x - center.x));
+            Some(CircularConstraintRaw::ThreePointArc {
+                start,
+                mid,
+                end,
+                center,
+                radius,
+                ccw_span,
+                ccw_mid,
+            })
+        }
         crate::format::GroupKind::ThreePointArc => {
             if path.refs.len() != 3 {
                 return None;
@@ -571,6 +640,27 @@ fn resolve_line_like_points_raw(
                 },
             )
         }
+        crate::format::GroupKind::Translation => {
+            if path.refs.len() < 3 {
+                return None;
+            }
+            let source_group = groups.get(path.refs[0].checked_sub(1)?)?;
+            let (start, end) = resolve_line_like_points_raw(file, groups, anchors, source_group)?;
+            let vector_start = anchors.get(path.refs[1].checked_sub(1)?)?.clone()?;
+            let vector_end = anchors.get(path.refs[2].checked_sub(1)?)?.clone()?;
+            let dx = vector_end.x - vector_start.x;
+            let dy = vector_end.y - vector_start.y;
+            distinct_pair(
+                PointRecord {
+                    x: start.x + dx,
+                    y: start.y + dy,
+                },
+                PointRecord {
+                    x: end.x + dx,
+                    y: end.y + dy,
+                },
+            )
+        }
         _ => None,
     }
 }
@@ -630,6 +720,43 @@ fn select_circular_intersection(
     on_both
         .get(variant.min(on_both.len().saturating_sub(1)))
         .cloned()
+}
+
+fn select_point_circle_tangent(
+    point: &PointRecord,
+    circle: &CircularConstraintRaw,
+    variant: usize,
+) -> Option<PointRecord> {
+    let center = circle.center();
+    let radius = circle.radius();
+    let dx = point.x - center.x;
+    let dy = point.y - center.y;
+    let distance_sq = dx * dx + dy * dy;
+    if distance_sq <= radius * radius + 1e-9 {
+        return None;
+    }
+    let distance = distance_sq.sqrt();
+    let base_angle = dy.atan2(dx);
+    let offset = (radius / distance).acos();
+    let mut tangents = vec![
+        PointRecord {
+            x: center.x + radius * (base_angle - offset).cos(),
+            y: center.y + radius * (base_angle - offset).sin(),
+        },
+        PointRecord {
+            x: center.x + radius * (base_angle + offset).cos(),
+            y: center.y + radius * (base_angle + offset).sin(),
+        },
+    ];
+    tangents.sort_by(|left, right| {
+        left.y
+            .total_cmp(&right.y)
+            .then_with(|| left.x.total_cmp(&right.x))
+    });
+    tangents
+        .into_iter()
+        .filter(|candidate| point_lies_on_circular_constraint(candidate, circle))
+        .nth(variant.min(1))
 }
 
 fn circle_circle_intersections(

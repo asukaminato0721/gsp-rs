@@ -130,6 +130,24 @@ pub(super) fn build_world_data(
                     x_max: *x_max,
                     sample_count: *sample_count,
                 },
+                ScenePointConstraint::PointCircularTangent {
+                    point_index,
+                    circle,
+                    variant,
+                } => ScenePointConstraint::PointCircularTangent {
+                    point_index: *point_index,
+                    circle: clone_circular_constraint(circle),
+                    variant: *variant,
+                },
+                ScenePointConstraint::LineCircularIntersection {
+                    line,
+                    circle,
+                    variant,
+                } => ScenePointConstraint::LineCircularIntersection {
+                    line: clone_line_constraint(line),
+                    circle: clone_circular_constraint(circle),
+                    variant: *variant,
+                },
                 ScenePointConstraint::LineCircleIntersection {
                     line,
                     center_index,
@@ -240,6 +258,24 @@ fn clone_circular_constraint(constraint: &CircularConstraint) -> CircularConstra
             center_index: *center_index,
             radius_index: *radius_index,
         },
+        CircularConstraint::SegmentRadiusCircle {
+            center_index,
+            line_start_index,
+            line_end_index,
+        } => CircularConstraint::SegmentRadiusCircle {
+            center_index: *center_index,
+            line_start_index: *line_start_index,
+            line_end_index: *line_end_index,
+        },
+        CircularConstraint::CircleArc {
+            center_index,
+            start_index,
+            end_index,
+        } => CircularConstraint::CircleArc {
+            center_index: *center_index,
+            start_index: *start_index,
+            end_index: *end_index,
+        },
         CircularConstraint::ThreePointArc {
             start_index,
             mid_index,
@@ -301,6 +337,15 @@ fn clone_line_constraint(constraint: &LineConstraint) -> LineConstraint {
             start_index: *start_index,
             vertex_index: *vertex_index,
             end_index: *end_index,
+        },
+        LineConstraint::Translated {
+            line,
+            vector_start_index,
+            vector_end_index,
+        } => LineConstraint::Translated {
+            line: Box::new(clone_line_constraint(line)),
+            vector_start_index: *vector_start_index,
+            vector_end_index: *vector_end_index,
         },
     }
 }

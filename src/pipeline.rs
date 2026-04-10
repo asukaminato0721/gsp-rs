@@ -1113,6 +1113,98 @@ mod tests {
     }
 
     #[test]
+    fn exports_cans_in_container_inrm_fixture_with_live_bindings() {
+        let scene_json = compile_bytes_to_scene_json(
+            include_bytes!("../tests/fixtures/未实现/(inRm)容器中的罐头.gsp"),
+            800,
+            600,
+        )
+        .expect("cans-in-container fixture should compile");
+
+        let scene: Value =
+            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+        let circles = scene["circles"]
+            .as_array()
+            .expect("scene circles should be an array");
+        assert_eq!(circles.len(), 38, "expected payload circles to export");
+        assert!(
+            circles
+                .iter()
+                .all(|circle| circle["binding"]["kind"].as_str() == Some("segment-radius-circle")),
+            "expected every exported circle to keep its live segment-radius binding"
+        );
+        assert_eq!(
+            circles
+                .iter()
+                .filter(|circle| circle["visible"] == true)
+                .count(),
+            24,
+            "expected the visible can circles to remain rendered"
+        );
+
+        let points = scene["points"]
+            .as_array()
+            .expect("scene points should be an array");
+        assert_eq!(points.len(), 40, "expected helper points to stay exported");
+        assert_eq!(
+            points
+                .iter()
+                .filter(|point| point["visible"] == true)
+                .count(),
+            3,
+            "expected payload draggable points to stay visible"
+        );
+        assert_eq!(
+            points
+                .iter()
+                .filter(|point| point["constraint"]["kind"].as_str() == Some("segment"))
+                .count(),
+            2,
+            "expected both slider points to remain segment constrained"
+        );
+        assert_eq!(
+            points
+                .iter()
+                .filter(|point| point["constraint"]["kind"].as_str() == Some("offset"))
+                .count(),
+            1,
+            "expected the offset helper point to stay live"
+        );
+        assert_eq!(
+            points
+                .iter()
+                .filter(|point| point["binding"]["kind"].as_str() == Some("scale"))
+                .count(),
+            4,
+            "expected scale-derived helper points to preserve their bindings"
+        );
+        assert_eq!(
+            points
+                .iter()
+                .filter(|point| point["binding"]["kind"].as_str() == Some("rotate"))
+                .count(),
+            1,
+            "expected the rotated helper point to preserve its binding"
+        );
+        assert_eq!(
+            points
+                .iter()
+                .filter(|point| point["binding"]["kind"].as_str() == Some("translate"))
+                .count(),
+            5,
+            "expected translated helper points to preserve their bindings"
+        );
+        assert!(
+            scene["labels"]
+                .as_array()
+                .expect("scene labels should be an array")
+                .iter()
+                .any(|label| label["visible"] == true && label["text"].as_str() == Some("M")),
+            "expected the payload midpoint label to stay visible"
+        );
+    }
+
+    #[test]
     fn exports_ant_fixture_with_two_axis_line_iterations() {
         let scene_json = compile_bytes_to_scene_json(
             include_bytes!("../tests/fixtures/bug/迭代方法2(蚂蚁).gsp"),

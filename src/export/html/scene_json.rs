@@ -2002,6 +2002,19 @@ enum PointConstraintJson {
         #[serde(rename = "sampleCount")]
         sample_count: usize,
     },
+    #[serde(rename = "point-circular-tangent")]
+    PointCircularTangent {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+        circle: CircularConstraintJson,
+        variant: usize,
+    },
+    #[serde(rename = "line-circular-intersection")]
+    LineCircularIntersection {
+        line: LineConstraintJson,
+        circle: CircularConstraintJson,
+        variant: usize,
+    },
     #[serde(rename = "line-circle-intersection")]
     LineCircleIntersection {
         line: LineConstraintJson,
@@ -2125,6 +2138,24 @@ impl PointConstraintJson {
                 x_max: *x_max,
                 sample_count: *sample_count,
             }),
+            ScenePointConstraint::PointCircularTangent {
+                point_index,
+                circle,
+                variant,
+            } => Some(Self::PointCircularTangent {
+                point_index: *point_index,
+                circle: CircularConstraintJson::from_constraint(circle),
+                variant: *variant,
+            }),
+            ScenePointConstraint::LineCircularIntersection {
+                line,
+                circle,
+                variant,
+            } => Some(Self::LineCircularIntersection {
+                line: LineConstraintJson::from_constraint(line),
+                circle: CircularConstraintJson::from_constraint(circle),
+                variant: *variant,
+            }),
             ScenePointConstraint::LineCircleIntersection {
                 line,
                 center_index,
@@ -2171,6 +2202,22 @@ enum CircularConstraintJson {
         #[serde(rename = "radiusIndex")]
         radius_index: usize,
     },
+    SegmentRadiusCircle {
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "lineStartIndex")]
+        line_start_index: usize,
+        #[serde(rename = "lineEndIndex")]
+        line_end_index: usize,
+    },
+    CircleArc {
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+    },
     ThreePointArc {
         #[serde(rename = "startIndex")]
         start_index: usize,
@@ -2190,6 +2237,24 @@ impl CircularConstraintJson {
             } => Self::Circle {
                 center_index: *center_index,
                 radius_index: *radius_index,
+            },
+            CircularConstraint::SegmentRadiusCircle {
+                center_index,
+                line_start_index,
+                line_end_index,
+            } => Self::SegmentRadiusCircle {
+                center_index: *center_index,
+                line_start_index: *line_start_index,
+                line_end_index: *line_end_index,
+            },
+            CircularConstraint::CircleArc {
+                center_index,
+                start_index,
+                end_index,
+            } => Self::CircleArc {
+                center_index: *center_index,
+                start_index: *start_index,
+                end_index: *end_index,
             },
             CircularConstraint::ThreePointArc {
                 start_index,
@@ -2252,6 +2317,13 @@ enum LineConstraintJson {
         #[serde(rename = "endIndex")]
         end_index: usize,
     },
+    Translated {
+        line: Box<LineConstraintJson>,
+        #[serde(rename = "vectorStartIndex")]
+        vector_start_index: usize,
+        #[serde(rename = "vectorEndIndex")]
+        vector_end_index: usize,
+    },
 }
 
 impl LineConstraintJson {
@@ -2304,6 +2376,15 @@ impl LineConstraintJson {
                 start_index: *start_index,
                 vertex_index: *vertex_index,
                 end_index: *end_index,
+            },
+            LineConstraint::Translated {
+                line,
+                vector_start_index,
+                vector_end_index,
+            } => Self::Translated {
+                line: Box::new(Self::from_constraint(line)),
+                vector_start_index: *vector_start_index,
+                vector_end_index: *vector_end_index,
             },
         }
     }

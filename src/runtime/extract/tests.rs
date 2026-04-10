@@ -1720,6 +1720,103 @@ fn preserves_two_circle_intersection_inrm_fixture_interactivity() {
 }
 
 #[test]
+fn preserves_cans_in_container_inrm_fixture_interactivity() {
+    let data = include_bytes!("../../../tests/fixtures/未实现/(inRm)容器中的罐头.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(
+        scene.lines.len(),
+        13,
+        "expected source guide lines to export"
+    );
+    assert_eq!(
+        scene.circles.len(),
+        38,
+        "expected the payload can circles to export"
+    );
+    assert_eq!(
+        scene.points.len(),
+        40,
+        "expected helper points to stay exported"
+    );
+    assert_eq!(
+        scene
+            .circles
+            .iter()
+            .filter(|circle| matches!(
+                circle.binding,
+                Some(crate::runtime::scene::ShapeBinding::SegmentRadiusCircle { .. })
+            ))
+            .count(),
+        38,
+        "expected every payload circle to keep its live segment-radius binding"
+    );
+    assert_eq!(
+        scene.circles.iter().filter(|circle| circle.visible).count(),
+        24,
+        "expected the visible can circles to remain rendered"
+    );
+    assert_eq!(
+        scene.points.iter().filter(|point| point.visible).count(),
+        3,
+        "expected the payload draggable points to stay visible"
+    );
+    assert_eq!(
+        scene
+            .points
+            .iter()
+            .filter(|point| matches!(point.constraint, ScenePointConstraint::OnSegment { .. }))
+            .count(),
+        2,
+        "expected both payload slider points to remain segment constrained"
+    );
+    assert_eq!(
+        scene
+            .points
+            .iter()
+            .filter(|point| matches!(point.constraint, ScenePointConstraint::Offset { .. }))
+            .count(),
+        1,
+        "expected the offset helper point to stay live"
+    );
+    assert_eq!(
+        scene
+            .points
+            .iter()
+            .filter(|point| matches!(point.binding, Some(ScenePointBinding::Scale { .. })))
+            .count(),
+        4,
+        "expected scale-derived helper points to preserve their bindings"
+    );
+    assert_eq!(
+        scene
+            .points
+            .iter()
+            .filter(|point| matches!(point.binding, Some(ScenePointBinding::Rotate { .. })))
+            .count(),
+        1,
+        "expected the rotated helper point to preserve its binding"
+    );
+    assert_eq!(
+        scene
+            .points
+            .iter()
+            .filter(|point| matches!(point.binding, Some(ScenePointBinding::Translate { .. })))
+            .count(),
+        5,
+        "expected translated helper points to preserve their bindings"
+    );
+    assert!(
+        scene
+            .labels
+            .iter()
+            .any(|label| label.visible && label.text == "M"),
+        "expected the payload midpoint label to stay visible"
+    );
+}
+
+#[test]
 fn preserves_line_circle_intersection_points() {
     let data = include_bytes!("../../../tests/fixtures/gsp/insection/circle_insection.gsp");
     let file = GspFile::parse(data).expect("fixture parses");

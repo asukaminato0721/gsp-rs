@@ -787,8 +787,8 @@ fn scene_point_from_intersection(
     let position = anchors.get(index).cloned().flatten()?;
 
     if let (Some(left), Some(right)) = (
-        resolve_line_constraint(file, groups, left_group, group_to_point_index),
-        resolve_line_constraint(file, groups, right_group, group_to_point_index),
+        resolve_intersection_line_constraint(file, groups, left_group, group_to_point_index),
+        resolve_intersection_line_constraint(file, groups, right_group, group_to_point_index),
     ) {
         return Some(scene_point(
             position,
@@ -801,7 +801,7 @@ fn scene_point_from_intersection(
     }
 
     if let (Some(line), Some((point_index, x_min, x_max, sample_count))) = (
-        resolve_line_constraint(file, groups, left_group, group_to_point_index),
+        resolve_intersection_line_constraint(file, groups, left_group, group_to_point_index),
         decode_coordinate_trace_constraint(file, groups, right_group, group_to_point_index),
     ) {
         return Some(scene_point(
@@ -822,7 +822,7 @@ fn scene_point_from_intersection(
 
     if let (Some((point_index, x_min, x_max, sample_count)), Some(line)) = (
         decode_coordinate_trace_constraint(file, groups, left_group, group_to_point_index),
-        resolve_line_constraint(file, groups, right_group, group_to_point_index),
+        resolve_intersection_line_constraint(file, groups, right_group, group_to_point_index),
     ) {
         return Some(scene_point(
             position,
@@ -841,8 +841,11 @@ fn scene_point_from_intersection(
     }
 
     let variant = intersection_variant(group.header.kind());
+    let left_circular = resolve_circular_constraint(file, groups, left_group, group_to_point_index);
+    let right_circular =
+        resolve_circular_constraint(file, groups, right_group, group_to_point_index);
     if let (Some(line), Some((center_index, radius_index))) = (
-        resolve_line_constraint(file, groups, left_group, group_to_point_index),
+        resolve_intersection_line_constraint(file, groups, left_group, group_to_point_index),
         resolve_circle_point_indices(file, groups, right_group, group_to_point_index),
     ) {
         return Some(scene_point(
@@ -862,7 +865,7 @@ fn scene_point_from_intersection(
 
     if let (Some((center_index, radius_index)), Some(line)) = (
         resolve_circle_point_indices(file, groups, left_group, group_to_point_index),
-        resolve_line_constraint(file, groups, right_group, group_to_point_index),
+        resolve_intersection_line_constraint(file, groups, right_group, group_to_point_index),
     ) {
         return Some(scene_point(
             position,
@@ -879,10 +882,79 @@ fn scene_point_from_intersection(
         ));
     }
 
-    if let (Some(left), Some(right)) = (
-        resolve_circular_constraint(file, groups, left_group, group_to_point_index),
-        resolve_circular_constraint(file, groups, right_group, group_to_point_index),
+    if let (Some(line), Some(circle)) = (
+        resolve_intersection_line_constraint(file, groups, left_group, group_to_point_index),
+        right_circular.clone(),
     ) {
+        return Some(scene_point(
+            position,
+            group_color(group),
+            visible,
+            true,
+            ScenePointConstraint::LineCircularIntersection {
+                line,
+                circle,
+                variant,
+            },
+            None,
+        ));
+    }
+
+    if let (Some(circle), Some(line)) = (
+        left_circular.clone(),
+        resolve_intersection_line_constraint(file, groups, right_group, group_to_point_index),
+    ) {
+        return Some(scene_point(
+            position,
+            group_color(group),
+            visible,
+            true,
+            ScenePointConstraint::LineCircularIntersection {
+                line,
+                circle,
+                variant,
+            },
+            None,
+        ));
+    }
+
+    if let (Some(point_index), Some(circle)) = (
+        mapped_point_index(group_to_point_index, path.refs[0].checked_sub(1)?),
+        right_circular.clone(),
+    ) {
+        return Some(scene_point(
+            position,
+            group_color(group),
+            visible,
+            true,
+            ScenePointConstraint::PointCircularTangent {
+                point_index,
+                circle,
+                variant,
+            },
+            None,
+        ));
+    }
+
+    if let (Some(circle), Some(point_index)) = (
+        left_circular.clone(),
+        mapped_point_index(group_to_point_index, path.refs[1].checked_sub(1)?),
+    ) {
+        return Some(scene_point(
+            position,
+            group_color(group),
+            visible,
+            true,
+            ScenePointConstraint::PointCircularTangent {
+                point_index,
+                circle,
+                variant,
+            },
+            None,
+        ));
+    }
+
+    if let (Some(left), Some(right)) = (left_circular, right_circular) {
         if let (
             CircularConstraint::Circle {
                 center_index: left_center_index,
@@ -932,6 +1004,46 @@ fn scene_point_from_intersection(
         ScenePointConstraint::Free,
         None,
     ))
+}
+
+fn resolve_intersection_line_constraint(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    group_to_point_index: &[Option<usize>],
+) -> Option<LineConstraint> {
+    normalize_intersection_line_constraint(resolve_line_constraint(
+        file,
+        groups,
+        group,
+        group_to_point_index,
+    )?)
+}
+
+fn normalize_intersection_line_constraint(constraint: LineConstraint) -> Option<LineConstraint> {
+    match constraint {
+        LineConstraint::Segment {
+            start_index,
+            end_index,
+        }
+        | LineConstraint::Ray {
+            start_index,
+            end_index,
+        } => Some(LineConstraint::Line {
+            start_index,
+            end_index,
+        }),
+        LineConstraint::Translated {
+            line,
+            vector_start_index,
+            vector_end_index,
+        } => Some(LineConstraint::Translated {
+            line: Box::new(normalize_intersection_line_constraint(*line)?),
+            vector_start_index,
+            vector_end_index,
+        }),
+        other => Some(other),
+    }
 }
 
 fn resolve_line_constraint(
@@ -1004,6 +1116,18 @@ fn resolve_line_constraint(
                 end_index: (*group_to_point_index.get(path.refs[2].checked_sub(1)?)?)?,
             })
         }
+        crate::format::GroupKind::Translation => {
+            if path.refs.len() < 3 {
+                return None;
+            }
+            let source_group = groups.get(path.refs[0].checked_sub(1)?)?;
+            let line = resolve_line_constraint(file, groups, source_group, group_to_point_index)?;
+            Some(LineConstraint::Translated {
+                line: Box::new(line),
+                vector_start_index: (*group_to_point_index.get(path.refs[1].checked_sub(1)?)?)?,
+                vector_end_index: (*group_to_point_index.get(path.refs[2].checked_sub(1)?)?)?,
+            })
+        }
         _ => None,
     }
 }
@@ -1059,7 +1183,7 @@ fn resolve_circle_point_indices(
 
 fn resolve_circular_constraint(
     file: &GspFile,
-    _groups: &[ObjectGroup],
+    groups: &[ObjectGroup],
     group: &ObjectGroup,
     group_to_point_index: &[Option<usize>],
 ) -> Option<CircularConstraint> {
@@ -1072,6 +1196,48 @@ fn resolve_circular_constraint(
             Some(CircularConstraint::Circle {
                 center_index: (*group_to_point_index.get(path.refs[0].checked_sub(1)?)?)?,
                 radius_index: (*group_to_point_index.get(path.refs[1].checked_sub(1)?)?)?,
+            })
+        }
+        crate::format::GroupKind::CircleCenterRadius => {
+            if path.refs.len() != 2 {
+                return None;
+            }
+            let segment_group = groups.get(path.refs[1].checked_sub(1)?)?;
+            let segment_path = find_indexed_path(file, segment_group)?;
+            if segment_path.refs.len() != 2 {
+                return None;
+            }
+            Some(CircularConstraint::SegmentRadiusCircle {
+                center_index: (*group_to_point_index.get(path.refs[0].checked_sub(1)?)?)?,
+                line_start_index: (*group_to_point_index
+                    .get(segment_path.refs[0].checked_sub(1)?)?)?,
+                line_end_index: (*group_to_point_index
+                    .get(segment_path.refs[1].checked_sub(1)?)?)?,
+            })
+        }
+        crate::format::GroupKind::CenterArc => {
+            if path.refs.len() != 3 {
+                return None;
+            }
+            Some(CircularConstraint::CircleArc {
+                center_index: (*group_to_point_index.get(path.refs[0].checked_sub(1)?)?)?,
+                start_index: (*group_to_point_index.get(path.refs[1].checked_sub(1)?)?)?,
+                end_index: (*group_to_point_index.get(path.refs[2].checked_sub(1)?)?)?,
+            })
+        }
+        crate::format::GroupKind::ArcOnCircle => {
+            if path.refs.len() != 3 {
+                return None;
+            }
+            let circle_group = groups.get(path.refs[0].checked_sub(1)?)?;
+            let circle_path = find_indexed_path(file, circle_group)?;
+            if circle_path.refs.len() != 2 {
+                return None;
+            }
+            Some(CircularConstraint::CircleArc {
+                center_index: (*group_to_point_index.get(circle_path.refs[0].checked_sub(1)?)?)?,
+                start_index: (*group_to_point_index.get(path.refs[1].checked_sub(1)?)?)?,
+                end_index: (*group_to_point_index.get(path.refs[2].checked_sub(1)?)?)?,
             })
         }
         crate::format::GroupKind::ThreePointArc => {

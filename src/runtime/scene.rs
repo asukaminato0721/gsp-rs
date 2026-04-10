@@ -263,6 +263,16 @@ pub(crate) enum ScenePointConstraint {
         x_max: f64,
         sample_count: usize,
     },
+    PointCircularTangent {
+        point_index: usize,
+        circle: CircularConstraint,
+        variant: usize,
+    },
+    LineCircularIntersection {
+        line: LineConstraint,
+        circle: CircularConstraint,
+        variant: usize,
+    },
     LineCircleIntersection {
         line: LineConstraint,
         center_index: usize,
@@ -288,6 +298,16 @@ pub(crate) enum CircularConstraint {
     Circle {
         center_index: usize,
         radius_index: usize,
+    },
+    SegmentRadiusCircle {
+        center_index: usize,
+        line_start_index: usize,
+        line_end_index: usize,
+    },
+    CircleArc {
+        center_index: usize,
+        start_index: usize,
+        end_index: usize,
     },
     ThreePointArc {
         start_index: usize,
@@ -331,6 +351,11 @@ pub(crate) enum LineConstraint {
         start_index: usize,
         vertex_index: usize,
         end_index: usize,
+    },
+    Translated {
+        line: Box<LineConstraint>,
+        vector_start_index: usize,
+        vector_end_index: usize,
     },
 }
 

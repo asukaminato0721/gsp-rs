@@ -884,6 +884,7 @@ pub(crate) fn collect_carried_iteration_circles(
             if depth == 0 {
                 return None;
             }
+            let visible = !iter_group.header.is_hidden() && !source_group.header.is_hidden();
             if let Some(point_map) = carried_iteration_point_map(file, groups, iter_group, anchors)
             {
                 let mut current_center = center.clone();
@@ -898,7 +899,7 @@ pub(crate) fn collect_carried_iteration_circles(
                         color: color_from_style(source_group.header.style_b),
                         fill_color: None,
                         dashed: line_is_dashed(source_group.header.style_a),
-                        visible: !iter_group.header.is_hidden(),
+                        visible,
                         binding: None,
                     });
                 }
@@ -924,7 +925,7 @@ pub(crate) fn collect_carried_iteration_circles(
                     color: color_from_style(source_group.header.style_b),
                     fill_color: None,
                     dashed: line_is_dashed(source_group.header.style_a),
-                    visible: !iter_group.header.is_hidden(),
+                    visible,
                     binding: None,
                 })
                 .collect::<Vec<_>>(),
@@ -1063,7 +1064,7 @@ fn build_parameter_controlled_circle_iteration_family(
                 let parameter_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
                 editable_non_graph_parameter_name_for_group(file, groups, parameter_group)
             }),
-        visible: !iter_group.header.is_hidden(),
+        visible: !iter_group.header.is_hidden() && !source_circle_group.header.is_hidden(),
     })
 }
 
@@ -1136,6 +1137,7 @@ fn collect_parameter_controlled_circle_iteration(
     if depth == 0 {
         return None;
     }
+    let visible = !iter_group.header.is_hidden() && !source_circle_group.header.is_hidden();
 
     Some(
         (1..=depth)
@@ -1150,7 +1152,7 @@ fn collect_parameter_controlled_circle_iteration(
                     color: color_from_style(source_circle_group.header.style_b),
                     fill_color: None,
                     dashed: line_is_dashed(source_circle_group.header.style_a),
-                    visible: !iter_group.header.is_hidden(),
+                    visible,
                     binding: None,
                 })
             })

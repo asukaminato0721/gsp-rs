@@ -213,6 +213,31 @@
         radius: Math.hypot(radiusPoint.x - center.x, radiusPoint.y - center.y),
       };
     }
+    if (constraint.kind === "segment-radius-circle") {
+      const center = resolveFn(constraint.centerIndex);
+      const lineStart = resolveFn(constraint.lineStartIndex);
+      const lineEnd = resolveFn(constraint.lineEndIndex);
+      if (!center || !lineStart || !lineEnd) return null;
+      return {
+        kind: "circle",
+        center,
+        radius: Math.hypot(lineEnd.x - lineStart.x, lineEnd.y - lineStart.y),
+      };
+    }
+    if (constraint.kind === "circle-arc") {
+      const center = resolveFn(constraint.centerIndex);
+      const start = resolveFn(constraint.startIndex);
+      const end = resolveFn(constraint.endIndex);
+      if (!center || !start || !end) return null;
+      const controls = circleArcControlPoints(center, start, end, !!env?.sourceScene?.yUp);
+      if (!controls) return null;
+      const geometry = threePointArcGeometry(controls.start, controls.mid, controls.end);
+      if (!geometry) return null;
+      return {
+        kind: "three-point-arc",
+        ...geometry,
+      };
+    }
     if (constraint.kind === "three-point-arc") {
       const start = resolveFn(constraint.startIndex);
       const mid = resolveFn(constraint.midIndex);
@@ -377,6 +402,19 @@
     return null;
   }
 
+  function choosePointCandidate(candidates, reference, variant) {
+    if (!Array.isArray(candidates) || candidates.length === 0) return null;
+    if (reference && Number.isFinite(reference.x) && Number.isFinite(reference.y)) {
+      return candidates.reduce((best, candidate) => {
+        if (!best) return candidate;
+        const bestDistance = (best.x - reference.x) ** 2 + (best.y - reference.y) ** 2;
+        const candidateDistance = (candidate.x - reference.x) ** 2 + (candidate.y - reference.y) ** 2;
+        return candidateDistance < bestDistance ? candidate : best;
+      }, null);
+    }
+    return candidates[Math.max(0, Math.min(candidates.length - 1, variant || 0))] || null;
+  }
+
   /** @param {ViewerEnv | null} env */
   function sampleCoordinateTracePoints(env, binding) {
     if (!binding) return null;
@@ -473,10 +511,23 @@
         kind: "ray",
       };
     }
+    if (constraint.kind === "translated") {
+      const base = resolveLineConstraint(env, constraint.line, resolveFn);
+      const vectorStart = resolveFn(constraint.vectorStartIndex);
+      const vectorEnd = resolveFn(constraint.vectorEndIndex);
+      if (!base || !vectorStart || !vectorEnd) return null;
+      const dx = vectorEnd.x - vectorStart.x;
+      const dy = vectorEnd.y - vectorStart.y;
+      return {
+        start: { x: base.start.x + dx, y: base.start.y + dy },
+        end: { x: base.end.x + dx, y: base.end.y + dy },
+        kind: base.kind,
+      };
+    }
     return null;
   }
 
-  function lineCircleIntersection(lineStart, lineEnd, lineKind, center, radiusPoint, variant) {
+  function lineCircleIntersection(lineStart, lineEnd, lineKind, center, radiusPoint, variant, reference) {
     const dx = lineEnd.x - lineStart.x;
     const dy = lineEnd.y - lineStart.y;
     const a = dx * dx + dy * dy;
@@ -494,11 +545,14 @@
       .filter((t) => lineLikeAllowsParam(t, lineKind))
       .sort((left, right) => left - right);
     if (ts.length === 0) return null;
-    const t = ts[Math.max(0, Math.min(ts.length - 1, variant || 0))];
-    return {
-      x: lineStart.x + dx * t,
-      y: lineStart.y + dy * t,
-    };
+    return choosePointCandidate(
+      ts.map((t) => ({
+        x: lineStart.x + dx * t,
+        y: lineStart.y + dy * t,
+      })),
+      reference,
+      variant,
+    );
   }
 
   function circleCircleIntersections(leftCenter, leftRadius, rightCenter, rightRadius) {
@@ -531,12 +585,36 @@
     return points;
   }
 
-  function circleCircleIntersection(leftCenter, leftRadiusPoint, rightCenter, rightRadiusPoint, variant) {
+  function circleCircleIntersection(leftCenter, leftRadiusPoint, rightCenter, rightRadiusPoint, variant, reference) {
     const leftRadius = Math.hypot(leftRadiusPoint.x - leftCenter.x, leftRadiusPoint.y - leftCenter.y);
     const rightRadius = Math.hypot(rightRadiusPoint.x - rightCenter.x, rightRadiusPoint.y - rightCenter.y);
     const points = circleCircleIntersections(leftCenter, leftRadius, rightCenter, rightRadius);
     if (!points || points.length === 0) return null;
-    return points[Math.max(0, Math.min(points.length - 1, variant || 0))];
+    return choosePointCandidate(points, reference, variant);
+  }
+
+  function pointCircularTangent(point, circle, variant, reference) {
+    if (!circle) return null;
+    const dx = point.x - circle.center.x;
+    const dy = point.y - circle.center.y;
+    const distanceSquared = dx * dx + dy * dy;
+    if (distanceSquared <= circle.radius * circle.radius + 1e-9) return null;
+    const distance = Math.sqrt(distanceSquared);
+    const baseAngle = Math.atan2(dy, dx);
+    const offset = Math.acos(circle.radius / distance);
+    const candidates = [
+      {
+        x: circle.center.x + circle.radius * Math.cos(baseAngle - offset),
+        y: circle.center.y + circle.radius * Math.sin(baseAngle - offset),
+      },
+      {
+        x: circle.center.x + circle.radius * Math.cos(baseAngle + offset),
+        y: circle.center.y + circle.radius * Math.sin(baseAngle + offset),
+      },
+    ]
+      .filter((candidate) => pointLiesOnCircularConstraint(candidate, circle))
+      .sort((left, right) => (left.y - right.y) || (left.x - right.x));
+    return choosePointCandidate(candidates, reference, variant);
   }
 
   /** @param {ViewerEnv} env */
@@ -558,7 +636,7 @@
    * @param {any} constraint
    * @param {(index: number) => Point} resolveFn
    */
-  function resolveConstrainedPoint(env, constraint, resolveFn) {
+  function resolveConstrainedPoint(env, constraint, resolveFn, reference) {
     if (!constraint) return null;
     if (constraint.kind === "offset") {
       const origin = resolveFn(constraint.originIndex);
@@ -633,6 +711,12 @@
       if (!line || !tracePoints) return null;
       return linePolylineIntersection(line.start, line.end, line.kind, tracePoints);
     }
+    if (constraint.kind === "point-circular-tangent") {
+      const point = resolveFn(constraint.pointIndex);
+      const circle = circleFromConstraint(env, constraint.circle, resolveFn);
+      if (!point || !circle) return null;
+      return pointCircularTangent(point, circle, constraint.variant, reference);
+    }
     if (constraint.kind === "line-circle-intersection") {
       const line = resolveLineConstraint(env, constraint.line, resolveFn);
       const center = resolveFn(constraint.centerIndex);
@@ -645,6 +729,25 @@
         center,
         radiusPoint,
         constraint.variant,
+        reference,
+      );
+    }
+    if (constraint.kind === "line-circular-intersection") {
+      const line = resolveLineConstraint(env, constraint.line, resolveFn);
+      const circle = circleFromConstraint(env, constraint.circle, resolveFn);
+      if (!line || !circle) return null;
+      const radiusPoint = {
+        x: circle.center.x + circle.radius,
+        y: circle.center.y,
+      };
+      return lineCircleIntersection(
+        line.start,
+        line.end,
+        line.kind,
+        circle.center,
+        radiusPoint,
+        constraint.variant,
+        reference,
       );
     }
     if (constraint.kind === "circle-circle-intersection") {
@@ -659,6 +762,7 @@
         rightCenter,
         rightRadiusPoint,
         constraint.variant,
+        reference,
       );
     }
     if (constraint.kind === "circular-intersection") {
@@ -677,7 +781,7 @@
         && pointLiesOnCircularConstraint(point, right)
       );
       if (onBoth.length === 0) return null;
-      return onBoth[Math.min(constraint.variant || 0, onBoth.length - 1)] || null;
+      return choosePointCandidate(onBoth, reference, constraint.variant);
     }
     return null;
   }
@@ -686,7 +790,12 @@
   function resolveScenePoint(env, index) {
     const point = env.currentScene().points[index];
     if (!point) return null;
-    const resolved = resolveConstrainedPoint(env, point.constraint, (i) => resolveScenePoint(env, i));
+    const resolved = resolveConstrainedPoint(
+      env,
+      point.constraint,
+      (i) => resolveScenePoint(env, i),
+      point,
+    );
     if (resolved) return resolved;
     return point.constraint ? null : point;
   }
