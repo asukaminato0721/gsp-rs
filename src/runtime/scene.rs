@@ -535,6 +535,7 @@ pub(crate) struct SceneCircle {
     pub(crate) center: PointRecord,
     pub(crate) radius_point: PointRecord,
     pub(crate) color: [u8; 4],
+    pub(crate) fill_color: Option<[u8; 4]>,
     pub(crate) dashed: bool,
     pub(crate) visible: bool,
     pub(crate) binding: Option<ShapeBinding>,
@@ -554,6 +555,9 @@ pub(crate) enum ShapeBinding {
     PointRadiusCircle {
         center_index: usize,
         radius_index: usize,
+    },
+    PointPolygon {
+        vertex_indices: Vec<usize>,
     },
     SegmentRadiusCircle {
         center_index: usize,

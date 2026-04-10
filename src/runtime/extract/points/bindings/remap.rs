@@ -201,6 +201,18 @@ pub(crate) fn remap_polygon_bindings(
             continue;
         };
         let (source_index, center_index) = match binding {
+            ShapeBinding::PointPolygon { vertex_indices } => {
+                let mapped = vertex_indices
+                    .iter()
+                    .map(|group_index| mapped_index(group_to_point_index, *group_index))
+                    .collect::<Option<Vec<_>>>();
+                let Some(mapped_vertex_indices) = mapped else {
+                    polygon.binding = None;
+                    continue;
+                };
+                *vertex_indices = mapped_vertex_indices;
+                continue;
+            }
             ShapeBinding::TranslatePolygon {
                 source_index,
                 vector_start_index,

@@ -511,6 +511,20 @@ mod tests {
     }
 
     #[test]
+    fn exports_circle_inner_fill_into_html() {
+        let html = compile_bytes_to_html_document(
+            include_bytes!("../tests/fixtures/gsp/static/circle_inner.gsp"),
+            800,
+            600,
+        )
+        .expect("circle-inner fixture should compile");
+
+        assert!(html.contains("\"circles\":["));
+        assert!(html.contains("\"fillColor\":[255,255,0,127]"));
+        assert!(html.contains("\"kind\":\"point-radius-circle\""));
+    }
+
+    #[test]
     fn exports_multiline_text_into_html() {
         let html = compile_bytes_to_html_document(
             include_bytes!("../tests/fixtures/gsp/多行文本.gsp"),
@@ -873,6 +887,96 @@ mod tests {
         assert_eq!(iteration_tables[0]["x"].as_f64(), Some(322.0));
         assert_eq!(iteration_tables[0]["y"].as_f64(), Some(481.0));
         assert_eq!(iteration_tables[0]["depth"].as_u64(), Some(4));
+    }
+
+    #[test]
+    fn exports_circle_system_fixture_with_live_parameter_and_bindings() {
+        let scene_json = compile_bytes_to_scene_json(
+            include_bytes!("../tests/fixtures/未实现/圆系(inRm).gsp"),
+            800,
+            600,
+        )
+        .expect("circle-system fixture should compile");
+
+        let scene: Value =
+            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+        let parameters = scene["parameters"]
+            .as_array()
+            .expect("scene parameters should be an array");
+        assert_eq!(parameters.len(), 1, "expected one live n parameter");
+        assert_eq!(parameters[0]["name"].as_str(), Some("n"));
+        assert_eq!(parameters[0]["value"].as_f64(), Some(2.0));
+
+        let lines = scene["lines"]
+            .as_array()
+            .expect("scene lines should be an array");
+        assert!(
+            lines
+                .iter()
+                .any(|line| line["binding"]["kind"].as_str() == Some("segment")),
+            "expected the payload segment to stay interactive"
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line["binding"]["kind"].as_str() == Some("ray")),
+            "expected the payload ray to stay interactive"
+        );
+
+        let points = scene["points"]
+            .as_array()
+            .expect("scene points should be an array");
+        assert!(
+            points
+                .iter()
+                .any(|point| point["binding"]["kind"].as_str() == Some("rotate")),
+            "expected the rotated payload point to keep its live binding"
+        );
+        assert!(
+            points
+                .iter()
+                .any(|point| point["binding"]["kind"].as_str() == Some("scale")),
+            "expected the scaled payload point to keep its live binding"
+        );
+
+        let labels = scene["labels"]
+            .as_array()
+            .expect("scene labels should be an array");
+        assert!(labels.iter().any(|label| {
+            label["binding"]["kind"].as_str() == Some("parameter-value")
+                && label["text"].as_str() == Some("n = 2.00")
+        }));
+        let circles = scene["circles"]
+            .as_array()
+            .expect("scene circles should be an array");
+        assert_eq!(
+            circles.len(),
+            21,
+            "expected source plus iterated payload circles"
+        );
+        assert!(
+            circles
+                .iter()
+                .any(|circle| circle["binding"]["kind"].as_str() == Some("segment-radius-circle")),
+            "expected the payload circle to keep its live center/radius-segment binding"
+        );
+        let polygons = scene["polygons"]
+            .as_array()
+            .expect("scene polygons should be an array");
+        assert!(
+            polygons
+                .iter()
+                .any(|polygon| polygon["binding"]["kind"].as_str() == Some("point-polygon")),
+            "expected the payload polygon to stay interactive"
+        );
+        assert!(
+            scene["points"]
+                .as_array()
+                .expect("scene points should be an array")
+                .iter()
+                .any(|point| point["constraint"]["kind"].as_str() == Some("polygon-boundary")),
+            "expected the payload boundary point to remain live"
+        );
     }
 
     #[test]

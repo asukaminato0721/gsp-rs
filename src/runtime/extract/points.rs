@@ -26,7 +26,8 @@ pub(super) use bindings::{
     remap_circle_bindings, remap_label_bindings, remap_line_bindings, remap_polygon_bindings,
 };
 pub(super) use constraints::{
-    RawPointConstraint, decode_point_constraint, decode_translated_point_constraint,
+    RawPointConstraint, decode_parameter_controlled_point, decode_point_constraint,
+    decode_translated_point_constraint,
     regular_polygon_angle_expr, regular_polygon_iteration_step,
 };
 

@@ -2,10 +2,13 @@ use std::collections::BTreeSet;
 
 use super::{
     CircleShape, GspFile, LineBinding, LineIterationFamily, LineShape, ObjectGroup, PointRecord,
-    PolygonIterationFamily, PolygonShape, color_from_style, decode_translated_point_constraint,
+    PolygonIterationFamily, PolygonShape, color_from_style, decode_parameter_controlled_point,
+    decode_point_constraint,
+    decode_translated_point_constraint,
     fill_color_from_styles, find_indexed_path, line_is_dashed, regular_polygon_iteration_step,
     rotate_around,
 };
+use crate::runtime::extract::decode::resolve_circle_points_raw;
 use crate::runtime::extract::points::editable_non_graph_parameter_name_for_group;
 use crate::runtime::scene::IterationPointHandle;
 
@@ -839,6 +842,230 @@ pub(crate) fn collect_carried_iteration_polygons(
         })
         .flatten()
         .collect()
+}
+
+pub(crate) fn collect_carried_iteration_circles(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+) -> Vec<CircleShape> {
+    groups
+        .iter()
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::IterationBinding)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            if !super::is_circle_group_kind(source_group.header.kind()) {
+                return None;
+            }
+            let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+            if !matches!(
+                iter_group.header.kind(),
+                crate::format::GroupKind::AffineIteration
+                    | crate::format::GroupKind::RegularPolygonIteration
+            ) {
+                return None;
+            }
+            if let Some(circles) =
+                collect_parameter_controlled_circle_iteration(file, groups, source_group, iter_group, anchors)
+            {
+                return Some(circles);
+            }
+            if (iter_group.header.kind()) == crate::format::GroupKind::RegularPolygonIteration
+                && regular_polygon_iteration_step(file, groups, iter_group).is_some()
+            {
+                return None;
+            }
+            let (center, radius_point): (PointRecord, PointRecord) =
+                resolve_circle_points_raw(file, groups, anchors, source_group)?;
+            let depth = carried_iteration_depth(file, iter_group, 3);
+            if depth == 0 {
+                return None;
+            }
+            if let Some(point_map) = carried_iteration_point_map(file, groups, iter_group, anchors)
+            {
+                let mut current_center = center.clone();
+                let mut current_radius = radius_point.clone();
+                let mut circles = Vec::with_capacity(depth);
+                for _ in 0..depth {
+                    current_center = point_map.map_point(&current_center);
+                    current_radius = point_map.map_point(&current_radius);
+                    circles.push(CircleShape {
+                        center: current_center.clone(),
+                        radius_point: current_radius.clone(),
+                        color: color_from_style(source_group.header.style_b),
+                        fill_color: None,
+                        dashed: line_is_dashed(source_group.header.style_a),
+                        visible: !iter_group.header.is_hidden(),
+                        binding: None,
+                    });
+                }
+                return Some(circles);
+            }
+            let steps = carried_iteration_steps(file, groups, iter_group, anchors);
+            let Some((step, secondary_step, bidirectional)) = carried_iteration_basis(&steps)
+            else {
+                return None;
+            };
+            Some(
+                carried_iteration_polygon_deltas(
+                    &step,
+                    secondary_step.as_ref(),
+                    depth,
+                    bidirectional,
+                )
+                .into_iter()
+                .filter(|delta| !is_zero_step(delta))
+                .map(|delta| CircleShape {
+                    center: center.clone() + delta.clone(),
+                    radius_point: radius_point.clone() + delta,
+                    color: color_from_style(source_group.header.style_b),
+                    fill_color: None,
+                    dashed: line_is_dashed(source_group.header.style_a),
+                    visible: !iter_group.header.is_hidden(),
+                    binding: None,
+                })
+                .collect::<Vec<_>>(),
+            )
+        })
+        .flatten()
+        .collect()
+}
+
+fn collect_parameter_controlled_circle_iteration(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    source_circle_group: &ObjectGroup,
+    iter_group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<Vec<CircleShape>> {
+    if (iter_group.header.kind()) != crate::format::GroupKind::RegularPolygonIteration {
+        return None;
+    }
+    let source_circle_path = find_indexed_path(file, source_circle_group)?;
+    let source_center_group_index = source_circle_path.refs.first()?.checked_sub(1)?;
+    let source_center_group = groups.get(source_center_group_index)?;
+    let crate::runtime::extract::points::RawPointConstraint::PolygonBoundary {
+        vertex_group_indices,
+        edge_index,
+        t,
+    } = decode_point_constraint(file, groups, source_center_group, Some(anchors), &None)?
+    else {
+        return None;
+    };
+    let seed_parameter =
+        super::super::labels::polygon_boundary_parameter(anchors, &vertex_group_indices, edge_index, t)?;
+
+    let iter_point_group = groups
+        .iter()
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::IterationBinding)
+        .find_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            let target_iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+            if target_iter_group.ordinal != iter_group.ordinal {
+                return None;
+            }
+            let candidate = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            ((candidate.header.kind()) == crate::format::GroupKind::ParameterControlledPoint)
+                .then_some(candidate)
+        })?;
+    let iter_point = decode_parameter_controlled_point(file, groups, iter_point_group, anchors)?;
+    let crate::runtime::extract::points::RawPointConstraint::PolygonBoundary {
+        edge_index,
+        t,
+        ..
+    } = iter_point.constraint
+    else {
+        return None;
+    };
+    let next_parameter =
+        super::super::labels::polygon_boundary_parameter(anchors, &vertex_group_indices, edge_index, t)?;
+    let step_parameter = (next_parameter - seed_parameter).rem_euclid(1.0);
+    if step_parameter <= 1e-9 {
+        return None;
+    }
+
+    let vertices = vertex_group_indices
+        .iter()
+        .map(|group_index| anchors.get(*group_index)?.clone())
+        .collect::<Option<Vec<_>>>()?;
+    let (source_center, source_radius_point): (PointRecord, PointRecord) =
+        resolve_circle_points_raw(file, groups, anchors, source_circle_group)?;
+    let depth = carried_iteration_depth(file, iter_group, 3);
+    if depth == 0 {
+        return None;
+    }
+
+    Some(
+        (1..=depth)
+            .filter_map(|index| {
+                let parameter = (seed_parameter + step_parameter * index as f64).rem_euclid(1.0);
+                let (edge_index, local_t) = polygon_parameter_to_edge_local(&vertices, parameter)?;
+                let center = resolve_polygon_boundary_point_local(&vertices, edge_index, local_t)?;
+                let delta = center.clone() - source_center.clone();
+                Some(CircleShape {
+                    center,
+                    radius_point: source_radius_point.clone() + delta,
+                    color: color_from_style(source_circle_group.header.style_b),
+                    fill_color: None,
+                    dashed: line_is_dashed(source_circle_group.header.style_a),
+                    visible: !iter_group.header.is_hidden(),
+                    binding: None,
+                })
+            })
+            .collect::<Vec<_>>(),
+    )
+}
+
+fn polygon_parameter_to_edge_local(
+    vertices: &[PointRecord],
+    parameter: f64,
+) -> Option<(usize, f64)> {
+    if vertices.len() < 2 {
+        return None;
+    }
+    let wrapped = parameter.rem_euclid(1.0);
+    let lengths = (0..vertices.len())
+        .map(|index| {
+            let start = &vertices[index];
+            let end = &vertices[(index + 1) % vertices.len()];
+            ((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt()
+        })
+        .collect::<Vec<_>>();
+    let perimeter: f64 = lengths.iter().sum();
+    if perimeter <= 1e-9 {
+        return None;
+    }
+    let target = wrapped * perimeter;
+    let mut traveled = 0.0;
+    for (edge_index, length) in lengths.iter().enumerate() {
+        if traveled + length >= target || edge_index == lengths.len() - 1 {
+            let local_t = if *length <= 1e-9 {
+                0.0
+            } else {
+                ((target - traveled) / length).clamp(0.0, 1.0)
+            };
+            return Some((edge_index, local_t));
+        }
+        traveled += length;
+    }
+    None
+}
+
+fn resolve_polygon_boundary_point_local(
+    vertices: &[PointRecord],
+    edge_index: usize,
+    t: f64,
+) -> Option<PointRecord> {
+    if vertices.len() < 2 {
+        return None;
+    }
+    let start = vertices.get(edge_index % vertices.len())?;
+    let end = vertices.get((edge_index + 1) % vertices.len())?;
+    Some(PointRecord {
+        x: start.x + (end.x - start.x) * t,
+        y: start.y + (end.y - start.y) * t,
+    })
 }
 
 pub(crate) fn collect_carried_polygon_iteration_families(

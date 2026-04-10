@@ -537,6 +537,9 @@ pub fn render_points_to_png(
         let radius_pixels =
             (radius_world * screen_scale(width, height, margin, &scene.bounds)).round() as i32;
         if radius_pixels >= 4 {
+            if let Some(fill_color) = circle.fill_color {
+                canvas.draw_circle_filled(center.0, center.1, radius_pixels, fill_color);
+            }
             if circle.dashed {
                 canvas.draw_dashed_circle_outline(center.0, center.1, radius_pixels, circle.color, 8);
             } else {

@@ -92,6 +92,7 @@ define_group_kinds! {
     LineKind7 = 7,
     Polygon = 8,
     LinearIntersectionPoint = 9,
+    CircleInterior = 10,
     IntersectionPoint1 = 11,
     IntersectionPoint2 = 12,
     CircleCircleIntersectionPoint1 = 13,

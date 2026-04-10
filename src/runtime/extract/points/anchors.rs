@@ -1060,10 +1060,6 @@ pub(crate) fn decode_reflection_anchor_raw(
     }
     let path = find_indexed_path(file, group)?;
     let source_group_index = path.refs.first()?.checked_sub(1)?;
-    let source_group = groups.get(source_group_index)?;
-    if (source_group.header.kind()) != crate::format::GroupKind::Point {
-        return None;
-    }
     let source = anchors.get(source_group_index)?.clone()?;
     let (line_start_group_index, line_end_group_index) =
         reflection_line_group_indices(file, groups, group)?;
@@ -1074,7 +1070,7 @@ pub(crate) fn decode_reflection_anchor_raw(
 
 pub(crate) fn decode_point_pair_translation_anchor_raw(
     file: &GspFile,
-    groups: &[ObjectGroup],
+    _groups: &[ObjectGroup],
     group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
 ) -> Option<PointRecord> {
@@ -1083,10 +1079,6 @@ pub(crate) fn decode_point_pair_translation_anchor_raw(
     }
     let path = find_indexed_path(file, group)?;
     let source_group_index = path.refs.first()?.checked_sub(1)?;
-    let source_group = groups.get(source_group_index)?;
-    if (source_group.header.kind()) != crate::format::GroupKind::Point {
-        return None;
-    }
     let (vector_start_group_index, vector_end_group_index) =
         translation_point_pair_group_indices(file, group)?;
     let source = anchors.get(source_group_index)?.clone()?;

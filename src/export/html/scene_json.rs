@@ -735,6 +735,7 @@ struct CircleJson {
     center: PointJson,
     radius_point: PointJson,
     color: [u8; 4],
+    fill_color: Option<[u8; 4]>,
     dashed: bool,
     visible: bool,
     binding: Option<ShapeBindingJson>,
@@ -746,6 +747,7 @@ impl CircleJson {
             center: PointJson::from_point(&circle.center),
             radius_point: PointJson::from_point(&circle.radius_point),
             color: circle.color,
+            fill_color: circle.fill_color,
             dashed: circle.dashed,
             visible: circle.visible,
             binding: circle.binding.as_ref().map(ShapeBindingJson::from_binding),
@@ -783,6 +785,11 @@ enum ShapeBindingJson {
         center_index: usize,
         #[serde(rename = "radiusIndex")]
         radius_index: usize,
+    },
+    #[serde(rename = "point-polygon")]
+    PointPolygon {
+        #[serde(rename = "vertexIndices")]
+        vertex_indices: Vec<usize>,
     },
     #[serde(rename = "segment-radius-circle")]
     SegmentRadiusCircle {
@@ -878,6 +885,9 @@ impl ShapeBindingJson {
             } => Self::PointRadiusCircle {
                 center_index: *center_index,
                 radius_index: *radius_index,
+            },
+            ShapeBinding::PointPolygon { vertex_indices } => Self::PointPolygon {
+                vertex_indices: vertex_indices.clone(),
             },
             ShapeBinding::SegmentRadiusCircle {
                 center_index,

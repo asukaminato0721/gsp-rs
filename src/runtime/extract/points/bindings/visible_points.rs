@@ -49,6 +49,237 @@ fn scene_point(
     }
 }
 
+fn build_group_to_point_index(included_groups: &[bool]) -> Vec<Option<usize>> {
+    let mut group_to_point_index = vec![None; included_groups.len()];
+    let mut point_index = 0usize;
+    for (group_index, included) in included_groups.iter().copied().enumerate() {
+        if included {
+            group_to_point_index[group_index] = Some(point_index);
+            point_index += 1;
+        }
+    }
+    group_to_point_index
+}
+
+fn build_scene_point_for_group(
+    index: usize,
+    group: &ObjectGroup,
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    point_map: &[Option<PointRecord>],
+    anchors: &[Option<PointRecord>],
+    graph: &Option<GraphTransform>,
+    group_to_point_index: &[Option<usize>],
+) -> Option<ScenePoint> {
+    let kind = group.header.kind();
+    let visible = !group.header.is_hidden() && point_marker_visible(group);
+    match kind {
+        crate::format::GroupKind::Point => (!is_orphan_duplicate_point_helper(file, groups, group))
+            .then(|| point_map.get(index).cloned().flatten())
+            .flatten()
+            .map(|position| {
+                scene_point(
+                    position,
+                    group_color(group),
+                    visible,
+                    true,
+                    ScenePointConstraint::Free,
+                    None,
+                )
+            }),
+        crate::format::GroupKind::GraphCalibrationX | crate::format::GroupKind::GraphCalibrationY => {
+            anchors.get(index).cloned().flatten().map(|position| {
+                scene_point(
+                    position,
+                    group_color(group),
+                    visible && graph_calibration_visible(group),
+                    true,
+                    ScenePointConstraint::Free,
+                    Some(ScenePointBinding::GraphCalibration),
+                )
+            })
+        }
+        crate::format::GroupKind::LinearIntersectionPoint
+        | crate::format::GroupKind::IntersectionPoint1
+        | crate::format::GroupKind::IntersectionPoint2
+        | crate::format::GroupKind::CircleCircleIntersectionPoint1
+        | crate::format::GroupKind::CircleCircleIntersectionPoint2
+        | crate::format::GroupKind::CoordinateTraceIntersectionPoint => scene_point_from_intersection(
+            index,
+            file,
+            groups,
+            anchors,
+            group_to_point_index,
+            visible,
+        ),
+        crate::format::GroupKind::Midpoint => scene_point_from_midpoint(
+            index,
+            file,
+            groups,
+            anchors,
+            group_to_point_index,
+            visible,
+        ),
+        crate::format::GroupKind::CartesianOffsetPoint
+        | crate::format::GroupKind::PolarOffsetPoint => (|| {
+            let constraint = decode_translated_point_constraint(file, group)?;
+            let origin_index = mapped_point_index(group_to_point_index, constraint.origin_group_index)?;
+            let position = anchors.get(index).cloned().flatten()?;
+            Some(scene_point(
+                position,
+                group_color(group),
+                visible,
+                true,
+                ScenePointConstraint::Offset {
+                    origin_index,
+                    dx: constraint.dx,
+                    dy: constraint.dy,
+                },
+                None,
+            ))
+        })(),
+        crate::format::GroupKind::PointConstraint | crate::format::GroupKind::PathPoint => {
+            (|| {
+                let constraint = decode_point_constraint(file, groups, group, Some(anchors), graph)?;
+                scene_point_from_constraint(
+                    index,
+                    group_color(group),
+                    anchors,
+                    group_to_point_index,
+                    constraint,
+                    visible,
+                    kind != crate::format::GroupKind::PathPoint,
+                )
+            })()
+        }
+        crate::format::GroupKind::ParameterControlledPoint => (|| {
+            let parameter_point = decode_parameter_controlled_point(file, groups, group, anchors)?;
+            scene_point_from_parameter_controlled(
+                group_to_point_index,
+                parameter_point,
+                group_color(group),
+                visible,
+            )
+        })(),
+        crate::format::GroupKind::CoordinatePoint
+        | crate::format::GroupKind::CoordinateExpressionPoint
+        | crate::format::GroupKind::CoordinateExpressionPointAlt
+        | crate::format::GroupKind::Unknown(20) => (|| {
+            let point = decode_coordinate_point(file, groups, group, anchors, graph)?;
+            scene_point_from_coordinate(point, group_to_point_index, group_color(group), visible)
+        })(),
+        crate::format::GroupKind::CustomTransformPoint => (|| {
+            let position = anchors.get(index).cloned().flatten()?;
+            let binding = decode_custom_transform_binding(file, groups, group.ordinal)?;
+            let source_index = mapped_point_index(group_to_point_index, binding.source_group_index)?;
+            let origin_index = mapped_point_index(group_to_point_index, binding.origin_group_index)?;
+            let axis_end_index =
+                mapped_point_index(group_to_point_index, binding.axis_end_group_index)?;
+            Some(scene_point(
+                position,
+                group_color(group),
+                visible,
+                true,
+                ScenePointConstraint::Free,
+                Some(ScenePointBinding::CustomTransform {
+                    source_index,
+                    origin_index,
+                    axis_end_index,
+                    distance_expr: binding.distance_expr,
+                    angle_expr: binding.angle_expr,
+                    distance_raw_scale: binding.distance_raw_scale,
+                    angle_degrees_scale: binding.angle_degrees_scale,
+                }),
+            ))
+        })(),
+        crate::format::GroupKind::Reflection => (|| {
+            let position = decode_reflection_anchor_raw(file, groups, group, anchors)?;
+            let path = find_indexed_path(file, group)?;
+            let source_group_index = path.refs.first()?.checked_sub(1)?;
+            let (line_start_group_index, line_end_group_index) =
+                reflection_line_group_indices(file, groups, group)?;
+            let source_index = mapped_point_index(group_to_point_index, source_group_index)?;
+            let line_start_index =
+                mapped_point_index(group_to_point_index, line_start_group_index)?;
+            let line_end_index = mapped_point_index(group_to_point_index, line_end_group_index)?;
+            Some(scene_point(
+                position,
+                group_color(group),
+                visible,
+                true,
+                ScenePointConstraint::Free,
+                Some(ScenePointBinding::Reflect {
+                    source_index,
+                    line_start_index,
+                    line_end_index,
+                }),
+            ))
+        })(),
+        crate::format::GroupKind::Translation => (|| {
+            let position = anchors.get(index).cloned().flatten()?;
+            let path = find_indexed_path(file, group)?;
+            let source_group_index = path.refs.first()?.checked_sub(1)?;
+            let (vector_start_group_index, vector_end_group_index) =
+                translation_point_pair_group_indices(file, group)?;
+            let source_index = mapped_point_index(group_to_point_index, source_group_index)?;
+            let vector_start_index =
+                mapped_point_index(group_to_point_index, vector_start_group_index)?;
+            let vector_end_index = mapped_point_index(group_to_point_index, vector_end_group_index)?;
+            Some(scene_point(
+                position,
+                group_color(group),
+                visible,
+                true,
+                ScenePointConstraint::Free,
+                Some(ScenePointBinding::Translate {
+                    source_index,
+                    vector_start_index,
+                    vector_end_index,
+                }),
+            ))
+        })(),
+        crate::format::GroupKind::Rotation
+        | crate::format::GroupKind::ParameterRotation
+        | crate::format::GroupKind::Scale => {
+            let binding = if kind == crate::format::GroupKind::ParameterRotation {
+                decode_parameter_rotation_binding(file, groups, group)
+            } else {
+                decode_transform_binding(file, group)
+            };
+            (|| {
+                let binding = binding?;
+                let position = anchors.get(index).cloned().flatten()?;
+                let source_index = mapped_point_index(group_to_point_index, binding.source_group_index)?;
+                let center_index = mapped_point_index(group_to_point_index, binding.center_group_index)?;
+                Some(scene_point(
+                    position,
+                    group_color(group),
+                    visible,
+                    true,
+                    ScenePointConstraint::Free,
+                    Some(match binding.kind {
+                        TransformBindingKind::Rotate {
+                            angle_degrees,
+                            parameter_name,
+                        } => ScenePointBinding::Rotate {
+                            source_index,
+                            center_index,
+                            angle_degrees,
+                            parameter_name,
+                        },
+                        TransformBindingKind::Scale { factor } => ScenePointBinding::Scale {
+                            source_index,
+                            center_index,
+                            factor,
+                        },
+                    }),
+                ))
+            })()
+        }
+        _ => None,
+    }
+}
+
 pub(crate) fn collect_visible_points(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -56,250 +287,74 @@ pub(crate) fn collect_visible_points(
     anchors: &[Option<PointRecord>],
     graph: &Option<GraphTransform>,
 ) -> (Vec<ScenePoint>, Vec<Option<usize>>) {
-    let mut group_to_point_index = vec![None; groups.len()];
-    let mut points = Vec::<ScenePoint>::new();
+    let mut included_groups = vec![false; groups.len()];
 
-    for (index, group) in groups.iter().enumerate() {
-        let kind = group.header.kind();
-        let visible = !group.header.is_hidden() && point_marker_visible(group);
-        let scene_point = match kind {
-            crate::format::GroupKind::Point => {
-                (!is_orphan_duplicate_point_helper(file, groups, group))
-                    .then(|| point_map.get(index).cloned().flatten())
-                    .flatten()
-                    .map(|position| {
-                        scene_point(
-                            position,
-                            group_color(group),
-                            visible,
-                            true,
-                            ScenePointConstraint::Free,
-                            None,
-                        )
-                    })
-            }
-            crate::format::GroupKind::GraphCalibrationX
-            | crate::format::GroupKind::GraphCalibrationY => {
-                anchors.get(index).cloned().flatten().map(|position| {
-                    scene_point(
-                        position,
-                        group_color(group),
-                        visible && graph_calibration_visible(group),
-                        true,
-                        ScenePointConstraint::Free,
-                        Some(ScenePointBinding::GraphCalibration),
-                    )
-                })
-            }
-            crate::format::GroupKind::LinearIntersectionPoint
-            | crate::format::GroupKind::IntersectionPoint1
-            | crate::format::GroupKind::IntersectionPoint2
-            | crate::format::GroupKind::CircleCircleIntersectionPoint1
-            | crate::format::GroupKind::CircleCircleIntersectionPoint2
-            | crate::format::GroupKind::CoordinateTraceIntersectionPoint => {
-                scene_point_from_intersection(
+    loop {
+        let group_to_point_index = build_group_to_point_index(&included_groups);
+        let next_included_groups = groups
+            .iter()
+            .enumerate()
+            .map(|(index, group)| {
+                build_scene_point_for_group(
                     index,
+                    group,
                     file,
                     groups,
+                    point_map,
                     anchors,
+                    graph,
                     &group_to_point_index,
-                    visible,
                 )
-            }
-            crate::format::GroupKind::Midpoint => scene_point_from_midpoint(
-                index,
-                file,
-                groups,
-                anchors,
-                &group_to_point_index,
-                visible,
-            ),
-            crate::format::GroupKind::CartesianOffsetPoint
-            | crate::format::GroupKind::PolarOffsetPoint => (|| {
-                let constraint = decode_translated_point_constraint(file, group)?;
-                let origin_index =
-                    mapped_point_index(&group_to_point_index, constraint.origin_group_index)?;
-                let position = anchors.get(index).cloned().flatten()?;
-                Some(scene_point(
-                    position,
-                    group_color(group),
-                    visible,
-                    true,
-                    ScenePointConstraint::Offset {
-                        origin_index,
-                        dx: constraint.dx,
-                        dy: constraint.dy,
-                    },
-                    None,
-                ))
-            })(),
-            crate::format::GroupKind::PointConstraint | crate::format::GroupKind::PathPoint => {
-                (|| {
-                    let constraint =
-                        decode_point_constraint(file, groups, group, Some(anchors), graph)?;
-                    scene_point_from_constraint(
+                .is_some()
+            })
+            .collect::<Vec<_>>();
+
+        if next_included_groups == included_groups {
+            let points_by_group = groups
+                .iter()
+                .enumerate()
+                .map(|(index, group)| {
+                    build_scene_point_for_group(
                         index,
-                        group_color(group),
+                        group,
+                        file,
+                        groups,
+                        point_map,
                         anchors,
+                        graph,
                         &group_to_point_index,
-                        constraint,
-                        visible,
-                        kind != crate::format::GroupKind::PathPoint,
-                    )
-                })()
-            }
-            crate::format::GroupKind::ParameterControlledPoint => (|| {
-                let parameter_point =
-                    decode_parameter_controlled_point(file, groups, group, anchors)?;
-                scene_point_from_parameter_controlled(
-                    &group_to_point_index,
-                    parameter_point,
-                    group_color(group),
-                    visible,
-                )
-            })(),
-            crate::format::GroupKind::CoordinatePoint
-            | crate::format::GroupKind::CoordinateExpressionPoint
-            | crate::format::GroupKind::CoordinateExpressionPointAlt
-            | crate::format::GroupKind::Unknown(20) => (|| {
-                let point = decode_coordinate_point(file, groups, group, anchors, graph)?;
-                scene_point_from_coordinate(
-                    point,
-                    &group_to_point_index,
-                    group_color(group),
-                    visible,
-                )
-            })(),
-            crate::format::GroupKind::CustomTransformPoint => (|| {
-                let position = anchors.get(index).cloned().flatten()?;
-                let binding = decode_custom_transform_binding(file, groups, group.ordinal)?;
-                let source_index =
-                    mapped_point_index(&group_to_point_index, binding.source_group_index)?;
-                let origin_index =
-                    mapped_point_index(&group_to_point_index, binding.origin_group_index)?;
-                let axis_end_index =
-                    mapped_point_index(&group_to_point_index, binding.axis_end_group_index)?;
-                Some(scene_point(
-                    position,
-                    group_color(group),
-                    visible,
-                    true,
-                    ScenePointConstraint::Free,
-                    Some(ScenePointBinding::CustomTransform {
-                        source_index,
-                        origin_index,
-                        axis_end_index,
-                        distance_expr: binding.distance_expr,
-                        angle_expr: binding.angle_expr,
-                        distance_raw_scale: binding.distance_raw_scale,
-                        angle_degrees_scale: binding.angle_degrees_scale,
-                    }),
-                ))
-            })(),
-            crate::format::GroupKind::Reflection => (|| {
-                let position = decode_reflection_anchor_raw(file, groups, group, anchors)?;
-                let path = find_indexed_path(file, group)?;
-                let source_group_index = path.refs.first()?.checked_sub(1)?;
-                let (line_start_group_index, line_end_group_index) =
-                    reflection_line_group_indices(file, groups, group)?;
-                let source_index = mapped_point_index(&group_to_point_index, source_group_index)?;
-                let line_start_index =
-                    mapped_point_index(&group_to_point_index, line_start_group_index)?;
-                let line_end_index =
-                    mapped_point_index(&group_to_point_index, line_end_group_index)?;
-                let source_group = groups.get(source_group_index)?;
-                ((source_group.header.kind()) == crate::format::GroupKind::Point).then(|| {
-                    scene_point(
-                        position,
-                        group_color(group),
-                        visible,
-                        true,
-                        ScenePointConstraint::Free,
-                        Some(ScenePointBinding::Reflect {
-                            source_index,
-                            line_start_index,
-                            line_end_index,
-                        }),
                     )
                 })
-            })(),
-            crate::format::GroupKind::Translation => (|| {
-                let position = anchors.get(index).cloned().flatten()?;
-                let path = find_indexed_path(file, group)?;
-                let source_group_index = path.refs.first()?.checked_sub(1)?;
-                let (vector_start_group_index, vector_end_group_index) =
-                    translation_point_pair_group_indices(file, group)?;
-                let source_index = mapped_point_index(&group_to_point_index, source_group_index)?;
-                let vector_start_index =
-                    mapped_point_index(&group_to_point_index, vector_start_group_index)?;
-                let vector_end_index =
-                    mapped_point_index(&group_to_point_index, vector_end_group_index)?;
-                let source_group = groups.get(source_group_index)?;
-                ((source_group.header.kind()) == crate::format::GroupKind::Point).then(|| {
-                    scene_point(
-                        position,
-                        group_color(group),
-                        visible,
-                        true,
-                        ScenePointConstraint::Free,
-                        Some(ScenePointBinding::Translate {
-                            source_index,
-                            vector_start_index,
-                            vector_end_index,
-                        }),
-                    )
-                })
-            })(),
-            crate::format::GroupKind::Rotation
-            | crate::format::GroupKind::ParameterRotation
-            | crate::format::GroupKind::Scale => {
-                let binding = if kind == crate::format::GroupKind::ParameterRotation {
-                    decode_parameter_rotation_binding(file, groups, group)
-                } else {
-                    decode_transform_binding(file, group)
-                };
-                (|| {
-                    let binding = binding?;
-                    let position = anchors.get(index).cloned().flatten()?;
-                    let source_index =
-                        mapped_point_index(&group_to_point_index, binding.source_group_index)?;
-                    let center_index =
-                        mapped_point_index(&group_to_point_index, binding.center_group_index)?;
-                    Some(scene_point(
-                        position,
-                        group_color(group),
-                        visible,
-                        true,
-                        ScenePointConstraint::Free,
-                        Some(match binding.kind {
-                            TransformBindingKind::Rotate {
-                                angle_degrees,
-                                parameter_name,
-                            } => ScenePointBinding::Rotate {
-                                source_index,
-                                center_index,
-                                angle_degrees,
-                                parameter_name,
-                            },
-                            TransformBindingKind::Scale { factor } => ScenePointBinding::Scale {
-                                source_index,
-                                center_index,
-                                factor,
-                            },
-                        }),
-                    ))
-                })()
+                .collect::<Vec<_>>();
+            let actual_included_groups = points_by_group
+                .iter()
+                .map(Option::is_some)
+                .collect::<Vec<_>>();
+            if actual_included_groups == included_groups {
+                let final_group_to_point_index = build_group_to_point_index(&actual_included_groups);
+                let points = groups
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, group)| {
+                        build_scene_point_for_group(
+                            index,
+                            group,
+                            file,
+                            groups,
+                            point_map,
+                            anchors,
+                            graph,
+                            &final_group_to_point_index,
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                return (points, final_group_to_point_index);
             }
-            _ => None,
-        };
-
-        if let Some(scene_point) = scene_point {
-            group_to_point_index[index] = Some(points.len());
-            points.push(scene_point);
+            included_groups = actual_included_groups;
+            continue;
         }
+        included_groups = next_included_groups;
     }
-
-    (points, group_to_point_index)
 }
 
 fn is_orphan_duplicate_point_helper(

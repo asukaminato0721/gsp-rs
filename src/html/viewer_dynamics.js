@@ -1066,7 +1066,14 @@
     });
 
     scene.polygons.forEach((polygon) => {
-      if (polygon.binding?.kind === "translate-polygon") {
+      if (polygon.binding?.kind === "point-polygon") {
+        const points = polygon.binding.vertexIndices
+          .map((index) => scene.points[index])
+          .filter(Boolean);
+        if (points.length === polygon.binding.vertexIndices.length) {
+          polygon.points = points.map((point) => ({ x: point.x, y: point.y }));
+        }
+      } else if (polygon.binding?.kind === "translate-polygon") {
         const source = scene.polygons[polygon.binding.sourceIndex];
         const vectorStart = scene.points[polygon.binding.vectorStartIndex];
         const vectorEnd = scene.points[polygon.binding.vectorEndIndex];

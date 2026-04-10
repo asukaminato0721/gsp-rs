@@ -984,6 +984,65 @@ fn preserves_circle_center_radius_gsp() {
 }
 
 #[test]
+fn preserves_circle_inner_fill_gsp() {
+    let data = include_bytes!("../../../tests/fixtures/gsp/static/circle_inner.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.circles.len(), 1, "expected one circle");
+    let circle = &scene.circles[0];
+    assert_eq!(
+        circle.fill_color,
+        Some([255, 255, 0, 127]),
+        "expected circle interior payload to preserve its fill color"
+    );
+    assert!(matches!(
+        circle.binding,
+        Some(crate::runtime::scene::ShapeBinding::PointRadiusCircle {
+            center_index: 0,
+            radius_index: 1,
+        })
+    ));
+}
+
+#[test]
+fn preserves_circle_system_bindings_for_inrm_fixture() {
+    let data = include_bytes!("../../../tests/fixtures/未实现/圆系(inRm).gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(
+        scene.circles.len(),
+        21,
+        "expected source plus iterated payload circles"
+    );
+    assert_eq!(scene.polygons.len(), 1, "expected one payload polygon");
+    assert_eq!(
+        scene.points.len(),
+        28,
+        "expected base and iterated helper points to export"
+    );
+    assert!(
+        scene
+            .points
+            .iter()
+            .any(|point| matches!(
+                point.constraint,
+                ScenePointConstraint::OnPolygonBoundary { .. }
+            )),
+        "expected polygon-boundary helper point to stay exported for dependent bindings"
+    );
+    assert!(matches!(
+        scene.circles[0].binding,
+        Some(crate::runtime::scene::ShapeBinding::SegmentRadiusCircle { .. })
+    ));
+    assert!(matches!(
+        scene.polygons[0].binding,
+        Some(crate::runtime::scene::ShapeBinding::PointPolygon { .. })
+    ));
+}
+
+#[test]
 fn preserves_point_segment_value_segment_point_gsp() {
     let data =
         include_bytes!("../../../tests/fixtures/gsp/static/point_segment_value_segment_point.gsp");

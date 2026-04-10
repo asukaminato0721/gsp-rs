@@ -40,6 +40,7 @@ use self::points::{
     TransformBindingKind, collect_non_graph_parameters, collect_point_iteration_points,
     collect_point_objects, collect_visible_points, decode_line_midpoint_anchor_raw,
     decode_offset_anchor_raw, decode_parameter_controlled_anchor_raw,
+    decode_parameter_controlled_point, decode_point_constraint,
     decode_parameter_rotation_anchor_raw, decode_parameter_rotation_binding,
     decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,
     decode_point_pair_translation_anchor_raw, decode_reflection_anchor_raw,
@@ -50,7 +51,8 @@ use self::points::{
 };
 use self::shapes::{
     collect_arc_boundary_shapes, collect_bound_line_shapes, collect_carried_iteration_lines,
-    collect_carried_iteration_polygons, collect_carried_line_iteration_families,
+    collect_carried_iteration_circles, collect_carried_iteration_polygons,
+    collect_carried_line_iteration_families,
     collect_carried_polygon_edge_segment_groups, collect_carried_polygon_iteration_families,
     collect_circle_shapes, collect_coordinate_traces, collect_derived_segments,
     collect_iteration_shapes, collect_line_shapes, collect_polygon_shapes,
@@ -83,6 +85,7 @@ struct CircleShape {
     center: PointRecord,
     radius_point: PointRecord,
     color: [u8; 4],
+    fill_color: Option<[u8; 4]>,
     dashed: bool,
     visible: bool,
     binding: Option<super::scene::ShapeBinding>,
@@ -125,6 +128,7 @@ struct CollectedShapes {
     rotational_iteration_lines: Vec<LineShape>,
     carried_iteration_lines: Vec<LineShape>,
     carried_iteration_polygons: Vec<PolygonShape>,
+    carried_iteration_circles: Vec<CircleShape>,
     measurements: Vec<LineShape>,
     coordinate_traces: Vec<LineShape>,
     axes: Vec<LineShape>,
@@ -290,6 +294,8 @@ fn collect_scene_shapes(
     );
     let carried_iteration_polygons =
         collect_carried_iteration_polygons(file, groups, &analysis.raw_anchors);
+    let carried_iteration_circles =
+        collect_carried_iteration_circles(file, groups, &analysis.raw_anchors);
     let measurements = if analysis.graph_mode {
         collect_line_shapes(
             file,
@@ -366,6 +372,7 @@ fn collect_scene_shapes(
         rotational_iteration_lines,
         carried_iteration_lines,
         carried_iteration_polygons,
+        carried_iteration_circles,
         measurements,
         coordinate_traces,
         axes,
@@ -551,6 +558,11 @@ fn remap_scene_bindings(
         (group.header.kind()) == crate::format::GroupKind::Polygon
             && !shapes.iteration_polygon_indices.contains(&index)
     });
+    remap_polygon_bindings(
+        &mut shapes.polygons,
+        group_to_point_index,
+        &polygon_group_to_index,
+    );
     remap_circle_bindings(
         &mut shapes.rotated_circles,
         group_to_point_index,
@@ -1215,6 +1227,7 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::LineKind7
             | GroupKind::Polygon
             | GroupKind::LinearIntersectionPoint
+            | GroupKind::CircleInterior
             | GroupKind::IntersectionPoint1
             | GroupKind::IntersectionPoint2
             | GroupKind::CircleCircleIntersectionPoint1

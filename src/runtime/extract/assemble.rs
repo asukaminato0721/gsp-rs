@@ -413,6 +413,7 @@ pub(super) fn assemble_scene(
         rotational_iteration_lines,
         carried_iteration_lines,
         carried_iteration_polygons,
+        carried_iteration_circles,
         measurements,
         coordinate_traces,
         axes,
@@ -513,6 +514,7 @@ pub(super) fn assemble_scene(
             .collect(),
         circles: circles
             .into_iter()
+            .chain(carried_iteration_circles)
             .chain(rotated_circles)
             .chain(transformed_circles)
             .chain(reflected_circles)
@@ -520,6 +522,7 @@ pub(super) fn assemble_scene(
                 center: to_world(&circle.center, &analysis.graph_ref),
                 radius_point: to_world(&circle.radius_point, &analysis.graph_ref),
                 color: circle.color,
+                fill_color: circle.fill_color,
                 dashed: circle.dashed,
                 visible: circle.visible,
                 binding: circle.binding,

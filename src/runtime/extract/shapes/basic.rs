@@ -14,6 +14,24 @@ use crate::runtime::scene::ArcBoundaryKind;
 
 const ARC_BOUNDARY_SUBDIVISIONS: usize = 48;
 
+pub(crate) fn collect_circle_fill_colors(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+) -> BTreeMap<usize, [u8; 4]> {
+    groups
+        .iter()
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::CircleInterior)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            let circle_group_index = path.refs.first()?.checked_sub(1)?;
+            Some((
+                circle_group_index,
+                fill_color_from_styles(group.header.style_b, group.header.style_c),
+            ))
+        })
+        .collect()
+}
+
 pub(crate) fn collect_line_shapes(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -681,7 +699,13 @@ pub(crate) fn collect_polygon_shapes(
                 points,
                 color: fill_color_from_styles(group.header.style_b, group.header.style_c),
                 visible: !group.header.is_hidden(),
-                binding: None,
+                binding: Some(ShapeBinding::PointPolygon {
+                    vertex_indices: path
+                        .refs
+                        .iter()
+                        .filter_map(|object_ref| object_ref.checked_sub(1))
+                        .collect(),
+                }),
             })
         })
         .collect()
@@ -692,6 +716,7 @@ pub(crate) fn collect_circle_shapes(
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
 ) -> Vec<CircleShape> {
+    let circle_fill_colors = collect_circle_fill_colors(file, groups);
     let dashed_circle_indices = groups
         .iter()
         .filter_map(|group| {
@@ -762,6 +787,7 @@ pub(crate) fn collect_circle_shapes(
                 center,
                 radius_point,
                 color: color_from_style(group.header.style_b),
+                fill_color: circle_fill_colors.get(&group_index).copied(),
                 dashed: dashed_circle_indices.contains(&group_index),
                 visible: !group.header.is_hidden(),
                 binding,

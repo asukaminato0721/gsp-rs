@@ -116,6 +116,44 @@ fn first_path_group<'a>(
     groups.get(index)
 }
 
+fn parameter_anchor_value(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<(String, f64, usize)> {
+    let path = find_indexed_path(file, group)?;
+    let point_group_index = path.refs.first()?.checked_sub(1)?;
+    let point_group = groups.get(point_group_index)?;
+    let t = match decode_point_constraint(file, groups, point_group, None, &None)? {
+        RawPointConstraint::Segment(constraint) => constraint.t,
+        RawPointConstraint::PolygonBoundary {
+            edge_index,
+            t,
+            vertex_group_indices,
+        } => super::super::labels::polygon_boundary_parameter(
+            anchors,
+            &vertex_group_indices,
+            edge_index,
+            t,
+        )?,
+        RawPointConstraint::Circle(constraint) => super::super::labels::circle_parameter(
+            anchors,
+            constraint.center_group_index,
+            constraint.radius_group_index,
+            constraint.unit_x,
+            constraint.unit_y,
+        )?,
+        RawPointConstraint::CircleArc(_) => return None,
+        RawPointConstraint::Arc(_) => return None,
+        RawPointConstraint::Polyline { .. } => return None,
+    };
+    let name = decode_label_name(file, group)
+        .or_else(|| decode_label_name(file, point_group))
+        .unwrap_or_default();
+    Some((name, wrap_unit_interval(t), point_group_index))
+}
+
 pub(crate) fn regular_polygon_iteration_step(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -320,37 +358,35 @@ pub(crate) fn decode_parameter_controlled_point(
                 None,
             )
         } else if (source_group.header.kind()) == crate::format::GroupKind::ParameterAnchor {
-            let path = find_indexed_path(file, source_group)?;
-            let point_group_index = path.refs.first()?.checked_sub(1)?;
-            let point_group = groups.get(point_group_index)?;
-            let t = match decode_point_constraint(file, groups, point_group, None, &None)? {
-                RawPointConstraint::Segment(constraint) => constraint.t,
-                RawPointConstraint::PolygonBoundary {
-                    edge_index,
-                    t,
-                    vertex_group_indices,
-                } => super::super::labels::polygon_boundary_parameter(
-                    anchors,
-                    &vertex_group_indices,
-                    edge_index,
-                    t,
-                )?,
-                RawPointConstraint::Circle(constraint) => super::super::labels::circle_parameter(
-                    anchors,
-                    constraint.center_group_index,
-                    constraint.radius_group_index,
-                    constraint.unit_x,
-                    constraint.unit_y,
-                )?,
-                RawPointConstraint::CircleArc(_) => return None,
-                RawPointConstraint::Arc(_) => return None,
-                RawPointConstraint::Polyline { .. } => return None,
-            };
-            (
-                String::new(),
-                wrap_unit_interval(t),
-                Some(point_group_index),
-            )
+            let (_name, value, point_group_index) =
+                parameter_anchor_value(file, groups, source_group, anchors)?;
+            (String::new(), value, Some(point_group_index))
+        } else if (source_group.header.kind()) == crate::format::GroupKind::FunctionExpr {
+            let expr = decode_function_expr(file, groups, source_group)?;
+            let source_path = find_indexed_path(file, source_group)?;
+            let mut parameters = BTreeMap::new();
+            let mut source_point_group_index = None;
+            for object_ref in &source_path.refs {
+                let ref_group = groups.get(object_ref.checked_sub(1)?)?;
+                match ref_group.header.kind() {
+                    crate::format::GroupKind::Point => {
+                        let name = decode_label_name(file, ref_group)?;
+                        let value = decode_parameter_control_value_for_group(file, groups, ref_group)?;
+                        parameters.insert(name, value);
+                    }
+                    crate::format::GroupKind::ParameterAnchor => {
+                        let (name, value, point_group_index) =
+                            parameter_anchor_value(file, groups, ref_group, anchors)?;
+                        if !name.is_empty() {
+                            parameters.insert(name, value);
+                        }
+                        source_point_group_index.get_or_insert(point_group_index);
+                    }
+                    _ => {}
+                }
+            }
+            let value = evaluate_expr_with_parameters(&expr, 0.0, &parameters)?;
+            (String::new(), wrap_unit_interval(value), source_point_group_index)
         } else {
             return None;
         };

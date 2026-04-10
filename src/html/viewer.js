@@ -440,6 +440,7 @@
       })),
       circles: scene.circles.map((circle) => ({
         color: circle.color,
+        fillColor: circle.fillColor || null,
         dashed: !!circle.dashed,
         visible: circle.visible !== false,
         center: attachPointRef(circle.center),

@@ -639,6 +639,10 @@
       ) * center.scale;
       env.ctx.beginPath();
       env.ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+      if (circle.fillColor) {
+        env.ctx.fillStyle = env.rgba(circle.fillColor);
+        env.ctx.fill();
+      }
       env.ctx.strokeStyle = env.rgba(circle.color);
       env.ctx.lineWidth = 2;
       env.ctx.setLineDash(circle.dashed ? [8, 8] : []);
