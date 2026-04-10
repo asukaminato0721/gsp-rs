@@ -10,7 +10,7 @@ use super::{
 };
 use crate::runtime::extract::decode::resolve_circle_points_raw;
 use crate::runtime::extract::points::editable_non_graph_parameter_name_for_group;
-use crate::runtime::scene::IterationPointHandle;
+use crate::runtime::scene::{CircleIterationFamily, IterationPointHandle};
 
 #[derive(Clone)]
 struct AffinePointMap {
@@ -930,6 +930,139 @@ pub(crate) fn collect_carried_iteration_circles(
         })
         .flatten()
         .collect()
+}
+
+pub(crate) fn collect_carried_circle_iteration_families(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group_to_point_index: &[Option<usize>],
+    circle_group_to_index: &[Option<usize>],
+) -> Vec<CircleIterationFamily> {
+    groups
+        .iter()
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::IterationBinding)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            let source_circle_group_index = path.refs.first()?.checked_sub(1)?;
+            let source_circle_group = groups.get(source_circle_group_index)?;
+            if !super::is_circle_group_kind(source_circle_group.header.kind()) {
+                return None;
+            }
+            let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+            let source_circle_index =
+                circle_group_to_index.get(source_circle_group_index).copied().flatten()?;
+            build_parameter_controlled_circle_iteration_family(
+                file,
+                groups,
+                source_circle_group,
+                source_circle_index,
+                iter_group,
+                anchors,
+                group_to_point_index,
+            )
+        })
+        .collect()
+}
+
+fn build_parameter_controlled_circle_iteration_family(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    source_circle_group: &ObjectGroup,
+    source_circle_index: usize,
+    iter_group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+    group_to_point_index: &[Option<usize>],
+) -> Option<CircleIterationFamily> {
+    if (iter_group.header.kind()) != crate::format::GroupKind::RegularPolygonIteration {
+        return None;
+    }
+    let source_circle_path = find_indexed_path(file, source_circle_group)?;
+    let source_center_group_index = source_circle_path.refs.first()?.checked_sub(1)?;
+    let source_center_index = group_to_point_index
+        .get(source_center_group_index)
+        .copied()
+        .flatten()?;
+    let source_center_group = groups.get(source_center_group_index)?;
+    let crate::runtime::extract::points::RawPointConstraint::PolygonBoundary {
+        vertex_group_indices,
+        edge_index,
+        t,
+    } = decode_point_constraint(file, groups, source_center_group, Some(anchors), &None)?
+    else {
+        return None;
+    };
+    let seed_parameter = super::super::labels::polygon_boundary_parameter(
+        anchors,
+        &vertex_group_indices,
+        edge_index,
+        t,
+    )?;
+
+    let iter_point_group = groups
+        .iter()
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::IterationBinding)
+        .find_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            let target_iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+            if target_iter_group.ordinal != iter_group.ordinal {
+                return None;
+            }
+            let candidate = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            ((candidate.header.kind()) == crate::format::GroupKind::ParameterControlledPoint)
+                .then_some(candidate)
+        })?;
+    let iter_point = decode_parameter_controlled_point(file, groups, iter_point_group, anchors)?;
+    let iter_point_group_index = iter_point_group.ordinal.checked_sub(1)?;
+    let source_next_center_index = group_to_point_index
+        .get(iter_point_group_index)
+        .copied()
+        .flatten()?;
+    let crate::runtime::extract::points::RawPointConstraint::PolygonBoundary {
+        edge_index,
+        t,
+        ..
+    } = iter_point.constraint
+    else {
+        return None;
+    };
+    let next_parameter = super::super::labels::polygon_boundary_parameter(
+        anchors,
+        &vertex_group_indices,
+        edge_index,
+        t,
+    )?;
+    let step_parameter = (next_parameter - seed_parameter).rem_euclid(1.0);
+    if step_parameter <= 1e-9 {
+        return None;
+    }
+
+    let vertex_indices = vertex_group_indices
+        .iter()
+        .map(|group_index| group_to_point_index.get(*group_index).copied().flatten())
+        .collect::<Option<Vec<_>>>()?;
+    let depth = carried_iteration_depth(file, iter_group, 3);
+    if depth == 0 {
+        return None;
+    }
+
+    Some(CircleIterationFamily {
+        source_circle_index,
+        source_center_index,
+        source_next_center_index,
+        vertex_indices,
+        seed_parameter,
+        step_parameter,
+        depth,
+        depth_parameter_name: regular_polygon_iteration_step(file, groups, iter_group)
+            .map(|(_, _, parameter_name, _)| parameter_name)
+            .or_else(|| {
+                let path = find_indexed_path(file, iter_group)?;
+                let parameter_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+                editable_non_graph_parameter_name_for_group(file, groups, parameter_group)
+            }),
+        visible: !iter_group.header.is_hidden(),
+    })
 }
 
 fn collect_parameter_controlled_circle_iteration(

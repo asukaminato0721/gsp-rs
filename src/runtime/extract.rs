@@ -51,7 +51,8 @@ use self::points::{
 };
 use self::shapes::{
     collect_arc_boundary_shapes, collect_bound_line_shapes, collect_carried_iteration_lines,
-    collect_carried_iteration_circles, collect_carried_iteration_polygons,
+    collect_carried_circle_iteration_families, collect_carried_iteration_circles,
+    collect_carried_iteration_polygons,
     collect_carried_line_iteration_families,
     collect_carried_polygon_edge_segment_groups, collect_carried_polygon_iteration_families,
     collect_circle_shapes, collect_coordinate_traces, collect_derived_segments,
@@ -456,7 +457,12 @@ fn collect_scene_labels(
         groups,
         &analysis.raw_anchors,
     ));
-    labels.extend(compute_iteration_labels(file, groups, &shapes.circles));
+    labels.extend(compute_iteration_labels(
+        file,
+        groups,
+        &analysis.raw_anchors,
+        &shapes.circles,
+    ));
     if analysis.graph_mode && analysis.has_function_plots {
         labels.extend(synthesize_function_labels(
             file,
@@ -728,6 +734,13 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
         &group_to_point_index,
         &mut shapes,
     );
+    let circle_iterations = collect_carried_circle_iteration_families(
+        file,
+        &groups,
+        &analysis.raw_anchors,
+        &group_to_point_index,
+        &binding_maps.circle_group_to_index,
+    );
     let world_data = build_world_data(
         &analysis,
         &visible_points,
@@ -786,6 +799,7 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
         labels,
         world_data,
         bounds_data,
+        circle_iterations,
         line_iterations,
         polygon_iterations,
         label_iterations,

@@ -1,9 +1,9 @@
 use crate::format::PointRecord;
 use crate::runtime::geometry::{include_line_bounds, to_world};
 use crate::runtime::scene::{
-    CircularConstraint, LabelIterationFamily, LineBinding, LineConstraint, LineIterationFamily,
-    LineShape, PointIterationFamily, PolygonIterationFamily, PolygonShape, Scene, SceneArc,
-    SceneCircle, SceneImage, ScenePoint, ScenePointConstraint, TextLabel,
+    CircleIterationFamily, CircularConstraint, LabelIterationFamily, LineBinding, LineConstraint,
+    LineIterationFamily, LineShape, PointIterationFamily, PolygonIterationFamily, PolygonShape,
+    Scene, SceneArc, SceneCircle, SceneImage, ScenePoint, ScenePointConstraint, TextLabel,
 };
 
 use super::graph::{collect_bounds, dedupe_line_shapes, expand_bounds};
@@ -391,6 +391,7 @@ pub(super) fn assemble_scene(
     labels: Vec<TextLabel>,
     world_data: WorldData,
     bounds_data: BoundsData,
+    circle_iterations: Vec<CircleIterationFamily>,
     line_iterations: Vec<LineIterationFamily>,
     polygon_iterations: Vec<PolygonIterationFamily>,
     label_iterations: Vec<LabelIterationFamily>,
@@ -561,6 +562,7 @@ pub(super) fn assemble_scene(
             .collect(),
         points: world_data.world_points,
         point_iterations: world_data.point_iterations,
+        circle_iterations,
         line_iterations: line_iterations
             .into_iter()
             .map(|family| world_line_iteration_family(family, &analysis.graph_ref))

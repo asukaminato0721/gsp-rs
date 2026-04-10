@@ -946,6 +946,14 @@ mod tests {
             label["binding"]["kind"].as_str() == Some("parameter-value")
                 && label["text"].as_str() == Some("n = 2.00")
         }));
+        assert!(labels.iter().any(|label| {
+            label["binding"]["kind"].as_str() == Some("polygon-boundary-parameter")
+                && label["text"].as_str() == Some("m = 0.95")
+        }));
+        assert!(labels.iter().any(|label| {
+            label["binding"]["kind"].as_str() == Some("polygon-boundary-expression")
+                && label["text"].as_str() == Some("m + 1 / n = 0.50")
+        }));
         let circles = scene["circles"]
             .as_array()
             .expect("scene circles should be an array");
@@ -960,6 +968,15 @@ mod tests {
                 .any(|circle| circle["binding"]["kind"].as_str() == Some("segment-radius-circle")),
             "expected the payload circle to keep its live center/radius-segment binding"
         );
+        let circle_iterations = scene["circleIterations"]
+            .as_array()
+            .expect("scene circle iterations should be an array");
+        assert_eq!(
+            circle_iterations.len(),
+            1,
+            "expected one live circle iteration family"
+        );
+        assert_eq!(circle_iterations[0]["depth"].as_u64(), Some(20));
         let polygons = scene["polygons"]
             .as_array()
             .expect("scene polygons should be an array");

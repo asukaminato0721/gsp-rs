@@ -4,10 +4,11 @@ use crate::runtime::functions::{
 };
 use crate::runtime::geometry::darken;
 use crate::runtime::scene::{
-    ArcBoundaryKind, ButtonAction, CircularConstraint, IterationPointHandle, IterationTable,
-    LabelIterationFamily, LineBinding, LineConstraint, LineIterationFamily, PointIterationFamily,
-    PolygonIterationFamily, Scene, SceneButton, ScenePointBinding, ScenePointConstraint,
-    ShapeBinding, TextLabelBinding, TextLabelHotspotAction,
+    ArcBoundaryKind, ButtonAction, CircleIterationFamily, CircularConstraint,
+    IterationPointHandle, IterationTable, LabelIterationFamily, LineBinding, LineConstraint,
+    LineIterationFamily, PointIterationFamily, PolygonIterationFamily, Scene, SceneButton,
+    ScenePointBinding, ScenePointConstraint, ShapeBinding, TextLabelBinding,
+    TextLabelHotspotAction,
 };
 use serde::Serialize;
 
@@ -39,6 +40,7 @@ struct SceneJson {
     labels: Vec<LabelJson>,
     points: Vec<ScenePointJson>,
     point_iterations: Vec<PointIterationJson>,
+    circle_iterations: Vec<CircleIterationJson>,
     line_iterations: Vec<LineIterationJson>,
     polygon_iterations: Vec<PolygonIterationJson>,
     label_iterations: Vec<LabelIterationJson>,
@@ -78,6 +80,11 @@ impl SceneJson {
                 .point_iterations
                 .iter()
                 .map(PointIterationJson::from_family)
+                .collect(),
+            circle_iterations: scene
+                .circle_iterations
+                .iter()
+                .map(CircleIterationJson::from_family)
                 .collect(),
             line_iterations: scene
                 .line_iterations
@@ -741,6 +748,36 @@ struct CircleJson {
     binding: Option<ShapeBindingJson>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CircleIterationJson {
+    source_circle_index: usize,
+    source_center_index: usize,
+    source_next_center_index: usize,
+    vertex_indices: Vec<usize>,
+    seed_parameter: f64,
+    step_parameter: f64,
+    depth: usize,
+    depth_parameter_name: Option<String>,
+    visible: bool,
+}
+
+impl CircleIterationJson {
+    fn from_family(family: &CircleIterationFamily) -> Self {
+        Self {
+            source_circle_index: family.source_circle_index,
+            source_center_index: family.source_center_index,
+            source_next_center_index: family.source_next_center_index,
+            vertex_indices: family.vertex_indices.clone(),
+            seed_parameter: family.seed_parameter,
+            step_parameter: family.step_parameter,
+            depth: family.depth,
+            depth_parameter_name: family.depth_parameter_name.clone(),
+            visible: family.visible,
+        }
+    }
+}
+
 impl CircleJson {
     fn from_circle(circle: &crate::runtime::scene::SceneCircle) -> Self {
         Self {
@@ -1140,6 +1177,16 @@ enum LabelBindingJson {
         #[serde(rename = "polygonName")]
         polygon_name: String,
     },
+    #[serde(rename = "polygon-boundary-expression")]
+    PolygonBoundaryExpression {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+        #[serde(rename = "parameterName")]
+        parameter_name: String,
+        #[serde(rename = "exprLabel")]
+        expr_label: String,
+        expr: FunctionExprJson,
+    },
     #[serde(rename = "segment-parameter")]
     SegmentParameter {
         #[serde(rename = "pointIndex")]
@@ -1221,6 +1268,17 @@ impl LabelBindingJson {
                 point_index: *point_index,
                 point_name: point_name.clone(),
                 polygon_name: polygon_name.clone(),
+            },
+            TextLabelBinding::PolygonBoundaryExpression {
+                point_index,
+                parameter_name,
+                expr_label,
+                expr,
+            } => Self::PolygonBoundaryExpression {
+                point_index: *point_index,
+                parameter_name: parameter_name.clone(),
+                expr_label: expr_label.clone(),
+                expr: FunctionExprJson::from_expr(expr),
             },
             TextLabelBinding::SegmentParameter {
                 point_index,
@@ -1599,6 +1657,14 @@ enum PointBindingJson {
         #[serde(rename = "sourceIndex")]
         source_index: usize,
     },
+    #[serde(rename = "derived-parameter-expr")]
+    DerivedParameterExpr {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        #[serde(rename = "parameterName")]
+        parameter_name: String,
+        expr: FunctionExprJson,
+    },
     #[serde(rename = "translate")]
     Translate {
         #[serde(rename = "sourceIndex")]
@@ -1711,6 +1777,15 @@ impl PointBindingJson {
             ScenePointBinding::Parameter { name } => Self::Parameter { name: name.clone() },
             ScenePointBinding::DerivedParameter { source_index } => Self::DerivedParameter {
                 source_index: *source_index,
+            },
+            ScenePointBinding::DerivedParameterExpr {
+                source_index,
+                parameter_name,
+                expr,
+            } => Self::DerivedParameterExpr {
+                source_index: *source_index,
+                parameter_name: parameter_name.clone(),
+                expr: FunctionExprJson::from_expr(expr),
             },
             ScenePointBinding::Translate {
                 source_index,

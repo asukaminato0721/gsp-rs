@@ -75,6 +75,7 @@ pub(crate) struct ParameterControlledPoint {
     pub(crate) constraint: RawPointConstraint,
     pub(crate) parameter_name: String,
     pub(crate) source_point_group_index: Option<usize>,
+    pub(crate) source_expr: Option<FunctionExpr>,
 }
 
 pub(crate) enum CoordinatePointSource {
@@ -350,22 +351,25 @@ pub(crate) fn decode_parameter_controlled_point(
 
     let source_group = groups.get(path.refs[0].checked_sub(1)?)?;
     let host_group = groups.get(path.refs[1].checked_sub(1)?)?;
-    let (parameter_name, parameter_value, source_point_group_index) =
+    let (parameter_name, parameter_value, source_point_group_index, source_expr) =
         if (source_group.header.kind()) == crate::format::GroupKind::Point {
             (
                 decode_label_name(file, source_group)?,
                 decode_parameter_control_value_for_group(file, groups, source_group)?,
                 None,
+                None,
             )
         } else if (source_group.header.kind()) == crate::format::GroupKind::ParameterAnchor {
             let (_name, value, point_group_index) =
                 parameter_anchor_value(file, groups, source_group, anchors)?;
-            (String::new(), value, Some(point_group_index))
+            (String::new(), value, Some(point_group_index), None)
         } else if (source_group.header.kind()) == crate::format::GroupKind::FunctionExpr {
             let expr = decode_function_expr(file, groups, source_group)?;
             let source_path = find_indexed_path(file, source_group)?;
             let mut parameters = BTreeMap::new();
             let mut source_point_group_index = None;
+            let mut anchor_parameter_name = None;
+            let mut anchor_parameter_value = None;
             for object_ref in &source_path.refs {
                 let ref_group = groups.get(object_ref.checked_sub(1)?)?;
                 match ref_group.header.kind() {
@@ -378,6 +382,8 @@ pub(crate) fn decode_parameter_controlled_point(
                         let (name, value, point_group_index) =
                             parameter_anchor_value(file, groups, ref_group, anchors)?;
                         if !name.is_empty() {
+                            anchor_parameter_name = Some(name.clone());
+                            anchor_parameter_value = Some(value);
                             parameters.insert(name, value);
                         }
                         source_point_group_index.get_or_insert(point_group_index);
@@ -385,8 +391,16 @@ pub(crate) fn decode_parameter_controlled_point(
                     _ => {}
                 }
             }
-            let value = evaluate_expr_with_parameters(&expr, 0.0, &parameters)?;
-            (String::new(), wrap_unit_interval(value), source_point_group_index)
+            let mut value = evaluate_expr_with_parameters(&expr, 0.0, &parameters)?;
+            if anchor_parameter_name.is_some() && anchor_parameter_value.is_some() {
+                value += anchor_parameter_value.unwrap();
+            }
+            (
+                anchor_parameter_name.unwrap_or_default(),
+                wrap_unit_interval(value),
+                source_point_group_index,
+                Some(expr),
+            )
         } else {
             return None;
         };
@@ -412,6 +426,7 @@ pub(crate) fn decode_parameter_controlled_point(
                 }),
                 parameter_name,
                 source_point_group_index,
+                source_expr: source_expr.clone(),
             })
         }
         crate::format::GroupKind::Polygon => {
@@ -436,6 +451,7 @@ pub(crate) fn decode_parameter_controlled_point(
                 },
                 parameter_name,
                 source_point_group_index,
+                source_expr: source_expr.clone(),
             })
         }
         crate::format::GroupKind::Circle => {
@@ -461,6 +477,7 @@ pub(crate) fn decode_parameter_controlled_point(
                 }),
                 parameter_name,
                 source_point_group_index,
+                source_expr: source_expr.clone(),
             })
         }
         crate::format::GroupKind::ThreePointArc => {
@@ -486,6 +503,7 @@ pub(crate) fn decode_parameter_controlled_point(
                 }),
                 parameter_name,
                 source_point_group_index,
+                source_expr: source_expr.clone(),
             })
         }
         crate::format::GroupKind::ArcOnCircle => {
@@ -519,6 +537,7 @@ pub(crate) fn decode_parameter_controlled_point(
                 }),
                 parameter_name,
                 source_point_group_index,
+                source_expr: source_expr.clone(),
             })
         }
         crate::format::GroupKind::CenterArc => {
@@ -545,6 +564,7 @@ pub(crate) fn decode_parameter_controlled_point(
                 }),
                 parameter_name,
                 source_point_group_index,
+                source_expr,
             })
         }
         _ => None,

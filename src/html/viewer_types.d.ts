@@ -126,6 +126,17 @@ type SceneData = {
         parameterName?: string | null;
       }
   >;
+  circleIterations?: Array<{
+    sourceCircleIndex: number;
+    sourceCenterIndex: number;
+    sourceNextCenterIndex: number;
+    vertexIndices: number[];
+    seedParameter: number;
+    stepParameter: number;
+    depth: number;
+    depthParameterName?: string | null;
+    visible?: boolean;
+  }>;
   lineIterations?: Array<{
     kind: "translate";
     startIndex: number;

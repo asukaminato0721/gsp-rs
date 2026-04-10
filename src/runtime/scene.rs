@@ -19,6 +19,7 @@ pub(crate) struct Scene {
     pub(crate) labels: Vec<TextLabel>,
     pub(crate) points: Vec<ScenePoint>,
     pub(crate) point_iterations: Vec<PointIterationFamily>,
+    pub(crate) circle_iterations: Vec<CircleIterationFamily>,
     pub(crate) line_iterations: Vec<LineIterationFamily>,
     pub(crate) polygon_iterations: Vec<PolygonIterationFamily>,
     pub(crate) label_iterations: Vec<LabelIterationFamily>,
@@ -128,6 +129,19 @@ pub(crate) enum PointIterationFamily {
         depth: usize,
         parameter_name: Option<String>,
     },
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct CircleIterationFamily {
+    pub(crate) source_circle_index: usize,
+    pub(crate) source_center_index: usize,
+    pub(crate) source_next_center_index: usize,
+    pub(crate) vertex_indices: Vec<usize>,
+    pub(crate) seed_parameter: f64,
+    pub(crate) step_parameter: f64,
+    pub(crate) depth: usize,
+    pub(crate) depth_parameter_name: Option<String>,
+    pub(crate) visible: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -459,6 +473,11 @@ pub(crate) enum ScenePointBinding {
     DerivedParameter {
         source_index: usize,
     },
+    DerivedParameterExpr {
+        source_index: usize,
+        parameter_name: String,
+        expr: FunctionExpr,
+    },
     Translate {
         source_index: usize,
         vector_start_index: usize,
@@ -677,6 +696,12 @@ pub(crate) enum TextLabelBinding {
         point_index: usize,
         point_name: String,
         polygon_name: String,
+    },
+    PolygonBoundaryExpression {
+        point_index: usize,
+        parameter_name: String,
+        expr_label: String,
+        expr: FunctionExpr,
     },
     SegmentParameter {
         point_index: usize,

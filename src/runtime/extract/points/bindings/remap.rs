@@ -36,6 +36,7 @@ pub(crate) fn remap_label_bindings(
             TextLabelBinding::ParameterValue { .. }
             | TextLabelBinding::FunctionLabel { .. }
             | TextLabelBinding::ExpressionValue { .. } => continue,
+            TextLabelBinding::PolygonBoundaryExpression { point_index, .. } => point_index,
             TextLabelBinding::PolygonBoundaryParameter { point_index, .. } => point_index,
             TextLabelBinding::SegmentParameter { point_index, .. } => point_index,
             TextLabelBinding::CircleParameter { point_index, .. } => point_index,

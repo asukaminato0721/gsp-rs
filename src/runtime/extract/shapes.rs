@@ -31,7 +31,8 @@ pub(super) use basic::{
     collect_polygon_shapes, collect_segment_marker_shapes, collect_three_point_arc_shapes,
 };
 pub(super) use iterations::{
-    collect_carried_iteration_circles, collect_carried_iteration_lines,
+    collect_carried_circle_iteration_families, collect_carried_iteration_circles,
+    collect_carried_iteration_lines,
     collect_carried_iteration_polygons,
     collect_carried_line_iteration_families, collect_carried_polygon_edge_segment_groups,
     collect_carried_polygon_iteration_families, collect_iteration_shapes,

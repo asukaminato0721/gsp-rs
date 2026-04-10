@@ -358,6 +358,41 @@
     return perimeter > 1e-9 ? traveled / perimeter : null;
   }
 
+  function pointOnPolygonBoundary(vertices, parameter) {
+    if (!vertices || vertices.length < 2) {
+      return null;
+    }
+    const wrapped = ((parameter % 1) + 1) % 1;
+    const lengths = [];
+    let perimeter = 0;
+    for (let index = 0; index < vertices.length; index += 1) {
+      const start = vertices[index];
+      const end = vertices[(index + 1) % vertices.length];
+      const length = Math.hypot(end.x - start.x, end.y - start.y);
+      lengths.push(length);
+      perimeter += length;
+    }
+    if (perimeter <= 1e-9) {
+      return null;
+    }
+    const target = wrapped * perimeter;
+    let traveled = 0;
+    for (let edgeIndex = 0; edgeIndex < lengths.length; edgeIndex += 1) {
+      const length = lengths[edgeIndex];
+      if (traveled + length >= target || edgeIndex === lengths.length - 1) {
+        const start = vertices[edgeIndex];
+        const end = vertices[(edgeIndex + 1) % vertices.length];
+        const localT = length <= 1e-9 ? 0 : Math.max(0, Math.min(1, (target - traveled) / length));
+        return {
+          x: start.x + (end.x - start.x) * localT,
+          y: start.y + (end.y - start.y) * localT,
+        };
+      }
+      traveled += length;
+    }
+    return null;
+  }
+
   function parameterValueFromPoint(scene, pointIndex) {
     const point = scene.points[pointIndex];
     const constraint = point?.constraint;
@@ -495,11 +530,16 @@
     if (typeof exprLabel !== "string") {
       return null;
     }
+    const renderPart = (text) => text.replaceAll("*", "\u00b7");
+    const additiveFraction = exprLabel.match(/^(.*)\s\+\s(.*)\s\/\s(.*)$/);
+    if (additiveFraction) {
+      const [, prefix, numerator, denominator] = additiveFraction;
+      return `<H<Tx${renderPart(prefix)} + ></<Tx${renderPart(numerator)}><Tx${renderPart(denominator)}>><Tx = ${formatNumber(value)}>>`;
+    }
     const parts = exprLabel.split(" / ");
     if (parts.length !== 2) {
       return null;
     }
-    const renderPart = (text) => text.replaceAll("*", "\u00b7");
     return `<H</<Tx${renderPart(parts[0])}><Tx${renderPart(parts[1])}>><Tx = ${formatNumber(value)}>>`;
   }
 
@@ -926,6 +966,16 @@
         if (value !== null) {
           applyNormalizedParameterToPoint(point, scene, value);
         }
+      } else if (point.binding?.kind === "derived-parameter-expr") {
+        const sourceValue = parameterValueFromPoint(scene, point.binding.sourceIndex);
+        if (sourceValue !== null) {
+          const exprParameters = new Map(parameters);
+          exprParameters.set(point.binding.parameterName, sourceValue);
+          const delta = evaluateExpr(point.binding.expr, 0, exprParameters);
+          if (delta !== null) {
+            applyNormalizedParameterToPoint(point, scene, sourceValue + delta);
+          }
+        }
       } else if (point.binding?.kind === "coordinate-source") {
         const source = env.resolveScenePoint(point.binding.sourceIndex);
         if (!source) return;
@@ -1064,6 +1114,62 @@
         circle.radiusPoint = reflectAcrossLine(resolveHandle(source.radiusPoint), lineStart, lineEnd);
       }
     });
+
+    const sourceCircleIterations = env.sourceScene.circleIterations || [];
+    if (sourceCircleIterations.length > 0) {
+      const generatedCount = sourceCircleIterations.reduce((sum, family) => sum + family.depth, 0);
+      const baseCount = Math.max(0, env.sourceScene.circles.length - generatedCount);
+      scene.circles = scene.circles.slice(0, baseCount);
+      sourceCircleIterations.forEach((family) => {
+        const source = scene.circles[family.sourceCircleIndex];
+        if (!source) {
+          return;
+        }
+        const vertices = family.vertexIndices
+          .map((index) => scene.points[index])
+          .filter(Boolean);
+        if (vertices.length !== family.vertexIndices.length) {
+          return;
+        }
+        const liveSeedParameter =
+          polygonBoundaryParameterFromPoint(scene, family.sourceCenterIndex);
+        const liveNextParameter =
+          polygonBoundaryParameterFromPoint(scene, family.sourceNextCenterIndex);
+        const seedParameter = Number.isFinite(liveSeedParameter)
+          ? liveSeedParameter
+          : family.seedParameter;
+        const stepParameter = Number.isFinite(liveSeedParameter) && Number.isFinite(liveNextParameter)
+          ? ((liveNextParameter - liveSeedParameter) % 1 + 1) % 1
+          : family.stepParameter;
+        const depth = pointIterationDepth({
+          depth: family.depth,
+          parameterName: family.depthParameterName,
+        }, parameters);
+        const dx = source.radiusPoint.x - source.center.x;
+        const dy = source.radiusPoint.y - source.center.y;
+        for (let step = 1; step <= depth; step += 1) {
+          const center = pointOnPolygonBoundary(
+            vertices,
+            seedParameter + stepParameter * step,
+          );
+          if (!center) {
+            continue;
+          }
+          scene.circles.push({
+            center,
+            radiusPoint: {
+              x: center.x + dx,
+              y: center.y + dy,
+            },
+            color: source.color,
+            fillColor: source.fillColor,
+            dashed: source.dashed,
+            visible: family.visible !== false,
+            binding: null,
+          });
+        }
+      });
+    }
 
     scene.polygons.forEach((polygon) => {
       if (polygon.binding?.kind === "point-polygon") {
@@ -1415,7 +1521,26 @@
       } else if (label.binding.kind === "polygon-boundary-parameter") {
         const value = polygonBoundaryParameterFromPoint(scene, label.binding.pointIndex);
         if (value !== null) {
-          label.text = `${label.binding.pointName}在${label.binding.polygonName}上的t值 = ${env.formatNumber(value)}`;
+          label.text = label.binding.polygonName
+            ? `${label.binding.pointName}在${label.binding.polygonName}上的t值 = ${env.formatNumber(value)}`
+            : `${label.binding.pointName} = ${env.formatNumber(value)}`;
+        }
+      } else if (label.binding.kind === "polygon-boundary-expression") {
+        const parameterValue = polygonBoundaryParameterFromPoint(scene, label.binding.pointIndex);
+        if (parameterValue !== null) {
+          const exprParameters = new Map(parameters);
+          exprParameters.set(label.binding.parameterName, parameterValue);
+          const value = evaluateExpr(label.binding.expr, 0, exprParameters);
+          if (value !== null) {
+            label.richMarkup = buildExpressionRichMarkup(
+              label.binding.exprLabel,
+              value,
+              env.formatNumber,
+            );
+            label.text = `${label.binding.exprLabel} = ${env.formatNumber(value)}`;
+          } else {
+            label.richMarkup = null;
+          }
         }
       } else if (label.binding.kind === "segment-parameter") {
         const point = scene.points[label.binding.pointIndex];
@@ -1542,6 +1667,15 @@
               const distance = distanceValue * point.binding.distanceRawScale;
               point.x = origin.x + distance * Math.cos(radians);
               point.y = origin.y - distance * Math.sin(radians);
+            }
+          } else if (point.binding?.kind === "derived-parameter-expr") {
+            const sourceValue = parameterValueFromPoint(draft, point.binding.sourceIndex);
+            if (!Number.isFinite(sourceValue)) return;
+            const exprParameters = new Map(parameters);
+            exprParameters.set(point.binding.parameterName, sourceValue);
+            const delta = evaluateExpr(point.binding.expr, 0, exprParameters);
+            if (delta !== null) {
+              applyNormalizedParameterToPoint(point, draft, sourceValue + delta);
             }
           }
           return;

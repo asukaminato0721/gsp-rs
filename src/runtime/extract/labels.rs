@@ -106,6 +106,70 @@ fn resolve_function_expr_parameter(
     result
 }
 
+fn parameter_anchor_value(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<f64> {
+    if group.header.kind() != crate::format::GroupKind::ParameterAnchor {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    let point_group_index = path.refs.first()?.checked_sub(1)?;
+    let point_group = groups.get(point_group_index)?;
+    match decode_point_constraint(file, groups, point_group, None, &None)? {
+        RawPointConstraint::Segment(constraint) => Some(constraint.t),
+        RawPointConstraint::PolygonBoundary {
+            edge_index,
+            t,
+            vertex_group_indices,
+        } => polygon_boundary_parameter(anchors, &vertex_group_indices, edge_index, t),
+        RawPointConstraint::Circle(constraint) => circle_parameter(
+            anchors,
+            constraint.center_group_index,
+            constraint.radius_group_index,
+            constraint.unit_x,
+            constraint.unit_y,
+        ),
+        RawPointConstraint::CircleArc(_) => None,
+        RawPointConstraint::Arc(_) => None,
+        RawPointConstraint::Polyline { .. } => None,
+    }
+}
+
+fn iteration_group_value(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+    visiting: &mut BTreeSet<usize>,
+) -> Option<f64> {
+    if !visiting.insert(group.ordinal) {
+        return None;
+    }
+    let result = (|| match group.header.kind() {
+        crate::format::GroupKind::Point => decode_parameter_control_value_for_group(file, groups, group),
+        crate::format::GroupKind::ParameterAnchor => parameter_anchor_value(file, groups, group, anchors),
+        crate::format::GroupKind::FunctionExpr => {
+            let expr = decode_function_expr(file, groups, group)?;
+            let path = find_indexed_path(file, group)?;
+            let mut parameters = BTreeMap::new();
+            for obj_ref in &path.refs {
+                let ref_group = groups.get(obj_ref.checked_sub(1)?)?;
+                let name = decode_label_name(file, ref_group)
+                    .or_else(|| decode_label_name_raw(file, ref_group))?;
+                let value = iteration_group_value(file, groups, ref_group, anchors, visiting)?;
+                parameters.insert(name, value);
+            }
+            evaluate_expr_with_parameters(&expr, 0.0, &parameters)
+        }
+        _ => None,
+    })();
+    visiting.remove(&group.ordinal);
+    result
+}
+
 fn payload_function_expr_label(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -127,6 +191,9 @@ fn payload_function_expr_label(
         } else {
             decode_label_name(file, source_group)?
         };
+        if source_group.header.kind() == crate::format::GroupKind::ParameterAnchor {
+            return Some(format!("{source_label} + {fallback_expr_label}"));
+        }
         let (parameter_name, _) =
             resolve_function_expr_parameter(file, groups, group, &mut BTreeSet::new())?;
         Some(fallback_expr_label.replacen(&parameter_name, &source_label, 1))
@@ -628,7 +695,8 @@ pub(super) fn collect_polygon_parameter_labels(
                 return None;
             }
 
-            let point_name = decode_label_name(file, point_group)?;
+            let point_name = decode_label_name(file, group)
+                .or_else(|| decode_label_name(file, point_group))?;
             let polygon_name = polygon_vertex_name(file, groups, polygon_group)?;
             let anchor_record = group
                 .records
@@ -648,10 +716,14 @@ pub(super) fn collect_polygon_parameter_labels(
 
             Some(TextLabel {
                 anchor,
-                text: format!("{point_name}在{polygon_name}上的t值 = {:.2}", global_t),
+                text: if decode_label_name(file, group).is_some() {
+                    format!("{point_name} = {:.2}", global_t)
+                } else {
+                    format!("{point_name}在{polygon_name}上的t值 = {:.2}", global_t)
+                },
                 rich_markup: None,
                 color: [30, 30, 30, 255],
-                visible: label_visible_for_group(file, group),
+                visible: decode_label_name(file, group).is_some() || label_visible_for_group(file, group),
                 binding: Some(TextLabelBinding::PolygonBoundaryParameter {
                     point_index: path.refs[0].checked_sub(1)?,
                     point_name,
@@ -1126,6 +1198,7 @@ pub(super) fn polygon_boundary_parameter(
 pub(super) fn compute_iteration_labels(
     file: &GspFile,
     groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
     circles: &[CircleShape],
 ) -> Vec<TextLabel> {
     let mut labels = Vec::new();
@@ -1224,7 +1297,9 @@ pub(super) fn compute_iteration_labels(
         if !has_0907
             || !matches!(
                 kind,
-                crate::format::GroupKind::Point | crate::format::GroupKind::FunctionExpr
+                crate::format::GroupKind::Point
+                    | crate::format::GroupKind::ParameterAnchor
+                    | crate::format::GroupKind::FunctionExpr
             )
         {
             continue;
@@ -1236,12 +1311,6 @@ pub(super) fn compute_iteration_labels(
         {
             continue;
         }
-        if kind == crate::format::GroupKind::FunctionExpr
-            && resolve_function_expr_parameter(file, groups, group, &mut BTreeSet::new()).is_some()
-        {
-            continue;
-        }
-
         let Some(anchor) = decode_0907_anchor(file, group) else {
             continue;
         };
@@ -1261,7 +1330,47 @@ pub(super) fn compute_iteration_labels(
 
         let mut lines = Vec::new();
 
-        if kind == crate::format::GroupKind::Point {
+        if let Some(name) = &own_label
+            && let Some(value) = iteration_group_value(file, groups, group, anchors, &mut BTreeSet::new())
+        {
+            computed_values.entry(name.clone()).or_insert(value);
+        }
+
+        if kind == crate::format::GroupKind::FunctionExpr
+            && let Some(expr) = decode_function_expr(file, groups, group)
+            && let Some(anchor_group) = find_indexed_path(file, group)
+                .and_then(|path| groups.get(path.refs.first()?.checked_sub(1)?))
+            && anchor_group.header.kind() == crate::format::GroupKind::ParameterAnchor
+            && let Some(parameter_name) = decode_label_name(file, anchor_group)
+            && let Some(path) = find_indexed_path(file, anchor_group)
+            && let Some(point_index) = path.refs.first().and_then(|ordinal| ordinal.checked_sub(1))
+            && let Some(value) = iteration_group_value(file, groups, group, anchors, &mut BTreeSet::new())
+        {
+            let expr_label = payload_function_expr_label(
+                file,
+                groups,
+                group,
+                &function_expr_label(expr.clone()),
+                &mut BTreeSet::new(),
+            );
+            lines.push(format!("{expr_label} = {value:.2}"));
+            labels.push(TextLabel {
+                anchor,
+                text: lines.join("\n"),
+                rich_markup: None,
+                color: [30, 30, 30, 255],
+                visible: label_visible_for_group(file, group),
+                binding: Some(TextLabelBinding::PolygonBoundaryExpression {
+                    point_index,
+                    parameter_name,
+                    expr_label,
+                    expr,
+                }),
+                screen_space: false,
+                hotspots: Vec::new(),
+            });
+            continue;
+        } else if kind == crate::format::GroupKind::Point {
             if let Some(name) = &own_label
                 && let Some(&val) = computed_values.get(name.as_str())
             {

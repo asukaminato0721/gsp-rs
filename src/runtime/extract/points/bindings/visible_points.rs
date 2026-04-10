@@ -661,7 +661,15 @@ fn parameter_point_binding(
 ) -> Option<Option<ScenePointBinding>> {
     if let Some(source_group_index) = parameter_point.source_point_group_index {
         let source_index = mapped_point_index(group_to_point_index, source_group_index)?;
-        Some(Some(ScenePointBinding::DerivedParameter { source_index }))
+        if let Some(expr) = &parameter_point.source_expr {
+            Some(Some(ScenePointBinding::DerivedParameterExpr {
+                source_index,
+                parameter_name: parameter_point.parameter_name.clone(),
+                expr: expr.clone(),
+            }))
+        } else {
+            Some(Some(ScenePointBinding::DerivedParameter { source_index }))
+        }
     } else {
         Some(
             (!parameter_point.parameter_name.is_empty()).then(|| ScenePointBinding::Parameter {
