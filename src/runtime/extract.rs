@@ -1,4 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Write as _;
+use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 
@@ -17,7 +19,11 @@ mod world;
 
 use self::assemble::{assemble_scene, build_world_data, compute_scene_bounds};
 use self::buttons::collect_buttons;
-use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord, read_f64, read_u16, read_u32};
+use crate::format::{
+    GroupKind, GspFile, ObjectGroup, PointRecord, Record, collect_strings, decode_c_string,
+    decode_indexed_path, decode_point_record, read_f64, read_u16, read_u32, record_name,
+};
+use crate::util::{hex_bytes, truncate_text};
 
 use self::graph::{
     collect_document_canvas_bounds, collect_saved_viewport, detect_graph_transform,
@@ -140,6 +146,12 @@ struct BindingMaps {
     circle_group_to_index: Vec<Option<usize>>,
     polygon_group_to_index: Vec<Option<usize>>,
     line_group_to_index: Vec<Option<usize>>,
+}
+
+#[derive(Debug, Clone)]
+struct UnsupportedPayloadIssue {
+    summary: String,
+    group_ordinals: Vec<usize>,
 }
 
 struct WorldData {
@@ -772,22 +784,98 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
 }
 
 fn validate_scene_payloads(file: &GspFile, groups: &[ObjectGroup]) -> Result<()> {
-    let mut issues = Vec::new();
-    for group in groups {
-        collect_validation_issue(&mut issues, validate_group_kind(group));
-        collect_validation_issue(&mut issues, validate_action_button_payload(file, group));
-        collect_validation_issue(&mut issues, validate_image_payload(file, group));
-        collect_validation_issue(&mut issues, validate_function_payload(file, groups, group));
-    }
+    let issues = collect_unsupported_payload_issues(file, groups);
     if issues.is_empty() {
         return Ok(());
     }
-    bail!("unsupported payloads:\n- {}", issues.join("\n- "))
+    bail!(
+        "unsupported payloads:\n- {}",
+        issues
+            .iter()
+            .map(|issue| issue.summary.as_str())
+            .collect::<Vec<_>>()
+            .join("\n- ")
+    )
 }
 
-fn collect_validation_issue(issues: &mut Vec<String>, result: Result<()>) {
+pub(crate) fn render_unsupported_payload_log(source_path: &Path, file: &GspFile) -> Option<String> {
+    let groups = file.object_groups();
+    let issues = collect_unsupported_payload_issues(file, &groups);
+    if issues.is_empty() {
+        return None;
+    }
+
+    let mut output = String::new();
+    let _ = writeln!(output, "Unsupported payload log");
+    let _ = writeln!(output, "file: {}", source_path.display());
+    let _ = writeln!(output, "issues: {}", issues.len());
+    let _ = writeln!(output, "object_groups: {}", groups.len());
+    let _ = writeln!(output);
+    let _ = writeln!(output, "Issues");
+
+    for (index, issue) in issues.iter().enumerate() {
+        let _ = writeln!(output, "{}. {}", index + 1, issue.summary);
+        for ordinal in &issue.group_ordinals {
+            if let Some(group) = groups.get(ordinal.saturating_sub(1)) {
+                write_group_detail(&mut output, file, group);
+            }
+        }
+    }
+
+    Some(output)
+}
+
+fn collect_unsupported_payload_issues(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+) -> Vec<UnsupportedPayloadIssue> {
+    let mut issues = Vec::new();
+    for group in groups {
+        collect_validation_issue(&mut issues, &[group.ordinal], validate_group_kind(group));
+        collect_validation_issue(
+            &mut issues,
+            &[group.ordinal],
+            validate_action_button_payload(file, group),
+        );
+        collect_validation_issue(&mut issues, &[group.ordinal], validate_image_payload(file, group));
+        collect_validation_issue(
+            &mut issues,
+            &function_issue_group_ordinals(file, groups, group),
+            validate_function_payload(file, groups, group),
+        );
+    }
+    issues
+}
+
+fn function_issue_group_ordinals(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Vec<usize> {
+    let mut ordinals = vec![group.ordinal];
+    if group.header.kind() != GroupKind::FunctionPlot {
+        return ordinals;
+    }
+    if let Some(path) = find_indexed_path(file, group)
+        && let Some(definition_ordinal) = path.refs.first().copied()
+        && definition_ordinal != group.ordinal
+        && groups.get(definition_ordinal.saturating_sub(1)).is_some()
+    {
+        ordinals.push(definition_ordinal);
+    }
+    ordinals
+}
+
+fn collect_validation_issue(
+    issues: &mut Vec<UnsupportedPayloadIssue>,
+    group_ordinals: &[usize],
+    result: Result<()>,
+) {
     if let Err(error) = result {
-        issues.push(format!("{error:#}"));
+        issues.push(UnsupportedPayloadIssue {
+            summary: format!("{error:#}"),
+            group_ordinals: group_ordinals.to_vec(),
+        });
     }
 }
 
@@ -957,6 +1045,131 @@ fn group_record_payload<'a>(
                 describe_group(group)
             )
         })
+}
+
+fn write_group_detail(output: &mut String, file: &GspFile, group: &ObjectGroup) {
+    let _ = writeln!(output, "  group #{}:", group.ordinal);
+    let _ = writeln!(
+        output,
+        "    type: {:?} (raw=0x{:04x}, class_id=0x{:08x})",
+        group.header.kind(),
+        group.header.kind_id(),
+        group.header.class_id
+    );
+    let _ = writeln!(
+        output,
+        "    geometry: hidden={} flags=0x{:08x} style=[0x{:08x}, 0x{:08x}, 0x{:08x}]",
+        group.header.is_hidden(),
+        group.header.flags,
+        group.header.style_a,
+        group.header.style_b,
+        group.header.style_c
+    );
+    let _ = writeln!(
+        output,
+        "    offsets: start=0x{:x} end=0x{:x}",
+        group.start_offset,
+        group.end_offset
+    );
+
+    if let Some(name) = self::decode::decode_label_name_raw(file, group) {
+        let _ = writeln!(output, "    name: {:?}", name);
+    }
+    if let Some(text) = self::decode::decode_group_label_text(file, group) {
+        let _ = writeln!(output, "    label_text: {:?}", text);
+    }
+    if let Some(url) = self::decode::decode_link_button_url(file, group) {
+        let _ = writeln!(output, "    action_url: {:?}", url);
+    }
+    if let Some(path) = find_indexed_path(file, group) {
+        let _ = writeln!(output, "    indexed_refs: {:?}", path.refs);
+    }
+    if let Some(anchor) = self::decode::decode_0907_anchor(file, group) {
+        let _ = writeln!(
+            output,
+            "    anchor_point: ({:.3}, {:.3})",
+            anchor.x,
+            anchor.y
+        );
+    }
+
+    let points = group
+        .records
+        .iter()
+        .filter(|record| record.record_type == 0x0899)
+        .filter_map(|record| decode_point_record(record.payload(&file.data)))
+        .take(3)
+        .map(|point| format!("({:.3}, {:.3})", point.x, point.y))
+        .collect::<Vec<_>>();
+    if !points.is_empty() {
+        let _ = writeln!(output, "    points: {}", points.join(", "));
+    }
+
+    let strings = collect_group_strings(file, group);
+    if !strings.is_empty() {
+        let _ = writeln!(output, "    strings: {}", strings.join(" | "));
+    }
+
+    let _ = writeln!(output, "    records:");
+    for record in &group.records {
+        let _ = writeln!(
+            output,
+            "      - 0x{:04x} {} len={}{}",
+            record.record_type,
+            record_name(record.record_type),
+            record.length,
+            format_record_summary(file, record)
+                .map(|summary| format!(" {summary}"))
+                .unwrap_or_default()
+        );
+    }
+}
+
+fn collect_group_strings(file: &GspFile, group: &ObjectGroup) -> Vec<String> {
+    let mut strings = BTreeSet::new();
+    for record in &group.records {
+        let payload = record.payload(&file.data);
+        if let Some(text) = decode_c_string(payload) {
+            let text = text.trim();
+            if !text.is_empty() {
+                strings.insert(format!("{:?}", truncate_text(text, 80)));
+            }
+        }
+        for entry in collect_strings(payload) {
+            let text = entry.text.trim();
+            if !text.is_empty() {
+                strings.insert(format!("{:?}", truncate_text(text, 80)));
+            }
+        }
+    }
+    strings.into_iter().take(6).collect()
+}
+
+fn format_record_summary(file: &GspFile, record: &Record) -> Option<String> {
+    let payload = record.payload(&file.data);
+    match record.record_type {
+        0x0899 => decode_point_record(payload)
+            .map(|point| format!("point=({:.3}, {:.3})", point.x, point.y)),
+        0x07d2 | 0x07d3 => decode_indexed_path(record.record_type, payload)
+            .map(|path| format!("refs={:?}", path.refs)),
+        _ => {
+            let strings = collect_strings(payload)
+                .into_iter()
+                .map(|entry| truncate_text(entry.text.trim(), 48))
+                .filter(|text| !text.is_empty())
+                .take(2)
+                .collect::<Vec<_>>();
+            if !strings.is_empty() {
+                return Some(format!("strings={strings:?}"));
+            }
+            decode_c_string(payload)
+                .map(|text| format!("text={:?}", truncate_text(text.trim(), 48)))
+                .or_else(|| {
+                    (payload.len() <= 16 && !payload.is_empty())
+                        .then(|| format!("payload={}", hex_bytes(payload)))
+                })
+        }
+    }
 }
 
 fn describe_group(group: &ObjectGroup) -> String {

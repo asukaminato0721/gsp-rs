@@ -2,6 +2,7 @@ use crate::export::html::{
     render_scene_json, render_standalone_html_document, write_standalone_html,
 };
 use crate::gsp;
+use crate::runtime::render_unsupported_payload_log;
 use crate::runtime::build_scene_checked;
 use std::fs;
 use std::path::Path;
@@ -14,7 +15,20 @@ pub fn compile_file_to_html(
 ) -> Result<(), String> {
     let data = fs::read(gsp_path)
         .map_err(|error| format!("failed to read {}: {error}", gsp_path.display()))?;
-    compile_bytes_to_html_file(&data, html_path, width, height)
+    match compile_bytes_to_html_file(&data, html_path, width, height) {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            let log_path = write_unsupported_payload_log(gsp_path, &data, &error)?;
+            if let Some(log_path) = log_path {
+                Err(format!(
+                    "{error}\nunsupported payload log: {}",
+                    log_path.display()
+                ))
+            } else {
+                Err(error)
+            }
+        }
+    }
 }
 
 pub fn compile_file_to_scene_json(
@@ -59,6 +73,24 @@ pub fn compile_bytes_to_scene_json(data: &[u8], width: u32, height: u32) -> Resu
     let scene = build_scene_checked(&file).map_err(|error| format!("{error:#}"))?;
     let (width, height) = export_dimensions(&file, &scene, width, height);
     Ok(render_scene_json(&scene, width, height, true))
+}
+
+fn write_unsupported_payload_log(
+    gsp_path: &Path,
+    data: &[u8],
+    error: &str,
+) -> Result<Option<std::path::PathBuf>, String> {
+    if !error.contains("unsupported payload") {
+        return Ok(None);
+    }
+    let file = gsp::parse(data)?;
+    let Some(log_body) = render_unsupported_payload_log(gsp_path, &file) else {
+        return Ok(None);
+    };
+    let log_path = gsp_path.with_extension("log");
+    fs::write(&log_path, log_body)
+        .map_err(|write_error| format!("failed to write {}: {write_error}", log_path.display()))?;
+    Ok(Some(log_path))
 }
 
 fn export_dimensions(
