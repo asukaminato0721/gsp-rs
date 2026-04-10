@@ -1,22 +1,131 @@
 (function() {
   const modules = window.GspViewerModules || (window.GspViewerModules = {});
+  const PAN_ONLY_POINT_BINDINGS = new Set([
+    "graph-calibration",
+    "midpoint",
+    "coordinate",
+    "coordinate-source",
+    "coordinate-source-2d",
+  ]);
+
+  const DRAGGED_POINT_CONSTRAINT_UPDATERS = {
+    offset(env, draft, point, world) {
+      const originPoint = draft.points[point.constraint.originIndex];
+      if (originPoint && !originPoint.constraint) {
+        originPoint.x = world.x - point.constraint.dx;
+        originPoint.y = world.y - point.constraint.dy;
+        return;
+      }
+      const origin = env.resolveScenePoint(point.constraint.originIndex);
+      point.constraint.dx = world.x - origin.x;
+      point.constraint.dy = world.y - origin.y;
+    },
+    segment(env, _draft, point, world) {
+      const start = env.resolveScenePoint(point.constraint.startIndex);
+      const end = env.resolveScenePoint(point.constraint.endIndex);
+      const projection = window.GspViewerModules.scene.projectToSegment(world, start, end);
+      if (projection) {
+        point.constraint.t = projection.t;
+      }
+    },
+    polyline(env, _draft, point, world) {
+      const points = typeof point.constraint.functionKey === "number"
+        ? window.GspViewerModules.scene.resolveLinePoints(
+            env,
+            env.currentScene().lines.find((line) =>
+              line?.binding?.kind === "arc-boundary" && line.binding.hostKey === point.constraint.functionKey
+            ),
+          ) || point.constraint.points
+        : point.constraint.points;
+      const count = points.length;
+      let bestSegmentIndex = point.constraint.segmentIndex;
+      let bestT = point.constraint.t;
+      let bestDistanceSquared = Number.POSITIVE_INFINITY;
+      for (let segmentIndex = 0; segmentIndex < count - 1; segmentIndex += 1) {
+        const start = window.GspViewerModules.scene.resolvePoint(env, points[segmentIndex]);
+        const end = window.GspViewerModules.scene.resolvePoint(env, points[segmentIndex + 1]);
+        if (!start || !end) {
+          continue;
+        }
+        const projection = window.GspViewerModules.scene.projectToSegment(world, start, end);
+        if (!projection) {
+          continue;
+        }
+        if (projection.distanceSquared < bestDistanceSquared) {
+          bestDistanceSquared = projection.distanceSquared;
+          bestSegmentIndex = segmentIndex;
+          bestT = projection.t;
+        }
+      }
+      point.constraint.segmentIndex = bestSegmentIndex;
+      point.constraint.t = bestT;
+    },
+    "polygon-boundary"(env, _draft, point, world) {
+      const count = point.constraint.vertexIndices.length;
+      let bestEdgeIndex = point.constraint.edgeIndex;
+      let bestT = point.constraint.t;
+      let bestDistanceSquared = Number.POSITIVE_INFINITY;
+      for (let edgeIndex = 0; edgeIndex < count; edgeIndex += 1) {
+        const start = env.resolveScenePoint(point.constraint.vertexIndices[edgeIndex]);
+        const end = env.resolveScenePoint(point.constraint.vertexIndices[(edgeIndex + 1) % count]);
+        const projection = window.GspViewerModules.scene.projectToSegment(world, start, end);
+        if (!projection) {
+          continue;
+        }
+        if (projection.distanceSquared < bestDistanceSquared) {
+          bestDistanceSquared = projection.distanceSquared;
+          bestEdgeIndex = edgeIndex;
+          bestT = projection.t;
+        }
+      }
+      point.constraint.edgeIndex = bestEdgeIndex;
+      point.constraint.t = bestT;
+    },
+    circle(env, _draft, point, world) {
+      const center = env.resolveScenePoint(point.constraint.centerIndex);
+      const dx = world.x - center.x;
+      const dy = world.y - center.y;
+      const length = Math.hypot(dx, dy);
+      if (length > 1e-9) {
+        point.constraint.unitX = dx / length;
+        point.constraint.unitY = dy / length;
+      }
+    },
+    "circle-arc"(env, _draft, point, world) {
+      const center = env.resolveScenePoint(point.constraint.centerIndex);
+      const start = env.resolveScenePoint(point.constraint.startIndex);
+      const end = env.resolveScenePoint(point.constraint.endIndex);
+      const projection = window.GspViewerModules.scene.projectToCircleArc(
+        world,
+        center,
+        start,
+        end,
+        !!env.sourceScene.yUp,
+      );
+      if (projection) {
+        point.constraint.t = projection.t;
+      }
+    },
+    arc(env, _draft, point, world) {
+      const start = env.resolveScenePoint(point.constraint.startIndex);
+      const mid = env.resolveScenePoint(point.constraint.midIndex);
+      const end = env.resolveScenePoint(point.constraint.endIndex);
+      const projection = window.GspViewerModules.scene.projectToThreePointArc(
+        world,
+        start,
+        mid,
+        end,
+      );
+      if (projection) {
+        point.constraint.t = projection.t;
+      }
+    },
+  };
 
   function dragModeFor(env, pointIndex, labelIndex, polygonIndex, iterationTableIndex) {
     if (pointIndex !== null) {
       const point = env.currentScene().points[pointIndex];
-      if (point?.binding?.kind === "graph-calibration") {
-        return "pan";
-      }
-      if (point?.binding?.kind === "midpoint") {
-        return "pan";
-      }
-      if (point?.binding?.kind === "coordinate") {
-        return "pan";
-      }
-      if (point?.binding?.kind === "coordinate-source") {
-        return "pan";
-      }
-      if (point?.binding?.kind === "coordinate-source-2d") {
+      if (PAN_ONLY_POINT_BINDINGS.has(point?.binding?.kind)) {
         return "pan";
       }
       return env.currentScene().graphMode && env.isOriginPointIndex(pointIndex) ? "origin-pan" : "point";
@@ -48,110 +157,10 @@
   function updateDraggedPoint(env, world) {
     env.updateScene((draft) => {
       const point = draft.points[env.dragState.val.pointIndex];
-      if (point.constraint && point.constraint.kind === "offset") {
-        const originPoint = draft.points[point.constraint.originIndex];
-        if (originPoint && !originPoint.constraint) {
-          originPoint.x = world.x - point.constraint.dx;
-          originPoint.y = world.y - point.constraint.dy;
-        } else {
-          const origin = env.resolveScenePoint(point.constraint.originIndex);
-          point.constraint.dx = world.x - origin.x;
-          point.constraint.dy = world.y - origin.y;
-        }
-      } else if (point.constraint && point.constraint.kind === "segment") {
-        const start = env.resolveScenePoint(point.constraint.startIndex);
-        const end = env.resolveScenePoint(point.constraint.endIndex);
-        const projection = window.GspViewerModules.scene.projectToSegment(world, start, end);
-        if (projection) {
-          point.constraint.t = projection.t;
-        }
-      } else if (point.constraint && point.constraint.kind === "polyline") {
-        const points = typeof point.constraint.functionKey === "number"
-          ? window.GspViewerModules.scene.resolveLinePoints(
-              env,
-              env.currentScene().lines.find((line) =>
-                line?.binding?.kind === "arc-boundary" && line.binding.hostKey === point.constraint.functionKey
-              ),
-            ) || point.constraint.points
-          : point.constraint.points;
-        const count = points.length;
-        let bestSegmentIndex = point.constraint.segmentIndex;
-        let bestT = point.constraint.t;
-        let bestDistanceSquared = Number.POSITIVE_INFINITY;
-        for (let segmentIndex = 0; segmentIndex < count - 1; segmentIndex += 1) {
-          const start = window.GspViewerModules.scene.resolvePoint(env, points[segmentIndex]);
-          const end = window.GspViewerModules.scene.resolvePoint(env, points[segmentIndex + 1]);
-          if (!start || !end) {
-            continue;
-          }
-          const projection = window.GspViewerModules.scene.projectToSegment(world, start, end);
-          if (!projection) {
-            continue;
-          }
-          if (projection.distanceSquared < bestDistanceSquared) {
-            bestDistanceSquared = projection.distanceSquared;
-            bestSegmentIndex = segmentIndex;
-            bestT = projection.t;
-          }
-        }
-        point.constraint.segmentIndex = bestSegmentIndex;
-        point.constraint.t = bestT;
-      } else if (point.constraint && point.constraint.kind === "polygon-boundary") {
-        const count = point.constraint.vertexIndices.length;
-        let bestEdgeIndex = point.constraint.edgeIndex;
-        let bestT = point.constraint.t;
-        let bestDistanceSquared = Number.POSITIVE_INFINITY;
-        for (let edgeIndex = 0; edgeIndex < count; edgeIndex += 1) {
-          const start = env.resolveScenePoint(point.constraint.vertexIndices[edgeIndex]);
-          const end = env.resolveScenePoint(point.constraint.vertexIndices[(edgeIndex + 1) % count]);
-          const projection = window.GspViewerModules.scene.projectToSegment(world, start, end);
-          if (!projection) {
-            continue;
-          }
-          if (projection.distanceSquared < bestDistanceSquared) {
-            bestDistanceSquared = projection.distanceSquared;
-            bestEdgeIndex = edgeIndex;
-            bestT = projection.t;
-          }
-        }
-        point.constraint.edgeIndex = bestEdgeIndex;
-        point.constraint.t = bestT;
-      } else if (point.constraint && point.constraint.kind === "circle") {
-        const center = env.resolveScenePoint(point.constraint.centerIndex);
-        const dx = world.x - center.x;
-        const dy = world.y - center.y;
-        const length = Math.hypot(dx, dy);
-        if (length > 1e-9) {
-          point.constraint.unitX = dx / length;
-          point.constraint.unitY = dy / length;
-        }
-      } else if (point.constraint && point.constraint.kind === "circle-arc") {
-        const center = env.resolveScenePoint(point.constraint.centerIndex);
-        const start = env.resolveScenePoint(point.constraint.startIndex);
-        const end = env.resolveScenePoint(point.constraint.endIndex);
-        const projection = window.GspViewerModules.scene.projectToCircleArc(
-          world,
-          center,
-          start,
-          end,
-          !!env.sourceScene.yUp,
-        );
-        if (projection) {
-          point.constraint.t = projection.t;
-        }
-      } else if (point.constraint && point.constraint.kind === "arc") {
-        const start = env.resolveScenePoint(point.constraint.startIndex);
-        const mid = env.resolveScenePoint(point.constraint.midIndex);
-        const end = env.resolveScenePoint(point.constraint.endIndex);
-        const projection = window.GspViewerModules.scene.projectToThreePointArc(
-          world,
-          start,
-          mid,
-          end,
-        );
-        if (projection) {
-          point.constraint.t = projection.t;
-        }
+      const constraintKind = point.constraint?.kind;
+      const updateConstraint = constraintKind ? DRAGGED_POINT_CONSTRAINT_UPDATERS[constraintKind] : null;
+      if (updateConstraint) {
+        updateConstraint(env, draft, point, world);
       } else {
         point.x = world.x;
         point.y = world.y;

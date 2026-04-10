@@ -631,25 +631,19 @@
     };
   }
 
-  /**
-   * @param {ViewerEnv | null} env
-   * @param {any} constraint
-   * @param {(index: number) => Point} resolveFn
-   */
-  function resolveConstrainedPoint(env, constraint, resolveFn, reference) {
-    if (!constraint) return null;
-    if (constraint.kind === "offset") {
+  const POINT_CONSTRAINT_RESOLVERS = {
+    offset(_env, constraint, resolveFn) {
       const origin = resolveFn(constraint.originIndex);
       if (!origin) return null;
       return { x: origin.x + constraint.dx, y: origin.y + constraint.dy };
-    }
-    if (constraint.kind === "segment") {
+    },
+    segment(_env, constraint, resolveFn) {
       const start = resolveFn(constraint.startIndex);
       const end = resolveFn(constraint.endIndex);
       if (!start || !end) return null;
       return lerpPoint(start, end, constraint.t);
-    }
-    if (constraint.kind === "polyline") {
+    },
+    polyline(env, constraint, resolveFn) {
       const points = resolvePolylineConstraintPoints(env, constraint, resolveFn);
       if (!points) return null;
       const count = points.length;
@@ -659,16 +653,16 @@
       const end = points[segmentIndex + 1];
       if (!start || !end) return null;
       return lerpPoint(start, end, constraint.t);
-    }
-    if (constraint.kind === "polygon-boundary") {
+    },
+    "polygon-boundary"(_env, constraint, resolveFn) {
       const count = constraint.vertexIndices.length;
       if (count < 2) return null;
       const start = resolveFn(constraint.vertexIndices[((constraint.edgeIndex % count) + count) % count]);
       const end = resolveFn(constraint.vertexIndices[(constraint.edgeIndex + 1 + count) % count]);
       if (!start || !end) return null;
       return lerpPoint(start, end, constraint.t);
-    }
-    if (constraint.kind === "circle") {
+    },
+    circle(_env, constraint, resolveFn) {
       const center = resolveFn(constraint.centerIndex);
       const radiusPoint = resolveFn(constraint.radiusIndex);
       if (!center || !radiusPoint) return null;
@@ -677,22 +671,22 @@
         x: center.x + radius * constraint.unitX,
         y: center.y + radius * constraint.unitY,
       };
-    }
-    if (constraint.kind === "circle-arc") {
+    },
+    "circle-arc"(env, constraint, resolveFn) {
       const center = resolveFn(constraint.centerIndex);
       const start = resolveFn(constraint.startIndex);
       const end = resolveFn(constraint.endIndex);
       if (!center || !start || !end) return null;
       return pointOnCircleArc(center, start, end, constraint.t, !!env?.sourceScene?.yUp);
-    }
-    if (constraint.kind === "arc") {
+    },
+    arc(_env, constraint, resolveFn) {
       const start = resolveFn(constraint.startIndex);
       const mid = resolveFn(constraint.midIndex);
       const end = resolveFn(constraint.endIndex);
       if (!start || !mid || !end) return null;
       return pointOnThreePointArc(start, mid, end, constraint.t);
-    }
-    if (constraint.kind === "line-intersection") {
+    },
+    "line-intersection"(env, constraint, resolveFn) {
       const left = resolveLineConstraint(env, constraint.left, resolveFn);
       const right = resolveLineConstraint(env, constraint.right, resolveFn);
       if (!left || !right) return null;
@@ -704,20 +698,20 @@
         right.end,
         right.kind,
       );
-    }
-    if (constraint.kind === "line-trace-intersection") {
+    },
+    "line-trace-intersection"(env, constraint, resolveFn) {
       const line = resolveLineConstraint(env, constraint.line, resolveFn);
       const tracePoints = sampleCoordinateTracePoints(env, constraint);
       if (!line || !tracePoints) return null;
       return linePolylineIntersection(line.start, line.end, line.kind, tracePoints);
-    }
-    if (constraint.kind === "point-circular-tangent") {
+    },
+    "point-circular-tangent"(env, constraint, resolveFn, reference) {
       const point = resolveFn(constraint.pointIndex);
       const circle = circleFromConstraint(env, constraint.circle, resolveFn);
       if (!point || !circle) return null;
       return pointCircularTangent(point, circle, constraint.variant, reference);
-    }
-    if (constraint.kind === "line-circle-intersection") {
+    },
+    "line-circle-intersection"(env, constraint, resolveFn, reference) {
       const line = resolveLineConstraint(env, constraint.line, resolveFn);
       const center = resolveFn(constraint.centerIndex);
       const radiusPoint = resolveFn(constraint.radiusIndex);
@@ -731,8 +725,8 @@
         constraint.variant,
         reference,
       );
-    }
-    if (constraint.kind === "line-circular-intersection") {
+    },
+    "line-circular-intersection"(env, constraint, resolveFn, reference) {
       const line = resolveLineConstraint(env, constraint.line, resolveFn);
       const circle = circleFromConstraint(env, constraint.circle, resolveFn);
       if (!line || !circle) return null;
@@ -749,8 +743,8 @@
         constraint.variant,
         reference,
       );
-    }
-    if (constraint.kind === "circle-circle-intersection") {
+    },
+    "circle-circle-intersection"(_env, constraint, resolveFn, reference) {
       const leftCenter = resolveFn(constraint.leftCenterIndex);
       const leftRadiusPoint = resolveFn(constraint.leftRadiusIndex);
       const rightCenter = resolveFn(constraint.rightCenterIndex);
@@ -764,8 +758,8 @@
         constraint.variant,
         reference,
       );
-    }
-    if (constraint.kind === "circular-intersection") {
+    },
+    "circular-intersection"(env, constraint, resolveFn, reference) {
       const left = circleFromConstraint(env, constraint.left, resolveFn);
       const right = circleFromConstraint(env, constraint.right, resolveFn);
       if (!left || !right) return null;
@@ -782,8 +776,18 @@
       );
       if (onBoth.length === 0) return null;
       return choosePointCandidate(onBoth, reference, constraint.variant);
-    }
-    return null;
+    },
+  };
+
+  /**
+   * @param {ViewerEnv | null} env
+   * @param {any} constraint
+   * @param {(index: number) => Point} resolveFn
+   */
+  function resolveConstrainedPoint(env, constraint, resolveFn, reference) {
+    if (!constraint) return null;
+    const resolve = POINT_CONSTRAINT_RESOLVERS[constraint.kind];
+    return resolve ? resolve(env, constraint, resolveFn, reference) : null;
   }
 
   /** @param {ViewerEnv} env */

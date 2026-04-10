@@ -122,14 +122,28 @@ mod tests {
     use super::{compile_bytes_to_html_document, compile_bytes_to_scene_json};
     use serde_json::Value;
 
+    const FIXTURE_WIDTH: u32 = 800;
+    const FIXTURE_HEIGHT: u32 = 600;
+
+    fn fixture_html(data: &[u8], message: &str) -> String {
+        compile_bytes_to_html_document(data, FIXTURE_WIDTH, FIXTURE_HEIGHT).expect(message)
+    }
+
+    fn fixture_scene_json(data: &[u8], message: &str) -> String {
+        compile_bytes_to_scene_json(data, FIXTURE_WIDTH, FIXTURE_HEIGHT).expect(message)
+    }
+
+    fn fixture_scene(data: &[u8], message: &str) -> Value {
+        serde_json::from_str(&fixture_scene_json(data, message))
+            .expect("scene json should be valid json")
+    }
+
     #[test]
     fn compiles_fixture_into_standalone_html() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/static/point.gsp"),
-            800,
-            600,
-        )
-        .expect("fixture should compile");
+            "fixture should compile",
+        );
 
         assert!(html.contains("<!doctype html>"));
         assert!(html.contains("<canvas id=\"view\""));
@@ -141,12 +155,10 @@ mod tests {
 
     #[test]
     fn exports_scene_json_for_console_debugging() {
-        let scene_json = compile_bytes_to_scene_json(
+        let scene_json = fixture_scene_json(
             include_bytes!("../tests/fixtures/gsp/static/point.gsp"),
-            800,
-            600,
-        )
-        .expect("fixture should compile");
+            "fixture should compile",
+        );
 
         assert!(scene_json.contains("\n  \"width\": 800,"));
         assert!(scene_json.contains("\"points\": ["));
@@ -154,12 +166,10 @@ mod tests {
 
     #[test]
     fn exports_segment_intersection_fixture_into_html() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/insection/segment_insection.gsp"),
-            800,
-            600,
-        )
-        .expect("segment intersection fixture should compile");
+            "segment intersection fixture should compile",
+        );
 
         assert!(html.contains("\"x\":416.3160761196899"));
         assert!(html.contains("\"y\":321.2222079835971"));
@@ -168,12 +178,10 @@ mod tests {
 
     #[test]
     fn exports_perpendicular_intersection_fixture_into_html() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/perp.gsp"),
-            800,
-            600,
-        )
-        .expect("perp fixture should compile");
+            "perp fixture should compile",
+        );
 
         assert!(html.contains("\"x\":867.3347427619169"));
         assert!(html.contains("\"y\":469.9559050197873"));
@@ -183,12 +191,10 @@ mod tests {
 
     #[test]
     fn exports_coordinate_trace_intersection_fixture_into_html() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/insection/cood_intersection.gsp"),
-            800,
-            600,
-        )
-        .expect("coordinate trace intersection fixture should compile");
+            "coordinate trace intersection fixture should compile",
+        );
 
         assert!(html.contains("\"kind\":\"coordinate-trace\""));
         assert!(html.contains("\"kind\":\"coordinate-source\""));
@@ -199,12 +205,10 @@ mod tests {
 
     #[test]
     fn exports_coordinate_trace_intersection_y_fixture_into_html() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/insection/cood_intersection_y.gsp"),
-            800,
-            600,
-        )
-        .expect("coordinate trace y intersection fixture should compile");
+            "coordinate trace y intersection fixture should compile",
+        );
 
         assert!(html.contains("\"kind\":\"coordinate-trace\""));
         assert!(html.contains("\"kind\":\"coordinate-source\""));
@@ -215,12 +219,10 @@ mod tests {
 
     #[test]
     fn exports_coordinate_trace_intersection_xy_fixture_into_html() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/insection/cood_intersection_xy.gsp"),
-            800,
-            600,
-        )
-        .expect("coordinate trace xy intersection fixture should compile");
+            "coordinate trace xy intersection fixture should compile",
+        );
 
         assert!(html.contains("\"kind\":\"coordinate-trace\""));
         assert!(html.contains("\"kind\":\"coordinate-source-2d\""));
@@ -230,12 +232,10 @@ mod tests {
 
     #[test]
     fn exports_point_iteration_metadata_into_html() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/static/简单迭代/原象点初象点深度5迭代.gsp"),
-            800,
-            600,
-        )
-        .expect("iteration fixture should compile");
+            "iteration fixture should compile",
+        );
 
         assert!(html.contains("\"pointIterations\":["));
         assert!(html.contains("\"parameterName\":\"n\""));
@@ -243,14 +243,12 @@ mod tests {
 
     #[test]
     fn exports_non_graph_iteration_parameters_and_expression_bindings_into_html() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!(
                 "../tests/fixtures/gsp/static/简单迭代/原象点和参数初象点和数值深度5迭代.gsp"
             ),
-            800,
-            600,
-        )
-        .expect("non-graph iteration fixture should compile");
+            "non-graph iteration fixture should compile",
+        );
 
         assert!(html.contains("\"name\":\"n\""));
         assert!(html.contains("\"name\":\"a\""));
@@ -264,12 +262,10 @@ mod tests {
 
     #[test]
     fn exports_default_depth_iteration_metadata_into_html() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/static/简单迭代/原象点初象点默认深度3迭代.gsp"),
-            800,
-            600,
-        )
-        .expect("default iteration fixture should compile");
+            "default iteration fixture should compile",
+        );
 
         assert!(html.contains("\"pointIterations\":["));
         assert!(html.contains("\"depth\":3"));
@@ -277,14 +273,12 @@ mod tests {
 
     #[test]
     fn exports_default_depth_non_graph_iteration_fixture_metadata() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!(
                 "../tests/fixtures/gsp/static/简单迭代/原象点和参数初象点和数值默认深度迭代.gsp"
             ),
-            800,
-            600,
-        )
-        .expect("default non-graph iteration fixture should compile");
+            "default non-graph iteration fixture should compile",
+        );
 
         assert!(html.contains("\"name\":\"a\""));
         assert!(html.contains("\"pointIterations\":["));
@@ -295,15 +289,10 @@ mod tests {
 
     #[test]
     fn exports_standalone_parameter_controls_into_html() {
-        let scene_json = compile_bytes_to_scene_json(
+        let scene = fixture_scene(
             include_bytes!("../tests/fixtures/未实现的系统功能/parameter.gsp"),
-            800,
-            600,
-        )
-        .expect("standalone parameter fixture should compile");
-
-        let scene: Value =
-            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+            "standalone parameter fixture should compile",
+        );
         let parameters = scene["parameters"]
             .as_array()
             .expect("scene parameters should be an array");
@@ -330,14 +319,12 @@ mod tests {
 
     #[test]
     fn exports_carried_polygon_iteration_metadata_into_html() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!(
                 "../tests/fixtures/gsp/static/简单迭代/原象点初象携带多边形双映射深度4迭代.gsp"
             ),
-            800,
-            600,
-        )
-        .expect("carried polygon iteration fixture should compile");
+            "carried polygon iteration fixture should compile",
+        );
 
         assert!(html.contains("\"lineIterations\":[]"));
         assert!(html.contains("\"polygonIterations\":["));
@@ -348,12 +335,10 @@ mod tests {
 
     #[test]
     fn exports_perpendicular_line_binding_into_html() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/static/perpendicular.gsp"),
-            800,
-            600,
-        )
-        .expect("perpendicular fixture should compile");
+            "perpendicular fixture should compile",
+        );
 
         assert!(html.contains("\"kind\":\"perpendicular-line\""));
         assert!(html.contains("\"throughIndex\":1"));
@@ -363,12 +348,10 @@ mod tests {
 
     #[test]
     fn exports_parallel_line_binding_into_html() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/parallel.gsp"),
-            800,
-            600,
-        )
-        .expect("parallel fixture should compile");
+            "parallel fixture should compile",
+        );
 
         assert!(html.contains("\"kind\":\"parallel-line\""));
         assert!(html.contains("\"throughIndex\":2"));
@@ -378,12 +361,10 @@ mod tests {
 
     #[test]
     fn exports_angle_bisector_ray_binding_into_html() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/static/bisector.gsp"),
-            800,
-            600,
-        )
-        .expect("bisector fixture should compile");
+            "bisector fixture should compile",
+        );
 
         assert!(html.contains("\"kind\":\"angle-bisector-ray\""));
         assert!(html.contains("\"startIndex\":0"));
@@ -393,12 +374,10 @@ mod tests {
 
     #[test]
     fn exports_nested_perpendicular_parallel_marker_bindings_into_html() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/pert_vert.gsp"),
-            800,
-            600,
-        )
-        .expect("pert_vert fixture should compile");
+            "pert_vert fixture should compile",
+        );
 
         assert!(html.contains("\"kind\":\"perpendicular-line\",\"throughIndex\":3"));
         assert!(html.contains("\"kind\":\"perpendicular-line\",\"throughIndex\":1"));
@@ -408,12 +387,10 @@ mod tests {
 
     #[test]
     fn exports_three_point_arc_into_html() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/static/three_point_arc.gsp"),
-            800,
-            600,
-        )
-        .expect("three-point arc fixture should compile");
+            "three-point arc fixture should compile",
+        );
 
         assert!(html.contains("\"arcs\":["));
         assert!(html.contains("\"color\":[0,128,0,255]"));
@@ -422,12 +399,10 @@ mod tests {
 
     #[test]
     fn exports_three_point_arc_point_constraint_into_html() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/static/three_point_arc_point.gsp"),
-            800,
-            600,
-        )
-        .expect("three-point arc point fixture should compile");
+            "three-point arc point fixture should compile",
+        );
 
         assert!(html.contains("\"kind\":\"arc\""));
         assert!(html.contains("\"startIndex\":0"));
@@ -437,12 +412,10 @@ mod tests {
 
     #[test]
     fn exports_arc_on_circle_into_html() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/static/arc_on_circle.gsp"),
-            800,
-            600,
-        )
-        .expect("arc-on-circle fixture should compile");
+            "arc-on-circle fixture should compile",
+        );
 
         assert!(html.contains("\"arcs\":["));
         assert!(html.contains("\"dashed\":true"));
@@ -452,12 +425,10 @@ mod tests {
 
     #[test]
     fn exports_point_on_circle_arc_constraint_into_html() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/point_on_arc1.gsp"),
-            800,
-            600,
-        )
-        .expect("point-on-circle-arc fixture should compile");
+            "point-on-circle-arc fixture should compile",
+        );
 
         assert!(html.contains("\"kind\":\"circle-arc\""));
         assert!(html.contains("\"centerIndex\":0"));
@@ -467,12 +438,10 @@ mod tests {
 
     #[test]
     fn exports_parameter_controlled_arc_on_circle_into_html() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/static/value_point_arc_on_circle.gsp"),
-            800,
-            600,
-        )
-        .expect("parameter-controlled arc-on-circle fixture should compile");
+            "parameter-controlled arc-on-circle fixture should compile",
+        );
 
         assert!(html.contains("\"arcs\":["));
         assert!(html.contains("\"counterclockwise\":true"));
@@ -482,12 +451,10 @@ mod tests {
 
     #[test]
     fn exports_three_point_arc_intersection_into_html() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/static/three_point_arc_intersection.gsp"),
-            800,
-            600,
-        )
-        .expect("three-point arc intersection fixture should compile");
+            "three-point arc intersection fixture should compile",
+        );
 
         assert!(html.contains("\"kind\":\"circular-intersection\""));
         assert!(html.contains("\"left\":{\"kind\":\"three-point-arc\""));
@@ -496,12 +463,10 @@ mod tests {
 
     #[test]
     fn exports_circle_center_radius_into_html() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/circle_center_radius.gsp"),
-            800,
-            600,
-        )
-        .expect("circle-center-radius fixture should compile");
+            "circle-center-radius fixture should compile",
+        );
 
         assert!(html.contains("\"circles\":[{\"center\":{\"x\":348.0,\"y\":177.0}"));
         assert!(html.contains("\"kind\":\"segment-radius-circle\""));
@@ -512,12 +477,10 @@ mod tests {
 
     #[test]
     fn exports_circle_inner_fill_into_html() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/static/circle_inner.gsp"),
-            800,
-            600,
-        )
-        .expect("circle-inner fixture should compile");
+            "circle-inner fixture should compile",
+        );
 
         assert!(html.contains("\"circles\":["));
         assert!(html.contains("\"fillColor\":[255,255,0,127]"));
@@ -526,12 +489,10 @@ mod tests {
 
     #[test]
     fn exports_multiline_text_into_html() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/多行文本.gsp"),
-            800,
-            600,
-        )
-        .expect("multiline text fixture should compile");
+            "multiline text fixture should compile",
+        );
 
         assert!(html.contains(
             "\"text\":\"线段中垂线\\n垂线\\n平行线\\n直角三角形\\n点的轨迹\\n圆上的弧\\n过三点的弧\""
@@ -540,12 +501,10 @@ mod tests {
 
     #[test]
     fn exports_hidden_point_fixture_into_html() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/static/point_hidden.gsp"),
-            800,
-            600,
-        )
-        .expect("hidden-point fixture should compile");
+            "hidden-point fixture should compile",
+        );
 
         assert!(html.contains(
             "\"points\":[{\"x\":323.0,\"y\":217.0,\"color\":[255,0,0,255],\"visible\":false"
@@ -555,15 +514,10 @@ mod tests {
 
     #[test]
     fn exports_hidden_ray_fixture_into_html() {
-        let scene_json = compile_bytes_to_scene_json(
+        let scene = fixture_scene(
             include_bytes!("../tests/fixtures/gsp/static/hide_ray.gsp"),
-            800,
-            600,
-        )
-        .expect("hidden-ray fixture should compile");
-
-        let scene: Value =
-            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+            "hidden-ray fixture should compile",
+        );
         let lines = scene["lines"]
             .as_array()
             .expect("scene lines should be an array");
@@ -591,15 +545,10 @@ mod tests {
 
     #[test]
     fn exports_angle_marker_label_fixture_into_html() {
-        let scene_json = compile_bytes_to_scene_json(
+        let scene = fixture_scene(
             include_bytes!("../tests/fixtures/gsp/static/angle_marker_label.gsp"),
-            800,
-            600,
-        )
-        .expect("angle-marker-label fixture should compile");
-
-        let scene: Value =
-            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+            "angle-marker-label fixture should compile",
+        );
         let labels = scene["labels"]
             .as_array()
             .expect("scene labels should be an array");
@@ -626,15 +575,10 @@ mod tests {
 
     #[test]
     fn exports_ray_label_hide_fixture_into_html() {
-        let scene_json = compile_bytes_to_scene_json(
+        let scene = fixture_scene(
             include_bytes!("../tests/fixtures/gsp/static/ray_label_hide.gsp"),
-            800,
-            600,
-        )
-        .expect("ray-label-hide fixture should compile");
-
-        let scene: Value =
-            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+            "ray-label-hide fixture should compile",
+        );
         let labels = scene["labels"]
             .as_array()
             .expect("scene labels should be an array");
@@ -653,12 +597,10 @@ mod tests {
 
     #[test]
     fn html_viewer_preserves_label_visibility_flags() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/static/ray_label_hide.gsp"),
-            800,
-            600,
-        )
-        .expect("ray-label-hide fixture should compile to html");
+            "ray-label-hide fixture should compile to html",
+        );
 
         assert!(
             html.contains("\"text\":\"k\",\"color\":[30,30,30,255],\"visible\":false"),
@@ -672,12 +614,10 @@ mod tests {
 
     #[test]
     fn exports_polar_function_fixture_into_html() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!("../tests/fixtures/未实现的系统功能/极坐标.gsp"),
-            800,
-            600,
-        )
-        .expect("polar fixture should compile");
+            "polar fixture should compile",
+        );
 
         assert!(html.contains("\"plotMode\":\"polar\""));
         assert!(html.contains("\"text\":\"r = 1 + cos(θ)\""));
@@ -687,15 +627,10 @@ mod tests {
 
     #[test]
     fn exports_parameterized_function_fixture_with_unique_parameters() {
-        let scene_json = compile_bytes_to_scene_json(
+        let scene = fixture_scene(
             include_bytes!("../tests/fixtures/未实现的系统功能/函数.gsp"),
-            800,
-            600,
-        )
-        .expect("parameterized function fixture should compile");
-
-        let scene: Value =
-            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+            "parameterized function fixture should compile",
+        );
         assert_eq!(scene["piMode"].as_bool(), Some(false));
         assert_eq!(scene["savedViewport"].as_bool(), Some(true));
         let parameters = scene["parameters"]
@@ -739,15 +674,10 @@ mod tests {
 
     #[test]
     fn exports_draw_function_fixture_with_payload_linked_labels() {
-        let scene_json = compile_bytes_to_scene_json(
+        let scene = fixture_scene(
             include_bytes!("../tests/fixtures/未实现的系统功能/绘图函数.gsp"),
-            800,
-            600,
-        )
-        .expect("draw function fixture should compile");
-
-        let scene: Value =
-            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+            "draw function fixture should compile",
+        );
         let images = scene["images"]
             .as_array()
             .expect("scene images should be an array");
@@ -767,15 +697,10 @@ mod tests {
 
     #[test]
     fn exports_insert_image_fixture() {
-        let scene_json = compile_bytes_to_scene_json(
+        let scene = fixture_scene(
             include_bytes!("../tests/fixtures/未实现的系统功能/插入图片.gsp"),
-            800,
-            600,
-        )
-        .expect("insert image fixture should compile");
-
-        let scene: Value =
-            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+            "insert image fixture should compile",
+        );
         let images = scene["images"]
             .as_array()
             .expect("scene images should be an array");
@@ -795,12 +720,10 @@ mod tests {
 
     #[test]
     fn exports_translated_triangle_segments_into_html() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/两个三角形标记全等.gsp"),
-            800,
-            600,
-        )
-        .expect("congruent triangle fixture should compile");
+            "congruent triangle fixture should compile",
+        );
 
         assert!(html.contains("\"kind\":\"translate-line\""));
         assert!(html.contains("\"kind\":\"angle-marker\""));
@@ -812,15 +735,10 @@ mod tests {
 
     #[test]
     fn exports_circular_segment_boundary_fixture_with_polyline_constraint() {
-        let scene_json = compile_bytes_to_scene_json(
+        let scene = fixture_scene(
             include_bytes!("../tests/fixtures/未实现的系统功能/弓形周界动点.gsp"),
-            800,
-            600,
-        )
-        .expect("circular segment boundary fixture should compile");
-
-        let scene: Value =
-            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+            "circular segment boundary fixture should compile",
+        );
         assert!(
             scene["points"].as_array().is_some_and(|points| points
                 .iter()
@@ -839,12 +757,10 @@ mod tests {
 
     #[test]
     fn exports_custom_transform_fixture_with_interactive_point_binding() {
-        let html = compile_bytes_to_html_document(
+        let html = fixture_html(
             include_bytes!("../tests/fixtures/未实现的系统功能/自定义变换.gsp"),
-            800,
-            600,
-        )
-        .expect("custom transform fixture should compile");
+            "custom transform fixture should compile",
+        );
 
         assert!(html.contains("\"text\":\"Q\""));
         assert!(html.contains("\"kind\":\"custom-transform\""));
@@ -856,15 +772,10 @@ mod tests {
 
     #[test]
     fn exports_circle_formation_fixture_with_rotation_iteration() {
-        let scene_json = compile_bytes_to_scene_json(
+        let scene = fixture_scene(
             include_bytes!("../tests/fixtures/未实现的系统功能/圆的形成.gsp"),
-            800,
-            600,
-        )
-        .expect("circle-formation fixture should compile");
-
-        let scene: Value =
-            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+            "circle-formation fixture should compile",
+        );
         let parameters = scene["parameters"]
             .as_array()
             .expect("scene parameters should be an array");
@@ -905,15 +816,10 @@ mod tests {
 
     #[test]
     fn exports_circle_system_fixture_with_live_parameter_and_bindings() {
-        let scene_json = compile_bytes_to_scene_json(
+        let scene = fixture_scene(
             include_bytes!("../tests/fixtures/未实现/圆系(inRm).gsp"),
-            800,
-            600,
-        )
-        .expect("circle-system fixture should compile");
-
-        let scene: Value =
-            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+            "circle-system fixture should compile",
+        );
         let parameters = scene["parameters"]
             .as_array()
             .expect("scene parameters should be an array");
@@ -1012,15 +918,10 @@ mod tests {
 
     #[test]
     fn exports_two_circle_intersection_inrm_fixture_with_live_bindings() {
-        let scene_json = compile_bytes_to_scene_json(
+        let scene = fixture_scene(
             include_bytes!("../tests/fixtures/未实现/(inRm)两圆之交.gsp"),
-            800,
-            600,
-        )
-        .expect("two-circle-intersection fixture should compile");
-
-        let scene: Value =
-            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+            "two-circle-intersection fixture should compile",
+        );
         let circles = scene["circles"]
             .as_array()
             .expect("scene circles should be an array");
@@ -1114,15 +1015,10 @@ mod tests {
 
     #[test]
     fn exports_cans_in_container_inrm_fixture_with_live_bindings() {
-        let scene_json = compile_bytes_to_scene_json(
+        let scene = fixture_scene(
             include_bytes!("../tests/fixtures/未实现/(inRm)容器中的罐头.gsp"),
-            800,
-            600,
-        )
-        .expect("cans-in-container fixture should compile");
-
-        let scene: Value =
-            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+            "cans-in-container fixture should compile",
+        );
         let circles = scene["circles"]
             .as_array()
             .expect("scene circles should be an array");
@@ -1206,15 +1102,10 @@ mod tests {
 
     #[test]
     fn exports_ant_fixture_with_two_axis_line_iterations() {
-        let scene_json = compile_bytes_to_scene_json(
+        let scene = fixture_scene(
             include_bytes!("../tests/fixtures/bug/迭代方法2(蚂蚁).gsp"),
-            800,
-            600,
-        )
-        .expect("ant fixture should compile");
-
-        let scene: Value =
-            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+            "ant fixture should compile",
+        );
         let line_iterations = scene["lineIterations"]
             .as_array()
             .expect("scene line iterations should be an array");
