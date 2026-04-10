@@ -27,6 +27,10 @@ fn graph_calibration_visible(group: &ObjectGroup) -> bool {
     !group.header.is_hidden() && (group.header.class_id & 0x0004_0000) == 0
 }
 
+fn point_marker_visible(group: &ObjectGroup) -> bool {
+    (group.header.style_a & 0x0200_0000) != 0
+}
+
 fn scene_point(
     position: PointRecord,
     color: [u8; 4],
@@ -57,7 +61,7 @@ pub(crate) fn collect_visible_points(
 
     for (index, group) in groups.iter().enumerate() {
         let kind = group.header.kind();
-        let visible = !group.header.is_hidden();
+        let visible = !group.header.is_hidden() && point_marker_visible(group);
         let scene_point = match kind {
             crate::format::GroupKind::Point => {
                 (!is_orphan_duplicate_point_helper(file, groups, group))

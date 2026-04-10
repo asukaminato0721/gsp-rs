@@ -837,7 +837,11 @@ fn collect_unsupported_payload_issues(
             &[group.ordinal],
             validate_action_button_payload(file, group),
         );
-        collect_validation_issue(&mut issues, &[group.ordinal], validate_image_payload(file, group));
+        collect_validation_issue(
+            &mut issues,
+            &[group.ordinal],
+            validate_image_payload(file, group),
+        );
         collect_validation_issue(
             &mut issues,
             &function_issue_group_ordinals(file, groups, group),
@@ -1068,8 +1072,7 @@ fn write_group_detail(output: &mut String, file: &GspFile, group: &ObjectGroup) 
     let _ = writeln!(
         output,
         "    offsets: start=0x{:x} end=0x{:x}",
-        group.start_offset,
-        group.end_offset
+        group.start_offset, group.end_offset
     );
 
     if let Some(name) = self::decode::decode_label_name_raw(file, group) {
@@ -1088,8 +1091,7 @@ fn write_group_detail(output: &mut String, file: &GspFile, group: &ObjectGroup) 
         let _ = writeln!(
             output,
             "    anchor_point: ({:.3}, {:.3})",
-            anchor.x,
-            anchor.y
+            anchor.x, anchor.y
         );
     }
 

@@ -1377,6 +1377,7 @@ enum LineIterationJson {
         depth: usize,
         #[serde(rename = "parameterName")]
         parameter_name: Option<String>,
+        bidirectional: bool,
         color: [u8; 4],
         dashed: bool,
     },
@@ -1422,6 +1423,7 @@ impl LineIterationJson {
             secondary_dy: family.secondary_dy,
             depth: family.depth,
             parameter_name: family.parameter_name.clone(),
+            bidirectional: family.bidirectional,
             color: family.color,
             dashed: family.dashed,
         }
@@ -1486,6 +1488,7 @@ enum PolygonIterationJson {
         depth: usize,
         #[serde(rename = "parameterName")]
         parameter_name: Option<String>,
+        bidirectional: bool,
         color: [u8; 4],
     },
 }
@@ -1500,6 +1503,7 @@ impl PolygonIterationJson {
             secondary_dy: family.secondary_dy,
             depth: family.depth,
             parameter_name: family.parameter_name.clone(),
+            bidirectional: family.bidirectional,
             color: family.color,
         }
     }

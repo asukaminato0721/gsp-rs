@@ -136,6 +136,7 @@ type SceneData = {
     secondaryDy?: number | null;
     depth: number;
     parameterName?: string | null;
+    bidirectional?: boolean;
     color: [number, number, number, number];
     dashed: boolean;
   } | {
@@ -158,6 +159,7 @@ type SceneData = {
     secondaryDy?: number | null;
     depth: number;
     parameterName?: string | null;
+    bidirectional?: boolean;
     color: [number, number, number, number];
   }>;
   labelIterations?: Array<{

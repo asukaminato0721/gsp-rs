@@ -2,8 +2,8 @@ use crate::export::html::{
     render_scene_json, render_standalone_html_document, write_standalone_html,
 };
 use crate::gsp;
-use crate::runtime::render_unsupported_payload_log;
 use crate::runtime::build_scene_checked;
+use crate::runtime::render_unsupported_payload_log;
 use std::fs;
 use std::path::Path;
 
@@ -873,5 +873,41 @@ mod tests {
         assert_eq!(iteration_tables[0]["x"].as_f64(), Some(322.0));
         assert_eq!(iteration_tables[0]["y"].as_f64(), Some(481.0));
         assert_eq!(iteration_tables[0]["depth"].as_u64(), Some(4));
+    }
+
+    #[test]
+    fn exports_ant_fixture_with_two_axis_line_iterations() {
+        let scene_json = compile_bytes_to_scene_json(
+            include_bytes!("../tests/fixtures/bug/迭代方法2(蚂蚁).gsp"),
+            800,
+            600,
+        )
+        .expect("ant fixture should compile");
+
+        let scene: Value =
+            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+        let line_iterations = scene["lineIterations"]
+            .as_array()
+            .expect("scene line iterations should be an array");
+        assert_eq!(
+            line_iterations.len(),
+            4,
+            "expected the four seed edges to iterate"
+        );
+        assert!(line_iterations.iter().all(|family| {
+            family["kind"].as_str() == Some("translate")
+                && family["parameterName"].as_str() == Some("n")
+                && family["dx"].as_f64() == Some(-62.0)
+                && family["dy"].as_f64() == Some(-36.0)
+                && family["secondaryDx"].as_f64() == Some(47.0)
+                && family["secondaryDy"].as_f64() == Some(-52.0)
+                && family["bidirectional"].as_bool() == Some(true)
+                && family["depth"].as_u64() == Some(3)
+        }));
+        let points = scene["points"].as_array().expect("scene points should be an array");
+        assert!(
+            points.iter().all(|point| point["visible"].as_bool() == Some(false)),
+            "expected helper points to stay hidden when the payload omits the point-marker style"
+        );
     }
 }

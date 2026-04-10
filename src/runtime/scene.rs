@@ -140,6 +140,7 @@ pub(crate) struct LineIterationFamily {
     pub(crate) secondary_dy: Option<f64>,
     pub(crate) depth: usize,
     pub(crate) parameter_name: Option<String>,
+    pub(crate) bidirectional: bool,
     pub(crate) color: [u8; 4],
     pub(crate) dashed: bool,
     pub(crate) affine_source_indices: Option<[usize; 3]>,
@@ -168,6 +169,7 @@ pub(crate) struct PolygonIterationFamily {
     pub(crate) secondary_dy: Option<f64>,
     pub(crate) depth: usize,
     pub(crate) parameter_name: Option<String>,
+    pub(crate) bidirectional: bool,
     pub(crate) color: [u8; 4],
 }
 

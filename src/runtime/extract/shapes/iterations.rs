@@ -198,13 +198,13 @@ pub(crate) fn collect_carried_iteration_lines(
                 return Some(lines);
             }
             let steps = carried_iteration_steps(file, groups, iter_group, anchors);
-            let Some(step) = steps.first().cloned() else {
+            let Some((step, secondary_step, bidirectional)) = carried_iteration_basis(&steps)
+            else {
                 return None;
             };
-            let secondary_step = steps.get(1).cloned();
             let color = color_from_style(source_group.header.style_b);
             Some(
-                carried_iteration_line_deltas(&step, secondary_step.as_ref(), depth)
+                carried_iteration_line_deltas(&step, secondary_step.as_ref(), depth, bidirectional)
                     .into_iter()
                     .map(|delta| LineShape {
                         points: vec![start.clone() + delta.clone(), end.clone() + delta],
@@ -283,6 +283,7 @@ pub(crate) fn collect_carried_line_iteration_families(
                     secondary_dy: None,
                     depth,
                     parameter_name: None,
+                    bidirectional: false,
                     color: color_from_style(source_group.header.style_b),
                     dashed: line_is_dashed(source_group.header.style_a),
                     affine_source_indices: Some(source_indices),
@@ -298,10 +299,10 @@ pub(crate) fn collect_carried_line_iteration_families(
                 .copied()
                 .flatten()?;
             let steps = carried_iteration_steps(file, groups, iter_group, anchors);
-            let Some(step) = steps.first().cloned() else {
+            let Some((step, secondary_step, bidirectional)) = carried_iteration_basis(&steps)
+            else {
                 return None;
             };
-            let secondary_step = steps.get(1).cloned();
             let depth = carried_iteration_depth(file, iter_group, 3);
             if depth == 0 {
                 return None;
@@ -315,6 +316,7 @@ pub(crate) fn collect_carried_line_iteration_families(
                 secondary_dy: secondary_step.as_ref().map(|step| step.y),
                 depth,
                 parameter_name: carried_iteration_parameter_name(file, groups, iter_group),
+                bidirectional,
                 color: color_from_style(source_group.header.style_b),
                 dashed: line_is_dashed(source_group.header.style_a),
                 affine_source_indices: None,
@@ -405,15 +407,11 @@ fn carried_iteration_steps(
             let index = ordinal.checked_sub(1)?;
             groups.get(index)
         })
-        .filter_map(|group| decode_translated_point_constraint(file, group))
-        .map(|constraint| PointRecord {
-            x: constraint.dx,
-            y: constraint.dy,
-        })
+        .filter_map(|group| iteration_step_for_group(file, group, anchors))
         .fold(Vec::<PointRecord>::new(), |mut acc, step| {
-            let already_present = acc.iter().any(|existing| {
-                (existing.x - step.x).abs() < 1e-6 && (existing.y - step.y).abs() < 1e-6
-            });
+            let already_present = acc
+                .iter()
+                .any(|existing| same_iteration_step(existing, &step));
             if !already_present {
                 acc.push(step);
             }
@@ -443,11 +441,112 @@ fn carried_iteration_steps(
     }]
 }
 
+fn carried_iteration_basis(
+    steps: &[PointRecord],
+) -> Option<(PointRecord, Option<PointRecord>, bool)> {
+    let mut axes = Vec::new();
+    let mut used = vec![false; steps.len()];
+    for (index, step) in steps.iter().enumerate() {
+        if used[index] {
+            continue;
+        }
+        if let Some(opposite_index) =
+            steps
+                .iter()
+                .enumerate()
+                .find_map(|(candidate_index, candidate)| {
+                    (!used[candidate_index]
+                        && candidate_index != index
+                        && same_iteration_step(
+                            candidate,
+                            &PointRecord {
+                                x: -step.x,
+                                y: -step.y,
+                            },
+                        ))
+                    .then_some(candidate_index)
+                })
+        {
+            used[index] = true;
+            used[opposite_index] = true;
+            axes.push(step.clone());
+        }
+    }
+    if used.iter().all(|flag| *flag) && !axes.is_empty() && axes.len() <= 2 {
+        return Some((axes[0].clone(), axes.get(1).cloned(), true));
+    }
+    Some((steps.first()?.clone(), steps.get(1).cloned(), false))
+}
+
+fn iteration_step_for_group(
+    file: &GspFile,
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    if (group.header.kind()) == crate::format::GroupKind::Translation {
+        let path = find_indexed_path(file, group)?;
+        let start = anchors.get(path.refs.get(1)?.checked_sub(1)?)?.clone()?;
+        let end = anchors.get(path.refs.get(2)?.checked_sub(1)?)?.clone()?;
+        let step = end - start;
+        return (!is_zero_step(&step)).then_some(step);
+    }
+
+    let constraint = decode_translated_point_constraint(file, group)?;
+    let step = PointRecord {
+        x: constraint.dx,
+        y: constraint.dy,
+    };
+    (!is_zero_step(&step)).then_some(step)
+}
+
+fn is_zero_step(step: &PointRecord) -> bool {
+    step.x.abs() < 1e-6 && step.y.abs() < 1e-6
+}
+
+fn same_iteration_step(left: &PointRecord, right: &PointRecord) -> bool {
+    (left.x - right.x).abs() < 1e-6 && (left.y - right.y).abs() < 1e-6
+}
+
 fn carried_iteration_line_deltas(
     step: &PointRecord,
     secondary_step: Option<&PointRecord>,
     depth: usize,
+    bidirectional: bool,
 ) -> Vec<PointRecord> {
+    if bidirectional {
+        if let Some(secondary) = secondary_step {
+            let mut deltas = Vec::new();
+            for primary_index in -(depth as isize)..=(depth as isize) {
+                for secondary_index in -(depth as isize)..=(depth as isize) {
+                    if primary_index == 0 && secondary_index == 0 {
+                        continue;
+                    }
+                    if primary_index.unsigned_abs() + secondary_index.unsigned_abs() > depth {
+                        continue;
+                    }
+                    deltas.push(PointRecord {
+                        x: step.x * primary_index as f64 + secondary.x * secondary_index as f64,
+                        y: step.y * primary_index as f64 + secondary.y * secondary_index as f64,
+                    });
+                }
+            }
+            return deltas;
+        }
+        return (1..=depth)
+            .flat_map(|index| {
+                [
+                    PointRecord {
+                        x: step.x * index as f64,
+                        y: step.y * index as f64,
+                    },
+                    PointRecord {
+                        x: -step.x * index as f64,
+                        y: -step.y * index as f64,
+                    },
+                ]
+            })
+            .collect();
+    }
     if let Some(secondary) = secondary_step {
         let mut deltas = Vec::new();
         for primary_index in 0..=depth {
@@ -476,7 +575,39 @@ fn carried_iteration_polygon_deltas(
     step: &PointRecord,
     secondary_step: Option<&PointRecord>,
     depth: usize,
+    bidirectional: bool,
 ) -> Vec<PointRecord> {
+    if bidirectional {
+        if let Some(secondary) = secondary_step {
+            let mut deltas = Vec::new();
+            for primary_index in -(depth as isize)..=(depth as isize) {
+                for secondary_index in -(depth as isize)..=(depth as isize) {
+                    if primary_index.unsigned_abs() + secondary_index.unsigned_abs() > depth {
+                        continue;
+                    }
+                    deltas.push(PointRecord {
+                        x: step.x * primary_index as f64 + secondary.x * secondary_index as f64,
+                        y: step.y * primary_index as f64 + secondary.y * secondary_index as f64,
+                    });
+                }
+            }
+            return deltas;
+        }
+        return std::iter::once(PointRecord { x: 0.0, y: 0.0 })
+            .chain((1..=depth).flat_map(|index| {
+                [
+                    PointRecord {
+                        x: step.x * index as f64,
+                        y: step.y * index as f64,
+                    },
+                    PointRecord {
+                        x: -step.x * index as f64,
+                        y: -step.y * index as f64,
+                    },
+                ]
+            }))
+            .collect();
+    }
     if let Some(secondary) = secondary_step {
         let mut deltas = Vec::new();
         for primary_index in 0..=depth {
@@ -671,10 +802,10 @@ pub(crate) fn collect_carried_iteration_polygons(
                 .map(|ordinal| anchors.get(ordinal.checked_sub(1)?).cloned().flatten())
                 .collect::<Option<Vec<_>>>()?;
             let steps = carried_iteration_steps(file, groups, iter_group, anchors);
-            let Some(step) = steps.first().cloned() else {
+            let Some((step, secondary_step, bidirectional)) = carried_iteration_basis(&steps)
+            else {
                 return None;
             };
-            let secondary_step = steps.get(1).cloned();
             let depth = iter_group
                 .records
                 .iter()
@@ -686,19 +817,24 @@ pub(crate) fn collect_carried_iteration_polygons(
             let color =
                 fill_color_from_styles(source_group.header.style_a, source_group.header.style_b);
             Some(
-                carried_iteration_polygon_deltas(&step, secondary_step.as_ref(), depth)
-                    .into_iter()
-                    .map(|delta| PolygonShape {
-                        points: points
-                            .iter()
-                            .cloned()
-                            .map(|point| point + delta.clone())
-                            .collect(),
-                        color,
-                        visible: !iter_group.header.is_hidden(),
-                        binding: None,
-                    })
-                    .collect::<Vec<_>>(),
+                carried_iteration_polygon_deltas(
+                    &step,
+                    secondary_step.as_ref(),
+                    depth,
+                    bidirectional,
+                )
+                .into_iter()
+                .map(|delta| PolygonShape {
+                    points: points
+                        .iter()
+                        .cloned()
+                        .map(|point| point + delta.clone())
+                        .collect(),
+                    color,
+                    visible: !iter_group.header.is_hidden(),
+                    binding: None,
+                })
+                .collect::<Vec<_>>(),
             )
         })
         .flatten()
@@ -748,10 +884,10 @@ pub(crate) fn collect_carried_polygon_iteration_families(
                 })
                 .collect::<Option<Vec<_>>>()?;
             let steps = carried_iteration_steps(file, groups, iter_group, anchors);
-            let Some(step) = steps.first().cloned() else {
+            let Some((step, secondary_step, bidirectional)) = carried_iteration_basis(&steps)
+            else {
                 return None;
             };
-            let secondary_step = steps.get(1).cloned();
             let depth = carried_iteration_depth(file, iter_group, 3);
             if depth == 0 {
                 return None;
@@ -764,6 +900,7 @@ pub(crate) fn collect_carried_polygon_iteration_families(
                 secondary_dy: secondary_step.as_ref().map(|step| step.y),
                 depth,
                 parameter_name: carried_iteration_parameter_name(file, groups, iter_group),
+                bidirectional,
                 color: fill_color_from_styles(
                     source_group.header.style_a,
                     source_group.header.style_b,

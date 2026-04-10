@@ -611,6 +611,12 @@
       if (family.kind === "affine") {
         return sum + depth;
       }
+      if (family.bidirectional) {
+        if (Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy)) {
+          return sum + (2 * depth * (depth + 1));
+        }
+        return sum + (2 * depth);
+      }
       if (Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy)) {
         return sum + (((depth + 1) * (depth + 2)) / 2 - 1);
       }
@@ -674,7 +680,29 @@
       if (family.kind !== "translate") return;
       const hasSecondary = Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy);
       const deltas = [];
-      if (hasSecondary) {
+      if (family.bidirectional && hasSecondary) {
+        for (let primary = -depth; primary <= depth; primary += 1) {
+          for (let secondary = -depth; secondary <= depth; secondary += 1) {
+            if (primary === 0 && secondary === 0) {
+              continue;
+            }
+            if (Math.abs(primary) + Math.abs(secondary) > depth) {
+              continue;
+            }
+            deltas.push({
+              dx: family.dx * primary + family.secondaryDx * secondary,
+              dy: family.dy * primary + family.secondaryDy * secondary,
+            });
+          }
+        }
+      } else if (family.bidirectional) {
+        for (let step = 1; step <= depth; step += 1) {
+          deltas.push(
+            { dx: family.dx * step, dy: family.dy * step },
+            { dx: -family.dx * step, dy: -family.dy * step },
+          );
+        }
+      } else if (hasSecondary) {
         for (let primary = 0; primary <= depth; primary += 1) {
           for (let secondary = 0; secondary <= depth - primary; secondary += 1) {
             if (primary === 0 && secondary === 0) {
@@ -716,6 +744,12 @@
     }
     const exportedDepth = families.reduce((sum, family) => {
       const depth = family.depth || 0;
+      if (family.bidirectional) {
+        if (Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy)) {
+          return sum + (1 + 2 * depth * (depth + 1));
+        }
+        return sum + (1 + 2 * depth);
+      }
       if (Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy)) {
         return sum + (((depth + 1) * (depth + 2)) / 2);
       }
@@ -736,7 +770,27 @@
       }
       const hasSecondary = Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy);
       const deltas = [];
-      if (hasSecondary) {
+      if (family.bidirectional && hasSecondary) {
+        for (let primary = -depth; primary <= depth; primary += 1) {
+          for (let secondary = -depth; secondary <= depth; secondary += 1) {
+            if (Math.abs(primary) + Math.abs(secondary) > depth) {
+              continue;
+            }
+            deltas.push({
+              dx: family.dx * primary + family.secondaryDx * secondary,
+              dy: family.dy * primary + family.secondaryDy * secondary,
+            });
+          }
+        }
+      } else if (family.bidirectional) {
+        deltas.push({ dx: 0, dy: 0 });
+        for (let step = 1; step <= depth; step += 1) {
+          deltas.push(
+            { dx: family.dx * step, dy: family.dy * step },
+            { dx: -family.dx * step, dy: -family.dy * step },
+          );
+        }
+      } else if (hasSecondary) {
         for (let primary = 0; primary <= depth; primary += 1) {
           for (let secondary = 0; secondary <= depth - primary; secondary += 1) {
             deltas.push({
