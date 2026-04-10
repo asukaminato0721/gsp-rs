@@ -1151,13 +1151,20 @@
         if (!draftPoint) {
           return;
         }
-        if (draftPoint.constraint?.kind === "segment") {
+        const parameterized = dynamicsModule.parameterValueFromPoint
+          ? dynamicsModule.parameterValueFromPoint(draft, pointIndex)
+          : null;
+        if (parameterized !== null && draftPoint.constraint) {
           const durationMs = mode === "scroll" ? 16000 : 12000;
           const delta = dt / durationMs;
           if (mode === "scroll") {
-            draftPoint.constraint.t = (draftPoint.constraint.t + delta) % 1;
+            dynamicsModule.applyNormalizedParameterToPoint(
+              draftPoint,
+              draft,
+              parameterized + delta,
+            );
           } else {
-            let next = draftPoint.constraint.t + delta * state.direction;
+            let next = parameterized + delta * state.direction;
             if (next >= 1) {
               next = 1;
               state.direction = -1;
@@ -1165,7 +1172,7 @@
               next = 0;
               state.direction = 1;
             }
-            draftPoint.constraint.t = next;
+            dynamicsModule.applyNormalizedParameterToPoint(draftPoint, draft, next);
           }
         } else if (mode === "scroll") {
           state.t += dt * 0.004;

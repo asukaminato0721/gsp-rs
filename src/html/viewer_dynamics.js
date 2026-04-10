@@ -1769,6 +1769,8 @@
     buildParameterControls,
     evaluateExpr,
     formatExpr,
+    parameterValueFromPoint,
+    applyNormalizedParameterToPoint,
     refreshDerivedPoints,
     refreshDynamicLabels,
     refreshIterationGeometry,
