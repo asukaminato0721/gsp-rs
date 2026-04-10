@@ -973,6 +973,7 @@ struct LabelJson {
     anchor: PointJson,
     text: String,
     #[serde(rename = "richMarkup")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     rich_markup: Option<String>,
     color: [u8; 4],
     visible: bool,

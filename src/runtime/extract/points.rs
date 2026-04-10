@@ -1,4 +1,7 @@
-use super::decode::{decode_label_name, find_indexed_path};
+use super::decode::{
+    decode_discrete_parameter_value, decode_label_name,
+    decode_parameter_control_value_for_group, find_indexed_path, is_parameter_control_group,
+};
 use crate::format::{GspFile, ObjectGroup, PointRecord, decode_point_record, read_f64, read_u16};
 use crate::runtime::scene::{SceneParameter, TextLabel};
 
@@ -93,7 +96,7 @@ fn decode_non_graph_parameter(
     } else if is_angle_parameter_group(file, groups, group_index) {
         decode_angle_parameter_value_for_group(file, group)?
     } else {
-        decode_non_graph_parameter_value_for_group(file, group)?
+        decode_parameter_control_value_for_group(file, groups, group)?
     };
     let label_index = labels.iter().position(|label| label.text == name);
     if let Some(index) = label_index {
@@ -127,27 +130,7 @@ fn parameter_unit_suffix(unit: Option<&str>) -> &'static str {
 }
 
 fn has_parameter_control_payload(group: &ObjectGroup) -> bool {
-    (group.header.kind()) == crate::format::GroupKind::Point
-        && group
-            .records
-            .iter()
-            .any(|record| record.record_type == 0x0907)
-        && group
-            .records
-            .iter()
-            .any(|record| record.record_type == 0x07d5)
-        && group
-            .records
-            .iter()
-            .any(|record| record.record_type == 0x07d8)
-        && group
-            .records
-            .iter()
-            .any(|record| record.record_type == 0x08a3)
-        && !group
-            .records
-            .iter()
-            .any(|record| record.record_type == 0x0899)
+    is_parameter_control_group(group)
 }
 
 fn is_angle_parameter_group(file: &GspFile, groups: &[ObjectGroup], target_index: usize) -> bool {
@@ -231,45 +214,19 @@ pub(super) fn editable_non_graph_parameter_name_for_group(
 }
 
 fn decode_non_graph_parameter_value(payload: &[u8]) -> Option<f64> {
-    if payload.len() >= 98 {
-        let whole = f64::from(read_u16(payload, payload.len().checked_sub(6)?));
-        let denominator = f64::from(read_u16(payload, payload.len().checked_sub(4)?));
-        let fractional = f64::from(read_u16(payload, payload.len().checked_sub(2)?));
-        if denominator.is_finite()
-            && denominator > 0.0
-            && denominator <= 10_000.0
-            && fractional >= 0.0
-            && fractional < denominator
-        {
-            return Some(whole + fractional / denominator);
-        }
-    }
-
-    if payload.len() == 94 {
-        return Some(f64::from(read_u16(payload, payload.len().checked_sub(2)?)));
-    }
-
-    (payload.len() >= 60)
-        .then(|| read_f64(payload, 52))
-        .filter(|value| value.is_finite())
+    decode_discrete_parameter_value(payload)
 }
 
 pub(super) fn decode_non_graph_parameter_value_for_group(
     file: &GspFile,
     group: &ObjectGroup,
 ) -> Option<f64> {
-    let name = decode_label_name(file, group)?;
     let payload = group
         .records
         .iter()
         .find(|record| record.record_type == 0x0907)
         .map(|record| record.payload(&file.data))?;
-    if is_slider_parameter_name(&name) {
-        decode_non_graph_parameter_value(payload)
-    } else {
-        let value_code = read_u16(payload, payload.len().checked_sub(2)?);
-        Some(f64::from(value_code))
-    }
+    decode_non_graph_parameter_value(payload)
 }
 
 fn decode_orphan_parameter_control_value_for_group(

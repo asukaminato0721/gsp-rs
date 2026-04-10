@@ -130,21 +130,26 @@ pub(crate) fn decode_coordinate_expression_anchor_raw(
             };
             let parameter_group = first_path_group(file, groups, calc_group)?;
             let parameter_name = decode_label_name(file, parameter_group)?;
-            let parameter_value =
-                decode_non_graph_parameter_value_for_group(file, parameter_group)?;
-            let offset = evaluate_expr_with_parameters(
-                &expr,
-                0.0,
-                &BTreeMap::from([(parameter_name, parameter_value)]),
-            )?;
             match axis {
                 crate::runtime::scene::CoordinateAxis::Horizontal => PointRecord {
-                    x: source_world.x + offset,
+                    x: source_world.x
+                        + evaluate_expr_with_parameters(
+                            &expr,
+                            0.0,
+                            &BTreeMap::from([(
+                                parameter_name,
+                                decode_non_graph_parameter_value_for_group(file, parameter_group)?,
+                            )]),
+                        )?,
                     y: source_world.y,
                 },
                 crate::runtime::scene::CoordinateAxis::Vertical => PointRecord {
                     x: source_world.x,
-                    y: source_world.y + offset,
+                    y: evaluate_expr_with_parameters(
+                        &expr,
+                        0.0,
+                        &BTreeMap::from([(parameter_name, source_world.x)]),
+                    )?,
                 },
             }
         }
@@ -325,16 +330,16 @@ fn sample_coordinate_trace_points_raw(
             &BTreeMap::from([(parameter_name.clone(), x)]),
         )?;
         let world = match &driver {
-            Some((source_world, Some(crate::runtime::scene::CoordinateAxis::Horizontal), _)) => {
+            Some((_source_world, Some(crate::runtime::scene::CoordinateAxis::Horizontal), _)) => {
                 PointRecord {
-                    x: source_world.x + offset,
-                    y: source_world.y,
+                    x: offset,
+                    y: x,
                 }
             }
-            Some((source_world, Some(crate::runtime::scene::CoordinateAxis::Vertical), _)) => {
+            Some((_source_world, Some(crate::runtime::scene::CoordinateAxis::Vertical), _)) => {
                 PointRecord {
-                    x: source_world.x,
-                    y: source_world.y + offset,
+                    x,
+                    y: offset,
                 }
             }
             Some((source_world, None, Some((x_expr, y_expr)))) => {

@@ -4,12 +4,13 @@ use super::CircleShape;
 use super::decode::{
     decode_0907_anchor, decode_group_label_text, decode_group_rich_text, decode_label_anchor,
     decode_label_name, decode_label_name_raw, decode_label_visible, decode_link_button_url,
-    decode_text_anchor, find_indexed_path, is_action_button_group,
+    decode_parameter_control_value_for_group, decode_text_anchor, find_indexed_path,
+    is_action_button_group,
 };
 use super::points::{
-    RawPointConstraint, decode_non_graph_parameter_value_for_group, decode_point_constraint,
-    editable_non_graph_parameter_name_for_group, is_editable_non_graph_parameter_name,
-    is_non_graph_parameter_group, regular_polygon_angle_expr,
+    RawPointConstraint, decode_point_constraint, editable_non_graph_parameter_name_for_group,
+    is_editable_non_graph_parameter_name, is_non_graph_parameter_group,
+    regular_polygon_angle_expr,
 };
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
 use crate::runtime::functions::{
@@ -98,7 +99,7 @@ fn resolve_function_expr_parameter(
         }
         Some((
             editable_non_graph_parameter_name_for_group(file, groups, parameter_group)?,
-            decode_non_graph_parameter_value_for_group(file, parameter_group)?,
+            decode_parameter_control_value_for_group(file, groups, parameter_group)?,
         ))
     })();
     visiting.remove(&group.ordinal);
@@ -401,7 +402,7 @@ pub(super) fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) 
         if kind == crate::format::GroupKind::Point
             && is_non_graph_parameter_group(file, groups, group)
             && let Some(name) = decode_label_name(file, group)
-            && let Some(value) = decode_non_graph_parameter_value_for_group(file, group)
+            && let Some(value) = decode_parameter_control_value_for_group(file, groups, group)
             && let Some(anchor) = decode_0907_anchor(file, group)
         {
             let binding = is_editable_non_graph_parameter_name(&name)
@@ -582,7 +583,7 @@ fn collect_point_expression_label(
     let parameter_group = groups.get(expr_path.refs.first()?.checked_sub(1)?)?;
     let parameter_name =
         editable_non_graph_parameter_name_for_group(file, groups, parameter_group)?;
-    let parameter_value = decode_non_graph_parameter_value_for_group(file, parameter_group)?;
+    let parameter_value = decode_parameter_control_value_for_group(file, groups, parameter_group)?;
     let value = evaluate_expr_with_parameters(
         &expr,
         0.0,
@@ -978,9 +979,6 @@ pub(super) fn collect_iteration_tables(
             (group.header.kind()) == crate::format::GroupKind::IterationExpressionHelper
         })
         .filter_map(|group| {
-            if group.header.is_hidden() {
-                return None;
-            }
             let path = find_indexed_path(file, group)?;
             if path.refs.len() < 2 {
                 return None;

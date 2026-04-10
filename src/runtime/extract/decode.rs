@@ -59,6 +59,88 @@ pub(crate) fn is_action_button_group(group: &ObjectGroup) -> bool {
             .any(|record| record.record_type == 0x0906)
 }
 
+pub(crate) fn is_parameter_control_group(group: &ObjectGroup) -> bool {
+    (group.header.kind()) == crate::format::GroupKind::Point
+        && group
+            .records
+            .iter()
+            .any(|record| record.record_type == 0x0907)
+        && group
+            .records
+            .iter()
+            .any(|record| record.record_type == 0x07d5)
+        && group
+            .records
+            .iter()
+            .any(|record| record.record_type == 0x07d8)
+        && group
+            .records
+            .iter()
+            .any(|record| record.record_type == 0x08a3)
+        && !group
+            .records
+            .iter()
+            .any(|record| record.record_type == 0x0899)
+}
+
+fn decode_continuous_parameter_value(payload: &[u8]) -> Option<f64> {
+    (payload.len() >= 60)
+        .then(|| read_f64(payload, 52))
+        .filter(|value| value.is_finite())
+}
+
+pub(crate) fn decode_discrete_parameter_value(payload: &[u8]) -> Option<f64> {
+    if payload.len() >= 98 {
+        let whole = f64::from(read_u16(payload, 92));
+        let denominator = f64::from(read_u16(payload, 94));
+        let fractional = f64::from(read_u16(payload, 96));
+        if denominator.is_finite()
+            && denominator > 0.0
+            && denominator <= 10_000.0
+            && fractional >= 0.0
+            && fractional < denominator
+        {
+            return Some(whole + fractional / denominator);
+        }
+    }
+
+    if payload.len() >= 94 {
+        return Some(f64::from(read_u16(payload, 92)));
+    }
+
+    decode_continuous_parameter_value(payload)
+}
+
+fn parameter_group_drives_coordinate_value(
+    file: &GspFile,
+    target_ordinal: usize,
+) -> bool {
+    file.object_groups().into_iter().any(|group| {
+        group.header.kind() == GroupKind::CoordinatePoint
+            && find_indexed_path(file, &group).and_then(|path| path.refs.first().copied())
+                == Some(target_ordinal)
+    })
+}
+
+pub(crate) fn decode_parameter_control_value_for_group(
+    file: &GspFile,
+    _groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<f64> {
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x0907)
+        .map(|record| record.payload(&file.data))?;
+
+    if parameter_group_drives_coordinate_value(file, group.ordinal) {
+        return decode_continuous_parameter_value(payload)
+            .or_else(|| decode_discrete_parameter_value(payload));
+    }
+
+    decode_discrete_parameter_value(payload)
+}
+
 pub(crate) fn decode_link_button_url(file: &GspFile, group: &ObjectGroup) -> Option<String> {
     let payload = group
         .records

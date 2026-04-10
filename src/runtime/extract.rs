@@ -74,7 +74,9 @@ use super::scene::{
     PolygonIterationFamily, PolygonShape, Scene, ScenePoint, TextLabel,
 };
 
-pub(crate) use self::decode::{find_indexed_path, is_circle_group_kind};
+pub(crate) use self::decode::{
+    decode_parameter_control_value_for_group, find_indexed_path, is_circle_group_kind,
+};
 
 #[derive(Debug, Clone)]
 struct CircleShape {
@@ -885,7 +887,9 @@ fn collect_validation_issue(
 
 fn validate_group_kind(group: &ObjectGroup) -> Result<()> {
     let kind = group.header.kind();
-    if matches!(kind, GroupKind::Unknown(20)) || is_supported_group_kind(kind) {
+    if matches!(kind, GroupKind::Unknown(20) | GroupKind::Unknown(71) | GroupKind::Unknown(122))
+        || is_supported_group_kind(kind)
+    {
         return Ok(());
     }
     if let GroupKind::Unknown(raw) = kind {
@@ -914,7 +918,15 @@ fn validate_action_button_payload(file: &GspFile, group: &ObjectGroup) -> Result
     let action_kind = (read_u16(payload, 12), read_u16(payload, 14));
     if matches!(
         action_kind,
-        (2, 0) | (4, 0) | (7, 0) | (3, 1) | (0, 7) | (1, 7) | (1, 3) | (0, 3)
+        (2, 0)
+            | (4, 0)
+            | (7, 0)
+            | (3, 1)
+            | (3, 3)
+            | (0, 7)
+            | (1, 7)
+            | (1, 3)
+            | (0, 3)
     ) {
         return Ok(());
     }
@@ -1254,5 +1266,7 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::AngleMarker
             | GroupKind::PathPoint
             | GroupKind::SegmentMarker
+            | GroupKind::Unknown(71)
+            | GroupKind::Unknown(122)
     )
 }

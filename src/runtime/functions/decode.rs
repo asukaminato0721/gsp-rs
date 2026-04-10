@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::format::{GspFile, ObjectGroup, read_f64, read_u16, read_u32};
-use crate::runtime::extract::find_indexed_path;
+use crate::runtime::extract::{decode_parameter_control_value_for_group, find_indexed_path};
 use crate::runtime::functions::{evaluate_expr_with_parameters, function_expr_label};
 
 use super::expr::{
@@ -123,22 +123,13 @@ fn decode_parameter_binding_recursive(
         });
     }
 
-    let payload = group
-        .records
-        .iter()
-        .find(|record| record.record_type == 0x0907)
-        .map(|record| record.payload(&file.data))?;
     let label_payload = group
         .records
         .iter()
         .find(|record| record.record_type == 0x07d5)
         .map(|record| record.payload(&file.data))?;
     let name = decode_parameter_name(label_payload)?;
-    let value = if is_slider_parameter_name(&name) {
-        read_f64(payload, 52)
-    } else {
-        f64::from(read_u16(payload, payload.len().checked_sub(2)?))
-    };
+    let value = decode_parameter_control_value_for_group(file, groups, group)?;
     if !value.is_finite() {
         return None;
     }
@@ -200,14 +191,6 @@ fn decode_parameter_name(label_payload: &[u8]) -> Option<String> {
         .filter(|ch| ch.is_ascii_alphabetic())?
         .to_string()
         .into()
-}
-
-fn is_slider_parameter_name(name: &str) -> bool {
-    name.contains('₁')
-        || name.contains('₂')
-        || name.contains('₃')
-        || name.contains('₄')
-        || (name.contains('[') && name.ends_with(']'))
 }
 
 pub(crate) fn extract_inline_function_token(payload: &[u8]) -> Option<String> {

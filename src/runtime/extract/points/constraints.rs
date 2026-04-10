@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 
-use super::super::decode::{decode_label_name, find_indexed_path, is_circle_group_kind};
+use super::super::decode::{
+    decode_label_name, decode_parameter_control_value_for_group, find_indexed_path,
+    is_circle_group_kind,
+};
 use super::anchors::{resolve_circle_point_raw, resolve_polygon_boundary_point_raw};
 use super::{
     decode_non_graph_parameter_value_for_group, editable_non_graph_parameter_name_for_group,
@@ -313,7 +316,7 @@ pub(crate) fn decode_parameter_controlled_point(
         if (source_group.header.kind()) == crate::format::GroupKind::Point {
             (
                 decode_label_name(file, source_group)?,
-                decode_non_graph_parameter_value_for_group(file, source_group)?,
+                decode_parameter_control_value_for_group(file, groups, source_group)?,
                 None,
             )
         } else if (source_group.header.kind()) == crate::format::GroupKind::ParameterAnchor {
@@ -542,7 +545,7 @@ pub(crate) fn decode_coordinate_point(
             let parameter_group = groups.get(path.refs[0].checked_sub(1)?)?;
             let parameter_name = decode_label_name(file, parameter_group)?;
             let parameter_value =
-                decode_non_graph_parameter_value_for_group(file, parameter_group)?;
+                decode_parameter_control_value_for_group(file, groups, parameter_group)?;
             let parameters = BTreeMap::from([(parameter_name.clone(), parameter_value)]);
             let y = evaluate_expr_with_parameters(&expr, 0.0, &parameters)?;
             let world = PointRecord {
@@ -582,22 +585,32 @@ pub(crate) fn decode_coordinate_point(
             };
             let parameter_group = first_path_group(file, groups, calc_group)?;
             let parameter_name = decode_label_name(file, parameter_group)?;
-            let parameter_value =
-                decode_non_graph_parameter_value_for_group(file, parameter_group)?;
-            let offset = evaluate_expr_with_parameters(
-                &expr,
-                0.0,
-                &BTreeMap::from([(parameter_name.clone(), parameter_value)]),
-            )?;
             let world = match axis {
-                crate::runtime::scene::CoordinateAxis::Horizontal => PointRecord {
-                    x: source_world.x + offset,
-                    y: source_world.y,
-                },
-                crate::runtime::scene::CoordinateAxis::Vertical => PointRecord {
-                    x: source_world.x,
-                    y: source_world.y + offset,
-                },
+                crate::runtime::scene::CoordinateAxis::Horizontal => {
+                    let parameter_value =
+                        decode_parameter_control_value_for_group(file, groups, parameter_group)?;
+                    let offset = evaluate_expr_with_parameters(
+                        &expr,
+                        0.0,
+                        &BTreeMap::from([(parameter_name.clone(), parameter_value)]),
+                    )?;
+                    PointRecord {
+                        x: source_world.x + offset,
+                        y: source_world.y,
+                    }
+                }
+                crate::runtime::scene::CoordinateAxis::Vertical => {
+                    let parameter_value = source_world.x;
+                    let y = evaluate_expr_with_parameters(
+                        &expr,
+                        0.0,
+                        &BTreeMap::from([(parameter_name.clone(), parameter_value)]),
+                    )?;
+                    PointRecord {
+                        x: parameter_value,
+                        y,
+                    }
+                }
             };
             let position = if let Some(transform) = graph {
                 to_raw_from_world(&world, transform)
@@ -629,9 +642,9 @@ pub(crate) fn decode_coordinate_point(
             let x_parameter_name = decode_label_name(file, x_parameter_group)?;
             let y_parameter_name = decode_label_name(file, y_parameter_group)?;
             let x_parameter_value =
-                decode_non_graph_parameter_value_for_group(file, x_parameter_group)?;
+                decode_parameter_control_value_for_group(file, groups, x_parameter_group)?;
             let y_parameter_value =
-                decode_non_graph_parameter_value_for_group(file, y_parameter_group)?;
+                decode_parameter_control_value_for_group(file, groups, y_parameter_group)?;
             let dx = evaluate_expr_with_parameters(
                 &x_expr,
                 0.0,

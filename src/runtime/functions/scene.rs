@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
-use crate::format::{GspFile, ObjectGroup, read_f64, read_u16};
-use crate::runtime::extract::find_indexed_path;
+use crate::format::{GspFile, ObjectGroup, read_u16};
+use crate::runtime::extract::{decode_parameter_control_value_for_group, find_indexed_path};
 use crate::runtime::scene::{
     SceneFunction, SceneParameter, ScenePoint, ScenePointConstraint, TextLabel,
 };
@@ -223,30 +223,25 @@ pub(super) fn collect_parameter_bindings(
         let Some(parameter_group) = groups.get(ordinal.saturating_sub(1)) else {
             continue;
         };
-        if let Some(binding) = decode_parameter_binding(file, parameter_group) {
+        if let Some(binding) = decode_parameter_binding(file, groups, parameter_group) {
             bindings.insert(index as u16, binding);
         }
     }
     bindings
 }
 
-fn decode_parameter_binding(file: &GspFile, group: &ObjectGroup) -> Option<ParameterBinding> {
-    let payload = group
-        .records
-        .iter()
-        .find(|record| record.record_type == 0x0907)
-        .map(|record| record.payload(&file.data))?;
+fn decode_parameter_binding(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<ParameterBinding> {
     let label_payload = group
         .records
         .iter()
         .find(|record| record.record_type == 0x07d5)
         .map(|record| record.payload(&file.data))?;
     let name = decode_parameter_name(label_payload)?;
-    let value = if is_slider_parameter_name(&name) {
-        read_f64(payload, 52)
-    } else {
-        f64::from(read_u16(payload, payload.len().checked_sub(2)?))
-    };
+    let value = decode_parameter_control_value_for_group(file, groups, group)?;
     if !value.is_finite() {
         return None;
     }
@@ -274,12 +269,4 @@ fn decode_parameter_name(label_payload: &[u8]) -> Option<String> {
         .filter(|ch| ch.is_ascii_alphabetic())?
         .to_string()
         .into()
-}
-
-fn is_slider_parameter_name(name: &str) -> bool {
-    name.contains('₁')
-        || name.contains('₂')
-        || name.contains('₃')
-        || name.contains('₄')
-        || (name.contains('[') && name.ends_with(']'))
 }
