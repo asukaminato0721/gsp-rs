@@ -89,7 +89,7 @@ mod tests {
 
     #[test]
     fn decodes_nested_function_expr_in_circle_formation_fixture() {
-        let data = include_bytes!("../../../tests/fixtures/圆的形成.gsp");
+        let data = include_bytes!("../../tests/fixtures/圆的形成.gsp");
         let file = GspFile::parse(data).expect("fixture parses");
         let groups = file.object_groups();
         let function_group = groups
@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn decodes_angle_function_expr_in_circle_formation_fixture() {
-        let data = include_bytes!("../../../tests/fixtures/圆的形成.gsp");
+        let data = include_bytes!("../../tests/fixtures/圆的形成.gsp");
         let file = GspFile::parse(data).expect("fixture parses");
         let groups = file.object_groups();
         let function_group = groups

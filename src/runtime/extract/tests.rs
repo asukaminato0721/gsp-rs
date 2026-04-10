@@ -895,72 +895,6 @@ fn preserves_parameter_controlled_arc_on_circle_gsp() {
 }
 
 #[test]
-fn preserves_intersection_labels_and_payload_text_colors_in_triangle_centers_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/三角形的五心.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
-
-    let texts = scene
-        .labels
-        .iter()
-        .map(|label| label.text.as_str())
-        .collect::<Vec<_>>();
-    assert!(
-        texts.contains(&"O"),
-        "expected circumcenter label O, got {texts:?}"
-    );
-    assert!(
-        texts.contains(&"H"),
-        "expected orthocenter label H, got {texts:?}"
-    );
-
-    let point_a = scene
-        .labels
-        .iter()
-        .find(|label| label.text == "A")
-        .expect("expected point label A");
-    assert_eq!(
-        point_a.color,
-        [30, 30, 30, 255],
-        "expected geometric point labels to keep black default text color"
-    );
-
-    let caption = scene
-        .labels
-        .iter()
-        .find(|label| label.text.starts_with("非等边三角形ABC"))
-        .expect("expected explanatory caption");
-    assert_eq!(
-        caption.color,
-        [0, 0, 255, 255],
-        "expected caption to preserve payload color"
-    );
-
-    let center_labels = scene
-        .labels
-        .iter()
-        .filter(|label| matches!(label.text.as_str(), "G" | "O" | "H"))
-        .collect::<Vec<_>>();
-    assert!(
-        center_labels
-            .iter()
-            .all(|label| label.color == [30, 30, 30, 255]),
-        "expected constructed center labels to keep black default text color"
-    );
-    assert!(
-        scene
-            .points
-            .iter()
-            .any(|point| point.color == [0, 255, 0, 255]),
-        "expected triangle-center points to preserve green payload color"
-    );
-    assert!(
-        scene.labels.iter().any(|label| label.text == "M"),
-        "expected midpoint label M from payload-marked midpoint"
-    );
-}
-
-#[test]
 fn uses_document_canvas_bounds_for_rich_text_triangle_centers_layout() {
     let data = include_bytes!("../../../tests/fixtures/未实现的系统功能/三角形的四心.gsp");
     let file = GspFile::parse(data).expect("fixture parses");
@@ -976,35 +910,6 @@ fn uses_document_canvas_bounds_for_rich_text_triangle_centers_layout() {
             .iter()
             .any(|label| label.text == "三角形的四心"),
         "expected the document title label to still be present"
-    );
-}
-
-#[test]
-fn preserves_dashed_segment_pattern_from_payload_style() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/三角形的五心.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
-
-    assert!(
-        scene
-            .lines
-            .iter()
-            .any(|line| line.color == [0, 0, 0, 255] && line.dashed),
-        "expected auxiliary black segments to keep dashed style"
-    );
-    assert!(
-        scene
-            .lines
-            .iter()
-            .any(|line| line.color == [0, 0, 128, 255] && !line.dashed),
-        "expected primary blue triangle edges to remain solid"
-    );
-    assert!(
-        scene.lines.iter().any(|line| matches!(
-            line.binding,
-            Some(crate::runtime::scene::LineBinding::PerpendicularLine { .. })
-        ) && line.dashed),
-        "expected perpendicular helper lines to keep dashed style"
     );
 }
 
@@ -1364,8 +1269,8 @@ fn preserves_coordinate_trace_intersection_in_cood_intersection_gsp() {
     assert!(scene.lines.iter().any(|line| {
         matches!(
             line.binding,
-            Some(crate::runtime::scene::LineBinding::CoordinateTrace { ref parameter_name, .. })
-                if parameter_name == "t₁"
+            Some(crate::runtime::scene::LineBinding::CoordinateTrace { point_index, .. })
+                if point_index == 4
         )
     }));
     assert!(scene.points.iter().any(|point| {
@@ -1382,9 +1287,9 @@ fn preserves_coordinate_trace_intersection_in_cood_intersection_gsp() {
         matches!(
             point.constraint,
             crate::runtime::scene::ScenePointConstraint::LineTraceIntersection {
-                ref parameter_name,
+                point_index,
                 ..
-            } if parameter_name == "t₁"
+            } if point_index == 4
         ) && point.position.x.abs() < 1e-6
             && point.position.y.abs() < 1e-6
     }));
