@@ -321,6 +321,10 @@ impl PointJson {
             y: point.y,
         }
     }
+
+    fn collect(points: &[PointRecord]) -> Vec<Self> {
+        points.iter().map(Self::from_point).collect()
+    }
 }
 
 #[derive(Serialize, TS)]
@@ -335,7 +339,7 @@ struct LineJson {
 impl LineJson {
     fn from_line(line: &crate::runtime::scene::LineShape) -> Self {
         Self {
-            points: line.points.iter().map(PointJson::from_point).collect(),
+            points: PointJson::collect(&line.points),
             color: line.color,
             dashed: line.dashed,
             visible: line.visible,
@@ -731,7 +735,7 @@ struct PolygonJson {
 impl PolygonJson {
     fn from_polygon(polygon: &crate::runtime::scene::PolygonShape) -> Self {
         Self {
-            points: polygon.points.iter().map(PointJson::from_point).collect(),
+            points: PointJson::collect(&polygon.points),
             color: polygon.color,
             outline_color: darken(polygon.color, 80),
             visible: polygon.visible,
@@ -808,7 +812,7 @@ struct ArcJson {
 impl ArcJson {
     fn from_arc(arc: &crate::runtime::scene::SceneArc) -> Self {
         Self {
-            points: arc.points.iter().map(PointJson::from_point).collect(),
+            points: PointJson::collect(&arc.points),
             color: arc.color,
             center: arc.center.as_ref().map(PointJson::from_point),
             counterclockwise: arc.counterclockwise,
@@ -2075,7 +2079,7 @@ impl PointConstraintJson {
                 t,
             } => Some(Self::Polyline {
                 function_key: *function_key,
-                points: points.iter().map(PointJson::from_point).collect(),
+                points: PointJson::collect(points),
                 segment_index: *segment_index,
                 t: *t,
             }),

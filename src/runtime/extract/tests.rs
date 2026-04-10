@@ -1,15 +1,18 @@
 use super::build_scene;
 use crate::format::GspFile;
 use crate::runtime::scene::{
-    LabelIterationFamily, LineBinding, LineConstraint, PointIterationFamily, ScenePointBinding,
-    ScenePointConstraint, TextLabelBinding,
+    LabelIterationFamily, LineBinding, LineConstraint, PointIterationFamily, Scene,
+    ScenePointBinding, ScenePointConstraint, TextLabelBinding,
 };
+
+fn fixture_scene(data: &[u8]) -> Scene {
+    let file = GspFile::parse(data).expect("fixture parses");
+    build_scene(&file)
+}
 
 #[test]
 fn builds_function_plot_for_f_gsp() {
-    let data = include_bytes!("../../../../f.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!("../../../../f.gsp"));
 
     assert!(scene.graph_mode);
     assert!(
@@ -42,9 +45,9 @@ fn builds_function_plot_for_f_gsp() {
 
 #[test]
 fn preserves_draw_function_fixture_interactivity() {
-    let data = include_bytes!("../../../tests/fixtures/未实现的系统功能/绘图函数.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/未实现的系统功能/绘图函数.gsp"
+    ));
 
     assert!(scene.graph_mode, "expected graph scene");
     assert!(
@@ -73,9 +76,9 @@ fn preserves_draw_function_fixture_interactivity() {
 
 #[test]
 fn preserves_insert_image_fixture() {
-    let data = include_bytes!("../../../tests/fixtures/未实现的系统功能/插入图片.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/未实现的系统功能/插入图片.gsp"
+    ));
 
     assert!(!scene.graph_mode, "expected non-graph image fixture");
     assert_eq!(scene.images.len(), 1, "expected one embedded image");
@@ -99,10 +102,9 @@ fn preserves_insert_image_fixture() {
 
 #[test]
 fn preserves_points_defined_by_path_value_fixture() {
-    let data =
-        include_bytes!("../../../tests/fixtures/未实现的系统功能/给定的数值在路径上绘制点.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/未实现的系统功能/给定的数值在路径上绘制点.gsp"
+    ));
 
     assert_eq!(
         scene.points.len(),
@@ -140,9 +142,7 @@ fn preserves_points_defined_by_path_value_fixture() {
 
 #[test]
 fn preserves_multiline_text_labels() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/多行文本.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!("../../../tests/fixtures/gsp/多行文本.gsp"));
 
     assert_eq!(scene.labels.len(), 1);
     assert_eq!(
@@ -153,9 +153,7 @@ fn preserves_multiline_text_labels() {
 
 #[test]
 fn preserves_hot_text_actions_in_rich_text_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/热文本.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!("../../../tests/fixtures/gsp/热文本.gsp"));
 
     let rich_label = scene
         .labels
@@ -197,9 +195,9 @@ fn preserves_hot_text_actions_in_rich_text_gsp() {
 
 #[test]
 fn preserves_translated_points_in_point_translation_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/point_translation.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/point_translation.gsp"
+    ));
 
     assert_eq!(
         scene.points.len(),
@@ -246,9 +244,9 @@ fn preserves_translated_points_in_point_translation_gsp() {
 
 #[test]
 fn preserves_circular_segment_boundary_point_interactivity() {
-    let data = include_bytes!("../../../tests/fixtures/未实现的系统功能/弓形周界动点.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/未实现的系统功能/弓形周界动点.gsp"
+    ));
 
     assert_eq!(
         scene.polygons.len(),
@@ -299,9 +297,9 @@ fn preserves_circular_segment_boundary_point_interactivity() {
 
 #[test]
 fn preserves_custom_transform_point_interactivity() {
-    let data = include_bytes!("../../../tests/fixtures/未实现的系统功能/自定义变换.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/未实现的系统功能/自定义变换.gsp"
+    ));
 
     assert_eq!(scene.points.len(), 4, "expected custom transform point Q");
     assert!(
@@ -356,9 +354,7 @@ fn preserves_custom_transform_point_interactivity() {
 
 #[test]
 fn preserves_polygon_in_poly_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/poly.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!("../../../tests/fixtures/gsp/static/poly.gsp"));
 
     assert_eq!(scene.polygons.len(), 1, "expected a single polygon");
     assert_eq!(
@@ -383,9 +379,9 @@ fn preserves_polygon_in_poly_gsp() {
 
 #[test]
 fn preserves_polygon_boundary_point_in_poly_point_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/poly_point.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/poly_point.gsp"
+    ));
 
     assert_eq!(scene.polygons.len(), 1, "expected a single polygon");
     assert_eq!(
@@ -419,9 +415,9 @@ fn preserves_polygon_boundary_point_in_poly_point_gsp() {
 
 #[test]
 fn preserves_polygon_labels_in_poly_point_with_val_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/poly_point_with_val.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/poly_point_with_val.gsp"
+    ));
 
     assert_eq!(scene.polygons.len(), 1, "expected a single polygon");
     assert_eq!(
@@ -462,9 +458,9 @@ fn preserves_polygon_labels_in_poly_point_with_val_gsp() {
 
 #[test]
 fn preserves_segment_parameter_label_in_segment_point_value_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/segment_point_value.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/segment_point_value.gsp"
+    ));
 
     assert_eq!(scene.lines.len(), 1, "expected one segment");
     assert_eq!(
@@ -497,9 +493,7 @@ fn preserves_segment_parameter_label_in_segment_point_value_gsp() {
 
 #[test]
 fn preserves_line_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/line.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!("../../../tests/fixtures/gsp/static/line.gsp"));
 
     assert_eq!(scene.lines.len(), 1, "expected one line");
     assert_eq!(scene.points.len(), 2, "expected two defining points");
@@ -524,9 +518,7 @@ fn preserves_line_gsp() {
 
 #[test]
 fn preserves_ray_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/ray.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!("../../../tests/fixtures/gsp/static/ray.gsp"));
 
     assert_eq!(scene.lines.len(), 1, "expected one ray");
     assert_eq!(scene.points.len(), 2, "expected two defining points");
@@ -548,9 +540,9 @@ fn preserves_ray_gsp() {
 
 #[test]
 fn preserves_perpendicular_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/perpendicular.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/perpendicular.gsp"
+    ));
 
     assert_eq!(
         scene.lines.len(),
@@ -596,9 +588,7 @@ fn preserves_perpendicular_gsp() {
 
 #[test]
 fn preserves_parallel_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/parallel.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!("../../../tests/fixtures/gsp/parallel.gsp"));
 
     assert_eq!(
         scene.lines.len(),
@@ -648,9 +638,7 @@ fn preserves_parallel_gsp() {
 
 #[test]
 fn preserves_nested_perpendicular_parallel_bindings_in_pert_vert_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/pert_vert.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!("../../../tests/fixtures/gsp/pert_vert.gsp"));
 
     assert_eq!(
         scene.lines.len(),
@@ -709,9 +697,9 @@ fn preserves_nested_perpendicular_parallel_bindings_in_pert_vert_gsp() {
 
 #[test]
 fn preserves_bisector_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/bisector.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/bisector.gsp"
+    ));
 
     assert_eq!(scene.lines.len(), 1, "expected one angle bisector");
     assert_eq!(scene.points.len(), 3, "expected three defining points");
@@ -760,9 +748,9 @@ fn preserves_bisector_gsp() {
 
 #[test]
 fn preserves_three_point_arc_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/three_point_arc.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/three_point_arc.gsp"
+    ));
 
     assert_eq!(scene.points.len(), 3, "expected three defining points");
     assert_eq!(scene.arcs.len(), 1, "expected one three-point arc");
@@ -787,9 +775,9 @@ fn preserves_three_point_arc_gsp() {
 
 #[test]
 fn preserves_arc_on_circle_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/arc_on_circle.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/arc_on_circle.gsp"
+    ));
 
     assert_eq!(scene.circles.len(), 1, "expected one supporting circle");
     assert!(
@@ -833,9 +821,7 @@ fn preserves_arc_on_circle_gsp() {
 
 #[test]
 fn preserves_point_on_circle_arc_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/point_on_arc1.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!("../../../tests/fixtures/gsp/point_on_arc1.gsp"));
 
     assert_eq!(scene.arcs.len(), 1, "expected one arc on the source circle");
     assert_eq!(
@@ -856,9 +842,9 @@ fn preserves_point_on_circle_arc_gsp() {
 
 #[test]
 fn preserves_parameter_controlled_arc_on_circle_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/value_point_arc_on_circle.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/value_point_arc_on_circle.gsp"
+    ));
 
     assert_eq!(scene.circles.len(), 1, "expected one supporting circle");
     assert_eq!(
@@ -906,9 +892,9 @@ fn preserves_parameter_controlled_arc_on_circle_gsp() {
 
 #[test]
 fn uses_document_canvas_bounds_for_rich_text_triangle_centers_layout() {
-    let data = include_bytes!("../../../tests/fixtures/未实现的系统功能/三角形的四心.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/未实现的系统功能/三角形的四心.gsp"
+    ));
 
     assert_eq!(scene.bounds.min_x, 0.0);
     assert_eq!(scene.bounds.min_y, 0.0);
@@ -925,9 +911,9 @@ fn uses_document_canvas_bounds_for_rich_text_triangle_centers_layout() {
 
 #[test]
 fn preserves_point_hidden_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/point_hidden.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/point_hidden.gsp"
+    ));
 
     assert_eq!(scene.points.len(), 1, "expected one point in the fixture");
     assert!(
@@ -940,9 +926,9 @@ fn preserves_point_hidden_gsp() {
 
 #[test]
 fn preserves_hidden_ray_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/hide_ray.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/hide_ray.gsp"
+    ));
 
     assert_eq!(scene.lines.len(), 2, "expected two rays in the fixture");
     assert!(
@@ -964,9 +950,9 @@ fn preserves_hidden_ray_gsp() {
 
 #[test]
 fn preserves_circle_center_radius_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/circle_center_radius.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/circle_center_radius.gsp"
+    ));
 
     assert_eq!(scene.circles.len(), 1, "expected one circle");
     assert_eq!(scene.lines.len(), 1, "expected one segment");
@@ -995,9 +981,9 @@ fn preserves_circle_center_radius_gsp() {
 
 #[test]
 fn preserves_circle_inner_fill_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/circle_inner.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/circle_inner.gsp"
+    ));
 
     assert_eq!(scene.circles.len(), 1, "expected one circle");
     let circle = &scene.circles[0];
@@ -1017,9 +1003,7 @@ fn preserves_circle_inner_fill_gsp() {
 
 #[test]
 fn preserves_circle_system_bindings_for_inrm_fixture() {
-    let data = include_bytes!("../../../tests/fixtures/未实现/圆系(inRm).gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!("../../../tests/fixtures/未实现/圆系(inRm).gsp"));
 
     assert_eq!(
         scene.circles.len(),
@@ -1051,10 +1035,9 @@ fn preserves_circle_system_bindings_for_inrm_fixture() {
 
 #[test]
 fn preserves_point_segment_value_segment_point_gsp() {
-    let data =
-        include_bytes!("../../../tests/fixtures/gsp/static/point_segment_value_segment_point.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/point_segment_value_segment_point.gsp"
+    ));
 
     assert_eq!(scene.lines.len(), 2, "expected two segments");
     let texts = scene
@@ -1095,9 +1078,9 @@ fn preserves_point_segment_value_segment_point_gsp() {
 
 #[test]
 fn preserves_circle_parameter_label_in_circle_point_value_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/circle_point_value.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/circle_point_value.gsp"
+    ));
 
     assert_eq!(scene.circles.len(), 1, "expected one circle");
     assert_eq!(
@@ -1130,9 +1113,9 @@ fn preserves_circle_parameter_label_in_circle_point_value_gsp() {
 
 #[test]
 fn preserves_parameter_controlled_point_on_segment_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/point_on_segment.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/point_on_segment.gsp"
+    ));
 
     assert_eq!(scene.lines.len(), 1, "expected one segment");
     assert_eq!(
@@ -1153,9 +1136,9 @@ fn preserves_parameter_controlled_point_on_segment_gsp() {
 
 #[test]
 fn preserves_parameter_controlled_point_on_poly_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/point_on_poly.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/point_on_poly.gsp"
+    ));
 
     assert_eq!(scene.polygons.len(), 1, "expected one polygon");
     assert_eq!(
@@ -1173,9 +1156,9 @@ fn preserves_parameter_controlled_point_on_poly_gsp() {
 
 #[test]
 fn preserves_parameter_controlled_point_on_circle_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/point_on_circle.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/point_on_circle.gsp"
+    ));
 
     assert_eq!(scene.circles.len(), 1, "expected one circle");
     assert_eq!(
@@ -1195,9 +1178,7 @@ fn preserves_parameter_controlled_point_on_circle_gsp() {
 
 #[test]
 fn preserves_coordinate_point_in_cood_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/cood.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!("../../../tests/fixtures/gsp/static/cood.gsp"));
 
     assert!(scene.graph_mode, "expected graph scene");
     assert_eq!(scene.parameters.len(), 1, "expected t parameter");
@@ -1221,9 +1202,9 @@ fn preserves_coordinate_point_in_cood_gsp() {
 
 #[test]
 fn preserves_coordinate_trace_in_cood_trace_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/cood-trace.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/cood-trace.gsp"
+    ));
 
     assert!(scene.graph_mode, "expected graph scene");
     assert_eq!(scene.parameters.len(), 1, "expected t parameter");
@@ -1254,9 +1235,7 @@ fn preserves_coordinate_trace_in_cood_trace_gsp() {
 
 #[test]
 fn does_not_synthesize_graph_calibration_labels_in_cood_intersection_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/insection/cood.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!("../../../tests/fixtures/gsp/insection/cood.gsp"));
 
     assert!(
         scene
@@ -1322,9 +1301,9 @@ fn does_not_synthesize_graph_calibration_labels_in_cood_intersection_gsp() {
 
 #[test]
 fn preserves_coordinate_trace_intersection_in_cood_intersection_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/insection/cood_intersection.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/insection/cood_intersection.gsp"
+    ));
 
     assert!(scene.graph_mode, "expected graph scene");
     assert_eq!(
@@ -1363,9 +1342,9 @@ fn preserves_coordinate_trace_intersection_in_cood_intersection_gsp() {
 
 #[test]
 fn preserves_coordinate_trace_intersection_in_cood_intersection_y_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/insection/cood_intersection_y.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/insection/cood_intersection_y.gsp"
+    ));
 
     assert!(scene.graph_mode, "expected graph scene");
     assert_eq!(
@@ -1404,9 +1383,9 @@ fn preserves_coordinate_trace_intersection_in_cood_intersection_y_gsp() {
 
 #[test]
 fn preserves_coordinate_trace_intersection_in_cood_intersection_xy_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/insection/cood_intersection_xy.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/insection/cood_intersection_xy.gsp"
+    ));
 
     assert!(scene.graph_mode, "expected graph scene");
     assert_eq!(
@@ -1445,9 +1424,7 @@ fn preserves_coordinate_trace_intersection_in_cood_intersection_xy_gsp() {
 
 #[test]
 fn preserves_midpoint_binding_and_trace_in_trace_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/trace.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!("../../../tests/fixtures/gsp/trace.gsp"));
 
     let midpoint_index = scene
         .points
@@ -1499,10 +1476,9 @@ fn preserves_midpoint_binding_and_trace_in_trace_gsp() {
 
 #[test]
 fn preserves_parameter_driven_point_iteration_family() {
-    let data =
-        include_bytes!("../../../tests/fixtures/gsp/static/简单迭代/原象点初象点深度5迭代.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/简单迭代/原象点初象点深度5迭代.gsp"
+    ));
 
     assert_eq!(scene.parameters.len(), 1, "expected n parameter");
     assert_eq!(scene.parameters[0].name, "n");
@@ -1551,8 +1527,7 @@ fn preserves_linear_intersection_points_in_insection_fixtures() {
             include_bytes!("../../../tests/fixtures/gsp/insection/ray_insection.gsp").as_slice(),
         ),
     ] {
-        let file = GspFile::parse(data).expect("fixture parses");
-        let scene = build_scene(&file);
+        let scene = fixture_scene(data);
 
         assert_eq!(
             scene.points.len(),
@@ -1577,9 +1552,9 @@ fn preserves_linear_intersection_points_in_insection_fixtures() {
 
 #[test]
 fn preserves_circle_circle_intersection_points() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/insection/circle_circle_insection.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/insection/circle_circle_insection.gsp"
+    ));
 
     assert_eq!(
         scene.points.len(),
@@ -1604,9 +1579,9 @@ fn preserves_circle_circle_intersection_points() {
 
 #[test]
 fn preserves_two_circle_intersection_inrm_fixture_interactivity() {
-    let data = include_bytes!("../../../tests/fixtures/未实现/(inRm)两圆之交.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/未实现/(inRm)两圆之交.gsp"
+    ));
 
     assert_eq!(scene.circles.len(), 4, "expected four source circles");
     assert_eq!(
@@ -1721,9 +1696,9 @@ fn preserves_two_circle_intersection_inrm_fixture_interactivity() {
 
 #[test]
 fn preserves_cans_in_container_inrm_fixture_interactivity() {
-    let data = include_bytes!("../../../tests/fixtures/未实现/(inRm)容器中的罐头.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/未实现/(inRm)容器中的罐头.gsp"
+    ));
 
     assert_eq!(
         scene.lines.len(),
@@ -1818,9 +1793,9 @@ fn preserves_cans_in_container_inrm_fixture_interactivity() {
 
 #[test]
 fn preserves_line_circle_intersection_points() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/insection/circle_insection.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/insection/circle_insection.gsp"
+    ));
 
     assert_eq!(
         scene.points.len(),
@@ -1841,9 +1816,7 @@ fn preserves_line_circle_intersection_points() {
 
 #[test]
 fn preserves_perpendicular_intersection_points_in_perp_fixture() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/perp.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!("../../../tests/fixtures/gsp/perp.gsp"));
 
     let intersection = scene
         .points
@@ -1872,9 +1845,9 @@ fn preserves_perpendicular_intersection_points_in_perp_fixture() {
 
 #[test]
 fn preserves_circle_y_intersection_points() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/circle_y_intersection.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/circle_y_intersection.gsp"
+    ));
 
     assert!(scene.points.iter().any(|point| {
         point.visible
@@ -1905,10 +1878,9 @@ fn preserves_circle_y_intersection_points() {
 
 #[test]
 fn preserves_three_point_arc_intersection_points() {
-    let data =
-        include_bytes!("../../../tests/fixtures/gsp/static/three_point_arc_intersection.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/three_point_arc_intersection.gsp"
+    ));
 
     assert_eq!(
         scene.points.len(),
@@ -1934,11 +1906,9 @@ fn preserves_three_point_arc_intersection_points() {
 
 #[test]
 fn preserves_non_graph_parameter_and_expression_labels_in_iteration_fixture() {
-    let data = include_bytes!(
+    let scene = fixture_scene(include_bytes!(
         "../../../tests/fixtures/gsp/static/简单迭代/原象点和参数初象点和数值深度5迭代.gsp"
-    );
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    ));
 
     let parameter_names = scene
         .parameters
@@ -2005,11 +1975,9 @@ fn preserves_non_graph_parameter_and_expression_labels_in_iteration_fixture() {
 
 #[test]
 fn preserves_default_depth_non_graph_iteration_fixture() {
-    let data = include_bytes!(
+    let scene = fixture_scene(include_bytes!(
         "../../../tests/fixtures/gsp/static/简单迭代/原象点和参数初象点和数值默认深度迭代.gsp"
-    );
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    ));
 
     let parameter_names = scene
         .parameters
@@ -2046,11 +2014,9 @@ fn preserves_default_depth_non_graph_iteration_fixture() {
 
 #[test]
 fn preserves_carried_segment_default_depth_iteration_fixture() {
-    let data = include_bytes!(
+    let scene = fixture_scene(include_bytes!(
         "../../../tests/fixtures/gsp/static/简单迭代/原象点初象携带线段默认深度3迭代.gsp"
-    );
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    ));
 
     assert_eq!(
         scene.lines.len(),
@@ -2085,11 +2051,9 @@ fn preserves_carried_segment_default_depth_iteration_fixture() {
 
 #[test]
 fn preserves_carried_polygon_iteration_fixture() {
-    let data = include_bytes!(
+    let scene = fixture_scene(include_bytes!(
         "../../../tests/fixtures/gsp/static/简单迭代/原象点初象携带多边形双映射深度4迭代.gsp"
-    );
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    ));
 
     assert_eq!(
         scene.polygons.len(),
@@ -2175,10 +2139,9 @@ fn preserves_carried_polygon_iteration_fixture() {
 
 #[test]
 fn preserves_default_depth_point_iteration_family() {
-    let data =
-        include_bytes!("../../../tests/fixtures/gsp/static/简单迭代/原象点初象点默认深度3迭代.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/简单迭代/原象点初象点默认深度3迭代.gsp"
+    ));
 
     assert!(
         scene.parameters.is_empty(),
@@ -2226,9 +2189,9 @@ fn preserves_default_depth_point_iteration_family() {
 
 #[test]
 fn does_not_treat_triangle_point_labels_as_iteration_parameters() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/简单迭代/三角形.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/简单迭代/三角形.gsp"
+    ));
 
     assert!(
         scene.parameters.is_empty(),
@@ -2246,9 +2209,9 @@ fn does_not_treat_triangle_point_labels_as_iteration_parameters() {
 
 #[test]
 fn preserves_midpoint_triangle_iteration_geometry() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/简单迭代/三角形.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/简单迭代/三角形.gsp"
+    ));
 
     assert!(scene.lines.iter().any(|line| {
         line.points.len() == 2
@@ -2269,9 +2232,9 @@ fn preserves_midpoint_triangle_iteration_geometry() {
 
 #[test]
 fn preserves_regular_polygon_iteration_without_carried_duplicates() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/简单迭代/迭代正多边形.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/简单迭代/迭代正多边形.gsp"
+    ));
 
     assert_eq!(scene.parameters.len(), 1, "expected editable n parameter");
     assert_eq!(scene.parameters[0].name, "n");
@@ -2300,9 +2263,7 @@ fn preserves_regular_polygon_iteration_without_carried_duplicates() {
 
 #[test]
 fn preserves_scaled_point_and_single_parameter_label_in_scale_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/scale.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!("../../../tests/fixtures/gsp/static/scale.gsp"));
 
     assert_eq!(
         scene.circles.len(),
@@ -2345,9 +2306,9 @@ fn preserves_scaled_point_and_single_parameter_label_in_scale_gsp() {
 
 #[test]
 fn preserves_reflection_point_circle_and_polygon_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/reflection.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/reflection.gsp"
+    ));
 
     assert_eq!(
         scene.circles.len(),
@@ -2377,9 +2338,9 @@ fn preserves_reflection_point_circle_and_polygon_gsp() {
 
 #[test]
 fn preserves_translated_triangle_segments_in_congruent_triangle_fixture() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/两个三角形标记全等.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/两个三角形标记全等.gsp"
+    ));
 
     assert_eq!(
         scene.lines.len(),
@@ -2469,9 +2430,9 @@ fn preserves_translated_triangle_segments_in_congruent_triangle_fixture() {
 
 #[test]
 fn preserves_point_label_in_point_label_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/point_label.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/point_label.gsp"
+    ));
 
     assert!(
         scene.labels.iter().any(|label| label.text == "A"),
@@ -2486,9 +2447,9 @@ fn preserves_point_label_in_point_label_gsp() {
 
 #[test]
 fn preserves_point_and_segment_labels_in_segment_label_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/segment_label.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/segment_label.gsp"
+    ));
 
     let texts = scene
         .labels
@@ -2511,9 +2472,9 @@ fn preserves_point_and_segment_labels_in_segment_label_gsp() {
 
 #[test]
 fn preserves_angle_marker_label_in_angle_marker_label_gsp() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/angle_marker_label.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/angle_marker_label.gsp"
+    ));
 
     let texts = scene
         .labels
@@ -2544,9 +2505,9 @@ fn preserves_angle_marker_label_in_angle_marker_label_gsp() {
 
 #[test]
 fn preserves_visible_and_hidden_ray_labels_from_payload() {
-    let data = include_bytes!("../../../tests/fixtures/gsp/static/ray_label_hide.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/ray_label_hide.gsp"
+    ));
 
     assert_eq!(
         scene.labels.len(),
@@ -2575,9 +2536,9 @@ fn preserves_visible_and_hidden_ray_labels_from_payload() {
 
 #[test]
 fn keeps_control_labels_in_non_graph_sample() {
-    let data = include_bytes!("../../../../Samples/个人专栏/潘建平作品/加油潘建平老师.gsp");
-    let file = GspFile::parse(data).expect("fixture parses");
-    let scene = build_scene(&file);
+    let scene = fixture_scene(include_bytes!(
+        "../../../../Samples/个人专栏/潘建平作品/加油潘建平老师.gsp"
+    ));
 
     assert!(
         scene.labels.iter().any(|label| label.text.contains("单价")),
