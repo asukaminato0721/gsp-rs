@@ -1,5 +1,11 @@
 mod assets;
 mod document;
+mod function_expr_json;
+mod function_scene_json;
+mod iteration_scene_json;
+mod label_button_scene_json;
+mod line_shape_scene_json;
+mod point_scene_json;
 mod scene_json;
 
 use crate::runtime::scene::Scene;
