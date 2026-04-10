@@ -46,176 +46,7 @@ type ViewState = {
   zoom: number;
 };
 
-type SceneData = {
-  width: number;
-  height: number;
-  graphMode?: boolean;
-  yUp?: boolean;
-  piMode?: boolean;
-  savedViewport?: boolean;
-  bounds: {
-    minX: number;
-    maxX: number;
-    minY: number;
-    maxY: number;
-  };
-  origin?: PointHandle | null;
-  images?: Array<{
-    topLeft: Point;
-    bottomRight: Point;
-    src: string;
-    screenSpace?: boolean;
-  }>;
-  points: any[];
-  lines: any[];
-  polygons: any[];
-  circles: any[];
-  arcs: Array<{
-    color: [number, number, number, number];
-    visible?: boolean;
-    points: PointHandle[];
-    center?: PointHandle | null;
-    counterclockwise?: boolean;
-  }>;
-  labels: Array<{
-    anchor: Point;
-    text: string;
-    richMarkup?: string | null;
-    color: [number, number, number, number];
-    binding?: any;
-    screenSpace?: boolean;
-    hotspots?: Array<{
-      line: number;
-      start: number;
-      end: number;
-      text: string;
-      action: {
-        kind: "button" | "point" | "segment" | "angle-marker" | "circle" | "polygon";
-        buttonIndex?: number;
-        pointIndex?: number;
-        startPointIndex?: number;
-        vertexPointIndex?: number;
-        endPointIndex?: number;
-        circleIndex?: number;
-        polygonIndex?: number;
-      };
-    }>;
-  }>;
-  iterationTables?: Array<{
-    x: number;
-    y: number;
-    exprLabel: string;
-    parameterName: string;
-    expr: any;
-    depth?: number;
-    depthParameterName?: string | null;
-    rows?: Array<{ index: number; value: number }>;
-    visible?: boolean;
-  }>;
-  pointIterations?: Array<
-    | {
-        kind: "offset";
-        seedIndex: number;
-        dx: number;
-        dy: number;
-        depth: number;
-        parameterName?: string | null;
-      }
-    | {
-        kind: "rotate-chain";
-        seedIndex: number;
-        centerIndex: number;
-        angleDegrees: number;
-        depth: number;
-      }
-    | {
-        kind: "rotate";
-        sourceIndex: number;
-        centerIndex: number;
-        angleExpr: any;
-        depth: number;
-        parameterName?: string | null;
-      }
-  >;
-  circleIterations?: Array<{
-    sourceCircleIndex: number;
-    sourceCenterIndex: number;
-    sourceNextCenterIndex: number;
-    vertexIndices: number[];
-    seedParameter: number;
-    stepParameter: number;
-    depth: number;
-    depthParameterName?: string | null;
-    visible?: boolean;
-  }>;
-  lineIterations?: Array<{
-    kind: "translate";
-    startIndex: number;
-    endIndex: number;
-    dx: number;
-    dy: number;
-    secondaryDx?: number | null;
-    secondaryDy?: number | null;
-    depth: number;
-    parameterName?: string | null;
-    bidirectional?: boolean;
-    color: [number, number, number, number];
-    dashed: boolean;
-  } | {
-    kind: "affine";
-    startIndex: number;
-    endIndex: number;
-    sourceTriangleIndices: [number, number, number];
-    targetTriangle: [PointHandle, PointHandle, PointHandle];
-    depth: number;
-    color: [number, number, number, number];
-    dashed: boolean;
-  }>;
-  // line binding kinds are structural in JS; no explicit TS alias here.
-  polygonIterations?: Array<{
-    kind: "translate";
-    vertexIndices: number[];
-    dx: number;
-    dy: number;
-    secondaryDx?: number | null;
-    secondaryDy?: number | null;
-    depth: number;
-    parameterName?: string | null;
-    bidirectional?: boolean;
-    color: [number, number, number, number];
-  }>;
-  labelIterations?: Array<{
-    kind: "point-expression";
-    seedLabelIndex: number;
-    pointSeedIndex: number;
-    parameterName: string;
-    expr: any;
-    depth: number;
-    depthParameterName?: string | null;
-  }>;
-  buttons?: Array<{
-    text: string;
-    x: number;
-    y: number;
-    width?: number | null;
-    height?: number | null;
-    action: {
-      kind: string;
-      href?: string;
-      visible?: boolean;
-      pointIndices?: number[];
-      lineIndices?: number[];
-      circleIndices?: number[];
-      polygonIndices?: number[];
-      pointIndex?: number;
-      targetPointIndex?: number | null;
-      buttonIndices?: number[];
-      intervalMs?: number;
-    };
-  }>;
-  parameters?: any[];
-  functions?: any[];
-};
+type SceneData = import("./generated/SceneData").SceneData;
 
 type ViewerEnv = {
   canvas: HTMLCanvasElement | null;
@@ -279,7 +110,12 @@ type ViewerEnv = {
 };
 
 type ViewerSceneModule = {
-  resolveConstrainedPoint: (env: Pick<ViewerEnv, "sourceScene"> | ViewerEnv | null, constraint: any, resolveFn: (index: number) => Point) => Point | null;
+  resolveConstrainedPoint: (
+    env: Pick<ViewerEnv, "sourceScene"> | ViewerEnv | null,
+    constraint: any,
+    resolveFn: (index: number) => Point,
+    reference?: any,
+  ) => Point | null;
   resolveScenePoint: (env: ViewerEnv, index: number) => Point;
   resolvePoint: (env: ViewerEnv, handle: PointHandle) => Point;
   resolveAnchorBase: (env: ViewerEnv, handle: PointHandle) => Point;

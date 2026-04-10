@@ -10,6 +10,7 @@ use crate::runtime::scene::{
     ScenePointConstraint, ShapeBinding, TextLabelBinding, TextLabelHotspotAction,
 };
 use serde::Serialize;
+use ts_rs::TS;
 
 pub(super) fn scene_to_json(scene: &Scene, width: u32, height: u32, pretty: bool) -> String {
     if pretty {
@@ -20,8 +21,9 @@ pub(super) fn scene_to_json(scene: &Scene, width: u32, height: u32, pretty: bool
     .expect("scene JSON serialization should succeed")
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "SceneData.ts", rename = "SceneData")]
 struct SceneJson {
     width: u32,
     height: u32,
@@ -120,7 +122,7 @@ impl SceneJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 struct ImageJson {
     top_left: PointJson,
@@ -140,7 +142,7 @@ impl ImageJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 struct ButtonJson {
     text: String,
@@ -164,7 +166,7 @@ impl ButtonJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 enum ButtonActionJson {
     Link {
@@ -286,7 +288,7 @@ impl ButtonActionJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 struct BoundsJson {
     min_x: f64,
@@ -306,7 +308,7 @@ impl BoundsJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 struct PointJson {
     x: f64,
     y: f64,
@@ -321,7 +323,7 @@ impl PointJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 struct LineJson {
     points: Vec<PointJson>,
     color: [u8; 4],
@@ -342,7 +344,7 @@ impl LineJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(tag = "kind")]
 enum LineBindingJson {
     #[serde(rename = "graph-helper-line")]
@@ -700,7 +702,7 @@ impl LineBindingJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(rename_all = "kebab-case")]
 enum ArcBoundaryKindJson {
     Sector,
@@ -716,7 +718,7 @@ impl ArcBoundaryKindJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 struct PolygonJson {
     points: Vec<PointJson>,
@@ -738,7 +740,7 @@ impl PolygonJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 struct CircleJson {
     center: PointJson,
@@ -750,7 +752,7 @@ struct CircleJson {
     binding: Option<ShapeBindingJson>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 struct CircleIterationJson {
     source_circle_index: usize,
@@ -794,7 +796,7 @@ impl CircleJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 struct ArcJson {
     points: Vec<PointJson>,
     color: [u8; 4],
@@ -815,7 +817,7 @@ impl ArcJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(tag = "kind")]
 enum ShapeBindingJson {
     #[serde(rename = "point-radius-circle")]
@@ -1053,7 +1055,7 @@ impl ShapeBindingJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 struct LabelJson {
     anchor: PointJson,
     text: String,
@@ -1087,7 +1089,7 @@ impl LabelJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 struct LabelHotspotJson {
     line: usize,
@@ -1109,7 +1111,7 @@ impl LabelHotspotJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 enum LabelHotspotActionJson {
     Button {
@@ -1179,7 +1181,7 @@ impl LabelHotspotActionJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(tag = "kind")]
 enum LabelBindingJson {
     #[serde(rename = "parameter-value")]
@@ -1364,7 +1366,7 @@ impl LabelBindingJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 struct ScenePointJson {
     x: f64,
     y: f64,
@@ -1389,7 +1391,7 @@ impl ScenePointJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 enum PointIterationJson {
     Offset {
@@ -1467,7 +1469,7 @@ impl PointIterationJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 enum LineIterationJson {
     Translate {
@@ -1537,7 +1539,7 @@ impl LineIterationJson {
     }
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, TS)]
 #[serde(untagged)]
 enum IterationPointHandleJson {
     Point {
@@ -1580,7 +1582,7 @@ impl IterationPointHandleJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 enum PolygonIterationJson {
     Translate {
@@ -1616,7 +1618,7 @@ impl PolygonIterationJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 enum LabelIterationJson {
     PointExpression {
@@ -1655,7 +1657,7 @@ impl LabelIterationJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 struct IterationTableJson {
     x: f64,
@@ -1683,7 +1685,7 @@ impl IterationTableJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(tag = "kind")]
 enum PointBindingJson {
     #[serde(rename = "graph-calibration")]
@@ -1792,7 +1794,7 @@ enum PointBindingJson {
     },
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(rename_all = "kebab-case")]
 enum CoordinateAxisJson {
     Horizontal,
@@ -1919,7 +1921,7 @@ impl PointBindingJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(tag = "kind")]
 enum PointConstraintJson {
     #[serde(rename = "offset")]
@@ -2193,7 +2195,7 @@ impl PointConstraintJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 enum CircularConstraintJson {
     Circle {
@@ -2269,7 +2271,7 @@ impl CircularConstraintJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 enum LineConstraintJson {
     Segment {
@@ -2390,7 +2392,7 @@ impl LineConstraintJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 struct ParameterJson {
     name: String,
@@ -2410,7 +2412,7 @@ impl ParameterJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 struct FunctionJson {
     key: usize,
@@ -2446,7 +2448,7 @@ impl FunctionJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 struct DomainJson {
     x_min: f64,
@@ -2455,14 +2457,14 @@ struct DomainJson {
     plot_mode: PlotModeJson,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(rename_all = "kebab-case")]
 enum PlotModeJson {
     Cartesian,
     Polar,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(tag = "kind")]
 enum FunctionExprJson {
     #[serde(rename = "constant")]
@@ -2514,13 +2516,13 @@ impl FunctionExprJson {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 struct ExprTailJson {
     op: &'static str,
     term: FunctionTermJson,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 #[serde(tag = "kind")]
 enum FunctionTermJson {
     #[serde(rename = "variable")]
