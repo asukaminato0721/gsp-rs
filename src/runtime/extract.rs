@@ -1254,6 +1254,7 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::Rotation
             | GroupKind::ParameterRotation
             | GroupKind::Scale
+            | GroupKind::RatioScale
             | GroupKind::Reflection
             | GroupKind::PointTrace
             | GroupKind::GraphObject40

@@ -10,6 +10,7 @@ use super::{
 use crate::runtime::extract::points::{
     decode_coordinate_expression_anchor_raw, decode_custom_transform_anchor_raw,
     decode_graph_calibration_anchor_raw, decode_intersection_anchor_raw,
+    decode_ratio_scale_anchor_raw,
 };
 
 pub(crate) fn collect_raw_object_anchors(
@@ -45,6 +46,10 @@ pub(crate) fn collect_raw_object_anchors(
             Some(anchor)
         } else if let Some(anchor) =
             decode_parameter_rotation_anchor_raw(file, groups, group, &anchors)
+        {
+            Some(anchor)
+        } else if let Some(anchor) =
+            decode_ratio_scale_anchor_raw(file, groups, group, &anchors)
         {
             Some(anchor)
         } else if let Some(anchor) = decode_transform_anchor_raw(file, group, &anchors) {

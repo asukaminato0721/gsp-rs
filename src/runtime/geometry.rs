@@ -61,6 +61,25 @@ pub(super) fn rotate_around(
     }
 }
 
+pub(super) fn measured_angle_radians(
+    start: &PointRecord,
+    vertex: &PointRecord,
+    end: &PointRecord,
+) -> Option<f64> {
+    let first_x = start.x - vertex.x;
+    let first_y = vertex.y - start.y;
+    let second_x = end.x - vertex.x;
+    let second_y = vertex.y - end.y;
+    let first_len = first_x.hypot(first_y);
+    let second_len = second_x.hypot(second_y);
+    if first_len <= 1e-9 || second_len <= 1e-9 {
+        return None;
+    }
+    let cross = first_x * second_y - first_y * second_x;
+    let dot = first_x * second_x + first_y * second_y;
+    Some(cross.atan2(dot))
+}
+
 pub(super) fn scale_around(point: &PointRecord, center: &PointRecord, factor: f64) -> PointRecord {
     center.clone() + (point.clone() - center.clone()) * factor
 }

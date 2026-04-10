@@ -1134,4 +1134,38 @@ mod tests {
             "expected helper points to stay hidden when the payload omits the point-marker style"
         );
     }
+
+    #[test]
+    fn exports_crescent_trace_inrm_fixture_with_live_trace_bindings() {
+        let scene = fixture_scene(
+            include_bytes!("../tests/fixtures/未实现/月牙形轨迹(inRm).gsp"),
+            "crescent-trace fixture should compile",
+        );
+
+        let points = scene["points"]
+            .as_array()
+            .expect("scene points should be an array");
+        assert!(
+            points
+                .iter()
+                .any(|point| point["binding"]["kind"].as_str() == Some("scale-by-ratio")),
+            "expected the ratio-scaled point to keep a live binding"
+        );
+
+        let lines = scene["lines"]
+            .as_array()
+            .expect("scene lines should be an array");
+        assert!(
+            lines
+                .iter()
+                .any(|line| line["binding"]["kind"].as_str() == Some("point-trace")),
+            "expected the payload trace to keep a live trace binding"
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line["binding"]["kind"].as_str() == Some("segment")),
+            "expected the payload segment to remain interactive"
+        );
+    }
 }

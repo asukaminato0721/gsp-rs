@@ -2,8 +2,8 @@ use std::collections::BTreeSet;
 
 use crate::format::{GspFile, ObjectGroup, PointRecord};
 use crate::runtime::geometry::{
-    lerp_point, point_on_circle_arc, point_on_three_point_arc, reflect_across_line, rotate_around,
-    scale_around,
+    lerp_point, point_on_circle_arc, point_on_three_point_arc,
+    reflect_across_line, rotate_around, scale_around,
 };
 use crate::runtime::scene::{
     CircularConstraint, LineConstraint, LineLikeKind, ScenePoint, ScenePointBinding,
@@ -32,11 +32,11 @@ pub(super) fn collect_point_traces(
             let path = find_indexed_path(file, group)?;
             let target_group_index = path.refs.first()?.checked_sub(1)?;
             let target_point_index = (*group_to_point_index.get(target_group_index)?)?;
-            let driver_point_index = path.refs.iter().find_map(|ordinal| {
+            let (driver_point_index, driver_group_index) = path.refs.iter().find_map(|ordinal| {
                 let group_index = ordinal.checked_sub(1)?;
                 let point_index = (*group_to_point_index.get(group_index)?)?;
                 let point = visible_points.get(point_index)?;
-                point_accepts_trace_parameter(point).then_some(point_index)
+                point_accepts_trace_parameter(point).then_some((point_index, group_index))
             })?;
             let payload = group
                 .records
@@ -56,18 +56,20 @@ pub(super) fn collect_point_traces(
             };
 
             let mut points = Vec::with_capacity(descriptor.sample_count);
+            let mut previous_points = visible_points.to_vec();
             let last = descriptor.sample_count.saturating_sub(1).max(1) as f64;
             for sample_index in 0..descriptor.sample_count {
                 let t = sample_index as f64 / last;
                 let parameter = descriptor.x_min + (trace_max - descriptor.x_min) * t;
-                let mut sampled_points = visible_points.to_vec();
+                let mut sampled_points = previous_points.clone();
                 let driver_point = sampled_points.get_mut(driver_point_index)?;
-                apply_trace_parameter(driver_point, parameter);
+                apply_trace_parameter(driver_point, parameter, descriptor.x_min, trace_max);
                 points.push(resolve_trace_point(
-                    &sampled_points,
+                    &mut sampled_points,
                     target_point_index,
                     &mut BTreeSet::new(),
                 )?);
+                previous_points = sampled_points;
             }
 
             (points.len() >= 2).then_some(crate::runtime::scene::LineShape {
@@ -75,16 +77,25 @@ pub(super) fn collect_point_traces(
                 color: crate::runtime::geometry::color_from_style(group.header.style_b),
                 dashed: false,
                 visible: !group.header.is_hidden(),
-                binding: if (group.header.kind()) == crate::format::GroupKind::CustomTransformTrace
-                {
-                    Some(crate::runtime::scene::LineBinding::CustomTransformTrace {
-                        point_index: target_group_index,
-                        x_min: descriptor.x_min,
-                        x_max: descriptor.x_max,
-                        sample_count: descriptor.sample_count,
-                    })
-                } else {
-                    None
+                binding: match group.header.kind() {
+                    crate::format::GroupKind::CustomTransformTrace => {
+                        Some(crate::runtime::scene::LineBinding::CustomTransformTrace {
+                            point_index: target_group_index,
+                            x_min: descriptor.x_min,
+                            x_max: descriptor.x_max,
+                            sample_count: descriptor.sample_count,
+                        })
+                    }
+                    crate::format::GroupKind::PointTrace => {
+                        Some(crate::runtime::scene::LineBinding::PointTrace {
+                            point_index: target_group_index,
+                            driver_index: driver_group_index,
+                            x_min: descriptor.x_min,
+                            x_max: descriptor.x_max,
+                            sample_count: descriptor.sample_count,
+                        })
+                    }
+                    _ => None,
                 },
             })
         })
@@ -105,11 +116,15 @@ fn point_accepts_trace_parameter(point: &ScenePoint) -> bool {
     )
 }
 
-fn apply_trace_parameter(point: &mut ScenePoint, value: f64) {
-    let clamped = value.clamp(0.0, 1.0);
+fn apply_trace_parameter(point: &mut ScenePoint, value: f64, x_min: f64, x_max: f64) {
+    let normalized = if (x_max - x_min).abs() <= 1e-9 {
+        0.0
+    } else {
+        ((value - x_min) / (x_max - x_min)).clamp(0.0, 1.0)
+    };
     match &mut point.constraint {
         ScenePointConstraint::OnSegment { t, .. } => {
-            *t = clamped;
+            *t = normalized;
         }
         ScenePointConstraint::OnPolygonBoundary {
             vertex_indices,
@@ -119,28 +134,28 @@ fn apply_trace_parameter(point: &mut ScenePoint, value: f64) {
             if vertex_indices.len() < 2 {
                 return;
             }
-            let scaled = clamped * vertex_indices.len() as f64;
+            let scaled = normalized * vertex_indices.len() as f64;
             let next_edge = scaled.floor() as usize;
             *edge_index = next_edge.min(vertex_indices.len() - 1);
             *t = scaled.fract();
         }
         ScenePointConstraint::OnCircle { unit_x, unit_y, .. } => {
-            let angle = std::f64::consts::TAU * clamped;
+            let angle = value;
             *unit_x = angle.cos();
             *unit_y = -angle.sin();
         }
         ScenePointConstraint::OnCircleArc { t, .. } => {
-            *t = clamped;
+            *t = normalized;
         }
         ScenePointConstraint::OnArc { t, .. } => {
-            *t = clamped;
+            *t = normalized;
         }
         _ => {}
     }
 }
 
 fn resolve_trace_point(
-    points: &[ScenePoint],
+    points: &mut [ScenePoint],
     index: usize,
     visiting: &mut BTreeSet<usize>,
 ) -> Option<PointRecord> {
@@ -148,7 +163,7 @@ fn resolve_trace_point(
         return None;
     }
 
-    let point = points.get(index)?;
+    let point = points.get(index)?.clone();
     let resolved = match &point.binding {
         Some(ScenePointBinding::Translate {
             source_index,
@@ -173,6 +188,11 @@ fn resolve_trace_point(
             let line_end = resolve_trace_point(points, *line_end_index, visiting)?;
             reflect_across_line(&source, &line_start, &line_end)
         }
+        Some(ScenePointBinding::ReflectLineConstraint { source_index, line }) => {
+            let source = resolve_trace_point(points, *source_index, visiting)?;
+            let (line_start, line_end, _) = resolve_trace_line_constraint(points, line, visiting)?;
+            reflect_across_line(&source, &line_start, &line_end)
+        }
         Some(ScenePointBinding::Rotate {
             source_index,
             center_index,
@@ -191,6 +211,28 @@ fn resolve_trace_point(
             let source = resolve_trace_point(points, *source_index, visiting)?;
             let center = resolve_trace_point(points, *center_index, visiting)?;
             Some(scale_around(&source, &center, *factor))
+        }
+        Some(ScenePointBinding::ScaleByRatio {
+            source_index,
+            center_index,
+            ratio_origin_index,
+            ratio_denominator_index,
+            ratio_numerator_index,
+        }) => {
+            let source = resolve_trace_point(points, *source_index, visiting)?;
+            let center = resolve_trace_point(points, *center_index, visiting)?;
+            let ratio_origin = resolve_trace_point(points, *ratio_origin_index, visiting)?;
+            let ratio_denominator =
+                resolve_trace_point(points, *ratio_denominator_index, visiting)?;
+            let ratio_numerator = resolve_trace_point(points, *ratio_numerator_index, visiting)?;
+            let denominator = (ratio_denominator.x - ratio_origin.x)
+                .hypot(ratio_denominator.y - ratio_origin.y);
+            if denominator <= 1e-9 {
+                return None;
+            }
+            let numerator = (ratio_numerator.x - ratio_origin.x)
+                .hypot(ratio_numerator.y - ratio_origin.y);
+            Some(scale_around(&source, &center, numerator / denominator))
         }
         Some(ScenePointBinding::Midpoint {
             start_index,
@@ -376,6 +418,7 @@ fn resolve_trace_point(
                     &center,
                     &radius_point,
                     *variant,
+                    Some(&point.position),
                 )
             }
             ScenePointConstraint::LineCircleIntersection {
@@ -395,6 +438,7 @@ fn resolve_trace_point(
                     &center,
                     &radius_point,
                     *variant,
+                    Some(&point.position),
                 )
             }
             ScenePointConstraint::CircleCircleIntersection {
@@ -414,6 +458,7 @@ fn resolve_trace_point(
                     &right_center,
                     &right_radius,
                     *variant,
+                    Some(&point.position),
                 )
             }
             ScenePointConstraint::CircularIntersection {
@@ -423,17 +468,22 @@ fn resolve_trace_point(
             } => {
                 let left = resolve_trace_circular_constraint(points, left, visiting)?;
                 let right = resolve_trace_circular_constraint(points, right, visiting)?;
-                trace_circular_intersection(&left, &right, *variant)
+                trace_circular_intersection(&left, &right, *variant, Some(&point.position))
             }
         },
     };
 
     visiting.remove(&index);
+    if let Some(resolved_point) = resolved.clone()
+        && let Some(point) = points.get_mut(index)
+    {
+        point.position = resolved_point;
+    }
     resolved
 }
 
 fn resolve_trace_line_constraint(
-    points: &[ScenePoint],
+    points: &mut [ScenePoint],
     constraint: &LineConstraint,
     visiting: &mut BTreeSet<usize>,
 ) -> Option<(PointRecord, PointRecord, LineLikeKind)> {
@@ -596,6 +646,7 @@ fn trace_line_circle_intersection(
     center: &PointRecord,
     radius_point: &PointRecord,
     variant: usize,
+    reference: Option<&PointRecord>,
 ) -> Option<PointRecord> {
     let dx = line_end.x - line_start.x;
     let dy = line_end.y - line_start.y;
@@ -624,11 +675,14 @@ fn trace_line_circle_intersection(
         return None;
     }
     ts.sort_by(|left, right| left.total_cmp(right));
-    let t = ts[variant.min(ts.len() - 1)];
-    Some(PointRecord {
-        x: line_start.x + dx * t,
-        y: line_start.y + dy * t,
-    })
+    let candidates = ts
+        .into_iter()
+        .map(|t| PointRecord {
+            x: line_start.x + dx * t,
+            y: line_start.y + dy * t,
+        })
+        .collect::<Vec<_>>();
+    choose_trace_candidate(&candidates, reference, variant)
 }
 
 fn trace_line_like_contains(
@@ -661,6 +715,7 @@ fn trace_circle_circle_intersection(
     right_center: &PointRecord,
     right_radius_point: &PointRecord,
     variant: usize,
+    reference: Option<&PointRecord>,
 ) -> Option<PointRecord> {
     let left_radius = ((left_radius_point.x - left_center.x).powi(2)
         + (left_radius_point.y - left_center.y).powi(2))
@@ -708,7 +763,7 @@ fn trace_circle_circle_intersection(
             .total_cmp(&right.y)
             .then_with(|| left.x.total_cmp(&right.x))
     });
-    Some(ordered[variant.min(1)].clone())
+    choose_trace_candidate(&ordered, reference, variant)
 }
 
 #[derive(Clone)]
@@ -730,7 +785,7 @@ enum TraceCircularConstraint {
 }
 
 fn resolve_trace_circular_constraint(
-    points: &[ScenePoint],
+    points: &mut [ScenePoint],
     constraint: &CircularConstraint,
     visiting: &mut BTreeSet<usize>,
 ) -> Option<TraceCircularConstraint> {
@@ -819,6 +874,7 @@ fn trace_circular_intersection(
     left: &TraceCircularConstraint,
     right: &TraceCircularConstraint,
     variant: usize,
+    reference: Option<&PointRecord>,
 ) -> Option<PointRecord> {
     let intersections = trace_circle_circle_intersections(left, right)?;
     let on_both = intersections
@@ -827,8 +883,31 @@ fn trace_circular_intersection(
         .filter(|point| trace_point_on_circular_constraint(point, right))
         .cloned()
         .collect::<Vec<_>>();
-    on_both
-        .get(variant.min(on_both.len().saturating_sub(1)))
+    choose_trace_candidate(&on_both, reference, variant)
+}
+
+fn choose_trace_candidate(
+    candidates: &[PointRecord],
+    reference: Option<&PointRecord>,
+    variant: usize,
+) -> Option<PointRecord> {
+    if candidates.is_empty() {
+        return None;
+    }
+    if let Some(reference) = reference {
+        return candidates
+            .iter()
+            .min_by(|left, right| {
+                let left_distance =
+                    (left.x - reference.x).powi(2) + (left.y - reference.y).powi(2);
+                let right_distance =
+                    (right.x - reference.x).powi(2) + (right.y - reference.y).powi(2);
+                left_distance.total_cmp(&right_distance)
+            })
+            .cloned();
+    }
+    candidates
+        .get(variant.min(candidates.len().saturating_sub(1)))
         .cloned()
 }
 

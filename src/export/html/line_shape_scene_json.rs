@@ -168,6 +168,19 @@ enum LineBindingJson {
         #[serde(rename = "sampleCount")]
         sample_count: usize,
     },
+    #[serde(rename = "point-trace")]
+    PointTrace {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+        #[serde(rename = "driverIndex")]
+        driver_index: usize,
+        #[serde(rename = "xMin")]
+        x_min: f64,
+        #[serde(rename = "xMax")]
+        x_max: f64,
+        #[serde(rename = "sampleCount")]
+        sample_count: usize,
+    },
     #[serde(rename = "rotate-edge")]
     RotateEdge {
         #[serde(rename = "centerIndex")]
@@ -342,6 +355,19 @@ impl LineBindingJson {
                 sample_count,
             } => Self::CoordinateTrace {
                 point_index: *point_index,
+                x_min: *x_min,
+                x_max: *x_max,
+                sample_count: *sample_count,
+            },
+            LineBinding::PointTrace {
+                point_index,
+                driver_index,
+                x_min,
+                x_max,
+                sample_count,
+            } => Self::PointTrace {
+                point_index: *point_index,
+                driver_index: *driver_index,
                 x_min: *x_min,
                 x_max: *x_max,
                 sample_count: *sample_count,

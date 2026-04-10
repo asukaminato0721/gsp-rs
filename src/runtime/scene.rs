@@ -448,6 +448,13 @@ pub(crate) enum LineBinding {
         x_max: f64,
         sample_count: usize,
     },
+    PointTrace {
+        point_index: usize,
+        driver_index: usize,
+        x_min: f64,
+        x_max: f64,
+        sample_count: usize,
+    },
     RotateEdge {
         center_index: usize,
         vertex_index: usize,
@@ -514,11 +521,22 @@ pub(crate) enum ScenePointBinding {
         line_start_index: usize,
         line_end_index: usize,
     },
+    ReflectLineConstraint {
+        source_index: usize,
+        line: LineConstraint,
+    },
     Rotate {
         source_index: usize,
         center_index: usize,
         angle_degrees: f64,
         parameter_name: Option<String>,
+    },
+    ScaleByRatio {
+        source_index: usize,
+        center_index: usize,
+        ratio_origin_index: usize,
+        ratio_denominator_index: usize,
+        ratio_numerator_index: usize,
     },
     Scale {
         source_index: usize,

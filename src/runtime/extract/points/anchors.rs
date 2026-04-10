@@ -13,8 +13,9 @@ use crate::runtime::functions::{
     decode_function_expr, decode_function_plot_descriptor, evaluate_expr_with_parameters,
 };
 use crate::runtime::geometry::{
-    GraphTransform, lerp_point, point_on_circle_arc, point_on_three_point_arc, reflect_across_line,
-    rotate_around, three_point_arc_geometry, to_raw_from_world, to_world,
+    GraphTransform, lerp_point, point_on_circle_arc,
+    point_on_three_point_arc, reflect_across_line, rotate_around, three_point_arc_geometry,
+    to_raw_from_world, to_world,
 };
 
 const PX_PER_CM: f64 = 37.79527559055118;
@@ -1170,6 +1171,35 @@ pub(crate) fn decode_parameter_rotation_anchor_raw(
     Some(rotate_around(&source, &center, angle_degrees.to_radians()))
 }
 
+pub(crate) fn decode_ratio_scale_anchor_raw(
+    file: &GspFile,
+    _groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    if (group.header.kind()) != crate::format::GroupKind::RatioScale {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() < 5 {
+        return None;
+    }
+    let source = anchors.get(path.refs[0].checked_sub(1)?)?.clone()?;
+    let center = anchors.get(path.refs[1].checked_sub(1)?)?.clone()?;
+    let ratio_origin = anchors.get(path.refs[2].checked_sub(1)?)?.clone()?;
+    let ratio_denominator = anchors.get(path.refs[3].checked_sub(1)?)?.clone()?;
+    let ratio_numerator = anchors.get(path.refs[4].checked_sub(1)?)?.clone()?;
+    let denominator = (ratio_denominator.x - ratio_origin.x)
+        .hypot(ratio_denominator.y - ratio_origin.y);
+    if denominator <= 1e-9 {
+        return None;
+    }
+    let numerator =
+        (ratio_numerator.x - ratio_origin.x).hypot(ratio_numerator.y - ratio_origin.y);
+    let factor = numerator / denominator;
+    Some(crate::runtime::geometry::scale_around(&source, &center, factor))
+}
+
 pub(crate) fn decode_reflection_anchor_raw(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -1182,10 +1212,8 @@ pub(crate) fn decode_reflection_anchor_raw(
     let path = find_indexed_path(file, group)?;
     let source_group_index = path.refs.first()?.checked_sub(1)?;
     let source = anchors.get(source_group_index)?.clone()?;
-    let (line_start_group_index, line_end_group_index) =
-        reflection_line_group_indices(file, groups, group)?;
-    let line_start = anchors.get(line_start_group_index)?.clone()?;
-    let line_end = anchors.get(line_end_group_index)?.clone()?;
+    let line_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+    let (line_start, line_end) = resolve_line_like_points_raw(file, groups, anchors, line_group)?;
     reflect_point_across_line(&source, &line_start, &line_end)
 }
 

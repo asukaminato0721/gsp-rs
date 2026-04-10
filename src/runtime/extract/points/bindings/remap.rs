@@ -590,6 +590,24 @@ pub(crate) fn remap_line_bindings(
                 };
                 *point_index = mapped_point_index;
             }
+            LineBinding::PointTrace {
+                point_index,
+                driver_index,
+                ..
+            } => {
+                let Some(mapped_point_index) = mapped_index(group_to_point_index, *point_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                let Some(mapped_driver_index) = mapped_index(group_to_point_index, *driver_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                *point_index = mapped_point_index;
+                *driver_index = mapped_driver_index;
+            }
             LineBinding::RotateEdge {
                 center_index,
                 vertex_index,

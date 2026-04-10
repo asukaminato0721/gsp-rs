@@ -69,6 +69,12 @@ enum PointBindingJson {
         #[serde(rename = "lineEndIndex")]
         line_end_index: usize,
     },
+    #[serde(rename = "reflect-line-constraint")]
+    ReflectLineConstraint {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        line: LineConstraintJson,
+    },
     #[serde(rename = "rotate")]
     Rotate {
         #[serde(rename = "sourceIndex")]
@@ -79,6 +85,19 @@ enum PointBindingJson {
         angle_degrees: f64,
         #[serde(rename = "parameterName")]
         parameter_name: Option<String>,
+    },
+    #[serde(rename = "scale-by-ratio")]
+    ScaleByRatio {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "ratioOriginIndex")]
+        ratio_origin_index: usize,
+        #[serde(rename = "ratioDenominatorIndex")]
+        ratio_denominator_index: usize,
+        #[serde(rename = "ratioNumeratorIndex")]
+        ratio_numerator_index: usize,
     },
     #[serde(rename = "scale")]
     Scale {
@@ -191,6 +210,12 @@ impl PointBindingJson {
                 line_start_index: *line_start_index,
                 line_end_index: *line_end_index,
             },
+            ScenePointBinding::ReflectLineConstraint { source_index, line } => {
+                Self::ReflectLineConstraint {
+                    source_index: *source_index,
+                    line: LineConstraintJson::from_constraint(line),
+                }
+            }
             ScenePointBinding::Rotate {
                 source_index,
                 center_index,
@@ -201,6 +226,19 @@ impl PointBindingJson {
                 center_index: *center_index,
                 angle_degrees: *angle_degrees,
                 parameter_name: parameter_name.clone(),
+            },
+            ScenePointBinding::ScaleByRatio {
+                source_index,
+                center_index,
+                ratio_origin_index,
+                ratio_denominator_index,
+                ratio_numerator_index,
+            } => Self::ScaleByRatio {
+                source_index: *source_index,
+                center_index: *center_index,
+                ratio_origin_index: *ratio_origin_index,
+                ratio_denominator_index: *ratio_denominator_index,
+                ratio_numerator_index: *ratio_numerator_index,
             },
             ScenePointBinding::Scale {
                 source_index,

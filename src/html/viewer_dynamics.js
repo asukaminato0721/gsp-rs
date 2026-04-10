@@ -21,6 +21,17 @@
     };
   }
 
+  function measuredRotationRadians(start, vertex, end) {
+    const firstX = start.x - vertex.x;
+    const firstY = vertex.y - start.y;
+    const secondX = end.x - vertex.x;
+    const secondY = vertex.y - end.y;
+    const firstLen = Math.hypot(firstX, firstY);
+    const secondLen = Math.hypot(secondX, secondY);
+    if (firstLen <= 1e-9 || secondLen <= 1e-9) return null;
+    return Math.atan2(firstX * secondY - firstY * secondX, firstX * secondX + firstY * secondY);
+  }
+
   function scaleAround(point, center, factor) {
     return {
       x: center.x + (point.x - center.x) * factor,
@@ -463,6 +474,19 @@
     if (applyParameter) {
       applyParameter(point, scene, wrapped);
     }
+  }
+
+  function applyTraceValueToPoint(point, scene, value, xMin, xMax) {
+    if (!point?.constraint) return;
+    if (point.constraint.kind === "circle") {
+      point.constraint.unitX = Math.cos(value);
+      point.constraint.unitY = -Math.sin(value);
+      return;
+    }
+    const normalized = Math.abs(xMax - xMin) <= 1e-9
+      ? 0
+      : Math.max(0, Math.min(1, (value - xMin) / (xMax - xMin)));
+    applyNormalizedParameterToPoint(point, scene, normalized);
   }
 
   function pointIterationDepth(family, parameters) {
@@ -1001,6 +1025,102 @@
     point.y = origin.y - distance * Math.sin(radians);
   }
 
+  function updateScaleByRatioPoint(point, resolvePointAt) {
+    const source = resolvePointAt(point.binding.sourceIndex);
+    const center = resolvePointAt(point.binding.centerIndex);
+    const ratioOrigin = resolvePointAt(point.binding.ratioOriginIndex);
+    const ratioDenominator = resolvePointAt(point.binding.ratioDenominatorIndex);
+    const ratioNumerator = resolvePointAt(point.binding.ratioNumeratorIndex);
+    if (!source || !center || !ratioOrigin || !ratioDenominator || !ratioNumerator) return;
+    const denominator = Math.hypot(
+      ratioDenominator.x - ratioOrigin.x,
+      ratioDenominator.y - ratioOrigin.y,
+    );
+    if (denominator <= 1e-9) return;
+    const numerator = Math.hypot(
+      ratioNumerator.x - ratioOrigin.x,
+      ratioNumerator.y - ratioOrigin.y,
+    );
+    const scaled = scaleAround(source, center, numerator / denominator);
+    point.x = scaled.x;
+    point.y = scaled.y;
+  }
+
+  function resolveLineConstraintPoints(resolvePointAt, bounds, constraint) {
+    if (!constraint) return null;
+    if (constraint.kind === "segment") {
+      const start = resolvePointAt(constraint.startIndex);
+      const end = resolvePointAt(constraint.endIndex);
+      return start && end ? [start, end] : null;
+    }
+    if (constraint.kind === "line") {
+      const start = resolvePointAt(constraint.startIndex);
+      const end = resolvePointAt(constraint.endIndex);
+      return start && end ? clipParametricLineToBounds(start, end, bounds, false) : null;
+    }
+    if (constraint.kind === "ray") {
+      const start = resolvePointAt(constraint.startIndex);
+      const end = resolvePointAt(constraint.endIndex);
+      return start && end ? clipParametricLineToBounds(start, end, bounds, true) : null;
+    }
+    if (constraint.kind === "perpendicular-line") {
+      const through = resolvePointAt(constraint.throughIndex);
+      const lineStart = resolvePointAt(constraint.lineStartIndex);
+      const lineEnd = resolvePointAt(constraint.lineEndIndex);
+      if (!through || !lineStart || !lineEnd) return null;
+      const dx = lineEnd.x - lineStart.x;
+      const dy = lineEnd.y - lineStart.y;
+      const len = Math.hypot(dx, dy);
+      if (len <= 1e-9) return null;
+      return clipParametricLineToBounds(
+        through,
+        { x: through.x - dy / len, y: through.y + dx / len },
+        bounds,
+        false,
+      );
+    }
+    if (constraint.kind === "parallel-line") {
+      const through = resolvePointAt(constraint.throughIndex);
+      const lineStart = resolvePointAt(constraint.lineStartIndex);
+      const lineEnd = resolvePointAt(constraint.lineEndIndex);
+      if (!through || !lineStart || !lineEnd) return null;
+      const dx = lineEnd.x - lineStart.x;
+      const dy = lineEnd.y - lineStart.y;
+      const len = Math.hypot(dx, dy);
+      if (len <= 1e-9) return null;
+      return clipParametricLineToBounds(
+        through,
+        { x: through.x + dx / len, y: through.y + dy / len },
+        bounds,
+        false,
+      );
+    }
+    if (constraint.kind === "angle-bisector-ray") {
+      const start = resolvePointAt(constraint.startIndex);
+      const vertex = resolvePointAt(constraint.vertexIndex);
+      const end = resolvePointAt(constraint.endIndex);
+      if (!start || !vertex || !end) return null;
+      const direction = angleBisectorDirection(start, vertex, end);
+      if (!direction) return null;
+      return clipParametricLineToBounds(
+        vertex,
+        { x: vertex.x + direction.x, y: vertex.y + direction.y },
+        bounds,
+        true,
+      );
+    }
+    if (constraint.kind === "translated") {
+      const source = resolveLineConstraintPoints(resolvePointAt, bounds, constraint.line);
+      const vectorStart = resolvePointAt(constraint.vectorStartIndex);
+      const vectorEnd = resolvePointAt(constraint.vectorEndIndex);
+      if (!source || !vectorStart || !vectorEnd) return null;
+      const dx = vectorEnd.x - vectorStart.x;
+      const dy = vectorEnd.y - vectorStart.y;
+      return source.map((point) => ({ x: point.x + dx, y: point.y + dy }));
+    }
+    return null;
+  }
+
   const DERIVED_POINT_BINDING_REFRESHERS = {
     "derived-parameter"(env, scene, point) {
       const value = parameterValueFromPoint(scene, point.binding.sourceIndex);
@@ -1041,6 +1161,18 @@
       point.x = reflected.x;
       point.y = reflected.y;
     },
+    "reflect-line-constraint"(env, _scene, point) {
+      const source = env.resolveScenePoint(point.binding.sourceIndex);
+      const line = resolveLineConstraintPoints(
+        (index) => env.resolveScenePoint(index),
+        env.getViewBounds ? env.getViewBounds() : env.sourceScene.bounds,
+        point.binding.line,
+      );
+      if (!source || !line) return;
+      const reflected = reflectAcrossLine(source, line[0], line[1]);
+      point.x = reflected.x;
+      point.y = reflected.y;
+    },
     rotate(env, _scene, point, parameters) {
       const source = env.resolveScenePoint(point.binding.sourceIndex);
       const center = env.resolveScenePoint(point.binding.centerIndex);
@@ -1052,6 +1184,9 @@
       const rotated = rotateAround(source, center, angleDegrees * Math.PI / 180);
       point.x = rotated.x;
       point.y = rotated.y;
+    },
+    "scale-by-ratio"(env, _scene, point) {
+      updateScaleByRatioPoint(point, (index) => env.resolveScenePoint(index));
     },
     scale(env, _scene, point) {
       const source = env.resolveScenePoint(point.binding.sourceIndex);
@@ -1194,6 +1329,9 @@
     "custom-transform"(_env, draft, point, parameters) {
       updateCustomTransformPoint(point, parameters, (index) => draft.points[index], draft);
     },
+    "scale-by-ratio"(_env, draft, point) {
+      updateScaleByRatioPoint(point, (index) => draft.points[index]);
+    },
     "derived-parameter-expr"(_env, draft, point, parameters) {
       const sourceValue = parameterValueFromPoint(draft, point.binding.sourceIndex);
       if (!Number.isFinite(sourceValue)) return;
@@ -1250,6 +1388,141 @@
         x: origin.x + distance * Math.cos(radians),
         y: origin.y - distance * Math.sin(radians),
       });
+    }
+    return sampled.length >= 2 ? sampled : null;
+  }
+
+  function cloneTracePoint(point) {
+    if (typeof structuredClone === "function") {
+      return structuredClone(point);
+    }
+    return JSON.parse(JSON.stringify(point));
+  }
+
+  function samplePointTraceLine(scene, line, parameters) {
+    const driver = scene.points[line.binding.driverIndex];
+    if (!driver?.constraint) return null;
+    const sampleScene = {
+      ...scene,
+      lines: scene.lines,
+      circles: scene.circles,
+      points: [],
+    };
+
+    const resolveTracePoint = (points, index, visiting = new Set()) => {
+      if (visiting.has(index)) return null;
+      const point = points[index];
+      if (!point) return null;
+      visiting.add(index);
+
+      let resolved = null;
+      if (point.binding?.kind === "translate") {
+        const source = resolveTracePoint(points, point.binding.sourceIndex, visiting);
+        const vectorStart = resolveTracePoint(points, point.binding.vectorStartIndex, visiting);
+        const vectorEnd = resolveTracePoint(points, point.binding.vectorEndIndex, visiting);
+        if (source && vectorStart && vectorEnd) {
+          resolved = {
+            x: source.x + (vectorEnd.x - vectorStart.x),
+            y: source.y + (vectorEnd.y - vectorStart.y),
+          };
+        }
+      } else if (point.binding?.kind === "reflect") {
+        const source = resolveTracePoint(points, point.binding.sourceIndex, visiting);
+        const lineStart = resolveTracePoint(points, point.binding.lineStartIndex, visiting);
+        const lineEnd = resolveTracePoint(points, point.binding.lineEndIndex, visiting);
+        if (source && lineStart && lineEnd) {
+          resolved = reflectAcrossLine(source, lineStart, lineEnd);
+        }
+      } else if (point.binding?.kind === "reflect-line-constraint") {
+        const source = resolveTracePoint(points, point.binding.sourceIndex, visiting);
+        const line = resolveLineConstraintPoints(
+          (pointIndex) => resolveTracePoint(points, pointIndex, visiting),
+          scene.bounds,
+          point.binding.line,
+        );
+        if (source && line) {
+          resolved = reflectAcrossLine(source, line[0], line[1]);
+        }
+      } else if (point.binding?.kind === "rotate") {
+        const source = resolveTracePoint(points, point.binding.sourceIndex, visiting);
+        const center = resolveTracePoint(points, point.binding.centerIndex, visiting);
+        const angleDegrees = point.binding.parameterName
+          ? parameters.get(point.binding.parameterName)
+          : point.binding.angleDegrees;
+        if (source && center && Number.isFinite(angleDegrees)) {
+          resolved = rotateAround(source, center, angleDegrees * Math.PI / 180);
+        }
+      } else if (point.binding?.kind === "scale-by-ratio") {
+        const source = resolveTracePoint(points, point.binding.sourceIndex, visiting);
+        const center = resolveTracePoint(points, point.binding.centerIndex, visiting);
+        const ratioOrigin = resolveTracePoint(points, point.binding.ratioOriginIndex, visiting);
+        const ratioDenominator = resolveTracePoint(points, point.binding.ratioDenominatorIndex, visiting);
+        const ratioNumerator = resolveTracePoint(points, point.binding.ratioNumeratorIndex, visiting);
+        const denominator = ratioOrigin && ratioDenominator
+          ? Math.hypot(ratioDenominator.x - ratioOrigin.x, ratioDenominator.y - ratioOrigin.y)
+          : null;
+        const numerator = ratioOrigin && ratioNumerator
+          ? Math.hypot(ratioNumerator.x - ratioOrigin.x, ratioNumerator.y - ratioOrigin.y)
+          : null;
+        if (source && center && Number.isFinite(denominator) && denominator > 1e-9 && Number.isFinite(numerator)) {
+          resolved = scaleAround(source, center, numerator / denominator);
+        }
+      } else if (point.binding?.kind === "scale") {
+        const source = resolveTracePoint(points, point.binding.sourceIndex, visiting);
+        const center = resolveTracePoint(points, point.binding.centerIndex, visiting);
+        if (source && center) {
+          resolved = scaleAround(source, center, point.binding.factor);
+        }
+      } else if (point.binding?.kind === "midpoint") {
+        const start = resolveTracePoint(points, point.binding.startIndex, visiting);
+        const end = resolveTracePoint(points, point.binding.endIndex, visiting);
+        if (start && end) {
+          resolved = lerpPoint(start, end, 0.5);
+        }
+      } else if (point.binding?.kind === "custom-transform") {
+        const derived = { ...point };
+        updateCustomTransformPoint(derived, parameters, (pointIndex) => resolveTracePoint(points, pointIndex, visiting), sampleScene);
+        if (Number.isFinite(derived.x) && Number.isFinite(derived.y)) {
+          resolved = { x: derived.x, y: derived.y };
+        }
+      }
+
+      if (!resolved && point.constraint) {
+        sampleScene.points = points;
+        resolved = window.GspViewerModules.scene.resolveConstrainedPoint(
+          {
+            sourceScene: scene,
+            currentScene: () => sampleScene,
+            resolveScenePoint: (pointIndex) => resolveTracePoint(points, pointIndex, visiting),
+          },
+          point.constraint,
+          (pointIndex) => resolveTracePoint(points, pointIndex, visiting),
+          point,
+        );
+      }
+
+      visiting.delete(index);
+      if (resolved) return resolved;
+      return point.constraint ? null : point;
+    };
+
+    const sampled = [];
+    const last = Math.max(1, line.binding.sampleCount - 1);
+    for (let index = 0; index < line.binding.sampleCount; index += 1) {
+      const value = line.binding.xMin + (line.binding.xMax - line.binding.xMin) * (index / last);
+      const points = scene.points.map(cloneTracePoint);
+      sampleScene.points = points;
+      applyTraceValueToPoint(
+        points[line.binding.driverIndex],
+        sampleScene,
+        value,
+        line.binding.xMin,
+        line.binding.xMax,
+      );
+      const point = resolveTracePoint(points, line.binding.pointIndex);
+      if (point) {
+        sampled.push({ x: point.x, y: point.y });
+      }
     }
     return sampled.length >= 2 ? sampled : null;
   }
@@ -1381,6 +1654,12 @@
     "coordinate-trace"({ env }, line) {
       const sampled = window.GspViewerModules.scene.sampleCoordinateTracePoints(env, line.binding);
       if (sampled && sampled.length >= 2) {
+        line.points = sampled;
+      }
+    },
+    "point-trace"({ scene, parameters }, line) {
+      const sampled = samplePointTraceLine(scene, line, parameters);
+      if (sampled) {
         line.points = sampled;
       }
     },

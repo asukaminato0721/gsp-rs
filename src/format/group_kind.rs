@@ -108,6 +108,7 @@ define_group_kinds! {
     Rotation = 27,
     ParameterRotation = 29,
     Scale = 30,
+    RatioScale = 32,
     Reflection = 34,
     PointTrace = 35,
     GraphObject40 = 40,
