@@ -331,16 +331,10 @@ fn sample_coordinate_trace_points_raw(
         )?;
         let world = match &driver {
             Some((_source_world, Some(crate::runtime::scene::CoordinateAxis::Horizontal), _)) => {
-                PointRecord {
-                    x: offset,
-                    y: x,
-                }
+                PointRecord { x: offset, y: x }
             }
             Some((_source_world, Some(crate::runtime::scene::CoordinateAxis::Vertical), _)) => {
-                PointRecord {
-                    x,
-                    y: offset,
-                }
+                PointRecord { x, y: offset }
             }
             Some((source_world, None, Some((x_expr, y_expr)))) => {
                 let dx = evaluate_expr_with_parameters(

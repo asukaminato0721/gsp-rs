@@ -214,6 +214,43 @@ pub(crate) fn remap_polygon_bindings(
                 *vertex_indices = mapped_vertex_indices;
                 continue;
             }
+            ShapeBinding::ArcBoundaryPolygon {
+                center_index,
+                start_index,
+                mid_index,
+                end_index,
+                ..
+            } => {
+                if let Some(mapped_start_index) = mapped_index(group_to_point_index, *start_index) {
+                    *start_index = mapped_start_index;
+                } else {
+                    polygon.binding = None;
+                    continue;
+                }
+                if let Some(mapped_end_index) = mapped_index(group_to_point_index, *end_index) {
+                    *end_index = mapped_end_index;
+                } else {
+                    polygon.binding = None;
+                    continue;
+                }
+                if let Some(index) = center_index {
+                    if let Some(mapped_center_index) = mapped_index(group_to_point_index, *index) {
+                        *index = mapped_center_index;
+                    } else {
+                        polygon.binding = None;
+                        continue;
+                    }
+                }
+                if let Some(index) = mid_index {
+                    if let Some(mapped_mid_index) = mapped_index(group_to_point_index, *index) {
+                        *index = mapped_mid_index;
+                    } else {
+                        polygon.binding = None;
+                        continue;
+                    }
+                }
+                continue;
+            }
             ShapeBinding::TranslatePolygon {
                 source_index,
                 vector_start_index,

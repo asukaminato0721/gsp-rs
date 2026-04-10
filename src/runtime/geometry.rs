@@ -386,10 +386,34 @@ pub(crate) fn point_on_three_point_arc(
     t: f64,
 ) -> Option<PointRecord> {
     let geometry = three_point_arc_geometry(start, mid, end)?;
+    point_on_three_point_arc_for_geometry(&geometry, mid, t, false)
+}
+
+pub(crate) fn point_on_three_point_arc_complement(
+    start: &PointRecord,
+    mid: &PointRecord,
+    end: &PointRecord,
+    t: f64,
+) -> Option<PointRecord> {
+    let geometry = three_point_arc_geometry(start, mid, end)?;
+    point_on_three_point_arc_for_geometry(&geometry, mid, t, true)
+}
+
+fn point_on_three_point_arc_for_geometry(
+    geometry: &ThreePointArcGeometry,
+    mid: &PointRecord,
+    t: f64,
+    complement: bool,
+) -> Option<PointRecord> {
     let ccw_span = normalized_angle_delta(geometry.start_angle, geometry.end_angle);
     let ccw_mid = normalized_angle_delta(geometry.start_angle, mid_angle(&geometry.center, mid));
     let clamped_t = t.clamp(0.0, 1.0);
-    let angle = if ccw_mid <= ccw_span + 1e-9 {
+    let use_ccw = if complement {
+        ccw_mid > ccw_span + 1e-9
+    } else {
+        ccw_mid <= ccw_span + 1e-9
+    };
+    let angle = if use_ccw {
         geometry.start_angle + ccw_span * clamped_t
     } else {
         geometry.start_angle
@@ -420,6 +444,25 @@ pub(crate) fn sample_three_point_arc(
     let segment_count = subdivisions.max(2);
     (0..=segment_count)
         .map(|index| point_on_three_point_arc(start, mid, end, index as f64 / segment_count as f64))
+        .collect()
+}
+
+pub(crate) fn sample_three_point_arc_complement(
+    start: &PointRecord,
+    mid: &PointRecord,
+    end: &PointRecord,
+    subdivisions: usize,
+) -> Option<Vec<PointRecord>> {
+    let segment_count = subdivisions.max(2);
+    (0..=segment_count)
+        .map(|index| {
+            point_on_three_point_arc_complement(
+                start,
+                mid,
+                end,
+                index as f64 / segment_count as f64,
+            )
+        })
         .collect()
 }
 

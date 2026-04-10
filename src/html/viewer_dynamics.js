@@ -1179,6 +1179,11 @@
         if (points.length === polygon.binding.vertexIndices.length) {
           polygon.points = points.map((point) => ({ x: point.x, y: point.y }));
         }
+      } else if (polygon.binding?.kind === "arc-boundary-polygon") {
+        const sampled = window.GspViewerModules.scene.sampleArcBoundaryPoints(env, polygon.binding);
+        if (sampled) {
+          polygon.points = sampled;
+        }
       } else if (polygon.binding?.kind === "translate-polygon") {
         const source = scene.polygons[polygon.binding.sourceIndex];
         const vectorStart = scene.points[polygon.binding.vectorStartIndex];

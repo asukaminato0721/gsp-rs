@@ -189,7 +189,7 @@ pub(crate) fn collect_rotated_circle_shapes(
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
 ) -> Vec<CircleShape> {
-    let circle_fill_colors = collect_circle_fill_colors(file, groups);
+    let circle_fill_colors = collect_circle_fill_colors(file, groups, anchors);
     groups
         .iter()
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::ParameterRotation)
@@ -208,7 +208,9 @@ pub(crate) fn collect_rotated_circle_shapes(
                 center: rotate_around(&source_center, &center, radians),
                 radius_point: rotate_around(&source_radius, &center, radians),
                 color: color_from_style(source_group.header.style_b),
-                fill_color: circle_fill_colors.get(&(path.refs.first()?.checked_sub(1)?)).copied(),
+                fill_color: circle_fill_colors
+                    .get(&(path.refs.first()?.checked_sub(1)?))
+                    .copied(),
                 dashed: line_is_dashed(source_group.header.style_a),
                 visible: !group.header.is_hidden(),
                 binding: Some(ShapeBinding::RotateCircle {
@@ -272,7 +274,7 @@ pub(crate) fn collect_transformed_circle_shapes(
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
 ) -> Vec<CircleShape> {
-    let circle_fill_colors = collect_circle_fill_colors(file, groups);
+    let circle_fill_colors = collect_circle_fill_colors(file, groups, anchors);
     groups
         .iter()
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::Scale)
@@ -293,7 +295,9 @@ pub(crate) fn collect_transformed_circle_shapes(
                 center: scale_around(&source_center, &scale_center, factor),
                 radius_point: scale_around(&source_radius, &scale_center, factor),
                 color: color_from_style(source_group.header.style_b),
-                fill_color: circle_fill_colors.get(&(path.refs.first()?.checked_sub(1)?)).copied(),
+                fill_color: circle_fill_colors
+                    .get(&(path.refs.first()?.checked_sub(1)?))
+                    .copied(),
                 dashed: line_is_dashed(source_group.header.style_a),
                 visible: !group.header.is_hidden(),
                 binding: Some(ShapeBinding::ScaleCircle {
@@ -400,7 +404,7 @@ pub(crate) fn collect_reflected_circle_shapes(
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
 ) -> Vec<CircleShape> {
-    let circle_fill_colors = collect_circle_fill_colors(file, groups);
+    let circle_fill_colors = collect_circle_fill_colors(file, groups, anchors);
     groups
         .iter()
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::Reflection)
@@ -422,7 +426,9 @@ pub(crate) fn collect_reflected_circle_shapes(
                 center,
                 radius_point,
                 color: color_from_style(source_group.header.style_b),
-                fill_color: circle_fill_colors.get(&(path.refs.first()?.checked_sub(1)?)).copied(),
+                fill_color: circle_fill_colors
+                    .get(&(path.refs.first()?.checked_sub(1)?))
+                    .copied(),
                 dashed: line_is_dashed(source_group.header.style_a),
                 visible: !group.header.is_hidden(),
                 binding: Some(ShapeBinding::ReflectCircle {

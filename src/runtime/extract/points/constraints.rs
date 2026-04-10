@@ -16,7 +16,7 @@ use crate::runtime::functions::{
 use crate::runtime::geometry::{
     GraphTransform, arc_on_circle_control_points, lerp_point, locate_polyline_parameter_by_length,
     point_on_circle_arc, point_on_three_point_arc, sample_three_point_arc,
-    three_point_arc_geometry, to_raw_from_world, to_world,
+    sample_three_point_arc_complement, three_point_arc_geometry, to_raw_from_world, to_world,
 };
 
 pub(crate) struct PointOnSegmentConstraint {
@@ -375,7 +375,8 @@ pub(crate) fn decode_parameter_controlled_point(
                 match ref_group.header.kind() {
                     crate::format::GroupKind::Point => {
                         let name = decode_label_name(file, ref_group)?;
-                        let value = decode_parameter_control_value_for_group(file, groups, ref_group)?;
+                        let value =
+                            decode_parameter_control_value_for_group(file, groups, ref_group)?;
                         parameters.insert(name, value);
                     }
                     crate::format::GroupKind::ParameterAnchor => {
@@ -1022,9 +1023,13 @@ fn decode_arc_boundary_polyline(
     host_group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
 ) -> Option<Vec<PointRecord>> {
-    let (center, [start, mid, end], starts_from_end) =
+    let (center, [start, mid, end], starts_from_end, complement) =
         resolve_boundary_arc_geometry(file, groups, host_group, anchors)?;
-    let arc_points = sample_three_point_arc(&start, &mid, &end, ARC_BOUNDARY_SUBDIVISIONS)?;
+    let arc_points = if complement {
+        sample_three_point_arc_complement(&start, &mid, &end, ARC_BOUNDARY_SUBDIVISIONS)?
+    } else {
+        sample_three_point_arc(&start, &mid, &end, ARC_BOUNDARY_SUBDIVISIONS)?
+    };
     match host_group.header.kind() {
         crate::format::GroupKind::SectorBoundary => {
             let center = center?;
@@ -1060,7 +1065,7 @@ fn resolve_boundary_arc_geometry(
     groups: &[ObjectGroup],
     host_group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
-) -> Option<(Option<PointRecord>, [PointRecord; 3], bool)> {
+) -> Option<(Option<PointRecord>, [PointRecord; 3], bool, bool)> {
     let path = find_indexed_path(file, host_group)?;
     let arc_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
     match arc_group.header.kind() {
@@ -1076,6 +1081,7 @@ fn resolve_boundary_arc_geometry(
                 Some(center.clone()),
                 arc_on_circle_control_points(&center, &start, &end)?,
                 true,
+                false,
             ))
         }
         crate::format::GroupKind::ArcOnCircle => {
@@ -1095,6 +1101,7 @@ fn resolve_boundary_arc_geometry(
                 Some(center.clone()),
                 arc_on_circle_control_points(&center, &start, &end)?,
                 false,
+                false,
             ))
         }
         crate::format::GroupKind::ThreePointArc => {
@@ -1107,7 +1114,12 @@ fn resolve_boundary_arc_geometry(
             let end = anchors.get(arc_path.refs[2].checked_sub(1)?)?.clone()?;
             let center =
                 three_point_arc_geometry(&start, &mid, &end).map(|geometry| geometry.center);
-            Some((center, [start, mid, end], false))
+            Some((
+                center,
+                [start, mid, end],
+                false,
+                (host_group.header.kind()) == crate::format::GroupKind::CircularSegmentBoundary,
+            ))
         }
         _ => None,
     }

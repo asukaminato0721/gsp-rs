@@ -812,15 +812,29 @@ mod tests {
 
     #[test]
     fn exports_circular_segment_boundary_fixture_with_polyline_constraint() {
-        let html = compile_bytes_to_html_document(
+        let scene_json = compile_bytes_to_scene_json(
             include_bytes!("../tests/fixtures/未实现的系统功能/弓形周界动点.gsp"),
             800,
             600,
         )
         .expect("circular segment boundary fixture should compile");
 
-        assert!(html.contains("\"kind\":\"polyline\""));
-        assert!(html.contains("\"lines\":[{\"points\":["));
+        let scene: Value =
+            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+        assert!(
+            scene["points"].as_array().is_some_and(|points| points
+                .iter()
+                .any(|point| point["constraint"]["kind"].as_str() == Some("polyline"))),
+            "expected a live point constrained to the boundary perimeter"
+        );
+        assert!(
+            scene["polygons"].as_array().is_some_and(|polygons| {
+                polygons.iter().any(|polygon| {
+                    polygon["binding"]["kind"].as_str() == Some("arc-boundary-polygon")
+                })
+            }),
+            "expected the circular segment fill to export as a live boundary polygon"
+        );
     }
 
     #[test]
@@ -997,6 +1011,108 @@ mod tests {
     }
 
     #[test]
+    fn exports_two_circle_intersection_inrm_fixture_with_live_bindings() {
+        let scene_json = compile_bytes_to_scene_json(
+            include_bytes!("../tests/fixtures/未实现/(inRm)两圆之交.gsp"),
+            800,
+            600,
+        )
+        .expect("two-circle-intersection fixture should compile");
+
+        let scene: Value =
+            serde_json::from_str(&scene_json).expect("scene json should be valid json");
+        let circles = scene["circles"]
+            .as_array()
+            .expect("scene circles should be an array");
+        assert_eq!(circles.len(), 4, "expected four payload circles");
+        assert!(
+            circles
+                .iter()
+                .all(|circle| circle["binding"]["kind"].as_str() == Some("point-radius-circle")),
+            "expected every exported circle to keep its live point-radius binding"
+        );
+        assert!(
+            circles.iter().all(|circle| circle["fillColor"].is_null()),
+            "expected helper duplicate circles to avoid exporting full-disk fills"
+        );
+
+        let polygons = scene["polygons"]
+            .as_array()
+            .expect("scene polygons should be an array");
+        assert_eq!(
+            polygons.len(),
+            2,
+            "expected the lens to export as two circular segments"
+        );
+        assert!(
+            polygons
+                .iter()
+                .all(|polygon| polygon["binding"]["kind"].as_str() == Some("arc-boundary-polygon")),
+            "expected both filled polygons to stay bound to their source circular segments"
+        );
+
+        let lines = scene["lines"]
+            .as_array()
+            .expect("scene lines should be an array");
+        assert_eq!(
+            lines
+                .iter()
+                .filter(|line| line["binding"]["kind"].as_str() == Some("segment"))
+                .count(),
+            2,
+            "expected both exported segments to remain interactive"
+        );
+        assert_eq!(
+            lines
+                .iter()
+                .filter(|line| line["binding"]["kind"].as_str() == Some("perpendicular-line"))
+                .count(),
+            2,
+            "expected both perpendicular helpers to remain interactive"
+        );
+        assert_eq!(
+            lines
+                .iter()
+                .filter(|line| line["binding"]["kind"].as_str() == Some("line"))
+                .count(),
+            1,
+            "expected the baseline to remain interactive"
+        );
+
+        let points = scene["points"]
+            .as_array()
+            .expect("scene points should be an array");
+        let circle_circle_points = points
+            .iter()
+            .filter(|point| {
+                point["constraint"]["kind"].as_str() == Some("circle-circle-intersection")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            circle_circle_points.len(),
+            2,
+            "expected both circle-circle intersection variants"
+        );
+        assert!(circle_circle_points.iter().all(|point| {
+            point["x"]
+                .as_f64()
+                .is_some_and(|x| (x - 327.0).abs() < 1e-6)
+                && point["y"]
+                    .as_f64()
+                    .is_some_and(|y| (y - 275.0).abs() < 1e-6)
+        }));
+        assert_eq!(
+            points
+                .iter()
+                .filter(|point| point["constraint"]["kind"].as_str()
+                    == Some("line-circle-intersection"))
+                .count(),
+            8,
+            "expected all derived line-circle intersections to stay live"
+        );
+    }
+
+    #[test]
     fn exports_ant_fixture_with_two_axis_line_iterations() {
         let scene_json = compile_bytes_to_scene_json(
             include_bytes!("../tests/fixtures/bug/迭代方法2(蚂蚁).gsp"),
@@ -1025,9 +1141,13 @@ mod tests {
                 && family["bidirectional"].as_bool() == Some(true)
                 && family["depth"].as_u64() == Some(3)
         }));
-        let points = scene["points"].as_array().expect("scene points should be an array");
+        let points = scene["points"]
+            .as_array()
+            .expect("scene points should be an array");
         assert!(
-            points.iter().all(|point| point["visible"].as_bool() == Some(false)),
+            points
+                .iter()
+                .all(|point| point["visible"].as_bool() == Some(false)),
             "expected helper points to stay hidden when the payload omits the point-marker style"
         );
     }

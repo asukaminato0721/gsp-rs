@@ -9,7 +9,9 @@ use super::{
 };
 use crate::format::{read_f64, read_u32};
 use crate::runtime::extract::decode::{is_circle_group_kind, resolve_circle_points_raw};
-use crate::runtime::geometry::{arc_on_circle_control_points, sample_three_point_arc};
+use crate::runtime::geometry::{
+    arc_on_circle_control_points, sample_three_point_arc, sample_three_point_arc_complement,
+};
 use crate::runtime::scene::ArcBoundaryKind;
 
 const ARC_BOUNDARY_SUBDIVISIONS: usize = 48;
@@ -17,17 +19,102 @@ const ARC_BOUNDARY_SUBDIVISIONS: usize = 48;
 pub(crate) fn collect_circle_fill_colors(
     file: &GspFile,
     groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
 ) -> BTreeMap<usize, [u8; 4]> {
+    let suppressed_circle_indices = collect_boundary_fill_circle_indices(file, groups, anchors);
     groups
         .iter()
-        .filter(|group| (group.header.kind()) == crate::format::GroupKind::CircleInterior)
-        .filter_map(|group| {
+        .enumerate()
+        .filter(|(_, group)| (group.header.kind()) == crate::format::GroupKind::CircleInterior)
+        .filter_map(|(fill_group_index, group)| {
             let path = find_indexed_path(file, group)?;
             let circle_group_index = path.refs.first()?.checked_sub(1)?;
+            if suppressed_circle_indices.contains(&(circle_group_index, fill_group_index)) {
+                return None;
+            }
             Some((
                 circle_group_index,
                 fill_color_from_styles(group.header.style_b, group.header.style_c),
             ))
+        })
+        .collect()
+}
+
+fn collect_boundary_fill_circle_indices(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+) -> BTreeSet<(usize, usize)> {
+    let boundary_candidates = groups
+        .iter()
+        .filter(|group| {
+            matches!(
+                group.header.kind(),
+                crate::format::GroupKind::SectorBoundary
+                    | crate::format::GroupKind::CircularSegmentBoundary
+            )
+        })
+        .filter_map(|group| {
+            Some((
+                resolve_boundary_arc_seed_points(file, groups, anchors, group)?,
+                fill_color_from_styles(group.header.style_b, group.header.style_c),
+            ))
+        })
+        .collect::<Vec<_>>();
+
+    groups
+        .iter()
+        .enumerate()
+        .filter(|(_, group)| (group.header.kind()) == crate::format::GroupKind::CircleInterior)
+        .filter_map(|(fill_group_index, group)| {
+            let path = find_indexed_path(file, group)?;
+            let circle_group_index = path.refs.first()?.checked_sub(1)?;
+            let circle_group = groups.get(circle_group_index)?;
+            let (center, radius_point) =
+                resolve_circle_points_raw(file, groups, anchors, circle_group)?;
+            let radius =
+                ((radius_point.x - center.x).powi(2) + (radius_point.y - center.y).powi(2)).sqrt();
+            let fill_color = fill_color_from_styles(group.header.style_b, group.header.style_c);
+            let matches_boundary_points =
+                boundary_candidates
+                    .iter()
+                    .any(|(boundary_points, boundary_fill)| {
+                        *boundary_fill == fill_color
+                            && boundary_points.iter().all(|point| {
+                                let distance = ((point.x - center.x).powi(2)
+                                    + (point.y - center.y).powi(2))
+                                .sqrt();
+                                (distance - radius).abs() < 1e-3
+                            })
+                    });
+            let has_duplicate_outline =
+                groups
+                    .iter()
+                    .enumerate()
+                    .any(|(other_group_index, other_group)| {
+                        if other_group_index == circle_group_index
+                            || !is_circle_group_kind(other_group.header.kind())
+                        {
+                            return false;
+                        }
+                        let Some((other_center, other_radius_point)) =
+                            resolve_circle_points_raw(file, groups, anchors, other_group)
+                        else {
+                            return false;
+                        };
+                        let other_radius = ((other_radius_point.x - other_center.x).powi(2)
+                            + (other_radius_point.y - other_center.y).powi(2))
+                        .sqrt();
+                        (other_center.x - center.x).abs() < 1e-6
+                            && (other_center.y - center.y).abs() < 1e-6
+                            && (other_radius - radius).abs() < 1e-6
+                    });
+            let matches_duplicate_boundary_fill = has_duplicate_outline
+                && boundary_candidates
+                    .iter()
+                    .any(|(_, boundary_fill)| *boundary_fill == fill_color);
+            (matches_boundary_points || matches_duplicate_boundary_fill)
+                .then_some((circle_group_index, fill_group_index))
         })
         .collect()
 }
@@ -208,12 +295,42 @@ pub(crate) fn collect_arc_boundary_shapes(
             )
         })
         .filter_map(|group| {
-            let points = resolve_arc_boundary_points(file, groups, anchors, group)?;
             let binding = resolve_arc_boundary_binding(file, groups, group)?;
-            has_distinct_points(&points).then_some(LineShape {
+            let points = resolve_arc_boundary_points(file, groups, anchors, group)
+                .or_else(|| resolve_boundary_arc_seed_points(file, groups, anchors, group))?;
+            Some(LineShape {
                 points,
                 color: color_from_style(group.header.style_b),
                 dashed: line_is_dashed(group.header.style_a),
+                visible: !group.header.is_hidden(),
+                binding: Some(binding),
+            })
+        })
+        .collect()
+}
+
+pub(crate) fn collect_arc_boundary_fill_polygons(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+) -> Vec<PolygonShape> {
+    groups
+        .iter()
+        .filter(|group| {
+            matches!(
+                group.header.kind(),
+                crate::format::GroupKind::SectorBoundary
+                    | crate::format::GroupKind::CircularSegmentBoundary
+            )
+        })
+        .filter_map(|group| {
+            let binding = resolve_arc_boundary_polygon_binding(file, groups, group)?;
+            let points = resolve_arc_boundary_points(file, groups, anchors, group)
+                .or_else(|| resolve_boundary_arc_seed_points(file, groups, anchors, group))?;
+            let color = fill_color_from_styles(group.header.style_b, group.header.style_c);
+            (color[3] > 0).then_some(PolygonShape {
+                points,
+                color,
                 visible: !group.header.is_hidden(),
                 binding: Some(binding),
             })
@@ -716,7 +833,7 @@ pub(crate) fn collect_circle_shapes(
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
 ) -> Vec<CircleShape> {
-    let circle_fill_colors = collect_circle_fill_colors(file, groups);
+    let circle_fill_colors = collect_circle_fill_colors(file, groups, anchors);
     let dashed_circle_indices = groups
         .iter()
         .filter_map(|group| {
@@ -876,9 +993,13 @@ fn resolve_arc_boundary_points(
     anchors: &[Option<PointRecord>],
     group: &ObjectGroup,
 ) -> Option<Vec<PointRecord>> {
-    let (center, [start, mid, end], starts_from_end) =
+    let (center, [start, mid, end], starts_from_end, complement) =
         resolve_boundary_arc_components(file, groups, anchors, group)?;
-    let arc_points = sample_three_point_arc(&start, &mid, &end, ARC_BOUNDARY_SUBDIVISIONS)?;
+    let arc_points = if complement {
+        sample_three_point_arc_complement(&start, &mid, &end, ARC_BOUNDARY_SUBDIVISIONS)?
+    } else {
+        sample_three_point_arc(&start, &mid, &end, ARC_BOUNDARY_SUBDIVISIONS)?
+    };
     match group.header.kind() {
         crate::format::GroupKind::SectorBoundary => {
             let center = center?;
@@ -914,7 +1035,7 @@ fn resolve_boundary_arc_components(
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
     group: &ObjectGroup,
-) -> Option<(Option<PointRecord>, [PointRecord; 3], bool)> {
+) -> Option<(Option<PointRecord>, [PointRecord; 3], bool, bool)> {
     let path = find_indexed_path(file, group)?;
     let arc_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
     match arc_group.header.kind() {
@@ -930,6 +1051,7 @@ fn resolve_boundary_arc_components(
                 Some(center.clone()),
                 arc_on_circle_control_points(&center, &start, &end)?,
                 true,
+                false,
             ))
         }
         crate::format::GroupKind::ArcOnCircle => {
@@ -945,6 +1067,7 @@ fn resolve_boundary_arc_components(
                 Some(center.clone()),
                 arc_on_circle_control_points(&center, &start, &end)?,
                 false,
+                false,
             ))
         }
         crate::format::GroupKind::ThreePointArc => {
@@ -957,7 +1080,57 @@ fn resolve_boundary_arc_components(
             let end = anchors.get(arc_path.refs[2].checked_sub(1)?)?.clone()?;
             let center =
                 three_point_arc_geometry(&start, &mid, &end).map(|geometry| geometry.center);
-            Some((center, [start, mid, end], false))
+            Some((
+                center,
+                [start, mid, end],
+                false,
+                (group.header.kind()) == crate::format::GroupKind::CircularSegmentBoundary,
+            ))
+        }
+        _ => None,
+    }
+}
+
+fn resolve_boundary_arc_seed_points(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group: &ObjectGroup,
+) -> Option<Vec<PointRecord>> {
+    let path = find_indexed_path(file, group)?;
+    let arc_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+    let arc_path = find_indexed_path(file, arc_group)?;
+
+    match arc_group.header.kind() {
+        crate::format::GroupKind::CenterArc => {
+            if arc_path.refs.len() != 3 {
+                return None;
+            }
+            Some(vec![
+                anchors.get(arc_path.refs[0].checked_sub(1)?)?.clone()?,
+                anchors.get(arc_path.refs[1].checked_sub(1)?)?.clone()?,
+                anchors.get(arc_path.refs[2].checked_sub(1)?)?.clone()?,
+            ])
+        }
+        crate::format::GroupKind::ArcOnCircle => {
+            if arc_path.refs.len() != 3 {
+                return None;
+            }
+            Some(vec![
+                anchors.get(arc_path.refs[1].checked_sub(1)?)?.clone()?,
+                anchors.get(arc_path.refs[2].checked_sub(1)?)?.clone()?,
+                anchors.get(arc_path.refs[1].checked_sub(1)?)?.clone()?,
+            ])
+        }
+        crate::format::GroupKind::ThreePointArc => {
+            if arc_path.refs.len() != 3 {
+                return None;
+            }
+            Some(vec![
+                anchors.get(arc_path.refs[0].checked_sub(1)?)?.clone()?,
+                anchors.get(arc_path.refs[1].checked_sub(1)?)?.clone()?,
+                anchors.get(arc_path.refs[2].checked_sub(1)?)?.clone()?,
+            ])
         }
         _ => None,
     }
@@ -986,6 +1159,7 @@ fn resolve_arc_boundary_binding(
                 mid_index: None,
                 end_index: arc_path.refs[2].checked_sub(1)?,
                 reversed: true,
+                complement: false,
             })
         }
         crate::format::GroupKind::ArcOnCircle => {
@@ -1006,6 +1180,7 @@ fn resolve_arc_boundary_binding(
                 mid_index: None,
                 end_index: arc_path.refs[2].checked_sub(1)?,
                 reversed: false,
+                complement: false,
             })
         }
         crate::format::GroupKind::ThreePointArc => {
@@ -1018,8 +1193,39 @@ fn resolve_arc_boundary_binding(
                 mid_index: Some(arc_path.refs[1].checked_sub(1)?),
                 end_index: arc_path.refs[2].checked_sub(1)?,
                 reversed: false,
+                complement: boundary_kind == ArcBoundaryKind::CircularSegment,
             })
         }
+        _ => None,
+    }
+}
+
+fn resolve_arc_boundary_polygon_binding(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<ShapeBinding> {
+    let binding = resolve_arc_boundary_binding(file, groups, group)?;
+    match binding {
+        LineBinding::ArcBoundary {
+            host_key,
+            boundary_kind,
+            center_index,
+            start_index,
+            mid_index,
+            end_index,
+            reversed,
+            complement,
+        } => Some(ShapeBinding::ArcBoundaryPolygon {
+            host_key,
+            boundary_kind,
+            center_index,
+            start_index,
+            mid_index,
+            end_index,
+            reversed,
+            complement,
+        }),
         _ => None,
     }
 }

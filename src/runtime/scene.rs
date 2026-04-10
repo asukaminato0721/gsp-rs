@@ -439,10 +439,11 @@ pub(crate) enum LineBinding {
         mid_index: Option<usize>,
         end_index: usize,
         reversed: bool,
+        complement: bool,
     },
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ArcBoundaryKind {
     Sector,
     CircularSegment,
@@ -577,6 +578,16 @@ pub(crate) enum ShapeBinding {
     },
     PointPolygon {
         vertex_indices: Vec<usize>,
+    },
+    ArcBoundaryPolygon {
+        host_key: usize,
+        boundary_kind: ArcBoundaryKind,
+        center_index: Option<usize>,
+        start_index: usize,
+        mid_index: Option<usize>,
+        end_index: usize,
+        reversed: bool,
+        complement: bool,
     },
     SegmentRadiusCircle {
         center_index: usize,

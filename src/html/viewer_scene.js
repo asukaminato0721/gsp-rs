@@ -105,8 +105,21 @@
   function pointOnThreePointArc(start, mid, end, t) {
     const geometry = threePointArcGeometry(start, mid, end);
     if (!geometry) return null;
+    return pointOnThreePointArcWithGeometry(geometry, t, false);
+  }
+
+  function pointOnThreePointArcComplement(start, mid, end, t) {
+    const geometry = threePointArcGeometry(start, mid, end);
+    if (!geometry) return null;
+    return pointOnThreePointArcWithGeometry(geometry, t, true);
+  }
+
+  function pointOnThreePointArcWithGeometry(geometry, t, complement) {
     const clampedT = Math.max(0, Math.min(1, t));
-    const angle = geometry.ccwMid <= geometry.ccwSpan + 1e-9
+    const useCcw = complement
+      ? geometry.ccwMid > geometry.ccwSpan + 1e-9
+      : geometry.ccwMid <= geometry.ccwSpan + 1e-9;
+    const angle = useCcw
       ? geometry.startAngle + geometry.ccwSpan * clampedT
       : geometry.startAngle - normalizeAngleDelta(geometry.endAngle, geometry.startAngle) * clampedT;
     return {
@@ -263,7 +276,9 @@
     const mid = resolveScenePoint(env, binding.midIndex);
     if (!mid) return null;
     for (let step = 0; step <= steps; step += 1) {
-      const point = pointOnThreePointArc(start, mid, end, step / steps);
+      const point = binding.complement
+        ? pointOnThreePointArcComplement(start, mid, end, step / steps)
+        : pointOnThreePointArc(start, mid, end, step / steps);
       if (!point) return null;
       sampledArc.push(point);
     }

@@ -3,10 +3,8 @@ use std::collections::BTreeSet;
 use super::{
     CircleShape, GspFile, LineBinding, LineIterationFamily, LineShape, ObjectGroup, PointRecord,
     PolygonIterationFamily, PolygonShape, color_from_style, decode_parameter_controlled_point,
-    decode_point_constraint,
-    decode_translated_point_constraint,
-    fill_color_from_styles, find_indexed_path, line_is_dashed, regular_polygon_iteration_step,
-    rotate_around,
+    decode_point_constraint, decode_translated_point_constraint, fill_color_from_styles,
+    find_indexed_path, line_is_dashed, regular_polygon_iteration_step, rotate_around,
 };
 use crate::runtime::extract::decode::resolve_circle_points_raw;
 use crate::runtime::extract::points::editable_non_graph_parameter_name_for_group;
@@ -866,9 +864,13 @@ pub(crate) fn collect_carried_iteration_circles(
             ) {
                 return None;
             }
-            if let Some(circles) =
-                collect_parameter_controlled_circle_iteration(file, groups, source_group, iter_group, anchors)
-            {
+            if let Some(circles) = collect_parameter_controlled_circle_iteration(
+                file,
+                groups,
+                source_group,
+                iter_group,
+                anchors,
+            ) {
                 return Some(circles);
             }
             if (iter_group.header.kind()) == crate::format::GroupKind::RegularPolygonIteration
@@ -950,8 +952,10 @@ pub(crate) fn collect_carried_circle_iteration_families(
                 return None;
             }
             let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
-            let source_circle_index =
-                circle_group_to_index.get(source_circle_group_index).copied().flatten()?;
+            let source_circle_index = circle_group_to_index
+                .get(source_circle_group_index)
+                .copied()
+                .flatten()?;
             build_parameter_controlled_circle_iteration_family(
                 file,
                 groups,
@@ -1019,9 +1023,7 @@ fn build_parameter_controlled_circle_iteration_family(
         .copied()
         .flatten()?;
     let crate::runtime::extract::points::RawPointConstraint::PolygonBoundary {
-        edge_index,
-        t,
-        ..
+        edge_index, t, ..
     } = iter_point.constraint
     else {
         return None;
@@ -1086,8 +1088,12 @@ fn collect_parameter_controlled_circle_iteration(
     else {
         return None;
     };
-    let seed_parameter =
-        super::super::labels::polygon_boundary_parameter(anchors, &vertex_group_indices, edge_index, t)?;
+    let seed_parameter = super::super::labels::polygon_boundary_parameter(
+        anchors,
+        &vertex_group_indices,
+        edge_index,
+        t,
+    )?;
 
     let iter_point_group = groups
         .iter()
@@ -1104,15 +1110,17 @@ fn collect_parameter_controlled_circle_iteration(
         })?;
     let iter_point = decode_parameter_controlled_point(file, groups, iter_point_group, anchors)?;
     let crate::runtime::extract::points::RawPointConstraint::PolygonBoundary {
-        edge_index,
-        t,
-        ..
+        edge_index, t, ..
     } = iter_point.constraint
     else {
         return None;
     };
-    let next_parameter =
-        super::super::labels::polygon_boundary_parameter(anchors, &vertex_group_indices, edge_index, t)?;
+    let next_parameter = super::super::labels::polygon_boundary_parameter(
+        anchors,
+        &vertex_group_indices,
+        edge_index,
+        t,
+    )?;
     let step_parameter = (next_parameter - seed_parameter).rem_euclid(1.0);
     if step_parameter <= 1e-9 {
         return None;

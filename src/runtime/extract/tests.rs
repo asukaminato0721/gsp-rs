@@ -250,6 +250,16 @@ fn preserves_circular_segment_boundary_point_interactivity() {
     let file = GspFile::parse(data).expect("fixture parses");
     let scene = build_scene(&file);
 
+    assert_eq!(
+        scene.polygons.len(),
+        1,
+        "expected one filled circular segment"
+    );
+    assert!(matches!(
+        scene.polygons[0].binding,
+        Some(crate::runtime::scene::ShapeBinding::ArcBoundaryPolygon { .. })
+    ));
+
     let boundary_point = scene
         .points
         .iter()
@@ -1023,13 +1033,10 @@ fn preserves_circle_system_bindings_for_inrm_fixture() {
         "expected base and iterated helper points to export"
     );
     assert!(
-        scene
-            .points
-            .iter()
-            .any(|point| matches!(
-                point.constraint,
-                ScenePointConstraint::OnPolygonBoundary { .. }
-            )),
+        scene.points.iter().any(|point| matches!(
+            point.constraint,
+            ScenePointConstraint::OnPolygonBoundary { .. }
+        )),
         "expected polygon-boundary helper point to stay exported for dependent bindings"
     );
     assert!(matches!(
@@ -1593,6 +1600,123 @@ fn preserves_circle_circle_intersection_points() {
         (point.position.x - 445.71654184257966).abs() < 1e-6
             && (point.position.y - 470.02601183209464).abs() < 1e-6
     }));
+}
+
+#[test]
+fn preserves_two_circle_intersection_inrm_fixture_interactivity() {
+    let data = include_bytes!("../../../tests/fixtures/未实现/(inRm)两圆之交.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let scene = build_scene(&file);
+
+    assert_eq!(scene.circles.len(), 4, "expected four source circles");
+    assert_eq!(
+        scene.polygons.len(),
+        2,
+        "expected two circular segments that make up the lens"
+    );
+    assert_eq!(
+        scene.lines.len(),
+        7,
+        "expected five source helper lines plus two live circular-segment boundaries"
+    );
+    assert_eq!(
+        scene.points.len(),
+        14,
+        "expected source points plus derived circle intersections"
+    );
+    assert_eq!(
+        scene
+            .circles
+            .iter()
+            .filter(|circle| matches!(
+                circle.binding,
+                Some(crate::runtime::scene::ShapeBinding::PointRadiusCircle { .. })
+            ))
+            .count(),
+        4,
+        "expected every payload circle to keep its live center/radius binding"
+    );
+    assert_eq!(
+        scene
+            .circles
+            .iter()
+            .filter(|circle| circle.fill_color.is_some())
+            .count(),
+        0,
+        "expected duplicate helper circles to avoid rendering full-disk fills"
+    );
+    assert_eq!(
+        scene
+            .polygons
+            .iter()
+            .filter(|polygon| matches!(
+                polygon.binding,
+                Some(crate::runtime::scene::ShapeBinding::ArcBoundaryPolygon { .. })
+            ))
+            .count(),
+        2,
+        "expected both circular segments to stay interactive"
+    );
+    assert_eq!(
+        scene
+            .lines
+            .iter()
+            .filter(|line| matches!(line.binding, Some(LineBinding::Segment { .. })))
+            .count(),
+        2,
+        "expected both payload segments to stay interactive"
+    );
+    assert_eq!(
+        scene
+            .lines
+            .iter()
+            .filter(|line| matches!(line.binding, Some(LineBinding::PerpendicularLine { .. })))
+            .count(),
+        2,
+        "expected both payload perpendicular helpers to stay interactive"
+    );
+    assert_eq!(
+        scene
+            .lines
+            .iter()
+            .filter(|line| matches!(line.binding, Some(LineBinding::Line { .. })))
+            .count(),
+        1,
+        "expected the payload baseline to stay interactive"
+    );
+
+    let circle_circle_points = scene
+        .points
+        .iter()
+        .filter(|point| {
+            matches!(
+                point.constraint,
+                ScenePointConstraint::CircleCircleIntersection { .. }
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        circle_circle_points.len(),
+        2,
+        "expected both circle-circle variants to stay exported"
+    );
+    assert!(circle_circle_points.iter().all(|point| {
+        (point.position.x - 327.0).abs() < 1e-6 && (point.position.y - 275.0).abs() < 1e-6
+    }));
+    assert_eq!(
+        scene
+            .points
+            .iter()
+            .filter(|point| {
+                matches!(
+                    point.constraint,
+                    ScenePointConstraint::LineCircleIntersection { .. }
+                )
+            })
+            .count(),
+        8,
+        "expected all derived line-circle intersection helpers to stay live"
+    );
 }
 
 #[test]

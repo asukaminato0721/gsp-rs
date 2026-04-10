@@ -9,8 +9,7 @@ use super::decode::{
 };
 use super::points::{
     RawPointConstraint, decode_point_constraint, editable_non_graph_parameter_name_for_group,
-    is_editable_non_graph_parameter_name, is_non_graph_parameter_group,
-    regular_polygon_angle_expr,
+    is_editable_non_graph_parameter_name, is_non_graph_parameter_group, regular_polygon_angle_expr,
 };
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
 use crate::runtime::functions::{
@@ -149,8 +148,12 @@ fn iteration_group_value(
         return None;
     }
     let result = (|| match group.header.kind() {
-        crate::format::GroupKind::Point => decode_parameter_control_value_for_group(file, groups, group),
-        crate::format::GroupKind::ParameterAnchor => parameter_anchor_value(file, groups, group, anchors),
+        crate::format::GroupKind::Point => {
+            decode_parameter_control_value_for_group(file, groups, group)
+        }
+        crate::format::GroupKind::ParameterAnchor => {
+            parameter_anchor_value(file, groups, group, anchors)
+        }
         crate::format::GroupKind::FunctionExpr => {
             let expr = decode_function_expr(file, groups, group)?;
             let path = find_indexed_path(file, group)?;
@@ -695,8 +698,8 @@ pub(super) fn collect_polygon_parameter_labels(
                 return None;
             }
 
-            let point_name = decode_label_name(file, group)
-                .or_else(|| decode_label_name(file, point_group))?;
+            let point_name =
+                decode_label_name(file, group).or_else(|| decode_label_name(file, point_group))?;
             let polygon_name = polygon_vertex_name(file, groups, polygon_group)?;
             let anchor_record = group
                 .records
@@ -723,7 +726,8 @@ pub(super) fn collect_polygon_parameter_labels(
                 },
                 rich_markup: None,
                 color: [30, 30, 30, 255],
-                visible: decode_label_name(file, group).is_some() || label_visible_for_group(file, group),
+                visible: decode_label_name(file, group).is_some()
+                    || label_visible_for_group(file, group),
                 binding: Some(TextLabelBinding::PolygonBoundaryParameter {
                     point_index: path.refs[0].checked_sub(1)?,
                     point_name,
@@ -1331,7 +1335,8 @@ pub(super) fn compute_iteration_labels(
         let mut lines = Vec::new();
 
         if let Some(name) = &own_label
-            && let Some(value) = iteration_group_value(file, groups, group, anchors, &mut BTreeSet::new())
+            && let Some(value) =
+                iteration_group_value(file, groups, group, anchors, &mut BTreeSet::new())
         {
             computed_values.entry(name.clone()).or_insert(value);
         }
@@ -1344,7 +1349,8 @@ pub(super) fn compute_iteration_labels(
             && let Some(parameter_name) = decode_label_name(file, anchor_group)
             && let Some(path) = find_indexed_path(file, anchor_group)
             && let Some(point_index) = path.refs.first().and_then(|ordinal| ordinal.checked_sub(1))
-            && let Some(value) = iteration_group_value(file, groups, group, anchors, &mut BTreeSet::new())
+            && let Some(value) =
+                iteration_group_value(file, groups, group, anchors, &mut BTreeSet::new())
         {
             let expr_label = payload_function_expr_label(
                 file,

@@ -4,11 +4,10 @@ use crate::runtime::functions::{
 };
 use crate::runtime::geometry::darken;
 use crate::runtime::scene::{
-    ArcBoundaryKind, ButtonAction, CircleIterationFamily, CircularConstraint,
-    IterationPointHandle, IterationTable, LabelIterationFamily, LineBinding, LineConstraint,
-    LineIterationFamily, PointIterationFamily, PolygonIterationFamily, Scene, SceneButton,
-    ScenePointBinding, ScenePointConstraint, ShapeBinding, TextLabelBinding,
-    TextLabelHotspotAction,
+    ArcBoundaryKind, ButtonAction, CircleIterationFamily, CircularConstraint, IterationPointHandle,
+    IterationTable, LabelIterationFamily, LineBinding, LineConstraint, LineIterationFamily,
+    PointIterationFamily, PolygonIterationFamily, Scene, SceneButton, ScenePointBinding,
+    ScenePointConstraint, ShapeBinding, TextLabelBinding, TextLabelHotspotAction,
 };
 use serde::Serialize;
 
@@ -515,6 +514,7 @@ enum LineBindingJson {
         #[serde(rename = "endIndex")]
         end_index: usize,
         reversed: bool,
+        complement: bool,
     },
 }
 
@@ -685,6 +685,7 @@ impl LineBindingJson {
                 mid_index,
                 end_index,
                 reversed,
+                complement,
             } => Self::ArcBoundary {
                 host_key: *host_key,
                 boundary_kind: ArcBoundaryKindJson::from_kind(*boundary_kind),
@@ -693,6 +694,7 @@ impl LineBindingJson {
                 mid_index: *mid_index,
                 end_index: *end_index,
                 reversed: *reversed,
+                complement: *complement,
             },
         }
     }
@@ -828,6 +830,23 @@ enum ShapeBindingJson {
         #[serde(rename = "vertexIndices")]
         vertex_indices: Vec<usize>,
     },
+    #[serde(rename = "arc-boundary-polygon")]
+    ArcBoundaryPolygon {
+        #[serde(rename = "hostKey")]
+        host_key: usize,
+        #[serde(rename = "boundaryKind")]
+        boundary_kind: ArcBoundaryKindJson,
+        #[serde(rename = "centerIndex")]
+        center_index: Option<usize>,
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "midIndex")]
+        mid_index: Option<usize>,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+        reversed: bool,
+        complement: bool,
+    },
     #[serde(rename = "segment-radius-circle")]
     SegmentRadiusCircle {
         #[serde(rename = "centerIndex")]
@@ -925,6 +944,25 @@ impl ShapeBindingJson {
             },
             ShapeBinding::PointPolygon { vertex_indices } => Self::PointPolygon {
                 vertex_indices: vertex_indices.clone(),
+            },
+            ShapeBinding::ArcBoundaryPolygon {
+                host_key,
+                boundary_kind,
+                center_index,
+                start_index,
+                mid_index,
+                end_index,
+                reversed,
+                complement,
+            } => Self::ArcBoundaryPolygon {
+                host_key: *host_key,
+                boundary_kind: ArcBoundaryKindJson::from_kind(*boundary_kind),
+                center_index: *center_index,
+                start_index: *start_index,
+                mid_index: *mid_index,
+                end_index: *end_index,
+                reversed: *reversed,
+                complement: *complement,
             },
             ShapeBinding::SegmentRadiusCircle {
                 center_index,

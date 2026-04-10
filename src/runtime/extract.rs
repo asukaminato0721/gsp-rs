@@ -40,28 +40,26 @@ use self::points::{
     TransformBindingKind, collect_non_graph_parameters, collect_point_iteration_points,
     collect_point_objects, collect_visible_points, decode_line_midpoint_anchor_raw,
     decode_offset_anchor_raw, decode_parameter_controlled_anchor_raw,
-    decode_parameter_controlled_point, decode_point_constraint,
-    decode_parameter_rotation_anchor_raw, decode_parameter_rotation_binding,
-    decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,
-    decode_point_pair_translation_anchor_raw, decode_reflection_anchor_raw,
-    decode_regular_polygon_vertex_anchor_raw, decode_transform_binding,
-    decode_translated_point_anchor_raw, reflection_line_group_indices,
+    decode_parameter_controlled_point, decode_parameter_rotation_anchor_raw,
+    decode_parameter_rotation_binding, decode_point_constraint, decode_point_constraint_anchor,
+    decode_point_on_ray_anchor_raw, decode_point_pair_translation_anchor_raw,
+    decode_reflection_anchor_raw, decode_regular_polygon_vertex_anchor_raw,
+    decode_transform_binding, decode_translated_point_anchor_raw, reflection_line_group_indices,
     regular_polygon_iteration_step, remap_circle_bindings, remap_label_bindings,
     remap_line_bindings, remap_polygon_bindings, translation_point_pair_group_indices,
 };
 use self::shapes::{
-    collect_arc_boundary_shapes, collect_bound_line_shapes, collect_carried_iteration_lines,
+    collect_arc_boundary_fill_polygons, collect_arc_boundary_shapes, collect_bound_line_shapes,
     collect_carried_circle_iteration_families, collect_carried_iteration_circles,
-    collect_carried_iteration_polygons,
-    collect_carried_line_iteration_families,
-    collect_carried_polygon_edge_segment_groups, collect_carried_polygon_iteration_families,
-    collect_circle_shapes, collect_coordinate_traces, collect_derived_segments,
-    collect_iteration_shapes, collect_line_shapes, collect_polygon_shapes,
-    collect_raw_object_anchors, collect_reflected_circle_shapes, collect_reflected_line_shapes,
-    collect_reflected_polygon_shapes, collect_rotated_circle_shapes, collect_rotated_line_shapes,
-    collect_rotated_polygon_shapes, collect_rotational_iteration_lines,
-    collect_rotational_iteration_segment_groups, collect_scaled_line_shapes,
-    collect_segment_marker_shapes, collect_three_point_arc_shapes,
+    collect_carried_iteration_lines, collect_carried_iteration_polygons,
+    collect_carried_line_iteration_families, collect_carried_polygon_edge_segment_groups,
+    collect_carried_polygon_iteration_families, collect_circle_shapes, collect_coordinate_traces,
+    collect_derived_segments, collect_iteration_shapes, collect_line_shapes,
+    collect_polygon_shapes, collect_raw_object_anchors, collect_reflected_circle_shapes,
+    collect_reflected_line_shapes, collect_reflected_polygon_shapes, collect_rotated_circle_shapes,
+    collect_rotated_line_shapes, collect_rotated_polygon_shapes,
+    collect_rotational_iteration_lines, collect_rotational_iteration_segment_groups,
+    collect_scaled_line_shapes, collect_segment_marker_shapes, collect_three_point_arc_shapes,
     collect_transformed_circle_shapes, collect_transformed_polygon_shapes,
     collect_translated_line_shapes, collect_translated_polygon_shapes,
 };
@@ -344,6 +342,11 @@ fn collect_scene_shapes(
             .map(|(index, _)| index)?;
         (!iteration_polygon_indices.contains(&group_index)).then_some(polygon)
     })
+    .chain(collect_arc_boundary_fill_polygons(
+        file,
+        groups,
+        &analysis.raw_anchors,
+    ))
     .collect::<Vec<_>>();
     let circles = collect_circle_shapes(file, groups, &analysis.raw_anchors);
     let arcs = collect_three_point_arc_shapes(file, groups, &analysis.raw_anchors);
@@ -913,8 +916,10 @@ fn collect_validation_issue(
 
 fn validate_group_kind(group: &ObjectGroup) -> Result<()> {
     let kind = group.header.kind();
-    if matches!(kind, GroupKind::Unknown(20) | GroupKind::Unknown(71) | GroupKind::Unknown(122))
-        || is_supported_group_kind(kind)
+    if matches!(
+        kind,
+        GroupKind::Unknown(20) | GroupKind::Unknown(71) | GroupKind::Unknown(122)
+    ) || is_supported_group_kind(kind)
     {
         return Ok(());
     }
@@ -944,15 +949,7 @@ fn validate_action_button_payload(file: &GspFile, group: &ObjectGroup) -> Result
     let action_kind = (read_u16(payload, 12), read_u16(payload, 14));
     if matches!(
         action_kind,
-        (2, 0)
-            | (4, 0)
-            | (7, 0)
-            | (3, 1)
-            | (3, 3)
-            | (0, 7)
-            | (1, 7)
-            | (1, 3)
-            | (0, 3)
+        (2, 0) | (4, 0) | (7, 0) | (3, 1) | (3, 3) | (0, 7) | (1, 7) | (1, 3) | (0, 3)
     ) {
         return Ok(());
     }

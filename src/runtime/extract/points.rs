@@ -1,6 +1,6 @@
 use super::decode::{
-    decode_discrete_parameter_value, decode_label_name,
-    decode_parameter_control_value_for_group, find_indexed_path, is_parameter_control_group,
+    decode_discrete_parameter_value, decode_label_name, decode_parameter_control_value_for_group,
+    find_indexed_path, is_parameter_control_group,
 };
 use crate::format::{GspFile, ObjectGroup, PointRecord, decode_point_record, read_f64, read_u16};
 use crate::runtime::scene::{SceneParameter, TextLabel};
@@ -27,8 +27,7 @@ pub(super) use bindings::{
 };
 pub(super) use constraints::{
     RawPointConstraint, decode_parameter_controlled_point, decode_point_constraint,
-    decode_translated_point_constraint,
-    regular_polygon_angle_expr, regular_polygon_iteration_step,
+    decode_translated_point_constraint, regular_polygon_angle_expr, regular_polygon_iteration_step,
 };
 
 pub(super) fn collect_point_objects(

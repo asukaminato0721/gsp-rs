@@ -101,6 +101,17 @@ type SceneData = {
       };
     }>;
   }>;
+  iterationTables?: Array<{
+    x: number;
+    y: number;
+    exprLabel: string;
+    parameterName: string;
+    expr: any;
+    depth?: number;
+    depthParameterName?: string | null;
+    rows?: Array<{ index: number; value: number }>;
+    visible?: boolean;
+  }>;
   pointIterations?: Array<
     | {
         kind: "offset";
@@ -321,6 +332,7 @@ type ViewerSceneModule = {
       midIndex?: number | null;
       endIndex: number;
       reversed: boolean;
+      complement: boolean;
     },
   ) => Point[] | null;
   sampleCoordinateTracePoints: (
@@ -371,6 +383,7 @@ type ViewerRenderModule = {
   }>;
   findHitPoint: (env: ViewerEnv, screenX: number, screenY: number) => number | null;
   findHitLabel: (env: ViewerEnv, screenX: number, screenY: number) => number | null;
+  findHitIterationTable: (env: ViewerEnv, screenX: number, screenY: number) => number | null;
   findHitPolygon: (env: ViewerEnv, screenX: number, screenY: number) => number | null;
 };
 
@@ -382,10 +395,12 @@ type ViewerDragModule = {
     pointIndex: number | null,
     labelIndex: number | null,
     polygonIndex: number | null,
+    iterationTableIndex: number | null,
   ) => void;
   updateDraggedPoint: (env: ViewerEnv, world: Point) => void;
   updateDraggedLabel: (env: ViewerEnv, world: Point) => void;
   updateDraggedPolygon: (env: ViewerEnv, world: Point) => void;
+  updateDraggedIterationTable: (env: ViewerEnv, world: Point) => void;
   panFromPointerDelta: (env: ViewerEnv, position: Point) => void;
 };
 
@@ -393,6 +408,12 @@ type ViewerDynamicsModule = {
   buildParameterControls: (env: ViewerEnv) => void;
   evaluateExpr: (expr: any, x: number, parameters: Map<string, number>) => number | null;
   formatExpr: (expr: any, formatAxisNumber: (value: number) => string) => string;
+  parameterValueFromPoint: (scene: any, pointIndex: number) => number | null;
+  applyNormalizedParameterToPoint: (
+    point: any,
+    scene: any,
+    normalizedValue: number,
+  ) => void;
   refreshDerivedPoints: (env: ViewerEnv, scene: any) => void;
   refreshIterationGeometry: (env: ViewerEnv, scene: any, parameters: Map<string, number>) => void;
   refreshDynamicLabels: (env: ViewerEnv, scene: any) => void;

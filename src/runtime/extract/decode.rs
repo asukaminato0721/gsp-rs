@@ -111,10 +111,7 @@ pub(crate) fn decode_discrete_parameter_value(payload: &[u8]) -> Option<f64> {
     decode_continuous_parameter_value(payload)
 }
 
-fn parameter_group_drives_coordinate_value(
-    file: &GspFile,
-    target_ordinal: usize,
-) -> bool {
+fn parameter_group_drives_coordinate_value(file: &GspFile, target_ordinal: usize) -> bool {
     file.object_groups().into_iter().any(|group| {
         group.header.kind() == GroupKind::CoordinatePoint
             && find_indexed_path(file, &group).and_then(|path| path.refs.first().copied())

@@ -87,7 +87,8 @@ fn build_scene_point_for_group(
                     None,
                 )
             }),
-        crate::format::GroupKind::GraphCalibrationX | crate::format::GroupKind::GraphCalibrationY => {
+        crate::format::GroupKind::GraphCalibrationX
+        | crate::format::GroupKind::GraphCalibrationY => {
             anchors.get(index).cloned().flatten().map(|position| {
                 scene_point(
                     position,
@@ -104,26 +105,24 @@ fn build_scene_point_for_group(
         | crate::format::GroupKind::IntersectionPoint2
         | crate::format::GroupKind::CircleCircleIntersectionPoint1
         | crate::format::GroupKind::CircleCircleIntersectionPoint2
-        | crate::format::GroupKind::CoordinateTraceIntersectionPoint => scene_point_from_intersection(
-            index,
-            file,
-            groups,
-            anchors,
-            group_to_point_index,
-            visible,
-        ),
-        crate::format::GroupKind::Midpoint => scene_point_from_midpoint(
-            index,
-            file,
-            groups,
-            anchors,
-            group_to_point_index,
-            visible,
-        ),
+        | crate::format::GroupKind::CoordinateTraceIntersectionPoint => {
+            scene_point_from_intersection(
+                index,
+                file,
+                groups,
+                anchors,
+                group_to_point_index,
+                visible,
+            )
+        }
+        crate::format::GroupKind::Midpoint => {
+            scene_point_from_midpoint(index, file, groups, anchors, group_to_point_index, visible)
+        }
         crate::format::GroupKind::CartesianOffsetPoint
         | crate::format::GroupKind::PolarOffsetPoint => (|| {
             let constraint = decode_translated_point_constraint(file, group)?;
-            let origin_index = mapped_point_index(group_to_point_index, constraint.origin_group_index)?;
+            let origin_index =
+                mapped_point_index(group_to_point_index, constraint.origin_group_index)?;
             let position = anchors.get(index).cloned().flatten()?;
             Some(scene_point(
                 position,
@@ -138,20 +137,19 @@ fn build_scene_point_for_group(
                 None,
             ))
         })(),
-        crate::format::GroupKind::PointConstraint | crate::format::GroupKind::PathPoint => {
-            (|| {
-                let constraint = decode_point_constraint(file, groups, group, Some(anchors), graph)?;
-                scene_point_from_constraint(
-                    index,
-                    group_color(group),
-                    anchors,
-                    group_to_point_index,
-                    constraint,
-                    visible,
-                    kind != crate::format::GroupKind::PathPoint,
-                )
-            })()
-        }
+        crate::format::GroupKind::PointConstraint | crate::format::GroupKind::PathPoint => (|| {
+            let constraint = decode_point_constraint(file, groups, group, Some(anchors), graph)?;
+            scene_point_from_constraint(
+                index,
+                group_color(group),
+                anchors,
+                group_to_point_index,
+                constraint,
+                visible,
+                kind != crate::format::GroupKind::PathPoint,
+            )
+        })(
+        ),
         crate::format::GroupKind::ParameterControlledPoint => (|| {
             let parameter_point = decode_parameter_controlled_point(file, groups, group, anchors)?;
             scene_point_from_parameter_controlled(
@@ -171,8 +169,10 @@ fn build_scene_point_for_group(
         crate::format::GroupKind::CustomTransformPoint => (|| {
             let position = anchors.get(index).cloned().flatten()?;
             let binding = decode_custom_transform_binding(file, groups, group.ordinal)?;
-            let source_index = mapped_point_index(group_to_point_index, binding.source_group_index)?;
-            let origin_index = mapped_point_index(group_to_point_index, binding.origin_group_index)?;
+            let source_index =
+                mapped_point_index(group_to_point_index, binding.source_group_index)?;
+            let origin_index =
+                mapped_point_index(group_to_point_index, binding.origin_group_index)?;
             let axis_end_index =
                 mapped_point_index(group_to_point_index, binding.axis_end_group_index)?;
             Some(scene_point(
@@ -224,7 +224,8 @@ fn build_scene_point_for_group(
             let source_index = mapped_point_index(group_to_point_index, source_group_index)?;
             let vector_start_index =
                 mapped_point_index(group_to_point_index, vector_start_group_index)?;
-            let vector_end_index = mapped_point_index(group_to_point_index, vector_end_group_index)?;
+            let vector_end_index =
+                mapped_point_index(group_to_point_index, vector_end_group_index)?;
             Some(scene_point(
                 position,
                 group_color(group),
@@ -249,8 +250,10 @@ fn build_scene_point_for_group(
             (|| {
                 let binding = binding?;
                 let position = anchors.get(index).cloned().flatten()?;
-                let source_index = mapped_point_index(group_to_point_index, binding.source_group_index)?;
-                let center_index = mapped_point_index(group_to_point_index, binding.center_group_index)?;
+                let source_index =
+                    mapped_point_index(group_to_point_index, binding.source_group_index)?;
+                let center_index =
+                    mapped_point_index(group_to_point_index, binding.center_group_index)?;
                 Some(scene_point(
                     position,
                     group_color(group),
@@ -331,7 +334,8 @@ pub(crate) fn collect_visible_points(
                 .map(Option::is_some)
                 .collect::<Vec<_>>();
             if actual_included_groups == included_groups {
-                let final_group_to_point_index = build_group_to_point_index(&actual_included_groups);
+                let final_group_to_point_index =
+                    build_group_to_point_index(&actual_included_groups);
                 let points = groups
                     .iter()
                     .enumerate()
