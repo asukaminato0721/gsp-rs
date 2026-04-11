@@ -2,8 +2,8 @@ use std::collections::BTreeSet;
 
 use crate::format::{GspFile, ObjectGroup, PointRecord};
 use crate::runtime::geometry::{
-    lerp_point, point_on_circle_arc, point_on_three_point_arc,
-    reflect_across_line, rotate_around, scale_around,
+    lerp_point, point_on_circle_arc, point_on_three_point_arc, reflect_across_line, rotate_around,
+    scale_around,
 };
 use crate::runtime::scene::{
     CircularConstraint, LineConstraint, LineLikeKind, ScenePoint, ScenePointBinding,
@@ -32,12 +32,13 @@ pub(super) fn collect_point_traces(
             let path = find_indexed_path(file, group)?;
             let target_group_index = path.refs.first()?.checked_sub(1)?;
             let target_point_index = (*group_to_point_index.get(target_group_index)?)?;
-            let (driver_point_index, driver_group_index) = path.refs.iter().find_map(|ordinal| {
-                let group_index = ordinal.checked_sub(1)?;
-                let point_index = (*group_to_point_index.get(group_index)?)?;
-                let point = visible_points.get(point_index)?;
-                point_accepts_trace_parameter(point).then_some((point_index, group_index))
-            })?;
+            let (driver_point_index, driver_group_index) =
+                path.refs.iter().find_map(|ordinal| {
+                    let group_index = ordinal.checked_sub(1)?;
+                    let point_index = (*group_to_point_index.get(group_index)?)?;
+                    let point = visible_points.get(point_index)?;
+                    point_accepts_trace_parameter(point).then_some((point_index, group_index))
+                })?;
             let payload = group
                 .records
                 .iter()
@@ -225,13 +226,13 @@ fn resolve_trace_point(
             let ratio_denominator =
                 resolve_trace_point(points, *ratio_denominator_index, visiting)?;
             let ratio_numerator = resolve_trace_point(points, *ratio_numerator_index, visiting)?;
-            let denominator = (ratio_denominator.x - ratio_origin.x)
-                .hypot(ratio_denominator.y - ratio_origin.y);
+            let denominator =
+                (ratio_denominator.x - ratio_origin.x).hypot(ratio_denominator.y - ratio_origin.y);
             if denominator <= 1e-9 {
                 return None;
             }
-            let numerator = (ratio_numerator.x - ratio_origin.x)
-                .hypot(ratio_numerator.y - ratio_origin.y);
+            let numerator =
+                (ratio_numerator.x - ratio_origin.x).hypot(ratio_numerator.y - ratio_origin.y);
             Some(scale_around(&source, &center, numerator / denominator))
         }
         Some(ScenePointBinding::Midpoint {
@@ -898,8 +899,7 @@ fn choose_trace_candidate(
         return candidates
             .iter()
             .min_by(|left, right| {
-                let left_distance =
-                    (left.x - reference.x).powi(2) + (left.y - reference.y).powi(2);
+                let left_distance = (left.x - reference.x).powi(2) + (left.y - reference.y).powi(2);
                 let right_distance =
                     (right.x - reference.x).powi(2) + (right.y - reference.y).powi(2);
                 left_distance.total_cmp(&right_distance)

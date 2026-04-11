@@ -13,9 +13,8 @@ use crate::runtime::functions::{
     decode_function_expr, decode_function_plot_descriptor, evaluate_expr_with_parameters,
 };
 use crate::runtime::geometry::{
-    GraphTransform, lerp_point, point_on_circle_arc,
-    point_on_three_point_arc, reflect_across_line, rotate_around, three_point_arc_geometry,
-    to_raw_from_world, to_world,
+    GraphTransform, lerp_point, point_on_circle_arc, point_on_three_point_arc, reflect_across_line,
+    rotate_around, three_point_arc_geometry, to_raw_from_world, to_world,
 };
 
 const PX_PER_CM: f64 = 37.79527559055118;
@@ -1189,15 +1188,16 @@ pub(crate) fn decode_ratio_scale_anchor_raw(
     let ratio_origin = anchors.get(path.refs[2].checked_sub(1)?)?.clone()?;
     let ratio_denominator = anchors.get(path.refs[3].checked_sub(1)?)?.clone()?;
     let ratio_numerator = anchors.get(path.refs[4].checked_sub(1)?)?.clone()?;
-    let denominator = (ratio_denominator.x - ratio_origin.x)
-        .hypot(ratio_denominator.y - ratio_origin.y);
+    let denominator =
+        (ratio_denominator.x - ratio_origin.x).hypot(ratio_denominator.y - ratio_origin.y);
     if denominator <= 1e-9 {
         return None;
     }
-    let numerator =
-        (ratio_numerator.x - ratio_origin.x).hypot(ratio_numerator.y - ratio_origin.y);
+    let numerator = (ratio_numerator.x - ratio_origin.x).hypot(ratio_numerator.y - ratio_origin.y);
     let factor = numerator / denominator;
-    Some(crate::runtime::geometry::scale_around(&source, &center, factor))
+    Some(crate::runtime::geometry::scale_around(
+        &source, &center, factor,
+    ))
 }
 
 pub(crate) fn decode_reflection_anchor_raw(

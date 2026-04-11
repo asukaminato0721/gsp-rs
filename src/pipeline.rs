@@ -3,7 +3,7 @@ use crate::export::html::{
 };
 use crate::gsp;
 use crate::runtime::build_scene_checked;
-use crate::runtime::render_unsupported_payload_log;
+use crate::runtime::render_payload_log;
 use std::fs;
 use std::path::Path;
 
@@ -16,14 +16,14 @@ pub fn compile_file_to_html(
     let data = fs::read(gsp_path)
         .map_err(|error| format!("failed to read {}: {error}", gsp_path.display()))?;
     match compile_bytes_to_html_file(&data, html_path, width, height) {
-        Ok(()) => Ok(()),
+        Ok(()) => {
+            write_payload_log(gsp_path, &data)?;
+            Ok(())
+        }
         Err(error) => {
-            let log_path = write_unsupported_payload_log(gsp_path, &data, &error)?;
+            let log_path = write_payload_log(gsp_path, &data)?;
             if let Some(log_path) = log_path {
-                Err(format!(
-                    "{error}\nunsupported payload log: {}",
-                    log_path.display()
-                ))
+                Err(format!("{error}\npayload log: {}", log_path.display()))
             } else {
                 Err(error)
             }
@@ -75,18 +75,9 @@ pub fn compile_bytes_to_scene_json(data: &[u8], width: u32, height: u32) -> Resu
     Ok(render_scene_json(&scene, width, height, true))
 }
 
-fn write_unsupported_payload_log(
-    gsp_path: &Path,
-    data: &[u8],
-    error: &str,
-) -> Result<Option<std::path::PathBuf>, String> {
-    if !error.contains("unsupported payload") {
-        return Ok(None);
-    }
+fn write_payload_log(gsp_path: &Path, data: &[u8]) -> Result<Option<std::path::PathBuf>, String> {
     let file = gsp::parse(data)?;
-    let Some(log_body) = render_unsupported_payload_log(gsp_path, &file) else {
-        return Ok(None);
-    };
+    let log_body = render_payload_log(gsp_path, &file);
     let log_path = gsp_path.with_extension("log");
     fs::write(&log_path, log_body)
         .map_err(|write_error| format!("failed to write {}: {write_error}", log_path.display()))?;
@@ -119,8 +110,13 @@ fn is_document_layout(file: &crate::format::GspFile, scene: &crate::runtime::sce
 
 #[cfg(test)]
 mod tests {
-    use super::{compile_bytes_to_html_document, compile_bytes_to_scene_json};
+    use super::{
+        compile_bytes_to_html_document, compile_bytes_to_scene_json, compile_file_to_html,
+    };
     use serde_json::Value;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     const FIXTURE_WIDTH: u32 = 800;
     const FIXTURE_HEIGHT: u32 = 600;
@@ -151,6 +147,43 @@ mod tests {
         assert!(html.contains("application/json"));
         assert!(html.contains("toggle-debug"));
         assert!(html.contains("window.gspDebug"));
+    }
+
+    #[test]
+    fn compiles_fixture_and_also_writes_payload_log() {
+        let temp_root = unique_test_dir("payload-log-success");
+        fs::create_dir_all(&temp_root).expect("temporary directory should be creatable");
+
+        let gsp_path = temp_root.join("point.gsp");
+        let html_path = temp_root.join("point.html");
+        let log_path = temp_root.join("point.log");
+        fs::write(
+            &gsp_path,
+            include_bytes!("../tests/fixtures/gsp/static/point.gsp"),
+        )
+        .expect("fixture gsp should be writable");
+
+        compile_file_to_html(&gsp_path, &html_path, FIXTURE_WIDTH, FIXTURE_HEIGHT)
+            .expect("fixture should compile to html");
+
+        assert!(html_path.exists(), "expected html output to be written");
+        assert!(log_path.exists(), "expected payload log to be written");
+
+        let log = fs::read_to_string(&log_path).expect("payload log should be readable");
+        assert!(log.contains("载荷说明"));
+        assert!(log.contains("问题数量: 0"));
+        assert!(log.contains("构造步骤"));
+        assert!(log.contains("1. #1 = 自由点。"));
+
+        let _ = fs::remove_dir_all(&temp_root);
+    }
+
+    fn unique_test_dir(prefix: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time should move forward")
+            .as_nanos();
+        std::env::temp_dir().join(format!("gsp-rs-{prefix}-{unique}"))
     }
 
     #[test]

@@ -505,10 +505,12 @@ impl PointConstraintJson {
                 end_index: *end_index,
                 t: *t,
             }),
-            ScenePointConstraint::LineIntersection { left, right } => Some(Self::LineIntersection {
-                left: LineConstraintJson::from_constraint(left),
-                right: LineConstraintJson::from_constraint(right),
-            }),
+            ScenePointConstraint::LineIntersection { left, right } => {
+                Some(Self::LineIntersection {
+                    left: LineConstraintJson::from_constraint(left),
+                    right: LineConstraintJson::from_constraint(right),
+                })
+            }
             ScenePointConstraint::LineTraceIntersection {
                 line,
                 point_index,

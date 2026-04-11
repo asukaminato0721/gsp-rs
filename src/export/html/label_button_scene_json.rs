@@ -367,7 +367,9 @@ enum LabelBindingJson {
 impl LabelBindingJson {
     fn from_binding(binding: &TextLabelBinding) -> Self {
         match binding {
-            TextLabelBinding::ParameterValue { name } => Self::ParameterValue { name: name.clone() },
+            TextLabelBinding::ParameterValue { name } => {
+                Self::ParameterValue { name: name.clone() }
+            }
             TextLabelBinding::FunctionLabel {
                 function_key,
                 derivative,

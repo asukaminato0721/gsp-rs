@@ -1,13 +1,52 @@
-use super::build_scene;
+use super::{build_scene, render_payload_log};
 use crate::format::GspFile;
 use crate::runtime::scene::{
     LabelIterationFamily, LineBinding, LineConstraint, PointIterationFamily, Scene,
     ScenePointBinding, ScenePointConstraint, TextLabelBinding,
 };
+use std::path::Path;
 
 fn fixture_scene(data: &[u8]) -> Scene {
     let file = GspFile::parse(data).expect("fixture parses");
     build_scene(&file)
+}
+
+fn fixture_log(data: &[u8], source_path: &str) -> String {
+    let file = GspFile::parse(data).expect("fixture parses");
+    render_payload_log(Path::new(source_path), &file)
+}
+
+#[test]
+fn renders_unsupported_payload_log_in_natural_chinese() {
+    let log = fixture_log(
+        include_bytes!("../../../tests/fixtures/14.gsp"),
+        "tests/fixtures/14.gsp",
+    );
+
+    assert!(log.contains("载荷说明"));
+    assert!(log.contains("问题列表"));
+    assert!(log.contains("对象 #19 暂时无法导出，因为对象类型 86 还没有实现。"));
+    assert!(log.contains("相关对象："));
+    assert!(log.contains("#19 = 未知对象，类型是 86，按载荷顺序引用 #18、#16、#6。"));
+    assert!(log.contains("#18 = 将 点 #10 按向量 #1 -> #10 平移得到的对象"));
+    assert!(log.contains("#15 = 过 #10 且垂直于 线段 #14 的直线。"));
+    assert!(log.contains("#1 = 自由点，名称“O”。"));
+    assert!(log.contains("原始载荷："));
+    assert!(log.contains("构造步骤"));
+    assert!(log.contains("1. #1 = 自由点，名称“O”。"));
+}
+
+#[test]
+fn renders_payload_log_for_supported_fixture_too() {
+    let log = fixture_log(
+        include_bytes!("../../../tests/fixtures/gsp/static/point.gsp"),
+        "tests/fixtures/gsp/static/point.gsp",
+    );
+
+    assert!(log.contains("问题数量: 0"));
+    assert!(log.contains("未发现不支持的载荷。"));
+    assert!(log.contains("构造步骤"));
+    assert!(log.contains("1. #1 = 自由点。"));
 }
 
 #[test]
@@ -354,7 +393,9 @@ fn preserves_custom_transform_point_interactivity() {
 
 #[test]
 fn preserves_polygon_in_poly_gsp() {
-    let scene = fixture_scene(include_bytes!("../../../tests/fixtures/gsp/static/poly.gsp"));
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/poly.gsp"
+    ));
 
     assert_eq!(scene.polygons.len(), 1, "expected a single polygon");
     assert_eq!(
@@ -493,7 +534,9 @@ fn preserves_segment_parameter_label_in_segment_point_value_gsp() {
 
 #[test]
 fn preserves_line_gsp() {
-    let scene = fixture_scene(include_bytes!("../../../tests/fixtures/gsp/static/line.gsp"));
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/line.gsp"
+    ));
 
     assert_eq!(scene.lines.len(), 1, "expected one line");
     assert_eq!(scene.points.len(), 2, "expected two defining points");
@@ -821,7 +864,9 @@ fn preserves_arc_on_circle_gsp() {
 
 #[test]
 fn preserves_point_on_circle_arc_gsp() {
-    let scene = fixture_scene(include_bytes!("../../../tests/fixtures/gsp/point_on_arc1.gsp"));
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/point_on_arc1.gsp"
+    ));
 
     assert_eq!(scene.arcs.len(), 1, "expected one arc on the source circle");
     assert_eq!(
@@ -1003,7 +1048,9 @@ fn preserves_circle_inner_fill_gsp() {
 
 #[test]
 fn preserves_circle_system_bindings_for_inrm_fixture() {
-    let scene = fixture_scene(include_bytes!("../../../tests/fixtures/未实现/圆系(inRm).gsp"));
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/未实现/圆系(inRm).gsp"
+    ));
 
     assert_eq!(
         scene.circles.len(),
@@ -1178,7 +1225,9 @@ fn preserves_parameter_controlled_point_on_circle_gsp() {
 
 #[test]
 fn preserves_coordinate_point_in_cood_gsp() {
-    let scene = fixture_scene(include_bytes!("../../../tests/fixtures/gsp/static/cood.gsp"));
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/cood.gsp"
+    ));
 
     assert!(scene.graph_mode, "expected graph scene");
     assert_eq!(scene.parameters.len(), 1, "expected t parameter");
@@ -1235,7 +1284,9 @@ fn preserves_coordinate_trace_in_cood_trace_gsp() {
 
 #[test]
 fn does_not_synthesize_graph_calibration_labels_in_cood_intersection_gsp() {
-    let scene = fixture_scene(include_bytes!("../../../tests/fixtures/gsp/insection/cood.gsp"));
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/insection/cood.gsp"
+    ));
 
     assert!(
         scene
@@ -2263,7 +2314,9 @@ fn preserves_regular_polygon_iteration_without_carried_duplicates() {
 
 #[test]
 fn preserves_scaled_point_and_single_parameter_label_in_scale_gsp() {
-    let scene = fixture_scene(include_bytes!("../../../tests/fixtures/gsp/static/scale.gsp"));
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/scale.gsp"
+    ));
 
     assert_eq!(
         scene.circles.len(),

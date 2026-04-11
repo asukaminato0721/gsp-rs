@@ -23,6 +23,7 @@ use crate::format::{
     GroupKind, GspFile, ObjectGroup, PointRecord, Record, collect_strings, decode_c_string,
     decode_indexed_path, decode_point_record, read_f64, read_u16, read_u32, record_name,
 };
+use crate::runtime::payload_consts::{RECORD_FUNCTION_PLOT_DESCRIPTOR, RECORD_POINT_F64_PAIR};
 use crate::util::{hex_bytes, truncate_text};
 
 use self::graph::{
@@ -44,7 +45,8 @@ use self::points::{
     decode_parameter_rotation_binding, decode_point_constraint, decode_point_constraint_anchor,
     decode_point_on_ray_anchor_raw, decode_point_pair_translation_anchor_raw,
     decode_reflection_anchor_raw, decode_regular_polygon_vertex_anchor_raw,
-    decode_transform_binding, decode_translated_point_anchor_raw, reflection_line_group_indices,
+    decode_transform_binding, decode_translated_point_anchor_raw,
+    decode_translated_point_constraint, reflection_line_group_indices,
     regular_polygon_iteration_step, remap_circle_bindings, remap_label_bindings,
     remap_line_bindings, remap_polygon_bindings, translation_point_pair_group_indices,
 };
@@ -67,7 +69,7 @@ use self::trace::collect_point_traces;
 use super::functions::{
     collect_function_plot_domain, collect_function_plots, collect_scene_functions,
     collect_scene_parameters, function_uses_pi_scale, synthesize_function_axes,
-    synthesize_function_labels,
+    synthesize_function_labels, try_decode_function_expr, try_decode_function_plot_descriptor,
 };
 use super::geometry::{Bounds, GraphTransform, distance_world};
 use super::scene::{
@@ -77,6 +79,8 @@ use super::scene::{
 
 pub(crate) use self::decode::{
     decode_parameter_control_value_for_group, find_indexed_path, is_circle_group_kind,
+    try_decode_group_label_text, try_decode_group_rich_text, try_decode_link_button_url,
+    try_find_indexed_path,
 };
 
 #[derive(Debug, Clone)]
@@ -829,31 +833,848 @@ fn validate_scene_payloads(file: &GspFile, groups: &[ObjectGroup]) -> Result<()>
     )
 }
 
-pub(crate) fn render_unsupported_payload_log(source_path: &Path, file: &GspFile) -> Option<String> {
+pub(crate) fn render_payload_log(source_path: &Path, file: &GspFile) -> String {
     let groups = file.object_groups();
     let issues = collect_unsupported_payload_issues(file, &groups);
-    if issues.is_empty() {
-        return None;
-    }
 
     let mut output = String::new();
-    let _ = writeln!(output, "Unsupported payload log");
-    let _ = writeln!(output, "file: {}", source_path.display());
-    let _ = writeln!(output, "issues: {}", issues.len());
-    let _ = writeln!(output, "object_groups: {}", groups.len());
+    let _ = writeln!(output, "载荷说明");
+    let _ = writeln!(output, "文件: {}", source_path.display());
+    let _ = writeln!(output, "问题数量: {}", issues.len());
+    let _ = writeln!(output, "对象组数量: {}", groups.len());
     let _ = writeln!(output);
-    let _ = writeln!(output, "Issues");
+    let _ = writeln!(output, "问题列表");
 
-    for (index, issue) in issues.iter().enumerate() {
-        let _ = writeln!(output, "{}. {}", index + 1, issue.summary);
-        for ordinal in &issue.group_ordinals {
-            if let Some(group) = groups.get(ordinal.saturating_sub(1)) {
-                write_group_detail(&mut output, file, group);
+    if issues.is_empty() {
+        let _ = writeln!(output, "未发现不支持的载荷。");
+    } else {
+        for (index, issue) in issues.iter().enumerate() {
+            let _ = writeln!(
+                output,
+                "{}. {}",
+                index + 1,
+                describe_issue_in_chinese(&issue.summary, &issue.group_ordinals)
+            );
+            let related_ordinals =
+                collect_related_group_ordinals(file, &groups, &issue.group_ordinals);
+            if !related_ordinals.is_empty() {
+                let _ = writeln!(output, "   相关对象：");
+                for (related_index, ordinal) in related_ordinals.iter().enumerate() {
+                    if let Some(group) = groups.get(ordinal.saturating_sub(1)) {
+                        let _ = writeln!(
+                            output,
+                            "   {}. {}",
+                            related_index + 1,
+                            describe_group_in_chinese(file, &groups, group)
+                        );
+                    }
+                }
+            }
+            let _ = writeln!(output, "   原始载荷：");
+            for ordinal in &issue.group_ordinals {
+                if let Some(group) = groups.get(ordinal.saturating_sub(1)) {
+                    write_group_detail(&mut output, file, group, "   ");
+                }
             }
         }
     }
 
-    Some(output)
+    let _ = writeln!(output);
+    let _ = writeln!(output, "构造步骤");
+    for (index, group) in groups.iter().enumerate() {
+        let _ = writeln!(
+            output,
+            "{}. {}",
+            index + 1,
+            describe_group_in_chinese(file, &groups, group)
+        );
+    }
+
+    output
+}
+
+fn collect_related_group_ordinals(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    root_ordinals: &[usize],
+) -> Vec<usize> {
+    let mut visited = BTreeSet::new();
+    let mut ordered = Vec::new();
+    for ordinal in root_ordinals {
+        visit_group_dependencies(file, groups, *ordinal, &mut visited, &mut ordered);
+    }
+    ordered
+}
+
+fn visit_group_dependencies(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    ordinal: usize,
+    visited: &mut BTreeSet<usize>,
+    ordered: &mut Vec<usize>,
+) {
+    if ordinal == 0 || !visited.insert(ordinal) {
+        return;
+    }
+    if let Some(group) = groups.get(ordinal.saturating_sub(1)) {
+        ordered.push(ordinal);
+        if let Some(path) = find_indexed_path(file, group) {
+            for ref_ordinal in path.refs {
+                visit_group_dependencies(file, groups, ref_ordinal, visited, ordered);
+            }
+        }
+    }
+}
+
+fn describe_issue_in_chinese(summary: &str, group_ordinals: &[usize]) -> String {
+    let target = group_ordinals
+        .first()
+        .map(|ordinal| format!("对象 #{}", ordinal))
+        .unwrap_or_else(|| "当前对象".to_string());
+
+    if let Some(rest) = summary.strip_prefix("unsupported payload: unknown object kind ")
+        && let Some((raw, _)) = rest.split_once(" in ")
+    {
+        return format!("{target} 暂时无法导出，因为对象类型 {raw} 还没有实现。");
+    }
+    if let Some(rest) =
+        summary.strip_prefix("unsupported payload: action button payload too short (")
+        && let Some((bytes, _)) = rest.split_once(" bytes) in ")
+    {
+        return format!("{target} 暂时无法导出，因为按钮载荷只有 {bytes} 字节，长度不足。");
+    }
+    if let Some(rest) =
+        summary.strip_prefix("unsupported payload: action button uses unsupported action kind (")
+        && let Some((action_kind, _)) = rest.split_once(") in ")
+    {
+        return format!("{target} 暂时无法导出，因为按钮动作类型 ({action_kind}) 目前还不支持。");
+    }
+    if let Some(rest) = summary.strip_prefix("unsupported payload: malformed image payload in ")
+        && let Some((_, sizes)) = rest.split_once(" (")
+    {
+        let sizes = sizes.trim_end_matches(')');
+        return format!("{target} 暂时无法导出，因为图片载荷结构不完整（{sizes}）。");
+    }
+    if let Some(rest) = summary.strip_prefix("unsupported payload: non-positive image dimensions (")
+        && let Some((dimensions, _)) = rest.split_once(") in ")
+    {
+        return format!("{target} 暂时无法导出，因为图片尺寸 {dimensions} 无效。");
+    }
+    if summary.starts_with("unsupported payload: non-finite image transform in ") {
+        return format!("{target} 暂时无法导出，因为图片变换参数不是有限数值。");
+    }
+    if summary.starts_with("unsupported payload: non-axis-aligned image transform in ") {
+        return format!("{target} 暂时无法导出，因为图片变换不是轴对齐矩形。");
+    }
+    if summary.starts_with("unsupported payload: function plot is missing indexed path in ") {
+        return format!("{target} 暂时无法导出，因为函数图像缺少索引路径。");
+    }
+    if let Some(rest) = summary.strip_prefix("unsupported payload: function plot path has ")
+        && let Some((refs, _)) = rest.split_once(" refs in ")
+    {
+        return format!("{target} 暂时无法导出，因为函数图像路径只有 {refs} 个引用。");
+    }
+    if let Some(rest) = summary
+        .strip_prefix("unsupported payload: function plot references missing definition group #")
+        && let Some((definition_ordinal, _)) = rest.split_once(" from ")
+    {
+        return format!(
+            "{target} 暂时无法导出，因为它引用的函数定义对象组 #{definition_ordinal} 不存在。"
+        );
+    }
+    if summary.starts_with("unsupported payload: invalid function plot descriptor in ") {
+        return format!("{target} 暂时无法导出，因为函数图像描述符无效。");
+    }
+    if summary.starts_with("unsupported payload: invalid function expression in ") {
+        return format!("{target} 暂时无法导出，因为关联的函数表达式无法解析。");
+    }
+    if let Some(rest) = summary.strip_prefix("unsupported payload: missing ")
+        && let Some((record_label, _)) = rest.split_once(" (record ")
+    {
+        return format!("{target} 暂时无法导出，因为缺少“{record_label}”记录。");
+    }
+
+    format!("{target} 暂时无法导出。原始诊断：{summary}")
+}
+
+fn describe_group_in_chinese(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> String {
+    let refs = find_indexed_path(file, group)
+        .map(|path| path.refs)
+        .unwrap_or_default();
+    let mut detail = match group.header.kind() {
+        GroupKind::Point => describe_point_group_in_chinese(file, &refs, group),
+        GroupKind::Midpoint => refs
+            .first()
+            .map(|host| format!("{} 的中点", format_ref(*host)))
+            .unwrap_or_else(|| "中点对象".to_string()),
+        GroupKind::Segment => describe_pair_relation(&refs, "线段", "连接"),
+        GroupKind::Circle => {
+            if refs.len() == 2 {
+                format!(
+                    "圆，圆心是 {}，并且经过 {}",
+                    format_ref(refs[0]),
+                    format_ref(refs[1])
+                )
+            } else {
+                describe_generic_group(group, &refs)
+            }
+        }
+        GroupKind::CircleCenterRadius => {
+            if refs.len() == 2 {
+                format!(
+                    "圆，圆心是 {}，半径取自 {}",
+                    format_ref(refs[0]),
+                    format_ref_with_kind(groups, refs[1])
+                )
+            } else {
+                describe_generic_group(group, &refs)
+            }
+        }
+        GroupKind::Line => describe_pair_relation(&refs, "直线", "经过"),
+        GroupKind::Ray => {
+            if refs.len() == 2 {
+                format!(
+                    "射线，起点是 {}，方向经过 {}",
+                    format_ref(refs[0]),
+                    format_ref(refs[1])
+                )
+            } else {
+                describe_generic_group(group, &refs)
+            }
+        }
+        GroupKind::LineKind5 => {
+            if refs.len() == 2 {
+                format!(
+                    "过 {} 且垂直于 {} 的直线",
+                    format_ref(refs[0]),
+                    format_ref_with_kind(groups, refs[1])
+                )
+            } else {
+                describe_generic_group(group, &refs)
+            }
+        }
+        GroupKind::LineKind6 => {
+            if refs.len() == 2 {
+                format!(
+                    "过 {} 且平行于 {} 的直线",
+                    format_ref(refs[0]),
+                    format_ref_with_kind(groups, refs[1])
+                )
+            } else {
+                describe_generic_group(group, &refs)
+            }
+        }
+        GroupKind::LineKind7 => {
+            if refs.len() == 3 {
+                format!(
+                    "以 {} 为顶点、夹在 {} 和 {} 之间的角平分线",
+                    format_ref(refs[1]),
+                    format_ref(refs[0]),
+                    format_ref(refs[2])
+                )
+            } else {
+                describe_generic_group(group, &refs)
+            }
+        }
+        GroupKind::Polygon => {
+            if refs.is_empty() {
+                "多边形".to_string()
+            } else {
+                format!("多边形，顶点顺序是 {}", format_ref_list(&refs))
+            }
+        }
+        GroupKind::LinearIntersectionPoint => describe_intersection_point(&refs, None),
+        GroupKind::IntersectionPoint1 => describe_intersection_point(&refs, Some("第一个")),
+        GroupKind::IntersectionPoint2 => describe_intersection_point(&refs, Some("第二个")),
+        GroupKind::CircleCircleIntersectionPoint1 => {
+            describe_circle_intersection_point(&refs, Some("第一个"))
+        }
+        GroupKind::CircleCircleIntersectionPoint2 => {
+            describe_circle_intersection_point(&refs, Some("第二个"))
+        }
+        GroupKind::PointConstraint | GroupKind::PathPoint => refs
+            .first()
+            .map(|host| format!("位于 {} 上的动点", format_ref_with_kind(groups, *host)))
+            .unwrap_or_else(|| "受约束的动点".to_string()),
+        GroupKind::Translation => describe_translation_group_in_chinese(groups, &refs),
+        GroupKind::CartesianOffsetPoint | GroupKind::PolarOffsetPoint => {
+            describe_offset_point_in_chinese(file, group, &refs)
+        }
+        GroupKind::Rotation => describe_rotation_group_in_chinese(file, groups, group),
+        GroupKind::ParameterRotation => {
+            describe_parameter_rotation_group_in_chinese(file, groups, group)
+        }
+        GroupKind::Scale => describe_scale_group_in_chinese(file, groups, group),
+        GroupKind::RatioScale => {
+            if refs.len() >= 5 {
+                format!(
+                    "将 {} 以 {} 为中心，按 {} 到 {} 与 {} 到 {} 的长度比缩放得到的对象",
+                    format_ref_with_kind(groups, refs[0]),
+                    format_ref(refs[1]),
+                    format_ref(refs[2]),
+                    format_ref(refs[4]),
+                    format_ref(refs[2]),
+                    format_ref(refs[3])
+                )
+            } else {
+                describe_generic_group(group, &refs)
+            }
+        }
+        GroupKind::Reflection => {
+            if refs.len() >= 2 {
+                format!(
+                    "把 {} 关于 {} 镜像得到的对象",
+                    format_ref_with_kind(groups, refs[0]),
+                    format_ref_with_kind(groups, refs[1])
+                )
+            } else {
+                describe_generic_group(group, &refs)
+            }
+        }
+        GroupKind::CircleInterior => refs
+            .first()
+            .map(|host| format!("以 {} 为边界的圆面", format_ref_with_kind(groups, *host)))
+            .unwrap_or_else(|| "圆面".to_string()),
+        GroupKind::ActionButton => describe_action_button_group_in_chinese(file, group, &refs),
+        GroupKind::FunctionPlot => describe_function_plot_group_in_chinese(groups, &refs),
+        GroupKind::ArcOnCircle => {
+            if refs.len() == 3 {
+                format!(
+                    "在 {} 上，从 {} 到 {} 的圆弧",
+                    format_ref_with_kind(groups, refs[0]),
+                    format_ref(refs[1]),
+                    format_ref(refs[2])
+                )
+            } else {
+                describe_generic_group(group, &refs)
+            }
+        }
+        GroupKind::CenterArc => {
+            if refs.len() == 3 {
+                format!(
+                    "以 {} 为圆心、从 {} 到 {} 的圆弧",
+                    format_ref(refs[0]),
+                    format_ref(refs[1]),
+                    format_ref(refs[2])
+                )
+            } else {
+                describe_generic_group(group, &refs)
+            }
+        }
+        GroupKind::ThreePointArc => {
+            if refs.len() == 3 {
+                format!(
+                    "经过 {}、{}、{} 的三点圆弧",
+                    format_ref(refs[0]),
+                    format_ref(refs[1]),
+                    format_ref(refs[2])
+                )
+            } else {
+                describe_generic_group(group, &refs)
+            }
+        }
+        GroupKind::SectorBoundary => {
+            if refs.len() == 3 {
+                format!(
+                    "由 {}、{}、{} 定义的扇形边界",
+                    format_ref(refs[0]),
+                    format_ref(refs[1]),
+                    format_ref(refs[2])
+                )
+            } else {
+                describe_generic_group(group, &refs)
+            }
+        }
+        GroupKind::CircularSegmentBoundary => {
+            if refs.len() == 3 {
+                format!(
+                    "由 {}、{}、{} 定义的弓形边界",
+                    format_ref(refs[0]),
+                    format_ref(refs[1]),
+                    format_ref(refs[2])
+                )
+            } else {
+                describe_generic_group(group, &refs)
+            }
+        }
+        GroupKind::CoordinatePoint
+        | GroupKind::CoordinateExpressionPoint
+        | GroupKind::CoordinateExpressionPointAlt
+        | GroupKind::Unknown(20) => {
+            if refs.is_empty() {
+                "坐标点".to_string()
+            } else {
+                format!("坐标点，依赖 {}", format_ref_list(&refs))
+            }
+        }
+        GroupKind::PointTrace => refs
+            .first()
+            .map(|host| format!("{} 的轨迹", format_ref_with_kind(groups, *host)))
+            .unwrap_or_else(|| "点轨迹".to_string()),
+        GroupKind::CoordinateTrace => refs
+            .first()
+            .map(|host| format!("{} 的坐标轨迹", format_ref_with_kind(groups, *host)))
+            .unwrap_or_else(|| "坐标轨迹".to_string()),
+        GroupKind::CoordinateTraceIntersectionPoint => {
+            if refs.len() >= 2 {
+                format!(
+                    "{} 和 {} 的交点",
+                    format_ref_with_kind(groups, refs[0]),
+                    format_ref_with_kind(groups, refs[1])
+                )
+            } else {
+                "轨迹交点".to_string()
+            }
+        }
+        GroupKind::AngleMarker => {
+            if refs.len() == 3 {
+                format!(
+                    "角标记，顶点是 {}，两边经过 {} 和 {}",
+                    format_ref(refs[1]),
+                    format_ref(refs[0]),
+                    format_ref(refs[2])
+                )
+            } else {
+                describe_generic_group(group, &refs)
+            }
+        }
+        GroupKind::SegmentMarker => refs
+            .first()
+            .map(|host| {
+                format!(
+                    "用于标记 {} 的线段记号",
+                    format_ref_with_kind(groups, *host)
+                )
+            })
+            .unwrap_or_else(|| "线段记号".to_string()),
+        _ => describe_generic_group(group, &refs),
+    };
+
+    let mut annotations = Vec::new();
+    if let Some(name) = self::decode::decode_label_name_raw(file, group) {
+        annotations.push(format!("名称“{}”", truncate_text(name.trim(), 48)));
+    }
+    match try_decode_group_label_text(file, group) {
+        Ok(Some(text)) => {
+            let text = text.trim();
+            if !text.is_empty() {
+                annotations.push(format!("文字“{}”", truncate_text(text, 48)));
+            }
+        }
+        Ok(None) => {}
+        Err(error) => annotations.push(format!("文字解析失败（{}）", error)),
+    }
+    match try_decode_link_button_url(file, group) {
+        Ok(Some(url)) => annotations.push(format!("链接“{}”", truncate_text(url.trim(), 64))),
+        Ok(None) => {}
+        Err(error) => annotations.push(format!("链接解析失败（{}）", error)),
+    }
+    if !annotations.is_empty() {
+        detail.push_str(&format!("，{}", annotations.join("，")));
+    }
+
+    format!("#{} = {}。", group.ordinal, detail)
+}
+
+fn describe_point_group_in_chinese(file: &GspFile, refs: &[usize], group: &ObjectGroup) -> String {
+    let has_explicit_point = group
+        .records
+        .iter()
+        .any(|record| record.record_type == RECORD_POINT_F64_PAIR);
+    let has_image_payload = [0x090c, 0x08a8, 0x1f44].into_iter().all(|record_type| {
+        group
+            .records
+            .iter()
+            .any(|record| record.record_type == record_type)
+    });
+    if has_image_payload {
+        return "图片锚点".to_string();
+    }
+    if self::decode::is_parameter_control_group(group) {
+        return "参数控制点".to_string();
+    }
+    if has_explicit_point && refs.is_empty() {
+        return "自由点".to_string();
+    }
+    if refs.is_empty() {
+        return "点".to_string();
+    }
+    let point = group
+        .records
+        .iter()
+        .find(|record| record.record_type == RECORD_POINT_F64_PAIR)
+        .and_then(|record| decode_point_record(record.payload(&file.data)));
+    if let Some(point) = point {
+        return format!(
+            "点，当前坐标是 ({}, {})，并且依赖 {}",
+            format_number(point.x),
+            format_number(point.y),
+            format_ref_list(refs)
+        );
+    }
+    format!("点，依赖 {}", format_ref_list(refs))
+}
+
+fn describe_pair_relation(refs: &[usize], noun: &str, verb: &str) -> String {
+    if refs.len() == 2 {
+        format!(
+            "{noun}，{verb} {} 和 {}",
+            format_ref(refs[0]),
+            format_ref(refs[1])
+        )
+    } else {
+        format!("{noun}，按载荷顺序引用 {}", format_ref_list(refs))
+    }
+}
+
+fn describe_intersection_point(refs: &[usize], variant: Option<&str>) -> String {
+    if refs.len() >= 2 {
+        let prefix = variant.unwrap_or("");
+        format!(
+            "{prefix}交点，来自 {} 和 {}",
+            format_ref(refs[0]),
+            format_ref(refs[1])
+        )
+    } else {
+        "交点".to_string()
+    }
+}
+
+fn describe_circle_intersection_point(refs: &[usize], variant: Option<&str>) -> String {
+    if refs.len() >= 2 {
+        let prefix = variant.unwrap_or("");
+        format!(
+            "{prefix}圆交点，来自 {} 和 {}",
+            format_ref(refs[0]),
+            format_ref(refs[1])
+        )
+    } else {
+        "圆交点".to_string()
+    }
+}
+
+fn describe_translation_group_in_chinese(groups: &[ObjectGroup], refs: &[usize]) -> String {
+    if refs.len() >= 3 {
+        return format!(
+            "将 {} 按向量 {} -> {} 平移得到的对象",
+            format_ref_with_kind(groups, refs[0]),
+            format_ref(refs[1]),
+            format_ref(refs[2])
+        );
+    }
+    "平移对象".to_string()
+}
+
+fn describe_offset_point_in_chinese(file: &GspFile, group: &ObjectGroup, refs: &[usize]) -> String {
+    if let Some(constraint) = decode_translated_point_constraint(file, group)
+        && let Some(origin) = refs.first()
+    {
+        return format!(
+            "从 {} 平移 ({}, {}) 得到的点",
+            format_ref(*origin),
+            format_number(constraint.dx),
+            format_number(constraint.dy)
+        );
+    }
+    if let Some(origin) = refs.first() {
+        return format!("从 {} 偏移得到的点", format_ref(*origin));
+    }
+    "偏移点".to_string()
+}
+
+fn describe_rotation_group_in_chinese(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> String {
+    if let Some(binding) = decode_transform_binding(file, group) {
+        let source_ordinal = binding.source_group_index + 1;
+        let center_ordinal = binding.center_group_index + 1;
+        if let TransformBindingKind::Rotate { angle_degrees, .. } = binding.kind {
+            return format!(
+                "将 {} 围绕 {} 旋转 {} 度得到的对象",
+                format_ref_with_kind(groups, source_ordinal),
+                format_ref(center_ordinal),
+                format_number(angle_degrees)
+            );
+        }
+    }
+    describe_generic_group(
+        group,
+        &find_indexed_path(file, group)
+            .map(|path| path.refs)
+            .unwrap_or_default(),
+    )
+}
+
+fn describe_parameter_rotation_group_in_chinese(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> String {
+    if let Some(binding) = decode_parameter_rotation_binding(file, groups, group) {
+        let source_ordinal = binding.source_group_index + 1;
+        let center_ordinal = binding.center_group_index + 1;
+        if let TransformBindingKind::Rotate {
+            angle_degrees,
+            parameter_name,
+        } = binding.kind
+        {
+            if let Some(parameter_name) = parameter_name {
+                return format!(
+                    "将 {} 围绕 {} 按参数 {} 旋转得到的对象（当前角度 {} 度）",
+                    format_ref_with_kind(groups, source_ordinal),
+                    format_ref(center_ordinal),
+                    parameter_name,
+                    format_number(angle_degrees)
+                );
+            }
+            return format!(
+                "将 {} 围绕 {} 旋转 {} 度得到的对象",
+                format_ref_with_kind(groups, source_ordinal),
+                format_ref(center_ordinal),
+                format_number(angle_degrees)
+            );
+        }
+    }
+    describe_generic_group(
+        group,
+        &find_indexed_path(file, group)
+            .map(|path| path.refs)
+            .unwrap_or_default(),
+    )
+}
+
+fn describe_scale_group_in_chinese(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> String {
+    if let Some(binding) = decode_transform_binding(file, group) {
+        let source_ordinal = binding.source_group_index + 1;
+        let center_ordinal = binding.center_group_index + 1;
+        if let TransformBindingKind::Scale { factor } = binding.kind {
+            return format!(
+                "将 {} 以 {} 为中心缩放 {} 倍得到的对象",
+                format_ref_with_kind(groups, source_ordinal),
+                format_ref(center_ordinal),
+                format_number(factor)
+            );
+        }
+    }
+    describe_generic_group(
+        group,
+        &find_indexed_path(file, group)
+            .map(|path| path.refs)
+            .unwrap_or_default(),
+    )
+}
+
+fn describe_action_button_group_in_chinese(
+    file: &GspFile,
+    group: &ObjectGroup,
+    refs: &[usize],
+) -> String {
+    let action_kind = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x0906)
+        .map(|record| record.payload(&file.data))
+        .filter(|payload| payload.len() >= 16)
+        .map(|payload| (read_u16(payload, 12), read_u16(payload, 14)));
+    let placement = if refs.is_empty() {
+        "按钮".to_string()
+    } else {
+        format!("按钮，关联 {}", format_ref_list(refs))
+    };
+    if let Some((primary, secondary)) = action_kind {
+        return format!("{placement}，动作类型是 ({primary}, {secondary})");
+    }
+    placement
+}
+
+fn describe_function_plot_group_in_chinese(groups: &[ObjectGroup], refs: &[usize]) -> String {
+    if refs.len() >= 2 {
+        return format!(
+            "函数图像，定义来自 {}，并且依赖 {}",
+            format_ref_with_kind(groups, refs[0]),
+            format_ref_list(&refs[1..])
+        );
+    }
+    if refs.len() == 1 {
+        return format!(
+            "函数图像，定义来自 {}",
+            format_ref_with_kind(groups, refs[0])
+        );
+    }
+    "函数图像".to_string()
+}
+
+fn describe_generic_group(group: &ObjectGroup, refs: &[usize]) -> String {
+    match group.header.kind() {
+        GroupKind::Unknown(raw) => {
+            if refs.is_empty() {
+                format!("未知对象，类型是 {raw}")
+            } else {
+                format!(
+                    "未知对象，类型是 {raw}，按载荷顺序引用 {}",
+                    format_ref_list(refs)
+                )
+            }
+        }
+        kind => {
+            let kind_name = group_kind_name_in_chinese(kind);
+            if refs.is_empty() {
+                kind_name.to_string()
+            } else {
+                format!("{kind_name}，按载荷顺序引用 {}", format_ref_list(refs))
+            }
+        }
+    }
+}
+
+fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
+    match kind {
+        GroupKind::Point => "点",
+        GroupKind::Midpoint => "中点",
+        GroupKind::Segment => "线段",
+        GroupKind::Circle => "圆",
+        GroupKind::CircleCenterRadius => "定圆心定半径圆",
+        GroupKind::LineKind5 => "垂线",
+        GroupKind::LineKind6 => "平行线",
+        GroupKind::LineKind7 => "角平分线",
+        GroupKind::Polygon => "多边形",
+        GroupKind::LinearIntersectionPoint => "交点",
+        GroupKind::CircleInterior => "圆面",
+        GroupKind::IntersectionPoint1 => "第一个交点",
+        GroupKind::IntersectionPoint2 => "第二个交点",
+        GroupKind::CircleCircleIntersectionPoint1 => "第一个圆交点",
+        GroupKind::CircleCircleIntersectionPoint2 => "第二个圆交点",
+        GroupKind::PointConstraint => "路径动点",
+        GroupKind::Translation => "平移对象",
+        GroupKind::CartesianOffsetPoint => "直角坐标偏移点",
+        GroupKind::CoordinateExpressionPoint => "坐标表达式点",
+        GroupKind::CoordinateExpressionPointAlt => "坐标表达式点",
+        GroupKind::PolarOffsetPoint => "极坐标偏移点",
+        GroupKind::DerivedSegment24 => "派生线段",
+        GroupKind::CustomTransformPoint => "自定义变换点",
+        GroupKind::Rotation => "旋转对象",
+        GroupKind::ParameterRotation => "参数旋转对象",
+        GroupKind::Scale => "缩放对象",
+        GroupKind::RatioScale => "比例缩放对象",
+        GroupKind::Reflection => "镜像对象",
+        GroupKind::PointTrace => "点轨迹",
+        GroupKind::GraphObject40 => "图像对象",
+        GroupKind::FunctionExpr => "函数表达式",
+        GroupKind::Kind51 => "对象类型 51",
+        GroupKind::GraphCalibrationX => "图像校准点 X",
+        GroupKind::GraphCalibrationY => "图像校准点 Y",
+        GroupKind::MeasurementLine => "测量线",
+        GroupKind::AxisLine => "坐标轴",
+        GroupKind::ActionButton => "动作按钮",
+        GroupKind::Line => "直线",
+        GroupKind::Ray => "射线",
+        GroupKind::OffsetAnchor => "偏移锚点",
+        GroupKind::CoordinatePoint => "坐标点",
+        GroupKind::FunctionPlot => "函数图像",
+        GroupKind::ButtonLabel => "按钮标签",
+        GroupKind::DerivedSegment75 => "派生线段",
+        GroupKind::AffineIteration => "仿射迭代",
+        GroupKind::IterationBinding => "迭代绑定",
+        GroupKind::DerivativeFunction => "导函数",
+        GroupKind::ArcOnCircle => "圆上弧",
+        GroupKind::CenterArc => "圆心弧",
+        GroupKind::ThreePointArc => "过三点弧",
+        GroupKind::SectorBoundary => "扇形边界",
+        GroupKind::CircularSegmentBoundary => "弓形边界",
+        GroupKind::RegularPolygonIteration => "正多边形迭代",
+        GroupKind::LabelIterationSeed => "标签迭代种子",
+        GroupKind::IterationExpressionHelper => "迭代表达式辅助对象",
+        GroupKind::ParameterAnchor => "参数锚点",
+        GroupKind::ParameterControlledPoint => "参数控制点",
+        GroupKind::CoordinateTrace => "坐标轨迹",
+        GroupKind::CoordinateTraceIntersectionPoint => "坐标轨迹交点",
+        GroupKind::CustomTransformTrace => "自定义变换轨迹",
+        GroupKind::AngleMarker => "角标记",
+        GroupKind::PathPoint => "路径点",
+        GroupKind::SegmentMarker => "线段记号",
+        GroupKind::Unknown(_) => "未知对象",
+    }
+}
+
+fn group_kind_noun_in_chinese(kind: GroupKind) -> &'static str {
+    match kind {
+        GroupKind::Point
+        | GroupKind::Midpoint
+        | GroupKind::LinearIntersectionPoint
+        | GroupKind::IntersectionPoint1
+        | GroupKind::IntersectionPoint2
+        | GroupKind::CircleCircleIntersectionPoint1
+        | GroupKind::CircleCircleIntersectionPoint2
+        | GroupKind::PointConstraint
+        | GroupKind::CartesianOffsetPoint
+        | GroupKind::CoordinateExpressionPoint
+        | GroupKind::CoordinateExpressionPointAlt
+        | GroupKind::PolarOffsetPoint
+        | GroupKind::CustomTransformPoint
+        | GroupKind::OffsetAnchor
+        | GroupKind::CoordinatePoint
+        | GroupKind::ParameterAnchor
+        | GroupKind::ParameterControlledPoint
+        | GroupKind::CoordinateTraceIntersectionPoint
+        | GroupKind::PathPoint
+        | GroupKind::Unknown(20) => "点",
+        GroupKind::Segment | GroupKind::DerivedSegment75 => "线段",
+        GroupKind::Line | GroupKind::LineKind5 | GroupKind::LineKind6 | GroupKind::LineKind7 => {
+            "直线"
+        }
+        GroupKind::Ray => "射线",
+        GroupKind::Circle | GroupKind::CircleCenterRadius => "圆",
+        GroupKind::Polygon => "多边形",
+        GroupKind::ArcOnCircle | GroupKind::CenterArc | GroupKind::ThreePointArc => "圆弧",
+        GroupKind::ActionButton => "按钮",
+        GroupKind::FunctionPlot => "函数图像",
+        GroupKind::AngleMarker => "角标记",
+        _ => "对象",
+    }
+}
+
+fn format_ref(ordinal: usize) -> String {
+    format!("#{ordinal}")
+}
+
+fn format_ref_with_kind(groups: &[ObjectGroup], ordinal: usize) -> String {
+    groups
+        .get(ordinal.saturating_sub(1))
+        .map(|group| {
+            format!(
+                "{} #{}",
+                group_kind_noun_in_chinese(group.header.kind()),
+                ordinal
+            )
+        })
+        .unwrap_or_else(|| format_ref(ordinal))
+}
+
+fn format_ref_list(refs: &[usize]) -> String {
+    if refs.is_empty() {
+        "无引用".to_string()
+    } else {
+        refs.iter()
+            .map(|ordinal| format_ref(*ordinal))
+            .collect::<Vec<_>>()
+            .join("、")
+    }
+}
+
+fn format_number(value: f64) -> String {
+    let rounded = if value.abs() < 1e-9 { 0.0 } else { value };
+    let text = format!("{rounded:.3}");
+    text.trim_end_matches('0').trim_end_matches('.').to_string()
 }
 
 fn collect_unsupported_payload_issues(
@@ -1026,12 +1847,14 @@ fn validate_function_payload(
         return Ok(());
     }
 
-    let path = find_indexed_path(file, group).with_context(|| {
-        format!(
-            "unsupported payload: function plot is missing indexed path in {}",
-            describe_group(group)
-        )
-    })?;
+    let path = try_find_indexed_path(file, group)
+        .map_err(anyhow::Error::msg)?
+        .with_context(|| {
+            format!(
+                "unsupported payload: function plot is missing indexed path in {}",
+                describe_group(group)
+            )
+        })?;
     if path.refs.len() < 2 {
         bail!(
             "unsupported payload: function plot path has {} refs in {}",
@@ -1049,20 +1872,29 @@ fn validate_function_payload(
                 describe_group(group)
             )
         })?;
-    let descriptor_payload = group_record_payload(file, group, 0x0902, "function plot descriptor")?;
-    super::functions::decode_function_plot_descriptor(descriptor_payload).with_context(|| {
-        format!(
-            "unsupported payload: invalid function plot descriptor in {}",
-            describe_group(group)
-        )
-    })?;
-    super::functions::decode_function_expr(file, groups, definition_group).with_context(|| {
-        format!(
-            "unsupported payload: invalid function expression in {} referenced by {}",
-            describe_group(definition_group),
-            describe_group(group)
-        )
-    })?;
+    let descriptor_payload = group_record_payload(
+        file,
+        group,
+        RECORD_FUNCTION_PLOT_DESCRIPTOR,
+        "function plot descriptor",
+    )?;
+    try_decode_function_plot_descriptor(descriptor_payload)
+        .map_err(anyhow::Error::msg)
+        .with_context(|| {
+            format!(
+                "unsupported payload: invalid function plot descriptor in {}",
+                describe_group(group)
+            )
+        })?;
+    try_decode_function_expr(file, groups, definition_group)
+        .map_err(anyhow::Error::msg)
+        .with_context(|| {
+            format!(
+                "unsupported payload: invalid function expression in {} referenced by {}",
+                describe_group(definition_group),
+                describe_group(group)
+            )
+        })?;
 
     Ok(())
 }
@@ -1086,18 +1918,18 @@ fn group_record_payload<'a>(
         })
 }
 
-fn write_group_detail(output: &mut String, file: &GspFile, group: &ObjectGroup) {
-    let _ = writeln!(output, "  group #{}:", group.ordinal);
+fn write_group_detail(output: &mut String, file: &GspFile, group: &ObjectGroup, indent: &str) {
+    let _ = writeln!(output, "{indent}对象 #{}：", group.ordinal);
     let _ = writeln!(
         output,
-        "    type: {:?} (raw=0x{:04x}, class_id=0x{:08x})",
+        "{indent}  类型: {:?} (raw=0x{:04x}, class_id=0x{:08x})",
         group.header.kind(),
         group.header.kind_id(),
         group.header.class_id
     );
     let _ = writeln!(
         output,
-        "    geometry: hidden={} flags=0x{:08x} style=[0x{:08x}, 0x{:08x}, 0x{:08x}]",
+        "{indent}  几何属性: hidden={} flags=0x{:08x} style=[0x{:08x}, 0x{:08x}, 0x{:08x}]",
         group.header.is_hidden(),
         group.header.flags,
         group.header.style_a,
@@ -1106,54 +1938,84 @@ fn write_group_detail(output: &mut String, file: &GspFile, group: &ObjectGroup) 
     );
     let _ = writeln!(
         output,
-        "    offsets: start=0x{:x} end=0x{:x}",
+        "{indent}  偏移: start=0x{:x} end=0x{:x}",
         group.start_offset, group.end_offset
     );
 
     if let Some(name) = self::decode::decode_label_name_raw(file, group) {
-        let _ = writeln!(output, "    name: {:?}", name);
+        let _ = writeln!(output, "{indent}  名称: {:?}", name);
     }
-    if let Some(text) = self::decode::decode_group_label_text(file, group) {
-        let _ = writeln!(output, "    label_text: {:?}", text);
+    match try_decode_group_label_text(file, group) {
+        Ok(Some(text)) => {
+            let _ = writeln!(output, "{indent}  标签文字: {:?}", text);
+        }
+        Ok(None) => {}
+        Err(error) => {
+            let _ = writeln!(output, "{indent}  标签文字解析错误: {}", error);
+        }
     }
-    if let Some(url) = self::decode::decode_link_button_url(file, group) {
-        let _ = writeln!(output, "    action_url: {:?}", url);
+    match try_decode_group_rich_text(file, group) {
+        Ok(Some(content)) if !content.hotspots.is_empty() => {
+            let _ = writeln!(
+                output,
+                "{indent}  富文本热点数量: {}",
+                content.hotspots.len()
+            );
+        }
+        Ok(_) => {}
+        Err(error) => {
+            let _ = writeln!(output, "{indent}  富文本解析错误: {}", error);
+        }
     }
-    if let Some(path) = find_indexed_path(file, group) {
-        let _ = writeln!(output, "    indexed_refs: {:?}", path.refs);
+    match try_decode_link_button_url(file, group) {
+        Ok(Some(url)) => {
+            let _ = writeln!(output, "{indent}  动作链接: {:?}", url);
+        }
+        Ok(None) => {}
+        Err(error) => {
+            let _ = writeln!(output, "{indent}  动作链接解析错误: {}", error);
+        }
+    }
+    match try_find_indexed_path(file, group) {
+        Ok(Some(path)) => {
+            let _ = writeln!(output, "{indent}  引用: {:?}", path.refs);
+        }
+        Ok(None) => {}
+        Err(error) => {
+            let _ = writeln!(output, "{indent}  引用解析错误: {}", error);
+        }
     }
     if let Some(anchor) = self::decode::decode_0907_anchor(file, group) {
-        let _ = writeln!(
-            output,
-            "    anchor_point: ({:.3}, {:.3})",
-            anchor.x, anchor.y
-        );
+        let _ = writeln!(output, "{indent}  锚点: ({:.3}, {:.3})", anchor.x, anchor.y);
     }
 
     let points = group
         .records
         .iter()
-        .filter(|record| record.record_type == 0x0899)
+        .filter(|record| record.record_type == RECORD_POINT_F64_PAIR)
         .filter_map(|record| decode_point_record(record.payload(&file.data)))
         .take(3)
         .map(|point| format!("({:.3}, {:.3})", point.x, point.y))
         .collect::<Vec<_>>();
     if !points.is_empty() {
-        let _ = writeln!(output, "    points: {}", points.join(", "));
+        let _ = writeln!(output, "{indent}  点坐标: {}", points.join(", "));
     }
 
     let strings = collect_group_strings(file, group);
     if !strings.is_empty() {
-        let _ = writeln!(output, "    strings: {}", strings.join(" | "));
+        let _ = writeln!(output, "{indent}  字符串: {}", strings.join(" | "));
     }
 
-    let _ = writeln!(output, "    records:");
+    let _ = writeln!(output, "{indent}  记录:");
     for record in &group.records {
         let _ = writeln!(
             output,
-            "      - 0x{:04x} {} len={}{}",
+            "{indent}    - 0x{:04x} {} @0x{:x} payload=0x{:x}..0x{:x} len={}{}",
             record.record_type,
             record_name(record.record_type),
+            record.offset,
+            record.payload_range.start,
+            record.payload_range.end,
             record.length,
             format_record_summary(file, record)
                 .map(|summary| format!(" {summary}"))
@@ -1185,10 +2047,24 @@ fn collect_group_strings(file: &GspFile, group: &ObjectGroup) -> Vec<String> {
 fn format_record_summary(file: &GspFile, record: &Record) -> Option<String> {
     let payload = record.payload(&file.data);
     match record.record_type {
-        0x0899 => decode_point_record(payload)
-            .map(|point| format!("point=({:.3}, {:.3})", point.x, point.y)),
-        0x07d2 | 0x07d3 => decode_indexed_path(record.record_type, payload)
-            .map(|path| format!("refs={:?}", path.refs)),
+        RECORD_POINT_F64_PAIR => {
+            decode_point_record(payload).map(|point| format!("点=({:.3}, {:.3})", point.x, point.y))
+        }
+        crate::runtime::payload_consts::RECORD_INDEXED_PATH_A
+        | crate::runtime::payload_consts::RECORD_INDEXED_PATH_B => {
+            decode_indexed_path(record.record_type, payload)
+                .map(|path| format!("引用={:?}", path.refs))
+                .or_else(|| Some("引用解析失败".to_string()))
+        }
+        RECORD_FUNCTION_PLOT_DESCRIPTOR => {
+            Some(match try_decode_function_plot_descriptor(payload) {
+                Ok(descriptor) => format!(
+                    "plot=[{:.3}, {:.3}] samples={} mode={:?}",
+                    descriptor.x_min, descriptor.x_max, descriptor.sample_count, descriptor.mode
+                ),
+                Err(error) => format!("plot 解析失败: {error}"),
+            })
+        }
         _ => {
             let strings = collect_strings(payload)
                 .into_iter()
@@ -1197,13 +2073,13 @@ fn format_record_summary(file: &GspFile, record: &Record) -> Option<String> {
                 .take(2)
                 .collect::<Vec<_>>();
             if !strings.is_empty() {
-                return Some(format!("strings={strings:?}"));
+                return Some(format!("字符串={strings:?}"));
             }
             decode_c_string(payload)
-                .map(|text| format!("text={:?}", truncate_text(text.trim(), 48)))
+                .map(|text| format!("文本={:?}", truncate_text(text.trim(), 48)))
                 .or_else(|| {
                     (payload.len() <= 16 && !payload.is_empty())
-                        .then(|| format!("payload={}", hex_bytes(payload)))
+                        .then(|| format!("载荷={}", hex_bytes(payload)))
                 })
         }
     }

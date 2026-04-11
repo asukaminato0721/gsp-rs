@@ -13,13 +13,13 @@ pub(super) use anchors::{
     custom_transform_expression_parameter_map, custom_transform_trace_parameter,
     decode_coordinate_expression_anchor_raw, decode_custom_transform_anchor_raw,
     decode_custom_transform_binding, decode_graph_calibration_anchor_raw,
-    decode_intersection_anchor_raw, decode_line_midpoint_anchor_raw,
-    decode_offset_anchor_raw, decode_ratio_scale_anchor_raw,
+    decode_intersection_anchor_raw, decode_line_midpoint_anchor_raw, decode_offset_anchor_raw,
     decode_parameter_controlled_anchor_raw, decode_parameter_rotation_anchor_raw,
     decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,
-    decode_point_pair_translation_anchor_raw, decode_reflection_anchor_raw,
-    decode_regular_polygon_vertex_anchor_raw, decode_translated_point_anchor_raw,
-    reflection_line_group_indices, translation_point_pair_group_indices,
+    decode_point_pair_translation_anchor_raw, decode_ratio_scale_anchor_raw,
+    decode_reflection_anchor_raw, decode_regular_polygon_vertex_anchor_raw,
+    decode_translated_point_anchor_raw, reflection_line_group_indices,
+    translation_point_pair_group_indices,
 };
 pub(super) use bindings::{
     RawPointIterationFamily, TransformBindingKind, collect_point_iteration_points,

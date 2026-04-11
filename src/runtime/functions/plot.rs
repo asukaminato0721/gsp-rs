@@ -5,6 +5,7 @@ use crate::runtime::extract::find_indexed_path;
 use crate::runtime::geometry::{
     Bounds, GraphTransform, has_distinct_points, include_line_bounds, to_raw_from_world,
 };
+use crate::runtime::payload_consts::RECORD_FUNCTION_PLOT_DESCRIPTOR;
 use crate::runtime::scene::{LineShape, TextLabel};
 
 use super::decode::{decode_function_expr, decode_function_plot_descriptor};
@@ -41,7 +42,7 @@ pub(crate) fn collect_function_plots(
         let Some(descriptor_record) = group
             .records
             .iter()
-            .find(|record| record.record_type == 0x0902)
+            .find(|record| record.record_type == RECORD_FUNCTION_PLOT_DESCRIPTOR)
         else {
             continue;
         };
@@ -90,7 +91,7 @@ pub(crate) fn collect_function_plot_domain(
         let Some(descriptor_record) = group
             .records
             .iter()
-            .find(|record| record.record_type == 0x0902)
+            .find(|record| record.record_type == RECORD_FUNCTION_PLOT_DESCRIPTOR)
         else {
             continue;
         };
@@ -242,7 +243,7 @@ pub(crate) fn synthesize_function_labels(
             let descriptor_record = group
                 .records
                 .iter()
-                .find(|record| record.record_type == 0x0902)?;
+                .find(|record| record.record_type == RECORD_FUNCTION_PLOT_DESCRIPTOR)?;
             let descriptor =
                 decode_function_plot_descriptor(descriptor_record.payload(&file.data))?;
             let name = if let Some(record) = definition_group

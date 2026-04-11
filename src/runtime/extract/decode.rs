@@ -3,9 +3,67 @@ use crate::format::{
     GroupKind, GspFile, IndexedPathRecord, ObjectGroup, PointRecord, collect_strings,
     decode_indexed_path, read_f64, read_i16, read_u16, read_u32,
 };
+use crate::runtime::payload_consts::{
+    RECORD_ACTION_BUTTON_PAYLOAD, RECORD_FUNCTION_EXPR_PAYLOAD, RECORD_INDEXED_PATH_A,
+    RECORD_INDEXED_PATH_B, RECORD_LABEL_AUX, RECORD_LABEL_VISIBILITY, RECORD_POINT_F64_PAIR,
+    RECORD_RICH_TEXT, RECORD_RICH_TEXT_MAGIC,
+};
+use std::fmt;
 
 pub(crate) fn is_circle_group_kind(kind: GroupKind) -> bool {
     matches!(kind, GroupKind::Circle | GroupKind::CircleCenterRadius)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum IndexedPathDecodeError {
+    MalformedPathRecord {
+        record_type: u32,
+        offset: usize,
+        length: u32,
+    },
+}
+
+impl fmt::Display for IndexedPathDecodeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MalformedPathRecord {
+                record_type,
+                offset,
+                length,
+            } => write!(
+                f,
+                "malformed indexed path record 0x{record_type:04x} at 0x{offset:x} (len={length})"
+            ),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum LinkButtonDecodeError {
+    PayloadTooShort { offset: usize, byte_len: usize },
+    UnsupportedActionKind { offset: usize, action_kind: u32 },
+    MissingUrl { offset: usize },
+}
+
+impl fmt::Display for LinkButtonDecodeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::PayloadTooShort { offset, byte_len } => write!(
+                f,
+                "action button payload at 0x{offset:x} is too short ({byte_len} bytes)"
+            ),
+            Self::UnsupportedActionKind {
+                offset,
+                action_kind,
+            } => write!(
+                f,
+                "unsupported action button kind {action_kind} at payload offset 0x{offset:x}"
+            ),
+            Self::MissingUrl { offset } => {
+                write!(f, "no URL found in action button payload at 0x{offset:x}")
+            }
+        }
+    }
 }
 
 pub(crate) fn resolve_circle_points_raw(
@@ -56,7 +114,7 @@ pub(crate) fn is_action_button_group(group: &ObjectGroup) -> bool {
         && group
             .records
             .iter()
-            .any(|record| record.record_type == 0x0906)
+            .any(|record| record.record_type == RECORD_ACTION_BUTTON_PAYLOAD)
 }
 
 pub(crate) fn is_parameter_control_group(group: &ObjectGroup) -> bool {
@@ -64,11 +122,11 @@ pub(crate) fn is_parameter_control_group(group: &ObjectGroup) -> bool {
         && group
             .records
             .iter()
-            .any(|record| record.record_type == 0x0907)
+            .any(|record| record.record_type == RECORD_FUNCTION_EXPR_PAYLOAD)
         && group
             .records
             .iter()
-            .any(|record| record.record_type == 0x07d5)
+            .any(|record| record.record_type == RECORD_LABEL_AUX)
         && group
             .records
             .iter()
@@ -80,7 +138,7 @@ pub(crate) fn is_parameter_control_group(group: &ObjectGroup) -> bool {
         && !group
             .records
             .iter()
-            .any(|record| record.record_type == 0x0899)
+            .any(|record| record.record_type == RECORD_POINT_F64_PAIR)
 }
 
 fn decode_continuous_parameter_value(payload: &[u8]) -> Option<f64> {
@@ -127,7 +185,7 @@ pub(crate) fn decode_parameter_control_value_for_group(
     let payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x0907)
+        .find(|record| record.record_type == RECORD_FUNCTION_EXPR_PAYLOAD)
         .map(|record| record.payload(&file.data))?;
 
     if parameter_group_drives_coordinate_value(file, group.ordinal) {
@@ -139,25 +197,51 @@ pub(crate) fn decode_parameter_control_value_for_group(
 }
 
 pub(crate) fn decode_link_button_url(file: &GspFile, group: &ObjectGroup) -> Option<String> {
-    let payload = group
+    try_decode_link_button_url(file, group).ok().flatten()
+}
+
+pub(crate) fn try_decode_link_button_url(
+    file: &GspFile,
+    group: &ObjectGroup,
+) -> Result<Option<String>, LinkButtonDecodeError> {
+    let record = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x0906)
-        .map(|record| record.payload(&file.data))?;
-    if payload.len() < 16 || read_u32(payload, 12) != 6 {
-        return None;
+        .find(|record| record.record_type == RECORD_ACTION_BUTTON_PAYLOAD);
+    let Some(record) = record else {
+        return Ok(None);
+    };
+    let payload = record.payload(&file.data);
+    if payload.len() < 16 {
+        return Err(LinkButtonDecodeError::PayloadTooShort {
+            offset: record.offset,
+            byte_len: payload.len(),
+        });
     }
-    collect_strings(payload)
+    let action_kind = read_u32(payload, 12);
+    if action_kind != 6 {
+        return Err(LinkButtonDecodeError::UnsupportedActionKind {
+            offset: record.offset,
+            action_kind,
+        });
+    }
+    let url = collect_strings(payload)
         .into_iter()
         .map(|entry| entry.text.trim().to_string())
-        .find(|text| text.starts_with("http://") || text.starts_with("https://"))
+        .find(|text| text.starts_with("http://") || text.starts_with("https://"));
+    match url {
+        Some(url) => Ok(Some(url)),
+        None => Err(LinkButtonDecodeError::MissingUrl {
+            offset: record.offset,
+        }),
+    }
 }
 
 pub(crate) fn decode_label_name_raw(file: &GspFile, group: &ObjectGroup) -> Option<String> {
     let payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x07d5)
+        .find(|record| record.record_type == RECORD_LABEL_AUX)
         .map(|record| record.payload(&file.data))?;
     if payload.len() < 24 {
         return None;
@@ -180,9 +264,9 @@ pub(crate) fn decode_0907_anchor(file: &GspFile, group: &ObjectGroup) -> Option<
     let payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x0907)
+        .find(|record| record.record_type == RECORD_FUNCTION_EXPR_PAYLOAD)
         .map(|record| record.payload(&file.data))?;
-    (payload.len() >= 16 && read_u32(payload, 0) == 0x08fc).then(|| PointRecord {
+    (payload.len() >= 16 && read_u32(payload, 0) == RECORD_RICH_TEXT_MAGIC).then(|| PointRecord {
         x: read_i16(payload, 12) as f64,
         y: read_i16(payload, 14) as f64,
     })
@@ -209,7 +293,7 @@ pub(crate) fn decode_label_name(file: &GspFile, group: &ObjectGroup) -> Option<S
     let payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x07d5)
+        .find(|record| record.record_type == RECORD_LABEL_AUX)
         .map(|record| record.payload(&file.data))?;
     if payload.len() < 24 {
         return None;
@@ -232,35 +316,66 @@ pub(crate) fn decode_label_visible(file: &GspFile, group: &ObjectGroup) -> Optio
     let payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x07d5)
+        .find(|record| record.record_type == RECORD_LABEL_VISIBILITY)
         .map(|record| record.payload(&file.data))?;
     (payload.len() >= 4).then(|| read_u16(payload, 2) != 0)
 }
 
 pub(crate) fn find_indexed_path(file: &GspFile, group: &ObjectGroup) -> Option<IndexedPathRecord> {
-    group
-        .records
-        .iter()
-        .find_map(|record| match record.record_type {
-            0x07d2 | 0x07d3 => decode_indexed_path(record.record_type, record.payload(&file.data)),
-            _ => None,
+    try_find_indexed_path(file, group).ok().flatten()
+}
+
+pub(crate) fn try_find_indexed_path(
+    file: &GspFile,
+    group: &ObjectGroup,
+) -> Result<Option<IndexedPathRecord>, IndexedPathDecodeError> {
+    let record = group.records.iter().find(|record| {
+        matches!(
+            record.record_type,
+            RECORD_INDEXED_PATH_A | RECORD_INDEXED_PATH_B
+        )
+    });
+    let Some(record) = record else {
+        return Ok(None);
+    };
+    decode_indexed_path(record.record_type, record.payload(&file.data))
+        .map(Some)
+        .ok_or(IndexedPathDecodeError::MalformedPathRecord {
+            record_type: record.record_type,
+            offset: record.offset,
+            length: record.length,
         })
 }
 
 pub(crate) fn decode_group_label_text(file: &GspFile, group: &ObjectGroup) -> Option<String> {
+    try_decode_group_label_text(file, group).ok().flatten()
+}
+
+pub(crate) fn try_decode_group_label_text(
+    file: &GspFile,
+    group: &ObjectGroup,
+) -> Result<Option<String>, RichTextDecodeError> {
     group
         .records
         .iter()
         .find_map(|record| match record.record_type {
-            0x08fc => decode_rich_text(record.payload(&file.data)).map(|content| content.text),
-            0x07d5 if matches!(group.header.kind(), crate::format::GroupKind::ActionButton) => {
-                collect_strings(record.payload(&file.data))
+            RECORD_RICH_TEXT => Some(
+                try_decode_rich_text(record.payload(&file.data))
+                    .map(|content| content.map(|content| content.text)),
+            ),
+            RECORD_LABEL_AUX
+                if matches!(group.header.kind(), crate::format::GroupKind::ActionButton) =>
+            {
+                Some(Ok(collect_strings(record.payload(&file.data))
                     .into_iter()
                     .map(|entry| entry.text.trim().to_string())
-                    .find(|text| !text.is_empty())
+                    .find(|text| !text.is_empty())))
             }
             _ => None,
         })
+        .transpose()
+        .map(|value| value.flatten())
+        .map_err(RichTextDecodeError::from)
 }
 
 #[derive(Debug, Clone)]
@@ -283,11 +398,22 @@ pub(crate) fn decode_group_rich_text(
     file: &GspFile,
     group: &ObjectGroup,
 ) -> Option<RichTextContent> {
+    try_decode_group_rich_text(file, group).ok().flatten()
+}
+
+pub(crate) fn try_decode_group_rich_text(
+    file: &GspFile,
+    group: &ObjectGroup,
+) -> Result<Option<RichTextContent>, RichTextDecodeError> {
     let record = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x08fc)?;
-    decode_rich_text(record.payload(&file.data))
+        .find(|record| record.record_type == RECORD_RICH_TEXT);
+    record
+        .map(|record| try_decode_rich_text(record.payload(&file.data)))
+        .transpose()
+        .map(|value| value.flatten())
+        .map_err(RichTextDecodeError::from)
 }
 
 pub(crate) fn decode_label_anchor(
@@ -300,7 +426,7 @@ pub(crate) fn decode_label_anchor(
     let text_anchor = if let Some(record) = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x08fc)
+        .find(|record| record.record_type == RECORD_RICH_TEXT)
     {
         decode_text_anchor(record.payload(&file.data))
     } else {
@@ -490,7 +616,7 @@ pub(crate) fn decode_label_offset(file: &GspFile, group: &ObjectGroup) -> Option
     let payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x07d5)
+        .find(|record| record.record_type == RECORD_LABEL_AUX)
         .map(|record| record.payload(&file.data))?;
     (payload.len() >= 10).then(|| (read_i16(payload, 6) as f64, read_i16(payload, 8) as f64))
 }
@@ -531,7 +657,7 @@ pub(crate) fn decode_button_screen_anchor(
     let payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x0906)
+        .find(|record| record.record_type == RECORD_ACTION_BUTTON_PAYLOAD)
         .map(|record| record.payload(&file.data))?;
     (payload.len() >= 24).then(|| PointRecord {
         x: read_i16(payload, payload.len() - 4) as f64,
@@ -594,19 +720,45 @@ pub(crate) fn decode_text_anchor(payload: &[u8]) -> Option<PointRecord> {
     })
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RichTextDecodeError {
+    MarkupParse(MarkupParseError),
+}
+
+impl From<MarkupParseError> for RichTextDecodeError {
+    fn from(value: MarkupParseError) -> Self {
+        Self::MarkupParse(value)
+    }
+}
+
+impl fmt::Display for RichTextDecodeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MarkupParse(error) => write!(f, "{error}"),
+        }
+    }
+}
+
 fn decode_rich_text(payload: &[u8]) -> Option<RichTextContent> {
+    try_decode_rich_text(payload).ok().flatten()
+}
+
+fn try_decode_rich_text(payload: &[u8]) -> Result<Option<RichTextContent>, RichTextDecodeError> {
     let text = String::from_utf8_lossy(payload);
-    let start = text.find('<')?;
+    let Some(start) = text.find('<') else {
+        return Ok(None);
+    };
     let markup = text[start..].trim_end_matches('\0');
+    let nodes = parse_markup_nodes(markup)?;
 
     if markup.starts_with("<VL") {
-        return extract_visual_rich_text(markup).map(|mut content| {
+        return Ok(extract_visual_rich_text(&nodes).map(|mut content| {
             content.markup = Some(markup.to_string());
             content
-        });
+        }));
     }
 
-    let parsed = parse_markup(markup);
+    let parsed = render_markup_plain(&nodes);
     let mut cleaned = parsed
         .replace(['\u{2013}', '\u{2014}'], "-")
         .replace("厘米", "cm");
@@ -625,17 +777,48 @@ fn decode_rich_text(payload: &[u8]) -> Option<RichTextContent> {
         .trim()
         .to_string();
 
-    (!cleaned.is_empty()).then_some(RichTextContent {
+    Ok((!cleaned.is_empty()).then_some(RichTextContent {
         text: cleaned,
         hotspots: Vec::new(),
         markup: None,
-    })
+    }))
 }
 
-#[derive(Debug, Clone)]
-struct RichMarkupNode {
-    name: String,
-    children: Vec<RichMarkupNode>,
+#[derive(Debug, Clone, PartialEq)]
+enum RichMarkupNode {
+    Text(String),
+    Ignore,
+    VerticalLines(Vec<RichMarkupNode>),
+    PathRef {
+        slot: usize,
+        children: Vec<RichMarkupNode>,
+    },
+    Fraction {
+        numerator: Vec<RichMarkupNode>,
+        denominator: Vec<RichMarkupNode>,
+    },
+    Root(Vec<RichMarkupNode>),
+    Superscript(Vec<RichMarkupNode>),
+    Group(Vec<RichMarkupNode>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum MarkupParseError {
+    EmptyTagName { index: usize },
+    UnterminatedTag { index: usize },
+}
+
+impl fmt::Display for MarkupParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::EmptyTagName { index } => {
+                write!(f, "empty markup tag at byte offset {index}")
+            }
+            Self::UnterminatedTag { index } => {
+                write!(f, "unterminated markup tag at byte offset {index}")
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -644,8 +827,7 @@ struct RichMarkupRun {
     path_slot: Option<usize>,
 }
 
-fn extract_visual_rich_text(markup: &str) -> Option<RichTextContent> {
-    let nodes = parse_markup_nodes(markup);
+fn extract_visual_rich_text(nodes: &[RichMarkupNode]) -> Option<RichTextContent> {
     let lines = render_markup_nodes(&nodes, None);
     let mut text_lines = Vec::new();
     let mut hotspots = Vec::new();
@@ -686,41 +868,128 @@ fn extract_visual_rich_text(markup: &str) -> Option<RichTextContent> {
         })
 }
 
-fn parse_markup_nodes(markup: &str) -> Vec<RichMarkupNode> {
-    fn parse_seq(s: &str, mut index: usize, stop_on_gt: bool) -> (Vec<RichMarkupNode>, usize) {
-        let bytes = s.as_bytes();
-        let mut nodes = Vec::new();
-        while index < bytes.len() {
-            if stop_on_gt && bytes[index] == b'>' {
-                return (nodes, index + 1);
-            }
-            if bytes[index] != b'<' {
-                index += 1;
-                continue;
-            }
-            index += 1;
-            let name_start = index;
-            while index < bytes.len() && bytes[index] != b'<' && bytes[index] != b'>' {
-                index += 1;
-            }
-            let name = s[name_start..index].to_string();
-            let children = if index < bytes.len() && bytes[index] == b'<' {
-                let (children, next_index) = parse_seq(s, index, true);
-                index = next_index;
-                children
-            } else {
-                if index < bytes.len() && bytes[index] == b'>' {
-                    index += 1;
-                }
-                Vec::new()
-            };
-            nodes.push(RichMarkupNode { name, children });
+struct MarkupParser<'a> {
+    source: &'a str,
+    bytes: &'a [u8],
+    index: usize,
+}
+
+impl<'a> MarkupParser<'a> {
+    fn new(source: &'a str) -> Self {
+        Self {
+            source,
+            bytes: source.as_bytes(),
+            index: 0,
         }
-        (nodes, index)
     }
 
-    let (nodes, _) = parse_seq(markup, 0, false);
-    nodes
+    fn parse(mut self) -> Result<Vec<RichMarkupNode>, MarkupParseError> {
+        self.parse_children(false)
+    }
+
+    fn parse_children(
+        &mut self,
+        stop_on_gt: bool,
+    ) -> Result<Vec<RichMarkupNode>, MarkupParseError> {
+        let mut nodes = Vec::new();
+        while let Some(byte) = self.peek() {
+            if stop_on_gt && byte == b'>' {
+                self.bump();
+                return Ok(nodes);
+            }
+            if byte != b'<' {
+                self.bump();
+                continue;
+            }
+            nodes.push(self.parse_node()?);
+        }
+        if stop_on_gt {
+            Err(MarkupParseError::UnterminatedTag {
+                index: self.source.len().saturating_sub(1),
+            })
+        } else {
+            Ok(nodes)
+        }
+    }
+
+    fn parse_node(&mut self) -> Result<RichMarkupNode, MarkupParseError> {
+        let tag_index = self.index;
+        self.expect_open_tag()?;
+        let name_start = self.index;
+        while let Some(byte) = self.peek() {
+            if byte == b'<' || byte == b'>' {
+                break;
+            }
+            self.bump();
+        }
+        if self.index == name_start {
+            return Err(MarkupParseError::EmptyTagName { index: tag_index });
+        }
+        if self.peek().is_none() {
+            return Err(MarkupParseError::UnterminatedTag { index: tag_index });
+        }
+        let name = self.source[name_start..self.index].to_string();
+        let children = if self.peek() == Some(b'<') {
+            self.parse_children(true)?
+        } else {
+            self.bump();
+            Vec::new()
+        };
+        Ok(classify_markup_node(name, children))
+    }
+
+    fn expect_open_tag(&mut self) -> Result<(), MarkupParseError> {
+        match self.peek() {
+            Some(b'<') => {
+                self.bump();
+                Ok(())
+            }
+            _ => Err(MarkupParseError::UnterminatedTag { index: self.index }),
+        }
+    }
+
+    fn peek(&self) -> Option<u8> {
+        self.bytes.get(self.index).copied()
+    }
+
+    fn bump(&mut self) {
+        self.index += 1;
+    }
+}
+
+fn parse_markup_nodes(markup: &str) -> Result<Vec<RichMarkupNode>, MarkupParseError> {
+    MarkupParser::new(markup).parse()
+}
+
+fn classify_markup_node(name: String, children: Vec<RichMarkupNode>) -> RichMarkupNode {
+    if let Some(text) = decode_markup_text(&name) {
+        return RichMarkupNode::Text(text);
+    }
+    if name.starts_with('!') {
+        return RichMarkupNode::Ignore;
+    }
+    if name == "VL" {
+        return RichMarkupNode::VerticalLines(children);
+    }
+    if let Some(slot) = decode_markup_path_slot(&name) {
+        return RichMarkupNode::PathRef { slot, children };
+    }
+    if name == "/" {
+        let mut iter = children.into_iter();
+        let numerator = iter.next().into_iter().collect::<Vec<_>>();
+        let denominator = iter.collect::<Vec<_>>();
+        return RichMarkupNode::Fraction {
+            numerator,
+            denominator,
+        };
+    }
+    if name == "R" {
+        return RichMarkupNode::Root(children);
+    }
+    if name.starts_with('+') {
+        return RichMarkupNode::Superscript(children);
+    }
+    RichMarkupNode::Group(children)
 }
 
 fn render_markup_nodes(
@@ -742,86 +1011,65 @@ fn render_markup_node(
     node: &RichMarkupNode,
     active_slot: Option<usize>,
 ) -> Vec<Vec<RichMarkupRun>> {
-    if let Some(text) = decode_markup_text(&node.name) {
-        return vec![vec![RichMarkupRun {
-            text,
+    match node {
+        RichMarkupNode::Text(text) => vec![vec![RichMarkupRun {
+            text: text.clone(),
             path_slot: active_slot,
-        }]];
-    }
-    if node.name.starts_with('!') {
-        return vec![Vec::new()];
-    }
-    if node.name == "VL" {
-        return node
-            .children
+        }]],
+        RichMarkupNode::Ignore => vec![Vec::new()],
+        RichMarkupNode::VerticalLines(children) => children
             .iter()
             .flat_map(|child| render_markup_node(child, active_slot))
             .filter(|line| !line.is_empty())
-            .collect::<Vec<_>>();
-    }
-    if let Some(path_slot) = decode_markup_path_slot(&node.name) {
-        return render_markup_nodes(&node.children, Some(path_slot));
-    }
-    if node.name == "/" {
-        let Some((numerator_node, denominator_node)) = node.children.split_first() else {
-            return vec![Vec::new()];
-        };
-        let numerator = render_markup_inline(std::slice::from_ref(numerator_node), active_slot);
-        let denominator = render_markup_inline(denominator_node, active_slot);
-        if numerator.is_empty() || denominator.is_empty() {
-            return vec![numerator.into_iter().chain(denominator).collect()];
+            .collect::<Vec<_>>(),
+        RichMarkupNode::PathRef { slot, children } => render_markup_nodes(children, Some(*slot)),
+        RichMarkupNode::Fraction {
+            numerator,
+            denominator,
+        } => {
+            let numerator = render_markup_inline(numerator, active_slot);
+            let denominator = render_markup_inline(denominator, active_slot);
+            if numerator.is_empty() || denominator.is_empty() {
+                return vec![numerator.into_iter().chain(denominator).collect()];
+            }
+            let mut runs = numerator;
+            runs.push(RichMarkupRun {
+                text: "/".to_string(),
+                path_slot: active_slot,
+            });
+            runs.extend(denominator);
+            vec![runs]
         }
-        let mut runs = numerator;
-        runs.push(RichMarkupRun {
-            text: "/".to_string(),
-            path_slot: active_slot,
-        });
-        runs.extend(denominator);
-        return vec![runs];
-    }
-    if node.name == "R" {
-        let child_runs = render_markup_inline(&node.children, active_slot);
-        if child_runs.is_empty() {
-            return vec![Vec::new()];
+        RichMarkupNode::Root(children) => {
+            let child_runs = render_markup_inline(children, active_slot);
+            if child_runs.is_empty() {
+                return vec![Vec::new()];
+            }
+            let mut runs = vec![RichMarkupRun {
+                text: "√".to_string(),
+                path_slot: active_slot,
+            }];
+            runs.extend(child_runs);
+            vec![runs]
         }
-        let mut runs = vec![RichMarkupRun {
-            text: "√".to_string(),
-            path_slot: active_slot,
-        }];
-        runs.extend(child_runs);
-        return vec![runs];
-    }
-    if node.name.starts_with('+') {
-        let lines = render_markup_nodes(&node.children, active_slot);
-        let joined = lines
-            .into_iter()
-            .flatten()
-            .map(|run| run.text)
-            .collect::<String>();
-        if joined.is_empty() {
-            return vec![Vec::new()];
+        RichMarkupNode::Superscript(children) => {
+            let lines = render_markup_nodes(children, active_slot);
+            let joined = lines
+                .into_iter()
+                .flatten()
+                .map(|run| run.text)
+                .collect::<String>();
+            let text = collapse_markup_superscript(joined);
+            if text.is_empty() {
+                return vec![Vec::new()];
+            }
+            vec![vec![RichMarkupRun {
+                text,
+                path_slot: active_slot,
+            }]]
         }
-        let chars = joined.chars().collect::<Vec<_>>();
-        let split = chars
-            .iter()
-            .rposition(|ch| !ch.is_ascii_digit())
-            .map(|index| index + 1)
-            .unwrap_or(0);
-        let text = if split < chars.len() {
-            let exponent = chars[split..].iter().collect::<String>();
-            let mut base = chars[..split].iter().collect::<String>();
-            base.push('^');
-            base.push_str(&exponent);
-            base
-        } else {
-            joined
-        };
-        return vec![vec![RichMarkupRun {
-            text,
-            path_slot: active_slot,
-        }]];
+        RichMarkupNode::Group(children) => render_markup_nodes(children, active_slot),
     }
-    render_markup_nodes(&node.children, active_slot)
 }
 
 fn render_markup_inline(
@@ -884,89 +1132,141 @@ fn decode_markup_path_slot(token: &str) -> Option<usize> {
     None
 }
 
-fn parse_markup(markup: &str) -> String {
-    fn parse_seq(s: &str, mut index: usize, stop_on_gt: bool) -> (Vec<String>, usize) {
-        let bytes = s.as_bytes();
-        let mut parts = Vec::new();
+fn render_markup_plain(nodes: &[RichMarkupNode]) -> String {
+    nodes
+        .iter()
+        .map(render_markup_plain_node)
+        .filter(|text| !text.is_empty())
+        .collect::<Vec<_>>()
+        .join("")
+}
 
-        while index < bytes.len() {
-            if stop_on_gt && bytes[index] == b'>' {
-                return (parts, index + 1);
+fn render_markup_plain_node(node: &RichMarkupNode) -> String {
+    match node {
+        RichMarkupNode::Text(text) => text.clone(),
+        RichMarkupNode::Ignore => String::new(),
+        RichMarkupNode::VerticalLines(children)
+        | RichMarkupNode::PathRef { children, .. }
+        | RichMarkupNode::Group(children) => render_markup_plain_inline(children),
+        RichMarkupNode::Fraction {
+            numerator,
+            denominator,
+        } => {
+            let numerator = render_markup_plain_inline(numerator);
+            let denominator = render_markup_plain_inline(denominator);
+            if numerator.is_empty() || denominator.is_empty() {
+                return numerator + &denominator;
             }
-            if bytes[index] != b'<' {
-                index += 1;
-                continue;
-            }
-            if index + 1 >= bytes.len() {
-                break;
-            }
-
-            match bytes[index + 1] as char {
-                'T' => {
-                    let mut end = index + 2;
-                    while end < bytes.len() && bytes[end] != b'>' {
-                        end += 1;
-                    }
-                    let token = &s[index + 2..end];
-                    if let Some(x_index) = token.find('x') {
-                        parts.push(token[x_index + 1..].to_string());
-                    }
-                    index = end.saturating_add(1);
-                }
-                '!' => {
-                    let mut end = index + 2;
-                    while end < bytes.len() && bytes[end] != b'>' {
-                        end += 1;
-                    }
-                    index = end.saturating_add(1);
-                }
-                _ => {
-                    let mut name_end = index + 1;
-                    while name_end < bytes.len()
-                        && bytes[name_end] != b'<'
-                        && bytes[name_end] != b'>'
-                    {
-                        name_end += 1;
-                    }
-                    let name = &s[index + 1..name_end];
-                    let (inner_parts, next_index) =
-                        if name_end < bytes.len() && bytes[name_end] == b'<' {
-                            parse_seq(s, name_end, true)
-                        } else {
-                            (Vec::new(), name_end.saturating_add(1))
-                        };
-                    index = next_index;
-
-                    let mut inner = inner_parts.join("");
-                    if name == "/" && inner_parts.len() >= 2 {
-                        inner = format!("{}/{}", inner_parts[0], inner_parts[1]);
-                    } else if name == "R" && !inner.is_empty() {
-                        inner = format!("√{inner}");
-                    }
-                    if name.starts_with('+') && !inner.is_empty() {
-                        let chars = inner.chars().collect::<Vec<_>>();
-                        let split = chars
-                            .iter()
-                            .rposition(|ch| !ch.is_ascii_digit())
-                            .map(|index| index + 1)
-                            .unwrap_or(0);
-                        if split < chars.len() {
-                            let exponent = chars[split..].iter().collect::<String>();
-                            inner = chars[..split].iter().collect::<String>();
-                            inner.push('^');
-                            inner.push_str(&exponent);
-                        }
-                    }
-                    if !inner.is_empty() {
-                        parts.push(inner);
-                    }
-                }
+            format!("{numerator}/{denominator}")
+        }
+        RichMarkupNode::Root(children) => {
+            let inner = render_markup_plain_inline(children);
+            if inner.is_empty() {
+                String::new()
+            } else {
+                format!("√{inner}")
             }
         }
+        RichMarkupNode::Superscript(children) => {
+            collapse_markup_superscript(render_markup_plain_inline(children))
+        }
+    }
+}
 
-        (parts, index)
+#[cfg(test)]
+mod markup_tests {
+    use super::{
+        RichMarkupNode, classify_markup_node, extract_visual_rich_text, parse_markup_nodes,
+        render_markup_plain,
+    };
+
+    #[test]
+    fn parses_markup_into_semantic_nodes() {
+        let nodes = parse_markup_nodes("<VL<?1x2<TxAB>></<Txx><Txy>><R<Txz>><+<Txn2>>>")
+            .expect("markup parses");
+        assert_eq!(
+            nodes,
+            vec![RichMarkupNode::VerticalLines(vec![
+                RichMarkupNode::PathRef {
+                    slot: 2,
+                    children: vec![RichMarkupNode::Text("AB".to_string())],
+                },
+                RichMarkupNode::Fraction {
+                    numerator: vec![RichMarkupNode::Text("x".to_string())],
+                    denominator: vec![RichMarkupNode::Text("y".to_string())],
+                },
+                RichMarkupNode::Root(vec![RichMarkupNode::Text("z".to_string())]),
+                RichMarkupNode::Superscript(vec![RichMarkupNode::Text("n2".to_string())]),
+            ])]
+        );
     }
 
-    let (parts, _) = parse_seq(markup, 0, false);
-    parts.join("")
+    #[test]
+    fn renders_plain_markup_from_semantic_ast() {
+        let nodes =
+            parse_markup_nodes("<Txf></<Txx><Txy>><R<Txz>><+<Txn2>>>").expect("markup parses");
+        assert_eq!(render_markup_plain(&nodes), "fx/y√zn^2");
+    }
+
+    #[test]
+    fn preserves_visual_hotspots_from_semantic_ast() {
+        let nodes = parse_markup_nodes("<VL<?1x2<TxAB>><Tx=><?1x3<TxCD>>>").expect("markup parses");
+        let rich = extract_visual_rich_text(&nodes).expect("visual rich text");
+        assert_eq!(rich.text, "AB=CD");
+        assert_eq!(
+            rich.hotspots
+                .iter()
+                .map(|hotspot| (hotspot.text.as_str(), hotspot.path_slot))
+                .collect::<Vec<_>>(),
+            vec![("AB", 2), ("CD", 3)]
+        );
+    }
+
+    #[test]
+    fn classifies_unknown_wrapper_as_group() {
+        assert_eq!(
+            classify_markup_node("X".to_string(), vec![RichMarkupNode::Text("A".to_string())]),
+            RichMarkupNode::Group(vec![RichMarkupNode::Text("A".to_string())])
+        );
+    }
+
+    #[test]
+    fn reports_unterminated_markup_tag_with_offset() {
+        assert_eq!(
+            parse_markup_nodes("<VL<TxA"),
+            Err(MarkupParseError::UnterminatedTag { index: 3 })
+        );
+    }
+
+    #[test]
+    fn reports_empty_markup_tag_with_offset() {
+        assert_eq!(
+            parse_markup_nodes("<>"),
+            Err(MarkupParseError::EmptyTagName { index: 0 })
+        );
+    }
+}
+
+fn render_markup_plain_inline(nodes: &[RichMarkupNode]) -> String {
+    render_markup_plain(nodes)
+}
+
+fn collapse_markup_superscript(text: String) -> String {
+    if text.is_empty() {
+        return text;
+    }
+    let chars = text.chars().collect::<Vec<_>>();
+    let split = chars
+        .iter()
+        .rposition(|ch| !ch.is_ascii_digit())
+        .map(|index| index + 1)
+        .unwrap_or(0);
+    if split >= chars.len() {
+        return text;
+    }
+    let exponent = chars[split..].iter().collect::<String>();
+    let mut base = chars[..split].iter().collect::<String>();
+    base.push('^');
+    base.push_str(&exponent);
+    base
 }

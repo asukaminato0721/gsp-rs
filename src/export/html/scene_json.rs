@@ -7,9 +7,7 @@ use super::label_button_scene_json::{ButtonJson, LabelJson};
 use super::line_shape_scene_json::{ArcJson, CircleJson, LineJson, PolygonJson};
 use super::point_scene_json::ScenePointJson;
 use crate::format::PointRecord;
-use crate::runtime::scene::{
-    Scene,
-};
+use crate::runtime::scene::Scene;
 use serde::Serialize;
 use ts_rs::TS;
 

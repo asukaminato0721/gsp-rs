@@ -48,9 +48,7 @@ pub(crate) fn collect_raw_object_anchors(
             decode_parameter_rotation_anchor_raw(file, groups, group, &anchors)
         {
             Some(anchor)
-        } else if let Some(anchor) =
-            decode_ratio_scale_anchor_raw(file, groups, group, &anchors)
-        {
+        } else if let Some(anchor) = decode_ratio_scale_anchor_raw(file, groups, group, &anchors) {
             Some(anchor)
         } else if let Some(anchor) = decode_transform_anchor_raw(file, group, &anchors) {
             Some(anchor)

@@ -203,7 +203,8 @@ fn build_scene_point_for_group(
                     reflection_line_group_indices(file, groups, group)?;
                 let line_start_index =
                     mapped_point_index(group_to_point_index, line_start_group_index)?;
-                let line_end_index = mapped_point_index(group_to_point_index, line_end_group_index)?;
+                let line_end_index =
+                    mapped_point_index(group_to_point_index, line_end_group_index)?;
                 ScenePointBinding::Reflect {
                     source_index,
                     line_start_index,
@@ -297,11 +298,16 @@ fn build_scene_point_for_group(
             if path.refs.len() < 5 {
                 return None;
             }
-            let source_index = mapped_point_index(group_to_point_index, path.refs[0].checked_sub(1)?)?;
-            let center_index = mapped_point_index(group_to_point_index, path.refs[1].checked_sub(1)?)?;
-            let ratio_origin_index = mapped_point_index(group_to_point_index, path.refs[2].checked_sub(1)?)?;
-            let ratio_denominator_index = mapped_point_index(group_to_point_index, path.refs[3].checked_sub(1)?)?;
-            let ratio_numerator_index = mapped_point_index(group_to_point_index, path.refs[4].checked_sub(1)?)?;
+            let source_index =
+                mapped_point_index(group_to_point_index, path.refs[0].checked_sub(1)?)?;
+            let center_index =
+                mapped_point_index(group_to_point_index, path.refs[1].checked_sub(1)?)?;
+            let ratio_origin_index =
+                mapped_point_index(group_to_point_index, path.refs[2].checked_sub(1)?)?;
+            let ratio_denominator_index =
+                mapped_point_index(group_to_point_index, path.refs[3].checked_sub(1)?)?;
+            let ratio_numerator_index =
+                mapped_point_index(group_to_point_index, path.refs[4].checked_sub(1)?)?;
             Some(scene_point(
                 position,
                 group_color(group),

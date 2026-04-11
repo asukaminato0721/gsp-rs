@@ -4,7 +4,10 @@ mod expr;
 mod plot;
 mod scene;
 
-pub(crate) use decode::{decode_function_expr, decode_function_plot_descriptor};
+pub(crate) use decode::{
+    decode_function_expr, decode_function_plot_descriptor, try_decode_function_expr,
+    try_decode_function_plot_descriptor,
+};
 pub(crate) use eval::{evaluate_expr_with_parameters, sample_function_points};
 pub(crate) use expr::{
     BinaryOp, FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode, FunctionTerm,
@@ -22,6 +25,13 @@ mod tests {
     use super::*;
     use crate::format::{GspFile, read_u16};
     use std::collections::BTreeMap;
+
+    fn payload_from_words(words: &[u16]) -> Vec<u8> {
+        words
+            .iter()
+            .flat_map(|word| word.to_le_bytes())
+            .collect::<Vec<_>>()
+    }
 
     #[test]
     fn extracts_simple_function_token() {
@@ -159,5 +169,31 @@ mod tests {
             })
         );
         assert_eq!(function_expr_label(expr), "2*180 / t₂");
+    }
+
+    #[test]
+    fn decodes_marker_based_function_expr_with_structured_parser() {
+        let payload = payload_from_words(&[0x0094, 0x0001, 0x2006, 0x000f, 0x000c, 0x1000, 0x0002]);
+
+        assert_eq!(
+            decode_inner_function_expr(&payload, &BTreeMap::new()),
+            Some(FunctionExpr::Parsed(ParsedFunctionExpr {
+                head: FunctionTerm::UnaryX(UnaryFunction::Abs),
+                tail: vec![(BinaryOp::Add, FunctionTerm::Constant(2.0))],
+            }))
+        );
+    }
+
+    #[test]
+    fn decodes_fallback_function_expr_with_ignorable_suffix() {
+        let payload = payload_from_words(&[0xffff, 0x000f, 0x1000, 0x0001, 0x0101]);
+
+        assert_eq!(
+            decode_inner_function_expr(&payload, &BTreeMap::new()),
+            Some(FunctionExpr::Parsed(ParsedFunctionExpr {
+                head: FunctionTerm::Variable,
+                tail: vec![(BinaryOp::Add, FunctionTerm::Constant(1.0))],
+            }))
+        );
     }
 }

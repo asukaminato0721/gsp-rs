@@ -2,10 +2,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::CircleShape;
 use super::decode::{
-    decode_0907_anchor, decode_group_label_text, decode_group_rich_text, decode_label_anchor,
-    decode_label_name, decode_label_name_raw, decode_label_visible, decode_link_button_url,
-    decode_parameter_control_value_for_group, decode_text_anchor, find_indexed_path,
-    is_action_button_group,
+    RichTextHotspotRef, decode_0907_anchor, decode_group_label_text, decode_group_rich_text,
+    decode_label_anchor, decode_label_name, decode_label_name_raw, decode_label_visible,
+    decode_link_button_url, decode_parameter_control_value_for_group, decode_text_anchor,
+    find_indexed_path, is_action_button_group,
 };
 use super::points::{
     RawPointConstraint, decode_point_constraint, editable_non_graph_parameter_name_for_group,
@@ -16,6 +16,7 @@ use crate::runtime::functions::{
     decode_function_expr, evaluate_expr_with_parameters, function_expr_label,
 };
 use crate::runtime::geometry::{color_from_style, format_number};
+use crate::runtime::payload_consts::RECORD_POINT_F64_PAIR;
 use crate::runtime::scene::{
     IterationTable, LabelIterationFamily, ScreenPoint, TextLabel, TextLabelBinding,
     TextLabelHotspot, TextLabelHotspotAction,
@@ -29,6 +30,12 @@ pub(super) struct PendingLabelHotspot {
     pub(super) end: usize,
     pub(super) text: String,
     pub(super) group_ordinal: usize,
+}
+
+struct ResolvedLabelText {
+    text: String,
+    rich_markup: Option<String>,
+    hotspots: Vec<RichTextHotspotRef>,
 }
 
 fn supports_payload_label(kind: crate::format::GroupKind) -> bool {
@@ -69,11 +76,60 @@ fn label_color_for_group(group: &ObjectGroup) -> [u8; 4] {
             if !group
                 .records
                 .iter()
-                .any(|record| record.record_type == 0x0899) =>
+                .any(|record| record.record_type == RECORD_POINT_F64_PAIR) =>
         {
             color_from_style(group.header.style_b)
         }
         _ => [30, 30, 30, 255],
+    }
+}
+
+fn resolve_label_text(
+    file: &GspFile,
+    group: &ObjectGroup,
+    fallback_text: Option<String>,
+) -> Option<ResolvedLabelText> {
+    let rich_text = decode_group_rich_text(file, group);
+    let text = rich_text
+        .as_ref()
+        .map(|content| content.text.clone())
+        .or_else(|| decode_group_label_text(file, group))
+        .or(fallback_text)?;
+    Some(ResolvedLabelText {
+        text,
+        rich_markup: rich_text
+            .as_ref()
+            .and_then(|content| content.markup.clone()),
+        hotspots: rich_text
+            .map(|content| content.hotspots)
+            .unwrap_or_default(),
+    })
+}
+
+fn push_pending_label_hotspots(
+    file: &GspFile,
+    group: &ObjectGroup,
+    label_index: usize,
+    hotspots: &[RichTextHotspotRef],
+    pending_hotspots: &mut Vec<PendingLabelHotspot>,
+) {
+    if hotspots.is_empty() {
+        return;
+    }
+    let Some(path) = find_indexed_path(file, group) else {
+        return;
+    };
+    for hotspot in hotspots {
+        if let Some(group_ordinal) = path.refs.get(hotspot.path_slot.saturating_sub(1)).copied() {
+            pending_hotspots.push(PendingLabelHotspot {
+                label_index,
+                line: hotspot.line,
+                start: hotspot.start,
+                end: hotspot.end,
+                text: hotspot.text.clone(),
+                group_ordinal,
+            });
+        }
     }
 }
 
@@ -240,48 +296,36 @@ pub(super) fn collect_labels(
         let kind = group.header.kind();
         match kind {
             crate::format::GroupKind::Midpoint if midpoint_has_explicit_label(group) => {
-                let rich_text = decode_group_rich_text(file, group);
-                let text = rich_text
-                    .as_ref()
-                    .map(|content| content.text.clone())
-                    .or_else(|| decode_group_label_text(file, group))
-                    .or_else(|| decode_label_name(file, group));
-                if let Some(text) = text
+                if let Some(label_text) =
+                    resolve_label_text(file, group, decode_label_name(file, group))
                     && let Some(anchor) = decode_label_anchor(file, group, anchors)
                 {
+                    let ResolvedLabelText {
+                        text,
+                        rich_markup,
+                        hotspots,
+                    } = label_text;
+                    let binding = angle_marker_measurement_binding(file, group, &text);
                     let visible = label_visible_for_group(file, group);
                     let label_index = labels.len();
                     label_group_to_index.insert(group.ordinal, label_index);
                     labels.push(TextLabel {
                         anchor,
                         text,
-                        rich_markup: rich_text
-                            .as_ref()
-                            .and_then(|content| content.markup.clone()),
-                        color: [30, 30, 30, 255],
+                        rich_markup,
+                        color: label_color_for_group(group),
                         visible,
-                        binding: None,
+                        binding,
                         screen_space: false,
                         hotspots: Vec::new(),
                     });
-                    if let (Some(content), Some(path)) =
-                        (rich_text.as_ref(), find_indexed_path(file, group))
-                    {
-                        for hotspot in &content.hotspots {
-                            if let Some(group_ordinal) =
-                                path.refs.get(hotspot.path_slot.saturating_sub(1)).copied()
-                            {
-                                pending_hotspots.push(PendingLabelHotspot {
-                                    label_index,
-                                    line: hotspot.line,
-                                    start: hotspot.start,
-                                    end: hotspot.end,
-                                    text: hotspot.text.clone(),
-                                    group_ordinal,
-                                });
-                            }
-                        }
-                    }
+                    push_pending_label_hotspots(
+                        file,
+                        group,
+                        label_index,
+                        &hotspots,
+                        &mut pending_hotspots,
+                    );
                 }
             }
             kind if supports_payload_label(kind) => {
@@ -302,75 +346,58 @@ pub(super) fn collect_labels(
                     }
                     continue;
                 }
-                let rich_text = decode_group_rich_text(file, group);
-                let text = rich_text
-                    .as_ref()
-                    .map(|content| content.text.clone())
-                    .or_else(|| decode_group_label_text(file, group))
-                    .or_else(|| {
-                        (!graph_mode
-                            && matches!(
-                                kind,
-                                crate::format::GroupKind::Point
-                                    | crate::format::GroupKind::CustomTransformPoint
-                                    | crate::format::GroupKind::Translation
-                                    | crate::format::GroupKind::Reflection
-                                    | crate::format::GroupKind::Rotation
-                                    | crate::format::GroupKind::ParameterRotation
-                                    | crate::format::GroupKind::Scale
-                                    | crate::format::GroupKind::Segment
-                                    | crate::format::GroupKind::Ray
-                                    | crate::format::GroupKind::AngleMarker
-                                    | crate::format::GroupKind::PointConstraint
-                                    | crate::format::GroupKind::PathPoint
-                                    | crate::format::GroupKind::LinearIntersectionPoint
-                                    | crate::format::GroupKind::IntersectionPoint1
-                                    | crate::format::GroupKind::IntersectionPoint2
-                                    | crate::format::GroupKind::CircleCircleIntersectionPoint1
-                                    | crate::format::GroupKind::CircleCircleIntersectionPoint2
-                            )
-                            && !is_non_graph_parameter_group(file, groups, group))
-                        .then(|| decode_label_name(file, group))
-                        .flatten()
+                let fallback_text = (!graph_mode
+                    && matches!(
+                        kind,
+                        crate::format::GroupKind::Point
+                            | crate::format::GroupKind::CustomTransformPoint
+                            | crate::format::GroupKind::Translation
+                            | crate::format::GroupKind::Reflection
+                            | crate::format::GroupKind::Rotation
+                            | crate::format::GroupKind::ParameterRotation
+                            | crate::format::GroupKind::Scale
+                            | crate::format::GroupKind::Segment
+                            | crate::format::GroupKind::Ray
+                            | crate::format::GroupKind::AngleMarker
+                            | crate::format::GroupKind::PointConstraint
+                            | crate::format::GroupKind::PathPoint
+                            | crate::format::GroupKind::LinearIntersectionPoint
+                            | crate::format::GroupKind::IntersectionPoint1
+                            | crate::format::GroupKind::IntersectionPoint2
+                            | crate::format::GroupKind::CircleCircleIntersectionPoint1
+                            | crate::format::GroupKind::CircleCircleIntersectionPoint2
+                    )
+                    && !is_non_graph_parameter_group(file, groups, group))
+                .then(|| decode_label_name(file, group))
+                .flatten();
+                if let Some(label_text) = resolve_label_text(file, group, fallback_text)
+                    && let Some(anchor) = decode_label_anchor(file, group, anchors)
+                {
+                    let ResolvedLabelText {
+                        text,
+                        rich_markup,
+                        hotspots,
+                    } = label_text;
+                    let visible = label_visible_for_group(file, group);
+                    let label_index = labels.len();
+                    label_group_to_index.insert(group.ordinal, label_index);
+                    labels.push(TextLabel {
+                        anchor,
+                        text,
+                        rich_markup,
+                        color: [30, 30, 30, 255],
+                        visible,
+                        binding: None,
+                        screen_space: false,
+                        hotspots: Vec::new(),
                     });
-                if let Some(text) = text {
-                    let anchor = decode_label_anchor(file, group, anchors);
-                    if let Some(anchor) = anchor {
-                        let visible = label_visible_for_group(file, group);
-                        let label_index = labels.len();
-                        label_group_to_index.insert(group.ordinal, label_index);
-                        let binding = angle_marker_measurement_binding(file, group, &text);
-                        labels.push(TextLabel {
-                            anchor,
-                            text,
-                            rich_markup: rich_text
-                                .as_ref()
-                                .and_then(|content| content.markup.clone()),
-                            color: label_color_for_group(group),
-                            visible,
-                            binding,
-                            screen_space: false,
-                            hotspots: Vec::new(),
-                        });
-                        if let (Some(content), Some(path)) =
-                            (rich_text.as_ref(), find_indexed_path(file, group))
-                        {
-                            for hotspot in &content.hotspots {
-                                if let Some(group_ordinal) =
-                                    path.refs.get(hotspot.path_slot.saturating_sub(1)).copied()
-                                {
-                                    pending_hotspots.push(PendingLabelHotspot {
-                                        label_index,
-                                        line: hotspot.line,
-                                        start: hotspot.start,
-                                        end: hotspot.end,
-                                        text: hotspot.text.clone(),
-                                        group_ordinal,
-                                    });
-                                }
-                            }
-                        }
-                    }
+                    push_pending_label_hotspots(
+                        file,
+                        group,
+                        label_index,
+                        &hotspots,
+                        &mut pending_hotspots,
+                    );
                 }
             }
             crate::format::GroupKind::FunctionExpr => {}

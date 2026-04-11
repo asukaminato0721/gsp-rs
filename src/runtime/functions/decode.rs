@@ -1,12 +1,19 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 
 use crate::format::{GspFile, ObjectGroup, read_f64, read_u16, read_u32};
 use crate::runtime::extract::{decode_parameter_control_value_for_group, find_indexed_path};
 use crate::runtime::functions::{evaluate_expr_with_parameters, function_expr_label};
+use crate::runtime::payload_consts::{
+    EXPR_OP_ADD, EXPR_OP_DIV, EXPR_OP_MUL, EXPR_OP_POW, EXPR_OP_SUB, EXPR_PARAMETER_MASK,
+    EXPR_PARAMETER_PREFIX, EXPR_PI_SUFFIX, EXPR_PI_WORD, EXPR_VARIABLE_SUFFIX, EXPR_VARIABLE_WORD,
+    FUNCTION_EXPR_MARKER_A, FUNCTION_EXPR_MARKER_B, RECORD_FUNCTION_EXPR_PAYLOAD,
+    RECORD_INDEXED_PATH_B, RECORD_LABEL_AUX,
+};
 
 use super::expr::{
     BinaryOp, FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode, FunctionTerm,
-    ParsedFunctionExpr, canonicalize_function_expr, decode_unary_function,
+    ParsedFunctionExpr, UnaryFunction, canonicalize_function_expr, decode_unary_function,
     function_term_contains_symbol,
 };
 
@@ -21,6 +28,14 @@ pub(crate) fn decode_function_expr(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> Option<FunctionExpr> {
+    try_decode_function_expr(file, groups, group).ok()
+}
+
+pub(crate) fn try_decode_function_expr(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Result<FunctionExpr, FunctionExprParseError> {
     decode_function_expr_recursive(file, groups, group, &mut BTreeSet::new())
 }
 
@@ -29,30 +44,35 @@ fn decode_function_expr_recursive(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
     visiting: &mut BTreeSet<usize>,
-) -> Option<FunctionExpr> {
+) -> Result<FunctionExpr, FunctionExprParseError> {
     if !visiting.insert(group.ordinal) {
-        return None;
+        return Err(FunctionExprParseError::NoExpressionFound { word_len: 0 });
     }
     let expr = (|| {
         let payload = group
             .records
             .iter()
-            .find(|record| record.record_type == 0x0907)
-            .map(|record| record.payload(&file.data))?;
+            .find(|record| record.record_type == RECORD_FUNCTION_EXPR_PAYLOAD)
+            .map(|record| record.payload(&file.data))
+            .ok_or(FunctionExprParseError::NoExpressionFound { word_len: 0 })?;
         let parameters = collect_parameter_bindings(file, groups, group, visiting);
 
-        let text = extract_inline_function_token(payload)?;
+        let text = extract_inline_function_token(payload).ok_or(
+            FunctionExprParseError::NoExpressionFound {
+                word_len: payload.len() / 2,
+            },
+        )?;
         if text.eq_ignore_ascii_case("x") {
-            Some(FunctionExpr::Identity)
+            Ok(FunctionExpr::Identity)
         } else if let Ok(value) = text.parse::<f64>() {
             if value == 0.0 {
-                decode_inner_function_expr(payload, &parameters)
-                    .or(Some(FunctionExpr::Constant(value)))
+                try_decode_inner_function_expr(payload, &parameters)
+                    .or(Ok(FunctionExpr::Constant(value)))
             } else {
-                Some(FunctionExpr::Constant(value))
+                Ok(FunctionExpr::Constant(value))
             }
         } else {
-            decode_inner_function_expr(payload, &parameters)
+            try_decode_inner_function_expr(payload, &parameters)
         }
     })();
     visiting.remove(&group.ordinal);
@@ -60,8 +80,38 @@ fn decode_function_expr_recursive(
 }
 
 pub(crate) fn decode_function_plot_descriptor(payload: &[u8]) -> Option<FunctionPlotDescriptor> {
+    try_decode_function_plot_descriptor(payload).ok()
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum FunctionPlotDescriptorDecodeError {
+    PayloadTooShort { byte_len: usize },
+    InvalidRange { x_min: f64, x_max: f64 },
+}
+
+impl fmt::Display for FunctionPlotDescriptorDecodeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::PayloadTooShort { byte_len } => {
+                write!(
+                    f,
+                    "function plot descriptor payload too short ({byte_len} bytes)"
+                )
+            }
+            Self::InvalidRange { x_min, x_max } => {
+                write!(f, "invalid function plot range [{x_min}, {x_max}]")
+            }
+        }
+    }
+}
+
+pub(crate) fn try_decode_function_plot_descriptor(
+    payload: &[u8],
+) -> Result<FunctionPlotDescriptor, FunctionPlotDescriptorDecodeError> {
     if payload.len() < 24 {
-        return None;
+        return Err(FunctionPlotDescriptorDecodeError::PayloadTooShort {
+            byte_len: payload.len(),
+        });
     }
 
     let x_min = read_f64(payload, 0);
@@ -72,10 +122,10 @@ pub(crate) fn decode_function_plot_descriptor(payload: &[u8]) -> Option<Function
         _ => FunctionPlotMode::Cartesian,
     };
     if !x_min.is_finite() || !x_max.is_finite() || x_min == x_max {
-        return None;
+        return Err(FunctionPlotDescriptorDecodeError::InvalidRange { x_min, x_max });
     }
 
-    Some(FunctionPlotDescriptor {
+    Ok(FunctionPlotDescriptor {
         x_min,
         x_max,
         sample_count: sample_count.clamp(2, 4096),
@@ -116,7 +166,7 @@ fn decode_parameter_binding_recursive(
         return decode_parameter_anchor_binding(file, group);
     }
     if (group.header.kind()) == crate::format::GroupKind::FunctionExpr {
-        let expr = decode_function_expr_recursive(file, groups, group, visiting)?;
+        let expr = decode_function_expr_recursive(file, groups, group, visiting).ok()?;
         return Some(ParameterBinding {
             name: function_expr_label(expr.clone()),
             value: evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new())?,
@@ -126,7 +176,7 @@ fn decode_parameter_binding_recursive(
     let label_payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x07d5)
+        .find(|record| record.record_type == RECORD_LABEL_AUX)
         .map(|record| record.payload(&file.data))?;
     let name = decode_parameter_name(label_payload)?;
     let value = decode_parameter_control_value_for_group(file, groups, group)?;
@@ -147,14 +197,14 @@ fn decode_parameter_anchor_binding(
         kind if kind.is_point_constraint() => point_group
             .records
             .iter()
-            .find(|record| record.record_type == 0x07d3 && record.length == 12)
+            .find(|record| record.record_type == RECORD_INDEXED_PATH_B && record.length == 12)
             .map(|record| read_f64(record.payload(&file.data), 4))
             .filter(|value| value.is_finite())?,
         crate::format::GroupKind::Point => {
             let payload = point_group
                 .records
                 .iter()
-                .find(|record| record.record_type == 0x0907)
+                .find(|record| record.record_type == RECORD_FUNCTION_EXPR_PAYLOAD)
                 .map(|record| record.payload(&file.data))?;
             if payload.len() >= 60 {
                 read_f64(payload, 52)
@@ -205,64 +255,384 @@ pub(crate) fn extract_inline_function_token(payload: &[u8]) -> Option<String> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum FunctionToken {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Pow,
+    Variable,
+    PiAngle,
+    Parameter(ParameterBinding),
+    UnaryX(UnaryFunction),
+    Constant(f64),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum FunctionExprParseError {
+    UnexpectedEnd { offset: usize },
+    UnexpectedToken { offset: usize, found: FunctionToken },
+    InvalidUnaryOperand { offset: usize, opcode: u16 },
+    MissingParameterBinding { offset: usize, parameter_index: u16 },
+    NoExpressionFound { word_len: usize },
+}
+
+impl fmt::Display for FunctionExprParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnexpectedEnd { offset } => {
+                write!(
+                    f,
+                    "unexpected end of function payload at word offset {offset}"
+                )
+            }
+            Self::UnexpectedToken { offset, found } => {
+                write!(
+                    f,
+                    "unexpected token {:?} at function payload word offset {}",
+                    found, offset
+                )
+            }
+            Self::InvalidUnaryOperand { offset, opcode } => {
+                write!(
+                    f,
+                    "invalid unary operand for opcode 0x{opcode:04x} at function payload word offset {offset}"
+                )
+            }
+            Self::MissingParameterBinding {
+                offset,
+                parameter_index,
+            } => {
+                write!(
+                    f,
+                    "missing parameter binding #{} at function payload word offset {}",
+                    parameter_index, offset
+                )
+            }
+            Self::NoExpressionFound { word_len } => {
+                write!(
+                    f,
+                    "no parseable function expression found in {word_len} payload words"
+                )
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct LexedFunctionToken {
+    kind: FunctionToken,
+    width_words: usize,
+}
+
+#[derive(Clone)]
+struct FunctionTokenCursor<'a> {
+    words: &'a [u16],
+    parameters: &'a BTreeMap<u16, ParameterBinding>,
+    base_offset: usize,
+    offset: usize,
+}
+
+impl<'a> FunctionTokenCursor<'a> {
+    fn new(
+        words: &'a [u16],
+        parameters: &'a BTreeMap<u16, ParameterBinding>,
+        base_offset: usize,
+    ) -> Self {
+        Self {
+            words,
+            parameters,
+            base_offset,
+            offset: 0,
+        }
+    }
+
+    fn peek(&self) -> Result<Option<LexedFunctionToken>, FunctionExprParseError> {
+        if self.offset >= self.words.len() {
+            return Ok(None);
+        }
+        lex_function_token(
+            &self.words[self.offset..],
+            self.parameters,
+            self.current_offset(),
+        )
+        .map(Some)
+    }
+
+    fn bump(&mut self) -> Result<FunctionToken, FunctionExprParseError> {
+        let token = self.peek()?.ok_or(FunctionExprParseError::UnexpectedEnd {
+            offset: self.current_offset(),
+        })?;
+        self.offset += token.width_words;
+        Ok(token.kind)
+    }
+
+    fn current_offset(&self) -> usize {
+        self.base_offset + self.offset
+    }
+
+    fn words_consumed(&self) -> usize {
+        self.offset
+    }
+}
+
+struct FunctionExprParser<'a> {
+    tokens: FunctionTokenCursor<'a>,
+}
+
+impl<'a> FunctionExprParser<'a> {
+    fn new(
+        words: &'a [u16],
+        parameters: &'a BTreeMap<u16, ParameterBinding>,
+        base_offset: usize,
+    ) -> Self {
+        Self {
+            tokens: FunctionTokenCursor::new(words, parameters, base_offset),
+        }
+    }
+
+    fn parse_expr(&mut self) -> Result<ParsedFunctionExpr, FunctionExprParseError> {
+        let head = self.parse_term()?;
+        let mut tail = Vec::new();
+        while let Some(op) = self.parse_additive_op()? {
+            let term = self.parse_term()?;
+            tail.push((op, term));
+        }
+        Ok(ParsedFunctionExpr { head, tail })
+    }
+
+    fn parse_additive_op(&mut self) -> Result<Option<BinaryOp>, FunctionExprParseError> {
+        Ok(match self.tokens.peek()? {
+            Some(LexedFunctionToken {
+                kind: FunctionToken::Add,
+                ..
+            }) => {
+                self.tokens.bump()?;
+                Some(BinaryOp::Add)
+            }
+            Some(LexedFunctionToken {
+                kind: FunctionToken::Sub,
+                ..
+            }) => {
+                self.tokens.bump()?;
+                Some(BinaryOp::Sub)
+            }
+            Some(LexedFunctionToken {
+                kind: FunctionToken::Div,
+                ..
+            }) => {
+                self.tokens.bump()?;
+                Some(BinaryOp::Div)
+            }
+            _ => None,
+        })
+    }
+
+    fn parse_term(&mut self) -> Result<FunctionTerm, FunctionExprParseError> {
+        let mut term = self.parse_power_chain()?;
+        while matches!(
+            self.tokens.peek()?,
+            Some(LexedFunctionToken {
+                kind: FunctionToken::Mul,
+                ..
+            })
+        ) {
+            self.tokens.bump()?;
+            let rhs = self.parse_power_chain()?;
+            term = FunctionTerm::Product(Box::new(term), Box::new(rhs));
+        }
+        Ok(term)
+    }
+
+    fn parse_power_chain(&mut self) -> Result<FunctionTerm, FunctionExprParseError> {
+        let mut term = self.parse_primary()?;
+        while matches!(
+            self.tokens.peek()?,
+            Some(LexedFunctionToken {
+                kind: FunctionToken::Pow,
+                ..
+            })
+        ) {
+            self.tokens.bump()?;
+            let exponent = self.parse_primary()?;
+            term = FunctionTerm::Power(Box::new(term), Box::new(exponent));
+        }
+        Ok(term)
+    }
+
+    fn parse_primary(&mut self) -> Result<FunctionTerm, FunctionExprParseError> {
+        let offset = self.tokens.current_offset();
+        match self.tokens.bump()? {
+            FunctionToken::Variable => Ok(FunctionTerm::Variable),
+            FunctionToken::PiAngle => Ok(FunctionTerm::PiAngle),
+            FunctionToken::Parameter(binding) => {
+                Ok(FunctionTerm::Parameter(binding.name, binding.value))
+            }
+            FunctionToken::UnaryX(op) => Ok(FunctionTerm::UnaryX(op)),
+            FunctionToken::Constant(value) => Ok(FunctionTerm::Constant(value)),
+            found @ (FunctionToken::Add
+            | FunctionToken::Sub
+            | FunctionToken::Mul
+            | FunctionToken::Div
+            | FunctionToken::Pow) => Err(FunctionExprParseError::UnexpectedToken { offset, found }),
+        }
+    }
+
+    fn words_consumed(&self) -> usize {
+        self.tokens.words_consumed()
+    }
+}
+
+fn lex_function_token(
+    words: &[u16],
+    parameters: &BTreeMap<u16, ParameterBinding>,
+    offset: usize,
+) -> Result<LexedFunctionToken, FunctionExprParseError> {
+    let word = *words
+        .first()
+        .ok_or(FunctionExprParseError::UnexpectedEnd { offset })?;
+    let token = match word {
+        EXPR_OP_ADD => LexedFunctionToken {
+            kind: FunctionToken::Add,
+            width_words: 1,
+        },
+        EXPR_OP_SUB => LexedFunctionToken {
+            kind: FunctionToken::Sub,
+            width_words: 1,
+        },
+        EXPR_OP_MUL => LexedFunctionToken {
+            kind: FunctionToken::Mul,
+            width_words: 1,
+        },
+        EXPR_OP_DIV => LexedFunctionToken {
+            kind: FunctionToken::Div,
+            width_words: 1,
+        },
+        EXPR_OP_POW => LexedFunctionToken {
+            kind: FunctionToken::Pow,
+            width_words: 1,
+        },
+        EXPR_PI_WORD if matches!(words.get(1), Some(&EXPR_PI_SUFFIX)) => LexedFunctionToken {
+            kind: FunctionToken::PiAngle,
+            width_words: 2,
+        },
+        EXPR_VARIABLE_WORD if matches!(words.get(1), Some(&EXPR_VARIABLE_SUFFIX)) => {
+            LexedFunctionToken {
+                kind: FunctionToken::Variable,
+                width_words: 2,
+            }
+        }
+        EXPR_VARIABLE_WORD => LexedFunctionToken {
+            kind: FunctionToken::Variable,
+            width_words: 1,
+        },
+        _ => {
+            if let Some(op) = decode_unary_function(word) {
+                if matches!(words.get(1), Some(&EXPR_VARIABLE_WORD))
+                    && matches!(words.get(2), Some(&EXPR_VARIABLE_SUFFIX))
+                {
+                    return Ok(LexedFunctionToken {
+                        kind: FunctionToken::UnaryX(op),
+                        width_words: 3,
+                    });
+                }
+                return Err(FunctionExprParseError::InvalidUnaryOperand {
+                    offset,
+                    opcode: word,
+                });
+            }
+            if (word & EXPR_PARAMETER_MASK) == EXPR_PARAMETER_PREFIX {
+                let parameter_index = word & 0x000f;
+                return Ok(LexedFunctionToken {
+                    kind: FunctionToken::Parameter(
+                        parameters.get(&parameter_index).cloned().ok_or(
+                            FunctionExprParseError::MissingParameterBinding {
+                                offset,
+                                parameter_index,
+                            },
+                        )?,
+                    ),
+                    width_words: 1,
+                });
+            }
+            LexedFunctionToken {
+                kind: FunctionToken::Constant(f64::from(word)),
+                width_words: 1,
+            }
+        }
+    };
+    Ok(token)
+}
+
 pub(crate) fn decode_inner_function_expr(
     payload: &[u8],
     parameters: &BTreeMap<u16, ParameterBinding>,
 ) -> Option<FunctionExpr> {
+    try_decode_inner_function_expr(payload, parameters).ok()
+}
+
+pub(crate) fn try_decode_inner_function_expr(
+    payload: &[u8],
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Result<FunctionExpr, FunctionExprParseError> {
     parse_function_expr(payload, parameters).map(canonicalize_function_expr)
 }
 
 fn parse_function_expr(
     payload: &[u8],
     parameters: &BTreeMap<u16, ParameterBinding>,
-) -> Option<ParsedFunctionExpr> {
+) -> Result<ParsedFunctionExpr, FunctionExprParseError> {
     let words = payload
         .chunks_exact(2)
         .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
         .collect::<Vec<_>>();
+    let mut marker_error = None;
     let marker_index = words
         .windows(2)
-        .position(|pair| matches!(pair, [0x0094, 0x0001] | [0x00a0, 0x0001]));
-    if let Some(marker_index) = marker_index
-        && let Some((parsed, _)) = parse_function_expr_from(&words, marker_index + 2, parameters)
-    {
-        return Some(parsed);
+        .position(|pair| *pair == FUNCTION_EXPR_MARKER_A || *pair == FUNCTION_EXPR_MARKER_B);
+    if let Some(marker_index) = marker_index {
+        match parse_function_expr_from(&words, marker_index + 2, parameters) {
+            Ok((parsed, _)) => return Ok(parsed),
+            Err(error) => marker_error = Some(error),
+        }
     }
     find_fallback_function_expr(&words, parameters)
+        .or_else(|fallback_error| Err(marker_error.unwrap_or(fallback_error)))
 }
 
 fn parse_function_expr_from(
     words: &[u16],
     start: usize,
     parameters: &BTreeMap<u16, ParameterBinding>,
-) -> Option<(ParsedFunctionExpr, usize)> {
-    let mut index = start;
-    let head = parse_function_term(words, &mut index, parameters)?;
-    let mut tail = Vec::new();
-    while index < words.len() {
-        let op = match words[index] {
-            0x1000 => BinaryOp::Add,
-            0x1001 => BinaryOp::Sub,
-            0x1003 => BinaryOp::Div,
-            _ => break,
-        };
-        index += 1;
-        let term = parse_function_term(words, &mut index, parameters)?;
-        tail.push((op, term));
-    }
-    Some((ParsedFunctionExpr { head, tail }, index))
+) -> Result<(ParsedFunctionExpr, usize), FunctionExprParseError> {
+    let mut parser = FunctionExprParser::new(&words[start..], parameters, start);
+    let parsed = parser.parse_expr()?;
+    Ok((parsed, start + parser.words_consumed()))
 }
 
 fn find_fallback_function_expr(
     words: &[u16],
     parameters: &BTreeMap<u16, ParameterBinding>,
-) -> Option<ParsedFunctionExpr> {
-    (0..words.len())
-        .filter_map(|start| parse_function_expr_from(words, start, parameters))
-        .find_map(|(parsed, end)| {
-            (parsed_contains_symbol(&parsed) && has_ignorable_expr_suffix(words, end))
-                .then_some(parsed)
-        })
+) -> Result<ParsedFunctionExpr, FunctionExprParseError> {
+    let mut first_error = None;
+    for start in 0..words.len() {
+        match parse_function_expr_from(words, start, parameters) {
+            Ok((parsed, end))
+                if parsed_contains_symbol(&parsed) && has_ignorable_expr_suffix(words, end) =>
+            {
+                return Ok(parsed);
+            }
+            Ok(_) => {}
+            Err(error) if first_error.is_none() => first_error = Some(error),
+            Err(_) => {}
+        }
+    }
+    Err(
+        first_error.unwrap_or(FunctionExprParseError::NoExpressionFound {
+            word_len: words.len(),
+        }),
+    )
 }
 
 fn has_ignorable_expr_suffix(words: &[u16], end: usize) -> bool {
@@ -284,68 +654,39 @@ fn parsed_contains_symbol(parsed: &ParsedFunctionExpr) -> bool {
             .any(|(_, term)| function_term_contains_symbol(term))
 }
 
-fn parse_function_term(
-    words: &[u16],
-    index: &mut usize,
-    parameters: &BTreeMap<u16, ParameterBinding>,
-) -> Option<FunctionTerm> {
-    let mut term = parse_atomic_term(words, index, parameters)?;
-    while *index < words.len() && words[*index] == 0x1002 {
-        *index += 1;
-        let rhs = parse_atomic_term(words, index, parameters)?;
-        term = FunctionTerm::Product(Box::new(term), Box::new(rhs));
-    }
-    Some(term)
-}
+#[cfg(test)]
+mod parse_tests {
+    use super::{FunctionExprParseError, parse_function_expr};
+    use std::collections::BTreeMap;
 
-fn parse_atomic_term(
-    words: &[u16],
-    index: &mut usize,
-    parameters: &BTreeMap<u16, ParameterBinding>,
-) -> Option<FunctionTerm> {
-    let mut term = parse_atomic_base(words, index, parameters)?;
-    while *index < words.len() && words[*index] == 0x1004 {
-        *index += 1;
-        let exponent = parse_atomic_base(words, index, parameters)?;
-        term = FunctionTerm::Power(Box::new(term), Box::new(exponent));
+    fn payload_from_words(words: &[u16]) -> Vec<u8> {
+        words
+            .iter()
+            .flat_map(|word| word.to_le_bytes())
+            .collect::<Vec<_>>()
     }
-    Some(term)
-}
 
-fn parse_atomic_base(
-    words: &[u16],
-    index: &mut usize,
-    parameters: &BTreeMap<u16, ParameterBinding>,
-) -> Option<FunctionTerm> {
-    if *index >= words.len() {
-        return None;
+    #[test]
+    fn reports_missing_parameter_binding_with_offset() {
+        let payload = payload_from_words(&[0x0094, 0x0001, 0x6001]);
+        assert_eq!(
+            parse_function_expr(&payload, &BTreeMap::new()),
+            Err(FunctionExprParseError::MissingParameterBinding {
+                offset: 0,
+                parameter_index: 1,
+            })
+        );
     }
-    if let Some(op) = decode_unary_function(words[*index]) {
-        if *index + 2 < words.len() && words[*index + 1] == 0x000f && words[*index + 2] == 0x000c {
-            *index += 3;
-            return Some(FunctionTerm::UnaryX(op));
-        }
-        return None;
+
+    #[test]
+    fn reports_invalid_unary_operand_with_offset() {
+        let payload = payload_from_words(&[0x0094, 0x0001, 0x2006]);
+        assert_eq!(
+            parse_function_expr(&payload, &BTreeMap::new()),
+            Err(FunctionExprParseError::InvalidUnaryOperand {
+                offset: 0,
+                opcode: 0x2006,
+            })
+        );
     }
-    if (words[*index] & 0xfff0) == 0x6000 {
-        let parameter_index = words[*index] & 0x000f;
-        *index += 1;
-        let binding = parameters.get(&parameter_index)?.clone();
-        return Some(FunctionTerm::Parameter(binding.name, binding.value));
-    }
-    if *index + 1 < words.len() && words[*index] == 0x000f && words[*index + 1] == 0x000c {
-        *index += 2;
-        return Some(FunctionTerm::Variable);
-    }
-    if words[*index] == 0x000f {
-        *index += 1;
-        return Some(FunctionTerm::Variable);
-    }
-    if *index + 1 < words.len() && words[*index] == 0x000d && words[*index + 1] == 0x0100 {
-        *index += 2;
-        return Some(FunctionTerm::PiAngle);
-    }
-    let value = words[*index];
-    *index += 1;
-    Some(FunctionTerm::Constant(f64::from(value)))
 }
