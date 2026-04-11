@@ -1,13 +1,52 @@
-use super::build_scene;
+use super::{build_scene, render_payload_log};
 use crate::format::GspFile;
 use crate::runtime::scene::{
     LabelIterationFamily, LineBinding, LineConstraint, PointIterationFamily, Scene,
     ScenePointBinding, ScenePointConstraint, TextLabelBinding,
 };
+use std::path::Path;
 
 fn fixture_scene(data: &[u8]) -> Scene {
     let file = GspFile::parse(data).expect("fixture parses");
     build_scene(&file)
+}
+
+fn fixture_log(data: &[u8], source_path: &str) -> String {
+    let file = GspFile::parse(data).expect("fixture parses");
+    render_payload_log(Path::new(source_path), &file)
+}
+
+#[test]
+fn renders_unsupported_payload_log_in_natural_chinese() {
+    let log = fixture_log(
+        include_bytes!("../../../tests/fixtures/14.gsp"),
+        "tests/fixtures/14.gsp",
+    );
+
+    assert!(log.contains("载荷说明"));
+    assert!(log.contains("问题列表"));
+    assert!(log.contains("对象 #19 暂时无法导出，因为对象类型 86 还没有实现。"));
+    assert!(log.contains("相关对象："));
+    assert!(log.contains("#19 = 未知对象，类型是 86，按载荷顺序引用 #18、#16、#6。"));
+    assert!(log.contains("#18 = 将 点 #10 按向量 #1 -> #10 平移得到的对象"));
+    assert!(log.contains("#15 = 过 #10 且垂直于 线段 #14 的直线。"));
+    assert!(log.contains("#1 = 自由点，名称“O”。"));
+    assert!(log.contains("原始载荷："));
+    assert!(log.contains("构造步骤"));
+    assert!(log.contains("1. #1 = 自由点，名称“O”。"));
+}
+
+#[test]
+fn renders_payload_log_for_supported_fixture_too() {
+    let log = fixture_log(
+        include_bytes!("../../../tests/fixtures/gsp/static/point.gsp"),
+        "tests/fixtures/gsp/static/point.gsp",
+    );
+
+    assert!(log.contains("问题数量: 0"));
+    assert!(log.contains("未发现不支持的载荷。"));
+    assert!(log.contains("构造步骤"));
+    assert!(log.contains("1. #1 = 自由点。"));
 }
 
 #[test]
