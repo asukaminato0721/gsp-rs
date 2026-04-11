@@ -14,6 +14,7 @@
     "src/html/viewer.js",
     "src/html/viewer_dynamics.js",
     "src/html/viewer_scene.js",
+    "src/html/generated/**/*.ts",
     "src/html/viewer_types.d.ts",
     "src/html/vendor/van-1.6.0.d.ts"
   ]

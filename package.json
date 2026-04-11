@@ -3,6 +3,7 @@
   "private": true,
   "packageManager": "pnpm@10",
   "scripts": {
+    "generate:viewer-types": "cargo test export_bindings_scenejson",
     "typecheck:js": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
