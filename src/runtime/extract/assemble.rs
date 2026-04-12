@@ -51,6 +51,24 @@ pub(super) fn build_world_data(
                     end_index: *end_index,
                     t: *t,
                 },
+                ScenePointConstraint::OnLine {
+                    start_index,
+                    end_index,
+                    t,
+                } => ScenePointConstraint::OnLine {
+                    start_index: *start_index,
+                    end_index: *end_index,
+                    t: *t,
+                },
+                ScenePointConstraint::OnRay {
+                    start_index,
+                    end_index,
+                    t,
+                } => ScenePointConstraint::OnRay {
+                    start_index: *start_index,
+                    end_index: *end_index,
+                    t: *t,
+                },
                 ScenePointConstraint::OnPolyline {
                     function_key,
                     points,

@@ -166,6 +166,19 @@ fn decode_parameter_anchor_binding(
     let groups = file.object_groups();
     let path = find_indexed_path(file, group)?;
     let point_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+    let name = group
+        .records
+        .iter()
+        .find(|record| record.record_type == RECORD_LABEL_AUX)
+        .and_then(|record| decode_parameter_name(record.payload(&file.data)))
+        .or_else(|| {
+            point_group
+                .records
+                .iter()
+                .find(|record| record.record_type == RECORD_LABEL_AUX)
+                .and_then(|record| decode_parameter_name(record.payload(&file.data)))
+        })
+        .unwrap_or_else(|| format!("__param_anchor_{}", group.ordinal));
     let value = match point_group.header.kind() {
         kind if kind.is_point_constraint() => point_group
             .records
@@ -188,7 +201,7 @@ fn decode_parameter_anchor_binding(
         _ => return None,
     };
     Some(ParameterBinding {
-        name: format!("__param_anchor_{}", group.ordinal),
+        name,
         value,
     })
 }
@@ -235,6 +248,7 @@ pub(crate) enum FunctionToken {
     Mul,
     Div,
     Pow,
+    Terminator,
     Variable,
     PiAngle,
     Parameter(ParameterBinding),
@@ -315,6 +329,14 @@ impl<'a> FunctionTokenCursor<'a> {
     fn words_consumed(&self) -> usize {
         self.offset
     }
+
+    fn has_standalone_terminator_ahead(&self) -> bool {
+        let remaining = &self.words[self.offset..];
+        remaining.iter().enumerate().any(|(index, word)| {
+            *word == EXPR_VARIABLE_SUFFIX
+                && (index == 0 || remaining[index - 1] != EXPR_VARIABLE_WORD)
+        })
+    }
 }
 
 struct FunctionExprParser<'a> {
@@ -366,12 +388,29 @@ impl<'a> FunctionExprParser<'a> {
             }
             FunctionToken::Constant(value) => Ok(FunctionAst::Constant(value)),
             FunctionToken::Unary(op) => {
-                let expr = self.parse_expr_bp(4).map_err(|_| {
+                let terminator_aware = self.tokens.has_standalone_terminator_ahead();
+                let expr = if terminator_aware {
+                    self.parse_expr_bp(0)
+                } else {
+                    self.parse_expr_bp(4)
+                }
+                .map_err(|_| {
                     FunctionExprParseError::InvalidUnaryOperand {
                         offset,
                         opcode: self.tokens.words[offset - self.tokens.base_offset],
                     }
                 })?;
+                if terminator_aware
+                    && matches!(
+                        self.tokens.peek()?,
+                        Some(LexedFunctionToken {
+                            kind: FunctionToken::Terminator,
+                            ..
+                        })
+                    )
+                {
+                    let _ = self.tokens.bump()?;
+                }
                 Ok(FunctionAst::Unary {
                     op,
                     expr: Box::new(expr),
@@ -381,12 +420,19 @@ impl<'a> FunctionExprParser<'a> {
             | FunctionToken::Sub
             | FunctionToken::Mul
             | FunctionToken::Div
-            | FunctionToken::Pow) => Err(FunctionExprParseError::UnexpectedToken { offset, found }),
+            | FunctionToken::Pow
+            | FunctionToken::Terminator) => {
+                Err(FunctionExprParseError::UnexpectedToken { offset, found })
+            }
         }
     }
 
     fn peek_infix(&mut self) -> Result<Option<(BinaryOp, u8, u8)>, FunctionExprParseError> {
         Ok(match self.tokens.peek()? {
+            Some(LexedFunctionToken {
+                kind: FunctionToken::Terminator,
+                ..
+            }) => None,
             Some(LexedFunctionToken {
                 kind: FunctionToken::Add,
                 ..
@@ -421,6 +467,14 @@ fn lex_function_token(
     parameters: &BTreeMap<u16, ParameterBinding>,
     offset: usize,
 ) -> Result<LexedFunctionToken, FunctionExprParseError> {
+    fn suffix_width(word: u16, next: Option<u16>) -> usize {
+        match word {
+            EXPR_VARIABLE_WORD | EXPR_PI_WORD => usize::from(matches!(next, Some(EXPR_VARIABLE_SUFFIX))),
+            EXPR_PARAMETER_PREFIX..=u16::MAX if (word & EXPR_PARAMETER_MASK) == EXPR_PARAMETER_PREFIX => 0,
+            _ => usize::from(matches!(next, Some(0x0101 | 0x0201))),
+        }
+    }
+
     let word = *words
         .first()
         .ok_or(FunctionExprParseError::UnexpectedEnd { offset })?;
@@ -460,6 +514,12 @@ fn lex_function_token(
             width_words: 1,
         },
         _ => {
+            if word == EXPR_VARIABLE_SUFFIX {
+                return Ok(LexedFunctionToken {
+                    kind: FunctionToken::Terminator,
+                    width_words: 1,
+                });
+            }
             if let Some(op) = decode_unary_function(word) {
                 return Ok(LexedFunctionToken {
                     kind: FunctionToken::Unary(op),
@@ -477,12 +537,12 @@ fn lex_function_token(
                             },
                         )?,
                     ),
-                    width_words: 1,
+                    width_words: 1 + suffix_width(word, words.get(1).copied()),
                 });
             }
             LexedFunctionToken {
                 kind: FunctionToken::Constant(f64::from(word)),
-                width_words: 1,
+                width_words: 1 + suffix_width(word, words.get(1).copied()),
             }
         }
     };
@@ -559,7 +619,11 @@ fn has_ignorable_expr_suffix(words: &[u16], end: usize) -> bool {
     let suffix = &words[end..];
     matches!(
         suffix,
-        [0x0201] | [0x0101] | [0x0000, 0x0101] | [0x0000, 0x0000, 0x0101]
+        [0x000c]
+            | [0x0201]
+            | [0x0101]
+            | [0x0000, 0x0101]
+            | [0x0000, 0x0000, 0x0101]
     )
 }
 

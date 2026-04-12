@@ -623,16 +623,29 @@ fn scene_point_from_constraint(
             let start_index =
                 mapped_point_index(group_to_point_index, constraint.start_group_index)?;
             let end_index = mapped_point_index(group_to_point_index, constraint.end_group_index)?;
+            let scene_constraint = match constraint.line_like_kind {
+                crate::runtime::scene::LineLikeKind::Segment => ScenePointConstraint::OnSegment {
+                    start_index,
+                    end_index,
+                    t: constraint.t,
+                },
+                crate::runtime::scene::LineLikeKind::Line => ScenePointConstraint::OnLine {
+                    start_index,
+                    end_index,
+                    t: constraint.t,
+                },
+                crate::runtime::scene::LineLikeKind::Ray => ScenePointConstraint::OnRay {
+                    start_index,
+                    end_index,
+                    t: constraint.t,
+                },
+            };
             Some(scene_point(
                 position,
                 color,
                 visible,
                 draggable,
-                ScenePointConstraint::OnSegment {
-                    start_index,
-                    end_index,
-                    t: constraint.t,
-                },
+                scene_constraint,
                 None,
             ))
         }
@@ -749,16 +762,29 @@ fn scene_point_from_parameter_controlled(
             let start_index =
                 mapped_point_index(group_to_point_index, constraint.start_group_index)?;
             let end_index = mapped_point_index(group_to_point_index, constraint.end_group_index)?;
+            let scene_constraint = match constraint.line_like_kind {
+                crate::runtime::scene::LineLikeKind::Segment => ScenePointConstraint::OnSegment {
+                    start_index,
+                    end_index,
+                    t: constraint.t,
+                },
+                crate::runtime::scene::LineLikeKind::Line => ScenePointConstraint::OnLine {
+                    start_index,
+                    end_index,
+                    t: constraint.t,
+                },
+                crate::runtime::scene::LineLikeKind::Ray => ScenePointConstraint::OnRay {
+                    start_index,
+                    end_index,
+                    t: constraint.t,
+                },
+            };
             Some(scene_point(
                 parameter_point.position.clone(),
                 color,
                 visible,
                 true,
-                ScenePointConstraint::OnSegment {
-                    start_index,
-                    end_index,
-                    t: constraint.t,
-                },
+                scene_constraint,
                 binding,
             ))
         }

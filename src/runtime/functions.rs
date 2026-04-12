@@ -223,4 +223,52 @@ mod tests {
             }))
         );
     }
+
+    #[test]
+    fn decodes_hidden_function_exprs_in_changing_polyline_lyg1_fixture() {
+        let data = include_bytes!("../../tests/Samples/个人专栏/李有贵作品/变化的折线（lyg)1.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let groups = file.object_groups();
+
+        let expr_a = try_decode_function_expr(&file, &groups, &groups[5]).expect("expression #6");
+        assert_eq!(
+            expr_a,
+            FunctionExpr::Parsed(FunctionAst::Binary {
+                lhs: Box::new(FunctionAst::Parameter("m₁".to_string(), 4.613963872539072)),
+                op: BinaryOp::Sub,
+                rhs: Box::new(FunctionAst::Unary {
+                    op: UnaryFunction::Trunc,
+                    expr: Box::new(FunctionAst::Parameter("m₁".to_string(), 4.613963872539072)),
+                }),
+            })
+        );
+
+        let expr_b = try_decode_function_expr(&file, &groups, &groups[6]).expect("expression #7");
+        assert_eq!(
+            expr_b,
+            FunctionExpr::Parsed(FunctionAst::Binary {
+                lhs: Box::new(FunctionAst::Constant(0.0)),
+                op: BinaryOp::Div,
+                rhs: Box::new(FunctionAst::Unary {
+                    op: UnaryFunction::Sign,
+                    expr: Box::new(FunctionAst::Binary {
+                        lhs: Box::new(FunctionAst::Unary {
+                            op: UnaryFunction::Sign,
+                            expr: Box::new(FunctionAst::Binary {
+                                lhs: Box::new(FunctionAst::Constant(1.0)),
+                                op: BinaryOp::Sub,
+                                rhs: Box::new(FunctionAst::Parameter(
+                                    "m₁".to_string(),
+                                    4.613963872539072,
+                                )),
+                            }),
+                        }),
+                        op: BinaryOp::Add,
+                        rhs: Box::new(FunctionAst::Constant(1.0)),
+                    }),
+                }),
+            })
+        );
+    }
+
 }

@@ -9,8 +9,7 @@ use super::decode::{
 };
 use super::points::{
     RawPointConstraint, editable_non_graph_parameter_name_for_group,
-    is_editable_non_graph_parameter_name, is_non_graph_parameter_group, regular_polygon_angle_expr,
-    try_decode_point_constraint,
+    is_editable_non_graph_parameter_name, is_non_graph_parameter_group, try_decode_point_constraint,
 };
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
 use crate::runtime::functions::{
@@ -169,6 +168,7 @@ fn resolve_function_expr_parameter(
     file: &GspFile,
     groups: &[ObjectGroup],
     group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
     visiting: &mut BTreeSet<usize>,
 ) -> Option<(String, f64)> {
     if !visiting.insert(group.ordinal) {
@@ -178,12 +178,21 @@ fn resolve_function_expr_parameter(
         let path = find_indexed_path(file, group)?;
         let parameter_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
         if parameter_group.header.kind() == crate::format::GroupKind::FunctionExpr {
-            return resolve_function_expr_parameter(file, groups, parameter_group, visiting);
+            return resolve_function_expr_parameter(file, groups, parameter_group, anchors, visiting);
         }
-        Some((
-            editable_non_graph_parameter_name_for_group(file, groups, parameter_group)?,
-            try_decode_parameter_control_value_for_group(file, groups, parameter_group).ok()?,
-        ))
+        let name = if parameter_group.header.kind() == crate::format::GroupKind::ParameterAnchor {
+            let anchor_path = find_indexed_path(file, parameter_group)?;
+            let point_group = groups.get(anchor_path.refs.first()?.checked_sub(1)?)?;
+            decode_label_name(file, parameter_group).or_else(|| decode_label_name(file, point_group))?
+        } else {
+            editable_non_graph_parameter_name_for_group(file, groups, parameter_group)?
+        };
+        let value = if parameter_group.header.kind() == crate::format::GroupKind::ParameterAnchor {
+            parameter_anchor_value(file, groups, parameter_group, anchors)?
+        } else {
+            try_decode_parameter_control_value_for_group(file, groups, parameter_group).ok()?
+        };
+        Some((name, value))
     })();
     visiting.remove(&group.ordinal);
     result
@@ -260,6 +269,7 @@ fn iteration_group_value(
 fn payload_function_expr_label(
     file: &GspFile,
     groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
     group: &ObjectGroup,
     fallback_expr_label: &str,
     visiting: &mut BTreeSet<usize>,
@@ -274,15 +284,25 @@ fn payload_function_expr_label(
         let path = find_indexed_path(file, group)?;
         let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
         let source_label = if source_group.header.kind() == crate::format::GroupKind::FunctionExpr {
-            payload_function_expr_label(file, groups, source_group, fallback_expr_label, visiting)
+            payload_function_expr_label(file, groups, anchors, source_group, fallback_expr_label, visiting)
         } else {
-            decode_label_name(file, source_group)?
+            decode_label_name(file, source_group).or_else(|| {
+                if source_group.header.kind() == crate::format::GroupKind::ParameterAnchor {
+                    let anchor_path = find_indexed_path(file, source_group)?;
+                    let point_group = groups.get(anchor_path.refs.first()?.checked_sub(1)?)?;
+                    decode_label_name(file, point_group)
+                } else {
+                    None
+                }
+            })?
         };
-        if source_group.header.kind() == crate::format::GroupKind::ParameterAnchor {
-            return Some(format!("{source_label} + {fallback_expr_label}"));
-        }
-        let (parameter_name, _) =
-            resolve_function_expr_parameter(file, groups, group, &mut BTreeSet::new())?;
+        let (parameter_name, _) = resolve_function_expr_parameter(
+            file,
+            groups,
+            group,
+            anchors,
+            &mut BTreeSet::new(),
+        )?;
         Some(fallback_expr_label.replacen(&parameter_name, &source_label, 1))
     })()
     .unwrap_or_else(|| fallback_expr_label.to_string());
@@ -525,7 +545,39 @@ fn measurement_label_decimals(text: &str) -> Option<usize> {
     )
 }
 
-pub(super) fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) -> Vec<TextLabel> {
+fn build_expression_rich_markup(expr_label: &str, value_text: &str) -> Option<String> {
+    let render_part = |text: &str| text.replace('*', "\u{00b7}");
+    if let Some((prefix, rest)) = expr_label.split_once(" + ")
+        && let Some((numerator, denominator)) = rest.split_once(" / ")
+    {
+        return Some(format!(
+            "<H<Tx{} + ></<Tx{}><Tx{}>><Tx = {}>>",
+            render_part(prefix),
+            render_part(numerator),
+            render_part(denominator),
+            value_text,
+        ));
+    }
+    if let Some((numerator, denominator)) = expr_label.split_once(" / ") {
+        return Some(format!(
+            "<H</<Tx{}><Tx{}>><Tx = {}>>",
+            render_part(numerator),
+            render_part(denominator),
+            value_text,
+        ));
+    }
+    Some(format!(
+        "<H<Tx{} = {}>>",
+        render_part(expr_label),
+        value_text,
+    ))
+}
+
+pub(super) fn collect_coordinate_labels(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+) -> Vec<TextLabel> {
     let mut labels = Vec::new();
     for group in groups {
         let kind = group.header.kind();
@@ -552,52 +604,37 @@ pub(super) fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) 
         } else if kind == crate::format::GroupKind::FunctionExpr
             && let Some(expr) = try_decode_function_expr(file, groups, group).ok()
             && let Some((parameter_name, parameter_value)) =
-                resolve_function_expr_parameter(file, groups, group, &mut BTreeSet::new())
+                resolve_function_expr_parameter(file, groups, group, anchors, &mut BTreeSet::new())
             && let Some(anchor) = try_decode_0907_anchor(file, group).ok().flatten()
         {
-            let Some(value) = evaluate_expr_with_parameters(
+            let value = evaluate_expr_with_parameters(
                 &expr,
                 0.0,
                 &BTreeMap::from([(parameter_name.clone(), parameter_value)]),
-            ) else {
-                continue;
-            };
+            );
             let expr_label = payload_function_expr_label(
                 file,
                 groups,
+                anchors,
                 group,
                 &function_expr_label(expr.clone()),
                 &mut BTreeSet::new(),
             );
-            let (_expr_label, binding, text) = if parameter_name == "n" && expr_label == "257 / n" {
-                let angle = 360.0 / parameter_value;
-                let angle_expr = regular_polygon_angle_expr(&parameter_name, parameter_value);
-                (
-                    "360° / n".to_string(),
-                    Some(TextLabelBinding::ExpressionValue {
-                        parameter_name: parameter_name.clone(),
-                        expr_label: "360° / n".to_string(),
-                        expr: angle_expr,
-                    }),
-                    format!("360°\n——— = {:.2}°\n  n", angle),
-                )
-            } else {
-                (
-                    expr_label.clone(),
-                    is_editable_non_graph_parameter_name(&parameter_name).then(|| {
-                        TextLabelBinding::ExpressionValue {
-                            parameter_name: parameter_name.clone(),
-                            expr_label: expr_label.clone(),
-                            expr: expr.clone(),
-                        }
-                    }),
-                    format!("{expr_label} = {:.2}", value),
-                )
-            };
+            let binding = is_editable_non_graph_parameter_name(&parameter_name).then(|| {
+                TextLabelBinding::ExpressionValue {
+                    parameter_name: parameter_name.clone(),
+                    expr_label: expr_label.clone(),
+                    expr: expr.clone(),
+                }
+            });
+            let value_text = value
+                .map(format_number)
+                .unwrap_or_else(|| "未定义".to_string());
+            let text = format!("{expr_label} = {value_text}");
             labels.push(TextLabel {
                 anchor,
                 text,
-                rich_markup: None,
+                rich_markup: build_expression_rich_markup(&expr_label, &value_text),
                 color: [30, 30, 30, 255],
                 visible: helper_visible,
                 binding,
@@ -819,7 +856,7 @@ pub(super) fn collect_segment_parameter_labels(
             let point_group = groups.get(path.refs[0].checked_sub(1)?)?;
             let segment_group = groups.get(path.refs[1].checked_sub(1)?)?;
             if !point_group.header.kind().is_point_constraint()
-                || (segment_group.header.kind()) != crate::format::GroupKind::Segment
+                || !segment_group.header.kind().is_line_like()
             {
                 return None;
             }
@@ -1023,9 +1060,7 @@ fn custom_transform_parameter_anchor_label(
     }
     let point_group = groups.get(path.refs[0].checked_sub(1)?)?;
     let segment_group = groups.get(path.refs[1].checked_sub(1)?)?;
-    if !point_group.header.kind().is_point_constraint()
-        || (segment_group.header.kind()) != crate::format::GroupKind::Segment
-    {
+    if !point_group.header.kind().is_point_constraint() || !segment_group.header.kind().is_line_like() {
         return None;
     }
     Some(format!(
@@ -1125,6 +1160,7 @@ pub(super) fn collect_label_iterations(
 pub(super) fn collect_iteration_tables(
     file: &GspFile,
     groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
 ) -> Vec<IterationTable> {
     groups
         .iter()
@@ -1142,11 +1178,17 @@ pub(super) fn collect_iteration_tables(
                 return None;
             }
             let expr = try_decode_function_expr(file, groups, expr_group).ok()?;
-            let (parameter_name, _) =
-                resolve_function_expr_parameter(file, groups, expr_group, &mut BTreeSet::new())?;
+            let (parameter_name, _) = resolve_function_expr_parameter(
+                file,
+                groups,
+                expr_group,
+                anchors,
+                &mut BTreeSet::new(),
+            )?;
             let expr_label = payload_function_expr_label(
                 file,
                 groups,
+                anchors,
                 expr_group,
                 &function_expr_label(expr.clone()),
                 &mut BTreeSet::new(),
@@ -1432,6 +1474,7 @@ pub(super) fn compute_iteration_labels(
             let expr_label = payload_function_expr_label(
                 file,
                 groups,
+                anchors,
                 group,
                 &function_expr_label(expr.clone()),
                 &mut BTreeSet::new(),

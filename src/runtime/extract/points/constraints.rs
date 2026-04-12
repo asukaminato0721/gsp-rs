@@ -19,12 +19,14 @@ use crate::runtime::geometry::{
     sample_three_point_arc_complement, three_point_arc_geometry, to_raw_from_world, to_world,
 };
 use crate::runtime::payload_consts::{RECORD_BINDING_PAYLOAD, RECORD_FUNCTION_PLOT_DESCRIPTOR};
+use crate::runtime::scene::LineLikeKind;
 use thiserror::Error;
 
 pub(crate) struct PointOnSegmentConstraint {
     pub(crate) start_group_index: usize,
     pub(crate) end_group_index: usize,
     pub(crate) t: f64,
+    pub(crate) line_like_kind: LineLikeKind,
 }
 
 pub(crate) struct PointOnCircleConstraint {
@@ -390,6 +392,12 @@ fn decode_point_on_segment_constraint(
         .filter(|ordinal| *ordinal > 0)?;
     let host_group_index = host_ref - 1;
     let host_group = groups.get(host_group_index)?;
+    let line_like_kind = match host_group.header.kind() {
+        crate::format::GroupKind::Segment => LineLikeKind::Segment,
+        crate::format::GroupKind::Line => LineLikeKind::Line,
+        crate::format::GroupKind::Ray => LineLikeKind::Ray,
+        _ => return None,
+    };
     let host_path = find_indexed_path(file, host_group)?;
     if host_path.refs.len() != 2 {
         return None;
@@ -409,6 +417,7 @@ fn decode_point_on_segment_constraint(
         start_group_index: host_path.refs[0].checked_sub(1)?,
         end_group_index: host_path.refs[1].checked_sub(1)?,
         t,
+        line_like_kind,
     })
 }
 
@@ -552,13 +561,25 @@ pub(crate) fn try_decode_parameter_controlled_point(
     };
 
     match host_group.header.kind() {
-        crate::format::GroupKind::Segment => {
+        crate::format::GroupKind::Segment
+        | crate::format::GroupKind::Line
+        | crate::format::GroupKind::Ray => {
             let host_path = find_indexed_path(file, host_group)
                 .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
             if host_path.refs.len() != 2 {
                 return Err(ParameterControlledPointDecodeError::InvalidHostGeometry);
             }
-            let normalized = wrap_unit_interval(parameter_value);
+            let line_like_kind = match host_group.header.kind() {
+                crate::format::GroupKind::Segment => LineLikeKind::Segment,
+                crate::format::GroupKind::Line => LineLikeKind::Line,
+                crate::format::GroupKind::Ray => LineLikeKind::Ray,
+                _ => unreachable!(),
+            };
+            let t = match line_like_kind {
+                LineLikeKind::Segment => wrap_unit_interval(parameter_value),
+                LineLikeKind::Line => parameter_value,
+                LineLikeKind::Ray => parameter_value.max(0.0),
+            };
             let start_group_index = host_path.refs[0]
                 .checked_sub(1)
                 .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
@@ -573,13 +594,14 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 .get(end_group_index)
                 .and_then(|value| value.clone())
                 .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
-            let position = lerp_point(&start, &end, normalized);
+            let position = lerp_point(&start, &end, t);
             Ok(ParameterControlledPoint {
                 position,
                 constraint: RawPointConstraint::Segment(PointOnSegmentConstraint {
                     start_group_index,
                     end_group_index,
-                    t: normalized,
+                    t,
+                    line_like_kind,
                 }),
                 parameter_name,
                 source_point_group_index,
@@ -1053,7 +1075,7 @@ pub(crate) fn try_decode_point_constraint(
         return try_decode_path_point_constraint(file, groups, host_group, payload, anchors, graph);
     }
 
-    if matches!(host_kind, crate::format::GroupKind::Segment) {
+    if host_kind.is_line_like() {
         return try_decode_point_on_segment_constraint(file, groups, group)
             .map(RawPointConstraint::Segment);
     }
@@ -1254,15 +1276,29 @@ fn decode_path_point_constraint(
     }
 
     match host_group.header.kind() {
-        crate::format::GroupKind::Segment => {
+        crate::format::GroupKind::Segment
+        | crate::format::GroupKind::Line
+        | crate::format::GroupKind::Ray => {
             let host_path = find_indexed_path(file, host_group)?;
             if host_path.refs.len() != 2 {
                 return None;
             }
+            let line_like_kind = match host_group.header.kind() {
+                crate::format::GroupKind::Segment => LineLikeKind::Segment,
+                crate::format::GroupKind::Line => LineLikeKind::Line,
+                crate::format::GroupKind::Ray => LineLikeKind::Ray,
+                _ => unreachable!(),
+            };
+            let t = match line_like_kind {
+                LineLikeKind::Segment => wrap_unit_interval(normalized_t),
+                LineLikeKind::Line => normalized_t,
+                LineLikeKind::Ray => normalized_t.max(0.0),
+            };
             Some(RawPointConstraint::Segment(PointOnSegmentConstraint {
                 start_group_index: host_path.refs[0].checked_sub(1)?,
                 end_group_index: host_path.refs[1].checked_sub(1)?,
-                t: wrap_unit_interval(normalized_t),
+                t,
+                line_like_kind,
             }))
         }
         crate::format::GroupKind::Circle => {

@@ -323,6 +323,22 @@ enum PointConstraintJson {
         end_index: usize,
         t: f64,
     },
+    #[serde(rename = "line")]
+    Line {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+        t: f64,
+    },
+    #[serde(rename = "ray")]
+    Ray {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+        t: f64,
+    },
     #[serde(rename = "polyline")]
     Polyline {
         #[serde(rename = "functionKey")]
@@ -448,6 +464,24 @@ impl PointConstraintJson {
                 end_index,
                 t,
             } => Some(Self::Segment {
+                start_index: *start_index,
+                end_index: *end_index,
+                t: *t,
+            }),
+            ScenePointConstraint::OnLine {
+                start_index,
+                end_index,
+                t,
+            } => Some(Self::Line {
+                start_index: *start_index,
+                end_index: *end_index,
+                t: *t,
+            }),
+            ScenePointConstraint::OnRay {
+                start_index,
+                end_index,
+                t,
+            } => Some(Self::Ray {
                 start_index: *start_index,
                 end_index: *end_index,
                 t: *t,

@@ -37,6 +37,15 @@
 
   /**
    * @param {RuntimeScenePointJson["constraint"]} constraint
+   * @returns {constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "segment" | "line" | "ray" }>}
+   */
+  function isLineLikeConstraint(constraint) {
+    return !!constraint
+      && (constraint.kind === "segment" || constraint.kind === "line" || constraint.kind === "ray");
+  }
+
+  /**
+   * @param {RuntimeScenePointJson["constraint"]} constraint
    * @returns {constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "polyline" }>}
    */
   function isPolylineConstraint(constraint) {
@@ -104,13 +113,24 @@
     },
     segment(env, _draft, point, world) {
       const constraint = point.constraint;
-      if (!isSegmentConstraint(constraint)) return;
+      if (!isLineLikeConstraint(constraint)) return;
       const start = env.resolveScenePoint(constraint.startIndex);
       const end = env.resolveScenePoint(constraint.endIndex);
-      const projection = window.GspViewerModules.scene.projectToSegment(world, start, end);
+      const projection = window.GspViewerModules.scene.projectToLineLike(
+        world,
+        start,
+        end,
+        constraint.kind,
+      );
       if (projection) {
         constraint.t = projection.t;
       }
+    },
+    line(env, draft, point, world) {
+      DRAGGED_POINT_CONSTRAINT_UPDATERS.segment(env, draft, point, world);
+    },
+    ray(env, draft, point, world) {
+      DRAGGED_POINT_CONSTRAINT_UPDATERS.segment(env, draft, point, world);
     },
     polyline(env, _draft, point, world) {
       const constraint = point.constraint;

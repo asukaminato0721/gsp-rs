@@ -903,7 +903,7 @@ mod tests {
         assert!(html.contains("\"text\":\"Q\""));
         assert!(html.contains("\"kind\":\"custom-transform\""));
         assert!(html.contains("\"sourceIndex\":2"));
-        assert!(html.contains("\"name\":\"__param_anchor_5\""));
+        assert!(html.contains("\"name\":\"P\""));
         assert!(html.contains("1厘米"));
         assert!(html.contains("100°"));
     }
@@ -1010,7 +1010,7 @@ mod tests {
         }));
         assert!(labels.iter().any(|label| {
             label["binding"]["kind"].as_str() == Some("polygon-boundary-expression")
-                && label["text"].as_str() == Some("m + 1 / n = 0.50")
+                && label["text"].as_str() == Some("1 / n = 0.50")
         }));
         let circles = scene["circles"]
             .as_array()
@@ -1253,15 +1253,33 @@ mod tests {
             4,
             "expected the four seed edges to iterate"
         );
-        assert!(line_iterations.iter().all(|family| {
-            family["kind"].as_str() == Some("translate")
+        assert_eq!(
+            line_iterations
+                .iter()
+                .filter(|family| family["kind"].as_str() == Some("translate"))
+                .count(),
+            3,
+            "expected three translational seed-edge families"
+        );
+        assert!(line_iterations
+            .iter()
+            .filter(|family| family["kind"].as_str() == Some("translate"))
+            .all(|family| {
+                family["parameterName"].as_str() == Some("n")
+                    && family["dx"].as_f64() == Some(-62.0)
+                    && family["dy"].as_f64() == Some(-36.0)
+                    && family["secondaryDx"].as_f64() == Some(47.0)
+                    && family["secondaryDy"].as_f64() == Some(-52.0)
+                    && family["bidirectional"].as_bool() == Some(true)
+                    && family["depth"].as_u64() == Some(3)
+            }));
+        assert!(line_iterations.iter().any(|family| {
+            family["kind"].as_str() == Some("branching")
                 && family["parameterName"].as_str() == Some("n")
-                && family["dx"].as_f64() == Some(-62.0)
-                && family["dy"].as_f64() == Some(-36.0)
-                && family["secondaryDx"].as_f64() == Some(47.0)
-                && family["secondaryDy"].as_f64() == Some(-52.0)
-                && family["bidirectional"].as_bool() == Some(true)
                 && family["depth"].as_u64() == Some(3)
+                && family["targetSegments"]
+                    .as_array()
+                    .is_some_and(|segments| segments.len() == 2)
         }));
         let points = scene["points"]
             .as_array()
@@ -1305,6 +1323,111 @@ mod tests {
                 .iter()
                 .any(|line| line["binding"]["kind"].as_str() == Some("segment")),
             "expected the payload segment to remain interactive"
+        );
+    }
+
+    #[test]
+    fn exports_changing_polyline_lyg_fixture_with_live_ray_and_iterations() {
+        let Some(data) = fixture_bytes("tests/Samples/个人专栏/李有贵作品/变化的折线（lyg).gsp")
+        else {
+            return;
+        };
+        let scene = fixture_scene(&data, "changing polyline fixture should compile");
+
+        let points = scene["points"]
+            .as_array()
+            .expect("scene points should be an array");
+        assert!(
+            points
+                .iter()
+                .any(|point| point["constraint"]["kind"].as_str() == Some("ray")),
+            "expected the payload draggable anchor to stay constrained to its source ray"
+        );
+        assert!(
+            points
+                .iter()
+                .any(|point| point["binding"]["kind"].as_str() == Some("derived-parameter-expr")),
+            "expected the payload parameter-controlled helper point to stay live"
+        );
+
+        let labels = scene["labels"]
+            .as_array()
+            .expect("scene labels should be an array");
+        assert!(
+            labels
+                .iter()
+                .any(|label| label["binding"]["kind"].as_str() == Some("segment-parameter")),
+            "expected the payload ray anchor label to export as a live parameter label"
+        );
+        assert!(
+            labels.iter().any(|label| {
+                label["binding"]["kind"].as_str() == Some("expression-value")
+                    && label["text"].as_str() == Some("P - trunc(P) = 0.02")
+                    && label["richMarkup"].as_str().is_some()
+            }),
+            "expected the payload fractional expression to stay live beside the iterated geometry"
+        );
+        assert!(
+            labels.iter().any(|label| {
+                label["binding"]["kind"].as_str() == Some("expression-value")
+                    && label["text"].as_str()
+                        == Some("0 / sgn((sgn((1 - P)) + 1)) = 未定义")
+                    && label["richMarkup"].as_str().is_some()
+            }),
+            "expected the payload undefined distance expression to remain visible"
+        );
+
+        let lines = scene["lines"]
+            .as_array()
+            .expect("scene lines should be an array");
+        assert!(
+            lines
+                .iter()
+                .any(|line| line["binding"]["kind"].as_str() == Some("ray")),
+            "expected the payload source ray to remain interactive"
+        );
+
+        let line_iterations = scene["lineIterations"]
+            .as_array()
+            .expect("scene line iterations should be an array");
+        assert_eq!(
+            line_iterations.len(),
+            2,
+            "expected both payload seed segments to export as carried line families"
+        );
+        assert!(line_iterations.iter().all(|family| {
+            family["kind"].as_str() == Some("translate")
+                && family["depth"].as_u64() == Some(8)
+                && family["parameterName"].is_null()
+        }));
+    }
+
+    #[test]
+    fn exports_non_iterated_changing_polyline_lyg1_fixture_calculation_labels() {
+        let Some(data) = fixture_bytes("tests/Samples/个人专栏/李有贵作品/变化的折线（lyg)1.gsp")
+        else {
+            return;
+        };
+        let scene = fixture_scene(&data, "changing polyline calc fixture should compile");
+
+        let labels = scene["labels"]
+            .as_array()
+            .expect("scene labels should be an array");
+        assert!(
+            labels.iter().any(|label| {
+                label["binding"]["kind"].as_str() == Some("expression-value")
+                    && label["text"].as_str() == Some("m₁ - trunc(m₁) = 0.61")
+                    && label["richMarkup"].as_str().is_some()
+            }),
+            "expected the payload fractional-part expression label to export"
+        );
+        assert!(
+            labels.iter().any(|label| {
+                label["binding"]["kind"].as_str() == Some("expression-value")
+                    && label["text"].as_str() == Some("0 / sgn((sgn((1 - m₁)) + 1)) = 未定义")
+                    && label["richMarkup"].as_str().is_some()
+            }),
+            "expected the payload undefined distance expression label to export"
         );
     }
 

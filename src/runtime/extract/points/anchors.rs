@@ -1114,6 +1114,8 @@ pub(crate) fn custom_transform_trace_parameter(
 ) -> Option<f64> {
     match &point.constraint {
         crate::runtime::scene::ScenePointConstraint::OnSegment { t, .. }
+        | crate::runtime::scene::ScenePointConstraint::OnLine { t, .. }
+        | crate::runtime::scene::ScenePointConstraint::OnRay { t, .. }
         | crate::runtime::scene::ScenePointConstraint::OnCircleArc { t, .. }
         | crate::runtime::scene::ScenePointConstraint::OnArc { t, .. } => Some(*t),
         crate::runtime::scene::ScenePointConstraint::OnPolygonBoundary { t, .. } => Some(*t),

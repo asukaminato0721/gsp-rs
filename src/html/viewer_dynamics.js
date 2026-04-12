@@ -591,6 +591,8 @@
   /** @type {Record<string, PointConstraintParameterReader>} */
   const POINT_CONSTRAINT_PARAMETER_READERS = {
     segment: (scene, pointIndex) => scene.points[pointIndex]?.constraint?.t ?? null,
+    line: (scene, pointIndex) => scene.points[pointIndex]?.constraint?.t ?? null,
+    ray: (scene, pointIndex) => scene.points[pointIndex]?.constraint?.t ?? null,
     polyline: (scene, pointIndex) => scene.points[pointIndex]?.constraint?.t ?? null,
     "polygon-boundary": polygonBoundaryParameterFromPoint,
     circle: circleParameterFromPoint,
@@ -600,13 +602,20 @@
 
   /** @type {Record<string, PointConstraintParameterApplier>} */
   const POINT_CONSTRAINT_PARAMETER_APPLIERS = {
-    segment(point, _scene, wrapped) {
-      point.constraint.t = wrapped;
+    segment(point, _scene, value) {
+      point.constraint.t = wrapUnitInterval(value);
     },
-    polyline(point, _scene, wrapped) {
-      point.constraint.t = wrapped;
+    line(point, _scene, value) {
+      point.constraint.t = value;
     },
-    "polygon-boundary"(point, scene, wrapped) {
+    ray(point, _scene, value) {
+      point.constraint.t = Math.max(0, value);
+    },
+    polyline(point, _scene, value) {
+      point.constraint.t = wrapUnitInterval(value);
+    },
+    "polygon-boundary"(point, scene, value) {
+      const wrapped = wrapUnitInterval(value);
       const count = point.constraint.vertexIndices.length;
       if (count < 2) return;
       const lengths = [];
@@ -632,16 +641,17 @@
         traveled += length;
       }
     },
-    circle(point, _scene, wrapped) {
+    circle(point, _scene, value) {
+      const wrapped = wrapUnitInterval(value);
       const angle = Math.PI * 2 * wrapped;
       point.constraint.unitX = Math.cos(angle);
       point.constraint.unitY = -Math.sin(angle);
     },
-    "circle-arc"(point, _scene, wrapped) {
-      point.constraint.t = wrapped;
+    "circle-arc"(point, _scene, value) {
+      point.constraint.t = wrapUnitInterval(value);
     },
-    arc(point, _scene, wrapped) {
-      point.constraint.t = wrapped;
+    arc(point, _scene, value) {
+      point.constraint.t = wrapUnitInterval(value);
     },
   };
 
@@ -732,10 +742,9 @@
    */
   function applyNormalizedParameterToPoint(point, scene, value) {
     if (!point.constraint) return;
-    const wrapped = wrapUnitInterval(value);
     const applyParameter = POINT_CONSTRAINT_PARAMETER_APPLIERS[point.constraint.kind];
     if (applyParameter) {
-      applyParameter(point, scene, wrapped);
+      applyParameter(point, scene, value);
     }
   }
 
@@ -751,6 +760,10 @@
     if (point.constraint.kind === "circle") {
       point.constraint.unitX = Math.cos(value);
       point.constraint.unitY = -Math.sin(value);
+      return;
+    }
+    if (point.constraint.kind === "line" || point.constraint.kind === "ray") {
+      applyNormalizedParameterToPoint(point, scene, value);
       return;
     }
     const normalized = Math.abs(xMax - xMin) <= 1e-9
@@ -879,10 +892,9 @@
 
   /**
    * @param {string} exprLabel
-   * @param {number} value
-   * @param {(value: number) => string} formatNumber
+   * @param {string} valueText
    */
-  function buildExpressionRichMarkup(exprLabel, value, formatNumber) {
+  function buildExpressionRichMarkup(exprLabel, valueText) {
     if (typeof exprLabel !== "string") {
       return null;
     }
@@ -890,13 +902,13 @@
     const additiveFraction = exprLabel.match(/^(.*)\s\+\s(.*)\s\/\s(.*)$/);
     if (additiveFraction) {
       const [, prefix, numerator, denominator] = additiveFraction;
-      return `<H<Tx${renderPart(prefix)} + ></<Tx${renderPart(numerator)}><Tx${renderPart(denominator)}>><Tx = ${formatNumber(value)}>>`;
+      return `<H<Tx${renderPart(prefix)} + ></<Tx${renderPart(numerator)}><Tx${renderPart(denominator)}>><Tx = ${valueText}>>`;
     }
     const parts = exprLabel.split(" / ");
-    if (parts.length !== 2) {
-      return null;
+    if (parts.length === 2) {
+      return `<H</<Tx${renderPart(parts[0])}><Tx${renderPart(parts[1])}>><Tx = ${valueText}>>`;
     }
-    return `<H</<Tx${renderPart(parts[0])}><Tx${renderPart(parts[1])}>><Tx = ${formatNumber(value)}>>`;
+    return `<H<Tx${renderPart(exprLabel)} = ${valueText}>>`;
   }
 
   /**
@@ -1653,17 +1665,15 @@
     },
     "expression-value"(env, _scene, label, parameters) {
       const value = evaluateExpr(label.binding.expr, 0, parameters);
+      const valueText = value !== null ? env.formatNumber(value) : "未定义";
+      label.richMarkup = buildExpressionRichMarkup(
+        label.binding.exprLabel,
+        valueText,
+      );
       if (value !== null) {
-        label.richMarkup = buildExpressionRichMarkup(
-          label.binding.exprLabel,
-          value,
-          env.formatNumber,
-        );
-        label.text = label.binding.exprLabel === "360° / n"
-          ? `360°\n——— = ${env.formatNumber(value)}°\n  n`
-          : `${label.binding.exprLabel} = ${env.formatNumber(value)}`;
+        label.text = `${label.binding.exprLabel} = ${valueText}`;
       } else {
-        label.richMarkup = null;
+        label.text = `${label.binding.exprLabel} = 未定义`;
       }
     },
     "polygon-boundary-parameter"(env, scene, label) {
@@ -1680,20 +1690,19 @@
       const exprParameters = new Map(parameters);
       exprParameters.set(label.binding.parameterName, parameterValue);
       const value = evaluateExpr(label.binding.expr, 0, exprParameters);
+      const valueText = value !== null ? env.formatNumber(value) : "未定义";
+      label.richMarkup = buildExpressionRichMarkup(
+        label.binding.exprLabel,
+        valueText,
+      );
       if (value !== null) {
-        label.richMarkup = buildExpressionRichMarkup(
-          label.binding.exprLabel,
-          value,
-          env.formatNumber,
-        );
-        label.text = `${label.binding.exprLabel} = ${env.formatNumber(value)}`;
+        label.text = `${label.binding.exprLabel} = ${valueText}`;
       } else {
-        label.richMarkup = null;
+        label.text = `${label.binding.exprLabel} = 未定义`;
       }
     },
     "segment-parameter"(env, scene, label) {
-      const point = scene.points[label.binding.pointIndex];
-      const value = point?.constraint?.kind === "segment" ? point.constraint.t : null;
+      const value = parameterValueFromPoint(scene, label.binding.pointIndex);
       if (value !== null) {
         label.text = usesVerboseParameterLabel(label)
           ? `${label.binding.pointName}在${label.binding.segmentName}上的t值 = ${env.formatNumber(value)}`

@@ -117,6 +117,8 @@ fn point_accepts_trace_parameter(point: &ScenePoint) -> bool {
     matches!(
         point.constraint,
         ScenePointConstraint::OnSegment { .. }
+            | ScenePointConstraint::OnLine { .. }
+            | ScenePointConstraint::OnRay { .. }
             | ScenePointConstraint::OnPolygonBoundary { .. }
             | ScenePointConstraint::OnCircle { .. }
             | ScenePointConstraint::OnCircleArc { .. }
@@ -141,6 +143,12 @@ fn apply_trace_parameter_with_mode(
     match &mut point.constraint {
         ScenePointConstraint::OnSegment { t, .. } => {
             *t = normalized;
+        }
+        ScenePointConstraint::OnLine { t, .. } => {
+            *t = value;
+        }
+        ScenePointConstraint::OnRay { t, .. } => {
+            *t = value.max(0.0);
         }
         ScenePointConstraint::OnPolygonBoundary {
             vertex_indices,
@@ -306,6 +314,24 @@ fn resolve_trace_point(
                 })
             }
             ScenePointConstraint::OnSegment {
+                start_index,
+                end_index,
+                t,
+            } => {
+                let start = resolve_trace_point(points, *start_index, visiting)?;
+                let end = resolve_trace_point(points, *end_index, visiting)?;
+                Some(lerp_point(&start, &end, *t))
+            }
+            ScenePointConstraint::OnLine {
+                start_index,
+                end_index,
+                t,
+            } => {
+                let start = resolve_trace_point(points, *start_index, visiting)?;
+                let end = resolve_trace_point(points, *end_index, visiting)?;
+                Some(lerp_point(&start, &end, *t))
+            }
+            ScenePointConstraint::OnRay {
                 start_index,
                 end_index,
                 t,

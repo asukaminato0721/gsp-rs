@@ -224,6 +224,16 @@ pub(crate) enum ScenePointConstraint {
         end_index: usize,
         t: f64,
     },
+    OnLine {
+        start_index: usize,
+        end_index: usize,
+        t: f64,
+    },
+    OnRay {
+        start_index: usize,
+        end_index: usize,
+        t: f64,
+    },
     OnPolyline {
         function_key: usize,
         points: Vec<PointRecord>,

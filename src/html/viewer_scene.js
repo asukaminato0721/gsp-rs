@@ -65,13 +65,28 @@
    * @param {Point} end
    */
   function projectToSegment(point, start, end) {
+    return projectToLineLike(point, start, end, "segment");
+  }
+
+  /**
+   * @param {Point} point
+   * @param {Point} start
+   * @param {Point} end
+   * @param {"segment" | "line" | "ray"} kind
+   */
+  function projectToLineLike(point, start, end, kind) {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
     const lengthSquared = dx * dx + dy * dy;
     if (lengthSquared <= 1e-9) {
       return null;
     }
-    const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared));
+    const rawT = ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared;
+    const t = kind === "line"
+      ? rawT
+      : kind === "ray"
+        ? Math.max(0, rawT)
+        : Math.max(0, Math.min(1, rawT));
     const projected = lerpPoint(start, end, t);
     return {
       t,
@@ -845,6 +860,18 @@
       if (!start || !end) return null;
       return lerpPoint(start, end, constraint.t);
     },
+    line(_env, constraint, resolveFn) {
+      const start = resolveFn(constraint.startIndex);
+      const end = resolveFn(constraint.endIndex);
+      if (!start || !end) return null;
+      return lerpPoint(start, end, constraint.t);
+    },
+    ray(_env, constraint, resolveFn) {
+      const start = resolveFn(constraint.startIndex);
+      const end = resolveFn(constraint.endIndex);
+      if (!start || !end) return null;
+      return lerpPoint(start, end, constraint.t);
+    },
     polyline(env, constraint, resolveFn) {
       const points = resolvePolylineConstraintPoints(env, constraint, resolveFn);
       if (!points) return null;
@@ -1532,6 +1559,7 @@
     chooseGridStep,
     lerpPoint,
     projectToSegment,
+    projectToLineLike,
     pointOnCircleArc,
     projectToCircleArc,
     pointOnThreePointArc,

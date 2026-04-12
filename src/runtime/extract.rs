@@ -449,8 +449,13 @@ fn collect_scene_labels(
         analysis.graph_mode,
         !analysis.has_function_plots && !analysis.has_coordinate_objects,
     );
-    if analysis.has_coordinate_objects || analysis.has_iteration_helpers {
-        labels.extend(collect_coordinate_labels(file, groups));
+    if analysis.has_coordinate_objects
+        || analysis.has_iteration_helpers
+        || groups
+            .iter()
+            .any(|group| group.header.kind() == crate::format::GroupKind::FunctionExpr)
+    {
+        labels.extend(collect_coordinate_labels(file, groups, &analysis.raw_anchors));
     }
     labels.extend(collect_polygon_parameter_labels(
         file,
@@ -938,7 +943,7 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
                 },
             })
             .collect::<Vec<_>>();
-    let iteration_tables = collect_iteration_tables(file, &groups);
+    let iteration_tables = collect_iteration_tables(file, &groups, &analysis.raw_anchors);
     remap_label_bindings(&mut labels, &group_to_point_index);
     let (binding_maps, line_iterations, polygon_iterations) = remap_scene_bindings(
         file,
