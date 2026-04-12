@@ -1,6 +1,10 @@
 // @ts-check
 
 (() => {
+  /** @typedef {{ name: string; children: RichMarkupNode[] }} RichMarkupNode */
+  /** @typedef {{ kind: "text"; text: string } | { kind: "fraction"; numerator: RichMarkupItem[]; denominator: RichMarkupItem[] } | { kind: "radical" | "overline" | "ray" | "arc"; children: RichMarkupItem[] }} RichMarkupItem */
+  /** @typedef {{ buttonIndex: number; pointerId: number; startClientX: number; startClientY: number; originX: number; originY: number; scaleX: number; scaleY: number; dragged: boolean }} ButtonPointerState */
+  /** @typedef {Extract<ButtonActionJson, { kind: "toggle-visibility" }> | Extract<ButtonActionJson, { kind: "set-visibility" }> | Extract<ButtonActionJson, { kind: "show-hide-visibility" }>} VisibilityButtonAction */
   const van = window.van;
   const { label, input } = van.tags;
   const {
@@ -60,6 +64,7 @@
   const autoOpenDebug = new URLSearchParams(window.location.search).get("debug") === "1";
   const defaultZoom = sourceScene.graphMode ? 1 : 0.9;
   const pointerWorldState = van.state(null);
+  /** @type {{ val: "graph" | "json" }} */
   const debugViewState = van?.state ? van.state("graph") : { val: "graph" };
   const viewState = van?.state ? van.state({
     centerX: baseCenterX,
@@ -72,13 +77,18 @@
   } };
   /** @type {ViewState} */
   const view = new Proxy(/** @type {ViewState} */ ({}), {
-    get: (_, key) => viewState.val[key],
+    get: (_, key) => viewState.val[/** @type {keyof ViewState} */ (key)],
     set: (_, key, value) => {
-      viewState.val = { ...viewState.val, [key]: value };
+      viewState.val = {
+        ...viewState.val,
+        [/** @type {keyof ViewState} */ (key)]: /** @type {ViewState[keyof ViewState]} */ (value),
+      };
       return true;
     },
   });
+  /** @type {{ val: DragState }} */
   const dragState = van?.state ? van.state(null) : { val: null };
+  /** @type {{ val: number | null }} */
   const hoverPointIndex = van?.state ? van.state(null) : { val: null };
   const buttonsState = van?.state ? van.state((sourceScene.buttons || []).map((button) => ({
     ...button,
@@ -93,7 +103,9 @@
   })) };
   const buttonTimers = new Map();
   const buttonAnimations = new Map();
+  /** @type {{ val: HotspotFlash[] }} */
   const hotspotFlashesState = van?.state ? van.state([]) : { val: [] };
+  /** @type {ButtonPointerState | null} */
   let buttonPointerState = null;
   const labelAttachDistance = 40;
   const coordText = van.derive(() => {
@@ -107,13 +119,15 @@
   van.add(coordReadout, coordText);
   van.add(zoomReadout, zoomText);
 
+  /** @param {string} text */
   function cleanRichText(text) {
     return text
-      .replaceAll("\u2013", "-")
-      .replaceAll("\u2014", "-")
-      .replaceAll("厘米", "cm");
+      .split("\u2013").join("-")
+      .split("\u2014").join("-")
+      .split("厘米").join("cm");
   }
 
+  /** @param {string} token */
   function decodeRichMarkupText(token) {
     if (!token.startsWith("T")) {
       return null;
@@ -125,8 +139,19 @@
     return cleanRichText(token.slice(xIndex + 1));
   }
 
+  /**
+   * @param {string} markup
+   * @returns {RichMarkupNode[]}
+   */
   function parseRichMarkupNodes(markup) {
+    /**
+     * @param {string} source
+     * @param {number} start
+     * @param {boolean} stopOnGt
+     * @returns {[RichMarkupNode[], number]}
+     */
     function parseSeq(source, start, stopOnGt) {
+      /** @type {RichMarkupNode[]} */
       const nodes = [];
       let index = start;
       while (index < source.length) {
@@ -143,6 +168,7 @@
           index += 1;
         }
         const name = source.slice(nameStart, index);
+        /** @type {RichMarkupNode[]} */
         let children = [];
         if (index < source.length && source[index] === "<") {
           [children, index] = parseSeq(source, index, true);
@@ -157,6 +183,10 @@
     return parseSeq(markup, 0, false)[0];
   }
 
+  /**
+   * @param {RichMarkupItem[][]} target
+   * @param {RichMarkupItem[][]} lines
+   */
   function appendRichMarkupLines(target, lines) {
     if (!lines.length) {
       return;
@@ -170,11 +200,19 @@
     target.push(...rest);
   }
 
+  /**
+   * @param {RichMarkupNode[]} nodes
+   * @returns {RichMarkupItem[]}
+   */
   function renderRichMarkupInline(nodes) {
     return renderRichMarkupNodes(nodes)
       .flatMap((line, index) => (index === 0 ? line : [{ kind: "text", text: " " }, ...line]));
   }
 
+  /**
+   * @param {RichMarkupNode} node
+   * @returns {RichMarkupItem[][]}
+   */
   function renderRichMarkupNode(node) {
     const text = decodeRichMarkupText(node.name);
     if (text !== null) {
@@ -184,7 +222,7 @@
       return renderRichMarkupNodes(node.children);
     }
     if (node.name === "VL") {
-      return node.children.flatMap((child) => renderRichMarkupNode(child)).filter((line) => line.length);
+      return node.children.flatMap((/** @type {RichMarkupNode} */ child) => renderRichMarkupNode(child)).filter((/** @type {RichMarkupItem[]} */ line) => line.length);
     }
     if (node.name === "H") {
       return [renderRichMarkupInline(node.children)];
@@ -227,20 +265,33 @@
     return renderRichMarkupNodes(node.children);
   }
 
+  /**
+   * @param {RichMarkupNode[]} nodes
+   * @returns {RichMarkupItem[][]}
+   */
   function renderRichMarkupNodes(nodes) {
+    /** @type {RichMarkupItem[][]} */
     const lines = [[]];
-    nodes.forEach((node) => {
+    nodes.forEach((/** @type {RichMarkupNode} */ node) => {
       appendRichMarkupLines(lines, renderRichMarkupNode(node));
     });
     return lines.filter((line) => line.length);
   }
 
+  /**
+   * @param {HTMLElement} parent
+   * @param {RichMarkupItem[]} items
+   */
   function appendRichMarkupItems(parent, items) {
-    items.forEach((item) => {
+    items.forEach((/** @type {RichMarkupItem} */ item) => {
       parent.append(renderRichMarkupItem(item));
     });
   }
 
+  /**
+   * @param {RichMarkupItem} item
+   * @returns {HTMLElement}
+   */
   function renderRichMarkupItem(item) {
     if (item.kind === "text") {
       const span = document.createElement("span");
@@ -278,6 +329,7 @@
     return span;
   }
 
+  /** @param {{ richMarkup?: string | null }} label */
   function renderRichLabel(label) {
     if (!label.richMarkup) {
       return null;
@@ -288,7 +340,7 @@
     }
     const root = document.createElement("div");
     root.className = "scene-rich-label";
-    lines.forEach((items) => {
+    lines.forEach((/** @type {RichMarkupItem[]} */ items) => {
       const line = document.createElement("div");
       line.className = "scene-rich-line";
       appendRichMarkupItems(line, items);
@@ -297,11 +349,19 @@
     return root;
   }
 
+  /**
+   * @param {Point} left
+   * @param {Point} right
+   */
   function samePoint(left, right) {
     return Math.abs(left.x - right.x) < pointMatchTolerance
       && Math.abs(left.y - right.y) < pointMatchTolerance;
   }
 
+  /**
+   * @param {number} index
+   * @returns {Point}
+   */
   function resolveSourcePoint(index) {
     const point = sourceScene.points[index];
     if (!point) {
@@ -318,6 +378,10 @@
     return { x: point.x, y: point.y };
   }
 
+  /**
+   * @param {Point} point
+   * @returns {PointHandle}
+   */
   function attachPointRef(point) {
     const pointIndex = sourceScene.points.findIndex((candidate, index) => samePoint(resolveSourcePoint(index), point));
     if (pointIndex >= 0) {
@@ -326,19 +390,32 @@
     return { x: point.x, y: point.y };
   }
 
+  /**
+   * @param {PointHandle} handle
+   * @returns {Point}
+   */
   function resolveSourceHandle(handle) {
-    if (typeof handle.pointIndex === "number") {
+    if (hasPointIndexHandle(handle)) {
       return resolveSourcePoint(handle.pointIndex);
     }
-    return handle;
+    return /** @type {Point} */ (handle);
   }
 
+  /**
+   * @param {Point} left
+   * @param {Point} right
+   */
   function distanceSquared(left, right) {
     const dx = left.x - right.x;
     const dy = left.y - right.y;
     return dx * dx + dy * dy;
   }
 
+  /**
+   * @param {Point} point
+   * @param {Array<{ points: PointHandle[] }>} hydratedLines
+   * @returns {PointHandle}
+   */
   function attachLabelAnchor(point, hydratedLines) {
     let bestPointIndex = null;
     let bestPointDistanceSquared = Number.POSITIVE_INFINITY;
@@ -361,7 +438,7 @@
 
     let bestLineAnchor = null;
     let bestLineDistanceSquared = Number.POSITIVE_INFINITY;
-    hydratedLines.forEach((line, lineIndex) => {
+    hydratedLines.forEach((/** @type {{ points: PointHandle[] }} */ line, /** @type {number} */ lineIndex) => {
       for (let segmentIndex = 0; segmentIndex < line.points.length - 1; segmentIndex += 1) {
         const start = resolveSourceHandle(line.points[segmentIndex]);
         const end = resolveSourceHandle(line.points[segmentIndex + 1]);
@@ -389,6 +466,10 @@
     return { x: point.x, y: point.y };
   }
 
+  /**
+   * @param {{ binding?: { kind?: string; pointIndex?: number } | null; anchor: Point }} label
+   * @param {Array<{ points: PointHandle[] }>} hydratedLines
+   */
   function attachPointCenteredLabelAnchor(label, hydratedLines) {
     if (typeof label.binding?.pointIndex === "number") {
       return { pointIndex: label.binding.pointIndex };
@@ -396,6 +477,28 @@
     return attachLabelAnchor(label.anchor, hydratedLines);
   }
 
+  /**
+   * @param {PointHandle} handle
+   * @returns {handle is Extract<PointHandle, { pointIndex: number }>}
+   */
+  function hasPointIndexHandle(handle) {
+    return !!handle && typeof handle === "object" && "pointIndex" in handle && typeof handle.pointIndex === "number";
+  }
+
+  /**
+   * @param {ButtonActionJson} action
+   * @returns {action is VisibilityButtonAction}
+   */
+  function isVisibilityButtonAction(action) {
+    return action.kind === "toggle-visibility"
+      || action.kind === "set-visibility"
+      || action.kind === "show-hide-visibility";
+  }
+
+  /**
+   * @param {SceneData} scene
+   * @returns {ViewerSceneData}
+   */
   function hydrateScene(scene) {
     const hydratedLines = scene.lines.map((line) => ({
       color: line.color,
@@ -405,6 +508,7 @@
       binding: line.binding ? { ...line.binding } : null,
     }));
     return {
+      ...scene,
       graphMode: scene.graphMode,
       bounds: scene.bounds ? { ...scene.bounds } : null,
       images: (scene.images || []).map((image) => ({
@@ -474,7 +578,14 @@
       })),
       iterationTables: (scene.iterationTables || []).map((table) => ({
         ...table,
+        /** @type {RuntimeIterationRow[]} */
         rows: [],
+      })),
+      buttons: (scene.buttons || []).map((button) => ({
+        ...button,
+        baseText: button.text,
+        visible: true,
+        active: false,
       })),
     };
   }
@@ -500,6 +611,7 @@
   const currentScene = () => sceneState.val;
   const currentDynamics = () => dynamicsState.val;
 
+  /** @param {(draft: ViewerSceneData) => void} mutator */
   function updateScene(mutator) {
     const next = sceneState.val;
     mutator(next);
@@ -511,26 +623,31 @@
     sceneState.val = { ...next };
   }
 
+  /** @param {(draft: RuntimeDynamicsState) => void} mutator */
   function updateDynamics(mutator) {
     const next = dynamicsState.val;
     mutator(next);
     dynamicsState.val = { ...next };
   }
 
+  /** @param {(buttons: RuntimeButtonJson[]) => void} mutator */
   function updateButtons(mutator) {
     const next = buttonsState.val.slice();
     mutator(next);
     buttonsState.val = next;
   }
 
+  /** @param {[number, number, number, number]} color */
   function rgba(color) {
     return `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${(color[3] / 255).toFixed(3)})`;
   }
 
+  /** @param {number} value */
   function formatNumber(value) {
     return Number.isFinite(value) ? value.toFixed(2) : "-";
   }
 
+  /** @param {number} value */
   function formatAxisNumber(value) {
     if (Math.abs(value - Math.round(value)) < 1e-6) {
       return String(Math.round(value));
@@ -538,6 +655,7 @@
     return value.toFixed(1);
   }
 
+  /** @param {number} stepIndex */
   function formatPiLabel(stepIndex) {
     if (stepIndex === 0) return "";
     const sign = stepIndex < 0 ? "-" : "";
@@ -549,6 +667,7 @@
     return absIndex === 1 ? `${sign}\u03c0/2` : `${sign}${absIndex}\u03c0/2`;
   }
 
+  /** @param {unknown} value */
   function cloneForDebug(value) {
     if (typeof structuredClone === "function") {
       return structuredClone(value);
@@ -560,6 +679,10 @@
     return JSON.stringify(sourceScene, null, 2);
   }
 
+  /**
+   * @param {string} key
+   * @param {number} value
+   */
   function formatReference(key, value) {
     if (!Number.isInteger(value)) {
       return null;
@@ -607,9 +730,11 @@
     }
   }
 
+  /** @param {unknown} value */
   function collectReferenceTokens(value) {
     /** @type {string[]} */
     const refs = [];
+    /** @param {unknown} node */
     function visit(node) {
       if (!node || typeof node !== "object") {
         return;
@@ -628,7 +753,7 @@
         }
         if (Array.isArray(child)) {
           const directRefs = child
-            .map((item) => (typeof item === "number" ? formatReference(key, item) : null))
+            .map((/** @type {unknown} */ item) => (typeof item === "number" ? formatReference(key, item) : null))
             .filter(Boolean);
           refs.push(...directRefs);
           child.forEach(visit);
@@ -641,43 +766,51 @@
     return [...new Set(refs)];
   }
 
+  /** @param {unknown} entity */
   function summarizeDebugEntity(entity) {
+    const item = /** @type {Record<string, unknown> & { anchor?: Record<string, unknown> }} */ (entity ?? {});
     const parts = [];
-    if (typeof entity.text === "string") {
-      parts.push(JSON.stringify(entity.text));
+    if (typeof item.text === "string") {
+      parts.push(JSON.stringify(item.text));
     }
-    if (typeof entity.name === "string") {
-      parts.push(`name=${entity.name}`);
+    if (typeof item.name === "string") {
+      parts.push(`name=${item.name}`);
     }
-    if (typeof entity.kind === "string") {
-      parts.push(`kind=${entity.kind}`);
+    if (typeof item.kind === "string") {
+      parts.push(`kind=${item.kind}`);
     }
-    if (typeof entity.visible === "boolean") {
-      parts.push(entity.visible ? "visible" : "hidden");
+    if (typeof item.visible === "boolean") {
+      parts.push(item.visible ? "visible" : "hidden");
     }
-    if (typeof entity.depth === "number") {
-      parts.push(`depth=${entity.depth}`);
+    if (typeof item.depth === "number") {
+      parts.push(`depth=${item.depth}`);
     }
-    if (typeof entity.parameterName === "string" && entity.parameterName.length > 0) {
-      parts.push(`param=${entity.parameterName}`);
+    if (typeof item.parameterName === "string" && item.parameterName.length > 0) {
+      parts.push(`param=${item.parameterName}`);
     }
-    if (entity.anchor && typeof entity.anchor === "object") {
-      if (typeof entity.anchor.x === "number" && typeof entity.anchor.y === "number") {
-        parts.push(`anchor @ (${formatNumber(entity.anchor.x)}, ${formatNumber(entity.anchor.y)})`);
+    if (item.anchor && typeof item.anchor === "object") {
+      if (typeof item.anchor.x === "number" && typeof item.anchor.y === "number") {
+        parts.push(`anchor @ (${formatNumber(item.anchor.x)}, ${formatNumber(item.anchor.y)})`);
       }
-      if (entity.screenSpace === true) {
+      if (item.screenSpace === true) {
         parts.push("screenSpace");
       }
     }
-    if (typeof entity.x === "number" && typeof entity.y === "number" && !entity.kind) {
-      parts.push(`@ (${formatNumber(entity.x)}, ${formatNumber(entity.y)})`);
+    if (typeof item.x === "number" && typeof item.y === "number" && !item.kind) {
+      parts.push(`@ (${formatNumber(item.x)}, ${formatNumber(item.y)})`);
     }
     return parts.join(" ");
   }
 
+  /**
+   * @param {string[]} lines
+   * @param {string} title
+   * @param {string} itemLabel
+   * @param {unknown[]} items
+   */
   function appendGraphSection(lines, title, itemLabel, items) {
     lines.push(`${title} (${items.length})`);
-    items.forEach((item, index) => {
+    items.forEach((/** @type {unknown} */ item, /** @type {number} */ index) => {
       const summary = summarizeDebugEntity(item);
       const refs = collectReferenceTokens(item);
       lines.push(`  ${itemLabel}[${index}]${summary ? ` ${summary}` : ""}`);
@@ -687,6 +820,7 @@
     });
   }
 
+  /** @param {SceneData} scene */
   function buildDebugGraph(scene) {
     const lines = [
       "Scene",
@@ -737,6 +871,7 @@
     });
   }
 
+  /** @param {boolean} open */
   function setDebugPanelOpen(open) {
     if (!debugPanel || !debugToggleButton) {
       return;
@@ -759,6 +894,10 @@
     console.groupEnd();
   }
 
+  /**
+   * @param {number | null} [screenX]
+   * @param {number | null} [screenY]
+   */
   function updateReadout(screenX = null, screenY = null) {
     if (screenX === null || screenY === null) {
       pointerWorldState.val = null;
@@ -781,7 +920,7 @@
     }
     buttonOverlays.replaceChildren();
     const stackedOffsets = new Map();
-    buttonsState.val.forEach((buttonDef, buttonIndex) => {
+    buttonsState.val.forEach((/** @type {RuntimeButtonJson} */ buttonDef, /** @type {number} */ buttonIndex) => {
       if (buttonDef.visible === false) {
         return;
       }
@@ -810,7 +949,7 @@
       buttonOverlays.append(anchor);
     });
 
-    currentScene().labels.forEach((label) => {
+    currentScene().labels.forEach((/** @type {RuntimeLabelJson} */ label) => {
       if (label.visible === false) {
         return;
       }
@@ -864,6 +1003,10 @@
     };
   }
 
+  /**
+   * @param {number} buttonIndex
+   * @param {PointerEvent} event
+   */
   function beginButtonPointer(buttonIndex, event) {
     const button = buttonsState.val[buttonIndex];
     if (!button) {
@@ -887,6 +1030,7 @@
     event.preventDefault();
   }
 
+  /** @param {PointerEvent} event */
   function handleButtonPointerMove(event) {
     if (!buttonPointerState || event.pointerId !== buttonPointerState.pointerId) {
       return;
@@ -916,6 +1060,7 @@
     buttonPointerState = null;
   }
 
+  /** @param {PointerEvent} event */
   function handleButtonPointerUp(event) {
     if (!buttonPointerState || event.pointerId !== buttonPointerState.pointerId) {
       return;
@@ -927,32 +1072,44 @@
     }
   }
 
+  /**
+   * @param {VisibilityButtonAction} action
+   * @param {boolean} visible
+   */
   function setTargetsVisibility(action, visible) {
     updateScene((scene) => {
-      (action.pointIndices || []).forEach((index) => {
+      (action.pointIndices || []).forEach((/** @type {number} */ index) => {
         if (scene.points[index]) scene.points[index].visible = visible;
       });
-      (action.lineIndices || []).forEach((index) => {
+      (action.lineIndices || []).forEach((/** @type {number} */ index) => {
         if (scene.lines[index]) scene.lines[index].visible = visible;
       });
-      (action.circleIndices || []).forEach((index) => {
+      (action.circleIndices || []).forEach((/** @type {number} */ index) => {
         if (scene.circles[index]) scene.circles[index].visible = visible;
       });
-      (action.polygonIndices || []).forEach((index) => {
+      (action.polygonIndices || []).forEach((/** @type {number} */ index) => {
         if (scene.polygons[index]) scene.polygons[index].visible = visible;
       });
     });
   }
 
+  /**
+   * @param {VisibilityButtonAction} action
+   * @param {boolean} visible
+   */
   function visibilityTargetsMatch(action, visible) {
     const scene = currentScene();
-    const pointsMatch = (action.pointIndices || []).every((index) => scene.points[index]?.visible === visible);
-    const linesMatch = (action.lineIndices || []).every((index) => scene.lines[index]?.visible === visible);
-    const circlesMatch = (action.circleIndices || []).every((index) => scene.circles[index]?.visible === visible);
-    const polygonsMatch = (action.polygonIndices || []).every((index) => scene.polygons[index]?.visible === visible);
+    const pointsMatch = (action.pointIndices || []).every((/** @type {number} */ index) => scene.points[index]?.visible === visible);
+    const linesMatch = (action.lineIndices || []).every((/** @type {number} */ index) => scene.lines[index]?.visible === visible);
+    const circlesMatch = (action.circleIndices || []).every((/** @type {number} */ index) => scene.circles[index]?.visible === visible);
+    const polygonsMatch = (action.polygonIndices || []).every((/** @type {number} */ index) => scene.polygons[index]?.visible === visible);
     return pointsMatch && linesMatch && circlesMatch && polygonsMatch;
   }
 
+  /**
+   * @param {string} baseText
+   * @param {boolean} targetsVisible
+   */
   function toggledVisibilityText(baseText, targetsVisible) {
     if (typeof baseText !== "string" || !baseText) {
       return baseText;
@@ -967,20 +1124,24 @@
     return baseText;
   }
 
+  /**
+   * @param {number} buttonIndex
+   * @param {string} nextText
+   */
   function updateLinkedButtonLabels(buttonIndex, nextText) {
     updateScene((scene) => {
       scene.labels.forEach((label) => {
         if (!label.hotspots?.length) {
           return;
         }
-        let lines = label.text.split("\n").map((line) => Array.from(line));
+        let lines = label.text.split("\n").map((/** @type {string} */ line) => Array.from(line));
         let changed = false;
         const relevantHotspots = label.hotspots
-          .filter((hotspot) =>
+          .filter((/** @type {RuntimeLabelHotspotJson} */ hotspot) =>
             hotspot.action?.kind === "button" && hotspot.action.buttonIndex === buttonIndex
           )
-          .sort((left, right) => right.line - left.line || right.start - left.start);
-        relevantHotspots.forEach((hotspot) => {
+          .sort((/** @type {RuntimeLabelHotspotJson} */ left, /** @type {RuntimeLabelHotspotJson} */ right) => right.line - left.line || right.start - left.start);
+        relevantHotspots.forEach((/** @type {RuntimeLabelHotspotJson} */ hotspot) => {
           const line = lines[hotspot.line];
           if (!line) {
             return;
@@ -991,12 +1152,16 @@
           changed = true;
         });
         if (changed) {
-          label.text = lines.map((line) => line.join("")).join("\n");
+          label.text = lines.map((/** @type {string[]} */ line) => line.join("")).join("\n");
         }
       });
     });
   }
 
+  /**
+   * @param {number} buttonIndex
+   * @param {VisibilityButtonAction} action
+   */
   function syncVisibilityButtonState(buttonIndex, action) {
     if (typeof buttonIndex !== "number") {
       return;
@@ -1030,21 +1195,24 @@
     }
   }
 
+  /** @param {VisibilityButtonAction} action */
   function toggleTargetsVisibility(action) {
     const scene = currentScene();
-    const hiddenPoint = (action.pointIndices || []).some((index) => scene.points[index]?.visible === false);
-    const hiddenLine = (action.lineIndices || []).some((index) => scene.lines[index]?.visible === false);
-    const hiddenCircle = (action.circleIndices || []).some((index) => scene.circles[index]?.visible === false);
-    const hiddenPolygon = (action.polygonIndices || []).some((index) => scene.polygons[index]?.visible === false);
+    const hiddenPoint = (action.pointIndices || []).some((/** @type {number} */ index) => scene.points[index]?.visible === false);
+    const hiddenLine = (action.lineIndices || []).some((/** @type {number} */ index) => scene.lines[index]?.visible === false);
+    const hiddenCircle = (action.circleIndices || []).some((/** @type {number} */ index) => scene.circles[index]?.visible === false);
+    const hiddenPolygon = (action.polygonIndices || []).some((/** @type {number} */ index) => scene.polygons[index]?.visible === false);
     setTargetsVisibility(action, hiddenPoint || hiddenLine || hiddenCircle || hiddenPolygon);
   }
 
+  /** @param {(flashes: HotspotFlash[]) => void} mutator */
   function updateHotspotFlashes(mutator) {
     const next = hotspotFlashesState.val.slice();
     mutator(next);
     hotspotFlashesState.val = next;
   }
 
+  /** @param {LabelHotspotActionJson} action */
   function hotspotFlashKey(action) {
     switch (action.kind) {
       case "button":
@@ -1064,6 +1232,7 @@
     }
   }
 
+  /** @param {LabelHotspotActionJson} action */
   function flashHotspotAction(action) {
     const key = hotspotFlashKey(action);
     updateHotspotFlashes((flashes) => {
@@ -1083,6 +1252,7 @@
     }, 180);
   }
 
+  /** @param {number} buttonIndex */
   function stopButtonAnimation(buttonIndex) {
     const handle = buttonAnimations.get(buttonIndex);
     if (handle?.rafId) {
@@ -1099,6 +1269,12 @@
     });
   }
 
+  /**
+   * @param {number} buttonIndex
+   * @param {number} pointIndex
+   * @param {"move" | "animate" | "scroll"} mode
+   * @param {number | null} [targetPointIndex]
+   */
   function toggleAnimatedPoint(buttonIndex, pointIndex, mode, targetPointIndex = null) {
     if (buttonsState.val[buttonIndex]?.active) {
       stopButtonAnimation(buttonIndex);
@@ -1136,7 +1312,9 @@
         buttons[buttonIndex].active = true;
       }
     });
+    /** @type {number | null} */
     let lastTime = null;
+    /** @param {number} timestamp */
     const step = (timestamp) => {
       if (state.stop) {
         return;
@@ -1217,12 +1395,14 @@
     state.rafId = window.requestAnimationFrame(step);
   }
 
+  /** @param {number} buttonIndex */
   function runButtonAction(buttonIndex) {
     const button = buttonsState.val[buttonIndex];
     if (!button) {
       return;
     }
-    const action = button.action || {};
+    /** @type {ButtonActionJson} */
+    const action = button.action;
     switch (action.kind) {
       case "link":
         if (action.href) {
@@ -1265,7 +1445,7 @@
         break;
       case "sequence": {
         const intervalMs = Math.max(0, action.intervalMs || 0);
-        (action.buttonIndices || []).forEach((childButtonIndex, offset) => {
+        (action.buttonIndices || []).forEach((/** @type {number} */ childButtonIndex, /** @type {number} */ offset) => {
           const timer = window.setTimeout(() => {
             runButtonAction(childButtonIndex);
             buttonTimers.delete(timer);
@@ -1275,10 +1455,14 @@
         break;
       }
       default:
+        if (isVisibilityButtonAction(action)) {
+          syncVisibilityButtonState(buttonIndex, action);
+        }
         break;
     }
   }
 
+  /** @param {LabelHotspotActionJson | null} action */
   function runHotspotAction(action) {
     if (!action) {
       return;
@@ -1290,26 +1474,52 @@
     flashHotspotAction(action);
   }
 
+  /**
+   * @param {number} screenX
+   * @param {number} screenY
+   */
   function findHitPoint(screenX, screenY) {
     return renderModule.findHitPoint(viewerEnv, screenX, screenY);
   }
 
+  /** @param {number} index */
   function isOriginPointIndex(index) {
-    return typeof currentScene().origin?.pointIndex === "number" && currentScene().origin.pointIndex === index;
+    const origin = currentScene().origin;
+    return !!origin && "pointIndex" in origin && typeof origin.pointIndex === "number" && origin.pointIndex === index;
   }
 
+  /**
+   * @param {number} screenX
+   * @param {number} screenY
+   */
   function findHitLabel(screenX, screenY) {
     return renderModule.findHitLabel(viewerEnv, screenX, screenY);
   }
 
+  /**
+   * @param {number} screenX
+   * @param {number} screenY
+   */
   function findHitIterationTable(screenX, screenY) {
     return renderModule.findHitIterationTable(viewerEnv, screenX, screenY);
   }
 
+  /**
+   * @param {number} screenX
+   * @param {number} screenY
+   */
   function findHitPolygon(screenX, screenY) {
     return renderModule.findHitPolygon ? renderModule.findHitPolygon(viewerEnv, screenX, screenY) : null;
   }
 
+  /**
+   * @param {number} pointerId
+   * @param {Point} position
+   * @param {number | null} pointIndex
+   * @param {number | null} labelIndex
+   * @param {number | null} polygonIndex
+   * @param {number | null} iterationTableIndex
+   */
   function beginDrag(pointerId, position, pointIndex, labelIndex, polygonIndex, iterationTableIndex) {
     dragModule.beginDrag(
       viewerEnv,
@@ -1322,22 +1532,27 @@
     );
   }
 
+  /** @param {Point} world */
   function updateDraggedPoint(world) {
     dragModule.updateDraggedPoint(viewerEnv, world);
   }
 
+  /** @param {Point} world */
   function updateDraggedLabel(world) {
     dragModule.updateDraggedLabel(viewerEnv, world);
   }
 
+  /** @param {Point} position */
   function updateDraggedIterationTable(position) {
     dragModule.updateDraggedIterationTable(viewerEnv, position);
   }
 
+  /** @param {Point} world */
   function updateDraggedPolygon(world) {
     dragModule.updateDraggedPolygon(viewerEnv, world);
   }
 
+  /** @param {Point} position */
   function panFromPointerDelta(position) {
     dragModule.panFromPointerDelta(viewerEnv, position);
     dynamicsModule.syncDynamicScene(viewerEnv);
@@ -1480,6 +1695,7 @@
     dragState.val = { ...dragState.val, lastX: position.x, lastY: position.y };
   });
 
+  /** @param {number} pointerId */
   function endDrag(pointerId) {
     if (dragState.val && dragState.val.pointerId === pointerId) {
       dragState.val = null;

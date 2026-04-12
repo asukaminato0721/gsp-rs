@@ -1,27 +1,39 @@
-declare const van: any;
+declare const van: typeof import("./vendor/van-1.6.0").default;
 
-interface Window {
-  gspDebug?: {
-    sourceScene: SceneData;
-    viewerEnv: ViewerEnv;
-    readonly runtime: any;
-    json: () => string;
-    graph: () => string;
-    dumpJson: () => void;
-    dumpGraph: () => void;
-    dump: () => void;
-    openPanel: () => void;
-    closePanel: () => void;
-    togglePanel: () => void;
-  };
-}
+type Point = import("./generated/PointJson").PointJson;
+type BoundsJson = import("./generated/BoundsJson").BoundsJson;
+type SceneData = import("./generated/SceneData").SceneData;
+type ScenePointJson = import("./generated/ScenePointJson").ScenePointJson;
+type PointConstraintJson = import("./generated/PointConstraintJson").PointConstraintJson;
+type PointBindingJson = import("./generated/PointBindingJson").PointBindingJson;
+type LineJson = import("./generated/LineJson").LineJson;
+type LineBindingJson = import("./generated/LineBindingJson").LineBindingJson;
+type PolygonJson = import("./generated/PolygonJson").PolygonJson;
+type CircleJson = import("./generated/CircleJson").CircleJson;
+type ArcJson = import("./generated/ArcJson").ArcJson;
+type LabelJson = import("./generated/LabelJson").LabelJson;
+type LabelBindingJson = import("./generated/LabelBindingJson").LabelBindingJson;
+type LabelHotspotJson = import("./generated/LabelHotspotJson").LabelHotspotJson;
+type LabelHotspotActionJson = import("./generated/LabelHotspotActionJson").LabelHotspotActionJson;
+type ButtonJson = import("./generated/ButtonJson").ButtonJson;
+type ButtonActionJson = import("./generated/ButtonActionJson").ButtonActionJson;
+type ImageJson = import("./generated/ImageJson").ImageJson;
+type IterationTableJson = import("./generated/IterationTableJson").IterationTableJson;
+type ParameterJson = import("./generated/ParameterJson").ParameterJson;
+type FunctionJson = import("./generated/FunctionJson").FunctionJson;
+type FunctionExprJson = import("./generated/FunctionExprJson").FunctionExprJson;
+type FunctionAstJson = import("./generated/FunctionAstJson").FunctionAstJson;
+type PointIterationJson = import("./generated/PointIterationJson").PointIterationJson;
+type LineIterationJson = import("./generated/LineIterationJson").LineIterationJson;
+type PolygonIterationJson = import("./generated/PolygonIterationJson").PolygonIterationJson;
+type LabelIterationJson = import("./generated/LabelIterationJson").LabelIterationJson;
+type CircleIterationJson = import("./generated/CircleIterationJson").CircleIterationJson;
+type LineConstraintJson = import("./generated/LineConstraintJson").LineConstraintJson;
+type CircularConstraintJson = import("./generated/CircularConstraintJson").CircularConstraintJson;
+type ArcBoundaryKind = import("./generated/ArcBoundaryKindJson").ArcBoundaryKindJson;
+type CoordinateAxisJson = import("./generated/CoordinateAxisJson").CoordinateAxisJson;
 
-type Point = {
-  x: number;
-  y: number;
-};
-
-type PointHandle =
+type RuntimePointRef =
   | Point
   | {
       pointIndex: number;
@@ -38,7 +50,71 @@ type PointHandle =
       y?: number;
     };
 
-type ArcBoundaryKind = "sector" | "circular-segment";
+type PointHandle = RuntimePointRef;
+
+type RuntimePointConstraintJson = any;
+type RuntimeScenePointJson = any;
+type RuntimeLineJson = any;
+type RuntimePolygonJson = any;
+type RuntimeCircleJson = any;
+type RuntimeArcJson = any;
+type RuntimeLabelHotspotJson = Omit<LabelHotspotJson, "action"> & {
+  action: LabelHotspotActionJson | null;
+};
+type RuntimeLabelJson = any;
+
+type RuntimeIterationRow = {
+  index: number;
+  value: number;
+};
+
+type RuntimeIterationTableJson = IterationTableJson & {
+  rows: RuntimeIterationRow[];
+};
+type RuntimeButtonJson = ButtonJson & {
+  baseText: string;
+  visible: boolean;
+  active: boolean;
+};
+
+type SceneLabelJson = RuntimeLabelJson;
+type SceneLineJson = RuntimeLineJson;
+type ScenePolygonJson = RuntimePolygonJson;
+type SceneIterationTableJson = RuntimeIterationTableJson;
+
+type RuntimeDynamicsState = {
+  parameters: ParameterJson[];
+  functions: FunctionJson[];
+};
+
+type RuntimePointIterationFamily = PointIterationJson;
+type RuntimeLineIterationFamily = LineIterationJson;
+type RuntimePolygonIterationFamily = PolygonIterationJson;
+type RuntimeLabelIterationFamily = LabelIterationJson;
+type RuntimeCircleIterationFamily = CircleIterationJson;
+
+type ViewerSceneData = Omit<
+  SceneData,
+  | "origin"
+  | "lines"
+  | "polygons"
+  | "circles"
+  | "arcs"
+  | "labels"
+  | "points"
+  | "iterationTables"
+  | "buttons"
+> & {
+  origin: RuntimePointRef | null;
+  lines: RuntimeLineJson[];
+  polygons: RuntimePolygonJson[];
+  circles: RuntimeCircleJson[];
+  arcs: RuntimeArcJson[];
+  labels: RuntimeLabelJson[];
+  points: RuntimeScenePointJson[];
+  iterationTables: RuntimeIterationTableJson[];
+  buttons: RuntimeButtonJson[];
+};
 
 type ViewState = {
   centerX: number;
@@ -46,7 +122,89 @@ type ViewState = {
   zoom: number;
 };
 
-type SceneData = import("./generated/SceneData").SceneData;
+type DragState = {
+  pointerId: number;
+  mode: string;
+  pointIndex: number | null;
+  labelIndex: number | null;
+  polygonIndex: number | null;
+  iterationTableIndex: number | null;
+  lastX: number;
+  lastY: number;
+} | null;
+
+type HotspotFlash = {
+  key: string;
+  action: LabelHotspotActionJson;
+};
+
+type PointConstraintParameterReader = (
+  scene: ViewerSceneData,
+  pointIndex: number,
+) => number | null;
+
+type PointConstraintParameterApplier = (
+  point: RuntimeScenePointJson,
+  scene: ViewerSceneData,
+  wrapped: number,
+) => void;
+
+type PointBindingRefresher = (
+  env: ViewerEnv,
+  scene: ViewerSceneData,
+  point: RuntimeScenePointJson,
+  parameters: Map<string, number>,
+) => void;
+
+type DynamicLabelRefresher = (
+  env: ViewerEnv,
+  scene: ViewerSceneData,
+  label: RuntimeLabelJson,
+  parameters: Map<string, number>,
+) => void;
+
+type LineBindingRefreshContext = {
+  env: ViewerEnv;
+  scene: ViewerSceneData;
+  bounds: {
+    minX: number;
+    maxX: number;
+    minY: number;
+    maxY: number;
+    spanX?: number;
+    spanY?: number;
+  };
+  parameters: Map<string, number>;
+};
+
+type LineBindingRefresher = (
+  ctx: LineBindingRefreshContext,
+  line: RuntimeLineJson,
+) => void;
+
+type CircleBindingRefreshContext = {
+  env: ViewerEnv;
+  scene: ViewerSceneData;
+  parameters: Map<string, number>;
+  resolveHandle: (handle: RuntimePointRef) => Point | null;
+};
+
+type CircleBindingRefresher = (
+  ctx: CircleBindingRefreshContext,
+  circle: RuntimeCircleJson,
+) => void;
+
+type PolygonBindingRefreshContext = {
+  env: ViewerEnv;
+  scene: ViewerSceneData;
+  parameters: Map<string, number>;
+  resolveHandle: (handle: RuntimePointRef) => Point | null;
+};
+
+type PolygonBindingRefresher = (
+  ctx: PolygonBindingRefreshContext,
+  polygon: RuntimePolygonJson,
+) => void;
 
 type ViewerEnv = {
   canvas: HTMLCanvasElement | null;
@@ -59,67 +217,44 @@ type ViewerEnv = {
   baseSpanY: number;
   pointHitRadius: number;
   hoverPointIndex: { val: number | null };
-  dragState: { val: any };
-  view: any;
-  currentScene: () => any;
-  currentDynamics: () => {
-    parameters: Array<{ name: string; value: number; unit?: string | null; labelIndex?: number | null }>;
-    functions: Array<{
-      name: string;
-      derivative: boolean;
-      labelIndex: number;
-      lineIndex?: number | null;
-      expr: any;
-      domain: {
-        xMin: number;
-        xMax: number;
-        sampleCount: number;
-        plotMode: "cartesian" | "polar";
-      };
-      constrainedPointIndices: number[];
-    }>;
-  };
-  currentHotspotFlashes: () => Array<{ key: string; action: any }>;
-  resolveScenePoint: (index: number) => Point;
-  resolvePoint: (handle: PointHandle) => Point;
-  resolveAnchorBase: (handle: PointHandle) => Point;
-  resolveLinePoints: (lineOrIndex: any) => Point[] | null;
+  dragState: { val: DragState };
+  view: ViewState;
+  currentScene: () => ViewerSceneData;
+  currentDynamics: () => RuntimeDynamicsState;
+  currentHotspotFlashes: () => HotspotFlash[];
+  resolveScenePoint: (index: number) => Point | null;
+  resolvePoint: (handle: RuntimePointRef) => Point | null;
+  resolveAnchorBase: (handle: RuntimePointRef) => Point | null;
+  resolveLinePoints: (lineOrIndex: RuntimeLineJson | number | null | undefined) => Point[] | null;
   toScreen: (point: Point) => Point & { scale: number };
   toWorld: (x: number, y: number) => Point & { scale: number };
-  getViewBounds: () => {
-    minX: number;
-    maxX: number;
-    minY: number;
-    maxY: number;
-    spanX: number;
-    spanY: number;
-  };
+  getViewBounds: () => BoundsJson & { spanX: number; spanY: number };
   rgba: (color: [number, number, number, number]) => string;
-  updateScene: (mutator: (draft: any) => void) => void;
-  updateDynamics: (mutator: (draft: any) => void) => void;
+  updateScene: (mutator: (draft: ViewerSceneData) => void) => void;
+  updateDynamics: (mutator: (draft: RuntimeDynamicsState) => void) => void;
   syncDynamicScene: () => void;
   isOriginPointIndex: (index: number) => boolean;
   formatNumber: (value: number) => string;
   formatAxisNumber: (value: number) => string;
   formatPiLabel: (stepIndex: number) => string;
   drawGrid: () => void;
-  inputTag: any;
-  labelTag: any;
+  inputTag: typeof import("./vendor/van-1.6.0").default.tags.input;
+  labelTag: typeof import("./vendor/van-1.6.0").default.tags.label;
   parameterControls: HTMLElement | null;
-  van: any;
+  van: typeof import("./vendor/van-1.6.0").default;
 };
 
 type ViewerSceneModule = {
   resolveConstrainedPoint: (
-    env: Pick<ViewerEnv, "sourceScene"> | ViewerEnv | null,
-    constraint: any,
-    resolveFn: (index: number) => Point,
-    reference?: any,
+    env: { sourceScene: SceneData | ViewerSceneData } | ViewerEnv | null,
+    constraint: RuntimePointConstraintJson | null,
+    resolveFn: (index: number) => Point | null,
+    reference?: RuntimeScenePointJson | Point | null,
   ) => Point | null;
-  resolveScenePoint: (env: ViewerEnv, index: number) => Point;
-  resolvePoint: (env: ViewerEnv, handle: PointHandle) => Point;
-  resolveAnchorBase: (env: ViewerEnv, handle: PointHandle) => Point;
-  resolveLinePoints: (env: ViewerEnv, lineOrIndex: any) => Point[] | null;
+  resolveScenePoint: (env: ViewerEnv, index: number) => Point | null;
+  resolvePoint: (env: ViewerEnv, handle: RuntimePointRef) => Point | null;
+  resolveAnchorBase: (env: ViewerEnv, handle: RuntimePointRef) => Point | null;
+  resolveLinePoints: (env: ViewerEnv, lineOrIndex: RuntimeLineJson | number | null | undefined) => Point[] | null;
   toScreen: (env: ViewerEnv, point: Point) => Point & { scale: number };
   toWorld: (env: ViewerEnv, x: number, y: number) => Point & { scale: number };
   getViewBounds: (env: ViewerEnv) => ViewerEnv["getViewBounds"] extends () => infer T ? T : never;
@@ -130,50 +265,29 @@ type ViewerSceneModule = {
     point: Point,
     start: Point,
     end: Point,
-  ) => {
-    t: number;
-    projected: Point;
-    distanceSquared: number;
-  } | null;
-  pointOnCircleArc: (center: Point, start: Point, end: Point, t: number) => Point | null;
+  ) => { t: number; projected: Point; distanceSquared: number } | null;
+  pointOnCircleArc: (center: Point, start: Point, end: Point, t: number, yUp?: boolean) => Point | null;
   projectToCircleArc: (
     point: Point,
     center: Point,
     start: Point,
     end: Point,
-  ) => {
-    t: number;
-    projected: Point;
-    distanceSquared: number;
-  } | null;
+    yUp?: boolean,
+  ) => { t: number; projected: Point; distanceSquared: number } | null;
   pointOnThreePointArc: (start: Point, mid: Point, end: Point, t: number) => Point | null;
   projectToThreePointArc: (
     point: Point,
     start: Point,
     mid: Point,
     end: Point,
-  ) => {
-    t: number;
-    projected: Point;
-    distanceSquared: number;
-  } | null;
+  ) => { t: number; projected: Point; distanceSquared: number } | null;
   sampleArcBoundaryPoints: (
     env: ViewerEnv,
-    binding: {
-      kind: "arc-boundary";
-      hostKey: number;
-      boundaryKind: ArcBoundaryKind;
-      centerIndex?: number | null;
-      startIndex: number;
-      midIndex?: number | null;
-      endIndex: number;
-      reversed: boolean;
-      complement: boolean;
-    },
+    binding: Extract<LineBindingJson, { kind: "arc-boundary" }>,
   ) => Point[] | null;
   sampleCoordinateTracePoints: (
-    env: ViewerEnv,
-    binding: any,
+    env: ViewerEnv | null,
+    binding: Extract<LineBindingJson, { kind: "coordinate-trace" }> | Extract<RuntimePointConstraintJson, { kind: "line-trace-intersection" }>,
   ) => Point[] | null;
   lineLineIntersection: (
     leftStart: Point,
@@ -190,6 +304,7 @@ type ViewerSceneModule = {
     center: Point,
     radiusPoint: Point,
     variant: number,
+    reference?: Point | RuntimeScenePointJson | null,
   ) => Point | null;
   circleCircleIntersection: (
     leftCenter: Point,
@@ -197,15 +312,26 @@ type ViewerSceneModule = {
     rightCenter: Point,
     rightRadiusPoint: Point,
     variant: number,
+    reference?: Point | RuntimeScenePointJson | null,
   ) => Point | null;
   drawGrid: (env: ViewerEnv) => void;
 };
 
 type ViewerRenderModule = {
+  labelMetrics: (env: ViewerEnv, text: string) => { lines: string[]; width: number; height: number };
+  drawImages: (env: ViewerEnv) => void;
+  drawPolygons: (env: ViewerEnv) => void;
+  drawLines: (env: ViewerEnv) => void;
+  drawCircles: (env: ViewerEnv) => void;
+  drawArcs: (env: ViewerEnv) => void;
+  drawPoints: (env: ViewerEnv) => void;
+  drawLabels: (env: ViewerEnv) => void;
+  drawIterationTables: (env: ViewerEnv) => void;
+  drawHotspotFlashes: (env: ViewerEnv) => void;
   draw: (env: ViewerEnv) => void;
   labelHotspotRects: (
     env: ViewerEnv,
-    label: SceneData["labels"][number],
+    label: RuntimeLabelJson,
   ) => Array<{
     line: number;
     start: number;
@@ -215,15 +341,45 @@ type ViewerRenderModule = {
     top: number;
     width: number;
     height: number;
-    action: any;
+    action: LabelHotspotActionJson | null;
   }>;
   findHitPoint: (env: ViewerEnv, screenX: number, screenY: number) => number | null;
   findHitLabel: (env: ViewerEnv, screenX: number, screenY: number) => number | null;
   findHitIterationTable: (env: ViewerEnv, screenX: number, screenY: number) => number | null;
   findHitPolygon: (env: ViewerEnv, screenX: number, screenY: number) => number | null;
+  iterationTableBounds: (
+    env: ViewerEnv,
+    table: RuntimeIterationTableJson,
+  ) => {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+    rows: string[][];
+    colWidths: number[];
+    rowHeight: number;
+  } | null;
+  labelBounds: (
+    env: ViewerEnv,
+    label: RuntimeLabelJson,
+  ) => {
+    screen: Point;
+    lines: string[];
+    width: number;
+    height: number;
+    left: number;
+    top: number;
+  } | null;
 };
 
 type ViewerDragModule = {
+  dragModeFor: (
+    env: ViewerEnv,
+    pointIndex: number | null,
+    labelIndex: number | null,
+    polygonIndex: number | null,
+    iterationTableIndex: number | null,
+  ) => string;
   beginDrag: (
     env: ViewerEnv,
     pointerId: number,
@@ -242,26 +398,46 @@ type ViewerDragModule = {
 
 type ViewerDynamicsModule = {
   buildParameterControls: (env: ViewerEnv) => void;
-  evaluateExpr: (expr: any, x: number, parameters: Map<string, number>) => number | null;
-  formatExpr: (expr: any, formatAxisNumber: (value: number) => string) => string;
-  parameterValueFromPoint: (scene: any, pointIndex: number) => number | null;
+  evaluateExpr: (expr: FunctionExprJson, x: number, parameters: Map<string, number>) => number | null;
+  formatExpr: (expr: FunctionExprJson, formatAxisNumber: (value: number) => string, variableLabel?: string) => string;
+  parameterValueFromPoint: (scene: ViewerSceneData, pointIndex: number) => number | null;
   applyNormalizedParameterToPoint: (
-    point: any,
-    scene: any,
+    point: RuntimeScenePointJson,
+    scene: ViewerSceneData,
     normalizedValue: number,
   ) => void;
-  refreshDerivedPoints: (env: ViewerEnv, scene: any) => void;
-  refreshIterationGeometry: (env: ViewerEnv, scene: any, parameters: Map<string, number>) => void;
-  refreshDynamicLabels: (env: ViewerEnv, scene: any) => void;
+  refreshDerivedPoints: (env: ViewerEnv, scene: ViewerSceneData) => void;
+  refreshIterationGeometry: (env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) => void;
+  refreshDynamicLabels: (env: ViewerEnv, scene: ViewerSceneData) => void;
   syncDynamicScene: (env: ViewerEnv) => void;
 };
 
+type ViewerModules = {
+  scene: ViewerSceneModule;
+  render: ViewerRenderModule;
+  drag: ViewerDragModule;
+  dynamics: ViewerDynamicsModule;
+};
+
 interface Window {
-  van: any;
-  GspViewerModules: {
-    scene?: ViewerSceneModule;
-    render?: ViewerRenderModule;
-    drag?: ViewerDragModule;
-    dynamics?: ViewerDynamicsModule;
+  gspDebug?: {
+    sourceScene: SceneData;
+    viewerEnv: ViewerEnv;
+    readonly runtime: {
+      view: ViewState;
+      scene: ViewerSceneData;
+      dynamics: RuntimeDynamicsState;
+      buttons: RuntimeButtonJson[];
+    };
+    json: () => string;
+    graph: () => string;
+    dumpJson: () => void;
+    dumpGraph: () => void;
+    dump: () => void;
+    openPanel: () => void;
+    closePanel: () => void;
+    togglePanel: () => void;
   };
+  van: typeof import("./vendor/van-1.6.0").default;
+  GspViewerModules: Partial<ViewerModules>;
 }

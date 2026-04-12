@@ -1,19 +1,11 @@
 {
+  "extends": "./tsconfig.json",
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "ESNext",
-    "lib": ["ES2020", "DOM"],
-    "allowJs": true,
-    "checkJs": true,
-    "noEmit": true,
-    "strict": false,
-    "noImplicitAny": true,
-    "skipLibCheck": true
+    "noImplicitAny": true
   },
   "include": [
     "src/html/viewer.js",
     "src/html/viewer_drag.js",
-    "src/html/viewer_dynamics.js",
     "src/html/viewer_render.js",
     "src/html/viewer_scene.js",
     "src/html/generated/**/*.ts",

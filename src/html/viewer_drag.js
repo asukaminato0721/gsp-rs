@@ -1,5 +1,8 @@
+// @ts-check
+
 (function() {
   const modules = window.GspViewerModules || (window.GspViewerModules = {});
+  /** @type {Set<string>} */
   const PAN_ONLY_POINT_BINDINGS = new Set([
     "graph-calibration",
     "midpoint",
@@ -8,38 +11,121 @@
     "coordinate-source-2d",
   ]);
 
+  /**
+   * @param {PointHandle} handle
+   * @returns {handle is Extract<PointHandle, { pointIndex: number }>}
+   */
+  function hasPointIndexHandle(handle) {
+    return !!handle && typeof handle === "object" && "pointIndex" in handle && typeof handle.pointIndex === "number";
+  }
+
+  /**
+   * @param {RuntimeScenePointJson["constraint"]} constraint
+   * @returns {constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "offset" }>}
+   */
+  function isOffsetConstraint(constraint) {
+    return !!constraint && constraint.kind === "offset";
+  }
+
+  /**
+   * @param {RuntimeScenePointJson["constraint"]} constraint
+   * @returns {constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "segment" }>}
+   */
+  function isSegmentConstraint(constraint) {
+    return !!constraint && constraint.kind === "segment";
+  }
+
+  /**
+   * @param {RuntimeScenePointJson["constraint"]} constraint
+   * @returns {constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "polyline" }>}
+   */
+  function isPolylineConstraint(constraint) {
+    return !!constraint && constraint.kind === "polyline";
+  }
+
+  /**
+   * @param {RuntimeScenePointJson["constraint"]} constraint
+   * @returns {constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "polygon-boundary" }>}
+   */
+  function isPolygonBoundaryConstraint(constraint) {
+    return !!constraint && constraint.kind === "polygon-boundary";
+  }
+
+  /**
+   * @param {RuntimeScenePointJson["constraint"]} constraint
+   * @returns {constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "circle" }>}
+   */
+  function isCircleConstraint(constraint) {
+    return !!constraint && constraint.kind === "circle";
+  }
+
+  /**
+   * @param {RuntimeScenePointJson["constraint"]} constraint
+   * @returns {constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "circle-arc" }>}
+   */
+  function isCircleArcConstraint(constraint) {
+    return !!constraint && constraint.kind === "circle-arc";
+  }
+
+  /**
+   * @param {RuntimeScenePointJson["constraint"]} constraint
+   * @returns {constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "arc" }>}
+   */
+  function isArcConstraint(constraint) {
+    return !!constraint && constraint.kind === "arc";
+  }
+
+  /**
+   * @param {RuntimePointRef} anchor
+   * @returns {anchor is Extract<RuntimePointRef, { pointIndex: number } | { lineIndex: number }>}
+   */
+  function isBoundAnchor(anchor) {
+    return !!anchor && typeof anchor === "object" && (
+      ("pointIndex" in anchor && typeof anchor.pointIndex === "number")
+      || ("lineIndex" in anchor && typeof anchor.lineIndex === "number")
+    );
+  }
+
+  /** @typedef {(env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) => void} DraggedPointConstraintUpdater */
+  /** @type {Record<string, DraggedPointConstraintUpdater>} */
   const DRAGGED_POINT_CONSTRAINT_UPDATERS = {
     offset(env, draft, point, world) {
-      const originPoint = draft.points[point.constraint.originIndex];
+      const constraint = point.constraint;
+      if (!isOffsetConstraint(constraint)) return;
+      const originPoint = draft.points[constraint.originIndex];
       if (originPoint && !originPoint.constraint) {
-        originPoint.x = world.x - point.constraint.dx;
-        originPoint.y = world.y - point.constraint.dy;
+        originPoint.x = world.x - constraint.dx;
+        originPoint.y = world.y - constraint.dy;
         return;
       }
-      const origin = env.resolveScenePoint(point.constraint.originIndex);
-      point.constraint.dx = world.x - origin.x;
-      point.constraint.dy = world.y - origin.y;
+      const origin = env.resolveScenePoint(constraint.originIndex);
+      constraint.dx = world.x - origin.x;
+      constraint.dy = world.y - origin.y;
     },
     segment(env, _draft, point, world) {
-      const start = env.resolveScenePoint(point.constraint.startIndex);
-      const end = env.resolveScenePoint(point.constraint.endIndex);
+      const constraint = point.constraint;
+      if (!isSegmentConstraint(constraint)) return;
+      const start = env.resolveScenePoint(constraint.startIndex);
+      const end = env.resolveScenePoint(constraint.endIndex);
       const projection = window.GspViewerModules.scene.projectToSegment(world, start, end);
       if (projection) {
-        point.constraint.t = projection.t;
+        constraint.t = projection.t;
       }
     },
     polyline(env, _draft, point, world) {
-      const points = typeof point.constraint.functionKey === "number"
+      const constraint = point.constraint;
+      if (!isPolylineConstraint(constraint)) return;
+      const points = typeof constraint.functionKey === "number"
         ? window.GspViewerModules.scene.resolveLinePoints(
             env,
-            env.currentScene().lines.find((line) =>
-              line?.binding?.kind === "arc-boundary" && line.binding.hostKey === point.constraint.functionKey
+            env.currentScene().lines.find((/** @type {SceneLineJson} */ line) =>
+              line?.binding?.kind === "arc-boundary" && line.binding.hostKey === constraint.functionKey
             ),
-          ) || point.constraint.points
-        : point.constraint.points;
+          ) || constraint.points
+        : constraint.points;
       const count = points.length;
-      let bestSegmentIndex = point.constraint.segmentIndex;
-      let bestT = point.constraint.t;
+      let bestSegmentIndex = constraint.segmentIndex;
+      let bestT = constraint.t;
       let bestDistanceSquared = Number.POSITIVE_INFINITY;
       for (let segmentIndex = 0; segmentIndex < count - 1; segmentIndex += 1) {
         const start = window.GspViewerModules.scene.resolvePoint(env, points[segmentIndex]);
@@ -57,17 +143,19 @@
           bestT = projection.t;
         }
       }
-      point.constraint.segmentIndex = bestSegmentIndex;
-      point.constraint.t = bestT;
+      constraint.segmentIndex = bestSegmentIndex;
+      constraint.t = bestT;
     },
     "polygon-boundary"(env, _draft, point, world) {
-      const count = point.constraint.vertexIndices.length;
-      let bestEdgeIndex = point.constraint.edgeIndex;
-      let bestT = point.constraint.t;
+      const constraint = point.constraint;
+      if (!isPolygonBoundaryConstraint(constraint)) return;
+      const count = constraint.vertexIndices.length;
+      let bestEdgeIndex = constraint.edgeIndex;
+      let bestT = constraint.t;
       let bestDistanceSquared = Number.POSITIVE_INFINITY;
       for (let edgeIndex = 0; edgeIndex < count; edgeIndex += 1) {
-        const start = env.resolveScenePoint(point.constraint.vertexIndices[edgeIndex]);
-        const end = env.resolveScenePoint(point.constraint.vertexIndices[(edgeIndex + 1) % count]);
+        const start = env.resolveScenePoint(constraint.vertexIndices[edgeIndex]);
+        const end = env.resolveScenePoint(constraint.vertexIndices[(edgeIndex + 1) % count]);
         const projection = window.GspViewerModules.scene.projectToSegment(world, start, end);
         if (!projection) {
           continue;
@@ -78,23 +166,27 @@
           bestT = projection.t;
         }
       }
-      point.constraint.edgeIndex = bestEdgeIndex;
-      point.constraint.t = bestT;
+      constraint.edgeIndex = bestEdgeIndex;
+      constraint.t = bestT;
     },
     circle(env, _draft, point, world) {
-      const center = env.resolveScenePoint(point.constraint.centerIndex);
+      const constraint = point.constraint;
+      if (!isCircleConstraint(constraint)) return;
+      const center = env.resolveScenePoint(constraint.centerIndex);
       const dx = world.x - center.x;
       const dy = world.y - center.y;
       const length = Math.hypot(dx, dy);
       if (length > 1e-9) {
-        point.constraint.unitX = dx / length;
-        point.constraint.unitY = dy / length;
+        constraint.unitX = dx / length;
+        constraint.unitY = dy / length;
       }
     },
     "circle-arc"(env, _draft, point, world) {
-      const center = env.resolveScenePoint(point.constraint.centerIndex);
-      const start = env.resolveScenePoint(point.constraint.startIndex);
-      const end = env.resolveScenePoint(point.constraint.endIndex);
+      const constraint = point.constraint;
+      if (!isCircleArcConstraint(constraint)) return;
+      const center = env.resolveScenePoint(constraint.centerIndex);
+      const start = env.resolveScenePoint(constraint.startIndex);
+      const end = env.resolveScenePoint(constraint.endIndex);
       const projection = window.GspViewerModules.scene.projectToCircleArc(
         world,
         center,
@@ -103,13 +195,15 @@
         !!env.sourceScene.yUp,
       );
       if (projection) {
-        point.constraint.t = projection.t;
+        constraint.t = projection.t;
       }
     },
     arc(env, _draft, point, world) {
-      const start = env.resolveScenePoint(point.constraint.startIndex);
-      const mid = env.resolveScenePoint(point.constraint.midIndex);
-      const end = env.resolveScenePoint(point.constraint.endIndex);
+      const constraint = point.constraint;
+      if (!isArcConstraint(constraint)) return;
+      const start = env.resolveScenePoint(constraint.startIndex);
+      const mid = env.resolveScenePoint(constraint.midIndex);
+      const end = env.resolveScenePoint(constraint.endIndex);
       const projection = window.GspViewerModules.scene.projectToThreePointArc(
         world,
         start,
@@ -117,11 +211,18 @@
         end,
       );
       if (projection) {
-        point.constraint.t = projection.t;
+        constraint.t = projection.t;
       }
     },
   };
 
+  /**
+   * @param {ViewerEnv} env
+   * @param {number | null} pointIndex
+   * @param {number | null} labelIndex
+   * @param {number | null} polygonIndex
+   * @param {number | null} iterationTableIndex
+   */
   function dragModeFor(env, pointIndex, labelIndex, polygonIndex, iterationTableIndex) {
     if (pointIndex !== null) {
       const point = env.currentScene().points[pointIndex];
@@ -139,6 +240,15 @@
     return labelIndex !== null ? "label" : "pan";
   }
 
+  /**
+   * @param {ViewerEnv} env
+   * @param {number} pointerId
+   * @param {Point} position
+   * @param {number | null} pointIndex
+   * @param {number | null} labelIndex
+   * @param {number | null} polygonIndex
+   * @param {number | null} iterationTableIndex
+   */
   function beginDrag(env, pointerId, position, pointIndex, labelIndex, polygonIndex, iterationTableIndex) {
     env.dragState.val = {
       pointerId,
@@ -154,11 +264,17 @@
     env.canvas.classList.add("is-dragging");
   }
 
+  /**
+   * @param {ViewerEnv} env
+   * @param {Point} world
+   */
   function updateDraggedPoint(env, world) {
-    env.updateScene((draft) => {
+    env.updateScene((/** @type {ViewerSceneData} */ draft) => {
       const point = draft.points[env.dragState.val.pointIndex];
       const constraintKind = point.constraint?.kind;
-      const updateConstraint = constraintKind ? DRAGGED_POINT_CONSTRAINT_UPDATERS[constraintKind] : null;
+      const updateConstraint = typeof constraintKind === "string"
+        ? DRAGGED_POINT_CONSTRAINT_UPDATERS[constraintKind]
+        : null;
       if (updateConstraint) {
         updateConstraint(env, draft, point, world);
       } else {
@@ -169,35 +285,44 @@
     env.hoverPointIndex.val = env.dragState.val.pointIndex;
   }
 
+  /**
+   * @param {ViewerEnv} env
+   * @param {Point} position
+   */
   function updateDraggedLabel(env, position) {
-    env.updateScene((draft) => {
+    env.updateScene((/** @type {ViewerSceneData} */ draft) => {
       const label = draft.labels[env.dragState.val.labelIndex];
+      const anchor = label.anchor;
       if (label.screenSpace) {
-        label.anchor.x = position.x;
-        label.anchor.y = position.y;
-      } else if (typeof label.anchor.pointIndex === "number" || typeof label.anchor.lineIndex === "number") {
-        const base = env.resolveAnchorBase(label.anchor);
+        anchor.x = position.x;
+        anchor.y = position.y;
+      } else if (isBoundAnchor(anchor)) {
+        const base = env.resolveAnchorBase(anchor);
         const world = env.toWorld(position.x, position.y);
-        label.anchor.dx = world.x - base.x;
-        label.anchor.dy = world.y - base.y;
+        anchor.dx = world.x - base.x;
+        anchor.dy = world.y - base.y;
       } else {
         const world = env.toWorld(position.x, position.y);
-        label.anchor.x = world.x;
-        label.anchor.y = world.y;
+        anchor.x = world.x;
+        anchor.y = world.y;
       }
     });
   }
 
+  /**
+   * @param {ViewerEnv} env
+   * @param {Point} world
+   */
   function updateDraggedPolygon(env, world) {
     const previous = env.toWorld(env.dragState.val.lastX, env.dragState.val.lastY);
     const dx = world.x - previous.x;
     const dy = world.y - previous.y;
     if (Math.abs(dx) <= 1e-9 && Math.abs(dy) <= 1e-9) return;
-    env.updateScene((draft) => {
+    env.updateScene((/** @type {ViewerSceneData} */ draft) => {
       const polygon = draft.polygons[env.dragState.val.polygonIndex];
       if (!polygon) return;
-      polygon.points.forEach((handle) => {
-        if (typeof handle?.pointIndex !== "number") return;
+      polygon.points.forEach((/** @type {PointHandle} */ handle) => {
+        if (!hasPointIndexHandle(handle)) return;
         const point = draft.points[handle.pointIndex];
         if (!point || point.constraint || point.binding) return;
         point.x += dx;
@@ -206,8 +331,12 @@
     });
   }
 
+  /**
+   * @param {ViewerEnv} env
+   * @param {Point} position
+   */
   function updateDraggedIterationTable(env, position) {
-    env.updateScene((draft) => {
+    env.updateScene((/** @type {ViewerSceneData} */ draft) => {
       const table = draft.iterationTables?.[env.dragState.val.iterationTableIndex];
       if (!table) return;
       table.x = position.x;
@@ -215,6 +344,10 @@
     });
   }
 
+  /**
+   * @param {ViewerEnv} env
+   * @param {Point} position
+   */
   function panFromPointerDelta(env, position) {
     const worldNow = env.toWorld(position.x, position.y);
     const worldLast = env.toWorld(env.dragState.val.lastX, env.dragState.val.lastY);

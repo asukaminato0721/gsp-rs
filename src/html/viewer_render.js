@@ -1,7 +1,46 @@
+// @ts-check
+
 (function() {
   const modules = window.GspViewerModules || (window.GspViewerModules = {});
+  /** @type {Map<string, { img: HTMLImageElement; loaded: boolean }>} */
   const imageCache = new Map();
 
+  /**
+   * @param {PointHandle} handle
+   * @returns {handle is Extract<PointHandle, { pointIndex: number }>}
+   */
+  function hasPointIndexHandle(handle) {
+    return !!handle && typeof handle === "object" && "pointIndex" in handle && typeof handle.pointIndex === "number";
+  }
+
+  /**
+   * @param {LineBindingJson} binding
+   * @returns {binding is Extract<LineBindingJson, { lineStartIndex: number | null; lineEndIndex: number | null }>}
+   */
+  function hasExplicitHostLine(binding) {
+    return !!binding
+      && typeof binding === "object"
+      && "lineStartIndex" in binding
+      && "lineEndIndex" in binding
+      && typeof binding.lineStartIndex === "number"
+      && typeof binding.lineEndIndex === "number";
+  }
+
+  /**
+   * @param {LineBindingJson} binding
+   * @returns {boolean}
+   */
+  function hasHostLineIndex(binding) {
+    return !!binding
+      && typeof binding === "object"
+      && "lineIndex" in binding
+      && typeof binding.lineIndex === "number";
+  }
+
+  /**
+   * @param {string} src
+   * @param {ViewerEnv | null | undefined} env
+   */
   function loadImage(src, env) {
     let entry = imageCache.get(src);
     if (entry) return entry;
@@ -18,6 +57,11 @@
     return entry;
   }
 
+  /**
+   * @param {Point} start
+   * @param {Point} mid
+   * @param {Point} end
+   */
   function arcGeometryFromPoints(start, mid, end) {
     const determinant = 2 * (
       start.x * (mid.y - end.y)
@@ -59,11 +103,22 @@
     };
   }
 
+  /**
+   * @param {number} from
+   * @param {number} to
+   */
   function normalizeAngleDelta(from, to) {
     const tau = Math.PI * 2;
     return ((to - from) % tau + tau) % tau;
   }
 
+  /**
+   * @param {Point} start
+   * @param {Point} end
+   * @param {Point} center
+   * @param {boolean} counterclockwise
+   * @param {boolean} yUp
+   */
   function midpointOnCircleWorld(start, end, center, counterclockwise, yUp) {
     const ySign = yUp ? 1 : -1;
     const startAngle = Math.atan2((start.y - center.y) * ySign, start.x - center.x);
@@ -80,12 +135,24 @@
     };
   }
 
+  /**
+   * @param {Point} start
+   * @param {Point} end
+   * @param {number} width
+   * @param {number} height
+   * @param {boolean} rayOnly
+   */
   function clipParametricLineToRect(start, end, width, height, rayOnly) {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
     if (Math.abs(dx) <= 1e-9 && Math.abs(dy) <= 1e-9) return null;
 
+    /** @type {Array<{ t: number; point: Point }>} */
     const hits = [];
+    /**
+     * @param {number} t
+     * @param {Point} point
+     */
     const pushHit = (t, point) => {
       if (!Number.isFinite(t)) return;
       if (rayOnly && t < -1e-9) return;
@@ -124,6 +191,10 @@
     return [hits[0].point, hits[hits.length - 1].point];
   }
 
+  /**
+   * @param {ViewerEnv} env
+   * @param {string} text
+   */
   function labelMetrics(env, text) {
     const lines = text.split("\n");
     const width = lines.reduce((best, line) => Math.max(best, env.ctx.measureText(line).width), 0);
@@ -134,9 +205,13 @@
     };
   }
 
+  /**
+   * @param {ViewerEnv} env
+   * @param {SceneLabelJson} label
+   */
   function labelBounds(env, label) {
     const worldAnchor = label.screenSpace
-      ? { x: label.anchor.x, y: label.anchor.y }
+      ? { x: /** @type {Point} */ (label.anchor).x, y: /** @type {Point} */ (label.anchor).y }
       : env.resolvePoint(label.anchor);
     if (!worldAnchor) return null;
     const screen = label.screenSpace
@@ -163,6 +238,10 @@
     };
   }
 
+  /**
+   * @param {ViewerEnv} env
+   * @param {SceneLabelJson} label
+   */
   function labelHotspotRects(env, label) {
     if (!label.hotspots?.length) {
       return [];
@@ -176,7 +255,7 @@
       return [];
     }
     const rects = label.hotspots
-      .map((hotspot) => {
+      .map((/** @type {RuntimeLabelHotspotJson} */ hotspot) => {
         const line = bounds.lines[hotspot.line];
         if (typeof line !== "string") {
           return null;
@@ -206,6 +285,12 @@
     return rects;
   }
 
+  /**
+   * @param {ViewerEnv} env
+   * @param {number} screenX
+   * @param {number} screenY
+   * @returns {number | null}
+   */
   function findHitPoint(env, screenX, screenY) {
     let bestIndex = null;
     let bestDistanceSquared = env.pointHitRadius * env.pointHitRadius;
@@ -227,6 +312,11 @@
     return bestIndex;
   }
 
+  /**
+   * @param {ViewerEnv} env
+   * @param {number} screenX
+   * @param {number} screenY
+   */
   function findHitLabel(env, screenX, screenY) {
     env.ctx.save();
     env.ctx.font = "18px \"Noto Sans\", \"Segoe UI\", sans-serif";
@@ -252,6 +342,10 @@
     return null;
   }
 
+  /**
+   * @param {ViewerEnv} env
+   * @param {SceneIterationTableJson} table
+   */
   function iterationTableBounds(env, table) {
     if (table.visible === false || !Array.isArray(table.rows) || table.rows.length === 0) {
       return null;
@@ -259,11 +353,11 @@
     env.ctx.save();
     env.ctx.font = "18px \"Noto Sans\", \"Segoe UI\", sans-serif";
     const header = ["n", table.exprLabel];
-    const body = table.rows.map((row) => [String(row.index), env.formatNumber(row.value)]);
+    const body = table.rows.map((/** @type {{ index: number; value: number }} */ row) => [String(row.index), env.formatNumber(row.value)]);
     const rows = [header, ...body];
     const colWidths = [0, 0];
-    rows.forEach((row) => {
-      row.forEach((cell, index) => {
+    rows.forEach((/** @type {string[]} */ row) => {
+      row.forEach((/** @type {string} */ cell, /** @type {number} */ index) => {
         colWidths[index] = Math.max(colWidths[index], env.ctx.measureText(cell).width + 18);
       });
     });
@@ -282,6 +376,11 @@
     };
   }
 
+  /**
+   * @param {ViewerEnv} env
+   * @param {number} screenX
+   * @param {number} screenY
+   */
   function findHitIterationTable(env, screenX, screenY) {
     for (let index = (env.currentScene().iterationTables || []).length - 1; index >= 0; index -= 1) {
       const table = env.currentScene().iterationTables[index];
@@ -299,6 +398,10 @@
     return null;
   }
 
+  /**
+   * @param {Point} point
+   * @param {Point[]} polygon
+   */
   function pointInPolygon(point, polygon) {
     let inside = false;
     for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
@@ -313,23 +416,32 @@
     return inside;
   }
 
+  /**
+   * @param {ViewerEnv} env
+   * @param {ScenePolygonJson} polygon
+   */
   function isFreePolygon(env, polygon) {
     if (polygon.binding) return false;
     if (polygon.points.length < 3) return false;
-    return polygon.points.every((handle) => {
-      if (typeof handle?.pointIndex !== "number") return false;
+    return polygon.points.every((/** @type {PointHandle} */ handle) => {
+      if (!hasPointIndexHandle(handle)) return false;
       const point = env.currentScene().points[handle.pointIndex];
       return point && !point.constraint && !point.binding;
     });
   }
 
+  /**
+   * @param {ViewerEnv} env
+   * @param {number} screenX
+   * @param {number} screenY
+   */
   function findHitPolygon(env, screenX, screenY) {
     for (let index = env.currentScene().polygons.length - 1; index >= 0; index -= 1) {
       const polygon = env.currentScene().polygons[index];
       if (polygon.visible === false || !isFreePolygon(env, polygon)) continue;
-      const worldPoints = polygon.points.map((handle) => env.resolvePoint(handle));
-      if (worldPoints.some((point) => !point)) continue;
-      const screenPoints = worldPoints.map((point) => env.toScreen(point));
+      const worldPoints = polygon.points.map((/** @type {PointHandle} */ handle) => env.resolvePoint(handle));
+      if (worldPoints.some((/** @type {Point | null} */ point) => !point)) continue;
+      const screenPoints = worldPoints.map((/** @type {Point} */ point) => env.toScreen(point));
       if (screenPoints.length < 3) continue;
       if (pointInPolygon({ x: screenX, y: screenY }, screenPoints)) {
         return index;
@@ -338,14 +450,15 @@
     return null;
   }
 
+  /** @param {ViewerEnv} env */
   function drawPolygons(env) {
     for (const polygon of env.currentScene().polygons) {
       if (polygon.visible === false) continue;
       if (polygon.points.length < 3) continue;
-      const worldPoints = polygon.points.map((handle) => env.resolvePoint(handle));
-      if (worldPoints.some((point) => !point)) continue;
+      const worldPoints = polygon.points.map((/** @type {PointHandle} */ handle) => env.resolvePoint(handle));
+      if (worldPoints.some((/** @type {Point | null} */ point) => !point)) continue;
       env.ctx.beginPath();
-      worldPoints.forEach((point, index) => {
+      worldPoints.forEach((/** @type {Point} */ point, /** @type {number} */ index) => {
         const screen = env.toScreen(point);
         if (index === 0) {
           env.ctx.moveTo(screen.x, screen.y);
@@ -362,6 +475,7 @@
     }
   }
 
+  /** @param {ViewerEnv} env */
   function drawImages(env) {
     for (const image of env.currentScene().images || []) {
       const entry = loadImage(image.src, env);
@@ -385,8 +499,16 @@
     }
   }
 
+  /** @param {ViewerEnv} env */
   function drawLines(env) {
-    const resolveRightAngleMarkerPoints = (vertex, first, second, shortestLen, layerIndex, layerCount) => {
+    const resolveRightAngleMarkerPoints = (
+      /** @type {Point} */ vertex,
+      /** @type {Point} */ first,
+      /** @type {Point} */ second,
+      /** @type {number} */ shortestLen,
+      /** @type {number} */ layerIndex,
+      /** @type {number} */ layerCount,
+    ) => {
       const sideBase = Math.min(Math.max(shortestLen * 0.125, 10), 28, shortestLen * 0.5);
       const side = sideBase + layerIndex * 5;
       if (side <= 1e-9) return null;
@@ -396,7 +518,15 @@
         { x: vertex.x + second.x * side, y: vertex.y + second.y * side },
       ];
     };
-    const resolveArcAngleMarkerPoints = (vertex, first, shortestLen, cross, dot, layerIndex, layerCount) => {
+    const resolveArcAngleMarkerPoints = (
+      /** @type {Point} */ vertex,
+      /** @type {Point} */ first,
+      /** @type {number} */ shortestLen,
+      /** @type {number} */ cross,
+      /** @type {number} */ dot,
+      /** @type {number} */ layerIndex,
+      /** @type {number} */ layerCount,
+    ) => {
       const radius = Math.min(Math.max(shortestLen * 0.12, 10), 28) + layerIndex * 5;
       const clampedRadius = Math.min(radius, shortestLen * (0.42 + layerIndex * 0.06));
       if (clampedRadius <= 1e-9) return null;
@@ -413,11 +543,15 @@
         };
       });
     };
-    const drawPolyline = (worldPoints, color, dashed) => {
-      const screenPoints = worldPoints.map((point) => env.toScreen(point));
+    const drawPolyline = (
+      /** @type {Point[]} */ worldPoints,
+      /** @type {[number, number, number, number]} */ color,
+      /** @type {boolean} */ dashed,
+    ) => {
+      const screenPoints = worldPoints.map((/** @type {Point} */ point) => env.toScreen(point));
       if (screenPoints.length < 2) return;
       env.ctx.beginPath();
-      screenPoints.forEach((screen, index) => {
+      screenPoints.forEach((/** @type {Point & { scale: number }} */ screen, /** @type {number} */ index) => {
         if (index === 0) env.ctx.moveTo(screen.x, screen.y);
         else env.ctx.lineTo(screen.x, screen.y);
       });
@@ -426,7 +560,7 @@
       env.ctx.setLineDash(dashed ? [8, 8] : []);
       env.ctx.stroke();
     };
-    const drawAngleMarker = (line) => {
+    const drawAngleMarker = (/** @type {RuntimeLineJson} */ line) => {
       const start = env.resolveScenePoint(line.binding.startIndex);
       const vertex = env.resolveScenePoint(line.binding.vertexIndex);
       const end = env.resolveScenePoint(line.binding.endIndex);
@@ -451,7 +585,7 @@
         if (points) drawPolyline(points, line.color, line.dashed);
       }
     };
-    const drawSegmentMarker = (line) => {
+    const drawSegmentMarker = (/** @type {RuntimeLineJson} */ line) => {
       const start = env.resolveScenePoint(line.binding.startIndex);
       const end = env.resolveScenePoint(line.binding.endIndex);
       if (!start || !end) return;
@@ -497,18 +631,18 @@
         continue;
       }
       let screenPoints = null;
-      const resolveHostLinePoints = (binding) => {
-        if (
-          typeof binding?.lineStartIndex === "number"
-          && typeof binding?.lineEndIndex === "number"
-        ) {
+      const resolveHostLinePoints = (/** @type {LineBindingJson} */ binding) => {
+        if (hasExplicitHostLine(binding)) {
           return [
             env.resolveScenePoint(binding.lineStartIndex),
             env.resolveScenePoint(binding.lineEndIndex),
           ];
         }
-        if (typeof binding?.lineIndex === "number") {
-          return env.resolveLinePoints(binding.lineIndex);
+        if (hasHostLineIndex(binding)) {
+          const indexedBinding = /** @type {{ lineIndex?: number }} */ (binding);
+          if (typeof indexedBinding.lineIndex === "number") {
+            return env.resolveLinePoints(indexedBinding.lineIndex);
+          }
         }
         return null;
       };
@@ -604,14 +738,14 @@
       } else {
         const points = env.resolveLinePoints
           ? env.resolveLinePoints(line)
-          : line.points.map((handle) => env.resolvePoint(handle));
+          : line.points.map((/** @type {PointHandle} */ handle) => env.resolvePoint(handle));
         if (points && points.length >= 2) {
-          screenPoints = points.map((point) => env.toScreen(point));
+          screenPoints = points.map((/** @type {Point} */ point) => env.toScreen(point));
         }
       }
       if (!screenPoints || screenPoints.length < 2) continue;
       env.ctx.beginPath();
-      screenPoints.forEach((screen, index) => {
+      screenPoints.forEach((/** @type {Point & { scale: number }} */ screen, /** @type {number} */ index) => {
         if (index === 0) {
           env.ctx.moveTo(screen.x, screen.y);
         } else {
@@ -626,6 +760,7 @@
     env.ctx.setLineDash([]);
   }
 
+  /** @param {ViewerEnv} env */
   function drawCircles(env) {
     for (const circle of env.currentScene().circles) {
       if (circle.visible === false) continue;
@@ -651,6 +786,7 @@
     env.ctx.setLineDash([]);
   }
 
+  /** @param {ViewerEnv} env */
   function drawArcs(env) {
     for (const arc of env.currentScene().arcs || []) {
       if (arc.visible === false || !Array.isArray(arc.points) || arc.points.length !== 3) continue;
@@ -674,9 +810,9 @@
           env.toScreen(endWorld),
         ];
       } else {
-        const worldPoints = arc.points.map((handle) => env.resolvePoint(handle));
-        if (worldPoints.some((point) => !point)) continue;
-        screenPoints = worldPoints.map((point) => env.toScreen(point));
+        const worldPoints = arc.points.map((/** @type {PointHandle} */ handle) => env.resolvePoint(handle));
+        if (worldPoints.some((/** @type {Point | null} */ point) => !point)) continue;
+        screenPoints = worldPoints.map((/** @type {Point} */ point) => env.toScreen(point));
       }
       const geometry = arcGeometryFromPoints(screenPoints[0], screenPoints[1], screenPoints[2]);
       if (!geometry) continue;
@@ -695,6 +831,7 @@
     }
   }
 
+  /** @param {ViewerEnv} env */
   function drawPoints(env) {
     env.currentScene().points.forEach((point, index) => {
       if (point.visible === false) {
@@ -712,6 +849,7 @@
     });
   }
 
+  /** @param {ViewerEnv} env */
   function drawLabels(env) {
     env.ctx.font = "18px \"Noto Sans\", \"Segoe UI\", sans-serif";
     for (const label of env.currentScene().labels) {
@@ -738,6 +876,7 @@
     env.ctx.textBaseline = "alphabetic";
   }
 
+  /** @param {ViewerEnv} env */
   function drawIterationTables(env) {
     const tables = env.currentScene().iterationTables || [];
     if (!tables.length) {
@@ -773,7 +912,7 @@
 
       rows.forEach((row, rowIndex) => {
         let x = left;
-        row.forEach((cell, colIndex) => {
+        row.forEach((/** @type {string} */ cell, /** @type {number} */ colIndex) => {
           const cellWidth = colWidths[colIndex];
           env.ctx.fillStyle = env.rgba([32, 32, 32, 255]);
           env.ctx.fillText(cell, x + cellWidth / 2, top + rowHeight * rowIndex + rowHeight / 2);
@@ -785,16 +924,17 @@
     env.ctx.restore();
   }
 
+  /** @param {ViewerEnv} env */
   function drawHotspotFlashes(env) {
     const flashes = env.currentHotspotFlashes ? env.currentHotspotFlashes() : [];
     if (!flashes?.length) {
       return;
     }
 
-    const strokePolyline = (points) => {
+    const strokePolyline = (/** @type {Point[]} */ points) => {
       if (!points || points.length < 2) return;
       env.ctx.beginPath();
-      points.forEach((point, index) => {
+      points.forEach((/** @type {Point} */ point, /** @type {number} */ index) => {
         const screen = env.toScreen(point);
         if (index === 0) env.ctx.moveTo(screen.x, screen.y);
         else env.ctx.lineTo(screen.x, screen.y);
@@ -810,7 +950,10 @@
     env.ctx.lineCap = "round";
 
     flashes.forEach((flash) => {
-      const action = flash.action || {};
+      const action = flash.action;
+      if (!action) {
+        return;
+      }
       switch (action.kind) {
         case "point": {
           const point = env.resolveScenePoint(action.pointIndex);
@@ -863,10 +1006,10 @@
         case "polygon": {
           const polygon = env.currentScene().polygons[action.polygonIndex];
           if (!polygon || polygon.points.length < 3) break;
-          const points = polygon.points.map((handle) => env.resolvePoint(handle));
-          if (points.some((point) => !point)) break;
+          const points = polygon.points.map((/** @type {PointHandle} */ handle) => env.resolvePoint(handle));
+          if (points.some((/** @type {Point | null} */ point) => !point)) break;
           env.ctx.beginPath();
-          points.forEach((point, index) => {
+          points.forEach((/** @type {Point} */ point, /** @type {number} */ index) => {
             const screen = env.toScreen(point);
             if (index === 0) env.ctx.moveTo(screen.x, screen.y);
             else env.ctx.lineTo(screen.x, screen.y);
@@ -884,6 +1027,7 @@
     env.ctx.restore();
   }
 
+  /** @param {ViewerEnv} env */
   function draw(env) {
     env.ctx.clearRect(0, 0, env.sourceScene.width, env.sourceScene.height);
     env.ctx.fillStyle = "rgb(250,250,248)";
@@ -917,6 +1061,7 @@
     drawPoints,
     drawLabels,
     drawIterationTables,
+    drawHotspotFlashes,
     draw,
   };
 })();
