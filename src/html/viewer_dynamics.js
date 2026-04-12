@@ -171,6 +171,13 @@
   }
 
   /**
+   * @param {TextLabel} label
+   */
+  function usesVerboseParameterLabel(label) {
+    return typeof label.text === "string" && label.text.includes("在");
+  }
+
+  /**
    * @param {Point} start
    * @param {Point} vertex
    * @param {Point} end
@@ -1688,7 +1695,9 @@
       const point = scene.points[label.binding.pointIndex];
       const value = point?.constraint?.kind === "segment" ? point.constraint.t : null;
       if (value !== null) {
-        label.text = `${label.binding.pointName}在${label.binding.segmentName}上的t值 = ${env.formatNumber(value)}`;
+        label.text = usesVerboseParameterLabel(label)
+          ? `${label.binding.pointName}在${label.binding.segmentName}上的t值 = ${env.formatNumber(value)}`
+          : `${label.binding.pointName} = ${env.formatNumber(value)}`;
       }
     },
     "circle-parameter"(env, scene, label) {
@@ -1698,7 +1707,9 @@
       const pointAngle = Math.atan2(-constraint.unitY, constraint.unitX);
       const tau = Math.PI * 2;
       const value = ((pointAngle % tau) + tau) % tau / tau;
-      label.text = `${label.binding.pointName}在⊙${label.binding.circleName}上的值 = ${env.formatNumber(value)}`;
+      label.text = usesVerboseParameterLabel(label)
+        ? `${label.binding.pointName}在⊙${label.binding.circleName}上的值 = ${env.formatNumber(value)}`
+        : `${label.binding.pointName} = ${env.formatNumber(value)}`;
     },
     "angle-marker-value"(_env, scene, label) {
       const start = scene.points[label.binding.startIndex];

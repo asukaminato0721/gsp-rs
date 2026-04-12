@@ -1354,5 +1354,91 @@ mod tests {
             circles[1]["fillColorBinding"]["brightnessPointIndex"].as_u64(),
             Some(13)
         );
+
+        let labels = scene["labels"]
+            .as_array()
+            .expect("scene labels should be an array");
+        let label_color = |text: &str| {
+            labels
+                .iter()
+                .find(|label| label["text"].as_str() == Some(text))
+                .and_then(|label| label["color"].as_array())
+                .cloned()
+                .expect("expected fixture label color to be exported")
+        };
+        assert_eq!(
+            label_color("红"),
+            vec![Value::from(255), Value::from(0), Value::from(0), Value::from(255)],
+            "expected the red payload label to keep its text color"
+        );
+        assert_eq!(
+            label_color("绿"),
+            vec![Value::from(0), Value::from(128), Value::from(0), Value::from(255)],
+            "expected the green payload label to keep its text color"
+        );
+        assert_eq!(
+            label_color("蓝"),
+            vec![Value::from(0), Value::from(0), Value::from(255), Value::from(255)],
+            "expected the blue payload label to keep its text color"
+        );
+        assert_eq!(
+            label_color("色调"),
+            vec![Value::from(0), Value::from(0), Value::from(255), Value::from(255)],
+            "expected the hue payload label to keep its blue text color"
+        );
+        assert_eq!(
+            label_color("饱和度"),
+            vec![Value::from(0), Value::from(0), Value::from(255), Value::from(255)],
+            "expected the saturation payload label to keep its blue text color"
+        );
+        assert_eq!(
+            label_color("亮度"),
+            vec![Value::from(0), Value::from(0), Value::from(255), Value::from(255)],
+            "expected the brightness payload label to keep its blue text color"
+        );
+
+        let visible_label = |text: &str| {
+            labels
+                .iter()
+                .find(|label| label["text"].as_str() == Some(text))
+                .and_then(|label| label["visible"].as_bool())
+                .expect("expected fixture label visibility to be exported")
+        };
+        assert!(
+            visible_label("红 = 0.28"),
+            "expected the red segment parameter label to use the concise named form"
+        );
+        assert!(
+            visible_label("绿 = 0.48"),
+            "expected the green segment parameter label to use the concise named form"
+        );
+        assert!(
+            visible_label("蓝 = 0.79"),
+            "expected the blue segment parameter label to use the concise named form"
+        );
+        assert!(
+            visible_label("色调 = 0.19"),
+            "expected the hue segment parameter label to use the concise named form"
+        );
+        assert!(
+            visible_label("饱和度 = 0.54"),
+            "expected the saturation segment parameter label to use the concise named form"
+        );
+        assert!(
+            visible_label("亮度 = 0.77"),
+            "expected the brightness segment parameter label to use the concise named form"
+        );
+        assert!(
+            labels
+                .iter()
+                .all(|label| label["text"].as_str() != Some("红在AB上的t值 = 0.28")),
+            "expected the verbose red segment helper label to be omitted when the anchor is named"
+        );
+        assert!(
+            labels
+                .iter()
+                .all(|label| label["text"].as_str() != Some("色调在FG上的t值 = 0.19")),
+            "expected the verbose hue segment helper label to be omitted when the anchor is named"
+        );
     }
 }

@@ -71,17 +71,44 @@ fn midpoint_has_explicit_label(group: &ObjectGroup) -> bool {
     (group.header.style_c >> 16) != 0
 }
 
+fn point_label_uses_group_color(group: &ObjectGroup) -> bool {
+    matches!(
+        group.header.kind(),
+        crate::format::GroupKind::CustomTransformPoint
+            | crate::format::GroupKind::Translation
+            | crate::format::GroupKind::Reflection
+            | crate::format::GroupKind::Rotation
+            | crate::format::GroupKind::ParameterRotation
+            | crate::format::GroupKind::Scale
+            | crate::format::GroupKind::PointConstraint
+            | crate::format::GroupKind::PathPoint
+            | crate::format::GroupKind::LinearIntersectionPoint
+            | crate::format::GroupKind::IntersectionPoint1
+            | crate::format::GroupKind::IntersectionPoint2
+            | crate::format::GroupKind::CircleCircleIntersectionPoint1
+            | crate::format::GroupKind::CircleCircleIntersectionPoint2
+    )
+}
+
 fn label_color_for_group(group: &ObjectGroup) -> [u8; 4] {
-    match group.header.kind() {
-        crate::format::GroupKind::Point
-            if !group
+    if group.header.kind() == crate::format::GroupKind::PointConstraint {
+        return match ((group.header.style_a >> 24) & 0xff) as u8 {
+            0x02 => [0, 0, 255, 255],
+            0x03 => color_from_style(group.header.style_b),
+            _ => [30, 30, 30, 255],
+        };
+    }
+
+    if point_label_uses_group_color(group)
+        || (group.header.kind() == crate::format::GroupKind::Point
+            && !group
                 .records
                 .iter()
-                .any(|record| record.record_type == RECORD_POINT_F64_PAIR) =>
-        {
-            color_from_style(group.header.style_b)
-        }
-        _ => [30, 30, 30, 255],
+                .any(|record| record.record_type == RECORD_POINT_F64_PAIR))
+    {
+        color_from_style(group.header.style_b)
+    } else {
+        [30, 30, 30, 255]
     }
 }
 
@@ -797,7 +824,8 @@ pub(super) fn collect_segment_parameter_labels(
                 return None;
             }
 
-            let point_name = decode_label_name(file, point_group)?;
+            let point_name =
+                decode_label_name(file, group).or_else(|| decode_label_name(file, point_group))?;
             let segment_name = segment_name(file, groups, segment_group)?;
             let anchor_record = group
                 .records
@@ -812,10 +840,15 @@ pub(super) fn collect_segment_parameter_labels(
 
             Some(TextLabel {
                 anchor,
-                text: format!("{point_name}在{segment_name}上的t值 = {:.2}", constraint.t),
+                text: if decode_label_name(file, group).is_some() {
+                    format!("{point_name} = {:.2}", constraint.t)
+                } else {
+                    format!("{point_name}在{segment_name}上的t值 = {:.2}", constraint.t)
+                },
                 rich_markup: None,
                 color: [30, 30, 30, 255],
-                visible: label_visible_for_group(file, group),
+                visible: decode_label_name(file, group).is_some()
+                    || label_visible_for_group(file, group),
                 binding: Some(TextLabelBinding::SegmentParameter {
                     point_index: path.refs[0].checked_sub(1)?,
                     point_name,
@@ -850,7 +883,8 @@ pub(super) fn collect_circle_parameter_labels(
                 return None;
             }
 
-            let point_name = decode_label_name(file, point_group)?;
+            let point_name =
+                decode_label_name(file, group).or_else(|| decode_label_name(file, point_group))?;
             let circle_name = circle_name(file, groups, circle_group)?;
             let anchor_record = group
                 .records
@@ -872,10 +906,15 @@ pub(super) fn collect_circle_parameter_labels(
 
             Some(TextLabel {
                 anchor,
-                text: format!("{point_name}在⊙{circle_name}上的值 = {:.2}", value),
+                text: if decode_label_name(file, group).is_some() {
+                    format!("{point_name} = {:.2}", value)
+                } else {
+                    format!("{point_name}在⊙{circle_name}上的值 = {:.2}", value)
+                },
                 rich_markup: None,
                 color: [30, 30, 30, 255],
-                visible: label_visible_for_group(file, group),
+                visible: decode_label_name(file, group).is_some()
+                    || label_visible_for_group(file, group),
                 binding: Some(TextLabelBinding::CircleParameter {
                     point_index: path.refs[0].checked_sub(1)?,
                     point_name,
