@@ -245,6 +245,19 @@ type ViewerEnv = {
 };
 
 type ViewerSceneModule = {
+  registerPointConstraintResolver: (
+    kind: string,
+    resolver: (
+      env: ViewerEnv | null,
+      constraint: RuntimePointConstraintJson,
+      resolveFn: (index: number) => Point | null,
+      reference?: RuntimeScenePointJson | Point | null,
+    ) => Point | null,
+  ) => void;
+  registerLineBindingResolver: (
+    kind: string,
+    resolver: (env: ViewerEnv, line: RuntimeLineJson) => Point[] | null,
+  ) => void;
   resolveConstrainedPoint: (
     env: { sourceScene: SceneData | ViewerSceneData } | ViewerEnv | null,
     constraint: RuntimePointConstraintJson | null,
@@ -412,9 +425,20 @@ type ViewerDynamicsModule = {
   syncDynamicScene: (env: ViewerEnv) => void;
 };
 
+type ViewerOverlayRuntime = {
+  currentButtons: () => RuntimeButtonJson[];
+  currentHotspotFlashes: () => HotspotFlash[];
+  render: () => void;
+};
+
+type ViewerOverlayModule = {
+  init: (env: ViewerEnv, buttonOverlays: HTMLElement | null) => ViewerOverlayRuntime;
+};
+
 type ViewerModules = {
   scene: ViewerSceneModule;
   render: ViewerRenderModule;
+  overlay: ViewerOverlayModule;
   drag: ViewerDragModule;
   dynamics: ViewerDynamicsModule;
 };

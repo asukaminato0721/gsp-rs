@@ -355,6 +355,89 @@ mod tests {
     }
 
     #[test]
+    fn static_fixture_uses_stub_viewer_dynamics_runtime() {
+        let html = fixture_html(
+            include_bytes!("../tests/fixtures/gsp/static/point.gsp"),
+            "static point fixture should compile to html",
+        );
+
+        assert!(html.contains("viewer-runtime: scene=basic; render=basic; overlay=stub; drag=full; dynamics=stub"));
+        assert!(
+            !html.contains("function sampleDynamicFunction("),
+            "static fixture should not embed the full dynamics runtime"
+        );
+        assert!(
+            !html.contains("function drawCircles(env)"),
+            "static point fixture should not embed the full render runtime"
+        );
+        assert!(
+            !html.contains("function circleArcControlPoints("),
+            "static point fixture should not embed the full scene runtime"
+        );
+    }
+
+    #[test]
+    fn parameter_fixture_uses_full_viewer_dynamics_runtime() {
+        let html = fixture_html(
+            include_bytes!("../tests/fixtures/未实现的系统功能/parameter.gsp"),
+            "parameter fixture should compile to html",
+        );
+
+        assert!(html.contains("viewer-runtime: scene=basic; render=basic+labels; overlay=stub; drag=full; dynamics=full"));
+        assert!(
+            html.contains("function sampleDynamicFunction("),
+            "parameter fixture should keep the full dynamics runtime"
+        );
+    }
+
+    #[test]
+    fn hot_text_fixture_uses_full_overlay_runtime() {
+        let html = fixture_html(
+            include_bytes!("../tests/fixtures/gsp/热文本.gsp"),
+            "hot text fixture should compile to html",
+        );
+
+        assert!(html.contains("viewer-runtime: scene=basic;"));
+        assert!(html.contains("overlay=full;"));
+        assert!(
+            html.contains("function renderRichMarkupNodes("),
+            "hot text fixture should keep the full overlay runtime"
+        );
+    }
+
+    #[test]
+    fn circle_arc_fixture_uses_circular_scene_runtime() {
+        let html = fixture_html(
+            include_bytes!("../tests/fixtures/gsp/static/arc_on_circle.gsp"),
+            "arc on circle fixture should compile to html",
+        );
+
+        assert!(html.contains("viewer-runtime: scene=basic+circular; render=basic+circular;"));
+        assert!(
+            html.contains("function circleArcControlPoints("),
+            "arc-on-circle fixture should include the circular scene addon"
+        );
+    }
+
+    #[test]
+    fn coordinate_trace_intersection_fixture_uses_trace_and_intersection_scene_runtime() {
+        let html = fixture_html(
+            include_bytes!("../tests/fixtures/gsp/insection/cood_intersection.gsp"),
+            "coordinate trace intersection fixture should compile to html",
+        );
+
+        assert!(html.contains("scene=basic+trace+intersections"));
+        assert!(
+            html.contains("function sampleCoordinateTracePoints("),
+            "coordinate trace intersection fixture should include the trace scene addon"
+        );
+        assert!(
+            html.contains("function lineCircleIntersection("),
+            "coordinate trace intersection fixture should include the intersections scene addon"
+        );
+    }
+
+    #[test]
     fn exports_carried_polygon_iteration_metadata_into_html() {
         let html = fixture_html(
             include_bytes!(

@@ -2,6 +2,7 @@
 name = "gsp-rs"
 version = "0.1.0"
 edition = "2024"
+default-run = "gsp-rs"
 
 [dependencies]
 ab_glyph = "0.2"

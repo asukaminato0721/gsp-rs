@@ -1518,6 +1518,8 @@
   }
 
   modules.scene = {
+    registerPointConstraintResolver() {},
+    registerLineBindingResolver() {},
     getViewBounds,
     resolveConstrainedPoint,
     resolveScenePoint,

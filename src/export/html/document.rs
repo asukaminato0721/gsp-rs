@@ -1,9 +1,14 @@
 use super::assets::{
-    VIEWER_CSS, VIEWER_DRAG_JS, VIEWER_DYNAMICS_JS, VIEWER_JS, VIEWER_RENDER_JS, VIEWER_SCENE_JS,
-    indent_asset, van_runtime_to_global,
+    VIEWER_CSS, VIEWER_DRAG_JS, VIEWER_DRAG_PAN_JS, VIEWER_DYNAMICS_JS,
+    VIEWER_DYNAMICS_STUB_JS, VIEWER_JS, VIEWER_OVERLAY_JS, VIEWER_OVERLAY_STUB_JS,
+    VIEWER_RENDER_BASIC_JS, VIEWER_RENDER_CIRCULAR_JS, VIEWER_RENDER_HOTSPOTS_JS,
+    VIEWER_RENDER_IMAGES_JS, VIEWER_RENDER_LABELS_JS, VIEWER_RENDER_POLYGONS_JS,
+    VIEWER_RENDER_TABLES_JS, VIEWER_SCENE_BASIC_JS, indent_asset, van_runtime_to_global,
 };
 use super::render_scene_json;
-use crate::runtime::scene::Scene;
+use crate::runtime::scene::{
+    ButtonAction, LineBinding, Scene, ScenePointBinding, ScenePointConstraint,
+};
 use std::fmt::Write as _;
 
 pub(super) fn render_standalone_html_document(
@@ -15,8 +20,15 @@ pub(super) fn render_standalone_html_document(
     let mut html = String::new();
     let scene_json = render_scene_json(scene, width, height, false);
     let van_js = van_runtime_to_global();
-    let viewer_modules_js =
-        format!("{VIEWER_SCENE_JS}\n{VIEWER_RENDER_JS}\n{VIEWER_DRAG_JS}\n{VIEWER_DYNAMICS_JS}");
+    let runtime_plan = viewer_runtime_plan(scene);
+    let viewer_modules_js = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        runtime_plan.scene.script_source(),
+        runtime_plan.render.script_source(),
+        runtime_plan.overlay.script_source(),
+        runtime_plan.drag.script_source(),
+        runtime_plan.dynamics.script_source()
+    );
     let frame_width = width + 40;
     let canvas_shell_class = if document_layout {
         "canvas-shell is-document-layout"
@@ -88,6 +100,7 @@ pub(super) fn render_standalone_html_document(
     </div>
   </main>
   <script id="scene-data" type="application/json">{scene_json}</script>
+  <!-- viewer-runtime: scene={viewer_scene_profile}; render={viewer_render_profile}; overlay={viewer_overlay_profile}; drag={viewer_drag_profile}; dynamics={viewer_dynamics_profile} -->
   <script>
 {embedded_van_js}
   </script>
@@ -107,10 +120,413 @@ pub(super) fn render_standalone_html_document(
         canvas_stage_class = canvas_stage_class,
         shape_count = shape_count,
         scene_json = scene_json,
+        viewer_scene_profile = runtime_plan.scene.label(),
+        viewer_render_profile = runtime_plan.render.label(),
+        viewer_overlay_profile = runtime_plan.overlay.label(),
+        viewer_drag_profile = runtime_plan.drag.label(),
+        viewer_dynamics_profile = runtime_plan.dynamics.label(),
         embedded_css = indent_asset(VIEWER_CSS, 4),
         embedded_van_js = indent_asset(&van_js, 4),
         embedded_viewer_modules_js = indent_asset(&viewer_modules_js, 4),
         embedded_js = indent_asset(VIEWER_JS, 4),
     );
     html
+}
+
+#[derive(Clone, Copy)]
+enum ViewerDragProfile {
+    Full,
+    PanOnly,
+}
+
+impl ViewerDragProfile {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Full => "full",
+            Self::PanOnly => "pan-only",
+        }
+    }
+
+    fn script_source(self) -> &'static str {
+        match self {
+            Self::Full => VIEWER_DRAG_JS,
+            Self::PanOnly => VIEWER_DRAG_PAN_JS,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct ViewerScenePlan {
+    circular: bool,
+    trace: bool,
+    intersections: bool,
+}
+
+impl ViewerScenePlan {
+    fn label(self) -> String {
+        let mut parts = vec!["basic"];
+        if self.circular {
+            parts.push("circular");
+        }
+        if self.trace {
+            parts.push("trace");
+        }
+        if self.intersections {
+            parts.push("intersections");
+        }
+        parts.join("+")
+    }
+
+    fn script_source(self) -> String {
+        let mut scripts = vec![VIEWER_SCENE_BASIC_JS];
+        if self.circular {
+            scripts.push(include_str!("../../html/viewer_scene_circular.js"));
+        }
+        if self.trace {
+            scripts.push(include_str!("../../html/viewer_scene_trace.js"));
+        }
+        if self.intersections {
+            scripts.push(include_str!("../../html/viewer_scene_intersections.js"));
+        }
+        scripts.join("\n")
+    }
+}
+
+#[derive(Clone, Copy)]
+struct ViewerRenderPlan {
+    images: bool,
+    polygons: bool,
+    circular: bool,
+    labels: bool,
+    tables: bool,
+    hotspots: bool,
+}
+
+impl ViewerRenderPlan {
+    fn label(self) -> String {
+        let mut parts = vec!["basic"];
+        if self.images {
+            parts.push("images");
+        }
+        if self.polygons {
+            parts.push("polygons");
+        }
+        if self.circular {
+            parts.push("circular");
+        }
+        if self.labels {
+            parts.push("labels");
+        }
+        if self.tables {
+            parts.push("tables");
+        }
+        if self.hotspots {
+            parts.push("hotspots");
+        }
+        parts.join("+")
+    }
+
+    fn script_source(self) -> String {
+        let mut scripts = vec![VIEWER_RENDER_BASIC_JS];
+        if self.images {
+            scripts.push(VIEWER_RENDER_IMAGES_JS);
+        }
+        if self.polygons {
+            scripts.push(VIEWER_RENDER_POLYGONS_JS);
+        }
+        if self.circular {
+            scripts.push(VIEWER_RENDER_CIRCULAR_JS);
+        }
+        if self.labels {
+            scripts.push(VIEWER_RENDER_LABELS_JS);
+        }
+        if self.tables {
+            scripts.push(VIEWER_RENDER_TABLES_JS);
+        }
+        if self.hotspots {
+            scripts.push(VIEWER_RENDER_HOTSPOTS_JS);
+        }
+        scripts.join("\n")
+    }
+}
+
+#[derive(Clone, Copy)]
+enum ViewerOverlayProfile {
+    Full,
+    Stub,
+}
+
+impl ViewerOverlayProfile {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Full => "full",
+            Self::Stub => "stub",
+        }
+    }
+
+    fn script_source(self) -> &'static str {
+        match self {
+            Self::Full => VIEWER_OVERLAY_JS,
+            Self::Stub => VIEWER_OVERLAY_STUB_JS,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum ViewerDynamicsProfile {
+    Full,
+    Stub,
+}
+
+impl ViewerDynamicsProfile {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Full => "full",
+            Self::Stub => "stub",
+        }
+    }
+
+    fn script_source(self) -> &'static str {
+        match self {
+            Self::Full => VIEWER_DYNAMICS_JS,
+            Self::Stub => VIEWER_DYNAMICS_STUB_JS,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct ViewerRuntimePlan {
+    scene: ViewerScenePlan,
+    render: ViewerRenderPlan,
+    overlay: ViewerOverlayProfile,
+    drag: ViewerDragProfile,
+    dynamics: ViewerDynamicsProfile,
+}
+
+fn viewer_runtime_plan(scene: &Scene) -> ViewerRuntimePlan {
+    ViewerRuntimePlan {
+        scene: viewer_scene_plan(scene),
+        render: viewer_render_plan(scene),
+        overlay: if scene_requires_full_overlay(scene) {
+            ViewerOverlayProfile::Full
+        } else {
+            ViewerOverlayProfile::Stub
+        },
+        drag: if scene_requires_full_drag(scene) {
+            ViewerDragProfile::Full
+        } else {
+            ViewerDragProfile::PanOnly
+        },
+        dynamics: if scene_requires_full_dynamics(scene) {
+            ViewerDynamicsProfile::Full
+        } else {
+            ViewerDynamicsProfile::Stub
+        },
+    }
+}
+
+fn viewer_scene_plan(scene: &Scene) -> ViewerScenePlan {
+    ViewerScenePlan {
+        circular: scene_uses_circular_scene(scene),
+        trace: scene_uses_trace_scene(scene),
+        intersections: scene_uses_intersection_scene(scene),
+    }
+}
+
+fn scene_uses_circular_scene(scene: &Scene) -> bool {
+    scene.points.iter().any(|point| {
+        matches!(
+            point.constraint,
+            ScenePointConstraint::OnCircle { .. }
+                | ScenePointConstraint::OnCircleArc { .. }
+                | ScenePointConstraint::OnArc { .. }
+        )
+    }) || scene.lines.iter().any(|line| {
+        matches!(line.binding, Some(LineBinding::ArcBoundary { .. }))
+    })
+}
+
+fn scene_uses_trace_scene(scene: &Scene) -> bool {
+    scene.points.iter().any(|point| matches!(point.constraint, ScenePointConstraint::OnPolyline { .. } | ScenePointConstraint::LineTraceIntersection { .. }))
+        || scene
+            .lines
+            .iter()
+            .any(|line| matches!(line.binding, Some(LineBinding::CoordinateTrace { .. })))
+}
+
+fn scene_uses_intersection_scene(scene: &Scene) -> bool {
+    scene.points.iter().any(|point| {
+        matches!(
+            point.constraint,
+            ScenePointConstraint::LineIntersection { .. }
+                | ScenePointConstraint::PointCircularTangent { .. }
+                | ScenePointConstraint::LineCircularIntersection { .. }
+                | ScenePointConstraint::LineCircleIntersection { .. }
+                | ScenePointConstraint::CircleCircleIntersection { .. }
+                | ScenePointConstraint::CircularIntersection { .. }
+                | ScenePointConstraint::LineTraceIntersection { .. }
+        )
+    })
+}
+
+fn viewer_render_plan(scene: &Scene) -> ViewerRenderPlan {
+    ViewerRenderPlan {
+        images: !scene.images.is_empty(),
+        polygons: !scene.polygons.is_empty(),
+        circular: !scene.circles.is_empty() || !scene.arcs.is_empty(),
+        labels: !scene.labels.is_empty(),
+        tables: !scene.iteration_tables.is_empty(),
+        hotspots: scene.labels.iter().any(|label| !label.hotspots.is_empty()),
+    }
+}
+
+fn scene_requires_full_overlay(scene: &Scene) -> bool {
+    !scene.buttons.is_empty()
+        || scene
+            .labels
+            .iter()
+            .any(|label| label.rich_markup.is_some() || !label.hotspots.is_empty())
+}
+
+fn scene_requires_full_drag(scene: &Scene) -> bool {
+    scene.points.iter().any(point_requires_full_drag)
+        || !scene.labels.is_empty()
+        || !scene.polygons.is_empty()
+        || !scene.iteration_tables.is_empty()
+}
+
+fn scene_requires_full_dynamics(scene: &Scene) -> bool {
+    !scene.parameters.is_empty()
+        || !scene.functions.is_empty()
+        || !scene.point_iterations.is_empty()
+        || !scene.circle_iterations.is_empty()
+        || !scene.line_iterations.is_empty()
+        || !scene.polygon_iterations.is_empty()
+        || !scene.label_iterations.is_empty()
+        || !scene.iteration_tables.is_empty()
+        || scene
+            .buttons
+            .iter()
+            .any(|button| button_action_requires_full_dynamics(&button.action))
+        || scene.points.iter().any(point_requires_full_dynamics)
+        || scene
+            .lines
+            .iter()
+            .any(|line| line.binding.as_ref().is_some_and(line_binding_requires_full_dynamics))
+        || scene.circles.iter().any(|circle| circle.binding.is_some())
+        || scene.polygons.iter().any(|polygon| polygon.binding.is_some())
+        || scene.labels.iter().any(|label| label.binding.is_some())
+}
+
+fn button_action_requires_full_dynamics(action: &ButtonAction) -> bool {
+    matches!(
+        action,
+        ButtonAction::MovePoint { .. }
+            | ButtonAction::AnimatePoint { .. }
+            | ButtonAction::ScrollPoint { .. }
+    )
+}
+
+fn point_requires_full_dynamics(point: &crate::runtime::scene::ScenePoint) -> bool {
+    point.binding.as_ref().is_some_and(|binding| {
+        !matches!(binding, ScenePointBinding::GraphCalibration)
+    })
+}
+
+fn line_binding_requires_full_dynamics(binding: &LineBinding) -> bool {
+    matches!(
+        binding,
+        LineBinding::RotateLine { .. }
+            | LineBinding::ScaleLine { .. }
+            | LineBinding::ReflectLine { .. }
+            | LineBinding::CustomTransformTrace { .. }
+            | LineBinding::CoordinateTrace { .. }
+            | LineBinding::PointTrace { .. }
+    )
+}
+
+fn point_requires_full_drag(point: &crate::runtime::scene::ScenePoint) -> bool {
+    point.draggable
+        && point.binding.as_ref().is_none_or(|binding| {
+            !matches!(
+                binding,
+                ScenePointBinding::GraphCalibration
+                    | ScenePointBinding::Midpoint { .. }
+                    | ScenePointBinding::Coordinate { .. }
+                    | ScenePointBinding::CoordinateSource { .. }
+                    | ScenePointBinding::CoordinateSource2d { .. }
+            )
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        ViewerDragProfile, ViewerDynamicsProfile, ViewerOverlayProfile, viewer_runtime_plan,
+    };
+    use crate::runtime::{
+        geometry::Bounds,
+        scene::{Scene, ScenePoint, ScenePointConstraint},
+    };
+
+    fn empty_scene() -> Scene {
+        Scene {
+            graph_mode: false,
+            pi_mode: false,
+            saved_viewport: false,
+            y_up: false,
+            origin: None,
+            bounds: Bounds {
+                min_x: 0.0,
+                max_x: 1.0,
+                min_y: 0.0,
+                max_y: 1.0,
+            },
+            images: Vec::new(),
+            lines: Vec::new(),
+            polygons: Vec::new(),
+            circles: Vec::new(),
+            arcs: Vec::new(),
+            labels: Vec::new(),
+            points: Vec::new(),
+            point_iterations: Vec::new(),
+            circle_iterations: Vec::new(),
+            line_iterations: Vec::new(),
+            polygon_iterations: Vec::new(),
+            label_iterations: Vec::new(),
+            iteration_tables: Vec::new(),
+            buttons: Vec::new(),
+            parameters: Vec::new(),
+            functions: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn uses_minimal_runtime_for_static_non_editable_scene() {
+        let plan = viewer_runtime_plan(&empty_scene());
+        assert_eq!(plan.scene.label(), "basic");
+        assert_eq!(plan.render.label(), "basic");
+        assert!(matches!(plan.overlay, ViewerOverlayProfile::Stub));
+        assert!(matches!(plan.drag, ViewerDragProfile::PanOnly));
+        assert!(matches!(plan.dynamics, ViewerDynamicsProfile::Stub));
+    }
+
+    #[test]
+    fn keeps_full_drag_for_editable_points() {
+        let mut scene = empty_scene();
+        scene.points.push(ScenePoint {
+            position: crate::format::PointRecord { x: 0.0, y: 0.0 },
+            color: [0, 0, 0, 255],
+            visible: true,
+            draggable: true,
+            constraint: ScenePointConstraint::Free,
+            binding: None,
+        });
+        let plan = viewer_runtime_plan(&scene);
+        assert_eq!(plan.scene.label(), "basic");
+        assert_eq!(plan.render.label(), "basic");
+        assert!(matches!(plan.overlay, ViewerOverlayProfile::Stub));
+        assert!(matches!(plan.drag, ViewerDragProfile::Full));
+        assert!(matches!(plan.dynamics, ViewerDynamicsProfile::Stub));
+    }
 }
