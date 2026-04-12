@@ -39,17 +39,17 @@ use self::labels::{
 };
 use self::points::{
     TransformBindingKind, collect_non_graph_parameters, collect_point_iteration_points,
-    collect_point_objects, collect_visible_points, decode_line_midpoint_anchor_raw,
+    collect_point_objects, collect_visible_points_checked, decode_line_midpoint_anchor_raw,
     decode_offset_anchor_raw, decode_parameter_controlled_anchor_raw,
-    decode_parameter_controlled_point, decode_parameter_rotation_anchor_raw,
-    decode_parameter_rotation_binding, decode_point_constraint, decode_point_constraint_anchor,
+    decode_parameter_rotation_anchor_raw, decode_point_constraint_anchor,
     decode_point_on_ray_anchor_raw, decode_point_pair_translation_anchor_raw,
     decode_reflection_anchor_raw, decode_regular_polygon_vertex_anchor_raw,
-    decode_transform_binding, decode_translated_point_anchor_raw,
-    decode_translated_point_constraint, reflection_line_group_indices,
-    regular_polygon_iteration_step, remap_circle_bindings, remap_label_bindings,
-    remap_line_bindings, remap_polygon_bindings, translation_point_pair_group_indices,
-    try_decode_point_constraint, try_decode_transform_binding,
+    decode_translated_point_anchor_raw, decode_translated_point_constraint,
+    reflection_line_group_indices, regular_polygon_iteration_step, remap_circle_bindings,
+    remap_label_bindings, remap_line_bindings, remap_polygon_bindings,
+    translation_point_pair_group_indices, try_decode_parameter_controlled_point,
+    try_decode_parameter_rotation_binding, try_decode_point_constraint,
+    try_decode_transform_binding,
 };
 use self::shapes::{
     collect_arc_boundary_fill_polygons, collect_arc_boundary_shapes, collect_bound_line_shapes,
@@ -79,9 +79,8 @@ use super::scene::{
 };
 
 pub(crate) use self::decode::{
-    decode_parameter_control_value_for_group, find_indexed_path, is_circle_group_kind,
-    try_decode_0907_anchor, try_decode_bbox_rect_raw, try_decode_group_label_text,
-    try_decode_group_rich_text, try_decode_link_button_url,
+    find_indexed_path, is_circle_group_kind, try_decode_0907_anchor, try_decode_bbox_rect_raw,
+    try_decode_group_label_text, try_decode_group_rich_text, try_decode_link_button_url,
     try_decode_parameter_control_value_for_group, try_find_indexed_path,
 };
 
@@ -684,10 +683,6 @@ fn remap_scene_bindings(
     )
 }
 
-pub(crate) fn build_scene(file: &GspFile) -> Scene {
-    build_scene_checked(file).unwrap_or_else(|error| panic!("{error:#}"))
-}
-
 pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
     let groups = file.object_groups();
     validate_scene_payloads(file, &groups)?;
@@ -698,13 +693,13 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
     let (mut labels, label_group_to_index, pending_hotspots) =
         collect_scene_labels(file, &groups, &analysis, &shapes);
 
-    let (visible_points, group_to_point_index) = collect_visible_points(
+    let (visible_points, group_to_point_index) = collect_visible_points_checked(
         file,
         &groups,
         &point_map,
         &analysis.raw_anchors,
         &analysis.graph_ref,
-    );
+    )?;
     shapes.coordinate_traces.extend(collect_point_traces(
         file,
         &groups,
@@ -1393,7 +1388,7 @@ fn describe_rotation_group_in_chinese(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> String {
-    if let Some(binding) = decode_transform_binding(file, group) {
+    if let Some(binding) = try_decode_transform_binding(file, group).ok() {
         let source_ordinal = binding.source_group_index + 1;
         let center_ordinal = binding.center_group_index + 1;
         if let TransformBindingKind::Rotate { angle_degrees, .. } = binding.kind {
@@ -1418,7 +1413,7 @@ fn describe_parameter_rotation_group_in_chinese(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> String {
-    if let Some(binding) = decode_parameter_rotation_binding(file, groups, group) {
+    if let Some(binding) = try_decode_parameter_rotation_binding(file, groups, group).ok() {
         let source_ordinal = binding.source_group_index + 1;
         let center_ordinal = binding.center_group_index + 1;
         if let TransformBindingKind::Rotate {
@@ -1456,7 +1451,7 @@ fn describe_scale_group_in_chinese(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> String {
-    if let Some(binding) = decode_transform_binding(file, group) {
+    if let Some(binding) = try_decode_transform_binding(file, group).ok() {
         let source_ordinal = binding.source_group_index + 1;
         let center_ordinal = binding.center_group_index + 1;
         if let TransformBindingKind::Scale { factor } = binding.kind {

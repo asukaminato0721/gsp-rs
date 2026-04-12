@@ -1,4 +1,4 @@
-use super::{build_scene, render_payload_log};
+use super::{build_scene_checked, render_payload_log};
 use crate::format::GspFile;
 use crate::runtime::scene::{
     LabelIterationFamily, LineBinding, LineConstraint, PointIterationFamily, Scene,
@@ -8,7 +8,7 @@ use std::path::Path;
 
 fn fixture_scene(data: &[u8]) -> Scene {
     let file = GspFile::parse(data).expect("fixture parses");
-    build_scene(&file)
+    build_scene_checked(&file).expect("scene builds")
 }
 
 fn fixture_log(data: &[u8], source_path: &str) -> String {

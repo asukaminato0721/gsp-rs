@@ -44,7 +44,8 @@ pub(super) fn collect_point_traces(
                 .iter()
                 .find(|record| record.record_type == 0x0902)
                 .map(|record| record.payload(&file.data))?;
-            let descriptor = crate::runtime::functions::decode_function_plot_descriptor(payload)?;
+            let descriptor =
+                crate::runtime::functions::try_decode_function_plot_descriptor(payload).ok()?;
             let trace_max = if (group.header.kind())
                 == crate::format::GroupKind::CustomTransformTrace
             {

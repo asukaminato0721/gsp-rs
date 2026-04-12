@@ -206,14 +206,6 @@ pub(super) fn dedupe_line_shapes(lines: Vec<LineShape>) -> Vec<LineShape> {
     deduped
 }
 
-pub(super) fn bounds_within(container: &Bounds, content: &Bounds) -> bool {
-    const TOLERANCE: f64 = 1e-3;
-    container.min_x <= content.min_x + TOLERANCE
-        && container.max_x >= content.max_x - TOLERANCE
-        && container.min_y <= content.min_y + TOLERANCE
-        && container.max_y >= content.max_y - TOLERANCE
-}
-
 pub(super) fn expand_bounds(bounds: &mut Bounds) {
     if (bounds.max_x - bounds.min_x).abs() < f64::EPSILON {
         bounds.max_x += 1.0;

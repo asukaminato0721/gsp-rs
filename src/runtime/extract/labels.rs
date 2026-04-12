@@ -2,18 +2,19 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::CircleShape;
 use super::decode::{
-    RichTextHotspotRef, decode_0907_anchor, decode_group_label_text, decode_group_rich_text,
-    decode_label_anchor, decode_label_name, decode_label_name_raw, decode_label_visible,
-    decode_link_button_url, decode_parameter_control_value_for_group, decode_text_anchor,
-    find_indexed_path, is_action_button_group,
+    RichTextHotspotRef, decode_label_anchor, decode_label_name, decode_label_name_raw,
+    decode_label_visible, decode_text_anchor, find_indexed_path, is_action_button_group,
+    try_decode_0907_anchor, try_decode_group_label_text, try_decode_group_rich_text,
+    try_decode_link_button_url, try_decode_parameter_control_value_for_group,
 };
 use super::points::{
-    RawPointConstraint, decode_point_constraint, editable_non_graph_parameter_name_for_group,
+    RawPointConstraint, editable_non_graph_parameter_name_for_group,
     is_editable_non_graph_parameter_name, is_non_graph_parameter_group, regular_polygon_angle_expr,
+    try_decode_point_constraint,
 };
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
 use crate::runtime::functions::{
-    decode_function_expr, evaluate_expr_with_parameters, function_expr_label,
+    evaluate_expr_with_parameters, function_expr_label, try_decode_function_expr,
 };
 use crate::runtime::geometry::{color_from_style, format_number};
 use crate::runtime::payload_consts::RECORD_POINT_F64_PAIR;
@@ -89,11 +90,11 @@ fn resolve_label_text(
     group: &ObjectGroup,
     fallback_text: Option<String>,
 ) -> Option<ResolvedLabelText> {
-    let rich_text = decode_group_rich_text(file, group);
+    let rich_text = try_decode_group_rich_text(file, group).ok().flatten();
     let text = rich_text
         .as_ref()
         .map(|content| content.text.clone())
-        .or_else(|| decode_group_label_text(file, group))
+        .or_else(|| try_decode_group_label_text(file, group).ok().flatten())
         .or(fallback_text)?;
     Some(ResolvedLabelText {
         text,
@@ -154,7 +155,7 @@ fn resolve_function_expr_parameter(
         }
         Some((
             editable_non_graph_parameter_name_for_group(file, groups, parameter_group)?,
-            decode_parameter_control_value_for_group(file, groups, parameter_group)?,
+            try_decode_parameter_control_value_for_group(file, groups, parameter_group).ok()?,
         ))
     })();
     visiting.remove(&group.ordinal);
@@ -173,7 +174,7 @@ fn parameter_anchor_value(
     let path = find_indexed_path(file, group)?;
     let point_group_index = path.refs.first()?.checked_sub(1)?;
     let point_group = groups.get(point_group_index)?;
-    match decode_point_constraint(file, groups, point_group, None, &None)? {
+    match try_decode_point_constraint(file, groups, point_group, None, &None).ok()? {
         RawPointConstraint::Segment(constraint) => Some(constraint.t),
         RawPointConstraint::PolygonBoundary {
             edge_index,
@@ -205,13 +206,13 @@ fn iteration_group_value(
     }
     let result = (|| match group.header.kind() {
         crate::format::GroupKind::Point => {
-            decode_parameter_control_value_for_group(file, groups, group)
+            try_decode_parameter_control_value_for_group(file, groups, group).ok()
         }
         crate::format::GroupKind::ParameterAnchor => {
             parameter_anchor_value(file, groups, group, anchors)
         }
         crate::format::GroupKind::FunctionExpr => {
-            let expr = decode_function_expr(file, groups, group)?;
+            let expr = try_decode_function_expr(file, groups, group).ok()?;
             let path = find_indexed_path(file, group)?;
             let mut parameters = BTreeMap::new();
             for obj_ref in &path.refs {
@@ -330,7 +331,10 @@ pub(super) fn collect_labels(
             }
             kind if supports_payload_label(kind) => {
                 if kind == crate::format::GroupKind::Point
-                    && decode_link_button_url(file, group).is_some()
+                    && try_decode_link_button_url(file, group)
+                        .ok()
+                        .flatten()
+                        .is_some()
                 {
                     continue;
                 }
@@ -425,8 +429,10 @@ pub(super) fn collect_labels(
                 // Graph calibration groups may carry measurement payloads for the axis scale
                 // without any user-visible label text. Only emit a label when the payload
                 // explicitly includes text instead of synthesizing one from the scale value.
-                let text =
-                    decode_group_label_text(file, group).or_else(|| decode_label_name(file, group));
+                let text = try_decode_group_label_text(file, group)
+                    .ok()
+                    .flatten()
+                    .or_else(|| decode_label_name(file, group));
                 if let (Some(anchor), Some(text)) = (anchor, text) {
                     labels.push(TextLabel {
                         anchor,
@@ -499,8 +505,9 @@ pub(super) fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) 
         if kind == crate::format::GroupKind::Point
             && is_non_graph_parameter_group(file, groups, group)
             && let Some(name) = decode_label_name(file, group)
-            && let Some(value) = decode_parameter_control_value_for_group(file, groups, group)
-            && let Some(anchor) = decode_0907_anchor(file, group)
+            && let Some(value) =
+                try_decode_parameter_control_value_for_group(file, groups, group).ok()
+            && let Some(anchor) = try_decode_0907_anchor(file, group).ok().flatten()
         {
             let binding = is_editable_non_graph_parameter_name(&name)
                 .then(|| TextLabelBinding::ParameterValue { name: name.clone() });
@@ -515,10 +522,10 @@ pub(super) fn collect_coordinate_labels(file: &GspFile, groups: &[ObjectGroup]) 
                 hotspots: Vec::new(),
             });
         } else if kind == crate::format::GroupKind::FunctionExpr
-            && let Some(expr) = decode_function_expr(file, groups, group)
+            && let Some(expr) = try_decode_function_expr(file, groups, group).ok()
             && let Some((parameter_name, parameter_value)) =
                 resolve_function_expr_parameter(file, groups, group, &mut BTreeSet::new())
-            && let Some(anchor) = decode_0907_anchor(file, group)
+            && let Some(anchor) = try_decode_0907_anchor(file, group).ok().flatten()
         {
             let Some(value) = evaluate_expr_with_parameters(
                 &expr,
@@ -675,12 +682,13 @@ fn collect_point_expression_label(
     if (expr_group.header.kind()) != crate::format::GroupKind::FunctionExpr {
         return None;
     }
-    let expr = decode_function_expr(file, groups, expr_group)?;
+    let expr = try_decode_function_expr(file, groups, expr_group).ok()?;
     let expr_path = find_indexed_path(file, expr_group)?;
     let parameter_group = groups.get(expr_path.refs.first()?.checked_sub(1)?)?;
     let parameter_name =
         editable_non_graph_parameter_name_for_group(file, groups, parameter_group)?;
-    let parameter_value = decode_parameter_control_value_for_group(file, groups, parameter_group)?;
+    let parameter_value =
+        try_decode_parameter_control_value_for_group(file, groups, parameter_group).ok()?;
     let value = evaluate_expr_with_parameters(
         &expr,
         0.0,
@@ -737,7 +745,7 @@ pub(super) fn collect_polygon_parameter_labels(
                 vertex_group_indices,
                 edge_index,
                 t,
-            } = decode_point_constraint(file, groups, point_group, None, &None)?
+            } = try_decode_point_constraint(file, groups, point_group, None, &None).ok()?
             else {
                 return None;
             };
@@ -796,7 +804,7 @@ pub(super) fn collect_segment_parameter_labels(
                 .find(|record| record.record_type == 0x0903)?;
             let anchor = decode_text_anchor(anchor_record.payload(&file.data))?;
             let RawPointConstraint::Segment(constraint) =
-                decode_point_constraint(file, groups, point_group, None, &None)?
+                try_decode_point_constraint(file, groups, point_group, None, &None).ok()?
             else {
                 return None;
             };
@@ -849,7 +857,7 @@ pub(super) fn collect_circle_parameter_labels(
                 .find(|record| record.record_type == 0x0903)?;
             let anchor = decode_text_anchor(anchor_record.payload(&file.data))?;
             let RawPointConstraint::Circle(constraint) =
-                decode_point_constraint(file, groups, point_group, None, &None)?
+                try_decode_point_constraint(file, groups, point_group, None, &None).ok()?
             else {
                 return None;
             };
@@ -898,11 +906,13 @@ pub(super) fn collect_custom_transform_expression_labels(
             let angle_expr_group = groups.get(path.refs.get(5)?.checked_sub(1)?)?;
             let base_label =
                 custom_transform_parameter_anchor_label(file, groups, parameter_anchor_group)?;
-            let t = match decode_point_constraint(file, groups, source_group, Some(anchors), &None)?
-            {
-                RawPointConstraint::Segment(constraint) => constraint.t,
-                _ => return None,
-            };
+            let t =
+                match try_decode_point_constraint(file, groups, source_group, Some(anchors), &None)
+                    .ok()?
+                {
+                    RawPointConstraint::Segment(constraint) => constraint.t,
+                    _ => return None,
+                };
 
             let mut labels = Vec::new();
             for (expr_group, suffix, multiplier_text, display_scale, value_suffix, decimals) in [
@@ -927,8 +937,8 @@ pub(super) fn collect_custom_transform_expression_labels(
                 if !matches!(suffix_code, 0x0201 | 0x0101) {
                     continue;
                 }
-                let anchor = decode_0907_anchor(file, expr_group)?;
-                let expr = decode_function_expr(file, groups, expr_group)?;
+                let anchor = try_decode_0907_anchor(file, expr_group).ok().flatten()?;
+                let expr = try_decode_function_expr(file, groups, expr_group).ok()?;
                 let value = evaluate_expr_with_parameters(
                     &expr,
                     t,
@@ -1022,7 +1032,7 @@ pub(super) fn collect_label_iterations(
             if (expr_group.header.kind()) != crate::format::GroupKind::FunctionExpr {
                 return None;
             }
-            let expr = decode_function_expr(file, groups, expr_group)?;
+            let expr = try_decode_function_expr(file, groups, expr_group).ok()?;
             let expr_path = find_indexed_path(file, expr_group)?;
             let parameter_group = groups.get(expr_path.refs.first()?.checked_sub(1)?)?;
             let parameter_name = decode_label_name(file, parameter_group)?;
@@ -1091,7 +1101,7 @@ pub(super) fn collect_iteration_tables(
             if expr_group.header.kind() != crate::format::GroupKind::FunctionExpr {
                 return None;
             }
-            let expr = decode_function_expr(file, groups, expr_group)?;
+            let expr = try_decode_function_expr(file, groups, expr_group).ok()?;
             let (parameter_name, _) =
                 resolve_function_expr_parameter(file, groups, expr_group, &mut BTreeSet::new())?;
             let expr_label = payload_function_expr_label(
@@ -1342,7 +1352,7 @@ pub(super) fn compute_iteration_labels(
         {
             continue;
         }
-        let Some(anchor) = decode_0907_anchor(file, group) else {
+        let Some(anchor) = try_decode_0907_anchor(file, group).ok().flatten() else {
             continue;
         };
 
@@ -1369,7 +1379,7 @@ pub(super) fn compute_iteration_labels(
         }
 
         if kind == crate::format::GroupKind::FunctionExpr
-            && let Some(expr) = decode_function_expr(file, groups, group)
+            && let Some(expr) = try_decode_function_expr(file, groups, group).ok()
             && let Some(anchor_group) = find_indexed_path(file, group)
                 .and_then(|path| groups.get(path.refs.first()?.checked_sub(1)?))
             && anchor_group.header.kind() == crate::format::GroupKind::ParameterAnchor

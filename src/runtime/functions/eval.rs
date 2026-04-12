@@ -61,7 +61,6 @@ fn evaluate_function_expr(expr: &ParsedFunctionExpr, x: f64) -> Option<f64> {
         value = match op {
             BinaryOp::Add => value + rhs,
             BinaryOp::Sub => value - rhs,
-            BinaryOp::Mul => value * rhs,
             BinaryOp::Div => (rhs.abs() >= 1e-9).then_some(value / rhs)?,
         };
     }
@@ -97,7 +96,6 @@ fn evaluate_parsed_with_parameters(
         value = match op {
             BinaryOp::Add => value + rhs,
             BinaryOp::Sub => value - rhs,
-            BinaryOp::Mul => value * rhs,
             BinaryOp::Div => (rhs.abs() >= 1e-9).then_some(value / rhs)?,
         };
     }

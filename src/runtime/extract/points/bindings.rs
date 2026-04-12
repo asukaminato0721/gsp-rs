@@ -4,8 +4,8 @@ use super::anchors::{
 };
 use super::constraints::{
     CoordinatePoint, ParameterControlledPoint, RawPointConstraint, decode_coordinate_point,
-    decode_parameter_controlled_point, decode_point_constraint, decode_translated_point_constraint,
-    regular_polygon_iteration_step,
+    decode_translated_point_constraint, regular_polygon_iteration_step,
+    try_decode_parameter_controlled_point, try_decode_point_constraint,
 };
 use super::*;
 use crate::format::read_u32;
@@ -21,14 +21,12 @@ mod remap;
 #[path = "bindings/visible_points.rs"]
 mod visible_points;
 
-pub(crate) use decode::{
-    decode_parameter_rotation_binding, decode_transform_binding, try_decode_transform_binding,
-};
+pub(crate) use decode::{try_decode_parameter_rotation_binding, try_decode_transform_binding};
 pub(crate) use iterations::collect_point_iteration_points;
 pub(crate) use remap::{
     remap_circle_bindings, remap_label_bindings, remap_line_bindings, remap_polygon_bindings,
 };
-pub(crate) use visible_points::collect_visible_points;
+pub(crate) use visible_points::collect_visible_points_checked;
 
 pub(crate) struct TransformBinding {
     pub(crate) source_group_index: usize,

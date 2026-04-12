@@ -1,15 +1,18 @@
+use anyhow::{Context, Result};
+
 use super::{
     CoordinatePoint, GspFile, ObjectGroup, ParameterControlledPoint, PointRecord,
     RawPointConstraint, TransformBindingKind, decode_coordinate_point,
-    decode_custom_transform_binding, decode_parameter_controlled_point,
-    decode_parameter_rotation_binding, decode_point_constraint, decode_reflection_anchor_raw,
-    decode_transform_binding, decode_translated_point_constraint, reflection_line_group_indices,
-    translation_point_pair_group_indices,
+    decode_custom_transform_binding, decode_reflection_anchor_raw,
+    decode_translated_point_constraint, reflection_line_group_indices,
+    translation_point_pair_group_indices, try_decode_parameter_controlled_point,
+    try_decode_parameter_rotation_binding, try_decode_point_constraint,
+    try_decode_transform_binding,
 };
 use crate::runtime::extract::decode::{decode_label_name, decode_label_visible};
 use crate::runtime::extract::find_indexed_path;
 use crate::runtime::extract::points::constraints::CoordinatePointSource;
-use crate::runtime::functions::decode_function_plot_descriptor;
+use crate::runtime::functions::try_decode_function_plot_descriptor;
 use crate::runtime::geometry::{GraphTransform, color_from_style};
 use crate::runtime::scene::{
     CircularConstraint, LineConstraint, ScenePoint, ScenePointBinding, ScenePointConstraint,
@@ -138,7 +141,8 @@ fn build_scene_point_for_group(
             ))
         })(),
         crate::format::GroupKind::PointConstraint | crate::format::GroupKind::PathPoint => (|| {
-            let constraint = decode_point_constraint(file, groups, group, Some(anchors), graph)?;
+            let constraint =
+                try_decode_point_constraint(file, groups, group, Some(anchors), graph).ok()?;
             scene_point_from_constraint(
                 index,
                 group_color(group),
@@ -151,7 +155,8 @@ fn build_scene_point_for_group(
         })(
         ),
         crate::format::GroupKind::ParameterControlledPoint => (|| {
-            let parameter_point = decode_parameter_controlled_point(file, groups, group, anchors)?;
+            let parameter_point =
+                try_decode_parameter_controlled_point(file, groups, group, anchors).ok()?;
             scene_point_from_parameter_controlled(
                 group_to_point_index,
                 parameter_point,
@@ -256,9 +261,9 @@ fn build_scene_point_for_group(
         | crate::format::GroupKind::ParameterRotation
         | crate::format::GroupKind::Scale => {
             let binding = if kind == crate::format::GroupKind::ParameterRotation {
-                decode_parameter_rotation_binding(file, groups, group)
+                try_decode_parameter_rotation_binding(file, groups, group).ok()
             } else {
-                decode_transform_binding(file, group)
+                try_decode_transform_binding(file, group).ok()
             };
             (|| {
                 let binding = binding?;
@@ -327,13 +332,156 @@ fn build_scene_point_for_group(
     }
 }
 
-pub(crate) fn collect_visible_points(
+fn build_scene_point_for_group_checked(
+    index: usize,
+    group: &ObjectGroup,
     file: &GspFile,
     groups: &[ObjectGroup],
     point_map: &[Option<PointRecord>],
     anchors: &[Option<PointRecord>],
     graph: &Option<GraphTransform>,
-) -> (Vec<ScenePoint>, Vec<Option<usize>>) {
+    group_to_point_index: &[Option<usize>],
+) -> Result<Option<ScenePoint>> {
+    let kind = group.header.kind();
+    match kind {
+        crate::format::GroupKind::PointConstraint | crate::format::GroupKind::PathPoint => {
+            let visible = !group.header.is_hidden() && point_marker_visible(group);
+            let constraint = try_decode_point_constraint(file, groups, group, Some(anchors), graph)
+                .with_context(|| {
+                    format!(
+                        "failed to decode point constraint for group #{} {:?}",
+                        group.ordinal, kind
+                    )
+                })?;
+            Ok(scene_point_from_constraint(
+                index,
+                group_color(group),
+                anchors,
+                group_to_point_index,
+                constraint,
+                visible,
+                kind != crate::format::GroupKind::PathPoint,
+            ))
+        }
+        crate::format::GroupKind::Rotation | crate::format::GroupKind::Scale => {
+            let visible = !group.header.is_hidden() && point_marker_visible(group);
+            let binding = try_decode_transform_binding(file, group).with_context(|| {
+                format!(
+                    "failed to decode transform binding for group #{} {:?}",
+                    group.ordinal, kind
+                )
+            })?;
+            let position = anchors.get(index).cloned().flatten();
+            Ok((|| {
+                let position = position?;
+                let source_index =
+                    mapped_point_index(group_to_point_index, binding.source_group_index)?;
+                let center_index =
+                    mapped_point_index(group_to_point_index, binding.center_group_index)?;
+                Some(scene_point(
+                    position,
+                    group_color(group),
+                    visible,
+                    true,
+                    ScenePointConstraint::Free,
+                    Some(match binding.kind {
+                        TransformBindingKind::Rotate {
+                            angle_degrees,
+                            parameter_name,
+                        } => ScenePointBinding::Rotate {
+                            source_index,
+                            center_index,
+                            angle_degrees,
+                            parameter_name,
+                        },
+                        TransformBindingKind::Scale { factor } => ScenePointBinding::Scale {
+                            source_index,
+                            center_index,
+                            factor,
+                        },
+                    }),
+                ))
+            })())
+        }
+        crate::format::GroupKind::ParameterRotation => {
+            let visible = !group.header.is_hidden() && point_marker_visible(group);
+            let binding =
+                try_decode_parameter_rotation_binding(file, groups, group).with_context(|| {
+                    format!(
+                        "failed to decode parameter rotation binding for group #{} {:?}",
+                        group.ordinal, kind
+                    )
+                })?;
+            let position = anchors.get(index).cloned().flatten();
+            Ok((|| {
+                let position = position?;
+                let source_index =
+                    mapped_point_index(group_to_point_index, binding.source_group_index)?;
+                let center_index =
+                    mapped_point_index(group_to_point_index, binding.center_group_index)?;
+                Some(scene_point(
+                    position,
+                    group_color(group),
+                    visible,
+                    true,
+                    ScenePointConstraint::Free,
+                    Some(match binding.kind {
+                        TransformBindingKind::Rotate {
+                            angle_degrees,
+                            parameter_name,
+                        } => ScenePointBinding::Rotate {
+                            source_index,
+                            center_index,
+                            angle_degrees,
+                            parameter_name,
+                        },
+                        TransformBindingKind::Scale { factor } => ScenePointBinding::Scale {
+                            source_index,
+                            center_index,
+                            factor,
+                        },
+                    }),
+                ))
+            })())
+        }
+        crate::format::GroupKind::ParameterControlledPoint => {
+            let visible = !group.header.is_hidden() && point_marker_visible(group);
+            let parameter_point = try_decode_parameter_controlled_point(
+                file, groups, group, anchors,
+            )
+            .with_context(|| {
+                format!(
+                    "failed to decode parameter-controlled point for group #{} {:?}",
+                    group.ordinal, kind
+                )
+            })?;
+            Ok(scene_point_from_parameter_controlled(
+                group_to_point_index,
+                parameter_point,
+                group_color(group),
+                visible,
+            ))
+        }
+        _ => Ok(build_scene_point_for_group(
+            index,
+            group,
+            file,
+            groups,
+            point_map,
+            anchors,
+            graph,
+            group_to_point_index,
+        )),
+    }
+}
+
+pub(crate) fn collect_visible_points_checked(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    point_map: &[Option<PointRecord>],
+    anchors: &[Option<PointRecord>],
+    graph: &Option<GraphTransform>,
+) -> Result<(Vec<ScenePoint>, Vec<Option<usize>>)> {
     let mut included_groups = vec![false; groups.len()];
 
     loop {
@@ -342,7 +490,7 @@ pub(crate) fn collect_visible_points(
             .iter()
             .enumerate()
             .map(|(index, group)| {
-                build_scene_point_for_group(
+                build_scene_point_for_group_checked(
                     index,
                     group,
                     file,
@@ -352,16 +500,16 @@ pub(crate) fn collect_visible_points(
                     graph,
                     &group_to_point_index,
                 )
-                .is_some()
+                .map(|point| point.is_some())
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>>>()?;
 
         if next_included_groups == included_groups {
             let points_by_group = groups
                 .iter()
                 .enumerate()
                 .map(|(index, group)| {
-                    build_scene_point_for_group(
+                    build_scene_point_for_group_checked(
                         index,
                         group,
                         file,
@@ -372,10 +520,10 @@ pub(crate) fn collect_visible_points(
                         &group_to_point_index,
                     )
                 })
-                .collect::<Vec<_>>();
+                .collect::<Result<Vec<_>>>()?;
             let actual_included_groups = points_by_group
                 .iter()
-                .map(Option::is_some)
+                .map(|point| point.is_some())
                 .collect::<Vec<_>>();
             if actual_included_groups == included_groups {
                 let final_group_to_point_index =
@@ -383,8 +531,8 @@ pub(crate) fn collect_visible_points(
                 let points = groups
                     .iter()
                     .enumerate()
-                    .filter_map(|(index, group)| {
-                        build_scene_point_for_group(
+                    .map(|(index, group)| {
+                        build_scene_point_for_group_checked(
                             index,
                             group,
                             file,
@@ -395,8 +543,11 @@ pub(crate) fn collect_visible_points(
                             &final_group_to_point_index,
                         )
                     })
+                    .collect::<Result<Vec<_>>>()?
+                    .into_iter()
+                    .flatten()
                     .collect::<Vec<_>>();
-                return (points, final_group_to_point_index);
+                return Ok((points, final_group_to_point_index));
             }
             included_groups = actual_included_groups;
             continue;
@@ -1196,7 +1347,7 @@ fn decode_coordinate_trace_constraint(
         .iter()
         .find(|record| record.record_type == 0x0902)
         .map(|record| record.payload(&file.data))?;
-    let descriptor = decode_function_plot_descriptor(payload)?;
+    let descriptor = try_decode_function_plot_descriptor(payload).ok()?;
     Some((
         point_index,
         descriptor.x_min,

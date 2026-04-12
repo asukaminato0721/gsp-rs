@@ -112,7 +112,6 @@ fn binary_op_name(op: BinaryOp) -> &'static str {
     match op {
         BinaryOp::Add => "add",
         BinaryOp::Sub => "sub",
-        BinaryOp::Mul => "mul",
         BinaryOp::Div => "div",
     }
 }

@@ -3,7 +3,7 @@ use super::{
     decode_angle_parameter_value_for_group,
 };
 use crate::runtime::extract::points::editable_non_graph_parameter_name_for_group;
-use crate::runtime::extract::{find_indexed_path, try_find_indexed_path};
+use crate::runtime::extract::try_find_indexed_path;
 use crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD;
 use thiserror::Error;
 
@@ -23,13 +23,12 @@ pub(crate) enum TransformBindingDecodeError {
     ScalePayloadTooShort(usize),
     #[error("scale payload contains non-finite factor")]
     NonFiniteScaleFactor,
-}
-
-pub(crate) fn decode_transform_binding(
-    file: &GspFile,
-    group: &ObjectGroup,
-) -> Option<TransformBinding> {
-    try_decode_transform_binding(file, group).ok()
+    #[error("parameter rotation source/center/angle references are missing")]
+    MissingParameterRotationRefs,
+    #[error("parameter rotation angle source is not a point group")]
+    InvalidParameterRotationAngleSource,
+    #[error("parameter rotation angle is not finite")]
+    NonFiniteParameterRotationAngle,
 }
 
 pub(crate) fn try_decode_transform_binding(
@@ -98,28 +97,48 @@ pub(crate) fn try_decode_transform_binding(
     })
 }
 
-pub(crate) fn decode_parameter_rotation_binding(
+pub(crate) fn try_decode_parameter_rotation_binding(
     file: &GspFile,
     groups: &[ObjectGroup],
     group: &ObjectGroup,
-) -> Option<TransformBinding> {
+) -> Result<TransformBinding, TransformBindingDecodeError> {
     if (group.header.kind()) != crate::format::GroupKind::ParameterRotation {
-        return None;
+        return Err(TransformBindingDecodeError::UnsupportedKind(
+            group.header.kind(),
+        ));
     }
-    let path = find_indexed_path(file, group)?;
-    let source_group_index = path.refs.first()?.checked_sub(1)?;
-    let center_group_index = path.refs.get(1)?.checked_sub(1)?;
-    let angle_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
+    let path = try_find_indexed_path(file, group)
+        .map_err(|_| TransformBindingDecodeError::MissingPath)?
+        .ok_or(TransformBindingDecodeError::MissingPath)?;
+    let source_group_index = path
+        .refs
+        .first()
+        .and_then(|value| value.checked_sub(1))
+        .ok_or(TransformBindingDecodeError::MissingParameterRotationRefs)?;
+    let center_group_index = path
+        .refs
+        .get(1)
+        .and_then(|value| value.checked_sub(1))
+        .ok_or(TransformBindingDecodeError::MissingParameterRotationRefs)?;
+    let angle_group = groups
+        .get(
+            path.refs
+                .get(2)
+                .and_then(|value| value.checked_sub(1))
+                .ok_or(TransformBindingDecodeError::MissingParameterRotationRefs)?,
+        )
+        .ok_or(TransformBindingDecodeError::MissingParameterRotationRefs)?;
     if (angle_group.header.kind()) != crate::format::GroupKind::Point {
-        return None;
+        return Err(TransformBindingDecodeError::InvalidParameterRotationAngleSource);
     }
-    let angle_degrees = decode_angle_parameter_value_for_group(file, angle_group)?;
+    let angle_degrees = decode_angle_parameter_value_for_group(file, angle_group)
+        .ok_or(TransformBindingDecodeError::NonFiniteParameterRotationAngle)?;
     if !angle_degrees.is_finite() {
-        return None;
+        return Err(TransformBindingDecodeError::NonFiniteParameterRotationAngle);
     }
     let parameter_name = editable_non_graph_parameter_name_for_group(file, groups, angle_group);
 
-    Some(TransformBinding {
+    Ok(TransformBinding {
         source_group_index,
         center_group_index,
         kind: TransformBindingKind::Rotate {

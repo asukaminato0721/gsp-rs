@@ -4,7 +4,7 @@ use super::decode::{
 use super::*;
 use crate::runtime::extract::points::decode_translated_point_constraint;
 use crate::runtime::functions::{
-    decode_function_expr, decode_function_plot_descriptor, evaluate_expr_with_parameters,
+    evaluate_expr_with_parameters, try_decode_function_expr, try_decode_function_plot_descriptor,
 };
 use crate::runtime::geometry::{
     color_from_style, fill_color_from_styles, has_distinct_points, line_is_dashed,

@@ -5,4 +5,4 @@ pub(crate) mod payload_consts;
 pub(crate) mod scene;
 
 #[allow(unused_imports)]
-pub(crate) use extract::{build_scene, build_scene_checked, render_payload_log};
+pub(crate) use extract::{build_scene_checked, render_payload_log};

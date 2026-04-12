@@ -642,11 +642,6 @@ pub(crate) enum ShapeBinding {
         vector_start_index: usize,
         vector_end_index: usize,
     },
-    TranslateCircle {
-        source_index: usize,
-        vector_start_index: usize,
-        vector_end_index: usize,
-    },
     RotatePolygon {
         source_index: usize,
         center_index: usize,

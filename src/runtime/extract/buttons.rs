@@ -73,8 +73,11 @@ pub(super) fn collect_buttons(
                 .records
                 .iter()
                 .any(|record| matches!(record.record_type, 0x0899 | 0x0907))
-            && let Some(href) = decode::decode_link_button_url(file, group)
-            && let Some((x, y, width, height)) = decode::decode_bbox_rect_raw(file, group)
+            && let Some(href) = decode::try_decode_link_button_url(file, group)
+                .ok()
+                .flatten()
+            && let Some((x, y, width, height)) =
+                decode::try_decode_bbox_rect_raw(file, group).ok().flatten()
         {
             raw_buttons.push(RawButton {
                 group_ordinal: group.ordinal,

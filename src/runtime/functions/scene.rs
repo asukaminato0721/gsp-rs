@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 
 use crate::format::{GspFile, ObjectGroup, read_u16};
-use crate::runtime::extract::{decode_parameter_control_value_for_group, find_indexed_path};
+use crate::runtime::extract::{find_indexed_path, try_decode_parameter_control_value_for_group};
 use crate::runtime::scene::{
     SceneFunction, SceneParameter, ScenePoint, ScenePointConstraint, TextLabel,
 };
 
-use super::decode::{decode_function_expr, decode_function_plot_descriptor};
+use super::decode::{try_decode_function_expr, try_decode_function_plot_descriptor};
 use super::expr::{
     FunctionExpr, FunctionPlotDescriptor, function_expr_uses_trig, function_name_for_index,
 };
@@ -92,13 +92,13 @@ pub(crate) fn collect_scene_functions(
             let path = find_indexed_path(file, group)?;
             let definition_ordinal = *path.refs.first()?;
             let definition_group = groups.get(definition_ordinal.checked_sub(1)?)?;
-            let expr = decode_function_expr(file, groups, definition_group)?;
+            let expr = try_decode_function_expr(file, groups, definition_group).ok()?;
             let descriptor_record = group
                 .records
                 .iter()
                 .find(|record| record.record_type == 0x0902)?;
             let descriptor =
-                decode_function_plot_descriptor(descriptor_record.payload(&file.data))?;
+                try_decode_function_plot_descriptor(descriptor_record.payload(&file.data)).ok()?;
             let name = source_function_name(file, definition_group).unwrap_or_default();
             Some((definition_ordinal, name, expr, descriptor))
         })
@@ -172,7 +172,7 @@ pub(crate) fn collect_scene_functions(
                     total,
                     &base_entries[base_index].2,
                 );
-                let expr = decode_function_expr(file, groups, group)?;
+                let expr = try_decode_function_expr(file, groups, group).ok()?;
                 let label_index = labels.iter().position(|label| {
                     matches!(
                         label.binding.as_ref(),
@@ -205,7 +205,7 @@ pub(crate) fn function_uses_pi_scale(file: &GspFile, groups: &[ObjectGroup]) -> 
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let definition_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            decode_function_expr(file, groups, definition_group)
+            try_decode_function_expr(file, groups, definition_group).ok()
         })
         .any(function_expr_uses_trig)
 }
@@ -241,7 +241,7 @@ fn decode_parameter_binding(
         .find(|record| record.record_type == 0x07d5)
         .map(|record| record.payload(&file.data))?;
     let name = decode_parameter_name(label_payload)?;
-    let value = decode_parameter_control_value_for_group(file, groups, group)?;
+    let value = try_decode_parameter_control_value_for_group(file, groups, group).ok()?;
     if !value.is_finite() {
         return None;
     }

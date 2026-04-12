@@ -61,25 +61,6 @@ pub(super) fn rotate_around(
     }
 }
 
-pub(super) fn measured_angle_radians(
-    start: &PointRecord,
-    vertex: &PointRecord,
-    end: &PointRecord,
-) -> Option<f64> {
-    let first_x = start.x - vertex.x;
-    let first_y = vertex.y - start.y;
-    let second_x = end.x - vertex.x;
-    let second_y = vertex.y - end.y;
-    let first_len = first_x.hypot(first_y);
-    let second_len = second_x.hypot(second_y);
-    if first_len <= 1e-9 || second_len <= 1e-9 {
-        return None;
-    }
-    let cross = first_x * second_y - first_y * second_x;
-    let dot = first_x * second_x + first_y * second_y;
-    Some(cross.atan2(dot))
-}
-
 pub(super) fn scale_around(point: &PointRecord, center: &PointRecord, factor: f64) -> PointRecord {
     center.clone() + (point.clone() - center.clone()) * factor
 }
@@ -103,32 +84,6 @@ pub(super) fn reflect_across_line(
 pub(super) fn read_f32_unaligned(data: &[u8], offset: usize) -> Option<f32> {
     let bytes = data.get(offset..offset + 4)?;
     Some(f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
-}
-
-pub(crate) fn to_screen(
-    point: &PointRecord,
-    width: u32,
-    height: u32,
-    margin: f64,
-    bounds: &Bounds,
-    y_up: bool,
-) -> (i32, i32) {
-    let scale = screen_scale(width, height, margin, bounds);
-    let x = margin + (point.x - bounds.min_x) * scale;
-    let y = if y_up {
-        height as f64 - margin - (point.y - bounds.min_y) * scale
-    } else {
-        margin + (point.y - bounds.min_y) * scale
-    };
-    (x.round() as i32, y.round() as i32)
-}
-
-pub(crate) fn screen_scale(width: u32, height: u32, margin: f64, bounds: &Bounds) -> f64 {
-    let usable_width = (width as f64 - margin * 2.0).max(1.0);
-    let usable_height = (height as f64 - margin * 2.0).max(1.0);
-    let span_x = (bounds.max_x - bounds.min_x).max(1.0);
-    let span_y = (bounds.max_y - bounds.min_y).max(1.0);
-    f64::min(usable_width / span_x, usable_height / span_y)
 }
 
 pub(super) fn distance_world(

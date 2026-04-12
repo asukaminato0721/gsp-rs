@@ -1,10 +1,10 @@
 use super::{
     CircleShape, GspFile, LineBinding, LineShape, ObjectGroup, PointRecord, PolygonShape,
     ShapeBinding, TransformBindingKind, collect_circle_fill_colors, color_from_style,
-    decode_parameter_rotation_binding, decode_transform_binding, fill_color_from_styles,
-    find_indexed_path, has_distinct_points, line_is_dashed, reflect_across_line,
-    reflection_line_group_indices, rotate_around, scale_around,
-    translation_point_pair_group_indices,
+    fill_color_from_styles, find_indexed_path, has_distinct_points, line_is_dashed,
+    reflect_across_line, reflection_line_group_indices, rotate_around, scale_around,
+    translation_point_pair_group_indices, try_decode_parameter_rotation_binding,
+    try_decode_transform_binding,
 };
 use crate::runtime::extract::decode::{is_circle_group_kind, resolve_circle_points_raw};
 
@@ -17,7 +17,7 @@ pub(crate) fn collect_rotated_line_shapes(
         .iter()
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::ParameterRotation)
         .filter_map(|group| {
-            let binding = decode_parameter_rotation_binding(file, groups, group)?;
+            let binding = try_decode_parameter_rotation_binding(file, groups, group).ok()?;
             let path = find_indexed_path(file, group)?;
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
             if (source_group.header.kind()) != crate::format::GroupKind::Segment {
@@ -103,7 +103,7 @@ pub(crate) fn collect_scaled_line_shapes(
         .iter()
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::Scale)
         .filter_map(|group| {
-            let binding = decode_transform_binding(file, group)?;
+            let binding = try_decode_transform_binding(file, group).ok()?;
             let TransformBindingKind::Scale { factor } = binding.kind else {
                 return None;
             };
@@ -194,7 +194,7 @@ pub(crate) fn collect_rotated_circle_shapes(
         .iter()
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::ParameterRotation)
         .filter_map(|group| {
-            let binding = decode_parameter_rotation_binding(file, groups, group)?;
+            let binding = try_decode_parameter_rotation_binding(file, groups, group).ok()?;
             let path = find_indexed_path(file, group)?;
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
             if !is_circle_group_kind(source_group.header.kind()) {
@@ -279,7 +279,7 @@ pub(crate) fn collect_transformed_circle_shapes(
         .iter()
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::Scale)
         .filter_map(|group| {
-            let binding = decode_transform_binding(file, group)?;
+            let binding = try_decode_transform_binding(file, group).ok()?;
             let TransformBindingKind::Scale { factor } = binding.kind else {
                 return None;
             };
@@ -319,7 +319,7 @@ pub(crate) fn collect_rotated_polygon_shapes(
         .iter()
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::ParameterRotation)
         .filter_map(|group| {
-            let binding = decode_parameter_rotation_binding(file, groups, group)?;
+            let binding = try_decode_parameter_rotation_binding(file, groups, group).ok()?;
             let path = find_indexed_path(file, group)?;
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
             if (source_group.header.kind()) != crate::format::GroupKind::Polygon {
@@ -363,7 +363,7 @@ pub(crate) fn collect_transformed_polygon_shapes(
         .iter()
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::Scale)
         .filter_map(|group| {
-            let binding = decode_transform_binding(file, group)?;
+            let binding = try_decode_transform_binding(file, group).ok()?;
             let TransformBindingKind::Scale { factor } = binding.kind else {
                 return None;
             };

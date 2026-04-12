@@ -10,8 +10,8 @@ use std::ops::{Add, AddAssign, Mul, Sub, SubAssign};
 
 #[allow(unused_imports)]
 pub use decode::{
-    decode_header_record, decode_indexed_path, decode_object_group_header, decode_palette_entry,
-    decode_point_record, decode_symbol_slot, read_f64, read_i16, read_u16, read_u32,
+    decode_indexed_path, decode_object_group_header, decode_point_record, read_f64, read_i16,
+    read_u16, read_u32,
 };
 pub use group_kind::GroupKind;
 #[allow(unused_imports)]
@@ -131,26 +131,6 @@ pub struct RecordTypeCount {
     pub count: usize,
 }
 
-#[derive(Debug)]
-pub struct HeaderRecord {
-    pub words_u16: Vec<u16>,
-    pub words_u32: Vec<u32>,
-}
-
-#[derive(Debug)]
-pub struct SymbolSlotRecord {
-    pub slot_index: u32,
-    pub value: u16,
-    pub flag: u16,
-    pub reserved: u16,
-}
-
-#[derive(Debug)]
-pub struct PaletteEntryRecord {
-    pub slot_index: u16,
-    pub rgba: [u8; 4],
-}
-
 #[derive(Debug, Clone)]
 pub struct PointRecord {
     pub x: f64,
@@ -248,11 +228,7 @@ pub struct ObjectGroup {
 
 #[derive(Debug, Clone)]
 pub struct ExtractedString {
-    pub offset: usize,
-    pub byte_len: usize,
     pub text: String,
-    pub prefix_len16: Option<u16>,
-    pub prefix_len32: Option<u32>,
 }
 
 #[cfg(test)]
@@ -275,16 +251,6 @@ mod tests {
         assert_eq!(file.records[0].payload(&file.data), &[1, 2, 3, 4]);
         assert_eq!(file.records[1].record_type, 0x2222);
         assert!(file.records[1].payload(&file.data).is_empty());
-    }
-
-    #[test]
-    fn decodes_symbol_slot_record() {
-        let payload = [0x00, 0x00, 0x01, 0x00, 0x00, 0x00];
-        let slot = decode_symbol_slot(0x0960, &payload).expect("slot");
-        assert_eq!(slot.slot_index, 1);
-        assert_eq!(slot.value, 0);
-        assert_eq!(slot.flag, 1);
-        assert_eq!(slot.reserved, 0);
     }
 
     #[test]

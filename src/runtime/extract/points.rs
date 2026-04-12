@@ -1,6 +1,6 @@
 use super::decode::{
-    decode_discrete_parameter_value, decode_label_name, decode_parameter_control_value_for_group,
-    find_indexed_path, is_parameter_control_group,
+    decode_discrete_parameter_value, decode_label_name, find_indexed_path,
+    is_parameter_control_group, try_decode_parameter_control_value_for_group,
 };
 use crate::format::{GspFile, ObjectGroup, PointRecord, decode_point_record, read_f64, read_u16};
 use crate::runtime::scene::{SceneParameter, TextLabel};
@@ -23,13 +23,13 @@ pub(super) use anchors::{
 };
 pub(super) use bindings::{
     RawPointIterationFamily, TransformBindingKind, collect_point_iteration_points,
-    collect_visible_points, decode_parameter_rotation_binding, decode_transform_binding,
-    remap_circle_bindings, remap_label_bindings, remap_line_bindings, remap_polygon_bindings,
+    collect_visible_points_checked, remap_circle_bindings, remap_label_bindings,
+    remap_line_bindings, remap_polygon_bindings, try_decode_parameter_rotation_binding,
     try_decode_transform_binding,
 };
 pub(super) use constraints::{
-    RawPointConstraint, decode_parameter_controlled_point, decode_point_constraint,
-    decode_translated_point_constraint, regular_polygon_angle_expr, regular_polygon_iteration_step,
+    RawPointConstraint, decode_translated_point_constraint, regular_polygon_angle_expr,
+    regular_polygon_iteration_step, try_decode_parameter_controlled_point,
     try_decode_point_constraint,
 };
 
@@ -99,7 +99,7 @@ fn decode_non_graph_parameter(
     } else if is_angle_parameter_group(file, groups, group_index) {
         decode_angle_parameter_value_for_group(file, group)?
     } else {
-        decode_parameter_control_value_for_group(file, groups, group)?
+        try_decode_parameter_control_value_for_group(file, groups, group).ok()?
     };
     let label_index = labels.iter().position(|label| label.text == name);
     if let Some(index) = label_index {

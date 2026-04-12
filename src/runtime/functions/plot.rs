@@ -8,7 +8,7 @@ use crate::runtime::geometry::{
 use crate::runtime::payload_consts::RECORD_FUNCTION_PLOT_DESCRIPTOR;
 use crate::runtime::scene::{LineShape, TextLabel};
 
-use super::decode::{decode_function_expr, decode_function_plot_descriptor};
+use super::decode::{try_decode_function_expr, try_decode_function_plot_descriptor};
 use super::eval::sample_function_points;
 use super::expr::{FunctionPlotMode, function_expr_label_with_variable, function_variable_symbol};
 
@@ -47,11 +47,11 @@ pub(crate) fn collect_function_plots(
             continue;
         };
         let Some(descriptor) =
-            decode_function_plot_descriptor(descriptor_record.payload(&file.data))
+            try_decode_function_plot_descriptor(descriptor_record.payload(&file.data)).ok()
         else {
             continue;
         };
-        let Some(expr) = decode_function_expr(file, groups, definition_group) else {
+        let Some(expr) = try_decode_function_expr(file, groups, definition_group).ok() else {
             continue;
         };
 
@@ -96,7 +96,7 @@ pub(crate) fn collect_function_plot_domain(
             continue;
         };
         let Some(descriptor) =
-            decode_function_plot_descriptor(descriptor_record.payload(&file.data))
+            try_decode_function_plot_descriptor(descriptor_record.payload(&file.data)).ok()
         else {
             continue;
         };
@@ -239,13 +239,13 @@ pub(crate) fn synthesize_function_labels(
             let path = find_indexed_path(file, group)?;
             let definition_ordinal = *path.refs.first()?;
             let definition_group = groups.get(definition_ordinal.checked_sub(1)?)?;
-            let expr = decode_function_expr(file, groups, definition_group)?;
+            let expr = try_decode_function_expr(file, groups, definition_group).ok()?;
             let descriptor_record = group
                 .records
                 .iter()
                 .find(|record| record.record_type == RECORD_FUNCTION_PLOT_DESCRIPTOR)?;
             let descriptor =
-                decode_function_plot_descriptor(descriptor_record.payload(&file.data))?;
+                try_decode_function_plot_descriptor(descriptor_record.payload(&file.data)).ok()?;
             let name = if let Some(record) = definition_group
                 .records
                 .iter()
@@ -361,7 +361,7 @@ pub(crate) fn synthesize_function_labels(
                 .position(|(definition_ordinal, _, _, _)| {
                     *definition_ordinal == base_definition_ordinal
                 })?;
-            let expr = decode_function_expr(file, groups, group)?;
+            let expr = try_decode_function_expr(file, groups, group).ok()?;
             Some((base_index, expr))
         })
         .collect::<Vec<_>>();

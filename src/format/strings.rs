@@ -1,4 +1,4 @@
-use super::{ExtractedString, read_u16, read_u32};
+use super::ExtractedString;
 
 pub fn decode_c_string(payload: &[u8]) -> Option<String> {
     let nul = payload.iter().position(|byte| *byte == 0)?;
@@ -22,13 +22,8 @@ pub fn collect_strings(data: &[u8]) -> Vec<ExtractedString> {
 
         if is_useful_string(bytes) {
             let text = String::from_utf8_lossy(bytes).to_string();
-            strings.push(ExtractedString {
-                offset,
-                byte_len: bytes.len(),
-                prefix_len16: prefix_len16(data, offset, bytes.len()),
-                prefix_len32: prefix_len32(data, offset, bytes.len()),
-                text,
-            });
+            let _ = (data, offset);
+            strings.push(ExtractedString { text });
         }
 
         offset = end + 1;
@@ -57,28 +52,4 @@ fn is_useful_string(bytes: &[u8]) -> bool {
     }
 
     useful >= 3
-}
-
-fn prefix_len16(data: &[u8], offset: usize, len: usize) -> Option<u16> {
-    if offset < 2 {
-        return None;
-    }
-    let value = read_u16(data, offset - 2);
-    if usize::from(value) == len || usize::from(value) == len + 1 {
-        Some(value)
-    } else {
-        None
-    }
-}
-
-fn prefix_len32(data: &[u8], offset: usize, len: usize) -> Option<u32> {
-    if offset < 4 {
-        return None;
-    }
-    let value = read_u32(data, offset - 4);
-    if value as usize == len || value as usize == len + 1 {
-        Some(value)
-    } else {
-        None
-    }
 }

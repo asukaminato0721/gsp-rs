@@ -2,10 +2,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::{
     ArcShape, CircleShape, GraphTransform, GspFile, LineBinding, LineShape, ObjectGroup,
-    PointRecord, PolygonShape, ShapeBinding, color_from_style, decode_function_expr,
-    decode_function_plot_descriptor, decode_label_name, evaluate_expr_with_parameters,
-    fill_color_from_styles, find_indexed_path, has_distinct_points, line_is_dashed,
-    three_point_arc_geometry, to_raw_from_world,
+    PointRecord, PolygonShape, ShapeBinding, color_from_style, decode_label_name,
+    evaluate_expr_with_parameters, fill_color_from_styles, find_indexed_path, has_distinct_points,
+    line_is_dashed, three_point_arc_geometry, to_raw_from_world, try_decode_function_expr,
+    try_decode_function_plot_descriptor,
 };
 use crate::format::{read_f64, read_u32};
 use crate::runtime::extract::decode::{is_circle_group_kind, resolve_circle_points_raw};
@@ -1367,8 +1367,8 @@ pub(crate) fn collect_coordinate_traces(
                 .iter()
                 .find(|record| record.record_type == 0x0902)
                 .map(|record| record.payload(&file.data))?;
-            let descriptor = decode_function_plot_descriptor(payload)?;
-            let expr = decode_function_expr(file, groups, calc_group)?;
+            let descriptor = try_decode_function_plot_descriptor(payload).ok()?;
+            let expr = try_decode_function_expr(file, groups, calc_group).ok()?;
             let driver_group = groups.get(path.refs[0].checked_sub(1)?)?;
             let driver = if matches!(
                 driver_group.header.kind(),
@@ -1384,8 +1384,8 @@ pub(crate) fn collect_coordinate_traces(
                     crate::format::GroupKind::Unknown(20) => {
                         let x_calc_group = groups.get(driver_path.refs[1].checked_sub(1)?)?;
                         let y_calc_group = groups.get(driver_path.refs[2].checked_sub(1)?)?;
-                        let x_expr = decode_function_expr(file, groups, x_calc_group)?;
-                        let y_expr = decode_function_expr(file, groups, y_calc_group)?;
+                        let x_expr = try_decode_function_expr(file, groups, x_calc_group).ok()?;
+                        let y_expr = try_decode_function_expr(file, groups, y_calc_group).ok()?;
                         Some((source_world, None, Some((x_expr, y_expr))))
                     }
                     _ => {

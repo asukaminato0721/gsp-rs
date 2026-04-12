@@ -2,15 +2,15 @@ use std::collections::BTreeMap;
 
 use super::super::decode::{decode_label_name, find_indexed_path};
 use super::constraints::{
-    RawPointConstraint, decode_parameter_controlled_point, decode_point_constraint,
-    decode_translated_point_constraint,
+    RawPointConstraint, decode_translated_point_constraint, try_decode_parameter_controlled_point,
+    try_decode_point_constraint,
 };
 use super::{
     GspFile, ObjectGroup, PointRecord, TransformBindingKind,
-    decode_non_graph_parameter_value_for_group, decode_parameter_rotation_binding, read_f64,
+    decode_non_graph_parameter_value_for_group, read_f64, try_decode_parameter_rotation_binding,
 };
 use crate::runtime::functions::{
-    decode_function_expr, decode_function_plot_descriptor, evaluate_expr_with_parameters,
+    evaluate_expr_with_parameters, try_decode_function_expr, try_decode_function_plot_descriptor,
 };
 use crate::runtime::geometry::{
     GraphTransform, lerp_point, point_on_circle_arc, point_on_three_point_arc, reflect_across_line,
@@ -86,8 +86,8 @@ pub(crate) fn decode_coordinate_expression_anchor_raw(
         crate::format::GroupKind::Unknown(20) => {
             let x_calc_group = groups.get(path.refs[1].checked_sub(1)?)?;
             let y_calc_group = groups.get(path.refs[2].checked_sub(1)?)?;
-            let x_expr = decode_function_expr(file, groups, x_calc_group)?;
-            let y_expr = decode_function_expr(file, groups, y_calc_group)?;
+            let x_expr = try_decode_function_expr(file, groups, x_calc_group).ok()?;
+            let y_expr = try_decode_function_expr(file, groups, y_calc_group).ok()?;
             let x_parameter_group = first_path_group(file, groups, x_calc_group)?;
             let y_parameter_group = first_path_group(file, groups, y_calc_group)?;
             let x_parameter_name = decode_label_name(file, x_parameter_group)?;
@@ -113,7 +113,7 @@ pub(crate) fn decode_coordinate_expression_anchor_raw(
         }
         _ => {
             let calc_group = groups.get(path.refs[1].checked_sub(1)?)?;
-            let expr = decode_function_expr(file, groups, calc_group)?;
+            let expr = try_decode_function_expr(file, groups, calc_group).ok()?;
             let payload = group
                 .records
                 .iter()
@@ -287,8 +287,8 @@ fn sample_coordinate_trace_points_raw(
         .iter()
         .find(|record| record.record_type == 0x0902)
         .map(|record| record.payload(&file.data))?;
-    let descriptor = decode_function_plot_descriptor(payload)?;
-    let expr = decode_function_expr(file, groups, calc_group)?;
+    let descriptor = try_decode_function_plot_descriptor(payload).ok()?;
+    let expr = try_decode_function_expr(file, groups, calc_group).ok()?;
     let parameter_name =
         super::editable_non_graph_parameter_name_for_group(file, groups, parameter_group)
             .or_else(|| decode_label_name(file, parameter_group))?;
@@ -309,8 +309,8 @@ fn sample_coordinate_trace_points_raw(
             crate::format::GroupKind::Unknown(20) => {
                 let x_calc_group = groups.get(driver_path.refs[1].checked_sub(1)?)?;
                 let y_calc_group = groups.get(driver_path.refs[2].checked_sub(1)?)?;
-                let x_expr = decode_function_expr(file, groups, x_calc_group)?;
-                let y_expr = decode_function_expr(file, groups, y_calc_group)?;
+                let x_expr = try_decode_function_expr(file, groups, x_calc_group).ok()?;
+                let y_expr = try_decode_function_expr(file, groups, y_calc_group).ok()?;
                 Some((source_world, None, Some((x_expr, y_expr))))
             }
             crate::format::GroupKind::CoordinateExpressionPointAlt => Some((
@@ -939,8 +939,8 @@ pub(crate) fn decode_custom_transform_binding(
         })?;
     let distance_expr_group = groups.get(path.refs.get(4)?.checked_sub(1)?)?;
     let angle_expr_group = groups.get(path.refs.get(5)?.checked_sub(1)?)?;
-    let distance_expr = decode_function_expr(file, groups, distance_expr_group)?;
-    let angle_expr = decode_function_expr(file, groups, angle_expr_group)?;
+    let distance_expr = try_decode_function_expr(file, groups, distance_expr_group).ok()?;
+    let angle_expr = try_decode_function_expr(file, groups, angle_expr_group).ok()?;
     Some(CustomTransformBindingDef {
         source_group_index,
         origin_group_index,
@@ -1026,7 +1026,9 @@ pub(crate) fn decode_custom_transform_parameter(
     let source_group = groups.get(source_group_index)?;
     match source_group.header.kind() {
         kind if kind.is_point_constraint() => {
-            match decode_point_constraint(file, groups, source_group, Some(anchors), &None)? {
+            match try_decode_point_constraint(file, groups, source_group, Some(anchors), &None)
+                .ok()?
+            {
                 RawPointConstraint::Segment(constraint) => Some(constraint.t),
                 RawPointConstraint::Polyline { t, .. } => Some(t),
                 RawPointConstraint::PolygonBoundary { t, .. } => Some(t),
@@ -1041,7 +1043,7 @@ pub(crate) fn decode_custom_transform_parameter(
         }
         crate::format::GroupKind::ParameterControlledPoint => {
             let parameter_point =
-                decode_parameter_controlled_point(file, groups, source_group, anchors)?;
+                try_decode_parameter_controlled_point(file, groups, source_group, anchors).ok()?;
             match parameter_point.constraint {
                 RawPointConstraint::Segment(constraint) => Some(constraint.t),
                 RawPointConstraint::Polyline { t, .. } => Some(t),
@@ -1161,7 +1163,7 @@ pub(crate) fn decode_parameter_rotation_anchor_raw(
     group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
 ) -> Option<PointRecord> {
-    let binding = decode_parameter_rotation_binding(file, groups, group)?;
+    let binding = try_decode_parameter_rotation_binding(file, groups, group).ok()?;
     let source = anchors.get(binding.source_group_index)?.clone()?;
     let center = anchors.get(binding.center_group_index)?.clone()?;
     let TransformBindingKind::Rotate { angle_degrees, .. } = binding.kind else {
@@ -1245,7 +1247,9 @@ pub(crate) fn decode_parameter_controlled_anchor_raw(
     group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
 ) -> Option<PointRecord> {
-    decode_parameter_controlled_point(file, groups, group, anchors).map(|point| point.position)
+    try_decode_parameter_controlled_point(file, groups, group, anchors)
+        .ok()
+        .map(|point| point.position)
 }
 
 pub(crate) fn reflection_line_group_indices(
@@ -1430,7 +1434,7 @@ pub(crate) fn decode_point_constraint_anchor(
     graph: Option<&GraphTransform>,
 ) -> Option<PointRecord> {
     let graph = graph.cloned();
-    match decode_point_constraint(file, groups, group, Some(anchors), &graph)? {
+    match try_decode_point_constraint(file, groups, group, Some(anchors), &graph).ok()? {
         RawPointConstraint::Segment(constraint) => {
             let start = anchors.get(constraint.start_group_index)?.clone()?;
             let end = anchors.get(constraint.end_group_index)?.clone()?;

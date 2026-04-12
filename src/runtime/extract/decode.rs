@@ -1,4 +1,4 @@
-use super::points::{TransformBindingKind, decode_transform_binding};
+use super::points::{TransformBindingKind, try_decode_transform_binding};
 use crate::format::{
     GroupKind, GspFile, IndexedPathRecord, ObjectGroup, PointRecord, collect_strings,
     decode_indexed_path, read_f64, read_i16, read_u16, read_u32,
@@ -137,12 +137,6 @@ pub(crate) fn is_parameter_control_group(group: &ObjectGroup) -> bool {
             .any(|record| record.record_type == RECORD_POINT_F64_PAIR)
 }
 
-fn decode_continuous_parameter_value(payload: &[u8]) -> Option<f64> {
-    try_decode_continuous_parameter_value(payload)
-        .ok()
-        .flatten()
-}
-
 fn try_decode_continuous_parameter_value(
     payload: &[u8],
 ) -> Result<Option<f64>, ParameterControlDecodeError> {
@@ -193,14 +187,6 @@ fn parameter_group_drives_coordinate_value(file: &GspFile, target_ordinal: usize
     })
 }
 
-pub(crate) fn decode_parameter_control_value_for_group(
-    file: &GspFile,
-    _groups: &[ObjectGroup],
-    group: &ObjectGroup,
-) -> Option<f64> {
-    try_decode_parameter_control_value_for_group(file, _groups, group).ok()
-}
-
 pub(crate) fn try_decode_parameter_control_value_for_group(
     file: &GspFile,
     _groups: &[ObjectGroup],
@@ -221,10 +207,6 @@ pub(crate) fn try_decode_parameter_control_value_for_group(
 
     try_decode_discrete_parameter_value(payload)?
         .ok_or(ParameterControlDecodeError::InvalidDiscreteFraction)
-}
-
-pub(crate) fn decode_link_button_url(file: &GspFile, group: &ObjectGroup) -> Option<String> {
-    try_decode_link_button_url(file, group).ok().flatten()
 }
 
 pub(crate) fn try_decode_link_button_url(
@@ -285,10 +267,6 @@ pub(crate) fn decode_label_name_raw(file: &GspFile, group: &ObjectGroup) -> Opti
             .replace("[3]", "₃")
             .replace("[4]", "₄"),
     )
-}
-
-pub(crate) fn decode_0907_anchor(file: &GspFile, group: &ObjectGroup) -> Option<PointRecord> {
-    try_decode_0907_anchor(file, group).ok().flatten()
 }
 
 pub(crate) fn try_decode_0907_anchor(
@@ -397,10 +375,6 @@ pub(crate) fn try_find_indexed_path(
         })
 }
 
-pub(crate) fn decode_group_label_text(file: &GspFile, group: &ObjectGroup) -> Option<String> {
-    try_decode_group_label_text(file, group).ok().flatten()
-}
-
 pub(crate) fn try_decode_group_label_text(
     file: &GspFile,
     group: &ObjectGroup,
@@ -444,13 +418,6 @@ pub(crate) struct RichTextHotspotRef {
     pub(crate) path_slot: usize,
 }
 
-pub(crate) fn decode_group_rich_text(
-    file: &GspFile,
-    group: &ObjectGroup,
-) -> Option<RichTextContent> {
-    try_decode_group_rich_text(file, group).ok().flatten()
-}
-
 pub(crate) fn try_decode_group_rich_text(
     file: &GspFile,
     group: &ObjectGroup,
@@ -490,7 +457,7 @@ pub(crate) fn decode_label_anchor(
             .find_map(|object_ref| anchors.get(object_ref.saturating_sub(1)).cloned().flatten())
     };
     let base = text_anchor
-        .or_else(|| decode_0907_anchor(file, group))
+        .or_else(|| try_decode_0907_anchor(file, group).ok().flatten())
         .or_else(|| match kind {
             crate::format::GroupKind::Point => anchors
                 .get(group.ordinal.saturating_sub(1))
@@ -672,18 +639,11 @@ pub(crate) fn decode_label_offset(file: &GspFile, group: &ObjectGroup) -> Option
 }
 
 pub(crate) fn decode_bbox_anchor_raw(file: &GspFile, group: &ObjectGroup) -> Option<PointRecord> {
-    let (x, y, width, height) = decode_bbox_rect_raw(file, group)?;
+    let (x, y, width, height) = try_decode_bbox_rect_raw(file, group).ok().flatten()?;
     Some(PointRecord {
         x: x + width / 2.0,
         y: y + height / 2.0,
     })
-}
-
-pub(crate) fn decode_bbox_rect_raw(
-    file: &GspFile,
-    group: &ObjectGroup,
-) -> Option<(f64, f64, f64, f64)> {
-    try_decode_bbox_rect_raw(file, group).ok().flatten()
 }
 
 pub(crate) fn try_decode_bbox_rect_raw(
@@ -737,7 +697,7 @@ pub(crate) fn decode_transform_anchor_raw(
     let kind = group.header.kind();
     match kind {
         crate::format::GroupKind::Rotation => {
-            let binding = decode_transform_binding(file, group)?;
+            let binding = try_decode_transform_binding(file, group).ok()?;
             let source = anchors.get(binding.source_group_index)?.clone()?;
             let center = anchors.get(binding.center_group_index)?.clone()?;
             let TransformBindingKind::Rotate { angle_degrees, .. } = binding.kind else {
@@ -754,7 +714,7 @@ pub(crate) fn decode_transform_anchor_raw(
             })
         }
         crate::format::GroupKind::Scale => {
-            let binding = decode_transform_binding(file, group)?;
+            let binding = try_decode_transform_binding(file, group).ok()?;
             let source = anchors.get(binding.source_group_index)?.clone()?;
             let center = anchors.get(binding.center_group_index)?.clone()?;
             let TransformBindingKind::Scale { factor: t } = binding.kind else {
@@ -794,10 +754,6 @@ impl From<MarkupParseError> for RichTextDecodeError {
     fn from(value: MarkupParseError) -> Self {
         Self::MarkupParse(value)
     }
-}
-
-fn decode_rich_text(payload: &[u8]) -> Option<RichTextContent> {
-    try_decode_rich_text(payload).ok().flatten()
 }
 
 fn try_decode_rich_text(payload: &[u8]) -> Result<Option<RichTextContent>, RichTextDecodeError> {

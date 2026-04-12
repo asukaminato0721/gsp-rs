@@ -2,9 +2,9 @@ use std::collections::BTreeSet;
 
 use super::{
     CircleShape, GspFile, LineBinding, LineIterationFamily, LineShape, ObjectGroup, PointRecord,
-    PolygonIterationFamily, PolygonShape, color_from_style, decode_parameter_controlled_point,
-    decode_point_constraint, decode_translated_point_constraint, fill_color_from_styles,
-    find_indexed_path, line_is_dashed, regular_polygon_iteration_step, rotate_around,
+    PolygonIterationFamily, PolygonShape, color_from_style, decode_translated_point_constraint,
+    fill_color_from_styles, find_indexed_path, line_is_dashed, regular_polygon_iteration_step,
+    rotate_around, try_decode_parameter_controlled_point, try_decode_point_constraint,
 };
 use crate::runtime::extract::decode::resolve_circle_points_raw;
 use crate::runtime::extract::points::editable_non_graph_parameter_name_for_group;
@@ -993,7 +993,8 @@ fn build_parameter_controlled_circle_iteration_family(
         vertex_group_indices,
         edge_index,
         t,
-    } = decode_point_constraint(file, groups, source_center_group, Some(anchors), &None)?
+    } = try_decode_point_constraint(file, groups, source_center_group, Some(anchors), &None)
+        .ok()?
     else {
         return None;
     };
@@ -1017,7 +1018,8 @@ fn build_parameter_controlled_circle_iteration_family(
             ((candidate.header.kind()) == crate::format::GroupKind::ParameterControlledPoint)
                 .then_some(candidate)
         })?;
-    let iter_point = decode_parameter_controlled_point(file, groups, iter_point_group, anchors)?;
+    let iter_point =
+        try_decode_parameter_controlled_point(file, groups, iter_point_group, anchors).ok()?;
     let iter_point_group_index = iter_point_group.ordinal.checked_sub(1)?;
     let source_next_center_index = group_to_point_index
         .get(iter_point_group_index)
@@ -1085,7 +1087,8 @@ fn collect_parameter_controlled_circle_iteration(
         vertex_group_indices,
         edge_index,
         t,
-    } = decode_point_constraint(file, groups, source_center_group, Some(anchors), &None)?
+    } = try_decode_point_constraint(file, groups, source_center_group, Some(anchors), &None)
+        .ok()?
     else {
         return None;
     };
@@ -1109,7 +1112,8 @@ fn collect_parameter_controlled_circle_iteration(
             ((candidate.header.kind()) == crate::format::GroupKind::ParameterControlledPoint)
                 .then_some(candidate)
         })?;
-    let iter_point = decode_parameter_controlled_point(file, groups, iter_point_group, anchors)?;
+    let iter_point =
+        try_decode_parameter_controlled_point(file, groups, iter_point_group, anchors).ok()?;
     let crate::runtime::extract::points::RawPointConstraint::PolygonBoundary {
         edge_index, t, ..
     } = iter_point.constraint

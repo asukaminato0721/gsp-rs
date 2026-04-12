@@ -1,8 +1,7 @@
 use super::{
     GspFile, ObjectGroup, PointRecord, RawPointIterationFamily, TransformBindingKind,
-    decode_parameter_rotation_binding, decode_transform_binding,
     decode_translated_point_constraint, iteration_depth, regular_polygon_iteration_step,
-    rotate_around,
+    rotate_around, try_decode_parameter_rotation_binding, try_decode_transform_binding,
 };
 use crate::runtime::extract::find_indexed_path;
 use crate::runtime::extract::points::{
@@ -63,9 +62,9 @@ pub(crate) fn collect_point_iteration_points(
                     let rotation = if (seed_group.header.kind())
                         == crate::format::GroupKind::ParameterRotation
                     {
-                        decode_parameter_rotation_binding(file, groups, seed_group)
+                        try_decode_parameter_rotation_binding(file, groups, seed_group).ok()
                     } else {
-                        decode_transform_binding(file, seed_group)
+                        try_decode_transform_binding(file, seed_group).ok()
                     };
                     if let Some(binding) = rotation {
                         let Some(center_index) =

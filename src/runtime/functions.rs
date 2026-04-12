@@ -4,10 +4,7 @@ mod expr;
 mod plot;
 mod scene;
 
-pub(crate) use decode::{
-    decode_function_expr, decode_function_plot_descriptor, try_decode_function_expr,
-    try_decode_function_plot_descriptor,
-};
+pub(crate) use decode::{try_decode_function_expr, try_decode_function_plot_descriptor};
 pub(crate) use eval::{evaluate_expr_with_parameters, sample_function_points};
 pub(crate) use expr::{
     BinaryOp, FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode, FunctionTerm,
@@ -21,7 +18,7 @@ pub(crate) use scene::{collect_scene_functions, collect_scene_parameters, functi
 
 #[cfg(test)]
 mod tests {
-    use super::decode::{decode_inner_function_expr, extract_inline_function_token};
+    use super::decode::{extract_inline_function_token, try_decode_inner_function_expr};
     use super::*;
     use crate::format::{GspFile, read_u16};
     use std::collections::BTreeMap;
@@ -67,7 +64,7 @@ mod tests {
             .payload(&file.data);
         let parameters = BTreeMap::new();
         assert_eq!(
-            decode_inner_function_expr(payload, &parameters),
+            try_decode_inner_function_expr(payload, &parameters).ok(),
             Some(FunctionExpr::Parsed(ParsedFunctionExpr {
                 head: FunctionTerm::UnaryX(UnaryFunction::Abs),
                 tail: vec![
@@ -80,7 +77,7 @@ mod tests {
                 ],
             }))
         );
-        let expr = decode_function_expr(&file, &groups, function_group);
+        let expr = try_decode_function_expr(&file, &groups, function_group).ok();
         assert_eq!(
             expr,
             Some(FunctionExpr::Parsed(ParsedFunctionExpr {
@@ -119,7 +116,7 @@ mod tests {
             })
             .expect("nested function group");
         assert_eq!(
-            decode_function_expr(&file, &groups, function_group),
+            try_decode_function_expr(&file, &groups, function_group).ok(),
             Some(FunctionExpr::Parsed(ParsedFunctionExpr {
                 head: FunctionTerm::Parameter("t₂".to_string(), 5.0),
                 tail: vec![(BinaryOp::Add, FunctionTerm::Constant(1.0))],
@@ -127,7 +124,7 @@ mod tests {
         );
         assert_eq!(
             function_expr_label(
-                decode_function_expr(&file, &groups, function_group).expect("expression")
+                try_decode_function_expr(&file, &groups, function_group).expect("expression")
             ),
             "t₂ + 1"
         );
@@ -154,7 +151,7 @@ mod tests {
                         })
             })
             .expect("angle function group");
-        let expr = decode_function_expr(&file, &groups, function_group).expect("expression");
+        let expr = try_decode_function_expr(&file, &groups, function_group).expect("expression");
         assert_eq!(
             expr,
             FunctionExpr::Parsed(ParsedFunctionExpr {
@@ -176,7 +173,7 @@ mod tests {
         let payload = payload_from_words(&[0x0094, 0x0001, 0x2006, 0x000f, 0x000c, 0x1000, 0x0002]);
 
         assert_eq!(
-            decode_inner_function_expr(&payload, &BTreeMap::new()),
+            try_decode_inner_function_expr(&payload, &BTreeMap::new()).ok(),
             Some(FunctionExpr::Parsed(ParsedFunctionExpr {
                 head: FunctionTerm::UnaryX(UnaryFunction::Abs),
                 tail: vec![(BinaryOp::Add, FunctionTerm::Constant(2.0))],
@@ -189,7 +186,7 @@ mod tests {
         let payload = payload_from_words(&[0xffff, 0x000f, 0x1000, 0x0001, 0x0101]);
 
         assert_eq!(
-            decode_inner_function_expr(&payload, &BTreeMap::new()),
+            try_decode_inner_function_expr(&payload, &BTreeMap::new()).ok(),
             Some(FunctionExpr::Parsed(ParsedFunctionExpr {
                 head: FunctionTerm::Variable,
                 tail: vec![(BinaryOp::Add, FunctionTerm::Constant(1.0))],

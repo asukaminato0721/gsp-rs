@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::format::{GspFile, ObjectGroup, read_f64, read_u16, read_u32};
-use crate::runtime::extract::{decode_parameter_control_value_for_group, find_indexed_path};
+use crate::runtime::extract::{find_indexed_path, try_decode_parameter_control_value_for_group};
 use crate::runtime::functions::{evaluate_expr_with_parameters, function_expr_label};
 use crate::runtime::payload_consts::{
     EXPR_OP_ADD, EXPR_OP_DIV, EXPR_OP_MUL, EXPR_OP_POW, EXPR_OP_SUB, EXPR_PARAMETER_MASK,
@@ -21,14 +21,6 @@ use super::expr::{
 pub(crate) struct ParameterBinding {
     name: String,
     value: f64,
-}
-
-pub(crate) fn decode_function_expr(
-    file: &GspFile,
-    groups: &[ObjectGroup],
-    group: &ObjectGroup,
-) -> Option<FunctionExpr> {
-    try_decode_function_expr(file, groups, group).ok()
 }
 
 pub(crate) fn try_decode_function_expr(
@@ -77,10 +69,6 @@ fn decode_function_expr_recursive(
     })();
     visiting.remove(&group.ordinal);
     expr
-}
-
-pub(crate) fn decode_function_plot_descriptor(payload: &[u8]) -> Option<FunctionPlotDescriptor> {
-    try_decode_function_plot_descriptor(payload).ok()
 }
 
 #[derive(Debug, Clone, PartialEq, Error)]
@@ -165,7 +153,7 @@ fn decode_parameter_binding_recursive(
         .find(|record| record.record_type == RECORD_LABEL_AUX)
         .map(|record| record.payload(&file.data))?;
     let name = decode_parameter_name(label_payload)?;
-    let value = decode_parameter_control_value_for_group(file, groups, group)?;
+    let value = try_decode_parameter_control_value_for_group(file, groups, group).ok()?;
     if !value.is_finite() {
         return None;
     }
@@ -516,13 +504,6 @@ fn lex_function_token(
         }
     };
     Ok(token)
-}
-
-pub(crate) fn decode_inner_function_expr(
-    payload: &[u8],
-    parameters: &BTreeMap<u16, ParameterBinding>,
-) -> Option<FunctionExpr> {
-    try_decode_inner_function_expr(payload, parameters).ok()
 }
 
 pub(crate) fn try_decode_inner_function_expr(

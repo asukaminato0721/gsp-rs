@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use super::super::decode::{
-    decode_label_name, decode_parameter_control_value_for_group, find_indexed_path,
-    is_circle_group_kind,
+    decode_label_name, find_indexed_path, is_circle_group_kind,
+    try_decode_parameter_control_value_for_group,
 };
 use super::anchors::{resolve_circle_point_raw, resolve_polygon_boundary_point_raw};
 use super::{
@@ -10,9 +10,8 @@ use super::{
 };
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
 use crate::runtime::functions::{
-    BinaryOp, FunctionExpr, FunctionTerm, ParsedFunctionExpr, decode_function_expr,
-    decode_function_plot_descriptor, evaluate_expr_with_parameters, sample_function_points,
-    try_decode_function_expr, try_decode_function_plot_descriptor,
+    BinaryOp, FunctionExpr, FunctionTerm, ParsedFunctionExpr, evaluate_expr_with_parameters,
+    sample_function_points, try_decode_function_expr, try_decode_function_plot_descriptor,
 };
 use crate::runtime::geometry::{
     GraphTransform, arc_on_circle_control_points, lerp_point, locate_polyline_parameter_by_length,
@@ -81,6 +80,24 @@ pub(crate) struct ParameterControlledPoint {
     pub(crate) source_expr: Option<FunctionExpr>,
 }
 
+#[derive(Debug, Clone, PartialEq, Error)]
+pub(crate) enum ParameterControlledPointDecodeError {
+    #[error("group kind {0:?} is not a parameter-controlled point")]
+    NotParameterControlledPoint(crate::format::GroupKind),
+    #[error("missing indexed path for parameter-controlled point")]
+    MissingPath,
+    #[error("parameter-controlled point path has too few references ({0})")]
+    PathTooShort(usize),
+    #[error("parameter-controlled point source group is missing")]
+    MissingSourceGroup,
+    #[error("parameter-controlled point host group is missing")]
+    MissingHostGroup,
+    #[error("source parameter/anchor/expression could not be evaluated")]
+    InvalidSource,
+    #[error("host geometry could not be resolved for parameter-controlled point")]
+    InvalidHostGeometry,
+}
+
 pub(crate) enum CoordinatePointSource {
     Parameter(String),
     SourcePoint {
@@ -131,6 +148,20 @@ pub(crate) enum PointConstraintDecodeError {
     MissingAnchors,
     #[error("failed to locate point on sampled polyline")]
     PolylineParameterUnavailable,
+    #[error("circle host path is invalid")]
+    InvalidCircleHostPath,
+    #[error("circle constraint contains non-finite unit vector")]
+    NonFiniteCircleUnit,
+    #[error("polygon host path is invalid")]
+    InvalidPolygonHostPath,
+    #[error("polygon edge index could not be decoded")]
+    InvalidPolygonEdgeIndex,
+    #[error("arc-family host path is invalid for {0:?}")]
+    InvalidArcHostPath(crate::format::GroupKind),
+    #[error("arc-on-circle host does not reference a circle object")]
+    ArcHostMissingCircle,
+    #[error("arc-on-circle backing circle path is invalid")]
+    InvalidArcCirclePath,
     #[error(
         "unsupported or malformed point constraint for host kind {host_kind:?} with payload length {payload_len}"
     )]
@@ -172,7 +203,7 @@ fn parameter_anchor_value(
     let path = find_indexed_path(file, group)?;
     let point_group_index = path.refs.first()?.checked_sub(1)?;
     let point_group = groups.get(point_group_index)?;
-    let t = match decode_point_constraint(file, groups, point_group, None, &None)? {
+    let t = match try_decode_point_constraint(file, groups, point_group, None, &None).ok()? {
         RawPointConstraint::Segment(constraint) => constraint.t,
         RawPointConstraint::PolygonBoundary {
             edge_index,
@@ -409,91 +440,140 @@ fn try_decode_point_on_segment_constraint(
     )
 }
 
-pub(crate) fn decode_parameter_controlled_point(
+pub(crate) fn try_decode_parameter_controlled_point(
     file: &GspFile,
     groups: &[ObjectGroup],
     group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
-) -> Option<ParameterControlledPoint> {
+) -> Result<ParameterControlledPoint, ParameterControlledPointDecodeError> {
     if (group.header.kind()) != crate::format::GroupKind::ParameterControlledPoint {
-        return None;
+        return Err(
+            ParameterControlledPointDecodeError::NotParameterControlledPoint(group.header.kind()),
+        );
     }
 
-    let path = find_indexed_path(file, group)?;
+    let path =
+        find_indexed_path(file, group).ok_or(ParameterControlledPointDecodeError::MissingPath)?;
     if path.refs.len() < 2 {
-        return None;
+        return Err(ParameterControlledPointDecodeError::PathTooShort(
+            path.refs.len(),
+        ));
     }
 
-    let source_group = groups.get(path.refs[0].checked_sub(1)?)?;
-    let host_group = groups.get(path.refs[1].checked_sub(1)?)?;
-    let (parameter_name, parameter_value, source_point_group_index, source_expr) =
-        if (source_group.header.kind()) == crate::format::GroupKind::Point {
-            (
-                decode_label_name(file, source_group)?,
-                decode_parameter_control_value_for_group(file, groups, source_group)?,
-                None,
-                None,
-            )
-        } else if (source_group.header.kind()) == crate::format::GroupKind::ParameterAnchor {
-            let (_name, value, point_group_index) =
-                parameter_anchor_value(file, groups, source_group, anchors)?;
-            (String::new(), value, Some(point_group_index), None)
-        } else if (source_group.header.kind()) == crate::format::GroupKind::FunctionExpr {
-            let expr = decode_function_expr(file, groups, source_group)?;
-            let source_path = find_indexed_path(file, source_group)?;
-            let mut parameters = BTreeMap::new();
-            let mut source_point_group_index = None;
-            let mut anchor_parameter_name = None;
-            let mut anchor_parameter_value = None;
-            for object_ref in &source_path.refs {
-                let ref_group = groups.get(object_ref.checked_sub(1)?)?;
-                match ref_group.header.kind() {
-                    crate::format::GroupKind::Point => {
-                        let name = decode_label_name(file, ref_group)?;
-                        let value =
-                            decode_parameter_control_value_for_group(file, groups, ref_group)?;
+    let source_group = groups
+        .get(
+            path.refs[0]
+                .checked_sub(1)
+                .ok_or(ParameterControlledPointDecodeError::MissingSourceGroup)?,
+        )
+        .ok_or(ParameterControlledPointDecodeError::MissingSourceGroup)?;
+    let host_group = groups
+        .get(
+            path.refs[1]
+                .checked_sub(1)
+                .ok_or(ParameterControlledPointDecodeError::MissingHostGroup)?,
+        )
+        .ok_or(ParameterControlledPointDecodeError::MissingHostGroup)?;
+    let (parameter_name, parameter_value, source_point_group_index, source_expr): (
+        String,
+        f64,
+        Option<usize>,
+        Option<FunctionExpr>,
+    ) = if (source_group.header.kind()) == crate::format::GroupKind::Point {
+        (
+            decode_label_name(file, source_group)
+                .ok_or(ParameterControlledPointDecodeError::InvalidSource)?,
+            try_decode_parameter_control_value_for_group(file, groups, source_group)
+                .ok()
+                .ok_or(ParameterControlledPointDecodeError::InvalidSource)?,
+            None,
+            None,
+        )
+    } else if (source_group.header.kind()) == crate::format::GroupKind::ParameterAnchor {
+        let (_name, value, point_group_index) =
+            parameter_anchor_value(file, groups, source_group, anchors)
+                .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+        (String::new(), value, Some(point_group_index), None)
+    } else if (source_group.header.kind()) == crate::format::GroupKind::FunctionExpr {
+        let expr = try_decode_function_expr(file, groups, source_group)
+            .map_err(|_| ParameterControlledPointDecodeError::InvalidSource)?;
+        let source_path = find_indexed_path(file, source_group)
+            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+        let mut parameters = BTreeMap::new();
+        let mut source_point_group_index = None;
+        let mut anchor_parameter_name = None;
+        let mut anchor_parameter_value = None;
+        for object_ref in &source_path.refs {
+            let ref_group = groups
+                .get(
+                    object_ref
+                        .checked_sub(1)
+                        .ok_or(ParameterControlledPointDecodeError::InvalidSource)?,
+                )
+                .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+            match ref_group.header.kind() {
+                crate::format::GroupKind::Point => {
+                    let name = decode_label_name(file, ref_group)
+                        .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+                    let value =
+                        try_decode_parameter_control_value_for_group(file, groups, ref_group)
+                            .ok()
+                            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+                    parameters.insert(name, value);
+                }
+                crate::format::GroupKind::ParameterAnchor => {
+                    let (name, value, point_group_index) =
+                        parameter_anchor_value(file, groups, ref_group, anchors)
+                            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+                    if !name.is_empty() {
+                        anchor_parameter_name = Some(name.clone());
+                        anchor_parameter_value = Some(value);
                         parameters.insert(name, value);
                     }
-                    crate::format::GroupKind::ParameterAnchor => {
-                        let (name, value, point_group_index) =
-                            parameter_anchor_value(file, groups, ref_group, anchors)?;
-                        if !name.is_empty() {
-                            anchor_parameter_name = Some(name.clone());
-                            anchor_parameter_value = Some(value);
-                            parameters.insert(name, value);
-                        }
-                        source_point_group_index.get_or_insert(point_group_index);
-                    }
-                    _ => {}
+                    source_point_group_index.get_or_insert(point_group_index);
                 }
+                _ => {}
             }
-            let mut value = evaluate_expr_with_parameters(&expr, 0.0, &parameters)?;
-            if anchor_parameter_name.is_some() && anchor_parameter_value.is_some() {
-                value += anchor_parameter_value.unwrap();
-            }
-            (
-                anchor_parameter_name.unwrap_or_default(),
-                wrap_unit_interval(value),
-                source_point_group_index,
-                Some(expr),
-            )
-        } else {
-            return None;
-        };
+        }
+        let mut value = evaluate_expr_with_parameters(&expr, 0.0, &parameters)
+            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+        if anchor_parameter_name.is_some() && anchor_parameter_value.is_some() {
+            value += anchor_parameter_value.unwrap();
+        }
+        (
+            anchor_parameter_name.unwrap_or_default(),
+            wrap_unit_interval(value),
+            source_point_group_index,
+            Some(expr),
+        )
+    } else {
+        return Err(ParameterControlledPointDecodeError::InvalidSource);
+    };
 
     match host_group.header.kind() {
         crate::format::GroupKind::Segment => {
-            let host_path = find_indexed_path(file, host_group)?;
+            let host_path = find_indexed_path(file, host_group)
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
             if host_path.refs.len() != 2 {
-                return None;
+                return Err(ParameterControlledPointDecodeError::InvalidHostGeometry);
             }
             let normalized = wrap_unit_interval(parameter_value);
-            let start_group_index = host_path.refs[0].checked_sub(1)?;
-            let end_group_index = host_path.refs[1].checked_sub(1)?;
-            let start = anchors.get(start_group_index)?.clone()?;
-            let end = anchors.get(end_group_index)?.clone()?;
+            let start_group_index = host_path.refs[0]
+                .checked_sub(1)
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let end_group_index = host_path.refs[1]
+                .checked_sub(1)
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let start = anchors
+                .get(start_group_index)
+                .and_then(|value| value.clone())
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let end = anchors
+                .get(end_group_index)
+                .and_then(|value| value.clone())
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
             let position = lerp_point(&start, &end, normalized);
-            Some(ParameterControlledPoint {
+            Ok(ParameterControlledPoint {
                 position,
                 constraint: RawPointConstraint::Segment(PointOnSegmentConstraint {
                     start_group_index,
@@ -506,19 +586,24 @@ pub(crate) fn decode_parameter_controlled_point(
             })
         }
         crate::format::GroupKind::Polygon => {
-            let host_path = find_indexed_path(file, host_group)?;
+            let host_path = find_indexed_path(file, host_group)
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
             let vertex_group_indices = host_path
                 .refs
                 .iter()
                 .map(|vertex| vertex.checked_sub(1))
-                .collect::<Option<Vec<_>>>()?;
+                .collect::<Option<Vec<_>>>()
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
             let vertices = vertex_group_indices
                 .iter()
-                .map(|group_index| anchors.get(*group_index)?.clone())
-                .collect::<Option<Vec<_>>>()?;
-            let (edge_index, t) = polygon_parameter_to_edge(&vertices, parameter_value)?;
-            let position = resolve_polygon_boundary_point_raw(&vertices, edge_index, t)?;
-            Some(ParameterControlledPoint {
+                .map(|group_index| anchors.get(*group_index).and_then(|value| value.clone()))
+                .collect::<Option<Vec<_>>>()
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let (edge_index, t) = polygon_parameter_to_edge(&vertices, parameter_value)
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let position = resolve_polygon_boundary_point_raw(&vertices, edge_index, t)
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            Ok(ParameterControlledPoint {
                 position,
                 constraint: RawPointConstraint::PolygonBoundary {
                     vertex_group_indices,
@@ -531,19 +616,30 @@ pub(crate) fn decode_parameter_controlled_point(
             })
         }
         crate::format::GroupKind::Circle => {
-            let host_path = find_indexed_path(file, host_group)?;
+            let host_path = find_indexed_path(file, host_group)
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
             if host_path.refs.len() != 2 {
-                return None;
+                return Err(ParameterControlledPointDecodeError::InvalidHostGeometry);
             }
-            let center_group_index = host_path.refs[0].checked_sub(1)?;
-            let radius_group_index = host_path.refs[1].checked_sub(1)?;
-            let center = anchors.get(center_group_index)?.clone()?;
-            let radius_point = anchors.get(radius_group_index)?.clone()?;
+            let center_group_index = host_path.refs[0]
+                .checked_sub(1)
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let radius_group_index = host_path.refs[1]
+                .checked_sub(1)
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let center = anchors
+                .get(center_group_index)
+                .and_then(|value| value.clone())
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let radius_point = anchors
+                .get(radius_group_index)
+                .and_then(|value| value.clone())
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
             let angle = std::f64::consts::TAU * parameter_value;
             let unit_x = angle.cos();
             let unit_y = angle.sin();
             let position = resolve_circle_point_raw(&center, &radius_point, unit_x, unit_y);
-            Some(ParameterControlledPoint {
+            Ok(ParameterControlledPoint {
                 position,
                 constraint: RawPointConstraint::Circle(PointOnCircleConstraint {
                     center_group_index,
@@ -557,19 +653,36 @@ pub(crate) fn decode_parameter_controlled_point(
             })
         }
         crate::format::GroupKind::ThreePointArc => {
-            let host_path = find_indexed_path(file, host_group)?;
+            let host_path = find_indexed_path(file, host_group)
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
             if host_path.refs.len() != 3 {
-                return None;
+                return Err(ParameterControlledPointDecodeError::InvalidHostGeometry);
             }
             let normalized = wrap_unit_interval(parameter_value);
-            let start_group_index = host_path.refs[0].checked_sub(1)?;
-            let mid_group_index = host_path.refs[1].checked_sub(1)?;
-            let end_group_index = host_path.refs[2].checked_sub(1)?;
-            let start = anchors.get(start_group_index)?.clone()?;
-            let mid = anchors.get(mid_group_index)?.clone()?;
-            let end = anchors.get(end_group_index)?.clone()?;
-            let position = point_on_three_point_arc(&start, &mid, &end, normalized)?;
-            Some(ParameterControlledPoint {
+            let start_group_index = host_path.refs[0]
+                .checked_sub(1)
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let mid_group_index = host_path.refs[1]
+                .checked_sub(1)
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let end_group_index = host_path.refs[2]
+                .checked_sub(1)
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let start = anchors
+                .get(start_group_index)
+                .and_then(|value| value.clone())
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let mid = anchors
+                .get(mid_group_index)
+                .and_then(|value| value.clone())
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let end = anchors
+                .get(end_group_index)
+                .and_then(|value| value.clone())
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let position = point_on_three_point_arc(&start, &mid, &end, normalized)
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            Ok(ParameterControlledPoint {
                 position,
                 constraint: RawPointConstraint::Arc(PointOnArcConstraint {
                     start_group_index,
@@ -583,27 +696,51 @@ pub(crate) fn decode_parameter_controlled_point(
             })
         }
         crate::format::GroupKind::ArcOnCircle => {
-            let host_path = find_indexed_path(file, host_group)?;
+            let host_path = find_indexed_path(file, host_group)
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
             if host_path.refs.len() != 3 {
-                return None;
+                return Err(ParameterControlledPointDecodeError::InvalidHostGeometry);
             }
             let normalized = wrap_unit_interval(parameter_value);
-            let circle_group = groups.get(host_path.refs[0].checked_sub(1)?)?;
+            let circle_group = groups
+                .get(
+                    host_path.refs[0]
+                        .checked_sub(1)
+                        .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?,
+                )
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
             if !is_circle_group_kind(circle_group.header.kind()) {
-                return None;
+                return Err(ParameterControlledPointDecodeError::InvalidHostGeometry);
             }
-            let circle_path = find_indexed_path(file, circle_group)?;
+            let circle_path = find_indexed_path(file, circle_group)
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
             if circle_path.refs.len() != 2 {
-                return None;
+                return Err(ParameterControlledPointDecodeError::InvalidHostGeometry);
             }
-            let center_group_index = circle_path.refs[0].checked_sub(1)?;
-            let start_group_index = host_path.refs[1].checked_sub(1)?;
-            let end_group_index = host_path.refs[2].checked_sub(1)?;
-            let center = anchors.get(center_group_index)?.clone()?;
-            let start = anchors.get(start_group_index)?.clone()?;
-            let end = anchors.get(end_group_index)?.clone()?;
-            let position = point_on_circle_arc(&center, &start, &end, normalized)?;
-            Some(ParameterControlledPoint {
+            let center_group_index = circle_path.refs[0]
+                .checked_sub(1)
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let start_group_index = host_path.refs[1]
+                .checked_sub(1)
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let end_group_index = host_path.refs[2]
+                .checked_sub(1)
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let center = anchors
+                .get(center_group_index)
+                .and_then(|value| value.clone())
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let start = anchors
+                .get(start_group_index)
+                .and_then(|value| value.clone())
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let end = anchors
+                .get(end_group_index)
+                .and_then(|value| value.clone())
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let position = point_on_circle_arc(&center, &start, &end, normalized)
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            Ok(ParameterControlledPoint {
                 position,
                 constraint: RawPointConstraint::CircleArc(PointOnCircleArcConstraint {
                     center_group_index,
@@ -617,20 +754,37 @@ pub(crate) fn decode_parameter_controlled_point(
             })
         }
         crate::format::GroupKind::CenterArc => {
-            let host_path = find_indexed_path(file, host_group)?;
+            let host_path = find_indexed_path(file, host_group)
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
             if host_path.refs.len() != 3 {
-                return None;
+                return Err(ParameterControlledPointDecodeError::InvalidHostGeometry);
             }
             let normalized = wrap_unit_interval(parameter_value);
-            let center_group_index = host_path.refs[0].checked_sub(1)?;
-            let start_group_index = host_path.refs[1].checked_sub(1)?;
-            let end_group_index = host_path.refs[2].checked_sub(1)?;
-            let center = anchors.get(center_group_index)?.clone()?;
-            let start = anchors.get(start_group_index)?.clone()?;
-            let end = anchors.get(end_group_index)?.clone()?;
+            let center_group_index = host_path.refs[0]
+                .checked_sub(1)
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let start_group_index = host_path.refs[1]
+                .checked_sub(1)
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let end_group_index = host_path.refs[2]
+                .checked_sub(1)
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let center = anchors
+                .get(center_group_index)
+                .and_then(|value| value.clone())
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let start = anchors
+                .get(start_group_index)
+                .and_then(|value| value.clone())
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let end = anchors
+                .get(end_group_index)
+                .and_then(|value| value.clone())
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
             let reversed_t = 1.0 - normalized;
-            let position = point_on_circle_arc(&center, &start, &end, reversed_t)?;
-            Some(ParameterControlledPoint {
+            let position = point_on_circle_arc(&center, &start, &end, reversed_t)
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            Ok(ParameterControlledPoint {
                 position,
                 constraint: RawPointConstraint::CircleArc(PointOnCircleArcConstraint {
                     center_group_index,
@@ -643,7 +797,7 @@ pub(crate) fn decode_parameter_controlled_point(
                 source_expr,
             })
         }
-        _ => None,
+        _ => Err(ParameterControlledPointDecodeError::InvalidHostGeometry),
     }
 }
 
@@ -670,14 +824,14 @@ pub(crate) fn decode_coordinate_point(
         return None;
     }
     let calc_group = groups.get(path.refs[1].checked_sub(1)?)?;
-    let expr = decode_function_expr(file, groups, calc_group)?;
+    let expr = try_decode_function_expr(file, groups, calc_group).ok()?;
 
     match kind {
         crate::format::GroupKind::CoordinatePoint => {
             let parameter_group = groups.get(path.refs[0].checked_sub(1)?)?;
             let parameter_name = decode_label_name(file, parameter_group)?;
             let parameter_value =
-                decode_parameter_control_value_for_group(file, groups, parameter_group)?;
+                try_decode_parameter_control_value_for_group(file, groups, parameter_group).ok()?;
             let parameters = BTreeMap::from([(parameter_name.clone(), parameter_value)]);
             let y = evaluate_expr_with_parameters(&expr, 0.0, &parameters)?;
             let world = PointRecord {
@@ -720,7 +874,8 @@ pub(crate) fn decode_coordinate_point(
             let world = match axis {
                 crate::runtime::scene::CoordinateAxis::Horizontal => {
                     let parameter_value =
-                        decode_parameter_control_value_for_group(file, groups, parameter_group)?;
+                        try_decode_parameter_control_value_for_group(file, groups, parameter_group)
+                            .ok()?;
                     let offset = evaluate_expr_with_parameters(
                         &expr,
                         0.0,
@@ -766,17 +921,19 @@ pub(crate) fn decode_coordinate_point(
             let source_world = to_world(&source_position, graph);
             let x_calc_group = groups.get(path.refs[1].checked_sub(1)?)?;
             let y_calc_group = groups.get(path.refs[2].checked_sub(1)?)?;
-            let x_expr = decode_function_expr(file, groups, x_calc_group)?;
-            let y_expr = decode_function_expr(file, groups, y_calc_group)?;
+            let x_expr = try_decode_function_expr(file, groups, x_calc_group).ok()?;
+            let y_expr = try_decode_function_expr(file, groups, y_calc_group).ok()?;
 
             let x_parameter_group = first_path_group(file, groups, x_calc_group)?;
             let y_parameter_group = first_path_group(file, groups, y_calc_group)?;
             let x_parameter_name = decode_label_name(file, x_parameter_group)?;
             let y_parameter_name = decode_label_name(file, y_parameter_group)?;
             let x_parameter_value =
-                decode_parameter_control_value_for_group(file, groups, x_parameter_group)?;
+                try_decode_parameter_control_value_for_group(file, groups, x_parameter_group)
+                    .ok()?;
             let y_parameter_value =
-                decode_parameter_control_value_for_group(file, groups, y_parameter_group)?;
+                try_decode_parameter_control_value_for_group(file, groups, y_parameter_group)
+                    .ok()?;
             let dx = evaluate_expr_with_parameters(
                 &x_expr,
                 0.0,
@@ -811,16 +968,6 @@ pub(crate) fn decode_coordinate_point(
         }
         _ => None,
     }
-}
-
-pub(crate) fn decode_point_constraint(
-    file: &GspFile,
-    groups: &[ObjectGroup],
-    group: &ObjectGroup,
-    anchors: Option<&[Option<PointRecord>]>,
-    graph: &Option<GraphTransform>,
-) -> Option<RawPointConstraint> {
-    decode_point_constraint_impl(file, groups, group, anchors, graph)
 }
 
 pub(crate) fn try_decode_point_constraint(
@@ -908,6 +1055,23 @@ pub(crate) fn try_decode_point_constraint(
     if matches!(host_kind, crate::format::GroupKind::Segment) {
         return try_decode_point_on_segment_constraint(file, groups, group)
             .map(RawPointConstraint::Segment);
+    }
+
+    if matches!(host_kind, crate::format::GroupKind::Circle) {
+        return try_decode_circle_point_constraint(file, host_group, payload);
+    }
+
+    if matches!(host_kind, crate::format::GroupKind::Polygon) {
+        return try_decode_polygon_boundary_constraint(file, host_group, payload);
+    }
+
+    if matches!(
+        host_kind,
+        crate::format::GroupKind::ThreePointArc
+            | crate::format::GroupKind::ArcOnCircle
+            | crate::format::GroupKind::CenterArc
+    ) {
+        return try_decode_arc_family_constraint(file, groups, host_group, payload);
     }
 
     decode_point_constraint_impl(file, groups, group, anchors, graph).ok_or(
@@ -1197,6 +1361,135 @@ fn decode_path_point_constraint(
     }
 }
 
+fn try_decode_circle_point_constraint(
+    file: &GspFile,
+    host_group: &ObjectGroup,
+    payload: &[u8],
+) -> Result<RawPointConstraint, PointConstraintDecodeError> {
+    let host_path = find_indexed_path(file, host_group)
+        .filter(|path| path.refs.len() == 2)
+        .ok_or(PointConstraintDecodeError::InvalidCircleHostPath)?;
+    let unit_x = read_f64(payload, 4);
+    let unit_y = read_f64(payload, 12);
+    if !unit_x.is_finite() || !unit_y.is_finite() {
+        return Err(PointConstraintDecodeError::NonFiniteCircleUnit);
+    }
+    Ok(RawPointConstraint::Circle(PointOnCircleConstraint {
+        center_group_index: host_path.refs[0]
+            .checked_sub(1)
+            .ok_or(PointConstraintDecodeError::InvalidCircleHostPath)?,
+        radius_group_index: host_path.refs[1]
+            .checked_sub(1)
+            .ok_or(PointConstraintDecodeError::InvalidCircleHostPath)?,
+        unit_x,
+        unit_y,
+    }))
+}
+
+fn try_decode_polygon_boundary_constraint(
+    file: &GspFile,
+    host_group: &ObjectGroup,
+    payload: &[u8],
+) -> Result<RawPointConstraint, PointConstraintDecodeError> {
+    let host_path = find_indexed_path(file, host_group)
+        .filter(|path| path.refs.len() >= 2)
+        .ok_or(PointConstraintDecodeError::InvalidPolygonHostPath)?;
+    let t = read_f64(payload, 4);
+    if !t.is_finite() {
+        return Err(PointConstraintDecodeError::NonFiniteParameter);
+    }
+    let vertex_group_indices = host_path
+        .refs
+        .iter()
+        .map(|vertex| vertex.checked_sub(1))
+        .collect::<Option<Vec<_>>>()
+        .ok_or(PointConstraintDecodeError::InvalidPolygonHostPath)?;
+    let edge_index = decode_polygon_edge_index(host_path.refs.len(), payload)
+        .ok_or(PointConstraintDecodeError::InvalidPolygonEdgeIndex)?;
+    Ok(RawPointConstraint::PolygonBoundary {
+        vertex_group_indices,
+        edge_index,
+        t,
+    })
+}
+
+fn try_decode_arc_family_constraint(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    host_group: &ObjectGroup,
+    payload: &[u8],
+) -> Result<RawPointConstraint, PointConstraintDecodeError> {
+    let host_kind = host_group.header.kind();
+    let host_path = find_indexed_path(file, host_group)
+        .filter(|path| path.refs.len() == 3)
+        .ok_or(PointConstraintDecodeError::InvalidArcHostPath(host_kind))?;
+    let t = read_f64(payload, 4);
+    if !t.is_finite() {
+        return Err(PointConstraintDecodeError::NonFiniteParameter);
+    }
+    match host_kind {
+        crate::format::GroupKind::ThreePointArc => {
+            Ok(RawPointConstraint::Arc(PointOnArcConstraint {
+                start_group_index: host_path.refs[0]
+                    .checked_sub(1)
+                    .ok_or(PointConstraintDecodeError::InvalidArcHostPath(host_kind))?,
+                mid_group_index: host_path.refs[1]
+                    .checked_sub(1)
+                    .ok_or(PointConstraintDecodeError::InvalidArcHostPath(host_kind))?,
+                end_group_index: host_path.refs[2]
+                    .checked_sub(1)
+                    .ok_or(PointConstraintDecodeError::InvalidArcHostPath(host_kind))?,
+                t,
+            }))
+        }
+        crate::format::GroupKind::ArcOnCircle => {
+            let circle_group = groups
+                .get(
+                    host_path.refs[0]
+                        .checked_sub(1)
+                        .ok_or(PointConstraintDecodeError::ArcHostMissingCircle)?,
+                )
+                .ok_or(PointConstraintDecodeError::ArcHostMissingCircle)?;
+            if !is_circle_group_kind(circle_group.header.kind()) {
+                return Err(PointConstraintDecodeError::ArcHostMissingCircle);
+            }
+            let circle_path = find_indexed_path(file, circle_group)
+                .filter(|path| path.refs.len() == 2)
+                .ok_or(PointConstraintDecodeError::InvalidArcCirclePath)?;
+            Ok(RawPointConstraint::CircleArc(PointOnCircleArcConstraint {
+                center_group_index: circle_path.refs[0]
+                    .checked_sub(1)
+                    .ok_or(PointConstraintDecodeError::InvalidArcCirclePath)?,
+                start_group_index: host_path.refs[1]
+                    .checked_sub(1)
+                    .ok_or(PointConstraintDecodeError::InvalidArcHostPath(host_kind))?,
+                end_group_index: host_path.refs[2]
+                    .checked_sub(1)
+                    .ok_or(PointConstraintDecodeError::InvalidArcHostPath(host_kind))?,
+                t,
+            }))
+        }
+        crate::format::GroupKind::CenterArc => {
+            Ok(RawPointConstraint::CircleArc(PointOnCircleArcConstraint {
+                center_group_index: host_path.refs[0]
+                    .checked_sub(1)
+                    .ok_or(PointConstraintDecodeError::InvalidArcHostPath(host_kind))?,
+                start_group_index: host_path.refs[1]
+                    .checked_sub(1)
+                    .ok_or(PointConstraintDecodeError::InvalidArcHostPath(host_kind))?,
+                end_group_index: host_path.refs[2]
+                    .checked_sub(1)
+                    .ok_or(PointConstraintDecodeError::InvalidArcHostPath(host_kind))?,
+                t: 1.0 - t,
+            }))
+        }
+        _ => Err(PointConstraintDecodeError::UnsupportedOrMalformed {
+            host_kind,
+            payload_len: payload.len(),
+        }),
+    }
+}
+
 fn try_decode_path_point_constraint(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -1359,8 +1652,9 @@ fn decode_point_on_function_constraint(
         .records
         .iter()
         .find(|record| record.record_type == 0x0902)?;
-    let descriptor = decode_function_plot_descriptor(descriptor_record.payload(&file.data))?;
-    let expr = decode_function_expr(file, groups, definition_group)?;
+    let descriptor =
+        try_decode_function_plot_descriptor(descriptor_record.payload(&file.data)).ok()?;
+    let expr = try_decode_function_expr(file, groups, definition_group).ok()?;
     let points = sample_function_points(&expr, &descriptor)
         .into_iter()
         .flatten()

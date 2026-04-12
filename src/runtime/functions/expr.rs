@@ -28,7 +28,6 @@ pub(crate) enum FunctionExpr {
 pub(crate) enum BinaryOp {
     Add,
     Sub,
-    Mul,
     Div,
 }
 
@@ -84,7 +83,6 @@ pub(crate) fn function_expr_label_with_variable(expr: FunctionExpr, variable: &s
                 text.push_str(match op {
                     BinaryOp::Add => " + ",
                     BinaryOp::Sub => " - ",
-                    BinaryOp::Mul => " * ",
                     BinaryOp::Div => " / ",
                 });
                 text.push_str(&format_function_term(term, variable));
