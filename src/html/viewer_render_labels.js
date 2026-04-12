@@ -24,7 +24,17 @@
   modules.render.labelBounds = function labelBounds(env, label) {
     const worldAnchor = label.screenSpace
       ? { x: /** @type {Point} */ (label.anchor).x, y: /** @type {Point} */ (label.anchor).y }
-      : env.resolvePoint(label.anchor);
+      : label.binding?.kind === "point-bound-expression-value"
+        ? (() => {
+            const point = env.resolveScenePoint(label.binding.pointIndex);
+            return point
+              ? {
+                  x: point.x + label.binding.anchorDx,
+                  y: point.y + label.binding.anchorDy,
+                }
+              : null;
+          })()
+        : env.resolvePoint(label.anchor);
     if (!worldAnchor) return null;
     const screen = label.screenSpace ? worldAnchor : env.toScreen(worldAnchor);
     const metrics = modules.render.labelMetrics(env, label.text);

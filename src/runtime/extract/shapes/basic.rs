@@ -199,6 +199,18 @@ pub(crate) fn collect_line_shapes(
                             end_index,
                         })
                     }
+                    (crate::format::GroupKind::Line, Some(start_index), Some(end_index)) => {
+                        Some(LineBinding::Line {
+                            start_index,
+                            end_index,
+                        })
+                    }
+                    (crate::format::GroupKind::Ray, Some(start_index), Some(end_index)) => {
+                        Some(LineBinding::Ray {
+                            start_index,
+                            end_index,
+                        })
+                    }
                     (
                         crate::format::GroupKind::MeasurementLine
                         | crate::format::GroupKind::AxisLine,
@@ -760,11 +772,16 @@ pub(crate) fn collect_bound_line_shapes(
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
     kind: crate::format::GroupKind,
+    suppressed_group_indices: &std::collections::BTreeSet<usize>,
 ) -> Vec<LineShape> {
     groups
         .iter()
-        .filter(|group| (group.header.kind()) == kind)
-        .filter_map(|group| {
+        .enumerate()
+        .filter(|(_, group)| (group.header.kind()) == kind)
+        .filter_map(|(group_index, group)| {
+            if suppressed_group_indices.contains(&group_index) {
+                return None;
+            }
             let path = find_indexed_path(file, group)?;
             if path.refs.len() != 2 {
                 return None;
@@ -792,6 +809,14 @@ pub(crate) fn collect_bound_line_shapes(
             })
         })
         .collect()
+}
+
+pub(crate) fn collect_materialized_ray_groups(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+) -> BTreeSet<usize> {
+    let _ = (file, groups);
+    BTreeSet::new()
 }
 
 pub(crate) fn collect_polygon_shapes(

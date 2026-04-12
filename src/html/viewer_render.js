@@ -619,7 +619,54 @@
         ], line.color, line.dashed);
       }
     };
-    for (const line of env.currentScene().lines) {
+    const pointsEqual = (/** @type {Point} */ left, /** @type {Point} */ right) =>
+      Math.abs(left.x - right.x) < 1e-6 && Math.abs(left.y - right.y) < 1e-6;
+    const extendedRayStart = (/** @type {Point} */ startPoint, /** @type {Point} */ endPoint) => {
+      const dx = endPoint.x - startPoint.x;
+      const dy = endPoint.y - startPoint.y;
+      const lenSq = dx * dx + dy * dy;
+      if (lenSq <= 1e-9) return startPoint;
+      let bestPoint = startPoint;
+      let bestT = 0;
+      for (const candidate of env.currentScene().lines) {
+        if (candidate.visible === false || candidate.binding?.kind !== "segment") continue;
+        const a = env.resolveScenePoint(candidate.binding.startIndex);
+        const b = env.resolveScenePoint(candidate.binding.endIndex);
+        if (!a || !b) continue;
+        let other = null;
+        if (pointsEqual(a, startPoint)) other = b;
+        else if (pointsEqual(b, startPoint)) other = a;
+        if (!other) continue;
+        const cross = (other.x - startPoint.x) * dy - (other.y - startPoint.y) * dx;
+        if (Math.abs(cross) > 1e-6) continue;
+        const t = ((other.x - startPoint.x) * dx + (other.y - startPoint.y) * dy) / lenSq;
+        if (t > bestT + 1e-9) {
+          bestT = t;
+          bestPoint = other;
+        }
+      }
+      return bestPoint;
+    };
+    const extendedRayEnd = (
+      /** @type {Point} */ originalStart,
+      /** @type {Point} */ originalEnd,
+      /** @type {Point} */ shiftedStart,
+    ) => ({
+      x: shiftedStart.x + (originalEnd.x - originalStart.x),
+      y: shiftedStart.y + (originalEnd.y - originalStart.y),
+    });
+    const linePriority = (/** @type {RuntimeLineJson} */ line) => (
+      line.binding?.kind === "line"
+        || line.binding?.kind === "ray"
+        || line.binding?.kind === "angle-bisector-ray"
+        || line.binding?.kind === "perpendicular-line"
+        || line.binding?.kind === "parallel-line"
+    ) ? 0 : 1;
+    const orderedLines = env.currentScene().lines
+      .map((line, index) => ({ line, index }))
+      .sort((left, right) => linePriority(left.line) - linePriority(right.line) || left.index - right.index)
+      .map((entry) => entry.line);
+    for (const line of orderedLines) {
       if (line.visible === false) continue;
       if (line.binding?.kind === "graph-helper-line") continue;
       if (line.binding?.kind === "angle-marker") {
@@ -665,7 +712,14 @@
               })()
           : (() => {
               const startPoint = env.resolveScenePoint(line.binding.startIndex);
-              return startPoint ? env.toScreen(startPoint) : null;
+              if (!startPoint) return null;
+              if (line.binding.kind === "ray") {
+                const endPoint = env.resolveScenePoint(line.binding.endIndex);
+                if (!endPoint) return null;
+                const shiftedStart = extendedRayStart(startPoint, endPoint);
+                return env.toScreen(shiftedStart);
+              }
+              return env.toScreen(startPoint);
             })();
         const end = line.binding.kind === "perpendicular-line"
           ? (() => {
@@ -725,6 +779,12 @@
               })()
           : (() => {
               const endPoint = env.resolveScenePoint(line.binding.endIndex);
+              if (line.binding.kind === "ray") {
+                const startPoint = env.resolveScenePoint(line.binding.startIndex);
+                if (!startPoint || !endPoint) return null;
+                const shiftedStart = extendedRayStart(startPoint, endPoint);
+                return env.toScreen(extendedRayEnd(startPoint, endPoint, shiftedStart));
+              }
               return endPoint ? env.toScreen(endPoint) : null;
             })();
         if (!start || !end) continue;

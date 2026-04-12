@@ -176,16 +176,30 @@ pub(crate) enum IterationPointHandle {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct PolygonIterationFamily {
-    pub(crate) vertex_indices: Vec<usize>,
-    pub(crate) dx: f64,
-    pub(crate) dy: f64,
-    pub(crate) secondary_dx: Option<f64>,
-    pub(crate) secondary_dy: Option<f64>,
-    pub(crate) depth: usize,
-    pub(crate) parameter_name: Option<String>,
-    pub(crate) bidirectional: bool,
-    pub(crate) color: [u8; 4],
+pub(crate) enum PolygonIterationFamily {
+    Translate {
+        vertex_indices: Vec<usize>,
+        dx: f64,
+        dy: f64,
+        secondary_dx: Option<f64>,
+        secondary_dy: Option<f64>,
+        depth: usize,
+        parameter_name: Option<String>,
+        bidirectional: bool,
+        color: [u8; 4],
+    },
+    CoordinateGrid {
+        vertex_indices: Vec<usize>,
+        parameter_name: String,
+        step_expr: FunctionExpr,
+        x_expr: FunctionExpr,
+        y_expr: FunctionExpr,
+        x_raw_scale: f64,
+        y_raw_scale: f64,
+        depth: usize,
+        depth_expr: Option<FunctionExpr>,
+        color: [u8; 4],
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -517,7 +531,10 @@ pub(crate) enum ScenePointBinding {
     DerivedParameter {
         source_index: usize,
     },
-    DerivedParameterExpr {
+    ConstraintParameterExpr {
+        expr: FunctionExpr,
+    },
+    ConstraintParameterFromPointExpr {
         source_index: usize,
         parameter_name: String,
         expr: FunctionExpr,
@@ -761,6 +778,16 @@ pub(crate) enum TextLabelBinding {
     },
     ExpressionValue {
         parameter_name: String,
+        result_name: Option<String>,
+        expr_label: String,
+        expr: FunctionExpr,
+    },
+    PointBoundExpressionValue {
+        point_index: usize,
+        anchor_dx: f64,
+        anchor_dy: f64,
+        parameter_name: String,
+        result_name: Option<String>,
         expr_label: String,
         expr: FunctionExpr,
     },

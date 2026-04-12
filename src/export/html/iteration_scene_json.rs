@@ -275,20 +275,75 @@ pub(super) enum PolygonIterationJson {
         bidirectional: bool,
         color: [u8; 4],
     },
+    CoordinateGrid {
+        #[serde(rename = "vertexIndices")]
+        vertex_indices: Vec<usize>,
+        #[serde(rename = "parameterName")]
+        parameter_name: String,
+        #[serde(rename = "stepExpr")]
+        step_expr: FunctionExprJson,
+        #[serde(rename = "xExpr")]
+        x_expr: FunctionExprJson,
+        #[serde(rename = "yExpr")]
+        y_expr: FunctionExprJson,
+        #[serde(rename = "xRawScale")]
+        x_raw_scale: f64,
+        #[serde(rename = "yRawScale")]
+        y_raw_scale: f64,
+        depth: usize,
+        #[serde(rename = "depthExpr")]
+        depth_expr: Option<FunctionExprJson>,
+        color: [u8; 4],
+    },
 }
 
 impl PolygonIterationJson {
     pub(super) fn from_family(family: &PolygonIterationFamily) -> Self {
-        Self::Translate {
-            vertex_indices: family.vertex_indices.clone(),
-            dx: family.dx,
-            dy: family.dy,
-            secondary_dx: family.secondary_dx,
-            secondary_dy: family.secondary_dy,
-            depth: family.depth,
-            parameter_name: family.parameter_name.clone(),
-            bidirectional: family.bidirectional,
-            color: family.color,
+        match family {
+            PolygonIterationFamily::Translate {
+                vertex_indices,
+                dx,
+                dy,
+                secondary_dx,
+                secondary_dy,
+                depth,
+                parameter_name,
+                bidirectional,
+                color,
+            } => Self::Translate {
+                vertex_indices: vertex_indices.clone(),
+                dx: *dx,
+                dy: *dy,
+                secondary_dx: *secondary_dx,
+                secondary_dy: *secondary_dy,
+                depth: *depth,
+                parameter_name: parameter_name.clone(),
+                bidirectional: *bidirectional,
+                color: *color,
+            },
+            PolygonIterationFamily::CoordinateGrid {
+                vertex_indices,
+                parameter_name,
+                step_expr,
+                x_expr,
+                y_expr,
+                x_raw_scale,
+                y_raw_scale,
+                depth,
+                depth_expr,
+                color,
+            } => Self::CoordinateGrid {
+                vertex_indices: vertex_indices.clone(),
+                parameter_name: parameter_name.clone(),
+                step_expr: FunctionExprJson::from_expr(step_expr),
+                x_expr: FunctionExprJson::from_expr(x_expr),
+                y_expr: FunctionExprJson::from_expr(y_expr),
+                x_raw_scale: *x_raw_scale,
+                y_raw_scale: *y_raw_scale,
+                depth: *depth,
+                depth_expr: depth_expr.as_ref().map(FunctionExprJson::from_expr),
+                color: *color,
+            },
         }
     }
 }

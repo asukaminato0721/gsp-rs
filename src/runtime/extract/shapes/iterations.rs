@@ -2,12 +2,14 @@ use std::collections::BTreeSet;
 
 use super::{
     CircleShape, GspFile, LineBinding, LineIterationFamily, LineShape, ObjectGroup, PointRecord,
-    PolygonIterationFamily, PolygonShape, color_from_style, decode_translated_point_constraint,
-    fill_color_from_styles, find_indexed_path, line_is_dashed, regular_polygon_iteration_step,
-    rotate_around, try_decode_parameter_controlled_point, try_decode_point_constraint,
+    PolygonIterationFamily, PolygonShape, color_from_style, decode_label_name,
+    decode_translated_point_constraint, fill_color_from_styles, find_indexed_path,
+    line_is_dashed, regular_polygon_iteration_step, rotate_around,
+    try_decode_parameter_controlled_point, try_decode_point_constraint,
 };
 use crate::runtime::extract::decode::resolve_circle_points_raw;
 use crate::runtime::extract::points::editable_non_graph_parameter_name_for_group;
+use crate::runtime::functions::{evaluate_function_group_with_overrides, try_decode_function_expr};
 use crate::runtime::scene::{CircleIterationFamily, IterationPointHandle};
 
 #[derive(Clone)]
@@ -978,6 +980,11 @@ pub(crate) fn collect_carried_iteration_polygons(
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            if let Some(polygons) =
+                collect_coordinate_point_polygon_grid_iteration(file, groups, source_group, path.refs.get(1).copied()?, anchors)
+            {
+                return Some(polygons);
+            }
             if (source_group.header.kind()) != crate::format::GroupKind::Polygon {
                 return None;
             }
@@ -1041,6 +1048,191 @@ pub(crate) fn collect_carried_iteration_polygons(
         })
         .flatten()
         .collect()
+}
+
+fn collect_coordinate_point_polygon_grid_iteration(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    source_group: &ObjectGroup,
+    iter_group_ordinal: usize,
+    anchors: &[Option<PointRecord>],
+) -> Option<Vec<PolygonShape>> {
+    if !source_group.header.kind().is_coordinate_object() {
+        return None;
+    }
+
+    let source_path = find_indexed_path(file, source_group)?;
+    if source_path.refs.len() < 3 {
+        return None;
+    }
+    let polygon_group = groups.get(source_path.refs.first()?.checked_sub(1)?)?;
+    if (polygon_group.header.kind()) != crate::format::GroupKind::Polygon {
+        return None;
+    }
+
+    let polygon_path = find_indexed_path(file, polygon_group)?;
+    if polygon_path.refs.len() != 4 {
+        return None;
+    }
+    let seed_polygon = polygon_path
+        .refs
+        .iter()
+        .map(|ordinal| anchors.get(ordinal.checked_sub(1)?).cloned().flatten())
+        .collect::<Option<Vec<_>>>()?;
+
+    let iter_group = groups.get(iter_group_ordinal.checked_sub(1)?)?;
+    if (iter_group.header.kind()) != crate::format::GroupKind::RegularPolygonIteration {
+        return None;
+    }
+    let iter_path = find_indexed_path(file, iter_group)?;
+    if iter_path.refs.last().copied() != Some(source_group.ordinal) {
+        return None;
+    }
+
+    let payload_depth = carried_iteration_depth(file, iter_group, 0);
+    if payload_depth == 0 {
+        return Some(Vec::new());
+    }
+
+    let parameter_group = groups.get(iter_path.refs.get(1)?.checked_sub(1)?)?;
+    let Some(parameter_name) = decode_label_name(file, parameter_group) else {
+        return None;
+    };
+    let mut parameter_value = crate::runtime::extract::try_decode_parameter_control_value_for_group(
+        file,
+        groups,
+        parameter_group,
+    )
+    .ok()
+    .unwrap_or(0.0);
+    let parameter_step_group = iter_path
+        .refs
+        .get(2)
+        .and_then(|ordinal| groups.get(ordinal.checked_sub(1)?));
+    let base_anchor = evaluate_coordinate_iteration_anchor(
+        file,
+        groups,
+        source_group,
+        anchors,
+        &parameter_name,
+        parameter_value,
+    );
+    let Some(base_anchor) = base_anchor else {
+        return None;
+    };
+    let color = fill_color_from_styles(polygon_group.header.style_b, polygon_group.header.style_c);
+    let mut polygons: Vec<PolygonShape> = Vec::new();
+    for _step in 1..=payload_depth {
+        if let Some(step_group) = parameter_step_group {
+            let overrides =
+                std::collections::BTreeMap::from([(parameter_name.clone(), parameter_value)]);
+            parameter_value = evaluate_function_group_with_overrides(file, groups, step_group, &overrides)
+                .unwrap_or(parameter_value + 1.0);
+        } else {
+            parameter_value += 1.0;
+        }
+        let iter_anchor = evaluate_coordinate_iteration_anchor(
+            file,
+            groups,
+            source_group,
+            anchors,
+            &parameter_name,
+            parameter_value,
+        )?;
+        let delta = iter_anchor - base_anchor.clone();
+        let already_present = polygons.iter().any(|polygon| {
+            polygon.points.first().is_some_and(|point| {
+                let seed = &seed_polygon[0];
+                (point.x - (seed.x + delta.x)).abs() < 1e-6
+                    && (point.y - (seed.y + delta.y)).abs() < 1e-6
+            })
+        });
+        if already_present {
+            continue;
+        }
+        polygons.push(PolygonShape {
+            points: seed_polygon
+                .iter()
+                .cloned()
+                .map(|point| point + delta.clone())
+                .collect(),
+            color,
+            visible: !iter_group.header.is_hidden(),
+            binding: None,
+        });
+    }
+    Some(polygons)
+}
+
+fn evaluate_coordinate_iteration_anchor(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    coordinate_group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+    parameter_name: &str,
+    parameter_value: f64,
+) -> Option<PointRecord> {
+    let path = find_indexed_path(file, coordinate_group)?;
+    let source_group_index = path.refs.first()?.checked_sub(1)?;
+    let source_position = anchors
+        .get(source_group_index)
+        .cloned()
+        .flatten()
+        .or_else(|| {
+            let source_group = groups.get(source_group_index)?;
+            ((source_group.header.kind()) == crate::format::GroupKind::Polygon)
+                .then(|| find_indexed_path(file, source_group))
+                .flatten()
+                .and_then(|polygon_path| anchors.get(polygon_path.refs.first()?.checked_sub(1)?))
+                .cloned()
+                .flatten()
+        });
+    let Some(source_position) = source_position else {
+        return None;
+    };
+    match coordinate_group.header.kind() {
+        crate::format::GroupKind::Unknown(20) => {
+            let x_calc_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+            let y_calc_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
+            let parameters =
+                std::collections::BTreeMap::from([(parameter_name.to_string(), parameter_value)]);
+            let dx = evaluate_function_group_with_overrides(file, groups, x_calc_group, &parameters)?
+                * function_group_raw_scale(file, groups, x_calc_group, &mut BTreeSet::new());
+            let dy = evaluate_function_group_with_overrides(file, groups, y_calc_group, &parameters)?
+                * function_group_raw_scale(file, groups, y_calc_group, &mut BTreeSet::new());
+            Some(PointRecord {
+                x: source_position.x + dx,
+                y: source_position.y - dy,
+            })
+        }
+        _ => None,
+    }
+}
+
+fn function_group_raw_scale(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    visiting: &mut BTreeSet<usize>,
+) -> f64 {
+    if !visiting.insert(group.ordinal) {
+        return 1.0;
+    }
+    let scale = match group.header.kind() {
+        crate::format::GroupKind::MeasuredValue => 37.79527559055118,
+        crate::format::GroupKind::FunctionExpr => find_indexed_path(file, group)
+            .map(|path| {
+                path.refs
+                    .iter()
+                    .filter_map(|ordinal| groups.get(ordinal.checked_sub(1)?))
+                    .map(|ref_group| function_group_raw_scale(file, groups, ref_group, visiting))
+                    .fold(1.0, f64::max)
+            })
+            .unwrap_or(1.0),
+        _ => 1.0,
+    };
+    visiting.remove(&group.ordinal);
+    scale
 }
 
 pub(crate) fn collect_carried_iteration_circles(
@@ -1431,10 +1623,19 @@ pub(crate) fn collect_carried_polygon_iteration_families(
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+            if let Some(family) = build_coordinate_point_polygon_grid_iteration_family(
+                file,
+                groups,
+                source_group,
+                iter_group,
+                group_to_point_index,
+            ) {
+                return Some(family);
+            }
             if (source_group.header.kind()) != crate::format::GroupKind::Polygon {
                 return None;
             }
-            let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
             if !matches!(
                 iter_group.header.kind(),
                 crate::format::GroupKind::AffineIteration
@@ -1470,7 +1671,7 @@ pub(crate) fn collect_carried_polygon_iteration_families(
             if depth == 0 {
                 return None;
             }
-            Some(PolygonIterationFamily {
+            Some(PolygonIterationFamily::Translate {
                 vertex_indices,
                 dx: step.x,
                 dy: step.y,
@@ -1486,6 +1687,76 @@ pub(crate) fn collect_carried_polygon_iteration_families(
             })
         })
         .collect()
+}
+
+fn build_coordinate_point_polygon_grid_iteration_family(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    source_group: &ObjectGroup,
+    iter_group: &ObjectGroup,
+    group_to_point_index: &[Option<usize>],
+) -> Option<PolygonIterationFamily> {
+    if !source_group.header.kind().is_coordinate_object() {
+        return None;
+    }
+    if (iter_group.header.kind()) != crate::format::GroupKind::RegularPolygonIteration {
+        return None;
+    }
+
+    let source_path = find_indexed_path(file, source_group)?;
+    if source_path.refs.len() < 3 {
+        return None;
+    }
+    let polygon_group_index = source_path.refs.first()?.checked_sub(1)?;
+    let polygon_group = groups.get(polygon_group_index)?;
+    if (polygon_group.header.kind()) != crate::format::GroupKind::Polygon {
+        return None;
+    }
+    let polygon_path = find_indexed_path(file, polygon_group)?;
+    if polygon_path.refs.len() != 4 {
+        return None;
+    }
+    let vertex_indices = polygon_path
+        .refs
+        .iter()
+        .map(|ordinal| group_to_point_index.get(ordinal.checked_sub(1)?).copied().flatten())
+        .collect::<Option<Vec<_>>>()?;
+
+    let iter_path = find_indexed_path(file, iter_group)?;
+    if iter_path.refs.last().copied() != Some(source_group.ordinal) {
+        return None;
+    }
+
+    let depth = carried_iteration_depth(file, iter_group, 0);
+    if depth == 0 {
+        return None;
+    }
+
+    let depth_expr = groups
+        .get(iter_path.refs.first()?.checked_sub(1)?)
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::FunctionExpr)
+        .and_then(|group| try_decode_function_expr(file, groups, group).ok());
+    let parameter_group = groups.get(iter_path.refs.get(1)?.checked_sub(1)?)?;
+    let parameter_name = decode_label_name(file, parameter_group)?;
+    let step_group = groups.get(iter_path.refs.get(2)?.checked_sub(1)?)?;
+    let step_expr = try_decode_function_expr(file, groups, step_group).ok()?;
+    let x_calc_group = groups.get(source_path.refs.get(1)?.checked_sub(1)?)?;
+    let y_calc_group = groups.get(source_path.refs.get(2)?.checked_sub(1)?)?;
+    let x_expr = try_decode_function_expr(file, groups, x_calc_group).ok()?;
+    let y_expr = try_decode_function_expr(file, groups, y_calc_group).ok()?;
+
+    Some(PolygonIterationFamily::CoordinateGrid {
+        vertex_indices,
+        parameter_name,
+        step_expr,
+        x_expr,
+        y_expr,
+        x_raw_scale: function_group_raw_scale(file, groups, x_calc_group, &mut BTreeSet::new()),
+        y_raw_scale: function_group_raw_scale(file, groups, y_calc_group, &mut BTreeSet::new()),
+        depth,
+        depth_expr,
+        color: fill_color_from_styles(polygon_group.header.style_b, polygon_group.header.style_c),
+    })
 }
 
 pub(crate) fn collect_iteration_shapes(

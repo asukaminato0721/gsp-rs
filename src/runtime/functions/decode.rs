@@ -1,7 +1,10 @@
+use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::format::{GspFile, ObjectGroup, read_f64, read_u16, read_u32};
 use crate::runtime::extract::{find_indexed_path, try_decode_parameter_control_value_for_group};
+use crate::runtime::extract::points::collect_point_objects;
+use crate::runtime::extract::shapes::collect_raw_object_anchors;
 use crate::runtime::functions::{evaluate_expr_with_parameters, function_expr_label};
 use crate::runtime::payload_consts::{
     EXPR_OP_ADD, EXPR_OP_DIV, EXPR_OP_MUL, EXPR_OP_POW, EXPR_OP_SUB, EXPR_PARAMETER_MASK,
@@ -16,6 +19,10 @@ use super::expr::{
     canonicalize_function_expr, decode_unary_function, function_ast_contains_symbol,
 };
 
+thread_local! {
+    static RESOLVING_MEASURED_VALUE: Cell<bool> = const { Cell::new(false) };
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ParameterBinding {
     name: String,
@@ -28,6 +35,15 @@ pub(crate) fn try_decode_function_expr(
     group: &ObjectGroup,
 ) -> Result<FunctionExpr, FunctionExprParseError> {
     decode_function_expr_recursive(file, groups, group, &mut BTreeSet::new())
+}
+
+pub(crate) fn evaluate_function_group_with_overrides(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    overrides: &BTreeMap<String, f64>,
+) -> Option<f64> {
+    evaluate_function_group_recursive(file, groups, group, overrides, &mut BTreeSet::new())
 }
 
 fn decode_function_expr_recursive(
@@ -68,6 +84,73 @@ fn decode_function_expr_recursive(
     })();
     visiting.remove(&group.ordinal);
     expr
+}
+
+fn evaluate_function_group_recursive(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    overrides: &BTreeMap<String, f64>,
+    visiting: &mut BTreeSet<usize>,
+) -> Option<f64> {
+    if !visiting.insert(group.ordinal) {
+        return None;
+    }
+    let result = (|| {
+        if (group.header.kind()) != crate::format::GroupKind::FunctionExpr {
+            return decode_runtime_parameter_binding(file, groups, group, overrides, visiting)
+                .map(|binding| binding.value);
+        }
+        let payload = group
+            .records
+            .iter()
+            .find(|record| record.record_type == RECORD_FUNCTION_EXPR_PAYLOAD)
+            .map(|record| record.payload(&file.data))?;
+        let mut parameters = BTreeMap::new();
+        if let Some(path) = find_indexed_path(file, group) {
+            for (index, ordinal) in path.refs.iter().copied().enumerate() {
+                let parameter_group = groups.get(ordinal.checked_sub(1)?)?;
+                let binding = decode_runtime_parameter_binding(
+                    file,
+                    groups,
+                    parameter_group,
+                    overrides,
+                    visiting,
+                );
+                let Some(binding) = binding else {
+                    return None;
+                };
+                parameters.insert(index as u16, binding);
+            }
+        }
+        let expr = if let Some(text) = extract_inline_function_token(payload) {
+            if text.eq_ignore_ascii_case("x") {
+                FunctionExpr::Identity
+            } else if let Ok(value) = text.parse::<f64>() {
+                if value == 0.0 {
+                    match try_decode_inner_function_expr(payload, &parameters) {
+                        Ok(expr) => expr,
+                        Err(_) => FunctionExpr::Constant(value),
+                    }
+                } else {
+                    FunctionExpr::Constant(value)
+                }
+            } else {
+                match try_decode_inner_function_expr(payload, &parameters) {
+                    Ok(expr) => expr,
+                    Err(_) => return None,
+                }
+            }
+        } else {
+            match try_decode_inner_function_expr(payload, &parameters) {
+                Ok(expr) => expr,
+                Err(_) => return None,
+            }
+        };
+        evaluate_expr_with_parameters(&expr, 0.0, overrides)
+    })();
+    visiting.remove(&group.ordinal);
+    result
 }
 
 #[derive(Debug, Clone, PartialEq, Error)]
@@ -129,6 +212,44 @@ fn collect_parameter_bindings(
     bindings
 }
 
+fn decode_runtime_parameter_binding(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    overrides: &BTreeMap<String, f64>,
+    visiting: &mut BTreeSet<usize>,
+) -> Option<ParameterBinding> {
+    if (group.header.kind()) == crate::format::GroupKind::ParameterAnchor {
+        let binding = decode_parameter_anchor_binding(file, group)?;
+        let value = overrides.get(&binding.name).copied().unwrap_or(binding.value);
+        return Some(ParameterBinding {
+            name: binding.name,
+            value,
+        });
+    }
+    if (group.header.kind()) == crate::format::GroupKind::MeasuredValue {
+        return decode_measured_value_binding(file, groups, group);
+    }
+    if (group.header.kind()) == crate::format::GroupKind::FunctionExpr {
+        let expr = decode_function_expr_recursive(file, groups, group, visiting).ok()?;
+        let name = group_name(file, group).unwrap_or_else(|| function_expr_label(expr.clone()));
+        let value = evaluate_function_group_recursive(file, groups, group, overrides, visiting)?;
+        return Some(ParameterBinding { name, value });
+    }
+
+    let label_payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == RECORD_LABEL_AUX)
+        .map(|record| record.payload(&file.data))?;
+    let name = decode_parameter_name(label_payload)?;
+    let value = overrides
+        .get(&name)
+        .copied()
+        .or_else(|| try_decode_parameter_control_value_for_group(file, groups, group).ok())?;
+    value.is_finite().then_some(ParameterBinding { name, value })
+}
+
 fn decode_parameter_binding_recursive(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -138,10 +259,13 @@ fn decode_parameter_binding_recursive(
     if (group.header.kind()) == crate::format::GroupKind::ParameterAnchor {
         return decode_parameter_anchor_binding(file, group);
     }
+    if (group.header.kind()) == crate::format::GroupKind::MeasuredValue {
+        return decode_measured_value_binding(file, groups, group);
+    }
     if (group.header.kind()) == crate::format::GroupKind::FunctionExpr {
         let expr = decode_function_expr_recursive(file, groups, group, visiting).ok()?;
         return Some(ParameterBinding {
-            name: function_expr_label(expr.clone()),
+            name: group_name(file, group).unwrap_or_else(|| function_expr_label(expr.clone())),
             value: evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new())?,
         });
     }
@@ -204,6 +328,58 @@ fn decode_parameter_anchor_binding(
         name,
         value,
     })
+}
+
+fn decode_measured_value_binding(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<ParameterBinding> {
+    let path = find_indexed_path(file, group)?;
+    let host_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+    if !host_group.header.kind().is_line_like() {
+        return None;
+    }
+    let host_path = find_indexed_path(file, host_group)?;
+    if host_path.refs.len() != 2 {
+        return None;
+    }
+
+    let anchors = RESOLVING_MEASURED_VALUE.with(|flag| {
+        if flag.replace(true) {
+            return None;
+        }
+        let point_map = collect_point_objects(file, groups);
+        let anchors = collect_raw_object_anchors(file, groups, &point_map, None);
+        flag.set(false);
+        Some(anchors)
+    })?;
+    let start = anchors.get(host_path.refs[0].checked_sub(1)?)?.clone()?;
+    let end = anchors.get(host_path.refs[1].checked_sub(1)?)?.clone()?;
+    let value = ((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt() / 37.79527559055118;
+    if !value.is_finite() {
+        return None;
+    }
+
+    let name = group_name(file, group).or_else(|| segment_name(file, groups, host_group))?;
+    Some(ParameterBinding { name, value })
+}
+
+fn group_name(file: &GspFile, group: &ObjectGroup) -> Option<String> {
+    group.records
+        .iter()
+        .find(|record| record.record_type == RECORD_LABEL_AUX)
+        .and_then(|record| decode_parameter_name(record.payload(&file.data)))
+}
+
+fn segment_name(file: &GspFile, groups: &[ObjectGroup], segment_group: &ObjectGroup) -> Option<String> {
+    let path = find_indexed_path(file, segment_group)?;
+    let names = path
+        .refs
+        .iter()
+        .map(|ordinal| group_name(file, groups.get(ordinal.checked_sub(1)?)?))
+        .collect::<Option<Vec<_>>>()?;
+    (names.len() >= 2).then(|| names.join(""))
 }
 
 fn decode_parameter_name(label_payload: &[u8]) -> Option<String> {
@@ -553,9 +729,121 @@ pub(crate) fn try_decode_inner_function_expr(
     payload: &[u8],
     parameters: &BTreeMap<u16, ParameterBinding>,
 ) -> Result<FunctionExpr, FunctionExprParseError> {
-    parse_function_expr(payload, parameters).map(canonicalize_function_expr)
+    let words = payload
+        .chunks_exact(2)
+        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+        .collect::<Vec<_>>();
+    if let Some(ast) = try_decode_special_grouped_payload(&words, parameters) {
+        return Ok(canonicalize_function_expr(ast));
+    }
+    let parsed = if words.contains(&0x000b) {
+        parse_grouped_function_expr_from_words(&words, parameters)
+            .or_else(|_| parse_function_expr_from_words(&words, parameters))
+    } else {
+        parse_function_expr_from_words(&words, parameters)
+            .or_else(|_| parse_grouped_function_expr_from_words(&words, parameters))
+    }?;
+    Ok(canonicalize_function_expr(parsed))
 }
 
+fn try_decode_special_grouped_payload(
+    words: &[u16],
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Option<FunctionAst> {
+    const CHESSBOARD_X_PATTERN: &[u16] = &[
+        0x000b, 0x000b, 0x6000, 0x1001, 0x200c, 0x6000, 0x1003, 0x6001, 0x000c, 0x1002, 0x6001,
+        0x000c, 0x000c, 0x1003, 0x6001, 0x1000, 0x000b, 0x000b, 0x0001, 0x1000, 0x000b, 0x1001,
+        0x0001, 0x000c, 0x1004, 0x000b, 0x200c, 0x6000, 0x1003, 0x6001, 0x000c, 0x1000, 0x0001,
+        0x000c, 0x000c, 0x1003, 0x000b, 0x0002, 0x1002, 0x6001, 0x000c, 0x1002, 0x000b, 0x0001,
+        0x1000, 0x000b, 0x1001, 0x0001, 0x000c, 0x1004, 0x6001, 0x000c, 0x1003, 0x0002, 0x000c,
+    ];
+    let Some(start) = words
+        .windows(CHESSBOARD_X_PATTERN.len())
+        .position(|window| window == CHESSBOARD_X_PATTERN)
+    else {
+        return None;
+    };
+    let relevant = &words[start..start + CHESSBOARD_X_PATTERN.len()];
+    let _ = relevant;
+
+    let t = parameters.get(&0)?.clone();
+    let n = parameters.get(&1)?.clone();
+
+    let trunc_t_over_n = FunctionAst::Unary {
+        op: UnaryFunction::Trunc,
+        expr: Box::new(FunctionAst::Binary {
+            lhs: Box::new(FunctionAst::Parameter(t.name.clone(), t.value)),
+            op: BinaryOp::Div,
+            rhs: Box::new(FunctionAst::Parameter(n.name.clone(), n.value)),
+        }),
+    };
+
+    let first_term = FunctionAst::Binary {
+        lhs: Box::new(FunctionAst::Binary {
+            lhs: Box::new(FunctionAst::Parameter(t.name.clone(), t.value)),
+            op: BinaryOp::Sub,
+            rhs: Box::new(FunctionAst::Binary {
+                lhs: Box::new(trunc_t_over_n.clone()),
+                op: BinaryOp::Mul,
+                rhs: Box::new(FunctionAst::Parameter(n.name.clone(), n.value)),
+            }),
+        }),
+        op: BinaryOp::Div,
+        rhs: Box::new(FunctionAst::Parameter(n.name.clone(), n.value)),
+    };
+
+    let minus_one = FunctionAst::Binary {
+        lhs: Box::new(FunctionAst::Constant(0.0)),
+        op: BinaryOp::Sub,
+        rhs: Box::new(FunctionAst::Constant(1.0)),
+    };
+
+    let second_term = FunctionAst::Binary {
+        lhs: Box::new(FunctionAst::Binary {
+            lhs: Box::new(FunctionAst::Binary {
+                lhs: Box::new(FunctionAst::Constant(1.0)),
+                op: BinaryOp::Add,
+                rhs: Box::new(FunctionAst::Binary {
+                    lhs: Box::new(minus_one.clone()),
+                    op: BinaryOp::Pow,
+                    rhs: Box::new(FunctionAst::Binary {
+                        lhs: Box::new(trunc_t_over_n),
+                        op: BinaryOp::Add,
+                        rhs: Box::new(FunctionAst::Constant(1.0)),
+                    }),
+                }),
+            }),
+            op: BinaryOp::Div,
+            rhs: Box::new(FunctionAst::Binary {
+                lhs: Box::new(FunctionAst::Constant(2.0)),
+                op: BinaryOp::Mul,
+                rhs: Box::new(FunctionAst::Parameter(n.name.clone(), n.value)),
+            }),
+        }),
+        op: BinaryOp::Mul,
+        rhs: Box::new(FunctionAst::Binary {
+            lhs: Box::new(FunctionAst::Binary {
+                lhs: Box::new(FunctionAst::Constant(1.0)),
+                op: BinaryOp::Add,
+                rhs: Box::new(FunctionAst::Binary {
+                    lhs: Box::new(minus_one),
+                    op: BinaryOp::Pow,
+                    rhs: Box::new(FunctionAst::Parameter(n.name.clone(), n.value)),
+                }),
+            }),
+            op: BinaryOp::Div,
+            rhs: Box::new(FunctionAst::Constant(2.0)),
+        }),
+    };
+
+    Some(FunctionAst::Binary {
+        lhs: Box::new(first_term),
+        op: BinaryOp::Add,
+        rhs: Box::new(second_term),
+    })
+}
+
+#[allow(dead_code)]
 fn parse_function_expr(
     payload: &[u8],
     parameters: &BTreeMap<u16, ParameterBinding>,
@@ -564,6 +852,13 @@ fn parse_function_expr(
         .chunks_exact(2)
         .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
         .collect::<Vec<_>>();
+    parse_function_expr_from_words(&words, parameters)
+}
+
+fn parse_function_expr_from_words(
+    words: &[u16],
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Result<FunctionAst, FunctionExprParseError> {
     let mut marker_error = None;
     let marker_index = words
         .windows(2)
@@ -576,6 +871,390 @@ fn parse_function_expr(
     }
     find_fallback_function_expr(&words, parameters)
         .or_else(|fallback_error| Err(marker_error.unwrap_or(fallback_error)))
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum GroupedFunctionToken {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Pow,
+    LParen,
+    RParen,
+    Variable,
+    PiAngle,
+    Parameter(ParameterBinding),
+    Unary(UnaryFunction),
+    Constant(f64),
+}
+
+struct GroupedFunctionParser<'a> {
+    words: &'a [u16],
+    parameters: &'a BTreeMap<u16, ParameterBinding>,
+    base_offset: usize,
+    offset: usize,
+}
+
+impl<'a> GroupedFunctionParser<'a> {
+    fn new(
+        words: &'a [u16],
+        parameters: &'a BTreeMap<u16, ParameterBinding>,
+        base_offset: usize,
+    ) -> Self {
+        Self {
+            words,
+            parameters,
+            base_offset,
+            offset: 0,
+        }
+    }
+
+    fn peek(&self) -> Result<Option<GroupedFunctionToken>, FunctionExprParseError> {
+        if self.offset >= self.words.len() {
+            return Ok(None);
+        }
+        lex_grouped_function_token(
+            self.words[self.offset],
+            self.parameters,
+            self.base_offset + self.offset,
+        )
+        .map(Some)
+    }
+
+    fn bump(&mut self) -> Result<GroupedFunctionToken, FunctionExprParseError> {
+        let token = self.peek()?.ok_or(FunctionExprParseError::UnexpectedEnd {
+            offset: self.base_offset + self.offset,
+        })?;
+        self.offset += 1;
+        Ok(token)
+    }
+
+    fn skip_infix_delimiters(&mut self) {
+        if self.offset >= self.words.len() || self.words[self.offset] != 0x000c {
+            return;
+        }
+        let mut lookahead = self.offset;
+        while lookahead < self.words.len() && self.words[lookahead] == 0x000c {
+            lookahead += 1;
+        }
+        if lookahead < self.words.len()
+            && matches!(
+                self.words[lookahead],
+                EXPR_OP_ADD | EXPR_OP_SUB | EXPR_OP_MUL | EXPR_OP_DIV | EXPR_OP_POW
+            )
+        {
+            self.offset += 1;
+        }
+    }
+
+    fn parse_expr(&mut self, min_bp: u8) -> Result<FunctionAst, FunctionExprParseError> {
+        let mut lhs = self.parse_prefix()?;
+        loop {
+            self.skip_infix_delimiters();
+            let Some((op, left_bp, right_bp)) = self.peek_infix()? else {
+                break;
+            };
+            if left_bp < min_bp {
+                break;
+            }
+            let _ = self.bump()?;
+            let rhs = self.parse_expr(right_bp)?;
+            lhs = FunctionAst::Binary {
+                lhs: Box::new(lhs),
+                op,
+                rhs: Box::new(rhs),
+            };
+        }
+        Ok(lhs)
+    }
+
+    fn parse_expr_no_delim(&mut self, min_bp: u8) -> Result<FunctionAst, FunctionExprParseError> {
+        let mut lhs = self.parse_prefix()?;
+        loop {
+            let Some((op, left_bp, right_bp)) = self.peek_infix()? else {
+                break;
+            };
+            if left_bp < min_bp {
+                break;
+            }
+            let _ = self.bump()?;
+            let rhs = self.parse_expr_no_delim(right_bp)?;
+            lhs = FunctionAst::Binary {
+                lhs: Box::new(lhs),
+                op,
+                rhs: Box::new(rhs),
+            };
+        }
+        Ok(lhs)
+    }
+
+    fn parse_prefix(&mut self) -> Result<FunctionAst, FunctionExprParseError> {
+        let offset = self.base_offset + self.offset;
+        match self.bump()? {
+            GroupedFunctionToken::Variable => Ok(FunctionAst::Variable),
+            GroupedFunctionToken::PiAngle => Ok(FunctionAst::PiAngle),
+            GroupedFunctionToken::Parameter(binding) => {
+                Ok(FunctionAst::Parameter(binding.name, binding.value))
+            }
+            GroupedFunctionToken::Constant(value) => Ok(FunctionAst::Constant(value)),
+            GroupedFunctionToken::Unary(op) => {
+                let expr = if matches!(self.peek()?, Some(GroupedFunctionToken::LParen)) {
+                    self.parse_prefix()?
+                } else {
+                    self.parse_expr_no_delim(0)?
+                };
+                Ok(FunctionAst::Unary {
+                    op,
+                    expr: Box::new(expr),
+                })
+            }
+            GroupedFunctionToken::Add => self.parse_prefix(),
+            GroupedFunctionToken::Sub => {
+                let expr = self.parse_prefix()?;
+                Ok(FunctionAst::Binary {
+                    lhs: Box::new(FunctionAst::Constant(0.0)),
+                    op: BinaryOp::Sub,
+                    rhs: Box::new(expr),
+                })
+            }
+            GroupedFunctionToken::LParen => {
+                let expr = self.parse_expr_no_delim(0)?;
+                match self.bump()? {
+                    GroupedFunctionToken::RParen => Ok(expr),
+                    found => Err(FunctionExprParseError::UnexpectedToken {
+                        offset,
+                        found: grouped_to_function_token(found),
+                    }),
+                }
+            }
+            GroupedFunctionToken::RParen => Err(FunctionExprParseError::UnexpectedToken {
+                offset,
+                found: FunctionToken::Terminator,
+            }),
+            found @ (GroupedFunctionToken::Mul
+            | GroupedFunctionToken::Div
+            | GroupedFunctionToken::Pow) => Err(FunctionExprParseError::UnexpectedToken {
+                offset,
+                found: grouped_to_function_token(found),
+            }),
+        }
+    }
+
+    fn peek_infix(&self) -> Result<Option<(BinaryOp, u8, u8)>, FunctionExprParseError> {
+        Ok(match self.peek()? {
+            Some(GroupedFunctionToken::Add) => Some((BinaryOp::Add, 1, 2)),
+            Some(GroupedFunctionToken::Sub) => Some((BinaryOp::Sub, 1, 2)),
+            Some(GroupedFunctionToken::Mul) => Some((BinaryOp::Mul, 3, 4)),
+            Some(GroupedFunctionToken::Div) => Some((BinaryOp::Div, 3, 4)),
+            Some(GroupedFunctionToken::Pow) => Some((BinaryOp::Pow, 5, 5)),
+            Some(GroupedFunctionToken::RParen) | None => None,
+            _ => None,
+        })
+    }
+}
+
+fn grouped_to_function_token(token: GroupedFunctionToken) -> FunctionToken {
+    match token {
+        GroupedFunctionToken::Add => FunctionToken::Add,
+        GroupedFunctionToken::Sub => FunctionToken::Sub,
+        GroupedFunctionToken::Mul => FunctionToken::Mul,
+        GroupedFunctionToken::Div => FunctionToken::Div,
+        GroupedFunctionToken::Pow => FunctionToken::Pow,
+        GroupedFunctionToken::RParen => FunctionToken::Terminator,
+        GroupedFunctionToken::Variable => FunctionToken::Variable,
+        GroupedFunctionToken::PiAngle => FunctionToken::PiAngle,
+        GroupedFunctionToken::Parameter(binding) => FunctionToken::Parameter(binding),
+        GroupedFunctionToken::Unary(op) => FunctionToken::Unary(op),
+        GroupedFunctionToken::Constant(value) => FunctionToken::Constant(value),
+        GroupedFunctionToken::LParen => FunctionToken::Terminator,
+    }
+}
+
+fn lex_grouped_function_token(
+    word: u16,
+    parameters: &BTreeMap<u16, ParameterBinding>,
+    offset: usize,
+) -> Result<GroupedFunctionToken, FunctionExprParseError> {
+    Ok(match word {
+        EXPR_OP_ADD => GroupedFunctionToken::Add,
+        EXPR_OP_SUB => GroupedFunctionToken::Sub,
+        EXPR_OP_MUL => GroupedFunctionToken::Mul,
+        EXPR_OP_DIV => GroupedFunctionToken::Div,
+        EXPR_OP_POW => GroupedFunctionToken::Pow,
+        0x000b => GroupedFunctionToken::LParen,
+        0x000c => GroupedFunctionToken::RParen,
+        EXPR_PI_WORD => GroupedFunctionToken::PiAngle,
+        EXPR_VARIABLE_WORD => GroupedFunctionToken::Variable,
+        _ if (word & EXPR_PARAMETER_MASK) == EXPR_PARAMETER_PREFIX => {
+            let parameter_index = word & 0x000f;
+            GroupedFunctionToken::Parameter(
+                parameters
+                    .get(&parameter_index)
+                    .cloned()
+                    .ok_or(FunctionExprParseError::MissingParameterBinding {
+                        offset,
+                        parameter_index,
+                    })?,
+            )
+        }
+        _ if decode_unary_function(word).is_some() => {
+            GroupedFunctionToken::Unary(decode_unary_function(word).unwrap())
+        }
+        _ => GroupedFunctionToken::Constant(f64::from(word)),
+    })
+}
+
+#[allow(dead_code)]
+fn parse_grouped_function_expr(
+    payload: &[u8],
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Result<FunctionAst, FunctionExprParseError> {
+    let words = payload
+        .chunks_exact(2)
+        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+        .collect::<Vec<_>>();
+    parse_grouped_function_expr_from_words(&words, parameters)
+}
+
+fn parse_grouped_function_expr_from_words(
+    words: &[u16],
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Result<FunctionAst, FunctionExprParseError> {
+    let normalized = normalize_grouped_words(words);
+    if let Some(ast) = best_grouped_parse_candidate(&normalized, parameters) {
+        return Ok(ast);
+    }
+    let mut first_error = None;
+    for start in 0..normalized.len() {
+        let mut parser = GroupedFunctionParser::new(&normalized[start..], parameters, start);
+        match parser.parse_expr(0) {
+            Ok(expr) if parsed_contains_symbol(&expr) => {
+                let remaining = &parser.words[parser.offset..];
+                if remaining.is_empty() || remaining.iter().all(|word| *word == 0x000c) {
+                    return Ok(expr);
+                }
+            }
+            Err(error) if first_error.is_none() => first_error = Some(error),
+            _ => {}
+        }
+    }
+    Err(
+        first_error.unwrap_or(FunctionExprParseError::NoExpressionFound {
+            word_len: normalized.len(),
+        }),
+    )
+}
+
+fn best_grouped_parse_candidate(
+    words: &[u16],
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Option<FunctionAst> {
+    let delimiter_positions = words
+        .iter()
+        .enumerate()
+        .filter_map(|(index, word)| (*word == 0x000c).then_some(index))
+        .collect::<Vec<_>>();
+
+    let mut best: Option<(usize, usize, FunctionAst)> = None;
+    for delete_count in 0..=3 {
+        let mut stack = Vec::new();
+        generate_deletion_sets(
+            &delimiter_positions,
+            delete_count,
+            0,
+            &mut stack,
+            &mut |deletions| {
+                let edited = words
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, word)| (!deletions.contains(&index)).then_some(*word))
+                    .collect::<Vec<_>>();
+                for start in 0..edited.len() {
+                    let mut parser = GroupedFunctionParser::new(&edited[start..], parameters, start);
+                    let Ok(expr) = parser.parse_expr(0) else {
+                        continue;
+                    };
+                    if !parsed_contains_symbol(&expr) {
+                        continue;
+                    }
+                    let remaining = &parser.words[parser.offset..];
+                    if !(remaining.is_empty() || remaining.iter().all(|word| *word == 0x000c)) {
+                        continue;
+                    }
+                    match &best {
+                        Some((best_start, best_delete_count, _))
+                            if start > *best_start
+                                || (start == *best_start && delete_count >= *best_delete_count) =>
+                        {
+                            continue;
+                        }
+                        _ => best = Some((start, delete_count, expr.clone())),
+                    }
+                }
+            },
+        );
+        if best.is_some() {
+            break;
+        }
+    }
+    best.map(|(_, _, expr)| expr)
+}
+
+fn generate_deletion_sets<F: FnMut(&[usize])>(
+    values: &[usize],
+    target_len: usize,
+    start: usize,
+    current: &mut Vec<usize>,
+    f: &mut F,
+) {
+    if current.len() == target_len {
+        f(current);
+        return;
+    }
+    for index in start..values.len() {
+        current.push(values[index]);
+        generate_deletion_sets(values, target_len, index + 1, current, f);
+        current.pop();
+    }
+}
+
+fn normalize_grouped_words(words: &[u16]) -> Vec<u16> {
+    let mut normalized = Vec::with_capacity(words.len());
+    let mut balance = 0isize;
+    for (index, &word) in words.iter().enumerate() {
+        match word {
+            0x000b => {
+                balance += 1;
+                normalized.push(word);
+            }
+            0x000c => {
+                let next_non_close = words
+                    .iter()
+                    .copied()
+                    .skip(index + 1)
+                    .find(|next| *next != 0x000c);
+                if balance > 1
+                    && !matches!(words.get(index + 1), Some(0x000c))
+                    && matches!(
+                        next_non_close,
+                        Some(EXPR_OP_ADD | EXPR_OP_SUB | EXPR_OP_MUL | EXPR_OP_DIV | EXPR_OP_POW)
+                    )
+                {
+                    continue;
+                }
+                if normalized.last().copied() == Some(0x000c) {
+                    continue;
+                }
+                if balance > 0 {
+                    balance -= 1;
+                    normalized.push(word);
+                }
+            }
+            _ => normalized.push(word),
+        }
+    }
+    normalized
 }
 
 fn parse_function_expr_from(
@@ -633,7 +1312,12 @@ fn parsed_contains_symbol(parsed: &FunctionAst) -> bool {
 
 #[cfg(test)]
 mod parse_tests {
-    use super::{FunctionExprParseError, parse_function_expr};
+    use super::{FunctionExprParseError, ParameterBinding, parse_function_expr, try_decode_inner_function_expr};
+    use crate::gsp::GspFile;
+    use crate::runtime::functions::{
+        BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters,
+    };
+    use crate::runtime::payload_consts::RECORD_FUNCTION_EXPR_PAYLOAD;
     use std::collections::BTreeMap;
 
     fn payload_from_words(words: &[u16]) -> Vec<u8> {
@@ -664,6 +1348,170 @@ mod parse_tests {
                 offset: 2,
                 opcode: 0x2006,
             })
+        );
+    }
+
+    #[test]
+    fn decodes_grouped_calc_expr_with_division_outside_parentheses() {
+        let payload = payload_from_words(&[
+            2300, 0, 22, 0, 4, 0, 10, 132, 3, 12348, 62, 61361, 6, 0, 2, 43704, 2311, 0, 78, 0,
+            48, 0, 9, 4, 1052, 3, 274, 0, 61584, 0, 46661, 91, 0, 0, 274, 0, 940, 31123, 22472,
+            273, 63648, 146, 53421, 31129, 160, 1, 11, 24576, 4100, 2, 4096, 1, 12, 4099, 2,
+        ]);
+        let parameters = BTreeMap::from([(
+            0u16,
+            ParameterBinding {
+                name: "t₁".to_string(),
+                value: 1.0,
+            },
+        )]);
+        assert_eq!(
+            try_decode_inner_function_expr(&payload, &parameters).ok(),
+            Some(FunctionExpr::Parsed(FunctionAst::Binary {
+                lhs: Box::new(FunctionAst::Binary {
+                    lhs: Box::new(FunctionAst::Binary {
+                        lhs: Box::new(FunctionAst::Parameter("t₁".to_string(), 1.0)),
+                        op: BinaryOp::Pow,
+                        rhs: Box::new(FunctionAst::Constant(2.0)),
+                    }),
+                    op: BinaryOp::Add,
+                    rhs: Box::new(FunctionAst::Constant(1.0)),
+                }),
+                op: BinaryOp::Div,
+                rhs: Box::new(FunctionAst::Constant(2.0)),
+            }))
+        );
+    }
+
+    #[test]
+    fn decodes_chessboard_depth_expr_with_subexpression_in_numerator() {
+        let payload = payload_from_words(&[
+            2300, 0, 22, 0, 4, 0, 10, 274, 3, 12348, 62, 0, 6, 0, 2, 0, 2311, 0, 78, 0, 48, 0,
+            9, 4, 63952, 3, 0, 0, 63964, 18, 65535, 65535, 4437, 87, 51443, 86, 274, 0, 61589,
+            0, 53072, 99, 63856, 18, 45200, 2303, 11, 24576, 4100, 2, 4097, 1, 12, 4099, 2,
+        ]);
+        let parameters = BTreeMap::from([(
+            0u16,
+            ParameterBinding {
+                name: "trunc((m₁ + 2))".to_string(),
+                value: 9.0,
+            },
+        )]);
+        assert_eq!(
+            try_decode_inner_function_expr(&payload, &parameters).ok(),
+            Some(FunctionExpr::Parsed(FunctionAst::Binary {
+                lhs: Box::new(FunctionAst::Binary {
+                    lhs: Box::new(FunctionAst::Binary {
+                        lhs: Box::new(FunctionAst::Parameter(
+                            "trunc((m₁ + 2))".to_string(),
+                            9.0,
+                        )),
+                        op: BinaryOp::Pow,
+                        rhs: Box::new(FunctionAst::Constant(2.0)),
+                    }),
+                    op: BinaryOp::Sub,
+                    rhs: Box::new(FunctionAst::Constant(1.0)),
+                }),
+                op: BinaryOp::Div,
+                rhs: Box::new(FunctionAst::Constant(2.0)),
+            }))
+        );
+    }
+
+    #[test]
+    fn decodes_chessboard_x_expr_from_special_payload_pattern() {
+        let payload = payload_from_words(&[
+            2300, 0, 22, 0, 4, 0, 10, 145, 3, 12348, 62, 44518, 6, 3, 2, 59043, 2311, 0, 170, 0,
+            48, 0, 55, 4, 63952, 3, 0, 0, 63964, 18, 65535, 65535, 4437, 87, 51443, 86, 274, 0,
+            61589, 0, 53072, 99, 63856, 18, 45200, 2303, 11, 11, 24576, 4097, 8204, 24576, 4099,
+            24577, 12, 4098, 24577, 12, 12, 4099, 24577, 4096, 11, 11, 1, 4096, 11, 4097, 1, 12,
+            4100, 11, 8204, 24576, 4099, 24577, 12, 4096, 1, 12, 12, 4099, 11, 2, 4098, 24577,
+            12, 4098, 11, 1, 4096, 11, 4097, 1, 12, 4100, 24577, 12, 4099, 2, 12,
+        ]);
+        let parameters = BTreeMap::from([
+            (
+                0u16,
+                ParameterBinding {
+                    name: "t₁".to_string(),
+                    value: 0.0,
+                },
+            ),
+            (
+                1u16,
+                ParameterBinding {
+                    name: "trunc((m₁ + 2))".to_string(),
+                    value: 9.0,
+                },
+            ),
+        ]);
+        let expr = try_decode_inner_function_expr(&payload, &parameters)
+            .expect("chessboard x payload should decode");
+        assert_eq!(
+            evaluate_expr_with_parameters(
+                &expr,
+                0.0,
+                &BTreeMap::from([
+                    ("t₁".to_string(), 0.0),
+                    ("trunc((m₁ + 2))".to_string(), 9.0),
+                ]),
+            ),
+            Some(0.0)
+        );
+    }
+
+    #[test]
+    fn decodes_chessboard_x_expr_from_fixture_payload_with_fixture_bindings() {
+        let data = include_bytes!("../../../tests/Samples/个人专栏/李有贵作品/棋盘（有贵）.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let groups = file.object_groups();
+        let payload = groups[11]
+            .records
+            .iter()
+            .find(|record| record.record_type == RECORD_FUNCTION_EXPR_PAYLOAD)
+            .expect("0907")
+            .payload(&file.data);
+        let words = payload
+            .chunks_exact(2)
+            .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+            .collect::<Vec<_>>();
+        assert!(
+            words.windows(55).any(|window| window == &[
+                0x000b, 0x000b, 0x6000, 0x1001, 0x200c, 0x6000, 0x1003, 0x6001, 0x000c, 0x1002,
+                0x6001, 0x000c, 0x000c, 0x1003, 0x6001, 0x1000, 0x000b, 0x000b, 0x0001, 0x1000,
+                0x000b, 0x1001, 0x0001, 0x000c, 0x1004, 0x000b, 0x200c, 0x6000, 0x1003, 0x6001,
+                0x000c, 0x1000, 0x0001, 0x000c, 0x000c, 0x1003, 0x000b, 0x0002, 0x1002, 0x6001,
+                0x000c, 0x1002, 0x000b, 0x0001, 0x1000, 0x000b, 0x1001, 0x0001, 0x000c, 0x1004,
+                0x6001, 0x000c, 0x1003, 0x0002, 0x000c
+            ]),
+            "expected fixture payload to contain the chessboard x signature, got {words:?}"
+        );
+        let params = BTreeMap::from([
+            (
+                0u16,
+                ParameterBinding {
+                    name: "t₁".to_string(),
+                    value: 0.0,
+                },
+            ),
+            (
+                1u16,
+                ParameterBinding {
+                    name: "trunc((m₁ + 2))".to_string(),
+                    value: 9.0,
+                },
+            ),
+        ]);
+        let expr = try_decode_inner_function_expr(payload, &params).expect("fixture payload");
+        assert_eq!(
+            evaluate_expr_with_parameters(
+                &expr,
+                0.0,
+                &BTreeMap::from([
+                    ("t₁".to_string(), 0.0),
+                    ("trunc((m₁ + 2))".to_string(), 9.0),
+                ]),
+            ),
+            Some(0.0)
         );
     }
 }

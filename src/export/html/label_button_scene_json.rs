@@ -291,6 +291,24 @@ enum LabelBindingJson {
     ExpressionValue {
         #[serde(rename = "parameterName")]
         parameter_name: String,
+        #[serde(rename = "resultName")]
+        result_name: Option<String>,
+        #[serde(rename = "exprLabel")]
+        expr_label: String,
+        expr: FunctionExprJson,
+    },
+    #[serde(rename = "point-bound-expression-value")]
+    PointBoundExpressionValue {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+        #[serde(rename = "anchorDx")]
+        anchor_dx: f64,
+        #[serde(rename = "anchorDy")]
+        anchor_dy: f64,
+        #[serde(rename = "parameterName")]
+        parameter_name: String,
+        #[serde(rename = "resultName")]
+        result_name: Option<String>,
         #[serde(rename = "exprLabel")]
         expr_label: String,
         expr: FunctionExprJson,
@@ -379,10 +397,29 @@ impl LabelBindingJson {
             },
             TextLabelBinding::ExpressionValue {
                 parameter_name,
+                result_name,
                 expr_label,
                 expr,
             } => Self::ExpressionValue {
                 parameter_name: parameter_name.clone(),
+                result_name: result_name.clone(),
+                expr_label: expr_label.clone(),
+                expr: FunctionExprJson::from_expr(expr),
+            },
+            TextLabelBinding::PointBoundExpressionValue {
+                point_index,
+                anchor_dx,
+                anchor_dy,
+                parameter_name,
+                result_name,
+                expr_label,
+                expr,
+            } => Self::PointBoundExpressionValue {
+                point_index: *point_index,
+                anchor_dx: *anchor_dx,
+                anchor_dy: *anchor_dy,
+                parameter_name: parameter_name.clone(),
+                result_name: result_name.clone(),
                 expr_label: expr_label.clone(),
                 expr: FunctionExprJson::from_expr(expr),
             },

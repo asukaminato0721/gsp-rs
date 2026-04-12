@@ -111,6 +111,7 @@ define_group_kinds! {
     RatioScale = 32,
     Reflection = 34,
     PointTrace = 35,
+    MeasuredValue = 36,
     GraphObject40 = 40,
     FunctionExpr = 48,
     Kind51 = 51,

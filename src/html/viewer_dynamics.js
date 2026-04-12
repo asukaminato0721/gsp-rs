@@ -435,10 +435,71 @@
     }
   }
 
+  /**
+   * @param {ViewerSceneData | null | undefined} scene
+   * @param {Map<string, number>} seedParameters
+   */
+  function deriveLabelParameters(scene, seedParameters) {
+    const parameters = new Map(seedParameters);
+    if (!scene?.labels?.length) {
+      return parameters;
+    }
+    for (let pass = 0; pass < 4; pass += 1) {
+      let changed = false;
+      scene.labels.forEach((/** @type {RuntimeLabelJson} */ label) => {
+        const binding = label.binding;
+        if (!binding) {
+          return;
+        }
+        if (
+          (binding.kind === "segment-parameter"
+            || binding.kind === "polygon-boundary-parameter"
+            || binding.kind === "circle-parameter")
+          && typeof binding.pointName === "string"
+        ) {
+          const value = parameterValueFromPoint(scene, binding.pointIndex);
+          if (Number.isFinite(value) && parameters.get(binding.pointName) !== value) {
+            parameters.set(binding.pointName, value);
+            changed = true;
+          }
+          return;
+        }
+        if (
+          (binding.kind === "expression-value" || binding.kind === "point-bound-expression-value")
+          && typeof binding.resultName === "string"
+        ) {
+          const value = evaluateExpr(binding.expr, 0, parameters);
+          if (Number.isFinite(value) && parameters.get(binding.resultName) !== value) {
+            parameters.set(binding.resultName, value);
+            changed = true;
+          }
+        }
+      });
+      if (!changed) {
+        break;
+      }
+    }
+    return parameters;
+  }
+
   /** @param {ViewerEnv} env */
   /** @param {ViewerEnv} env */
   function parameterMap(env) {
-    return new Map(env.currentDynamics().parameters.map((parameter) => [parameter.name, parameter.value]));
+    return deriveLabelParameters(
+      env.currentScene ? env.currentScene() : null,
+      new Map(env.currentDynamics().parameters.map((parameter) => [parameter.name, parameter.value])),
+    );
+  }
+
+  /**
+   * @param {ViewerEnv} env
+   * @param {ViewerSceneData} scene
+   */
+  function parameterMapForScene(env, scene) {
+    return deriveLabelParameters(
+      scene,
+      new Map(env.currentDynamics().parameters.map((parameter) => [parameter.name, parameter.value])),
+    );
   }
 
   /**
@@ -1216,6 +1277,9 @@
       return;
     }
     const exportedDepth = families.reduce((sum, family) => {
+      if (family.kind === "coordinate-grid") {
+        return sum + Math.max(0, Math.round(family.depth || 0));
+      }
       const depth = family.depth || 0;
       if (family.bidirectional) {
         if (Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy)) {
@@ -1232,13 +1296,56 @@
     scene.polygons = scene.polygons.slice(0, baseCount);
 
     families.forEach((family) => {
-      const depth = pointIterationDepth(family, parameters);
-      if (family.kind !== "translate" || family.vertexIndices.length < 3) {
+      if (family.vertexIndices.length < 3) {
         return;
       }
       const seedVertices = family.vertexIndices
         .map((index) => env.resolveScenePoint(index));
       if (seedVertices.some((point) => !point)) {
+        return;
+      }
+      if (family.kind === "coordinate-grid") {
+        const depthValue = family.depthExpr
+          ? evaluateExpr(family.depthExpr, 0, parameters)
+          : family.depth;
+        const depth = Math.max(0, Math.floor(Number.isFinite(depthValue) ? depthValue : family.depth || 0));
+        let currentValue = parameters.get(family.parameterName);
+        if (!Number.isFinite(currentValue)) {
+          return;
+        }
+        for (let step = 1; step <= depth; step += 1) {
+          currentValue = evaluateRecursiveExpression(
+            family.stepExpr,
+            family.parameterName,
+            currentValue,
+            parameters,
+          );
+          if (!Number.isFinite(currentValue)) {
+            break;
+          }
+          const exprParameters = deriveLabelParameters(
+            scene,
+            new Map(parameters).set(family.parameterName, currentValue),
+          );
+          const dx = evaluateExpr(family.xExpr, 0, exprParameters);
+          const dy = evaluateExpr(family.yExpr, 0, exprParameters);
+          if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
+            continue;
+          }
+          scene.polygons.push({
+            points: seedVertices.map((point) => ({
+              x: point.x + dx * family.xRawScale,
+              y: point.y - dy * family.yRawScale,
+            })),
+            color: family.color,
+            outlineColor: darken(family.color, 80),
+            binding: null,
+          });
+        }
+        return;
+      }
+      const depth = pointIterationDepth(family, parameters);
+      if (family.kind !== "translate") {
         return;
       }
       const hasSecondary = Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy);
@@ -1430,6 +1537,16 @@
 
   /**
    * @param {RuntimeScenePointJson} point
+   * @param {ViewerSceneData} scene
+   * @param {number} value
+   */
+  function updateConstraintParameterizedPoint(point, scene, value) {
+    if (!Number.isFinite(value)) return;
+    applyNormalizedParameterToPoint(point, scene, value);
+  }
+
+  /**
+   * @param {RuntimeScenePointJson} point
    * @param {Map<string, number>} parameters
    * @param {(pointIndex: number) => Point | null} resolvePointAt
    * @param {ViewerSceneData} parameterSourceScene
@@ -1569,14 +1686,20 @@
         applyNormalizedParameterToPoint(point, scene, value);
       }
     },
-    "derived-parameter-expr"(_env, scene, point, parameters) {
+    "constraint-parameter-expr"(_env, scene, point, parameters) {
+      const value = evaluateExpr(point.binding.expr, 0, parameters);
+      updateConstraintParameterizedPoint(point, scene, value);
+    },
+    "constraint-parameter-from-point-expr"(_env, scene, point, parameters) {
       const sourceValue = parameterValueFromPoint(scene, point.binding.sourceIndex);
-      if (sourceValue === null) return;
+      if (!Number.isFinite(sourceValue)) return;
       const exprParameters = new Map(parameters);
-      exprParameters.set(point.binding.parameterName, sourceValue);
+      if (point.binding.parameterName) {
+        exprParameters.set(point.binding.parameterName, sourceValue);
+      }
       const delta = evaluateExpr(point.binding.expr, 0, exprParameters);
       if (delta !== null) {
-        applyNormalizedParameterToPoint(point, scene, sourceValue + delta);
+        updateConstraintParameterizedPoint(point, scene, sourceValue + delta);
       }
     },
     "coordinate-source"(env, _scene, point, parameters) {
@@ -1664,6 +1787,19 @@
       }
     },
     "expression-value"(env, _scene, label, parameters) {
+      const value = evaluateExpr(label.binding.expr, 0, parameters);
+      const valueText = value !== null ? env.formatNumber(value) : "未定义";
+      label.richMarkup = buildExpressionRichMarkup(
+        label.binding.exprLabel,
+        valueText,
+      );
+      if (value !== null) {
+        label.text = `${label.binding.exprLabel} = ${valueText}`;
+      } else {
+        label.text = `${label.binding.exprLabel} = 未定义`;
+      }
+    },
+    "point-bound-expression-value"(env, _scene, label, parameters) {
       const value = evaluateExpr(label.binding.expr, 0, parameters);
       const valueText = value !== null ? env.formatNumber(value) : "未定义";
       label.richMarkup = buildExpressionRichMarkup(
@@ -1776,14 +1912,20 @@
     "scale-by-ratio"(_env, draft, point) {
       updateScaleByRatioPoint(point, (index) => draft.points[index]);
     },
-    "derived-parameter-expr"(_env, draft, point, parameters) {
+    "constraint-parameter-expr"(_env, draft, point, parameters) {
+      const value = evaluateExpr(point.binding.expr, 0, parameters);
+      updateConstraintParameterizedPoint(point, draft, value);
+    },
+    "constraint-parameter-from-point-expr"(_env, draft, point, parameters) {
       const sourceValue = parameterValueFromPoint(draft, point.binding.sourceIndex);
       if (!Number.isFinite(sourceValue)) return;
       const exprParameters = new Map(parameters);
-      exprParameters.set(point.binding.parameterName, sourceValue);
+      if (point.binding.parameterName) {
+        exprParameters.set(point.binding.parameterName, sourceValue);
+      }
       const delta = evaluateExpr(point.binding.expr, 0, exprParameters);
       if (delta !== null) {
-        applyNormalizedParameterToPoint(point, draft, sourceValue + delta);
+        updateConstraintParameterizedPoint(point, draft, sourceValue + delta);
       }
     },
   };
@@ -2561,6 +2703,7 @@
     buildParameterControls,
     evaluateExpr,
     formatExpr,
+    parameterMapForScene,
     parameterValueFromPoint,
     applyNormalizedParameterToPoint,
     refreshDerivedPoints,

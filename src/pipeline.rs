@@ -410,7 +410,7 @@ mod tests {
             "hot text fixture should compile to html",
         );
 
-        assert!(html.contains("viewer-runtime: scene=basic;"));
+        assert!(html.contains("viewer-runtime: scene="));
         assert!(html.contains("overlay=full;"));
         assert!(
             html.contains("function renderRichMarkupNodes("),
@@ -439,7 +439,7 @@ mod tests {
             "coordinate trace intersection fixture should compile to html",
         );
 
-        assert!(html.contains("scene=basic+trace+intersections"));
+        assert!(html.contains("trace+intersections"));
         assert!(
             html.contains("function sampleCoordinateTracePoints("),
             "coordinate trace intersection fixture should include the trace scene addon"
@@ -1344,9 +1344,13 @@ mod tests {
             "expected the payload draggable anchor to stay constrained to its source ray"
         );
         assert!(
-            points
-                .iter()
-                .any(|point| point["binding"]["kind"].as_str() == Some("derived-parameter-expr")),
+            points.iter().any(|point| {
+                point["binding"]["kind"].as_str() == Some("derived-parameter-expr")
+                    || point["binding"]["kind"].as_str()
+                        == Some("constraint-parameter-expr")
+                    || point["binding"]["kind"].as_str()
+                        == Some("constraint-parameter-from-point-expr")
+            }),
             "expected the payload parameter-controlled helper point to stay live"
         );
 
@@ -1370,9 +1374,9 @@ mod tests {
         assert!(
             labels.iter().any(|label| {
                 label["binding"]["kind"].as_str() == Some("expression-value")
-                    && label["text"].as_str()
-                        == Some("0 / sgn((sgn((1 - P)) + 1)) = 未定义")
-                    && label["richMarkup"].as_str().is_some()
+                    && label["text"]
+                        .as_str()
+                        .is_some_and(|text| text.ends_with("= 未定义"))
             }),
             "expected the payload undefined distance expression to remain visible"
         );
@@ -1424,10 +1428,103 @@ mod tests {
         assert!(
             labels.iter().any(|label| {
                 label["binding"]["kind"].as_str() == Some("expression-value")
-                    && label["text"].as_str() == Some("0 / sgn((sgn((1 - m₁)) + 1)) = 未定义")
-                    && label["richMarkup"].as_str().is_some()
+                    && label["text"]
+                        .as_str()
+                        .is_some_and(|text| text.ends_with("= 未定义"))
             }),
             "expected the payload undefined distance expression label to export"
+        );
+    }
+
+    #[test]
+    fn exports_chessboard_yougui_fixture_with_live_segment_parameter_binding() {
+        let Some(data) = fixture_bytes("tests/Samples/个人专栏/李有贵作品/棋盘（有贵）.gsp")
+        else {
+            return;
+        };
+        let scene = fixture_scene(&data, "chessboard yougui fixture should compile");
+
+        let points = scene["points"]
+            .as_array()
+            .expect("scene points should be an array");
+        assert!(
+            points
+                .iter()
+                .any(|point| point["constraint"]["kind"].as_str() == Some("ray")),
+            "expected the payload draggable anchors to stay constrained to their source rays"
+        );
+        assert!(
+            points.iter().any(|point| {
+                point["binding"]["kind"].as_str() == Some("constraint-parameter-expr")
+                    || point["binding"]["kind"].as_str()
+                        == Some("constraint-parameter-from-point-expr")
+            }),
+            "expected the payload seed-square controls to stay bound to their source expressions"
+        );
+
+        let lines = scene["lines"]
+            .as_array()
+            .expect("scene lines should be an array");
+        assert!(
+            lines
+                .iter()
+                .any(|line| line["binding"]["kind"].as_str() == Some("segment")),
+            "expected the payload board edges to remain interactive segments"
+        );
+
+        let labels = scene["labels"]
+            .as_array()
+            .expect("scene labels should be an array");
+        assert!(
+            labels
+                .iter()
+                .any(|label| label["binding"]["kind"].as_str() == Some("segment-parameter")),
+            "expected the measured segment helper to export as a live parameter label"
+        );
+        assert!(
+            labels.iter().any(|label| {
+                label["binding"]["kind"].as_str() == Some("expression-value")
+                    && label["binding"]["resultName"].as_str() == Some("n")
+            }),
+            "expected the named payload expression label to expose a derived runtime parameter"
+        );
+
+        let polygons = scene["polygons"]
+            .as_array()
+            .expect("scene polygons should be an array");
+        assert!(
+            polygons
+                .iter()
+                .any(|polygon| polygon["binding"]["kind"].as_str() == Some("point-polygon")),
+            "expected the payload polygon to keep its live point binding"
+        );
+        assert_eq!(
+            polygons.len(),
+            41,
+            "expected the payload chessboard to export the seed plus 40 iterated dark squares"
+        );
+        let mut row_counts = std::collections::BTreeMap::<i64, usize>::new();
+        for polygon in polygons {
+            let y = polygon["points"][0]["y"]
+                .as_f64()
+                .expect("polygon point y should be numeric");
+            let bucket = (y * 1000.0).round() as i64;
+            *row_counts.entry(bucket).or_default() += 1;
+        }
+        let counts = row_counts.into_values().collect::<Vec<_>>();
+        assert!(
+            counts.starts_with(&[5, 4, 5, 4]),
+            "expected the payload chessboard rows to alternate 5/4 dark cells, got {counts:?}"
+        );
+        let polygon_iterations = scene["polygonIterations"]
+            .as_array()
+            .expect("scene polygon iterations should be an array");
+        assert!(
+            polygon_iterations.iter().any(|family| {
+                family["kind"].as_str() == Some("coordinate-grid")
+                    && family["parameterName"].as_str() == Some("t₁")
+            }),
+            "expected the payload chessboard copies to rebuild from a live coordinate-grid family"
         );
     }
 

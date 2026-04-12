@@ -4,7 +4,10 @@ mod expr;
 mod plot;
 mod scene;
 
-pub(crate) use decode::{try_decode_function_expr, try_decode_function_plot_descriptor};
+pub(crate) use decode::{
+    evaluate_function_group_with_overrides, try_decode_function_expr,
+    try_decode_function_plot_descriptor,
+};
 pub(crate) use eval::{evaluate_expr_with_parameters, sample_function_points};
 pub(crate) use expr::{
     BinaryOp, FunctionAst, FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode, UnaryFunction,
@@ -143,7 +146,7 @@ mod tests {
         assert_eq!(
             try_decode_function_expr(&file, &groups, function_group).ok(),
             Some(FunctionExpr::Parsed(FunctionAst::Binary {
-                lhs: Box::new(FunctionAst::Parameter("t₂".to_string(), 5.0)),
+                lhs: Box::new(FunctionAst::Parameter("t₁".to_string(), 5.0)),
                 op: BinaryOp::Add,
                 rhs: Box::new(FunctionAst::Constant(1.0)),
             }))
@@ -152,7 +155,7 @@ mod tests {
             function_expr_label(
                 try_decode_function_expr(&file, &groups, function_group).expect("expression")
             ),
-            "t₂ + 1"
+            "t₁ + 1"
         );
     }
 
@@ -268,6 +271,27 @@ mod tests {
                     }),
                 }),
             })
+        );
+    }
+
+    #[test]
+    fn decodes_chessboard_yougui_x_expr_from_fixture() {
+        let data = include_bytes!("../../tests/Samples/个人专栏/李有贵作品/棋盘（有贵）.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let groups = file.object_groups();
+
+        let expr = try_decode_function_expr(&file, &groups, &groups[11]).expect("expression #12");
+        assert_eq!(
+            evaluate_expr_with_parameters(
+                &expr,
+                0.0,
+                &BTreeMap::from([
+                    ("t₁".to_string(), 0.0),
+                    ("trunc((m₁ + 2))".to_string(), 9.0),
+                    ("n".to_string(), 9.0),
+                ]),
+            ),
+            Some(0.0)
         );
     }
 

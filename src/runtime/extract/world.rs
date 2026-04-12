@@ -89,24 +89,37 @@ pub(super) fn world_polygon_iteration_family(
     family: PolygonIterationFamily,
     graph_ref: &Option<GraphTransform>,
 ) -> PolygonIterationFamily {
-    let delta = world_delta(
-        &PointRecord {
-            x: family.dx,
-            y: family.dy,
-        },
-        graph_ref,
-    );
-    PolygonIterationFamily {
-        dx: delta.x,
-        dy: delta.y,
-        secondary_dx: match (family.secondary_dx, family.secondary_dy) {
-            (Some(dx), Some(dy)) => Some(world_delta(&PointRecord { x: dx, y: dy }, graph_ref).x),
-            _ => None,
-        },
-        secondary_dy: match (family.secondary_dx, family.secondary_dy) {
-            (Some(dx), Some(dy)) => Some(world_delta(&PointRecord { x: dx, y: dy }, graph_ref).y),
-            _ => None,
-        },
-        ..family
+    match family {
+        PolygonIterationFamily::Translate {
+            vertex_indices,
+            dx,
+            dy,
+            secondary_dx,
+            secondary_dy,
+            depth,
+            parameter_name,
+            bidirectional,
+            color,
+        } => {
+            let delta = world_delta(&PointRecord { x: dx, y: dy }, graph_ref);
+            PolygonIterationFamily::Translate {
+                vertex_indices,
+                dx: delta.x,
+                dy: delta.y,
+                secondary_dx: match (secondary_dx, secondary_dy) {
+                    (Some(dx), Some(dy)) => Some(world_delta(&PointRecord { x: dx, y: dy }, graph_ref).x),
+                    _ => None,
+                },
+                secondary_dy: match (secondary_dx, secondary_dy) {
+                    (Some(dx), Some(dy)) => Some(world_delta(&PointRecord { x: dx, y: dy }, graph_ref).y),
+                    _ => None,
+                },
+                depth,
+                parameter_name,
+                bidirectional,
+                color,
+            }
+        }
+        PolygonIterationFamily::CoordinateGrid { .. } => family,
     }
 }

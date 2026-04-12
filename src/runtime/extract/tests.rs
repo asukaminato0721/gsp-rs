@@ -1,7 +1,8 @@
 use super::{build_scene_checked, render_payload_log};
 use crate::format::GspFile;
 use crate::runtime::scene::{
-    LabelIterationFamily, LineBinding, LineConstraint, PointIterationFamily, Scene,
+    LabelIterationFamily, LineBinding, LineConstraint, PointIterationFamily,
+    PolygonIterationFamily, Scene,
     ScenePointBinding, ScenePointConstraint, TextLabelBinding,
 };
 use insta::assert_snapshot;
@@ -2184,13 +2185,25 @@ fn preserves_carried_polygon_iteration_fixture() {
     );
     assert_eq!(scene.polygon_iterations.len(), 1);
     assert!(scene.polygon_iterations.iter().any(|family| {
-        family.parameter_name.as_deref() == Some("n")
-            && family.depth == 4
-            && family.vertex_indices == vec![0, 2, 1]
-            && family.secondary_dx.is_some()
-            && family.secondary_dy.is_some()
-            && family.dx.abs() < 1e-6
-            && (family.dy + 37.79527559055118).abs() < 1e-6
+        matches!(
+            family,
+            PolygonIterationFamily::Translate {
+                parameter_name,
+                depth,
+                vertex_indices,
+                secondary_dx,
+                secondary_dy,
+                dx,
+                dy,
+                ..
+            } if parameter_name.as_deref() == Some("n")
+                && *depth == 4
+                && *vertex_indices == vec![0, 2, 1]
+                && secondary_dx.is_some()
+                && secondary_dy.is_some()
+                && dx.abs() < 1e-6
+                && (*dy + 37.79527559055118).abs() < 1e-6
+        )
     }));
     assert_eq!(
         scene.points.len(),

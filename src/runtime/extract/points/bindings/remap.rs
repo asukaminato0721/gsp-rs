@@ -23,6 +23,7 @@ pub(crate) fn remap_label_bindings(
             continue;
         };
         if let TextLabelBinding::PointExpressionValue { point_index, .. }
+        | TextLabelBinding::PointBoundExpressionValue { point_index, .. }
         | TextLabelBinding::CustomTransformValue { point_index, .. } = binding
         {
             let Some(mapped_index) = mapped_index(group_to_point_index, *point_index) else {
@@ -67,6 +68,7 @@ pub(crate) fn remap_label_bindings(
             }
             TextLabelBinding::CustomTransformValue { .. } => unreachable!(),
             TextLabelBinding::PointExpressionValue { .. } => unreachable!(),
+            TextLabelBinding::PointBoundExpressionValue { .. } => unreachable!(),
         };
         let Some(mapped_index) = mapped_index(group_to_point_index, *point_index) else {
             label.binding = None;

@@ -547,18 +547,11 @@ fn measurement_label_decimals(text: &str) -> Option<usize> {
 
 fn build_expression_rich_markup(expr_label: &str, value_text: &str) -> Option<String> {
     let render_part = |text: &str| text.replace('*', "\u{00b7}");
-    if let Some((prefix, rest)) = expr_label.split_once(" + ")
-        && let Some((numerator, denominator)) = rest.split_once(" / ")
-    {
-        return Some(format!(
-            "<H<Tx{} + ></<Tx{}><Tx{}>><Tx = {}>>",
-            render_part(prefix),
-            render_part(numerator),
-            render_part(denominator),
-            value_text,
-        ));
+    let slash_count = expr_label.matches(" / ").count();
+    if slash_count > 1 || (slash_count == 1 && expr_label.contains('(')) {
+        return None;
     }
-    if let Some((numerator, denominator)) = expr_label.split_once(" / ") {
+    if let Some((numerator, denominator)) = split_top_level(expr_label, " / ") {
         return Some(format!(
             "<H</<Tx{}><Tx{}>><Tx = {}>>",
             render_part(numerator),
@@ -571,6 +564,27 @@ fn build_expression_rich_markup(expr_label: &str, value_text: &str) -> Option<St
         render_part(expr_label),
         value_text,
     ))
+}
+
+fn split_top_level<'a>(text: &'a str, needle: &str) -> Option<(&'a str, &'a str)> {
+    let mut depth = 0usize;
+    let bytes = text.as_bytes();
+    let needle_bytes = needle.as_bytes();
+    let mut index = 0usize;
+    while index + needle_bytes.len() <= bytes.len() {
+        match bytes[index] as char {
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+        if depth == 0 && &bytes[index..index + needle_bytes.len()] == needle_bytes {
+            let left = text[..index].trim();
+            let right = text[index + needle.len()..].trim();
+            return Some((left, right));
+        }
+        index += 1;
+    }
+    None
 }
 
 pub(super) fn collect_coordinate_labels(
@@ -623,6 +637,7 @@ pub(super) fn collect_coordinate_labels(
             let binding = is_editable_non_graph_parameter_name(&parameter_name).then(|| {
                 TextLabelBinding::ExpressionValue {
                     parameter_name: parameter_name.clone(),
+                    result_name: decode_label_name(file, group),
                     expr_label: expr_label.clone(),
                     expr: expr.clone(),
                 }
@@ -1155,6 +1170,103 @@ pub(super) fn collect_label_iterations(
             })
         })
         .collect()
+}
+
+pub(super) fn bind_button_seed_expression_labels(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    labels: &mut [TextLabel],
+    label_group_to_index: &BTreeMap<usize, usize>,
+    group_to_point_index: &[Option<usize>],
+) {
+    for seed_group in groups
+        .iter()
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::LabelIterationSeed)
+    {
+        let Some(seed_path) = find_indexed_path(file, seed_group) else {
+            continue;
+        };
+        if seed_path.refs.len() < 2 {
+            continue;
+        }
+        let Some(point_group_index) = seed_path.refs.first().and_then(|ordinal| ordinal.checked_sub(1)) else {
+            continue;
+        };
+        let Some(point_index) = mapped_point_index(group_to_point_index, point_group_index) else {
+            continue;
+        };
+        let Some(point_anchor) = anchors.get(point_group_index).cloned().flatten() else {
+            continue;
+        };
+        let Some(button_group) = seed_path
+            .refs
+            .get(1)
+            .and_then(|ordinal| groups.get(ordinal.saturating_sub(1)))
+        else {
+            continue;
+        };
+        if (button_group.header.kind()) != crate::format::GroupKind::ButtonLabel {
+            continue;
+        }
+        let Some(label_index) = label_group_to_index.get(&button_group.ordinal).copied() else {
+            continue;
+        };
+        let Some(expr_group) = find_indexed_path(file, button_group)
+            .and_then(|path| path.refs.first().copied())
+            .and_then(|ordinal| groups.get(ordinal.saturating_sub(1)))
+        else {
+            continue;
+        };
+        if (expr_group.header.kind()) != crate::format::GroupKind::FunctionExpr {
+            continue;
+        }
+        let Some(expr) = try_decode_function_expr(file, groups, expr_group).ok() else {
+            continue;
+        };
+        let Some((parameter_name, parameter_value)) = resolve_function_expr_parameter(
+            file,
+            groups,
+            expr_group,
+            anchors,
+            &mut BTreeSet::new(),
+        ) else {
+            continue;
+        };
+        let value = evaluate_expr_with_parameters(
+            &expr,
+            0.0,
+            &BTreeMap::from([(parameter_name.clone(), parameter_value)]),
+        );
+        let expr_label = payload_function_expr_label(
+            file,
+            groups,
+            anchors,
+            expr_group,
+            &function_expr_label(expr.clone()),
+            &mut BTreeSet::new(),
+        );
+        let Some(label) = labels.get_mut(label_index) else {
+            continue;
+        };
+        let anchor_dx = 0.0;
+        let anchor_dy = 0.0;
+        let value_text = value
+            .map(format_number)
+            .unwrap_or_else(|| "未定义".to_string());
+        label.anchor = point_anchor;
+        label.text = format!("{expr_label} = {value_text}");
+        label.rich_markup = build_expression_rich_markup(&expr_label, &value_text);
+        label.binding = Some(TextLabelBinding::PointBoundExpressionValue {
+            point_index,
+            anchor_dx,
+            anchor_dy,
+            parameter_name,
+            result_name: decode_label_name(file, expr_group),
+            expr_label,
+            expr,
+        });
+    }
 }
 
 pub(super) fn collect_iteration_tables(

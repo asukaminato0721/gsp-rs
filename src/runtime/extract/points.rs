@@ -33,7 +33,7 @@ pub(super) use constraints::{
     try_decode_point_constraint,
 };
 
-pub(super) fn collect_point_objects(
+pub(crate) fn collect_point_objects(
     file: &GspFile,
     groups: &[ObjectGroup],
 ) -> Vec<Option<PointRecord>> {

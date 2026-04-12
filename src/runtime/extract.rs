@@ -10,8 +10,8 @@ mod decode;
 mod graph;
 mod images;
 mod labels;
-mod points;
-mod shapes;
+pub(crate) mod points;
+pub(crate) mod shapes;
 #[cfg(test)]
 mod tests;
 mod trace;
@@ -32,6 +32,7 @@ use self::graph::{
 };
 use self::images::collect_scene_images;
 use self::labels::{
+    bind_button_seed_expression_labels,
     PendingLabelHotspot, collect_circle_parameter_labels, collect_coordinate_labels,
     collect_custom_transform_expression_labels, collect_iteration_tables, collect_label_iterations,
     circle_parameter, collect_labels, collect_polygon_parameter_labels,
@@ -60,6 +61,7 @@ use self::shapes::{
     collect_carried_line_iteration_families, collect_carried_polygon_edge_segment_groups,
     collect_carried_polygon_iteration_families, collect_circle_shapes, collect_coordinate_traces,
     collect_derived_segments, collect_iteration_shapes, collect_line_shapes,
+    collect_materialized_ray_groups,
     collect_polygon_shapes, collect_raw_object_anchors, collect_reflected_circle_shapes,
     collect_reflected_line_shapes, collect_reflected_polygon_shapes, collect_rotated_circle_shapes,
     collect_rotated_line_shapes, collect_rotated_polygon_shapes,
@@ -252,6 +254,7 @@ fn collect_scene_shapes(
 ) -> CollectedShapes {
     let mut suppressed_segment_groups = collect_carried_polygon_edge_segment_groups(file, groups);
     suppressed_segment_groups.extend(collect_rotational_iteration_segment_groups(file, groups));
+    let suppressed_ray_groups = collect_materialized_ray_groups(file, groups);
     let polylines = collect_line_shapes(
         file,
         groups,
@@ -269,12 +272,14 @@ fn collect_scene_shapes(
         groups,
         &analysis.raw_anchors,
         crate::format::GroupKind::Line,
+        &BTreeSet::new(),
     );
     let rays = collect_bound_line_shapes(
         file,
         groups,
         &analysis.raw_anchors,
         crate::format::GroupKind::Ray,
+        &suppressed_ray_groups,
     );
     let translated_lines = collect_translated_line_shapes(file, groups, &analysis.raw_anchors);
     let segment_markers = collect_segment_marker_shapes(file, groups, &analysis.raw_anchors);
@@ -943,6 +948,14 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
                 },
             })
             .collect::<Vec<_>>();
+    bind_button_seed_expression_labels(
+        file,
+        &groups,
+        &analysis.raw_anchors,
+        &mut labels,
+        &label_group_to_index,
+        &group_to_point_index,
+    );
     let iteration_tables = collect_iteration_tables(file, &groups, &analysis.raw_anchors);
     remap_label_bindings(&mut labels, &group_to_point_index);
     let (binding_maps, line_iterations, polygon_iterations) = remap_scene_bindings(
@@ -1787,6 +1800,7 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::RatioScale => "比例缩放对象",
         GroupKind::Reflection => "镜像对象",
         GroupKind::PointTrace => "点轨迹",
+        GroupKind::MeasuredValue => "度量值",
         GroupKind::GraphObject40 => "图像对象",
         GroupKind::FunctionExpr => "函数表达式",
         GroupKind::Kind51 => "对象类型 51",
@@ -2466,6 +2480,7 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::RatioScale
             | GroupKind::Reflection
             | GroupKind::PointTrace
+            | GroupKind::MeasuredValue
             | GroupKind::GraphObject40
             | GroupKind::FunctionExpr
             | GroupKind::Kind51
