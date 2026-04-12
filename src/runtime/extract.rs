@@ -928,6 +928,7 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
         &groups,
         &visible_points,
         &group_to_point_index,
+        &analysis.graph_ref,
     ));
     let (derived_iteration_points, raw_point_iterations) =
         collect_point_iteration_points(file, &groups, &analysis.raw_anchors, &group_to_point_index);

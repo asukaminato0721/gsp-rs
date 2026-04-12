@@ -1085,6 +1085,9 @@
     }
     const exportedDepth = families.reduce((sum, family) => {
       const depth = family.depth || 0;
+      if (family.kind === "parameterized-point-trace") {
+        return sum;
+      }
       if (family.kind === "branching") {
         const branchCount = Array.isArray(family.targetSegments) ? family.targetSegments.length : 0;
         let total = 0;
@@ -1117,11 +1120,6 @@
       if (depth <= 0) {
         return;
       }
-      const start = env.resolveScenePoint(family.startIndex);
-      const end = env.resolveScenePoint(family.endIndex);
-      if (!start || !end) {
-        return;
-      }
       const resolveHandle = (/** @type {PointHandle} */ handle) => {
         if (hasPointIndexHandle(handle)) {
           return env.resolveScenePoint(handle.pointIndex);
@@ -1140,6 +1138,64 @@
         }
         return /** @type {Point} */ (handle);
       };
+      if (family.kind === "parameterized-point-trace") {
+        const depth = Math.max(
+          0,
+          Math.round(
+            Number.isFinite(parameters.get(family.depthParameterName))
+              ? parameters.get(family.depthParameterName)
+              : family.depth || 0,
+          ),
+        );
+        let currentValue = parameters.get(family.traceParameterName);
+        if (!Number.isFinite(currentValue)) {
+          return;
+        }
+        for (let step = 1; step <= depth; step += 1) {
+          currentValue = evaluateRecursiveExpression(
+            family.stepExpr,
+            family.traceParameterName,
+            currentValue,
+            parameters,
+          );
+          if (!Number.isFinite(currentValue)) {
+            break;
+          }
+          const traceParameters = deriveLabelParameters(
+            scene,
+            new Map(parameters).set(family.traceParameterName, currentValue),
+          );
+          const line = {
+            points: [],
+            color: family.color,
+            dashed: !!family.dashed,
+            binding: {
+              kind: "point-trace",
+              pointIndex: family.pointIndex,
+              driverIndex: family.driverIndex,
+              xMin: family.xMin,
+              xMax: family.xMax,
+              sampleCount: family.sampleCount,
+            },
+          };
+          const sampled = samplePointTraceLine(scene, line, traceParameters);
+          if (!sampled) {
+            continue;
+          }
+          scene.lines.push({
+            points: sampled,
+            color: family.color,
+            dashed: !!family.dashed,
+            binding: null,
+          });
+        }
+        return;
+      }
+      const start = env.resolveScenePoint(family.startIndex);
+      const end = env.resolveScenePoint(family.endIndex);
+      if (!start || !end) {
+        return;
+      }
       if (family.kind === "branching") {
         const targetSegments = (family.targetSegments || []).map((segment) => [
           resolveHandle(segment[0]),
@@ -2026,6 +2082,19 @@
       const point = points[index];
       if (!point) return null;
       visiting.add(index);
+      const baseParameters = deriveLabelParameters(sampleScene, new Map(parameters));
+      const driverValue = parameterValueFromPoint(sampleScene, line.binding.driverIndex);
+      const applyDriverParameterGuesses = (exprParameters, ...exprs) => {
+        if (!Number.isFinite(driverValue)) return exprParameters;
+        const names = new Set();
+        exprs.forEach((expr) => collectExprParameterNames(expr, names));
+        names.forEach((name) => {
+          if (!exprParameters.has(name)) {
+            exprParameters.set(name, driverValue);
+          }
+        });
+        return exprParameters;
+      };
 
       let resolved = null;
       if (point.binding?.kind === "translate") {
@@ -2093,6 +2162,40 @@
         const end = resolveTracePoint(points, point.binding.endIndex, visiting);
         if (start && end) {
           resolved = lerpPoint(start, end, 0.5);
+        }
+      } else if (point.binding?.kind === "coordinate") {
+        const exprParameters = applyDriverParameterGuesses(new Map(baseParameters), point.binding.expr);
+        if (typeof point.binding.name === "string" && !exprParameters.has(point.binding.name) && Number.isFinite(driverValue)) {
+          exprParameters.set(point.binding.name, driverValue);
+        }
+        const x = exprParameters.get(point.binding.name);
+        const y = evaluateExpr(point.binding.expr, 0, exprParameters);
+        if (Number.isFinite(x) && y !== null) {
+          resolved = { x, y };
+        }
+      } else if (point.binding?.kind === "coordinate-source") {
+        const source = resolveTracePoint(points, point.binding.sourceIndex, visiting);
+        const exprParameters = applyDriverParameterGuesses(new Map(baseParameters), point.binding.expr);
+        if (typeof point.binding.name === "string" && !exprParameters.has(point.binding.name) && Number.isFinite(driverValue)) {
+          exprParameters.set(point.binding.name, driverValue);
+        }
+        const offset = evaluateExpr(point.binding.expr, 0, exprParameters);
+        if (source && offset !== null) {
+          resolved = point.binding.axis === "horizontal"
+            ? { x: source.x + offset, y: source.y }
+            : { x: source.x, y: source.y + offset };
+        }
+      } else if (point.binding?.kind === "coordinate-source-2d") {
+        const source = resolveTracePoint(points, point.binding.sourceIndex, visiting);
+        const exprParameters = applyDriverParameterGuesses(
+          new Map(baseParameters),
+          point.binding.xExpr,
+          point.binding.yExpr,
+        );
+        const dx = evaluateExpr(point.binding.xExpr, 0, exprParameters);
+        const dy = evaluateExpr(point.binding.yExpr, 0, exprParameters);
+        if (source && dx !== null && dy !== null) {
+          resolved = { x: source.x + dx, y: source.y + dy };
         }
       } else if (point.binding?.kind === "custom-transform") {
         const derived = { ...point };

@@ -160,6 +160,13 @@ pub(crate) struct LineIterationFamily {
     pub(crate) affine_source_indices: Option<[usize; 3]>,
     pub(crate) affine_target_handles: Option<[IterationPointHandle; 3]>,
     pub(crate) branch_target_segments: Option<Vec<[IterationPointHandle; 2]>>,
+    pub(crate) trace_point_index: Option<usize>,
+    pub(crate) trace_driver_index: Option<usize>,
+    pub(crate) trace_parameter_name: Option<String>,
+    pub(crate) trace_step_expr: Option<FunctionExpr>,
+    pub(crate) trace_x_min: Option<f64>,
+    pub(crate) trace_x_max: Option<f64>,
+    pub(crate) trace_sample_count: Option<usize>,
 }
 
 #[derive(Debug, Clone)]

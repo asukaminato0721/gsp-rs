@@ -23,6 +23,13 @@ thread_local! {
     static RESOLVING_MEASURED_VALUE: Cell<bool> = const { Cell::new(false) };
 }
 
+fn is_function_like_group(group: &ObjectGroup) -> bool {
+    matches!(
+        group.header.kind(),
+        crate::format::GroupKind::FunctionExpr | crate::format::GroupKind::Unknown(71)
+    )
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ParameterBinding {
     name: String,
@@ -64,26 +71,117 @@ fn decode_function_expr_recursive(
             .ok_or(FunctionExprParseError::NoExpressionFound { word_len: 0 })?;
         let parameters = collect_parameter_bindings(file, groups, group, visiting);
 
-        let text = extract_inline_function_token(payload).ok_or(
-            FunctionExprParseError::NoExpressionFound {
-                word_len: payload.len() / 2,
-            },
-        )?;
-        if text.eq_ignore_ascii_case("x") {
-            Ok(FunctionExpr::Identity)
-        } else if let Ok(value) = text.parse::<f64>() {
-            if value == 0.0 {
-                try_decode_inner_function_expr(payload, &parameters)
-                    .or(Ok(FunctionExpr::Constant(value)))
-            } else {
-                Ok(FunctionExpr::Constant(value))
-            }
-        } else {
-            try_decode_inner_function_expr(payload, &parameters)
+        if let Some(expr) = try_decode_payload_function_application(
+            file, groups, group, visiting, payload, &parameters,
+        ) {
+            return Ok(expr);
         }
+
+        decode_payload_function_expr(payload, &parameters)
     })();
     visiting.remove(&group.ordinal);
     expr
+}
+
+fn decode_payload_function_expr(
+    payload: &[u8],
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Result<FunctionExpr, FunctionExprParseError> {
+    let text = extract_inline_function_token(payload).ok_or(FunctionExprParseError::NoExpressionFound {
+        word_len: payload.len() / 2,
+    })?;
+    if text.eq_ignore_ascii_case("x") {
+        Ok(FunctionExpr::Identity)
+    } else if let Ok(value) = text.parse::<f64>() {
+        if value == 0.0 {
+            try_decode_inner_function_expr(payload, parameters).or(Ok(FunctionExpr::Constant(value)))
+        } else {
+            Ok(FunctionExpr::Constant(value))
+        }
+    } else {
+        try_decode_inner_function_expr(payload, parameters)
+    }
+}
+
+fn function_expr_to_ast(expr: FunctionExpr) -> FunctionAst {
+    match expr {
+        FunctionExpr::Constant(value) => FunctionAst::Constant(value),
+        FunctionExpr::Identity => FunctionAst::Variable,
+        FunctionExpr::SinIdentity => FunctionAst::Unary {
+            op: UnaryFunction::Sin,
+            expr: Box::new(FunctionAst::Variable),
+        },
+        FunctionExpr::CosIdentityPlus(offset) => FunctionAst::Binary {
+            lhs: Box::new(FunctionAst::Unary {
+                op: UnaryFunction::Cos,
+                expr: Box::new(FunctionAst::Variable),
+            }),
+            op: BinaryOp::Add,
+            rhs: Box::new(FunctionAst::Constant(offset)),
+        },
+        FunctionExpr::TanIdentityMinus(offset) => FunctionAst::Binary {
+            lhs: Box::new(FunctionAst::Unary {
+                op: UnaryFunction::Tan,
+                expr: Box::new(FunctionAst::Variable),
+            }),
+            op: BinaryOp::Sub,
+            rhs: Box::new(FunctionAst::Constant(offset)),
+        },
+        FunctionExpr::Parsed(ast) => ast,
+    }
+}
+
+fn substitute_variable(ast: FunctionAst, replacement: &FunctionAst) -> FunctionAst {
+    match ast {
+        FunctionAst::Variable => replacement.clone(),
+        FunctionAst::Constant(_) | FunctionAst::PiAngle | FunctionAst::Parameter(_, _) => ast,
+        FunctionAst::Unary { op, expr } => FunctionAst::Unary {
+            op,
+            expr: Box::new(substitute_variable(*expr, replacement)),
+        },
+        FunctionAst::Binary { lhs, op, rhs } => FunctionAst::Binary {
+            lhs: Box::new(substitute_variable(*lhs, replacement)),
+            op,
+            rhs: Box::new(substitute_variable(*rhs, replacement)),
+        },
+    }
+}
+
+const EXPR_FUNCTION_REF_MASK: u16 = 0xfff0;
+const EXPR_FUNCTION_REF_PREFIX: u16 = 0x7000;
+
+fn try_decode_payload_function_application(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    visiting: &mut BTreeSet<usize>,
+    payload: &[u8],
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Option<FunctionExpr> {
+    let words = payload
+        .chunks_exact(2)
+        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+        .collect::<Vec<_>>();
+    let (application_offset, application_word) = words.iter().copied().enumerate().find(
+        |(_, word)| (*word & EXPR_FUNCTION_REF_MASK) == EXPR_FUNCTION_REF_PREFIX,
+    )?;
+    let helper_index = usize::from(application_word & 0x000f);
+    let path = find_indexed_path(file, group)?;
+    let helper_group = groups.get(path.refs.get(helper_index)?.checked_sub(1)?)?;
+    if !is_function_like_group(helper_group) {
+        return None;
+    }
+
+    let helper_expr = decode_function_expr_recursive(file, groups, helper_group, visiting).ok()?;
+    let arg_payload = words
+        .get(application_offset + 1..)?
+        .iter()
+        .flat_map(|word| word.to_le_bytes())
+        .collect::<Vec<_>>();
+    let arg_expr = try_decode_inner_function_expr(&arg_payload, parameters).ok()?;
+    let helper_ast = function_expr_to_ast(helper_expr);
+    let arg_ast = function_expr_to_ast(arg_expr);
+    Some(canonicalize_function_expr(substitute_variable(helper_ast, &arg_ast)))
 }
 
 fn evaluate_function_group_recursive(
@@ -97,7 +195,7 @@ fn evaluate_function_group_recursive(
         return None;
     }
     let result = (|| {
-        if (group.header.kind()) != crate::format::GroupKind::FunctionExpr {
+        if !is_function_like_group(group) {
             return decode_runtime_parameter_binding(file, groups, group, overrides, visiting)
                 .map(|binding| binding.value);
         }
@@ -233,7 +331,7 @@ fn decode_runtime_parameter_binding(
     if (group.header.kind()) == crate::format::GroupKind::MeasuredValue {
         return decode_measured_value_binding(file, groups, group);
     }
-    if (group.header.kind()) == crate::format::GroupKind::FunctionExpr {
+    if is_function_like_group(group) {
         let expr = decode_function_expr_recursive(file, groups, group, visiting).ok()?;
         let name = group_name(file, group).unwrap_or_else(|| function_expr_label(expr.clone()));
         let value = evaluate_function_group_recursive(file, groups, group, overrides, visiting)?;
@@ -267,7 +365,7 @@ fn decode_parameter_binding_recursive(
     if (group.header.kind()) == crate::format::GroupKind::MeasuredValue {
         return decode_measured_value_binding(file, groups, group);
     }
-    if (group.header.kind()) == crate::format::GroupKind::FunctionExpr {
+    if is_function_like_group(group) {
         let expr = decode_function_expr_recursive(file, groups, group, visiting).ok()?;
         return Some(ParameterBinding {
             name: group_name(file, group).unwrap_or_else(|| function_expr_label(expr.clone())),
@@ -1317,7 +1415,7 @@ fn parsed_contains_symbol(parsed: &FunctionAst) -> bool {
 #[cfg(test)]
 mod parse_tests {
     use super::{
-        FunctionExprParseError, ParameterBinding, parse_function_expr,
+        FunctionExprParseError, ParameterBinding, parse_function_expr, try_decode_function_expr,
         try_decode_inner_function_expr,
     };
     use crate::gsp::GspFile;
@@ -1517,6 +1615,104 @@ mod parse_tests {
                 ]),
             ),
             Some(0.0)
+        );
+    }
+
+    #[test]
+    fn decodes_liyougui_function_iteration_payloads_from_saved_expression_words() {
+        let data =
+            include_bytes!("../../../tests/Samples/个人专栏/李有贵作品/函数图象迭代(liyougui).gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let groups = file.object_groups();
+        let x_expr = try_decode_function_expr(&file, &groups, &groups[14]).expect("#15 expr");
+        let helper_expr = try_decode_function_expr(&file, &groups, &groups[15]).expect("#16 expr");
+        let y_expr = try_decode_function_expr(&file, &groups, &groups[16]).expect("#17 expr");
+        let step_expr = try_decode_function_expr(&file, &groups, &groups[18]).expect("#19 expr");
+
+        assert_eq!(
+            x_expr,
+            FunctionExpr::Parsed(FunctionAst::Binary {
+                lhs: Box::new(FunctionAst::Constant(2.0)),
+                op: BinaryOp::Mul,
+                rhs: Box::new(FunctionAst::Binary {
+                    lhs: Box::new(FunctionAst::Parameter(
+                        "C".to_string(),
+                        0.36706751054852294,
+                    )),
+                    op: BinaryOp::Add,
+                    rhs: Box::new(FunctionAst::Parameter("m".to_string(), -4.0)),
+                }),
+            })
+        );
+        assert_eq!(
+            helper_expr,
+            FunctionExpr::Parsed(FunctionAst::Binary {
+                lhs: Box::new(FunctionAst::Binary {
+                    lhs: Box::new(FunctionAst::Binary {
+                        lhs: Box::new(FunctionAst::Variable),
+                        op: BinaryOp::Pow,
+                        rhs: Box::new(FunctionAst::Constant(2.0)),
+                    }),
+                    op: BinaryOp::Sub,
+                    rhs: Box::new(FunctionAst::Binary {
+                        lhs: Box::new(FunctionAst::Constant(2.0)),
+                        op: BinaryOp::Mul,
+                        rhs: Box::new(FunctionAst::Variable),
+                    }),
+                }),
+                op: BinaryOp::Mul,
+                rhs: Box::new(FunctionAst::Binary {
+                    lhs: Box::new(FunctionAst::Parameter("k".to_string(), -1.5)),
+                    op: BinaryOp::Pow,
+                    rhs: Box::new(FunctionAst::Parameter("m".to_string(), -4.0)),
+                }),
+            })
+        );
+        assert_eq!(
+            y_expr,
+            FunctionExpr::Parsed(FunctionAst::Binary {
+                lhs: Box::new(FunctionAst::Binary {
+                    lhs: Box::new(FunctionAst::Binary {
+                        lhs: Box::new(FunctionAst::Binary {
+                            lhs: Box::new(FunctionAst::Constant(2.0)),
+                            op: BinaryOp::Mul,
+                            rhs: Box::new(FunctionAst::Parameter(
+                                "C".to_string(),
+                                0.36706751054852294,
+                            )),
+                        }),
+                        op: BinaryOp::Pow,
+                        rhs: Box::new(FunctionAst::Constant(2.0)),
+                    }),
+                    op: BinaryOp::Sub,
+                    rhs: Box::new(FunctionAst::Binary {
+                        lhs: Box::new(FunctionAst::Constant(2.0)),
+                        op: BinaryOp::Mul,
+                        rhs: Box::new(FunctionAst::Binary {
+                            lhs: Box::new(FunctionAst::Constant(2.0)),
+                            op: BinaryOp::Mul,
+                            rhs: Box::new(FunctionAst::Parameter(
+                                "C".to_string(),
+                                0.36706751054852294,
+                            )),
+                        }),
+                    }),
+                }),
+                op: BinaryOp::Mul,
+                rhs: Box::new(FunctionAst::Binary {
+                    lhs: Box::new(FunctionAst::Parameter("k".to_string(), -1.5)),
+                    op: BinaryOp::Pow,
+                    rhs: Box::new(FunctionAst::Parameter("m".to_string(), -4.0)),
+                }),
+            })
+        );
+        assert_eq!(
+            step_expr,
+            FunctionExpr::Parsed(FunctionAst::Binary {
+                lhs: Box::new(FunctionAst::Parameter("m".to_string(), -4.0)),
+                op: BinaryOp::Add,
+                rhs: Box::new(FunctionAst::Constant(1.0)),
+            })
         );
     }
 }

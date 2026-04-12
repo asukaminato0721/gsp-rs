@@ -3,6 +3,7 @@ use crate::format::{
     GroupKind, GspFile, IndexedPathRecord, ObjectGroup, PointRecord, collect_strings,
     decode_indexed_path, read_f64, read_i16, read_u16, read_u32,
 };
+use crate::runtime::payload_consts::{EXPR_OP_ADD, EXPR_OP_SUB};
 use crate::runtime::payload_consts::{
     RECORD_ACTION_BUTTON_PAYLOAD, RECORD_FUNCTION_EXPR_PAYLOAD, RECORD_INDEXED_PATH_A,
     RECORD_INDEXED_PATH_B, RECORD_LABEL_AUX, RECORD_LABEL_VISIBILITY, RECORD_POINT_F64_PAIR,
@@ -187,6 +188,30 @@ fn parameter_group_drives_coordinate_value(file: &GspFile, target_ordinal: usize
     })
 }
 
+fn decode_signed_parameter_tail_value(payload: &[u8]) -> Option<f64> {
+    let words = payload
+        .chunks_exact(2)
+        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+        .collect::<Vec<_>>();
+    let words = match words.last().copied() {
+        Some(0x0101 | 0x0201) => &words[..words.len().saturating_sub(1)],
+        _ => words.as_slice(),
+    };
+    match words {
+        [.., sign @ (EXPR_OP_ADD | EXPR_OP_SUB), whole, denominator, fractional]
+            if *denominator > 0 && fractional < denominator =>
+        {
+            let value = f64::from(*whole) + f64::from(*fractional) / f64::from(*denominator);
+            Some(if *sign == EXPR_OP_SUB { -value } else { value })
+        }
+        [.., sign @ (EXPR_OP_ADD | EXPR_OP_SUB), whole] => {
+            let value = f64::from(*whole);
+            Some(if *sign == EXPR_OP_SUB { -value } else { value })
+        }
+        _ => None,
+    }
+}
+
 pub(crate) fn try_decode_parameter_control_value_for_group(
     file: &GspFile,
     _groups: &[ObjectGroup],
@@ -199,14 +224,26 @@ pub(crate) fn try_decode_parameter_control_value_for_group(
         .map(|record| record.payload(&file.data))
         .ok_or(ParameterControlDecodeError::MissingPayloadRecord)?;
 
+    if let Some(value) = decode_signed_parameter_tail_value(payload) {
+        return Ok(value);
+    }
+
+    let continuous = try_decode_continuous_parameter_value(payload)?;
+    let discrete = try_decode_discrete_parameter_value(payload);
+
     if parameter_group_drives_coordinate_value(file, group.ordinal) {
-        return try_decode_continuous_parameter_value(payload)?
-            .or_else(|| try_decode_discrete_parameter_value(payload).ok().flatten())
+        return continuous
+            .or_else(|| discrete.ok().flatten())
             .ok_or(ParameterControlDecodeError::InvalidDiscreteFraction);
     }
 
-    try_decode_discrete_parameter_value(payload)?
-        .ok_or(ParameterControlDecodeError::InvalidDiscreteFraction)
+    match discrete {
+        Ok(Some(value)) if value < 4096.0 => Ok(value),
+        Ok(Some(_)) | Err(ParameterControlDecodeError::InvalidDiscreteFraction) => continuous
+            .ok_or(ParameterControlDecodeError::InvalidDiscreteFraction),
+        Ok(None) => continuous.ok_or(ParameterControlDecodeError::InvalidDiscreteFraction),
+        Err(error) => Err(error),
+    }
 }
 
 pub(crate) fn try_decode_link_button_url(

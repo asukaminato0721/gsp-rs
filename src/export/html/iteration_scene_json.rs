@@ -161,10 +161,62 @@ pub(super) enum LineIterationJson {
         color: [u8; 4],
         dashed: bool,
     },
+    ParameterizedPointTrace {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+        #[serde(rename = "driverIndex")]
+        driver_index: usize,
+        #[serde(rename = "depthParameterName")]
+        depth_parameter_name: Option<String>,
+        #[serde(rename = "traceParameterName")]
+        trace_parameter_name: String,
+        #[serde(rename = "stepExpr")]
+        step_expr: FunctionExprJson,
+        depth: usize,
+        #[serde(rename = "xMin")]
+        x_min: f64,
+        #[serde(rename = "xMax")]
+        x_max: f64,
+        #[serde(rename = "sampleCount")]
+        sample_count: usize,
+        color: [u8; 4],
+        dashed: bool,
+    },
 }
 
 impl LineIterationJson {
     pub(super) fn from_family(family: &LineIterationFamily) -> Self {
+        if let (
+            Some(point_index),
+            Some(driver_index),
+            Some(trace_parameter_name),
+            Some(step_expr),
+            Some(x_min),
+            Some(x_max),
+            Some(sample_count),
+        ) = (
+            family.trace_point_index,
+            family.trace_driver_index,
+            family.trace_parameter_name.as_ref(),
+            family.trace_step_expr.as_ref(),
+            family.trace_x_min,
+            family.trace_x_max,
+            family.trace_sample_count,
+        ) {
+            return Self::ParameterizedPointTrace {
+                point_index,
+                driver_index,
+                depth_parameter_name: family.parameter_name.clone(),
+                trace_parameter_name: trace_parameter_name.clone(),
+                step_expr: FunctionExprJson::from_expr(step_expr),
+                depth: family.depth,
+                x_min,
+                x_max,
+                sample_count,
+                color: family.color,
+                dashed: family.dashed,
+            };
+        }
         if let Some(target_segments) = family.branch_target_segments.as_ref() {
             return Self::Branching {
                 start_index: family.start_index,

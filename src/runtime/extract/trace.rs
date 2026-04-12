@@ -1,9 +1,11 @@
 use std::collections::BTreeSet;
 
 use crate::format::{GspFile, ObjectGroup, PointRecord};
+use crate::runtime::extract::decode::decode_label_name;
+use crate::runtime::functions::{evaluate_expr_with_parameters, try_decode_function_expr};
 use crate::runtime::geometry::{
-    lerp_point, point_on_circle_arc, point_on_three_point_arc, reflect_across_line, rotate_around,
-    scale_around,
+    GraphTransform, lerp_point, point_on_circle_arc, point_on_three_point_arc, reflect_across_line,
+    rotate_around, scale_around, to_raw_from_world,
 };
 use crate::runtime::scene::{
     CircularConstraint, LineConstraint, LineLikeKind, ScenePoint, ScenePointBinding,
@@ -18,6 +20,7 @@ pub(super) fn collect_point_traces(
     groups: &[ObjectGroup],
     visible_points: &[ScenePoint],
     group_to_point_index: &[Option<usize>],
+    graph_ref: &Option<GraphTransform>,
 ) -> Vec<crate::runtime::scene::LineShape> {
     groups
         .iter()
@@ -31,14 +34,8 @@ pub(super) fn collect_point_traces(
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let target_group_index = path.refs.first()?.checked_sub(1)?;
+            let target_group = groups.get(target_group_index)?;
             let target_point_index = (*group_to_point_index.get(target_group_index)?)?;
-            let (driver_point_index, driver_group_index) =
-                path.refs.iter().find_map(|ordinal| {
-                    let group_index = ordinal.checked_sub(1)?;
-                    let point_index = (*group_to_point_index.get(group_index)?)?;
-                    let point = visible_points.get(point_index)?;
-                    point_accepts_trace_parameter(point).then_some((point_index, group_index))
-                })?;
             let payload = group
                 .records
                 .iter()
@@ -46,9 +43,16 @@ pub(super) fn collect_point_traces(
                 .map(|record| record.payload(&file.data))?;
             let descriptor =
                 crate::runtime::functions::try_decode_function_plot_descriptor(payload).ok()?;
+            let driver = path.refs.iter().find_map(|ordinal| {
+                let group_index = ordinal.checked_sub(1)?;
+                let point_index = (*group_to_point_index.get(group_index)?)?;
+                let point = visible_points.get(point_index)?;
+                point_accepts_trace_parameter(point).then_some((point_index, group_index))
+            });
             let trace_max = if (group.header.kind())
                 == crate::format::GroupKind::CustomTransformTrace
             {
+                let (driver_point_index, _) = driver?;
                 custom_transform_trace_parameter(visible_points.get(driver_point_index)?)?.clamp(
                     descriptor.x_min.min(descriptor.x_max),
                     descriptor.x_min.max(descriptor.x_max),
@@ -56,6 +60,37 @@ pub(super) fn collect_point_traces(
             } else {
                 descriptor.x_max
             };
+
+            if (group.header.kind()) == crate::format::GroupKind::PointTrace
+                && (target_group.header.kind()) == crate::format::GroupKind::CoordinatePoint
+                && let Some((_, driver_group_index)) = driver
+                && let Some(points) = sample_coordinate_point_trace(
+                    file,
+                    groups,
+                    group,
+                    target_group,
+                    descriptor.x_min,
+                    trace_max,
+                    descriptor.sample_count,
+                    graph_ref,
+                )
+            {
+                return Some(crate::runtime::scene::LineShape {
+                    points,
+                    color: crate::runtime::geometry::color_from_style(group.header.style_b),
+                    dashed: false,
+                    visible: !group.header.is_hidden(),
+                    binding: Some(crate::runtime::scene::LineBinding::PointTrace {
+                        point_index: target_group_index,
+                        driver_index: driver_group_index,
+                        x_min: descriptor.x_min,
+                        x_max: descriptor.x_max,
+                        sample_count: descriptor.sample_count,
+                    }),
+                });
+            }
+
+            let (driver_point_index, driver_group_index) = driver?;
 
             let mut points = Vec::with_capacity(descriptor.sample_count);
             let mut previous_points = visible_points.to_vec();
@@ -108,6 +143,52 @@ pub(super) fn collect_point_traces(
             })
         })
         .collect()
+}
+
+fn sample_coordinate_point_trace(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    trace_group: &ObjectGroup,
+    target_group: &ObjectGroup,
+    x_min: f64,
+    x_max: f64,
+    sample_count: usize,
+    graph_ref: &Option<GraphTransform>,
+) -> Option<Vec<PointRecord>> {
+    let target_path = find_indexed_path(file, target_group)?;
+    if target_path.refs.len() < 2 {
+        return None;
+    }
+    let x_calc_group = groups.get(target_path.refs[0].checked_sub(1)?)?;
+    let y_calc_group = groups.get(target_path.refs[1].checked_sub(1)?)?;
+    let parameter_anchor_group = find_indexed_path(file, trace_group)?
+        .refs
+        .iter()
+        .filter_map(|ordinal| groups.get(ordinal.checked_sub(1)?))
+        .find(|group| (group.header.kind()) == crate::format::GroupKind::ParameterAnchor)?;
+    let parameter_name = decode_label_name(file, parameter_anchor_group).or_else(|| {
+        let path = find_indexed_path(file, parameter_anchor_group)?;
+        let point_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+        decode_label_name(file, point_group)
+    })?;
+    let x_expr = try_decode_function_expr(file, groups, x_calc_group).ok()?;
+    let y_expr = try_decode_function_expr(file, groups, y_calc_group).ok()?;
+    let last = sample_count.saturating_sub(1).max(1) as f64;
+    let mut points = Vec::with_capacity(sample_count);
+    for sample_index in 0..sample_count {
+        let t = sample_index as f64 / last;
+        let value = x_min + (x_max - x_min) * t;
+        let parameters = std::collections::BTreeMap::from([(parameter_name.clone(), value)]);
+        let x = evaluate_expr_with_parameters(&x_expr, 0.0, &parameters)?;
+        let y = evaluate_expr_with_parameters(&y_expr, 0.0, &parameters)?;
+        let world = PointRecord { x, y };
+        points.push(if let Some(transform) = graph_ref {
+            to_raw_from_world(&world, transform)
+        } else {
+            world
+        });
+    }
+    (points.len() >= 2).then_some(points)
 }
 
 fn point_accepts_trace_parameter(point: &ScenePoint) -> bool {

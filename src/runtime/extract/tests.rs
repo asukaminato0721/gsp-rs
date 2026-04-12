@@ -21,6 +21,59 @@ fn fixture_log(data: &[u8], source_path: &str) -> String {
 fn fixture_bytes(path: &str) -> Option<Vec<u8>> {
     fs::read(path).ok()
 }
+#[test]
+fn preserves_function_iteration_coordinate_point_in_liyougui_fixture() {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/李有贵作品/函数图象迭代(liyougui).gsp")
+    else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+
+    assert!(
+        scene.points.iter().any(|point| {
+            matches!(
+                point.binding,
+                Some(ScenePointBinding::CoordinateSource2d { source_index, .. }) if source_index == 0
+            )
+        }),
+        "expected the payload coordinate point to stay exported as a live 2d graph binding"
+    );
+    assert!(
+        scene
+            .lines
+            .iter()
+            .any(|line| matches!(line.binding, Some(LineBinding::PointTrace { .. }))),
+        "expected the payload point trace to stay exported"
+    );
+    assert!(
+        scene
+            .parameters
+            .iter()
+            .any(|parameter| parameter.name == "k" && (parameter.value + 1.5).abs() < 1e-6),
+        "expected k to open at -1.5"
+    );
+    assert!(
+        scene
+            .parameters
+            .iter()
+            .any(|parameter| parameter.name == "m" && (parameter.value + 4.0).abs() < 1e-6),
+        "expected m to open at -4"
+    );
+    assert!(
+        scene.parameters.iter().any(
+            |parameter| parameter.name == "n" && (parameter.value - 9.7).abs() < 1e-6
+        ),
+        "expected n to open at the saved payload value 9.7"
+    );
+    assert!(
+        scene.line_iterations.iter().any(|family| family.trace_point_index.is_some()),
+        "expected the payload iter on the trace to stay exported as a live line-iteration family"
+    );
+    assert!(
+        scene.labels.iter().any(|label| label.text.contains("2*(C + m) =")),
+        "expected the x-coordinate expression to stay decoded from payload as 2*(C + m)"
+    );
+}
 
 #[test]
 fn preserves_binary_tree_multimap_iteration() {

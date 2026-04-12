@@ -278,10 +278,88 @@ pub(crate) fn collect_carried_line_iteration_families(
                 return None;
             }
             let source_group = groups.get(source_group_index)?;
+            let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+            if (source_group.header.kind()) == crate::format::GroupKind::PointTrace {
+                if (iter_group.header.kind()) != crate::format::GroupKind::RegularPolygonIteration {
+                    return None;
+                }
+                let iter_path = find_indexed_path(file, iter_group)?;
+                if iter_path.refs.last().copied() != Some(source_group.ordinal) {
+                    return None;
+                }
+                let source_path = find_indexed_path(file, source_group)?;
+                let target_group_index = source_path.refs.first()?.checked_sub(1)?;
+                let trace_point_index = group_to_point_index
+                    .get(target_group_index)
+                    .copied()
+                    .flatten()?;
+                let driver_group_index = source_path
+                    .refs
+                    .iter()
+                    .filter_map(|ordinal| groups.get(ordinal.checked_sub(1)?))
+                    .find(|group| (group.header.kind()) == crate::format::GroupKind::ParameterAnchor)
+                    .and_then(|group| find_indexed_path(file, group))
+                    .and_then(|path| path.refs.first().copied())
+                    .and_then(|ordinal| ordinal.checked_sub(1))
+                    .or_else(|| {
+                        source_path.refs.iter().copied().find_map(|ordinal| {
+                            let group_index = ordinal.checked_sub(1)?;
+                            matches!(
+                                groups.get(group_index)?.header.kind(),
+                                crate::format::GroupKind::PointConstraint
+                                    | crate::format::GroupKind::PathPoint
+                            )
+                            .then_some(group_index)
+                        })
+                    })?;
+                let trace_driver_index = group_to_point_index
+                    .get(driver_group_index)
+                    .copied()
+                    .flatten()?;
+                let descriptor = source_group
+                    .records
+                    .iter()
+                    .find(|record| record.record_type == 0x0902)
+                    .map(|record| record.payload(&file.data))
+                    .and_then(|payload| {
+                        crate::runtime::functions::try_decode_function_plot_descriptor(payload).ok()
+                    })?;
+                let trace_parameter_group = groups.get(iter_path.refs.get(1)?.checked_sub(1)?)?;
+                let trace_parameter_name =
+                    editable_non_graph_parameter_name_for_group(file, groups, trace_parameter_group)?;
+                let trace_step_group = groups.get(iter_path.refs.get(2)?.checked_sub(1)?)?;
+                let trace_step_expr = try_decode_function_expr(file, groups, trace_step_group).ok()?;
+                let depth = carried_iteration_depth(file, iter_group, 3);
+                if depth == 0 {
+                    return None;
+                }
+                return Some(LineIterationFamily {
+                    start_index: trace_point_index,
+                    end_index: trace_driver_index,
+                    dx: 0.0,
+                    dy: 0.0,
+                    secondary_dx: None,
+                    secondary_dy: None,
+                    depth,
+                    parameter_name: carried_iteration_parameter_name(file, groups, iter_group),
+                    bidirectional: false,
+                    color: color_from_style(source_group.header.style_b),
+                    dashed: line_is_dashed(source_group.header.style_a),
+                    affine_source_indices: None,
+                    affine_target_handles: None,
+                    branch_target_segments: None,
+                    trace_point_index: Some(trace_point_index),
+                    trace_driver_index: Some(trace_driver_index),
+                    trace_parameter_name: Some(trace_parameter_name),
+                    trace_step_expr: Some(trace_step_expr),
+                    trace_x_min: Some(descriptor.x_min),
+                    trace_x_max: Some(descriptor.x_max),
+                    trace_sample_count: Some(descriptor.sample_count),
+                });
+            }
             if (source_group.header.kind()) != crate::format::GroupKind::Segment {
                 return None;
             }
-            let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
             if !iter_group.header.kind().is_carried_iteration() {
                 return None;
             }
@@ -348,6 +426,13 @@ pub(crate) fn collect_carried_line_iteration_families(
                     affine_source_indices: None,
                     affine_target_handles: None,
                     branch_target_segments: Some(target_segments),
+                    trace_point_index: None,
+                    trace_driver_index: None,
+                    trace_parameter_name: None,
+                    trace_step_expr: None,
+                    trace_x_min: None,
+                    trace_x_max: None,
+                    trace_sample_count: None,
                 });
             }
 
@@ -374,6 +459,13 @@ pub(crate) fn collect_carried_line_iteration_families(
                     affine_source_indices: Some(source_indices),
                     affine_target_handles: Some(target_handles),
                     branch_target_segments: None,
+                    trace_point_index: None,
+                    trace_driver_index: None,
+                    trace_parameter_name: None,
+                    trace_step_expr: None,
+                    trace_x_min: None,
+                    trace_x_max: None,
+                    trace_sample_count: None,
                 });
             }
 
@@ -397,6 +489,13 @@ pub(crate) fn collect_carried_line_iteration_families(
                 affine_source_indices: None,
                 affine_target_handles: None,
                 branch_target_segments: None,
+                trace_point_index: None,
+                trace_driver_index: None,
+                trace_parameter_name: None,
+                trace_step_expr: None,
+                trace_x_min: None,
+                trace_x_max: None,
+                trace_sample_count: None,
             })
         })
         .collect()
