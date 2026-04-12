@@ -25,10 +25,12 @@ pub(super) use bindings::{
     RawPointIterationFamily, TransformBindingKind, collect_point_iteration_points,
     collect_visible_points, decode_parameter_rotation_binding, decode_transform_binding,
     remap_circle_bindings, remap_label_bindings, remap_line_bindings, remap_polygon_bindings,
+    try_decode_transform_binding,
 };
 pub(super) use constraints::{
     RawPointConstraint, decode_parameter_controlled_point, decode_point_constraint,
     decode_translated_point_constraint, regular_polygon_angle_expr, regular_polygon_iteration_step,
+    try_decode_point_constraint,
 };
 
 pub(super) fn collect_point_objects(

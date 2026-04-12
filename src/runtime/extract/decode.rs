@@ -95,6 +95,16 @@ pub(crate) fn resolve_circle_points_raw(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Error)]
+pub(crate) enum ParameterControlDecodeError {
+    #[error("missing 0x0907 parameter payload record")]
+    MissingPayloadRecord,
+    #[error("discrete parameter payload has invalid fraction at word range [92..96]")]
+    InvalidDiscreteFraction,
+    #[error("continuous parameter payload contains non-finite value")]
+    NonFiniteContinuousValue,
+}
+
 pub(crate) fn is_action_button_group(group: &ObjectGroup) -> bool {
     (group.header.kind()) == crate::format::GroupKind::ActionButton
         && group
@@ -128,12 +138,31 @@ pub(crate) fn is_parameter_control_group(group: &ObjectGroup) -> bool {
 }
 
 fn decode_continuous_parameter_value(payload: &[u8]) -> Option<f64> {
-    (payload.len() >= 60)
-        .then(|| read_f64(payload, 52))
-        .filter(|value| value.is_finite())
+    try_decode_continuous_parameter_value(payload)
+        .ok()
+        .flatten()
+}
+
+fn try_decode_continuous_parameter_value(
+    payload: &[u8],
+) -> Result<Option<f64>, ParameterControlDecodeError> {
+    if payload.len() < 60 {
+        return Ok(None);
+    }
+    let value = read_f64(payload, 52);
+    if !value.is_finite() {
+        return Err(ParameterControlDecodeError::NonFiniteContinuousValue);
+    }
+    Ok(Some(value))
 }
 
 pub(crate) fn decode_discrete_parameter_value(payload: &[u8]) -> Option<f64> {
+    try_decode_discrete_parameter_value(payload).ok().flatten()
+}
+
+fn try_decode_discrete_parameter_value(
+    payload: &[u8],
+) -> Result<Option<f64>, ParameterControlDecodeError> {
     if payload.len() >= 98 {
         let whole = f64::from(read_u16(payload, 92));
         let denominator = f64::from(read_u16(payload, 94));
@@ -144,15 +173,16 @@ pub(crate) fn decode_discrete_parameter_value(payload: &[u8]) -> Option<f64> {
             && fractional >= 0.0
             && fractional < denominator
         {
-            return Some(whole + fractional / denominator);
+            return Ok(Some(whole + fractional / denominator));
         }
+        return Err(ParameterControlDecodeError::InvalidDiscreteFraction);
     }
 
     if payload.len() >= 94 {
-        return Some(f64::from(read_u16(payload, 92)));
+        return Ok(Some(f64::from(read_u16(payload, 92))));
     }
 
-    decode_continuous_parameter_value(payload)
+    try_decode_continuous_parameter_value(payload)
 }
 
 fn parameter_group_drives_coordinate_value(file: &GspFile, target_ordinal: usize) -> bool {
@@ -168,18 +198,29 @@ pub(crate) fn decode_parameter_control_value_for_group(
     _groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> Option<f64> {
+    try_decode_parameter_control_value_for_group(file, _groups, group).ok()
+}
+
+pub(crate) fn try_decode_parameter_control_value_for_group(
+    file: &GspFile,
+    _groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Result<f64, ParameterControlDecodeError> {
     let payload = group
         .records
         .iter()
         .find(|record| record.record_type == RECORD_FUNCTION_EXPR_PAYLOAD)
-        .map(|record| record.payload(&file.data))?;
+        .map(|record| record.payload(&file.data))
+        .ok_or(ParameterControlDecodeError::MissingPayloadRecord)?;
 
     if parameter_group_drives_coordinate_value(file, group.ordinal) {
-        return decode_continuous_parameter_value(payload)
-            .or_else(|| decode_discrete_parameter_value(payload));
+        return try_decode_continuous_parameter_value(payload)?
+            .or_else(|| try_decode_discrete_parameter_value(payload).ok().flatten())
+            .ok_or(ParameterControlDecodeError::InvalidDiscreteFraction);
     }
 
-    decode_discrete_parameter_value(payload)
+    try_decode_discrete_parameter_value(payload)?
+        .ok_or(ParameterControlDecodeError::InvalidDiscreteFraction)
 }
 
 pub(crate) fn decode_link_button_url(file: &GspFile, group: &ObjectGroup) -> Option<String> {

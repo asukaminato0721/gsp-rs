@@ -21,7 +21,9 @@ mod remap;
 #[path = "bindings/visible_points.rs"]
 mod visible_points;
 
-pub(crate) use decode::{decode_parameter_rotation_binding, decode_transform_binding};
+pub(crate) use decode::{
+    decode_parameter_rotation_binding, decode_transform_binding, try_decode_transform_binding,
+};
 pub(crate) use iterations::collect_point_iteration_points;
 pub(crate) use remap::{
     remap_circle_bindings, remap_label_bindings, remap_line_bindings, remap_polygon_bindings,

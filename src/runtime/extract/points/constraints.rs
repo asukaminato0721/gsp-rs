@@ -12,12 +12,15 @@ use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
 use crate::runtime::functions::{
     BinaryOp, FunctionExpr, FunctionTerm, ParsedFunctionExpr, decode_function_expr,
     decode_function_plot_descriptor, evaluate_expr_with_parameters, sample_function_points,
+    try_decode_function_expr, try_decode_function_plot_descriptor,
 };
 use crate::runtime::geometry::{
     GraphTransform, arc_on_circle_control_points, lerp_point, locate_polyline_parameter_by_length,
     point_on_circle_arc, point_on_three_point_arc, sample_three_point_arc,
     sample_three_point_arc_complement, three_point_arc_geometry, to_raw_from_world, to_world,
 };
+use crate::runtime::payload_consts::{RECORD_BINDING_PAYLOAD, RECORD_FUNCTION_PLOT_DESCRIPTOR};
+use thiserror::Error;
 
 pub(crate) struct PointOnSegmentConstraint {
     pub(crate) start_group_index: usize,
@@ -91,6 +94,49 @@ pub(crate) enum CoordinatePointSource {
         x_expr: FunctionExpr,
         y_parameter_name: String,
         y_expr: FunctionExpr,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Error)]
+pub(crate) enum PointConstraintDecodeError {
+    #[error("group kind {0:?} is not a point-constraint kind")]
+    NotPointConstraintKind(crate::format::GroupKind),
+    #[error("missing indexed path for point constraint")]
+    MissingIndexedPath,
+    #[error("point constraint path is missing host reference")]
+    MissingHostReference,
+    #[error("missing 0x07d3 point-constraint payload record")]
+    MissingPayloadRecord,
+    #[error(
+        "host group path too short for {host_kind:?}: expected at least {expected}, got {actual}"
+    )]
+    HostPathTooShort {
+        host_kind: crate::format::GroupKind,
+        expected: usize,
+        actual: usize,
+    },
+    #[error("constraint payload contains non-finite parameter")]
+    NonFiniteParameter,
+    #[error("function plot constraint requires graph transform")]
+    MissingGraphTransform,
+    #[error("function plot descriptor missing from host group")]
+    MissingFunctionPlotDescriptor,
+    #[error("invalid function plot descriptor: {0}")]
+    InvalidFunctionPlotDescriptor(String),
+    #[error("invalid function expression for function-plot constraint: {0}")]
+    InvalidFunctionExpr(String),
+    #[error("point-constraint payload too short ({byte_len} bytes), expected at least {expected}")]
+    PayloadTooShort { byte_len: usize, expected: usize },
+    #[error("path-point constraint requires anchors")]
+    MissingAnchors,
+    #[error("failed to locate point on sampled polyline")]
+    PolylineParameterUnavailable,
+    #[error(
+        "unsupported or malformed point constraint for host kind {host_kind:?} with payload length {payload_len}"
+    )]
+    UnsupportedOrMalformed {
+        host_kind: crate::format::GroupKind,
+        payload_len: usize,
     },
 }
 
@@ -332,6 +378,35 @@ fn decode_point_on_segment_constraint(
         end_group_index: host_path.refs[1].checked_sub(1)?,
         t,
     })
+}
+
+fn try_decode_point_on_segment_constraint(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Result<PointOnSegmentConstraint, PointConstraintDecodeError> {
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == RECORD_BINDING_PAYLOAD)
+        .map(|record| record.payload(&file.data))
+        .ok_or(PointConstraintDecodeError::MissingPayloadRecord)?;
+    if payload.len() < 12 {
+        return Err(PointConstraintDecodeError::PayloadTooShort {
+            byte_len: payload.len(),
+            expected: 12,
+        });
+    }
+    let t = read_f64(payload, 4);
+    if !t.is_finite() {
+        return Err(PointConstraintDecodeError::NonFiniteParameter);
+    }
+    decode_point_on_segment_constraint(file, groups, group).ok_or(
+        PointConstraintDecodeError::UnsupportedOrMalformed {
+            host_kind: group.header.kind(),
+            payload_len: payload.len(),
+        },
+    )
 }
 
 pub(crate) fn decode_parameter_controlled_point(
@@ -745,6 +820,111 @@ pub(crate) fn decode_point_constraint(
     anchors: Option<&[Option<PointRecord>]>,
     graph: &Option<GraphTransform>,
 ) -> Option<RawPointConstraint> {
+    decode_point_constraint_impl(file, groups, group, anchors, graph)
+}
+
+pub(crate) fn try_decode_point_constraint(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: Option<&[Option<PointRecord>]>,
+    graph: &Option<GraphTransform>,
+) -> Result<RawPointConstraint, PointConstraintDecodeError> {
+    if !group.header.kind().is_point_constraint() {
+        return Err(PointConstraintDecodeError::NotPointConstraintKind(
+            group.header.kind(),
+        ));
+    }
+
+    let path =
+        find_indexed_path(file, group).ok_or(PointConstraintDecodeError::MissingIndexedPath)?;
+    let host_ref = path
+        .refs
+        .first()
+        .copied()
+        .filter(|ordinal| *ordinal > 0)
+        .ok_or(PointConstraintDecodeError::MissingHostReference)?;
+    let host_group = groups
+        .get(host_ref - 1)
+        .ok_or(PointConstraintDecodeError::MissingHostReference)?;
+    let host_kind = host_group.header.kind();
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == RECORD_BINDING_PAYLOAD)
+        .map(|record| record.payload(&file.data))
+        .ok_or(PointConstraintDecodeError::MissingPayloadRecord)?;
+
+    if payload.len() < 12 {
+        return Err(PointConstraintDecodeError::PayloadTooShort {
+            byte_len: payload.len(),
+            expected: 12,
+        });
+    }
+    if !read_f64(payload, 4).is_finite() {
+        return Err(PointConstraintDecodeError::NonFiniteParameter);
+    }
+
+    let host_path = find_indexed_path(file, host_group)
+        .ok_or(PointConstraintDecodeError::MissingIndexedPath)?;
+    match host_kind {
+        crate::format::GroupKind::Circle if host_path.refs.len() != 2 => {
+            return Err(PointConstraintDecodeError::HostPathTooShort {
+                host_kind,
+                expected: 2,
+                actual: host_path.refs.len(),
+            });
+        }
+        crate::format::GroupKind::Polygon if host_path.refs.len() < 2 => {
+            return Err(PointConstraintDecodeError::HostPathTooShort {
+                host_kind,
+                expected: 2,
+                actual: host_path.refs.len(),
+            });
+        }
+        crate::format::GroupKind::ThreePointArc
+        | crate::format::GroupKind::ArcOnCircle
+        | crate::format::GroupKind::CenterArc
+            if host_path.refs.len() != 3 =>
+        {
+            return Err(PointConstraintDecodeError::HostPathTooShort {
+                host_kind,
+                expected: 3,
+                actual: host_path.refs.len(),
+            });
+        }
+        crate::format::GroupKind::FunctionPlot => {
+            return try_decode_point_on_function_constraint(
+                file, groups, host_group, payload, graph,
+            );
+        }
+        _ => {}
+    }
+
+    if (group.header.kind()) == crate::format::GroupKind::PathPoint {
+        return try_decode_path_point_constraint(file, groups, host_group, payload, anchors, graph);
+    }
+
+    if matches!(host_kind, crate::format::GroupKind::Segment) {
+        return try_decode_point_on_segment_constraint(file, groups, group)
+            .map(RawPointConstraint::Segment);
+    }
+
+    decode_point_constraint_impl(file, groups, group, anchors, graph).ok_or(
+        PointConstraintDecodeError::UnsupportedOrMalformed {
+            host_kind,
+            payload_len: payload.len(),
+        },
+    )
+}
+
+fn decode_point_constraint_impl(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: Option<&[Option<PointRecord>]>,
+    graph: &Option<GraphTransform>,
+) -> Option<RawPointConstraint> {
     if !group.header.kind().is_point_constraint() {
         return None;
     }
@@ -759,7 +939,7 @@ pub(crate) fn decode_point_constraint(
     let payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x07d3)
+        .find(|record| record.record_type == RECORD_BINDING_PAYLOAD)
         .map(|record| record.payload(&file.data))?;
 
     if (group.header.kind()) == crate::format::GroupKind::PathPoint {
@@ -1017,6 +1197,41 @@ fn decode_path_point_constraint(
     }
 }
 
+fn try_decode_path_point_constraint(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    host_group: &ObjectGroup,
+    payload: &[u8],
+    anchors: Option<&[Option<PointRecord>]>,
+    graph: &Option<GraphTransform>,
+) -> Result<RawPointConstraint, PointConstraintDecodeError> {
+    if payload.len() < 12 {
+        return Err(PointConstraintDecodeError::PayloadTooShort {
+            byte_len: payload.len(),
+            expected: 12,
+        });
+    }
+    let normalized_t = read_f64(payload, 4);
+    if !normalized_t.is_finite() {
+        return Err(PointConstraintDecodeError::NonFiniteParameter);
+    }
+    if matches!(
+        host_group.header.kind(),
+        crate::format::GroupKind::SectorBoundary
+            | crate::format::GroupKind::CircularSegmentBoundary
+            | crate::format::GroupKind::Polygon
+    ) && anchors.is_none()
+    {
+        return Err(PointConstraintDecodeError::MissingAnchors);
+    }
+    decode_path_point_constraint(file, groups, host_group, payload, anchors, graph).ok_or(
+        PointConstraintDecodeError::UnsupportedOrMalformed {
+            host_kind: host_group.header.kind(),
+            payload_len: payload.len(),
+        },
+    )
+}
+
 fn decode_arc_boundary_polyline(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -1158,6 +1373,51 @@ fn decode_point_on_function_constraint(
         segment_index,
         t,
     })
+}
+
+fn try_decode_point_on_function_constraint(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    host_group: &ObjectGroup,
+    payload: &[u8],
+    graph: &Option<GraphTransform>,
+) -> Result<RawPointConstraint, PointConstraintDecodeError> {
+    if payload.len() < 12 {
+        return Err(PointConstraintDecodeError::PayloadTooShort {
+            byte_len: payload.len(),
+            expected: 12,
+        });
+    }
+    let normalized_t = read_f64(payload, 4);
+    if !normalized_t.is_finite() {
+        return Err(PointConstraintDecodeError::NonFiniteParameter);
+    }
+    if graph.is_none() {
+        return Err(PointConstraintDecodeError::MissingGraphTransform);
+    }
+    let path = find_indexed_path(file, host_group)
+        .ok_or(PointConstraintDecodeError::MissingIndexedPath)?;
+    let definition_group = groups
+        .get(
+            *path
+                .refs
+                .first()
+                .ok_or(PointConstraintDecodeError::MissingHostReference)?
+                - 1,
+        )
+        .ok_or(PointConstraintDecodeError::MissingHostReference)?;
+    let descriptor_record = host_group
+        .records
+        .iter()
+        .find(|record| record.record_type == RECORD_FUNCTION_PLOT_DESCRIPTOR)
+        .ok_or(PointConstraintDecodeError::MissingFunctionPlotDescriptor)?;
+    try_decode_function_plot_descriptor(descriptor_record.payload(&file.data)).map_err(
+        |error| PointConstraintDecodeError::InvalidFunctionPlotDescriptor(error.to_string()),
+    )?;
+    try_decode_function_expr(file, groups, definition_group)
+        .map_err(|error| PointConstraintDecodeError::InvalidFunctionExpr(error.to_string()))?;
+    decode_point_on_function_constraint(file, groups, host_group, payload, graph)
+        .ok_or(PointConstraintDecodeError::PolylineParameterUnavailable)
 }
 
 fn locate_polyline_parameter(points: &[PointRecord], normalized_t: f64) -> Option<(usize, f64)> {

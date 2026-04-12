@@ -1,5 +1,6 @@
 pub(crate) const RECORD_INDEXED_PATH_A: u32 = 0x07d2;
 pub(crate) const RECORD_INDEXED_PATH_B: u32 = 0x07d3;
+pub(crate) const RECORD_BINDING_PAYLOAD: u32 = 0x07d3;
 pub(crate) const RECORD_LABEL_AUX: u32 = 0x07d5;
 pub(crate) const RECORD_LABEL_VISIBILITY: u32 = 0x07d5;
 pub(crate) const RECORD_POINT_F64_PAIR: u32 = 0x0899;

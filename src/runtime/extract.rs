@@ -49,6 +49,7 @@ use self::points::{
     decode_translated_point_constraint, reflection_line_group_indices,
     regular_polygon_iteration_step, remap_circle_bindings, remap_label_bindings,
     remap_line_bindings, remap_polygon_bindings, translation_point_pair_group_indices,
+    try_decode_point_constraint, try_decode_transform_binding,
 };
 use self::shapes::{
     collect_arc_boundary_fill_polygons, collect_arc_boundary_shapes, collect_bound_line_shapes,
@@ -80,7 +81,8 @@ use super::scene::{
 pub(crate) use self::decode::{
     decode_parameter_control_value_for_group, find_indexed_path, is_circle_group_kind,
     try_decode_0907_anchor, try_decode_bbox_rect_raw, try_decode_group_label_text,
-    try_decode_group_rich_text, try_decode_link_button_url, try_find_indexed_path,
+    try_decode_group_rich_text, try_decode_link_button_url,
+    try_decode_parameter_control_value_for_group, try_find_indexed_path,
 };
 
 #[derive(Debug, Clone)]
@@ -1983,6 +1985,101 @@ fn write_group_detail(output: &mut String, file: &GspFile, group: &ObjectGroup, 
         Ok(None) => {}
         Err(error) => {
             let _ = writeln!(output, "{indent}  引用解析错误: {}", error);
+        }
+    }
+    if group.header.kind().is_point_constraint() {
+        match try_decode_point_constraint(file, &file.object_groups(), group, None, &None) {
+            Ok(constraint) => {
+                let summary = match constraint {
+                    self::points::RawPointConstraint::Segment(constraint) => format!(
+                        "segment start=#{} end=#{} t={:.6}",
+                        constraint.start_group_index + 1,
+                        constraint.end_group_index + 1,
+                        constraint.t
+                    ),
+                    self::points::RawPointConstraint::PolygonBoundary { edge_index, t, .. } => {
+                        format!("polygon edge={} t={:.6}", edge_index, t)
+                    }
+                    self::points::RawPointConstraint::Circle(constraint) => format!(
+                        "circle center=#{} radius=#{} unit=({:.6}, {:.6})",
+                        constraint.center_group_index + 1,
+                        constraint.radius_group_index + 1,
+                        constraint.unit_x,
+                        constraint.unit_y
+                    ),
+                    self::points::RawPointConstraint::CircleArc(constraint) => format!(
+                        "circle-arc center=#{} start=#{} end=#{} t={:.6}",
+                        constraint.center_group_index + 1,
+                        constraint.start_group_index + 1,
+                        constraint.end_group_index + 1,
+                        constraint.t
+                    ),
+                    self::points::RawPointConstraint::Arc(constraint) => format!(
+                        "arc start=#{} mid=#{} end=#{} t={:.6}",
+                        constraint.start_group_index + 1,
+                        constraint.mid_group_index + 1,
+                        constraint.end_group_index + 1,
+                        constraint.t
+                    ),
+                    self::points::RawPointConstraint::Polyline {
+                        function_key,
+                        segment_index,
+                        t,
+                        ..
+                    } => format!(
+                        "polyline function_key={} segment={} t={:.6}",
+                        function_key, segment_index, t
+                    ),
+                };
+                let _ = writeln!(output, "{indent}  点约束: {}", summary);
+            }
+            Err(error) => {
+                let _ = writeln!(output, "{indent}  点约束解析错误: {}", error);
+            }
+        }
+    }
+    match try_decode_transform_binding(file, group) {
+        Ok(binding) => match binding.kind {
+            TransformBindingKind::Rotate {
+                angle_degrees,
+                ref parameter_name,
+            } => {
+                let _ = writeln!(
+                    output,
+                    "{indent}  变换绑定: rotate source=#{} center=#{} angle={:.3} param={:?}",
+                    binding.source_group_index + 1,
+                    binding.center_group_index + 1,
+                    angle_degrees,
+                    parameter_name
+                );
+            }
+            TransformBindingKind::Scale { factor } => {
+                let _ = writeln!(
+                    output,
+                    "{indent}  变换绑定: scale source=#{} center=#{} factor={:.3}",
+                    binding.source_group_index + 1,
+                    binding.center_group_index + 1,
+                    factor
+                );
+            }
+        },
+        Err(error) => {
+            if matches!(
+                group.header.kind(),
+                GroupKind::Rotation | GroupKind::Scale | GroupKind::ParameterRotation
+            ) {
+                let _ = writeln!(output, "{indent}  变换绑定解析错误: {}", error);
+            }
+        }
+    }
+    if self::decode::is_parameter_control_group(group) {
+        match try_decode_parameter_control_value_for_group(file, &[], group) {
+            Ok(value) => {
+                let _ = writeln!(output, "{indent}  参数值: {:.6}", value);
+            }
+            Err(error) => {
+                let _ = writeln!(output, "{indent}  参数值解析错误: {}", error);
+            }
         }
     }
     match try_decode_0907_anchor(file, group) {
