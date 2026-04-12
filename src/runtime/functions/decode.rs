@@ -12,9 +12,8 @@ use crate::runtime::payload_consts::{
 use thiserror::Error;
 
 use super::expr::{
-    BinaryOp, FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode, FunctionTerm,
-    ParsedFunctionExpr, UnaryFunction, canonicalize_function_expr, decode_unary_function,
-    function_term_contains_symbol,
+    BinaryOp, FunctionAst, FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode,
+    UnaryFunction, canonicalize_function_expr, decode_unary_function, function_ast_contains_symbol,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -239,7 +238,7 @@ pub(crate) enum FunctionToken {
     Variable,
     PiAngle,
     Parameter(ParameterBinding),
-    UnaryX(UnaryFunction),
+    Unary(UnaryFunction),
     Constant(f64),
 }
 
@@ -333,91 +332,83 @@ impl<'a> FunctionExprParser<'a> {
         }
     }
 
-    fn parse_expr(&mut self) -> Result<ParsedFunctionExpr, FunctionExprParseError> {
-        let head = self.parse_term()?;
-        let mut tail = Vec::new();
-        while let Some(op) = self.parse_additive_op()? {
-            let term = self.parse_term()?;
-            tail.push((op, term));
-        }
-        Ok(ParsedFunctionExpr { head, tail })
+    fn parse_expr(&mut self) -> Result<FunctionAst, FunctionExprParseError> {
+        self.parse_expr_bp(0)
     }
 
-    fn parse_additive_op(&mut self) -> Result<Option<BinaryOp>, FunctionExprParseError> {
-        Ok(match self.tokens.peek()? {
-            Some(LexedFunctionToken {
-                kind: FunctionToken::Add,
-                ..
-            }) => {
-                self.tokens.bump()?;
-                Some(BinaryOp::Add)
+    fn parse_expr_bp(&mut self, min_bp: u8) -> Result<FunctionAst, FunctionExprParseError> {
+        let mut lhs = self.parse_prefix()?;
+        loop {
+            let Some((op, left_bp, right_bp)) = self.peek_infix()? else {
+                break;
+            };
+            if left_bp < min_bp {
+                break;
             }
-            Some(LexedFunctionToken {
-                kind: FunctionToken::Sub,
-                ..
-            }) => {
-                self.tokens.bump()?;
-                Some(BinaryOp::Sub)
-            }
-            Some(LexedFunctionToken {
-                kind: FunctionToken::Div,
-                ..
-            }) => {
-                self.tokens.bump()?;
-                Some(BinaryOp::Div)
-            }
-            _ => None,
-        })
-    }
-
-    fn parse_term(&mut self) -> Result<FunctionTerm, FunctionExprParseError> {
-        let mut term = self.parse_power_chain()?;
-        while matches!(
-            self.tokens.peek()?,
-            Some(LexedFunctionToken {
-                kind: FunctionToken::Mul,
-                ..
-            })
-        ) {
             self.tokens.bump()?;
-            let rhs = self.parse_power_chain()?;
-            term = FunctionTerm::Product(Box::new(term), Box::new(rhs));
+            let rhs = self.parse_expr_bp(right_bp)?;
+            lhs = FunctionAst::Binary {
+                lhs: Box::new(lhs),
+                op,
+                rhs: Box::new(rhs),
+            };
         }
-        Ok(term)
+        Ok(lhs)
     }
 
-    fn parse_power_chain(&mut self) -> Result<FunctionTerm, FunctionExprParseError> {
-        let mut term = self.parse_primary()?;
-        while matches!(
-            self.tokens.peek()?,
-            Some(LexedFunctionToken {
-                kind: FunctionToken::Pow,
-                ..
-            })
-        ) {
-            self.tokens.bump()?;
-            let exponent = self.parse_primary()?;
-            term = FunctionTerm::Power(Box::new(term), Box::new(exponent));
-        }
-        Ok(term)
-    }
-
-    fn parse_primary(&mut self) -> Result<FunctionTerm, FunctionExprParseError> {
+    fn parse_prefix(&mut self) -> Result<FunctionAst, FunctionExprParseError> {
         let offset = self.tokens.current_offset();
         match self.tokens.bump()? {
-            FunctionToken::Variable => Ok(FunctionTerm::Variable),
-            FunctionToken::PiAngle => Ok(FunctionTerm::PiAngle),
+            FunctionToken::Variable => Ok(FunctionAst::Variable),
+            FunctionToken::PiAngle => Ok(FunctionAst::PiAngle),
             FunctionToken::Parameter(binding) => {
-                Ok(FunctionTerm::Parameter(binding.name, binding.value))
+                Ok(FunctionAst::Parameter(binding.name, binding.value))
             }
-            FunctionToken::UnaryX(op) => Ok(FunctionTerm::UnaryX(op)),
-            FunctionToken::Constant(value) => Ok(FunctionTerm::Constant(value)),
+            FunctionToken::Constant(value) => Ok(FunctionAst::Constant(value)),
+            FunctionToken::Unary(op) => {
+                let expr = self
+                    .parse_expr_bp(4)
+                    .map_err(|_| FunctionExprParseError::InvalidUnaryOperand {
+                        offset,
+                        opcode: self.tokens.words[offset - self.tokens.base_offset],
+                    })?;
+                Ok(FunctionAst::Unary {
+                    op,
+                    expr: Box::new(expr),
+                })
+            }
             found @ (FunctionToken::Add
             | FunctionToken::Sub
             | FunctionToken::Mul
             | FunctionToken::Div
             | FunctionToken::Pow) => Err(FunctionExprParseError::UnexpectedToken { offset, found }),
         }
+    }
+
+    fn peek_infix(&mut self) -> Result<Option<(BinaryOp, u8, u8)>, FunctionExprParseError> {
+        Ok(match self.tokens.peek()? {
+            Some(LexedFunctionToken {
+                kind: FunctionToken::Add,
+                ..
+            }) => Some((BinaryOp::Add, 1, 2)),
+            Some(LexedFunctionToken {
+                kind: FunctionToken::Sub,
+                ..
+            }) => Some((BinaryOp::Sub, 1, 2)),
+            Some(LexedFunctionToken {
+                kind: FunctionToken::Mul,
+                ..
+            }) => Some((BinaryOp::Mul, 3, 4)),
+            Some(LexedFunctionToken {
+                kind: FunctionToken::Div,
+                ..
+            }) => Some((BinaryOp::Div, 3, 4)),
+            Some(LexedFunctionToken {
+                kind: FunctionToken::Pow,
+                ..
+            }) => Some((BinaryOp::Pow, 5, 5)),
+            _ => None,
+        })
     }
 
     fn words_consumed(&self) -> usize {
@@ -470,17 +461,9 @@ fn lex_function_token(
         },
         _ => {
             if let Some(op) = decode_unary_function(word) {
-                if matches!(words.get(1), Some(&EXPR_VARIABLE_WORD))
-                    && matches!(words.get(2), Some(&EXPR_VARIABLE_SUFFIX))
-                {
-                    return Ok(LexedFunctionToken {
-                        kind: FunctionToken::UnaryX(op),
-                        width_words: 3,
-                    });
-                }
-                return Err(FunctionExprParseError::InvalidUnaryOperand {
-                    offset,
-                    opcode: word,
+                return Ok(LexedFunctionToken {
+                    kind: FunctionToken::Unary(op),
+                    width_words: 1,
                 });
             }
             if (word & EXPR_PARAMETER_MASK) == EXPR_PARAMETER_PREFIX {
@@ -516,7 +499,7 @@ pub(crate) fn try_decode_inner_function_expr(
 fn parse_function_expr(
     payload: &[u8],
     parameters: &BTreeMap<u16, ParameterBinding>,
-) -> Result<ParsedFunctionExpr, FunctionExprParseError> {
+) -> Result<FunctionAst, FunctionExprParseError> {
     let words = payload
         .chunks_exact(2)
         .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
@@ -539,7 +522,7 @@ fn parse_function_expr_from(
     words: &[u16],
     start: usize,
     parameters: &BTreeMap<u16, ParameterBinding>,
-) -> Result<(ParsedFunctionExpr, usize), FunctionExprParseError> {
+) -> Result<(FunctionAst, usize), FunctionExprParseError> {
     let mut parser = FunctionExprParser::new(&words[start..], parameters, start);
     let parsed = parser.parse_expr()?;
     Ok((parsed, start + parser.words_consumed()))
@@ -548,7 +531,7 @@ fn parse_function_expr_from(
 fn find_fallback_function_expr(
     words: &[u16],
     parameters: &BTreeMap<u16, ParameterBinding>,
-) -> Result<ParsedFunctionExpr, FunctionExprParseError> {
+) -> Result<FunctionAst, FunctionExprParseError> {
     let mut first_error = None;
     for start in 0..words.len() {
         match parse_function_expr_from(words, start, parameters) {
@@ -580,12 +563,8 @@ fn has_ignorable_expr_suffix(words: &[u16], end: usize) -> bool {
     )
 }
 
-fn parsed_contains_symbol(parsed: &ParsedFunctionExpr) -> bool {
-    function_term_contains_symbol(&parsed.head)
-        || parsed
-            .tail
-            .iter()
-            .any(|(_, term)| function_term_contains_symbol(term))
+fn parsed_contains_symbol(parsed: &FunctionAst) -> bool {
+    function_ast_contains_symbol(parsed)
 }
 
 #[cfg(test)]

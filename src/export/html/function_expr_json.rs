@@ -1,4 +1,4 @@
-use crate::runtime::functions::{BinaryOp, FunctionExpr, FunctionTerm, UnaryFunction};
+use crate::runtime::functions::{BinaryOp, FunctionAst, FunctionExpr, UnaryFunction};
 use serde::Serialize;
 use ts_rs::TS;
 
@@ -10,10 +10,7 @@ pub(super) enum FunctionExprJson {
     #[serde(rename = "identity")]
     Identity,
     #[serde(rename = "parsed")]
-    Parsed {
-        head: FunctionTermJson,
-        tail: Vec<ExprTailJson>,
-    },
+    Parsed { expr: FunctionAstJson },
 }
 
 impl FunctionExprJson {
@@ -22,87 +19,80 @@ impl FunctionExprJson {
             FunctionExpr::Constant(value) => Self::Constant { value: *value },
             FunctionExpr::Identity => Self::Identity,
             FunctionExpr::SinIdentity => Self::Parsed {
-                head: FunctionTermJson::UnaryX { op: "sin" },
-                tail: Vec::new(),
+                expr: FunctionAstJson::Unary {
+                    op: unary_function_name(UnaryFunction::Sin),
+                    expr: Box::new(FunctionAstJson::Variable),
+                },
             },
             FunctionExpr::CosIdentityPlus(offset) => Self::Parsed {
-                head: FunctionTermJson::UnaryX { op: "cos" },
-                tail: vec![ExprTailJson {
-                    op: "add",
-                    term: FunctionTermJson::Constant { value: *offset },
-                }],
+                expr: FunctionAstJson::Binary {
+                    lhs: Box::new(FunctionAstJson::Unary {
+                        op: unary_function_name(UnaryFunction::Cos),
+                        expr: Box::new(FunctionAstJson::Variable),
+                    }),
+                    op: binary_op_name(BinaryOp::Add),
+                    rhs: Box::new(FunctionAstJson::Constant { value: *offset }),
+                },
             },
             FunctionExpr::TanIdentityMinus(offset) => Self::Parsed {
-                head: FunctionTermJson::UnaryX { op: "tan" },
-                tail: vec![ExprTailJson {
-                    op: "sub",
-                    term: FunctionTermJson::Constant { value: *offset },
-                }],
+                expr: FunctionAstJson::Binary {
+                    lhs: Box::new(FunctionAstJson::Unary {
+                        op: unary_function_name(UnaryFunction::Tan),
+                        expr: Box::new(FunctionAstJson::Variable),
+                    }),
+                    op: binary_op_name(BinaryOp::Sub),
+                    rhs: Box::new(FunctionAstJson::Constant { value: *offset }),
+                },
             },
-            FunctionExpr::Parsed(parsed) => Self::Parsed {
-                head: FunctionTermJson::from_term(&parsed.head),
-                tail: parsed
-                    .tail
-                    .iter()
-                    .map(|(op, term)| ExprTailJson {
-                        op: binary_op_name(*op),
-                        term: FunctionTermJson::from_term(term),
-                    })
-                    .collect(),
+            FunctionExpr::Parsed(ast) => Self::Parsed {
+                expr: FunctionAstJson::from_ast(ast),
             },
         }
     }
 }
 
 #[derive(Serialize, TS)]
-pub(super) struct ExprTailJson {
-    op: &'static str,
-    term: FunctionTermJson,
-}
-
-#[derive(Serialize, TS)]
 #[serde(tag = "kind")]
-pub(super) enum FunctionTermJson {
+pub(super) enum FunctionAstJson {
     #[serde(rename = "variable")]
     Variable,
     #[serde(rename = "constant")]
     Constant { value: f64 },
     #[serde(rename = "parameter")]
     Parameter { name: String, value: f64 },
-    #[serde(rename = "unary_x")]
-    UnaryX { op: &'static str },
-    #[serde(rename = "product")]
-    Product {
-        left: Box<FunctionTermJson>,
-        right: Box<FunctionTermJson>,
+    #[serde(rename = "pi-angle")]
+    PiAngle,
+    #[serde(rename = "unary")]
+    Unary {
+        op: &'static str,
+        expr: Box<FunctionAstJson>,
     },
-    #[serde(rename = "power")]
-    Power {
-        base: Box<FunctionTermJson>,
-        exponent: Box<FunctionTermJson>,
+    #[serde(rename = "binary")]
+    Binary {
+        lhs: Box<FunctionAstJson>,
+        op: &'static str,
+        rhs: Box<FunctionAstJson>,
     },
 }
 
-impl FunctionTermJson {
-    fn from_term(term: &FunctionTerm) -> Self {
-        match term {
-            FunctionTerm::Variable => Self::Variable,
-            FunctionTerm::Constant(value) => Self::Constant { value: *value },
-            FunctionTerm::PiAngle => Self::Constant { value: 180.0 },
-            FunctionTerm::Parameter(name, value) => Self::Parameter {
+impl FunctionAstJson {
+    fn from_ast(ast: &FunctionAst) -> Self {
+        match ast {
+            FunctionAst::Variable => Self::Variable,
+            FunctionAst::Constant(value) => Self::Constant { value: *value },
+            FunctionAst::PiAngle => Self::PiAngle,
+            FunctionAst::Parameter(name, value) => Self::Parameter {
                 name: name.clone(),
                 value: *value,
             },
-            FunctionTerm::UnaryX(op) => Self::UnaryX {
+            FunctionAst::Unary { op, expr } => Self::Unary {
                 op: unary_function_name(*op),
+                expr: Box::new(Self::from_ast(expr)),
             },
-            FunctionTerm::Product(left, right) => Self::Product {
-                left: Box::new(Self::from_term(left)),
-                right: Box::new(Self::from_term(right)),
-            },
-            FunctionTerm::Power(base, exponent) => Self::Power {
-                base: Box::new(Self::from_term(base)),
-                exponent: Box::new(Self::from_term(exponent)),
+            FunctionAst::Binary { lhs, op, rhs } => Self::Binary {
+                lhs: Box::new(Self::from_ast(lhs)),
+                op: binary_op_name(*op),
+                rhs: Box::new(Self::from_ast(rhs)),
             },
         }
     }
@@ -112,7 +102,9 @@ fn binary_op_name(op: BinaryOp) -> &'static str {
     match op {
         BinaryOp::Add => "add",
         BinaryOp::Sub => "sub",
+        BinaryOp::Mul => "mul",
         BinaryOp::Div => "div",
+        BinaryOp::Pow => "pow",
     }
 }
 

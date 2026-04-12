@@ -1131,25 +1131,24 @@ fn collect_expr_parameter_names(
     parameters: &mut BTreeMap<String, f64>,
     value: f64,
 ) {
-    if let crate::runtime::functions::FunctionExpr::Parsed(parsed) = expr {
-        collect_term_parameter_names(&parsed.head, parameters, value);
-        for (_, term) in &parsed.tail {
-            collect_term_parameter_names(term, parameters, value);
-        }
+    if let crate::runtime::functions::FunctionExpr::Parsed(ast) = expr {
+        collect_term_parameter_names(ast, parameters, value);
     }
 }
 
 fn collect_term_parameter_names(
-    term: &crate::runtime::functions::FunctionTerm,
+    term: &crate::runtime::functions::FunctionAst,
     parameters: &mut BTreeMap<String, f64>,
     value: f64,
 ) {
     match term {
-        crate::runtime::functions::FunctionTerm::Parameter(name, _) => {
+        crate::runtime::functions::FunctionAst::Parameter(name, _) => {
             parameters.insert(name.clone(), value);
         }
-        crate::runtime::functions::FunctionTerm::Product(left, right)
-        | crate::runtime::functions::FunctionTerm::Power(left, right) => {
+        crate::runtime::functions::FunctionAst::Unary { expr, .. } => {
+            collect_term_parameter_names(expr, parameters, value);
+        }
+        crate::runtime::functions::FunctionAst::Binary { lhs: left, rhs: right, .. } => {
             collect_term_parameter_names(left, parameters, value);
             collect_term_parameter_names(right, parameters, value);
         }

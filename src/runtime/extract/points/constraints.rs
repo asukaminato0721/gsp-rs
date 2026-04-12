@@ -10,8 +10,8 @@ use super::{
 };
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
 use crate::runtime::functions::{
-    BinaryOp, FunctionExpr, FunctionTerm, ParsedFunctionExpr, evaluate_expr_with_parameters,
-    sample_function_points, try_decode_function_expr, try_decode_function_plot_descriptor,
+    BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters, sample_function_points,
+    try_decode_function_expr, try_decode_function_plot_descriptor,
 };
 use crate::runtime::geometry::{
     GraphTransform, arc_on_circle_control_points, lerp_point, locate_polyline_parameter_by_length,
@@ -269,12 +269,13 @@ pub(crate) fn regular_polygon_angle_expr(
     parameter_name: &str,
     parameter_value: f64,
 ) -> FunctionExpr {
-    FunctionExpr::Parsed(ParsedFunctionExpr {
-        head: FunctionTerm::Constant(360.0),
-        tail: vec![(
-            BinaryOp::Div,
-            FunctionTerm::Parameter(parameter_name.to_string(), parameter_value),
-        )],
+    FunctionExpr::Parsed(FunctionAst::Binary {
+        lhs: Box::new(FunctionAst::Constant(360.0)),
+        op: BinaryOp::Div,
+        rhs: Box::new(FunctionAst::Parameter(
+            parameter_name.to_string(),
+            parameter_value,
+        )),
     })
 }
 

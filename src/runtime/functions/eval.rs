@@ -3,8 +3,7 @@ use std::collections::BTreeMap;
 use crate::format::PointRecord;
 
 use super::expr::{
-    BinaryOp, FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode, FunctionTerm,
-    ParsedFunctionExpr, UnaryFunction,
+    BinaryOp, FunctionAst, FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode, UnaryFunction,
 };
 
 pub(crate) fn sample_function_points(
@@ -31,7 +30,7 @@ pub(crate) fn sample_function_points(
                     Some(y)
                 }
             }
-            FunctionExpr::Parsed(parsed) => evaluate_function_expr(parsed, x),
+            FunctionExpr::Parsed(ast) => evaluate_ast(ast, x, &BTreeMap::new()),
         };
         if let Some(y) = y {
             let point = match descriptor.mode {
@@ -54,19 +53,6 @@ pub(crate) fn sample_function_points(
     segments
 }
 
-fn evaluate_function_expr(expr: &ParsedFunctionExpr, x: f64) -> Option<f64> {
-    let mut value = evaluate_function_term(expr.head.clone(), x)?;
-    for (op, term) in &expr.tail {
-        let rhs = evaluate_function_term(term.clone(), x)?;
-        value = match op {
-            BinaryOp::Add => value + rhs,
-            BinaryOp::Sub => value - rhs,
-            BinaryOp::Div => (rhs.abs() >= 1e-9).then_some(value / rhs)?,
-        };
-    }
-    value.is_finite().then_some(value)
-}
-
 pub(crate) fn evaluate_expr_with_parameters(
     expr: &FunctionExpr,
     x: f64,
@@ -81,105 +67,56 @@ pub(crate) fn evaluate_expr_with_parameters(
             let y = x.tan() - offset;
             (y.is_finite() && x.cos().abs() >= 0.04 && y.abs() <= 5.0).then_some(y)
         }
-        FunctionExpr::Parsed(parsed) => evaluate_parsed_with_parameters(parsed, x, parameters),
+        FunctionExpr::Parsed(ast) => evaluate_ast(ast, x, parameters),
     }
 }
 
-fn evaluate_parsed_with_parameters(
-    expr: &ParsedFunctionExpr,
-    x: f64,
-    parameters: &BTreeMap<String, f64>,
-) -> Option<f64> {
-    let mut value = evaluate_function_term_with_parameters(expr.head.clone(), x, parameters)?;
-    for (op, term) in &expr.tail {
-        let rhs = evaluate_function_term_with_parameters(term.clone(), x, parameters)?;
-        value = match op {
-            BinaryOp::Add => value + rhs,
-            BinaryOp::Sub => value - rhs,
-            BinaryOp::Div => (rhs.abs() >= 1e-9).then_some(value / rhs)?,
-        };
-    }
+fn evaluate_ast(expr: &FunctionAst, x: f64, parameters: &BTreeMap<String, f64>) -> Option<f64> {
+    let value = match expr {
+        FunctionAst::Variable => x,
+        FunctionAst::Constant(value) => *value,
+        FunctionAst::PiAngle => 180.0,
+        FunctionAst::Parameter(name, value) => *parameters.get(name).unwrap_or(value),
+        FunctionAst::Unary { op, expr } => {
+            let value = evaluate_ast(expr, x, parameters)?;
+            match op {
+                UnaryFunction::Sin => value.sin(),
+                UnaryFunction::Cos => value.cos(),
+                UnaryFunction::Tan => {
+                    let y = value.tan();
+                    if !y.is_finite() || value.cos().abs() < 0.04 || y.abs() > 5.0 {
+                        return None;
+                    }
+                    y
+                }
+                UnaryFunction::Abs => value.abs(),
+                UnaryFunction::Sqrt => (value >= 0.0).then(|| value.sqrt())?,
+                UnaryFunction::Ln => (value > 0.0).then(|| value.ln())?,
+                UnaryFunction::Log10 => (value > 0.0).then(|| value.log10())?,
+                UnaryFunction::Sign => {
+                    if value > 0.0 {
+                        1.0
+                    } else if value < 0.0 {
+                        -1.0
+                    } else {
+                        0.0
+                    }
+                }
+                UnaryFunction::Round => value.round(),
+                UnaryFunction::Trunc => value.trunc(),
+            }
+        }
+        FunctionAst::Binary { lhs, op, rhs } => {
+            let lhs = evaluate_ast(lhs, x, parameters)?;
+            let rhs = evaluate_ast(rhs, x, parameters)?;
+            match op {
+                BinaryOp::Add => lhs + rhs,
+                BinaryOp::Sub => lhs - rhs,
+                BinaryOp::Mul => lhs * rhs,
+                BinaryOp::Div => (rhs.abs() >= 1e-9).then_some(lhs / rhs)?,
+                BinaryOp::Pow => lhs.powf(rhs),
+            }
+        }
+    };
     value.is_finite().then_some(value)
-}
-
-fn evaluate_function_term_with_parameters(
-    term: FunctionTerm,
-    x: f64,
-    parameters: &BTreeMap<String, f64>,
-) -> Option<f64> {
-    match term {
-        FunctionTerm::Variable => Some(x),
-        FunctionTerm::Constant(value) => Some(value),
-        FunctionTerm::PiAngle => Some(180.0),
-        FunctionTerm::Parameter(name, value) => Some(*parameters.get(&name).unwrap_or(&value)),
-        FunctionTerm::UnaryX(op) => match op {
-            UnaryFunction::Sin => Some(x.sin()),
-            UnaryFunction::Cos => Some(x.cos()),
-            UnaryFunction::Tan => {
-                let y = x.tan();
-                (y.is_finite() && x.cos().abs() >= 0.04 && y.abs() <= 5.0).then_some(y)
-            }
-            UnaryFunction::Abs => Some(x.abs()),
-            UnaryFunction::Sqrt => (x >= 0.0).then(|| x.sqrt()),
-            UnaryFunction::Ln => (x > 0.0).then(|| x.ln()),
-            UnaryFunction::Log10 => (x > 0.0).then(|| x.log10()),
-            UnaryFunction::Sign => Some(if x > 0.0 {
-                1.0
-            } else if x < 0.0 {
-                -1.0
-            } else {
-                0.0
-            }),
-            UnaryFunction::Round => Some(x.round()),
-            UnaryFunction::Trunc => Some(x.trunc()),
-        },
-        FunctionTerm::Product(left, right) => Some(
-            evaluate_function_term_with_parameters(*left, x, parameters)?
-                * evaluate_function_term_with_parameters(*right, x, parameters)?,
-        ),
-        FunctionTerm::Power(base, exponent) => {
-            let base = evaluate_function_term_with_parameters(*base, x, parameters)?;
-            let exponent = evaluate_function_term_with_parameters(*exponent, x, parameters)?;
-            let value = base.powf(exponent);
-            value.is_finite().then_some(value)
-        }
-    }
-}
-
-fn evaluate_function_term(term: FunctionTerm, x: f64) -> Option<f64> {
-    match term {
-        FunctionTerm::Variable => Some(x),
-        FunctionTerm::Constant(value) => Some(value),
-        FunctionTerm::PiAngle => Some(180.0),
-        FunctionTerm::Parameter(_, value) => Some(value),
-        FunctionTerm::UnaryX(op) => match op {
-            UnaryFunction::Sin => Some(x.sin()),
-            UnaryFunction::Cos => Some(x.cos()),
-            UnaryFunction::Tan => {
-                let y = x.tan();
-                (y.is_finite() && x.cos().abs() >= 0.04 && y.abs() <= 5.0).then_some(y)
-            }
-            UnaryFunction::Abs => Some(x.abs()),
-            UnaryFunction::Sqrt => (x >= 0.0).then(|| x.sqrt()),
-            UnaryFunction::Ln => (x > 0.0).then(|| x.ln()),
-            UnaryFunction::Log10 => (x > 0.0).then(|| x.log10()),
-            UnaryFunction::Sign => Some(if x > 0.0 {
-                1.0
-            } else if x < 0.0 {
-                -1.0
-            } else {
-                0.0
-            }),
-            UnaryFunction::Round => Some(x.round()),
-            UnaryFunction::Trunc => Some(x.trunc()),
-        },
-        FunctionTerm::Product(left, right) => {
-            Some(evaluate_function_term(*left, x)? * evaluate_function_term(*right, x)?)
-        }
-        FunctionTerm::Power(base, exponent) => {
-            let value =
-                evaluate_function_term(*base, x)?.powf(evaluate_function_term(*exponent, x)?);
-            value.is_finite().then_some(value)
-        }
-    }
 }

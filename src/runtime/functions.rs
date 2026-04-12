@@ -7,8 +7,8 @@ mod scene;
 pub(crate) use decode::{try_decode_function_expr, try_decode_function_plot_descriptor};
 pub(crate) use eval::{evaluate_expr_with_parameters, sample_function_points};
 pub(crate) use expr::{
-    BinaryOp, FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode, FunctionTerm,
-    ParsedFunctionExpr, UnaryFunction, function_expr_label,
+    BinaryOp, FunctionAst, FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode,
+    UnaryFunction, function_expr_label,
 };
 pub(crate) use plot::{
     collect_function_plot_domain, collect_function_plots, synthesize_function_axes,
@@ -65,32 +65,57 @@ mod tests {
         let parameters = BTreeMap::new();
         assert_eq!(
             try_decode_inner_function_expr(payload, &parameters).ok(),
-            Some(FunctionExpr::Parsed(ParsedFunctionExpr {
-                head: FunctionTerm::UnaryX(UnaryFunction::Abs),
-                tail: vec![
-                    (BinaryOp::Add, FunctionTerm::UnaryX(UnaryFunction::Sqrt)),
-                    (BinaryOp::Add, FunctionTerm::UnaryX(UnaryFunction::Ln)),
-                    (BinaryOp::Add, FunctionTerm::UnaryX(UnaryFunction::Log10)),
-                    (BinaryOp::Add, FunctionTerm::UnaryX(UnaryFunction::Sign)),
-                    (BinaryOp::Add, FunctionTerm::UnaryX(UnaryFunction::Round)),
-                    (BinaryOp::Add, FunctionTerm::UnaryX(UnaryFunction::Trunc)),
-                ],
+            Some(FunctionExpr::Parsed(FunctionAst::Binary {
+                lhs: Box::new(FunctionAst::Binary {
+                    lhs: Box::new(FunctionAst::Binary {
+                        lhs: Box::new(FunctionAst::Binary {
+                            lhs: Box::new(FunctionAst::Binary {
+                                lhs: Box::new(FunctionAst::Binary {
+                                    lhs: Box::new(FunctionAst::Unary {
+                                        op: UnaryFunction::Abs,
+                                        expr: Box::new(FunctionAst::Variable),
+                                    }),
+                                    op: BinaryOp::Add,
+                                    rhs: Box::new(FunctionAst::Unary {
+                                        op: UnaryFunction::Sqrt,
+                                        expr: Box::new(FunctionAst::Variable),
+                                    }),
+                                }),
+                                op: BinaryOp::Add,
+                                rhs: Box::new(FunctionAst::Unary {
+                                    op: UnaryFunction::Ln,
+                                    expr: Box::new(FunctionAst::Variable),
+                                }),
+                            }),
+                            op: BinaryOp::Add,
+                            rhs: Box::new(FunctionAst::Unary {
+                                op: UnaryFunction::Log10,
+                                expr: Box::new(FunctionAst::Variable),
+                            }),
+                        }),
+                        op: BinaryOp::Add,
+                        rhs: Box::new(FunctionAst::Unary {
+                            op: UnaryFunction::Sign,
+                            expr: Box::new(FunctionAst::Variable),
+                        }),
+                    }),
+                    op: BinaryOp::Add,
+                    rhs: Box::new(FunctionAst::Unary {
+                        op: UnaryFunction::Round,
+                        expr: Box::new(FunctionAst::Variable),
+                    }),
+                }),
+                op: BinaryOp::Add,
+                rhs: Box::new(FunctionAst::Unary {
+                    op: UnaryFunction::Trunc,
+                    expr: Box::new(FunctionAst::Variable),
+                }),
             }))
         );
         let expr = try_decode_function_expr(&file, &groups, function_group).ok();
         assert_eq!(
             expr,
-            Some(FunctionExpr::Parsed(ParsedFunctionExpr {
-                head: FunctionTerm::UnaryX(UnaryFunction::Abs),
-                tail: vec![
-                    (BinaryOp::Add, FunctionTerm::UnaryX(UnaryFunction::Sqrt)),
-                    (BinaryOp::Add, FunctionTerm::UnaryX(UnaryFunction::Ln)),
-                    (BinaryOp::Add, FunctionTerm::UnaryX(UnaryFunction::Log10)),
-                    (BinaryOp::Add, FunctionTerm::UnaryX(UnaryFunction::Sign)),
-                    (BinaryOp::Add, FunctionTerm::UnaryX(UnaryFunction::Round)),
-                    (BinaryOp::Add, FunctionTerm::UnaryX(UnaryFunction::Trunc)),
-                ],
-            }))
+            try_decode_inner_function_expr(payload, &parameters).ok()
         );
     }
 
@@ -117,9 +142,10 @@ mod tests {
             .expect("nested function group");
         assert_eq!(
             try_decode_function_expr(&file, &groups, function_group).ok(),
-            Some(FunctionExpr::Parsed(ParsedFunctionExpr {
-                head: FunctionTerm::Parameter("t₂".to_string(), 5.0),
-                tail: vec![(BinaryOp::Add, FunctionTerm::Constant(1.0))],
+            Some(FunctionExpr::Parsed(FunctionAst::Binary {
+                lhs: Box::new(FunctionAst::Parameter("t₂".to_string(), 5.0)),
+                op: BinaryOp::Add,
+                rhs: Box::new(FunctionAst::Constant(1.0)),
             }))
         );
         assert_eq!(
@@ -154,15 +180,14 @@ mod tests {
         let expr = try_decode_function_expr(&file, &groups, function_group).expect("expression");
         assert_eq!(
             expr,
-            FunctionExpr::Parsed(ParsedFunctionExpr {
-                head: FunctionTerm::Product(
-                    Box::new(FunctionTerm::Constant(2.0)),
-                    Box::new(FunctionTerm::PiAngle),
-                ),
-                tail: vec![(
-                    BinaryOp::Div,
-                    FunctionTerm::Parameter("t₂".to_string(), 5.0)
-                )],
+            FunctionExpr::Parsed(FunctionAst::Binary {
+                lhs: Box::new(FunctionAst::Binary {
+                    lhs: Box::new(FunctionAst::Constant(2.0)),
+                    op: BinaryOp::Mul,
+                    rhs: Box::new(FunctionAst::PiAngle),
+                }),
+                op: BinaryOp::Div,
+                rhs: Box::new(FunctionAst::Parameter("t₂".to_string(), 5.0)),
             })
         );
         assert_eq!(function_expr_label(expr), "2*180 / t₂");
@@ -174,9 +199,13 @@ mod tests {
 
         assert_eq!(
             try_decode_inner_function_expr(&payload, &BTreeMap::new()).ok(),
-            Some(FunctionExpr::Parsed(ParsedFunctionExpr {
-                head: FunctionTerm::UnaryX(UnaryFunction::Abs),
-                tail: vec![(BinaryOp::Add, FunctionTerm::Constant(2.0))],
+            Some(FunctionExpr::Parsed(FunctionAst::Binary {
+                lhs: Box::new(FunctionAst::Unary {
+                    op: UnaryFunction::Abs,
+                    expr: Box::new(FunctionAst::Variable),
+                }),
+                op: BinaryOp::Add,
+                rhs: Box::new(FunctionAst::Constant(2.0)),
             }))
         );
     }
@@ -187,9 +216,10 @@ mod tests {
 
         assert_eq!(
             try_decode_inner_function_expr(&payload, &BTreeMap::new()).ok(),
-            Some(FunctionExpr::Parsed(ParsedFunctionExpr {
-                head: FunctionTerm::Variable,
-                tail: vec![(BinaryOp::Add, FunctionTerm::Constant(1.0))],
+            Some(FunctionExpr::Parsed(FunctionAst::Binary {
+                lhs: Box::new(FunctionAst::Variable),
+                op: BinaryOp::Add,
+                rhs: Box::new(FunctionAst::Constant(1.0)),
             }))
         );
     }

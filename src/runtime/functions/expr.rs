@@ -21,14 +21,16 @@ pub(crate) enum FunctionExpr {
     SinIdentity,
     CosIdentityPlus(f64),
     TanIdentityMinus(f64),
-    Parsed(ParsedFunctionExpr),
+    Parsed(FunctionAst),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BinaryOp {
     Add,
     Sub,
+    Mul,
     Div,
+    Pow,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,20 +48,20 @@ pub(crate) enum UnaryFunction {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum FunctionTerm {
+pub(crate) enum FunctionAst {
     Variable,
     Constant(f64),
     PiAngle,
     Parameter(String, f64),
-    UnaryX(UnaryFunction),
-    Product(Box<FunctionTerm>, Box<FunctionTerm>),
-    Power(Box<FunctionTerm>, Box<FunctionTerm>),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ParsedFunctionExpr {
-    pub(crate) head: FunctionTerm,
-    pub(crate) tail: Vec<(BinaryOp, FunctionTerm)>,
+    Unary {
+        op: UnaryFunction,
+        expr: Box<FunctionAst>,
+    },
+    Binary {
+        lhs: Box<FunctionAst>,
+        op: BinaryOp,
+        rhs: Box<FunctionAst>,
+    },
 }
 
 pub(crate) fn function_expr_label(expr: FunctionExpr) -> String {
@@ -77,18 +79,7 @@ pub(crate) fn function_expr_label_with_variable(expr: FunctionExpr, variable: &s
         FunctionExpr::TanIdentityMinus(offset) => {
             format!("tan({variable}) - {}", format_number(offset))
         }
-        FunctionExpr::Parsed(parsed) => {
-            let mut text = format_function_term(parsed.head, variable);
-            for (op, term) in parsed.tail {
-                text.push_str(match op {
-                    BinaryOp::Add => " + ",
-                    BinaryOp::Sub => " - ",
-                    BinaryOp::Div => " / ",
-                });
-                text.push_str(&format_function_term(term, variable));
-            }
-            text
-        }
+        FunctionExpr::Parsed(ast) => format_function_ast(&ast, variable, 0),
     }
 }
 
@@ -107,38 +98,68 @@ pub(crate) fn function_name_for_index(
     }
 }
 
-fn format_function_term(term: FunctionTerm, variable: &str) -> String {
-    match term {
-        FunctionTerm::Variable => variable.to_string(),
-        FunctionTerm::Constant(value) => format_number(value),
-        FunctionTerm::PiAngle => "180".to_string(),
-        FunctionTerm::Parameter(name, _) => name,
-        FunctionTerm::UnaryX(op) => match op {
-            UnaryFunction::Sin => format!("sin({variable})"),
-            UnaryFunction::Cos => format!("cos({variable})"),
-            UnaryFunction::Tan => format!("tan({variable})"),
-            UnaryFunction::Abs => format!("|{variable}|"),
-            UnaryFunction::Sqrt => format!("√{variable}"),
-            UnaryFunction::Ln => format!("ln({variable})"),
-            UnaryFunction::Log10 => format!("log({variable})"),
-            UnaryFunction::Sign => format!("sgn({variable})"),
-            UnaryFunction::Round => format!("round({variable})"),
-            UnaryFunction::Trunc => format!("trunc({variable})"),
-        },
-        FunctionTerm::Product(left, right) => {
-            format!(
-                "{}*{}",
-                format_function_term(*left, variable),
-                format_function_term(*right, variable)
-            )
+fn format_function_ast(expr: &FunctionAst, variable: &str, parent_prec: u8) -> String {
+    match expr {
+        FunctionAst::Variable => variable.to_string(),
+        FunctionAst::Constant(value) => format_number(*value),
+        FunctionAst::PiAngle => "180".to_string(),
+        FunctionAst::Parameter(name, _) => name.clone(),
+        FunctionAst::Unary { op, expr } => {
+            let inner = format_function_ast(expr, variable, 4);
+            match op {
+                UnaryFunction::Abs => format!("|{inner}|"),
+                UnaryFunction::Sqrt if is_atomic(expr) => format!("√{inner}"),
+                UnaryFunction::Sqrt => format!("√({inner})"),
+                UnaryFunction::Sin => format!("sin({inner})"),
+                UnaryFunction::Cos => format!("cos({inner})"),
+                UnaryFunction::Tan => format!("tan({inner})"),
+                UnaryFunction::Ln => format!("ln({inner})"),
+                UnaryFunction::Log10 => format!("log({inner})"),
+                UnaryFunction::Sign => format!("sgn({inner})"),
+                UnaryFunction::Round => format!("round({inner})"),
+                UnaryFunction::Trunc => format!("trunc({inner})"),
+            }
         }
-        FunctionTerm::Power(base, exponent) => {
-            format!(
-                "{}^{}",
-                format_function_term(*base, variable),
-                format_function_term(*exponent, variable)
-            )
+        FunctionAst::Binary { lhs, op, rhs } => {
+            let (prec, right_assoc) = binary_precedence(*op);
+            let left = format_function_ast(lhs, variable, prec);
+            let right = format_function_ast(rhs, variable, prec + u8::from(!right_assoc));
+            let text = format!(
+                "{}{}{}",
+                left,
+                match op {
+                    BinaryOp::Add => " + ",
+                    BinaryOp::Sub => " - ",
+                    BinaryOp::Mul => "*",
+                    BinaryOp::Div => " / ",
+                    BinaryOp::Pow => "^",
+                },
+                right
+            );
+            if prec < parent_prec {
+                format!("({text})")
+            } else {
+                text
+            }
         }
+    }
+}
+
+fn is_atomic(expr: &FunctionAst) -> bool {
+    matches!(
+        expr,
+        FunctionAst::Variable
+            | FunctionAst::Constant(_)
+            | FunctionAst::PiAngle
+            | FunctionAst::Parameter(_, _)
+    )
+}
+
+fn binary_precedence(op: BinaryOp) -> (u8, bool) {
+    match op {
+        BinaryOp::Add | BinaryOp::Sub => (1, false),
+        BinaryOp::Mul | BinaryOp::Div => (2, false),
+        BinaryOp::Pow => (3, true),
     }
 }
 
@@ -154,40 +175,33 @@ pub(super) fn function_expr_uses_trig(expr: FunctionExpr) -> bool {
         FunctionExpr::SinIdentity
         | FunctionExpr::CosIdentityPlus(_)
         | FunctionExpr::TanIdentityMinus(_) => true,
-        FunctionExpr::Parsed(parsed) => {
-            function_term_uses_trig(&parsed.head)
-                || parsed
-                    .tail
-                    .iter()
-                    .any(|(_, term)| function_term_uses_trig(term))
+        FunctionExpr::Parsed(ast) => function_ast_uses_trig(&ast),
+        _ => false,
+    }
+}
+
+fn function_ast_uses_trig(expr: &FunctionAst) -> bool {
+    match expr {
+        FunctionAst::Unary {
+            op: UnaryFunction::Sin | UnaryFunction::Cos | UnaryFunction::Tan,
+            ..
+        } => true,
+        FunctionAst::Unary { expr, .. } => function_ast_uses_trig(expr),
+        FunctionAst::Binary { lhs, rhs, .. } => {
+            function_ast_uses_trig(lhs) || function_ast_uses_trig(rhs)
         }
         _ => false,
     }
 }
 
-fn function_term_uses_trig(term: &FunctionTerm) -> bool {
-    match term {
-        FunctionTerm::UnaryX(UnaryFunction::Sin | UnaryFunction::Cos | UnaryFunction::Tan) => true,
-        FunctionTerm::Product(left, right) => {
-            function_term_uses_trig(left) || function_term_uses_trig(right)
+pub(super) fn function_ast_contains_symbol(expr: &FunctionAst) -> bool {
+    match expr {
+        FunctionAst::Variable | FunctionAst::Parameter(_, _) => true,
+        FunctionAst::Unary { expr, .. } => function_ast_contains_symbol(expr),
+        FunctionAst::Binary { lhs, rhs, .. } => {
+            function_ast_contains_symbol(lhs) || function_ast_contains_symbol(rhs)
         }
-        FunctionTerm::Power(base, exponent) => {
-            function_term_uses_trig(base) || function_term_uses_trig(exponent)
-        }
-        _ => false,
-    }
-}
-
-pub(super) fn function_term_contains_symbol(term: &FunctionTerm) -> bool {
-    match term {
-        FunctionTerm::Variable | FunctionTerm::UnaryX(_) | FunctionTerm::Parameter(_, _) => true,
-        FunctionTerm::Product(left, right) => {
-            function_term_contains_symbol(left) || function_term_contains_symbol(right)
-        }
-        FunctionTerm::Power(base, exponent) => {
-            function_term_contains_symbol(base) || function_term_contains_symbol(exponent)
-        }
-        FunctionTerm::Constant(_) | FunctionTerm::PiAngle => false,
+        FunctionAst::Constant(_) | FunctionAst::PiAngle => false,
     }
 }
 
@@ -207,18 +221,39 @@ pub(super) fn decode_unary_function(word: u16) -> Option<UnaryFunction> {
     }
 }
 
-pub(super) fn canonicalize_function_expr(parsed: ParsedFunctionExpr) -> FunctionExpr {
-    match (&parsed.head, parsed.tail.as_slice()) {
-        (FunctionTerm::Variable, []) => FunctionExpr::Identity,
-        (FunctionTerm::UnaryX(UnaryFunction::Sin), []) => FunctionExpr::SinIdentity,
-        (
-            FunctionTerm::UnaryX(UnaryFunction::Cos),
-            [(BinaryOp::Add, FunctionTerm::Constant(value))],
-        ) if (*value - 5.0).abs() < f64::EPSILON => FunctionExpr::CosIdentityPlus(5.0),
-        (
-            FunctionTerm::UnaryX(UnaryFunction::Tan),
-            [(BinaryOp::Sub, FunctionTerm::Constant(value))],
-        ) if (*value - 4.0).abs() < f64::EPSILON => FunctionExpr::TanIdentityMinus(4.0),
-        _ => FunctionExpr::Parsed(parsed),
+pub(super) fn canonicalize_function_expr(ast: FunctionAst) -> FunctionExpr {
+    match &ast {
+        FunctionAst::Variable => FunctionExpr::Identity,
+        FunctionAst::Unary {
+            op: UnaryFunction::Sin,
+            expr,
+        } if matches!(expr.as_ref(), FunctionAst::Variable) => FunctionExpr::SinIdentity,
+        FunctionAst::Binary { lhs, op, rhs }
+            if *op == BinaryOp::Add
+                && matches!(
+                    lhs.as_ref(),
+                    FunctionAst::Unary {
+                        op: UnaryFunction::Cos,
+                        expr
+                    } if matches!(expr.as_ref(), FunctionAst::Variable)
+                )
+                && matches!(rhs.as_ref(), FunctionAst::Constant(value) if (*value - 5.0).abs() < f64::EPSILON) =>
+        {
+            FunctionExpr::CosIdentityPlus(5.0)
+        }
+        FunctionAst::Binary { lhs, op, rhs }
+            if *op == BinaryOp::Sub
+                && matches!(
+                    lhs.as_ref(),
+                    FunctionAst::Unary {
+                        op: UnaryFunction::Tan,
+                        expr
+                    } if matches!(expr.as_ref(), FunctionAst::Variable)
+                )
+                && matches!(rhs.as_ref(), FunctionAst::Constant(value) if (*value - 4.0).abs() < f64::EPSILON) =>
+        {
+            FunctionExpr::TanIdentityMinus(4.0)
+        }
+        _ => FunctionExpr::Parsed(ast),
     }
 }
