@@ -1,0 +1,50 @@
+---
+source: src/pipeline.rs
+expression: scene_json
+---
+{
+  "width": 800,
+  "height": 600,
+  "graphMode": false,
+  "piMode": false,
+  "savedViewport": false,
+  "yUp": false,
+  "bounds": {
+    "minX": 320.8,
+    "maxX": 325.2,
+    "minY": 214.8,
+    "maxY": 219.2
+  },
+  "origin": null,
+  "images": [],
+  "lines": [],
+  "polygons": [],
+  "circles": [],
+  "arcs": [],
+  "labels": [],
+  "points": [
+    {
+      "x": 323.0,
+      "y": 217.0,
+      "color": [
+        255,
+        0,
+        0,
+        255
+      ],
+      "visible": true,
+      "draggable": true,
+      "constraint": null,
+      "binding": null
+    }
+  ],
+  "pointIterations": [],
+  "circleIterations": [],
+  "lineIterations": [],
+  "polygonIterations": [],
+  "labelIterations": [],
+  "iterationTables": [],
+  "buttons": [],
+  "parameters": [],
+  "functions": []
+}

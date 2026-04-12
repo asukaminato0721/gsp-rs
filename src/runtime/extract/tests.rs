@@ -4,6 +4,7 @@ use crate::runtime::scene::{
     LabelIterationFamily, LineBinding, LineConstraint, PointIterationFamily, Scene,
     ScenePointBinding, ScenePointConstraint, TextLabelBinding,
 };
+use insta::assert_snapshot;
 use std::fs;
 use std::path::Path;
 
@@ -26,10 +27,7 @@ fn renders_unsupported_payload_log_in_natural_chinese() {
     let Some(data) = fixture_bytes("tests/fixtures/14.gsp") else {
         return;
     };
-    let log = fixture_log(
-        &data,
-        "tests/fixtures/14.gsp",
-    );
+    let log = fixture_log(&data, "tests/fixtures/14.gsp");
 
     assert!(log.contains("载荷说明"));
     assert!(log.contains("问题列表"));
@@ -55,6 +53,16 @@ fn renders_payload_log_for_supported_fixture_too() {
     assert!(log.contains("未发现不支持的载荷。"));
     assert!(log.contains("构造步骤"));
     assert!(log.contains("1. #1 = 自由点。"));
+}
+
+#[test]
+fn snapshots_payload_log_for_point_fixture() {
+    let log = fixture_log(
+        include_bytes!("../../../tests/fixtures/gsp/static/point.gsp"),
+        "tests/fixtures/gsp/static/point.gsp",
+    );
+
+    assert_snapshot!("point_fixture_payload_log", log);
 }
 
 #[test]

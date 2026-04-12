@@ -1,4 +1,5 @@
 mod decode;
+mod error;
 mod group_kind;
 mod groups;
 mod records;
@@ -13,6 +14,7 @@ pub use decode::{
     decode_indexed_path, decode_object_group_header, decode_point_record, read_f64, read_i16,
     read_u16, read_u32,
 };
+pub use error::ParseError;
 pub use group_kind::GroupKind;
 #[allow(unused_imports)]
 pub use records::{parse_records, record_name};
@@ -27,17 +29,14 @@ pub struct GspFile {
 }
 
 impl GspFile {
-    pub fn parse(data: &[u8]) -> Result<Self, String> {
+    pub fn parse(data: &[u8]) -> Result<Self, ParseError> {
         if data.len() < 12 {
-            return Err(format!(
-                "file is too small to be a GSP file: {} bytes",
-                data.len()
-            ));
+            return Err(ParseError::FileTooSmall { len: data.len() });
         }
 
         let magic = String::from_utf8_lossy(&data[..4]).to_string();
         if magic != "GSP4" {
-            return Err(format!("unexpected magic {magic:?}, expected \"GSP4\""));
+            return Err(ParseError::InvalidMagic { found: magic });
         }
 
         let records = parse_records(data)?;

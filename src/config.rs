@@ -1,3 +1,4 @@
+use miette::{Result, miette};
 use std::path::PathBuf;
 
 #[derive(Debug)]
@@ -14,26 +15,24 @@ pub struct RenderJob {
 }
 
 impl Config {
-    pub fn parse(
-        args: impl Iterator<Item = impl Into<std::ffi::OsString>>,
-    ) -> Result<Self, String> {
+    pub fn parse(args: impl Iterator<Item = impl Into<std::ffi::OsString>>) -> Result<Self> {
         let raw_args: Vec<_> = args.map(Into::into).collect();
         if raw_args.is_empty() {
-            return Err(Self::usage());
+            return Err(miette!(Self::usage()));
         }
 
         if raw_args
             .iter()
             .any(|arg| matches!(arg.to_string_lossy().as_ref(), "-h" | "--help"))
         {
-            return Err(Self::usage());
+            return Err(miette!(Self::usage()));
         }
 
         let mut jobs = Vec::new();
         for arg in raw_args {
             match arg.to_string_lossy().as_ref() {
                 value if value.starts_with('-') => {
-                    return Err(format!("unknown flag: {value}\n{}", Self::usage()));
+                    return Err(miette!("unknown flag: {value}\n{}", Self::usage()));
                 }
                 _ => {
                     let gsp_path = PathBuf::from(arg);
@@ -46,7 +45,7 @@ impl Config {
         }
 
         if jobs.is_empty() {
-            return Err(Self::usage());
+            return Err(miette!(Self::usage()));
         }
 
         Ok(Self {
@@ -87,7 +86,7 @@ mod tests {
     #[test]
     fn rejects_unknown_flags() {
         let error = Config::parse(["--wat", "a.gsp"].into_iter()).expect_err("unknown flag");
-        assert!(error.contains("unknown flag: --wat"));
+        assert!(error.to_string().contains("unknown flag: --wat"));
     }
 
     #[test]

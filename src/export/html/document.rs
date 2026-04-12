@@ -1,9 +1,9 @@
 use super::assets::{
-    VIEWER_CSS, VIEWER_DRAG_JS, VIEWER_DRAG_PAN_JS, VIEWER_DYNAMICS_JS,
-    VIEWER_DYNAMICS_STUB_JS, VIEWER_JS, VIEWER_OVERLAY_JS, VIEWER_OVERLAY_STUB_JS,
-    VIEWER_RENDER_BASIC_JS, VIEWER_RENDER_CIRCULAR_JS, VIEWER_RENDER_HOTSPOTS_JS,
-    VIEWER_RENDER_IMAGES_JS, VIEWER_RENDER_LABELS_JS, VIEWER_RENDER_POLYGONS_JS,
-    VIEWER_RENDER_TABLES_JS, VIEWER_SCENE_BASIC_JS, indent_asset, van_runtime_to_global,
+    VIEWER_CSS, VIEWER_DRAG_JS, VIEWER_DRAG_PAN_JS, VIEWER_DYNAMICS_JS, VIEWER_DYNAMICS_STUB_JS,
+    VIEWER_JS, VIEWER_OVERLAY_JS, VIEWER_OVERLAY_STUB_JS, VIEWER_RENDER_BASIC_JS,
+    VIEWER_RENDER_CIRCULAR_JS, VIEWER_RENDER_HOTSPOTS_JS, VIEWER_RENDER_IMAGES_JS,
+    VIEWER_RENDER_LABELS_JS, VIEWER_RENDER_POLYGONS_JS, VIEWER_RENDER_TABLES_JS,
+    VIEWER_SCENE_BASIC_JS, indent_asset, van_runtime_to_global,
 };
 use super::render_scene_json;
 use crate::runtime::scene::{
@@ -341,17 +341,23 @@ fn scene_uses_circular_scene(scene: &Scene) -> bool {
                 | ScenePointConstraint::OnCircleArc { .. }
                 | ScenePointConstraint::OnArc { .. }
         )
-    }) || scene.lines.iter().any(|line| {
-        matches!(line.binding, Some(LineBinding::ArcBoundary { .. }))
-    })
+    }) || scene
+        .lines
+        .iter()
+        .any(|line| matches!(line.binding, Some(LineBinding::ArcBoundary { .. })))
 }
 
 fn scene_uses_trace_scene(scene: &Scene) -> bool {
-    scene.points.iter().any(|point| matches!(point.constraint, ScenePointConstraint::OnPolyline { .. } | ScenePointConstraint::LineTraceIntersection { .. }))
-        || scene
-            .lines
-            .iter()
-            .any(|line| matches!(line.binding, Some(LineBinding::CoordinateTrace { .. })))
+    scene.points.iter().any(|point| {
+        matches!(
+            point.constraint,
+            ScenePointConstraint::OnPolyline { .. }
+                | ScenePointConstraint::LineTraceIntersection { .. }
+        )
+    }) || scene
+        .lines
+        .iter()
+        .any(|line| matches!(line.binding, Some(LineBinding::CoordinateTrace { .. })))
 }
 
 fn scene_uses_intersection_scene(scene: &Scene) -> bool {
@@ -409,12 +415,16 @@ fn scene_requires_full_dynamics(scene: &Scene) -> bool {
             .iter()
             .any(|button| button_action_requires_full_dynamics(&button.action))
         || scene.points.iter().any(point_requires_full_dynamics)
-        || scene
-            .lines
-            .iter()
-            .any(|line| line.binding.as_ref().is_some_and(line_binding_requires_full_dynamics))
+        || scene.lines.iter().any(|line| {
+            line.binding
+                .as_ref()
+                .is_some_and(line_binding_requires_full_dynamics)
+        })
         || scene.circles.iter().any(|circle| circle.binding.is_some())
-        || scene.polygons.iter().any(|polygon| polygon.binding.is_some())
+        || scene
+            .polygons
+            .iter()
+            .any(|polygon| polygon.binding.is_some())
         || scene.labels.iter().any(|label| label.binding.is_some())
 }
 
@@ -428,9 +438,10 @@ fn button_action_requires_full_dynamics(action: &ButtonAction) -> bool {
 }
 
 fn point_requires_full_dynamics(point: &crate::runtime::scene::ScenePoint) -> bool {
-    point.binding.as_ref().is_some_and(|binding| {
-        !matches!(binding, ScenePointBinding::GraphCalibration)
-    })
+    point
+        .binding
+        .as_ref()
+        .is_some_and(|binding| !matches!(binding, ScenePointBinding::GraphCalibration))
 }
 
 fn line_binding_requires_full_dynamics(binding: &LineBinding) -> bool {

@@ -11,9 +11,9 @@ pub mod pipeline;
 pub use config::{Config, RenderJob};
 
 pub mod gsp {
-    pub use crate::format::GspFile;
+    pub use crate::format::{GspFile, ParseError};
 
-    pub fn parse(data: &[u8]) -> Result<GspFile, String> {
+    pub fn parse(data: &[u8]) -> Result<GspFile, ParseError> {
         GspFile::parse(data)
     }
 }

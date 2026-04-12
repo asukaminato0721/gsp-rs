@@ -346,13 +346,15 @@ fn build_scene_point_for_group_checked(
     match kind {
         crate::format::GroupKind::PointConstraint | crate::format::GroupKind::PathPoint => {
             let visible = !group.header.is_hidden() && point_marker_visible(group);
-            let Ok(constraint) = try_decode_point_constraint(file, groups, group, Some(anchors), graph)
-                .with_context(|| {
-                    format!(
-                        "failed to decode point constraint for group #{} {:?}",
-                        group.ordinal, kind
-                    )
-                }) else {
+            let Ok(constraint) =
+                try_decode_point_constraint(file, groups, group, Some(anchors), graph)
+                    .with_context(|| {
+                        format!(
+                            "failed to decode point constraint for group #{} {:?}",
+                            group.ordinal, kind
+                        )
+                    })
+            else {
                 return Ok(None);
             };
             Ok(scene_point_from_constraint(
@@ -407,8 +409,8 @@ fn build_scene_point_for_group_checked(
         }
         crate::format::GroupKind::ParameterRotation => {
             let visible = !group.header.is_hidden() && point_marker_visible(group);
-            let Ok(binding) =
-                try_decode_parameter_rotation_binding(file, groups, group).with_context(|| {
+            let Ok(binding) = try_decode_parameter_rotation_binding(file, groups, group)
+                .with_context(|| {
                     format!(
                         "failed to decode parameter rotation binding for group #{} {:?}",
                         group.ordinal, kind

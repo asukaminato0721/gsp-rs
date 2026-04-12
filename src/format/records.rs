@@ -1,29 +1,44 @@
-use super::{Record, read_u32};
+use super::{ParseError, Record};
+use binrw::{BinRead, BinReaderExt};
+use std::io::Cursor;
 
-pub fn parse_records(data: &[u8]) -> Result<Vec<Record>, String> {
+#[derive(BinRead)]
+#[br(little)]
+struct RawRecordHeader {
+    length: u32,
+    record_type: u32,
+}
+
+pub fn parse_records(data: &[u8]) -> Result<Vec<Record>, ParseError> {
     let mut records = Vec::new();
     let mut offset = 4usize;
 
     while offset < data.len() {
         if offset + 8 > data.len() {
-            return Err(format!(
-                "truncated record header at 0x{offset:x}: {} trailing byte(s)",
-                data.len() - offset
-            ));
+            return Err(ParseError::TruncatedRecordHeader {
+                offset,
+                trailing: data.len() - offset,
+            });
         }
 
-        let length = read_u32(data, offset);
-        let record_type = read_u32(data, offset + 4);
+        let mut cursor = Cursor::new(&data[offset..offset + 8]);
+        let raw = cursor
+            .read_le::<RawRecordHeader>()
+            .expect("record header slice length is checked above");
+        let length = raw.length;
+        let record_type = raw.record_type;
         let payload_start = offset + 8;
         let payload_end = payload_start
             .checked_add(length as usize)
-            .ok_or_else(|| format!("record at 0x{offset:x} overflows usize"))?;
+            .ok_or(ParseError::RecordOverflowsUsize { offset })?;
 
         if payload_end > data.len() {
-            return Err(format!(
-                "record at 0x{offset:x} extends past EOF: len=0x{length:x}, end=0x{payload_end:x}, file=0x{:x}",
-                data.len()
-            ));
+            return Err(ParseError::RecordPastEof {
+                offset,
+                length,
+                end: payload_end,
+                file_len: data.len(),
+            });
         }
 
         records.push(Record {

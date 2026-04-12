@@ -7,7 +7,12 @@ default-run = "gsp-rs"
 [dependencies]
 ab_glyph = "0.2"
 anyhow = "1"
+binrw = "0.14"
+miette = { version = "7", features = ["fancy"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ts-rs = "12"
 thiserror = "2"
+
+[dev-dependencies]
+insta = "1"

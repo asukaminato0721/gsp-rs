@@ -4,6 +4,7 @@ use crate::export::html::{
 use crate::gsp;
 use crate::runtime::build_scene_checked;
 use crate::runtime::render_payload_log;
+use miette::{IntoDiagnostic, Result, WrapErr, miette};
 use std::fs;
 use std::path::Path;
 
@@ -12,18 +13,19 @@ pub fn compile_file_to_html(
     html_path: &Path,
     width: u32,
     height: u32,
-) -> Result<(), String> {
+) -> Result<()> {
     let data = fs::read(gsp_path)
-        .map_err(|error| format!("failed to read {}: {error}", gsp_path.display()))?;
+        .into_diagnostic()
+        .wrap_err_with(|| format!("failed to read {}", gsp_path.display()))?;
     match compile_bytes_to_html_file(&data, html_path, width, height) {
         Ok(()) => {
             write_payload_log(gsp_path, &data)?;
             Ok(())
         }
         Err(error) => {
-            let log_path = write_payload_log(gsp_path, &data)?;
+            let log_path = write_payload_log(gsp_path, &data).ok().flatten();
             if let Some(log_path) = log_path {
-                Err(format!("{error}\npayload log: {}", log_path.display()))
+                Err(miette!("{error}\npayload log: {}", log_path.display()))
             } else {
                 Err(error)
             }
@@ -31,13 +33,10 @@ pub fn compile_file_to_html(
     }
 }
 
-pub fn compile_file_to_scene_json(
-    gsp_path: &Path,
-    width: u32,
-    height: u32,
-) -> Result<String, String> {
+pub fn compile_file_to_scene_json(gsp_path: &Path, width: u32, height: u32) -> Result<String> {
     let data = fs::read(gsp_path)
-        .map_err(|error| format!("failed to read {}: {error}", gsp_path.display()))?;
+        .into_diagnostic()
+        .wrap_err_with(|| format!("failed to read {}", gsp_path.display()))?;
     compile_bytes_to_scene_json(&data, width, height)
 }
 
@@ -46,18 +45,16 @@ pub fn compile_bytes_to_html_file(
     html_path: &Path,
     width: u32,
     height: u32,
-) -> Result<(), String> {
+) -> Result<()> {
     let html = compile_bytes_to_html_document(data, width, height)?;
-    write_standalone_html(html_path, &html)
+    write_standalone_html(html_path, &html).map_err(|error| miette!("{error}"))
 }
 
-pub fn compile_bytes_to_html_document(
-    data: &[u8],
-    width: u32,
-    height: u32,
-) -> Result<String, String> {
-    let file = gsp::parse(data)?;
-    let scene = build_scene_checked(&file).map_err(|error| format!("{error:#}"))?;
+pub fn compile_bytes_to_html_document(data: &[u8], width: u32, height: u32) -> Result<String> {
+    let file = gsp::parse(data).map_err(miette::Report::new)?;
+    let scene = build_scene_checked(&file)
+        .map_err(|error| miette!("{error:#}"))
+        .wrap_err("failed to build scene from parsed payload")?;
     let document_layout = is_document_layout(&file, &scene);
     let (width, height) = export_dimensions(&file, &scene, width, height);
     Ok(render_standalone_html_document(
@@ -68,19 +65,22 @@ pub fn compile_bytes_to_html_document(
     ))
 }
 
-pub fn compile_bytes_to_scene_json(data: &[u8], width: u32, height: u32) -> Result<String, String> {
-    let file = gsp::parse(data)?;
-    let scene = build_scene_checked(&file).map_err(|error| format!("{error:#}"))?;
+pub fn compile_bytes_to_scene_json(data: &[u8], width: u32, height: u32) -> Result<String> {
+    let file = gsp::parse(data).map_err(miette::Report::new)?;
+    let scene = build_scene_checked(&file)
+        .map_err(|error| miette!("{error:#}"))
+        .wrap_err("failed to build scene from parsed payload")?;
     let (width, height) = export_dimensions(&file, &scene, width, height);
     Ok(render_scene_json(&scene, width, height, true))
 }
 
-fn write_payload_log(gsp_path: &Path, data: &[u8]) -> Result<Option<std::path::PathBuf>, String> {
-    let file = gsp::parse(data)?;
+fn write_payload_log(gsp_path: &Path, data: &[u8]) -> Result<Option<std::path::PathBuf>> {
+    let file = gsp::parse(data).map_err(miette::Report::new)?;
     let log_body = render_payload_log(gsp_path, &file);
     let log_path = gsp_path.with_extension("log");
     fs::write(&log_path, log_body)
-        .map_err(|write_error| format!("failed to write {}: {write_error}", log_path.display()))?;
+        .into_diagnostic()
+        .wrap_err_with(|| format!("failed to write {}", log_path.display()))?;
     Ok(Some(log_path))
 }
 
@@ -113,6 +113,7 @@ mod tests {
     use super::{
         compile_bytes_to_html_document, compile_bytes_to_scene_json, compile_file_to_html,
     };
+    use insta::assert_snapshot;
     use serde_json::Value;
     use std::fs;
     use std::path::PathBuf;
@@ -199,6 +200,16 @@ mod tests {
 
         assert!(scene_json.contains("\n  \"width\": 800,"));
         assert!(scene_json.contains("\"points\": ["));
+    }
+
+    #[test]
+    fn snapshots_point_fixture_scene_json() {
+        let scene_json = fixture_scene_json(
+            include_bytes!("../tests/fixtures/gsp/static/point.gsp"),
+            "fixture should compile",
+        );
+
+        assert_snapshot!("point_fixture_scene_json", scene_json);
     }
 
     #[test]
@@ -361,7 +372,9 @@ mod tests {
             "static point fixture should compile to html",
         );
 
-        assert!(html.contains("viewer-runtime: scene=basic; render=basic; overlay=stub; drag=full; dynamics=stub"));
+        assert!(html.contains(
+            "viewer-runtime: scene=basic; render=basic; overlay=stub; drag=full; dynamics=stub"
+        ));
         assert!(
             !html.contains("function sampleDynamicFunction("),
             "static fixture should not embed the full dynamics runtime"
@@ -600,10 +613,7 @@ mod tests {
         let Some(data) = fixture_bytes("tests/fixtures/gsp/static/circle_inner.gsp") else {
             return;
         };
-        let html = fixture_html(
-            &data,
-            "circle-inner fixture should compile",
-        );
+        let html = fixture_html(&data, "circle-inner fixture should compile");
 
         assert!(html.contains("\"circles\":["));
         assert!(html.contains("\"fillColor\":[255,255,0,127]"));
@@ -789,10 +799,7 @@ mod tests {
             functions[0]["expr"]["expr"]["kind"].as_str(),
             Some("binary")
         );
-        assert_eq!(
-            functions[0]["expr"]["expr"]["op"].as_str(),
-            Some("add")
-        );
+        assert_eq!(functions[0]["expr"]["expr"]["op"].as_str(), Some("add"));
         assert_eq!(
             functions[0]["expr"]["expr"]["lhs"]["kind"].as_str(),
             Some("binary")
@@ -1146,13 +1153,11 @@ mod tests {
 
     #[test]
     fn exports_cans_in_container_inrm_fixture_with_live_bindings() {
-        let Some(data) = fixture_bytes("tests/fixtures/未实现/(inRm)容器中的罐头.gsp") else {
+        let Some(data) = fixture_bytes("tests/fixtures/未实现/(inRm)容器中的罐头.gsp")
+        else {
             return;
         };
-        let scene = fixture_scene(
-            &data,
-            "cans-in-container fixture should compile",
-        );
+        let scene = fixture_scene(&data, "cans-in-container fixture should compile");
         let circles = scene["circles"]
             .as_array()
             .expect("scene circles should be an array");
@@ -1274,10 +1279,7 @@ mod tests {
         let Some(data) = fixture_bytes("tests/fixtures/未实现/月牙形轨迹(inRm).gsp") else {
             return;
         };
-        let scene = fixture_scene(
-            &data,
-            "crescent-trace fixture should compile",
-        );
+        let scene = fixture_scene(&data, "crescent-trace fixture should compile");
 
         let points = scene["points"]
             .as_array()

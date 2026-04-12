@@ -1,0 +1,14 @@
+---
+source: src/runtime/extract/tests.rs
+expression: log
+---
+载荷说明
+文件: tests/fixtures/gsp/static/point.gsp
+问题数量: 0
+对象组数量: 1
+
+问题列表
+未发现不支持的载荷。
+
+构造步骤
+1. #1 = 自由点。

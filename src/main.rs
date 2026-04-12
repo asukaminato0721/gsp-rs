@@ -1,21 +1,18 @@
 use std::env;
-use std::process;
 
 use gsp_rs::{Config, pipeline::compile_file_to_html};
+use miette::{Result, miette};
 
-fn main() {
-    if let Err(error) = run() {
-        eprintln!("error: {error}");
-        process::exit(1);
-    }
+fn main() -> Result<()> {
+    run()
 }
 
-fn run() -> Result<(), String> {
+fn run() -> Result<()> {
     let config = Config::parse(env::args_os().skip(1))?;
     run_jobs(&config)
 }
 
-fn run_jobs(config: &Config) -> Result<(), String> {
+fn run_jobs(config: &Config) -> Result<()> {
     let mut failures = Vec::new();
     for job in &config.jobs {
         match compile_file_to_html(
@@ -37,7 +34,7 @@ fn run_jobs(config: &Config) -> Result<(), String> {
     if failures.is_empty() {
         Ok(())
     } else {
-        Err(format!(
+        Err(miette!(
             "{} file(s) failed:\n{}",
             failures.len(),
             failures.join("\n")
