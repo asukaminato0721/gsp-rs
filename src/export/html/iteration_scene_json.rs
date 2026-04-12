@@ -148,10 +148,40 @@ pub(super) enum LineIterationJson {
         color: [u8; 4],
         dashed: bool,
     },
+    Branching {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+        #[serde(rename = "targetSegments")]
+        target_segments: Vec<[IterationPointHandleJson; 2]>,
+        depth: usize,
+        #[serde(rename = "parameterName")]
+        parameter_name: Option<String>,
+        color: [u8; 4],
+        dashed: bool,
+    },
 }
 
 impl LineIterationJson {
     pub(super) fn from_family(family: &LineIterationFamily) -> Self {
+        if let Some(target_segments) = family.branch_target_segments.as_ref() {
+            return Self::Branching {
+                start_index: family.start_index,
+                end_index: family.end_index,
+                target_segments: target_segments
+                    .iter()
+                    .cloned()
+                    .map(|segment| {
+                        segment.map(|handle| IterationPointHandleJson::from_handle(&handle))
+                    })
+                    .collect(),
+                depth: family.depth,
+                parameter_name: family.parameter_name.clone(),
+                color: family.color,
+                dashed: family.dashed,
+            };
+        }
         if let (Some(source_triangle_indices), Some(target_triangle)) = (
             family.affine_source_indices,
             family.affine_target_handles.as_ref(),

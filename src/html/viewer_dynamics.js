@@ -733,6 +733,40 @@
     };
   }
 
+  /**
+   * @param {Point} sourceStart
+   * @param {Point} sourceEnd
+   * @param {Point} point
+   */
+  function segmentPointCoefficients(sourceStart, sourceEnd, point) {
+    const dx = sourceEnd.x - sourceStart.x;
+    const dy = sourceEnd.y - sourceStart.y;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq <= 1e-9) {
+      return null;
+    }
+    const relativeX = point.x - sourceStart.x;
+    const relativeY = point.y - sourceStart.y;
+    return {
+      alpha: (relativeX * dx + relativeY * dy) / lenSq,
+      beta: (relativeX * -dy + relativeY * dx) / lenSq,
+    };
+  }
+
+  /**
+   * @param {Point} segmentStart
+   * @param {Point} segmentEnd
+   * @param {{ alpha: number; beta: number }} coeffs
+   */
+  function applySegmentCoefficients(segmentStart, segmentEnd, coeffs) {
+    const dx = segmentEnd.x - segmentStart.x;
+    const dy = segmentEnd.y - segmentStart.y;
+    return {
+      x: segmentStart.x + coeffs.alpha * dx - coeffs.beta * dy,
+      y: segmentStart.y + coeffs.alpha * dy + coeffs.beta * dx,
+    };
+  }
+
   /** @param {number} value */
   function formatSequenceValue(value) {
     if (!Number.isFinite(value)) {
@@ -903,6 +937,16 @@
     }
     const exportedDepth = families.reduce((sum, family) => {
       const depth = family.depth || 0;
+      if (family.kind === "branching") {
+        const branchCount = Array.isArray(family.targetSegments) ? family.targetSegments.length : 0;
+        let total = 0;
+        let width = branchCount;
+        for (let step = 0; step < depth; step += 1) {
+          total += width;
+          width *= branchCount;
+        }
+        return sum + total;
+      }
       if (family.kind === "affine") {
         return sum + depth;
       }
@@ -930,25 +974,68 @@
       if (!start || !end) {
         return;
       }
+      const resolveHandle = (/** @type {PointHandle} */ handle) => {
+        if (hasPointIndexHandle(handle)) {
+          return env.resolveScenePoint(handle.pointIndex);
+        }
+        if (hasLineIndexHandle(handle)) {
+          const line = scene.lines[handle.lineIndex];
+          if (!line?.points || line.points.length < 2) return null;
+          const segmentIndex = Math.max(0, Math.min(line.points.length - 2, handle.segmentIndex || 0));
+          const t = typeof handle.t === "number" ? handle.t : 0.5;
+          const p0 = line.points[segmentIndex];
+          const p1 = line.points[segmentIndex + 1];
+          return {
+            x: p0.x + (p1.x - p0.x) * t,
+            y: p0.y + (p1.y - p0.y) * t,
+          };
+        }
+        return /** @type {Point} */ (handle);
+      };
+      if (family.kind === "branching") {
+        const targetSegments = (family.targetSegments || []).map((segment) => [
+          resolveHandle(segment[0]),
+          resolveHandle(segment[1]),
+        ]);
+        if (targetSegments.some((segment) => segment.some((point) => !point))) {
+          return;
+        }
+        const coeffs = targetSegments
+          .map((segment) => {
+            const startCoeffs = segmentPointCoefficients(start, end, segment[0]);
+            const endCoeffs = segmentPointCoefficients(start, end, segment[1]);
+            if (!startCoeffs || !endCoeffs) {
+              return null;
+            }
+            return { startCoeffs, endCoeffs };
+          })
+          .filter(Boolean);
+        if (coeffs.length === 0) {
+          return;
+        }
+        /** @type {{ start: Point; end: Point }[]} */
+        let frontier = [{ start: { ...start }, end: { ...end } }];
+        for (let step = 0; step < depth; step += 1) {
+          /** @type {{ start: Point; end: Point }[]} */
+          const next = [];
+          frontier.forEach((segment) => {
+            coeffs.forEach((coeff) => {
+              const childStart = applySegmentCoefficients(segment.start, segment.end, coeff.startCoeffs);
+              const childEnd = applySegmentCoefficients(segment.start, segment.end, coeff.endCoeffs);
+              scene.lines.push({
+                points: [{ ...childStart }, { ...childEnd }],
+                color: family.color,
+                dashed: !!family.dashed,
+                binding: null,
+              });
+              next.push({ start: childStart, end: childEnd });
+            });
+          });
+          frontier = next;
+        }
+        return;
+      }
       if (family.kind === "affine") {
-        const resolveHandle = (/** @type {PointHandle} */ handle) => {
-          if (hasPointIndexHandle(handle)) {
-            return env.resolveScenePoint(handle.pointIndex);
-          }
-          if (hasLineIndexHandle(handle)) {
-            const line = scene.lines[handle.lineIndex];
-            if (!line?.points || line.points.length < 2) return null;
-            const segmentIndex = Math.max(0, Math.min(line.points.length - 2, handle.segmentIndex || 0));
-            const t = typeof handle.t === "number" ? handle.t : 0.5;
-            const p0 = line.points[segmentIndex];
-            const p1 = line.points[segmentIndex + 1];
-            return {
-              x: p0.x + (p1.x - p0.x) * t,
-              y: p0.y + (p1.y - p0.y) * t,
-            };
-          }
-          return /** @type {Point} */ (handle);
-        };
         const sourceTriangle = family.sourceTriangleIndices.map((index) => env.resolveScenePoint(index));
         const targetTriangle = family.targetTriangle.map((handle) => resolveHandle(handle));
         if (sourceTriangle.some((point) => !point) || targetTriangle.some((point) => !point)) {

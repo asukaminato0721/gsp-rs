@@ -159,6 +159,7 @@ pub(crate) struct LineIterationFamily {
     pub(crate) dashed: bool,
     pub(crate) affine_source_indices: Option<[usize; 3]>,
     pub(crate) affine_target_handles: Option<[IterationPointHandle; 3]>,
+    pub(crate) branch_target_segments: Option<Vec<[IterationPointHandle; 2]>>,
 }
 
 #[derive(Debug, Clone)]

@@ -23,6 +23,44 @@ fn fixture_bytes(path: &str) -> Option<Vec<u8>> {
 }
 
 #[test]
+fn preserves_binary_tree_multimap_iteration() {
+    let Some(data) = fixture_bytes("../Samples/个人专栏/方小庆作品/二叉树(inRm).gsp") else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+    assert_eq!(
+        scene.line_iterations.len(),
+        1,
+        "expected one recursive line family for the binary tree payload"
+    );
+    let family = &scene.line_iterations[0];
+    let Some(target_segments) = family.branch_target_segments.as_ref() else {
+        panic!("expected binary tree iteration to export branching segment handles");
+    };
+    assert_eq!(
+        target_segments.len(),
+        2,
+        "expected the payload to produce two child segment maps"
+    );
+    assert_eq!(family.parameter_name.as_deref(), Some("n"));
+    assert_eq!(family.depth, 7, "expected depth to stay driven by payload n");
+    assert_eq!(
+        scene.lines.len(),
+        255,
+        "expected one seed segment plus 2^1..2^7 recursive branches"
+    );
+    assert!(
+        scene.line_iterations.iter().all(|family| family.affine_source_indices.is_none()
+            && family.affine_target_handles.is_none()),
+        "expected the binary tree payload to avoid the carried affine fallback"
+    );
+    assert!(
+        scene.points.iter().take(2).all(|point| point.draggable),
+        "expected the free endpoints to remain interactive"
+    );
+}
+
+#[test]
 fn renders_unsupported_payload_log_in_natural_chinese() {
     let Some(data) = fixture_bytes("tests/fixtures/14.gsp") else {
         return;

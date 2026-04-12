@@ -20,6 +20,21 @@ struct AffinePointMap {
     target_v: PointRecord,
 }
 
+#[derive(Clone)]
+struct SegmentSimilarityCoefficients {
+    start_alpha: f64,
+    start_beta: f64,
+    end_alpha: f64,
+    end_beta: f64,
+}
+
+#[derive(Clone)]
+struct RegularPolygonBranchIteration {
+    depth: usize,
+    parameter_name: Option<String>,
+    target_group_pairs: Vec<(usize, usize)>,
+}
+
 impl AffinePointMap {
     fn from_triangles(source: &[PointRecord], target: &[PointRecord]) -> Option<Self> {
         if source.len() < 3 || target.len() < 3 {
@@ -179,6 +194,30 @@ pub(crate) fn collect_carried_iteration_lines(
             if depth == 0 {
                 return None;
             }
+            if let Some(branching) =
+                regular_polygon_branch_iteration(file, groups, iter_group, source_group)
+            {
+                let coeffs = branching
+                    .target_group_pairs
+                    .iter()
+                    .map(|(start_group_index, end_group_index)| {
+                        let target_start = anchors.get(*start_group_index)?.clone()?;
+                        let target_end = anchors.get(*end_group_index)?.clone()?;
+                        similarity_coefficients(&start, &end, &target_start, &target_end)
+                    })
+                    .collect::<Option<Vec<_>>>()?;
+                return Some(
+                    branching_lines(
+                        &start,
+                        &end,
+                        &coeffs,
+                        branching.depth,
+                        color_from_style(source_group.header.style_b),
+                        line_is_dashed(source_group.header.style_a),
+                        !iter_group.header.is_hidden(),
+                    ),
+                );
+            }
             if let Some(point_map) = carried_iteration_point_map(file, groups, iter_group, anchors)
             {
                 let color = color_from_style(source_group.header.style_b);
@@ -251,10 +290,67 @@ pub(crate) fn collect_carried_line_iteration_families(
             {
                 return None;
             }
+
             let source_path = find_indexed_path(file, source_group)?;
             if source_path.refs.len() != 2 {
                 return None;
             }
+            let start_index = group_to_point_index
+                .get(source_path.refs[0].checked_sub(1)?)
+                .copied()
+                .flatten()?;
+            let end_index = group_to_point_index
+                .get(source_path.refs[1].checked_sub(1)?)
+                .copied()
+                .flatten()?;
+            let depth = carried_iteration_depth(file, iter_group, 3);
+            if depth == 0 {
+                return None;
+            }
+
+            if let Some(branching) =
+                regular_polygon_branch_iteration(file, groups, iter_group, source_group)
+            {
+                let target_segments = branching
+                    .target_group_pairs
+                    .iter()
+                    .map(|(start_group_index, end_group_index)| {
+                        let start_index = group_to_point_index
+                            .get(*start_group_index)
+                            .copied()
+                            .flatten()?;
+                        let end_index = group_to_point_index
+                            .get(*end_group_index)
+                            .copied()
+                            .flatten()?;
+                        Some([
+                            IterationPointHandle::Point {
+                                point_index: start_index,
+                            },
+                            IterationPointHandle::Point {
+                                point_index: end_index,
+                            },
+                        ])
+                    })
+                    .collect::<Option<Vec<_>>>()?;
+                return Some(LineIterationFamily {
+                    start_index,
+                    end_index,
+                    dx: 0.0,
+                    dy: 0.0,
+                    secondary_dx: None,
+                    secondary_dy: None,
+                    depth: branching.depth,
+                    parameter_name: branching.parameter_name,
+                    bidirectional: false,
+                    color: color_from_style(source_group.header.style_b),
+                    dashed: line_is_dashed(source_group.header.style_a),
+                    affine_source_indices: None,
+                    affine_target_handles: None,
+                    branch_target_segments: Some(target_segments),
+                });
+            }
+
             if let Some((source_indices, target_handles)) = carried_iteration_affine_handles(
                 file,
                 groups,
@@ -263,18 +359,6 @@ pub(crate) fn collect_carried_line_iteration_families(
                 line_group_to_index,
                 anchors,
             ) {
-                let start_index = group_to_point_index
-                    .get(source_path.refs[0].checked_sub(1)?)
-                    .copied()
-                    .flatten()?;
-                let end_index = group_to_point_index
-                    .get(source_path.refs[1].checked_sub(1)?)
-                    .copied()
-                    .flatten()?;
-                let depth = carried_iteration_depth(file, iter_group, 3);
-                if depth == 0 {
-                    return None;
-                }
                 return Some(LineIterationFamily {
                     start_index,
                     end_index,
@@ -289,25 +373,15 @@ pub(crate) fn collect_carried_line_iteration_families(
                     dashed: line_is_dashed(source_group.header.style_a),
                     affine_source_indices: Some(source_indices),
                     affine_target_handles: Some(target_handles),
+                    branch_target_segments: None,
                 });
             }
-            let start_index = group_to_point_index
-                .get(source_path.refs[0].checked_sub(1)?)
-                .copied()
-                .flatten()?;
-            let end_index = group_to_point_index
-                .get(source_path.refs[1].checked_sub(1)?)
-                .copied()
-                .flatten()?;
+
             let steps = carried_iteration_steps(file, groups, iter_group, anchors);
             let Some((step, secondary_step, bidirectional)) = carried_iteration_basis(&steps)
             else {
                 return None;
             };
-            let depth = carried_iteration_depth(file, iter_group, 3);
-            if depth == 0 {
-                return None;
-            }
             Some(LineIterationFamily {
                 start_index,
                 end_index,
@@ -322,9 +396,136 @@ pub(crate) fn collect_carried_line_iteration_families(
                 dashed: line_is_dashed(source_group.header.style_a),
                 affine_source_indices: None,
                 affine_target_handles: None,
+                branch_target_segments: None,
             })
         })
         .collect()
+}
+
+fn regular_polygon_branch_iteration(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    iter_group: &ObjectGroup,
+    source_group: &ObjectGroup,
+) -> Option<RegularPolygonBranchIteration> {
+    if (iter_group.header.kind()) != crate::format::GroupKind::RegularPolygonIteration
+        || regular_polygon_iteration_step(file, groups, iter_group).is_some()
+    {
+        return None;
+    }
+
+    let iter_path = find_indexed_path(file, iter_group)?;
+    if iter_path.refs.len() < 7 {
+        return None;
+    }
+    let source_path = find_indexed_path(file, source_group)?;
+    if source_path.refs.len() != 2
+        || source_path.refs[0] != iter_path.refs[1]
+        || source_path.refs[1] != iter_path.refs[2]
+    {
+        return None;
+    }
+
+    let parameter_group = groups.get(iter_path.refs[0].checked_sub(1)?)?;
+    let parameter_name = editable_non_graph_parameter_name_for_group(file, groups, parameter_group);
+    let target_group_pairs = vec![
+        (iter_path.refs[3].checked_sub(1)?, iter_path.refs[4].checked_sub(1)?),
+        (iter_path.refs[5].checked_sub(1)?, iter_path.refs[6].checked_sub(1)?),
+    ];
+    let depth = carried_iteration_depth(file, iter_group, 3);
+    (depth > 0).then_some(RegularPolygonBranchIteration {
+        depth,
+        parameter_name,
+        target_group_pairs,
+    })
+}
+
+fn similarity_coefficients(
+    source_start: &PointRecord,
+    source_end: &PointRecord,
+    target_start: &PointRecord,
+    target_end: &PointRecord,
+) -> Option<SegmentSimilarityCoefficients> {
+    let source_dx = source_end.x - source_start.x;
+    let source_dy = source_end.y - source_start.y;
+    let source_len_sq = source_dx * source_dx + source_dy * source_dy;
+    if source_len_sq <= 1e-9 {
+        return None;
+    }
+
+    let point_coefficients = |point: &PointRecord| {
+        let relative_x = point.x - source_start.x;
+        let relative_y = point.y - source_start.y;
+        (
+            (relative_x * source_dx + relative_y * source_dy) / source_len_sq,
+            (relative_x * -source_dy + relative_y * source_dx) / source_len_sq,
+        )
+    };
+
+    let (start_alpha, start_beta) = point_coefficients(target_start);
+    let (end_alpha, end_beta) = point_coefficients(target_end);
+    Some(SegmentSimilarityCoefficients {
+        start_alpha,
+        start_beta,
+        end_alpha,
+        end_beta,
+    })
+}
+
+fn apply_similarity_coefficients(
+    segment_start: &PointRecord,
+    segment_end: &PointRecord,
+    alpha: f64,
+    beta: f64,
+) -> PointRecord {
+    let dx = segment_end.x - segment_start.x;
+    let dy = segment_end.y - segment_start.y;
+    PointRecord {
+        x: segment_start.x + alpha * dx - beta * dy,
+        y: segment_start.y + alpha * dy + beta * dx,
+    }
+}
+
+fn branching_lines(
+    seed_start: &PointRecord,
+    seed_end: &PointRecord,
+    coeffs: &[SegmentSimilarityCoefficients],
+    depth: usize,
+    color: [u8; 4],
+    dashed: bool,
+    visible: bool,
+) -> Vec<LineShape> {
+    let mut frontier = vec![(seed_start.clone(), seed_end.clone())];
+    let mut lines = Vec::new();
+    for _ in 0..depth {
+        let mut next = Vec::new();
+        for (current_start, current_end) in frontier {
+            for coeff in coeffs {
+                let child_start = apply_similarity_coefficients(
+                    &current_start,
+                    &current_end,
+                    coeff.start_alpha,
+                    coeff.start_beta,
+                );
+                let child_end = apply_similarity_coefficients(
+                    &current_start,
+                    &current_end,
+                    coeff.end_alpha,
+                    coeff.end_beta,
+                );
+                lines.push(LineShape {
+                    points: vec![child_start.clone(), child_end.clone()],
+                    color,
+                    dashed,
+                    visible,
+                    binding: None,
+                });
+                next.push((child_start, child_end));
+            }
+        }
+        frontier = next;
+    }
+    lines
 }
 
 pub(crate) fn collect_carried_polygon_edge_segment_groups(
