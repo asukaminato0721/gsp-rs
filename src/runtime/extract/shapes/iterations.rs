@@ -3,9 +3,9 @@ use std::collections::BTreeSet;
 use super::{
     CircleShape, GspFile, LineBinding, LineIterationFamily, LineShape, ObjectGroup, PointRecord,
     PolygonIterationFamily, PolygonShape, color_from_style, decode_label_name,
-    decode_translated_point_constraint, fill_color_from_styles, find_indexed_path,
-    line_is_dashed, regular_polygon_iteration_step, rotate_around,
-    try_decode_parameter_controlled_point, try_decode_point_constraint,
+    decode_translated_point_constraint, fill_color_from_styles, find_indexed_path, line_is_dashed,
+    regular_polygon_iteration_step, rotate_around, try_decode_parameter_controlled_point,
+    try_decode_point_constraint,
 };
 use crate::runtime::extract::decode::resolve_circle_points_raw;
 use crate::runtime::extract::points::editable_non_graph_parameter_name_for_group;
@@ -208,17 +208,15 @@ pub(crate) fn collect_carried_iteration_lines(
                         similarity_coefficients(&start, &end, &target_start, &target_end)
                     })
                     .collect::<Option<Vec<_>>>()?;
-                return Some(
-                    branching_lines(
-                        &start,
-                        &end,
-                        &coeffs,
-                        branching.depth,
-                        color_from_style(source_group.header.style_b),
-                        line_is_dashed(source_group.header.style_a),
-                        !iter_group.header.is_hidden(),
-                    ),
-                );
+                return Some(branching_lines(
+                    &start,
+                    &end,
+                    &coeffs,
+                    branching.depth,
+                    color_from_style(source_group.header.style_b),
+                    line_is_dashed(source_group.header.style_a),
+                    !iter_group.header.is_hidden(),
+                ));
             }
             if let Some(point_map) = carried_iteration_point_map(file, groups, iter_group, anchors)
             {
@@ -431,8 +429,14 @@ fn regular_polygon_branch_iteration(
     let parameter_group = groups.get(iter_path.refs[0].checked_sub(1)?)?;
     let parameter_name = editable_non_graph_parameter_name_for_group(file, groups, parameter_group);
     let target_group_pairs = vec![
-        (iter_path.refs[3].checked_sub(1)?, iter_path.refs[4].checked_sub(1)?),
-        (iter_path.refs[5].checked_sub(1)?, iter_path.refs[6].checked_sub(1)?),
+        (
+            iter_path.refs[3].checked_sub(1)?,
+            iter_path.refs[4].checked_sub(1)?,
+        ),
+        (
+            iter_path.refs[5].checked_sub(1)?,
+            iter_path.refs[6].checked_sub(1)?,
+        ),
     ];
     let depth = carried_iteration_depth(file, iter_group, 3);
     (depth > 0).then_some(RegularPolygonBranchIteration {
@@ -980,9 +984,13 @@ pub(crate) fn collect_carried_iteration_polygons(
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            if let Some(polygons) =
-                collect_coordinate_point_polygon_grid_iteration(file, groups, source_group, path.refs.get(1).copied()?, anchors)
-            {
+            if let Some(polygons) = collect_coordinate_point_polygon_grid_iteration(
+                file,
+                groups,
+                source_group,
+                path.refs.get(1).copied()?,
+                anchors,
+            ) {
                 return Some(polygons);
             }
             if (source_group.header.kind()) != crate::format::GroupKind::Polygon {
@@ -1098,13 +1106,14 @@ fn collect_coordinate_point_polygon_grid_iteration(
     let Some(parameter_name) = decode_label_name(file, parameter_group) else {
         return None;
     };
-    let mut parameter_value = crate::runtime::extract::try_decode_parameter_control_value_for_group(
-        file,
-        groups,
-        parameter_group,
-    )
-    .ok()
-    .unwrap_or(0.0);
+    let mut parameter_value =
+        crate::runtime::extract::try_decode_parameter_control_value_for_group(
+            file,
+            groups,
+            parameter_group,
+        )
+        .ok()
+        .unwrap_or(0.0);
     let parameter_step_group = iter_path
         .refs
         .get(2)
@@ -1126,8 +1135,9 @@ fn collect_coordinate_point_polygon_grid_iteration(
         if let Some(step_group) = parameter_step_group {
             let overrides =
                 std::collections::BTreeMap::from([(parameter_name.clone(), parameter_value)]);
-            parameter_value = evaluate_function_group_with_overrides(file, groups, step_group, &overrides)
-                .unwrap_or(parameter_value + 1.0);
+            parameter_value =
+                evaluate_function_group_with_overrides(file, groups, step_group, &overrides)
+                    .unwrap_or(parameter_value + 1.0);
         } else {
             parameter_value += 1.0;
         }
@@ -1196,10 +1206,12 @@ fn evaluate_coordinate_iteration_anchor(
             let y_calc_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
             let parameters =
                 std::collections::BTreeMap::from([(parameter_name.to_string(), parameter_value)]);
-            let dx = evaluate_function_group_with_overrides(file, groups, x_calc_group, &parameters)?
-                * function_group_raw_scale(file, groups, x_calc_group, &mut BTreeSet::new());
-            let dy = evaluate_function_group_with_overrides(file, groups, y_calc_group, &parameters)?
-                * function_group_raw_scale(file, groups, y_calc_group, &mut BTreeSet::new());
+            let dx =
+                evaluate_function_group_with_overrides(file, groups, x_calc_group, &parameters)?
+                    * function_group_raw_scale(file, groups, x_calc_group, &mut BTreeSet::new());
+            let dy =
+                evaluate_function_group_with_overrides(file, groups, y_calc_group, &parameters)?
+                    * function_group_raw_scale(file, groups, y_calc_group, &mut BTreeSet::new());
             Some(PointRecord {
                 x: source_position.x + dx,
                 y: source_position.y - dy,
@@ -1719,7 +1731,12 @@ fn build_coordinate_point_polygon_grid_iteration_family(
     let vertex_indices = polygon_path
         .refs
         .iter()
-        .map(|ordinal| group_to_point_index.get(ordinal.checked_sub(1)?).copied().flatten())
+        .map(|ordinal| {
+            group_to_point_index
+                .get(ordinal.checked_sub(1)?)
+                .copied()
+                .flatten()
+        })
         .collect::<Option<Vec<_>>>()?;
 
     let iter_path = find_indexed_path(file, iter_group)?;

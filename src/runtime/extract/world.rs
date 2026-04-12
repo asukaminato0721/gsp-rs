@@ -107,11 +107,15 @@ pub(super) fn world_polygon_iteration_family(
                 dx: delta.x,
                 dy: delta.y,
                 secondary_dx: match (secondary_dx, secondary_dy) {
-                    (Some(dx), Some(dy)) => Some(world_delta(&PointRecord { x: dx, y: dy }, graph_ref).x),
+                    (Some(dx), Some(dy)) => {
+                        Some(world_delta(&PointRecord { x: dx, y: dy }, graph_ref).x)
+                    }
                     _ => None,
                 },
                 secondary_dy: match (secondary_dx, secondary_dy) {
-                    (Some(dx), Some(dy)) => Some(world_delta(&PointRecord { x: dx, y: dy }, graph_ref).y),
+                    (Some(dx), Some(dy)) => {
+                        Some(world_delta(&PointRecord { x: dx, y: dy }, graph_ref).y)
+                    }
                     _ => None,
                 },
                 depth,

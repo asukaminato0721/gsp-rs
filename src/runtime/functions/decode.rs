@@ -2,9 +2,9 @@ use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::format::{GspFile, ObjectGroup, read_f64, read_u16, read_u32};
-use crate::runtime::extract::{find_indexed_path, try_decode_parameter_control_value_for_group};
 use crate::runtime::extract::points::collect_point_objects;
 use crate::runtime::extract::shapes::collect_raw_object_anchors;
+use crate::runtime::extract::{find_indexed_path, try_decode_parameter_control_value_for_group};
 use crate::runtime::functions::{evaluate_expr_with_parameters, function_expr_label};
 use crate::runtime::payload_consts::{
     EXPR_OP_ADD, EXPR_OP_DIV, EXPR_OP_MUL, EXPR_OP_POW, EXPR_OP_SUB, EXPR_PARAMETER_MASK,
@@ -221,7 +221,10 @@ fn decode_runtime_parameter_binding(
 ) -> Option<ParameterBinding> {
     if (group.header.kind()) == crate::format::GroupKind::ParameterAnchor {
         let binding = decode_parameter_anchor_binding(file, group)?;
-        let value = overrides.get(&binding.name).copied().unwrap_or(binding.value);
+        let value = overrides
+            .get(&binding.name)
+            .copied()
+            .unwrap_or(binding.value);
         return Some(ParameterBinding {
             name: binding.name,
             value,
@@ -247,7 +250,9 @@ fn decode_runtime_parameter_binding(
         .get(&name)
         .copied()
         .or_else(|| try_decode_parameter_control_value_for_group(file, groups, group).ok())?;
-    value.is_finite().then_some(ParameterBinding { name, value })
+    value
+        .is_finite()
+        .then_some(ParameterBinding { name, value })
 }
 
 fn decode_parameter_binding_recursive(
@@ -324,10 +329,7 @@ fn decode_parameter_anchor_binding(
         }
         _ => return None,
     };
-    Some(ParameterBinding {
-        name,
-        value,
-    })
+    Some(ParameterBinding { name, value })
 }
 
 fn decode_measured_value_binding(
@@ -366,13 +368,18 @@ fn decode_measured_value_binding(
 }
 
 fn group_name(file: &GspFile, group: &ObjectGroup) -> Option<String> {
-    group.records
+    group
+        .records
         .iter()
         .find(|record| record.record_type == RECORD_LABEL_AUX)
         .and_then(|record| decode_parameter_name(record.payload(&file.data)))
 }
 
-fn segment_name(file: &GspFile, groups: &[ObjectGroup], segment_group: &ObjectGroup) -> Option<String> {
+fn segment_name(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    segment_group: &ObjectGroup,
+) -> Option<String> {
     let path = find_indexed_path(file, segment_group)?;
     let names = path
         .refs
@@ -570,11 +577,9 @@ impl<'a> FunctionExprParser<'a> {
                 } else {
                     self.parse_expr_bp(4)
                 }
-                .map_err(|_| {
-                    FunctionExprParseError::InvalidUnaryOperand {
-                        offset,
-                        opcode: self.tokens.words[offset - self.tokens.base_offset],
-                    }
+                .map_err(|_| FunctionExprParseError::InvalidUnaryOperand {
+                    offset,
+                    opcode: self.tokens.words[offset - self.tokens.base_offset],
                 })?;
                 if terminator_aware
                     && matches!(
@@ -645,8 +650,14 @@ fn lex_function_token(
 ) -> Result<LexedFunctionToken, FunctionExprParseError> {
     fn suffix_width(word: u16, next: Option<u16>) -> usize {
         match word {
-            EXPR_VARIABLE_WORD | EXPR_PI_WORD => usize::from(matches!(next, Some(EXPR_VARIABLE_SUFFIX))),
-            EXPR_PARAMETER_PREFIX..=u16::MAX if (word & EXPR_PARAMETER_MASK) == EXPR_PARAMETER_PREFIX => 0,
+            EXPR_VARIABLE_WORD | EXPR_PI_WORD => {
+                usize::from(matches!(next, Some(EXPR_VARIABLE_SUFFIX)))
+            }
+            EXPR_PARAMETER_PREFIX..=u16::MAX
+                if (word & EXPR_PARAMETER_MASK) == EXPR_PARAMETER_PREFIX =>
+            {
+                0
+            }
             _ => usize::from(matches!(next, Some(0x0101 | 0x0201))),
         }
     }
@@ -864,13 +875,12 @@ fn parse_function_expr_from_words(
         .windows(2)
         .position(|pair| *pair == FUNCTION_EXPR_MARKER_A || *pair == FUNCTION_EXPR_MARKER_B);
     if let Some(marker_index) = marker_index {
-        match parse_function_expr_from(&words, marker_index + 2, parameters) {
+        match parse_function_expr_from(words, marker_index + 2, parameters) {
             Ok((parsed, _)) => return Ok(parsed),
             Err(error) => marker_error = Some(error),
         }
     }
-    find_fallback_function_expr(&words, parameters)
-        .or_else(|fallback_error| Err(marker_error.unwrap_or(fallback_error)))
+    find_fallback_function_expr(words, parameters).map_err(|fallback_error| marker_error.unwrap_or(fallback_error))
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1088,15 +1098,12 @@ fn lex_grouped_function_token(
         EXPR_VARIABLE_WORD => GroupedFunctionToken::Variable,
         _ if (word & EXPR_PARAMETER_MASK) == EXPR_PARAMETER_PREFIX => {
             let parameter_index = word & 0x000f;
-            GroupedFunctionToken::Parameter(
-                parameters
-                    .get(&parameter_index)
-                    .cloned()
-                    .ok_or(FunctionExprParseError::MissingParameterBinding {
-                        offset,
-                        parameter_index,
-                    })?,
-            )
+            GroupedFunctionToken::Parameter(parameters.get(&parameter_index).cloned().ok_or(
+                FunctionExprParseError::MissingParameterBinding {
+                    offset,
+                    parameter_index,
+                },
+            )?)
         }
         _ if decode_unary_function(word).is_some() => {
             GroupedFunctionToken::Unary(decode_unary_function(word).unwrap())
@@ -1171,7 +1178,8 @@ fn best_grouped_parse_candidate(
                     .filter_map(|(index, word)| (!deletions.contains(&index)).then_some(*word))
                     .collect::<Vec<_>>();
                 for start in 0..edited.len() {
-                    let mut parser = GroupedFunctionParser::new(&edited[start..], parameters, start);
+                    let mut parser =
+                        GroupedFunctionParser::new(&edited[start..], parameters, start);
                     let Ok(expr) = parser.parse_expr(0) else {
                         continue;
                     };
@@ -1298,11 +1306,7 @@ fn has_ignorable_expr_suffix(words: &[u16], end: usize) -> bool {
     let suffix = &words[end..];
     matches!(
         suffix,
-        [0x000c]
-            | [0x0201]
-            | [0x0101]
-            | [0x0000, 0x0101]
-            | [0x0000, 0x0000, 0x0101]
+        [0x000c] | [0x0201] | [0x0101] | [0x0000, 0x0101] | [0x0000, 0x0000, 0x0101]
     )
 }
 
@@ -1312,7 +1316,10 @@ fn parsed_contains_symbol(parsed: &FunctionAst) -> bool {
 
 #[cfg(test)]
 mod parse_tests {
-    use super::{FunctionExprParseError, ParameterBinding, parse_function_expr, try_decode_inner_function_expr};
+    use super::{
+        FunctionExprParseError, ParameterBinding, parse_function_expr,
+        try_decode_inner_function_expr,
+    };
     use crate::gsp::GspFile;
     use crate::runtime::functions::{
         BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters,
@@ -1354,9 +1361,9 @@ mod parse_tests {
     #[test]
     fn decodes_grouped_calc_expr_with_division_outside_parentheses() {
         let payload = payload_from_words(&[
-            2300, 0, 22, 0, 4, 0, 10, 132, 3, 12348, 62, 61361, 6, 0, 2, 43704, 2311, 0, 78, 0,
-            48, 0, 9, 4, 1052, 3, 274, 0, 61584, 0, 46661, 91, 0, 0, 274, 0, 940, 31123, 22472,
-            273, 63648, 146, 53421, 31129, 160, 1, 11, 24576, 4100, 2, 4096, 1, 12, 4099, 2,
+            2300, 0, 22, 0, 4, 0, 10, 132, 3, 12348, 62, 61361, 6, 0, 2, 43704, 2311, 0, 78, 0, 48,
+            0, 9, 4, 1052, 3, 274, 0, 61584, 0, 46661, 91, 0, 0, 274, 0, 940, 31123, 22472, 273,
+            63648, 146, 53421, 31129, 160, 1, 11, 24576, 4100, 2, 4096, 1, 12, 4099, 2,
         ]);
         let parameters = BTreeMap::from([(
             0u16,
@@ -1386,9 +1393,9 @@ mod parse_tests {
     #[test]
     fn decodes_chessboard_depth_expr_with_subexpression_in_numerator() {
         let payload = payload_from_words(&[
-            2300, 0, 22, 0, 4, 0, 10, 274, 3, 12348, 62, 0, 6, 0, 2, 0, 2311, 0, 78, 0, 48, 0,
-            9, 4, 63952, 3, 0, 0, 63964, 18, 65535, 65535, 4437, 87, 51443, 86, 274, 0, 61589,
-            0, 53072, 99, 63856, 18, 45200, 2303, 11, 24576, 4100, 2, 4097, 1, 12, 4099, 2,
+            2300, 0, 22, 0, 4, 0, 10, 274, 3, 12348, 62, 0, 6, 0, 2, 0, 2311, 0, 78, 0, 48, 0, 9,
+            4, 63952, 3, 0, 0, 63964, 18, 65535, 65535, 4437, 87, 51443, 86, 274, 0, 61589, 0,
+            53072, 99, 63856, 18, 45200, 2303, 11, 24576, 4100, 2, 4097, 1, 12, 4099, 2,
         ]);
         let parameters = BTreeMap::from([(
             0u16,
@@ -1402,10 +1409,7 @@ mod parse_tests {
             Some(FunctionExpr::Parsed(FunctionAst::Binary {
                 lhs: Box::new(FunctionAst::Binary {
                     lhs: Box::new(FunctionAst::Binary {
-                        lhs: Box::new(FunctionAst::Parameter(
-                            "trunc((m₁ + 2))".to_string(),
-                            9.0,
-                        )),
+                        lhs: Box::new(FunctionAst::Parameter("trunc((m₁ + 2))".to_string(), 9.0,)),
                         op: BinaryOp::Pow,
                         rhs: Box::new(FunctionAst::Constant(2.0)),
                     }),
@@ -1425,8 +1429,8 @@ mod parse_tests {
             48, 0, 55, 4, 63952, 3, 0, 0, 63964, 18, 65535, 65535, 4437, 87, 51443, 86, 274, 0,
             61589, 0, 53072, 99, 63856, 18, 45200, 2303, 11, 11, 24576, 4097, 8204, 24576, 4099,
             24577, 12, 4098, 24577, 12, 12, 4099, 24577, 4096, 11, 11, 1, 4096, 11, 4097, 1, 12,
-            4100, 11, 8204, 24576, 4099, 24577, 12, 4096, 1, 12, 12, 4099, 11, 2, 4098, 24577,
-            12, 4098, 11, 1, 4096, 11, 4097, 1, 12, 4100, 24577, 12, 4099, 2, 12,
+            4100, 11, 8204, 24576, 4099, 24577, 12, 4096, 1, 12, 12, 4099, 11, 2, 4098, 24577, 12,
+            4098, 11, 1, 4096, 11, 4097, 1, 12, 4100, 24577, 12, 4099, 2, 12,
         ]);
         let parameters = BTreeMap::from([
             (
@@ -1475,14 +1479,15 @@ mod parse_tests {
             .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
             .collect::<Vec<_>>();
         assert!(
-            words.windows(55).any(|window| window == &[
-                0x000b, 0x000b, 0x6000, 0x1001, 0x200c, 0x6000, 0x1003, 0x6001, 0x000c, 0x1002,
-                0x6001, 0x000c, 0x000c, 0x1003, 0x6001, 0x1000, 0x000b, 0x000b, 0x0001, 0x1000,
-                0x000b, 0x1001, 0x0001, 0x000c, 0x1004, 0x000b, 0x200c, 0x6000, 0x1003, 0x6001,
-                0x000c, 0x1000, 0x0001, 0x000c, 0x000c, 0x1003, 0x000b, 0x0002, 0x1002, 0x6001,
-                0x000c, 0x1002, 0x000b, 0x0001, 0x1000, 0x000b, 0x1001, 0x0001, 0x000c, 0x1004,
-                0x6001, 0x000c, 0x1003, 0x0002, 0x000c
-            ]),
+            words.windows(55).any(|window| window
+                == &[
+                    0x000b, 0x000b, 0x6000, 0x1001, 0x200c, 0x6000, 0x1003, 0x6001, 0x000c, 0x1002,
+                    0x6001, 0x000c, 0x000c, 0x1003, 0x6001, 0x1000, 0x000b, 0x000b, 0x0001, 0x1000,
+                    0x000b, 0x1001, 0x0001, 0x000c, 0x1004, 0x000b, 0x200c, 0x6000, 0x1003, 0x6001,
+                    0x000c, 0x1000, 0x0001, 0x000c, 0x000c, 0x1003, 0x000b, 0x0002, 0x1002, 0x6001,
+                    0x000c, 0x1002, 0x000b, 0x0001, 0x1000, 0x000b, 0x1001, 0x0001, 0x000c, 0x1004,
+                    0x6001, 0x000c, 0x1003, 0x0002, 0x000c
+                ]),
             "expected fixture payload to contain the chessboard x signature, got {words:?}"
         );
         let params = BTreeMap::from([

@@ -340,7 +340,8 @@ fn viewer_scene_plan(scene: &Scene) -> ViewerScenePlan {
 
 fn scene_requires_full_scene(scene: &Scene) -> bool {
     scene.points.iter().any(|point| {
-        point.binding
+        point
+            .binding
             .as_ref()
             .is_some_and(|binding| !matches!(binding, ScenePointBinding::GraphCalibration))
     })

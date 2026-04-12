@@ -2,8 +2,7 @@ use super::{build_scene_checked, render_payload_log};
 use crate::format::GspFile;
 use crate::runtime::scene::{
     LabelIterationFamily, LineBinding, LineConstraint, PointIterationFamily,
-    PolygonIterationFamily, Scene,
-    ScenePointBinding, ScenePointConstraint, TextLabelBinding,
+    PolygonIterationFamily, Scene, ScenePointBinding, ScenePointConstraint, TextLabelBinding,
 };
 use insta::assert_snapshot;
 use std::fs;
@@ -25,7 +24,8 @@ fn fixture_bytes(path: &str) -> Option<Vec<u8>> {
 
 #[test]
 fn preserves_binary_tree_multimap_iteration() {
-    let Some(data) = fixture_bytes("../Samples/个人专栏/方小庆作品/二叉树(inRm).gsp") else {
+    let Some(data) = fixture_bytes("../Samples/个人专栏/方小庆作品/二叉树(inRm).gsp")
+    else {
         return;
     };
     let scene = fixture_scene(&data);
@@ -44,15 +44,21 @@ fn preserves_binary_tree_multimap_iteration() {
         "expected the payload to produce two child segment maps"
     );
     assert_eq!(family.parameter_name.as_deref(), Some("n"));
-    assert_eq!(family.depth, 7, "expected depth to stay driven by payload n");
+    assert_eq!(
+        family.depth, 7,
+        "expected depth to stay driven by payload n"
+    );
     assert_eq!(
         scene.lines.len(),
         255,
         "expected one seed segment plus 2^1..2^7 recursive branches"
     );
     assert!(
-        scene.line_iterations.iter().all(|family| family.affine_source_indices.is_none()
-            && family.affine_target_handles.is_none()),
+        scene
+            .line_iterations
+            .iter()
+            .all(|family| family.affine_source_indices.is_none()
+                && family.affine_target_handles.is_none()),
         "expected the binary tree payload to avoid the carried affine fallback"
     );
     assert!(

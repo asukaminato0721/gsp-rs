@@ -32,27 +32,25 @@ use self::graph::{
 };
 use self::images::collect_scene_images;
 use self::labels::{
-    bind_button_seed_expression_labels,
-    PendingLabelHotspot, collect_circle_parameter_labels, collect_coordinate_labels,
+    PendingLabelHotspot, bind_button_seed_expression_labels, circle_parameter,
+    collect_circle_parameter_labels, collect_coordinate_labels,
     collect_custom_transform_expression_labels, collect_iteration_tables, collect_label_iterations,
-    circle_parameter, collect_labels, collect_polygon_parameter_labels,
-    collect_segment_parameter_labels, compute_iteration_labels, polygon_boundary_parameter,
-    resolve_label_hotspots,
+    collect_labels, collect_polygon_parameter_labels, collect_segment_parameter_labels,
+    compute_iteration_labels, polygon_boundary_parameter, resolve_label_hotspots,
 };
 use self::points::{
     RawPointConstraint, TransformBindingKind, collect_non_graph_parameters,
-    collect_point_iteration_points,
-    collect_point_objects, collect_visible_points_checked, decode_line_midpoint_anchor_raw,
-    decode_offset_anchor_raw, decode_parameter_controlled_anchor_raw,
-    decode_parameter_rotation_anchor_raw, decode_point_constraint_anchor,
-    decode_point_on_ray_anchor_raw, decode_point_pair_translation_anchor_raw,
-    decode_reflection_anchor_raw, decode_regular_polygon_vertex_anchor_raw,
-    decode_translated_point_anchor_raw, decode_translated_point_constraint,
-    reflection_line_group_indices, regular_polygon_iteration_step, remap_circle_bindings,
-    remap_label_bindings, remap_line_bindings, remap_polygon_bindings,
-    translation_point_pair_group_indices, try_decode_parameter_controlled_point,
-    try_decode_parameter_rotation_binding, try_decode_point_constraint,
-    try_decode_transform_binding,
+    collect_point_iteration_points, collect_point_objects, collect_visible_points_checked,
+    decode_line_midpoint_anchor_raw, decode_offset_anchor_raw,
+    decode_parameter_controlled_anchor_raw, decode_parameter_rotation_anchor_raw,
+    decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,
+    decode_point_pair_translation_anchor_raw, decode_reflection_anchor_raw,
+    decode_regular_polygon_vertex_anchor_raw, decode_translated_point_anchor_raw,
+    decode_translated_point_constraint, reflection_line_group_indices,
+    regular_polygon_iteration_step, remap_circle_bindings, remap_label_bindings,
+    remap_line_bindings, remap_polygon_bindings, translation_point_pair_group_indices,
+    try_decode_parameter_controlled_point, try_decode_parameter_rotation_binding,
+    try_decode_point_constraint, try_decode_transform_binding,
 };
 use self::shapes::{
     collect_arc_boundary_fill_polygons, collect_arc_boundary_shapes, collect_bound_line_shapes,
@@ -61,12 +59,12 @@ use self::shapes::{
     collect_carried_line_iteration_families, collect_carried_polygon_edge_segment_groups,
     collect_carried_polygon_iteration_families, collect_circle_shapes, collect_coordinate_traces,
     collect_derived_segments, collect_iteration_shapes, collect_line_shapes,
-    collect_materialized_ray_groups,
-    collect_polygon_shapes, collect_raw_object_anchors, collect_reflected_circle_shapes,
-    collect_reflected_line_shapes, collect_reflected_polygon_shapes, collect_rotated_circle_shapes,
-    collect_rotated_line_shapes, collect_rotated_polygon_shapes,
-    collect_rotational_iteration_lines, collect_rotational_iteration_segment_groups,
-    collect_scaled_line_shapes, collect_segment_marker_shapes, collect_three_point_arc_shapes,
+    collect_materialized_ray_groups, collect_polygon_shapes, collect_raw_object_anchors,
+    collect_reflected_circle_shapes, collect_reflected_line_shapes,
+    collect_reflected_polygon_shapes, collect_rotated_circle_shapes, collect_rotated_line_shapes,
+    collect_rotated_polygon_shapes, collect_rotational_iteration_lines,
+    collect_rotational_iteration_segment_groups, collect_scaled_line_shapes,
+    collect_segment_marker_shapes, collect_three_point_arc_shapes,
     collect_transformed_circle_shapes, collect_transformed_polygon_shapes,
     collect_translated_line_shapes, collect_translated_polygon_shapes,
 };
@@ -460,7 +458,11 @@ fn collect_scene_labels(
             .iter()
             .any(|group| group.header.kind() == crate::format::GroupKind::FunctionExpr)
     {
-        labels.extend(collect_coordinate_labels(file, groups, &analysis.raw_anchors));
+        labels.extend(collect_coordinate_labels(
+            file,
+            groups,
+            &analysis.raw_anchors,
+        ));
     }
     labels.extend(collect_polygon_parameter_labels(
         file,
@@ -752,7 +754,10 @@ fn apply_payload_color_bindings(
                 .refs
                 .first()
                 .and_then(|value| value.checked_sub(1))?;
-            group_to_point_index.get(point_group_index).copied().flatten()
+            group_to_point_index
+                .get(point_group_index)
+                .copied()
+                .flatten()
         };
 
         let Some(first_point_index) = resolve_parameter_point(path.refs[3]) else {
@@ -791,29 +796,28 @@ fn apply_payload_color_bindings(
         };
         let rgb_candidate = normalized_rgb(first_value, second_value, third_value);
         let hsb_candidate = normalized_hsb(first_value, second_value, third_value);
-        let (binding, resolved_fill) = if color_distance(expected, rgb_candidate)
-            <= color_distance(expected, hsb_candidate)
-        {
-            (
-                ColorBinding::Rgb {
-                    red_point_index: first_point_index,
-                    green_point_index: second_point_index,
-                    blue_point_index: third_point_index,
-                    alpha,
-                },
-                [rgb_candidate[0], rgb_candidate[1], rgb_candidate[2], alpha],
-            )
-        } else {
-            (
-                ColorBinding::Hsb {
-                    hue_point_index: first_point_index,
-                    saturation_point_index: second_point_index,
-                    brightness_point_index: third_point_index,
-                    alpha,
-                },
-                [hsb_candidate[0], hsb_candidate[1], hsb_candidate[2], alpha],
-            )
-        };
+        let (binding, resolved_fill) =
+            if color_distance(expected, rgb_candidate) <= color_distance(expected, hsb_candidate) {
+                (
+                    ColorBinding::Rgb {
+                        red_point_index: first_point_index,
+                        green_point_index: second_point_index,
+                        blue_point_index: third_point_index,
+                        alpha,
+                    },
+                    [rgb_candidate[0], rgb_candidate[1], rgb_candidate[2], alpha],
+                )
+            } else {
+                (
+                    ColorBinding::Hsb {
+                        hue_point_index: first_point_index,
+                        saturation_point_index: second_point_index,
+                        brightness_point_index: third_point_index,
+                        alpha,
+                    },
+                    [hsb_candidate[0], hsb_candidate[1], hsb_candidate[2], alpha],
+                )
+            };
 
         if let Some(circle) = shapes.circles.get_mut(circle_index) {
             circle.fill_color = Some(resolved_fill);
@@ -1623,7 +1627,7 @@ fn describe_rotation_group_in_chinese(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> String {
-    if let Some(binding) = try_decode_transform_binding(file, group).ok() {
+    if let Ok(binding) = try_decode_transform_binding(file, group) {
         let source_ordinal = binding.source_group_index + 1;
         let center_ordinal = binding.center_group_index + 1;
         if let TransformBindingKind::Rotate { angle_degrees, .. } = binding.kind {
@@ -1648,7 +1652,7 @@ fn describe_parameter_rotation_group_in_chinese(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> String {
-    if let Some(binding) = try_decode_parameter_rotation_binding(file, groups, group).ok() {
+    if let Ok(binding) = try_decode_parameter_rotation_binding(file, groups, group) {
         let source_ordinal = binding.source_group_index + 1;
         let center_ordinal = binding.center_group_index + 1;
         if let TransformBindingKind::Rotate {
@@ -1686,7 +1690,7 @@ fn describe_scale_group_in_chinese(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> String {
-    if let Some(binding) = try_decode_transform_binding(file, group).ok() {
+    if let Ok(binding) = try_decode_transform_binding(file, group) {
         let source_ordinal = binding.source_group_index + 1;
         let center_ordinal = binding.center_group_index + 1;
         if let TransformBindingKind::Scale { factor } = binding.kind {

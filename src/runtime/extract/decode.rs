@@ -398,9 +398,7 @@ pub(crate) fn try_decode_group_label_text(
             _ => None,
         })
         .transpose()
-        .map(|value| value.flatten())
-        .map_err(RichTextDecodeError::from)
-}
+        .map(|value| value.flatten())}
 
 #[derive(Debug, Clone)]
 pub(crate) struct RichTextContent {
@@ -429,9 +427,7 @@ pub(crate) fn try_decode_group_rich_text(
     record
         .map(|record| try_decode_rich_text(record.payload(&file.data)))
         .transpose()
-        .map(|value| value.flatten())
-        .map_err(RichTextDecodeError::from)
-}
+        .map(|value| value.flatten())}
 
 pub(crate) fn decode_label_anchor(
     file: &GspFile,
@@ -830,7 +826,7 @@ struct RichMarkupRun {
 }
 
 fn extract_visual_rich_text(nodes: &[RichMarkupNode]) -> Option<RichTextContent> {
-    let lines = render_markup_nodes(&nodes, None);
+    let lines = render_markup_nodes(nodes, None);
     let mut text_lines = Vec::new();
     let mut hotspots = Vec::new();
 

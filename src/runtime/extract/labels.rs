@@ -9,7 +9,8 @@ use super::decode::{
 };
 use super::points::{
     RawPointConstraint, editable_non_graph_parameter_name_for_group,
-    is_editable_non_graph_parameter_name, is_non_graph_parameter_group, try_decode_point_constraint,
+    is_editable_non_graph_parameter_name, is_non_graph_parameter_group,
+    try_decode_point_constraint,
 };
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
 use crate::runtime::functions::{
@@ -178,12 +179,19 @@ fn resolve_function_expr_parameter(
         let path = find_indexed_path(file, group)?;
         let parameter_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
         if parameter_group.header.kind() == crate::format::GroupKind::FunctionExpr {
-            return resolve_function_expr_parameter(file, groups, parameter_group, anchors, visiting);
+            return resolve_function_expr_parameter(
+                file,
+                groups,
+                parameter_group,
+                anchors,
+                visiting,
+            );
         }
         let name = if parameter_group.header.kind() == crate::format::GroupKind::ParameterAnchor {
             let anchor_path = find_indexed_path(file, parameter_group)?;
             let point_group = groups.get(anchor_path.refs.first()?.checked_sub(1)?)?;
-            decode_label_name(file, parameter_group).or_else(|| decode_label_name(file, point_group))?
+            decode_label_name(file, parameter_group)
+                .or_else(|| decode_label_name(file, point_group))?
         } else {
             editable_non_graph_parameter_name_for_group(file, groups, parameter_group)?
         };
@@ -284,7 +292,14 @@ fn payload_function_expr_label(
         let path = find_indexed_path(file, group)?;
         let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
         let source_label = if source_group.header.kind() == crate::format::GroupKind::FunctionExpr {
-            payload_function_expr_label(file, groups, anchors, source_group, fallback_expr_label, visiting)
+            payload_function_expr_label(
+                file,
+                groups,
+                anchors,
+                source_group,
+                fallback_expr_label,
+                visiting,
+            )
         } else {
             decode_label_name(file, source_group).or_else(|| {
                 if source_group.header.kind() == crate::format::GroupKind::ParameterAnchor {
@@ -296,13 +311,8 @@ fn payload_function_expr_label(
                 }
             })?
         };
-        let (parameter_name, _) = resolve_function_expr_parameter(
-            file,
-            groups,
-            group,
-            anchors,
-            &mut BTreeSet::new(),
-        )?;
+        let (parameter_name, _) =
+            resolve_function_expr_parameter(file, groups, group, anchors, &mut BTreeSet::new())?;
         Some(fallback_expr_label.replacen(&parameter_name, &source_label, 1))
     })()
     .unwrap_or_else(|| fallback_expr_label.to_string());
@@ -1075,7 +1085,9 @@ fn custom_transform_parameter_anchor_label(
     }
     let point_group = groups.get(path.refs[0].checked_sub(1)?)?;
     let segment_group = groups.get(path.refs[1].checked_sub(1)?)?;
-    if !point_group.header.kind().is_point_constraint() || !segment_group.header.kind().is_line_like() {
+    if !point_group.header.kind().is_point_constraint()
+        || !segment_group.header.kind().is_line_like()
+    {
         return None;
     }
     Some(format!(
@@ -1190,7 +1202,11 @@ pub(super) fn bind_button_seed_expression_labels(
         if seed_path.refs.len() < 2 {
             continue;
         }
-        let Some(point_group_index) = seed_path.refs.first().and_then(|ordinal| ordinal.checked_sub(1)) else {
+        let Some(point_group_index) = seed_path
+            .refs
+            .first()
+            .and_then(|ordinal| ordinal.checked_sub(1))
+        else {
             continue;
         };
         let Some(point_index) = mapped_point_index(group_to_point_index, point_group_index) else {

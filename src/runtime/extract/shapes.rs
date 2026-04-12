@@ -27,8 +27,8 @@ pub(crate) use anchors::collect_raw_object_anchors;
 pub(super) use basic::{
     collect_arc_boundary_fill_polygons, collect_arc_boundary_shapes, collect_bound_line_shapes,
     collect_circle_fill_colors, collect_circle_shapes, collect_coordinate_traces,
-    collect_derived_segments, collect_line_shapes, collect_polygon_shapes,
-    collect_segment_marker_shapes, collect_three_point_arc_shapes, collect_materialized_ray_groups,
+    collect_derived_segments, collect_line_shapes, collect_materialized_ray_groups,
+    collect_polygon_shapes, collect_segment_marker_shapes, collect_three_point_arc_shapes,
 };
 pub(super) use iterations::{
     collect_carried_circle_iteration_families, collect_carried_iteration_circles,

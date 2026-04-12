@@ -902,7 +902,9 @@ fn parameter_point_binding(
                 expr: expr.clone(),
             }));
         }
-        return Some(Some(ScenePointBinding::ConstraintParameterExpr { expr: expr.clone() }));
+        return Some(Some(ScenePointBinding::ConstraintParameterExpr {
+            expr: expr.clone(),
+        }));
     }
     if let Some(source_group_index) = parameter_point.source_point_group_index {
         let source_index = mapped_point_index(group_to_point_index, source_group_index)?;

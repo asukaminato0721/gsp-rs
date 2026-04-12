@@ -1261,18 +1261,20 @@ mod tests {
             3,
             "expected three translational seed-edge families"
         );
-        assert!(line_iterations
-            .iter()
-            .filter(|family| family["kind"].as_str() == Some("translate"))
-            .all(|family| {
-                family["parameterName"].as_str() == Some("n")
-                    && family["dx"].as_f64() == Some(-62.0)
-                    && family["dy"].as_f64() == Some(-36.0)
-                    && family["secondaryDx"].as_f64() == Some(47.0)
-                    && family["secondaryDy"].as_f64() == Some(-52.0)
-                    && family["bidirectional"].as_bool() == Some(true)
-                    && family["depth"].as_u64() == Some(3)
-            }));
+        assert!(
+            line_iterations
+                .iter()
+                .filter(|family| family["kind"].as_str() == Some("translate"))
+                .all(|family| {
+                    family["parameterName"].as_str() == Some("n")
+                        && family["dx"].as_f64() == Some(-62.0)
+                        && family["dy"].as_f64() == Some(-36.0)
+                        && family["secondaryDx"].as_f64() == Some(47.0)
+                        && family["secondaryDy"].as_f64() == Some(-52.0)
+                        && family["bidirectional"].as_bool() == Some(true)
+                        && family["depth"].as_u64() == Some(3)
+                })
+        );
         assert!(line_iterations.iter().any(|family| {
             family["kind"].as_str() == Some("branching")
                 && family["parameterName"].as_str() == Some("n")
@@ -1346,8 +1348,7 @@ mod tests {
         assert!(
             points.iter().any(|point| {
                 point["binding"]["kind"].as_str() == Some("derived-parameter-expr")
-                    || point["binding"]["kind"].as_str()
-                        == Some("constraint-parameter-expr")
+                    || point["binding"]["kind"].as_str() == Some("constraint-parameter-expr")
                     || point["binding"]["kind"].as_str()
                         == Some("constraint-parameter-from-point-expr")
             }),
@@ -1530,7 +1531,8 @@ mod tests {
 
     #[test]
     fn exports_three_parameter_color_fixture_with_live_fill_bindings() {
-        let Some(data) = fixture_bytes("tests/Samples/个人专栏/侯仰顺作品/三个参数控制颜色(蚂蚁).gsp")
+        let Some(data) =
+            fixture_bytes("tests/Samples/个人专栏/侯仰顺作品/三个参数控制颜色(蚂蚁).gsp")
         else {
             return;
         };
@@ -1588,32 +1590,62 @@ mod tests {
         };
         assert_eq!(
             label_color("红"),
-            vec![Value::from(255), Value::from(0), Value::from(0), Value::from(255)],
+            vec![
+                Value::from(255),
+                Value::from(0),
+                Value::from(0),
+                Value::from(255)
+            ],
             "expected the red payload label to keep its text color"
         );
         assert_eq!(
             label_color("绿"),
-            vec![Value::from(0), Value::from(128), Value::from(0), Value::from(255)],
+            vec![
+                Value::from(0),
+                Value::from(128),
+                Value::from(0),
+                Value::from(255)
+            ],
             "expected the green payload label to keep its text color"
         );
         assert_eq!(
             label_color("蓝"),
-            vec![Value::from(0), Value::from(0), Value::from(255), Value::from(255)],
+            vec![
+                Value::from(0),
+                Value::from(0),
+                Value::from(255),
+                Value::from(255)
+            ],
             "expected the blue payload label to keep its text color"
         );
         assert_eq!(
             label_color("色调"),
-            vec![Value::from(0), Value::from(0), Value::from(255), Value::from(255)],
+            vec![
+                Value::from(0),
+                Value::from(0),
+                Value::from(255),
+                Value::from(255)
+            ],
             "expected the hue payload label to keep its blue text color"
         );
         assert_eq!(
             label_color("饱和度"),
-            vec![Value::from(0), Value::from(0), Value::from(255), Value::from(255)],
+            vec![
+                Value::from(0),
+                Value::from(0),
+                Value::from(255),
+                Value::from(255)
+            ],
             "expected the saturation payload label to keep its blue text color"
         );
         assert_eq!(
             label_color("亮度"),
-            vec![Value::from(0), Value::from(0), Value::from(255), Value::from(255)],
+            vec![
+                Value::from(0),
+                Value::from(0),
+                Value::from(255),
+                Value::from(255)
+            ],
             "expected the brightness payload label to keep its blue text color"
         );
 
