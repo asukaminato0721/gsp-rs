@@ -12,8 +12,8 @@ use crate::runtime::payload_consts::{
 use thiserror::Error;
 
 use super::expr::{
-    BinaryOp, FunctionAst, FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode,
-    UnaryFunction, canonicalize_function_expr, decode_unary_function, function_ast_contains_symbol,
+    BinaryOp, FunctionAst, FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode, UnaryFunction,
+    canonicalize_function_expr, decode_unary_function, function_ast_contains_symbol,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -366,12 +366,12 @@ impl<'a> FunctionExprParser<'a> {
             }
             FunctionToken::Constant(value) => Ok(FunctionAst::Constant(value)),
             FunctionToken::Unary(op) => {
-                let expr = self
-                    .parse_expr_bp(4)
-                    .map_err(|_| FunctionExprParseError::InvalidUnaryOperand {
+                let expr = self.parse_expr_bp(4).map_err(|_| {
+                    FunctionExprParseError::InvalidUnaryOperand {
                         offset,
                         opcode: self.tokens.words[offset - self.tokens.base_offset],
-                    })?;
+                    }
+                })?;
                 Ok(FunctionAst::Unary {
                     op,
                     expr: Box::new(expr),

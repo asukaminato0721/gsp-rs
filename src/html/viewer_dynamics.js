@@ -190,60 +190,45 @@
     }
   }
 
-  function evaluateExprTerm(term, x, parameters) {
-    switch (term.kind) {
-      case "variable": return x;
-      case "constant": return term.value;
-      case "parameter": return parameters.get(term.name) ?? term.value;
-      case "unary_x": return evaluateUnary(term.op, x);
-      case "product": {
-        const left = evaluateExprTerm(term.left, x, parameters);
-        const right = evaluateExprTerm(term.right, x, parameters);
-        return left === null || right === null ? null : left * right;
-      }
-      case "power": {
-        const base = evaluateExprTerm(term.base, x, parameters);
-        const exponent = evaluateExprTerm(term.exponent, x, parameters);
-        if (base === null || exponent === null) return null;
-        const value = Math.pow(base, exponent);
-        return Number.isFinite(value) ? value : null;
-      }
-      default: return null;
-    }
-  }
-
   function evaluateExpr(expr, x, parameters) {
     if (expr.kind === "constant") return expr.value;
     if (expr.kind === "identity") return x;
     if (expr.kind !== "parsed") return null;
-    let value = evaluateExprTerm(expr.head, x, parameters);
-    if (value === null) return null;
-    for (const part of expr.tail) {
-      const rhs = evaluateExprTerm(part.term, x, parameters);
-      if (rhs === null) return null;
-      value = part.op === "sub"
-        ? value - rhs
-        : part.op === "mul"
-          ? value * rhs
-          : part.op === "div"
-            ? (Math.abs(rhs) >= 1e-9 ? value / rhs : null)
-            : value + rhs;
-      if (value === null) return null;
-    }
-    return Number.isFinite(value) ? value : null;
+    return evaluateExprAst(expr.expr, x, parameters);
   }
 
-  function formatExprTerm(term, formatAxisNumber, variableLabel = "x") {
-    switch (term.kind) {
-      case "variable": return variableLabel;
-      case "constant": return formatAxisNumber(term.value);
-      case "parameter": return term.name;
-      case "unary_x": return `${term.op}(${variableLabel})`;
-      case "product":
-        return `${formatExprTerm(term.left, formatAxisNumber, variableLabel)}*${formatExprTerm(term.right, formatAxisNumber, variableLabel)}`;
-      case "power":
-        return `${formatExprTerm(term.base, formatAxisNumber, variableLabel)}^${formatExprTerm(term.exponent, formatAxisNumber, variableLabel)}`;
-      default: return "?";
+  function evaluateExprAst(expr, x, parameters) {
+    if (!expr || typeof expr !== "object") return null;
+    switch (expr.kind) {
+      case "variable":
+        return x;
+      case "constant":
+        return expr.value;
+      case "parameter":
+        return parameters.get(expr.name) ?? expr.value;
+      case "pi-angle":
+        return 180;
+      case "unary": {
+        const inner = evaluateExprAst(expr.expr, x, parameters);
+        return inner === null ? null : evaluateUnary(expr.op, inner);
+      }
+      case "binary": {
+        const lhs = evaluateExprAst(expr.lhs, x, parameters);
+        const rhs = evaluateExprAst(expr.rhs, x, parameters);
+        if (lhs === null || rhs === null) return null;
+        const value = expr.op === "add"
+          ? lhs + rhs
+          : expr.op === "sub"
+            ? lhs - rhs
+          : expr.op === "mul"
+            ? lhs * rhs
+          : expr.op === "div"
+            ? (Math.abs(rhs) >= 1e-9 ? lhs / rhs : null)
+          : Math.pow(lhs, rhs);
+        return value === null || !Number.isFinite(value) ? null : value;
+      }
+      default:
+        return null;
     }
   }
 
@@ -251,20 +236,71 @@
     if (expr.kind === "constant") return formatAxisNumber(expr.value);
     if (expr.kind === "identity") return variableLabel;
     if (expr.kind === "parsed") {
-      let text = formatExprTerm(expr.head, formatAxisNumber, variableLabel);
-      for (const part of expr.tail) {
-        text += part.op === "sub"
-          ? " - "
-          : part.op === "mul"
-            ? " * "
-          : part.op === "div"
-              ? " / "
-              : " + ";
-        text += formatExprTerm(part.term, formatAxisNumber, variableLabel);
-      }
-      return text;
+      return formatExprAst(expr.expr, formatAxisNumber, variableLabel, 0);
     }
     return "?";
+  }
+
+  function formatExprAst(expr, formatAxisNumber, variableLabel = "x", parentPrec = 0) {
+    if (!expr || typeof expr !== "object") return "?";
+    switch (expr.kind) {
+      case "variable":
+        return variableLabel;
+      case "constant":
+        return formatAxisNumber(expr.value);
+      case "parameter":
+        return expr.name;
+      case "pi-angle":
+        return "180";
+      case "unary": {
+        const inner = formatExprAst(expr.expr, formatAxisNumber, variableLabel, 4);
+        if (expr.op === "abs") return `|${inner}|`;
+        if (expr.op === "sqrt") {
+          return expr.expr?.kind === "binary" ? `√(${inner})` : `√${inner}`;
+        }
+        return `${expr.op}(${inner})`;
+      }
+      case "binary": {
+        const [prec, rightAssoc] = binaryPrecedence(expr.op);
+        const left = formatExprAst(expr.lhs, formatAxisNumber, variableLabel, prec);
+        const right = formatExprAst(
+          expr.rhs,
+          formatAxisNumber,
+          variableLabel,
+          prec + (rightAssoc ? 0 : 1),
+        );
+        const text = `${left}${binaryOpText(expr.op)}${right}`;
+        return prec < parentPrec ? `(${text})` : text;
+      }
+      default:
+        return "?";
+    }
+  }
+
+  function binaryPrecedence(op) {
+    switch (op) {
+      case "add":
+      case "sub":
+        return [1, false];
+      case "mul":
+      case "div":
+        return [2, false];
+      case "pow":
+        return [3, true];
+      default:
+        return [0, false];
+    }
+  }
+
+  function binaryOpText(op) {
+    switch (op) {
+      case "add": return " + ";
+      case "sub": return " - ";
+      case "mul": return "*";
+      case "div": return " / ";
+      case "pow": return "^";
+      default: return " ? ";
+    }
   }
 
   /** @param {ViewerEnv} env */
@@ -278,31 +314,28 @@
    */
   function collectExprParameterNames(expr, names) {
     if (!expr || typeof expr !== "object") return;
-    if (expr.kind === "parameter" && typeof expr.name === "string") {
-      names.add(expr.name);
-      return;
-    }
     if (expr.kind === "parsed") {
-      collectExprTermParameterNames(expr.head, names);
-      for (const part of expr.tail || []) {
-        collectExprTermParameterNames(part.term, names);
-      }
+      collectExprAstParameterNames(expr.expr, names);
     }
   }
 
   /**
-   * @param {any} term
+   * @param {any} expr
    * @param {Set<string>} names
    */
-  function collectExprTermParameterNames(term, names) {
-    if (!term || typeof term !== "object") return;
-    if (term.kind === "parameter" && typeof term.name === "string") {
-      names.add(term.name);
+  function collectExprAstParameterNames(expr, names) {
+    if (!expr || typeof expr !== "object") return;
+    if (expr.kind === "parameter" && typeof expr.name === "string") {
+      names.add(expr.name);
       return;
     }
-    if (term.kind === "product" || term.kind === "power") {
-      collectExprTermParameterNames(term.left, names);
-      collectExprTermParameterNames(term.right, names);
+    if (expr.kind === "unary") {
+      collectExprAstParameterNames(expr.expr, names);
+      return;
+    }
+    if (expr.kind === "binary") {
+      collectExprAstParameterNames(expr.lhs, names);
+      collectExprAstParameterNames(expr.rhs, names);
     }
   }
 

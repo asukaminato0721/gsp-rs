@@ -1148,7 +1148,11 @@ fn collect_term_parameter_names(
         crate::runtime::functions::FunctionAst::Unary { expr, .. } => {
             collect_term_parameter_names(expr, parameters, value);
         }
-        crate::runtime::functions::FunctionAst::Binary { lhs: left, rhs: right, .. } => {
+        crate::runtime::functions::FunctionAst::Binary {
+            lhs: left,
+            rhs: right,
+            ..
+        } => {
             collect_term_parameter_names(left, parameters, value);
             collect_term_parameter_names(right, parameters, value);
         }
