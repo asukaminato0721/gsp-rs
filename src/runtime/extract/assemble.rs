@@ -569,6 +569,7 @@ pub(super) fn assemble_scene(
                 radius_point: to_world(&circle.radius_point, &analysis.graph_ref),
                 color: circle.color,
                 fill_color: circle.fill_color,
+                fill_color_binding: circle.fill_color_binding,
                 dashed: circle.dashed,
                 visible: circle.visible,
                 binding: circle.binding,

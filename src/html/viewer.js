@@ -295,6 +295,7 @@
       circles: scene.circles.map((circle) => ({
         color: circle.color,
         fillColor: circle.fillColor || null,
+        fillColorBinding: circle.fillColorBinding ? { ...circle.fillColorBinding } : null,
         dashed: !!circle.dashed,
         visible: circle.visible !== false,
         center: attachPointRef(circle.center),

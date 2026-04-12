@@ -2646,7 +2646,7 @@ fn preserves_visible_and_hidden_ray_labels_from_payload() {
 #[test]
 fn keeps_control_labels_in_non_graph_sample() {
     let scene = fixture_scene(include_bytes!(
-        "../../../../Samples/个人专栏/潘建平作品/加油潘建平老师.gsp"
+        "../../../tests/Samples/个人专栏/潘建平作品/加油潘建平老师.gsp"
     ));
 
     assert!(

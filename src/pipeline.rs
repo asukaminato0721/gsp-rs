@@ -1307,4 +1307,52 @@ mod tests {
             "expected the payload segment to remain interactive"
         );
     }
+
+    #[test]
+    fn exports_three_parameter_color_fixture_with_live_fill_bindings() {
+        let Some(data) = fixture_bytes("tests/Samples/个人专栏/侯仰顺作品/三个参数控制颜色(蚂蚁).gsp")
+        else {
+            return;
+        };
+        let scene = fixture_scene(&data, "three-parameter color fixture should compile");
+
+        let circles = scene["circles"]
+            .as_array()
+            .expect("scene circles should be an array");
+        assert_eq!(circles.len(), 2, "expected both payload circles");
+        assert_eq!(
+            circles[0]["fillColorBinding"]["kind"].as_str(),
+            Some("rgb"),
+            "expected the first circle interior to keep its RGB payload binding"
+        );
+        assert_eq!(
+            circles[0]["fillColorBinding"]["redPointIndex"].as_u64(),
+            Some(4)
+        );
+        assert_eq!(
+            circles[0]["fillColorBinding"]["greenPointIndex"].as_u64(),
+            Some(5)
+        );
+        assert_eq!(
+            circles[0]["fillColorBinding"]["bluePointIndex"].as_u64(),
+            Some(6)
+        );
+        assert_eq!(
+            circles[1]["fillColorBinding"]["kind"].as_str(),
+            Some("hsb"),
+            "expected the second circle interior to keep its HSB payload binding"
+        );
+        assert_eq!(
+            circles[1]["fillColorBinding"]["huePointIndex"].as_u64(),
+            Some(11)
+        );
+        assert_eq!(
+            circles[1]["fillColorBinding"]["saturationPointIndex"].as_u64(),
+            Some(12)
+        );
+        assert_eq!(
+            circles[1]["fillColorBinding"]["brightnessPointIndex"].as_u64(),
+            Some(13)
+        );
+    }
 }

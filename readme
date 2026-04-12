@@ -4,3 +4,5 @@ cargo run ./path/to/your.gsp
 cargo run ./path/to/one.gsp ./path/to/two.gsp
 
 Open the generated html and click `Debug` to inspect the extracted hierarchy as a graph or raw JSON.
+
+check the .log file to see the current missing impl and parsed steps.

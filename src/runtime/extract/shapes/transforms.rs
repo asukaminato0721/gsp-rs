@@ -211,6 +211,7 @@ pub(crate) fn collect_rotated_circle_shapes(
                 fill_color: circle_fill_colors
                     .get(&(path.refs.first()?.checked_sub(1)?))
                     .copied(),
+                fill_color_binding: None,
                 dashed: line_is_dashed(source_group.header.style_a),
                 visible: !group.header.is_hidden(),
                 binding: Some(ShapeBinding::RotateCircle {
@@ -298,6 +299,7 @@ pub(crate) fn collect_transformed_circle_shapes(
                 fill_color: circle_fill_colors
                     .get(&(path.refs.first()?.checked_sub(1)?))
                     .copied(),
+                fill_color_binding: None,
                 dashed: line_is_dashed(source_group.header.style_a),
                 visible: !group.header.is_hidden(),
                 binding: Some(ShapeBinding::ScaleCircle {
@@ -429,6 +431,7 @@ pub(crate) fn collect_reflected_circle_shapes(
                 fill_color: circle_fill_colors
                     .get(&(path.refs.first()?.checked_sub(1)?))
                     .copied(),
+                fill_color_binding: None,
                 dashed: line_is_dashed(source_group.header.style_a),
                 visible: !group.header.is_hidden(),
                 binding: Some(ShapeBinding::ReflectCircle {

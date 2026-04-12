@@ -34,11 +34,13 @@ use self::images::collect_scene_images;
 use self::labels::{
     PendingLabelHotspot, collect_circle_parameter_labels, collect_coordinate_labels,
     collect_custom_transform_expression_labels, collect_iteration_tables, collect_label_iterations,
-    collect_labels, collect_polygon_parameter_labels, collect_segment_parameter_labels,
-    compute_iteration_labels, resolve_label_hotspots,
+    circle_parameter, collect_labels, collect_polygon_parameter_labels,
+    collect_segment_parameter_labels, compute_iteration_labels, polygon_boundary_parameter,
+    resolve_label_hotspots,
 };
 use self::points::{
-    TransformBindingKind, collect_non_graph_parameters, collect_point_iteration_points,
+    RawPointConstraint, TransformBindingKind, collect_non_graph_parameters,
+    collect_point_iteration_points,
     collect_point_objects, collect_visible_points_checked, decode_line_midpoint_anchor_raw,
     decode_offset_anchor_raw, decode_parameter_controlled_anchor_raw,
     decode_parameter_rotation_anchor_raw, decode_point_constraint_anchor,
@@ -74,7 +76,7 @@ use super::functions::{
 };
 use super::geometry::{Bounds, GraphTransform, distance_world};
 use super::scene::{
-    LabelIterationFamily, LineIterationFamily, LineShape, PointIterationFamily,
+    ColorBinding, LabelIterationFamily, LineIterationFamily, LineShape, PointIterationFamily,
     PolygonIterationFamily, PolygonShape, Scene, ScenePoint, TextLabel,
 };
 
@@ -90,6 +92,7 @@ struct CircleShape {
     radius_point: PointRecord,
     color: [u8; 4],
     fill_color: Option<[u8; 4]>,
+    fill_color_binding: Option<super::scene::ColorBinding>,
     dashed: bool,
     visible: bool,
     binding: Option<super::scene::ShapeBinding>,
@@ -683,6 +686,212 @@ fn remap_scene_bindings(
     )
 }
 
+fn apply_payload_color_bindings(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    raw_anchors: &[Option<PointRecord>],
+    group_to_point_index: &[Option<usize>],
+    circle_group_to_index: &[Option<usize>],
+    shapes: &mut CollectedShapes,
+) {
+    for group in groups.iter().filter(|group| {
+        matches!(
+            group.header.kind(),
+            GroupKind::DerivedSegment24 | GroupKind::DerivedSegment75
+        )
+    }) {
+        let Some(path) = find_indexed_path(file, group) else {
+            continue;
+        };
+        if path.refs.len() < 4 {
+            continue;
+        }
+
+        let Some(host_group_index) = path.refs[0].checked_sub(1) else {
+            continue;
+        };
+        let Some(host_group) = groups.get(host_group_index) else {
+            continue;
+        };
+        if host_group.header.kind() != GroupKind::CircleInterior {
+            continue;
+        }
+
+        let Some(circle_path) = find_indexed_path(file, host_group) else {
+            continue;
+        };
+        let Some(circle_group_index) = circle_path
+            .refs
+            .first()
+            .and_then(|value| value.checked_sub(1))
+        else {
+            continue;
+        };
+        let Some(circle_index) = circle_group_to_index
+            .get(circle_group_index)
+            .copied()
+            .flatten()
+        else {
+            continue;
+        };
+
+        let resolve_parameter_point = |ordinal: usize| -> Option<usize> {
+            let anchor_group = groups.get(ordinal.checked_sub(1)?)?;
+            let anchor_path = find_indexed_path(file, anchor_group)?;
+            let point_group_index = anchor_path
+                .refs
+                .first()
+                .and_then(|value| value.checked_sub(1))?;
+            group_to_point_index.get(point_group_index).copied().flatten()
+        };
+
+        let Some(first_point_index) = resolve_parameter_point(path.refs[3]) else {
+            continue;
+        };
+        let Some(second_point_index) = resolve_parameter_point(path.refs[2]) else {
+            continue;
+        };
+        let Some(third_point_index) = resolve_parameter_point(path.refs[1]) else {
+            continue;
+        };
+        let Some(first_value) =
+            resolve_payload_color_parameter_value(file, groups, raw_anchors, path.refs[3])
+        else {
+            continue;
+        };
+        let Some(second_value) =
+            resolve_payload_color_parameter_value(file, groups, raw_anchors, path.refs[2])
+        else {
+            continue;
+        };
+        let Some(third_value) =
+            resolve_payload_color_parameter_value(file, groups, raw_anchors, path.refs[1])
+        else {
+            continue;
+        };
+
+        let alpha = shapes
+            .circles
+            .get(circle_index)
+            .and_then(|circle| circle.fill_color.map(|color| color[3]))
+            .unwrap_or(255);
+        let expected = {
+            let color = crate::runtime::geometry::color_from_style(group.header.style_b);
+            [color[0], color[1], color[2]]
+        };
+        let rgb_candidate = normalized_rgb(first_value, second_value, third_value);
+        let hsb_candidate = normalized_hsb(first_value, second_value, third_value);
+        let (binding, resolved_fill) = if color_distance(expected, rgb_candidate)
+            <= color_distance(expected, hsb_candidate)
+        {
+            (
+                ColorBinding::Rgb {
+                    red_point_index: first_point_index,
+                    green_point_index: second_point_index,
+                    blue_point_index: third_point_index,
+                    alpha,
+                },
+                [rgb_candidate[0], rgb_candidate[1], rgb_candidate[2], alpha],
+            )
+        } else {
+            (
+                ColorBinding::Hsb {
+                    hue_point_index: first_point_index,
+                    saturation_point_index: second_point_index,
+                    brightness_point_index: third_point_index,
+                    alpha,
+                },
+                [hsb_candidate[0], hsb_candidate[1], hsb_candidate[2], alpha],
+            )
+        };
+
+        if let Some(circle) = shapes.circles.get_mut(circle_index) {
+            circle.fill_color = Some(resolved_fill);
+            circle.fill_color_binding = Some(binding);
+        }
+    }
+}
+
+fn resolve_payload_color_parameter_value(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    raw_anchors: &[Option<PointRecord>],
+    anchor_ordinal: usize,
+) -> Option<f64> {
+    let anchor_group = groups.get(anchor_ordinal.checked_sub(1)?)?;
+    let anchor_path = find_indexed_path(file, anchor_group)?;
+    let point_group_index = anchor_path
+        .refs
+        .first()
+        .and_then(|value| value.checked_sub(1))?;
+    let point_group = groups.get(point_group_index)?;
+    match try_decode_point_constraint(file, groups, point_group, None, &None).ok()? {
+        RawPointConstraint::Segment(constraint) => Some(constraint.t),
+        RawPointConstraint::PolygonBoundary {
+            edge_index,
+            t,
+            vertex_group_indices,
+        } => polygon_boundary_parameter(raw_anchors, &vertex_group_indices, edge_index, t),
+        RawPointConstraint::Circle(constraint) => circle_parameter(
+            raw_anchors,
+            constraint.center_group_index,
+            constraint.radius_group_index,
+            constraint.unit_x,
+            constraint.unit_y,
+        ),
+        RawPointConstraint::CircleArc(constraint) => Some(constraint.t),
+        RawPointConstraint::Arc(constraint) => Some(constraint.t),
+        RawPointConstraint::Polyline { t, .. } => Some(t),
+    }
+}
+
+fn color_distance(expected: [u8; 3], candidate: [u8; 3]) -> u32 {
+    u32::from(expected[0].abs_diff(candidate[0]))
+        + u32::from(expected[1].abs_diff(candidate[1]))
+        + u32::from(expected[2].abs_diff(candidate[2]))
+}
+
+fn normalized_channel(value: f64) -> u8 {
+    (value.clamp(0.0, 1.0) * 255.0).floor() as u8
+}
+
+fn normalized_rgb(first: f64, second: f64, third: f64) -> [u8; 3] {
+    [
+        normalized_channel(first),
+        normalized_channel(second),
+        normalized_channel(third),
+    ]
+}
+
+fn normalized_hsb(hue: f64, saturation: f64, brightness: f64) -> [u8; 3] {
+    let hue = hue.rem_euclid(1.0);
+    let saturation = saturation.clamp(0.0, 1.0);
+    let brightness = brightness.clamp(0.0, 1.0);
+    if saturation <= 1e-9 {
+        let channel = normalized_channel(brightness);
+        return [channel, channel, channel];
+    }
+    let scaled = hue * 6.0;
+    let sector = scaled.floor() as usize % 6;
+    let fraction = scaled - scaled.floor();
+    let p = brightness * (1.0 - saturation);
+    let q = brightness * (1.0 - saturation * fraction);
+    let t = brightness * (1.0 - saturation * (1.0 - fraction));
+    let (red, green, blue) = match sector {
+        0 => (brightness, t, p),
+        1 => (q, brightness, p),
+        2 => (p, brightness, t),
+        3 => (p, q, brightness),
+        4 => (t, p, brightness),
+        _ => (brightness, p, q),
+    };
+    [
+        normalized_channel(red),
+        normalized_channel(green),
+        normalized_channel(blue),
+    ]
+}
+
 pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
     let groups = file.object_groups();
     validate_scene_payloads(file, &groups)?;
@@ -736,6 +945,14 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
         &groups,
         &analysis.raw_anchors,
         &group_to_point_index,
+        &mut shapes,
+    );
+    apply_payload_color_bindings(
+        file,
+        &groups,
+        &analysis.raw_anchors,
+        &group_to_point_index,
+        &binding_maps.circle_group_to_index,
         &mut shapes,
     );
     let circle_iterations = collect_carried_circle_iteration_families(

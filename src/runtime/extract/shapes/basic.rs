@@ -905,6 +905,7 @@ pub(crate) fn collect_circle_shapes(
                 radius_point,
                 color: color_from_style(group.header.style_b),
                 fill_color: circle_fill_colors.get(&group_index).copied(),
+                fill_color_binding: None,
                 dashed: dashed_circle_indices.contains(&group_index),
                 visible: !group.header.is_hidden(),
                 binding,

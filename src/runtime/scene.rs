@@ -600,6 +600,7 @@ pub(crate) struct SceneCircle {
     pub(crate) radius_point: PointRecord,
     pub(crate) color: [u8; 4],
     pub(crate) fill_color: Option<[u8; 4]>,
+    pub(crate) fill_color_binding: Option<ColorBinding>,
     pub(crate) dashed: bool,
     pub(crate) visible: bool,
     pub(crate) binding: Option<ShapeBinding>,
@@ -612,6 +613,22 @@ pub(crate) struct SceneArc {
     pub(crate) center: Option<PointRecord>,
     pub(crate) counterclockwise: bool,
     pub(crate) visible: bool,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum ColorBinding {
+    Rgb {
+        red_point_index: usize,
+        green_point_index: usize,
+        blue_point_index: usize,
+        alpha: u8,
+    },
+    Hsb {
+        hue_point_index: usize,
+        saturation_point_index: usize,
+        brightness_point_index: usize,
+        alpha: u8,
+    },
 }
 
 #[derive(Debug, Clone)]

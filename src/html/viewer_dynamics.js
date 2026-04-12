@@ -650,6 +650,74 @@
     return readParameter ? readParameter(scene, pointIndex) : null;
   }
 
+  /** @param {number | null} value */
+  function clampNormalizedValue(value) {
+    return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : null;
+  }
+
+  /**
+   * @param {number} hue
+   * @param {number} saturation
+   * @param {number} brightness
+   * @param {number} alpha
+   * @returns {[number, number, number, number]}
+   */
+  function hsbToRgba(hue, saturation, brightness, alpha) {
+    const wrappedHue = wrapUnitInterval(hue);
+    const s = Math.max(0, Math.min(1, saturation));
+    const v = Math.max(0, Math.min(1, brightness));
+    if (s <= 1e-9) {
+      const channel = Math.round(v * 255);
+      return [channel, channel, channel, alpha];
+    }
+    const scaled = wrappedHue * 6;
+    const sector = Math.floor(scaled) % 6;
+    const fraction = scaled - Math.floor(scaled);
+    const p = v * (1 - s);
+    const q = v * (1 - s * fraction);
+    const t = v * (1 - s * (1 - fraction));
+    const [r, g, b] = (() => {
+      switch (sector) {
+        case 0: return [v, t, p];
+        case 1: return [q, v, p];
+        case 2: return [p, v, t];
+        case 3: return [p, q, v];
+        case 4: return [t, p, v];
+        default: return [v, p, q];
+      }
+    })();
+    return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255), alpha];
+  }
+
+  /**
+   * @param {ViewerSceneData} scene
+   * @param {RuntimeCircleJson} circle
+   */
+  function refreshCircleFillColorBinding(scene, circle) {
+    const binding = circle.fillColorBinding;
+    if (!binding) return;
+    if (binding.kind === "rgb") {
+      const red = clampNormalizedValue(parameterValueFromPoint(scene, binding.redPointIndex));
+      const green = clampNormalizedValue(parameterValueFromPoint(scene, binding.greenPointIndex));
+      const blue = clampNormalizedValue(parameterValueFromPoint(scene, binding.bluePointIndex));
+      if (red === null || green === null || blue === null) return;
+      circle.fillColor = [
+        Math.round(red * 255),
+        Math.round(green * 255),
+        Math.round(blue * 255),
+        binding.alpha,
+      ];
+      return;
+    }
+    if (binding.kind === "hsb") {
+      const hue = clampNormalizedValue(parameterValueFromPoint(scene, binding.huePointIndex));
+      const saturation = clampNormalizedValue(parameterValueFromPoint(scene, binding.saturationPointIndex));
+      const brightness = clampNormalizedValue(parameterValueFromPoint(scene, binding.brightnessPointIndex));
+      if (hue === null || saturation === null || brightness === null) return;
+      circle.fillColor = hsbToRgba(hue, saturation, brightness, binding.alpha);
+    }
+  }
+
   /**
    * @param {RuntimeScenePointJson} point
    * @param {ViewerSceneData} scene
@@ -2216,6 +2284,7 @@
       if (refreshCircle) {
         refreshCircle(shapeContext, circle);
       }
+      refreshCircleFillColorBinding(scene, circle);
     });
 
     const sourceCircleIterations = env.sourceScene.circleIterations || [];
@@ -2266,6 +2335,7 @@
             },
             color: source.color,
             fillColor: source.fillColor,
+            fillColorBinding: null,
             dashed: source.dashed,
             visible: family.visible !== false,
             binding: null,

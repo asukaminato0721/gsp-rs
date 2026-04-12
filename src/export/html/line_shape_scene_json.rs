@@ -1,7 +1,7 @@
 use super::function_expr_json::FunctionExprJson;
 use super::scene_json::PointJson;
 use crate::runtime::geometry::darken;
-use crate::runtime::scene::{ArcBoundaryKind, LineBinding, ShapeBinding};
+use crate::runtime::scene::{ArcBoundaryKind, ColorBinding, LineBinding, ShapeBinding};
 use serde::Serialize;
 use ts_rs::TS;
 
@@ -455,6 +455,7 @@ pub(super) struct CircleJson {
     radius_point: PointJson,
     color: [u8; 4],
     fill_color: Option<[u8; 4]>,
+    fill_color_binding: Option<ColorBindingJson>,
     dashed: bool,
     visible: bool,
     binding: Option<ShapeBindingJson>,
@@ -467,9 +468,67 @@ impl CircleJson {
             radius_point: PointJson::from_point(&circle.radius_point),
             color: circle.color,
             fill_color: circle.fill_color,
+            fill_color_binding: circle
+                .fill_color_binding
+                .as_ref()
+                .map(ColorBindingJson::from_binding),
             dashed: circle.dashed,
             visible: circle.visible,
             binding: circle.binding.as_ref().map(ShapeBindingJson::from_binding),
+        }
+    }
+}
+
+#[derive(Serialize, TS)]
+#[serde(tag = "kind")]
+enum ColorBindingJson {
+    #[serde(rename = "rgb")]
+    Rgb {
+        #[serde(rename = "redPointIndex")]
+        red_point_index: usize,
+        #[serde(rename = "greenPointIndex")]
+        green_point_index: usize,
+        #[serde(rename = "bluePointIndex")]
+        blue_point_index: usize,
+        alpha: u8,
+    },
+    #[serde(rename = "hsb")]
+    Hsb {
+        #[serde(rename = "huePointIndex")]
+        hue_point_index: usize,
+        #[serde(rename = "saturationPointIndex")]
+        saturation_point_index: usize,
+        #[serde(rename = "brightnessPointIndex")]
+        brightness_point_index: usize,
+        alpha: u8,
+    },
+}
+
+impl ColorBindingJson {
+    fn from_binding(binding: &ColorBinding) -> Self {
+        match binding {
+            ColorBinding::Rgb {
+                red_point_index,
+                green_point_index,
+                blue_point_index,
+                alpha,
+            } => Self::Rgb {
+                red_point_index: *red_point_index,
+                green_point_index: *green_point_index,
+                blue_point_index: *blue_point_index,
+                alpha: *alpha,
+            },
+            ColorBinding::Hsb {
+                hue_point_index,
+                saturation_point_index,
+                brightness_point_index,
+                alpha,
+            } => Self::Hsb {
+                hue_point_index: *hue_point_index,
+                saturation_point_index: *saturation_point_index,
+                brightness_point_index: *brightness_point_index,
+                alpha: *alpha,
+            },
         }
     }
 }
