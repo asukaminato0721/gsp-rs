@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt;
 
 use crate::format::{GspFile, ObjectGroup, read_f64, read_u16, read_u32};
 use crate::runtime::extract::{decode_parameter_control_value_for_group, find_indexed_path};
@@ -10,6 +9,7 @@ use crate::runtime::payload_consts::{
     FUNCTION_EXPR_MARKER_A, FUNCTION_EXPR_MARKER_B, RECORD_FUNCTION_EXPR_PAYLOAD,
     RECORD_INDEXED_PATH_B, RECORD_LABEL_AUX,
 };
+use thiserror::Error;
 
 use super::expr::{
     BinaryOp, FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode, FunctionTerm,
@@ -83,26 +83,12 @@ pub(crate) fn decode_function_plot_descriptor(payload: &[u8]) -> Option<Function
     try_decode_function_plot_descriptor(payload).ok()
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Error)]
 pub(crate) enum FunctionPlotDescriptorDecodeError {
+    #[error("function plot descriptor payload too short ({byte_len} bytes)")]
     PayloadTooShort { byte_len: usize },
+    #[error("invalid function plot range [{x_min}, {x_max}]")]
     InvalidRange { x_min: f64, x_max: f64 },
-}
-
-impl fmt::Display for FunctionPlotDescriptorDecodeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::PayloadTooShort { byte_len } => {
-                write!(
-                    f,
-                    "function plot descriptor payload too short ({byte_len} bytes)"
-                )
-            }
-            Self::InvalidRange { x_min, x_max } => {
-                write!(f, "invalid function plot range [{x_min}, {x_max}]")
-            }
-        }
-    }
 }
 
 pub(crate) fn try_decode_function_plot_descriptor(
@@ -269,55 +255,22 @@ pub(crate) enum FunctionToken {
     Constant(f64),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Error)]
 pub(crate) enum FunctionExprParseError {
+    #[error("unexpected end of function payload at word offset {offset}")]
     UnexpectedEnd { offset: usize },
+    #[error("unexpected token {found:?} at function payload word offset {offset}")]
     UnexpectedToken { offset: usize, found: FunctionToken },
+    #[error(
+        "invalid unary operand for opcode 0x{opcode:04x} at function payload word offset {offset}"
+    )]
     InvalidUnaryOperand { offset: usize, opcode: u16 },
+    #[error(
+        "missing parameter binding #{parameter_index} at function payload word offset {offset}"
+    )]
     MissingParameterBinding { offset: usize, parameter_index: u16 },
+    #[error("no parseable function expression found in {word_len} payload words")]
     NoExpressionFound { word_len: usize },
-}
-
-impl fmt::Display for FunctionExprParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::UnexpectedEnd { offset } => {
-                write!(
-                    f,
-                    "unexpected end of function payload at word offset {offset}"
-                )
-            }
-            Self::UnexpectedToken { offset, found } => {
-                write!(
-                    f,
-                    "unexpected token {:?} at function payload word offset {}",
-                    found, offset
-                )
-            }
-            Self::InvalidUnaryOperand { offset, opcode } => {
-                write!(
-                    f,
-                    "invalid unary operand for opcode 0x{opcode:04x} at function payload word offset {offset}"
-                )
-            }
-            Self::MissingParameterBinding {
-                offset,
-                parameter_index,
-            } => {
-                write!(
-                    f,
-                    "missing parameter binding #{} at function payload word offset {}",
-                    parameter_index, offset
-                )
-            }
-            Self::NoExpressionFound { word_len } => {
-                write!(
-                    f,
-                    "no parseable function expression found in {word_len} payload words"
-                )
-            }
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

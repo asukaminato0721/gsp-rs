@@ -8,14 +8,15 @@ use crate::runtime::payload_consts::{
     RECORD_INDEXED_PATH_B, RECORD_LABEL_AUX, RECORD_LABEL_VISIBILITY, RECORD_POINT_F64_PAIR,
     RECORD_RICH_TEXT, RECORD_RICH_TEXT_MAGIC,
 };
-use std::fmt;
+use thiserror::Error;
 
 pub(crate) fn is_circle_group_kind(kind: GroupKind) -> bool {
     matches!(kind, GroupKind::Circle | GroupKind::CircleCenterRadius)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub(crate) enum IndexedPathDecodeError {
+    #[error("malformed indexed path record 0x{record_type:04x} at 0x{offset:x} (len={length})")]
     MalformedPathRecord {
         record_type: u32,
         offset: usize,
@@ -23,47 +24,32 @@ pub(crate) enum IndexedPathDecodeError {
     },
 }
 
-impl fmt::Display for IndexedPathDecodeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::MalformedPathRecord {
-                record_type,
-                offset,
-                length,
-            } => write!(
-                f,
-                "malformed indexed path record 0x{record_type:04x} at 0x{offset:x} (len={length})"
-            ),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub(crate) enum LinkButtonDecodeError {
+    #[error("action button payload at 0x{offset:x} is too short ({byte_len} bytes)")]
     PayloadTooShort { offset: usize, byte_len: usize },
+    #[error("unsupported action button kind {action_kind} at payload offset 0x{offset:x}")]
     UnsupportedActionKind { offset: usize, action_kind: u32 },
+    #[error("no URL found in action button payload at 0x{offset:x}")]
     MissingUrl { offset: usize },
 }
 
-impl fmt::Display for LinkButtonDecodeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::PayloadTooShort { offset, byte_len } => write!(
-                f,
-                "action button payload at 0x{offset:x} is too short ({byte_len} bytes)"
-            ),
-            Self::UnsupportedActionKind {
-                offset,
-                action_kind,
-            } => write!(
-                f,
-                "unsupported action button kind {action_kind} at payload offset 0x{offset:x}"
-            ),
-            Self::MissingUrl { offset } => {
-                write!(f, "no URL found in action button payload at 0x{offset:x}")
-            }
-        }
-    }
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub(crate) enum Anchor0907DecodeError {
+    #[error("0x0907 anchor payload at 0x{offset:x} is too short ({byte_len} bytes)")]
+    PayloadTooShort { offset: usize, byte_len: usize },
+    #[error("0x0907 anchor payload at 0x{offset:x} has unexpected magic 0x{magic:08x}")]
+    UnexpectedMagic { offset: usize, magic: u32 },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub(crate) enum BboxDecodeError {
+    #[error("bbox record 0x{record_type:04x} at 0x{offset:x} is too short ({byte_len} bytes)")]
+    PayloadTooShort {
+        record_type: u32,
+        offset: usize,
+        byte_len: usize,
+    },
 }
 
 pub(crate) fn resolve_circle_points_raw(
@@ -261,15 +247,38 @@ pub(crate) fn decode_label_name_raw(file: &GspFile, group: &ObjectGroup) -> Opti
 }
 
 pub(crate) fn decode_0907_anchor(file: &GspFile, group: &ObjectGroup) -> Option<PointRecord> {
-    let payload = group
+    try_decode_0907_anchor(file, group).ok().flatten()
+}
+
+pub(crate) fn try_decode_0907_anchor(
+    file: &GspFile,
+    group: &ObjectGroup,
+) -> Result<Option<PointRecord>, Anchor0907DecodeError> {
+    let record = group
         .records
         .iter()
-        .find(|record| record.record_type == RECORD_FUNCTION_EXPR_PAYLOAD)
-        .map(|record| record.payload(&file.data))?;
-    (payload.len() >= 16 && read_u32(payload, 0) == RECORD_RICH_TEXT_MAGIC).then(|| PointRecord {
+        .find(|record| record.record_type == RECORD_FUNCTION_EXPR_PAYLOAD);
+    let Some(record) = record else {
+        return Ok(None);
+    };
+    let payload = record.payload(&file.data);
+    if payload.len() < 16 {
+        return Err(Anchor0907DecodeError::PayloadTooShort {
+            offset: record.offset,
+            byte_len: payload.len(),
+        });
+    }
+    let magic = read_u32(payload, 0);
+    if magic != RECORD_RICH_TEXT_MAGIC {
+        return Err(Anchor0907DecodeError::UnexpectedMagic {
+            offset: record.offset,
+            magic,
+        });
+    }
+    Ok(Some(PointRecord {
         x: read_i16(payload, 12) as f64,
         y: read_i16(payload, 14) as f64,
-    })
+    }))
 }
 
 #[allow(dead_code)]
@@ -633,13 +642,27 @@ pub(crate) fn decode_bbox_rect_raw(
     file: &GspFile,
     group: &ObjectGroup,
 ) -> Option<(f64, f64, f64, f64)> {
-    let payload = group
+    try_decode_bbox_rect_raw(file, group).ok().flatten()
+}
+
+pub(crate) fn try_decode_bbox_rect_raw(
+    file: &GspFile,
+    group: &ObjectGroup,
+) -> Result<Option<(f64, f64, f64, f64)>, BboxDecodeError> {
+    let record = group
         .records
         .iter()
-        .find(|record| matches!(record.record_type, 0x0898 | 0x08a2 | 0x08a3 | 0x0903))
-        .map(|record| record.payload(&file.data))?;
+        .find(|record| matches!(record.record_type, 0x0898 | 0x08a2 | 0x08a3 | 0x0903));
+    let Some(record) = record else {
+        return Ok(None);
+    };
+    let payload = record.payload(&file.data);
     if payload.len() < 8 {
-        return None;
+        return Err(BboxDecodeError::PayloadTooShort {
+            record_type: record.record_type,
+            offset: record.offset,
+            byte_len: payload.len(),
+        });
     }
     let x0 = read_i16(payload, payload.len() - 8) as f64;
     let y0 = read_i16(payload, payload.len() - 6) as f64;
@@ -647,7 +670,7 @@ pub(crate) fn decode_bbox_rect_raw(
     let y1 = read_i16(payload, payload.len() - 2) as f64;
     let left = x0.min(x1);
     let top = y0.min(y1);
-    Some((left, top, (x1 - x0).abs(), (y1 - y0).abs()))
+    Ok(Some((left, top, (x1 - x0).abs(), (y1 - y0).abs())))
 }
 
 pub(crate) fn decode_button_screen_anchor(
@@ -720,22 +743,15 @@ pub(crate) fn decode_text_anchor(payload: &[u8]) -> Option<PointRecord> {
     })
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub(crate) enum RichTextDecodeError {
+    #[error("{0}")]
     MarkupParse(MarkupParseError),
 }
 
 impl From<MarkupParseError> for RichTextDecodeError {
     fn from(value: MarkupParseError) -> Self {
         Self::MarkupParse(value)
-    }
-}
-
-impl fmt::Display for RichTextDecodeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::MarkupParse(error) => write!(f, "{error}"),
-        }
     }
 }
 
@@ -802,23 +818,12 @@ enum RichMarkupNode {
     Group(Vec<RichMarkupNode>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub(crate) enum MarkupParseError {
+    #[error("empty markup tag at byte offset {index}")]
     EmptyTagName { index: usize },
+    #[error("unterminated markup tag at byte offset {index}")]
     UnterminatedTag { index: usize },
-}
-
-impl fmt::Display for MarkupParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::EmptyTagName { index } => {
-                write!(f, "empty markup tag at byte offset {index}")
-            }
-            Self::UnterminatedTag { index } => {
-                write!(f, "unterminated markup tag at byte offset {index}")
-            }
-        }
-    }
 }
 
 #[derive(Debug, Clone)]

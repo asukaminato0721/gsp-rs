@@ -79,8 +79,8 @@ use super::scene::{
 
 pub(crate) use self::decode::{
     decode_parameter_control_value_for_group, find_indexed_path, is_circle_group_kind,
-    try_decode_group_label_text, try_decode_group_rich_text, try_decode_link_button_url,
-    try_find_indexed_path,
+    try_decode_0907_anchor, try_decode_bbox_rect_raw, try_decode_group_label_text,
+    try_decode_group_rich_text, try_decode_link_button_url, try_find_indexed_path,
 };
 
 #[derive(Debug, Clone)]
@@ -1985,8 +1985,27 @@ fn write_group_detail(output: &mut String, file: &GspFile, group: &ObjectGroup, 
             let _ = writeln!(output, "{indent}  引用解析错误: {}", error);
         }
     }
-    if let Some(anchor) = self::decode::decode_0907_anchor(file, group) {
-        let _ = writeln!(output, "{indent}  锚点: ({:.3}, {:.3})", anchor.x, anchor.y);
+    match try_decode_0907_anchor(file, group) {
+        Ok(Some(anchor)) => {
+            let _ = writeln!(output, "{indent}  锚点: ({:.3}, {:.3})", anchor.x, anchor.y);
+        }
+        Ok(None) => {}
+        Err(error) => {
+            let _ = writeln!(output, "{indent}  锚点解析错误: {}", error);
+        }
+    }
+    match try_decode_bbox_rect_raw(file, group) {
+        Ok(Some((x, y, width, height))) => {
+            let _ = writeln!(
+                output,
+                "{indent}  包围框: ({:.3}, {:.3}, {:.3}, {:.3})",
+                x, y, width, height
+            );
+        }
+        Ok(None) => {}
+        Err(error) => {
+            let _ = writeln!(output, "{indent}  包围框解析错误: {}", error);
+        }
     }
 
     let points = group
