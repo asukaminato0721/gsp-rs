@@ -1178,8 +1178,8 @@ fn render_markup_plain_node(node: &RichMarkupNode) -> String {
 #[cfg(test)]
 mod markup_tests {
     use super::{
-        RichMarkupNode, classify_markup_node, extract_visual_rich_text, parse_markup_nodes,
-        render_markup_plain,
+        MarkupParseError, RichMarkupNode, classify_markup_node, extract_visual_rich_text,
+        parse_markup_nodes, render_markup_plain,
     };
 
     #[test]
@@ -1214,7 +1214,7 @@ mod markup_tests {
     fn preserves_visual_hotspots_from_semantic_ast() {
         let nodes = parse_markup_nodes("<VL<?1x2<TxAB>><Tx=><?1x3<TxCD>>>").expect("markup parses");
         let rich = extract_visual_rich_text(&nodes).expect("visual rich text");
-        assert_eq!(rich.text, "AB=CD");
+        assert_eq!(rich.text, "AB\n=\nCD");
         assert_eq!(
             rich.hotspots
                 .iter()

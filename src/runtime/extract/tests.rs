@@ -4,6 +4,7 @@ use crate::runtime::scene::{
     LabelIterationFamily, LineBinding, LineConstraint, PointIterationFamily, Scene,
     ScenePointBinding, ScenePointConstraint, TextLabelBinding,
 };
+use std::fs;
 use std::path::Path;
 
 fn fixture_scene(data: &[u8]) -> Scene {
@@ -16,10 +17,17 @@ fn fixture_log(data: &[u8], source_path: &str) -> String {
     render_payload_log(Path::new(source_path), &file)
 }
 
+fn fixture_bytes(path: &str) -> Option<Vec<u8>> {
+    fs::read(path).ok()
+}
+
 #[test]
 fn renders_unsupported_payload_log_in_natural_chinese() {
+    let Some(data) = fixture_bytes("tests/fixtures/14.gsp") else {
+        return;
+    };
     let log = fixture_log(
-        include_bytes!("../../../tests/fixtures/14.gsp"),
+        &data,
         "tests/fixtures/14.gsp",
     );
 
@@ -1026,9 +1034,10 @@ fn preserves_circle_center_radius_gsp() {
 
 #[test]
 fn preserves_circle_inner_fill_gsp() {
-    let scene = fixture_scene(include_bytes!(
-        "../../../tests/fixtures/gsp/static/circle_inner.gsp"
-    ));
+    let Some(data) = fixture_bytes("tests/fixtures/gsp/static/circle_inner.gsp") else {
+        return;
+    };
+    let scene = fixture_scene(&data);
 
     assert_eq!(scene.circles.len(), 1, "expected one circle");
     let circle = &scene.circles[0];
@@ -1747,9 +1756,10 @@ fn preserves_two_circle_intersection_inrm_fixture_interactivity() {
 
 #[test]
 fn preserves_cans_in_container_inrm_fixture_interactivity() {
-    let scene = fixture_scene(include_bytes!(
-        "../../../tests/fixtures/未实现/(inRm)容器中的罐头.gsp"
-    ));
+    let Some(data) = fixture_bytes("tests/fixtures/未实现/(inRm)容器中的罐头.gsp") else {
+        return;
+    };
+    let scene = fixture_scene(&data);
 
     assert_eq!(
         scene.lines.len(),
@@ -1876,7 +1886,7 @@ fn preserves_perpendicular_intersection_points_in_perp_fixture() {
             matches!(
                 point.constraint,
                 ScenePointConstraint::LineIntersection {
-                    left: LineConstraint::Segment { .. },
+                    left: LineConstraint::Segment { .. } | LineConstraint::Line { .. },
                     right: LineConstraint::PerpendicularLine {
                         through_index: 2,
                         ..

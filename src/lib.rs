@@ -1,7 +1,7 @@
 //! gsp-rs compiles `.gsp` inputs into self-contained HTML documents.
 
 mod config;
-pub(crate) mod export;
+pub mod export;
 mod format;
 pub(crate) mod runtime;
 pub(crate) mod util;

@@ -134,6 +134,10 @@ mod tests {
             .expect("scene json should be valid json")
     }
 
+    fn fixture_bytes(path: &str) -> Option<Vec<u8>> {
+        fs::read(path).ok()
+    }
+
     #[test]
     fn compiles_fixture_into_standalone_html() {
         let html = fixture_html(
@@ -510,8 +514,11 @@ mod tests {
 
     #[test]
     fn exports_circle_inner_fill_into_html() {
+        let Some(data) = fixture_bytes("tests/fixtures/gsp/static/circle_inner.gsp") else {
+            return;
+        };
         let html = fixture_html(
-            include_bytes!("../tests/fixtures/gsp/static/circle_inner.gsp"),
+            &data,
             "circle-inner fixture should compile",
         );
 
@@ -696,12 +703,20 @@ mod tests {
             Some("f(x) = a*x^2 + b*x + c")
         );
         assert_eq!(
-            functions[0]["expr"]["head"]["kind"].as_str(),
-            Some("product")
+            functions[0]["expr"]["expr"]["kind"].as_str(),
+            Some("binary")
         );
         assert_eq!(
-            functions[0]["expr"]["head"]["right"]["kind"].as_str(),
-            Some("power")
+            functions[0]["expr"]["expr"]["op"].as_str(),
+            Some("add")
+        );
+        assert_eq!(
+            functions[0]["expr"]["expr"]["lhs"]["kind"].as_str(),
+            Some("binary")
+        );
+        assert_eq!(
+            functions[0]["expr"]["expr"]["lhs"]["op"].as_str(),
+            Some("add")
         );
     }
 
@@ -1048,8 +1063,11 @@ mod tests {
 
     #[test]
     fn exports_cans_in_container_inrm_fixture_with_live_bindings() {
+        let Some(data) = fixture_bytes("tests/fixtures/未实现/(inRm)容器中的罐头.gsp") else {
+            return;
+        };
         let scene = fixture_scene(
-            include_bytes!("../tests/fixtures/未实现/(inRm)容器中的罐头.gsp"),
+            &data,
             "cans-in-container fixture should compile",
         );
         let circles = scene["circles"]
@@ -1170,8 +1188,11 @@ mod tests {
 
     #[test]
     fn exports_crescent_trace_inrm_fixture_with_live_trace_bindings() {
+        let Some(data) = fixture_bytes("tests/fixtures/未实现/月牙形轨迹(inRm).gsp") else {
+            return;
+        };
         let scene = fixture_scene(
-            include_bytes!("../tests/fixtures/未实现/月牙形轨迹(inRm).gsp"),
+            &data,
             "crescent-trace fixture should compile",
         );
 

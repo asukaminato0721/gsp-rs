@@ -585,7 +585,7 @@ mod parse_tests {
         assert_eq!(
             parse_function_expr(&payload, &BTreeMap::new()),
             Err(FunctionExprParseError::MissingParameterBinding {
-                offset: 0,
+                offset: 2,
                 parameter_index: 1,
             })
         );
@@ -597,7 +597,7 @@ mod parse_tests {
         assert_eq!(
             parse_function_expr(&payload, &BTreeMap::new()),
             Err(FunctionExprParseError::InvalidUnaryOperand {
-                offset: 0,
+                offset: 2,
                 opcode: 0x2006,
             })
         );

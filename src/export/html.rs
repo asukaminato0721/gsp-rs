@@ -11,6 +11,7 @@ mod scene_json;
 use crate::runtime::scene::Scene;
 use std::fs;
 use std::path::Path;
+use ts_rs::{Config, ExportError};
 
 pub(crate) fn write_standalone_html(output_path: &Path, html: &str) -> Result<(), String> {
     let extension = match output_path.extension() {
@@ -52,4 +53,9 @@ pub(crate) fn render_standalone_html_document(
 
 pub(crate) fn render_scene_json(scene: &Scene, width: u32, height: u32, pretty: bool) -> String {
     scene_json::scene_to_json(scene, width, height, pretty)
+}
+
+pub fn export_viewer_types(output_dir: &Path) -> Result<(), ExportError> {
+    let cfg = Config::new().with_out_dir(output_dir);
+    scene_json::export_bindings(&cfg)
 }

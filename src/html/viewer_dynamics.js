@@ -261,7 +261,7 @@
         return `${expr.op}(${inner})`;
       }
       case "binary": {
-        const [prec, rightAssoc] = binaryPrecedence(expr.op);
+        const { prec, rightAssoc } = binaryPrecedence(expr.op);
         const left = formatExprAst(expr.lhs, formatAxisNumber, variableLabel, prec);
         const right = formatExprAst(
           expr.rhs,
@@ -281,14 +281,14 @@
     switch (op) {
       case "add":
       case "sub":
-        return [1, false];
+        return { prec: 1, rightAssoc: false };
       case "mul":
       case "div":
-        return [2, false];
+        return { prec: 2, rightAssoc: false };
       case "pow":
-        return [3, true];
+        return { prec: 3, rightAssoc: true };
       default:
-        return [0, false];
+        return { prec: 0, rightAssoc: false };
     }
   }
 

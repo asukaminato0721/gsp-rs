@@ -1,1 +1,1 @@
-pub(crate) mod html;
+pub mod html;

@@ -65,7 +65,13 @@ pub(super) fn collect_point_traces(
                 let parameter = descriptor.x_min + (trace_max - descriptor.x_min) * t;
                 let mut sampled_points = previous_points.clone();
                 let driver_point = sampled_points.get_mut(driver_point_index)?;
-                apply_trace_parameter(driver_point, parameter, descriptor.x_min, trace_max);
+                apply_trace_parameter_with_mode(
+                    driver_point,
+                    parameter,
+                    descriptor.x_min,
+                    trace_max,
+                    (group.header.kind()) == crate::format::GroupKind::CustomTransformTrace,
+                );
                 points.push(resolve_trace_point(
                     &mut sampled_points,
                     target_point_index,
@@ -118,8 +124,16 @@ fn point_accepts_trace_parameter(point: &ScenePoint) -> bool {
     )
 }
 
-fn apply_trace_parameter(point: &mut ScenePoint, value: f64, x_min: f64, x_max: f64) {
-    let normalized = if (x_max - x_min).abs() <= 1e-9 {
+fn apply_trace_parameter_with_mode(
+    point: &mut ScenePoint,
+    value: f64,
+    x_min: f64,
+    x_max: f64,
+    use_raw_value: bool,
+) {
+    let normalized = if use_raw_value {
+        value
+    } else if (x_max - x_min).abs() <= 1e-9 {
         0.0
     } else {
         ((value - x_min) / (x_max - x_min)).clamp(0.0, 1.0)

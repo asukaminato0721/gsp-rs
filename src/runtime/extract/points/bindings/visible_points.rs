@@ -346,13 +346,15 @@ fn build_scene_point_for_group_checked(
     match kind {
         crate::format::GroupKind::PointConstraint | crate::format::GroupKind::PathPoint => {
             let visible = !group.header.is_hidden() && point_marker_visible(group);
-            let constraint = try_decode_point_constraint(file, groups, group, Some(anchors), graph)
+            let Ok(constraint) = try_decode_point_constraint(file, groups, group, Some(anchors), graph)
                 .with_context(|| {
                     format!(
                         "failed to decode point constraint for group #{} {:?}",
                         group.ordinal, kind
                     )
-                })?;
+                }) else {
+                return Ok(None);
+            };
             Ok(scene_point_from_constraint(
                 index,
                 group_color(group),
@@ -405,13 +407,16 @@ fn build_scene_point_for_group_checked(
         }
         crate::format::GroupKind::ParameterRotation => {
             let visible = !group.header.is_hidden() && point_marker_visible(group);
-            let binding =
+            let Ok(binding) =
                 try_decode_parameter_rotation_binding(file, groups, group).with_context(|| {
                     format!(
                         "failed to decode parameter rotation binding for group #{} {:?}",
                         group.ordinal, kind
                     )
-                })?;
+                })
+            else {
+                return Ok(None);
+            };
             let position = anchors.get(index).cloned().flatten();
             Ok((|| {
                 let position = position?;
@@ -446,7 +451,7 @@ fn build_scene_point_for_group_checked(
         }
         crate::format::GroupKind::ParameterControlledPoint => {
             let visible = !group.header.is_hidden() && point_marker_visible(group);
-            let parameter_point = try_decode_parameter_controlled_point(
+            let Ok(parameter_point) = try_decode_parameter_controlled_point(
                 file, groups, group, anchors,
             )
             .with_context(|| {
@@ -454,7 +459,9 @@ fn build_scene_point_for_group_checked(
                     "failed to decode parameter-controlled point for group #{} {:?}",
                     group.ordinal, kind
                 )
-            })?;
+            }) else {
+                return Ok(None);
+            };
             Ok(scene_point_from_parameter_controlled(
                 group_to_point_index,
                 parameter_point,

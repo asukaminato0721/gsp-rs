@@ -9,7 +9,7 @@ use super::point_scene_json::ScenePointJson;
 use crate::format::PointRecord;
 use crate::runtime::scene::Scene;
 use serde::Serialize;
-use ts_rs::TS;
+use ts_rs::{Config, ExportError, TS};
 
 pub(super) fn scene_to_json(scene: &Scene, width: u32, height: u32, pretty: bool) -> String {
     if pretty {
@@ -119,6 +119,10 @@ impl SceneJson {
                 .collect(),
         }
     }
+}
+
+pub(super) fn export_bindings(cfg: &Config) -> Result<(), ExportError> {
+    SceneJson::export_all(cfg)
 }
 
 #[derive(Serialize, TS)]

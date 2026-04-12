@@ -382,6 +382,7 @@ pub(super) fn collect_labels(
                         rich_markup,
                         hotspots,
                     } = label_text;
+                    let binding = angle_marker_measurement_binding(file, group, &text);
                     let visible = label_visible_for_group(file, group);
                     let label_index = labels.len();
                     label_group_to_index.insert(group.ordinal, label_index);
@@ -389,9 +390,9 @@ pub(super) fn collect_labels(
                         anchor,
                         text,
                         rich_markup,
-                        color: [30, 30, 30, 255],
+                        color: label_color_for_group(group),
                         visible,
-                        binding: None,
+                        binding,
                         screen_space: false,
                         hotspots: Vec::new(),
                     });
