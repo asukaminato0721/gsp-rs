@@ -563,11 +563,14 @@
     });
   }
 
-  /** @param {(draft: ViewerSceneData) => void} mutator */
-  function updateScene(mutator) {
+  /**
+   * @param {(draft: ViewerSceneData) => void} mutator
+   * @param {"graph" | "none"} [mode]
+   */
+  function updateScene(mutator, mode = "none") {
     const next = sceneState.val;
     mutator(next);
-    if (pendingDependencyRootIds.size > 0 && dynamicsModule.runDependencyGraph) {
+    if (mode === "graph" && dynamicsModule.runDependencyGraph) {
       lastDependencyRun = dynamicsModule.runDependencyGraph(
         viewerEnv,
         next,
@@ -575,18 +578,6 @@
       );
       pendingDependencyRootIds.clear();
     } else {
-      if (dynamicsModule.refreshDerivedPoints) {
-        dynamicsModule.refreshDerivedPoints(viewerEnv, next);
-      }
-      if (dynamicsModule.refreshIterationGeometry) {
-        const parameters = dynamicsModule.parameterMapForScene
-          ? dynamicsModule.parameterMapForScene(viewerEnv, next)
-          : new Map();
-        dynamicsModule.refreshIterationGeometry(viewerEnv, next, parameters);
-      }
-      if (dynamicsModule.refreshDynamicLabels) {
-        dynamicsModule.refreshDynamicLabels(viewerEnv, next);
-      }
       lastDependencyRun = null;
     }
     sceneState.val = { ...next };

@@ -307,7 +307,7 @@
           (action.polygonIndices || []).forEach((/** @type {number} */ index) => {
             if (scene.polygons[index]) scene.polygons[index].visible = visible;
           });
-        });
+        }, "none");
       }
 
       /**
@@ -372,7 +372,7 @@
               label.text = lines.map((/** @type {string[]} */ line) => line.join("")).join("\n");
             }
           });
-        });
+        }, "none");
       }
 
       /**
@@ -538,6 +538,10 @@
           }
           const dt = Math.min(64, timestamp - lastTime);
           lastTime = timestamp;
+          const sourcePointRootId = modules.dynamics?.sourcePointRootId;
+          if (typeof sourcePointRootId === "function") {
+            env.markDependencyRootsDirty?.(sourcePointRootId(pointIndex));
+          }
           env.updateScene((draft) => {
             const draftPoint = draft.points[pointIndex];
             if (!draftPoint) {
@@ -603,7 +607,7 @@
                 draftPoint.y = Math.max(base.y - maxDy, Math.min(base.y + maxDy, draftPoint.y));
               }
             }
-          });
+          }, "graph");
           state.rafId = window.requestAnimationFrame(step);
         };
         state.rafId = window.requestAnimationFrame(step);

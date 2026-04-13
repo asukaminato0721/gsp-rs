@@ -19,11 +19,6 @@
     return !!handle && typeof handle === "object" && "pointIndex" in handle && typeof handle.pointIndex === "number";
   }
 
-  /** @param {number} index */
-  function sourcePointRootId(index) {
-    return `source-point:${index}`;
-  }
-
   /**
    * @param {ViewerEnv} env
    * @param {number} pointIndex
@@ -34,10 +29,14 @@
     if (!point) {
       return [];
     }
-    const roots = new Set([sourcePointRootId(pointIndex)]);
+    const rootId = window.GspViewerModules.dynamics?.sourcePointRootId;
+    if (typeof rootId !== "function") {
+      return [];
+    }
+    const roots = new Set([rootId(pointIndex)]);
     const constraint = point.constraint;
     if (isOffsetConstraint(constraint)) {
-      roots.add(sourcePointRootId(constraint.originIndex));
+      roots.add(rootId(constraint.originIndex));
     }
     return Array.from(roots);
   }
@@ -52,10 +51,14 @@
     if (!polygon) {
       return [];
     }
+    const rootId = window.GspViewerModules.dynamics?.sourcePointRootId;
+    if (typeof rootId !== "function") {
+      return [];
+    }
     const roots = new Set();
     polygon.points.forEach((/** @type {PointHandle} */ handle) => {
       if (hasPointIndexHandle(handle)) {
-        roots.add(sourcePointRootId(handle.pointIndex));
+        roots.add(rootId(handle.pointIndex));
       }
     });
     return Array.from(roots);
@@ -350,7 +353,7 @@
         point.x = world.x;
         point.y = world.y;
       }
-    });
+    }, "graph");
     env.hoverPointIndex.val = env.dragState.val.pointIndex;
   }
 
@@ -375,7 +378,7 @@
         anchor.x = world.x;
         anchor.y = world.y;
       }
-    });
+    }, "none");
   }
 
   /**
@@ -400,7 +403,7 @@
         point.x += dx;
         point.y += dy;
       });
-    });
+    }, "graph");
   }
 
   /**
@@ -413,7 +416,7 @@
       if (!table) return;
       table.x = position.x;
       table.y = position.y;
-    });
+    }, "none");
   }
 
   /**
@@ -442,7 +445,7 @@
       image.topLeft.y += dy;
       image.bottomRight.x += dx;
       image.bottomRight.y += dy;
-    });
+    }, "none");
   }
 
   /**

@@ -241,7 +241,7 @@ type ViewerEnv = {
   toWorld: (x: number, y: number) => Point & { scale: number };
   getViewBounds: () => BoundsJson & { spanX: number; spanY: number };
   rgba: (color: [number, number, number, number]) => string;
-  updateScene: (mutator: (draft: ViewerSceneData) => void) => void;
+  updateScene: (mutator: (draft: ViewerSceneData) => void, mode?: "graph" | "none") => void;
   updateDynamics: (mutator: (draft: RuntimeDynamicsState) => void) => void;
   syncDynamicScene: () => void;
   isOriginPointIndex: (index: number) => boolean;
@@ -487,6 +487,8 @@ type ViewerDynamicsModule = {
   refreshDerivedPoints: (env: ViewerEnv, scene: ViewerSceneData) => void;
   refreshIterationGeometry: (env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) => void;
   refreshDynamicLabels: (env: ViewerEnv, scene: ViewerSceneData) => void;
+  parameterRootId?: (name: string) => string;
+  sourcePointRootId?: (index: number) => string;
   runDependencyGraph?: (env: ViewerEnv, scene: ViewerSceneData, dirtyRootIds: string[]) => unknown;
   describeDependencyGraph?: (env: ViewerEnv) => unknown[];
   syncDynamicScene: (env: ViewerEnv, dirtyParameterNames?: string[]) => void;

@@ -525,15 +525,6 @@
     return parameters;
   }
 
-  /** @param {ViewerEnv} env */
-  /** @param {ViewerEnv} env */
-  function parameterMap(env) {
-    return deriveLabelParameters(
-      env.currentScene ? env.currentScene() : null,
-      new Map(env.currentDynamics().parameters.map((parameter) => [parameter.name, parameter.value])),
-    );
-  }
-
   /**
    * @param {ViewerEnv} env
    * @param {ViewerSceneData} scene
@@ -573,6 +564,22 @@
   function sourcePolygonRootId(index) {
     return `source-polygon:${index}`;
   }
+
+  /** @type {Record<string, (env: ViewerEnv, scene: ViewerSceneData) => void>} */
+  const GRAPH_RECIPES = {
+    "sync-base-dynamics"(env, scene) {
+      applyBaseDynamicUpdates(env, scene, parameterMapForScene(env, scene));
+    },
+    "refresh-derived-points"(env, scene) {
+      refreshDerivedPoints(env, scene);
+    },
+    "rebuild-iteration-geometry"(env, scene) {
+      refreshIterationGeometry(env, scene, parameterMapForScene(env, scene));
+    },
+    "refresh-dynamic-labels"(env, scene) {
+      refreshDynamicLabels(env, scene);
+    },
+  };
 
   /**
    * @param {Set<string>} deps
@@ -3479,20 +3486,9 @@
       }
       seenRecipes.add(node.recipe);
       executedRecipes.push(node.recipe);
-      if (node.recipe === "sync-base-dynamics") {
-        applyBaseDynamicUpdates(env, scene, parameterMapForScene(env, scene));
-        return;
-      }
-      if (node.recipe === "refresh-derived-points") {
-        refreshDerivedPoints(env, scene);
-        return;
-      }
-      if (node.recipe === "rebuild-iteration-geometry") {
-        refreshIterationGeometry(env, scene, parameterMapForScene(env, scene));
-        return;
-      }
-      if (node.recipe === "refresh-dynamic-labels") {
-        refreshDynamicLabels(env, scene);
+      const runRecipe = GRAPH_RECIPES[node.recipe];
+      if (runRecipe) {
+        runRecipe(env, scene);
       }
     });
     return {
@@ -3518,7 +3514,7 @@
     env.markDependencyRootsDirty(
       names.map((name) => parameterRootId(name)),
     );
-    env.updateScene(() => {});
+    env.updateScene(() => {}, "graph");
   }
 
   /**
@@ -3587,6 +3583,8 @@
     refreshDerivedPoints,
     refreshDynamicLabels,
     refreshIterationGeometry,
+    parameterRootId,
+    sourcePointRootId,
     runDependencyGraph,
     describeDependencyGraph,
     syncDynamicScene,
