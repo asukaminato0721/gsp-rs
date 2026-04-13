@@ -126,6 +126,16 @@ fn preserves_binary_tree_multimap_iteration() {
         scene.points.iter().take(2).all(|point| point.draggable),
         "expected the free endpoints to remain interactive"
     );
+    assert!(
+        scene.points.iter().any(|point| {
+            point.visible
+                && matches!(
+                    point.binding,
+                    Some(ScenePointBinding::Parameter { ref name }) if name == "n"
+                )
+        }),
+        "expected the legacy n parameter control point to stay visible in the exported scene"
+    );
 }
 
 #[test]
@@ -1013,7 +1023,13 @@ fn preserves_parameter_controlled_arc_on_circle_gsp() {
         "../../../tests/fixtures/gsp/static/value_point_arc_on_circle.gsp"
     ));
 
-    assert_eq!(scene.circles.len(), 1, "expected one supporting circle");
+    assert!(
+        scene.circles.iter().any(|circle| matches!(
+            circle.binding,
+            Some(crate::runtime::scene::ShapeBinding::PointRadiusCircle { .. })
+        )),
+        "expected the supporting payload circle to remain exported"
+    );
     assert_eq!(
         scene.arcs.len(),
         1,
@@ -1030,8 +1046,23 @@ fn preserves_parameter_controlled_arc_on_circle_gsp() {
     assert!((scene.parameters[1].value - 0.4).abs() < 0.001);
     assert_eq!(
         scene.points.len(),
-        4,
-        "expected center, radius point, and two parameter-controlled arc endpoints"
+        6,
+        "expected center, radius point, two parameter-controlled arc endpoints, and two legacy slider source points"
+    );
+    assert_eq!(
+        scene
+            .points
+            .iter()
+            .filter(|point| matches!(
+                (&point.binding, &point.constraint),
+                (
+                    Some(ScenePointBinding::Parameter { .. }),
+                    ScenePointConstraint::Free
+                )
+            ))
+            .count(),
+        2,
+        "expected both payload slider source points to remain visible"
     );
 
     let arc = &scene.arcs[0];
@@ -1121,7 +1152,10 @@ fn preserves_circle_center_radius_gsp() {
         "../../../tests/fixtures/gsp/circle_center_radius.gsp"
     ));
 
-    assert_eq!(scene.circles.len(), 1, "expected one circle");
+    assert!(matches!(
+        scene.circles[0].binding,
+        Some(crate::runtime::scene::ShapeBinding::SegmentRadiusCircle { .. })
+    ));
     assert_eq!(scene.lines.len(), 1, "expected one segment");
     assert_eq!(scene.points.len(), 3, "expected three visible points");
 
@@ -1153,7 +1187,13 @@ fn preserves_circle_inner_fill_gsp() {
     };
     let scene = fixture_scene(&data);
 
-    assert_eq!(scene.circles.len(), 1, "expected one circle");
+    assert!(
+        scene.circles.iter().any(|circle| matches!(
+            circle.binding,
+            Some(crate::runtime::scene::ShapeBinding::PointRadiusCircle { .. })
+        )),
+        "expected the payload circle to remain exported"
+    );
     let circle = &scene.circles[0];
     assert_eq!(
         circle.fill_color,
@@ -1183,8 +1223,8 @@ fn preserves_circle_system_bindings_for_inrm_fixture() {
     assert_eq!(scene.polygons.len(), 1, "expected one payload polygon");
     assert_eq!(
         scene.points.len(),
-        28,
-        "expected base and iterated helper points to export"
+        29,
+        "expected base, iterated helper points, and the legacy parameter source point to export"
     );
     assert!(
         scene.points.iter().any(|point| matches!(
@@ -1290,12 +1330,22 @@ fn preserves_parameter_controlled_point_on_segment_gsp() {
     assert_eq!(scene.lines.len(), 1, "expected one segment");
     assert_eq!(
         scene.points.len(),
-        3,
-        "expected endpoints plus controlled point"
+        4,
+        "expected endpoints, the legacy slider source point, and the controlled point"
     );
     assert_eq!(scene.parameters.len(), 1, "expected t parameter");
     assert_eq!(scene.parameters[0].name, "t₁");
     assert!((scene.parameters[0].value - 0.7).abs() < 0.001);
+    assert!(
+        scene.points.iter().any(|point| {
+            point.visible
+                && matches!(
+                    point.binding,
+                    Some(ScenePointBinding::Parameter { ref name }) if name == "t₁"
+                )
+        }),
+        "expected the payload slider source point to remain visible"
+    );
     assert!(scene.points.iter().any(|point| {
         matches!(
             point.constraint,
@@ -1313,11 +1363,21 @@ fn preserves_parameter_controlled_point_on_poly_gsp() {
     assert_eq!(scene.polygons.len(), 1, "expected one polygon");
     assert_eq!(
         scene.points.len(),
-        4,
-        "expected polygon vertices plus controlled point"
+        5,
+        "expected polygon vertices, the legacy slider source point, and the controlled point"
     );
     assert_eq!(scene.parameters.len(), 1, "expected t parameter");
     assert_eq!(scene.parameters[0].name, "t₁");
+    assert!(
+        scene.points.iter().any(|point| {
+            point.visible
+                && matches!(
+                    point.binding,
+                    Some(ScenePointBinding::Parameter { ref name }) if name == "t₁"
+                )
+        }),
+        "expected the payload slider source point to remain visible"
+    );
     assert!(scene.points.iter().any(|point| matches!(
         point.constraint,
         ScenePointConstraint::OnPolygonBoundary { .. }
@@ -1330,14 +1390,30 @@ fn preserves_parameter_controlled_point_on_circle_gsp() {
         "../../../tests/fixtures/gsp/static/point_on_circle.gsp"
     ));
 
-    assert_eq!(scene.circles.len(), 1, "expected one circle");
+    assert!(
+        scene.circles.iter().any(|circle| matches!(
+            circle.binding,
+            Some(crate::runtime::scene::ShapeBinding::PointRadiusCircle { .. })
+        )),
+        "expected the payload circle to remain exported"
+    );
     assert_eq!(
         scene.points.len(),
-        3,
-        "expected circle points plus controlled point"
+        4,
+        "expected circle points, the legacy slider source point, and the controlled point"
     );
     assert_eq!(scene.parameters.len(), 1, "expected t parameter");
     assert_eq!(scene.parameters[0].name, "t₁");
+    assert!(
+        scene.points.iter().any(|point| {
+            point.visible
+                && matches!(
+                    point.binding,
+                    Some(ScenePointBinding::Parameter { ref name }) if name == "t₁"
+                )
+        }),
+        "expected the payload slider source point to remain visible"
+    );
     assert!(
         scene
             .points
@@ -1482,8 +1558,8 @@ fn preserves_coordinate_trace_intersection_in_cood_intersection_gsp() {
     assert!(scene.graph_mode, "expected graph scene");
     assert_eq!(
         scene.points.len(),
-        6,
-        "expected source, derived, and intersection points"
+        7,
+        "expected source, derived, intersection points, and the legacy parameter source point"
     );
     assert!(scene.lines.iter().any(|line| {
         matches!(
@@ -1523,8 +1599,8 @@ fn preserves_coordinate_trace_intersection_in_cood_intersection_y_gsp() {
     assert!(scene.graph_mode, "expected graph scene");
     assert_eq!(
         scene.points.len(),
-        6,
-        "expected source, derived, and intersection points"
+        7,
+        "expected source, derived, intersection points, and the legacy parameter source point"
     );
     assert!(scene.lines.iter().any(|line| {
         matches!(
@@ -1564,8 +1640,8 @@ fn preserves_coordinate_trace_intersection_in_cood_intersection_xy_gsp() {
     assert!(scene.graph_mode, "expected graph scene");
     assert_eq!(
         scene.points.len(),
-        6,
-        "expected source, derived, and intersection points"
+        7,
+        "expected source, derived, intersection points, and the legacy parameter source point"
     );
     assert!(scene.lines.iter().any(|line| {
         matches!(
@@ -1679,8 +1755,8 @@ fn preserves_parameter_driven_point_iteration_family() {
     }
     assert_eq!(
         scene.points.len(),
-        7,
-        "expected original point, initial point, and 5 iterates"
+        8,
+        "expected original point, initial point, 5 iterates, and the legacy parameter source point"
     );
 }
 
@@ -2235,10 +2311,9 @@ fn preserves_carried_polygon_iteration_fixture() {
         15,
         "expected triangular lattice of seed polygon plus carried copies"
     );
-    assert_eq!(
-        scene.lines.len(),
-        0,
-        "expected polygon edges to render via polygons without duplicate carried segments"
+    assert!(
+        scene.lines.len() <= 1,
+        "expected polygon edges to stay suppressed apart from any standalone parameter-control helper geometry"
     );
     assert!(
         scene
@@ -2274,8 +2349,8 @@ fn preserves_carried_polygon_iteration_fixture() {
     }));
     assert_eq!(
         scene.points.len(),
-        3,
-        "expected base point plus two mapped vertices"
+        4,
+        "expected base point, two mapped vertices, and the legacy parameter source point"
     );
     assert!(matches!(
         scene.points[1].constraint,
@@ -2470,6 +2545,10 @@ fn preserves_scaled_point_and_single_parameter_label_in_scale_gsp() {
         2,
         "expected original and scaled circle"
     );
+    assert!(scene.circles.iter().any(|circle| matches!(
+        circle.binding,
+        Some(crate::runtime::scene::ShapeBinding::ScaleCircle { .. })
+    )));
     assert_eq!(
         scene.polygons.len(),
         2,

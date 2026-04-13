@@ -57,6 +57,7 @@
    */
   function arcPath(center, radius, startAngle, endAngle, counterClockwise) {
     if (!Number.isFinite(radius) || radius <= 1e-9) return "";
+    const tau = Math.PI * 2;
     const start = {
       x: center.x + radius * Math.cos(startAngle),
       y: center.y + radius * Math.sin(startAngle),
@@ -65,11 +66,10 @@
       x: center.x + radius * Math.cos(endAngle),
       y: center.y + radius * Math.sin(endAngle),
     };
-    let delta = endAngle - startAngle;
-    if (counterClockwise && delta < 0) delta += Math.PI * 2;
-    if (!counterClockwise && delta > 0) delta -= Math.PI * 2;
-    const largeArc = Math.abs(delta) > Math.PI ? 1 : 0;
-    const sweep = counterClockwise ? 1 : 0;
+    const forwardDelta = ((endAngle - startAngle) % tau + tau) % tau;
+    const delta = counterClockwise ? (tau - forwardDelta) % tau : forwardDelta;
+    const largeArc = delta > Math.PI ? 1 : 0;
+    const sweep = counterClockwise ? 0 : 1;
     return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArc} ${sweep} ${end.x} ${end.y}`;
   }
 

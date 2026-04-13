@@ -5,8 +5,9 @@ use super::{
     decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,
     decode_point_pair_translation_anchor_raw, decode_reflection_anchor_raw,
     decode_regular_polygon_vertex_anchor_raw, decode_transform_anchor_raw,
-    decode_translated_point_anchor_raw, find_indexed_path,
+    decode_translated_point_anchor_raw, find_indexed_path, try_decode_payload_anchor_point,
 };
+use crate::runtime::extract::decode::is_parameter_control_group;
 use crate::runtime::extract::points::{
     decode_coordinate_expression_anchor_raw, decode_custom_transform_anchor_raw,
     decode_graph_calibration_anchor_raw, decode_intersection_anchor_raw,
@@ -23,6 +24,8 @@ pub(crate) fn collect_raw_object_anchors(
     for (index, group) in groups.iter().enumerate() {
         let anchor = if let Some(point) = point_map.get(index).cloned().flatten() {
             Some(point)
+        } else if is_parameter_control_group(group) {
+            try_decode_payload_anchor_point(file, group).ok().flatten()
         } else if let Some(anchor) = decode_graph_calibration_anchor_raw(group, graph) {
             Some(anchor)
         } else if let Some(anchor) =

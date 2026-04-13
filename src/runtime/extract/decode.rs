@@ -311,7 +311,7 @@ pub(crate) fn decode_label_name_raw(file: &GspFile, group: &ObjectGroup) -> Opti
     )
 }
 
-pub(crate) fn try_decode_0907_anchor(
+pub(crate) fn try_decode_payload_anchor_point(
     file: &GspFile,
     group: &ObjectGroup,
 ) -> Result<Option<PointRecord>, Anchor0907DecodeError> {
@@ -497,7 +497,7 @@ pub(crate) fn decode_label_anchor(
             .find_map(|object_ref| anchors.get(object_ref.saturating_sub(1)).cloned().flatten())
     };
     let base = text_anchor
-        .or_else(|| try_decode_0907_anchor(file, group).ok().flatten())
+        .or_else(|| try_decode_payload_anchor_point(file, group).ok().flatten())
         .or_else(|| match kind {
             crate::format::GroupKind::Point => anchors
                 .get(group.ordinal.saturating_sub(1))

@@ -4,8 +4,8 @@ use super::CircleShape;
 use super::decode::{
     RichTextHotspotRef, decode_label_anchor, decode_label_name, decode_label_name_raw,
     decode_label_visible, decode_text_anchor, find_indexed_path, is_action_button_group,
-    try_decode_0907_anchor, try_decode_group_label_text, try_decode_group_rich_text,
-    try_decode_link_button_url, try_decode_parameter_control_value_for_group,
+    try_decode_group_label_text, try_decode_group_rich_text, try_decode_link_button_url,
+    try_decode_parameter_control_value_for_group, try_decode_payload_anchor_point,
 };
 use super::points::{
     RawPointConstraint, editable_non_graph_parameter_name_for_group,
@@ -648,7 +648,7 @@ pub(super) fn collect_coordinate_labels(
             && let Some(name) = decode_label_name(file, group)
             && let Some(value) =
                 try_decode_parameter_control_value_for_group(file, groups, group).ok()
-            && let Some(anchor) = try_decode_0907_anchor(file, group).ok().flatten()
+            && let Some(anchor) = try_decode_payload_anchor_point(file, group).ok().flatten()
         {
             let binding = is_editable_non_graph_parameter_name(&name)
                 .then(|| TextLabelBinding::ParameterValue { name: name.clone() });
@@ -666,7 +666,7 @@ pub(super) fn collect_coordinate_labels(
             && let Some(expr) = try_decode_function_expr(file, groups, group).ok()
             && let Some((parameter_name, parameter_value)) =
                 resolve_function_expr_parameter(file, groups, group, anchors, &mut BTreeSet::new())
-            && let Some(anchor) = try_decode_0907_anchor(file, group).ok().flatten()
+            && let Some(anchor) = try_decode_payload_anchor_point(file, group).ok().flatten()
         {
             let value = evaluate_expr_with_parameters(
                 &expr,
@@ -1083,7 +1083,7 @@ pub(super) fn collect_custom_transform_expression_labels(
                 if !matches!(suffix_code, 0x0201 | 0x0101) {
                     continue;
                 }
-                let anchor = try_decode_0907_anchor(file, expr_group).ok().flatten()?;
+                let anchor = try_decode_payload_anchor_point(file, expr_group).ok().flatten()?;
                 let expr = try_decode_function_expr(file, groups, expr_group).ok()?;
                 let value = evaluate_expr_with_parameters(
                     &expr,
@@ -1610,7 +1610,7 @@ pub(super) fn compute_iteration_labels(
         {
             continue;
         }
-        let Some(anchor) = try_decode_0907_anchor(file, group).ok().flatten() else {
+        let Some(anchor) = try_decode_payload_anchor_point(file, group).ok().flatten() else {
             continue;
         };
 

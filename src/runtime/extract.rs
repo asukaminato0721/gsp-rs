@@ -81,7 +81,8 @@ use super::scene::{
 };
 
 pub(crate) use self::decode::{
-    find_indexed_path, is_circle_group_kind, try_decode_0907_anchor, try_decode_bbox_rect_raw,
+    find_indexed_path, is_circle_group_kind, try_decode_bbox_rect_raw,
+    try_decode_payload_anchor_point,
     try_decode_group_label_text, try_decode_group_rich_text, try_decode_link_button_url,
     try_decode_parameter_control_value_for_group, try_find_indexed_path,
 };
@@ -2331,7 +2332,7 @@ fn write_group_detail(output: &mut String, file: &GspFile, group: &ObjectGroup, 
             }
         }
     }
-    match try_decode_0907_anchor(file, group) {
+    match try_decode_payload_anchor_point(file, group) {
         Ok(Some(anchor)) => {
             let _ = writeln!(output, "{indent}  锚点: ({:.3}, {:.3})", anchor.x, anchor.y);
         }

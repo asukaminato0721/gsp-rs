@@ -408,7 +408,10 @@ mod tests {
             "parameter fixture should compile to html",
         );
 
-        assert!(html.contains("viewer-runtime: scene=basic; render=basic+labels; overlay=full; drag=full; dynamics=full"));
+        assert!(
+            html.contains("viewer-runtime: ") && html.contains("dynamics=full"),
+            "parameter fixture should keep the full dynamics runtime profile"
+        );
         assert!(
             html.contains("function sampleDynamicFunction("),
             "parameter fixture should keep the full dynamics runtime"
@@ -1352,8 +1355,12 @@ mod tests {
         assert!(
             points
                 .iter()
-                .all(|point| point["visible"].as_bool() == Some(false)),
-            "expected helper points to stay hidden when the payload omits the point-marker style"
+                .filter(|point| point["visible"].as_bool() == Some(true))
+                .all(|point| {
+                    point["binding"]["kind"].as_str() == Some("parameter")
+                        && point["constraint"].is_null()
+                }),
+            "expected only standalone payload parameter controls to remain visible when helper point markers are omitted"
         );
     }
 

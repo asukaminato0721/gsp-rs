@@ -9,7 +9,10 @@ use super::{
     try_decode_parameter_rotation_binding, try_decode_point_constraint,
     try_decode_transform_binding,
 };
-use crate::runtime::extract::decode::{decode_label_name, decode_label_visible};
+use crate::runtime::extract::decode::{
+    decode_bbox_anchor_raw, decode_label_name, decode_label_visible, is_parameter_control_group,
+    try_decode_payload_anchor_point,
+};
 use crate::runtime::extract::find_indexed_path;
 use crate::runtime::extract::points::constraints::CoordinatePointSource;
 use crate::runtime::functions::try_decode_function_plot_descriptor;
@@ -77,7 +80,8 @@ fn build_scene_point_for_group(
     let kind = group.header.kind();
     let visible = !group.header.is_hidden() && point_marker_visible(group);
     match kind {
-        crate::format::GroupKind::Point => (!is_orphan_duplicate_point_helper(file, groups, group))
+        crate::format::GroupKind::Point => (!is_parameter_control_group(group)
+            && !is_orphan_duplicate_point_helper(file, groups, group))
             .then(|| point_map.get(index).cloned().flatten())
             .flatten()
             .map(|position| {
@@ -537,7 +541,7 @@ pub(crate) fn collect_visible_points_checked(
             if actual_included_groups == included_groups {
                 let final_group_to_point_index =
                     build_group_to_point_index(&actual_included_groups);
-                let points = groups
+                let mut points = groups
                     .iter()
                     .enumerate()
                     .map(|(index, group)| {
@@ -556,6 +560,12 @@ pub(crate) fn collect_visible_points_checked(
                     .into_iter()
                     .flatten()
                     .collect::<Vec<_>>();
+                points.extend(
+                    groups
+                        .iter()
+                        .filter(|group| is_parameter_control_group(group))
+                        .filter_map(|group| standalone_parameter_point(file, group)),
+                );
                 return Ok((points, final_group_to_point_index));
             }
             included_groups = actual_included_groups;
@@ -563,6 +573,22 @@ pub(crate) fn collect_visible_points_checked(
         }
         included_groups = next_included_groups;
     }
+}
+
+fn standalone_parameter_point(file: &GspFile, group: &ObjectGroup) -> Option<ScenePoint> {
+    let position = try_decode_payload_anchor_point(file, group)
+        .ok()
+        .flatten()
+        .or_else(|| decode_bbox_anchor_raw(file, group))?;
+    let binding = decode_label_name(file, group).map(|name| ScenePointBinding::Parameter { name });
+    Some(scene_point(
+        position,
+        group_color(group),
+        !group.header.is_hidden(),
+        false,
+        ScenePointConstraint::Free,
+        binding,
+    ))
 }
 
 fn is_orphan_duplicate_point_helper(
