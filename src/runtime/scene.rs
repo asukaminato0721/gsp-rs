@@ -605,6 +605,7 @@ pub(crate) enum ScenePointBinding {
         center_index: usize,
         angle_degrees: f64,
         parameter_name: Option<String>,
+        angle_expr: Option<FunctionExpr>,
     },
     ScaleByRatio {
         source_index: usize,

@@ -105,6 +105,7 @@ pub(crate) fn collect_point_iteration_points(
                                     center_index,
                                     angle_degrees,
                                     parameter_name: None,
+                                    angle_expr: None,
                                 }),
                                 debug: None,
                             });
@@ -252,6 +253,7 @@ pub(crate) fn collect_point_iteration_points(
                                 center_index,
                                 angle_degrees: angle_degrees * step as f64,
                                 parameter_name: None,
+                                angle_expr: None,
                             }),
                             debug: None,
                         });

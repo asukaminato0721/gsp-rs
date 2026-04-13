@@ -1696,7 +1696,7 @@
       }
       return sum + depth;
     }, 0);
-    const baseCount = Math.max(0, env.sourceScene.lines.length - exportedDepth);
+    const baseCount = env.sourceScene.lines.length;
     scene.lines = scene.lines.slice(0, baseCount);
 
     families.forEach((family) => {
@@ -2428,9 +2428,11 @@
       const source = env.resolveScenePoint(point.binding.sourceIndex);
       const center = env.resolveScenePoint(point.binding.centerIndex);
       if (!source || !center) return;
-      const angleDegrees = point.binding.parameterName
-        ? parameters.get(point.binding.parameterName)
-        : point.binding.angleDegrees;
+      const angleDegrees = point.binding.angleExpr
+        ? evaluateExpr(point.binding.angleExpr, 0, parameters)
+        : point.binding.parameterName
+          ? parameters.get(point.binding.parameterName)
+          : point.binding.angleDegrees;
       if (!Number.isFinite(angleDegrees)) return;
       const rotated = rotateAround(source, center, angleDegrees * Math.PI / 180);
       point.x = rotated.x;
@@ -2807,9 +2809,11 @@
       } else if (point.binding?.kind === "rotate") {
         const source = resolveTracePoint(points, point.binding.sourceIndex, visiting);
         const center = resolveTracePoint(points, point.binding.centerIndex, visiting);
-        const angleDegrees = point.binding.parameterName
-          ? baseParameters.get(point.binding.parameterName)
-          : point.binding.angleDegrees;
+        const angleDegrees = point.binding.angleExpr
+          ? evaluateExpr(point.binding.angleExpr, 0, baseParameters)
+          : point.binding.parameterName
+            ? baseParameters.get(point.binding.parameterName)
+            : point.binding.angleDegrees;
         if (source && center && Number.isFinite(angleDegrees)) {
           resolved = rotateAround(source, center, angleDegrees * Math.PI / 180);
         }

@@ -90,6 +90,8 @@ enum PointBindingJson {
         angle_degrees: f64,
         #[serde(rename = "parameterName")]
         parameter_name: Option<String>,
+        #[serde(rename = "angleExpr", skip_serializing_if = "Option::is_none")]
+        angle_expr: Option<FunctionExprJson>,
     },
     #[serde(rename = "scale-by-ratio")]
     ScaleByRatio {
@@ -229,11 +231,13 @@ impl PointBindingJson {
                 center_index,
                 angle_degrees,
                 parameter_name,
+                angle_expr,
             } => Self::Rotate {
                 source_index: *source_index,
                 center_index: *center_index,
                 angle_degrees: *angle_degrees,
                 parameter_name: parameter_name.clone(),
+                angle_expr: angle_expr.as_ref().map(FunctionExprJson::from_expr),
             },
             ScenePointBinding::ScaleByRatio {
                 source_index,

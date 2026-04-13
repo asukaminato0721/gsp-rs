@@ -15,7 +15,9 @@ use crate::runtime::extract::decode::{
 };
 use crate::runtime::extract::find_indexed_path;
 use crate::runtime::extract::points::constraints::CoordinatePointSource;
-use crate::runtime::functions::try_decode_function_plot_descriptor;
+use crate::runtime::functions::{
+    evaluate_function_group_with_overrides, try_decode_function_expr, try_decode_function_plot_descriptor,
+};
 use crate::runtime::geometry::{GraphTransform, color_from_style};
 use crate::runtime::scene::{
     CircularConstraint, LineConstraint, ScenePoint, ScenePointBinding, ScenePointConstraint,
@@ -292,6 +294,7 @@ fn build_scene_point_for_group(
                             center_index,
                             angle_degrees,
                             parameter_name,
+                            angle_expr: None,
                         },
                         TransformBindingKind::Scale { factor } => ScenePointBinding::Scale {
                             source_index,
@@ -402,6 +405,7 @@ fn build_scene_point_for_group_checked(
                             center_index,
                             angle_degrees,
                             parameter_name,
+                            angle_expr: None,
                         },
                         TransformBindingKind::Scale { factor } => ScenePointBinding::Scale {
                             source_index,
@@ -414,44 +418,69 @@ fn build_scene_point_for_group_checked(
         }
         crate::format::GroupKind::ParameterRotation => {
             let visible = !group.header.is_hidden() && point_marker_visible(group);
-            let Ok(binding) = try_decode_parameter_rotation_binding(file, groups, group)
-                .with_context(|| {
-                    format!(
-                        "failed to decode parameter rotation binding for group #{} {:?}",
-                        group.ordinal, kind
-                    )
-                })
-            else {
-                return Ok(None);
-            };
             let position = anchors.get(index).cloned().flatten();
             Ok((|| {
                 let position = position?;
-                let source_index =
-                    mapped_point_index(group_to_point_index, binding.source_group_index)?;
-                let center_index =
-                    mapped_point_index(group_to_point_index, binding.center_group_index)?;
+                if let Ok(binding) = try_decode_parameter_rotation_binding(file, groups, group) {
+                    let source_index =
+                        mapped_point_index(group_to_point_index, binding.source_group_index)?;
+                    let center_index =
+                        mapped_point_index(group_to_point_index, binding.center_group_index)?;
+                    return Some(scene_point(
+                        position,
+                        group_color(group),
+                        visible,
+                        true,
+                        ScenePointConstraint::Free,
+                        Some(match binding.kind {
+                            TransformBindingKind::Rotate {
+                                angle_degrees,
+                                parameter_name,
+                            } => ScenePointBinding::Rotate {
+                                source_index,
+                                center_index,
+                                angle_degrees,
+                                parameter_name,
+                                angle_expr: None,
+                            },
+                            TransformBindingKind::Scale { factor } => ScenePointBinding::Scale {
+                                source_index,
+                                center_index,
+                                factor,
+                            },
+                        }),
+                    ));
+                }
+
+                let path = find_indexed_path(file, group)?;
+                let source_group_index = path.refs.first()?.checked_sub(1)?;
+                let center_group_index = path.refs.get(1)?.checked_sub(1)?;
+                let calc_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
+                if (calc_group.header.kind()) != crate::format::GroupKind::FunctionExpr {
+                    return None;
+                }
+                let source_index = mapped_point_index(group_to_point_index, source_group_index)?;
+                let center_index = mapped_point_index(group_to_point_index, center_group_index)?;
+                let angle_expr = try_decode_function_expr(file, groups, calc_group).ok()?;
+                let angle_degrees =
+                    evaluate_function_group_with_overrides(
+                        file,
+                        groups,
+                        calc_group,
+                        &std::collections::BTreeMap::new(),
+                    )?;
                 Some(scene_point(
                     position,
                     group_color(group),
                     visible,
                     true,
                     ScenePointConstraint::Free,
-                    Some(match binding.kind {
-                        TransformBindingKind::Rotate {
-                            angle_degrees,
-                            parameter_name,
-                        } => ScenePointBinding::Rotate {
-                            source_index,
-                            center_index,
-                            angle_degrees,
-                            parameter_name,
-                        },
-                        TransformBindingKind::Scale { factor } => ScenePointBinding::Scale {
-                            source_index,
-                            center_index,
-                            factor,
-                        },
+                    Some(ScenePointBinding::Rotate {
+                        source_index,
+                        center_index,
+                        angle_degrees,
+                        parameter_name: None,
+                        angle_expr: Some(angle_expr),
                     }),
                 ))
             })())
