@@ -656,7 +656,8 @@
     view.centerX = baseCenterX;
     view.centerY = baseCenterY;
     view.zoom = defaultZoom;
-    dynamicsModule.syncDynamicScene(viewerEnv);
+    draw();
+    overlayRuntime.render();
     updateReadout();
   }
 
@@ -741,7 +742,8 @@
   /** @param {Point} position */
   function panFromPointerDelta(position) {
     dragModule.panFromPointerDelta(viewerEnv, position);
-    dynamicsModule.syncDynamicScene(viewerEnv);
+    draw();
+    overlayRuntime.render();
   }
 
   function draw() {
@@ -908,7 +910,8 @@
     const after = sceneModule.toWorld(viewerEnv, position.x, position.y);
     view.centerX += before.x - after.x;
     view.centerY += before.y - after.y;
-    dynamicsModule.syncDynamicScene(viewerEnv);
+    draw();
+    overlayRuntime.render();
     updateReadout(position.x, position.y);
   }, { passive: false });
 

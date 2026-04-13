@@ -728,6 +728,28 @@
     return readParameter ? readParameter(scene, pointIndex) : null;
   }
 
+  /**
+   * @param {ViewerSceneData} scene
+   * @param {number} pointIndex
+   * @returns {string | null}
+   */
+  function parameterNameFromPoint(scene, pointIndex) {
+    for (const label of scene.labels || []) {
+      const binding = label?.binding;
+      if (!binding || binding.pointIndex !== pointIndex || typeof binding.pointName !== "string") {
+        continue;
+      }
+      if (
+        binding.kind === "segment-parameter"
+        || binding.kind === "polygon-boundary-parameter"
+        || binding.kind === "circle-parameter"
+      ) {
+        return binding.pointName;
+      }
+    }
+    return null;
+  }
+
   /** @param {number | null} value */
   function clampNormalizedValue(value) {
     return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : null;
@@ -2086,6 +2108,52 @@
   function samplePointTraceLine(scene, line, parameters) {
     const driver = scene.points[line.binding.driverIndex];
     if (!driver?.constraint) return null;
+    const tracedPoint = scene.points[line.binding.pointIndex];
+    const sourceBinding = tracedPoint?.binding;
+    const sourcePoint = sourceBinding?.kind === "coordinate-source-2d"
+      ? scene.points[sourceBinding.sourceIndex]
+      : null;
+    if (sourceBinding?.kind === "coordinate-source-2d" && sourcePoint) {
+      const baseParameters = deriveLabelParameters(scene, new Map(parameters));
+      const driverParameterName = parameterNameFromPoint(scene, line.binding.driverIndex);
+      const xNames = new Set();
+      const yNames = new Set();
+      collectExprParameterNames(sourceBinding.xExpr, xNames);
+      collectExprParameterNames(sourceBinding.yExpr, yNames);
+      const sampled = [];
+      const sampleCount = Math.max(2, line.binding.sampleCount || 2);
+      const last = Math.max(1, sampleCount - 1);
+      for (let index = 0; index < sampleCount; index += 1) {
+        const value = line.binding.useMidpoints
+          ? line.binding.xMin
+            + (line.binding.xMax - line.binding.xMin) * ((index + 0.5) / sampleCount)
+          : line.binding.xMin + (line.binding.xMax - line.binding.xMin) * (index / last);
+        const exprParameters = new Map(baseParameters);
+        if (driverParameterName) {
+          exprParameters.set(driverParameterName, value);
+        }
+        xNames.forEach((name) => {
+          if (!exprParameters.has(name)) {
+            exprParameters.set(name, value);
+          }
+        });
+        yNames.forEach((name) => {
+          if (!exprParameters.has(name)) {
+            exprParameters.set(name, value);
+          }
+        });
+        const dx = evaluateExpr(sourceBinding.xExpr, 0, exprParameters);
+        const dy = evaluateExpr(sourceBinding.yExpr, 0, exprParameters);
+        if (dx === null || dy === null) {
+          continue;
+        }
+        sampled.push({
+          x: sourcePoint.x + dx,
+          y: sourcePoint.y + dy,
+        });
+      }
+      return sampled.length >= 2 ? sampled : null;
+    }
     const sampleScene = {
       ...scene,
       lines: scene.lines,
