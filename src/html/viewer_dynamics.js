@@ -306,6 +306,46 @@
   }
 
   /**
+   * Clone an expression tree while replacing embedded parameter defaults with
+   * the current live values so debug/selection output reflects the active scene.
+   *
+   * @param {FunctionExprJson | FunctionAstJson} expr
+   * @param {Map<string, number>} parameters
+   * @returns {FunctionExprJson | FunctionAstJson}
+   */
+  function syncExprParameterValues(expr, parameters) {
+    if (!expr || typeof expr !== "object") {
+      return expr;
+    }
+    if (expr.kind === "parsed") {
+      return {
+        ...expr,
+        expr: /** @type {FunctionAstJson} */ (syncExprParameterValues(expr.expr, parameters)),
+      };
+    }
+    if (expr.kind === "parameter") {
+      const nextValue = parameters.get(expr.name);
+      return Number.isFinite(nextValue)
+        ? { ...expr, value: nextValue }
+        : { ...expr };
+    }
+    if (expr.kind === "unary") {
+      return {
+        ...expr,
+        expr: /** @type {FunctionAstJson} */ (syncExprParameterValues(expr.expr, parameters)),
+      };
+    }
+    if (expr.kind === "binary") {
+      return {
+        ...expr,
+        lhs: /** @type {FunctionAstJson} */ (syncExprParameterValues(expr.lhs, parameters)),
+        rhs: /** @type {FunctionAstJson} */ (syncExprParameterValues(expr.rhs, parameters)),
+      };
+    }
+    return { ...expr };
+  }
+
+  /**
    * @param {FunctionExprJson | FunctionAstJson} expr
    * @param {number} x
    * @param {Map<string, number>} parameters
@@ -458,8 +498,11 @@
           && typeof binding.pointName === "string"
         ) {
           const value = parameterValueFromPoint(scene, binding.pointIndex);
-          if (Number.isFinite(value) && parameters.get(binding.pointName) !== value) {
-            parameters.set(binding.pointName, value);
+          const nextValue = isDiscreteIterationParameterName(scene, binding.pointName)
+            ? discreteIterationDepth(value)
+            : value;
+          if (Number.isFinite(nextValue) && parameters.get(binding.pointName) !== nextValue) {
+            parameters.set(binding.pointName, nextValue);
             changed = true;
           }
           return;
@@ -500,6 +543,429 @@
       scene,
       new Map(env.currentDynamics().parameters.map((parameter) => [parameter.name, parameter.value])),
     );
+  }
+
+  /** @typedef {{ id: string; kind: string; dependsOn: string[]; recipe: string | null }} DependencyNode */
+  /** @type {{ nodes: DependencyNode[]; nodeMap: Map<string, DependencyNode>; topoOrder: string[]; reverseEdges: Map<string, string[]> } | null} */
+  let dependencyGraphCache = null;
+
+  /** @param {string} name */
+  function parameterRootId(name) {
+    return `param:${name}`;
+  }
+
+  /** @param {number} index */
+  function sourcePointRootId(index) {
+    return `source-point:${index}`;
+  }
+
+  /** @param {number} index */
+  function sourceLineRootId(index) {
+    return `source-line:${index}`;
+  }
+
+  /** @param {number} index */
+  function sourceCircleRootId(index) {
+    return `source-circle:${index}`;
+  }
+
+  /** @param {number} index */
+  function sourcePolygonRootId(index) {
+    return `source-polygon:${index}`;
+  }
+
+  /**
+   * @param {Set<string>} deps
+   * @param {string | null | undefined} name
+   * @param {Set<string>} knownParameters
+   */
+  function addKnownParameterDep(deps, name, knownParameters) {
+    if (typeof name === "string" && knownParameters.has(name)) {
+      deps.add(parameterRootId(name));
+    }
+  }
+
+  /**
+   * @param {Set<string>} deps
+   * @param {FunctionExprJson | FunctionAstJson | null | undefined} expr
+   * @param {Set<string>} knownParameters
+   */
+  function addExprParameterDeps(deps, expr, knownParameters) {
+    const names = new Set();
+    collectExprParameterNames(expr, names);
+    names.forEach((name) => addKnownParameterDep(deps, name, knownParameters));
+  }
+
+  /**
+   * @param {Set<string>} deps
+   * @param {unknown} value
+   * @param {Set<string>} knownParameters
+   */
+  function collectSceneDependencyIds(deps, value, knownParameters) {
+    if (!value || typeof value !== "object") {
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((entry) => collectSceneDependencyIds(deps, entry, knownParameters));
+      return;
+    }
+    Object.entries(/** @type {Record<string, unknown>} */ (value)).forEach(([key, child]) => {
+      if (typeof child === "number") {
+        if (
+          key === "pointIndex"
+          || key === "targetPointIndex"
+          || key === "sourceIndex"
+          || key === "centerIndex"
+          || key === "originIndex"
+          || key === "radiusIndex"
+          || key === "startIndex"
+          || key === "endIndex"
+          || key === "midIndex"
+          || key === "throughIndex"
+          || key === "vertexIndex"
+          || key === "lineStartIndex"
+          || key === "lineEndIndex"
+          || key === "sourceCenterIndex"
+          || key === "sourceNextCenterIndex"
+          || key === "driverIndex"
+          || key === "seedIndex"
+          || key === "pointSeedIndex"
+        ) {
+          deps.add(sourcePointRootId(child));
+          return;
+        }
+        if (key === "lineIndex") {
+          deps.add(sourceLineRootId(child));
+          return;
+        }
+        if (key === "circleIndex" || key === "sourceCircleIndex") {
+          deps.add(sourceCircleRootId(child));
+          return;
+        }
+        if (key === "polygonIndex") {
+          deps.add(sourcePolygonRootId(child));
+        }
+        return;
+      }
+      if (Array.isArray(child)) {
+        if (key === "vertexIndices") {
+          child.forEach((entry) => {
+            if (typeof entry === "number") {
+              deps.add(sourcePointRootId(entry));
+            }
+          });
+        } else if (
+          key === "pointIndices"
+          || key === "constrainedPointIndices"
+        ) {
+          child.forEach((entry) => {
+            if (typeof entry === "number") {
+              deps.add(sourcePointRootId(entry));
+            }
+          });
+        } else if (key === "lineIndices") {
+          child.forEach((entry) => {
+            if (typeof entry === "number") {
+              deps.add(sourceLineRootId(entry));
+            }
+          });
+        } else if (key === "circleIndices") {
+          child.forEach((entry) => {
+            if (typeof entry === "number") {
+              deps.add(sourceCircleRootId(entry));
+            }
+          });
+        } else if (key === "polygonIndices") {
+          child.forEach((entry) => {
+            if (typeof entry === "number") {
+              deps.add(sourcePolygonRootId(entry));
+            }
+          });
+        }
+        child.forEach((entry) => collectSceneDependencyIds(deps, entry, knownParameters));
+        return;
+      }
+      if (typeof child === "string") {
+        if (
+          key === "parameterName"
+          || key === "depthParameterName"
+          || key === "traceParameterName"
+          || key === "pointName"
+          || key === "name"
+          || key === "resultName"
+        ) {
+          addKnownParameterDep(deps, child, knownParameters);
+        }
+        return;
+      }
+      collectSceneDependencyIds(deps, child, knownParameters);
+    });
+  }
+
+  /**
+   * @param {ViewerEnv} env
+   * @returns {{ nodes: DependencyNode[]; nodeMap: Map<string, DependencyNode>; topoOrder: string[]; reverseEdges: Map<string, string[]> }}
+   */
+  function ensureDependencyGraph(env) {
+    if (dependencyGraphCache) {
+      return dependencyGraphCache;
+    }
+    /** @type {DependencyNode[]} */
+    const nodes = [];
+    /** @type {Map<string, DependencyNode>} */
+    const nodeMap = new Map();
+    const knownParameters = new Set((env.currentDynamics().parameters || []).map((parameter) => parameter.name));
+
+    /** @param {DependencyNode} node */
+    const addNode = (node) => {
+      const normalized = {
+        ...node,
+        dependsOn: [...new Set((node.dependsOn || []).filter((dep) => dep !== node.id))],
+      };
+      nodes.push(normalized);
+      nodeMap.set(normalized.id, normalized);
+    };
+
+    (env.currentDynamics().parameters || []).forEach((parameter) => {
+      addNode({
+        id: parameterRootId(parameter.name),
+        kind: "parameter-root",
+        dependsOn: [],
+        recipe: null,
+      });
+      addNode({
+        id: `parameter-sync:${parameter.name}`,
+        kind: "parameter-sync",
+        dependsOn: [parameterRootId(parameter.name)],
+        recipe: "sync-base-dynamics",
+      });
+    });
+    (env.sourceScene.points || []).forEach((_, index) => {
+      addNode({ id: sourcePointRootId(index), kind: "source-point", dependsOn: [], recipe: null });
+    });
+    (env.sourceScene.lines || []).forEach((_, index) => {
+      addNode({ id: sourceLineRootId(index), kind: "source-line", dependsOn: [], recipe: null });
+    });
+    (env.sourceScene.circles || []).forEach((_, index) => {
+      addNode({ id: sourceCircleRootId(index), kind: "source-circle", dependsOn: [], recipe: null });
+    });
+    (env.sourceScene.polygons || []).forEach((_, index) => {
+      addNode({ id: sourcePolygonRootId(index), kind: "source-polygon", dependsOn: [], recipe: null });
+    });
+
+    (env.sourceScene.points || []).forEach((point, index) => {
+      if (!point.binding && !point.constraint) return;
+      const deps = new Set();
+      collectSceneDependencyIds(deps, point.binding, knownParameters);
+      collectSceneDependencyIds(deps, point.constraint, knownParameters);
+      addNode({
+        id: `point:${index}`,
+        kind: "point",
+        dependsOn: [...deps],
+        recipe: "refresh-derived-points",
+      });
+    });
+
+    (env.sourceScene.lines || []).forEach((line, index) => {
+      if (!line.binding) return;
+      const deps = new Set();
+      collectSceneDependencyIds(deps, line.binding, knownParameters);
+      addNode({
+        id: `line:${index}`,
+        kind: "line",
+        dependsOn: [...deps],
+        recipe: "refresh-derived-points",
+      });
+    });
+
+    (env.sourceScene.circles || []).forEach((circle, index) => {
+      if (!circle.binding && !circle.fillColorBinding) return;
+      const deps = new Set();
+      collectSceneDependencyIds(deps, circle.binding, knownParameters);
+      collectSceneDependencyIds(deps, circle.fillColorBinding, knownParameters);
+      addNode({
+        id: `circle:${index}`,
+        kind: "circle",
+        dependsOn: [...deps],
+        recipe: "refresh-derived-points",
+      });
+    });
+
+    (env.sourceScene.polygons || []).forEach((polygon, index) => {
+      if (!polygon.binding) return;
+      const deps = new Set();
+      collectSceneDependencyIds(deps, polygon.binding, knownParameters);
+      addNode({
+        id: `polygon:${index}`,
+        kind: "polygon",
+        dependsOn: [...deps],
+        recipe: "refresh-derived-points",
+      });
+    });
+
+    (env.currentDynamics().functions || []).forEach((functionDef, index) => {
+      const deps = new Set();
+      addExprParameterDeps(deps, functionDef.expr, knownParameters);
+      collectSceneDependencyIds(deps, functionDef.constrainedPointIndices, knownParameters);
+      addNode({
+        id: `function:${index}`,
+        kind: "function",
+        dependsOn: [...deps],
+        recipe: "sync-base-dynamics",
+      });
+    });
+
+    (env.sourceScene.labels || []).forEach((label, index) => {
+      if (!label.binding) return;
+      const deps = new Set();
+      collectSceneDependencyIds(deps, label.binding, knownParameters);
+      if ("expr" in label.binding) {
+        addExprParameterDeps(deps, label.binding.expr, knownParameters);
+      }
+      addNode({
+        id: `label:${index}`,
+        kind: "label",
+        dependsOn: [...deps],
+        recipe: "refresh-dynamic-labels",
+      });
+    });
+
+    (env.sourceScene.pointIterations || []).forEach((family, index) => {
+      const deps = new Set();
+      collectSceneDependencyIds(deps, family, knownParameters);
+      if (family.kind === "rotate") {
+        addExprParameterDeps(deps, family.angleExpr, knownParameters);
+      }
+      addNode({
+        id: `point-iteration:${index}`,
+        kind: "point-iteration",
+        dependsOn: [...deps],
+        recipe: "rebuild-iteration-geometry",
+      });
+    });
+    (env.sourceScene.circleIterations || []).forEach((family, index) => {
+      const deps = new Set();
+      collectSceneDependencyIds(deps, family, knownParameters);
+      addNode({
+        id: `circle-iteration:${index}`,
+        kind: "circle-iteration",
+        dependsOn: [...deps],
+        recipe: "rebuild-iteration-geometry",
+      });
+    });
+    (env.sourceScene.lineIterations || []).forEach((family, index) => {
+      const deps = new Set();
+      collectSceneDependencyIds(deps, family, knownParameters);
+      if (family.kind === "rotate") {
+        addExprParameterDeps(deps, family.angleExpr, knownParameters);
+      }
+      if (family.kind === "parameterized-point-trace") {
+        addExprParameterDeps(deps, family.stepExpr, knownParameters);
+      }
+      addNode({
+        id: `line-iteration:${index}`,
+        kind: "line-iteration",
+        dependsOn: [...deps],
+        recipe: "rebuild-iteration-geometry",
+      });
+    });
+    (env.sourceScene.polygonIterations || []).forEach((family, index) => {
+      const deps = new Set();
+      collectSceneDependencyIds(deps, family, knownParameters);
+      if (family.kind === "coordinate-grid") {
+        addExprParameterDeps(deps, family.stepExpr, knownParameters);
+        addExprParameterDeps(deps, family.xExpr, knownParameters);
+        addExprParameterDeps(deps, family.yExpr, knownParameters);
+        addExprParameterDeps(deps, family.depthExpr, knownParameters);
+      }
+      addNode({
+        id: `polygon-iteration:${index}`,
+        kind: "polygon-iteration",
+        dependsOn: [...deps],
+        recipe: "rebuild-iteration-geometry",
+      });
+    });
+    (env.sourceScene.labelIterations || []).forEach((family, index) => {
+      const deps = new Set();
+      collectSceneDependencyIds(deps, family, knownParameters);
+      addExprParameterDeps(deps, family.expr, knownParameters);
+      addNode({
+        id: `label-iteration:${index}`,
+        kind: "label-iteration",
+        dependsOn: [...deps],
+        recipe: "rebuild-iteration-geometry",
+      });
+    });
+    (env.sourceScene.iterationTables || []).forEach((table, index) => {
+      const deps = new Set();
+      collectSceneDependencyIds(deps, table, knownParameters);
+      addExprParameterDeps(deps, table.expr, knownParameters);
+      addNode({
+        id: `iteration-table:${index}`,
+        kind: "iteration-table",
+        dependsOn: [...deps],
+        recipe: "rebuild-iteration-geometry",
+      });
+    });
+
+    /** @type {Map<string, number>} */
+    const indegree = new Map();
+    /** @type {Map<string, string[]>} */
+    const reverseEdges = new Map();
+    nodes.forEach((node) => {
+      indegree.set(node.id, 0);
+    });
+    nodes.forEach((node) => {
+      node.dependsOn.forEach((dep) => {
+        if (!nodeMap.has(dep)) {
+          return;
+        }
+        indegree.set(node.id, (indegree.get(node.id) || 0) + 1);
+        const dependents = reverseEdges.get(dep) || [];
+        dependents.push(node.id);
+        reverseEdges.set(dep, dependents);
+      });
+    });
+    const queue = nodes
+      .filter((node) => (indegree.get(node.id) || 0) === 0)
+      .map((node) => node.id);
+    /** @type {string[]} */
+    const topoOrder = [];
+    while (queue.length > 0) {
+      const id = /** @type {string} */ (queue.shift());
+      topoOrder.push(id);
+      (reverseEdges.get(id) || []).forEach((dependentId) => {
+        const nextDegree = (indegree.get(dependentId) || 0) - 1;
+        indegree.set(dependentId, nextDegree);
+        if (nextDegree === 0) {
+          queue.push(dependentId);
+        }
+      });
+    }
+    nodes.forEach((node) => {
+      if (!topoOrder.includes(node.id)) {
+        topoOrder.push(node.id);
+      }
+    });
+
+    dependencyGraphCache = { nodes, nodeMap, topoOrder, reverseEdges };
+    return dependencyGraphCache;
+  }
+
+  /**
+   * @param {ViewerEnv} env
+   */
+  function describeDependencyGraph(env) {
+    const graph = ensureDependencyGraph(env);
+    return graph.topoOrder
+      .map((id) => graph.nodeMap.get(id))
+      .filter(Boolean)
+      .map((node) => ({
+        id: node.id,
+        kind: node.kind,
+        dependsOn: [...node.dependsOn],
+        recipe: node.recipe,
+      }));
   }
 
   /**
@@ -863,7 +1329,60 @@
     const rawValue = family.parameterName ? parameters.get(family.parameterName) : family.depth;
     const fallback = Number.isFinite(family.depth) ? family.depth : 0;
     const depth = Number.isFinite(rawValue) ? rawValue : fallback;
-    return Math.max(0, Math.round(depth));
+    return discreteIterationDepth(depth);
+  }
+
+  /**
+   * Iteration counts are discrete payload values. Avoid rounding up early while a
+   * live control is between integer steps.
+   *
+   * @param {number} value
+   */
+  function discreteIterationDepth(value) {
+    if (!Number.isFinite(value)) {
+      return 0;
+    }
+    return Math.max(0, Math.floor(value + 1e-9));
+  }
+
+  /**
+   * @param {ViewerSceneData | SceneData | null | undefined} scene
+   * @returns {Set<string>}
+   */
+  function collectDiscreteIterationParameterNames(scene) {
+    const names = new Set();
+    const add = (/** @type {string | null | undefined} */ name) => {
+      if (typeof name === "string" && name.length > 0) {
+        names.add(name);
+      }
+    };
+    (scene?.pointIterations || []).forEach((family) => {
+      if ("parameterName" in family) {
+        add(family.parameterName);
+      }
+    });
+    (scene?.circleIterations || []).forEach((family) => add(family.depthParameterName));
+    (scene?.lineIterations || []).forEach((family) => {
+      if ("parameterName" in family) {
+        add(family.parameterName);
+      }
+      if ("depthParameterName" in family) {
+        add(family.depthParameterName);
+      }
+    });
+    (scene?.polygonIterations || []).forEach((family) => add(family.parameterName));
+    (scene?.labelIterations || []).forEach((family) => add(family.depthParameterName));
+    (scene?.iterationTables || []).forEach((table) => add(table.depthParameterName));
+    return names;
+  }
+
+  /**
+   * @param {ViewerSceneData | SceneData | null | undefined} scene
+   * @param {string} name
+   * @returns {boolean}
+   */
+  function isDiscreteIterationParameterName(scene, name) {
+    return collectDiscreteIterationParameterNames(scene).has(name);
   }
 
   /**
@@ -1605,8 +2124,8 @@
     scene.iterationTables = sourceTables.map((table, index) => {
       const current = currentTables[index];
       const depth = table.depthParameterName
-        ? Math.max(0, Math.round(parameters.get(table.depthParameterName) ?? table.depth) - 1)
-        : Math.max(0, Math.round(table.depth));
+        ? discreteIterationDepth(parameters.get(table.depthParameterName) ?? table.depth)
+        : discreteIterationDepth(table.depth);
       let currentValue = parameters.get(table.parameterName);
       const rows = [];
       if (Number.isFinite(currentValue)) {
@@ -2651,7 +3170,7 @@
    */
   function refreshDerivedPoints(env, scene) {
     const bounds = env.getViewBounds ? env.getViewBounds() : (scene.bounds || env.sourceScene.bounds);
-    const parameters = parameterMap(env);
+    const parameters = parameterMapForScene(env, scene);
     const resolveHandle = (/** @type {PointHandle} */ handle) => {
       if (hasPointIndexHandle(handle)) {
         return env.resolveScenePoint(handle.pointIndex);
@@ -2797,6 +3316,7 @@
       if (sides === 1) continue;
       const angleDegrees = evaluateExpr(family.angleExpr, 0, parameters);
       if (!Number.isFinite(angleDegrees)) continue;
+      const angleExpr = /** @type {FunctionExprJson} */ (syncExprParameterValues(family.angleExpr, parameters));
       const rotate = (/** @type {number} */ step) => rotateAround(vertex, center, (angleDegrees * step) * Math.PI / 180);
       if (sides === 2) {
         preservedLines.push({
@@ -2808,7 +3328,7 @@
             centerIndex: family.centerIndex,
             vertexIndex: family.vertexIndex,
             parameterName: family.parameterName || "",
-            angleExpr: family.angleExpr,
+            angleExpr,
             angleDegrees,
             startStep: 0,
             endStep: 1,
@@ -2826,7 +3346,7 @@
             centerIndex: family.centerIndex,
             vertexIndex: family.vertexIndex,
             parameterName: family.parameterName || "",
-            angleExpr: family.angleExpr,
+            angleExpr,
             angleDegrees,
             startStep: step,
             endStep: (step + 1) % sides,
@@ -2863,7 +3383,7 @@
    * @param {ViewerSceneData} scene
    */
   function refreshDynamicLabels(env, scene) {
-    const parameters = parameterMap(env);
+    const parameters = parameterMapForScene(env, scene);
     scene.labels.forEach((/** @type {RuntimeLabelJson} */ label) => {
       if (!label.binding) return;
       const refreshLabel = DYNAMIC_LABEL_REFRESHERS[label.binding.kind];
@@ -2873,52 +3393,132 @@
     });
   }
 
-  /** @param {ViewerEnv} env */
-  function syncDynamicScene(env) {
-    env.updateScene((draft) => {
-      const parameters = parameterMap(env);
-      env.currentDynamics().parameters.forEach((/** @type {ParameterJson} */ parameter) => {
-        if (typeof parameter.labelIndex === "number" && draft.labels[parameter.labelIndex]) {
-          draft.labels[parameter.labelIndex].text =
-            `${parameter.name} = ${parameter.value.toFixed(2)}${parameterValueSuffix(parameter)}`;
-        }
-      });
-      draft.points.forEach((/** @type {RuntimeScenePointJson} */ point) => {
-        if (point.binding?.kind !== "parameter" || !point.constraint) {
-          const updatePoint = point.binding ? SYNC_DYNAMIC_POINT_BINDING_UPDATERS[point.binding.kind] : null;
-          if (updatePoint) {
-            updatePoint(env, draft, point, parameters);
-          }
-          return;
-        }
-        const value = parameters.get(point.binding.name);
-        if (!Number.isFinite(value)) return;
-        applyNormalizedParameterToPoint(point, draft, value);
-      });
-      env.currentDynamics().functions.forEach((/** @type {FunctionJson} */ functionDef) => {
-        if (draft.labels[functionDef.labelIndex]) {
-          const variableLabel = functionDef.domain.plotMode === "polar" ? "θ" : "x";
-          const head = functionDef.domain.plotMode === "polar"
-            ? (functionDef.derivative ? `r'(${variableLabel})` : "r")
-            : (functionDef.derivative
-              ? `${functionDef.name}'(${variableLabel})`
-              : `${functionDef.name}(${variableLabel})`);
-          draft.labels[functionDef.labelIndex].text = `${head} = ${formatExpr(functionDef.expr, env.formatAxisNumber, variableLabel)}`;
-        }
-        const sampled = sampleDynamicFunction(functionDef, parameters);
-        if (typeof functionDef.lineIndex === "number" && draft.lines[functionDef.lineIndex]) {
-          draft.lines[functionDef.lineIndex].points = sampled.map((point) => ({ ...point }));
-        }
-        functionDef.constrainedPointIndices.forEach((/** @type {number} */ pointIndex) => {
-          const constraint = draft.points[pointIndex]?.constraint;
-          if (constraint && constraint.kind === "polyline") {
-            constraint.points = sampled.map((point) => ({ ...point }));
-            constraint.segmentIndex = Math.min(constraint.segmentIndex, Math.max(0, sampled.length - 2));
-          }
-        });
-      });
-      refreshIterationGeometry(env, draft, parameters);
+  /**
+   * @param {ViewerEnv} env
+   * @param {ViewerSceneData} draft
+   * @param {Map<string, number>} parameters
+   */
+  function applyBaseDynamicUpdates(env, draft, parameters) {
+    env.currentDynamics().parameters.forEach((/** @type {ParameterJson} */ parameter) => {
+      if (typeof parameter.labelIndex === "number" && draft.labels[parameter.labelIndex]) {
+        draft.labels[parameter.labelIndex].text =
+          `${parameter.name} = ${parameter.value.toFixed(2)}${parameterValueSuffix(parameter)}`;
+      }
     });
+    draft.points.forEach((/** @type {RuntimeScenePointJson} */ point) => {
+      if (point.binding?.kind !== "parameter" || !point.constraint) {
+        const updatePoint = point.binding ? SYNC_DYNAMIC_POINT_BINDING_UPDATERS[point.binding.kind] : null;
+        if (updatePoint) {
+          updatePoint(env, draft, point, parameters);
+        }
+        return;
+      }
+      const value = parameters.get(point.binding.name);
+      if (!Number.isFinite(value)) return;
+      applyNormalizedParameterToPoint(point, draft, value);
+    });
+    env.currentDynamics().functions.forEach((/** @type {FunctionJson} */ functionDef) => {
+      if (draft.labels[functionDef.labelIndex]) {
+        const variableLabel = functionDef.domain.plotMode === "polar" ? "θ" : "x";
+        const head = functionDef.domain.plotMode === "polar"
+          ? (functionDef.derivative ? `r'(${variableLabel})` : "r")
+          : (functionDef.derivative
+            ? `${functionDef.name}'(${variableLabel})`
+            : `${functionDef.name}(${variableLabel})`);
+        draft.labels[functionDef.labelIndex].text = `${head} = ${formatExpr(functionDef.expr, env.formatAxisNumber, variableLabel)}`;
+      }
+      const sampled = sampleDynamicFunction(functionDef, parameters);
+      if (typeof functionDef.lineIndex === "number" && draft.lines[functionDef.lineIndex]) {
+        draft.lines[functionDef.lineIndex].points = sampled.map((point) => ({ ...point }));
+      }
+      functionDef.constrainedPointIndices.forEach((/** @type {number} */ pointIndex) => {
+        const constraint = draft.points[pointIndex]?.constraint;
+        if (constraint && constraint.kind === "polyline") {
+          constraint.points = sampled.map((point) => ({ ...point }));
+          constraint.segmentIndex = Math.min(constraint.segmentIndex, Math.max(0, sampled.length - 2));
+        }
+      });
+    });
+  }
+
+  /**
+   * @param {ViewerEnv} env
+   * @param {ViewerSceneData} scene
+   * @param {string[]} dirtyRootIds
+   */
+  function runDependencyGraph(env, scene, dirtyRootIds) {
+    const graph = ensureDependencyGraph(env);
+    const rootSet = new Set(
+      (dirtyRootIds || []).filter((rootId) => typeof rootId === "string" && graph.nodeMap.has(rootId)),
+    );
+    if (rootSet.size === 0) {
+      env.currentDynamics().parameters.forEach((parameter) => {
+        rootSet.add(parameterRootId(parameter.name));
+      });
+    }
+    const affected = new Set(rootSet);
+    const queue = Array.from(rootSet);
+    while (queue.length > 0) {
+      const currentId = /** @type {string} */ (queue.shift());
+      (graph.reverseEdges.get(currentId) || []).forEach((dependentId) => {
+        if (!affected.has(dependentId)) {
+          affected.add(dependentId);
+          queue.push(dependentId);
+        }
+      });
+    }
+    const orderedNodes = graph.topoOrder
+      .map((id) => graph.nodeMap.get(id))
+      .filter((node) => !!node && affected.has(node.id));
+    /** @type {string[]} */
+    const executedRecipes = [];
+    const seenRecipes = new Set();
+    orderedNodes.forEach((node) => {
+      if (!node.recipe || seenRecipes.has(node.recipe)) {
+        return;
+      }
+      seenRecipes.add(node.recipe);
+      executedRecipes.push(node.recipe);
+      if (node.recipe === "sync-base-dynamics") {
+        applyBaseDynamicUpdates(env, scene, parameterMapForScene(env, scene));
+        return;
+      }
+      if (node.recipe === "refresh-derived-points") {
+        refreshDerivedPoints(env, scene);
+        return;
+      }
+      if (node.recipe === "rebuild-iteration-geometry") {
+        refreshIterationGeometry(env, scene, parameterMapForScene(env, scene));
+        return;
+      }
+      if (node.recipe === "refresh-dynamic-labels") {
+        refreshDynamicLabels(env, scene);
+      }
+    });
+    return {
+      dirtyRoots: Array.from(rootSet),
+      affectedNodes: orderedNodes.map((node) => ({
+        id: node.id,
+        kind: node.kind,
+        dependsOn: [...node.dependsOn],
+        recipe: node.recipe,
+      })),
+      executedRecipes,
+    };
+  }
+
+  /**
+   * @param {ViewerEnv} env
+   * @param {string[]} [dirtyParameterNames]
+   */
+  function syncDynamicScene(env, dirtyParameterNames) {
+    const names = Array.isArray(dirtyParameterNames) && dirtyParameterNames.length > 0
+      ? dirtyParameterNames
+      : env.currentDynamics().parameters.map((parameter) => parameter.name);
+    env.markDependencyRootsDirty(
+      names.map((name) => parameterRootId(name)),
+    );
+    env.updateScene(() => {});
   }
 
   /**
@@ -2953,20 +3553,20 @@
       `${parameter.name} =`,
       env.inputTag({
         type: "number",
-        step: parameter.name === "n" ? "1" : "0.1",
-        min: parameter.name === "n" ? "0" : undefined,
+        step: isDiscreteIterationParameterName(env.sourceScene, parameter.name) ? "1" : "0.1",
+        min: isDiscreteIterationParameterName(env.sourceScene, parameter.name) ? "0" : undefined,
         value: parameter.value.toFixed(2),
         oninput: (event) => {
           const target = /** @type {HTMLInputElement} */ (event.target);
           let value = Number.parseFloat(target.value);
           if (Number.isFinite(value)) {
-            if (parameter.name === "n") {
-              value = Math.max(0, Math.round(value));
+            if (isDiscreteIterationParameterName(env.sourceScene, parameter.name)) {
+              value = discreteIterationDepth(value);
             }
             env.updateDynamics((draft) => {
               draft.parameters[index].value = value;
             });
-            syncDynamicScene(env);
+            syncDynamicScene(env, [parameter.name]);
           }
         },
       }),
@@ -2987,6 +3587,8 @@
     refreshDerivedPoints,
     refreshDynamicLabels,
     refreshIterationGeometry,
+    runDependencyGraph,
+    describeDependencyGraph,
     syncDynamicScene,
   };
 })();

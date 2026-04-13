@@ -36,7 +36,7 @@ use self::labels::{
     collect_circle_parameter_labels, collect_coordinate_labels,
     collect_custom_transform_expression_labels, collect_iteration_tables, collect_label_iterations,
     collect_labels, collect_polygon_parameter_labels, collect_segment_parameter_labels,
-    compute_iteration_labels, polygon_boundary_parameter, resolve_label_hotspots,
+    polygon_boundary_parameter, resolve_label_hotspots,
 };
 use self::points::{
     RawPointConstraint, TransformBindingKind, collect_non_graph_parameters,
@@ -495,12 +495,6 @@ fn collect_scene_labels(
         file,
         groups,
         &analysis.raw_anchors,
-    ));
-    labels.extend(compute_iteration_labels(
-        file,
-        groups,
-        &analysis.raw_anchors,
-        &shapes.circles,
     ));
     if analysis.graph_mode && analysis.has_function_plots {
         labels.extend(synthesize_function_labels(

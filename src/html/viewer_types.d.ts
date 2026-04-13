@@ -261,6 +261,7 @@ type ViewerEnv = {
   measureText: (text: string, fontSize?: number, fontWeight?: number | string) => number;
   registerDebugElement?: (element: Element, target: DebugTarget | null | undefined) => void;
   selectDebugTarget?: (target: DebugTarget) => void;
+  markDependencyRootsDirty?: (rootIds: string | string[]) => void;
   inputTag: typeof import("./vendor/van-1.6.0").default.tags.input;
   labelTag: typeof import("./vendor/van-1.6.0").default.tags.label;
   parameterControls: HTMLElement | null;
@@ -486,7 +487,9 @@ type ViewerDynamicsModule = {
   refreshDerivedPoints: (env: ViewerEnv, scene: ViewerSceneData) => void;
   refreshIterationGeometry: (env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) => void;
   refreshDynamicLabels: (env: ViewerEnv, scene: ViewerSceneData) => void;
-  syncDynamicScene: (env: ViewerEnv) => void;
+  runDependencyGraph?: (env: ViewerEnv, scene: ViewerSceneData, dirtyRootIds: string[]) => unknown;
+  describeDependencyGraph?: (env: ViewerEnv) => unknown[];
+  syncDynamicScene: (env: ViewerEnv, dirtyParameterNames?: string[]) => void;
 };
 
 type ViewerOverlayRuntime = {
@@ -517,10 +520,12 @@ interface Window {
       dynamics: RuntimeDynamicsState;
       buttons: RuntimeButtonJson[];
     };
+    readonly dependencyRun?: unknown;
     readonly selection?: unknown;
     json: () => string;
     graph: () => string;
     scene: () => string;
+    dependencyGraph: () => unknown[];
     inspectSelection: () => string;
     inspectElement: (element: Element) => unknown;
     dumpJson: () => void;

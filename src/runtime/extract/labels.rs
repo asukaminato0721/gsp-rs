@@ -227,6 +227,24 @@ fn direct_function_expr_parameter_name(
     editable_non_graph_parameter_name_for_group(file, groups, parameter_group)
 }
 
+fn iteration_depth_driver_name(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    iter_group: &ObjectGroup,
+) -> Option<String> {
+    let iter_path = find_indexed_path(file, iter_group)?;
+    let depth_group = groups.get(iter_path.refs.first()?.checked_sub(1)?)?;
+    decode_label_name(file, depth_group)
+        .or_else(|| decode_label_name_raw(file, depth_group))
+        .or_else(|| {
+            if depth_group.header.kind() == crate::format::GroupKind::FunctionExpr {
+                direct_function_expr_parameter_name(file, groups, depth_group)
+            } else {
+                editable_non_graph_parameter_name_for_group(file, groups, depth_group)
+            }
+        })
+}
+
 fn parameter_anchor_value(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -1203,28 +1221,7 @@ pub(super) fn collect_label_iterations(
                 .filter(|payload| payload.len() >= 20)
                 .map(|payload| read_u32(payload, 16) as usize)
                 .unwrap_or(3);
-            let depth_parameter_name = if let Some(iter_path) = find_indexed_path(file, iter_group)
-            {
-                if let Some(ordinal) = iter_path.refs.first().copied() {
-                    if let Some(parameter_group_index) = ordinal.checked_sub(1) {
-                        if let Some(parameter_group) = groups.get(parameter_group_index) {
-                            editable_non_graph_parameter_name_for_group(
-                                file,
-                                groups,
-                                parameter_group,
-                            )
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
+            let depth_parameter_name = iteration_depth_driver_name(file, groups, iter_group);
 
             Some(LabelIterationFamily::PointExpression {
                 seed_label_index,
@@ -1387,14 +1384,7 @@ pub(super) fn collect_iteration_tables(
                 .filter(|payload| payload.len() >= 20)
                 .map(|payload| read_u32(payload, 16) as usize)
                 .unwrap_or(3);
-            let depth_parameter_name = if (iter_group.header.kind())
-                == crate::format::GroupKind::RegularPolygonIteration
-            {
-                super::points::regular_polygon_iteration_step(file, groups, iter_group)
-                    .map(|(_, _, parameter_name, _)| parameter_name)
-            } else {
-                None
-            };
+            let depth_parameter_name = iteration_depth_driver_name(file, groups, iter_group);
             Some(IterationTable {
                 anchor: decode_iteration_table_anchor(file, group)?,
                 expr_label,

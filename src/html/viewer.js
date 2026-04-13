@@ -546,22 +546,48 @@
   } };
   const currentScene = () => sceneState.val;
   const currentDynamics = () => dynamicsState.val;
+  /** @type {Set<string>} */
+  const pendingDependencyRootIds = new Set();
+  /** @type {any} */
+  let lastDependencyRun = null;
+
+  /**
+   * @param {string | string[]} rootIds
+   */
+  function markDependencyRootsDirty(rootIds) {
+    const values = Array.isArray(rootIds) ? rootIds : [rootIds];
+    values.forEach((rootId) => {
+      if (typeof rootId === "string" && rootId.length > 0) {
+        pendingDependencyRootIds.add(rootId);
+      }
+    });
+  }
 
   /** @param {(draft: ViewerSceneData) => void} mutator */
   function updateScene(mutator) {
     const next = sceneState.val;
     mutator(next);
-    if (dynamicsModule.refreshDerivedPoints) {
-      dynamicsModule.refreshDerivedPoints(viewerEnv, next);
-    }
-    if (dynamicsModule.refreshIterationGeometry) {
-      const parameters = dynamicsModule.parameterMapForScene
-        ? dynamicsModule.parameterMapForScene(viewerEnv, next)
-        : new Map();
-      dynamicsModule.refreshIterationGeometry(viewerEnv, next, parameters);
-    }
-    if (dynamicsModule.refreshDynamicLabels) {
-      dynamicsModule.refreshDynamicLabels(viewerEnv, next);
+    if (pendingDependencyRootIds.size > 0 && dynamicsModule.runDependencyGraph) {
+      lastDependencyRun = dynamicsModule.runDependencyGraph(
+        viewerEnv,
+        next,
+        Array.from(pendingDependencyRootIds),
+      );
+      pendingDependencyRootIds.clear();
+    } else {
+      if (dynamicsModule.refreshDerivedPoints) {
+        dynamicsModule.refreshDerivedPoints(viewerEnv, next);
+      }
+      if (dynamicsModule.refreshIterationGeometry) {
+        const parameters = dynamicsModule.parameterMapForScene
+          ? dynamicsModule.parameterMapForScene(viewerEnv, next)
+          : new Map();
+        dynamicsModule.refreshIterationGeometry(viewerEnv, next, parameters);
+      }
+      if (dynamicsModule.refreshDynamicLabels) {
+        dynamicsModule.refreshDynamicLabels(viewerEnv, next);
+      }
+      lastDependencyRun = null;
     }
     sceneState.val = { ...next };
   }
@@ -609,6 +635,63 @@
       return structuredClone(value);
     }
     return JSON.parse(JSON.stringify(value));
+  }
+
+  /**
+   * Replace embedded payload-time parameter defaults with the current runtime
+   * parameter values for debug/inspection output.
+   *
+   * @param {unknown} value
+   * @param {Map<string, number>} parameters
+   * @returns {unknown}
+   */
+  function cloneWithLiveParameterValues(value, parameters) {
+    if (!value || typeof value !== "object") {
+      return value;
+    }
+    if (Array.isArray(value)) {
+      return value.map((item) => cloneWithLiveParameterValues(item, parameters));
+    }
+    const cloned = Object.fromEntries(
+      Object.entries(/** @type {Record<string, unknown>} */ (value)).map(([key, child]) => [
+        key,
+        cloneWithLiveParameterValues(child, parameters),
+      ]),
+    );
+    if (
+      cloned.kind === "parameter"
+      && typeof cloned.name === "string"
+      && "value" in cloned
+      && Number.isFinite(parameters.get(cloned.name))
+    ) {
+      cloned.value = parameters.get(cloned.name);
+    }
+    if (
+      typeof cloned.depth === "number"
+      && typeof cloned.parameterName === "string"
+      && Number.isFinite(parameters.get(cloned.parameterName))
+    ) {
+      cloned.depth = Math.max(0, Math.floor(parameters.get(cloned.parameterName) + 1e-9));
+    }
+    if (
+      typeof cloned.depth === "number"
+      && typeof cloned.depthParameterName === "string"
+      && Number.isFinite(parameters.get(cloned.depthParameterName))
+    ) {
+      cloned.depth = Math.max(0, Math.floor(parameters.get(cloned.depthParameterName) + 1e-9));
+    }
+    return cloned;
+  }
+
+  /**
+   * @param {unknown} entity
+   * @returns {unknown}
+   */
+  function debugEntityWithLiveParameters(entity) {
+    const parameters = dynamicsModule.parameterMapForScene
+      ? dynamicsModule.parameterMapForScene(viewerEnv, currentScene())
+      : new Map();
+    return cloneWithLiveParameterValues(entity, parameters);
   }
 
   function pruneDebugRegistry() {
@@ -799,13 +882,18 @@
         "  Open Debug and click a rendered element or overlay to inspect its payload origin.",
       ].join("\n");
     }
-    const entity = lookupDebugEntity(target);
+    const entity = debugEntityWithLiveParameters(lookupDebugEntity(target));
+    const entityRecord = /** @type {Record<string, unknown> | null} */ (
+      entity && typeof entity === "object" ? entity : null
+    );
     const lines = [
       "Selection",
       `  target: ${describeDebugTarget(target)}`,
       `  summary: ${summarizeDebugEntity(entity) || "(no summary)"}`,
     ];
-    formatPayloadDebug(entity?.debug).forEach((line) => {
+    formatPayloadDebug(entityRecord?.debug && typeof entityRecord.debug === "object"
+      ? /** @type {Record<string, unknown>} */ (entityRecord.debug)
+      : null).forEach((line) => {
       lines.push(`  ${line}`);
     });
     const refs = collectReferenceTokens(entity);
@@ -1025,12 +1113,12 @@
   }
 
   function buildRuntimeSnapshot() {
-    return cloneForDebug({
+    return /** @type {{ view: ViewState; scene: ViewerSceneData; dynamics: RuntimeDynamicsState; buttons: RuntimeButtonJson[] }} */ (debugEntityWithLiveParameters({
       view: { ...viewState.val },
       scene: currentScene(),
       dynamics: currentDynamics(),
       buttons: overlayRuntime.currentButtons(),
-    });
+    }));
   }
 
   function renderDebugOutput() {
@@ -1481,6 +1569,7 @@
     rgba,
     updateScene,
     updateDynamics,
+    markDependencyRootsDirty,
     syncDynamicScene: () => dynamicsModule.syncDynamicScene(viewerEnv),
     isOriginPointIndex,
     formatNumber,
@@ -1529,8 +1618,11 @@
     get runtime() {
       return buildRuntimeSnapshot();
     },
+    get dependencyRun() {
+      return cloneForDebug(lastDependencyRun);
+    },
     get selection() {
-      return cloneForDebug(lookupDebugEntity(selectedDebugTargetState.val));
+      return debugEntityWithLiveParameters(lookupDebugEntity(selectedDebugTargetState.val));
     },
     json() {
       return buildDebugJson();
@@ -1566,6 +1658,11 @@
     },
     dumpSelection() {
       console.log(buildSelectionDebugOutput());
+    },
+    dependencyGraph() {
+      return dynamicsModule.describeDependencyGraph
+        ? dynamicsModule.describeDependencyGraph(viewerEnv)
+        : [];
     },
     dump() {
       dumpDebugToConsole();

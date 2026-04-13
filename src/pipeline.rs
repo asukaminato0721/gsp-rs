@@ -1009,7 +1009,7 @@ mod tests {
         assert_eq!(iteration_tables[0]["parameterName"].as_str(), Some("t₁"));
         assert_eq!(
             iteration_tables[0]["depthParameterName"].as_str(),
-            Some("t₂")
+            Some("t₃")
         );
         assert_eq!(iteration_tables[0]["x"].as_f64(), Some(322.0));
         assert_eq!(iteration_tables[0]["y"].as_f64(), Some(481.0));
@@ -1038,8 +1038,25 @@ mod tests {
         );
         assert_eq!(
             iteration_tables[0]["depthParameterName"].as_str(),
-            Some("t₂"),
-            "expected the iteration depth to remain controlled by the editable polygon-side parameter"
+            Some("t₃"),
+            "expected the iteration depth to follow the payload's derived iteration count"
+        );
+    }
+
+    #[test]
+    fn exports_circle_formation_fixture_without_static_duplicate_labels() {
+        let scene = fixture_scene(
+            include_bytes!("../tests/fixtures/圆的形成.gsp"),
+            "circle-formation fixture should compile",
+        );
+        let labels = scene["labels"]
+            .as_array()
+            .expect("scene labels should be an array");
+        assert!(
+            labels.iter().all(|label| {
+                !label["visible"].as_bool().unwrap_or(false) || !label["binding"].is_null()
+            }),
+            "expected visible labels in the circle-formation fixture to stay payload-bound and interactive"
         );
     }
 
