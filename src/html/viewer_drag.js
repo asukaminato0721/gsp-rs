@@ -19,6 +19,48 @@
     return !!handle && typeof handle === "object" && "pointIndex" in handle && typeof handle.pointIndex === "number";
   }
 
+  /** @param {number} index */
+  function sourcePointRootId(index) {
+    return `source-point:${index}`;
+  }
+
+  /**
+   * @param {ViewerEnv} env
+   * @param {number} pointIndex
+   * @returns {string[]}
+   */
+  function dependencyRootsForDraggedPoint(env, pointIndex) {
+    const point = env.currentScene().points?.[pointIndex];
+    if (!point) {
+      return [];
+    }
+    const roots = new Set([sourcePointRootId(pointIndex)]);
+    const constraint = point.constraint;
+    if (isOffsetConstraint(constraint)) {
+      roots.add(sourcePointRootId(constraint.originIndex));
+    }
+    return Array.from(roots);
+  }
+
+  /**
+   * @param {ViewerEnv} env
+   * @param {number} polygonIndex
+   * @returns {string[]}
+   */
+  function dependencyRootsForDraggedPolygon(env, polygonIndex) {
+    const polygon = env.currentScene().polygons?.[polygonIndex];
+    if (!polygon) {
+      return [];
+    }
+    const roots = new Set();
+    polygon.points.forEach((/** @type {PointHandle} */ handle) => {
+      if (hasPointIndexHandle(handle)) {
+        roots.add(sourcePointRootId(handle.pointIndex));
+      }
+    });
+    return Array.from(roots);
+  }
+
   /**
    * @param {RuntimeScenePointJson["constraint"]} constraint
    * @returns {constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "offset" }>}
@@ -295,6 +337,7 @@
    * @param {Point} world
    */
   function updateDraggedPoint(env, world) {
+    env.markDependencyRootsDirty?.(dependencyRootsForDraggedPoint(env, env.dragState.val.pointIndex));
     env.updateScene((/** @type {ViewerSceneData} */ draft) => {
       const point = draft.points[env.dragState.val.pointIndex];
       const constraintKind = point.constraint?.kind;
@@ -344,6 +387,9 @@
     const dx = world.x - previous.x;
     const dy = world.y - previous.y;
     if (Math.abs(dx) <= 1e-9 && Math.abs(dy) <= 1e-9) return;
+    env.markDependencyRootsDirty?.(
+      dependencyRootsForDraggedPolygon(env, env.dragState.val.polygonIndex),
+    );
     env.updateScene((/** @type {ViewerSceneData} */ draft) => {
       const polygon = draft.polygons[env.dragState.val.polygonIndex];
       if (!polygon) return;
