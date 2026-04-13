@@ -2499,33 +2499,35 @@ fn preserves_regular_polygon_iteration_without_carried_duplicates() {
 
     assert_eq!(scene.parameters.len(), 1, "expected editable n parameter");
     assert_eq!(scene.parameters[0].name, "n");
-    assert_eq!(scene.lines.len(), 5, "expected five polygon edges");
+    assert_eq!(
+        scene.lines.len(),
+        1,
+        "expected the payload's first related edge to stay serialized as the iteration source"
+    );
     assert_eq!(
         scene
             .lines
             .iter()
-            .filter(|line| matches!(line.binding, Some(LineBinding::RotateEdge { .. })))
+            .filter(|line| line.debug.as_ref().is_some_and(|debug| debug.group_ordinal == 7))
             .count(),
-        5,
-        "expected all polygon edges to stay in one dynamic rotate-edge family"
-    );
-    assert!(
-        scene
-            .lines
-            .iter()
-            .all(|line| matches!(line.binding, Some(LineBinding::RotateEdge { .. }))),
-        "expected no static seed or carried duplicate segments"
+        1,
+        "expected the serialized source edge to come from payload segment #7"
     );
     assert!(
         scene.line_iterations.iter().any(|family| matches!(
             family,
             LineIterationFamily::Rotate {
+                source_index,
                 parameter_name,
+                depth_parameter_name,
                 depth,
                 ..
-            } if parameter_name.as_deref() == Some("n") && *depth == 5
+            } if *source_index == 0
+                && parameter_name.as_deref() == Some("n")
+                && depth_parameter_name.is_none()
+                && *depth == 4
         )),
-        "expected regular polygon iteration to export a calculation-driven rotate family"
+        "expected regular polygon iteration to export the payload source edge plus a rotate family for the carried copies"
     );
     assert_eq!(
         scene.line_iterations.len(),

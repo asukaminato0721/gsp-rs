@@ -37,7 +37,6 @@ pub(crate) fn remap_label_bindings(
             TextLabelBinding::ParameterValue { .. }
             | TextLabelBinding::FunctionLabel { .. }
             | TextLabelBinding::ExpressionValue { .. } => continue,
-            TextLabelBinding::PolygonBoundaryExpression { point_index, .. } => point_index,
             TextLabelBinding::PolygonBoundaryParameter { point_index, .. } => point_index,
             TextLabelBinding::SegmentParameter { point_index, .. } => point_index,
             TextLabelBinding::CircleParameter { point_index, .. } => point_index,
@@ -608,24 +607,6 @@ pub(crate) fn remap_line_bindings(
                 };
                 *point_index = mapped_point_index;
                 *driver_index = mapped_driver_index;
-            }
-            LineBinding::RotateEdge {
-                center_index,
-                vertex_index,
-                ..
-            } => {
-                let Some(mapped_center_index) = mapped_index(group_to_point_index, *center_index)
-                else {
-                    line.binding = None;
-                    continue;
-                };
-                let Some(mapped_vertex_index) = mapped_index(group_to_point_index, *vertex_index)
-                else {
-                    line.binding = None;
-                    continue;
-                };
-                *center_index = mapped_center_index;
-                *vertex_index = mapped_vertex_index;
             }
             LineBinding::ArcBoundary {
                 center_index,

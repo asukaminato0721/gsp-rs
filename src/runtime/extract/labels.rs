@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::{CircleShape, payload_debug_source};
+use super::payload_debug_source;
 use super::decode::{
     RichTextHotspotRef, decode_label_anchor, decode_label_name, decode_label_name_raw,
     decode_label_visible, decode_text_anchor, find_indexed_path, is_action_button_group,
@@ -12,7 +12,7 @@ use super::points::{
     is_editable_non_graph_parameter_name, is_non_graph_parameter_group,
     try_decode_point_constraint,
 };
-use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
+use crate::format::{GspFile, ObjectGroup, PointRecord, read_u32};
 use crate::runtime::functions::{
     evaluate_expr_with_parameters, function_expr_label, try_decode_function_expr,
 };
@@ -234,15 +234,18 @@ fn iteration_depth_driver_name(
 ) -> Option<String> {
     let iter_path = find_indexed_path(file, iter_group)?;
     let depth_group = groups.get(iter_path.refs.first()?.checked_sub(1)?)?;
-    decode_label_name(file, depth_group)
-        .or_else(|| decode_label_name_raw(file, depth_group))
-        .or_else(|| {
-            if depth_group.header.kind() == crate::format::GroupKind::FunctionExpr {
-                direct_function_expr_parameter_name(file, groups, depth_group)
-            } else {
-                editable_non_graph_parameter_name_for_group(file, groups, depth_group)
-            }
-        })
+    if depth_group.header.kind() == crate::format::GroupKind::FunctionExpr {
+        return decode_label_name(file, depth_group)
+            .or_else(|| decode_label_name_raw(file, depth_group))
+            .or_else(|| direct_function_expr_parameter_name(file, groups, depth_group));
+    }
+    if depth_group.header.kind() == crate::format::GroupKind::ParameterAnchor {
+        let anchor_path = find_indexed_path(file, depth_group)?;
+        let point_group = groups.get(anchor_path.refs.first()?.checked_sub(1)?)?;
+        return decode_label_name(file, point_group)
+            .or_else(|| decode_label_name_raw(file, point_group));
+    }
+    editable_non_graph_parameter_name_for_group(file, groups, depth_group)
 }
 
 fn parameter_anchor_value(
@@ -275,42 +278,6 @@ fn parameter_anchor_value(
         RawPointConstraint::Arc(_) => None,
         RawPointConstraint::Polyline { .. } => None,
     }
-}
-
-fn iteration_group_value(
-    file: &GspFile,
-    groups: &[ObjectGroup],
-    group: &ObjectGroup,
-    anchors: &[Option<PointRecord>],
-    visiting: &mut BTreeSet<usize>,
-) -> Option<f64> {
-    if !visiting.insert(group.ordinal) {
-        return None;
-    }
-    let result = (|| match group.header.kind() {
-        crate::format::GroupKind::Point => {
-            try_decode_parameter_control_value_for_group(file, groups, group).ok()
-        }
-        crate::format::GroupKind::ParameterAnchor => {
-            parameter_anchor_value(file, groups, group, anchors)
-        }
-        crate::format::GroupKind::FunctionExpr => {
-            let expr = try_decode_function_expr(file, groups, group).ok()?;
-            let path = find_indexed_path(file, group)?;
-            let mut parameters = BTreeMap::new();
-            for obj_ref in &path.refs {
-                let ref_group = groups.get(obj_ref.checked_sub(1)?)?;
-                let name = decode_label_name(file, ref_group)
-                    .or_else(|| decode_label_name_raw(file, ref_group))?;
-                let value = iteration_group_value(file, groups, ref_group, anchors, visiting)?;
-                parameters.insert(name, value);
-            }
-            evaluate_expr_with_parameters(&expr, 0.0, &parameters)
-        }
-        _ => None,
-    })();
-    visiting.remove(&group.ordinal);
-    result
 }
 
 fn payload_function_expr_label(
@@ -1493,243 +1460,4 @@ pub(super) fn polygon_boundary_parameter(
     }
 
     (perimeter > 1e-9).then_some(traveled / perimeter)
-}
-
-pub(super) fn compute_iteration_labels(
-    file: &GspFile,
-    groups: &[ObjectGroup],
-    anchors: &[Option<PointRecord>],
-    circles: &[CircleShape],
-) -> Vec<TextLabel> {
-    let mut labels = Vec::new();
-
-    let has_iteration = groups
-        .iter()
-        .any(|group| (group.header.kind()) == crate::format::GroupKind::RegularPolygonIteration);
-    if !has_iteration {
-        return labels;
-    }
-
-    let Some(circle) = circles.first() else {
-        return labels;
-    };
-    let cx = circle.center.x;
-    let cy = circle.center.y;
-    let radius =
-        ((circle.radius_point.x - cx).powi(2) + (circle.radius_point.y - cy).powi(2)).sqrt();
-
-    let px_per_cm = groups
-        .iter()
-        .filter(|group| (group.header.kind()) == crate::format::GroupKind::PolarOffsetPoint)
-        .find_map(|group| {
-            let payload = group
-                .records
-                .iter()
-                .find(|record| record.record_type == 0x07d3)
-                .map(|record| record.payload(&file.data))?;
-            (payload.len() >= 40).then(|| read_f64(payload, 32))
-        })
-        .filter(|v| v.is_finite() && *v > 1.0)
-        .unwrap_or(37.79527559055118);
-
-    let param_value = groups
-        .iter()
-        .filter(|group| (group.header.kind()) == crate::format::GroupKind::PolarOffsetPoint)
-        .find_map(|group| {
-            let payload = group
-                .records
-                .iter()
-                .find(|record| record.record_type == 0x07d3)
-                .map(|record| record.payload(&file.data))?;
-            (payload.len() >= 20).then(|| read_f64(payload, 12))
-        })
-        .filter(|v| v.is_finite() && *v > 0.0)
-        .unwrap_or(1.0);
-
-    let t1 = param_value;
-    let side = t1 / 2.0 * px_per_cm;
-    let sqrt3 = 3.0_f64.sqrt();
-    let diameter = 2.0 * radius;
-    let m1 = diameter / (2.0 * side) + 0.5;
-    let l_val = m1.floor() + 1.0;
-    let m2 = diameter / (sqrt3 * side);
-    let h_val = m2.ceil();
-    let m3 = m2 - m1;
-    let m4 = m3 - m3.floor();
-
-    fn format_sub(raw: &str) -> String {
-        raw.replace("[1]", "\u{2081}")
-            .replace("[2]", "\u{2082}")
-            .replace("[3]", "\u{2083}")
-            .replace("[4]", "\u{2084}")
-    }
-
-    let mut computed_values = BTreeMap::<String, f64>::new();
-    computed_values.insert("m\u{2081}".to_string(), m1);
-    computed_values.insert("m\u{2082}".to_string(), m2);
-    computed_values.insert("m\u{2083}".to_string(), m3);
-    computed_values.insert("m\u{2084}".to_string(), m4);
-    computed_values.insert("L".to_string(), l_val);
-    computed_values.insert("H".to_string(), h_val);
-    computed_values.insert("H\u{00b7}L".to_string(), h_val * l_val);
-
-    for group in groups {
-        if let Some(raw_name) = decode_label_name_raw(file, group) {
-            let name = format_sub(&raw_name);
-            if group
-                .records
-                .iter()
-                .any(|record| record.record_type == 0x0907)
-                && (group.header.kind()) == crate::format::GroupKind::Point
-                && !computed_values.contains_key(&name)
-            {
-                computed_values.insert(name, t1);
-            }
-        }
-    }
-
-    for group in groups {
-        let kind = group.header.kind();
-        let has_0907 = group
-            .records
-            .iter()
-            .any(|record| record.record_type == 0x0907);
-        if !has_0907
-            || !matches!(
-                kind,
-                crate::format::GroupKind::Point
-                    | crate::format::GroupKind::ParameterAnchor
-                    | crate::format::GroupKind::FunctionExpr
-            )
-        {
-            continue;
-        }
-        if group
-            .records
-            .iter()
-            .any(|record| record.record_type == 0x08fc)
-        {
-            continue;
-        }
-        let Some(anchor) = try_decode_payload_anchor_point(file, group).ok().flatten() else {
-            continue;
-        };
-
-        let own_label = decode_label_name_raw(file, group).map(|s| format_sub(&s));
-        let ref_labels: Vec<String> = find_indexed_path(file, group)
-            .map(|path| {
-                path.refs
-                    .iter()
-                    .filter_map(|&obj_ref| {
-                        let ref_group = groups.get(obj_ref.checked_sub(1)?)?;
-                        decode_label_name_raw(file, ref_group).map(|s| format_sub(&s))
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        let mut lines = Vec::new();
-
-        if let Some(name) = &own_label
-            && let Some(value) =
-                iteration_group_value(file, groups, group, anchors, &mut BTreeSet::new())
-        {
-            computed_values.entry(name.clone()).or_insert(value);
-        }
-
-        if kind == crate::format::GroupKind::FunctionExpr
-            && let Some(expr) = try_decode_function_expr(file, groups, group).ok()
-            && let Some(anchor_group) = find_indexed_path(file, group)
-                .and_then(|path| groups.get(path.refs.first()?.checked_sub(1)?))
-            && anchor_group.header.kind() == crate::format::GroupKind::ParameterAnchor
-            && let Some(parameter_name) = decode_label_name(file, anchor_group)
-            && let Some(path) = find_indexed_path(file, anchor_group)
-            && let Some(point_index) = path.refs.first().and_then(|ordinal| ordinal.checked_sub(1))
-            && let Some(value) =
-                iteration_group_value(file, groups, group, anchors, &mut BTreeSet::new())
-        {
-            let expr_label = payload_function_expr_label(
-                file,
-                groups,
-                anchors,
-                group,
-                &function_expr_label(expr.clone()),
-                &mut BTreeSet::new(),
-            );
-            lines.push(format!("{expr_label} = {value:.2}"));
-            labels.push(TextLabel {
-                anchor,
-                text: lines.join("\n"),
-                rich_markup: None,
-                color: [30, 30, 30, 255],
-                visible: label_visible_for_group(file, group),
-                binding: Some(TextLabelBinding::PolygonBoundaryExpression {
-                    point_index,
-                    parameter_name,
-                    expr_label,
-                    expr,
-                }),
-                screen_space: false,
-                hotspots: Vec::new(),
-                debug: Some(payload_debug_source(group)),
-            });
-            continue;
-        } else if kind == crate::format::GroupKind::Point {
-            if let Some(name) = &own_label
-                && let Some(&val) = computed_values.get(name.as_str())
-            {
-                let unit = "\u{5398}\u{7c73}";
-                lines.push(format!("{name} = {val:.0} {unit}"));
-                lines.push(format!("{name}/2 = {:.2} {unit}", val / 2.0));
-            }
-        } else {
-            let has_h = ref_labels.iter().any(|n| n == "H");
-            let has_l = ref_labels.iter().any(|n| n == "L");
-            if own_label.is_none() && has_h && has_l {
-                if let Some(val) = computed_values.get("H\u{00b7}L") {
-                    lines.push(format!("H\u{00b7}L = {val:.2}"));
-                }
-            } else {
-                let mut seen = BTreeSet::new();
-                let mut try_add = |name: &str, lines: &mut Vec<String>| {
-                    if seen.contains(name) {
-                        return;
-                    }
-                    seen.insert(name.to_string());
-                    if let Some(val) = computed_values.get(name) {
-                        lines.push(format!("{name} = {val:.2}"));
-                    }
-                };
-
-                if let Some(ol) = &own_label {
-                    try_add(ol, &mut lines);
-                }
-                for rl in &ref_labels {
-                    try_add(rl, &mut lines);
-                }
-            }
-
-            if lines.is_empty()
-                && let Some(ol) = &own_label
-            {
-                lines.push(ol.clone());
-            }
-        }
-
-        if !lines.is_empty() {
-            labels.push(TextLabel {
-                anchor,
-                text: lines.join("\n"),
-                rich_markup: None,
-                color: [30, 30, 30, 255],
-                visible: label_visible_for_group(file, group),
-                binding: None,
-                screen_space: false,
-                hotspots: Vec::new(),
-                debug: Some(payload_debug_source(group)),
-            });
-        }
-    }
-
-    labels
 }

@@ -964,19 +964,15 @@ mod tests {
         let lines = scene["lines"]
             .as_array()
             .expect("scene lines should be an array");
-        assert!(
-            lines
-                .iter()
-                .any(|line| line["binding"]["kind"].as_str() == Some("rotate-edge")),
-            "expected regular-polygon iteration edges to stay interactive"
+        assert_eq!(
+            lines.len(),
+            1,
+            "expected the payload's first related edge to remain serialized as the rotation source"
         );
         assert_eq!(
-            lines
-                .iter()
-                .filter(|line| line["binding"]["kind"].as_str() == Some("rotate-edge"))
-                .count(),
-            5,
-            "expected five interactive polygon edges for the default pentagon"
+            lines[0]["debug"]["groupOrdinal"].as_u64(),
+            Some(11),
+            "expected the serialized source edge to come from payload segment #11"
         );
         let line_iterations = scene["lineIterations"]
             .as_array()
@@ -992,10 +988,12 @@ mod tests {
         assert!(
             line_iterations.iter().any(|family| {
                 family["kind"].as_str() == Some("rotate")
+                    && family["sourceIndex"].as_u64() == Some(0)
                     && family["parameterName"].as_str() == Some("t₂")
-                    && family["depth"].as_u64() == Some(5)
+                    && family["depthParameterName"].as_str() == Some("t₃")
+                    && family["depth"].as_u64() == Some(4)
             }),
-            "expected the regular-polygon segment iteration family to be serialized into html payload"
+            "expected the regular-polygon segment iteration family to serialize the payload source edge and depth driver"
         );
         let iteration_tables = scene["iterationTables"]
             .as_array()
@@ -1117,7 +1115,8 @@ mod tests {
                 && label["text"].as_str() == Some("m = 0.95")
         }));
         assert!(labels.iter().any(|label| {
-            label["binding"]["kind"].as_str() == Some("polygon-boundary-expression")
+            label["binding"]["kind"].as_str() == Some("expression-value")
+                && label["binding"]["parameterName"].as_str() == Some("m")
                 && label["text"].as_str() == Some("1 / n = 0.50")
         }));
         let circles = scene["circles"]

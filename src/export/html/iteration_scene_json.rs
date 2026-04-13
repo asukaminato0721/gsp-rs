@@ -119,15 +119,17 @@ impl PointIterationJson {
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub(super) enum LineIterationJson {
     Rotate {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
         #[serde(rename = "centerIndex")]
         center_index: usize,
-        #[serde(rename = "vertexIndex")]
-        vertex_index: usize,
         #[serde(rename = "angleExpr")]
         angle_expr: FunctionExprJson,
         depth: usize,
         #[serde(rename = "parameterName")]
         parameter_name: Option<String>,
+        #[serde(rename = "depthParameterName")]
+        depth_parameter_name: Option<String>,
         color: [u8; 4],
         dashed: bool,
     },
@@ -202,19 +204,21 @@ impl LineIterationJson {
     pub(super) fn from_family(family: &LineIterationFamily) -> Self {
         match family {
             LineIterationFamily::Rotate {
+                source_index,
                 center_index,
-                vertex_index,
                 angle_expr,
                 depth,
                 parameter_name,
+                depth_parameter_name,
                 color,
                 dashed,
             } => Self::Rotate {
+                source_index: *source_index,
                 center_index: *center_index,
-                vertex_index: *vertex_index,
                 angle_expr: FunctionExprJson::from_expr(angle_expr),
                 depth: *depth,
                 parameter_name: parameter_name.clone(),
+                depth_parameter_name: depth_parameter_name.clone(),
                 color: *color,
                 dashed: *dashed,
             },

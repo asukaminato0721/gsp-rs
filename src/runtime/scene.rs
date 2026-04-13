@@ -171,11 +171,12 @@ pub(crate) enum LineIterationFamily {
         dashed: bool,
     },
     Rotate {
+        source_index: usize,
         center_index: usize,
-        vertex_index: usize,
         angle_expr: FunctionExpr,
         depth: usize,
         parameter_name: Option<String>,
+        depth_parameter_name: Option<String>,
         color: [u8; 4],
         dashed: bool,
     },
@@ -533,14 +534,6 @@ pub(crate) enum LineBinding {
         x_max: f64,
         sample_count: usize,
     },
-    RotateEdge {
-        center_index: usize,
-        vertex_index: usize,
-        parameter_name: String,
-        angle_expr: FunctionExpr,
-        start_step: usize,
-        end_step: usize,
-    },
     ArcBoundary {
         host_key: usize,
         boundary_kind: ArcBoundaryKind,
@@ -859,12 +852,6 @@ pub(crate) enum TextLabelBinding {
         point_index: usize,
         point_name: String,
         polygon_name: String,
-    },
-    PolygonBoundaryExpression {
-        point_index: usize,
-        parameter_name: String,
-        expr_label: String,
-        expr: FunctionExpr,
     },
     SegmentParameter {
         point_index: usize,

@@ -1047,33 +1047,7 @@
   /** @param {ViewerSceneData} scene */
   function collectDebugLineIterations(scene) {
     const iterations = Array.isArray(scene.lineIterations) ? [...scene.lineIterations] : [];
-    if (iterations.some((/** @type {any} */ item) => item?.kind === "rotate" || item?.kind === "rotate-edge")) {
-      return iterations;
-    }
-    /** @type {Map<string, { kind: string, centerIndex: number, vertexIndex: number, parameterName: string, edgeCount: number, visible: boolean }>} */
-    const rotateFamilies = new Map();
-    (scene.lines || []).forEach((/** @type {RuntimeLineJson} */ line) => {
-      const binding = line?.binding;
-      if (binding?.kind !== "rotate-edge") {
-        return;
-      }
-      const key = `${binding.centerIndex}:${binding.vertexIndex}:${binding.parameterName}`;
-      const current = rotateFamilies.get(key);
-      if (current) {
-        current.edgeCount += 1;
-        current.visible = current.visible || line.visible !== false;
-        return;
-      }
-      rotateFamilies.set(key, {
-        kind: "rotate-edge-family",
-        centerIndex: binding.centerIndex,
-        vertexIndex: binding.vertexIndex,
-        parameterName: binding.parameterName,
-        edgeCount: 1,
-        visible: line.visible !== false,
-      });
-    });
-    return [...iterations, ...rotateFamilies.values()];
+    return iterations;
   }
 
   /** @param {ViewerSceneData} scene */

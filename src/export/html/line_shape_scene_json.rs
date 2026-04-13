@@ -1,4 +1,3 @@
-use super::function_expr_json::FunctionExprJson;
 use super::scene_json::{DebugSourceJson, PointJson};
 use crate::runtime::geometry::darken;
 use crate::runtime::scene::{ArcBoundaryKind, ColorBinding, LineBinding, ShapeBinding};
@@ -186,21 +185,6 @@ enum LineBindingJson {
         #[serde(rename = "sampleCount")]
         sample_count: usize,
     },
-    #[serde(rename = "rotate-edge")]
-    RotateEdge {
-        #[serde(rename = "centerIndex")]
-        center_index: usize,
-        #[serde(rename = "vertexIndex")]
-        vertex_index: usize,
-        #[serde(rename = "parameterName")]
-        parameter_name: String,
-        #[serde(rename = "angleExpr")]
-        angle_expr: FunctionExprJson,
-        #[serde(rename = "startStep")]
-        start_step: usize,
-        #[serde(rename = "endStep")]
-        end_step: usize,
-    },
     #[serde(rename = "arc-boundary")]
     ArcBoundary {
         #[serde(rename = "hostKey")]
@@ -378,21 +362,6 @@ impl LineBindingJson {
                 x_min: *x_min,
                 x_max: *x_max,
                 sample_count: *sample_count,
-            },
-            LineBinding::RotateEdge {
-                center_index,
-                vertex_index,
-                parameter_name,
-                angle_expr,
-                start_step,
-                end_step,
-            } => Self::RotateEdge {
-                center_index: *center_index,
-                vertex_index: *vertex_index,
-                parameter_name: parameter_name.clone(),
-                angle_expr: FunctionExprJson::from_expr(angle_expr),
-                start_step: *start_step,
-                end_step: *end_step,
             },
             LineBinding::ArcBoundary {
                 host_key,

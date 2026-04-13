@@ -1,11 +1,10 @@
 use std::collections::BTreeSet;
 
 use super::{
-    CircleShape, GspFile, LineBinding, LineIterationFamily, LineShape, ObjectGroup, PointRecord,
+    CircleShape, GspFile, LineIterationFamily, LineShape, ObjectGroup, PointRecord,
     PolygonIterationFamily, PolygonShape, color_from_style, decode_label_name,
     decode_translated_point_constraint, fill_color_from_styles, find_indexed_path, line_is_dashed,
-    regular_polygon_iteration_step, rotate_around, try_decode_parameter_controlled_point,
-    try_decode_point_constraint,
+    regular_polygon_iteration_step, try_decode_parameter_controlled_point, try_decode_point_constraint,
 };
 use crate::runtime::extract::decode::resolve_circle_points_raw;
 use crate::runtime::extract::points::editable_non_graph_parameter_name_for_group;
@@ -69,100 +68,11 @@ impl AffinePointMap {
     }
 }
 
-pub(crate) fn collect_rotational_iteration_lines(
-    file: &GspFile,
-    groups: &[ObjectGroup],
-    anchors: &[Option<PointRecord>],
-) -> Vec<LineShape> {
-    groups
-        .iter()
-        .filter(|group| (group.header.kind()) == crate::format::GroupKind::IterationBinding)
-        .filter_map(|group| {
-            let path = find_indexed_path(file, group)?;
-            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            if (source_group.header.kind()) != crate::format::GroupKind::Segment {
-                return None;
-            }
-            let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
-            if (iter_group.header.kind()) != crate::format::GroupKind::RegularPolygonIteration {
-                return None;
-            }
-            let (center_group_index, angle_expr, parameter_name, n) =
-                regular_polygon_iteration_step(file, groups, iter_group)?;
-            let angle_degrees = -360.0 / n;
-            let center = anchors.get(center_group_index)?.clone()?;
-            let source_path = find_indexed_path(file, source_group)?;
-            if source_path.refs.len() != 2 {
-                return None;
-            }
-            let seed_vertex_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            let seed_vertex_path = find_indexed_path(file, seed_vertex_group)?;
-            let vertex_group_index = seed_vertex_path.refs.first()?.checked_sub(1)?;
-            let vertex = anchors.get(vertex_group_index)?.clone()?;
-            let depth = iter_group
-                .records
-                .iter()
-                .find(|record| record.record_type == 0x090a)
-                .map(|record| record.payload(&file.data))
-                .filter(|payload| payload.len() >= 20)
-                .map(|payload| super::read_u32(payload, 16) as usize)
-                .unwrap_or(0);
-            let mut lines = Vec::new();
-            let rotate = |point: &PointRecord, step: usize| {
-                rotate_around(point, &center, (angle_degrees * step as f64).to_radians())
-            };
-            for step in 0..=depth {
-                lines.push(LineShape {
-                    points: vec![
-                        rotate(&vertex, step),
-                        rotate(&vertex, (step + 1) % (depth + 1)),
-                    ],
-                    color: color_from_style(source_group.header.style_b),
-                    dashed: line_is_dashed(source_group.header.style_a),
-                    visible: !iter_group.header.is_hidden(),
-                    binding: Some(LineBinding::RotateEdge {
-                        center_index: center_group_index,
-                        vertex_index: vertex_group_index,
-                        parameter_name: parameter_name.clone(),
-                        angle_expr: angle_expr.clone(),
-                        start_step: step,
-                        end_step: (step + 1) % (depth + 1),
-                    }),
-                    debug: None,
-                });
-            }
-            Some(lines)
-        })
-        .flatten()
-        .collect()
-}
-
-pub(crate) fn collect_rotational_iteration_segment_groups(
-    file: &GspFile,
-    groups: &[ObjectGroup],
-) -> BTreeSet<usize> {
-    groups
-        .iter()
-        .filter(|group| (group.header.kind()) == crate::format::GroupKind::IterationBinding)
-        .filter_map(|group| {
-            let path = find_indexed_path(file, group)?;
-            let source_group_index = path.refs.first()?.checked_sub(1)?;
-            let source_group = groups.get(source_group_index)?;
-            if (source_group.header.kind()) != crate::format::GroupKind::Segment {
-                return None;
-            }
-            let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
-            ((iter_group.header.kind()) == crate::format::GroupKind::RegularPolygonIteration
-                && regular_polygon_iteration_step(file, groups, iter_group).is_some())
-            .then_some(source_group_index)
-        })
-        .collect()
-}
-
 pub(crate) fn collect_rotational_line_iteration_families(
     file: &GspFile,
     groups: &[ObjectGroup],
     group_to_point_index: &[Option<usize>],
+    line_group_to_index: &[Option<usize>],
 ) -> Vec<LineIterationFamily> {
     let mut families = Vec::new();
     let mut seen = BTreeSet::new();
@@ -180,23 +90,35 @@ pub(crate) fn collect_rotational_line_iteration_families(
             if (iter_group.header.kind()) != crate::format::GroupKind::RegularPolygonIteration {
                 return None;
             }
-            let (center_group_index, angle_expr, parameter_name, n) =
+            let (center_group_index, angle_expr, parameter_name, _n) =
                 regular_polygon_iteration_step(file, groups, iter_group)?;
-            let source_path = find_indexed_path(file, source_group)?;
-            let vertex_index = group_to_point_index
-                .get(source_path.refs.first()?.checked_sub(1)?)
+            let source_group_index = path.refs.first()?.checked_sub(1)?;
+            let source_index = line_group_to_index
+                .get(source_group_index)
                 .copied()
                 .flatten()?;
             let center_index = group_to_point_index
                 .get(center_group_index)
                 .copied()
                 .flatten()?;
+            let depth = carried_iteration_depth(file, iter_group, 0);
+            if depth == 0 {
+                return None;
+            }
+            let iter_path = find_indexed_path(file, iter_group)?;
+            let depth_parameter_name = groups
+                .get(iter_path.refs.first()?.checked_sub(1)?)
+                .and_then(|group| {
+                    decode_label_name(file, group)
+                        .or_else(|| editable_non_graph_parameter_name_for_group(file, groups, group))
+                });
             Some(LineIterationFamily::Rotate {
+                source_index,
                 center_index,
-                vertex_index,
                 angle_expr,
-                depth: n.round().max(1.0) as usize,
+                depth,
                 parameter_name: Some(parameter_name),
+                depth_parameter_name,
                 color: color_from_style(source_group.header.style_b),
                 dashed: line_is_dashed(source_group.header.style_a),
             })
@@ -204,20 +126,22 @@ pub(crate) fn collect_rotational_line_iteration_families(
             continue;
         };
         let LineIterationFamily::Rotate {
+            source_index,
             center_index,
-            vertex_index,
             depth,
             parameter_name,
+            depth_parameter_name,
             ..
         } = &family
         else {
             continue;
         };
         let key = (
+            *source_index,
             *center_index,
-            *vertex_index,
             *depth,
             parameter_name.clone().unwrap_or_default(),
+            depth_parameter_name.clone().unwrap_or_default(),
         );
         if seen.insert(key) {
             families.push(family);

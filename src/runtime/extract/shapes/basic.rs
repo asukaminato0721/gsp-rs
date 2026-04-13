@@ -232,6 +232,36 @@ fn is_auxiliary_segment_group(file: &GspFile, groups: &[ObjectGroup], group: &Ob
     if (group.header.kind()) != crate::format::GroupKind::Segment {
         return false;
     }
+    if groups.iter().any(|candidate| {
+        if (candidate.header.kind()) != crate::format::GroupKind::IterationBinding {
+            return false;
+        }
+        let Some(path) = find_indexed_path(file, candidate) else {
+            return false;
+        };
+        let Some(source_ordinal) = path.refs.first().copied() else {
+            return false;
+        };
+        if source_ordinal != group.ordinal {
+            return false;
+        }
+        let Some(iter_group) = path
+            .refs
+            .get(1)
+            .and_then(|ordinal| groups.get(ordinal.checked_sub(1)?))
+        else {
+            return false;
+        };
+        (iter_group.header.kind()) == crate::format::GroupKind::RegularPolygonIteration
+            && crate::runtime::extract::points::regular_polygon_iteration_step(
+                file,
+                groups,
+                iter_group,
+            )
+            .is_some()
+    }) {
+        return false;
+    }
     let Some(path) = find_indexed_path(file, group) else {
         return false;
     };

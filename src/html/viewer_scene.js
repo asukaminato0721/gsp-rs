@@ -1291,17 +1291,6 @@
       if (!start || !end) return null;
       return clipParametricLineToBounds(start, end, getViewBounds(env), true);
     }
-    if (line.binding?.kind === "rotate-edge" && Number.isFinite(line.binding.angleDegrees)) {
-      const center = resolveScenePoint(env, line.binding.centerIndex);
-      const vertex = resolveScenePoint(env, line.binding.vertexIndex);
-      if (!center || !vertex) return null;
-      const startStep = Number.isFinite(line.binding.startStep) ? line.binding.startStep : 0;
-      const endStep = Number.isFinite(line.binding.endStep) ? line.binding.endStep : 1;
-      return [
-        rotateAround(vertex, center, line.binding.angleDegrees * startStep * Math.PI / 180),
-        rotateAround(vertex, center, line.binding.angleDegrees * endStep * Math.PI / 180),
-      ];
-    }
     if (line.binding?.kind === "arc-boundary") {
       return sampleArcBoundaryPoints(env, line.binding);
     }

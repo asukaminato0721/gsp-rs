@@ -336,16 +336,6 @@ enum LabelBindingJson {
         #[serde(rename = "polygonName")]
         polygon_name: String,
     },
-    #[serde(rename = "polygon-boundary-expression")]
-    PolygonBoundaryExpression {
-        #[serde(rename = "pointIndex")]
-        point_index: usize,
-        #[serde(rename = "parameterName")]
-        parameter_name: String,
-        #[serde(rename = "exprLabel")]
-        expr_label: String,
-        expr: FunctionExprJson,
-    },
     #[serde(rename = "segment-parameter")]
     SegmentParameter {
         #[serde(rename = "pointIndex")]
@@ -446,17 +436,6 @@ impl LabelBindingJson {
                 point_index: *point_index,
                 point_name: point_name.clone(),
                 polygon_name: polygon_name.clone(),
-            },
-            TextLabelBinding::PolygonBoundaryExpression {
-                point_index,
-                parameter_name,
-                expr_label,
-                expr,
-            } => Self::PolygonBoundaryExpression {
-                point_index: *point_index,
-                parameter_name: parameter_name.clone(),
-                expr_label: expr_label.clone(),
-                expr: FunctionExprJson::from_expr(expr),
             },
             TextLabelBinding::SegmentParameter {
                 point_index,

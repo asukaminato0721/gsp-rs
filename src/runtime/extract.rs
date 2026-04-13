@@ -62,8 +62,7 @@ use self::shapes::{
     collect_materialized_ray_groups, collect_polygon_shapes, collect_raw_object_anchors,
     collect_reflected_circle_shapes, collect_reflected_line_shapes,
     collect_reflected_polygon_shapes, collect_rotated_circle_shapes, collect_rotated_line_shapes,
-    collect_rotated_polygon_shapes, collect_rotational_iteration_lines,
-    collect_rotational_iteration_segment_groups, collect_rotational_line_iteration_families,
+    collect_rotated_polygon_shapes, collect_rotational_line_iteration_families,
     collect_scaled_line_shapes, collect_segment_marker_shapes, collect_three_point_arc_shapes,
     collect_transformed_circle_shapes, collect_transformed_polygon_shapes,
     collect_translated_line_shapes, collect_translated_polygon_shapes,
@@ -148,7 +147,6 @@ struct CollectedShapes {
     rotated_lines: Vec<LineShape>,
     scaled_lines: Vec<LineShape>,
     reflected_lines: Vec<LineShape>,
-    rotational_iteration_lines: Vec<LineShape>,
     carried_iteration_lines: Vec<LineShape>,
     carried_iteration_polygons: Vec<PolygonShape>,
     carried_iteration_circles: Vec<CircleShape>,
@@ -266,8 +264,7 @@ fn collect_scene_shapes(
     point_map: &[Option<PointRecord>],
     analysis: &SceneAnalysis,
 ) -> CollectedShapes {
-    let mut suppressed_segment_groups = collect_carried_polygon_edge_segment_groups(file, groups);
-    suppressed_segment_groups.extend(collect_rotational_iteration_segment_groups(file, groups));
+    let suppressed_segment_groups = collect_carried_polygon_edge_segment_groups(file, groups);
     let suppressed_ray_groups = collect_materialized_ray_groups(file, groups);
     let polylines = collect_line_shapes(
         file,
@@ -310,8 +307,6 @@ fn collect_scene_shapes(
     let rotated_lines = collect_rotated_line_shapes(file, groups, &analysis.raw_anchors);
     let scaled_lines = collect_scaled_line_shapes(file, groups, &analysis.raw_anchors);
     let reflected_lines = collect_reflected_line_shapes(file, groups, &analysis.raw_anchors);
-    let rotational_iteration_lines =
-        collect_rotational_iteration_lines(file, groups, &analysis.raw_anchors);
     let carried_iteration_lines = collect_carried_iteration_lines(
         file,
         groups,
@@ -400,7 +395,6 @@ fn collect_scene_shapes(
         rotated_lines,
         scaled_lines,
         reflected_lines,
-        rotational_iteration_lines,
         carried_iteration_lines,
         carried_iteration_polygons,
         carried_iteration_circles,
@@ -687,11 +681,6 @@ fn remap_scene_bindings(
         &line_group_to_index,
     );
     remap_line_bindings(
-        &mut shapes.rotational_iteration_lines,
-        group_to_point_index,
-        &line_group_to_index,
-    );
-    remap_line_bindings(
         &mut shapes.coordinate_traces,
         group_to_point_index,
         &line_group_to_index,
@@ -704,8 +693,12 @@ fn remap_scene_bindings(
         &line_group_to_index,
         &suppressed_carried_polygon_segments,
     );
-    let rotational_line_iterations =
-        collect_rotational_line_iteration_families(file, groups, group_to_point_index);
+    let rotational_line_iterations = collect_rotational_line_iteration_families(
+        file,
+        groups,
+        group_to_point_index,
+        &line_group_to_index,
+    );
     let polygon_iterations =
         collect_carried_polygon_iteration_families(file, groups, raw_anchors, group_to_point_index);
     let mut line_iterations = rotational_line_iterations;

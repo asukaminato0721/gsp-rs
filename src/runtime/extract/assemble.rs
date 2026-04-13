@@ -378,9 +378,8 @@ pub(super) fn compute_scene_bounds(
     world_point_positions: &[PointRecord],
 ) -> BoundsData {
     let bounds_lines = shapes
-        .rotational_iteration_lines
+        .polylines
         .iter()
-        .chain(shapes.polylines.iter())
         .chain(shapes.direct_lines.iter())
         .chain(shapes.rays.iter())
         .chain(shapes.translated_lines.iter())
@@ -477,7 +476,6 @@ pub(super) fn assemble_scene(
         rotated_lines,
         scaled_lines,
         reflected_lines,
-        rotational_iteration_lines,
         carried_iteration_lines,
         carried_iteration_polygons,
         carried_iteration_circles,
@@ -527,7 +525,6 @@ pub(super) fn assemble_scene(
                 .chain(axes)
                 .chain(analysis.function_plots)
                 .chain(synthetic_axes)
-                .chain(rotational_iteration_lines)
                 .chain(iteration_lines)
                 .chain(carried_iteration_lines)
                 .collect(),

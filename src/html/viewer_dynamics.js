@@ -1329,11 +1329,15 @@
   }
 
   /**
-   * @param {{ depth: number; parameterName?: string | null }} family
+   * @param {{ depth: number; parameterName?: string | null; depthParameterName?: string | null }} family
    * @param {Map<string, number>} parameters
    */
   function pointIterationDepth(family, parameters) {
-    const rawValue = family.parameterName ? parameters.get(family.parameterName) : family.depth;
+    const rawValue = family.depthParameterName
+      ? parameters.get(family.depthParameterName)
+      : family.parameterName
+        ? parameters.get(family.parameterName)
+        : family.depth;
     const fallback = Number.isFinite(family.depth) ? family.depth : 0;
     const depth = Number.isFinite(rawValue) ? rawValue : fallback;
     return discreteIterationDepth(depth);
@@ -1851,9 +1855,30 @@
         return;
       }
       if (family.kind === "rotate") {
-        // Regular-polygon edge families already exist as rotate-edge source lines.
-        // Keep the serialized line-iteration family as payload/debug metadata and
-        // let refreshDerivedPoints update the bound lines in-place.
+        const source = scene.lines[family.sourceIndex];
+        const center = scene.points[family.centerIndex];
+        if (!source || !center) {
+          return;
+        }
+        const angleDegrees = evaluateExpr(family.angleExpr, 0, parameters);
+        if (!Number.isFinite(angleDegrees)) {
+          return;
+        }
+        for (let step = 1; step <= depth; step += 1) {
+          const radians = (angleDegrees * step) * Math.PI / 180;
+          scene.lines.push({
+            points: source.points.map((/** @type {Point} */ point) => rotateAround(point, center, radians)),
+            color: family.color,
+            dashed: !!family.dashed,
+            binding: {
+              kind: "rotate-line",
+              sourceIndex: family.sourceIndex,
+              centerIndex: family.centerIndex,
+              angleDegrees: angleDegrees * step,
+              parameterName: null,
+            },
+          });
+        }
         return;
       }
       if (family.kind !== "translate") return;
@@ -2483,23 +2508,6 @@
           ? `${label.binding.pointName}在${label.binding.polygonName}上的t值 = ${env.formatNumber(value)}`
           : `${label.binding.pointName} = ${env.formatNumber(value)}`;
         label.richMarkup = buildPlainTextRichMarkup(label.text);
-      }
-    },
-    "polygon-boundary-expression"(env, scene, label, parameters) {
-      const parameterValue = polygonBoundaryParameterFromPoint(scene, label.binding.pointIndex);
-      if (parameterValue === null) return;
-      const exprParameters = new Map(parameters);
-      exprParameters.set(label.binding.parameterName, parameterValue);
-      const value = evaluateExpr(label.binding.expr, 0, exprParameters);
-      const valueText = value !== null ? env.formatNumber(value) : "未定义";
-      label.richMarkup = buildExpressionRichMarkup(
-        label.binding.exprLabel,
-        valueText,
-      );
-      if (value !== null) {
-        label.text = `${label.binding.exprLabel} = ${valueText}`;
-      } else {
-        label.text = `${label.binding.exprLabel} = 未定义`;
       }
     },
     "segment-parameter"(env, scene, label) {
@@ -3289,6 +3297,7 @@
       }
     });
 
+    /** @type {RuntimeLineJson[]} */
     const preservedLines = [];
     const lineContext = { env, scene, bounds, parameters };
     scene.lines.forEach((/** @type {RuntimeLineJson} */ line) => {
@@ -3297,70 +3306,12 @@
         preservedLines.push(line);
         return;
       }
-      if (bindingKind === "rotate-edge") {
-        return;
+      const refreshLine = LINE_BINDING_REFRESHERS[bindingKind];
+      if (refreshLine) {
+        refreshLine(lineContext, line);
       }
-      if (bindingKind !== "rotate-edge") {
-        const refreshLine = LINE_BINDING_REFRESHERS[bindingKind];
-        if (refreshLine) {
-          refreshLine(lineContext, line);
-        }
-        preservedLines.push(line);
-        return;
-      }
+      preservedLines.push(line);
     });
-    for (const family of env.sourceScene.lineIterations || []) {
-      if (family.kind !== "rotate") {
-        continue;
-      }
-      const center = scene.points[family.centerIndex];
-      const vertex = scene.points[family.vertexIndex];
-      const sides = pointIterationDepth({
-        depth: family.depth,
-        parameterName: family.parameterName,
-      }, parameters);
-      if (!center || !vertex) continue;
-      if (sides === 1) continue;
-      const angleDegrees = evaluateExpr(family.angleExpr, 0, parameters);
-      if (!Number.isFinite(angleDegrees)) continue;
-      const angleExpr = /** @type {FunctionExprJson} */ (syncExprParameterValues(family.angleExpr, parameters));
-      const rotate = (/** @type {number} */ step) => rotateAround(vertex, center, (angleDegrees * step) * Math.PI / 180);
-      if (sides === 2) {
-        preservedLines.push({
-          points: [rotate(0), rotate(1)],
-          color: family.color,
-          dashed: family.dashed,
-          binding: {
-            kind: "rotate-edge",
-            centerIndex: family.centerIndex,
-            vertexIndex: family.vertexIndex,
-            parameterName: family.parameterName || "",
-            angleExpr,
-            angleDegrees,
-            startStep: 0,
-            endStep: 1,
-          },
-        });
-        continue;
-      }
-      for (let step = 0; step < sides; step += 1) {
-        preservedLines.push({
-          points: [rotate(step), rotate((step + 1) % sides)],
-          color: family.color,
-          dashed: family.dashed,
-          binding: {
-            kind: "rotate-edge",
-            centerIndex: family.centerIndex,
-            vertexIndex: family.vertexIndex,
-            parameterName: family.parameterName || "",
-            angleExpr,
-            angleDegrees,
-            startStep: step,
-            endStep: (step + 1) % sides,
-          },
-        });
-      }
-    }
     scene.lines = preservedLines;
   }
 
