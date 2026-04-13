@@ -1430,6 +1430,8 @@
   /** @param {ViewerEnv} env */
   function drawGrid(env) {
     if (!env.currentScene().graphMode) return;
+    const snapStroke = (value) => Math.round(value) + 0.5;
+    const snapText = (value) => Math.round(value);
     const bounds = getViewBounds(env);
     if (hasPolarPlot(env)) {
       drawPolarGrid(env, bounds);
@@ -1463,20 +1465,20 @@
           ? "rgb(40,40,40)"
           : major ? "rgb(190,190,190)" : "rgb(220,220,220)";
         env.ctx.beginPath();
-        env.ctx.moveTo(screen.x, 0);
-        env.ctx.lineTo(screen.x, env.sourceScene.height);
+        env.ctx.moveTo(snapStroke(screen.x), 0);
+        env.ctx.lineTo(snapStroke(screen.x), env.sourceScene.height);
         env.ctx.stroke();
         if (bounds.minY <= 0 && 0 <= bounds.maxY) {
           env.ctx.strokeStyle = "rgb(40,40,40)";
           env.ctx.beginPath();
-          env.ctx.moveTo(screen.x, xAxisY - (major ? 6 : 4));
-          env.ctx.lineTo(screen.x, xAxisY + (major ? 6 : 4));
+          env.ctx.moveTo(snapStroke(screen.x), snapStroke(xAxisY - (major ? 6 : 4)));
+          env.ctx.lineTo(snapStroke(screen.x), snapStroke(xAxisY + (major ? 6 : 4)));
           env.ctx.stroke();
         }
         if (major && stepIndex !== 0) {
           const label = env.formatPiLabel(stepIndex);
           const width = env.ctx.measureText(label).width;
-          env.ctx.fillText(label, screen.x - width / 2, Math.min(env.sourceScene.height - 4, xAxisY + 16));
+          env.ctx.fillText(label, snapText(screen.x - width / 2), snapText(Math.min(env.sourceScene.height - 4, xAxisY + 16)));
         }
       }
     } else {
@@ -1493,20 +1495,20 @@
           ? "rgb(40,40,40)"
           : major ? "rgb(200,200,200)" : "rgb(225,225,225)";
         env.ctx.beginPath();
-        env.ctx.moveTo(screen.x, 0);
-        env.ctx.lineTo(screen.x, env.sourceScene.height);
+        env.ctx.moveTo(snapStroke(screen.x), 0);
+        env.ctx.lineTo(snapStroke(screen.x), env.sourceScene.height);
         env.ctx.stroke();
         if (bounds.minY <= 0 && 0 <= bounds.maxY) {
           env.ctx.strokeStyle = "rgb(40,40,40)";
           env.ctx.beginPath();
-          env.ctx.moveTo(screen.x, xAxisY - (Math.abs(x) < 1e-6 ? 6 : major ? 4 : 2));
-          env.ctx.lineTo(screen.x, xAxisY + (Math.abs(x) < 1e-6 ? 6 : major ? 4 : 2));
+          env.ctx.moveTo(snapStroke(screen.x), snapStroke(xAxisY - (Math.abs(x) < 1e-6 ? 6 : major ? 4 : 2)));
+          env.ctx.lineTo(snapStroke(screen.x), snapStroke(xAxisY + (Math.abs(x) < 1e-6 ? 6 : major ? 4 : 2)));
           env.ctx.stroke();
         }
         if (major && Math.abs(x) >= 1e-6) {
           const label = env.formatAxisNumber(x);
           const width = env.ctx.measureText(label).width;
-          env.ctx.fillText(label, screen.x - width / 2, Math.min(env.sourceScene.height - 4, xAxisY + 16));
+          env.ctx.fillText(label, snapText(screen.x - width / 2), snapText(Math.min(env.sourceScene.height - 4, xAxisY + 16)));
         }
       }
     }
@@ -1518,20 +1520,20 @@
         ? "rgb(40,40,40)"
         : major ? "rgb(200,200,200)" : "rgb(225,225,225)";
       env.ctx.beginPath();
-      env.ctx.moveTo(0, screen.y);
-      env.ctx.lineTo(env.sourceScene.width, screen.y);
+      env.ctx.moveTo(0, snapStroke(screen.y));
+      env.ctx.lineTo(env.sourceScene.width, snapStroke(screen.y));
       env.ctx.stroke();
       if (bounds.minX <= 0 && 0 <= bounds.maxX) {
         env.ctx.strokeStyle = "rgb(40,40,40)";
         env.ctx.beginPath();
-        env.ctx.moveTo(yAxisX - (Math.abs(y) < 1e-6 ? 6 : major ? 4 : 2), screen.y);
-        env.ctx.lineTo(yAxisX + (Math.abs(y) < 1e-6 ? 6 : major ? 4 : 2), screen.y);
+        env.ctx.moveTo(snapStroke(yAxisX - (Math.abs(y) < 1e-6 ? 6 : major ? 4 : 2)), snapStroke(screen.y));
+        env.ctx.lineTo(snapStroke(yAxisX + (Math.abs(y) < 1e-6 ? 6 : major ? 4 : 2)), snapStroke(screen.y));
         env.ctx.stroke();
       }
       if (major && Math.abs(y) >= 1e-6) {
         const label = env.formatAxisNumber(y);
         const width = env.ctx.measureText(label).width;
-        env.ctx.fillText(label, yAxisX - width - 8, screen.y - 6);
+        env.ctx.fillText(label, snapText(yAxisX - width - 8), snapText(screen.y - 6));
       }
     }
     if (env.currentScene().origin) {

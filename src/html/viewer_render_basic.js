@@ -509,8 +509,6 @@
   /** @param {ViewerEnv} env */
   function draw(env) {
     env.ctx.clearRect(0, 0, env.sourceScene.width, env.sourceScene.height);
-    env.ctx.fillStyle = "rgb(250,250,248)";
-    env.ctx.fillRect(0, 0, env.sourceScene.width, env.sourceScene.height);
     env.drawGrid();
     modules.render.drawImages(env);
     modules.render.drawPolygons(env);

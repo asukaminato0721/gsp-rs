@@ -499,6 +499,36 @@
     }
   }
 
+  /**
+   * @param {ViewerEnv} env
+   * @param {number} screenX
+   * @param {number} screenY
+   * @returns {number | null}
+   */
+  function findHitImage(env, screenX, screenY) {
+    const images = env.currentScene().images || [];
+    for (let index = images.length - 1; index >= 0; index -= 1) {
+      const image = images[index];
+      const topLeft = image.screenSpace ? image.topLeft : env.toScreen(image.topLeft);
+      const bottomRight = image.screenSpace ? image.bottomRight : env.toScreen(image.bottomRight);
+      if (!topLeft || !bottomRight) continue;
+      const left = Math.min(topLeft.x, bottomRight.x);
+      const top = Math.min(topLeft.y, bottomRight.y);
+      const width = Math.abs(bottomRight.x - topLeft.x);
+      const height = Math.abs(bottomRight.y - topLeft.y);
+      if (width <= 1e-6 || height <= 1e-6) continue;
+      if (
+        screenX >= left
+        && screenX <= left + width
+        && screenY >= top
+        && screenY <= top + height
+      ) {
+        return index;
+      }
+    }
+    return null;
+  }
+
   /** @param {ViewerEnv} env */
   function drawLines(env) {
     const resolveRightAngleMarkerPoints = (
@@ -1090,8 +1120,6 @@
   /** @param {ViewerEnv} env */
   function draw(env) {
     env.ctx.clearRect(0, 0, env.sourceScene.width, env.sourceScene.height);
-    env.ctx.fillStyle = "rgb(250,250,248)";
-    env.ctx.fillRect(0, 0, env.sourceScene.width, env.sourceScene.height);
     env.drawGrid();
     drawImages(env);
     drawPolygons(env);
@@ -1111,6 +1139,7 @@
     labelHotspotRects,
     findHitPoint,
     findHitLabel,
+    findHitImage,
     findHitIterationTable,
     findHitPolygon,
     drawImages,

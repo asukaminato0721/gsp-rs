@@ -13,8 +13,25 @@
   /** @type {SceneData} */
   const sourceScene = JSON.parse(document.getElementById("scene-data").textContent);
   /** @type {HTMLCanvasElement} */
+  const gridCanvas = /** @type {HTMLCanvasElement} */ (document.getElementById("grid-layer"));
+  const gridCtx = gridCanvas.getContext("2d");
+  /** @type {HTMLCanvasElement} */
+  const sceneCanvas = /** @type {HTMLCanvasElement} */ (document.getElementById("scene-layer"));
+  const sceneCtx = sceneCanvas.getContext("2d");
+  /** @type {HTMLCanvasElement} */
   const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById("view"));
   const ctx = canvas.getContext("2d");
+  const gridDevicePixelRatio = Math.max(1, window.devicePixelRatio || 1);
+  gridCanvas.style.width = `${sourceScene.width}px`;
+  gridCanvas.style.height = `${sourceScene.height}px`;
+  gridCanvas.width = Math.round(sourceScene.width * gridDevicePixelRatio);
+  gridCanvas.height = Math.round(sourceScene.height * gridDevicePixelRatio);
+  gridCtx.setTransform(gridDevicePixelRatio, 0, 0, gridDevicePixelRatio, 0, 0);
+  sceneCanvas.style.width = `${sourceScene.width}px`;
+  sceneCanvas.style.height = `${sourceScene.height}px`;
+  sceneCanvas.width = Math.round(sourceScene.width * gridDevicePixelRatio);
+  sceneCanvas.height = Math.round(sourceScene.height * gridDevicePixelRatio);
+  sceneCtx.setTransform(gridDevicePixelRatio, 0, 0, gridDevicePixelRatio, 0, 0);
   /** @type {HTMLButtonElement} */
   const resetButton = /** @type {HTMLButtonElement} */ (document.getElementById("reset-view"));
   /** @type {HTMLButtonElement} */
@@ -707,7 +724,7 @@
    * @param {number | null} polygonIndex
    * @param {number | null} iterationTableIndex
    */
-  function beginDrag(pointerId, position, pointIndex, labelIndex, polygonIndex, iterationTableIndex) {
+  function beginDrag(pointerId, position, pointIndex, labelIndex, polygonIndex, iterationTableIndex, imageIndex) {
     dragModule.beginDrag(
       viewerEnv,
       pointerId,
@@ -716,6 +733,7 @@
       labelIndex,
       polygonIndex,
       iterationTableIndex,
+      imageIndex,
     );
   }
 
@@ -727,6 +745,11 @@
   /** @param {Point} world */
   function updateDraggedLabel(world) {
     dragModule.updateDraggedLabel(viewerEnv, world);
+  }
+
+  /** @param {Point} position */
+  function updateDraggedImage(position) {
+    dragModule.updateDraggedImage(viewerEnv, position);
   }
 
   /** @param {Point} position */
@@ -753,7 +776,11 @@
   /** @type {ViewerEnv} */
   const viewerEnv = {
     canvas,
-    ctx,
+    ctx: sceneCtx,
+    gridCanvas,
+    gridCtx,
+    sceneCanvas,
+    sceneCtx,
     sourceScene,
     margin,
     trigMode,
@@ -786,7 +813,10 @@
     labelTag: label,
     parameterControls,
     van,
-    drawGrid: () => sceneModule.drawGrid(viewerEnv),
+    drawGrid: () => {
+      gridCtx.clearRect(0, 0, sourceScene.width, sourceScene.height);
+      sceneModule.drawGrid({ ...viewerEnv, ctx: gridCtx, canvas: gridCanvas });
+    },
   };
   overlayRuntime = overlayModule?.init ? overlayModule.init(viewerEnv, buttonOverlays) : overlayRuntime;
 
@@ -849,17 +879,20 @@
   canvas.addEventListener("pointerdown", (event) => {
     const position = sceneModule.getCanvasCoords(viewerEnv, event);
     const pointIndex = findHitPoint(position.x, position.y);
+    const imageIndex = pointIndex === null
+      ? (renderModule.findHitImage ? renderModule.findHitImage(viewerEnv, position.x, position.y) : null)
+      : null;
     const iterationTableIndex =
-      pointIndex === null
+      pointIndex === null && imageIndex === null
         ? findHitIterationTable(position.x, position.y)
         : null;
-    const labelIndex = pointIndex === null && iterationTableIndex === null
+    const labelIndex = pointIndex === null && imageIndex === null && iterationTableIndex === null
       ? findHitLabel(position.x, position.y)
       : null;
-    const polygonIndex = pointIndex === null && iterationTableIndex === null && labelIndex === null
+    const polygonIndex = pointIndex === null && imageIndex === null && iterationTableIndex === null && labelIndex === null
       ? findHitPolygon(position.x, position.y)
       : null;
-    beginDrag(event.pointerId, position, pointIndex, labelIndex, polygonIndex, iterationTableIndex);
+    beginDrag(event.pointerId, position, pointIndex, labelIndex, polygonIndex, iterationTableIndex, imageIndex);
     canvas.setPointerCapture(event.pointerId);
   });
 
@@ -872,6 +905,8 @@
     }
     if (dragState.val.mode === "point") {
       updateDraggedPoint(sceneModule.toWorld(viewerEnv, position.x, position.y));
+    } else if (dragState.val.mode === "image") {
+      updateDraggedImage(position);
     } else if (dragState.val.mode === "polygon") {
       updateDraggedPolygon(sceneModule.toWorld(viewerEnv, position.x, position.y));
     } else if (dragState.val.mode === "label") {

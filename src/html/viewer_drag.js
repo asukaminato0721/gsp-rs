@@ -243,13 +243,16 @@
    * @param {number | null} polygonIndex
    * @param {number | null} iterationTableIndex
    */
-  function dragModeFor(env, pointIndex, labelIndex, polygonIndex, iterationTableIndex) {
+  function dragModeFor(env, pointIndex, labelIndex, polygonIndex, iterationTableIndex, imageIndex) {
     if (pointIndex !== null) {
       const point = env.currentScene().points[pointIndex];
       if (PAN_ONLY_POINT_BINDINGS.has(point?.binding?.kind)) {
         return "pan";
       }
       return env.currentScene().graphMode && env.isOriginPointIndex(pointIndex) ? "origin-pan" : "point";
+    }
+    if (imageIndex !== null) {
+      return "image";
     }
     if (polygonIndex !== null) {
       return "polygon";
@@ -268,15 +271,17 @@
    * @param {number | null} labelIndex
    * @param {number | null} polygonIndex
    * @param {number | null} iterationTableIndex
+   * @param {number | null} imageIndex
    */
-  function beginDrag(env, pointerId, position, pointIndex, labelIndex, polygonIndex, iterationTableIndex) {
+  function beginDrag(env, pointerId, position, pointIndex, labelIndex, polygonIndex, iterationTableIndex, imageIndex) {
     env.dragState.val = {
       pointerId,
-      mode: dragModeFor(env, pointIndex, labelIndex, polygonIndex, iterationTableIndex),
+      mode: dragModeFor(env, pointIndex, labelIndex, polygonIndex, iterationTableIndex, imageIndex),
       pointIndex,
       labelIndex,
       polygonIndex,
       iterationTableIndex,
+      imageIndex,
       lastX: position.x,
       lastY: position.y,
     };
@@ -368,6 +373,35 @@
    * @param {ViewerEnv} env
    * @param {Point} position
    */
+  function updateDraggedImage(env, position) {
+    env.updateScene((draft) => {
+      const image = draft.images?.[env.dragState.val.imageIndex];
+      if (!image) return;
+      const dxScreen = position.x - env.dragState.val.lastX;
+      const dyScreen = position.y - env.dragState.val.lastY;
+      if (Math.abs(dxScreen) <= 1e-9 && Math.abs(dyScreen) <= 1e-9) return;
+      if (image.screenSpace) {
+        image.topLeft.x += dxScreen;
+        image.topLeft.y += dyScreen;
+        image.bottomRight.x += dxScreen;
+        image.bottomRight.y += dyScreen;
+        return;
+      }
+      const worldNow = env.toWorld(position.x, position.y);
+      const worldLast = env.toWorld(env.dragState.val.lastX, env.dragState.val.lastY);
+      const dx = worldNow.x - worldLast.x;
+      const dy = worldNow.y - worldLast.y;
+      image.topLeft.x += dx;
+      image.topLeft.y += dy;
+      image.bottomRight.x += dx;
+      image.bottomRight.y += dy;
+    });
+  }
+
+  /**
+   * @param {ViewerEnv} env
+   * @param {Point} position
+   */
   function panFromPointerDelta(env, position) {
     const worldNow = env.toWorld(position.x, position.y);
     const worldLast = env.toWorld(env.dragState.val.lastX, env.dragState.val.lastY);
@@ -380,6 +414,7 @@
     beginDrag,
     updateDraggedPoint,
     updateDraggedLabel,
+    updateDraggedImage,
     updateDraggedPolygon,
     updateDraggedIterationTable,
     panFromPointerDelta,

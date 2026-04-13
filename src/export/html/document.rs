@@ -74,6 +74,8 @@ pub(super) fn render_standalone_html_document(
       </div>
       <div class="{canvas_shell_class}">
         <div class="{canvas_stage_class}">
+          <canvas id="grid-layer" width="{width}" height="{height}"></canvas>
+          <canvas id="scene-layer" width="{width}" height="{height}"></canvas>
           <canvas id="view" width="{width}" height="{height}"></canvas>
           <div id="button-overlays"></div>
         </div>
