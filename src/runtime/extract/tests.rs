@@ -2518,6 +2518,20 @@ fn preserves_reflection_point_circle_and_polygon_gsp() {
 }
 
 #[test]
+fn preserves_reflected_circle_across_constructed_perpendicular_line() {
+    let scene = fixture_scene(include_bytes!("../../../tests/fixtures/bug/镜像圆.gsp"));
+
+    assert_eq!(scene.circles.len(), 2, "expected original and reflected circles");
+    assert!(scene.circles.iter().any(|circle| matches!(
+        circle.binding,
+        Some(crate::runtime::scene::ShapeBinding::ReflectCircle {
+            line_index: Some(_),
+            ..
+        })
+    )));
+}
+
+#[test]
 fn preserves_translated_triangle_segments_in_congruent_triangle_fixture() {
     let scene = fixture_scene(include_bytes!(
         "../../../tests/fixtures/gsp/两个三角形标记全等.gsp"

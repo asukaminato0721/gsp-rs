@@ -2462,8 +2462,7 @@
     },
     "reflect-line"({ scene }, line) {
       const source = scene.lines[line.binding.sourceIndex];
-      const lineStart = scene.points[line.binding.lineStartIndex];
-      const lineEnd = scene.points[line.binding.lineEndIndex];
+      const [lineStart, lineEnd] = reflectionAxisPoints(scene, line.binding);
       if (source && lineStart && lineEnd) {
         line.points = source.points.map((/** @type {Point} */ point) => reflectAcrossLine(point, lineStart, lineEnd));
       }
@@ -2531,8 +2530,7 @@
     },
     "reflect-circle"({ scene, resolveHandle }, circle) {
       const source = scene.circles[circle.binding.sourceIndex];
-      const lineStart = scene.points[circle.binding.lineStartIndex];
-      const lineEnd = scene.points[circle.binding.lineEndIndex];
+      const [lineStart, lineEnd] = reflectionAxisPoints(scene, circle.binding);
       if (!source || !lineStart || !lineEnd) return;
       circle.center = reflectAcrossLine(resolveHandle(source.center), lineStart, lineEnd);
       circle.radiusPoint = reflectAcrossLine(resolveHandle(source.radiusPoint), lineStart, lineEnd);
@@ -2592,8 +2590,7 @@
     },
     "reflect-polygon"({ scene, resolveHandle }, polygon) {
       const source = scene.polygons[polygon.binding.sourceIndex];
-      const lineStart = scene.points[polygon.binding.lineStartIndex];
-      const lineEnd = scene.points[polygon.binding.lineEndIndex];
+      const [lineStart, lineEnd] = reflectionAxisPoints(scene, polygon.binding);
       if (!source || !lineStart || !lineEnd) return;
       polygon.points = source.points.map((/** @type {PointHandle} */ handle) => {
         const point = resolveHandle(handle);
@@ -2785,6 +2782,27 @@
       }
     }
     scene.lines = preservedLines;
+  }
+
+  /**
+   * @param {ViewerSceneData} scene
+   * @param {{ lineStartIndex?: number, lineEndIndex?: number, lineIndex?: number }} binding
+   * @returns {[Point | null, Point | null]}
+   */
+  function reflectionAxisPoints(scene, binding) {
+    if (Number.isInteger(binding.lineIndex)) {
+      const axis = scene.lines[binding.lineIndex];
+      if (axis?.points?.length >= 2) {
+        return [axis.points[0], axis.points[axis.points.length - 1]];
+      }
+    }
+    const lineStart = Number.isInteger(binding.lineStartIndex)
+      ? scene.points[binding.lineStartIndex]
+      : null;
+    const lineEnd = Number.isInteger(binding.lineEndIndex)
+      ? scene.points[binding.lineEndIndex]
+      : null;
+    return [lineStart || null, lineEnd || null];
   }
 
   /**

@@ -141,10 +141,12 @@ enum LineBindingJson {
     ReflectLine {
         #[serde(rename = "sourceIndex")]
         source_index: usize,
-        #[serde(rename = "lineStartIndex")]
-        line_start_index: usize,
-        #[serde(rename = "lineEndIndex")]
-        line_end_index: usize,
+        #[serde(rename = "lineStartIndex", skip_serializing_if = "Option::is_none")]
+        line_start_index: Option<usize>,
+        #[serde(rename = "lineEndIndex", skip_serializing_if = "Option::is_none")]
+        line_end_index: Option<usize>,
+        #[serde(rename = "lineIndex", skip_serializing_if = "Option::is_none")]
+        line_index: Option<usize>,
     },
     #[serde(rename = "custom-transform-trace")]
     CustomTransformTrace {
@@ -332,10 +334,12 @@ impl LineBindingJson {
                 source_index,
                 line_start_index,
                 line_end_index,
+                line_index,
             } => Self::ReflectLine {
                 source_index: *source_index,
                 line_start_index: *line_start_index,
                 line_end_index: *line_end_index,
+                line_index: *line_index,
             },
             LineBinding::CustomTransformTrace {
                 point_index,
@@ -646,19 +650,23 @@ enum ShapeBindingJson {
     ReflectPolygon {
         #[serde(rename = "sourceIndex")]
         source_index: usize,
-        #[serde(rename = "lineStartIndex")]
-        line_start_index: usize,
-        #[serde(rename = "lineEndIndex")]
-        line_end_index: usize,
+        #[serde(rename = "lineStartIndex", skip_serializing_if = "Option::is_none")]
+        line_start_index: Option<usize>,
+        #[serde(rename = "lineEndIndex", skip_serializing_if = "Option::is_none")]
+        line_end_index: Option<usize>,
+        #[serde(rename = "lineIndex", skip_serializing_if = "Option::is_none")]
+        line_index: Option<usize>,
     },
     #[serde(rename = "reflect-circle")]
     ReflectCircle {
         #[serde(rename = "sourceIndex")]
         source_index: usize,
-        #[serde(rename = "lineStartIndex")]
-        line_start_index: usize,
-        #[serde(rename = "lineEndIndex")]
-        line_end_index: usize,
+        #[serde(rename = "lineStartIndex", skip_serializing_if = "Option::is_none")]
+        line_start_index: Option<usize>,
+        #[serde(rename = "lineEndIndex", skip_serializing_if = "Option::is_none")]
+        line_end_index: Option<usize>,
+        #[serde(rename = "lineIndex", skip_serializing_if = "Option::is_none")]
+        line_index: Option<usize>,
     },
 }
 
@@ -756,19 +764,23 @@ impl ShapeBindingJson {
                 source_index,
                 line_start_index,
                 line_end_index,
+                line_index,
             } => Self::ReflectPolygon {
                 source_index: *source_index,
                 line_start_index: *line_start_index,
                 line_end_index: *line_end_index,
+                line_index: *line_index,
             },
             ShapeBinding::ReflectCircle {
                 source_index,
                 line_start_index,
                 line_end_index,
+                line_index,
             } => Self::ReflectCircle {
                 source_index: *source_index,
                 line_start_index: *line_start_index,
                 line_end_index: *line_end_index,
+                line_index: *line_index,
             },
         }
     }

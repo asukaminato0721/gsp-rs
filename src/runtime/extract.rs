@@ -46,9 +46,9 @@ use self::points::{
     decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,
     decode_point_pair_translation_anchor_raw, decode_reflection_anchor_raw,
     decode_regular_polygon_vertex_anchor_raw, decode_translated_point_anchor_raw,
-    decode_translated_point_constraint, reflection_line_group_indices,
-    regular_polygon_iteration_step, remap_circle_bindings, remap_label_bindings,
-    remap_line_bindings, remap_polygon_bindings, translation_point_pair_group_indices,
+    decode_translated_point_constraint, regular_polygon_iteration_step, remap_circle_bindings,
+    remap_label_bindings, remap_line_bindings, remap_polygon_bindings,
+    translation_point_pair_group_indices,
     try_decode_parameter_controlled_point, try_decode_parameter_rotation_binding,
     try_decode_point_constraint, try_decode_transform_binding,
 };
@@ -576,12 +576,16 @@ fn remap_scene_bindings(
 ) {
     let suppressed_carried_polygon_segments =
         collect_carried_polygon_edge_segment_groups(file, groups);
+    let line_group_to_index = group_shape_index_map(groups, |_, group| {
+        group.header.kind().is_rendered_line_group()
+    });
     let circle_group_to_index =
         group_shape_index_map(groups, |_, group| is_circle_group_kind(group.header.kind()));
     remap_circle_bindings(
         &mut shapes.circles,
         group_to_point_index,
         &circle_group_to_index,
+        &line_group_to_index,
     );
     let polygon_group_to_index = group_shape_index_map(groups, |index, group| {
         (group.header.kind()) == crate::format::GroupKind::Polygon
@@ -591,45 +595,50 @@ fn remap_scene_bindings(
         &mut shapes.polygons,
         group_to_point_index,
         &polygon_group_to_index,
+        &line_group_to_index,
     );
     remap_circle_bindings(
         &mut shapes.rotated_circles,
         group_to_point_index,
         &circle_group_to_index,
+        &line_group_to_index,
     );
     remap_circle_bindings(
         &mut shapes.transformed_circles,
         group_to_point_index,
         &circle_group_to_index,
+        &line_group_to_index,
     );
     remap_circle_bindings(
         &mut shapes.reflected_circles,
         group_to_point_index,
         &circle_group_to_index,
+        &line_group_to_index,
     );
     remap_polygon_bindings(
         &mut shapes.translated_polygons,
         group_to_point_index,
         &polygon_group_to_index,
+        &line_group_to_index,
     );
     remap_polygon_bindings(
         &mut shapes.rotated_polygons,
         group_to_point_index,
         &polygon_group_to_index,
+        &line_group_to_index,
     );
     remap_polygon_bindings(
         &mut shapes.transformed_polygons,
         group_to_point_index,
         &polygon_group_to_index,
+        &line_group_to_index,
     );
     remap_polygon_bindings(
         &mut shapes.reflected_polygons,
         group_to_point_index,
         &polygon_group_to_index,
+        &line_group_to_index,
     );
-    let line_group_to_index = group_shape_index_map(groups, |_, group| {
-        group.header.kind().is_rendered_line_group()
-    });
     remap_line_bindings(
         &mut shapes.polylines,
         group_to_point_index,

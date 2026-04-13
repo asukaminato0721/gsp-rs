@@ -465,8 +465,9 @@ pub(crate) enum LineBinding {
     },
     ReflectLine {
         source_index: usize,
-        line_start_index: usize,
-        line_end_index: usize,
+        line_start_index: Option<usize>,
+        line_end_index: Option<usize>,
+        line_index: Option<usize>,
     },
     CustomTransformTrace {
         point_index: usize,
@@ -718,13 +719,15 @@ pub(crate) enum ShapeBinding {
     },
     ReflectPolygon {
         source_index: usize,
-        line_start_index: usize,
-        line_end_index: usize,
+        line_start_index: Option<usize>,
+        line_end_index: Option<usize>,
+        line_index: Option<usize>,
     },
     ReflectCircle {
         source_index: usize,
-        line_start_index: usize,
-        line_end_index: usize,
+        line_start_index: Option<usize>,
+        line_end_index: Option<usize>,
+        line_index: Option<usize>,
     },
 }
 

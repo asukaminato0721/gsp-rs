@@ -82,6 +82,7 @@ pub(crate) fn remap_circle_bindings(
     circles: &mut [CircleShape],
     group_to_point_index: &[Option<usize>],
     group_to_circle_index: &[Option<usize>],
+    group_to_line_index: &[Option<usize>],
 ) {
     for circle in circles {
         let Some(binding) = circle.binding.as_mut() else {
@@ -147,27 +148,29 @@ pub(crate) fn remap_circle_bindings(
                 source_index,
                 line_start_index,
                 line_end_index,
+                line_index,
             } => {
                 let Some(mapped_source_index) = mapped_index(group_to_circle_index, *source_index)
                 else {
                     circle.binding = None;
                     continue;
                 };
-                let Some(mapped_line_start_index) =
-                    mapped_index(group_to_point_index, *line_start_index)
-                else {
+                let mapped_line_start_index =
+                    mapped_optional_index(group_to_point_index, *line_start_index).unwrap_or(None);
+                let mapped_line_end_index =
+                    mapped_optional_index(group_to_point_index, *line_end_index).unwrap_or(None);
+                let mapped_line_index =
+                    mapped_optional_index(group_to_line_index, *line_index).unwrap_or(None);
+                if mapped_line_index.is_none()
+                    && (mapped_line_start_index.is_none() || mapped_line_end_index.is_none())
+                {
                     circle.binding = None;
                     continue;
-                };
-                let Some(mapped_line_end_index) =
-                    mapped_index(group_to_point_index, *line_end_index)
-                else {
-                    circle.binding = None;
-                    continue;
-                };
+                }
                 *source_index = mapped_source_index;
                 *line_start_index = mapped_line_start_index;
                 *line_end_index = mapped_line_end_index;
+                *line_index = mapped_line_index;
                 continue;
             }
             _ => continue,
@@ -189,6 +192,7 @@ pub(crate) fn remap_polygon_bindings(
     polygons: &mut [PolygonShape],
     group_to_point_index: &[Option<usize>],
     group_to_polygon_index: &[Option<usize>],
+    group_to_line_index: &[Option<usize>],
 ) {
     for polygon in polygons {
         let Some(binding) = polygon.binding.as_mut() else {
@@ -285,27 +289,29 @@ pub(crate) fn remap_polygon_bindings(
                 source_index,
                 line_start_index,
                 line_end_index,
+                line_index,
             } => {
                 let Some(mapped_source_index) = mapped_index(group_to_polygon_index, *source_index)
                 else {
                     polygon.binding = None;
                     continue;
                 };
-                let Some(mapped_line_start_index) =
-                    mapped_index(group_to_point_index, *line_start_index)
-                else {
+                let mapped_line_start_index =
+                    mapped_optional_index(group_to_point_index, *line_start_index).unwrap_or(None);
+                let mapped_line_end_index =
+                    mapped_optional_index(group_to_point_index, *line_end_index).unwrap_or(None);
+                let mapped_line_index =
+                    mapped_optional_index(group_to_line_index, *line_index).unwrap_or(None);
+                if mapped_line_index.is_none()
+                    && (mapped_line_start_index.is_none() || mapped_line_end_index.is_none())
+                {
                     polygon.binding = None;
                     continue;
-                };
-                let Some(mapped_line_end_index) =
-                    mapped_index(group_to_point_index, *line_end_index)
-                else {
-                    polygon.binding = None;
-                    continue;
-                };
+                }
                 *source_index = mapped_source_index;
                 *line_start_index = mapped_line_start_index;
                 *line_end_index = mapped_line_end_index;
+                *line_index = mapped_line_index;
                 continue;
             }
             _ => continue,
@@ -552,27 +558,29 @@ pub(crate) fn remap_line_bindings(
                 source_index,
                 line_start_index,
                 line_end_index,
+                line_index,
             } => {
                 let Some(mapped_source_index) = mapped_index(group_to_line_index, *source_index)
                 else {
                     line.binding = None;
                     continue;
                 };
-                let Some(mapped_line_start_index) =
-                    mapped_index(group_to_point_index, *line_start_index)
-                else {
+                let mapped_line_start_index =
+                    mapped_optional_index(group_to_point_index, *line_start_index).unwrap_or(None);
+                let mapped_line_end_index =
+                    mapped_optional_index(group_to_point_index, *line_end_index).unwrap_or(None);
+                let mapped_line_index =
+                    mapped_optional_index(group_to_line_index, *line_index).unwrap_or(None);
+                if mapped_line_index.is_none()
+                    && (mapped_line_start_index.is_none() || mapped_line_end_index.is_none())
+                {
                     line.binding = None;
                     continue;
-                };
-                let Some(mapped_line_end_index) =
-                    mapped_index(group_to_point_index, *line_end_index)
-                else {
-                    line.binding = None;
-                    continue;
-                };
+                }
                 *source_index = mapped_source_index;
                 *line_start_index = mapped_line_start_index;
                 *line_end_index = mapped_line_end_index;
+                *line_index = mapped_line_index;
             }
             LineBinding::CustomTransformTrace { point_index, .. }
             | LineBinding::CoordinateTrace { point_index, .. } => {

@@ -2,11 +2,12 @@ use super::{
     CircleShape, GspFile, LineBinding, LineShape, ObjectGroup, PointRecord, PolygonShape,
     ShapeBinding, TransformBindingKind, collect_circle_fill_colors, color_from_style,
     fill_color_from_styles, find_indexed_path, has_distinct_points, line_is_dashed,
-    reflect_across_line, reflection_line_group_indices, rotate_around, scale_around,
+    reflect_across_line, rotate_around, scale_around,
     translation_point_pair_group_indices, try_decode_parameter_rotation_binding,
     try_decode_transform_binding,
 };
 use crate::runtime::extract::decode::{is_circle_group_kind, resolve_circle_points_raw};
+use crate::runtime::extract::points::resolve_line_like_points_raw;
 
 pub(crate) fn collect_rotated_line_shapes(
     file: &GspFile,
@@ -156,11 +157,11 @@ pub(crate) fn collect_reflected_line_shapes(
             if (source_group.header.kind()) != crate::format::GroupKind::Segment {
                 return None;
             }
-            let (line_start_group_index, line_end_group_index) =
-                reflection_line_group_indices(file, groups, group)?;
+            let line_group_index = path.refs.get(1)?.checked_sub(1)?;
+            let line_group = groups.get(line_group_index)?;
             let source_path = find_indexed_path(file, source_group)?;
-            let line_start = anchors.get(line_start_group_index)?.clone()?;
-            let line_end = anchors.get(line_end_group_index)?.clone()?;
+            let (line_start, line_end) =
+                resolve_line_like_points_raw(file, groups, anchors, line_group)?;
             let points = source_path
                 .refs
                 .iter()
@@ -176,8 +177,9 @@ pub(crate) fn collect_reflected_line_shapes(
                 visible: !group.header.is_hidden(),
                 binding: Some(LineBinding::ReflectLine {
                     source_index: path.refs.first()?.checked_sub(1)?,
-                    line_start_index: line_start_group_index,
-                    line_end_index: line_end_group_index,
+                    line_start_index: None,
+                    line_end_index: None,
+                    line_index: Some(line_group_index),
                 }),
             })
         })
@@ -416,12 +418,12 @@ pub(crate) fn collect_reflected_circle_shapes(
             if !is_circle_group_kind(source_group.header.kind()) {
                 return None;
             }
-            let (line_start_group_index, line_end_group_index) =
-                reflection_line_group_indices(file, groups, group)?;
+            let line_group_index = path.refs.get(1)?.checked_sub(1)?;
+            let line_group = groups.get(line_group_index)?;
             let (source_center, source_radius) =
                 resolve_circle_points_raw(file, groups, anchors, source_group)?;
-            let line_start = anchors.get(line_start_group_index)?.clone()?;
-            let line_end = anchors.get(line_end_group_index)?.clone()?;
+            let (line_start, line_end) =
+                resolve_line_like_points_raw(file, groups, anchors, line_group)?;
             let center = reflect_across_line(&source_center, &line_start, &line_end)?;
             let radius_point = reflect_across_line(&source_radius, &line_start, &line_end)?;
             Some(CircleShape {
@@ -436,8 +438,9 @@ pub(crate) fn collect_reflected_circle_shapes(
                 visible: !group.header.is_hidden(),
                 binding: Some(ShapeBinding::ReflectCircle {
                     source_index: path.refs.first()?.checked_sub(1)?,
-                    line_start_index: line_start_group_index,
-                    line_end_index: line_end_group_index,
+                    line_start_index: None,
+                    line_end_index: None,
+                    line_index: Some(line_group_index),
                 }),
             })
         })
@@ -458,11 +461,11 @@ pub(crate) fn collect_reflected_polygon_shapes(
             if (source_group.header.kind()) != crate::format::GroupKind::Polygon {
                 return None;
             }
-            let (line_start_group_index, line_end_group_index) =
-                reflection_line_group_indices(file, groups, group)?;
+            let line_group_index = path.refs.get(1)?.checked_sub(1)?;
+            let line_group = groups.get(line_group_index)?;
             let source_path = find_indexed_path(file, source_group)?;
-            let line_start = anchors.get(line_start_group_index)?.clone()?;
-            let line_end = anchors.get(line_end_group_index)?.clone()?;
+            let (line_start, line_end) =
+                resolve_line_like_points_raw(file, groups, anchors, line_group)?;
             let points = source_path
                 .refs
                 .iter()
@@ -480,8 +483,9 @@ pub(crate) fn collect_reflected_polygon_shapes(
                 visible: !group.header.is_hidden(),
                 binding: Some(ShapeBinding::ReflectPolygon {
                     source_index: path.refs.first()?.checked_sub(1)?,
-                    line_start_index: line_start_group_index,
-                    line_end_index: line_end_group_index,
+                    line_start_index: None,
+                    line_end_index: None,
+                    line_index: Some(line_group_index),
                 }),
             })
         })

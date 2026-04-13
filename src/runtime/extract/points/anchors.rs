@@ -544,7 +544,7 @@ fn resolve_circle_like_raw(
     }
 }
 
-fn resolve_line_like_points_raw(
+pub(crate) fn resolve_line_like_points_raw(
     file: &GspFile,
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
