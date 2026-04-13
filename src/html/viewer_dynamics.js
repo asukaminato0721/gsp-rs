@@ -1125,6 +1125,9 @@
       if (family.kind === "parameterized-point-trace") {
         return sum;
       }
+      if (family.kind === "rotate") {
+        return sum;
+      }
       if (family.kind === "branching") {
         const branchCount = Array.isArray(family.targetSegments) ? family.targetSegments.length : 0;
         let total = 0;
@@ -1229,12 +1232,12 @@
         }
         return;
       }
-      const start = env.resolveScenePoint(family.startIndex);
-      const end = env.resolveScenePoint(family.endIndex);
-      if (!start || !end) {
-        return;
-      }
       if (family.kind === "branching") {
+        const start = env.resolveScenePoint(family.startIndex);
+        const end = env.resolveScenePoint(family.endIndex);
+        if (!start || !end) {
+          return;
+        }
         const targetSegments = (family.targetSegments || []).map((segment) => [
           resolveHandle(segment[0]),
           resolveHandle(segment[1]),
@@ -1278,6 +1281,11 @@
         return;
       }
       if (family.kind === "affine") {
+        const start = env.resolveScenePoint(family.startIndex);
+        const end = env.resolveScenePoint(family.endIndex);
+        if (!start || !end) {
+          return;
+        }
         const sourceTriangle = family.sourceTriangleIndices.map((index) => env.resolveScenePoint(index));
         const targetTriangle = family.targetTriangle.map((handle) => resolveHandle(handle));
         if (sourceTriangle.some((point) => !point) || targetTriangle.some((point) => !point)) {
@@ -1301,7 +1309,18 @@
         }
         return;
       }
+      if (family.kind === "rotate") {
+        // Regular-polygon edge families already exist as rotate-edge source lines.
+        // Keep the serialized line-iteration family as payload/debug metadata and
+        // let refreshDerivedPoints update the bound lines in-place.
+        return;
+      }
       if (family.kind !== "translate") return;
+      const start = env.resolveScenePoint(family.startIndex);
+      const end = env.resolveScenePoint(family.endIndex);
+      if (!start || !end) {
+        return;
+      }
       const hasSecondary = Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy);
       const deltas = [];
       if (family.bidirectional && hasSecondary) {

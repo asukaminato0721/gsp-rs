@@ -509,9 +509,8 @@ pub(super) fn assemble_scene(
 
     let raw_lines = suppress_polygon_edge_segments(
         dedupe_line_shapes(
-            rotational_iteration_lines
+            polylines
                 .into_iter()
-                .chain(polylines)
                 .chain(direct_lines)
                 .chain(rays)
                 .chain(translated_lines)
@@ -525,6 +524,7 @@ pub(super) fn assemble_scene(
                 .chain(axes)
                 .chain(analysis.function_plots)
                 .chain(synthetic_axes)
+                .chain(rotational_iteration_lines)
                 .chain(iteration_lines)
                 .chain(carried_iteration_lines)
                 .collect(),

@@ -155,6 +155,19 @@ mod tests {
     }
 
     #[test]
+    fn layered_canvas_runtime_keeps_pointer_and_draw_layers_on_same_css_size() {
+        let html = fixture_html(
+            include_bytes!("../tests/fixtures/gsp/static/point.gsp"),
+            "fixture should compile",
+        );
+
+        assert!(html.contains("<canvas id=\"grid-layer\""));
+        assert!(html.contains("<canvas id=\"scene-layer\""));
+        assert!(!html.contains("gridCanvas.style.width ="));
+        assert!(!html.contains("sceneCanvas.style.width ="));
+    }
+
+    #[test]
     fn compiles_fixture_and_also_writes_payload_log() {
         let temp_root = unique_test_dir("payload-log-success");
         fs::create_dir_all(&temp_root).expect("temporary directory should be creatable");
@@ -938,6 +951,25 @@ mod tests {
             5,
             "expected five interactive polygon edges for the default pentagon"
         );
+        let line_iterations = scene["lineIterations"]
+            .as_array()
+            .expect("scene line iterations should be an array");
+        assert_eq!(
+            line_iterations
+                .iter()
+                .filter(|family| family["kind"].as_str() == Some("rotate"))
+                .count(),
+            1,
+            "expected one canonical serialized rotate family"
+        );
+        assert!(
+            line_iterations.iter().any(|family| {
+                family["kind"].as_str() == Some("rotate")
+                    && family["parameterName"].as_str() == Some("t₂")
+                    && family["depth"].as_u64() == Some(5)
+            }),
+            "expected the regular-polygon segment iteration family to be serialized into html payload"
+        );
         let iteration_tables = scene["iterationTables"]
             .as_array()
             .expect("scene iteration tables should be an array");
@@ -947,9 +979,41 @@ mod tests {
             "expected one visible iteration table"
         );
         assert_eq!(iteration_tables[0]["exprLabel"].as_str(), Some("t₁ + 1"));
+        assert_eq!(iteration_tables[0]["parameterName"].as_str(), Some("t₁"));
+        assert_eq!(
+            iteration_tables[0]["depthParameterName"].as_str(),
+            Some("t₂")
+        );
         assert_eq!(iteration_tables[0]["x"].as_f64(), Some(322.0));
         assert_eq!(iteration_tables[0]["y"].as_f64(), Some(481.0));
         assert_eq!(iteration_tables[0]["depth"].as_u64(), Some(4));
+    }
+
+    #[test]
+    fn exports_circle_formation_fixture_iteration_table_against_sequence_value() {
+        let scene = fixture_scene(
+            include_bytes!("../tests/fixtures/圆的形成.gsp"),
+            "circle-formation fixture should compile",
+        );
+        let iteration_tables = scene["iterationTables"]
+            .as_array()
+            .expect("scene iteration tables should be an array");
+        assert_eq!(
+            iteration_tables.len(),
+            1,
+            "expected one visible iteration table"
+        );
+        assert_eq!(iteration_tables[0]["exprLabel"].as_str(), Some("t₁ + 1"));
+        assert_eq!(
+            iteration_tables[0]["parameterName"].as_str(),
+            Some("t₁"),
+            "expected the iteration table to track the sequence value instead of the root control parameter"
+        );
+        assert_eq!(
+            iteration_tables[0]["depthParameterName"].as_str(),
+            Some("t₂"),
+            "expected the iteration depth to remain controlled by the editable polygon-side parameter"
+        );
     }
 
     #[test]

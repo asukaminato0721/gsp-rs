@@ -117,6 +117,19 @@ impl PointIterationJson {
 #[derive(Serialize, TS)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub(super) enum LineIterationJson {
+    Rotate {
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "vertexIndex")]
+        vertex_index: usize,
+        #[serde(rename = "angleExpr")]
+        angle_expr: FunctionExprJson,
+        depth: usize,
+        #[serde(rename = "parameterName")]
+        parameter_name: Option<String>,
+        color: [u8; 4],
+        dashed: bool,
+    },
     Translate {
         #[serde(rename = "startIndex")]
         start_index: usize,
@@ -186,41 +199,60 @@ pub(super) enum LineIterationJson {
 
 impl LineIterationJson {
     pub(super) fn from_family(family: &LineIterationFamily) -> Self {
-        if let (
-            Some(point_index),
-            Some(driver_index),
-            Some(trace_parameter_name),
-            Some(step_expr),
-            Some(x_min),
-            Some(x_max),
-            Some(sample_count),
-        ) = (
-            family.trace_point_index,
-            family.trace_driver_index,
-            family.trace_parameter_name.as_ref(),
-            family.trace_step_expr.as_ref(),
-            family.trace_x_min,
-            family.trace_x_max,
-            family.trace_sample_count,
-        ) {
-            return Self::ParameterizedPointTrace {
+        match family {
+            LineIterationFamily::Rotate {
+                center_index,
+                vertex_index,
+                angle_expr,
+                depth,
+                parameter_name,
+                color,
+                dashed,
+            } => Self::Rotate {
+                center_index: *center_index,
+                vertex_index: *vertex_index,
+                angle_expr: FunctionExprJson::from_expr(angle_expr),
+                depth: *depth,
+                parameter_name: parameter_name.clone(),
+                color: *color,
+                dashed: *dashed,
+            },
+            LineIterationFamily::ParameterizedPointTrace {
                 point_index,
                 driver_index,
-                depth_parameter_name: family.parameter_name.clone(),
-                trace_parameter_name: trace_parameter_name.clone(),
-                step_expr: FunctionExprJson::from_expr(step_expr),
-                depth: family.depth,
+                depth_parameter_name,
+                trace_parameter_name,
+                step_expr,
+                depth,
                 x_min,
                 x_max,
                 sample_count,
-                color: family.color,
-                dashed: family.dashed,
-            };
-        }
-        if let Some(target_segments) = family.branch_target_segments.as_ref() {
-            return Self::Branching {
-                start_index: family.start_index,
-                end_index: family.end_index,
+                color,
+                dashed,
+            } => Self::ParameterizedPointTrace {
+                point_index: *point_index,
+                driver_index: *driver_index,
+                depth_parameter_name: depth_parameter_name.clone(),
+                trace_parameter_name: trace_parameter_name.clone(),
+                step_expr: FunctionExprJson::from_expr(step_expr),
+                depth: *depth,
+                x_min: *x_min,
+                x_max: *x_max,
+                sample_count: *sample_count,
+                color: *color,
+                dashed: *dashed,
+            },
+            LineIterationFamily::Branching {
+                start_index,
+                end_index,
+                target_segments,
+                depth,
+                parameter_name,
+                color,
+                dashed,
+            } => Self::Branching {
+                start_index: *start_index,
+                end_index: *end_index,
                 target_segments: target_segments
                     .iter()
                     .cloned()
@@ -228,40 +260,55 @@ impl LineIterationJson {
                         segment.map(|handle| IterationPointHandleJson::from_handle(&handle))
                     })
                     .collect(),
-                depth: family.depth,
-                parameter_name: family.parameter_name.clone(),
-                color: family.color,
-                dashed: family.dashed,
-            };
-        }
-        if let (Some(source_triangle_indices), Some(target_triangle)) = (
-            family.affine_source_indices,
-            family.affine_target_handles.as_ref(),
-        ) {
-            return Self::Affine {
-                start_index: family.start_index,
-                end_index: family.end_index,
+                depth: *depth,
+                parameter_name: parameter_name.clone(),
+                color: *color,
+                dashed: *dashed,
+            },
+            LineIterationFamily::Affine {
+                start_index,
+                end_index,
                 source_triangle_indices,
+                target_triangle,
+                depth,
+                color,
+                dashed,
+            } => Self::Affine {
+                start_index: *start_index,
+                end_index: *end_index,
+                source_triangle_indices: *source_triangle_indices,
                 target_triangle: target_triangle
                     .clone()
                     .map(|handle| IterationPointHandleJson::from_handle(&handle)),
-                depth: family.depth,
-                color: family.color,
-                dashed: family.dashed,
-            };
-        }
-        Self::Translate {
-            start_index: family.start_index,
-            end_index: family.end_index,
-            dx: family.dx,
-            dy: family.dy,
-            secondary_dx: family.secondary_dx,
-            secondary_dy: family.secondary_dy,
-            depth: family.depth,
-            parameter_name: family.parameter_name.clone(),
-            bidirectional: family.bidirectional,
-            color: family.color,
-            dashed: family.dashed,
+                depth: *depth,
+                color: *color,
+                dashed: *dashed,
+            },
+            LineIterationFamily::Translate {
+                start_index,
+                end_index,
+                dx,
+                dy,
+                secondary_dx,
+                secondary_dy,
+                depth,
+                parameter_name,
+                bidirectional,
+                color,
+                dashed,
+            } => Self::Translate {
+                start_index: *start_index,
+                end_index: *end_index,
+                dx: *dx,
+                dy: *dy,
+                secondary_dx: *secondary_dx,
+                secondary_dy: *secondary_dy,
+                depth: *depth,
+                parameter_name: parameter_name.clone(),
+                bidirectional: *bidirectional,
+                color: *color,
+                dashed: *dashed,
+            },
         }
     }
 }

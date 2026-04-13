@@ -10,8 +10,8 @@ use super::{
 };
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
 use crate::runtime::functions::{
-    BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters,
-    sample_function_points, try_decode_function_expr, try_decode_function_plot_descriptor,
+    BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters, sample_function_points,
+    try_decode_function_expr, try_decode_function_plot_descriptor,
 };
 use crate::runtime::geometry::{
     GraphTransform, arc_on_circle_control_points, lerp_point, locate_polyline_parameter_by_length,
@@ -857,7 +857,8 @@ pub(crate) fn decode_coordinate_point(
                 let y_calc_group = groups.get(path.refs[1].checked_sub(1)?)?;
                 let axis_group = groups.get(path.refs[2].checked_sub(1)?)?;
                 let axis_path = find_indexed_path(file, axis_group)?;
-                let origin_measurement_group = groups.get(axis_path.refs.first()?.checked_sub(1)?)?;
+                let origin_measurement_group =
+                    groups.get(axis_path.refs.first()?.checked_sub(1)?)?;
                 let origin_measurement_path = find_indexed_path(file, origin_measurement_group)?;
                 let source_group_index = origin_measurement_path.refs.first()?.checked_sub(1)?;
                 let source_position = anchors.get(source_group_index)?.clone()?;
@@ -866,10 +867,14 @@ pub(crate) fn decode_coordinate_point(
                 let y_expr = try_decode_function_expr(file, groups, y_calc_group).ok()?;
                 let x_parameter_group = first_path_group(file, groups, x_calc_group)?;
                 let y_parameter_group = first_path_group(file, groups, y_calc_group)?;
-                let x_parameter_name = decode_label_name(file, x_parameter_group)
-                    .unwrap_or_else(|| crate::runtime::functions::function_expr_label(x_expr.clone()));
-                let y_parameter_name = decode_label_name(file, y_parameter_group)
-                    .unwrap_or_else(|| crate::runtime::functions::function_expr_label(y_expr.clone()));
+                let x_parameter_name =
+                    decode_label_name(file, x_parameter_group).unwrap_or_else(|| {
+                        crate::runtime::functions::function_expr_label(x_expr.clone())
+                    });
+                let y_parameter_name =
+                    decode_label_name(file, y_parameter_group).unwrap_or_else(|| {
+                        crate::runtime::functions::function_expr_label(y_expr.clone())
+                    });
                 let parameters = BTreeMap::new();
                 let dx = evaluate_expr_with_parameters(&x_expr, 0.0, &parameters)?;
                 let dy = evaluate_expr_with_parameters(&y_expr, 0.0, &parameters)?;
@@ -1120,9 +1125,7 @@ pub(crate) fn try_decode_point_constraint(
         return try_decode_path_point_constraint(file, groups, host_group, payload, anchors, graph);
     }
 
-    if host_kind.is_line_like()
-        || matches!(host_kind, crate::format::GroupKind::MeasurementLine)
-    {
+    if host_kind.is_line_like() || matches!(host_kind, crate::format::GroupKind::MeasurementLine) {
         return try_decode_point_on_segment_constraint(file, groups, group)
             .map(RawPointConstraint::Segment);
     }

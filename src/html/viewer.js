@@ -22,13 +22,9 @@
   const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById("view"));
   const ctx = canvas.getContext("2d");
   const gridDevicePixelRatio = Math.max(1, window.devicePixelRatio || 1);
-  gridCanvas.style.width = `${sourceScene.width}px`;
-  gridCanvas.style.height = `${sourceScene.height}px`;
   gridCanvas.width = Math.round(sourceScene.width * gridDevicePixelRatio);
   gridCanvas.height = Math.round(sourceScene.height * gridDevicePixelRatio);
   gridCtx.setTransform(gridDevicePixelRatio, 0, 0, gridDevicePixelRatio, 0, 0);
-  sceneCanvas.style.width = `${sourceScene.width}px`;
-  sceneCanvas.style.height = `${sourceScene.height}px`;
   sceneCanvas.width = Math.round(sourceScene.width * gridDevicePixelRatio);
   sceneCanvas.height = Math.round(sourceScene.height * gridDevicePixelRatio);
   sceneCtx.setTransform(gridDevicePixelRatio, 0, 0, gridDevicePixelRatio, 0, 0);
@@ -439,7 +435,7 @@
   }
 
   function buildDebugJson() {
-    return JSON.stringify(sourceScene, null, 2);
+    return JSON.stringify(buildRuntimeSnapshot(), null, 2);
   }
 
   /**
@@ -548,6 +544,9 @@
     if (typeof item.depth === "number") {
       parts.push(`depth=${item.depth}`);
     }
+    if (typeof item.edgeCount === "number") {
+      parts.push(`edges=${item.edgeCount}`);
+    }
     if (typeof item.parameterName === "string" && item.parameterName.length > 0) {
       parts.push(`param=${item.parameterName}`);
     }
@@ -583,6 +582,38 @@
     });
   }
 
+  /** @param {ViewerSceneData} scene */
+  function collectDebugLineIterations(scene) {
+    const iterations = Array.isArray(scene.lineIterations) ? [...scene.lineIterations] : [];
+    if (iterations.some((item) => item?.kind === "rotate" || item?.kind === "rotate-edge")) {
+      return iterations;
+    }
+    /** @type {Map<string, { kind: string, centerIndex: number, vertexIndex: number, parameterName: string, edgeCount: number, visible: boolean }>} */
+    const rotateFamilies = new Map();
+    (scene.lines || []).forEach((/** @type {RuntimeLineJson} */ line) => {
+      const binding = line?.binding;
+      if (binding?.kind !== "rotate-edge") {
+        return;
+      }
+      const key = `${binding.centerIndex}:${binding.vertexIndex}:${binding.parameterName}`;
+      const current = rotateFamilies.get(key);
+      if (current) {
+        current.edgeCount += 1;
+        current.visible = current.visible || line.visible !== false;
+        return;
+      }
+      rotateFamilies.set(key, {
+        kind: "rotate-edge-family",
+        centerIndex: binding.centerIndex,
+        vertexIndex: binding.vertexIndex,
+        parameterName: binding.parameterName,
+        edgeCount: 1,
+        visible: line.visible !== false,
+      });
+    });
+    return [...iterations, ...rotateFamilies.values()];
+  }
+
   /** @param {SceneData} scene */
   function buildDebugGraph(scene) {
     const lines = [
@@ -601,7 +632,7 @@
     appendGraphSection(lines, "Arcs", "arc", scene.arcs || []);
     appendGraphSection(lines, "Labels", "label", scene.labels || []);
     appendGraphSection(lines, "Point Iterations", "pointIteration", scene.pointIterations || []);
-    appendGraphSection(lines, "Line Iterations", "lineIteration", scene.lineIterations || []);
+    appendGraphSection(lines, "Line Iterations", "lineIteration", collectDebugLineIterations(scene));
     appendGraphSection(lines, "Polygon Iterations", "polygonIteration", scene.polygonIterations || []);
     appendGraphSection(lines, "Label Iterations", "labelIteration", scene.labelIterations || []);
     appendGraphSection(lines, "Buttons", "button", scene.buttons || []);
@@ -626,7 +657,7 @@
     const activeTab = debugViewState.val === "json" ? "json" : "graph";
     debugOutput.textContent = activeTab === "json"
       ? buildDebugJson()
-      : buildDebugGraph(sourceScene);
+      : buildDebugGraph(currentScene());
     debugTabButtons.forEach((button) => {
       const isActive = button.dataset.debugTab === activeTab;
       button.setAttribute("aria-pressed", isActive ? "true" : "false");
@@ -648,7 +679,7 @@
   }
 
   function dumpDebugToConsole() {
-    const graph = buildDebugGraph(sourceScene);
+    const graph = buildDebugGraph(currentScene());
     const runtime = buildRuntimeSnapshot();
     console.groupCollapsed("gspDebug");
     console.log(graph);
@@ -830,13 +861,13 @@
       return buildDebugJson();
     },
     graph() {
-      return buildDebugGraph(sourceScene);
+      return buildDebugGraph(currentScene());
     },
     dumpJson() {
       console.log(buildDebugJson());
     },
     dumpGraph() {
-      console.log(buildDebugGraph(sourceScene));
+      console.log(buildDebugGraph(currentScene()));
     },
     dump() {
       dumpDebugToConsole();

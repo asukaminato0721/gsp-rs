@@ -72,7 +72,12 @@ fn decode_function_expr_recursive(
         let parameters = collect_parameter_bindings(file, groups, group, visiting);
 
         if let Some(expr) = try_decode_payload_function_application(
-            file, groups, group, visiting, payload, &parameters,
+            file,
+            groups,
+            group,
+            visiting,
+            payload,
+            &parameters,
         ) {
             return Ok(expr);
         }
@@ -87,14 +92,17 @@ fn decode_payload_function_expr(
     payload: &[u8],
     parameters: &BTreeMap<u16, ParameterBinding>,
 ) -> Result<FunctionExpr, FunctionExprParseError> {
-    let text = extract_inline_function_token(payload).ok_or(FunctionExprParseError::NoExpressionFound {
-        word_len: payload.len() / 2,
-    })?;
+    let text = extract_inline_function_token(payload).ok_or(
+        FunctionExprParseError::NoExpressionFound {
+            word_len: payload.len() / 2,
+        },
+    )?;
     if text.eq_ignore_ascii_case("x") {
         Ok(FunctionExpr::Identity)
     } else if let Ok(value) = text.parse::<f64>() {
         if value == 0.0 {
-            try_decode_inner_function_expr(payload, parameters).or(Ok(FunctionExpr::Constant(value)))
+            try_decode_inner_function_expr(payload, parameters)
+                .or(Ok(FunctionExpr::Constant(value)))
         } else {
             Ok(FunctionExpr::Constant(value))
         }
@@ -162,9 +170,11 @@ fn try_decode_payload_function_application(
         .chunks_exact(2)
         .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
         .collect::<Vec<_>>();
-    let (application_offset, application_word) = words.iter().copied().enumerate().find(
-        |(_, word)| (*word & EXPR_FUNCTION_REF_MASK) == EXPR_FUNCTION_REF_PREFIX,
-    )?;
+    let (application_offset, application_word) = words
+        .iter()
+        .copied()
+        .enumerate()
+        .find(|(_, word)| (*word & EXPR_FUNCTION_REF_MASK) == EXPR_FUNCTION_REF_PREFIX)?;
     let helper_index = usize::from(application_word & 0x000f);
     let path = find_indexed_path(file, group)?;
     let helper_group = groups.get(path.refs.get(helper_index)?.checked_sub(1)?)?;
@@ -181,7 +191,9 @@ fn try_decode_payload_function_application(
     let arg_expr = try_decode_inner_function_expr(&arg_payload, parameters).ok()?;
     let helper_ast = function_expr_to_ast(helper_expr);
     let arg_ast = function_expr_to_ast(arg_expr);
-    Some(canonicalize_function_expr(substitute_variable(helper_ast, &arg_ast)))
+    Some(canonicalize_function_expr(substitute_variable(
+        helper_ast, &arg_ast,
+    )))
 }
 
 fn evaluate_function_group_recursive(
@@ -978,7 +990,8 @@ fn parse_function_expr_from_words(
             Err(error) => marker_error = Some(error),
         }
     }
-    find_fallback_function_expr(words, parameters).map_err(|fallback_error| marker_error.unwrap_or(fallback_error))
+    find_fallback_function_expr(words, parameters)
+        .map_err(|fallback_error| marker_error.unwrap_or(fallback_error))
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1635,10 +1648,7 @@ mod parse_tests {
                 lhs: Box::new(FunctionAst::Constant(2.0)),
                 op: BinaryOp::Mul,
                 rhs: Box::new(FunctionAst::Binary {
-                    lhs: Box::new(FunctionAst::Parameter(
-                        "C".to_string(),
-                        0.36706751054852294,
-                    )),
+                    lhs: Box::new(FunctionAst::Parameter("C".to_string(), 0.36706751054852294,)),
                     op: BinaryOp::Add,
                     rhs: Box::new(FunctionAst::Parameter("m".to_string(), -4.0)),
                 }),

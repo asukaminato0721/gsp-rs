@@ -48,9 +48,9 @@ use self::points::{
     decode_regular_polygon_vertex_anchor_raw, decode_translated_point_anchor_raw,
     decode_translated_point_constraint, regular_polygon_iteration_step, remap_circle_bindings,
     remap_label_bindings, remap_line_bindings, remap_polygon_bindings,
-    translation_point_pair_group_indices,
-    try_decode_parameter_controlled_point, try_decode_parameter_rotation_binding,
-    try_decode_point_constraint, try_decode_transform_binding,
+    translation_point_pair_group_indices, try_decode_parameter_controlled_point,
+    try_decode_parameter_rotation_binding, try_decode_point_constraint,
+    try_decode_transform_binding,
 };
 use self::shapes::{
     collect_arc_boundary_fill_polygons, collect_arc_boundary_shapes, collect_bound_line_shapes,
@@ -63,8 +63,8 @@ use self::shapes::{
     collect_reflected_circle_shapes, collect_reflected_line_shapes,
     collect_reflected_polygon_shapes, collect_rotated_circle_shapes, collect_rotated_line_shapes,
     collect_rotated_polygon_shapes, collect_rotational_iteration_lines,
-    collect_rotational_iteration_segment_groups, collect_scaled_line_shapes,
-    collect_segment_marker_shapes, collect_three_point_arc_shapes,
+    collect_rotational_iteration_segment_groups, collect_rotational_line_iteration_families,
+    collect_scaled_line_shapes, collect_segment_marker_shapes, collect_three_point_arc_shapes,
     collect_transformed_circle_shapes, collect_transformed_polygon_shapes,
     collect_translated_line_shapes, collect_translated_polygon_shapes,
 };
@@ -685,7 +685,7 @@ fn remap_scene_bindings(
         group_to_point_index,
         &line_group_to_index,
     );
-    let line_iterations = collect_carried_line_iteration_families(
+    let carried_line_iterations = collect_carried_line_iteration_families(
         file,
         groups,
         raw_anchors,
@@ -693,8 +693,12 @@ fn remap_scene_bindings(
         &line_group_to_index,
         &suppressed_carried_polygon_segments,
     );
+    let rotational_line_iterations =
+        collect_rotational_line_iteration_families(file, groups, group_to_point_index);
     let polygon_iterations =
         collect_carried_polygon_iteration_families(file, groups, raw_anchors, group_to_point_index);
+    let mut line_iterations = rotational_line_iterations;
+    line_iterations.extend(carried_line_iterations);
 
     (
         BindingMaps {

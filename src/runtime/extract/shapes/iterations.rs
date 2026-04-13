@@ -158,6 +158,73 @@ pub(crate) fn collect_rotational_iteration_segment_groups(
         .collect()
 }
 
+pub(crate) fn collect_rotational_line_iteration_families(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group_to_point_index: &[Option<usize>],
+) -> Vec<LineIterationFamily> {
+    let mut families = Vec::new();
+    let mut seen = BTreeSet::new();
+    for group in groups
+        .iter()
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::IterationBinding)
+    {
+        let Some(family) = (|| {
+            let path = find_indexed_path(file, group)?;
+            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            if (source_group.header.kind()) != crate::format::GroupKind::Segment {
+                return None;
+            }
+            let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+            if (iter_group.header.kind()) != crate::format::GroupKind::RegularPolygonIteration {
+                return None;
+            }
+            let (center_group_index, angle_expr, parameter_name, n) =
+                regular_polygon_iteration_step(file, groups, iter_group)?;
+            let source_path = find_indexed_path(file, source_group)?;
+            let vertex_index = group_to_point_index
+                .get(source_path.refs.first()?.checked_sub(1)?)
+                .copied()
+                .flatten()?;
+            let center_index = group_to_point_index
+                .get(center_group_index)
+                .copied()
+                .flatten()?;
+            Some(LineIterationFamily::Rotate {
+                center_index,
+                vertex_index,
+                angle_expr,
+                depth: n.round().max(1.0) as usize,
+                parameter_name: Some(parameter_name),
+                color: color_from_style(source_group.header.style_b),
+                dashed: line_is_dashed(source_group.header.style_a),
+            })
+        })() else {
+            continue;
+        };
+        let LineIterationFamily::Rotate {
+            center_index,
+            vertex_index,
+            depth,
+            parameter_name,
+            ..
+        } = &family
+        else {
+            continue;
+        };
+        let key = (
+            *center_index,
+            *vertex_index,
+            *depth,
+            parameter_name.clone().unwrap_or_default(),
+        );
+        if seen.insert(key) {
+            families.push(family);
+        }
+    }
+    families
+}
+
 pub(crate) fn collect_carried_iteration_lines(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -297,7 +364,9 @@ pub(crate) fn collect_carried_line_iteration_families(
                     .refs
                     .iter()
                     .filter_map(|ordinal| groups.get(ordinal.checked_sub(1)?))
-                    .find(|group| (group.header.kind()) == crate::format::GroupKind::ParameterAnchor)
+                    .find(|group| {
+                        (group.header.kind()) == crate::format::GroupKind::ParameterAnchor
+                    })
                     .and_then(|group| find_indexed_path(file, group))
                     .and_then(|path| path.refs.first().copied())
                     .and_then(|ordinal| ordinal.checked_sub(1))
@@ -325,36 +394,32 @@ pub(crate) fn collect_carried_line_iteration_families(
                         crate::runtime::functions::try_decode_function_plot_descriptor(payload).ok()
                     })?;
                 let trace_parameter_group = groups.get(iter_path.refs.get(1)?.checked_sub(1)?)?;
-                let trace_parameter_name =
-                    editable_non_graph_parameter_name_for_group(file, groups, trace_parameter_group)?;
+                let trace_parameter_name = editable_non_graph_parameter_name_for_group(
+                    file,
+                    groups,
+                    trace_parameter_group,
+                )?;
                 let trace_step_group = groups.get(iter_path.refs.get(2)?.checked_sub(1)?)?;
-                let trace_step_expr = try_decode_function_expr(file, groups, trace_step_group).ok()?;
+                let trace_step_expr =
+                    try_decode_function_expr(file, groups, trace_step_group).ok()?;
                 let depth = carried_iteration_depth(file, iter_group, 3);
                 if depth == 0 {
                     return None;
                 }
-                return Some(LineIterationFamily {
-                    start_index: trace_point_index,
-                    end_index: trace_driver_index,
-                    dx: 0.0,
-                    dy: 0.0,
-                    secondary_dx: None,
-                    secondary_dy: None,
+                return Some(LineIterationFamily::ParameterizedPointTrace {
+                    point_index: trace_point_index,
+                    driver_index: trace_driver_index,
+                    depth_parameter_name: carried_iteration_parameter_name(
+                        file, groups, iter_group,
+                    ),
+                    trace_parameter_name,
+                    step_expr: trace_step_expr,
                     depth,
-                    parameter_name: carried_iteration_parameter_name(file, groups, iter_group),
-                    bidirectional: false,
+                    x_min: descriptor.x_min,
+                    x_max: descriptor.x_max,
+                    sample_count: descriptor.sample_count,
                     color: color_from_style(source_group.header.style_b),
                     dashed: line_is_dashed(source_group.header.style_a),
-                    affine_source_indices: None,
-                    affine_target_handles: None,
-                    branch_target_segments: None,
-                    trace_point_index: Some(trace_point_index),
-                    trace_driver_index: Some(trace_driver_index),
-                    trace_parameter_name: Some(trace_parameter_name),
-                    trace_step_expr: Some(trace_step_expr),
-                    trace_x_min: Some(descriptor.x_min),
-                    trace_x_max: Some(descriptor.x_max),
-                    trace_sample_count: Some(descriptor.sample_count),
                 });
             }
             if (source_group.header.kind()) != crate::format::GroupKind::Segment {
@@ -411,28 +476,14 @@ pub(crate) fn collect_carried_line_iteration_families(
                         ])
                     })
                     .collect::<Option<Vec<_>>>()?;
-                return Some(LineIterationFamily {
+                return Some(LineIterationFamily::Branching {
                     start_index,
                     end_index,
-                    dx: 0.0,
-                    dy: 0.0,
-                    secondary_dx: None,
-                    secondary_dy: None,
+                    target_segments,
                     depth: branching.depth,
                     parameter_name: branching.parameter_name,
-                    bidirectional: false,
                     color: color_from_style(source_group.header.style_b),
                     dashed: line_is_dashed(source_group.header.style_a),
-                    affine_source_indices: None,
-                    affine_target_handles: None,
-                    branch_target_segments: Some(target_segments),
-                    trace_point_index: None,
-                    trace_driver_index: None,
-                    trace_parameter_name: None,
-                    trace_step_expr: None,
-                    trace_x_min: None,
-                    trace_x_max: None,
-                    trace_sample_count: None,
                 });
             }
 
@@ -444,28 +495,14 @@ pub(crate) fn collect_carried_line_iteration_families(
                 line_group_to_index,
                 anchors,
             ) {
-                return Some(LineIterationFamily {
+                return Some(LineIterationFamily::Affine {
                     start_index,
                     end_index,
-                    dx: 0.0,
-                    dy: 0.0,
-                    secondary_dx: None,
-                    secondary_dy: None,
+                    source_triangle_indices: source_indices,
+                    target_triangle: target_handles,
                     depth,
-                    parameter_name: None,
-                    bidirectional: false,
                     color: color_from_style(source_group.header.style_b),
                     dashed: line_is_dashed(source_group.header.style_a),
-                    affine_source_indices: Some(source_indices),
-                    affine_target_handles: Some(target_handles),
-                    branch_target_segments: None,
-                    trace_point_index: None,
-                    trace_driver_index: None,
-                    trace_parameter_name: None,
-                    trace_step_expr: None,
-                    trace_x_min: None,
-                    trace_x_max: None,
-                    trace_sample_count: None,
                 });
             }
 
@@ -474,7 +511,7 @@ pub(crate) fn collect_carried_line_iteration_families(
             else {
                 return None;
             };
-            Some(LineIterationFamily {
+            Some(LineIterationFamily::Translate {
                 start_index,
                 end_index,
                 dx: step.x,
@@ -486,16 +523,6 @@ pub(crate) fn collect_carried_line_iteration_families(
                 bidirectional,
                 color: color_from_style(source_group.header.style_b),
                 dashed: line_is_dashed(source_group.header.style_a),
-                affine_source_indices: None,
-                affine_target_handles: None,
-                branch_target_segments: None,
-                trace_point_index: None,
-                trace_driver_index: None,
-                trace_parameter_name: None,
-                trace_step_expr: None,
-                trace_x_min: None,
-                trace_x_max: None,
-                trace_sample_count: None,
             })
         })
         .collect()

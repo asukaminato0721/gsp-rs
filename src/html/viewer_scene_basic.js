@@ -62,6 +62,23 @@
 
   /**
    * @param {Point} point
+   * @param {Point} center
+   * @param {number} radians
+   * @returns {Point}
+   */
+  function rotateAround(point, center, radians) {
+    const dx = point.x - center.x;
+    const dy = point.y - center.y;
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    return {
+      x: center.x + dx * cos - dy * sin,
+      y: center.y + dx * sin + dy * cos,
+    };
+  }
+
+  /**
+   * @param {Point} point
    * @param {Point} start
    * @param {Point} end
    */
@@ -441,6 +458,17 @@
       const end = resolveScenePoint(env, line.binding.endIndex);
       if (!start || !end) return null;
       return clipParametricLineToBounds(start, end, getViewBounds(env), true);
+    }
+    if (line.binding?.kind === "rotate-edge" && Number.isFinite(line.binding.angleDegrees)) {
+      const center = resolveScenePoint(env, line.binding.centerIndex);
+      const vertex = resolveScenePoint(env, line.binding.vertexIndex);
+      if (!center || !vertex) return null;
+      const startStep = Number.isFinite(line.binding.startStep) ? line.binding.startStep : 0;
+      const endStep = Number.isFinite(line.binding.endStep) ? line.binding.endStep : 1;
+      return [
+        rotateAround(vertex, center, line.binding.angleDegrees * startStep * Math.PI / 180),
+        rotateAround(vertex, center, line.binding.angleDegrees * endStep * Math.PI / 180),
+      ];
     }
     if (line.binding) {
       const extra = extraLineBindingResolvers[line.binding.kind];

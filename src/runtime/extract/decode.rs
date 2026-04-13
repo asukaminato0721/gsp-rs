@@ -198,9 +198,13 @@ fn decode_signed_parameter_tail_value(payload: &[u8]) -> Option<f64> {
         _ => words.as_slice(),
     };
     match words {
-        [.., sign @ (EXPR_OP_ADD | EXPR_OP_SUB), whole, denominator, fractional]
-            if *denominator > 0 && fractional < denominator =>
-        {
+        [
+            ..,
+            sign @ (EXPR_OP_ADD | EXPR_OP_SUB),
+            whole,
+            denominator,
+            fractional,
+        ] if *denominator > 0 && fractional < denominator => {
             let value = f64::from(*whole) + f64::from(*fractional) / f64::from(*denominator);
             Some(if *sign == EXPR_OP_SUB { -value } else { value })
         }
@@ -239,8 +243,9 @@ pub(crate) fn try_decode_parameter_control_value_for_group(
 
     match discrete {
         Ok(Some(value)) if value < 4096.0 => Ok(value),
-        Ok(Some(_)) | Err(ParameterControlDecodeError::InvalidDiscreteFraction) => continuous
-            .ok_or(ParameterControlDecodeError::InvalidDiscreteFraction),
+        Ok(Some(_)) | Err(ParameterControlDecodeError::InvalidDiscreteFraction) => {
+            continuous.ok_or(ParameterControlDecodeError::InvalidDiscreteFraction)
+        }
         Ok(None) => continuous.ok_or(ParameterControlDecodeError::InvalidDiscreteFraction),
         Err(error) => Err(error),
     }
@@ -435,7 +440,8 @@ pub(crate) fn try_decode_group_label_text(
             _ => None,
         })
         .transpose()
-        .map(|value| value.flatten())}
+        .map(|value| value.flatten())
+}
 
 #[derive(Debug, Clone)]
 pub(crate) struct RichTextContent {
@@ -464,7 +470,8 @@ pub(crate) fn try_decode_group_rich_text(
     record
         .map(|record| try_decode_rich_text(record.payload(&file.data)))
         .transpose()
-        .map(|value| value.flatten())}
+        .map(|value| value.flatten())
+}
 
 pub(crate) fn decode_label_anchor(
     file: &GspFile,

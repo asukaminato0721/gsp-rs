@@ -63,25 +63,49 @@ pub(super) fn world_line_iteration_family(
     family: LineIterationFamily,
     graph_ref: &Option<GraphTransform>,
 ) -> LineIterationFamily {
-    let delta = world_delta(
-        &PointRecord {
-            x: family.dx,
-            y: family.dy,
-        },
-        graph_ref,
-    );
-    LineIterationFamily {
-        dx: delta.x,
-        dy: delta.y,
-        secondary_dx: match (family.secondary_dx, family.secondary_dy) {
-            (Some(dx), Some(dy)) => Some(world_delta(&PointRecord { x: dx, y: dy }, graph_ref).x),
-            _ => None,
-        },
-        secondary_dy: match (family.secondary_dx, family.secondary_dy) {
-            (Some(dx), Some(dy)) => Some(world_delta(&PointRecord { x: dx, y: dy }, graph_ref).y),
-            _ => None,
-        },
-        ..family
+    match family {
+        LineIterationFamily::Translate {
+            start_index,
+            end_index,
+            dx,
+            dy,
+            secondary_dx,
+            secondary_dy,
+            depth,
+            parameter_name,
+            bidirectional,
+            color,
+            dashed,
+        } => {
+            let delta = world_delta(&PointRecord { x: dx, y: dy }, graph_ref);
+            LineIterationFamily::Translate {
+                start_index,
+                end_index,
+                dx: delta.x,
+                dy: delta.y,
+                secondary_dx: match (secondary_dx, secondary_dy) {
+                    (Some(dx), Some(dy)) => {
+                        Some(world_delta(&PointRecord { x: dx, y: dy }, graph_ref).x)
+                    }
+                    _ => None,
+                },
+                secondary_dy: match (secondary_dx, secondary_dy) {
+                    (Some(dx), Some(dy)) => {
+                        Some(world_delta(&PointRecord { x: dx, y: dy }, graph_ref).y)
+                    }
+                    _ => None,
+                },
+                depth,
+                parameter_name,
+                bidirectional,
+                color,
+                dashed,
+            }
+        }
+        LineIterationFamily::Rotate { .. }
+        | LineIterationFamily::Affine { .. }
+        | LineIterationFamily::Branching { .. }
+        | LineIterationFamily::ParameterizedPointTrace { .. } => family,
     }
 }
 

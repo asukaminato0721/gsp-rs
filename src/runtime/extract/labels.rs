@@ -206,6 +206,27 @@ fn resolve_function_expr_parameter(
     result
 }
 
+fn direct_function_expr_parameter_name(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<String> {
+    let path = find_indexed_path(file, group)?;
+    let parameter_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+    if let Some(name) = decode_label_name(file, parameter_group)
+        .or_else(|| decode_label_name_raw(file, parameter_group))
+    {
+        return Some(name);
+    }
+    if parameter_group.header.kind() == crate::format::GroupKind::ParameterAnchor {
+        let anchor_path = find_indexed_path(file, parameter_group)?;
+        let point_group = groups.get(anchor_path.refs.first()?.checked_sub(1)?)?;
+        return decode_label_name(file, point_group)
+            .or_else(|| decode_label_name_raw(file, point_group));
+    }
+    editable_non_graph_parameter_name_for_group(file, groups, parameter_group)
+}
+
 fn parameter_anchor_value(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -1329,13 +1350,17 @@ pub(super) fn collect_iteration_tables(
                 return None;
             }
             let expr = try_decode_function_expr(file, groups, expr_group).ok()?;
-            let (parameter_name, _) = resolve_function_expr_parameter(
-                file,
-                groups,
-                expr_group,
-                anchors,
-                &mut BTreeSet::new(),
-            )?;
+            let parameter_name = direct_function_expr_parameter_name(file, groups, expr_group)
+                .or_else(|| {
+                    resolve_function_expr_parameter(
+                        file,
+                        groups,
+                        expr_group,
+                        anchors,
+                        &mut BTreeSet::new(),
+                    )
+                    .map(|(name, _)| name)
+                })?;
             let expr_label = payload_function_expr_label(
                 file,
                 groups,

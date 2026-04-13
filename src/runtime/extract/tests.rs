@@ -1,7 +1,7 @@
 use super::{build_scene_checked, render_payload_log};
 use crate::format::GspFile;
 use crate::runtime::scene::{
-    LabelIterationFamily, LineBinding, LineConstraint, PointIterationFamily,
+    LabelIterationFamily, LineBinding, LineConstraint, LineIterationFamily, PointIterationFamily,
     PolygonIterationFamily, Scene, ScenePointBinding, ScenePointConstraint, TextLabelBinding,
 };
 use insta::assert_snapshot;
@@ -60,17 +60,24 @@ fn preserves_function_iteration_coordinate_point_in_liyougui_fixture() {
         "expected m to open at -4"
     );
     assert!(
-        scene.parameters.iter().any(
-            |parameter| parameter.name == "n" && (parameter.value - 9.7).abs() < 1e-6
-        ),
+        scene
+            .parameters
+            .iter()
+            .any(|parameter| parameter.name == "n" && (parameter.value - 9.7).abs() < 1e-6),
         "expected n to open at the saved payload value 9.7"
     );
     assert!(
-        scene.line_iterations.iter().any(|family| family.trace_point_index.is_some()),
+        scene
+            .line_iterations
+            .iter()
+            .any(|family| matches!(family, LineIterationFamily::ParameterizedPointTrace { .. })),
         "expected the payload iter on the trace to stay exported as a live line-iteration family"
     );
     assert!(
-        scene.labels.iter().any(|label| label.text.contains("2*(C + m) =")),
+        scene
+            .labels
+            .iter()
+            .any(|label| label.text.contains("2*(C + m) =")),
         "expected the x-coordinate expression to stay decoded from payload as 2*(C + m)"
     );
 }
@@ -87,8 +94,13 @@ fn preserves_binary_tree_multimap_iteration() {
         1,
         "expected one recursive line family for the binary tree payload"
     );
-    let family = &scene.line_iterations[0];
-    let Some(target_segments) = family.branch_target_segments.as_ref() else {
+    let LineIterationFamily::Branching {
+        target_segments,
+        parameter_name,
+        depth,
+        ..
+    } = &scene.line_iterations[0]
+    else {
         panic!("expected binary tree iteration to export branching segment handles");
     };
     assert_eq!(
@@ -96,11 +108,8 @@ fn preserves_binary_tree_multimap_iteration() {
         2,
         "expected the payload to produce two child segment maps"
     );
-    assert_eq!(family.parameter_name.as_deref(), Some("n"));
-    assert_eq!(
-        family.depth, 7,
-        "expected depth to stay driven by payload n"
-    );
+    assert_eq!(parameter_name.as_deref(), Some("n"));
+    assert_eq!(*depth, 7, "expected depth to stay driven by payload n");
     assert_eq!(
         scene.lines.len(),
         255,
@@ -110,8 +119,7 @@ fn preserves_binary_tree_multimap_iteration() {
         scene
             .line_iterations
             .iter()
-            .all(|family| family.affine_source_indices.is_none()
-                && family.affine_target_handles.is_none()),
+            .all(|family| !matches!(family, LineIterationFamily::Affine { .. })),
         "expected the binary tree payload to avoid the carried affine fallback"
     );
     assert!(
@@ -2381,8 +2389,7 @@ fn does_not_treat_triangle_point_labels_as_iteration_parameters() {
         scene
             .line_iterations
             .iter()
-            .all(|family| family.affine_source_indices.is_some()
-                && family.affine_target_handles.is_some())
+            .all(|family| matches!(family, LineIterationFamily::Affine { .. }))
     );
 }
 
@@ -2435,8 +2442,20 @@ fn preserves_regular_polygon_iteration_without_carried_duplicates() {
         "expected no static seed or carried duplicate segments"
     );
     assert!(
-        scene.line_iterations.is_empty(),
-        "expected no carried translation metadata for regular polygon iteration"
+        scene.line_iterations.iter().any(|family| matches!(
+            family,
+            LineIterationFamily::Rotate {
+                parameter_name,
+                depth,
+                ..
+            } if parameter_name.as_deref() == Some("n") && *depth == 5
+        )),
+        "expected regular polygon iteration to export a calculation-driven rotate family"
+    );
+    assert_eq!(
+        scene.line_iterations.len(),
+        1,
+        "expected one canonical rotate family for the regular polygon payload"
     );
 }
 
@@ -2521,7 +2540,11 @@ fn preserves_reflection_point_circle_and_polygon_gsp() {
 fn preserves_reflected_circle_across_constructed_perpendicular_line() {
     let scene = fixture_scene(include_bytes!("../../../tests/fixtures/bug/镜像圆.gsp"));
 
-    assert_eq!(scene.circles.len(), 2, "expected original and reflected circles");
+    assert_eq!(
+        scene.circles.len(),
+        2,
+        "expected original and reflected circles"
+    );
     assert!(scene.circles.iter().any(|circle| matches!(
         circle.binding,
         Some(crate::runtime::scene::ShapeBinding::ReflectCircle {
