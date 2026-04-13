@@ -23,9 +23,9 @@ pub(super) use anchors::{
 };
 pub(super) use bindings::{
     RawPointIterationFamily, TransformBindingKind, collect_point_iteration_points,
-    collect_visible_points_checked, remap_circle_bindings, remap_label_bindings,
-    remap_line_bindings, remap_polygon_bindings, try_decode_parameter_rotation_binding,
-    try_decode_transform_binding,
+    collect_standalone_parameter_points, collect_visible_points_checked, remap_circle_bindings,
+    remap_label_bindings, remap_line_bindings, remap_polygon_bindings,
+    try_decode_parameter_rotation_binding, try_decode_transform_binding,
 };
 pub(super) use constraints::{
     RawPointConstraint, decode_translated_point_constraint, regular_polygon_angle_expr,

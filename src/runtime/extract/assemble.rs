@@ -14,11 +14,13 @@ pub(super) fn build_world_data(
     analysis: &SceneAnalysis,
     visible_points: &[ScenePoint],
     derived_iteration_points: &[ScenePoint],
+    standalone_parameter_points: &[ScenePoint],
     raw_point_iterations: Vec<super::points::RawPointIterationFamily>,
 ) -> WorldData {
     let world_points = visible_points
         .iter()
         .chain(derived_iteration_points.iter())
+        .chain(standalone_parameter_points.iter())
         .map(|point| ScenePoint {
             position: to_world(&point.position, &analysis.graph_ref),
             color: point.color,

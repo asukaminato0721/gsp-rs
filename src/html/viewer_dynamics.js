@@ -1020,7 +1020,13 @@
       return;
     }
     const exportedDepth = families.reduce((sum, family) => sum + (family.depth || 0), 0);
-    const baseCount = Math.max(0, env.sourceScene.points.length - exportedDepth);
+    const standaloneParameterPoints = env.sourceScene.points.filter((/** @type {RuntimeScenePointJson} */ point) =>
+      point?.binding?.kind === "parameter" && !point.constraint
+    );
+    const baseCount = Math.max(
+      0,
+      env.sourceScene.points.length - exportedDepth - standaloneParameterPoints.length,
+    );
     scene.points = scene.points.slice(0, baseCount);
 
     families.forEach((family) => {
@@ -1107,6 +1113,14 @@
           });
         }
       }
+    });
+
+    standaloneParameterPoints.forEach((/** @type {RuntimeScenePointJson} */ point) => {
+      scene.points.push({
+        ...point,
+        constraint: point.constraint ? { ...point.constraint } : null,
+        binding: point.binding ? { ...point.binding } : null,
+      });
     });
   }
 
@@ -1531,7 +1545,13 @@
       }
       const seedLabel = scene.labels[family.seedLabelIndex];
       const seedAnchor = seedLabel?.anchor;
-      if (!seedLabel || typeof seedAnchor?.pointIndex !== "number") {
+      const seedPointIndex = typeof seedAnchor?.pointIndex === "number"
+        ? seedAnchor.pointIndex
+        : (seedLabel?.binding?.kind === "point-expression-value"
+          && typeof seedLabel.binding.pointIndex === "number"
+            ? seedLabel.binding.pointIndex
+            : null);
+      if (!seedLabel || seedPointIndex === null) {
         return;
       }
       const depth = pointIterationDepth({
@@ -1558,11 +1578,13 @@
         }
         if (step === 0) {
           seedLabel.text = formatSequenceValue(value);
-          seedLabel.anchor = { ...seedAnchor, pointIndex };
+          seedLabel.richMarkup = buildPlainTextRichMarkup(seedLabel.text);
+          seedLabel.anchor = { ...seedAnchor, pointIndex: seedPointIndex };
         } else {
           scene.labels.push({
             ...seedLabel,
             text: formatSequenceValue(value),
+            richMarkup: buildPlainTextRichMarkup(formatSequenceValue(value)),
             binding: null,
             anchor: { ...seedAnchor, pointIndex },
           });

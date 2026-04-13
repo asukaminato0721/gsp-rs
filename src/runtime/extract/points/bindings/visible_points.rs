@@ -541,7 +541,7 @@ pub(crate) fn collect_visible_points_checked(
             if actual_included_groups == included_groups {
                 let final_group_to_point_index =
                     build_group_to_point_index(&actual_included_groups);
-                let mut points = groups
+                let points = groups
                     .iter()
                     .enumerate()
                     .map(|(index, group)| {
@@ -560,12 +560,6 @@ pub(crate) fn collect_visible_points_checked(
                     .into_iter()
                     .flatten()
                     .collect::<Vec<_>>();
-                points.extend(
-                    groups
-                        .iter()
-                        .filter(|group| is_parameter_control_group(group))
-                        .filter_map(|group| standalone_parameter_point(file, group)),
-                );
                 return Ok((points, final_group_to_point_index));
             }
             included_groups = actual_included_groups;
@@ -573,6 +567,17 @@ pub(crate) fn collect_visible_points_checked(
         }
         included_groups = next_included_groups;
     }
+}
+
+pub(crate) fn collect_standalone_parameter_points(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+) -> Vec<ScenePoint> {
+    groups
+        .iter()
+        .filter(|group| is_parameter_control_group(group))
+        .filter_map(|group| standalone_parameter_point(file, group))
+        .collect()
 }
 
 fn standalone_parameter_point(file: &GspFile, group: &ObjectGroup) -> Option<ScenePoint> {

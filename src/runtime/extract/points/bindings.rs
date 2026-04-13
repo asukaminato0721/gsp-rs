@@ -26,7 +26,9 @@ pub(crate) use iterations::collect_point_iteration_points;
 pub(crate) use remap::{
     remap_circle_bindings, remap_label_bindings, remap_line_bindings, remap_polygon_bindings,
 };
-pub(crate) use visible_points::collect_visible_points_checked;
+pub(crate) use visible_points::{
+    collect_standalone_parameter_points, collect_visible_points_checked,
+};
 
 pub(crate) struct TransformBinding {
     pub(crate) source_group_index: usize,

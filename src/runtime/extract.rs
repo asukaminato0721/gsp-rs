@@ -40,8 +40,8 @@ use self::labels::{
 };
 use self::points::{
     RawPointConstraint, TransformBindingKind, collect_non_graph_parameters,
-    collect_point_iteration_points, collect_point_objects, collect_visible_points_checked,
-    decode_line_midpoint_anchor_raw, decode_offset_anchor_raw,
+    collect_point_iteration_points, collect_point_objects, collect_standalone_parameter_points,
+    collect_visible_points_checked, decode_line_midpoint_anchor_raw, decode_offset_anchor_raw,
     decode_parameter_controlled_anchor_raw, decode_parameter_rotation_anchor_raw,
     decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,
     decode_point_pair_translation_anchor_raw, decode_reflection_anchor_raw,
@@ -946,6 +946,7 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
     ));
     let (derived_iteration_points, raw_point_iterations) =
         collect_point_iteration_points(file, &groups, &analysis.raw_anchors, &group_to_point_index);
+    let standalone_parameter_points = collect_standalone_parameter_points(file, &groups);
     let label_iterations =
         collect_label_iterations(file, &groups, &label_group_to_index, &group_to_point_index)
             .into_iter()
@@ -1003,6 +1004,7 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
         &analysis,
         &visible_points,
         &derived_iteration_points,
+        &standalone_parameter_points,
         raw_point_iterations,
     );
     let bounds_data = compute_scene_bounds(
