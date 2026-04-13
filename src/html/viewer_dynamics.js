@@ -973,6 +973,21 @@
   }
 
   /**
+   * @param {string} text
+   * @returns {string | null}
+   */
+  function buildPlainTextRichMarkup(text) {
+    if (typeof text !== "string" || text.length === 0) {
+      return null;
+    }
+    return `<H<Tx${text
+      .replaceAll("&", "＆")
+      .replaceAll("<", "＜")
+      .replaceAll(">", "＞")
+      .replaceAll("*", "\u00b7")}>>`;
+  }
+
+  /**
    * @param {ViewerEnv} env
    * @param {ViewerSceneData} scene
    * @param {Map<string, number>} parameters
@@ -1176,6 +1191,7 @@
               xMin: family.xMin,
               xMax: family.xMax,
               sampleCount: family.sampleCount,
+              useMidpoints: true,
             },
           };
           const sampled = samplePointTraceLine(scene, line, traceParameters);
@@ -1827,6 +1843,7 @@
       const value = parameters.get(label.binding.name);
       if (value !== null && value !== undefined) {
         label.text = `${label.binding.name} = ${env.formatNumber(value)}`;
+        label.richMarkup = buildPlainTextRichMarkup(label.text);
       }
     },
     "point-expression-value"(_env, _scene, label, parameters) {
@@ -1840,6 +1857,7 @@
       );
       if (value !== null) {
         label.text = formatSequenceValue(value);
+        label.richMarkup = buildPlainTextRichMarkup(label.text);
       }
     },
     "expression-value"(env, _scene, label, parameters) {
@@ -1874,6 +1892,7 @@
         label.text = label.binding.polygonName
           ? `${label.binding.pointName}在${label.binding.polygonName}上的t值 = ${env.formatNumber(value)}`
           : `${label.binding.pointName} = ${env.formatNumber(value)}`;
+        label.richMarkup = buildPlainTextRichMarkup(label.text);
       }
     },
     "polygon-boundary-expression"(env, scene, label, parameters) {
@@ -1899,6 +1918,7 @@
         label.text = usesVerboseParameterLabel(label)
           ? `${label.binding.pointName}在${label.binding.segmentName}上的t值 = ${env.formatNumber(value)}`
           : `${label.binding.pointName} = ${env.formatNumber(value)}`;
+        label.richMarkup = buildPlainTextRichMarkup(label.text);
       }
     },
     "circle-parameter"(env, scene, label) {
@@ -1911,6 +1931,7 @@
       label.text = usesVerboseParameterLabel(label)
         ? `${label.binding.pointName}在⊙${label.binding.circleName}上的值 = ${env.formatNumber(value)}`
         : `${label.binding.pointName} = ${env.formatNumber(value)}`;
+      label.richMarkup = buildPlainTextRichMarkup(label.text);
     },
     "angle-marker-value"(_env, scene, label) {
       const start = scene.points[label.binding.startIndex];
@@ -1929,6 +1950,7 @@
       const value = Math.abs(Math.atan2(cross, dot)) * 180 / Math.PI;
       if (Number.isFinite(value)) {
         label.text = value.toFixed(label.binding.decimals);
+        label.richMarkup = buildPlainTextRichMarkup(label.text);
       }
     },
     "custom-transform-value"(env, scene, label, parameters) {
@@ -1941,6 +1963,7 @@
       const evaluated = evaluateExpr(label.binding.expr, value, exprParameters);
       if (evaluated !== null) {
         label.text = `${label.binding.exprLabel} = ${env.formatNumber(evaluated * label.binding.valueScale)}${label.binding.valueSuffix}`;
+        label.richMarkup = buildPlainTextRichMarkup(label.text);
       }
     },
   };
@@ -2070,6 +2093,11 @@
       /** @type {RuntimeScenePointJson[]} */
       points: [],
     };
+    /** @type {Map<string, number>} */
+    let baseParameters = new Map(parameters);
+    let driverValue = Number.NaN;
+    /** @type {Map<number, Point | null>} */
+    let resolvedCache = new Map();
 
     /**
      * @param {RuntimeScenePointJson[]} points
@@ -2078,12 +2106,13 @@
      * @returns {Point | null}
      */
     const resolveTracePoint = (points, index, visiting = new Set()) => {
+      if (resolvedCache.has(index)) {
+        return resolvedCache.get(index) ?? null;
+      }
       if (visiting.has(index)) return null;
       const point = points[index];
       if (!point) return null;
       visiting.add(index);
-      const baseParameters = deriveLabelParameters(sampleScene, new Map(parameters));
-      const driverValue = parameterValueFromPoint(sampleScene, line.binding.driverIndex);
       const applyDriverParameterGuesses = (exprParameters, ...exprs) => {
         if (!Number.isFinite(driverValue)) return exprParameters;
         const names = new Set();
@@ -2131,7 +2160,7 @@
         const source = resolveTracePoint(points, point.binding.sourceIndex, visiting);
         const center = resolveTracePoint(points, point.binding.centerIndex, visiting);
         const angleDegrees = point.binding.parameterName
-          ? parameters.get(point.binding.parameterName)
+          ? baseParameters.get(point.binding.parameterName)
           : point.binding.angleDegrees;
         if (source && center && Number.isFinite(angleDegrees)) {
           resolved = rotateAround(source, center, angleDegrees * Math.PI / 180);
@@ -2199,7 +2228,7 @@
         }
       } else if (point.binding?.kind === "custom-transform") {
         const derived = { ...point };
-        updateCustomTransformPoint(derived, parameters, (pointIndex) => resolveTracePoint(points, pointIndex, visiting), sampleScene);
+        updateCustomTransformPoint(derived, baseParameters, (pointIndex) => resolveTracePoint(points, pointIndex, visiting), sampleScene);
         if (Number.isFinite(derived.x) && Number.isFinite(derived.y)) {
           resolved = { x: derived.x, y: derived.y };
         }
@@ -2220,14 +2249,18 @@
       }
 
       visiting.delete(index);
-      if (resolved) return resolved;
-      return point.constraint ? null : point;
+      const finalPoint = resolved || (point.constraint ? null : point);
+      resolvedCache.set(index, finalPoint);
+      return finalPoint;
     };
 
     const sampled = [];
     const last = Math.max(1, line.binding.sampleCount - 1);
     for (let index = 0; index < line.binding.sampleCount; index += 1) {
-      const value = line.binding.xMin + (line.binding.xMax - line.binding.xMin) * (index / last);
+      const value = line.binding.useMidpoints
+        ? line.binding.xMin
+          + (line.binding.xMax - line.binding.xMin) * ((index + 0.5) / Math.max(1, line.binding.sampleCount))
+        : line.binding.xMin + (line.binding.xMax - line.binding.xMin) * (index / last);
       const points = scene.points.map(cloneTracePoint);
       sampleScene.points = points;
       applyTraceValueToPoint(
@@ -2237,6 +2270,9 @@
         line.binding.xMin,
         line.binding.xMax,
       );
+      baseParameters = deriveLabelParameters(sampleScene, new Map(parameters));
+      driverValue = parameterValueFromPoint(sampleScene, line.binding.driverIndex);
+      resolvedCache = new Map();
       const point = resolveTracePoint(points, line.binding.pointIndex);
       if (point) {
         sampled.push({ x: point.x, y: point.y });

@@ -507,6 +507,7 @@ pub(super) fn collect_labels(
             _ => {}
         }
     }
+    labels.iter_mut().for_each(apply_fallback_rich_markup);
     (labels, label_group_to_index, pending_hotspots)
 }
 
@@ -574,6 +575,21 @@ fn build_expression_rich_markup(expr_label: &str, value_text: &str) -> Option<St
         render_part(expr_label),
         value_text,
     ))
+}
+
+fn build_plain_text_rich_markup(text: &str) -> Option<String> {
+    let escaped = text
+        .replace('&', "＆")
+        .replace('<', "＜")
+        .replace('>', "＞")
+        .replace('*', "\u{00b7}");
+    (!escaped.is_empty()).then(|| format!("<H<Tx{}>>", escaped))
+}
+
+fn apply_fallback_rich_markup(label: &mut TextLabel) {
+    if label.rich_markup.is_none() {
+        label.rich_markup = build_plain_text_rich_markup(&label.text);
+    }
 }
 
 fn split_top_level<'a>(text: &'a str, needle: &str) -> Option<(&'a str, &'a str)> {
@@ -668,6 +684,7 @@ pub(super) fn collect_coordinate_labels(
             });
         }
     }
+    labels.iter_mut().for_each(apply_fallback_rich_markup);
     labels
 }
 
@@ -806,7 +823,7 @@ pub(super) fn collect_polygon_parameter_labels(
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
 ) -> Vec<TextLabel> {
-    groups
+    let mut labels = groups
         .iter()
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::ParameterAnchor)
         .filter_map(|group| {
@@ -862,14 +879,16 @@ pub(super) fn collect_polygon_parameter_labels(
                 hotspots: Vec::new(),
             })
         })
-        .collect()
+        .collect::<Vec<_>>();
+    labels.iter_mut().for_each(apply_fallback_rich_markup);
+    labels
 }
 
 pub(super) fn collect_segment_parameter_labels(
     file: &GspFile,
     groups: &[ObjectGroup],
 ) -> Vec<TextLabel> {
-    groups
+    let mut labels = groups
         .iter()
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::ParameterAnchor)
         .filter_map(|group| {
@@ -920,7 +939,9 @@ pub(super) fn collect_segment_parameter_labels(
                 hotspots: Vec::new(),
             })
         })
-        .collect()
+        .collect::<Vec<_>>();
+    labels.iter_mut().for_each(apply_fallback_rich_markup);
+    labels
 }
 
 pub(super) fn collect_circle_parameter_labels(
@@ -928,7 +949,7 @@ pub(super) fn collect_circle_parameter_labels(
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
 ) -> Vec<TextLabel> {
-    groups
+    let mut labels = groups
         .iter()
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::ParameterAnchor)
         .filter_map(|group| {
@@ -986,7 +1007,9 @@ pub(super) fn collect_circle_parameter_labels(
                 hotspots: Vec::new(),
             })
         })
-        .collect()
+        .collect::<Vec<_>>();
+    labels.iter_mut().for_each(apply_fallback_rich_markup);
+    labels
 }
 
 pub(super) fn collect_custom_transform_expression_labels(
