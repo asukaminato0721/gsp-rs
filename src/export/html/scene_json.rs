@@ -7,7 +7,7 @@ use super::label_button_scene_json::{ButtonJson, LabelJson};
 use super::line_shape_scene_json::{ArcJson, CircleJson, LineJson, PolygonJson};
 use super::point_scene_json::ScenePointJson;
 use crate::format::PointRecord;
-use crate::runtime::scene::Scene;
+use crate::runtime::scene::{PayloadDebugSource, Scene};
 use serde::Serialize;
 use ts_rs::{Config, ExportError, TS};
 
@@ -132,6 +132,8 @@ struct ImageJson {
     bottom_right: PointJson,
     src: String,
     screen_space: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    debug: Option<DebugSourceJson>,
 }
 
 impl ImageJson {
@@ -141,6 +143,27 @@ impl ImageJson {
             bottom_right: PointJson::from_point(&image.bottom_right),
             src: image.src.clone(),
             screen_space: image.screen_space,
+            debug: image.debug.as_ref().map(DebugSourceJson::from_source),
+        }
+    }
+}
+
+#[derive(Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DebugSourceJson {
+    group_ordinal: usize,
+    group_kind: String,
+    record_types: Vec<u32>,
+    record_names: Vec<String>,
+}
+
+impl DebugSourceJson {
+    pub(super) fn from_source(source: &PayloadDebugSource) -> Self {
+        Self {
+            group_ordinal: source.group_ordinal,
+            group_kind: source.group_kind.clone(),
+            record_types: source.record_types.clone(),
+            record_names: source.record_names.clone(),
         }
     }
 }

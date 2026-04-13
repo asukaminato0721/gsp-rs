@@ -61,15 +61,15 @@
     const tables = env.currentScene().iterationTables || [];
     if (!tables.length) return;
 
-    for (const table of tables) {
-      if (table.visible === false || !Array.isArray(table.rows) || table.rows.length === 0) continue;
+    tables.forEach((table, index) => {
+      if (table.visible === false || !Array.isArray(table.rows) || table.rows.length === 0) return;
       const bounds = modules.render.iterationTableBounds(env, table);
-      if (!bounds) continue;
+      if (!bounds) return;
       const { rows, colWidths, rowHeight, width, height, left, top } = bounds;
 
       const group = modules.render.appendSceneElement(env, "g", {
         transform: `translate(${left} ${top})`,
-      });
+      }, null, { category: "iterationTables", index });
       group.append(env.createSvgElement("rect", {
         x: 0,
         y: 0,
@@ -117,6 +117,6 @@
           x += cellWidth;
         });
       });
-    }
+    });
   };
 })();

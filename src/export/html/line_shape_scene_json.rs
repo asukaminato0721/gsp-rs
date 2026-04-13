@@ -1,5 +1,5 @@
 use super::function_expr_json::FunctionExprJson;
-use super::scene_json::PointJson;
+use super::scene_json::{DebugSourceJson, PointJson};
 use crate::runtime::geometry::darken;
 use crate::runtime::scene::{ArcBoundaryKind, ColorBinding, LineBinding, ShapeBinding};
 use serde::Serialize;
@@ -12,6 +12,8 @@ pub(super) struct LineJson {
     dashed: bool,
     visible: bool,
     binding: Option<LineBindingJson>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    debug: Option<DebugSourceJson>,
 }
 
 impl LineJson {
@@ -22,6 +24,7 @@ impl LineJson {
             dashed: line.dashed,
             visible: line.visible,
             binding: line.binding.as_ref().map(LineBindingJson::from_binding),
+            debug: line.debug.as_ref().map(DebugSourceJson::from_source),
         }
     }
 }
@@ -438,6 +441,8 @@ pub(super) struct PolygonJson {
     outline_color: [u8; 4],
     visible: bool,
     binding: Option<ShapeBindingJson>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    debug: Option<DebugSourceJson>,
 }
 
 impl PolygonJson {
@@ -448,6 +453,7 @@ impl PolygonJson {
             outline_color: darken(polygon.color, 80),
             visible: polygon.visible,
             binding: polygon.binding.as_ref().map(ShapeBindingJson::from_binding),
+            debug: polygon.debug.as_ref().map(DebugSourceJson::from_source),
         }
     }
 }
@@ -463,6 +469,8 @@ pub(super) struct CircleJson {
     dashed: bool,
     visible: bool,
     binding: Option<ShapeBindingJson>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    debug: Option<DebugSourceJson>,
 }
 
 impl CircleJson {
@@ -479,6 +487,7 @@ impl CircleJson {
             dashed: circle.dashed,
             visible: circle.visible,
             binding: circle.binding.as_ref().map(ShapeBindingJson::from_binding),
+            debug: circle.debug.as_ref().map(DebugSourceJson::from_source),
         }
     }
 }
@@ -544,6 +553,8 @@ pub(super) struct ArcJson {
     center: Option<PointJson>,
     counterclockwise: bool,
     visible: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    debug: Option<DebugSourceJson>,
 }
 
 impl ArcJson {
@@ -554,6 +565,7 @@ impl ArcJson {
             center: arc.center.as_ref().map(PointJson::from_point),
             counterclockwise: arc.counterclockwise,
             visible: arc.visible,
+            debug: arc.debug.as_ref().map(DebugSourceJson::from_source),
         }
     }
 }

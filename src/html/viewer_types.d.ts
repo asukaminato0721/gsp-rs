@@ -78,6 +78,13 @@ type RuntimeButtonJson = ButtonJson & {
   active: boolean;
 };
 
+type DebugTarget = {
+  category: string;
+  index: number;
+  hotspotIndex?: number | null;
+  label?: string | null;
+};
+
 type SceneLabelJson = RuntimeLabelJson;
 type SceneLineJson = RuntimeLineJson;
 type ScenePolygonJson = RuntimePolygonJson;
@@ -252,6 +259,8 @@ type ViewerEnv = {
   ) => void;
   clearSvgChildren: (element: Element) => void;
   measureText: (text: string, fontSize?: number, fontWeight?: number | string) => number;
+  registerDebugElement?: (element: Element, target: DebugTarget | null | undefined) => void;
+  selectDebugTarget?: (target: DebugTarget) => void;
   inputTag: typeof import("./vendor/van-1.6.0").default.tags.input;
   labelTag: typeof import("./vendor/van-1.6.0").default.tags.label;
   parameterControls: HTMLElement | null;
@@ -375,6 +384,7 @@ type ViewerRenderModule = {
     tag: string,
     attrs: Record<string, string | number | boolean | null | undefined>,
     text?: string | null,
+    debugTarget?: DebugTarget | null,
   ) => SVGElement;
   appendPointPath: (
     env: ViewerEnv,
@@ -387,6 +397,7 @@ type ViewerRenderModule = {
       close?: boolean;
       lineCap?: string;
       lineJoin?: string;
+      debugTarget?: DebugTarget | null;
     },
   ) => SVGElement | null;
   labelHotspotRects: (
@@ -402,6 +413,7 @@ type ViewerRenderModule = {
     width: number;
     height: number;
     action: LabelHotspotActionJson | null;
+    hotspotIndex?: number;
   }>;
   findHitPoint: (env: ViewerEnv, screenX: number, screenY: number) => number | null;
   findHitImage?: (env: ViewerEnv, screenX: number, screenY: number) => number | null;
@@ -505,10 +517,16 @@ interface Window {
       dynamics: RuntimeDynamicsState;
       buttons: RuntimeButtonJson[];
     };
+    readonly selection?: unknown;
     json: () => string;
     graph: () => string;
+    scene: () => string;
+    inspectSelection: () => string;
+    inspectElement: (element: Element) => unknown;
     dumpJson: () => void;
-    dumpGraph: () => void;
+    dumpGraph?: () => void;
+    dumpScene: () => void;
+    dumpSelection: () => void;
     dump: () => void;
     openPanel: () => void;
     closePanel: () => void;

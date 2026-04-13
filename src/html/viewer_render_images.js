@@ -27,19 +27,19 @@
 
   /** @param {ViewerEnv} env */
   modules.render.drawImages = function drawImages(env) {
-    for (const image of env.currentScene().images || []) {
+    (env.currentScene().images || []).forEach((image, index) => {
       const entry = loadImage(image.src, env);
-      if (!entry.loaded) continue;
+      if (!entry.loaded) return;
 
       const topLeft = image.screenSpace ? image.topLeft : env.toScreen(image.topLeft);
       const bottomRight = image.screenSpace ? image.bottomRight : env.toScreen(image.bottomRight);
-      if (!topLeft || !bottomRight) continue;
+      if (!topLeft || !bottomRight) return;
 
       const left = Math.min(topLeft.x, bottomRight.x);
       const top = Math.min(topLeft.y, bottomRight.y);
       const width = Math.abs(bottomRight.x - topLeft.x);
       const height = Math.abs(bottomRight.y - topLeft.y);
-      if (width <= 1e-6 || height <= 1e-6) continue;
+      if (width <= 1e-6 || height <= 1e-6) return;
 
       modules.render.appendSceneElement(env, "image", {
         x: left,
@@ -48,8 +48,8 @@
         height,
         href: image.src,
         preserveAspectRatio: "none",
-      });
-    }
+      }, null, { category: "images", index });
+    });
   };
 
   /**

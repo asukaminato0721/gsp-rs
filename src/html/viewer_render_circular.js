@@ -74,17 +74,17 @@
 
   /** @param {ViewerEnv} env */
   modules.render.drawCircles = function drawCircles(env) {
-    for (const circle of env.currentScene().circles) {
-      if (circle.visible === false) continue;
+    env.currentScene().circles.forEach((circle, index) => {
+      if (circle.visible === false) return;
       const centerWorld = env.resolvePoint(circle.center);
       const radiusPointWorld = env.resolvePoint(circle.radiusPoint);
-      if (!centerWorld || !radiusPointWorld) continue;
+      if (!centerWorld || !radiusPointWorld) return;
       const center = env.toScreen(centerWorld);
       const radius = Math.hypot(
         radiusPointWorld.x - centerWorld.x,
         radiusPointWorld.y - centerWorld.y,
       ) * center.scale;
-      if (radius <= 1e-9) continue;
+      if (radius <= 1e-9) return;
       modules.render.appendSceneElement(env, "circle", {
         cx: center.x,
         cy: center.y,
@@ -93,20 +93,20 @@
         stroke: env.rgba(circle.color),
         "stroke-width": 2,
         "stroke-dasharray": circle.dashed ? "8 8" : null,
-      });
-    }
+      }, null, { category: "circles", index });
+    });
   };
 
   /** @param {ViewerEnv} env */
   modules.render.drawArcs = function drawArcs(env) {
-    for (const arc of env.currentScene().arcs || []) {
-      if (arc.visible === false || !Array.isArray(arc.points) || arc.points.length !== 3) continue;
+    (env.currentScene().arcs || []).forEach((arc, index) => {
+      if (arc.visible === false || !Array.isArray(arc.points) || arc.points.length !== 3) return;
       let screenPoints;
       if (arc.center) {
         const startWorld = env.resolvePoint(arc.points[0]);
         const endWorld = env.resolvePoint(arc.points[2]);
         const centerWorld = env.resolvePoint(arc.center);
-        if (!startWorld || !endWorld || !centerWorld) continue;
+        if (!startWorld || !endWorld || !centerWorld) return;
         const midpointWorld = midpointOnCircleWorld(
           startWorld,
           endWorld,
@@ -114,7 +114,7 @@
           arc.counterclockwise !== false,
           !!env.sourceScene.yUp,
         );
-        if (!midpointWorld) continue;
+        if (!midpointWorld) return;
         screenPoints = [
           env.toScreen(startWorld),
           env.toScreen(midpointWorld),
@@ -122,11 +122,11 @@
         ];
       } else {
         const worldPoints = arc.points.map((/** @type {PointHandle} */ handle) => env.resolvePoint(handle));
-        if (worldPoints.some((/** @type {Point | null} */ point) => !point)) continue;
+        if (worldPoints.some((/** @type {Point | null} */ point) => !point)) return;
         screenPoints = worldPoints.map((/** @type {Point} */ point) => env.toScreen(point));
       }
       const geometry = arcGeometryFromPoints(screenPoints[0], screenPoints[1], screenPoints[2]);
-      if (!geometry) continue;
+      if (!geometry) return;
       modules.render.appendSceneElement(env, "path", {
         d: modules.render.arcPath(
           geometry.center,
@@ -138,7 +138,7 @@
         fill: "none",
         stroke: env.rgba(arc.color),
         "stroke-width": 2,
-      });
-    }
+      }, null, { category: "arcs", index });
+    });
   };
 })();

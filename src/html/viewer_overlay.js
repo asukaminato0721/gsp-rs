@@ -789,10 +789,11 @@
           anchor.addEventListener("pointerdown", (event) => {
             beginButtonPointer(buttonIndex, event);
           });
+          env.registerDebugElement?.(anchor, { category: "buttons", index: buttonIndex });
           buttonOverlays.append(anchor);
         });
 
-        env.currentScene().labels.forEach((/** @type {RuntimeLabelJson} */ label) => {
+        env.currentScene().labels.forEach((/** @type {RuntimeLabelJson} */ label, /** @type {number} */ labelIndex) => {
           if (label.visible === false) {
             return;
           }
@@ -814,6 +815,7 @@
             if (label.centeredOnAnchor) {
               richLabel.style.transform = "translate(-50%, -50%)";
             }
+            env.registerDebugElement?.(richLabel, { category: "labels", index: labelIndex });
             buttonOverlays.append(richLabel);
             return;
           }
@@ -832,6 +834,11 @@
             hotspot.addEventListener("click", (event) => {
               event.preventDefault();
               runHotspotAction(rect.action);
+            });
+            env.registerDebugElement?.(hotspot, {
+              category: "labelHotspots",
+              index: labelIndex,
+              hotspotIndex: rect.hotspotIndex ?? null,
             });
             buttonOverlays.append(hotspot);
           });

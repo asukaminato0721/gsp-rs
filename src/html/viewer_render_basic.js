@@ -78,12 +78,14 @@
    * @param {string} tag
    * @param {Record<string, string | number | boolean | null | undefined>} attrs
    * @param {string | null} [text]
+   * @param {DebugTarget | null} [debugTarget]
    */
-  function appendSceneElement(env, tag, attrs, text = null) {
+  function appendSceneElement(env, tag, attrs, text = null, debugTarget = null) {
     const element = env.createSvgElement(tag, attrs);
     if (text !== null) {
       element.textContent = text;
     }
+    env.registerDebugElement?.(element, debugTarget);
     env.sceneLayer.append(element);
     return element;
   }
@@ -91,7 +93,7 @@
   /**
    * @param {ViewerEnv} env
    * @param {Point[]} points
-   * @param {{ stroke: string, strokeWidth?: number, fill?: string, dashed?: boolean, close?: boolean, lineCap?: string, lineJoin?: string }} options
+   * @param {{ stroke: string, strokeWidth?: number, fill?: string, dashed?: boolean, close?: boolean, lineCap?: string, lineJoin?: string, debugTarget?: DebugTarget | null }} options
    */
   function appendPointPath(env, points, options) {
     if (!points || points.length < 2) return null;
@@ -103,7 +105,7 @@
       "stroke-dasharray": options.dashed ? "8 8" : null,
       "stroke-linecap": options.lineCap ?? "round",
       "stroke-linejoin": options.lineJoin ?? "round",
-    });
+    }, null, options.debugTarget ?? null);
   }
 
   /**
@@ -253,6 +255,7 @@
       /** @type {[number, number, number, number]} */ color,
       /** @type {boolean} */ dashed,
       /** @type {boolean} */ close = false,
+      /** @type {DebugTarget | null} */ debugTarget = null,
     ) => {
       const screenPoints = worldPoints.map((/** @type {Point} */ point) => env.toScreen(point));
       if (screenPoints.length < 2) return;
@@ -260,9 +263,10 @@
         stroke: env.rgba(color),
         dashed,
         close,
+        debugTarget,
       });
     };
-    const drawAngleMarker = (/** @type {RuntimeLineJson} */ line) => {
+    const drawAngleMarker = (/** @type {RuntimeLineJson} */ line, /** @type {number} */ lineIndex) => {
       const start = env.resolveScenePoint(line.binding.startIndex);
       const vertex = env.resolveScenePoint(line.binding.vertexIndex);
       const end = env.resolveScenePoint(line.binding.endIndex);
@@ -294,7 +298,7 @@
             })()
           : null;
         if (points?.length) {
-          drawPolyline(points, line.color, line.dashed);
+          drawPolyline(points, line.color, line.dashed, false, { category: "lines", index: lineIndex });
           continue;
         }
         const radius = Math.min(Math.max(shortestLen * 0.12, 10), 28) + layerIndex * 5;
@@ -312,10 +316,10 @@
             y: vertex.y + clampedRadius * Math.sin(angle),
           };
         });
-        drawPolyline(polyline, line.color, line.dashed);
+        drawPolyline(polyline, line.color, line.dashed, false, { category: "lines", index: lineIndex });
       }
     };
-    const drawSegmentMarker = (/** @type {RuntimeLineJson} */ line) => {
+    const drawSegmentMarker = (/** @type {RuntimeLineJson} */ line, /** @type {number} */ lineIndex) => {
       const start = env.resolveScenePoint(line.binding.startIndex);
       const end = env.resolveScenePoint(line.binding.endIndex);
       if (!start || !end) return;
@@ -340,7 +344,7 @@
         drawPolyline([
           { x: slashCenter.x - normal.x * halfLen, y: slashCenter.y - normal.y * halfLen },
           { x: slashCenter.x + normal.x * halfLen, y: slashCenter.y + normal.y * halfLen },
-        ], line.color, line.dashed);
+        ], line.color, line.dashed, false, { category: "lines", index: lineIndex });
       }
     };
     const pointsEqual = (/** @type {Point} */ left, /** @type {Point} */ right) =>
@@ -389,16 +393,15 @@
     const orderedLines = env.currentScene().lines
       .map((line, index) => ({ line, index }))
       .sort((left, right) => linePriority(left.line) - linePriority(right.line) || left.index - right.index)
-      .map((entry) => entry.line);
-    for (const line of orderedLines) {
+    for (const { line, index } of orderedLines) {
       if (line.visible === false) continue;
       if (line.binding?.kind === "graph-helper-line") continue;
       if (line.binding?.kind === "angle-marker") {
-        drawAngleMarker(line);
+        drawAngleMarker(line, index);
         continue;
       }
       if (line.binding?.kind === "segment-marker") {
-        drawSegmentMarker(line);
+        drawSegmentMarker(line, index);
         continue;
       }
       let screenPoints = null;
@@ -519,6 +522,7 @@
       appendPointPath(env, screenPoints, {
         stroke: env.rgba(line.color),
         dashed: !!line.dashed,
+        debugTarget: { category: "lines", index },
       });
     }
   }
@@ -545,7 +549,7 @@
         fill: index === env.hoverPointIndex.val
           ? "rgba(255, 120, 20, 1)"
           : env.rgba(point.color || [255, 60, 40, 255]),
-      });
+      }, null, { category: "points", index });
     });
   }
 

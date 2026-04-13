@@ -128,6 +128,7 @@ pub(crate) fn collect_rotational_iteration_lines(
                         start_step: step,
                         end_step: (step + 1) % (depth + 1),
                     }),
+                    debug: None,
                 });
             }
             Some(lines)
@@ -300,6 +301,7 @@ pub(crate) fn collect_carried_iteration_lines(
                         dashed: line_is_dashed(source_group.header.style_a),
                         visible: !iter_group.header.is_hidden(),
                         binding: None,
+                        debug: None,
                     });
                 }
                 return Some(lines);
@@ -319,6 +321,7 @@ pub(crate) fn collect_carried_iteration_lines(
                         dashed: line_is_dashed(source_group.header.style_a),
                         visible: !iter_group.header.is_hidden(),
                         binding: None,
+                        debug: None,
                     })
                     .collect::<Vec<_>>(),
             )
@@ -651,6 +654,7 @@ fn branching_lines(
                     dashed,
                     visible,
                     binding: None,
+                    debug: None,
                 });
                 next.push((child_start, child_end));
             }
@@ -1176,6 +1180,7 @@ pub(crate) fn collect_carried_iteration_polygons(
                     color,
                     visible: !iter_group.header.is_hidden(),
                     binding: None,
+                    debug: None,
                 })
                 .collect::<Vec<_>>(),
             )
@@ -1295,6 +1300,7 @@ fn collect_coordinate_point_polygon_grid_iteration(
             color,
             visible: !iter_group.header.is_hidden(),
             binding: None,
+            debug: None,
         });
     }
     Some(polygons)
@@ -1433,6 +1439,7 @@ pub(crate) fn collect_carried_iteration_circles(
                         dashed: line_is_dashed(source_group.header.style_a),
                         visible,
                         binding: None,
+                        debug: None,
                     });
                 }
                 return Some(circles);
@@ -1460,6 +1467,7 @@ pub(crate) fn collect_carried_iteration_circles(
                     dashed: line_is_dashed(source_group.header.style_a),
                     visible,
                     binding: None,
+                    debug: None,
                 })
                 .collect::<Vec<_>>(),
             )
@@ -1692,6 +1700,7 @@ fn collect_parameter_controlled_circle_iteration(
                     dashed: line_is_dashed(source_circle_group.header.style_a),
                     visible,
                     binding: None,
+                    debug: None,
                 })
             })
             .collect::<Vec<_>>(),
@@ -2043,6 +2052,7 @@ pub(crate) fn collect_iteration_shapes(
                     dashed: false,
                     visible: !iter_group.header.is_hidden(),
                     binding: None,
+                    debug: None,
                 });
             }
         }

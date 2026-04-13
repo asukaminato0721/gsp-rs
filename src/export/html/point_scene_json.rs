@@ -1,5 +1,5 @@
 use super::function_expr_json::FunctionExprJson;
-use super::scene_json::PointJson;
+use super::scene_json::{DebugSourceJson, PointJson};
 use crate::runtime::scene::{
     CircularConstraint, LineConstraint, ScenePointBinding, ScenePointConstraint,
 };
@@ -15,6 +15,8 @@ pub(super) struct ScenePointJson {
     draggable: bool,
     constraint: Option<PointConstraintJson>,
     binding: Option<PointBindingJson>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    debug: Option<DebugSourceJson>,
 }
 
 impl ScenePointJson {
@@ -27,6 +29,7 @@ impl ScenePointJson {
             draggable: point.draggable,
             constraint: PointConstraintJson::from_constraint(&point.constraint),
             binding: point.binding.as_ref().map(PointBindingJson::from_binding),
+            debug: point.debug.as_ref().map(DebugSourceJson::from_source),
         }
     }
 }

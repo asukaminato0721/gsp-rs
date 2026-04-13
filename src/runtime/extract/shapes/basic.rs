@@ -4,8 +4,8 @@ use super::{
     ArcShape, CircleShape, GraphTransform, GspFile, LineBinding, LineShape, ObjectGroup,
     PointRecord, PolygonShape, ShapeBinding, color_from_style, decode_label_name,
     evaluate_expr_with_parameters, fill_color_from_styles, find_indexed_path, has_distinct_points,
-    line_is_dashed, three_point_arc_geometry, to_raw_from_world, try_decode_function_expr,
-    try_decode_function_plot_descriptor,
+    line_is_dashed, payload_debug_source, three_point_arc_geometry, to_raw_from_world,
+    try_decode_function_expr, try_decode_function_plot_descriptor,
 };
 use crate::format::{read_f64, read_u32};
 use crate::runtime::extract::decode::{is_circle_group_kind, resolve_circle_points_raw};
@@ -222,6 +222,7 @@ pub(crate) fn collect_line_shapes(
                     }),
                     _ => None,
                 },
+                debug: Some(payload_debug_source(group)),
             })
         })
         .collect()
@@ -287,6 +288,7 @@ pub(crate) fn collect_segment_marker_shapes(
                     t,
                     marker_class,
                 }),
+                debug: Some(payload_debug_source(group)),
             })
         })
         .collect()
@@ -316,6 +318,7 @@ pub(crate) fn collect_arc_boundary_shapes(
                 dashed: line_is_dashed(group.header.style_a),
                 visible: !group.header.is_hidden(),
                 binding: Some(binding),
+                debug: Some(payload_debug_source(group)),
             })
         })
         .collect()
@@ -345,6 +348,7 @@ pub(crate) fn collect_arc_boundary_fill_polygons(
                 color,
                 visible: !group.header.is_hidden(),
                 binding: Some(binding),
+                debug: Some(payload_debug_source(group)),
             })
         })
         .collect()
@@ -387,6 +391,7 @@ fn resolve_angle_marker_shape(
             end_index: path.refs[2].checked_sub(1)?,
             marker_class,
         }),
+        debug: Some(payload_debug_source(group)),
     })
 }
 
@@ -625,6 +630,7 @@ fn resolve_angle_bisector_ray_shape(
             vertex_index,
             end_index,
         }),
+        debug: Some(payload_debug_source(group)),
     })
 }
 
@@ -671,6 +677,7 @@ fn resolve_perpendicular_line_shape(
             line_end_index: Some(line_end_index),
             line_index: Some(host_index),
         }),
+        debug: Some(payload_debug_source(group)),
     })
 }
 
@@ -715,6 +722,7 @@ fn resolve_parallel_line_shape(
             line_end_index: Some(line_end_index),
             line_index: Some(host_index),
         }),
+        debug: Some(payload_debug_source(group)),
     })
 }
 
@@ -806,6 +814,7 @@ pub(crate) fn collect_bound_line_shapes(
                     },
                     _ => return None,
                 }),
+                debug: Some(payload_debug_source(group)),
             })
         })
         .collect()
@@ -848,6 +857,7 @@ pub(crate) fn collect_polygon_shapes(
                         .filter_map(|object_ref| object_ref.checked_sub(1))
                         .collect(),
                 }),
+                debug: Some(payload_debug_source(group)),
             })
         })
         .collect()
@@ -934,6 +944,7 @@ pub(crate) fn collect_circle_shapes(
                 dashed: dashed_circle_indices.contains(&group_index),
                 visible: !group.header.is_hidden(),
                 binding,
+                debug: Some(payload_debug_source(group)),
             })
         })
         .collect()
@@ -1008,6 +1019,7 @@ pub(crate) fn collect_three_point_arc_shapes(
                 center,
                 counterclockwise,
                 visible: !group.header.is_hidden(),
+                debug: Some(payload_debug_source(group)),
             })
         })
         .collect()
@@ -1365,6 +1377,7 @@ pub(crate) fn collect_derived_segments(
                 .map(|group| !group.header.is_hidden())
                 .unwrap_or(true),
             binding: None,
+            debug: None,
         });
     }
 
@@ -1492,6 +1505,7 @@ pub(crate) fn collect_coordinate_traces(
                     x_max: descriptor.x_max,
                     sample_count: descriptor.sample_count,
                 }),
+                debug: Some(payload_debug_source(group)),
             })
         })
         .collect()

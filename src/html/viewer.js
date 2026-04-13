@@ -44,6 +44,7 @@
   const coordReadout = /** @type {HTMLElement} */ (document.getElementById("coord-readout"));
   /** @type {HTMLElement} */
   const zoomReadout = /** @type {HTMLElement} */ (document.getElementById("zoom-readout"));
+  /** @typedef {{ category: string; index: number; hotspotIndex?: number | null; label?: string | null }} DebugTarget */
   const margin = 32;
   const trigMode = !!sourceScene.piMode;
   const savedViewportMode = !!sourceScene.savedViewport;
@@ -68,8 +69,13 @@
   const autoOpenDebug = new URLSearchParams(window.location.search).get("debug") === "1";
   const defaultZoom = sourceScene.graphMode ? 1 : 0.9;
   const pointerWorldState = van.state(null);
-  /** @type {{ val: "graph" | "json" }} */
-  const debugViewState = van?.state ? van.state("graph") : { val: "graph" };
+  /** @type {{ val: "selection" | "scene" | "json" }} */
+  const debugViewState = van?.state ? van.state("selection") : { val: "selection" };
+  /** @type {{ val: DebugTarget | null }} */
+  const selectedDebugTargetState = van?.state ? van.state(null) : { val: null };
+  /** @type {Map<string, { element: Element, target: DebugTarget }>} */
+  const debugElementRegistry = new Map();
+  let nextDebugElementId = 1;
   const viewState = van?.state ? van.state({
     centerX: baseCenterX,
     centerY: baseCenterY,
@@ -234,6 +240,115 @@
 
   /**
    * @param {Point} point
+   * @param {Point} start
+   * @param {Point} end
+   */
+  function distanceToSegmentSquared(point, start, end) {
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const lengthSquared = dx * dx + dy * dy;
+    if (lengthSquared <= 1e-9) {
+      return distanceSquared(point, start);
+    }
+    const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared));
+    return distanceSquared(point, {
+      x: start.x + dx * t,
+      y: start.y + dy * t,
+    });
+  }
+
+  /**
+   * @param {Point} point
+   * @param {Point[]} polyline
+   */
+  function distanceToPolylineSquared(point, polyline) {
+    let best = Number.POSITIVE_INFINITY;
+    for (let index = 0; index + 1 < polyline.length; index += 1) {
+      best = Math.min(best, distanceToSegmentSquared(point, polyline[index], polyline[index + 1]));
+    }
+    return best;
+  }
+
+  /**
+   * @param {Point} start
+   * @param {Point} mid
+   * @param {Point} end
+   */
+  function arcGeometryFromPoints(start, mid, end) {
+    const determinant = 2 * (
+      start.x * (mid.y - end.y)
+      + mid.x * (end.y - start.y)
+      + end.x * (start.y - mid.y)
+    );
+    if (Math.abs(determinant) <= 1e-9) return null;
+
+    const startSq = start.x * start.x + start.y * start.y;
+    const midSq = mid.x * mid.x + mid.y * mid.y;
+    const endSq = end.x * end.x + end.y * end.y;
+    const center = {
+      x: (
+        startSq * (mid.y - end.y)
+        + midSq * (end.y - start.y)
+        + endSq * (start.y - mid.y)
+      ) / determinant,
+      y: (
+        startSq * (end.x - mid.x)
+        + midSq * (start.x - end.x)
+        + endSq * (mid.x - start.x)
+      ) / determinant,
+    };
+    const radius = Math.hypot(start.x - center.x, start.y - center.y);
+    if (radius <= 1e-9) return null;
+
+    const startAngle = Math.atan2(start.y - center.y, start.x - center.x);
+    const midAngle = Math.atan2(mid.y - center.y, mid.x - center.x);
+    const endAngle = Math.atan2(end.y - center.y, end.x - center.x);
+    const forwardSpan = ((endAngle - startAngle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+    const forwardMid = ((midAngle - startAngle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+
+    return {
+      center,
+      radius,
+      startAngle,
+      endAngle,
+      counterClockwise: forwardMid > forwardSpan + 1e-9,
+    };
+  }
+
+  /**
+   * @param {Point} start
+   * @param {Point} end
+   * @param {Point} center
+   * @param {boolean} counterclockwise
+   * @param {boolean} yUp
+   */
+  function midpointOnCircleWorld(start, end, center, counterclockwise, yUp) {
+    const ySign = yUp ? 1 : -1;
+    const startAngle = Math.atan2((start.y - center.y) * ySign, start.x - center.x);
+    const endAngle = Math.atan2((end.y - center.y) * ySign, end.x - center.x);
+    const radius = (Math.hypot(start.x - center.x, start.y - center.y) + Math.hypot(end.x - center.x, end.y - center.y)) / 2;
+    if (radius <= 1e-9) return null;
+    const span = counterclockwise
+      ? ((endAngle - startAngle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2)
+      : -(((startAngle - endAngle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2));
+    const midpointAngle = startAngle + span * 0.5;
+    return {
+      x: center.x + radius * Math.cos(midpointAngle),
+      y: center.y + ySign * radius * Math.sin(midpointAngle),
+    };
+  }
+
+  /** @param {any} debug */
+  function clonePayloadDebug(debug) {
+    return debug ? {
+      ...debug,
+      recordTypes: [...(debug.recordTypes || [])],
+      recordNames: [...(debug.recordNames || [])],
+    } : null;
+  }
+
+  /**
+   * @param {Point} point
    * @param {Array<{ points: PointHandle[] }>} hydratedLines
    * @returns {PointHandle}
    */
@@ -317,6 +432,7 @@
       visible: line.visible !== false,
       points: line.points.map(attachPointRef),
       binding: line.binding ? { ...line.binding } : null,
+      debug: clonePayloadDebug(line.debug),
     }));
     return {
       ...scene,
@@ -327,6 +443,7 @@
         bottomRight: { ...image.bottomRight },
         src: image.src,
         screenSpace: !!image.screenSpace,
+        debug: clonePayloadDebug(image.debug),
       })),
       points: scene.points.map((point) => ({
         x: point.x,
@@ -343,6 +460,7 @@
             }
           : null,
         binding: point.binding ? { ...point.binding } : null,
+        debug: clonePayloadDebug(point.debug),
       })),
       origin: scene.origin ? attachPointRef(scene.origin) : null,
       lines: hydratedLines,
@@ -352,6 +470,7 @@
         visible: polygon.visible !== false,
         points: polygon.points.map(attachPointRef),
         binding: polygon.binding ? { ...polygon.binding } : null,
+        debug: clonePayloadDebug(polygon.debug),
       })),
       circles: scene.circles.map((circle) => ({
         color: circle.color,
@@ -362,6 +481,7 @@
         center: attachPointRef(circle.center),
         radiusPoint: attachPointRef(circle.radiusPoint),
         binding: circle.binding ? { ...circle.binding } : null,
+        debug: clonePayloadDebug(circle.debug),
       })),
       arcs: (scene.arcs || []).map((arc) => ({
         color: arc.color,
@@ -369,6 +489,7 @@
         points: arc.points.map(attachPointRef),
         center: arc.center ? attachPointRef(arc.center) : null,
         counterclockwise: !!arc.counterclockwise,
+        debug: clonePayloadDebug(arc.debug),
       })),
       labels: scene.labels.map((label) => ({
         text: label.text,
@@ -387,14 +508,17 @@
           ...hotspot,
           action: hotspot.action ? { ...hotspot.action } : null,
         })),
+        debug: clonePayloadDebug(label.debug),
       })),
       iterationTables: (scene.iterationTables || []).map((table) => ({
         ...table,
+        debug: clonePayloadDebug(table.debug),
         /** @type {RuntimeIterationRow[]} */
         rows: [],
       })),
       buttons: (scene.buttons || []).map((button) => ({
         ...button,
+        debug: clonePayloadDebug(button.debug),
         baseText: button.text,
         visible: true,
         active: false,
@@ -485,6 +609,212 @@
       return structuredClone(value);
     }
     return JSON.parse(JSON.stringify(value));
+  }
+
+  function pruneDebugRegistry() {
+    for (const [id, entry] of debugElementRegistry.entries()) {
+      if (!entry.element.isConnected) {
+        debugElementRegistry.delete(id);
+      }
+    }
+  }
+
+  /**
+   * @param {DebugTarget | null} target
+   * @returns {string}
+   */
+  function debugTargetKey(target) {
+    if (!target) return "";
+    return `${target.category}:${target.index}:${target.hotspotIndex ?? ""}`;
+  }
+
+  function syncDebugSelectionHighlight() {
+    pruneDebugRegistry();
+    const selectedKey = debugTargetKey(selectedDebugTargetState.val);
+    for (const entry of debugElementRegistry.values()) {
+      entry.element.setAttribute(
+        "data-gsp-debug-selected",
+        debugTargetKey(entry.target) === selectedKey ? "true" : "false",
+      );
+    }
+  }
+
+  /**
+   * @param {Element} element
+   * @param {DebugTarget | null | undefined} target
+   */
+  function registerDebugElement(element, target) {
+    if (!element || !target) {
+      return;
+    }
+    const debugId = `dbg-${nextDebugElementId++}`;
+    element.setAttribute("data-gsp-debug-id", debugId);
+    element.setAttribute("data-gsp-kind", target.category);
+    element.setAttribute("data-gsp-index", String(target.index));
+    if (target.hotspotIndex !== undefined && target.hotspotIndex !== null) {
+      element.setAttribute("data-gsp-hotspot-index", String(target.hotspotIndex));
+    }
+    const entity = lookupDebugEntity(target);
+    if (entity?.debug?.groupOrdinal) {
+      element.setAttribute("data-gsp-group", String(entity.debug.groupOrdinal));
+    }
+    debugElementRegistry.set(debugId, { element, target });
+    syncDebugSelectionHighlight();
+  }
+
+  /**
+   * @param {DebugTarget} target
+   */
+  function selectDebugTarget(target) {
+    selectedDebugTargetState.val = target;
+    debugViewState.val = "selection";
+    syncDebugSelectionHighlight();
+    renderDebugOutput();
+  }
+
+  /** @param {Element | null} element */
+  function selectDebugTargetFromElement(element) {
+    const carrier = element?.closest?.("[data-gsp-debug-id]");
+    if (!carrier) {
+      return false;
+    }
+    const debugId = carrier.getAttribute("data-gsp-debug-id");
+    const entry = debugId ? debugElementRegistry.get(debugId) : null;
+    if (!entry) {
+      return false;
+    }
+    selectDebugTarget(entry.target);
+    return true;
+  }
+
+  /**
+   * @param {number} screenX
+   * @param {number} screenY
+   * @returns {DebugTarget | null}
+   */
+  function findDebugTargetAtScreen(screenX, screenY) {
+    const pointIndex = findHitPoint(screenX, screenY);
+    if (pointIndex !== null) {
+      return { category: "points", index: pointIndex };
+    }
+    const imageIndex = renderModule.findHitImage ? renderModule.findHitImage(viewerEnv, screenX, screenY) : null;
+    if (imageIndex !== null) {
+      return { category: "images", index: imageIndex };
+    }
+    const iterationTableIndex = findHitIterationTable(screenX, screenY);
+    if (iterationTableIndex !== null) {
+      return { category: "iterationTables", index: iterationTableIndex };
+    }
+    const labelIndex = findHitLabel(screenX, screenY);
+    if (labelIndex !== null) {
+      return { category: "labels", index: labelIndex };
+    }
+    const lineIndex = findHitLine(screenX, screenY);
+    if (lineIndex !== null) {
+      return { category: "lines", index: lineIndex };
+    }
+    const polygonIndex = findHitPolygon(screenX, screenY);
+    if (polygonIndex !== null) {
+      return { category: "polygons", index: polygonIndex };
+    }
+    const circleIndex = findHitCircle(screenX, screenY);
+    if (circleIndex !== null) {
+      return { category: "circles", index: circleIndex };
+    }
+    const arcIndex = findHitArc(screenX, screenY);
+    if (arcIndex !== null) {
+      return { category: "arcs", index: arcIndex };
+    }
+    return null;
+  }
+
+  /** @param {DebugTarget} target */
+  function lookupDebugEntity(target) {
+    const scene = currentScene();
+    switch (target.category) {
+      case "images":
+        return scene.images?.[target.index] ?? null;
+      case "polygons":
+        return scene.polygons?.[target.index] ?? null;
+      case "lines":
+        return scene.lines?.[target.index] ?? null;
+      case "circles":
+        return scene.circles?.[target.index] ?? null;
+      case "arcs":
+        return scene.arcs?.[target.index] ?? null;
+      case "points":
+        return scene.points?.[target.index] ?? null;
+      case "labels":
+        return scene.labels?.[target.index] ?? null;
+      case "iterationTables":
+        return scene.iterationTables?.[target.index] ?? null;
+      case "buttons":
+        return overlayRuntime.currentButtons?.()?.[target.index] ?? scene.buttons?.[target.index] ?? null;
+      case "labelHotspots": {
+        const label = scene.labels?.[target.index];
+        if (!label || target.hotspotIndex === undefined || target.hotspotIndex === null) {
+          return null;
+        }
+        return label.hotspots?.[target.hotspotIndex] ?? null;
+      }
+      default:
+        return null;
+    }
+  }
+
+  /** @param {DebugTarget} target */
+  function describeDebugTarget(target) {
+    const suffix = target.hotspotIndex !== undefined && target.hotspotIndex !== null
+      ? `[${target.hotspotIndex}]`
+      : "";
+    return `${target.category}[${target.index}]${suffix}`;
+  }
+
+  /** @param {Record<string, unknown> | null | undefined} debug */
+  function formatPayloadDebug(debug) {
+    if (!debug) {
+      return ["payload: derived or unavailable"];
+    }
+    const lines = [];
+    if (typeof debug.groupOrdinal === "number") {
+      lines.push(`payload group: #${debug.groupOrdinal}`);
+    }
+    if (typeof debug.groupKind === "string") {
+      lines.push(`group kind: ${debug.groupKind}`);
+    }
+    if (Array.isArray(debug.recordNames) && debug.recordNames.length) {
+      lines.push(`records: ${debug.recordNames.join(", ")}`);
+    } else if (Array.isArray(debug.recordTypes) && debug.recordTypes.length) {
+      lines.push(`records: ${debug.recordTypes.join(", ")}`);
+    }
+    return lines;
+  }
+
+  function buildSelectionDebugOutput() {
+    const target = selectedDebugTargetState.val;
+    if (!target) {
+      return [
+        "Selection",
+        "  No element selected.",
+        "  Open Debug and click a rendered element or overlay to inspect its payload origin.",
+      ].join("\n");
+    }
+    const entity = lookupDebugEntity(target);
+    const lines = [
+      "Selection",
+      `  target: ${describeDebugTarget(target)}`,
+      `  summary: ${summarizeDebugEntity(entity) || "(no summary)"}`,
+    ];
+    formatPayloadDebug(entity?.debug).forEach((line) => {
+      lines.push(`  ${line}`);
+    });
+    const refs = collectReferenceTokens(entity);
+    if (refs.length) {
+      lines.push(`  refs: ${refs.join(", ")}`);
+    }
+    lines.push("");
+    lines.push(JSON.stringify(cloneForDebug(entity), null, 2));
+    return lines.join("\n");
   }
 
   function buildDebugJson() {
@@ -707,10 +1037,16 @@
     if (!debugOutput) {
       return;
     }
-    const activeTab = debugViewState.val === "json" ? "json" : "graph";
+    const activeTab = debugViewState.val === "json"
+      ? "json"
+      : debugViewState.val === "scene"
+        ? "scene"
+        : "selection";
     debugOutput.textContent = activeTab === "json"
       ? buildDebugJson()
-      : buildDebugGraph(currentScene());
+      : activeTab === "scene"
+        ? buildDebugGraph(currentScene())
+        : buildSelectionDebugOutput();
     debugTabButtons.forEach((button) => {
       const isActive = button.dataset.debugTab === activeTab;
       button.setAttribute("aria-pressed", isActive ? "true" : "false");
@@ -732,9 +1068,11 @@
   }
 
   function dumpDebugToConsole() {
+    const selection = buildSelectionDebugOutput();
     const graph = buildDebugGraph(currentScene());
     const runtime = buildRuntimeSnapshot();
     console.groupCollapsed("gspDebug");
+    console.log(selection);
     console.log(graph);
     console.log("sourceScene", cloneForDebug(sourceScene));
     console.log("runtime", runtime);
@@ -798,6 +1136,262 @@
    */
   function findHitPolygon(screenX, screenY) {
     return renderModule.findHitPolygon ? renderModule.findHitPolygon(viewerEnv, screenX, screenY) : null;
+  }
+
+  /**
+   * @param {RuntimeLineJson} line
+   * @returns {Point[] | null}
+   */
+  function resolveLineScreenPoints(line) {
+    if (!line || line.visible === false || line.binding?.kind === "graph-helper-line") {
+      return null;
+    }
+    if (
+      line.binding?.kind === "line"
+      || line.binding?.kind === "ray"
+      || line.binding?.kind === "angle-bisector-ray"
+      || line.binding?.kind === "perpendicular-line"
+      || line.binding?.kind === "parallel-line"
+    ) {
+      /** @param {LineBindingJson} binding */
+      const resolveHostLinePoints = (binding) => {
+        if (
+          binding
+          && typeof binding === "object"
+          && "lineStartIndex" in binding
+          && "lineEndIndex" in binding
+          && typeof binding.lineStartIndex === "number"
+          && typeof binding.lineEndIndex === "number"
+        ) {
+          return [
+            viewerEnv.resolveScenePoint(binding.lineStartIndex),
+            viewerEnv.resolveScenePoint(binding.lineEndIndex),
+          ];
+        }
+        if (
+          binding
+          && typeof binding === "object"
+          && "lineIndex" in binding
+          && typeof binding.lineIndex === "number"
+        ) {
+          return viewerEnv.resolveLinePoints(binding.lineIndex);
+        }
+        return null;
+      };
+      const start = line.binding.kind === "perpendicular-line" || line.binding.kind === "parallel-line"
+        ? (() => {
+            const through = viewerEnv.resolveScenePoint(line.binding.throughIndex);
+            return through ? viewerEnv.toScreen(through) : null;
+          })()
+        : line.binding.kind === "angle-bisector-ray"
+          ? (() => {
+              const vertex = viewerEnv.resolveScenePoint(line.binding.vertexIndex);
+              return vertex ? viewerEnv.toScreen(vertex) : null;
+            })()
+          : (() => {
+              const startPoint = viewerEnv.resolveScenePoint(line.binding.startIndex);
+              if (!startPoint) return null;
+              return viewerEnv.toScreen(startPoint);
+            })();
+      const end = line.binding.kind === "perpendicular-line"
+        ? (() => {
+            const through = viewerEnv.resolveScenePoint(line.binding.throughIndex);
+            if (!through) return null;
+            const hostLine = resolveHostLinePoints(line.binding);
+            if (!hostLine) return null;
+            const [lineStart, lineEnd] = hostLine;
+            if (!lineStart || !lineEnd) return null;
+            const dx = lineEnd.x - lineStart.x;
+            const dy = lineEnd.y - lineStart.y;
+            const len = Math.hypot(dx, dy);
+            if (len <= 1e-9) return null;
+            return viewerEnv.toScreen({ x: through.x - dy / len, y: through.y + dx / len });
+          })()
+        : line.binding.kind === "parallel-line"
+          ? (() => {
+              const through = viewerEnv.resolveScenePoint(line.binding.throughIndex);
+              if (!through) return null;
+              const hostLine = resolveHostLinePoints(line.binding);
+              if (!hostLine) return null;
+              const [lineStart, lineEnd] = hostLine;
+              if (!lineStart || !lineEnd) return null;
+              const dx = lineEnd.x - lineStart.x;
+              const dy = lineEnd.y - lineStart.y;
+              const len = Math.hypot(dx, dy);
+              if (len <= 1e-9) return null;
+              return viewerEnv.toScreen({ x: through.x + dx / len, y: through.y + dy / len });
+            })()
+          : line.binding.kind === "angle-bisector-ray"
+            ? (() => {
+                const startPoint = viewerEnv.resolveScenePoint(line.binding.startIndex);
+                const vertex = viewerEnv.resolveScenePoint(line.binding.vertexIndex);
+                const endPoint = viewerEnv.resolveScenePoint(line.binding.endIndex);
+                if (!startPoint || !vertex || !endPoint) return null;
+                const startDx = startPoint.x - vertex.x;
+                const startDy = startPoint.y - vertex.y;
+                const startLen = Math.hypot(startDx, startDy);
+                const endDx = endPoint.x - vertex.x;
+                const endDy = endPoint.y - vertex.y;
+                const endLen = Math.hypot(endDx, endDy);
+                if (startLen <= 1e-9 || endLen <= 1e-9) return null;
+                const sumX = startDx / startLen + endDx / endLen;
+                const sumY = startDy / startLen + endDy / endLen;
+                const sumLen = Math.hypot(sumX, sumY);
+                const direction = sumLen > 1e-9
+                  ? { x: sumX / sumLen, y: sumY / sumLen }
+                  : { x: -startDy / startLen, y: startDx / startLen };
+                return viewerEnv.toScreen({ x: vertex.x + direction.x, y: vertex.y + direction.y });
+              })()
+            : (() => {
+                const endPoint = viewerEnv.resolveScenePoint(line.binding.endIndex);
+                return endPoint ? viewerEnv.toScreen(endPoint) : null;
+              })();
+      if (!start || !end) {
+        return null;
+      }
+      return [start, end];
+    }
+    const points = viewerEnv.resolveLinePoints
+      ? viewerEnv.resolveLinePoints(line)
+      : line.points.map((/** @type {PointHandle} */ handle) => viewerEnv.resolvePoint(handle));
+    if (!points || points.length < 2 || points.some((/** @type {Point | null} */ point) => !point)) {
+      return null;
+    }
+    return points.map((/** @type {Point} */ point) => viewerEnv.toScreen(point));
+  }
+
+  /**
+   * @param {number} screenX
+   * @param {number} screenY
+   */
+  function findHitLine(screenX, screenY) {
+    const lines = currentScene().lines || [];
+    const point = { x: screenX, y: screenY };
+    const toleranceSquared = 10 * 10;
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      const screenPoints = resolveLineScreenPoints(lines[index]);
+      if (!screenPoints || screenPoints.length < 2) {
+        continue;
+      }
+      if (distanceToPolylineSquared(point, screenPoints) <= toleranceSquared) {
+        return index;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * @param {number} screenX
+   * @param {number} screenY
+   */
+  function findHitCircle(screenX, screenY) {
+    const circles = currentScene().circles || [];
+    const strokeTolerance = 10;
+    for (let index = circles.length - 1; index >= 0; index -= 1) {
+      const circle = circles[index];
+      if (circle.visible === false) {
+        continue;
+      }
+      const centerWorld = viewerEnv.resolvePoint(circle.center);
+      const radiusPointWorld = viewerEnv.resolvePoint(circle.radiusPoint);
+      if (!centerWorld || !radiusPointWorld) {
+        continue;
+      }
+      const center = viewerEnv.toScreen(centerWorld);
+      const radius = Math.hypot(
+        radiusPointWorld.x - centerWorld.x,
+        radiusPointWorld.y - centerWorld.y,
+      ) * center.scale;
+      if (!Number.isFinite(radius) || radius <= 1e-6) {
+        continue;
+      }
+      const distance = Math.hypot(screenX - center.x, screenY - center.y);
+      const hitsStroke = Math.abs(distance - radius) <= strokeTolerance;
+      const hitsFill = !!circle.fillColor && distance <= radius;
+      if (hitsStroke || hitsFill) {
+        return index;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * @param {RuntimeArcJson} arc
+   * @returns {Point[] | null}
+   */
+  function resolveArcScreenPolyline(arc) {
+    if (arc.visible === false || !Array.isArray(arc.points) || arc.points.length !== 3) {
+      return null;
+    }
+    /** @type {Point[]} */
+    let screenPoints;
+    if (arc.center) {
+      const startWorld = viewerEnv.resolvePoint(arc.points[0]);
+      const endWorld = viewerEnv.resolvePoint(arc.points[2]);
+      const centerWorld = viewerEnv.resolvePoint(arc.center);
+      if (!startWorld || !endWorld || !centerWorld) {
+        return null;
+      }
+      const midpointWorld = midpointOnCircleWorld(
+        startWorld,
+        endWorld,
+        centerWorld,
+        arc.counterclockwise !== false,
+        !!viewerEnv.sourceScene.yUp,
+      );
+      if (!midpointWorld) {
+        return null;
+      }
+      screenPoints = [
+        viewerEnv.toScreen(startWorld),
+        viewerEnv.toScreen(midpointWorld),
+        viewerEnv.toScreen(endWorld),
+      ];
+    } else {
+      const worldPoints = arc.points.map((/** @type {PointHandle} */ handle) => viewerEnv.resolvePoint(handle));
+      if (worldPoints.some((/** @type {Point | null} */ point) => !point)) {
+        return null;
+      }
+      screenPoints = worldPoints.map((/** @type {Point} */ point) => viewerEnv.toScreen(point));
+    }
+    const geometry = arcGeometryFromPoints(screenPoints[0], screenPoints[1], screenPoints[2]);
+    if (!geometry) {
+      return null;
+    }
+    const tau = Math.PI * 2;
+    const ccwSpan = ((geometry.endAngle - geometry.startAngle) % tau + tau) % tau;
+    const clockwiseSpan = ccwSpan === 0 ? 0 : tau - ccwSpan;
+    const useCounterClockwise = !!geometry.counterClockwise;
+    const sweep = useCounterClockwise ? ccwSpan : -clockwiseSpan;
+    const samples = 24;
+    return Array.from({ length: samples + 1 }, (_, index) => {
+      const t = index / samples;
+      const angle = geometry.startAngle + sweep * t;
+      return {
+        x: geometry.center.x + geometry.radius * Math.cos(angle),
+        y: geometry.center.y + geometry.radius * Math.sin(angle),
+      };
+    });
+  }
+
+  /**
+   * @param {number} screenX
+   * @param {number} screenY
+   */
+  function findHitArc(screenX, screenY) {
+    const arcs = currentScene().arcs || [];
+    const point = { x: screenX, y: screenY };
+    const toleranceSquared = 10 * 10;
+    for (let index = arcs.length - 1; index >= 0; index -= 1) {
+      const screenPolyline = resolveArcScreenPolyline(arcs[index]);
+      if (!screenPolyline || screenPolyline.length < 2) {
+        continue;
+      }
+      if (distanceToPolylineSquared(point, screenPolyline) <= toleranceSquared) {
+        return index;
+      }
+    }
+    return null;
   }
 
   /**
@@ -900,9 +1494,34 @@
     setSvgAttributes,
     clearSvgChildren,
     measureText,
+    registerDebugElement,
+    selectDebugTarget,
     drawGrid: () => sceneModule.drawGrid(viewerEnv),
   };
   overlayRuntime = overlayModule?.init ? overlayModule.init(viewerEnv, buttonOverlays) : overlayRuntime;
+  canvas?.addEventListener("click", (event) => {
+    const targetElement = /** @type {Element | null} */ (event.target);
+    if (selectDebugTargetFromElement(targetElement)) {
+      return;
+    }
+    const elementAtPoint = document.elementFromPoint(event.clientX, event.clientY);
+    if (selectDebugTargetFromElement(elementAtPoint)) {
+      return;
+    }
+    const position = sceneModule.getCanvasCoords(viewerEnv, event);
+    const debugTarget = findDebugTargetAtScreen(position.x, position.y);
+    if (debugTarget) {
+      selectDebugTarget(debugTarget);
+    }
+  });
+  buttonOverlays?.addEventListener("click", (event) => {
+    const targetElement = /** @type {Element | null} */ (event.target);
+    if (selectDebugTargetFromElement(targetElement)) {
+      return;
+    }
+    const elementAtPoint = document.elementFromPoint(event.clientX, event.clientY);
+    selectDebugTargetFromElement(elementAtPoint);
+  });
 
   window.gspDebug = {
     sourceScene,
@@ -910,17 +1529,43 @@
     get runtime() {
       return buildRuntimeSnapshot();
     },
+    get selection() {
+      return cloneForDebug(lookupDebugEntity(selectedDebugTargetState.val));
+    },
     json() {
       return buildDebugJson();
+    },
+    scene() {
+      return buildDebugGraph(currentScene());
     },
     graph() {
       return buildDebugGraph(currentScene());
     },
+    inspectSelection() {
+      return buildSelectionDebugOutput();
+    },
+    /** @param {Element} element */
+    inspectElement(element) {
+      const carrier = element?.closest?.("[data-gsp-debug-id]");
+      if (!carrier) {
+        return null;
+      }
+      const debugId = carrier.getAttribute("data-gsp-debug-id");
+      const entry = debugId ? debugElementRegistry.get(debugId) : null;
+      if (!entry) {
+        return null;
+      }
+      selectDebugTarget(entry.target);
+      return cloneForDebug(lookupDebugEntity(entry.target));
+    },
     dumpJson() {
       console.log(buildDebugJson());
     },
-    dumpGraph() {
+    dumpScene() {
       console.log(buildDebugGraph(currentScene()));
+    },
+    dumpSelection() {
+      console.log(buildSelectionDebugOutput());
     },
     dump() {
       dumpDebugToConsole();
@@ -944,7 +1589,8 @@
   });
   debugTabButtons.forEach((button) => {
     button.addEventListener("click", () => {
-      debugViewState.val = button.dataset.debugTab === "json" ? "json" : "graph";
+      const tab = button.dataset.debugTab;
+      debugViewState.val = tab === "json" || tab === "scene" ? tab : "selection";
       renderDebugOutput();
     });
   });

@@ -70,6 +70,7 @@ pub(crate) fn collect_function_plots(
                 dashed: false,
                 visible: !group.header.is_hidden(),
                 binding: None,
+                debug: None,
             });
         }
     }
@@ -157,6 +158,7 @@ pub(crate) fn synthesize_function_axes(
             dashed: false,
             visible: true,
             binding: None,
+            debug: None,
         });
     }
     if world_bounds.min_y <= 0.0 && 0.0 <= world_bounds.max_y {
@@ -185,6 +187,7 @@ pub(crate) fn synthesize_function_axes(
             dashed: false,
             visible: true,
             binding: None,
+            debug: None,
         });
     }
 
@@ -295,6 +298,7 @@ pub(crate) fn synthesize_function_labels(
                 }),
                 screen_space: false,
                 hotspots: Vec::new(),
+                debug: None,
             }
         })
         .collect::<Vec<_>>();
@@ -346,6 +350,7 @@ pub(crate) fn synthesize_function_labels(
                 }),
                 screen_space: false,
                 hotspots: Vec::new(),
+                debug: None,
             }
         },
     ));
@@ -407,6 +412,7 @@ pub(crate) fn synthesize_function_labels(
                 }),
                 screen_space: false,
                 hotspots: Vec::new(),
+                debug: None,
             }
         },
     ));

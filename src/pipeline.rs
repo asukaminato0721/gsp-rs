@@ -19,6 +19,7 @@ pub fn compile_file_to_html(
         .wrap_err_with(|| format!("failed to read {}", gsp_path.display()))?;
     match compile_bytes_to_html_file(&data, html_path, width, height) {
         Ok(()) => {
+            write_debug_json(html_path, &data, width, height)?;
             write_payload_log(gsp_path, &data)?;
             Ok(())
         }
@@ -72,6 +73,20 @@ pub fn compile_bytes_to_scene_json(data: &[u8], width: u32, height: u32) -> Resu
         .wrap_err("failed to build scene from parsed payload")?;
     let (width, height) = export_dimensions(&file, &scene, width, height);
     Ok(render_scene_json(&scene, width, height, true))
+}
+
+fn write_debug_json(
+    html_path: &Path,
+    data: &[u8],
+    width: u32,
+    height: u32,
+) -> Result<Option<std::path::PathBuf>> {
+    let debug_json = compile_bytes_to_scene_json(data, width, height)?;
+    let debug_path = html_path.with_extension("debug.json");
+    fs::write(&debug_path, debug_json)
+        .into_diagnostic()
+        .wrap_err_with(|| format!("failed to write {}", debug_path.display()))?;
+    Ok(Some(debug_path))
 }
 
 fn write_payload_log(gsp_path: &Path, data: &[u8]) -> Result<Option<std::path::PathBuf>> {
@@ -167,13 +182,14 @@ mod tests {
     }
 
     #[test]
-    fn compiles_fixture_and_also_writes_payload_log() {
+    fn compiles_fixture_and_also_writes_payload_log_and_debug_json() {
         let temp_root = unique_test_dir("payload-log-success");
         fs::create_dir_all(&temp_root).expect("temporary directory should be creatable");
 
         let gsp_path = temp_root.join("point.gsp");
         let html_path = temp_root.join("point.html");
         let log_path = temp_root.join("point.log");
+        let debug_json_path = temp_root.join("point.debug.json");
         fs::write(
             &gsp_path,
             include_bytes!("../tests/fixtures/gsp/static/point.gsp"),
@@ -185,12 +201,21 @@ mod tests {
 
         assert!(html_path.exists(), "expected html output to be written");
         assert!(log_path.exists(), "expected payload log to be written");
+        assert!(
+            debug_json_path.exists(),
+            "expected debug json output to be written"
+        );
 
         let log = fs::read_to_string(&log_path).expect("payload log should be readable");
         assert!(log.contains("载荷说明"));
         assert!(log.contains("问题数量: 0"));
         assert!(log.contains("构造步骤"));
         assert!(log.contains("1. #1 = 自由点。"));
+
+        let debug_json =
+            fs::read_to_string(&debug_json_path).expect("debug json should be readable");
+        assert!(debug_json.contains("\n  \"width\": 800,"));
+        assert!(debug_json.contains("\"points\": ["));
 
         let _ = fs::remove_dir_all(&temp_root);
     }

@@ -71,7 +71,7 @@
       return [];
     }
     const rects = label.hotspots
-      .map((/** @type {RuntimeLabelHotspotJson} */ hotspot) => {
+      .map((/** @type {RuntimeLabelHotspotJson} */ hotspot, /** @type {number} */ hotspotIndex) => {
         const line = bounds.lines[hotspot.line];
         if (typeof line !== "string") return null;
         const glyphs = Array.from(line);
@@ -90,6 +90,7 @@
           width: Math.max(1, env.measureText(text, 18)),
           height: 22,
           action: hotspot.action,
+          hotspotIndex,
         };
       })
       .filter(Boolean);
@@ -121,15 +122,15 @@
 
   /** @param {ViewerEnv} env */
   modules.render.drawLabels = function drawLabels(env) {
-    for (const label of env.currentScene().labels) {
-      if (label.visible === false || (label.richMarkup && !label.hotspots?.length)) continue;
+    env.currentScene().labels.forEach((label, index) => {
+      if (label.visible === false || (label.richMarkup && !label.hotspots?.length)) return;
       const bounds = modules.render.labelBounds(env, label);
-      if (!bounds) continue;
+      if (!bounds) return;
       const group = modules.render.appendSceneElement(env, "g", {
         fill: env.rgba(label.color),
         "font-size": 18,
         "font-family": "\"Noto Sans\", \"Segoe UI\", sans-serif",
-      });
+      }, null, { category: "labels", index });
       if (label.centeredOnAnchor) {
         const midOffset = (bounds.lines.length - 1) / 2;
         bounds.lines.forEach((line, index) => {
@@ -154,6 +155,6 @@
           group.append(text);
         });
       }
-    }
+    });
   };
 })();

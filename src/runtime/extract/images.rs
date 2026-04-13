@@ -2,6 +2,8 @@ use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u16, read_
 use crate::runtime::geometry::GraphTransform;
 use crate::runtime::scene::SceneImage;
 
+use super::payload_debug_source;
+
 const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
 
 pub(super) fn collect_scene_images(
@@ -92,6 +94,7 @@ fn decode_image_group(
         bottom_right: raw_bottom_right,
         src,
         screen_space: true,
+        debug: Some(payload_debug_source(group)),
     })
 }
 

@@ -65,18 +65,19 @@
 
   /** @param {ViewerEnv} env */
   modules.render.drawPolygons = function drawPolygons(env) {
-    for (const polygon of env.currentScene().polygons) {
-      if (polygon.visible === false) continue;
-      if (polygon.points.length < 3) continue;
+    env.currentScene().polygons.forEach((polygon, index) => {
+      if (polygon.visible === false) return;
+      if (polygon.points.length < 3) return;
       const worldPoints = polygon.points.map((/** @type {PointHandle} */ handle) => env.resolvePoint(handle));
-      if (worldPoints.some((/** @type {Point | null} */ point) => !point)) continue;
+      if (worldPoints.some((/** @type {Point | null} */ point) => !point)) return;
       const screenPoints = worldPoints.map((/** @type {Point} */ point) => env.toScreen(point));
       modules.render.appendPointPath(env, screenPoints, {
         stroke: env.rgba(polygon.outlineColor),
         strokeWidth: 1.5,
         fill: env.rgba(polygon.color),
         close: true,
+        debugTarget: { category: "polygons", index },
       });
-    }
+    });
   };
 })();

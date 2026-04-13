@@ -46,6 +46,7 @@ pub(super) fn world_line_shape(
         dashed: line.dashed,
         visible: line.visible,
         binding: line.binding,
+        debug: line.debug,
     }
 }
 

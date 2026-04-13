@@ -106,6 +106,7 @@ pub(crate) fn collect_point_iteration_points(
                                     angle_degrees,
                                     parameter_name: None,
                                 }),
+                                debug: None,
                             });
                             previous_index = seed_index + derived_points.len();
                         }
@@ -159,6 +160,7 @@ pub(crate) fn collect_point_iteration_points(
                             dy,
                         },
                         binding: None,
+                        debug: None,
                     });
                     previous_index = seed_index + derived_points.len();
                 }
@@ -200,6 +202,7 @@ pub(crate) fn collect_point_iteration_points(
                                 dy,
                             },
                             binding: None,
+                            debug: None,
                         });
                         previous_index = seed_index + derived_points.len();
                     }
@@ -250,6 +253,7 @@ pub(crate) fn collect_point_iteration_points(
                                 angle_degrees: angle_degrees * step as f64,
                                 parameter_name: None,
                             }),
+                            debug: None,
                         });
                     }
                     let angle_expr = regular_polygon_angle_expr(&parameter_name, n);

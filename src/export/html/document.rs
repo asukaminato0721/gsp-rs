@@ -87,9 +87,10 @@ pub(super) fn render_standalone_html_document(
       </div>
       <section id="debug-panel" class="debug-panel" hidden>
         <div class="debug-toolbar">
-          <strong>Hierarchy Debug</strong>
+          <strong>Payload Debug</strong>
           <div class="debug-actions">
-            <button id="debug-tab-graph" type="button" data-debug-tab="graph" aria-pressed="true">Graph</button>
+            <button id="debug-tab-selection" type="button" data-debug-tab="selection" aria-pressed="true">Selection</button>
+            <button id="debug-tab-scene" type="button" data-debug-tab="scene" aria-pressed="false">Scene</button>
             <button id="debug-tab-json" type="button" data-debug-tab="json" aria-pressed="false">JSON</button>
             <button id="debug-dump-console" type="button">Dump Console</button>
           </div>
@@ -553,6 +554,7 @@ mod tests {
             draggable: true,
             constraint: ScenePointConstraint::Free,
             binding: None,
+            debug: None,
         });
         let plan = viewer_runtime_plan(&scene);
         assert_eq!(plan.scene.label(), "basic");

@@ -1,4 +1,5 @@
 use super::function_expr_json::FunctionExprJson;
+use super::scene_json::DebugSourceJson;
 use crate::runtime::scene::{
     CircleIterationFamily, IterationPointHandle, IterationTable, LabelIterationFamily,
     LineIterationFamily, PointIterationFamily, PolygonIterationFamily,
@@ -497,6 +498,8 @@ pub(super) struct IterationTableJson {
     depth: usize,
     depth_parameter_name: Option<String>,
     visible: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    debug: Option<DebugSourceJson>,
 }
 
 impl IterationTableJson {
@@ -510,6 +513,7 @@ impl IterationTableJson {
             depth: table.depth,
             depth_parameter_name: table.depth_parameter_name.clone(),
             visible: table.visible,
+            debug: table.debug.as_ref().map(DebugSourceJson::from_source),
         }
     }
 }

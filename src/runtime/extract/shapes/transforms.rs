@@ -2,6 +2,7 @@ use super::{
     CircleShape, GspFile, LineBinding, LineShape, ObjectGroup, PointRecord, PolygonShape,
     ShapeBinding, TransformBindingKind, collect_circle_fill_colors, color_from_style,
     fill_color_from_styles, find_indexed_path, has_distinct_points, line_is_dashed,
+    payload_debug_source,
     reflect_across_line, rotate_around, scale_around, translation_point_pair_group_indices,
     try_decode_parameter_rotation_binding, try_decode_transform_binding,
 };
@@ -45,6 +46,7 @@ pub(crate) fn collect_rotated_line_shapes(
                     angle_degrees: binding_angle_degrees(&binding.kind)?,
                     parameter_name: binding_parameter_name(&binding.kind),
                 }),
+                debug: Some(payload_debug_source(group)),
             })
         })
         .collect()
@@ -89,6 +91,7 @@ pub(crate) fn collect_translated_line_shapes(
                     vector_start_index,
                     vector_end_index,
                 }),
+                debug: Some(payload_debug_source(group)),
             })
         })
         .collect()
@@ -132,6 +135,7 @@ pub(crate) fn collect_scaled_line_shapes(
                     center_index: binding.center_group_index,
                     factor,
                 }),
+                debug: Some(payload_debug_source(group)),
             })
         })
         .collect()
@@ -180,6 +184,7 @@ pub(crate) fn collect_reflected_line_shapes(
                     line_end_index: None,
                     line_index: Some(line_group_index),
                 }),
+                debug: Some(payload_debug_source(group)),
             })
         })
         .collect()
@@ -221,6 +226,7 @@ pub(crate) fn collect_rotated_circle_shapes(
                     angle_degrees: binding_angle_degrees(&binding.kind)?,
                     parameter_name: binding_parameter_name(&binding.kind),
                 }),
+                debug: Some(payload_debug_source(group)),
             })
         })
         .collect()
@@ -266,6 +272,7 @@ pub(crate) fn collect_translated_polygon_shapes(
                     vector_start_index,
                     vector_end_index,
                 }),
+                debug: Some(payload_debug_source(group)),
             })
         })
         .collect()
@@ -308,6 +315,7 @@ pub(crate) fn collect_transformed_circle_shapes(
                     center_index: binding.center_group_index,
                     factor,
                 }),
+                debug: Some(payload_debug_source(group)),
             })
         })
         .collect()
@@ -352,6 +360,7 @@ pub(crate) fn collect_rotated_polygon_shapes(
                     angle_degrees: binding_angle_degrees(&binding.kind)?,
                     parameter_name: binding_parameter_name(&binding.kind),
                 }),
+                debug: Some(payload_debug_source(group)),
             })
         })
         .collect()
@@ -397,6 +406,7 @@ pub(crate) fn collect_transformed_polygon_shapes(
                     center_index: binding.center_group_index,
                     factor,
                 }),
+                debug: Some(payload_debug_source(group)),
             })
         })
         .collect()
@@ -441,6 +451,7 @@ pub(crate) fn collect_reflected_circle_shapes(
                     line_end_index: None,
                     line_index: Some(line_group_index),
                 }),
+                debug: Some(payload_debug_source(group)),
             })
         })
         .collect()
@@ -486,6 +497,7 @@ pub(crate) fn collect_reflected_polygon_shapes(
                     line_end_index: None,
                     line_index: Some(line_group_index),
                 }),
+                debug: Some(payload_debug_source(group)),
             })
         })
         .collect()

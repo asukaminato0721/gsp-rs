@@ -4,6 +4,14 @@ use super::functions::{FunctionExpr, FunctionPlotDescriptor};
 use super::geometry::Bounds;
 
 #[derive(Debug, Clone)]
+pub(crate) struct PayloadDebugSource {
+    pub(crate) group_ordinal: usize,
+    pub(crate) group_kind: String,
+    pub(crate) record_types: Vec<u32>,
+    pub(crate) record_names: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct Scene {
     pub(crate) graph_mode: bool,
     pub(crate) pi_mode: bool,
@@ -35,6 +43,7 @@ pub(crate) struct SceneImage {
     pub(crate) bottom_right: PointRecord,
     pub(crate) src: String,
     pub(crate) screen_space: bool,
+    pub(crate) debug: Option<PayloadDebugSource>,
 }
 
 #[derive(Debug, Clone)]
@@ -43,6 +52,7 @@ pub(crate) struct SceneButton {
     pub(crate) anchor: ScreenPoint,
     pub(crate) rect: Option<ScreenRect>,
     pub(crate) action: ButtonAction,
+    pub(crate) debug: Option<PayloadDebugSource>,
 }
 
 #[derive(Debug, Clone)]
@@ -105,6 +115,7 @@ pub(crate) struct ScenePoint {
     pub(crate) draggable: bool,
     pub(crate) constraint: ScenePointConstraint,
     pub(crate) binding: Option<ScenePointBinding>,
+    pub(crate) debug: Option<PayloadDebugSource>,
 }
 
 #[derive(Debug, Clone)]
@@ -262,6 +273,7 @@ pub(crate) struct IterationTable {
     pub(crate) depth: usize,
     pub(crate) depth_parameter_name: Option<String>,
     pub(crate) visible: bool,
+    pub(crate) debug: Option<PayloadDebugSource>,
 }
 
 #[derive(Debug, Clone)]
@@ -430,6 +442,7 @@ pub(crate) struct LineShape {
     pub(crate) dashed: bool,
     pub(crate) visible: bool,
     pub(crate) binding: Option<LineBinding>,
+    pub(crate) debug: Option<PayloadDebugSource>,
 }
 
 #[derive(Debug, Clone)]
@@ -552,6 +565,7 @@ pub(crate) struct PolygonShape {
     pub(crate) color: [u8; 4],
     pub(crate) visible: bool,
     pub(crate) binding: Option<ShapeBinding>,
+    pub(crate) debug: Option<PayloadDebugSource>,
 }
 
 #[derive(Debug, Clone)]
@@ -671,6 +685,7 @@ pub(crate) struct SceneCircle {
     pub(crate) dashed: bool,
     pub(crate) visible: bool,
     pub(crate) binding: Option<ShapeBinding>,
+    pub(crate) debug: Option<PayloadDebugSource>,
 }
 
 #[derive(Debug, Clone)]
@@ -680,6 +695,7 @@ pub(crate) struct SceneArc {
     pub(crate) center: Option<PointRecord>,
     pub(crate) counterclockwise: bool,
     pub(crate) visible: bool,
+    pub(crate) debug: Option<PayloadDebugSource>,
 }
 
 #[derive(Debug, Clone)]
@@ -773,6 +789,7 @@ pub(crate) struct TextLabel {
     pub(crate) binding: Option<TextLabelBinding>,
     pub(crate) screen_space: bool,
     pub(crate) hotspots: Vec<TextLabelHotspot>,
+    pub(crate) debug: Option<PayloadDebugSource>,
 }
 
 #[derive(Debug, Clone)]

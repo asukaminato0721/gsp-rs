@@ -87,6 +87,7 @@ pub(super) fn collect_point_traces(
                         x_max: descriptor.x_max,
                         sample_count: descriptor.sample_count,
                     }),
+                    debug: None,
                 });
             }
 
@@ -140,6 +141,7 @@ pub(super) fn collect_point_traces(
                     }
                     _ => None,
                 },
+                debug: None,
             })
         })
         .collect()

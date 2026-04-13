@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_u16, read_u32};
 use crate::runtime::scene::{ButtonAction, SceneButton, ScreenPoint, ScreenRect};
 
-use super::{decode, find_indexed_path};
+use super::{decode, find_indexed_path, payload_debug_source};
 
 #[derive(Clone)]
 enum RawButtonAction {
@@ -285,6 +285,9 @@ pub(super) fn collect_buttons(
                 anchor: button.anchor,
                 rect: button.rect,
                 action,
+                debug: groups
+                    .get(button.group_ordinal.saturating_sub(1))
+                    .map(payload_debug_source),
             })
         })
         .collect::<Vec<_>>();

@@ -52,6 +52,7 @@ fn scene_point(
         draggable,
         constraint,
         binding,
+        debug: None,
     }
 }
 

@@ -203,6 +203,7 @@ pub(super) fn build_world_data(
                 },
             },
             binding: point.binding.clone(),
+            debug: point.debug.clone(),
         })
         .collect::<Vec<_>>();
 
@@ -559,6 +560,7 @@ pub(super) fn assemble_scene(
                 },
                 src: image.src,
                 screen_space: image.screen_space,
+                debug: image.debug,
             })
             .collect(),
         lines: raw_lines
@@ -576,6 +578,7 @@ pub(super) fn assemble_scene(
                 color: polygon.color,
                 visible: polygon.visible,
                 binding: polygon.binding,
+                debug: polygon.debug,
             })
             .collect(),
         circles: circles
@@ -593,6 +596,7 @@ pub(super) fn assemble_scene(
                 dashed: circle.dashed,
                 visible: circle.visible,
                 binding: circle.binding,
+                debug: circle.debug,
             })
             .collect(),
         arcs: arcs
@@ -607,6 +611,7 @@ pub(super) fn assemble_scene(
                     .map(|center| to_world(&center, &analysis.graph_ref)),
                 counterclockwise: arc.counterclockwise,
                 visible: arc.visible,
+                debug: arc.debug,
             })
             .collect(),
         labels: labels
@@ -624,6 +629,7 @@ pub(super) fn assemble_scene(
                 binding: label.binding,
                 screen_space: label.screen_space,
                 hotspots: label.hotspots,
+                debug: label.debug,
             })
             .collect(),
         points: world_data.world_points,

@@ -1,5 +1,5 @@
 use super::function_expr_json::FunctionExprJson;
-use super::scene_json::PointJson;
+use super::scene_json::{DebugSourceJson, PointJson};
 use crate::runtime::scene::{ButtonAction, SceneButton, TextLabelBinding, TextLabelHotspotAction};
 use serde::Serialize;
 use ts_rs::TS;
@@ -13,6 +13,8 @@ pub(super) struct ButtonJson {
     width: Option<f64>,
     height: Option<f64>,
     action: ButtonActionJson,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    debug: Option<DebugSourceJson>,
 }
 
 impl ButtonJson {
@@ -24,6 +26,7 @@ impl ButtonJson {
             width: button.rect.as_ref().map(|rect| rect.width),
             height: button.rect.as_ref().map(|rect| rect.height),
             action: ButtonActionJson::from_action(&button.action),
+            debug: button.debug.as_ref().map(DebugSourceJson::from_source),
         }
     }
 }
@@ -163,6 +166,8 @@ pub(super) struct LabelJson {
     hotspots: Vec<LabelHotspotJson>,
     #[serde(rename = "screenSpace")]
     screen_space: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    debug: Option<DebugSourceJson>,
 }
 
 impl LabelJson {
@@ -180,6 +185,7 @@ impl LabelJson {
                 .map(LabelHotspotJson::from_hotspot)
                 .collect(),
             screen_space: label.screen_space,
+            debug: label.debug.as_ref().map(DebugSourceJson::from_source),
         }
     }
 }

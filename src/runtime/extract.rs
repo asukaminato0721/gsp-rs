@@ -76,8 +76,8 @@ use super::functions::{
 };
 use super::geometry::{Bounds, GraphTransform, distance_world};
 use super::scene::{
-    ColorBinding, LabelIterationFamily, LineIterationFamily, LineShape, PointIterationFamily,
-    PolygonIterationFamily, PolygonShape, Scene, ScenePoint, TextLabel,
+    ColorBinding, LabelIterationFamily, LineIterationFamily, LineShape, PayloadDebugSource,
+    PointIterationFamily, PolygonIterationFamily, PolygonShape, Scene, ScenePoint, TextLabel,
 };
 
 pub(crate) use self::decode::{
@@ -97,6 +97,7 @@ struct CircleShape {
     dashed: bool,
     visible: bool,
     binding: Option<super::scene::ShapeBinding>,
+    debug: Option<PayloadDebugSource>,
 }
 
 #[derive(Debug, Clone)]
@@ -106,6 +107,20 @@ struct ArcShape {
     center: Option<PointRecord>,
     counterclockwise: bool,
     visible: bool,
+    debug: Option<PayloadDebugSource>,
+}
+
+pub(super) fn payload_debug_source(group: &ObjectGroup) -> PayloadDebugSource {
+    PayloadDebugSource {
+        group_ordinal: group.ordinal,
+        group_kind: format!("{:?}", group.header.kind()),
+        record_types: group.records.iter().map(|record| record.record_type).collect(),
+        record_names: group
+            .records
+            .iter()
+            .map(|record| format!("0x{:04x} {}", record.record_type, record_name(record.record_type)))
+            .collect(),
+    }
 }
 
 struct SceneAnalysis {
@@ -541,6 +556,7 @@ fn append_circle_perimeter_label(
                 binding: None,
                 screen_space: false,
                 hotspots: Vec::new(),
+                debug: None,
             },
         );
     }

@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::CircleShape;
+use super::{CircleShape, payload_debug_source};
 use super::decode::{
     RichTextHotspotRef, decode_label_anchor, decode_label_name, decode_label_name_raw,
     decode_label_visible, decode_text_anchor, find_indexed_path, is_action_button_group,
@@ -397,6 +397,7 @@ pub(super) fn collect_labels(
                         binding,
                         screen_space: false,
                         hotspots: Vec::new(),
+                        debug: Some(payload_debug_source(group)),
                     });
                     push_pending_label_hotspots(
                         file,
@@ -473,6 +474,7 @@ pub(super) fn collect_labels(
                         binding,
                         screen_space: false,
                         hotspots: Vec::new(),
+                        debug: Some(payload_debug_source(group)),
                     });
                     push_pending_label_hotspots(
                         file,
@@ -522,6 +524,7 @@ pub(super) fn collect_labels(
                         binding: None,
                         screen_space: false,
                         hotspots: Vec::new(),
+                        debug: Some(payload_debug_source(group)),
                     });
                 }
             }
@@ -661,6 +664,7 @@ pub(super) fn collect_coordinate_labels(
                 binding,
                 screen_space: true,
                 hotspots: Vec::new(),
+                debug: Some(payload_debug_source(group)),
             });
         } else if kind == crate::format::GroupKind::FunctionExpr
             && let Some(expr) = try_decode_function_expr(file, groups, group).ok()
@@ -702,6 +706,7 @@ pub(super) fn collect_coordinate_labels(
                 binding,
                 screen_space: true,
                 hotspots: Vec::new(),
+                debug: Some(payload_debug_source(group)),
             });
         }
     }
@@ -836,6 +841,7 @@ fn collect_point_expression_label(
         }),
         screen_space: false,
         hotspots: Vec::new(),
+        debug: Some(payload_debug_source(group)),
     })
 }
 
@@ -898,6 +904,7 @@ pub(super) fn collect_polygon_parameter_labels(
                 }),
                 screen_space: false,
                 hotspots: Vec::new(),
+                debug: Some(payload_debug_source(group)),
             })
         })
         .collect::<Vec<_>>();
@@ -958,6 +965,7 @@ pub(super) fn collect_segment_parameter_labels(
                 }),
                 screen_space: false,
                 hotspots: Vec::new(),
+                debug: Some(payload_debug_source(group)),
             })
         })
         .collect::<Vec<_>>();
@@ -1026,6 +1034,7 @@ pub(super) fn collect_circle_parameter_labels(
                 }),
                 screen_space: false,
                 hotspots: Vec::new(),
+                debug: Some(payload_debug_source(group)),
             })
         })
         .collect::<Vec<_>>();
@@ -1110,6 +1119,7 @@ pub(super) fn collect_custom_transform_expression_labels(
                     }),
                     screen_space: false,
                     hotspots: Vec::new(),
+                    debug: Some(payload_debug_source(group)),
                 });
             }
             Some(labels)
@@ -1393,6 +1403,7 @@ pub(super) fn collect_iteration_tables(
                 depth,
                 depth_parameter_name,
                 visible: true,
+                debug: Some(payload_debug_source(group)),
             })
         })
         .collect()
@@ -1670,6 +1681,7 @@ pub(super) fn compute_iteration_labels(
                 }),
                 screen_space: false,
                 hotspots: Vec::new(),
+                debug: Some(payload_debug_source(group)),
             });
             continue;
         } else if kind == crate::format::GroupKind::Point {
@@ -1724,6 +1736,7 @@ pub(super) fn compute_iteration_labels(
                 binding: None,
                 screen_space: false,
                 hotspots: Vec::new(),
+                debug: Some(payload_debug_source(group)),
             });
         }
     }

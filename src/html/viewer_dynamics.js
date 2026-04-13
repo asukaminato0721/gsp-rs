@@ -2764,12 +2764,14 @@
     });
 
     const preservedLines = [];
-    const rotateFamilies = new Map();
     const lineContext = { env, scene, bounds, parameters };
     scene.lines.forEach((/** @type {RuntimeLineJson} */ line) => {
       const bindingKind = line.binding?.kind;
       if (!bindingKind) {
         preservedLines.push(line);
+        return;
+      }
+      if (bindingKind === "rotate-edge") {
         return;
       }
       if (bindingKind !== "rotate-edge") {
@@ -2780,23 +2782,20 @@
         preservedLines.push(line);
         return;
       }
-      const key = `${line.binding.centerIndex}:${line.binding.vertexIndex}:${line.binding.parameterName}`;
-      if (!rotateFamilies.has(key)) {
-        rotateFamilies.set(key, {
-          binding: line.binding,
-          color: line.color,
-          dashed: line.dashed,
-        });
-      }
     });
-    for (const family of rotateFamilies.values()) {
-      const center = scene.points[family.binding.centerIndex];
-      const vertex = scene.points[family.binding.vertexIndex];
-      const sidesValue = parameters.get(family.binding.parameterName);
-      const sides = Math.max(1, Math.round(Number.isFinite(sidesValue) ? sidesValue : 1));
+    for (const family of env.sourceScene.lineIterations || []) {
+      if (family.kind !== "rotate") {
+        continue;
+      }
+      const center = scene.points[family.centerIndex];
+      const vertex = scene.points[family.vertexIndex];
+      const sides = pointIterationDepth({
+        depth: family.depth,
+        parameterName: family.parameterName,
+      }, parameters);
       if (!center || !vertex) continue;
       if (sides === 1) continue;
-      const angleDegrees = evaluateExpr(family.binding.angleExpr, 0, parameters);
+      const angleDegrees = evaluateExpr(family.angleExpr, 0, parameters);
       if (!Number.isFinite(angleDegrees)) continue;
       const rotate = (/** @type {number} */ step) => rotateAround(vertex, center, (angleDegrees * step) * Math.PI / 180);
       if (sides === 2) {
@@ -2805,7 +2804,11 @@
           color: family.color,
           dashed: family.dashed,
           binding: {
-            ...family.binding,
+            kind: "rotate-edge",
+            centerIndex: family.centerIndex,
+            vertexIndex: family.vertexIndex,
+            parameterName: family.parameterName || "",
+            angleExpr: family.angleExpr,
             angleDegrees,
             startStep: 0,
             endStep: 1,
@@ -2819,7 +2822,11 @@
           color: family.color,
           dashed: family.dashed,
           binding: {
-            ...family.binding,
+            kind: "rotate-edge",
+            centerIndex: family.centerIndex,
+            vertexIndex: family.vertexIndex,
+            parameterName: family.parameterName || "",
+            angleExpr: family.angleExpr,
             angleDegrees,
             startStep: step,
             endStep: (step + 1) % sides,
