@@ -62,6 +62,7 @@ type RuntimeLabelHotspotJson = Omit<LabelHotspotJson, "action"> & {
   action: LabelHotspotActionJson | null;
 };
 type RuntimeLabelJson = any;
+type TextLabel = RuntimeLabelJson;
 
 type RuntimeIterationRow = {
   index: number;
@@ -129,6 +130,7 @@ type DragState = {
   labelIndex: number | null;
   polygonIndex: number | null;
   iterationTableIndex: number | null;
+  imageIndex: number | null;
   lastX: number;
   lastY: number;
 } | null;
@@ -207,8 +209,10 @@ type PolygonBindingRefresher = (
 ) => void;
 
 type ViewerEnv = {
-  canvas: HTMLCanvasElement | null;
-  ctx: CanvasRenderingContext2D | null;
+  canvas: SVGSVGElement | null;
+  svg: SVGSVGElement | null;
+  gridLayer: SVGGElement | null;
+  sceneLayer: SVGGElement | null;
   sourceScene: SceneData;
   margin: number;
   trigMode: boolean;
@@ -238,6 +242,16 @@ type ViewerEnv = {
   formatAxisNumber: (value: number) => string;
   formatPiLabel: (stepIndex: number) => string;
   drawGrid: () => void;
+  createSvgElement: (
+    name: string,
+    attrs?: Record<string, string | number | boolean | null | undefined>,
+  ) => SVGElement;
+  setSvgAttributes: (
+    element: Element,
+    attrs: Record<string, string | number | boolean | null | undefined>,
+  ) => void;
+  clearSvgChildren: (element: Element) => void;
+  measureText: (text: string, fontSize?: number, fontWeight?: number | string) => number;
   inputTag: typeof import("./vendor/van-1.6.0").default.tags.input;
   labelTag: typeof import("./vendor/van-1.6.0").default.tags.label;
   parameterControls: HTMLElement | null;
@@ -278,6 +292,12 @@ type ViewerSceneModule = {
     point: Point,
     start: Point,
     end: Point,
+  ) => { t: number; projected: Point; distanceSquared: number } | null;
+  projectToLineLike: (
+    point: Point,
+    start: Point,
+    end: Point,
+    kind: "segment" | "line" | "ray",
   ) => { t: number; projected: Point; distanceSquared: number } | null;
   pointOnCircleArc: (center: Point, start: Point, end: Point, t: number, yUp?: boolean) => Point | null;
   projectToCircleArc: (
@@ -342,6 +362,33 @@ type ViewerRenderModule = {
   drawIterationTables: (env: ViewerEnv) => void;
   drawHotspotFlashes: (env: ViewerEnv) => void;
   draw: (env: ViewerEnv) => void;
+  pathFromPoints: (points: Point[], close?: boolean) => string;
+  arcPath: (
+    center: Point,
+    radius: number,
+    startAngle: number,
+    endAngle: number,
+    counterClockwise: boolean,
+  ) => string;
+  appendSceneElement: (
+    env: ViewerEnv,
+    tag: string,
+    attrs: Record<string, string | number | boolean | null | undefined>,
+    text?: string | null,
+  ) => SVGElement;
+  appendPointPath: (
+    env: ViewerEnv,
+    points: Point[],
+    options: {
+      stroke: string;
+      strokeWidth?: number;
+      fill?: string;
+      dashed?: boolean;
+      close?: boolean;
+      lineCap?: string;
+      lineJoin?: string;
+    },
+  ) => SVGElement | null;
   labelHotspotRects: (
     env: ViewerEnv,
     label: RuntimeLabelJson,
@@ -357,6 +404,7 @@ type ViewerRenderModule = {
     action: LabelHotspotActionJson | null;
   }>;
   findHitPoint: (env: ViewerEnv, screenX: number, screenY: number) => number | null;
+  findHitImage?: (env: ViewerEnv, screenX: number, screenY: number) => number | null;
   findHitLabel: (env: ViewerEnv, screenX: number, screenY: number) => number | null;
   findHitIterationTable: (env: ViewerEnv, screenX: number, screenY: number) => number | null;
   findHitPolygon: (env: ViewerEnv, screenX: number, screenY: number) => number | null;
@@ -392,6 +440,7 @@ type ViewerDragModule = {
     labelIndex: number | null,
     polygonIndex: number | null,
     iterationTableIndex: number | null,
+    imageIndex: number | null,
   ) => string;
   beginDrag: (
     env: ViewerEnv,
@@ -401,9 +450,11 @@ type ViewerDragModule = {
     labelIndex: number | null,
     polygonIndex: number | null,
     iterationTableIndex: number | null,
+    imageIndex: number | null,
   ) => void;
   updateDraggedPoint: (env: ViewerEnv, world: Point) => void;
   updateDraggedLabel: (env: ViewerEnv, world: Point) => void;
+  updateDraggedImage: (env: ViewerEnv, position: Point) => void;
   updateDraggedPolygon: (env: ViewerEnv, world: Point) => void;
   updateDraggedIterationTable: (env: ViewerEnv, world: Point) => void;
   panFromPointerDelta: (env: ViewerEnv, position: Point) => void;
@@ -419,6 +470,7 @@ type ViewerDynamicsModule = {
     scene: ViewerSceneData,
     normalizedValue: number,
   ) => void;
+  parameterMapForScene?: (env: ViewerEnv, scene: ViewerSceneData) => Map<string, number>;
   refreshDerivedPoints: (env: ViewerEnv, scene: ViewerSceneData) => void;
   refreshIterationGeometry: (env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) => void;
   refreshDynamicLabels: (env: ViewerEnv, scene: ViewerSceneData) => void;

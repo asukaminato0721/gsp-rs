@@ -1362,6 +1362,64 @@
   }
 
   /**
+   * @param {ViewerEnv} env
+   * @param {Element} parent
+   * @param {Record<string, string | number | boolean | null | undefined>} attrs
+   */
+  function appendGridElement(env, parent, attrs) {
+    const tag = /** @type {string} */ (attrs.tag);
+    const nextAttrs = { ...attrs };
+    delete nextAttrs.tag;
+    const element = env.createSvgElement(tag, nextAttrs);
+    parent.append(element);
+    return element;
+  }
+
+  /**
+   * @param {ViewerEnv} env
+   * @param {Element} parent
+   * @param {number} x1
+   * @param {number} y1
+   * @param {number} x2
+   * @param {number} y2
+   * @param {string} color
+   */
+  function appendGridLine(env, parent, x1, y1, x2, y2, color) {
+    appendGridElement(env, parent, {
+      tag: "line",
+      x1,
+      y1,
+      x2,
+      y2,
+      stroke: color,
+      "stroke-width": 1,
+      "shape-rendering": "crispEdges",
+    });
+  }
+
+  /**
+   * @param {ViewerEnv} env
+   * @param {Element} parent
+   * @param {number} x
+   * @param {number} y
+   * @param {string} text
+   * @param {"start" | "middle" | "end"} anchor
+   */
+  function appendGridText(env, parent, x, y, text, anchor) {
+    const label = appendGridElement(env, parent, {
+      tag: "text",
+      x,
+      y,
+      fill: "rgb(20,20,20)",
+      "font-size": 12,
+      "font-family": "\"Noto Sans\", \"Segoe UI\", sans-serif",
+      "text-anchor": anchor,
+      "dominant-baseline": "middle",
+    });
+    label.textContent = text;
+  }
+
+  /**
    * @param {number} span
    * @param {number} targetLines
    */
@@ -1395,6 +1453,8 @@
    * @param {ViewBounds} bounds
    */
   function drawPolarGrid(env, bounds) {
+    const gridLayer = env.gridLayer;
+    const snapStroke = (/** @type {number} */ value) => Math.round(value) + 0.5;
     const origin = env.currentScene().origin
       ? resolvePoint(env, env.currentScene().origin)
       : { x: 0, y: 0 };
@@ -1406,26 +1466,25 @@
     const minorAngleStep = Math.PI / 12;
     const majorEvery = 2;
 
-    env.ctx.save();
-    env.ctx.lineWidth = 1;
-    env.ctx.font = "12px \"Noto Sans\", \"Segoe UI\", sans-serif";
-    env.ctx.fillStyle = "rgb(20,20,20)";
-
     for (let circleIndex = 1; circleIndex <= circleCount; circleIndex += 1) {
       const radius = circleIndex * radialMinorStep;
       const radiusScreen = Math.abs(toScreen(env, { x: origin.x + radius, y: origin.y }).x - originScreen.x);
       const major = Math.abs((radius / radialMajorStep) - Math.round(radius / radialMajorStep)) < 1e-6;
-      env.ctx.strokeStyle = major ? "rgb(200,200,200)" : "rgb(225,225,225)";
-      env.ctx.beginPath();
-      env.ctx.arc(originScreen.x, originScreen.y, radiusScreen, 0, Math.PI * 2);
-      env.ctx.stroke();
+      appendGridElement(env, gridLayer, {
+        tag: "circle",
+        cx: originScreen.x,
+        cy: originScreen.y,
+        r: radiusScreen,
+        fill: "none",
+        stroke: major ? "rgb(200,200,200)" : "rgb(225,225,225)",
+        "stroke-width": 1,
+      });
       if (major) {
         const top = toScreen(env, { x: origin.x, y: origin.y + radius });
         const left = toScreen(env, { x: origin.x - radius, y: origin.y });
         const label = env.formatAxisNumber(radius);
-        const width = env.ctx.measureText(label).width;
-        env.ctx.fillText(label, top.x + 6, top.y - 4);
-        env.ctx.fillText(label, left.x - width - 6, left.y - 4);
+        appendGridText(env, gridLayer, Math.round(top.x + 6), Math.round(top.y - 4), label, "start");
+        appendGridText(env, gridLayer, Math.round(left.x - env.measureText(label, 12) - 6), Math.round(left.y - 4), label, "start");
       }
     }
 
@@ -1438,28 +1497,33 @@
       };
       const endScreen = toScreen(env, endpoint);
       const major = index % majorEvery === 0;
-      env.ctx.strokeStyle = major ? "rgb(190,190,190)" : "rgb(225,225,225)";
-      if (index % 6 === 0) {
-        env.ctx.strokeStyle = "rgb(40,40,40)";
-      }
-      env.ctx.beginPath();
-      env.ctx.moveTo(originScreen.x, originScreen.y);
-      env.ctx.lineTo(endScreen.x, endScreen.y);
-      env.ctx.stroke();
+      appendGridLine(
+        env,
+        gridLayer,
+        snapStroke(originScreen.x),
+        snapStroke(originScreen.y),
+        snapStroke(endScreen.x),
+        snapStroke(endScreen.y),
+        index % 6 === 0 ? "rgb(40,40,40)" : major ? "rgb(190,190,190)" : "rgb(225,225,225)",
+      );
     }
 
-    env.ctx.fillStyle = "rgba(255, 60, 40, 1)";
-    env.ctx.beginPath();
-    env.ctx.arc(originScreen.x, originScreen.y, 3, 0, Math.PI * 2);
-    env.ctx.fill();
-    env.ctx.restore();
+    appendGridElement(env, gridLayer, {
+      tag: "circle",
+      cx: originScreen.x,
+      cy: originScreen.y,
+      r: 3,
+      fill: "rgba(255, 60, 40, 1)",
+    });
   }
 
   /** @param {ViewerEnv} env */
   function drawGrid(env) {
+    env.clearSvgChildren(env.gridLayer);
     if (!env.currentScene().graphMode) return;
-    const snapStroke = (value) => Math.round(value) + 0.5;
-    const snapText = (value) => Math.round(value);
+    const snapStroke = (/** @type {number} */ value) => Math.round(value) + 0.5;
+    const snapText = (/** @type {number} */ value) => Math.round(value);
+    const gridLayer = env.gridLayer;
     const bounds = getViewBounds(env);
     if (hasPolarPlot(env)) {
       drawPolarGrid(env, bounds);
@@ -1471,10 +1535,6 @@
     const minYIndex = Math.floor(bounds.minY / yMinorStep);
     const maxYIndex = Math.ceil(bounds.maxY / yMinorStep);
 
-    env.ctx.save();
-    env.ctx.lineWidth = 1;
-    env.ctx.font = "12px \"Noto Sans\", \"Segoe UI\", sans-serif";
-    env.ctx.fillStyle = "rgb(20,20,20)";
     const xAxisY = bounds.minY <= 0 && 0 <= bounds.maxY
       ? toScreen(env, { x: bounds.minX, y: 0 }).y
       : env.sourceScene.height - 18;
@@ -1489,24 +1549,39 @@
         const x = stepIndex * xMinorStep;
         const screen = toScreen(env, { x, y: bounds.minY });
         const major = stepIndex % 2 === 0;
-        env.ctx.strokeStyle = Math.abs(x) < 1e-9
+        const stroke = Math.abs(x) < 1e-9
           ? "rgb(40,40,40)"
           : major ? "rgb(190,190,190)" : "rgb(220,220,220)";
-        env.ctx.beginPath();
-        env.ctx.moveTo(snapStroke(screen.x), 0);
-        env.ctx.lineTo(snapStroke(screen.x), env.sourceScene.height);
-        env.ctx.stroke();
+        appendGridLine(
+          env,
+          gridLayer,
+          snapStroke(screen.x),
+          0,
+          snapStroke(screen.x),
+          env.sourceScene.height,
+          stroke,
+        );
         if (bounds.minY <= 0 && 0 <= bounds.maxY) {
-          env.ctx.strokeStyle = "rgb(40,40,40)";
-          env.ctx.beginPath();
-          env.ctx.moveTo(snapStroke(screen.x), snapStroke(xAxisY - (major ? 6 : 4)));
-          env.ctx.lineTo(snapStroke(screen.x), snapStroke(xAxisY + (major ? 6 : 4)));
-          env.ctx.stroke();
+          appendGridLine(
+            env,
+            gridLayer,
+            snapStroke(screen.x),
+            snapStroke(xAxisY - (major ? 6 : 4)),
+            snapStroke(screen.x),
+            snapStroke(xAxisY + (major ? 6 : 4)),
+            "rgb(40,40,40)",
+          );
         }
         if (major && stepIndex !== 0) {
           const label = env.formatPiLabel(stepIndex);
-          const width = env.ctx.measureText(label).width;
-          env.ctx.fillText(label, snapText(screen.x - width / 2), snapText(Math.min(env.sourceScene.height - 4, xAxisY + 16)));
+          appendGridText(
+            env,
+            gridLayer,
+            snapText(screen.x),
+            snapText(Math.min(env.sourceScene.height - 4, xAxisY + 16)),
+            label,
+            "middle",
+          );
         }
       }
     } else {
@@ -1519,24 +1594,39 @@
         const x = xIndex * xMinorStep;
         const screen = toScreen(env, { x, y: bounds.minY });
         const major = Math.abs((x / xMajorStep) - Math.round(x / xMajorStep)) < 1e-6;
-        env.ctx.strokeStyle = Math.abs(x) < 1e-6
+        const stroke = Math.abs(x) < 1e-6
           ? "rgb(40,40,40)"
           : major ? "rgb(200,200,200)" : "rgb(225,225,225)";
-        env.ctx.beginPath();
-        env.ctx.moveTo(snapStroke(screen.x), 0);
-        env.ctx.lineTo(snapStroke(screen.x), env.sourceScene.height);
-        env.ctx.stroke();
+        appendGridLine(
+          env,
+          gridLayer,
+          snapStroke(screen.x),
+          0,
+          snapStroke(screen.x),
+          env.sourceScene.height,
+          stroke,
+        );
         if (bounds.minY <= 0 && 0 <= bounds.maxY) {
-          env.ctx.strokeStyle = "rgb(40,40,40)";
-          env.ctx.beginPath();
-          env.ctx.moveTo(snapStroke(screen.x), snapStroke(xAxisY - (Math.abs(x) < 1e-6 ? 6 : major ? 4 : 2)));
-          env.ctx.lineTo(snapStroke(screen.x), snapStroke(xAxisY + (Math.abs(x) < 1e-6 ? 6 : major ? 4 : 2)));
-          env.ctx.stroke();
+          appendGridLine(
+            env,
+            gridLayer,
+            snapStroke(screen.x),
+            snapStroke(xAxisY - (Math.abs(x) < 1e-6 ? 6 : major ? 4 : 2)),
+            snapStroke(screen.x),
+            snapStroke(xAxisY + (Math.abs(x) < 1e-6 ? 6 : major ? 4 : 2)),
+            "rgb(40,40,40)",
+          );
         }
         if (major && Math.abs(x) >= 1e-6) {
           const label = env.formatAxisNumber(x);
-          const width = env.ctx.measureText(label).width;
-          env.ctx.fillText(label, snapText(screen.x - width / 2), snapText(Math.min(env.sourceScene.height - 4, xAxisY + 16)));
+          appendGridText(
+            env,
+            gridLayer,
+            snapText(screen.x),
+            snapText(Math.min(env.sourceScene.height - 4, xAxisY + 16)),
+            label,
+            "middle",
+          );
         }
       }
     }
@@ -1544,34 +1634,51 @@
       const y = yIndex * yMinorStep;
       const major = Math.abs((y / yMajorStep) - Math.round(y / yMajorStep)) < 1e-6;
       const screen = toScreen(env, { x: bounds.minX, y });
-      env.ctx.strokeStyle = Math.abs(y) < 1e-6
+      const stroke = Math.abs(y) < 1e-6
         ? "rgb(40,40,40)"
         : major ? "rgb(200,200,200)" : "rgb(225,225,225)";
-      env.ctx.beginPath();
-      env.ctx.moveTo(0, snapStroke(screen.y));
-      env.ctx.lineTo(env.sourceScene.width, snapStroke(screen.y));
-      env.ctx.stroke();
+      appendGridLine(
+        env,
+        gridLayer,
+        0,
+        snapStroke(screen.y),
+        env.sourceScene.width,
+        snapStroke(screen.y),
+        stroke,
+      );
       if (bounds.minX <= 0 && 0 <= bounds.maxX) {
-        env.ctx.strokeStyle = "rgb(40,40,40)";
-        env.ctx.beginPath();
-        env.ctx.moveTo(snapStroke(yAxisX - (Math.abs(y) < 1e-6 ? 6 : major ? 4 : 2)), snapStroke(screen.y));
-        env.ctx.lineTo(snapStroke(yAxisX + (Math.abs(y) < 1e-6 ? 6 : major ? 4 : 2)), snapStroke(screen.y));
-        env.ctx.stroke();
+        appendGridLine(
+          env,
+          gridLayer,
+          snapStroke(yAxisX - (Math.abs(y) < 1e-6 ? 6 : major ? 4 : 2)),
+          snapStroke(screen.y),
+          snapStroke(yAxisX + (Math.abs(y) < 1e-6 ? 6 : major ? 4 : 2)),
+          snapStroke(screen.y),
+          "rgb(40,40,40)",
+        );
       }
       if (major && Math.abs(y) >= 1e-6) {
         const label = env.formatAxisNumber(y);
-        const width = env.ctx.measureText(label).width;
-        env.ctx.fillText(label, snapText(yAxisX - width - 8), snapText(screen.y - 6));
+        appendGridText(
+          env,
+          gridLayer,
+          snapText(yAxisX - env.measureText(label, 12) - 8),
+          snapText(screen.y - 6),
+          label,
+          "start",
+        );
       }
     }
     if (env.currentScene().origin) {
       const origin = toScreen(env, resolvePoint(env, env.currentScene().origin));
-      env.ctx.fillStyle = "rgba(255, 60, 40, 1)";
-      env.ctx.beginPath();
-      env.ctx.arc(origin.x, origin.y, 3, 0, Math.PI * 2);
-      env.ctx.fill();
+      appendGridElement(env, gridLayer, {
+        tag: "circle",
+        cx: origin.x,
+        cy: origin.y,
+        r: 3,
+        fill: "rgba(255, 60, 40, 1)",
+      });
     }
-    env.ctx.restore();
   }
 
   modules.scene = {

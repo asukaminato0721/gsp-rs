@@ -84,18 +84,17 @@
         radiusPointWorld.x - centerWorld.x,
         radiusPointWorld.y - centerWorld.y,
       ) * center.scale;
-      env.ctx.beginPath();
-      env.ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
-      if (circle.fillColor) {
-        env.ctx.fillStyle = env.rgba(circle.fillColor);
-        env.ctx.fill();
-      }
-      env.ctx.strokeStyle = env.rgba(circle.color);
-      env.ctx.lineWidth = 2;
-      env.ctx.setLineDash(circle.dashed ? [8, 8] : []);
-      env.ctx.stroke();
+      if (radius <= 1e-9) continue;
+      modules.render.appendSceneElement(env, "circle", {
+        cx: center.x,
+        cy: center.y,
+        r: radius,
+        fill: circle.fillColor ? env.rgba(circle.fillColor) : "none",
+        stroke: env.rgba(circle.color),
+        "stroke-width": 2,
+        "stroke-dasharray": circle.dashed ? "8 8" : null,
+      });
     }
-    env.ctx.setLineDash([]);
   };
 
   /** @param {ViewerEnv} env */
@@ -128,18 +127,18 @@
       }
       const geometry = arcGeometryFromPoints(screenPoints[0], screenPoints[1], screenPoints[2]);
       if (!geometry) continue;
-      env.ctx.beginPath();
-      env.ctx.arc(
-        geometry.center.x,
-        geometry.center.y,
-        geometry.radius,
-        geometry.startAngle,
-        geometry.endAngle,
-        geometry.counterClockwise,
-      );
-      env.ctx.strokeStyle = env.rgba(arc.color);
-      env.ctx.lineWidth = 2;
-      env.ctx.stroke();
+      modules.render.appendSceneElement(env, "path", {
+        d: modules.render.arcPath(
+          geometry.center,
+          geometry.radius,
+          geometry.startAngle,
+          geometry.endAngle,
+          geometry.counterClockwise,
+        ),
+        fill: "none",
+        stroke: env.rgba(arc.color),
+        "stroke-width": 2,
+      });
     }
   };
 })();

@@ -242,6 +242,7 @@
    * @param {number | null} labelIndex
    * @param {number | null} polygonIndex
    * @param {number | null} iterationTableIndex
+   * @param {number | null} imageIndex
    */
   function dragModeFor(env, pointIndex, labelIndex, polygonIndex, iterationTableIndex, imageIndex) {
     if (pointIndex !== null) {

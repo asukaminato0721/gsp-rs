@@ -10,24 +10,18 @@
     drag: dragModule,
     dynamics: dynamicsModule,
   } = window.GspViewerModules;
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  const XLINK_NS = "http://www.w3.org/1999/xlink";
   /** @type {SceneData} */
   const sourceScene = JSON.parse(document.getElementById("scene-data").textContent);
-  /** @type {HTMLCanvasElement} */
-  const gridCanvas = /** @type {HTMLCanvasElement} */ (document.getElementById("grid-layer"));
-  const gridCtx = gridCanvas.getContext("2d");
-  /** @type {HTMLCanvasElement} */
-  const sceneCanvas = /** @type {HTMLCanvasElement} */ (document.getElementById("scene-layer"));
-  const sceneCtx = sceneCanvas.getContext("2d");
-  /** @type {HTMLCanvasElement} */
-  const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById("view"));
-  const ctx = canvas.getContext("2d");
-  const gridDevicePixelRatio = Math.max(1, window.devicePixelRatio || 1);
-  gridCanvas.width = Math.round(sourceScene.width * gridDevicePixelRatio);
-  gridCanvas.height = Math.round(sourceScene.height * gridDevicePixelRatio);
-  gridCtx.setTransform(gridDevicePixelRatio, 0, 0, gridDevicePixelRatio, 0, 0);
-  sceneCanvas.width = Math.round(sourceScene.width * gridDevicePixelRatio);
-  sceneCanvas.height = Math.round(sourceScene.height * gridDevicePixelRatio);
-  sceneCtx.setTransform(gridDevicePixelRatio, 0, 0, gridDevicePixelRatio, 0, 0);
+  /** @type {SVGSVGElement} */
+  const canvas = /** @type {SVGSVGElement} */ (/** @type {unknown} */ (document.getElementById("view")));
+  /** @type {SVGGElement} */
+  const gridLayer = /** @type {SVGGElement} */ (/** @type {unknown} */ (document.getElementById("grid-layer")));
+  /** @type {SVGGElement} */
+  const sceneLayer = /** @type {SVGGElement} */ (/** @type {unknown} */ (document.getElementById("scene-layer")));
+  /** @type {SVGTextElement} */
+  const measureTextNode = /** @type {SVGTextElement} */ (/** @type {unknown} */ (document.getElementById("measure-text")));
   /** @type {HTMLButtonElement} */
   const resetButton = /** @type {HTMLButtonElement} */ (document.getElementById("reset-view"));
   /** @type {HTMLButtonElement} */
@@ -121,6 +115,60 @@
   zoomReadout.replaceChildren();
   van.add(coordReadout, coordText);
   van.add(zoomReadout, zoomText);
+
+  /**
+   * @param {string} name
+   * @param {Record<string, string | number | boolean | null | undefined>} [attrs]
+   */
+  function createSvgElement(name, attrs = {}) {
+    const element = document.createElementNS(SVG_NS, name);
+    setSvgAttributes(element, attrs);
+    return element;
+  }
+
+  /**
+   * @param {Element} element
+   * @param {Record<string, string | number | boolean | null | undefined>} attrs
+   */
+  function setSvgAttributes(element, attrs) {
+    Object.entries(attrs).forEach(([key, value]) => {
+      if (value === null || value === undefined || value === false) {
+        element.removeAttribute(key);
+        return;
+      }
+      if (key === "href") {
+        element.setAttributeNS(XLINK_NS, "href", String(value));
+        element.setAttribute("href", String(value));
+        return;
+      }
+      if (value === true) {
+        element.setAttribute(key, "");
+        return;
+      }
+      element.setAttribute(key, String(value));
+    });
+  }
+
+  /** @param {Element} element */
+  function clearSvgChildren(element) {
+    element.replaceChildren();
+  }
+
+  /**
+   * @param {string} text
+   * @param {number} [fontSize]
+   * @param {number | string} [fontWeight]
+   */
+  function measureText(text, fontSize = 18, fontWeight = 400) {
+    const normalized = text || "";
+    measureTextNode.setAttribute("font-size", String(fontSize));
+    measureTextNode.setAttribute("font-weight", String(fontWeight));
+    measureTextNode.setAttribute("font-family", "\"Noto Sans\", \"Segoe UI\", sans-serif");
+    measureTextNode.textContent = normalized || " ";
+    const width = measureTextNode.getBBox().width;
+    measureTextNode.textContent = "";
+    return normalized ? width : 0;
+  }
 
   /**
    * @param {Point} left
@@ -379,13 +427,18 @@
   function updateScene(mutator) {
     const next = sceneState.val;
     mutator(next);
-    dynamicsModule.refreshDerivedPoints(viewerEnv, next);
-    dynamicsModule.refreshIterationGeometry(
-      viewerEnv,
-      next,
-      dynamicsModule.parameterMapForScene(viewerEnv, next),
-    );
-    dynamicsModule.refreshDynamicLabels(viewerEnv, next);
+    if (dynamicsModule.refreshDerivedPoints) {
+      dynamicsModule.refreshDerivedPoints(viewerEnv, next);
+    }
+    if (dynamicsModule.refreshIterationGeometry) {
+      const parameters = dynamicsModule.parameterMapForScene
+        ? dynamicsModule.parameterMapForScene(viewerEnv, next)
+        : new Map();
+      dynamicsModule.refreshIterationGeometry(viewerEnv, next, parameters);
+    }
+    if (dynamicsModule.refreshDynamicLabels) {
+      dynamicsModule.refreshDynamicLabels(viewerEnv, next);
+    }
     sceneState.val = { ...next };
   }
 
@@ -585,7 +638,7 @@
   /** @param {ViewerSceneData} scene */
   function collectDebugLineIterations(scene) {
     const iterations = Array.isArray(scene.lineIterations) ? [...scene.lineIterations] : [];
-    if (iterations.some((item) => item?.kind === "rotate" || item?.kind === "rotate-edge")) {
+    if (iterations.some((/** @type {any} */ item) => item?.kind === "rotate" || item?.kind === "rotate-edge")) {
       return iterations;
     }
     /** @type {Map<string, { kind: string, centerIndex: number, vertexIndex: number, parameterName: string, edgeCount: number, visible: boolean }>} */
@@ -614,7 +667,7 @@
     return [...iterations, ...rotateFamilies.values()];
   }
 
-  /** @param {SceneData} scene */
+  /** @param {ViewerSceneData} scene */
   function buildDebugGraph(scene) {
     const lines = [
       "Scene",
@@ -754,6 +807,7 @@
    * @param {number | null} labelIndex
    * @param {number | null} polygonIndex
    * @param {number | null} iterationTableIndex
+   * @param {number | null} imageIndex
    */
   function beginDrag(pointerId, position, pointIndex, labelIndex, polygonIndex, iterationTableIndex, imageIndex) {
     dragModule.beginDrag(
@@ -807,11 +861,9 @@
   /** @type {ViewerEnv} */
   const viewerEnv = {
     canvas,
-    ctx: sceneCtx,
-    gridCanvas,
-    gridCtx,
-    sceneCanvas,
-    sceneCtx,
+    svg: canvas,
+    gridLayer,
+    sceneLayer,
     sourceScene,
     margin,
     trigMode,
@@ -844,10 +896,11 @@
     labelTag: label,
     parameterControls,
     van,
-    drawGrid: () => {
-      gridCtx.clearRect(0, 0, sourceScene.width, sourceScene.height);
-      sceneModule.drawGrid({ ...viewerEnv, ctx: gridCtx, canvas: gridCanvas });
-    },
+    createSvgElement,
+    setSvgAttributes,
+    clearSvgChildren,
+    measureText,
+    drawGrid: () => sceneModule.drawGrid(viewerEnv),
   };
   overlayRuntime = overlayModule?.init ? overlayModule.init(viewerEnv, buttonOverlays) : overlayRuntime;
 

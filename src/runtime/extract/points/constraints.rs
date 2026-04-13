@@ -854,55 +854,67 @@ pub(crate) fn decode_coordinate_point(
         crate::format::GroupKind::CoordinatePoint => {
             if path.refs.len() >= 3 {
                 let x_calc_group = groups.get(path.refs[0].checked_sub(1)?)?;
-                let y_calc_group = groups.get(path.refs[1].checked_sub(1)?)?;
-                let axis_group = groups.get(path.refs[2].checked_sub(1)?)?;
-                let axis_path = find_indexed_path(file, axis_group)?;
-                let origin_measurement_group =
-                    groups.get(axis_path.refs.first()?.checked_sub(1)?)?;
-                let origin_measurement_path = find_indexed_path(file, origin_measurement_group)?;
-                let source_group_index = origin_measurement_path.refs.first()?.checked_sub(1)?;
-                let source_position = anchors.get(source_group_index)?.clone()?;
-                let source_world = to_world(&source_position, graph);
-                let x_expr = try_decode_function_expr(file, groups, x_calc_group).ok()?;
-                let y_expr = try_decode_function_expr(file, groups, y_calc_group).ok()?;
-                let x_parameter_group = first_path_group(file, groups, x_calc_group)?;
-                let y_parameter_group = first_path_group(file, groups, y_calc_group)?;
-                let x_parameter_name =
-                    decode_label_name(file, x_parameter_group).unwrap_or_else(|| {
-                        crate::runtime::functions::function_expr_label(x_expr.clone())
-                    });
-                let y_parameter_name =
-                    decode_label_name(file, y_parameter_group).unwrap_or_else(|| {
-                        crate::runtime::functions::function_expr_label(y_expr.clone())
-                    });
-                let parameters = BTreeMap::new();
-                let dx = evaluate_expr_with_parameters(&x_expr, 0.0, &parameters)?;
-                let dy = evaluate_expr_with_parameters(&y_expr, 0.0, &parameters)?;
-                let world = PointRecord {
-                    x: source_world.x + dx,
-                    y: source_world.y + dy,
-                };
-                let position = if let Some(transform) = graph {
-                    to_raw_from_world(&world, transform)
-                } else {
-                    world
-                };
+                if let Ok(x_expr) = try_decode_function_expr(file, groups, x_calc_group) {
+                    if let Some(point) = (|| {
+                        let y_calc_group = groups.get(path.refs[1].checked_sub(1)?)?;
+                        let axis_group = groups.get(path.refs[2].checked_sub(1)?)?;
+                        let axis_path = find_indexed_path(file, axis_group)?;
+                        let origin_measurement_group =
+                            groups.get(axis_path.refs.first()?.checked_sub(1)?)?;
+                        let origin_measurement_path =
+                            find_indexed_path(file, origin_measurement_group)?;
+                        let source_group_index =
+                            origin_measurement_path.refs.first()?.checked_sub(1)?;
+                        let source_position = anchors.get(source_group_index)?.clone()?;
+                        let source_world = to_world(&source_position, graph);
+                        let y_expr = try_decode_function_expr(file, groups, y_calc_group).ok()?;
+                        let x_parameter_group = first_path_group(file, groups, x_calc_group)?;
+                        let y_parameter_group = first_path_group(file, groups, y_calc_group)?;
+                        let x_parameter_name =
+                            decode_label_name(file, x_parameter_group).unwrap_or_else(|| {
+                                crate::runtime::functions::function_expr_label(x_expr.clone())
+                            });
+                        let y_parameter_name =
+                            decode_label_name(file, y_parameter_group).unwrap_or_else(|| {
+                                crate::runtime::functions::function_expr_label(y_expr.clone())
+                            });
+                        let parameters = BTreeMap::new();
+                        let dx = evaluate_expr_with_parameters(&x_expr, 0.0, &parameters)?;
+                        let dy = evaluate_expr_with_parameters(&y_expr, 0.0, &parameters)?;
+                        let world = PointRecord {
+                            x: source_world.x + dx,
+                            y: source_world.y + dy,
+                        };
+                        let position = if let Some(transform) = graph {
+                            to_raw_from_world(&world, transform)
+                        } else {
+                            world
+                        };
 
-                return Some(CoordinatePoint {
-                    position,
-                    source: CoordinatePointSource::SourcePoint2d {
-                        source_group_index,
-                        x_parameter_name,
-                        x_expr,
-                        y_parameter_name,
-                        y_expr: y_expr.clone(),
-                    },
-                    expr: y_expr,
-                });
+                        Some(CoordinatePoint {
+                            position,
+                            source: CoordinatePointSource::SourcePoint2d {
+                                source_group_index,
+                                x_parameter_name,
+                                x_expr,
+                                y_parameter_name,
+                                y_expr: y_expr.clone(),
+                            },
+                            expr: y_expr,
+                        })
+                    })() {
+                        return Some(point);
+                    }
+                }
             }
 
             let parameter_group = groups.get(path.refs[0].checked_sub(1)?)?;
-            let parameter_name = decode_label_name(file, parameter_group)?;
+            let parameter_name = decode_label_name(file, parameter_group).or_else(|| {
+                try_decode_parameter_controlled_point(file, groups, parameter_group, anchors)
+                    .ok()
+                    .map(|point| point.parameter_name)
+                    .filter(|name| !name.is_empty())
+            })?;
             let parameter_value =
                 try_decode_parameter_control_value_for_group(file, groups, parameter_group).ok()?;
             let parameters = BTreeMap::from([(parameter_name.clone(), parameter_value)]);

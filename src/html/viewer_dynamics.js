@@ -171,7 +171,7 @@
   }
 
   /**
-   * @param {TextLabel} label
+   * @param {RuntimeLabelJson} label
    */
   function usesVerboseParameterLabel(label) {
     return typeof label.text === "string" && label.text.includes("在");
@@ -1003,10 +1003,10 @@
       return null;
     }
     return `<H<Tx${text
-      .replaceAll("&", "＆")
-      .replaceAll("<", "＜")
-      .replaceAll(">", "＞")
-      .replaceAll("*", "\u00b7")}>>`;
+      .split("&").join("＆")
+      .split("<").join("＜")
+      .split(">").join("＞")
+      .split("*").join("\u00b7")}>>`;
   }
 
   /**
@@ -1206,6 +1206,7 @@
             new Map(parameters).set(family.traceParameterName, currentValue),
           );
           const line = {
+            /** @type {PointHandle[]} */
             points: [],
             color: family.color,
             dashed: !!family.dashed,
@@ -2200,6 +2201,10 @@
       const point = points[index];
       if (!point) return null;
       visiting.add(index);
+      /**
+       * @param {Map<string, number>} exprParameters
+       * @param {...FunctionExprJson} exprs
+       */
       const applyDriverParameterGuesses = (exprParameters, ...exprs) => {
         if (!Number.isFinite(driverValue)) return exprParameters;
         const names = new Set();

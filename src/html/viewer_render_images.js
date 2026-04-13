@@ -16,7 +16,7 @@
     entry = { img, loaded: false };
     img.onload = () => {
       entry.loaded = true;
-      if (env?.ctx) {
+      if (env?.sceneLayer) {
         requestAnimationFrame(() => modules.render.draw(env));
       }
     };
@@ -41,7 +41,14 @@
       const height = Math.abs(bottomRight.y - topLeft.y);
       if (width <= 1e-6 || height <= 1e-6) continue;
 
-      env.ctx.drawImage(entry.img, left, top, width, height);
+      modules.render.appendSceneElement(env, "image", {
+        x: left,
+        y: top,
+        width,
+        height,
+        href: image.src,
+        preserveAspectRatio: "none",
+      });
     }
   };
 

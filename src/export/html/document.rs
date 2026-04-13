@@ -72,12 +72,17 @@ pub(super) fn render_standalone_html_document(
         </div>
         <span class="hint">Drag a point to edit, drag empty space to pan, wheel to zoom</span>
       </div>
-      <div class="{canvas_shell_class}">
-        <div class="{canvas_stage_class}">
-          <canvas id="grid-layer" width="{width}" height="{height}"></canvas>
-          <canvas id="scene-layer" width="{width}" height="{height}"></canvas>
-          <canvas id="view" width="{width}" height="{height}"></canvas>
-          <div id="button-overlays"></div>
+        <div class="{canvas_shell_class}">
+          <div class="{canvas_stage_class}">
+            <svg id="view" viewBox="0 0 {width} {height}" width="{width}" height="{height}" aria-label="GSP viewer">
+              <g id="grid-layer"></g>
+              <g id="scene-layer"></g>
+              <g id="measure-layer" aria-hidden="true" opacity="0">
+                <text id="measure-text"></text>
+              </g>
+            </svg>
+            <div id="button-overlays"></div>
+          </div>
         </div>
       </div>
       <section id="debug-panel" class="debug-panel" hidden>

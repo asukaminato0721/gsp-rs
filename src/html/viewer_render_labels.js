@@ -9,7 +9,7 @@
    */
   modules.render.labelMetrics = function labelMetrics(env, text) {
     const lines = text.split("\n");
-    const width = lines.reduce((best, line) => Math.max(best, env.ctx.measureText(line).width), 0);
+    const width = lines.reduce((best, line) => Math.max(best, env.measureText(line, 18)), 0);
     return {
       lines,
       width,
@@ -66,12 +66,8 @@
     if (!label.hotspots?.length) {
       return [];
     }
-    env.ctx.save();
-    env.ctx.font = "18px \"Noto Sans\", \"Segoe UI\", sans-serif";
-    env.ctx.textBaseline = "top";
     const bounds = modules.render.labelBounds(env, label);
     if (!bounds) {
-      env.ctx.restore();
       return [];
     }
     const rects = label.hotspots
@@ -89,15 +85,14 @@
           start,
           end,
           text: hotspot.text || text,
-          left: bounds.left + 4 + env.ctx.measureText(prefix).width,
+          left: bounds.left + 4 + env.measureText(prefix, 18),
           top: bounds.top + hotspot.line * 22,
-          width: Math.max(1, env.ctx.measureText(text).width),
+          width: Math.max(1, env.measureText(text, 18)),
           height: 22,
           action: hotspot.action,
         };
       })
       .filter(Boolean);
-    env.ctx.restore();
     return rects;
   };
 
@@ -107,9 +102,6 @@
    * @param {number} screenY
    */
   modules.render.findHitLabel = function findHitLabel(env, screenX, screenY) {
-    env.ctx.save();
-    env.ctx.font = "18px \"Noto Sans\", \"Segoe UI\", sans-serif";
-    env.ctx.textBaseline = "top";
     for (let index = env.currentScene().labels.length - 1; index >= 0; index -= 1) {
       const label = env.currentScene().labels[index];
       if (label.visible === false) continue;
@@ -121,38 +113,47 @@
         screenY >= bounds.top &&
         screenY <= bounds.top + bounds.height
       ) {
-        env.ctx.restore();
         return index;
       }
     }
-    env.ctx.restore();
     return null;
   };
 
   /** @param {ViewerEnv} env */
   modules.render.drawLabels = function drawLabels(env) {
-    env.ctx.font = "18px \"Noto Sans\", \"Segoe UI\", sans-serif";
     for (const label of env.currentScene().labels) {
       if (label.visible === false || (label.richMarkup && !label.hotspots?.length)) continue;
       const bounds = modules.render.labelBounds(env, label);
       if (!bounds) continue;
-      env.ctx.fillStyle = env.rgba(label.color);
+      const group = modules.render.appendSceneElement(env, "g", {
+        fill: env.rgba(label.color),
+        "font-size": 18,
+        "font-family": "\"Noto Sans\", \"Segoe UI\", sans-serif",
+      });
       if (label.centeredOnAnchor) {
-        env.ctx.textAlign = "center";
-        env.ctx.textBaseline = "middle";
         const midOffset = (bounds.lines.length - 1) / 2;
         bounds.lines.forEach((line, index) => {
-          env.ctx.fillText(line, bounds.screen.x, bounds.screen.y + (index - midOffset) * 22);
+          const text = env.createSvgElement("text", {
+            x: bounds.screen.x,
+            y: bounds.screen.y + (index - midOffset) * 22,
+            "text-anchor": "middle",
+            "dominant-baseline": "middle",
+          });
+          text.textContent = line;
+          group.append(text);
         });
       } else {
-        env.ctx.textAlign = "left";
-        env.ctx.textBaseline = "top";
         bounds.lines.forEach((line, index) => {
-          env.ctx.fillText(line, bounds.left + 4, bounds.top + index * 22);
+          const text = env.createSvgElement("text", {
+            x: bounds.left + 4,
+            y: bounds.top + index * 22,
+            "text-anchor": "start",
+            "dominant-baseline": "hanging",
+          });
+          text.textContent = line;
+          group.append(text);
         });
       }
     }
-    env.ctx.textAlign = "left";
-    env.ctx.textBaseline = "alphabetic";
   };
 })();

@@ -36,6 +36,77 @@
   }
 
   /**
+   * @param {Point[]} points
+   * @param {boolean} [close]
+   */
+  function pathFromPoints(points, close = false) {
+    if (!points || points.length === 0) return "";
+    const commands = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`);
+    if (close) {
+      commands.push("Z");
+    }
+    return commands.join(" ");
+  }
+
+  /**
+   * @param {Point} center
+   * @param {number} radius
+   * @param {number} startAngle
+   * @param {number} endAngle
+   * @param {boolean} counterClockwise
+   */
+  function arcPath(center, radius, startAngle, endAngle, counterClockwise) {
+    if (!Number.isFinite(radius) || radius <= 1e-9) return "";
+    const start = {
+      x: center.x + radius * Math.cos(startAngle),
+      y: center.y + radius * Math.sin(startAngle),
+    };
+    const end = {
+      x: center.x + radius * Math.cos(endAngle),
+      y: center.y + radius * Math.sin(endAngle),
+    };
+    let delta = endAngle - startAngle;
+    if (counterClockwise && delta < 0) delta += Math.PI * 2;
+    if (!counterClockwise && delta > 0) delta -= Math.PI * 2;
+    const largeArc = Math.abs(delta) > Math.PI ? 1 : 0;
+    const sweep = counterClockwise ? 1 : 0;
+    return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArc} ${sweep} ${end.x} ${end.y}`;
+  }
+
+  /**
+   * @param {ViewerEnv} env
+   * @param {string} tag
+   * @param {Record<string, string | number | boolean | null | undefined>} attrs
+   * @param {string | null} [text]
+   */
+  function appendSceneElement(env, tag, attrs, text = null) {
+    const element = env.createSvgElement(tag, attrs);
+    if (text !== null) {
+      element.textContent = text;
+    }
+    env.sceneLayer.append(element);
+    return element;
+  }
+
+  /**
+   * @param {ViewerEnv} env
+   * @param {Point[]} points
+   * @param {{ stroke: string, strokeWidth?: number, fill?: string, dashed?: boolean, close?: boolean, lineCap?: string, lineJoin?: string }} options
+   */
+  function appendPointPath(env, points, options) {
+    if (!points || points.length < 2) return null;
+    return appendSceneElement(env, "path", {
+      d: pathFromPoints(points, !!options.close),
+      fill: options.fill ?? "none",
+      stroke: options.stroke,
+      "stroke-width": options.strokeWidth ?? 2,
+      "stroke-dasharray": options.dashed ? "8 8" : null,
+      "stroke-linecap": options.lineCap ?? "round",
+      "stroke-linejoin": options.lineJoin ?? "round",
+    });
+  }
+
+  /**
    * @param {Point} start
    * @param {Point} end
    * @param {number} width
@@ -177,62 +248,19 @@
 
   /** @param {ViewerEnv} env */
   function drawLines(env) {
-    const resolveRightAngleMarkerPoints = (
-      /** @type {Point} */ vertex,
-      /** @type {Point} */ first,
-      /** @type {Point} */ second,
-      /** @type {number} */ shortestLen,
-      /** @type {number} */ layerIndex,
-    ) => {
-      const sideBase = Math.min(Math.max(shortestLen * 0.125, 10), 28, shortestLen * 0.5);
-      const side = sideBase + layerIndex * 5;
-      if (side <= 1e-9) return null;
-      return [
-        { x: vertex.x + first.x * side, y: vertex.y + first.y * side },
-        { x: vertex.x + (first.x + second.x) * side, y: vertex.y + (first.y + second.y) * side },
-        { x: vertex.x + second.x * side, y: vertex.y + second.y * side },
-      ];
-    };
-    const resolveArcAngleMarkerPoints = (
-      /** @type {Point} */ vertex,
-      /** @type {Point} */ first,
-      /** @type {number} */ shortestLen,
-      /** @type {number} */ cross,
-      /** @type {number} */ dot,
-      /** @type {number} */ layerIndex,
-    ) => {
-      const radius = Math.min(Math.max(shortestLen * 0.12, 10), 28) + layerIndex * 5;
-      const clampedRadius = Math.min(radius, shortestLen * (0.42 + layerIndex * 0.06));
-      if (clampedRadius <= 1e-9) return null;
-      const delta = Math.atan2(cross, dot);
-      if (Math.abs(delta) <= 1e-6) return null;
-      const startAngle = Math.atan2(first.y, first.x);
-      const samples = 9;
-      return Array.from({ length: samples }, (_, index) => {
-        const t = index / (samples - 1);
-        const angle = startAngle + delta * t;
-        return {
-          x: vertex.x + clampedRadius * Math.cos(angle),
-          y: vertex.y + clampedRadius * Math.sin(angle),
-        };
-      });
-    };
     const drawPolyline = (
       /** @type {Point[]} */ worldPoints,
       /** @type {[number, number, number, number]} */ color,
       /** @type {boolean} */ dashed,
+      /** @type {boolean} */ close = false,
     ) => {
       const screenPoints = worldPoints.map((/** @type {Point} */ point) => env.toScreen(point));
       if (screenPoints.length < 2) return;
-      env.ctx.beginPath();
-      screenPoints.forEach((/** @type {Point & { scale: number }} */ screen, /** @type {number} */ index) => {
-        if (index === 0) env.ctx.moveTo(screen.x, screen.y);
-        else env.ctx.lineTo(screen.x, screen.y);
+      appendPointPath(env, screenPoints, {
+        stroke: env.rgba(color),
+        dashed,
+        close,
       });
-      env.ctx.strokeStyle = env.rgba(color);
-      env.ctx.lineWidth = 2;
-      env.ctx.setLineDash(dashed ? [8, 8] : []);
-      env.ctx.stroke();
     };
     const drawAngleMarker = (/** @type {RuntimeLineJson} */ line) => {
       const start = env.resolveScenePoint(line.binding.startIndex);
@@ -254,9 +282,37 @@
       const layerCount = Math.max(1, line.binding.markerClass || 1);
       for (let layerIndex = 0; layerIndex < layerCount; layerIndex += 1) {
         const points = Math.abs(dot) <= 0.12
-          ? resolveRightAngleMarkerPoints(vertex, first, second, shortestLen, layerIndex)
-          : resolveArcAngleMarkerPoints(vertex, first, shortestLen, cross, dot, layerIndex);
-        if (points) drawPolyline(points, line.color, line.dashed);
+          ? (() => {
+              const sideBase = Math.min(Math.max(shortestLen * 0.125, 10), 28, shortestLen * 0.5);
+              const side = sideBase + layerIndex * 5;
+              if (side <= 1e-9) return null;
+              return [
+                { x: vertex.x + first.x * side, y: vertex.y + first.y * side },
+                { x: vertex.x + (first.x + second.x) * side, y: vertex.y + (first.y + second.y) * side },
+                { x: vertex.x + second.x * side, y: vertex.y + second.y * side },
+              ];
+            })()
+          : null;
+        if (points?.length) {
+          drawPolyline(points, line.color, line.dashed);
+          continue;
+        }
+        const radius = Math.min(Math.max(shortestLen * 0.12, 10), 28) + layerIndex * 5;
+        const clampedRadius = Math.min(radius, shortestLen * (0.42 + layerIndex * 0.06));
+        if (clampedRadius <= 1e-9) continue;
+        const delta = Math.atan2(cross, dot);
+        if (Math.abs(delta) <= 1e-6) continue;
+        const startAngle = Math.atan2(first.y, first.x);
+        const samples = 9;
+        const polyline = Array.from({ length: samples }, (_, index) => {
+          const t = index / (samples - 1);
+          const angle = startAngle + delta * t;
+          return {
+            x: vertex.x + clampedRadius * Math.cos(angle),
+            y: vertex.y + clampedRadius * Math.sin(angle),
+          };
+        });
+        drawPolyline(polyline, line.color, line.dashed);
       }
     };
     const drawSegmentMarker = (/** @type {RuntimeLineJson} */ line) => {
@@ -375,17 +431,17 @@
                 const vertex = env.resolveScenePoint(line.binding.vertexIndex);
                 return vertex ? env.toScreen(vertex) : null;
               })()
-          : (() => {
-              const startPoint = env.resolveScenePoint(line.binding.startIndex);
-              if (!startPoint) return null;
-              if (line.binding.kind === "ray") {
-                const endPoint = env.resolveScenePoint(line.binding.endIndex);
-                if (!endPoint) return null;
-                const shiftedStart = extendedRayStart(startPoint, endPoint);
-                return env.toScreen(shiftedStart);
-              }
-              return env.toScreen(startPoint);
-            })();
+            : (() => {
+                const startPoint = env.resolveScenePoint(line.binding.startIndex);
+                if (!startPoint) return null;
+                if (line.binding.kind === "ray") {
+                  const endPoint = env.resolveScenePoint(line.binding.endIndex);
+                  if (!endPoint) return null;
+                  const shiftedStart = extendedRayStart(startPoint, endPoint);
+                  return env.toScreen(shiftedStart);
+                }
+                return env.toScreen(startPoint);
+              })();
         const end = line.binding.kind === "perpendicular-line"
           ? (() => {
               const through = env.resolveScenePoint(line.binding.throughIndex);
@@ -412,37 +468,37 @@
                 if (len <= 1e-9) return null;
                 return env.toScreen({ x: through.x + dx / len, y: through.y + dy / len });
               })()
-          : line.binding.kind === "angle-bisector-ray"
-            ? (() => {
-                const startPoint = env.resolveScenePoint(line.binding.startIndex);
-                const vertex = env.resolveScenePoint(line.binding.vertexIndex);
-                const endPoint = env.resolveScenePoint(line.binding.endIndex);
-                if (!startPoint || !vertex || !endPoint) return null;
-                const startDx = startPoint.x - vertex.x;
-                const startDy = startPoint.y - vertex.y;
-                const startLen = Math.hypot(startDx, startDy);
-                const endDx = endPoint.x - vertex.x;
-                const endDy = endPoint.y - vertex.y;
-                const endLen = Math.hypot(endDx, endDy);
-                if (startLen <= 1e-9 || endLen <= 1e-9) return null;
-                const sumX = startDx / startLen + endDx / endLen;
-                const sumY = startDy / startLen + endDy / endLen;
-                const sumLen = Math.hypot(sumX, sumY);
-                const direction = sumLen > 1e-9
-                  ? { x: sumX / sumLen, y: sumY / sumLen }
-                  : { x: -startDy / startLen, y: startDx / startLen };
-                return env.toScreen({ x: vertex.x + direction.x, y: vertex.y + direction.y });
-              })()
-          : (() => {
-              const endPoint = env.resolveScenePoint(line.binding.endIndex);
-              if (line.binding.kind === "ray") {
-                const startPoint = env.resolveScenePoint(line.binding.startIndex);
-                if (!startPoint || !endPoint) return null;
-                const shiftedStart = extendedRayStart(startPoint, endPoint);
-                return env.toScreen(extendedRayEnd(startPoint, endPoint, shiftedStart));
-              }
-              return endPoint ? env.toScreen(endPoint) : null;
-            })();
+            : line.binding.kind === "angle-bisector-ray"
+              ? (() => {
+                  const startPoint = env.resolveScenePoint(line.binding.startIndex);
+                  const vertex = env.resolveScenePoint(line.binding.vertexIndex);
+                  const endPoint = env.resolveScenePoint(line.binding.endIndex);
+                  if (!startPoint || !vertex || !endPoint) return null;
+                  const startDx = startPoint.x - vertex.x;
+                  const startDy = startPoint.y - vertex.y;
+                  const startLen = Math.hypot(startDx, startDy);
+                  const endDx = endPoint.x - vertex.x;
+                  const endDy = endPoint.y - vertex.y;
+                  const endLen = Math.hypot(endDx, endDy);
+                  if (startLen <= 1e-9 || endLen <= 1e-9) return null;
+                  const sumX = startDx / startLen + endDx / endLen;
+                  const sumY = startDy / startLen + endDy / endLen;
+                  const sumLen = Math.hypot(sumX, sumY);
+                  const direction = sumLen > 1e-9
+                    ? { x: sumX / sumLen, y: sumY / sumLen }
+                    : { x: -startDy / startLen, y: startDx / startLen };
+                  return env.toScreen({ x: vertex.x + direction.x, y: vertex.y + direction.y });
+                })()
+              : (() => {
+                  const endPoint = env.resolveScenePoint(line.binding.endIndex);
+                  if (line.binding.kind === "ray") {
+                    const startPoint = env.resolveScenePoint(line.binding.startIndex);
+                    if (!startPoint || !endPoint) return null;
+                    const shiftedStart = extendedRayStart(startPoint, endPoint);
+                    return env.toScreen(extendedRayEnd(startPoint, endPoint, shiftedStart));
+                  }
+                  return endPoint ? env.toScreen(endPoint) : null;
+                })();
         if (!start || !end) continue;
         screenPoints = clipParametricLineToRect(
           start,
@@ -460,17 +516,11 @@
         }
       }
       if (!screenPoints || screenPoints.length < 2) continue;
-      env.ctx.beginPath();
-      screenPoints.forEach((/** @type {Point & { scale: number }} */ screen, /** @type {number} */ index) => {
-        if (index === 0) env.ctx.moveTo(screen.x, screen.y);
-        else env.ctx.lineTo(screen.x, screen.y);
+      appendPointPath(env, screenPoints, {
+        stroke: env.rgba(line.color),
+        dashed: !!line.dashed,
       });
-      env.ctx.strokeStyle = env.rgba(line.color);
-      env.ctx.lineWidth = 2;
-      env.ctx.setLineDash(line.dashed ? [8, 8] : []);
-      env.ctx.stroke();
     }
-    env.ctx.setLineDash([]);
   }
 
   /** @param {ViewerEnv} _env */
@@ -488,12 +538,14 @@
       const resolved = env.resolveScenePoint(index);
       if (!resolved) return;
       const screen = env.toScreen(resolved);
-      env.ctx.beginPath();
-      env.ctx.arc(screen.x, screen.y, index === env.hoverPointIndex.val ? 6 : 4, 0, Math.PI * 2);
-      env.ctx.fillStyle = index === env.hoverPointIndex.val
-        ? "rgba(255, 120, 20, 1)"
-        : env.rgba(point.color || [255, 60, 40, 255]);
-      env.ctx.fill();
+      appendSceneElement(env, "circle", {
+        cx: screen.x,
+        cy: screen.y,
+        r: index === env.hoverPointIndex.val ? 6 : 4,
+        fill: index === env.hoverPointIndex.val
+          ? "rgba(255, 120, 20, 1)"
+          : env.rgba(point.color || [255, 60, 40, 255]),
+      });
     });
   }
 
@@ -508,7 +560,7 @@
 
   /** @param {ViewerEnv} env */
   function draw(env) {
-    env.ctx.clearRect(0, 0, env.sourceScene.width, env.sourceScene.height);
+    env.clearSvgChildren(env.sceneLayer);
     env.drawGrid();
     modules.render.drawImages(env);
     modules.render.drawPolygons(env);
@@ -540,5 +592,9 @@
     drawIterationTables,
     drawHotspotFlashes,
     draw,
+    pathFromPoints,
+    arcPath,
+    appendSceneElement,
+    appendPointPath,
   };
 })();

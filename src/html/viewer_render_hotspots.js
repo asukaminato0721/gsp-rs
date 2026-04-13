@@ -10,23 +10,16 @@
       return;
     }
 
-    const strokePolyline = (/** @type {Point[]} */ points) => {
+    const strokePolyline = (/** @type {Point[]} */ points, /** @type {boolean} */ close = false) => {
       if (!points || points.length < 2) return;
-      env.ctx.beginPath();
-      points.forEach((/** @type {Point} */ point, /** @type {number} */ index) => {
-        const screen = env.toScreen(point);
-        if (index === 0) env.ctx.moveTo(screen.x, screen.y);
-        else env.ctx.lineTo(screen.x, screen.y);
+      const screenPoints = points.map((/** @type {Point} */ point) => env.toScreen(point));
+      modules.render.appendPointPath(env, screenPoints, {
+        stroke: "rgba(255, 176, 32, 0.95)",
+        strokeWidth: 5,
+        fill: close ? "rgba(255, 210, 80, 0.22)" : "none",
+        close,
       });
-      env.ctx.stroke();
     };
-
-    env.ctx.save();
-    env.ctx.strokeStyle = "rgba(255, 176, 32, 0.95)";
-    env.ctx.fillStyle = "rgba(255, 210, 80, 0.22)";
-    env.ctx.lineWidth = 5;
-    env.ctx.lineJoin = "round";
-    env.ctx.lineCap = "round";
 
     flashes.forEach((flash) => {
       const action = flash.action;
@@ -36,10 +29,14 @@
           const point = env.resolveScenePoint(action.pointIndex);
           if (!point) break;
           const screen = env.toScreen(point);
-          env.ctx.beginPath();
-          env.ctx.arc(screen.x, screen.y, 9, 0, Math.PI * 2);
-          env.ctx.fill();
-          env.ctx.stroke();
+          modules.render.appendSceneElement(env, "circle", {
+            cx: screen.x,
+            cy: screen.y,
+            r: 9,
+            fill: "rgba(255, 210, 80, 0.22)",
+            stroke: "rgba(255, 176, 32, 0.95)",
+            "stroke-width": 5,
+          });
           break;
         }
         case "segment": {
@@ -69,15 +66,14 @@
           if (!center || !radiusPoint) break;
           const screenCenter = env.toScreen(center);
           const screenRadiusPoint = env.toScreen(radiusPoint);
-          env.ctx.beginPath();
-          env.ctx.arc(
-            screenCenter.x,
-            screenCenter.y,
-            Math.hypot(screenRadiusPoint.x - screenCenter.x, screenRadiusPoint.y - screenCenter.y),
-            0,
-            Math.PI * 2,
-          );
-          env.ctx.stroke();
+          modules.render.appendSceneElement(env, "circle", {
+            cx: screenCenter.x,
+            cy: screenCenter.y,
+            r: Math.hypot(screenRadiusPoint.x - screenCenter.x, screenRadiusPoint.y - screenCenter.y),
+            fill: "none",
+            stroke: "rgba(255, 176, 32, 0.95)",
+            "stroke-width": 5,
+          });
           break;
         }
         case "polygon": {
@@ -85,22 +81,12 @@
           if (!polygon || polygon.points.length < 3) break;
           const points = polygon.points.map((/** @type {PointHandle} */ handle) => env.resolvePoint(handle));
           if (points.some((/** @type {Point | null} */ point) => !point)) break;
-          env.ctx.beginPath();
-          points.forEach((/** @type {Point} */ point, /** @type {number} */ index) => {
-            const screen = env.toScreen(point);
-            if (index === 0) env.ctx.moveTo(screen.x, screen.y);
-            else env.ctx.lineTo(screen.x, screen.y);
-          });
-          env.ctx.closePath();
-          env.ctx.fill();
-          env.ctx.stroke();
+          strokePolyline(/** @type {Point[]} */ (points), true);
           break;
         }
         default:
           break;
       }
     });
-
-    env.ctx.restore();
   };
 })();

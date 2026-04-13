@@ -76,7 +76,7 @@ main {
   margin-left: auto;
 }
 
-canvas {
+#view {
   display: block;
   width: 100%;
   height: auto;
@@ -88,7 +88,7 @@ canvas {
   z-index: 0;
 }
 
-canvas.is-dragging {
+#view.is-dragging {
   cursor: grabbing;
 }
 
@@ -103,26 +103,6 @@ canvas.is-dragging {
   width: 100%;
 }
 
-#grid-layer {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: auto;
-  pointer-events: none;
-  z-index: 0;
-  background: transparent;
-}
-
-#scene-layer {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: auto;
-  pointer-events: none;
-  z-index: 1;
-  background: transparent;
-}
-
 .canvas-shell.is-document-layout {
   overflow: auto;
 }
@@ -132,17 +112,15 @@ canvas.is-dragging {
   width: auto;
 }
 
-.canvas-stage.is-document-layout canvas {
+.canvas-stage.is-document-layout #view {
   width: auto;
   max-width: none;
 }
 
-.canvas-stage.is-document-layout #grid-layer {
-  width: auto;
-}
-
-.canvas-stage.is-document-layout #scene-layer {
-  width: auto;
+#view #grid-layer,
+#view #scene-layer,
+#view #measure-layer {
+  pointer-events: none;
 }
 
 #button-overlays {
@@ -151,12 +129,6 @@ canvas.is-dragging {
   pointer-events: none;
   z-index: 2;
   overflow: visible;
-}
-
-#view {
-  position: relative;
-  z-index: 2;
-  background: transparent;
 }
 
 .scene-link-button {

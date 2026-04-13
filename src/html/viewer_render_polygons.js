@@ -70,18 +70,13 @@
       if (polygon.points.length < 3) continue;
       const worldPoints = polygon.points.map((/** @type {PointHandle} */ handle) => env.resolvePoint(handle));
       if (worldPoints.some((/** @type {Point | null} */ point) => !point)) continue;
-      env.ctx.beginPath();
-      worldPoints.forEach((/** @type {Point} */ point, /** @type {number} */ index) => {
-        const screen = env.toScreen(point);
-        if (index === 0) env.ctx.moveTo(screen.x, screen.y);
-        else env.ctx.lineTo(screen.x, screen.y);
+      const screenPoints = worldPoints.map((/** @type {Point} */ point) => env.toScreen(point));
+      modules.render.appendPointPath(env, screenPoints, {
+        stroke: env.rgba(polygon.outlineColor),
+        strokeWidth: 1.5,
+        fill: env.rgba(polygon.color),
+        close: true,
       });
-      env.ctx.closePath();
-      env.ctx.fillStyle = env.rgba(polygon.color);
-      env.ctx.strokeStyle = env.rgba(polygon.outlineColor);
-      env.ctx.lineWidth = 1.5;
-      env.ctx.fill();
-      env.ctx.stroke();
     }
   };
 })();

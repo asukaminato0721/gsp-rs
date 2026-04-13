@@ -83,13 +83,28 @@
    * @param {Point} end
    */
   function projectToSegment(point, start, end) {
+    return projectToLineLike(point, start, end, "segment");
+  }
+
+  /**
+   * @param {Point} point
+   * @param {Point} start
+   * @param {Point} end
+   * @param {"segment" | "line" | "ray"} kind
+   */
+  function projectToLineLike(point, start, end, kind) {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
     const lengthSquared = dx * dx + dy * dy;
     if (lengthSquared <= 1e-9) {
       return null;
     }
-    const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared));
+    const rawT = ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared;
+    const t = kind === "line"
+      ? rawT
+      : kind === "ray"
+        ? Math.max(0, rawT)
+        : Math.max(0, Math.min(1, rawT));
     const projected = lerpPoint(start, end, t);
     return {
       t,
@@ -528,6 +543,64 @@
   }
 
   /**
+   * @param {ViewerEnv} env
+   * @param {Element} parent
+   * @param {Record<string, string | number | boolean | null | undefined>} attrs
+   */
+  function appendGridElement(env, parent, attrs) {
+    const tag = /** @type {string} */ (attrs.tag);
+    const nextAttrs = { ...attrs };
+    delete nextAttrs.tag;
+    const element = env.createSvgElement(tag, nextAttrs);
+    parent.append(element);
+    return element;
+  }
+
+  /**
+   * @param {ViewerEnv} env
+   * @param {Element} parent
+   * @param {number} x1
+   * @param {number} y1
+   * @param {number} x2
+   * @param {number} y2
+   * @param {string} color
+   */
+  function appendGridLine(env, parent, x1, y1, x2, y2, color) {
+    appendGridElement(env, parent, {
+      tag: "line",
+      x1,
+      y1,
+      x2,
+      y2,
+      stroke: color,
+      "stroke-width": 1,
+      "shape-rendering": "crispEdges",
+    });
+  }
+
+  /**
+   * @param {ViewerEnv} env
+   * @param {Element} parent
+   * @param {number} x
+   * @param {number} y
+   * @param {string} text
+   * @param {"start" | "middle" | "end"} anchor
+   */
+  function appendGridText(env, parent, x, y, text, anchor) {
+    const label = appendGridElement(env, parent, {
+      tag: "text",
+      x,
+      y,
+      fill: "rgb(20,20,20)",
+      "font-size": 12,
+      "font-family": "\"Noto Sans\", \"Segoe UI\", sans-serif",
+      "text-anchor": anchor,
+      "dominant-baseline": "middle",
+    });
+    label.textContent = text;
+  }
+
+  /**
    * @param {number} span
    * @param {number} targetLines
    */
@@ -543,7 +616,10 @@
 
   /** @param {ViewerEnv} env */
   function drawGrid(env) {
+    env.clearSvgChildren(env.gridLayer);
     if (!env.currentScene().graphMode) return;
+    const gridLayer = env.gridLayer;
+    const snapStroke = (/** @type {number} */ value) => Math.round(value) + 0.5;
     const bounds = getViewBounds(env);
     const spanX = bounds.maxX - bounds.minX;
     const spanY = bounds.maxY - bounds.minY;
@@ -556,10 +632,6 @@
     const minYIndex = Math.floor(bounds.minY / yMinorStep);
     const maxYIndex = Math.ceil(bounds.maxY / yMinorStep);
 
-    env.ctx.save();
-    env.ctx.lineWidth = 1;
-    env.ctx.font = "12px \"Noto Sans\", \"Segoe UI\", sans-serif";
-    env.ctx.fillStyle = "rgb(20,20,20)";
     const xAxisY = bounds.minY <= 0 && 0 <= bounds.maxY
       ? toScreen(env, { x: bounds.minX, y: 0 }).y
       : env.sourceScene.height - 18;
@@ -571,24 +643,39 @@
       const x = xIndex * xMinorStep;
       const screen = toScreen(env, { x, y: bounds.minY });
       const major = Math.abs((x / xMajorStep) - Math.round(x / xMajorStep)) < 1e-6;
-      env.ctx.strokeStyle = Math.abs(x) < 1e-6
+      const stroke = Math.abs(x) < 1e-6
         ? "rgb(40,40,40)"
         : major ? "rgb(200,200,200)" : "rgb(225,225,225)";
-      env.ctx.beginPath();
-      env.ctx.moveTo(screen.x, 0);
-      env.ctx.lineTo(screen.x, env.sourceScene.height);
-      env.ctx.stroke();
+      appendGridLine(
+        env,
+        gridLayer,
+        snapStroke(screen.x),
+        0,
+        snapStroke(screen.x),
+        env.sourceScene.height,
+        stroke,
+      );
       if (bounds.minY <= 0 && 0 <= bounds.maxY) {
-        env.ctx.strokeStyle = "rgb(40,40,40)";
-        env.ctx.beginPath();
-        env.ctx.moveTo(screen.x, xAxisY - (Math.abs(x) < 1e-6 ? 6 : major ? 4 : 2));
-        env.ctx.lineTo(screen.x, xAxisY + (Math.abs(x) < 1e-6 ? 6 : major ? 4 : 2));
-        env.ctx.stroke();
+        appendGridLine(
+          env,
+          gridLayer,
+          snapStroke(screen.x),
+          snapStroke(xAxisY - (Math.abs(x) < 1e-6 ? 6 : major ? 4 : 2)),
+          snapStroke(screen.x),
+          snapStroke(xAxisY + (Math.abs(x) < 1e-6 ? 6 : major ? 4 : 2)),
+          "rgb(40,40,40)",
+        );
       }
       if (major && Math.abs(x) >= 1e-6) {
         const label = env.formatAxisNumber(x);
-        const width = env.ctx.measureText(label).width;
-        env.ctx.fillText(label, screen.x - width / 2, Math.min(env.sourceScene.height - 4, xAxisY + 16));
+        appendGridText(
+          env,
+          gridLayer,
+          Math.round(screen.x),
+          Math.round(Math.min(env.sourceScene.height - 4, xAxisY + 16)),
+          label,
+          "middle",
+        );
       }
     }
 
@@ -596,35 +683,52 @@
       const y = yIndex * yMinorStep;
       const major = Math.abs((y / yMajorStep) - Math.round(y / yMajorStep)) < 1e-6;
       const screen = toScreen(env, { x: bounds.minX, y });
-      env.ctx.strokeStyle = Math.abs(y) < 1e-6
+      const stroke = Math.abs(y) < 1e-6
         ? "rgb(40,40,40)"
         : major ? "rgb(200,200,200)" : "rgb(225,225,225)";
-      env.ctx.beginPath();
-      env.ctx.moveTo(0, screen.y);
-      env.ctx.lineTo(env.sourceScene.width, screen.y);
-      env.ctx.stroke();
+      appendGridLine(
+        env,
+        gridLayer,
+        0,
+        snapStroke(screen.y),
+        env.sourceScene.width,
+        snapStroke(screen.y),
+        stroke,
+      );
       if (bounds.minX <= 0 && 0 <= bounds.maxX) {
-        env.ctx.strokeStyle = "rgb(40,40,40)";
-        env.ctx.beginPath();
-        env.ctx.moveTo(yAxisX - (Math.abs(y) < 1e-6 ? 6 : major ? 4 : 2), screen.y);
-        env.ctx.lineTo(yAxisX + (Math.abs(y) < 1e-6 ? 6 : major ? 4 : 2), screen.y);
-        env.ctx.stroke();
+        appendGridLine(
+          env,
+          gridLayer,
+          snapStroke(yAxisX - (Math.abs(y) < 1e-6 ? 6 : major ? 4 : 2)),
+          snapStroke(screen.y),
+          snapStroke(yAxisX + (Math.abs(y) < 1e-6 ? 6 : major ? 4 : 2)),
+          snapStroke(screen.y),
+          "rgb(40,40,40)",
+        );
       }
       if (major && Math.abs(y) >= 1e-6) {
         const label = env.formatAxisNumber(y);
-        const width = env.ctx.measureText(label).width;
-        env.ctx.fillText(label, yAxisX - width - 8, screen.y - 6);
+        appendGridText(
+          env,
+          gridLayer,
+          Math.round(yAxisX - env.measureText(label, 12) - 8),
+          Math.round(screen.y - 6),
+          label,
+          "start",
+        );
       }
     }
 
     if (env.currentScene().origin) {
       const origin = toScreen(env, resolvePoint(env, env.currentScene().origin));
-      env.ctx.fillStyle = "rgba(255, 60, 40, 1)";
-      env.ctx.beginPath();
-      env.ctx.arc(origin.x, origin.y, 3, 0, Math.PI * 2);
-      env.ctx.fill();
+      appendGridElement(env, gridLayer, {
+        tag: "circle",
+        cx: origin.x,
+        cy: origin.y,
+        r: 3,
+        fill: "rgba(255, 60, 40, 1)",
+      });
     }
-    env.ctx.restore();
   }
 
   /** @returns {null} */
@@ -687,6 +791,7 @@
     chooseGridStep,
     lerpPoint,
     projectToSegment,
+    projectToLineLike,
     pointOnCircleArc,
     projectToCircleArc,
     pointOnThreePointArc,

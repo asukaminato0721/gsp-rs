@@ -28,6 +28,7 @@
       labelIndex: null,
       polygonIndex: null,
       iterationTableIndex: null,
+      imageIndex: null,
       lastX: position.x,
       lastY: position.y,
     };
@@ -54,6 +55,7 @@
     beginDrag,
     updateDraggedPoint: noop,
     updateDraggedLabel: noop,
+    updateDraggedImage: noop,
     updateDraggedPolygon: noop,
     updateDraggedIterationTable: noop,
     panFromPointerDelta,
