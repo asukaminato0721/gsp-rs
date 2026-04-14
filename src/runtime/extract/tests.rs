@@ -1670,6 +1670,13 @@ fn preserves_coordinate_trace_intersection_in_cood_intersection_xy_gsp() {
         ) && point.position.x.abs() < 1e-6
             && (point.position.y - 3.069166666666897).abs() < 1e-6
     }));
+    assert!(scene.points.iter().any(|point| {
+        matches!(
+            point.binding,
+            Some(crate::runtime::scene::ScenePointBinding::Parameter { ref name })
+                if name == "t₁"
+        ) && !point.visible
+    }));
 }
 
 #[test]

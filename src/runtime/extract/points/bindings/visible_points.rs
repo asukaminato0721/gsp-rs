@@ -623,10 +623,11 @@ fn standalone_parameter_point(file: &GspFile, group: &ObjectGroup) -> Option<Sce
         .flatten()
         .or_else(|| decode_bbox_anchor_raw(file, group))?;
     let binding = decode_label_name(file, group).map(|name| ScenePointBinding::Parameter { name });
+    let visible = !group.header.is_hidden() && point_marker_visible(group);
     Some(scene_point(
         position,
         group_color(group),
-        !group.header.is_hidden(),
+        visible,
         false,
         ScenePointConstraint::Free,
         binding,
