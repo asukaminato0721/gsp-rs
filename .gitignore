@@ -1,4 +1,5 @@
 /target
 node_modules
-tests/fixtures/**/*.html
-tests/fixtures/**/*.log
+tests/**/*.html
+tests/**/*.log
+tests/**/*.debug.json
