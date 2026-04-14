@@ -2,9 +2,9 @@ use super::{
     CircleShape, GspFile, LineBinding, LineShape, ObjectGroup, PointRecord, PolygonShape,
     ShapeBinding, TransformBindingKind, collect_circle_fill_colors, color_from_style,
     fill_color_from_styles, find_indexed_path, has_distinct_points, line_is_dashed,
-    payload_debug_source,
-    reflect_across_line, rotate_around, scale_around, translation_point_pair_group_indices,
-    try_decode_parameter_rotation_binding, try_decode_transform_binding,
+    payload_debug_source, reflect_across_line, rotate_around, scale_around,
+    translation_point_pair_group_indices, try_decode_parameter_rotation_binding,
+    try_decode_transform_binding,
 };
 use crate::runtime::extract::decode::{is_circle_group_kind, resolve_circle_points_raw};
 use crate::runtime::extract::points::resolve_line_like_points_raw;

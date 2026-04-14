@@ -69,8 +69,7 @@ pub(crate) fn collect_function_plots(
                 color: crate::runtime::geometry::color_from_style(group.header.style_b),
                 dashed: false,
                 visible: !group.header.is_hidden(),
-                binding: None,
-                debug: None,
+                ..Default::default()
             });
         }
     }
@@ -157,8 +156,7 @@ pub(crate) fn synthesize_function_axes(
             color: [192, 192, 192, 255],
             dashed: false,
             visible: true,
-            binding: None,
-            debug: None,
+            ..Default::default()
         });
     }
     if world_bounds.min_y <= 0.0 && 0.0 <= world_bounds.max_y {
@@ -186,8 +184,7 @@ pub(crate) fn synthesize_function_axes(
             color: [192, 192, 192, 255],
             dashed: false,
             visible: true,
-            binding: None,
-            debug: None,
+            ..Default::default()
         });
     }
 
@@ -290,15 +287,13 @@ pub(crate) fn synthesize_function_labels(
             TextLabel {
                 anchor: to_raw_from_world(&world_anchor, transform),
                 text: format!("{name} = {:.2}", value),
-                rich_markup: None,
                 color: [30, 30, 30, 255],
                 visible: true,
                 binding: Some(crate::runtime::scene::TextLabelBinding::ParameterValue {
                     name: name.clone(),
                 }),
                 screen_space: false,
-                hotspots: Vec::new(),
-                debug: None,
+                ..Default::default()
             }
         })
         .collect::<Vec<_>>();
@@ -341,7 +336,6 @@ pub(crate) fn synthesize_function_labels(
             TextLabel {
                 anchor: to_raw_from_world(&world_anchor, transform),
                 text,
-                rich_markup: None,
                 color: [30, 30, 30, 255],
                 visible: true,
                 binding: Some(crate::runtime::scene::TextLabelBinding::FunctionLabel {
@@ -349,8 +343,7 @@ pub(crate) fn synthesize_function_labels(
                     derivative: false,
                 }),
                 screen_space: false,
-                hotspots: Vec::new(),
-                debug: None,
+                ..Default::default()
             }
         },
     ));
@@ -403,7 +396,6 @@ pub(crate) fn synthesize_function_labels(
                         )
                     )
                 },
-                rich_markup: None,
                 color: [30, 30, 30, 255],
                 visible: true,
                 binding: Some(crate::runtime::scene::TextLabelBinding::FunctionLabel {
@@ -411,8 +403,7 @@ pub(crate) fn synthesize_function_labels(
                     derivative: true,
                 }),
                 screen_space: false,
-                hotspots: Vec::new(),
-                debug: None,
+                ..Default::default()
             }
         },
     ));

@@ -436,7 +436,7 @@ pub(crate) enum LineConstraint {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct LineShape {
     pub(crate) points: Vec<PointRecord>,
     pub(crate) color: [u8; 4],
@@ -773,7 +773,7 @@ pub(crate) enum ShapeBinding {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct TextLabel {
     pub(crate) anchor: PointRecord,
     pub(crate) text: String,

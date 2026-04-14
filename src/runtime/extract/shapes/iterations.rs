@@ -4,7 +4,8 @@ use super::{
     CircleShape, GspFile, LineIterationFamily, LineShape, ObjectGroup, PointRecord,
     PolygonIterationFamily, PolygonShape, color_from_style, decode_label_name,
     decode_translated_point_constraint, fill_color_from_styles, find_indexed_path, line_is_dashed,
-    regular_polygon_iteration_step, try_decode_parameter_controlled_point, try_decode_point_constraint,
+    regular_polygon_iteration_step, try_decode_parameter_controlled_point,
+    try_decode_point_constraint,
 };
 use crate::runtime::extract::decode::resolve_circle_points_raw;
 use crate::runtime::extract::points::editable_non_graph_parameter_name_for_group;
@@ -109,8 +110,9 @@ pub(crate) fn collect_rotational_line_iteration_families(
             let depth_parameter_name = groups
                 .get(iter_path.refs.first()?.checked_sub(1)?)
                 .and_then(|group| {
-                    decode_label_name(file, group)
-                        .or_else(|| editable_non_graph_parameter_name_for_group(file, groups, group))
+                    decode_label_name(file, group).or_else(|| {
+                        editable_non_graph_parameter_name_for_group(file, groups, group)
+                    })
                 });
             Some(LineIterationFamily::Rotate {
                 source_index,
@@ -224,8 +226,7 @@ pub(crate) fn collect_carried_iteration_lines(
                         color,
                         dashed: line_is_dashed(source_group.header.style_a),
                         visible: !iter_group.header.is_hidden(),
-                        binding: None,
-                        debug: None,
+                        ..Default::default()
                     });
                 }
                 return Some(lines);
@@ -244,8 +245,7 @@ pub(crate) fn collect_carried_iteration_lines(
                         color,
                         dashed: line_is_dashed(source_group.header.style_a),
                         visible: !iter_group.header.is_hidden(),
-                        binding: None,
-                        debug: None,
+                        ..Default::default()
                     })
                     .collect::<Vec<_>>(),
             )
@@ -577,8 +577,7 @@ fn branching_lines(
                     color,
                     dashed,
                     visible,
-                    binding: None,
-                    debug: None,
+                    ..Default::default()
                 });
                 next.push((child_start, child_end));
             }
@@ -1975,8 +1974,7 @@ pub(crate) fn collect_iteration_shapes(
                     color: outline_color,
                     dashed: false,
                     visible: !iter_group.header.is_hidden(),
-                    binding: None,
-                    debug: None,
+                    ..Default::default()
                 });
             }
         }

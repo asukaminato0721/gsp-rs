@@ -130,7 +130,7 @@ pub struct RecordTypeCount {
     pub count: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PointRecord {
     pub x: f64,
     pub y: f64,

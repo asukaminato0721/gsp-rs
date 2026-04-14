@@ -30,8 +30,7 @@ pub(super) use bindings::{
 pub(super) use constraints::{
     RawPointConstraint, decode_translated_point_constraint, regular_polygon_angle_expr,
     regular_polygon_angle_expr_for_calc_group, regular_polygon_iteration_step,
-    try_decode_parameter_controlled_point,
-    try_decode_point_constraint,
+    try_decode_parameter_controlled_point, try_decode_point_constraint,
 };
 
 pub(crate) fn collect_point_objects(

@@ -80,10 +80,10 @@ use super::scene::{
 };
 
 pub(crate) use self::decode::{
-    find_indexed_path, is_circle_group_kind, try_decode_bbox_rect_raw,
-    try_decode_payload_anchor_point,
-    try_decode_group_label_text, try_decode_group_rich_text, try_decode_link_button_url,
-    try_decode_parameter_control_value_for_group, try_find_indexed_path,
+    find_indexed_path, is_circle_group_kind, try_decode_bbox_rect_raw, try_decode_group_label_text,
+    try_decode_group_rich_text, try_decode_link_button_url,
+    try_decode_parameter_control_value_for_group, try_decode_payload_anchor_point,
+    try_find_indexed_path,
 };
 
 #[derive(Debug, Clone)]
@@ -113,11 +113,21 @@ pub(super) fn payload_debug_source(group: &ObjectGroup) -> PayloadDebugSource {
     PayloadDebugSource {
         group_ordinal: group.ordinal,
         group_kind: format!("{:?}", group.header.kind()),
-        record_types: group.records.iter().map(|record| record.record_type).collect(),
+        record_types: group
+            .records
+            .iter()
+            .map(|record| record.record_type)
+            .collect(),
         record_names: group
             .records
             .iter()
-            .map(|record| format!("0x{:04x} {}", record.record_type, record_name(record.record_type)))
+            .map(|record| {
+                format!(
+                    "0x{:04x} {}",
+                    record.record_type,
+                    record_name(record.record_type)
+                )
+            })
             .collect(),
     }
 }
@@ -538,13 +548,10 @@ fn append_circle_perimeter_label(
             TextLabel {
                 anchor,
                 text: format!("AB perimeter = {:.2} cm", circumference),
-                rich_markup: None,
                 color: [30, 30, 30, 255],
                 visible: true,
-                binding: None,
                 screen_space: false,
-                hotspots: Vec::new(),
-                debug: None,
+                ..Default::default()
             },
         );
     }

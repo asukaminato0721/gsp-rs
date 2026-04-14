@@ -254,9 +254,7 @@ fn is_auxiliary_segment_group(file: &GspFile, groups: &[ObjectGroup], group: &Ob
         };
         (iter_group.header.kind()) == crate::format::GroupKind::RegularPolygonIteration
             && crate::runtime::extract::points::regular_polygon_iteration_step(
-                file,
-                groups,
-                iter_group,
+                file, groups, iter_group,
             )
             .is_some()
     }) {
@@ -1406,8 +1404,7 @@ pub(crate) fn collect_derived_segments(
                 .get(index)
                 .map(|group| !group.header.is_hidden())
                 .unwrap_or(true),
-            binding: None,
-            debug: None,
+            ..Default::default()
         });
     }
 

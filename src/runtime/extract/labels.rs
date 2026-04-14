@@ -1,17 +1,16 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::payload_debug_source;
 use super::decode::{
     RichTextHotspotRef, decode_label_anchor, decode_label_name, decode_label_name_raw,
     decode_label_visible, decode_text_anchor, find_indexed_path, is_action_button_group,
     try_decode_group_label_text, try_decode_group_rich_text, try_decode_link_button_url,
     try_decode_parameter_control_value_for_group, try_decode_payload_anchor_point,
 };
+use super::payload_debug_source;
 use super::points::{
     RawPointConstraint, editable_non_graph_parameter_name_for_group,
     is_editable_non_graph_parameter_name, is_non_graph_parameter_group,
-    regular_polygon_angle_expr_for_calc_group,
-    try_decode_point_constraint,
+    regular_polygon_angle_expr_for_calc_group, try_decode_point_constraint,
 };
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_u32};
 use crate::runtime::functions::{
@@ -504,13 +503,11 @@ pub(super) fn collect_labels(
                     labels.push(TextLabel {
                         anchor,
                         text,
-                        rich_markup: None,
                         color: [60, 60, 60, 255],
                         visible: label_visible_for_group(file, group),
-                        binding: None,
                         screen_space: false,
-                        hotspots: Vec::new(),
                         debug: Some(payload_debug_source(group)),
+                        ..Default::default()
                     });
                 }
             }
@@ -644,35 +641,35 @@ pub(super) fn collect_coordinate_labels(
             labels.push(TextLabel {
                 anchor,
                 text: format!("{name} = {:.2}", value),
-                rich_markup: None,
                 color: [30, 30, 30, 255],
                 visible: helper_visible,
                 binding,
                 screen_space: true,
-                hotspots: Vec::new(),
                 debug: Some(payload_debug_source(group)),
+                ..Default::default()
             });
         } else if kind == crate::format::GroupKind::FunctionExpr
-            && let Some(override_expr) = regular_polygon_angle_expr_for_calc_group(file, groups, group)
-                .map(|(expr, parameter_name, parameter_value)| {
-                    (
-                        expr,
-                        parameter_name,
-                        parameter_value,
-                        Some("regular-polygon-angle"),
-                    )
-                })
-                .or_else(|| {
-                    let expr = try_decode_function_expr(file, groups, group).ok()?;
-                    let (parameter_name, parameter_value) = resolve_function_expr_parameter(
-                        file,
-                        groups,
-                        group,
-                        anchors,
-                        &mut BTreeSet::new(),
-                    )?;
-                    Some((expr, parameter_name, parameter_value, None))
-                })
+            && let Some(override_expr) =
+                regular_polygon_angle_expr_for_calc_group(file, groups, group)
+                    .map(|(expr, parameter_name, parameter_value)| {
+                        (
+                            expr,
+                            parameter_name,
+                            parameter_value,
+                            Some("regular-polygon-angle"),
+                        )
+                    })
+                    .or_else(|| {
+                        let expr = try_decode_function_expr(file, groups, group).ok()?;
+                        let (parameter_name, parameter_value) = resolve_function_expr_parameter(
+                            file,
+                            groups,
+                            group,
+                            anchors,
+                            &mut BTreeSet::new(),
+                        )?;
+                        Some((expr, parameter_name, parameter_value, None))
+                    })
             && let Some(anchor) = try_decode_payload_anchor_point(file, group).ok().flatten()
         {
             let (expr, parameter_name, parameter_value, semantic_kind) = override_expr;
@@ -845,7 +842,6 @@ fn collect_point_expression_label(
     Some(TextLabel {
         anchor,
         text: format_number(value),
-        rich_markup: None,
         color: [30, 30, 30, 255],
         visible: label_visible_for_group(file, group),
         binding: Some(TextLabelBinding::PointExpressionValue {
@@ -854,8 +850,8 @@ fn collect_point_expression_label(
             expr,
         }),
         screen_space: false,
-        hotspots: Vec::new(),
         debug: Some(payload_debug_source(group)),
+        ..Default::default()
     })
 }
 
@@ -907,7 +903,6 @@ pub(super) fn collect_polygon_parameter_labels(
                 } else {
                     format!("{point_name}在{polygon_name}上的t值 = {:.2}", global_t)
                 },
-                rich_markup: None,
                 color: [30, 30, 30, 255],
                 visible: decode_label_name(file, group).is_some()
                     || label_visible_for_group(file, group),
@@ -917,8 +912,8 @@ pub(super) fn collect_polygon_parameter_labels(
                     polygon_name,
                 }),
                 screen_space: false,
-                hotspots: Vec::new(),
                 debug: Some(payload_debug_source(group)),
+                ..Default::default()
             })
         })
         .collect::<Vec<_>>();
@@ -968,7 +963,6 @@ pub(super) fn collect_segment_parameter_labels(
                 } else {
                     format!("{point_name}在{segment_name}上的t值 = {:.2}", constraint.t)
                 },
-                rich_markup: None,
                 color: [30, 30, 30, 255],
                 visible: decode_label_name(file, group).is_some()
                     || label_visible_for_group(file, group),
@@ -978,8 +972,8 @@ pub(super) fn collect_segment_parameter_labels(
                     segment_name,
                 }),
                 screen_space: false,
-                hotspots: Vec::new(),
                 debug: Some(payload_debug_source(group)),
+                ..Default::default()
             })
         })
         .collect::<Vec<_>>();
@@ -1037,7 +1031,6 @@ pub(super) fn collect_circle_parameter_labels(
                 } else {
                     format!("{point_name}在⊙{circle_name}上的值 = {:.2}", value)
                 },
-                rich_markup: None,
                 color: [30, 30, 30, 255],
                 visible: decode_label_name(file, group).is_some()
                     || label_visible_for_group(file, group),
@@ -1047,8 +1040,8 @@ pub(super) fn collect_circle_parameter_labels(
                     circle_name,
                 }),
                 screen_space: false,
-                hotspots: Vec::new(),
                 debug: Some(payload_debug_source(group)),
+                ..Default::default()
             })
         })
         .collect::<Vec<_>>();
@@ -1106,7 +1099,9 @@ pub(super) fn collect_custom_transform_expression_labels(
                 if !matches!(suffix_code, 0x0201 | 0x0101) {
                     continue;
                 }
-                let anchor = try_decode_payload_anchor_point(file, expr_group).ok().flatten()?;
+                let anchor = try_decode_payload_anchor_point(file, expr_group)
+                    .ok()
+                    .flatten()?;
                 let expr = try_decode_function_expr(file, groups, expr_group).ok()?;
                 let value = evaluate_expr_with_parameters(
                     &expr,
@@ -1121,7 +1116,6 @@ pub(super) fn collect_custom_transform_expression_labels(
                     text: format!(
                         "{base_label}·{multiplier_text} = {value:.decimals$}{value_suffix}"
                     ),
-                    rich_markup: None,
                     color: [30, 30, 30, 255],
                     visible: label_visible_for_group(file, group),
                     binding: Some(TextLabelBinding::CustomTransformValue {
@@ -1132,8 +1126,8 @@ pub(super) fn collect_custom_transform_expression_labels(
                         value_suffix: value_suffix.to_string(),
                     }),
                     screen_space: false,
-                    hotspots: Vec::new(),
                     debug: Some(payload_debug_source(group)),
+                    ..Default::default()
                 });
             }
             Some(labels)

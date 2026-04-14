@@ -2508,7 +2508,10 @@ fn preserves_regular_polygon_iteration_without_carried_duplicates() {
         scene
             .lines
             .iter()
-            .filter(|line| line.debug.as_ref().is_some_and(|debug| debug.group_ordinal == 7))
+            .filter(|line| line
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 7))
             .count(),
         1,
         "expected the serialized source edge to come from payload segment #7"

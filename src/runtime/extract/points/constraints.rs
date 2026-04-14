@@ -902,12 +902,12 @@ pub(crate) fn decode_coordinate_point(
                         let y_expr = try_decode_function_expr(file, groups, y_calc_group).ok()?;
                         let x_parameter_group = first_path_group(file, groups, x_calc_group)?;
                         let y_parameter_group = first_path_group(file, groups, y_calc_group)?;
-                        let x_parameter_name =
-                            decode_label_name(file, x_parameter_group).unwrap_or_else(|| {
+                        let x_parameter_name = decode_label_name(file, x_parameter_group)
+                            .unwrap_or_else(|| {
                                 crate::runtime::functions::function_expr_label(x_expr.clone())
                             });
-                        let y_parameter_name =
-                            decode_label_name(file, y_parameter_group).unwrap_or_else(|| {
+                        let y_parameter_name = decode_label_name(file, y_parameter_group)
+                            .unwrap_or_else(|| {
                                 crate::runtime::functions::function_expr_label(y_expr.clone())
                             });
                         let parameters = BTreeMap::new();

@@ -443,7 +443,7 @@ pub(crate) fn try_decode_group_label_text(
         .map(|value| value.flatten())
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct RichTextContent {
     pub(crate) text: String,
     pub(crate) hotspots: Vec<RichTextHotspotRef>,
@@ -832,8 +832,7 @@ fn try_decode_rich_text(payload: &[u8]) -> Result<Option<RichTextContent>, RichT
 
     Ok((!cleaned.is_empty()).then_some(RichTextContent {
         text: cleaned,
-        hotspots: Vec::new(),
-        markup: None,
+        ..Default::default()
     }))
 }
 

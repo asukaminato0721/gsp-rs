@@ -5,10 +5,9 @@ use super::{
     RawPointConstraint, TransformBindingKind, decode_coordinate_point,
     decode_custom_transform_binding, decode_reflection_anchor_raw,
     decode_translated_point_constraint, reflection_line_group_indices,
-    regular_polygon_angle_expr_for_calc_group,
-    translation_point_pair_group_indices, try_decode_parameter_controlled_point,
-    try_decode_parameter_rotation_binding, try_decode_point_constraint,
-    try_decode_transform_binding,
+    regular_polygon_angle_expr_for_calc_group, translation_point_pair_group_indices,
+    try_decode_parameter_controlled_point, try_decode_parameter_rotation_binding,
+    try_decode_point_constraint, try_decode_transform_binding,
 };
 use crate::runtime::extract::decode::{
     decode_bbox_anchor_raw, decode_label_name, decode_label_visible, is_parameter_control_group,
@@ -86,18 +85,18 @@ fn build_scene_point_for_group(
     match kind {
         crate::format::GroupKind::Point => (!is_parameter_control_group(group)
             && !is_orphan_duplicate_point_helper(file, groups, group))
-            .then(|| point_map.get(index).cloned().flatten())
-            .flatten()
-            .map(|position| {
-                scene_point(
-                    position,
-                    group_color(group),
-                    visible,
-                    true,
-                    ScenePointConstraint::Free,
-                    None,
-                )
-            }),
+        .then(|| point_map.get(index).cloned().flatten())
+        .flatten()
+        .map(|position| {
+            scene_point(
+                position,
+                group_color(group),
+                visible,
+                true,
+                ScenePointConstraint::Free,
+                None,
+            )
+        }),
         crate::format::GroupKind::GraphCalibrationX
         | crate::format::GroupKind::GraphCalibrationY => {
             anchors.get(index).cloned().flatten().map(|position| {
@@ -467,7 +466,10 @@ fn build_scene_point_for_group_checked(
                 {
                     (angle_expr, Some(parameter_name))
                 } else {
-                    (try_decode_function_expr(file, groups, calc_group).ok()?, None)
+                    (
+                        try_decode_function_expr(file, groups, calc_group).ok()?,
+                        None,
+                    )
                 };
                 let angle_degrees = evaluate_expr_with_parameters(
                     &angle_expr,
