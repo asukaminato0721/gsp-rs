@@ -551,7 +551,12 @@
     }
     if (line.binding) {
       const extra = extraLineBindingResolvers[line.binding.kind];
-      return extra ? extra(env, line) : null;
+      if (extra) {
+        const resolved = extra(env, line);
+        if (resolved) {
+          return resolved;
+        }
+      }
     }
     const points = line.points.map((/** @type {PointHandle} */ handle) => resolvePoint(env, handle));
     return points.every(Boolean) ? points : null;

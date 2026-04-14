@@ -98,7 +98,7 @@ pub(crate) fn collect_point_iteration_points(
                                 position: current_position.clone(),
                                 color: seed_color,
                                 visible: true,
-                                draggable: true,
+                                draggable: false,
                                 constraint: ScenePointConstraint::Free,
                                 binding: Some(ScenePointBinding::Rotate {
                                     source_index: previous_index,
@@ -154,7 +154,7 @@ pub(crate) fn collect_point_iteration_points(
                         position: current_position.clone(),
                         color: seed_color,
                         visible: true,
-                        draggable: true,
+                        draggable: false,
                         constraint: ScenePointConstraint::Offset {
                             origin_index: previous_index,
                             dx,
@@ -196,7 +196,7 @@ pub(crate) fn collect_point_iteration_points(
                             position: current_position.clone(),
                             color: seed_color,
                             visible: true,
-                            draggable: true,
+                            draggable: false,
                             constraint: ScenePointConstraint::Offset {
                                 origin_index: previous_index,
                                 dx,
@@ -246,7 +246,7 @@ pub(crate) fn collect_point_iteration_points(
                             position,
                             color: seed_color,
                             visible: true,
-                            draggable: true,
+                            draggable: false,
                             constraint: ScenePointConstraint::Free,
                             binding: Some(ScenePointBinding::Rotate {
                                 source_index: seed_index,

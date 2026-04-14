@@ -255,7 +255,7 @@ fn build_scene_point_for_group(
                 position,
                 group_color(group),
                 visible,
-                true,
+                false,
                 ScenePointConstraint::Free,
                 Some(ScenePointBinding::Translate {
                     source_index,
@@ -283,7 +283,7 @@ fn build_scene_point_for_group(
                     position,
                     group_color(group),
                     visible,
-                    true,
+                    false,
                     ScenePointConstraint::Free,
                     Some(match binding.kind {
                         TransformBindingKind::Rotate {
@@ -325,7 +325,7 @@ fn build_scene_point_for_group(
                 position,
                 group_color(group),
                 visible,
-                true,
+                false,
                 ScenePointConstraint::Free,
                 Some(ScenePointBinding::ScaleByRatio {
                     source_index,
@@ -394,7 +394,7 @@ fn build_scene_point_for_group_checked(
                     position,
                     group_color(group),
                     visible,
-                    true,
+                    false,
                     ScenePointConstraint::Free,
                     Some(match binding.kind {
                         TransformBindingKind::Rotate {
@@ -430,7 +430,7 @@ fn build_scene_point_for_group_checked(
                         position,
                         group_color(group),
                         visible,
-                        true,
+                        false,
                         ScenePointConstraint::Free,
                         Some(match binding.kind {
                             TransformBindingKind::Rotate {
@@ -480,7 +480,7 @@ fn build_scene_point_for_group_checked(
                     position,
                     group_color(group),
                     visible,
-                    true,
+                    false,
                     ScenePointConstraint::Free,
                     Some(ScenePointBinding::Rotate {
                         source_index,

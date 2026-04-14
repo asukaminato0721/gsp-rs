@@ -1574,7 +1574,9 @@
           scene.points.push({
             x: origin.x + family.dx,
             y: origin.y + family.dy,
+            color: origin.color || [255, 60, 40, 255],
             visible: true,
+            draggable: false,
             constraint: {
               kind: "offset",
               originIndex: previousIndex,
@@ -1582,6 +1584,7 @@
               dy: family.dy,
             },
             binding: null,
+            debug: null,
           });
           previousIndex = scene.points.length - 1;
         }
@@ -1603,7 +1606,9 @@
           scene.points.push({
             x: rotated.x,
             y: rotated.y,
+            color: source.color || [255, 60, 40, 255],
             visible: true,
+            draggable: false,
             constraint: null,
             binding: {
               kind: "rotate",
@@ -1611,6 +1616,7 @@
               centerIndex: family.centerIndex,
               angleDegrees: family.angleDegrees,
             },
+            debug: null,
           });
           previousIndex = scene.points.length - 1;
         }
@@ -1632,7 +1638,9 @@
           scene.points.push({
             x: rotated.x,
             y: rotated.y,
+            color: source.color || [255, 60, 40, 255],
             visible: true,
+            draggable: false,
             constraint: null,
             binding: {
               kind: "rotate",
@@ -1640,6 +1648,7 @@
               centerIndex: family.centerIndex,
               angleDegrees: angleDegrees * step,
             },
+            debug: null,
           });
         }
       }

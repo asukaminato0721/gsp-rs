@@ -1100,6 +1100,33 @@ mod tests {
     }
 
     #[test]
+    fn exports_circle_formation_fixture_with_non_draggable_rotate_points() {
+        let scene = fixture_scene(
+            include_bytes!("../tests/fixtures/圆的形成.gsp"),
+            "circle-formation fixture should compile",
+        );
+
+        let points = scene["points"]
+            .as_array()
+            .expect("scene points should be an array");
+        let rotate_points = points
+            .iter()
+            .filter(|point| point["binding"]["kind"].as_str() == Some("rotate"))
+            .collect::<Vec<_>>();
+
+        assert!(
+            !rotate_points.is_empty(),
+            "expected the payload to export rotate-bound polygon vertices"
+        );
+        assert!(
+            rotate_points
+                .iter()
+                .all(|point| point["draggable"].as_bool() == Some(false)),
+            "expected rotate-bound vertices to stay derived instead of becoming draggable handles"
+        );
+    }
+
+    #[test]
     fn exports_circle_formation_fixture_without_static_duplicate_labels() {
         let scene = fixture_scene(
             include_bytes!("../tests/fixtures/圆的形成.gsp"),
