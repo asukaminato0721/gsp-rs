@@ -1416,38 +1416,28 @@ mod tests {
         assert_eq!(
             line_iterations.len(),
             4,
-            "expected the four seed edges to iterate"
+            "expected the four seed edges to stay exported as live translational families"
         );
         assert_eq!(
             line_iterations
                 .iter()
                 .filter(|family| family["kind"].as_str() == Some("translate"))
                 .count(),
-            3,
-            "expected three translational seed-edge families"
+            4,
+            "expected four translational seed-edge families"
         );
         assert!(
-            line_iterations
-                .iter()
-                .filter(|family| family["kind"].as_str() == Some("translate"))
-                .all(|family| {
-                    family["parameterName"].as_str() == Some("n")
-                        && family["dx"].as_f64() == Some(-62.0)
-                        && family["dy"].as_f64() == Some(-36.0)
-                        && family["secondaryDx"].as_f64() == Some(47.0)
-                        && family["secondaryDy"].as_f64() == Some(-52.0)
-                        && family["bidirectional"].as_bool() == Some(true)
-                        && family["depth"].as_u64() == Some(3)
-                })
+            line_iterations.iter().all(|family| {
+                family["kind"].as_str() == Some("translate")
+                    && family["parameterName"].as_str() == Some("n")
+                    && family["dx"].as_f64() == Some(-62.0)
+                    && family["dy"].as_f64() == Some(-36.0)
+                    && family["secondaryDx"].as_f64() == Some(47.0)
+                    && family["secondaryDy"].as_f64() == Some(-52.0)
+                    && family["bidirectional"].as_bool() == Some(true)
+                    && family["depth"].as_u64() == Some(3)
+            })
         );
-        assert!(line_iterations.iter().any(|family| {
-            family["kind"].as_str() == Some("branching")
-                && family["parameterName"].as_str() == Some("n")
-                && family["depth"].as_u64() == Some(3)
-                && family["targetSegments"]
-                    .as_array()
-                    .is_some_and(|segments| segments.len() == 2)
-        }));
         let points = scene["points"]
             .as_array()
             .expect("scene points should be an array");

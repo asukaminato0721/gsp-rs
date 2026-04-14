@@ -471,6 +471,15 @@ fn regular_polygon_branch_iteration(
     if iter_path.refs.len() < 7 {
         return None;
     }
+    if iter_path.refs.iter().any(|ordinal| {
+        let Some(group) = groups.get(ordinal.saturating_sub(1)) else {
+            return false;
+        };
+        (group.header.kind()) == crate::format::GroupKind::Translation
+            || decode_translated_point_constraint(file, group).is_some()
+    }) {
+        return None;
+    }
     let source_path = find_indexed_path(file, source_group)?;
     if source_path.refs.len() != 2
         || source_path.refs[0] != iter_path.refs[1]

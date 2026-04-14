@@ -1696,7 +1696,7 @@
       }
       return sum + depth;
     }, 0);
-    const baseCount = env.sourceScene.lines.length;
+    const baseCount = Math.max(0, env.sourceScene.lines.length - exportedDepth);
     scene.lines = scene.lines.slice(0, baseCount);
 
     families.forEach((family) => {
