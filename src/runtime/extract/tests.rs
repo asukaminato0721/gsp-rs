@@ -2050,6 +2050,34 @@ fn preserves_cans_in_container_inrm_fixture_interactivity() {
 }
 
 #[test]
+fn preserves_triangle_centers_fixture_point_labels_and_black_text_color() {
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/未实现的系统功能/三角形的四心.gsp"
+    ));
+
+    for name in ["D", "E", "F", "G", "H", "I", "O"] {
+        assert!(
+            scene
+                .labels
+                .iter()
+                .any(|label| label.visible && label.text == name),
+            "expected visible payload point label {name}"
+        );
+    }
+
+    for name in ["A", "B", "C", "D", "E", "F", "G", "H", "I", "O"] {
+        assert!(
+            scene
+                .labels
+                .iter()
+                .filter(|label| label.text == name)
+                .all(|label| label.color == [30, 30, 30, 255]),
+            "expected payload point label {name} to keep black text color"
+        );
+    }
+}
+
+#[test]
 fn preserves_line_circle_intersection_points() {
     let scene = fixture_scene(include_bytes!(
         "../../../tests/fixtures/gsp/insection/circle_insection.gsp"
@@ -2665,11 +2693,13 @@ fn preserves_translated_circle_and_intersection_in_translation_gsp() {
     let constrained_points = scene
         .points
         .iter()
-        .filter(|point| matches!(
-            point.constraint,
-            crate::runtime::scene::ScenePointConstraint::CircularIntersection { .. }
-                | crate::runtime::scene::ScenePointConstraint::CircleCircleIntersection { .. }
-        ))
+        .filter(|point| {
+            matches!(
+                point.constraint,
+                crate::runtime::scene::ScenePointConstraint::CircularIntersection { .. }
+                    | crate::runtime::scene::ScenePointConstraint::CircleCircleIntersection { .. }
+            )
+        })
         .collect::<Vec<_>>();
     assert_eq!(
         constrained_points.len(),

@@ -288,15 +288,13 @@ fn clone_circular_constraint(constraint: &CircularConstraint) -> CircularConstra
             line_start_index: *line_start_index,
             line_end_index: *line_end_index,
         },
-        CircularConstraint::TranslateCircle {
-            source,
-            dx,
-            dy,
-        } => CircularConstraint::TranslateCircle {
-            source: Box::new(clone_circular_constraint(source)),
-            dx: *dx,
-            dy: *dy,
-        },
+        CircularConstraint::TranslateCircle { source, dx, dy } => {
+            CircularConstraint::TranslateCircle {
+                source: Box::new(clone_circular_constraint(source)),
+                dx: *dx,
+                dy: *dy,
+            }
+        }
         CircularConstraint::ScaleCircle {
             source,
             center_index,

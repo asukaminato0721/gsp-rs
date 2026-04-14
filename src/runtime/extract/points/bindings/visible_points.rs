@@ -1539,7 +1539,8 @@ fn resolve_circular_constraint(
             let source_group = groups.get(binding.source_group_index)?;
             let source =
                 resolve_circular_constraint(file, groups, source_group, group_to_point_index)?;
-            let center_index = mapped_point_index(group_to_point_index, binding.center_group_index)?;
+            let center_index =
+                mapped_point_index(group_to_point_index, binding.center_group_index)?;
             Some(CircularConstraint::ScaleCircle {
                 source: Box::new(source),
                 center_index,

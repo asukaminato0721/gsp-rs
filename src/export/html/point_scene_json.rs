@@ -690,11 +690,7 @@ impl CircularConstraintJson {
                 line_start_index: *line_start_index,
                 line_end_index: *line_end_index,
             },
-            CircularConstraint::TranslateCircle {
-                source,
-                dx,
-                dy,
-            } => Self::TranslateCircle {
+            CircularConstraint::TranslateCircle { source, dx, dy } => Self::TranslateCircle {
                 source: Box::new(Self::from_constraint(source)),
                 dx: *dx,
                 dy: *dy,

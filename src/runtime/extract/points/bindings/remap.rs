@@ -133,10 +133,7 @@ pub(crate) fn remap_circle_bindings(
                 *line_end_index = mapped_line_end_index;
                 continue;
             }
-            ShapeBinding::TranslateCircle {
-                source_index,
-                ..
-            } => {
+            ShapeBinding::TranslateCircle { source_index, .. } => {
                 let Some(mapped_source_index) = mapped_index(group_to_circle_index, *source_index)
                 else {
                     circle.binding = None;

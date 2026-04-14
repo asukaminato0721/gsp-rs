@@ -67,29 +67,6 @@ fn supports_payload_label(kind: crate::format::GroupKind) -> bool {
     )
 }
 
-fn midpoint_has_explicit_label(group: &ObjectGroup) -> bool {
-    (group.header.style_c >> 16) != 0
-}
-
-fn point_label_uses_group_color(group: &ObjectGroup) -> bool {
-    matches!(
-        group.header.kind(),
-        crate::format::GroupKind::CustomTransformPoint
-            | crate::format::GroupKind::Translation
-            | crate::format::GroupKind::Reflection
-            | crate::format::GroupKind::Rotation
-            | crate::format::GroupKind::ParameterRotation
-            | crate::format::GroupKind::Scale
-            | crate::format::GroupKind::PointConstraint
-            | crate::format::GroupKind::PathPoint
-            | crate::format::GroupKind::LinearIntersectionPoint
-            | crate::format::GroupKind::IntersectionPoint1
-            | crate::format::GroupKind::IntersectionPoint2
-            | crate::format::GroupKind::CircleCircleIntersectionPoint1
-            | crate::format::GroupKind::CircleCircleIntersectionPoint2
-    )
-}
-
 fn label_color_for_group(group: &ObjectGroup) -> [u8; 4] {
     if group.header.kind() == crate::format::GroupKind::PointConstraint {
         return match ((group.header.style_a >> 24) & 0xff) as u8 {
@@ -99,12 +76,11 @@ fn label_color_for_group(group: &ObjectGroup) -> [u8; 4] {
         };
     }
 
-    if point_label_uses_group_color(group)
-        || (group.header.kind() == crate::format::GroupKind::Point
-            && !group
-                .records
-                .iter()
-                .any(|record| record.record_type == RECORD_POINT_F64_PAIR))
+    if group.header.kind() == crate::format::GroupKind::Point
+        && !group
+            .records
+            .iter()
+            .any(|record| record.record_type == RECORD_POINT_F64_PAIR)
     {
         color_from_style(group.header.style_b)
     } else {
@@ -359,7 +335,7 @@ pub(super) fn collect_labels(
     for group in groups {
         let kind = group.header.kind();
         match kind {
-            crate::format::GroupKind::Midpoint if midpoint_has_explicit_label(group) => {
+            crate::format::GroupKind::Midpoint => {
                 if let Some(label_text) =
                     resolve_label_text(file, group, decode_label_name(file, group))
                     && let Some(anchor) = decode_label_anchor(file, group, anchors)

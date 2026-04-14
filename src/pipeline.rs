@@ -1453,18 +1453,16 @@ mod tests {
             4,
             "expected four translational seed-edge families"
         );
-        assert!(
-            line_iterations.iter().all(|family| {
-                family["kind"].as_str() == Some("translate")
-                    && family["parameterName"].as_str() == Some("n")
-                    && family["dx"].as_f64() == Some(-62.0)
-                    && family["dy"].as_f64() == Some(-36.0)
-                    && family["secondaryDx"].as_f64() == Some(47.0)
-                    && family["secondaryDy"].as_f64() == Some(-52.0)
-                    && family["bidirectional"].as_bool() == Some(true)
-                    && family["depth"].as_u64() == Some(3)
-            })
-        );
+        assert!(line_iterations.iter().all(|family| {
+            family["kind"].as_str() == Some("translate")
+                && family["parameterName"].as_str() == Some("n")
+                && family["dx"].as_f64() == Some(-62.0)
+                && family["dy"].as_f64() == Some(-36.0)
+                && family["secondaryDx"].as_f64() == Some(47.0)
+                && family["secondaryDy"].as_f64() == Some(-52.0)
+                && family["bidirectional"].as_bool() == Some(true)
+                && family["depth"].as_u64() == Some(3)
+        }));
         let points = scene["points"]
             .as_array()
             .expect("scene points should be an array");
@@ -1478,6 +1476,43 @@ mod tests {
                 }),
             "expected only standalone payload parameter controls to remain visible when helper point markers are omitted"
         );
+    }
+
+    #[test]
+    fn exports_triangle_centers_fixture_with_named_midpoints_and_black_point_labels() {
+        let scene = fixture_scene(
+            include_bytes!("../tests/fixtures/未实现的系统功能/三角形的四心.gsp"),
+            "triangle-centers fixture should compile",
+        );
+
+        let labels = scene["labels"]
+            .as_array()
+            .expect("scene labels should be an array");
+
+        for name in ["D", "E", "F", "G", "H", "I", "O"] {
+            assert!(
+                labels.iter().any(|label| {
+                    label["text"].as_str() == Some(name) && label["visible"].as_bool() == Some(true)
+                }),
+                "expected visible payload point label {name}"
+            );
+        }
+
+        let black = vec![
+            Value::from(30),
+            Value::from(30),
+            Value::from(30),
+            Value::from(255),
+        ];
+        for name in ["A", "B", "C", "D", "E", "F", "G", "H", "I", "O"] {
+            assert!(
+                labels
+                    .iter()
+                    .filter(|label| label["text"].as_str() == Some(name))
+                    .all(|label| label["color"].as_array() == Some(&black)),
+                "expected payload point label {name} to keep black text color"
+            );
+        }
     }
 
     #[test]
@@ -1529,7 +1564,11 @@ mod tests {
         let circles = scene["circles"]
             .as_array()
             .expect("scene circles should be an array");
-        assert_eq!(circles.len(), 3, "expected both payload circles plus the scaled circle");
+        assert_eq!(
+            circles.len(),
+            3,
+            "expected both payload circles plus the scaled circle"
+        );
         assert!(
             circles
                 .iter()

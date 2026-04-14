@@ -65,8 +65,8 @@ use self::shapes::{
     collect_rotated_polygon_shapes, collect_rotational_line_iteration_families,
     collect_scaled_line_shapes, collect_segment_marker_shapes, collect_three_point_arc_shapes,
     collect_transformed_circle_shapes, collect_transformed_polygon_shapes,
-    collect_translated_circle_shapes,
-    collect_translated_line_shapes, collect_translated_polygon_shapes,
+    collect_translated_circle_shapes, collect_translated_line_shapes,
+    collect_translated_polygon_shapes,
 };
 use self::trace::collect_point_traces;
 use super::functions::{
@@ -384,8 +384,7 @@ fn collect_scene_shapes(
     .collect::<Vec<_>>();
     let circles = collect_circle_shapes(file, groups, &analysis.raw_anchors);
     let arcs = collect_three_point_arc_shapes(file, groups, &analysis.raw_anchors);
-    let translated_circles =
-        collect_translated_circle_shapes(file, groups, &analysis.raw_anchors);
+    let translated_circles = collect_translated_circle_shapes(file, groups, &analysis.raw_anchors);
     let rotated_circles = collect_rotated_circle_shapes(file, groups, &analysis.raw_anchors);
     let transformed_circles =
         collect_transformed_circle_shapes(file, groups, &analysis.raw_anchors);

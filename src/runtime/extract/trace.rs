@@ -937,11 +937,7 @@ fn resolve_trace_circular_constraint(
                 ((line_end.x - line_start.x).powi(2) + (line_end.y - line_start.y).powi(2)).sqrt();
             (radius > 1e-9).then_some(TraceCircularConstraint::Circle { center, radius })
         }
-        CircularConstraint::TranslateCircle {
-            source,
-            dx,
-            dy,
-        } => {
+        CircularConstraint::TranslateCircle { source, dx, dy } => {
             let source = resolve_trace_circular_constraint(points, source, visiting)?;
             match source {
                 TraceCircularConstraint::Circle { center, radius } => {
@@ -1045,8 +1041,7 @@ fn resolve_trace_circular_constraint(
                         ),
                         ccw_mid: trace_normalized_angle_delta(
                             geometry.start_angle,
-                            (scaled_mid.y - scaled_center.y)
-                                .atan2(scaled_mid.x - scaled_center.x),
+                            (scaled_mid.y - scaled_center.y).atan2(scaled_mid.x - scaled_center.x),
                         ),
                     })
                 }
