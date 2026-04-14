@@ -937,6 +937,75 @@ fn resolve_trace_circular_constraint(
                 ((line_end.x - line_start.x).powi(2) + (line_end.y - line_start.y).powi(2)).sqrt();
             (radius > 1e-9).then_some(TraceCircularConstraint::Circle { center, radius })
         }
+        CircularConstraint::ScaleCircle {
+            source,
+            center_index,
+            factor,
+        } => {
+            let source = resolve_trace_circular_constraint(points, source, visiting)?;
+            let center = resolve_trace_point(points, *center_index, visiting)?;
+            match source {
+                TraceCircularConstraint::Circle {
+                    center: source_center,
+                    radius,
+                } => Some(TraceCircularConstraint::Circle {
+                    center: PointRecord {
+                        x: center.x + (source_center.x - center.x) * factor,
+                        y: center.y + (source_center.y - center.y) * factor,
+                    },
+                    radius: radius * factor.abs(),
+                }),
+                TraceCircularConstraint::ThreePointArc {
+                    start,
+                    end,
+                    center: source_center,
+                    radius,
+                    start_angle,
+                    ccw_mid,
+                    ..
+                } => {
+                    let mid = PointRecord {
+                        x: source_center.x + radius * (start_angle + ccw_mid).cos(),
+                        y: source_center.y + radius * (start_angle + ccw_mid).sin(),
+                    };
+                    let scaled_start = PointRecord {
+                        x: center.x + (start.x - center.x) * factor,
+                        y: center.y + (start.y - center.y) * factor,
+                    };
+                    let scaled_mid = PointRecord {
+                        x: center.x + (mid.x - center.x) * factor,
+                        y: center.y + (mid.y - center.y) * factor,
+                    };
+                    let scaled_end = PointRecord {
+                        x: center.x + (end.x - center.x) * factor,
+                        y: center.y + (end.y - center.y) * factor,
+                    };
+                    let geometry = crate::runtime::geometry::three_point_arc_geometry(
+                        &scaled_start,
+                        &scaled_mid,
+                        &scaled_end,
+                    )?;
+                    let scaled_center = geometry.center.clone();
+                    Some(TraceCircularConstraint::ThreePointArc {
+                        start: scaled_start,
+                        end: scaled_end,
+                        center: scaled_center.clone(),
+                        radius: geometry.radius,
+                        start_angle: geometry.start_angle,
+                        end_angle: geometry.end_angle,
+                        ccw_span: trace_normalized_angle_delta(
+                            geometry.start_angle,
+                            geometry.end_angle,
+                        ),
+                        ccw_mid: trace_normalized_angle_delta(
+                            geometry.start_angle,
+                            (scaled_mid.y - scaled_center.y)
+                                .atan2(scaled_mid.x - scaled_center.x),
+                        ),
+                    })
+                }
+            }
+        }
         CircularConstraint::CircleArc {
             center_index,
             start_index,

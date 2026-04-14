@@ -1498,6 +1498,52 @@ mod tests {
     }
 
     #[test]
+    fn exports_scaled_circle_intersections_fixture_with_live_constraints() {
+        let Some(data) = fixture_bytes("tests/fixtures/bug/圆的伸缩变换.gsp") else {
+            return;
+        };
+        let scene = fixture_scene(&data, "scaled-circle intersection fixture should compile");
+        let bounds = &scene["bounds"];
+        assert!(
+            bounds["minX"].as_f64().is_some_and(|min_x| min_x < 832.0)
+                && bounds["minY"].as_f64().is_some_and(|min_y| min_y < 373.0),
+            "expected the viewport to include the live circle intersections"
+        );
+        let circles = scene["circles"]
+            .as_array()
+            .expect("scene circles should be an array");
+        assert_eq!(circles.len(), 3, "expected both payload circles plus the scaled circle");
+        assert!(
+            circles
+                .iter()
+                .any(|circle| circle["binding"]["kind"].as_str() == Some("scale-circle")),
+            "expected the scaled payload circle to keep its live binding"
+        );
+
+        let constrained_points = scene["points"]
+            .as_array()
+            .expect("scene points should be an array")
+            .iter()
+            .filter(|point| point["constraint"]["kind"].as_str() == Some("circular-intersection"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            constrained_points.len(),
+            2,
+            "expected both payload circle intersections to stay live"
+        );
+        assert!(constrained_points.iter().all(|point| {
+            point["constraint"]["left"]["kind"].as_str() == Some("scale-circle")
+                || point["constraint"]["right"]["kind"].as_str() == Some("scale-circle")
+        }));
+
+        let html = fixture_html(&data, "scaled-circle intersection fixture should compile");
+        assert!(
+            html.contains("function circleCircleIntersection("),
+            "expected live circular intersections to pull in the intersections runtime"
+        );
+    }
+
+    #[test]
     fn exports_changing_polyline_lyg_fixture_with_live_ray_and_iterations() {
         let Some(data) = fixture_bytes("tests/Samples/个人专栏/李有贵作品/变化的折线（lyg).gsp")
         else {

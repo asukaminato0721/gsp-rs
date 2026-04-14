@@ -333,6 +333,19 @@
   }
 
   /**
+   * @param {Point} point
+   * @param {Point} center
+   * @param {number} factor
+   * @returns {Point}
+   */
+  function scalePointAround(point, center, factor) {
+    return {
+      x: center.x + (point.x - center.x) * factor,
+      y: center.y + (point.y - center.y) * factor,
+    };
+  }
+
+  /**
    * @param {ViewerEnv | null} env
    * @param {CircularConstraintJson | null} constraint
    * @param {PointResolver} resolveFn
@@ -359,6 +372,44 @@
         center,
         radius: Math.hypot(lineEnd.x - lineStart.x, lineEnd.y - lineStart.y),
       };
+    }
+    if (constraint.kind === "scale-circle") {
+      const source = circleFromConstraint(env, constraint.source, resolveFn);
+      const center = resolveFn(constraint.centerIndex);
+      if (!source || !center) return null;
+      if (source.kind === "circle") {
+        return {
+          kind: "circle",
+          center: scalePointAround(source.center, center, constraint.factor),
+          radius: source.radius * Math.abs(constraint.factor),
+        };
+      }
+      if (source.kind === "three-point-arc") {
+        const start = {
+          x: source.center.x + source.radius * Math.cos(source.startAngle),
+          y: source.center.y + source.radius * Math.sin(source.startAngle),
+        };
+        const mid = {
+          x: source.center.x + source.radius * Math.cos(source.startAngle + source.ccwMid),
+          y: source.center.y + source.radius * Math.sin(source.startAngle + source.ccwMid),
+        };
+        const end = {
+          x: source.center.x + source.radius * Math.cos(source.endAngle),
+          y: source.center.y + source.radius * Math.sin(source.endAngle),
+        };
+        const geometry = threePointArcGeometry(
+          scalePointAround(start, center, constraint.factor),
+          scalePointAround(mid, center, constraint.factor),
+          scalePointAround(end, center, constraint.factor),
+        );
+        return geometry
+          ? {
+              kind: "three-point-arc",
+              ...geometry,
+            }
+          : null;
+      }
+      return null;
     }
     if (constraint.kind === "circle-arc") {
       const center = resolveFn(constraint.centerIndex);

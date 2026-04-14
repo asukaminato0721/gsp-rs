@@ -1518,6 +1518,21 @@ fn resolve_circular_constraint(
                     .get(segment_path.refs[1].checked_sub(1)?)?)?,
             })
         }
+        crate::format::GroupKind::Scale => {
+            let binding = try_decode_transform_binding(file, group).ok()?;
+            let TransformBindingKind::Scale { factor } = binding.kind else {
+                return None;
+            };
+            let source_group = groups.get(binding.source_group_index)?;
+            let source =
+                resolve_circular_constraint(file, groups, source_group, group_to_point_index)?;
+            let center_index = mapped_point_index(group_to_point_index, binding.center_group_index)?;
+            Some(CircularConstraint::ScaleCircle {
+                source: Box::new(source),
+                center_index,
+                factor,
+            })
+        }
         crate::format::GroupKind::CenterArc => {
             if path.refs.len() != 3 {
                 return None;

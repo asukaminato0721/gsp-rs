@@ -642,6 +642,12 @@ enum CircularConstraintJson {
         #[serde(rename = "lineEndIndex")]
         line_end_index: usize,
     },
+    ScaleCircle {
+        source: Box<CircularConstraintJson>,
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        factor: f64,
+    },
     CircleArc {
         #[serde(rename = "centerIndex")]
         center_index: usize,
@@ -678,6 +684,15 @@ impl CircularConstraintJson {
                 center_index: *center_index,
                 line_start_index: *line_start_index,
                 line_end_index: *line_end_index,
+            },
+            CircularConstraint::ScaleCircle {
+                source,
+                center_index,
+                factor,
+            } => Self::ScaleCircle {
+                source: Box::new(Self::from_constraint(source)),
+                center_index: *center_index,
+                factor: *factor,
             },
             CircularConstraint::CircleArc {
                 center_index,

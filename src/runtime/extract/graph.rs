@@ -137,6 +137,27 @@ pub(super) fn collect_bounds(
     for circle in circles {
         points.push(circle.center.clone());
         points.push(circle.radius_point.clone());
+        let radius = ((circle.radius_point.x - circle.center.x).powi(2)
+            + (circle.radius_point.y - circle.center.y).powi(2))
+        .sqrt();
+        if radius.is_finite() && radius > 1e-9 {
+            points.push(PointRecord {
+                x: circle.center.x - radius,
+                y: circle.center.y,
+            });
+            points.push(PointRecord {
+                x: circle.center.x + radius,
+                y: circle.center.y,
+            });
+            points.push(PointRecord {
+                x: circle.center.x,
+                y: circle.center.y - radius,
+            });
+            points.push(PointRecord {
+                x: circle.center.x,
+                y: circle.center.y + radius,
+            });
+        }
     }
     for arc in arcs {
         if let Some(samples) = arc_sample_points(&arc.points[0], &arc.points[1], &arc.points[2]) {

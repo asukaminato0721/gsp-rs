@@ -381,6 +381,11 @@ pub(crate) enum CircularConstraint {
         line_start_index: usize,
         line_end_index: usize,
     },
+    ScaleCircle {
+        source: Box<CircularConstraint>,
+        center_index: usize,
+        factor: f64,
+    },
     CircleArc {
         center_index: usize,
         start_index: usize,

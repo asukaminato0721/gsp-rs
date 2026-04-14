@@ -357,6 +357,15 @@ type ViewerSceneModule = {
     variant: number,
     reference?: Point | RuntimeScenePointJson | null,
   ) => Point | null;
+  _circleFromConstraint?: (
+    env: ViewerEnv | null,
+    constraint: CircularConstraintJson | null,
+    resolveFn: (index: number) => Point | null,
+  ) => { kind: string; center: Point; radius: number } | null;
+  _pointLiesOnCircularConstraint?: (
+    point: Point,
+    constraint: { kind: string; center?: Point; radius?: number } | null,
+  ) => boolean;
   drawGrid: (env: ViewerEnv) => void;
 };
 

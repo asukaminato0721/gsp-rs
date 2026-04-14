@@ -8,6 +8,7 @@
     "typecheck:js:interactive": "tsc -p tsconfig.interaction.json --noEmit"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "typescript": "^5.9.0"
   }
 }

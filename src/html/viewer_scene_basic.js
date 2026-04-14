@@ -193,6 +193,69 @@
     return { x: -startDy / startLen, y: startDx / startLen };
   }
 
+  /**
+   * @param {Point} point
+   * @param {Point} center
+   * @param {number} factor
+   * @returns {Point}
+   */
+  function scalePointAround(point, center, factor) {
+    return {
+      x: center.x + (point.x - center.x) * factor,
+      y: center.y + (point.y - center.y) * factor,
+    };
+  }
+
+  /**
+   * @param {ViewerEnv | null} env
+   * @param {CircularConstraintJson | null} constraint
+   * @param {(index: number) => Point | null} resolveFn
+   * @returns {{ kind: "circle"; center: Point; radius: number } | null}
+   */
+  function circleFromConstraint(env, constraint, resolveFn) {
+    if (!constraint) return null;
+    if (constraint.kind === "circle") {
+      const center = resolveFn(constraint.centerIndex);
+      const radiusPoint = resolveFn(constraint.radiusIndex);
+      if (!center || !radiusPoint) return null;
+      return {
+        kind: "circle",
+        center,
+        radius: Math.hypot(radiusPoint.x - center.x, radiusPoint.y - center.y),
+      };
+    }
+    if (constraint.kind === "segment-radius-circle") {
+      const center = resolveFn(constraint.centerIndex);
+      const lineStart = resolveFn(constraint.lineStartIndex);
+      const lineEnd = resolveFn(constraint.lineEndIndex);
+      if (!center || !lineStart || !lineEnd) return null;
+      return {
+        kind: "circle",
+        center,
+        radius: Math.hypot(lineEnd.x - lineStart.x, lineEnd.y - lineStart.y),
+      };
+    }
+    if (constraint.kind === "scale-circle") {
+      const source = circleFromConstraint(env, constraint.source, resolveFn);
+      const center = resolveFn(constraint.centerIndex);
+      if (!source || !center) return null;
+      return {
+        kind: "circle",
+        center: scalePointAround(source.center, center, constraint.factor),
+        radius: source.radius * Math.abs(constraint.factor),
+      };
+    }
+    return null;
+  }
+
+  /**
+   * @param {Point} _point
+   * @param {{ kind: string } | null} constraint
+   */
+  function pointLiesOnCircularConstraint(_point, constraint) {
+    return !!constraint && constraint.kind === "circle";
+  }
+
   /** @param {ViewerEnv} env */
   function getViewBounds(env) {
     const spanX = env.baseSpanX / env.view.zoom;
@@ -768,6 +831,8 @@
   modules.scene = {
     registerPointConstraintResolver,
     registerLineBindingResolver,
+    _circleFromConstraint: circleFromConstraint,
+    _pointLiesOnCircularConstraint: pointLiesOnCircularConstraint,
     getViewBounds,
     resolveConstrainedPoint,
     resolveScenePoint,
