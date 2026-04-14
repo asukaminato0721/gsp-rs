@@ -2479,7 +2479,9 @@
     },
     "expression-value"(env, _scene, label, parameters) {
       const value = evaluateExpr(label.binding.expr, 0, parameters);
-      const valueText = value !== null ? env.formatNumber(value) : "未定义";
+      const valueText = value !== null
+        ? (label.binding.exprLabel.includes("°") ? `${value.toFixed(2)}°` : env.formatNumber(value))
+        : "未定义";
       label.richMarkup = buildExpressionRichMarkup(
         label.binding.exprLabel,
         valueText,
@@ -2492,7 +2494,9 @@
     },
     "point-bound-expression-value"(env, _scene, label, parameters) {
       const value = evaluateExpr(label.binding.expr, 0, parameters);
-      const valueText = value !== null ? env.formatNumber(value) : "未定义";
+      const valueText = value !== null
+        ? (label.binding.exprLabel.includes("°") ? `${value.toFixed(2)}°` : env.formatNumber(value))
+        : "未定义";
       label.richMarkup = buildExpressionRichMarkup(
         label.binding.exprLabel,
         valueText,

@@ -267,6 +267,38 @@ pub(crate) fn regular_polygon_iteration_step(
     ))
 }
 
+pub(crate) fn regular_polygon_angle_expr_for_calc_group(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    calc_group: &ObjectGroup,
+) -> Option<(FunctionExpr, String, f64)> {
+    if (calc_group.header.kind()) != crate::format::GroupKind::FunctionExpr {
+        return None;
+    }
+    let rotation_group = groups.iter().find(|group| {
+        (group.header.kind()) == crate::format::GroupKind::ParameterRotation
+            && find_indexed_path(file, group)
+                .is_some_and(|path| path.refs.get(2).copied() == Some(calc_group.ordinal))
+    })?;
+    let iter_group = groups.iter().find(|group| {
+        (group.header.kind()) == crate::format::GroupKind::RegularPolygonIteration
+            && find_indexed_path(file, group)
+                .is_some_and(|path| path.refs.contains(&rotation_group.ordinal))
+    })?;
+    let path = find_indexed_path(file, iter_group)?;
+    let seed_group = path
+        .refs
+        .iter()
+        .filter_map(|ordinal| groups.get(ordinal.checked_sub(1)?))
+        .find(|group| (group.header.kind()) == crate::format::GroupKind::ParameterRotation)?;
+    if seed_group.ordinal != rotation_group.ordinal {
+        return None;
+    }
+    let (_center_group_index, angle_expr, parameter_name, n) =
+        regular_polygon_iteration_step(file, groups, iter_group)?;
+    Some((angle_expr, parameter_name, n))
+}
+
 pub(crate) fn regular_polygon_angle_expr(
     parameter_name: &str,
     parameter_value: f64,

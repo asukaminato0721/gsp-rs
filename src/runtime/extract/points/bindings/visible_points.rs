@@ -5,6 +5,7 @@ use super::{
     RawPointConstraint, TransformBindingKind, decode_coordinate_point,
     decode_custom_transform_binding, decode_reflection_anchor_raw,
     decode_translated_point_constraint, reflection_line_group_indices,
+    regular_polygon_angle_expr_for_calc_group,
     translation_point_pair_group_indices, try_decode_parameter_controlled_point,
     try_decode_parameter_rotation_binding, try_decode_point_constraint,
     try_decode_transform_binding,
@@ -16,7 +17,7 @@ use crate::runtime::extract::decode::{
 use crate::runtime::extract::find_indexed_path;
 use crate::runtime::extract::points::constraints::CoordinatePointSource;
 use crate::runtime::functions::{
-    evaluate_function_group_with_overrides, try_decode_function_expr, try_decode_function_plot_descriptor,
+    evaluate_expr_with_parameters, try_decode_function_expr, try_decode_function_plot_descriptor,
 };
 use crate::runtime::geometry::{GraphTransform, color_from_style};
 use crate::runtime::scene::{
@@ -461,14 +462,18 @@ fn build_scene_point_for_group_checked(
                 }
                 let source_index = mapped_point_index(group_to_point_index, source_group_index)?;
                 let center_index = mapped_point_index(group_to_point_index, center_group_index)?;
-                let angle_expr = try_decode_function_expr(file, groups, calc_group).ok()?;
-                let angle_degrees =
-                    evaluate_function_group_with_overrides(
-                        file,
-                        groups,
-                        calc_group,
-                        &std::collections::BTreeMap::new(),
-                    )?;
+                let (angle_expr, parameter_name) = if let Some((angle_expr, parameter_name, _)) =
+                    regular_polygon_angle_expr_for_calc_group(file, groups, calc_group)
+                {
+                    (angle_expr, Some(parameter_name))
+                } else {
+                    (try_decode_function_expr(file, groups, calc_group).ok()?, None)
+                };
+                let angle_degrees = evaluate_expr_with_parameters(
+                    &angle_expr,
+                    0.0,
+                    &std::collections::BTreeMap::new(),
+                )?;
                 Some(scene_point(
                     position,
                     group_color(group),
@@ -479,7 +484,7 @@ fn build_scene_point_for_group_checked(
                         source_index,
                         center_index,
                         angle_degrees,
-                        parameter_name: None,
+                        parameter_name,
                         angle_expr: Some(angle_expr),
                     }),
                 ))

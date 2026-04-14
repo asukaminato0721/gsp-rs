@@ -10,6 +10,7 @@ use super::decode::{
 use super::points::{
     RawPointConstraint, editable_non_graph_parameter_name_for_group,
     is_editable_non_graph_parameter_name, is_non_graph_parameter_group,
+    regular_polygon_angle_expr_for_calc_group,
     try_decode_point_constraint,
 };
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_u32};
@@ -652,24 +653,46 @@ pub(super) fn collect_coordinate_labels(
                 debug: Some(payload_debug_source(group)),
             });
         } else if kind == crate::format::GroupKind::FunctionExpr
-            && let Some(expr) = try_decode_function_expr(file, groups, group).ok()
-            && let Some((parameter_name, parameter_value)) =
-                resolve_function_expr_parameter(file, groups, group, anchors, &mut BTreeSet::new())
+            && let Some(override_expr) = regular_polygon_angle_expr_for_calc_group(file, groups, group)
+                .map(|(expr, parameter_name, parameter_value)| {
+                    (
+                        expr,
+                        parameter_name,
+                        parameter_value,
+                        Some("regular-polygon-angle"),
+                    )
+                })
+                .or_else(|| {
+                    let expr = try_decode_function_expr(file, groups, group).ok()?;
+                    let (parameter_name, parameter_value) = resolve_function_expr_parameter(
+                        file,
+                        groups,
+                        group,
+                        anchors,
+                        &mut BTreeSet::new(),
+                    )?;
+                    Some((expr, parameter_name, parameter_value, None))
+                })
             && let Some(anchor) = try_decode_payload_anchor_point(file, group).ok().flatten()
         {
+            let (expr, parameter_name, parameter_value, semantic_kind) = override_expr;
             let value = evaluate_expr_with_parameters(
                 &expr,
                 0.0,
                 &BTreeMap::from([(parameter_name.clone(), parameter_value)]),
             );
-            let expr_label = payload_function_expr_label(
-                file,
-                groups,
-                anchors,
-                group,
-                &function_expr_label(expr.clone()),
-                &mut BTreeSet::new(),
-            );
+            let expr_label = if semantic_kind == Some("regular-polygon-angle") {
+                format!("360° / {parameter_name}")
+            } else {
+                payload_function_expr_label(
+                    file,
+                    groups,
+                    anchors,
+                    group,
+                    &function_expr_label(expr.clone()),
+                    &mut BTreeSet::new(),
+                )
+            };
             let binding = is_editable_non_graph_parameter_name(&parameter_name).then(|| {
                 TextLabelBinding::ExpressionValue {
                     parameter_name: parameter_name.clone(),
@@ -679,7 +702,13 @@ pub(super) fn collect_coordinate_labels(
                 }
             });
             let value_text = value
-                .map(format_number)
+                .map(|value| {
+                    if semantic_kind == Some("regular-polygon-angle") {
+                        format!("{value:.2}°")
+                    } else {
+                        format_number(value)
+                    }
+                })
                 .unwrap_or_else(|| "未定义".to_string());
             let text = format!("{expr_label} = {value_text}");
             labels.push(TextLabel {

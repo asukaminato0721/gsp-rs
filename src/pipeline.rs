@@ -1015,6 +1015,64 @@ mod tests {
     }
 
     #[test]
+    fn exports_regular_polygon_fixture_with_interactive_seed_segment() {
+        let scene = fixture_scene(
+            include_bytes!("../tests/fixtures/gsp/static/简单迭代/迭代正多边形.gsp"),
+            "regular polygon fixture should compile",
+        );
+
+        let lines = scene["lines"]
+            .as_array()
+            .expect("scene lines should be an array");
+        let interactive_segment = lines
+            .iter()
+            .find(|line| line["binding"]["kind"].as_str() == Some("segment"))
+            .expect("expected the payload source edge to remain interactive");
+        let start_index = interactive_segment["binding"]["startIndex"]
+            .as_u64()
+            .expect("segment start index should serialize") as usize;
+        let end_index = interactive_segment["binding"]["endIndex"]
+            .as_u64()
+            .expect("segment end index should serialize") as usize;
+
+        let points = scene["points"]
+            .as_array()
+            .expect("scene points should be an array");
+        assert_eq!(
+            points
+                .get(start_index)
+                .and_then(|point| point["draggable"].as_bool()),
+            Some(true),
+            "expected the payload seed vertex to remain draggable"
+        );
+        assert!(
+            points.get(end_index).is_some_and(|point| {
+                point["binding"]["kind"].as_str() == Some("rotate")
+                    && point["binding"]["sourceIndex"].as_u64() == Some(start_index as u64)
+                    && point["binding"]["parameterName"].as_str() == Some("n")
+                    && point["binding"]["angleDegrees"]
+                        .as_f64()
+                        .is_some_and(|value| (value - 72.0).abs() < 0.01)
+                    && point["binding"]["angleExpr"].is_object()
+            }),
+            "expected the payload rotated endpoint to remain a live rotate-bound point"
+        );
+        let labels = scene["labels"]
+            .as_array()
+            .expect("scene labels should be an array");
+        assert!(
+            labels.iter().any(|label| {
+                label["visible"].as_bool() == Some(true)
+                    && label["text"].as_str() == Some("360° / n = 72.00°")
+                    && label["binding"]["kind"].as_str() == Some("expression-value")
+                    && label["binding"]["parameterName"].as_str() == Some("n")
+                    && label["binding"]["exprLabel"].as_str() == Some("360° / n")
+            }),
+            "expected the payload angle label to remain bound to the regular-polygon angle expression"
+        );
+    }
+
+    #[test]
     fn exports_circle_formation_fixture_iteration_table_against_sequence_value() {
         let scene = fixture_scene(
             include_bytes!("../tests/fixtures/圆的形成.gsp"),

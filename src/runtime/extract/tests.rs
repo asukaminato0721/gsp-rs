@@ -2534,6 +2534,58 @@ fn preserves_regular_polygon_iteration_without_carried_duplicates() {
         1,
         "expected one canonical rotate family for the regular polygon payload"
     );
+    let interactive_segment = scene
+        .lines
+        .iter()
+        .find_map(|line| match line.binding {
+            Some(LineBinding::Segment {
+                start_index,
+                end_index,
+            }) => Some((start_index, end_index)),
+            _ => None,
+        })
+        .expect("expected the payload source edge to remain an interactive segment");
+    assert!(
+        scene
+            .points
+            .get(interactive_segment.0)
+            .is_some_and(|point| point.draggable),
+        "expected the payload source vertex to remain draggable"
+    );
+    assert!(
+        matches!(
+            scene
+                .points
+                .get(interactive_segment.1)
+                .and_then(|point| point.binding.as_ref()),
+            Some(ScenePointBinding::Rotate {
+                source_index,
+                angle_degrees,
+                parameter_name,
+                angle_expr,
+                ..
+            }) if *source_index == interactive_segment.0
+                && (*angle_degrees - 72.0).abs() < 0.01
+                && parameter_name.as_deref() == Some("n")
+                && angle_expr.is_some()
+        ),
+        "expected the payload rotated endpoint to remain a live rotate-bound point"
+    );
+    assert!(
+        scene.labels.iter().any(|label| {
+            label.visible
+                && label.text == "360° / n = 72.00°"
+                && matches!(
+                    label.binding.as_ref(),
+                    Some(TextLabelBinding::ExpressionValue {
+                        parameter_name,
+                        expr_label,
+                        ..
+                    }) if parameter_name == "n" && expr_label == "360° / n"
+                )
+        }),
+        "expected the payload angle label to stay bound to the regular-polygon rotation expression"
+    );
 }
 
 #[test]
