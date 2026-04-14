@@ -232,6 +232,55 @@ pub(crate) fn collect_rotated_circle_shapes(
         .collect()
 }
 
+pub(crate) fn collect_translated_circle_shapes(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+) -> Vec<CircleShape> {
+    let circle_fill_colors = collect_circle_fill_colors(file, groups, anchors);
+    groups
+        .iter()
+        .filter(|group| {
+            matches!(
+                group.header.kind(),
+                crate::format::GroupKind::CartesianOffsetPoint
+                    | crate::format::GroupKind::PolarOffsetPoint
+            )
+        })
+        .filter_map(|group| {
+            let constraint = super::decode_translated_point_constraint(file, group)?;
+            let source_group_index = constraint.origin_group_index;
+            let source_group = groups.get(source_group_index)?;
+            if !is_circle_group_kind(source_group.header.kind()) {
+                return None;
+            }
+            let (source_center, source_radius) =
+                resolve_circle_points_raw(file, groups, anchors, source_group)?;
+            Some(CircleShape {
+                center: PointRecord {
+                    x: source_center.x + constraint.dx,
+                    y: source_center.y + constraint.dy,
+                },
+                radius_point: PointRecord {
+                    x: source_radius.x + constraint.dx,
+                    y: source_radius.y + constraint.dy,
+                },
+                color: color_from_style(source_group.header.style_b),
+                fill_color: circle_fill_colors.get(&source_group_index).copied(),
+                fill_color_binding: None,
+                dashed: line_is_dashed(source_group.header.style_a),
+                visible: !group.header.is_hidden(),
+                binding: Some(ShapeBinding::TranslateCircle {
+                    source_index: source_group_index,
+                    dx: constraint.dx,
+                    dy: constraint.dy,
+                }),
+                debug: Some(payload_debug_source(group)),
+            })
+        })
+        .collect()
+}
+
 pub(crate) fn collect_translated_polygon_shapes(
     file: &GspFile,
     groups: &[ObjectGroup],

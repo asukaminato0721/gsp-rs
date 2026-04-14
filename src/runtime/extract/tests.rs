@@ -2641,6 +2641,37 @@ fn preserves_scaled_point_and_single_parameter_label_in_scale_gsp() {
 }
 
 #[test]
+fn preserves_translated_circle_and_intersection_in_translation_gsp() {
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/translation.gsp"
+    ));
+
+    assert_eq!(
+        scene.circles.len(),
+        2,
+        "expected original and translated circles"
+    );
+    assert!(scene.circles.iter().any(|circle| matches!(
+        circle.binding,
+        Some(crate::runtime::scene::ShapeBinding::TranslateCircle { .. })
+    )));
+    let constrained_points = scene
+        .points
+        .iter()
+        .filter(|point| matches!(
+            point.constraint,
+            crate::runtime::scene::ScenePointConstraint::CircularIntersection { .. }
+                | crate::runtime::scene::ScenePointConstraint::CircleCircleIntersection { .. }
+        ))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        constrained_points.len(),
+        1,
+        "expected the translated-circle intersection point to stay live"
+    );
+}
+
+#[test]
 fn preserves_reflection_point_circle_and_polygon_gsp() {
     let scene = fixture_scene(include_bytes!(
         "../../../tests/fixtures/gsp/static/reflection.gsp"

@@ -65,6 +65,7 @@ use self::shapes::{
     collect_rotated_polygon_shapes, collect_rotational_line_iteration_families,
     collect_scaled_line_shapes, collect_segment_marker_shapes, collect_three_point_arc_shapes,
     collect_transformed_circle_shapes, collect_transformed_polygon_shapes,
+    collect_translated_circle_shapes,
     collect_translated_line_shapes, collect_translated_polygon_shapes,
 };
 use self::trace::collect_point_traces;
@@ -167,6 +168,7 @@ struct CollectedShapes {
     polygons: Vec<PolygonShape>,
     circles: Vec<CircleShape>,
     arcs: Vec<ArcShape>,
+    translated_circles: Vec<CircleShape>,
     rotated_circles: Vec<CircleShape>,
     transformed_circles: Vec<CircleShape>,
     reflected_circles: Vec<CircleShape>,
@@ -382,6 +384,8 @@ fn collect_scene_shapes(
     .collect::<Vec<_>>();
     let circles = collect_circle_shapes(file, groups, &analysis.raw_anchors);
     let arcs = collect_three_point_arc_shapes(file, groups, &analysis.raw_anchors);
+    let translated_circles =
+        collect_translated_circle_shapes(file, groups, &analysis.raw_anchors);
     let rotated_circles = collect_rotated_circle_shapes(file, groups, &analysis.raw_anchors);
     let transformed_circles =
         collect_transformed_circle_shapes(file, groups, &analysis.raw_anchors);
@@ -415,6 +419,7 @@ fn collect_scene_shapes(
         polygons,
         circles,
         arcs,
+        translated_circles,
         rotated_circles,
         transformed_circles,
         reflected_circles,
@@ -607,6 +612,12 @@ fn remap_scene_bindings(
         &mut shapes.polygons,
         group_to_point_index,
         &polygon_group_to_index,
+        &line_group_to_index,
+    );
+    remap_circle_bindings(
+        &mut shapes.translated_circles,
+        group_to_point_index,
+        &circle_group_to_index,
         &line_group_to_index,
     );
     remap_circle_bindings(

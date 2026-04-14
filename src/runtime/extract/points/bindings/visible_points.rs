@@ -1518,6 +1518,18 @@ fn resolve_circular_constraint(
                     .get(segment_path.refs[1].checked_sub(1)?)?)?,
             })
         }
+        crate::format::GroupKind::CartesianOffsetPoint
+        | crate::format::GroupKind::PolarOffsetPoint => {
+            let constraint = decode_translated_point_constraint(file, group)?;
+            let source_group = groups.get(constraint.origin_group_index)?;
+            let source =
+                resolve_circular_constraint(file, groups, source_group, group_to_point_index)?;
+            Some(CircularConstraint::TranslateCircle {
+                source: Box::new(source),
+                dx: constraint.dx,
+                dy: constraint.dy,
+            })
+        }
         crate::format::GroupKind::Scale => {
             let binding = try_decode_transform_binding(file, group).ok()?;
             let TransformBindingKind::Scale { factor } = binding.kind else {

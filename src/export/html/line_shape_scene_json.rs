@@ -580,6 +580,13 @@ enum ShapeBindingJson {
         #[serde(rename = "lineEndIndex")]
         line_end_index: usize,
     },
+    #[serde(rename = "translate-circle")]
+    TranslateCircle {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        dx: f64,
+        dy: f64,
+    },
     #[serde(rename = "translate-polygon")]
     TranslatePolygon {
         #[serde(rename = "sourceIndex")]
@@ -691,6 +698,15 @@ impl ShapeBindingJson {
                 center_index: *center_index,
                 line_start_index: *line_start_index,
                 line_end_index: *line_end_index,
+            },
+            ShapeBinding::TranslateCircle {
+                source_index,
+                dx,
+                dy,
+            } => Self::TranslateCircle {
+                source_index: *source_index,
+                dx: *dx,
+                dy: *dy,
             },
             ShapeBinding::TranslatePolygon {
                 source_index,

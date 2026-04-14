@@ -462,6 +462,52 @@ fn resolve_circle_like_raw(
             let radius = ((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt();
             (radius > 1e-9).then_some(CircularConstraintRaw::Circle { center, radius })
         }
+        crate::format::GroupKind::CartesianOffsetPoint
+        | crate::format::GroupKind::PolarOffsetPoint => {
+            let constraint = decode_translated_point_constraint(file, group)?;
+            let source_group = groups.get(constraint.origin_group_index)?;
+            let source = resolve_circle_like_raw(file, groups, anchors, source_group)?;
+            match source {
+                CircularConstraintRaw::Circle { center, radius } => {
+                    (radius > 1e-9).then_some(CircularConstraintRaw::Circle {
+                        center: PointRecord {
+                            x: center.x + constraint.dx,
+                            y: center.y + constraint.dy,
+                        },
+                        radius,
+                    })
+                }
+                CircularConstraintRaw::ThreePointArc {
+                    start,
+                    mid,
+                    end,
+                    center,
+                    radius,
+                    ccw_span,
+                    ccw_mid,
+                } => Some(CircularConstraintRaw::ThreePointArc {
+                    start: PointRecord {
+                        x: start.x + constraint.dx,
+                        y: start.y + constraint.dy,
+                    },
+                    mid: PointRecord {
+                        x: mid.x + constraint.dx,
+                        y: mid.y + constraint.dy,
+                    },
+                    end: PointRecord {
+                        x: end.x + constraint.dx,
+                        y: end.y + constraint.dy,
+                    },
+                    center: PointRecord {
+                        x: center.x + constraint.dx,
+                        y: center.y + constraint.dy,
+                    },
+                    radius,
+                    ccw_span,
+                    ccw_mid,
+                }),
+            }
+        }
         crate::format::GroupKind::CenterArc => {
             if path.refs.len() != 3 {
                 return None;

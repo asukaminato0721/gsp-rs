@@ -1534,6 +1534,51 @@ mod tests {
     }
 
     #[test]
+    fn exports_translation_fixture_with_live_circle_and_intersection() {
+        let Some(data) = fixture_bytes("tests/fixtures/gsp/static/translation.gsp") else {
+            return;
+        };
+        let scene = fixture_scene(&data, "translation fixture should compile");
+        let circles = scene["circles"]
+            .as_array()
+            .expect("scene circles should be an array");
+        assert_eq!(circles.len(), 2, "expected original and translated circles");
+        assert!(
+            circles
+                .iter()
+                .any(|circle| circle["binding"]["kind"].as_str() == Some("translate-circle")),
+            "expected the translated payload circle to keep its live binding"
+        );
+
+        let constrained_points = scene["points"]
+            .as_array()
+            .expect("scene points should be an array")
+            .iter()
+            .filter(|point| {
+                matches!(
+                    point["constraint"]["kind"].as_str(),
+                    Some("circular-intersection") | Some("circle-circle-intersection")
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            constrained_points.len(),
+            1,
+            "expected the translated-circle intersection point to stay live"
+        );
+
+        let html = fixture_html(&data, "translation fixture should compile");
+        assert!(
+            html.contains("\"kind\":\"translate-circle\""),
+            "expected the translated circle binding to be embedded in the html scene payload"
+        );
+        assert!(
+            html.contains("function circleCircleIntersection("),
+            "expected the intersection runtime to stay available for the translated circles"
+        );
+    }
+
+    #[test]
     fn exports_changing_polyline_lyg_fixture_with_live_ray_and_iterations() {
         let Some(data) = fixture_bytes("tests/Samples/个人专栏/李有贵作品/变化的折线（lyg).gsp")
         else {

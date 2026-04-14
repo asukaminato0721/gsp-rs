@@ -3093,6 +3093,20 @@
       circle.center = { x: center.x, y: center.y };
       circle.radiusPoint = { x: center.x + radius, y: center.y };
     },
+    "translate-circle"({ scene, resolveHandle }, circle) {
+      const source = scene.circles[circle.binding.sourceIndex];
+      if (!source) return;
+      const sourceCenter = resolveHandle(source.center);
+      const sourceRadius = resolveHandle(source.radiusPoint);
+      circle.center = {
+        x: sourceCenter.x + circle.binding.dx,
+        y: sourceCenter.y + circle.binding.dy,
+      };
+      circle.radiusPoint = {
+        x: sourceRadius.x + circle.binding.dx,
+        y: sourceRadius.y + circle.binding.dy,
+      };
+    },
     "rotate-circle"({ scene, parameters, resolveHandle }, circle) {
       const source = scene.circles[circle.binding.sourceIndex];
       const center = scene.points[circle.binding.centerIndex];

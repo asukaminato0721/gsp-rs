@@ -381,6 +381,11 @@ pub(crate) enum CircularConstraint {
         line_start_index: usize,
         line_end_index: usize,
     },
+    TranslateCircle {
+        source: Box<CircularConstraint>,
+        dx: f64,
+        dy: f64,
+    },
     ScaleCircle {
         source: Box<CircularConstraint>,
         center_index: usize,
@@ -736,6 +741,11 @@ pub(crate) enum ShapeBinding {
         center_index: usize,
         line_start_index: usize,
         line_end_index: usize,
+    },
+    TranslateCircle {
+        source_index: usize,
+        dx: f64,
+        dy: f64,
     },
     TranslatePolygon {
         source_index: usize,

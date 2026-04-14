@@ -288,6 +288,15 @@ fn clone_circular_constraint(constraint: &CircularConstraint) -> CircularConstra
             line_start_index: *line_start_index,
             line_end_index: *line_end_index,
         },
+        CircularConstraint::TranslateCircle {
+            source,
+            dx,
+            dy,
+        } => CircularConstraint::TranslateCircle {
+            source: Box::new(clone_circular_constraint(source)),
+            dx: *dx,
+            dy: *dy,
+        },
         CircularConstraint::ScaleCircle {
             source,
             center_index,
@@ -495,6 +504,7 @@ pub(super) fn assemble_scene(
         polygons,
         circles,
         arcs,
+        translated_circles,
         rotated_circles,
         transformed_circles,
         reflected_circles,
@@ -590,6 +600,7 @@ pub(super) fn assemble_scene(
         circles: circles
             .into_iter()
             .chain(carried_iteration_circles)
+            .chain(translated_circles)
             .chain(rotated_circles)
             .chain(transformed_circles)
             .chain(reflected_circles)

@@ -373,6 +373,26 @@
         radius: Math.hypot(lineEnd.x - lineStart.x, lineEnd.y - lineStart.y),
       };
     }
+    if (constraint.kind === "translate-circle") {
+      const source = circleFromConstraint(env, constraint.source, resolveFn);
+      if (!source) return null;
+      if (source.kind === "circle") {
+        return {
+          kind: "circle",
+          center: {
+            x: source.center.x + constraint.dx,
+            y: source.center.y + constraint.dy,
+          },
+          radius: source.radius,
+        };
+      }
+      const geometry = threePointArcGeometry(
+        { x: source.start.x + constraint.dx, y: source.start.y + constraint.dy },
+        { x: source.mid.x + constraint.dx, y: source.mid.y + constraint.dy },
+        { x: source.end.x + constraint.dx, y: source.end.y + constraint.dy },
+      );
+      return geometry ? { kind: "three-point-arc", ...geometry } : null;
+    }
     if (constraint.kind === "scale-circle") {
       const source = circleFromConstraint(env, constraint.source, resolveFn);
       const center = resolveFn(constraint.centerIndex);

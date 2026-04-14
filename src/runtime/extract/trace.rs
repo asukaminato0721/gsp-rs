@@ -937,6 +937,52 @@ fn resolve_trace_circular_constraint(
                 ((line_end.x - line_start.x).powi(2) + (line_end.y - line_start.y).powi(2)).sqrt();
             (radius > 1e-9).then_some(TraceCircularConstraint::Circle { center, radius })
         }
+        CircularConstraint::TranslateCircle {
+            source,
+            dx,
+            dy,
+        } => {
+            let source = resolve_trace_circular_constraint(points, source, visiting)?;
+            match source {
+                TraceCircularConstraint::Circle { center, radius } => {
+                    Some(TraceCircularConstraint::Circle {
+                        center: PointRecord {
+                            x: center.x + dx,
+                            y: center.y + dy,
+                        },
+                        radius,
+                    })
+                }
+                TraceCircularConstraint::ThreePointArc {
+                    start,
+                    end,
+                    center,
+                    radius,
+                    start_angle,
+                    end_angle,
+                    ccw_span,
+                    ccw_mid,
+                } => Some(TraceCircularConstraint::ThreePointArc {
+                    start: PointRecord {
+                        x: start.x + dx,
+                        y: start.y + dy,
+                    },
+                    end: PointRecord {
+                        x: end.x + dx,
+                        y: end.y + dy,
+                    },
+                    center: PointRecord {
+                        x: center.x + dx,
+                        y: center.y + dy,
+                    },
+                    radius,
+                    start_angle,
+                    end_angle,
+                    ccw_span,
+                    ccw_mid,
+                }),
+            }
+        }
         CircularConstraint::ScaleCircle {
             source,
             center_index,

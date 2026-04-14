@@ -642,6 +642,11 @@ enum CircularConstraintJson {
         #[serde(rename = "lineEndIndex")]
         line_end_index: usize,
     },
+    TranslateCircle {
+        source: Box<CircularConstraintJson>,
+        dx: f64,
+        dy: f64,
+    },
     ScaleCircle {
         source: Box<CircularConstraintJson>,
         #[serde(rename = "centerIndex")]
@@ -684,6 +689,15 @@ impl CircularConstraintJson {
                 center_index: *center_index,
                 line_start_index: *line_start_index,
                 line_end_index: *line_end_index,
+            },
+            CircularConstraint::TranslateCircle {
+                source,
+                dx,
+                dy,
+            } => Self::TranslateCircle {
+                source: Box::new(Self::from_constraint(source)),
+                dx: *dx,
+                dy: *dy,
             },
             CircularConstraint::ScaleCircle {
                 source,
