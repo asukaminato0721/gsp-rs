@@ -235,6 +235,18 @@
         radius: Math.hypot(lineEnd.x - lineStart.x, lineEnd.y - lineStart.y),
       };
     }
+    if (constraint.kind === "translate-circle") {
+      const source = circleFromConstraint(env, constraint.source, resolveFn);
+      if (!source) return null;
+      return {
+        kind: "circle",
+        center: {
+          x: source.center.x + constraint.dx,
+          y: source.center.y + constraint.dy,
+        },
+        radius: source.radius,
+      };
+    }
     if (constraint.kind === "scale-circle") {
       const source = circleFromConstraint(env, constraint.source, resolveFn);
       const center = resolveFn(constraint.centerIndex);

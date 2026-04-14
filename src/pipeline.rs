@@ -1573,6 +1573,10 @@ mod tests {
             "expected the translated circle binding to be embedded in the html scene payload"
         );
         assert!(
+            html.contains("constraint.kind === \"translate-circle\""),
+            "expected the static circular constraint runtime to resolve translated circles"
+        );
+        assert!(
             html.contains("function circleCircleIntersection("),
             "expected the intersection runtime to stay available for the translated circles"
         );
