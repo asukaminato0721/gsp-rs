@@ -1,6 +1,5 @@
 pub(super) const VIEWER_CSS: &str = include_str!("../../html/viewer.css");
 pub(super) const VAN_JS: &str = include_str!("../../html/vendor/van-1.6.0.js");
-pub(super) const VIEWER_SCENE_JS: &str = include_str!("../../html/viewer_scene.js");
 pub(super) const VIEWER_SCENE_BASIC_JS: &str = include_str!("../../html/viewer_scene_basic.js");
 pub(super) const VIEWER_RENDER_BASIC_JS: &str = include_str!("../../html/viewer_render_basic.js");
 pub(super) const VIEWER_RENDER_IMAGES_JS: &str = include_str!("../../html/viewer_render_images.js");

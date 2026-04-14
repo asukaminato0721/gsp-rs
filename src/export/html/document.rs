@@ -3,7 +3,7 @@ use super::assets::{
     VIEWER_JS, VIEWER_OVERLAY_JS, VIEWER_OVERLAY_STUB_JS, VIEWER_RENDER_BASIC_JS,
     VIEWER_RENDER_CIRCULAR_JS, VIEWER_RENDER_HOTSPOTS_JS, VIEWER_RENDER_IMAGES_JS,
     VIEWER_RENDER_LABELS_JS, VIEWER_RENDER_POLYGONS_JS, VIEWER_RENDER_TABLES_JS,
-    VIEWER_SCENE_BASIC_JS, VIEWER_SCENE_JS, indent_asset, van_runtime_to_global,
+    VIEWER_SCENE_BASIC_JS, indent_asset, van_runtime_to_global,
 };
 use super::render_scene_json;
 use crate::runtime::scene::{
@@ -165,7 +165,6 @@ impl ViewerDragProfile {
 
 #[derive(Clone, Copy)]
 struct ViewerScenePlan {
-    full: bool,
     circular: bool,
     trace: bool,
     intersections: bool,
@@ -173,7 +172,7 @@ struct ViewerScenePlan {
 
 impl ViewerScenePlan {
     fn label(self) -> String {
-        let mut parts = vec![if self.full { "full" } else { "basic" }];
+        let mut parts = vec!["basic"];
         if self.circular {
             parts.push("circular");
         }
@@ -187,9 +186,6 @@ impl ViewerScenePlan {
     }
 
     fn script_source(self) -> String {
-        if self.full {
-            return VIEWER_SCENE_JS.to_string();
-        }
         let mut scripts = vec![VIEWER_SCENE_BASIC_JS];
         if self.circular {
             scripts.push(include_str!("../../html/viewer_scene_circular.js"));
@@ -339,20 +335,10 @@ fn viewer_runtime_plan(scene: &Scene) -> ViewerRuntimePlan {
 
 fn viewer_scene_plan(scene: &Scene) -> ViewerScenePlan {
     ViewerScenePlan {
-        full: scene_requires_full_scene(scene),
         circular: scene_uses_circular_scene(scene),
         trace: scene_uses_trace_scene(scene),
         intersections: scene_uses_intersection_scene(scene),
     }
-}
-
-fn scene_requires_full_scene(scene: &Scene) -> bool {
-    scene.points.iter().any(|point| {
-        point
-            .binding
-            .as_ref()
-            .is_some_and(|binding| !matches!(binding, ScenePointBinding::GraphCalibration))
-    })
 }
 
 fn scene_uses_circular_scene(scene: &Scene) -> bool {
