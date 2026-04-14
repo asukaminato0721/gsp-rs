@@ -6,6 +6,7 @@
   /** @typedef {{ kind: "text"; text: string } | { kind: "fraction"; numerator: RichMarkupItem[]; denominator: RichMarkupItem[] } | { kind: "radical" | "overline" | "ray" | "arc"; children: RichMarkupItem[] }} RichMarkupItem */
   /** @typedef {{ buttonIndex: number; pointerId: number; startClientX: number; startClientY: number; originX: number; originY: number; scaleX: number; scaleY: number; dragged: boolean }} ButtonPointerState */
   /** @typedef {Extract<ButtonActionJson, { kind: "toggle-visibility" }> | Extract<ButtonActionJson, { kind: "set-visibility" }> | Extract<ButtonActionJson, { kind: "show-hide-visibility" }>} VisibilityButtonAction */
+  /** @typedef {HTMLButtonElement & { __gspButtonIndex?: number, __gspHotspotAction?: LabelHotspotActionJson | null }} OverlayButtonElement */
 
   /**
    * @param {ButtonActionJson} action
@@ -269,6 +270,8 @@
           })) };
       const buttonTimers = new Map();
       const buttonAnimations = new Map();
+      /** @type {Map<string, HTMLElement>} */
+      const overlayNodeCache = new Map();
       /** @type {{ val: HotspotFlash[] }} */
       const hotspotFlashesState = env.van?.state ? env.van.state([]) : { val: [] };
       /** @type {ButtonPointerState | null} */
@@ -749,6 +752,96 @@
         buttonPointerState = null;
       }
 
+      /**
+       * @param {string} key
+       * @param {() => HTMLElement} factory
+       * @returns {HTMLElement}
+       */
+      function getOverlayNode(key, factory) {
+        const existing = overlayNodeCache.get(key);
+        if (existing) {
+          return existing;
+        }
+        const created = factory();
+        overlayNodeCache.set(key, created);
+        return created;
+      }
+
+      /**
+       * @param {HTMLElement} node
+       * @param {number} index
+       */
+      function appendOverlayNodeAt(node, index) {
+        if (!buttonOverlays) {
+          return;
+        }
+        const current = buttonOverlays.children[index] || null;
+        if (current !== node) {
+          buttonOverlays.insertBefore(node, current);
+        }
+      }
+
+      /** @param {Set<string>} activeKeys */
+      function pruneOverlayNodes(activeKeys) {
+        for (const [key, node] of overlayNodeCache.entries()) {
+          if (activeKeys.has(key)) {
+            continue;
+          }
+          node.remove();
+          overlayNodeCache.delete(key);
+        }
+      }
+
+      /**
+       * @param {number} buttonIndex
+       * @returns {OverlayButtonElement}
+       */
+      function getButtonNode(buttonIndex) {
+        return /** @type {OverlayButtonElement} */ (getOverlayNode(`button:${buttonIndex}`, () => {
+          const anchor = /** @type {OverlayButtonElement} */ (document.createElement("button"));
+          anchor.className = "scene-link-button";
+          anchor.type = "button";
+          anchor.addEventListener("pointerdown", (event) => {
+            const currentButtonIndex = anchor.__gspButtonIndex;
+            if (typeof currentButtonIndex !== "number") {
+              return;
+            }
+            beginButtonPointer(currentButtonIndex, event);
+          });
+          return anchor;
+        }));
+      }
+
+      /**
+       * @param {number} labelIndex
+       * @param {number} hotspotIndex
+       * @returns {OverlayButtonElement}
+       */
+      function getHotspotNode(labelIndex, hotspotIndex) {
+        return /** @type {OverlayButtonElement} */ (getOverlayNode(`hotspot:${labelIndex}:${hotspotIndex}`, () => {
+          const hotspot = /** @type {OverlayButtonElement} */ (document.createElement("button"));
+          hotspot.className = "scene-hotspot";
+          hotspot.type = "button";
+          hotspot.addEventListener("click", (event) => {
+            event.preventDefault();
+            runHotspotAction(hotspot.__gspHotspotAction ?? null);
+          });
+          return hotspot;
+        }));
+      }
+
+      /**
+       * @param {number} labelIndex
+       * @returns {HTMLDivElement}
+       */
+      function getRichLabelNode(labelIndex) {
+        return /** @type {HTMLDivElement} */ (getOverlayNode(`rich-label:${labelIndex}`, () => {
+          const richLabel = document.createElement("div");
+          richLabel.className = "scene-rich-label";
+          return richLabel;
+        }));
+      }
+
       /** @param {PointerEvent} event */
       function handleButtonPointerUp(event) {
         if (!buttonPointerState || event.pointerId !== buttonPointerState.pointerId) {
@@ -765,36 +858,35 @@
         if (!buttonOverlays) {
           return;
         }
-        buttonOverlays.replaceChildren();
+        /** @type {Set<string>} */
+        const activeKeys = new Set();
         const stackedOffsets = new Map();
+        let overlayIndex = 0;
         buttonsState.val.forEach((/** @type {RuntimeButtonJson} */ buttonDef, /** @type {number} */ buttonIndex) => {
           if (buttonDef.visible === false) {
             return;
           }
-          const anchor = document.createElement("button");
-          anchor.className = "scene-link-button";
+          const nodeKey = `button:${buttonIndex}`;
+          activeKeys.add(nodeKey);
+          const anchor = getButtonNode(buttonIndex);
+          anchor.__gspButtonIndex = buttonIndex;
           anchor.setAttribute("aria-pressed", buttonDef.active ? "true" : "false");
-          if (buttonDef.active) {
-            anchor.classList.add("is-active");
-          }
-          anchor.type = "button";
+          anchor.classList.toggle("is-active", !!buttonDef.active);
           anchor.textContent = buttonDef.text;
           const key = `${Math.round(buttonDef.x)}:${Math.round(buttonDef.y)}`;
           const stackedOffset = stackedOffsets.get(key) || 0;
           stackedOffsets.set(key, stackedOffset + 1);
           anchor.style.left = `${(buttonDef.x / sourceScene.width) * 100}%`;
           anchor.style.top = `${((buttonDef.y + stackedOffset * 34) / sourceScene.height) * 100}%`;
-          if (buttonDef.width) {
-            anchor.style.width = `${(buttonDef.width / sourceScene.width) * 100}%`;
-          }
-          if (buttonDef.height) {
-            anchor.style.height = `${(buttonDef.height / sourceScene.height) * 100}%`;
-          }
-          anchor.addEventListener("pointerdown", (event) => {
-            beginButtonPointer(buttonIndex, event);
-          });
+          anchor.style.width = buttonDef.width
+            ? `${(buttonDef.width / sourceScene.width) * 100}%`
+            : "";
+          anchor.style.height = buttonDef.height
+            ? `${(buttonDef.height / sourceScene.height) * 100}%`
+            : "";
           env.registerDebugElement?.(anchor, { category: "buttons", index: buttonIndex });
-          buttonOverlays.append(anchor);
+          appendOverlayNodeAt(anchor, overlayIndex);
+          overlayIndex += 1;
         });
 
         env.currentScene().labels.forEach((/** @type {RuntimeLabelJson} */ label, /** @type {number} */ labelIndex) => {
@@ -809,44 +901,47 @@
               return;
             }
             const screen = label.screenSpace ? anchor : env.toScreen(anchor);
-            const richLabel = renderRichLabel(label);
-            if (!screen || !richLabel) {
+            const renderedRichLabel = renderRichLabel(label);
+            if (!screen || !renderedRichLabel) {
               return;
             }
+            const nodeKey = `rich-label:${labelIndex}`;
+            activeKeys.add(nodeKey);
+            const richLabel = getRichLabelNode(labelIndex);
+            richLabel.className = renderedRichLabel.className;
+            richLabel.replaceChildren(...Array.from(renderedRichLabel.childNodes));
             richLabel.style.color = env.rgba(label.color);
             richLabel.style.left = `${(((screen.x + (label.centeredOnAnchor ? 0 : 2)) / sourceScene.width) * 100)}%`;
             richLabel.style.top = `${(((screen.y + (label.centeredOnAnchor ? -10 : -14)) / sourceScene.height) * 100)}%`;
-            if (label.centeredOnAnchor) {
-              richLabel.style.transform = "translate(-50%, -50%)";
-            }
+            richLabel.style.transform = label.centeredOnAnchor ? "translate(-50%, -50%)" : "";
             env.registerDebugElement?.(richLabel, { category: "labels", index: labelIndex });
-            buttonOverlays.append(richLabel);
+            appendOverlayNodeAt(richLabel, overlayIndex);
+            overlayIndex += 1;
             return;
           }
           if (!label.hotspots?.length) {
             return;
           }
           modules.render.labelHotspotRects(env, label).forEach((rect) => {
-            const hotspot = document.createElement("button");
-            hotspot.className = "scene-hotspot";
-            hotspot.type = "button";
+            const nodeKey = `hotspot:${labelIndex}:${rect.hotspotIndex ?? -1}`;
+            activeKeys.add(nodeKey);
+            const hotspot = getHotspotNode(labelIndex, rect.hotspotIndex ?? -1);
+            hotspot.__gspHotspotAction = rect.action ?? null;
             hotspot.setAttribute("aria-label", rect.text);
             hotspot.style.left = `${(rect.left / sourceScene.width) * 100}%`;
             hotspot.style.top = `${(rect.top / sourceScene.height) * 100}%`;
             hotspot.style.width = `${(rect.width / sourceScene.width) * 100}%`;
             hotspot.style.height = `${(rect.height / sourceScene.height) * 100}%`;
-            hotspot.addEventListener("click", (event) => {
-              event.preventDefault();
-              runHotspotAction(rect.action);
-            });
             env.registerDebugElement?.(hotspot, {
               category: "labelHotspots",
               index: labelIndex,
               hotspotIndex: rect.hotspotIndex ?? null,
             });
-            buttonOverlays.append(hotspot);
+            appendOverlayNodeAt(hotspot, overlayIndex);
+            overlayIndex += 1;
           });
         });
+        pruneOverlayNodes(activeKeys);
       }
 
       return {

@@ -85,14 +85,50 @@
     centerY: baseCenterY,
     zoom: defaultZoom,
   } };
+
+  /** @param {ViewState} next */
+  function setViewState(next) {
+    viewState.val = next;
+  }
+
+  /** @param {(draft: ViewState) => void} mutator */
+  function updateViewState(mutator) {
+    const next = { ...viewState.val };
+    mutator(next);
+    setViewState(next);
+  }
+
+  /**
+   * Resolve screen coordinates against an arbitrary view snapshot so zoom/pan
+   * updates can be committed once without intermediate redraws.
+   *
+   * @param {ViewState} viewSnapshot
+   * @param {number} screenX
+   * @param {number} screenY
+   * @returns {Point & { scale: number }}
+   */
+  function toWorldForView(viewSnapshot, screenX, screenY) {
+    const spanX = baseSpanX / viewSnapshot.zoom;
+    const spanY = baseSpanY / viewSnapshot.zoom;
+    const minX = viewSnapshot.centerX - spanX / 2;
+    const minY = viewSnapshot.centerY - spanY / 2;
+    const scale = Math.min(usableWidth / spanX, usableHeight / spanY);
+    return {
+      x: minX + (screenX - margin) / scale,
+      y: sourceScene.yUp
+        ? minY + (sourceScene.height - margin - screenY) / scale
+        : minY + (screenY - margin) / scale,
+      scale,
+    };
+  }
+
   /** @type {ViewState} */
   const view = new Proxy(/** @type {ViewState} */ ({}), {
     get: (_, key) => viewState.val[/** @type {keyof ViewState} */ (key)],
     set: (_, key, value) => {
-      viewState.val = {
-        ...viewState.val,
-        [/** @type {keyof ViewState} */ (key)]: /** @type {ViewState[keyof ViewState]} */ (value),
-      };
+      updateViewState((draft) => {
+        draft[/** @type {keyof ViewState} */ (key)] = /** @type {ViewState[keyof ViewState]} */ (value);
+      });
       return true;
     },
   });
@@ -721,16 +757,23 @@
     if (!element || !target) {
       return;
     }
-    const debugId = `dbg-${nextDebugElementId++}`;
+    let debugId = element.getAttribute("data-gsp-debug-id");
+    if (!debugId || !debugElementRegistry.has(debugId)) {
+      debugId = `dbg-${nextDebugElementId++}`;
+    }
     element.setAttribute("data-gsp-debug-id", debugId);
     element.setAttribute("data-gsp-kind", target.category);
     element.setAttribute("data-gsp-index", String(target.index));
     if (target.hotspotIndex !== undefined && target.hotspotIndex !== null) {
       element.setAttribute("data-gsp-hotspot-index", String(target.hotspotIndex));
+    } else {
+      element.removeAttribute("data-gsp-hotspot-index");
     }
     const entity = lookupDebugEntity(target);
     if (entity?.debug?.groupOrdinal) {
       element.setAttribute("data-gsp-group", String(entity.debug.groupOrdinal));
+    } else {
+      element.removeAttribute("data-gsp-group");
     }
     debugElementRegistry.set(debugId, { element, target });
     syncDebugSelectionHighlight();
@@ -1145,11 +1188,11 @@
   }
 
   function resetView() {
-    view.centerX = baseCenterX;
-    view.centerY = baseCenterY;
-    view.zoom = defaultZoom;
-    draw();
-    overlayRuntime.render();
+    setViewState({
+      centerX: baseCenterX,
+      centerY: baseCenterY,
+      zoom: defaultZoom,
+    });
     updateReadout();
   }
 
@@ -1496,9 +1539,13 @@
 
   /** @param {Point} position */
   function panFromPointerDelta(position) {
-    dragModule.panFromPointerDelta(viewerEnv, position);
-    draw();
-    overlayRuntime.render();
+    const currentView = viewState.val;
+    const worldNow = toWorldForView(currentView, position.x, position.y);
+    const worldLast = toWorldForView(currentView, dragState.val.lastX, dragState.val.lastY);
+    updateViewState((draft) => {
+      draft.centerX -= worldNow.x - worldLast.x;
+      draft.centerY -= worldNow.y - worldLast.y;
+    });
   }
 
   function draw() {
@@ -1731,14 +1778,17 @@
   canvas.addEventListener("wheel", (event) => {
     event.preventDefault();
     const position = sceneModule.getCanvasCoords(viewerEnv, event);
-    const before = sceneModule.toWorld(viewerEnv, position.x, position.y);
+    const currentView = viewState.val;
+    const before = toWorldForView(currentView, position.x, position.y);
     const factor = event.deltaY < 0 ? 1.1 : 1 / 1.1;
-    view.zoom = Math.max(minZoom, Math.min(64, view.zoom * factor));
-    const after = sceneModule.toWorld(viewerEnv, position.x, position.y);
-    view.centerX += before.x - after.x;
-    view.centerY += before.y - after.y;
-    draw();
-    overlayRuntime.render();
+    const nextView = {
+      ...currentView,
+      zoom: Math.max(minZoom, Math.min(64, currentView.zoom * factor)),
+    };
+    const after = toWorldForView(nextView, position.x, position.y);
+    nextView.centerX += before.x - after.x;
+    nextView.centerY += before.y - after.y;
+    setViewState(nextView);
     updateReadout(position.x, position.y);
   }, { passive: false });
 
