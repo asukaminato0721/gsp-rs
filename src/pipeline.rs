@@ -903,10 +903,10 @@ mod tests {
             "congruent triangle fixture should compile",
         );
 
-        assert!(html.contains("\"kind\":\"translate-line\""));
+        assert!(html.contains("\"kind\":\"derived\""));
         assert!(html.contains("\"kind\":\"angle-marker\""));
         assert!(html.contains("\"kind\":\"segment-marker\""));
-        assert!(html.contains("\"vectorStartIndex\":0,\"vectorEndIndex\":3"));
+        assert!(html.contains("\"transform\":{\"kind\":\"translate\",\"vectorStartIndex\":0,\"vectorEndIndex\":3}"));
         assert!(html.contains("\"text\":\"B'\""));
         assert!(html.contains("\"text\":\"C'\""));
     }
@@ -1047,13 +1047,14 @@ mod tests {
         );
         assert!(
             points.get(end_index).is_some_and(|point| {
-                point["binding"]["kind"].as_str() == Some("rotate")
+                point["binding"]["kind"].as_str() == Some("derived")
                     && point["binding"]["sourceIndex"].as_u64() == Some(start_index as u64)
-                    && point["binding"]["parameterName"].as_str() == Some("n")
-                    && point["binding"]["angleDegrees"]
+                    && point["binding"]["transform"]["kind"].as_str() == Some("rotate")
+                    && point["binding"]["transform"]["parameterName"].as_str() == Some("n")
+                    && point["binding"]["transform"]["angleDegrees"]
                         .as_f64()
                         .is_some_and(|value| (value - 72.0).abs() < 0.01)
-                    && point["binding"]["angleExpr"].is_object()
+                    && point["binding"]["transform"]["angleExpr"].is_object()
             }),
             "expected the payload rotated endpoint to remain a live rotate-bound point"
         );
@@ -1111,7 +1112,10 @@ mod tests {
             .expect("scene points should be an array");
         let rotate_points = points
             .iter()
-            .filter(|point| point["binding"]["kind"].as_str() == Some("rotate"))
+            .filter(|point| {
+                point["binding"]["kind"].as_str() == Some("derived")
+                    && point["binding"]["transform"]["kind"].as_str() == Some("rotate")
+            })
             .collect::<Vec<_>>();
 
         assert!(
@@ -1178,13 +1182,19 @@ mod tests {
         assert!(
             points
                 .iter()
-                .any(|point| point["binding"]["kind"].as_str() == Some("rotate")),
+                .any(|point| {
+                    point["binding"]["kind"].as_str() == Some("derived")
+                        && point["binding"]["transform"]["kind"].as_str() == Some("rotate")
+                }),
             "expected the rotated payload point to keep its live binding"
         );
         assert!(
             points
                 .iter()
-                .any(|point| point["binding"]["kind"].as_str() == Some("scale")),
+                .any(|point| {
+                    point["binding"]["kind"].as_str() == Some("derived")
+                        && point["binding"]["transform"]["kind"].as_str() == Some("scale")
+                }),
             "expected the scaled payload point to keep its live binding"
         );
 
@@ -1400,7 +1410,10 @@ mod tests {
         assert_eq!(
             points
                 .iter()
-                .filter(|point| point["binding"]["kind"].as_str() == Some("scale"))
+                .filter(|point| {
+                    point["binding"]["kind"].as_str() == Some("derived")
+                        && point["binding"]["transform"]["kind"].as_str() == Some("scale")
+                })
                 .count(),
             4,
             "expected scale-derived helper points to preserve their bindings"
@@ -1408,7 +1421,10 @@ mod tests {
         assert_eq!(
             points
                 .iter()
-                .filter(|point| point["binding"]["kind"].as_str() == Some("rotate"))
+                .filter(|point| {
+                    point["binding"]["kind"].as_str() == Some("derived")
+                        && point["binding"]["transform"]["kind"].as_str() == Some("rotate")
+                })
                 .count(),
             1,
             "expected the rotated helper point to preserve its binding"
@@ -1416,7 +1432,10 @@ mod tests {
         assert_eq!(
             points
                 .iter()
-                .filter(|point| point["binding"]["kind"].as_str() == Some("translate"))
+                .filter(|point| {
+                    point["binding"]["kind"].as_str() == Some("derived")
+                        && point["binding"]["transform"]["kind"].as_str() == Some("translate")
+                })
                 .count(),
             5,
             "expected translated helper points to preserve their bindings"
@@ -1572,7 +1591,10 @@ mod tests {
         assert!(
             circles
                 .iter()
-                .any(|circle| circle["binding"]["kind"].as_str() == Some("scale-circle")),
+                .any(|circle| {
+                    circle["binding"]["kind"].as_str() == Some("derived")
+                        && circle["binding"]["transform"]["kind"].as_str() == Some("scale")
+                }),
             "expected the scaled payload circle to keep its live binding"
         );
 
@@ -1588,8 +1610,10 @@ mod tests {
             "expected both payload circle intersections to stay live"
         );
         assert!(constrained_points.iter().all(|point| {
-            point["constraint"]["left"]["kind"].as_str() == Some("scale-circle")
-                || point["constraint"]["right"]["kind"].as_str() == Some("scale-circle")
+            (point["constraint"]["left"]["kind"].as_str() == Some("derived")
+                && point["constraint"]["left"]["transform"]["kind"].as_str() == Some("scale"))
+                || (point["constraint"]["right"]["kind"].as_str() == Some("derived")
+                    && point["constraint"]["right"]["transform"]["kind"].as_str() == Some("scale"))
         }));
 
         let html = fixture_html(&data, "scaled-circle intersection fixture should compile");
@@ -1619,13 +1643,19 @@ mod tests {
         assert!(
             circles
                 .iter()
-                .any(|circle| circle["binding"]["kind"].as_str() == Some("reflect-circle")),
+                .any(|circle| {
+                    circle["binding"]["kind"].as_str() == Some("derived")
+                        && circle["binding"]["transform"]["kind"].as_str() == Some("reflect")
+                }),
             "expected the reflected payload circle to keep its live binding"
         );
         assert!(
             circles
                 .iter()
-                .any(|circle| circle["binding"]["kind"].as_str() == Some("scale-circle")),
+                .any(|circle| {
+                    circle["binding"]["kind"].as_str() == Some("derived")
+                        && circle["binding"]["transform"]["kind"].as_str() == Some("scale")
+                }),
             "expected the scaled payload circle to keep its live binding"
         );
 
@@ -1641,8 +1671,10 @@ mod tests {
             "expected both nested circle intersections to stay live"
         );
         assert!(constrained_points.iter().all(|point| {
-            point["constraint"]["left"]["kind"].as_str() == Some("scale-circle")
-                || point["constraint"]["right"]["kind"].as_str() == Some("scale-circle")
+            (point["constraint"]["left"]["kind"].as_str() == Some("derived")
+                && point["constraint"]["left"]["transform"]["kind"].as_str() == Some("scale"))
+                || (point["constraint"]["right"]["kind"].as_str() == Some("derived")
+                    && point["constraint"]["right"]["transform"]["kind"].as_str() == Some("scale"))
         }));
     }
 
@@ -1659,7 +1691,10 @@ mod tests {
         assert!(
             circles
                 .iter()
-                .any(|circle| circle["binding"]["kind"].as_str() == Some("translate-circle")),
+                .any(|circle| {
+                    circle["binding"]["kind"].as_str() == Some("derived")
+                        && circle["binding"]["transform"]["kind"].as_str() == Some("translate-delta")
+                }),
             "expected the translated payload circle to keep its live binding"
         );
 
@@ -1682,11 +1717,11 @@ mod tests {
 
         let html = fixture_html(&data, "translation fixture should compile");
         assert!(
-            html.contains("\"kind\":\"translate-circle\""),
+            html.contains("\"kind\":\"derived\"") && html.contains("\"kind\":\"translate-delta\""),
             "expected the translated circle binding to be embedded in the html scene payload"
         );
         assert!(
-            html.contains("constraint.kind === \"translate-circle\""),
+            html.contains("constraint.kind === \"derived\""),
             "expected the static circular constraint runtime to resolve translated circles"
         );
         assert!(

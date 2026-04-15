@@ -1,9 +1,7 @@
 use super::scene_json::{DebugSourceJson, PointJson};
+use super::transform_json::TransformJson;
 use crate::runtime::geometry::darken;
-use crate::runtime::scene::{
-    ArcBoundaryKind, ColorBinding, LineBinding, LineTransformBinding, ShapeBinding,
-    ShapeTransformBinding,
-};
+use crate::runtime::scene::{ArcBoundaryKind, ColorBinding, LineBinding, ShapeBinding};
 use serde::Serialize;
 use ts_rs::TS;
 
@@ -114,44 +112,11 @@ enum LineBindingJson {
         #[serde(rename = "endIndex")]
         end_index: usize,
     },
-    #[serde(rename = "translate-line")]
-    TranslateLine {
+    #[serde(rename = "derived")]
+    Derived {
         #[serde(rename = "sourceIndex")]
         source_index: usize,
-        #[serde(rename = "vectorStartIndex")]
-        vector_start_index: usize,
-        #[serde(rename = "vectorEndIndex")]
-        vector_end_index: usize,
-    },
-    #[serde(rename = "rotate-line")]
-    RotateLine {
-        #[serde(rename = "sourceIndex")]
-        source_index: usize,
-        #[serde(rename = "centerIndex")]
-        center_index: usize,
-        #[serde(rename = "angleDegrees")]
-        angle_degrees: f64,
-        #[serde(rename = "parameterName")]
-        parameter_name: Option<String>,
-    },
-    #[serde(rename = "scale-line")]
-    ScaleLine {
-        #[serde(rename = "sourceIndex")]
-        source_index: usize,
-        #[serde(rename = "centerIndex")]
-        center_index: usize,
-        factor: f64,
-    },
-    #[serde(rename = "reflect-line")]
-    ReflectLine {
-        #[serde(rename = "sourceIndex")]
-        source_index: usize,
-        #[serde(rename = "lineStartIndex", skip_serializing_if = "Option::is_none")]
-        line_start_index: Option<usize>,
-        #[serde(rename = "lineEndIndex", skip_serializing_if = "Option::is_none")]
-        line_end_index: Option<usize>,
-        #[serde(rename = "lineIndex", skip_serializing_if = "Option::is_none")]
-        line_index: Option<usize>,
+        transform: TransformJson,
     },
     #[serde(rename = "custom-transform-trace")]
     CustomTransformTrace {
@@ -294,7 +259,10 @@ impl LineBindingJson {
             LineBinding::DerivedTransform {
                 source_index,
                 transform,
-            } => Self::from_derived_transform(*source_index, transform),
+            } => Self::Derived {
+                source_index: *source_index,
+                transform: TransformJson::from_line_transform(transform),
+            },
             LineBinding::CustomTransformTrace {
                 point_index,
                 x_min,
@@ -348,38 +316,6 @@ impl LineBindingJson {
                 end_index: *end_index,
                 reversed: *reversed,
                 complement: *complement,
-            },
-        }
-    }
-}
-
-impl LineBindingJson {
-    fn from_derived_transform(source_index: usize, transform: &LineTransformBinding) -> Self {
-        match transform {
-            LineTransformBinding::Translate {
-                vector_start_index,
-                vector_end_index,
-            } => Self::TranslateLine {
-                source_index,
-                vector_start_index: *vector_start_index,
-                vector_end_index: *vector_end_index,
-            },
-            LineTransformBinding::Rotate(binding) => Self::RotateLine {
-                source_index,
-                center_index: binding.center_index,
-                angle_degrees: binding.angle_degrees,
-                parameter_name: binding.parameter_name.clone(),
-            },
-            LineTransformBinding::Scale(binding) => Self::ScaleLine {
-                source_index,
-                center_index: binding.center_index,
-                factor: binding.factor,
-            },
-            LineTransformBinding::Reflect(axis) => Self::ReflectLine {
-                source_index,
-                line_start_index: axis.line_start_index,
-                line_end_index: axis.line_end_index,
-                line_index: axis.line_index,
             },
         }
     }
@@ -585,88 +521,12 @@ enum ShapeBindingJson {
         #[serde(rename = "lineEndIndex")]
         line_end_index: usize,
     },
-    #[serde(rename = "translate-circle")]
-    TranslateCircle {
+    #[serde(rename = "derived")]
+    Derived {
         #[serde(rename = "sourceIndex")]
         source_index: usize,
-        dx: f64,
-        dy: f64,
+        transform: TransformJson,
     },
-    #[serde(rename = "translate-polygon")]
-    TranslatePolygon {
-        #[serde(rename = "sourceIndex")]
-        source_index: usize,
-        #[serde(rename = "vectorStartIndex")]
-        vector_start_index: usize,
-        #[serde(rename = "vectorEndIndex")]
-        vector_end_index: usize,
-    },
-    #[serde(rename = "rotate-polygon")]
-    RotatePolygon {
-        #[serde(rename = "sourceIndex")]
-        source_index: usize,
-        #[serde(rename = "centerIndex")]
-        center_index: usize,
-        #[serde(rename = "angleDegrees")]
-        angle_degrees: f64,
-        #[serde(rename = "parameterName")]
-        parameter_name: Option<String>,
-    },
-    #[serde(rename = "rotate-circle")]
-    RotateCircle {
-        #[serde(rename = "sourceIndex")]
-        source_index: usize,
-        #[serde(rename = "centerIndex")]
-        center_index: usize,
-        #[serde(rename = "angleDegrees")]
-        angle_degrees: f64,
-        #[serde(rename = "parameterName")]
-        parameter_name: Option<String>,
-    },
-    #[serde(rename = "scale-polygon")]
-    ScalePolygon {
-        #[serde(rename = "sourceIndex")]
-        source_index: usize,
-        #[serde(rename = "centerIndex")]
-        center_index: usize,
-        factor: f64,
-    },
-    #[serde(rename = "scale-circle")]
-    ScaleCircle {
-        #[serde(rename = "sourceIndex")]
-        source_index: usize,
-        #[serde(rename = "centerIndex")]
-        center_index: usize,
-        factor: f64,
-    },
-    #[serde(rename = "reflect-polygon")]
-    ReflectPolygon {
-        #[serde(rename = "sourceIndex")]
-        source_index: usize,
-        #[serde(rename = "lineStartIndex", skip_serializing_if = "Option::is_none")]
-        line_start_index: Option<usize>,
-        #[serde(rename = "lineEndIndex", skip_serializing_if = "Option::is_none")]
-        line_end_index: Option<usize>,
-        #[serde(rename = "lineIndex", skip_serializing_if = "Option::is_none")]
-        line_index: Option<usize>,
-    },
-    #[serde(rename = "reflect-circle")]
-    ReflectCircle {
-        #[serde(rename = "sourceIndex")]
-        source_index: usize,
-        #[serde(rename = "lineStartIndex", skip_serializing_if = "Option::is_none")]
-        line_start_index: Option<usize>,
-        #[serde(rename = "lineEndIndex", skip_serializing_if = "Option::is_none")]
-        line_end_index: Option<usize>,
-        #[serde(rename = "lineIndex", skip_serializing_if = "Option::is_none")]
-        line_index: Option<usize>,
-    },
-}
-
-#[derive(Clone, Copy)]
-enum ShapeBindingTarget {
-    Polygon,
-    Circle,
 }
 
 impl ShapeBindingJson {
@@ -697,7 +557,10 @@ impl ShapeBindingJson {
             ShapeBinding::DerivedTransform {
                 source_index,
                 transform,
-            } => Self::try_from_transform(*source_index, transform, ShapeBindingTarget::Polygon),
+            } => Some(Self::Derived {
+                source_index: *source_index,
+                transform: TransformJson::from_shape_transform(transform),
+            }),
             ShapeBinding::PointRadiusCircle { .. } | ShapeBinding::SegmentRadiusCircle { .. } => None,
         }
     }
@@ -723,82 +586,11 @@ impl ShapeBindingJson {
             ShapeBinding::DerivedTransform {
                 source_index,
                 transform,
-            } => Self::try_from_transform(*source_index, transform, ShapeBindingTarget::Circle),
-            ShapeBinding::PointPolygon { .. } | ShapeBinding::ArcBoundaryPolygon { .. } => None,
-        }
-    }
-
-    fn try_from_transform(
-        source_index: usize,
-        transform: &ShapeTransformBinding,
-        target: ShapeBindingTarget,
-    ) -> Option<Self> {
-        match (target, transform) {
-            (
-                ShapeBindingTarget::Polygon,
-                ShapeTransformBinding::TranslateVector {
-                    vector_start_index,
-                    vector_end_index,
-                },
-            ) => Some(Self::TranslatePolygon {
-                source_index,
-                vector_start_index: *vector_start_index,
-                vector_end_index: *vector_end_index,
+            } => Some(Self::Derived {
+                source_index: *source_index,
+                transform: TransformJson::from_shape_transform(transform),
             }),
-            (ShapeBindingTarget::Polygon, ShapeTransformBinding::Rotate(binding)) => {
-                Some(Self::RotatePolygon {
-                    source_index,
-                    center_index: binding.center_index,
-                    angle_degrees: binding.angle_degrees,
-                    parameter_name: binding.parameter_name.clone(),
-                })
-            }
-            (ShapeBindingTarget::Polygon, ShapeTransformBinding::Scale(binding)) => {
-                Some(Self::ScalePolygon {
-                    source_index,
-                    center_index: binding.center_index,
-                    factor: binding.factor,
-                })
-            }
-            (ShapeBindingTarget::Polygon, ShapeTransformBinding::Reflect(axis)) => {
-                Some(Self::ReflectPolygon {
-                    source_index,
-                    line_start_index: axis.line_start_index,
-                    line_end_index: axis.line_end_index,
-                    line_index: axis.line_index,
-                })
-            }
-            (ShapeBindingTarget::Circle, ShapeTransformBinding::TranslateDelta { dx, dy }) => {
-                Some(Self::TranslateCircle {
-                    source_index,
-                    dx: *dx,
-                    dy: *dy,
-                })
-            }
-            (ShapeBindingTarget::Circle, ShapeTransformBinding::Rotate(binding)) => {
-                Some(Self::RotateCircle {
-                    source_index,
-                    center_index: binding.center_index,
-                    angle_degrees: binding.angle_degrees,
-                    parameter_name: binding.parameter_name.clone(),
-                })
-            }
-            (ShapeBindingTarget::Circle, ShapeTransformBinding::Scale(binding)) => {
-                Some(Self::ScaleCircle {
-                    source_index,
-                    center_index: binding.center_index,
-                    factor: binding.factor,
-                })
-            }
-            (ShapeBindingTarget::Circle, ShapeTransformBinding::Reflect(axis)) => {
-                Some(Self::ReflectCircle {
-                    source_index,
-                    line_start_index: axis.line_start_index,
-                    line_end_index: axis.line_end_index,
-                    line_index: axis.line_index,
-                })
-            }
-            _ => None,
+            ShapeBinding::PointPolygon { .. } | ShapeBinding::ArcBoundaryPolygon { .. } => None,
         }
     }
 }

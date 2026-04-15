@@ -189,21 +189,21 @@
         radius: Math.hypot(lineEnd.x - lineStart.x, lineEnd.y - lineStart.y),
       };
     }
-    if (constraint.kind === "translate-circle") {
+    if (constraint.kind === "derived" && constraint.transform.kind === "translate-delta") {
       const source = circleFromConstraint(env, constraint.source, resolveFn);
       if (!source) return null;
       return {
         kind: "circle",
         center: {
-          x: source.center.x + constraint.dx,
-          y: source.center.y + constraint.dy,
+          x: source.center.x + constraint.transform.dx,
+          y: source.center.y + constraint.transform.dy,
         },
         radius: source.radius,
       };
     }
-    if (constraint.kind === "reflect-circle") {
+    if (constraint.kind === "derived" && constraint.transform.kind === "reflect") {
       const source = circleFromConstraint(env, constraint.source, resolveFn);
-      const [lineStart, lineEnd] = reflectionAxisPoints(env, constraint, resolveFn);
+      const [lineStart, lineEnd] = reflectionAxisPoints(env, constraint.transform, resolveFn);
       if (!source || !lineStart || !lineEnd) return null;
       return {
         kind: "circle",
@@ -211,14 +211,14 @@
         radius: source.radius,
       };
     }
-    if (constraint.kind === "scale-circle") {
+    if (constraint.kind === "derived" && constraint.transform.kind === "scale") {
       const source = circleFromConstraint(env, constraint.source, resolveFn);
-      const center = resolveFn(constraint.centerIndex);
+      const center = resolveFn(constraint.transform.centerIndex);
       if (!source || !center) return null;
       return {
         kind: "circle",
-        center: scalePointAround(source.center, center, constraint.factor),
-        radius: source.radius * Math.abs(constraint.factor),
+        center: scalePointAround(source.center, center, constraint.transform.factor),
+        radius: source.radius * Math.abs(constraint.transform.factor),
       };
     }
     return null;

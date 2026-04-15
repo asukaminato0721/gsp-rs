@@ -7,6 +7,7 @@ mod label_button_scene_json;
 mod line_shape_scene_json;
 mod point_scene_json;
 mod scene_json;
+mod transform_json;
 
 use crate::runtime::scene::Scene;
 use std::fs;

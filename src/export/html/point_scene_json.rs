@@ -1,7 +1,8 @@
 use super::function_expr_json::FunctionExprJson;
 use super::scene_json::{DebugSourceJson, PointJson};
+use super::transform_json::TransformJson;
 use crate::runtime::scene::{
-    CircularConstraint, LineConstraint, ScenePointBinding, ScenePointConstraint,
+    AxisBinding, CircularConstraint, LineConstraint, ScenePointBinding, ScenePointConstraint,
 };
 use serde::Serialize;
 use ts_rs::TS;
@@ -56,42 +57,11 @@ enum PointBindingJson {
         parameter_name: String,
         expr: FunctionExprJson,
     },
-    #[serde(rename = "translate")]
-    Translate {
+    #[serde(rename = "derived")]
+    Derived {
         #[serde(rename = "sourceIndex")]
         source_index: usize,
-        #[serde(rename = "vectorStartIndex")]
-        vector_start_index: usize,
-        #[serde(rename = "vectorEndIndex")]
-        vector_end_index: usize,
-    },
-    #[serde(rename = "reflect")]
-    Reflect {
-        #[serde(rename = "sourceIndex")]
-        source_index: usize,
-        #[serde(rename = "lineStartIndex")]
-        line_start_index: usize,
-        #[serde(rename = "lineEndIndex")]
-        line_end_index: usize,
-    },
-    #[serde(rename = "reflect-line-constraint")]
-    ReflectLineConstraint {
-        #[serde(rename = "sourceIndex")]
-        source_index: usize,
-        line: LineConstraintJson,
-    },
-    #[serde(rename = "rotate")]
-    Rotate {
-        #[serde(rename = "sourceIndex")]
-        source_index: usize,
-        #[serde(rename = "centerIndex")]
-        center_index: usize,
-        #[serde(rename = "angleDegrees")]
-        angle_degrees: f64,
-        #[serde(rename = "parameterName")]
-        parameter_name: Option<String>,
-        #[serde(rename = "angleExpr", skip_serializing_if = "Option::is_none")]
-        angle_expr: Option<FunctionExprJson>,
+        transform: PointTransformJson,
     },
     #[serde(rename = "scale-by-ratio")]
     ScaleByRatio {
@@ -105,14 +75,6 @@ enum PointBindingJson {
         ratio_denominator_index: usize,
         #[serde(rename = "ratioNumeratorIndex")]
         ratio_numerator_index: usize,
-    },
-    #[serde(rename = "scale")]
-    Scale {
-        #[serde(rename = "sourceIndex")]
-        source_index: usize,
-        #[serde(rename = "centerIndex")]
-        center_index: usize,
-        factor: f64,
     },
     #[serde(rename = "midpoint")]
     Midpoint {
@@ -167,6 +129,44 @@ enum PointBindingJson {
 }
 
 #[derive(Serialize, TS)]
+#[serde(tag = "kind")]
+enum PointTransformJson {
+    #[serde(rename = "translate")]
+    Translate {
+        #[serde(rename = "vectorStartIndex")]
+        vector_start_index: usize,
+        #[serde(rename = "vectorEndIndex")]
+        vector_end_index: usize,
+    },
+    #[serde(rename = "reflect")]
+    Reflect {
+        #[serde(rename = "lineStartIndex")]
+        line_start_index: usize,
+        #[serde(rename = "lineEndIndex")]
+        line_end_index: usize,
+    },
+    #[serde(rename = "reflect-constraint")]
+    ReflectLineConstraint { line: LineConstraintJson },
+    #[serde(rename = "rotate")]
+    Rotate {
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "angleDegrees")]
+        angle_degrees: f64,
+        #[serde(rename = "parameterName")]
+        parameter_name: Option<String>,
+        #[serde(rename = "angleExpr", skip_serializing_if = "Option::is_none")]
+        angle_expr: Option<FunctionExprJson>,
+    },
+    #[serde(rename = "scale")]
+    Scale {
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        factor: f64,
+    },
+}
+
+#[derive(Serialize, TS)]
 #[serde(rename_all = "kebab-case")]
 enum CoordinateAxisJson {
     Horizontal,
@@ -206,38 +206,44 @@ impl PointBindingJson {
                 source_index,
                 vector_start_index,
                 vector_end_index,
-            } => Self::Translate {
+            } => Self::Derived {
                 source_index: *source_index,
-                vector_start_index: *vector_start_index,
-                vector_end_index: *vector_end_index,
+                transform: PointTransformJson::Translate {
+                    vector_start_index: *vector_start_index,
+                    vector_end_index: *vector_end_index,
+                },
             },
             ScenePointBinding::Reflect {
                 source_index,
                 line_start_index,
                 line_end_index,
-            } => Self::Reflect {
+            } => Self::Derived {
                 source_index: *source_index,
-                line_start_index: *line_start_index,
-                line_end_index: *line_end_index,
+                transform: PointTransformJson::Reflect {
+                    line_start_index: *line_start_index,
+                    line_end_index: *line_end_index,
+                },
             },
-            ScenePointBinding::ReflectLineConstraint { source_index, line } => {
-                Self::ReflectLineConstraint {
-                    source_index: *source_index,
+            ScenePointBinding::ReflectLineConstraint { source_index, line } => Self::Derived {
+                source_index: *source_index,
+                transform: PointTransformJson::ReflectLineConstraint {
                     line: LineConstraintJson::from_constraint(line),
-                }
-            }
+                },
+            },
             ScenePointBinding::Rotate {
                 source_index,
                 center_index,
                 angle_degrees,
                 parameter_name,
                 angle_expr,
-            } => Self::Rotate {
+            } => Self::Derived {
                 source_index: *source_index,
-                center_index: *center_index,
-                angle_degrees: *angle_degrees,
-                parameter_name: parameter_name.clone(),
-                angle_expr: angle_expr.as_ref().map(FunctionExprJson::from_expr),
+                transform: PointTransformJson::Rotate {
+                    center_index: *center_index,
+                    angle_degrees: *angle_degrees,
+                    parameter_name: parameter_name.clone(),
+                    angle_expr: angle_expr.as_ref().map(FunctionExprJson::from_expr),
+                },
             },
             ScenePointBinding::ScaleByRatio {
                 source_index,
@@ -256,10 +262,12 @@ impl PointBindingJson {
                 source_index,
                 center_index,
                 factor,
-            } => Self::Scale {
+            } => Self::Derived {
                 source_index: *source_index,
-                center_index: *center_index,
-                factor: *factor,
+                transform: PointTransformJson::Scale {
+                    center_index: *center_index,
+                    factor: *factor,
+                },
             },
             ScenePointBinding::Midpoint {
                 start_index,
@@ -659,25 +667,9 @@ enum CircularConstraintJson {
         #[serde(rename = "lineEndIndex")]
         line_end_index: usize,
     },
-    TranslateCircle {
+    Derived {
         source: Box<CircularConstraintJson>,
-        dx: f64,
-        dy: f64,
-    },
-    ReflectCircle {
-        source: Box<CircularConstraintJson>,
-        #[serde(rename = "lineStartIndex", skip_serializing_if = "Option::is_none")]
-        line_start_index: Option<usize>,
-        #[serde(rename = "lineEndIndex", skip_serializing_if = "Option::is_none")]
-        line_end_index: Option<usize>,
-        #[serde(rename = "lineIndex", skip_serializing_if = "Option::is_none")]
-        line_index: Option<usize>,
-    },
-    ScaleCircle {
-        source: Box<CircularConstraintJson>,
-        #[serde(rename = "centerIndex")]
-        center_index: usize,
-        factor: f64,
+        transform: TransformJson,
     },
     CircleArc {
         #[serde(rename = "centerIndex")]
@@ -716,30 +708,30 @@ impl CircularConstraintJson {
                 line_start_index: *line_start_index,
                 line_end_index: *line_end_index,
             },
-            CircularConstraint::TranslateCircle { source, dx, dy } => Self::TranslateCircle {
+            CircularConstraint::TranslateCircle { source, dx, dy } => Self::Derived {
                 source: Box::new(Self::from_constraint(source)),
-                dx: *dx,
-                dy: *dy,
+                transform: TransformJson::translate_delta(*dx, *dy),
             },
             CircularConstraint::ReflectCircle {
                 source,
                 line_start_index,
                 line_end_index,
                 line_index,
-            } => Self::ReflectCircle {
+            } => Self::Derived {
                 source: Box::new(Self::from_constraint(source)),
-                line_start_index: *line_start_index,
-                line_end_index: *line_end_index,
-                line_index: *line_index,
+                transform: TransformJson::reflect(&AxisBinding {
+                    line_start_index: *line_start_index,
+                    line_end_index: *line_end_index,
+                    line_index: *line_index,
+                }),
             },
             CircularConstraint::ScaleCircle {
                 source,
                 center_index,
                 factor,
-            } => Self::ScaleCircle {
+            } => Self::Derived {
                 source: Box::new(Self::from_constraint(source)),
-                center_index: *center_index,
-                factor: *factor,
+                transform: TransformJson::scale(*center_index, *factor),
             },
             CircularConstraint::CircleArc {
                 center_index,
