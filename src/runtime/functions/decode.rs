@@ -111,6 +111,15 @@ fn try_decode_numeric_helper_group(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> Option<FunctionExpr> {
+    if !matches!(
+        group.header.kind(),
+        crate::format::GroupKind::DistanceValue
+            | crate::format::GroupKind::PointLineDistanceValue
+            | crate::format::GroupKind::CoordinateXValue
+            | crate::format::GroupKind::CoordinateYValue
+    ) {
+        return None;
+    }
     let path = find_indexed_path(file, group)?;
     let point_map = collect_point_objects(file, groups);
     let anchors = collect_raw_object_anchors(file, groups, &point_map, None);

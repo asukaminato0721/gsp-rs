@@ -144,7 +144,6 @@ struct SceneAnalysis {
     function_plots: Vec<LineShape>,
     has_function_plots: bool,
     has_coordinate_objects: bool,
-    has_iteration_helpers: bool,
     large_non_graph: bool,
     raw_anchors: Vec<Option<PointRecord>>,
 }
@@ -250,9 +249,6 @@ fn analyze_scene(
     let has_coordinate_objects = groups
         .iter()
         .any(|group| group.header.kind().is_coordinate_object());
-    let has_iteration_helpers = groups
-        .iter()
-        .any(|group| group.header.kind().is_iteration_helper());
     let large_non_graph = !graph_mode && file.records.len() > 10_000;
 
     SceneAnalysis {
@@ -265,7 +261,6 @@ fn analyze_scene(
         function_plots,
         has_function_plots,
         has_coordinate_objects,
-        has_iteration_helpers,
         large_non_graph,
         raw_anchors,
     }
