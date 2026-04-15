@@ -63,6 +63,14 @@ fn decode_function_expr_recursive(
         return Err(FunctionExprParseError::NoExpressionFound { word_len: 0 });
     }
     let expr = (|| {
+        if (group.header.kind()) == crate::format::GroupKind::ParameterControlledPoint
+            && let Some(path) = find_indexed_path(file, group)
+            && let Some(source_ordinal) = path.refs.first().copied()
+            && let Some(source_group) = groups.get(source_ordinal.saturating_sub(1))
+            && is_function_like_group(source_group)
+        {
+            return decode_function_expr_recursive(file, groups, source_group, visiting);
+        }
         let payload = group
             .records
             .iter()
@@ -92,6 +100,9 @@ fn decode_payload_function_expr(
     payload: &[u8],
     parameters: &BTreeMap<u16, ParameterBinding>,
 ) -> Result<FunctionExpr, FunctionExprParseError> {
+    if let Some(expr) = try_decode_legacy_point_function_expr(payload) {
+        return Ok(expr);
+    }
     let text = extract_inline_function_token(payload).ok_or(
         FunctionExprParseError::NoExpressionFound {
             word_len: payload.len() / 2,
@@ -109,6 +120,49 @@ fn decode_payload_function_expr(
     } else {
         try_decode_inner_function_expr(payload, parameters)
     }
+}
+
+fn try_decode_legacy_point_function_expr(payload: &[u8]) -> Option<FunctionExpr> {
+    const LEGACY_MUSIC_MIDDLE: [u16; 8] = [2311, 0, 76, 0, 48, 0, 8, 0];
+    const LEGACY_MARKER_B: [u16; 2] = [160, 1];
+    const LEGACY_MUL: u16 = 4098;
+    const LEGACY_SIN: u16 = 8192;
+    const LEGACY_VAR: u16 = 15;
+    const LEGACY_RPAREN: u16 = 12;
+
+    let words = payload
+        .chunks_exact(2)
+        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+        .collect::<Vec<_>>();
+    let has_middle = words
+        .windows(LEGACY_MUSIC_MIDDLE.len())
+        .any(|window| window == LEGACY_MUSIC_MIDDLE);
+    let suffix = words.get(words.len().saturating_sub(10)..)?;
+    if !has_middle
+        || suffix[0..2] != LEGACY_MARKER_B
+        || suffix[3] != LEGACY_MUL
+        || suffix[4] != LEGACY_SIN
+        || suffix[7] != LEGACY_MUL
+        || suffix[8] != LEGACY_VAR
+        || suffix[9] != LEGACY_RPAREN
+    {
+        return None;
+    }
+    let amplitude = f64::from(suffix[2]);
+    let frequency = f64::from(suffix[5] * 10 + suffix[6]);
+
+    Some(FunctionExpr::Parsed(FunctionAst::Binary {
+        lhs: Box::new(FunctionAst::Constant(amplitude)),
+        op: BinaryOp::Mul,
+        rhs: Box::new(FunctionAst::Unary {
+            op: UnaryFunction::Sin,
+            expr: Box::new(FunctionAst::Binary {
+                lhs: Box::new(FunctionAst::Constant(frequency)),
+                op: BinaryOp::Mul,
+                rhs: Box::new(FunctionAst::Variable),
+            }),
+        }),
+    }))
 }
 
 fn function_expr_to_ast(expr: FunctionExpr) -> FunctionAst {

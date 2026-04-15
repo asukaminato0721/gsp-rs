@@ -52,7 +52,8 @@ pub(crate) fn decode_graph_calibration_anchor_raw(
             x: graph.origin_raw.x + graph.raw_per_unit,
             y: graph.origin_raw.y,
         }),
-        crate::format::GroupKind::GraphCalibrationY => Some(PointRecord {
+        crate::format::GroupKind::GraphCalibrationY
+        | crate::format::GroupKind::GraphCalibrationYAlt => Some(PointRecord {
             x: graph.origin_raw.x,
             y: graph.origin_raw.y - graph.raw_per_unit,
         }),

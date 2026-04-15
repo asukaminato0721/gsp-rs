@@ -449,7 +449,8 @@ pub(super) fn collect_labels(
             }
             crate::format::GroupKind::FunctionExpr => {}
             crate::format::GroupKind::GraphCalibrationX
-            | crate::format::GroupKind::GraphCalibrationY => {
+            | crate::format::GroupKind::GraphCalibrationY
+            | crate::format::GroupKind::GraphCalibrationYAlt => {
                 if !include_measurements {
                     continue;
                 }

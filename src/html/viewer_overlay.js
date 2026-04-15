@@ -270,6 +270,9 @@
           })) };
       const buttonTimers = new Map();
       const buttonAnimations = new Map();
+      const buttonAudio = new Map();
+      /** @type {AudioContext | null} */
+      let sharedAudioContext = null;
       /** @type {Map<string, HTMLElement>} */
       const overlayNodeCache = new Map();
       /** @type {{ val: HotspotFlash[] }} */
@@ -445,6 +448,7 @@
         if (!point) {
           return;
         }
+        /** @param {ViewState} view */
         env.updateViewState?.((view) => {
           view.centerX = point.x;
           view.centerY = point.y;
@@ -513,6 +517,156 @@
             buttons[buttonIndex].active = false;
           }
         });
+      }
+
+      async function ensureAudioContext() {
+        const AudioContextCtor = window.AudioContext
+          || /** @type {typeof AudioContext | undefined} */ ((/** @type {any} */ (window)).webkitAudioContext);
+        if (!AudioContextCtor) {
+          return null;
+        }
+        if (!sharedAudioContext) {
+          sharedAudioContext = new AudioContextCtor();
+        }
+        if (sharedAudioContext.state === "suspended") {
+          await sharedAudioContext.resume();
+        }
+        return sharedAudioContext;
+      }
+
+      /**
+       * @param {RuntimeFunctionJson} functionDef
+       * @param {Map<string, number>} parameters
+       */
+      function playbackFrequencyHz(functionDef, parameters) {
+        const named = parameters.get(functionDef.name);
+        if (Number.isFinite(named) && named >= 20 && named <= 2000) {
+          return named;
+        }
+        return 440;
+      }
+
+      /** @param {number} buttonIndex */
+      function stopButtonPlayback(buttonIndex) {
+        const handle = buttonAudio.get(buttonIndex);
+        if (!handle) {
+          return;
+        }
+        buttonAudio.delete(buttonIndex);
+        try {
+          handle.source.onended = null;
+          handle.source.stop();
+        } catch {}
+        updateButtons((buttons) => {
+          if (buttons[buttonIndex]) {
+            buttons[buttonIndex].active = false;
+          }
+        });
+      }
+
+      /**
+       * @param {RuntimeFunctionJson} functionDef
+       * @returns {{ samples: Float32Array, frequencyHz: number } | null}
+       */
+      function buildFunctionAudioSamples(functionDef) {
+        const evaluateExpr = modules.dynamics?.evaluateExpr;
+        const parameterMapForScene = modules.dynamics?.parameterMapForScene;
+        if (typeof evaluateExpr !== "function" || typeof parameterMapForScene !== "function") {
+          return null;
+        }
+        const parameters = parameterMapForScene(env, env.currentScene());
+        const xMin = env.sourceScene?.piMode
+          ? 0
+          : (Number.isFinite(functionDef.domain?.xMin) ? functionDef.domain.xMin : 0);
+        const xMax = env.sourceScene?.piMode
+          ? Math.PI * 2
+          : (Number.isFinite(functionDef.domain?.xMax) ? functionDef.domain.xMax : xMin + 1);
+        const span = Math.max(1e-6, xMax - xMin);
+        const sampleCount = 4096;
+        const samples = new Float32Array(sampleCount);
+        let sum = 0;
+        let maxAbs = 0;
+        for (let index = 0; index < sampleCount; index += 1) {
+          const t = sampleCount <= 1 ? 0 : index / sampleCount;
+          const x = xMin + span * t;
+          const y = evaluateExpr(functionDef.expr, x, parameters);
+          const sample = Number.isFinite(y) ? y : 0;
+          samples[index] = sample;
+          sum += sample;
+        }
+        const mean = sum / sampleCount;
+        for (let index = 0; index < sampleCount; index += 1) {
+          samples[index] -= mean;
+          maxAbs = Math.max(maxAbs, Math.abs(samples[index]));
+        }
+        if (!(maxAbs > 1e-6)) {
+          for (let index = 0; index < sampleCount; index += 1) {
+            const phase = (index / sampleCount) * Math.PI * 2;
+            samples[index] = Math.sin(phase);
+          }
+          maxAbs = 1;
+        }
+        const scale = 0.2 / maxAbs;
+        for (let index = 0; index < sampleCount; index += 1) {
+          samples[index] *= scale;
+        }
+        return {
+          samples,
+          frequencyHz: playbackFrequencyHz(functionDef, parameters),
+        };
+      }
+
+      /**
+       * @param {number} buttonIndex
+       * @param {number} functionKey
+       */
+      async function toggleFunctionPlayback(buttonIndex, functionKey) {
+        if (buttonsState.val[buttonIndex]?.active) {
+          stopButtonPlayback(buttonIndex);
+          return;
+        }
+        const functionDef = (env.currentDynamics().functions || []).find((candidate) =>
+          candidate.key === functionKey && candidate.derivative !== true
+        );
+        if (!functionDef) {
+          return;
+        }
+        const context = await ensureAudioContext();
+        if (!context) {
+          return;
+        }
+        const audio = buildFunctionAudioSamples(functionDef);
+        if (!audio) {
+          return;
+        }
+        const buffer = context.createBuffer(1, audio.samples.length, context.sampleRate);
+        buffer.getChannelData(0).set(audio.samples);
+        const source = context.createBufferSource();
+        source.buffer = buffer;
+        source.loop = true;
+        source.loopStart = 0;
+        source.loopEnd = buffer.duration;
+        const naturalFrequency = context.sampleRate / audio.samples.length;
+        source.playbackRate.value = Math.max(0.01, audio.frequencyHz / naturalFrequency);
+        source.connect(context.destination);
+        buttonAudio.set(buttonIndex, { source });
+        updateButtons((buttons) => {
+          if (buttons[buttonIndex]) {
+            buttons[buttonIndex].active = true;
+          }
+        });
+        source.onended = () => {
+          if (buttonAudio.get(buttonIndex)?.source !== source) {
+            return;
+          }
+          buttonAudio.delete(buttonIndex);
+          updateButtons((buttons) => {
+            if (buttons[buttonIndex]) {
+              buttons[buttonIndex].active = false;
+            }
+          });
+        };
+        source.start();
       }
 
       /**
@@ -696,6 +850,11 @@
           case "focus-point":
             if (typeof action.pointIndex === "number") {
               focusPoint(action.pointIndex);
+            }
+            break;
+          case "play-function":
+            if (typeof action.functionKey === "number") {
+              void toggleFunctionPlayback(buttonIndex, action.functionKey);
             }
             break;
           case "sequence": {

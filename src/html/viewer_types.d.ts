@@ -95,6 +95,8 @@ type RuntimeDynamicsState = {
   functions: FunctionJson[];
 };
 
+type RuntimeFunctionJson = FunctionJson;
+
 type RuntimePointIterationFamily = PointIterationJson;
 type RuntimeLineIterationFamily = LineIterationJson;
 type RuntimePolygonIterationFamily = PolygonIterationJson;
@@ -243,6 +245,7 @@ type ViewerEnv = {
   rgba: (color: [number, number, number, number]) => string;
   updateScene: (mutator: (draft: ViewerSceneData) => void, mode?: "graph" | "none") => void;
   updateDynamics: (mutator: (draft: RuntimeDynamicsState) => void) => void;
+  updateViewState: (mutator: (draft: ViewState) => void) => void;
   syncDynamicScene: () => void;
   isOriginPointIndex: (index: number) => boolean;
   formatNumber: (value: number) => string;

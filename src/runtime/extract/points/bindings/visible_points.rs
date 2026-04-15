@@ -110,7 +110,8 @@ fn build_scene_point_for_group(
             )
         }),
         crate::format::GroupKind::GraphCalibrationX
-        | crate::format::GroupKind::GraphCalibrationY => {
+        | crate::format::GroupKind::GraphCalibrationY
+        | crate::format::GroupKind::GraphCalibrationYAlt => {
             anchors.get(index).cloned().flatten().map(|position| {
                 scene_point(
                     position,

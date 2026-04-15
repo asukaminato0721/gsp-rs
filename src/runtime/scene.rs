@@ -102,6 +102,9 @@ pub(crate) enum ButtonAction {
     FocusPoint {
         point_index: usize,
     },
+    PlayFunction {
+        function_key: usize,
+    },
     Sequence {
         button_indices: Vec<usize>,
         interval_ms: u32,

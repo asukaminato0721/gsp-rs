@@ -60,7 +60,10 @@ macro_rules! define_group_kinds {
             }
 
             pub fn is_graph_calibration(self) -> bool {
-                matches!(self, Self::GraphCalibrationX | Self::GraphCalibrationY)
+                matches!(
+                    self,
+                    Self::GraphCalibrationX | Self::GraphCalibrationY | Self::GraphCalibrationYAlt
+                )
             }
 
             pub fn is_graph_object(self) -> bool {
@@ -69,6 +72,7 @@ macro_rules! define_group_kinds {
                     Self::GraphObject40
                         | Self::GraphCalibrationX
                         | Self::GraphCalibrationY
+                        | Self::GraphCalibrationYAlt
                         | Self::MeasurementLine
                         | Self::AxisLine
                 )
@@ -117,6 +121,7 @@ define_group_kinds! {
     Kind51 = 51,
     GraphCalibrationX = 52,
     GraphCalibrationY = 54,
+    GraphCalibrationYAlt = 55,
     MeasurementLine = 58,
     AxisLine = 61,
     ActionButton = 62,

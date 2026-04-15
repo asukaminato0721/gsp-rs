@@ -104,6 +104,10 @@ enum ButtonActionJson {
         #[serde(rename = "pointIndex")]
         point_index: usize,
     },
+    PlayFunction {
+        #[serde(rename = "functionKey")]
+        function_key: usize,
+    },
     Sequence {
         #[serde(rename = "buttonIndices")]
         button_indices: Vec<usize>,
@@ -184,6 +188,9 @@ impl ButtonActionJson {
             },
             ButtonAction::FocusPoint { point_index } => Self::FocusPoint {
                 point_index: *point_index,
+            },
+            ButtonAction::PlayFunction { function_key } => Self::PlayFunction {
+                function_key: *function_key,
             },
             ButtonAction::Sequence {
                 button_indices,

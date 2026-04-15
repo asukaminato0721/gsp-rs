@@ -33,6 +33,9 @@ enum RawButtonAction {
     FocusPoint {
         point_group_ordinal: usize,
     },
+    PlayFunction {
+        function_group_ordinal: usize,
+    },
     Sequence {
         button_group_ordinals: Vec<usize>,
         interval_ms: u32,
@@ -119,56 +122,62 @@ pub(super) fn collect_buttons(
             .unwrap_or_default();
         let action_kind_lo = read_u16(action_payload, 12);
         let action_kind_hi = read_u16(action_payload, 14);
-        let action = match (action_kind_lo, action_kind_hi) {
-            (2, 0) => {
-                refs.first()
-                    .copied()
-                    .map(|point_group_ordinal| RawButtonAction::AnimatePoint {
-                        point_group_ordinal,
+        let action =
+            match (action_kind_lo, action_kind_hi) {
+                (2, 0) => {
+                    refs.first()
+                        .copied()
+                        .map(|point_group_ordinal| RawButtonAction::AnimatePoint {
+                            point_group_ordinal,
+                        })
+                }
+                (4, 0) => {
+                    refs.first()
+                        .copied()
+                        .map(|point_group_ordinal| RawButtonAction::ScrollPoint {
+                            point_group_ordinal,
+                        })
+                }
+                (4, 1) => {
+                    refs.first()
+                        .copied()
+                        .map(|point_group_ordinal| RawButtonAction::FocusPoint {
+                            point_group_ordinal,
+                        })
+                }
+                (8, 0) => refs.first().copied().map(|function_group_ordinal| {
+                    RawButtonAction::PlayFunction {
+                        function_group_ordinal,
+                    }
+                }),
+                (7, 0) | (7, 1) | (7, 3) | (7, 8) => Some(RawButtonAction::Sequence {
+                    button_group_ordinals: refs,
+                    interval_ms: read_u32(action_payload, 16),
+                }),
+                (3, 0) | (3, 1) | (3, 2) | (3, 3) => {
+                    refs.first()
+                        .copied()
+                        .map(|point_group_ordinal| RawButtonAction::MovePoint {
+                            point_group_ordinal,
+                            target_group_ordinal: refs.get(1).copied(),
+                        })
+                }
+                (0, 7) => Some(RawButtonAction::ToggleVisibility { refs }),
+                (1, 7) => Some(RawButtonAction::ShowHideVisibility { refs }),
+                (1, 0) | (1, 1) | (1, 2) | (1, 3) | (1, 4) | (1, 5) | (1, 6) => {
+                    Some(RawButtonAction::SetVisibility {
+                        refs,
+                        visible: true,
                     })
-            }
-            (4, 0) => {
-                refs.first()
-                    .copied()
-                    .map(|point_group_ordinal| RawButtonAction::ScrollPoint {
-                        point_group_ordinal,
+                }
+                (0, 0) | (0, 1) | (0, 2) | (0, 3) | (0, 4) | (0, 5) | (0, 6) => {
+                    Some(RawButtonAction::SetVisibility {
+                        refs,
+                        visible: false,
                     })
-            }
-            (4, 1) => {
-                refs.first()
-                    .copied()
-                    .map(|point_group_ordinal| RawButtonAction::FocusPoint {
-                        point_group_ordinal,
-                    })
-            }
-            (7, 0) | (7, 1) | (7, 3) | (7, 8) => Some(RawButtonAction::Sequence {
-                button_group_ordinals: refs,
-                interval_ms: read_u32(action_payload, 16),
-            }),
-            (3, 0) | (3, 1) | (3, 2) | (3, 3) => {
-                refs.first()
-                    .copied()
-                    .map(|point_group_ordinal| RawButtonAction::MovePoint {
-                        point_group_ordinal,
-                        target_group_ordinal: refs.get(1).copied(),
-                    })
-            }
-            (0, 7) => Some(RawButtonAction::ToggleVisibility { refs }),
-            (1, 7) => Some(RawButtonAction::ShowHideVisibility { refs }),
-            (1, 0) | (1, 1) | (1, 2) | (1, 3) | (1, 4) | (1, 5) | (1, 6) => {
-                Some(RawButtonAction::SetVisibility {
-                    refs,
-                    visible: true,
-                })
-            }
-            (0, 0) | (0, 1) | (0, 2) | (0, 3) | (0, 4) | (0, 5) | (0, 6) => {
-                Some(RawButtonAction::SetVisibility {
-                    refs,
-                    visible: false,
-                })
-            }
-            _ => None,
-        };
+                }
+                _ => None,
+            };
         let Some(action) = action else {
             continue;
         };
@@ -331,6 +340,11 @@ pub(super) fn collect_buttons(
                         .get(point_group_ordinal.checked_sub(1)?)
                         .copied()
                         .flatten()?,
+                },
+                RawButtonAction::PlayFunction {
+                    function_group_ordinal,
+                } => ButtonAction::PlayFunction {
+                    function_key: function_group_ordinal,
                 },
                 RawButtonAction::Sequence {
                     button_group_ordinals,

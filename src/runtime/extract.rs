@@ -1877,7 +1877,7 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::FunctionExpr => "函数表达式",
         GroupKind::Kind51 => "对象类型 51",
         GroupKind::GraphCalibrationX => "图像校准点 X",
-        GroupKind::GraphCalibrationY => "图像校准点 Y",
+        GroupKind::GraphCalibrationY | GroupKind::GraphCalibrationYAlt => "图像校准点 Y",
         GroupKind::MeasurementLine => "测量线",
         GroupKind::AxisLine => "坐标轴",
         GroupKind::ActionButton => "动作按钮",
@@ -2078,6 +2078,7 @@ fn validate_action_button_payload(file: &GspFile, group: &ObjectGroup) -> Result
         (2, 0)
             | (4, 0)
             | (4, 1)
+            | (8, 0)
             | (7, 0)
             | (7, 1)
             | (7, 3)

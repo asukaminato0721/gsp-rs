@@ -4,6 +4,7 @@ use super::{
     remap_scene_bindings, render_payload_log,
 };
 use crate::format::GspFile;
+use crate::runtime::functions::{BinaryOp, FunctionAst, FunctionExpr, UnaryFunction};
 use crate::runtime::scene::{
     ButtonAction, LabelIterationFamily, LineBinding, LineConstraint, LineIterationFamily,
     PointIterationFamily, PolygonIterationFamily, Scene, SceneButton, ScenePointBinding,
@@ -358,6 +359,109 @@ fn collects_label_visibility_button_without_validation() {
         }
         action => panic!("expected set-visibility action, got {action:?}"),
     }
+}
+
+#[test]
+fn collects_play_function_button_without_validation() {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/向忠作品/正弦波与音乐.gsp")
+    else {
+        return;
+    };
+    let buttons = fixture_buttons_without_validation(&data);
+
+    let play_button = buttons
+        .iter()
+        .find(|button| button.text == "演奏&M")
+        .expect("expected play-function button");
+    match &play_button.action {
+        ButtonAction::PlayFunction { function_key } => {
+            assert_eq!(*function_key, 99);
+        }
+        action => panic!("expected play-function action, got {action:?}"),
+    }
+}
+
+#[test]
+fn payload_log_accepts_music_button_kinds_in_wave_fixture() {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/向忠作品/正弦波与音乐.gsp")
+    else {
+        return;
+    };
+    let log = fixture_log(&data, "tests/Samples/个人专栏/向忠作品/正弦波与音乐.gsp");
+
+    assert!(
+        !log.contains("按钮动作类型 (8, 0) 目前还不支持"),
+        "expected play-function button kind to be accepted"
+    );
+    assert!(
+        !log.contains("按钮动作类型 (1, 6) 目前还不支持"),
+        "expected show-object button kind to be accepted in the wave fixture"
+    );
+}
+
+#[test]
+fn builds_music_fixture_with_play_button() {
+    let scene = fixture_scene(include_bytes!("../../../tests/fixtures/gsp/music.gsp"));
+
+    assert!(scene.graph_mode, "expected graph scene");
+    assert_eq!(scene.buttons.len(), 1, "expected one music button");
+    match &scene.buttons[0].action {
+        ButtonAction::PlayFunction { function_key } => assert_eq!(*function_key, 7),
+        action => panic!("expected play-function action, got {action:?}"),
+    }
+    assert!(
+        !scene.lines.is_empty(),
+        "expected the music fixture to export its function plot"
+    );
+    assert_eq!(scene.functions.len(), 1, "expected one exported function");
+    assert_eq!(scene.functions[0].name, "f");
+    assert_eq!(
+        scene.functions[0].expr,
+        FunctionExpr::Parsed(FunctionAst::Binary {
+            lhs: Box::new(FunctionAst::Constant(5.0)),
+            op: BinaryOp::Mul,
+            rhs: Box::new(FunctionAst::Unary {
+                op: UnaryFunction::Sin,
+                expr: Box::new(FunctionAst::Binary {
+                    lhs: Box::new(FunctionAst::Constant(25.0)),
+                    op: BinaryOp::Mul,
+                    rhs: Box::new(FunctionAst::Variable),
+                }),
+            }),
+        })
+    );
+    assert!(
+        scene
+            .labels
+            .iter()
+            .any(|label| label.text == "f(x) = 5*sin((25*x))"),
+        "expected the music fixture label to expose the recovered legacy function expression"
+    );
+}
+
+#[test]
+fn builds_music1_fixture_with_legacy_frequency_expr() {
+    let Some(data) = fixture_bytes("tests/fixtures/gsp/music1.gsp") else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+
+    assert_eq!(scene.functions.len(), 1, "expected one exported function");
+    assert_eq!(
+        scene.functions[0].expr,
+        FunctionExpr::Parsed(FunctionAst::Binary {
+            lhs: Box::new(FunctionAst::Constant(5.0)),
+            op: BinaryOp::Mul,
+            rhs: Box::new(FunctionAst::Unary {
+                op: UnaryFunction::Sin,
+                expr: Box::new(FunctionAst::Binary {
+                    lhs: Box::new(FunctionAst::Constant(24.0)),
+                    op: BinaryOp::Mul,
+                    rhs: Box::new(FunctionAst::Variable),
+                }),
+            }),
+        })
+    );
 }
 
 #[test]
