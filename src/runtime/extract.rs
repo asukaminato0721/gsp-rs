@@ -19,6 +19,7 @@ mod world;
 
 use self::assemble::{assemble_scene, build_world_data, compute_scene_bounds};
 use self::buttons::collect_buttons;
+pub(crate) use self::decode::decode_measurement_value;
 use crate::format::{
     GroupKind, GspFile, ObjectGroup, PointRecord, Record, collect_strings, decode_c_string,
     decode_indexed_path, decode_point_record, read_f64, read_u16, read_u32, record_name,
@@ -476,18 +477,11 @@ fn collect_scene_labels(
         analysis.graph_mode,
         !analysis.has_function_plots && !analysis.has_coordinate_objects,
     );
-    if analysis.has_coordinate_objects
-        || analysis.has_iteration_helpers
-        || groups
-            .iter()
-            .any(|group| group.header.kind() == crate::format::GroupKind::FunctionExpr)
-    {
-        labels.extend(collect_coordinate_labels(
-            file,
-            groups,
-            &analysis.raw_anchors,
-        ));
-    }
+    labels.extend(collect_coordinate_labels(
+        file,
+        groups,
+        &analysis.raw_anchors,
+    ));
     labels.extend(collect_polygon_parameter_labels(
         file,
         groups,
@@ -1428,6 +1422,28 @@ fn describe_group_in_chinese(
                 describe_generic_group(group, &refs)
             }
         }
+        GroupKind::DistanceValue => {
+            if refs.len() >= 2 {
+                format!(
+                    "{} 与 {} 的距离值",
+                    format_ref(refs[0]),
+                    format_ref(refs[1])
+                )
+            } else {
+                describe_generic_group(group, &refs)
+            }
+        }
+        GroupKind::PointLineDistanceValue => {
+            if refs.len() >= 2 {
+                format!(
+                    "{} 到 {} 的距离值",
+                    format_ref(refs[0]),
+                    format_ref_with_kind(groups, refs[1])
+                )
+            } else {
+                describe_generic_group(group, &refs)
+            }
+        }
         GroupKind::Reflection => {
             if refs.len() >= 2 {
                 format!(
@@ -1443,6 +1459,14 @@ fn describe_group_in_chinese(
             .first()
             .map(|host| format!("以 {} 为边界的圆面", format_ref_with_kind(groups, *host)))
             .unwrap_or_else(|| "圆面".to_string()),
+        GroupKind::CoordinateXValue => refs
+            .first()
+            .map(|host| format!("{} 的图像 x 坐标值", format_ref(*host)))
+            .unwrap_or_else(|| "图像 x 坐标值".to_string()),
+        GroupKind::CoordinateYValue => refs
+            .first()
+            .map(|host| format!("{} 的图像 y 坐标值", format_ref(*host)))
+            .unwrap_or_else(|| "图像 y 坐标值".to_string()),
         GroupKind::ActionButton => describe_action_button_group_in_chinese(file, group, &refs),
         GroupKind::FunctionPlot => describe_function_plot_group_in_chinese(groups, &refs),
         GroupKind::ArcOnCircle => {
@@ -1871,9 +1895,12 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::Scale => "缩放对象",
         GroupKind::RatioScale => "比例缩放对象",
         GroupKind::Reflection => "镜像对象",
+        GroupKind::DistanceValue => "两点距离值",
+        GroupKind::PointLineDistanceValue => "点到直线距离值",
         GroupKind::PointTrace => "点轨迹",
         GroupKind::MeasuredValue => "度量值",
         GroupKind::GraphObject40 => "图像对象",
+        GroupKind::CoordinateReadoutLabel => "坐标读数标签",
         GroupKind::FunctionExpr => "函数表达式",
         GroupKind::Kind51 => "对象类型 51",
         GroupKind::GraphCalibrationX => "图像校准点 X",
@@ -1883,6 +1910,8 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::ActionButton => "动作按钮",
         GroupKind::Line => "直线",
         GroupKind::Ray => "射线",
+        GroupKind::CoordinateXValue => "图像 x 坐标值",
+        GroupKind::CoordinateYValue => "图像 y 坐标值",
         GroupKind::OffsetAnchor => "偏移锚点",
         GroupKind::CoordinatePoint => "坐标点",
         GroupKind::FunctionPlot => "函数图像",
@@ -1933,6 +1962,11 @@ fn group_kind_noun_in_chinese(kind: GroupKind) -> &'static str {
         | GroupKind::CoordinateTraceIntersectionPoint
         | GroupKind::PathPoint
         | GroupKind::Unknown(20) => "点",
+        GroupKind::DistanceValue
+        | GroupKind::PointLineDistanceValue
+        | GroupKind::MeasuredValue
+        | GroupKind::CoordinateXValue
+        | GroupKind::CoordinateYValue => "数值对象",
         GroupKind::Segment | GroupKind::DerivedSegment75 => "线段",
         GroupKind::Line | GroupKind::LineKind5 | GroupKind::LineKind6 | GroupKind::LineKind7 => {
             "直线"
@@ -1941,6 +1975,7 @@ fn group_kind_noun_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::Circle | GroupKind::CircleCenterRadius => "圆",
         GroupKind::Polygon => "多边形",
         GroupKind::ArcOnCircle | GroupKind::CenterArc | GroupKind::ThreePointArc => "圆弧",
+        GroupKind::CoordinateReadoutLabel => "标签",
         GroupKind::ActionButton => "按钮",
         GroupKind::FunctionPlot => "函数图像",
         GroupKind::AngleMarker => "角标记",
@@ -2044,7 +2079,13 @@ fn validate_group_kind(group: &ObjectGroup) -> Result<()> {
     let kind = group.header.kind();
     if matches!(
         kind,
-        GroupKind::Unknown(20) | GroupKind::Unknown(71) | GroupKind::Unknown(122)
+        GroupKind::Unknown(20)
+            | GroupKind::DistanceValue
+            | GroupKind::PointLineDistanceValue
+            | GroupKind::CoordinateXValue
+            | GroupKind::CoordinateYValue
+            | GroupKind::Unknown(71)
+            | GroupKind::Unknown(122)
     ) || is_supported_group_kind(kind)
     {
         return Ok(());

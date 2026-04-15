@@ -465,6 +465,80 @@ fn builds_music1_fixture_with_legacy_frequency_expr() {
 }
 
 #[test]
+fn payload_log_reduces_unnamed1_to_type28_only() {
+    let log = fixture_log(
+        include_bytes!("../../../tests/fixtures/未实现的系统功能/未命名1.gsp"),
+        "tests/fixtures/未实现的系统功能/未命名1.gsp",
+    );
+
+    assert!(
+        log.contains("对象类型 28 还没有实现"),
+        "expected the remaining unsupported helper family to still be reported"
+    );
+    assert!(
+        !log.contains("对象类型 37 还没有实现")
+            && !log.contains("对象类型 38 还没有实现")
+            && !log.contains("对象类型 65 还没有实现"),
+        "expected numeric helper payload kinds 37/38/65 to stop being reported"
+    );
+}
+
+#[test]
+fn builds_xy_coordinate_fixture_with_live_coordinate_label() {
+    let scene = fixture_scene(include_bytes!("../../../tests/fixtures/gsp/xy_cood.gsp"));
+
+    assert!(
+        scene.labels.iter().any(|label| {
+            label.text == "B: (-9.82, 5.93)"
+                && matches!(
+                    &label.binding,
+                    Some(crate::runtime::scene::TextLabelBinding::PointCoordinateValue {
+                        point_name,
+                        ..
+                    }) if point_name == "B"
+                )
+        }),
+        "expected xy_cood fixture to export a live coordinate readout label"
+    );
+    assert!(
+        scene.labels.iter().any(|label| {
+            label.text == "x = -9.82"
+                && matches!(
+                    &label.binding,
+                    Some(TextLabelBinding::PointAxisValue { name, .. }) if name == "x"
+                )
+                && ((label.anchor.x + 9.82).abs() > 0.1 || (label.anchor.y - 5.93).abs() > 0.1)
+        }),
+        "expected xy_cood fixture to export the x coordinate helper label"
+    );
+    assert!(
+        scene.labels.iter().any(|label| {
+            label.text == "y = 5.93"
+                && matches!(
+                    &label.binding,
+                    Some(TextLabelBinding::PointAxisValue { name, .. }) if name == "y"
+                )
+                && ((label.anchor.x + 9.82).abs() > 0.1 || (label.anchor.y - 5.93).abs() > 0.1)
+        }),
+        "expected xy_cood fixture to export the y coordinate helper label"
+    );
+    assert!(
+        scene.labels.iter().any(|label| {
+            label.text == "BC = 8.29 厘米"
+                && matches!(
+                    &label.binding,
+                    Some(TextLabelBinding::PointDistanceValue {
+                        name,
+                        value_suffix,
+                        ..
+                    }) if name == "BC" && value_suffix == " 厘米"
+                )
+        }),
+        "expected xy_cood fixture to export the distance helper label"
+    );
+}
+
+#[test]
 fn collects_sequence_button_variants_without_validation() {
     let Some(data) =
         fixture_bytes("tests/Samples/个人专栏/李忠平作品/金华2010-24题(百年孤独)10.8.9.gsp")

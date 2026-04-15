@@ -9,7 +9,7 @@ mod anchors;
 mod bindings;
 mod constraints;
 
-pub(super) use anchors::{
+pub(crate) use anchors::{
     custom_transform_expression_parameter_map, custom_transform_trace_parameter,
     decode_coordinate_expression_anchor_raw, decode_custom_transform_anchor_raw,
     decode_custom_transform_binding, decode_graph_calibration_anchor_raw,

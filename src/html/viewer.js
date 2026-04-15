@@ -450,6 +450,16 @@
   }
 
   /**
+   * @param {{ binding?: { kind?: string } | null }} label
+   * @returns {boolean}
+   */
+  function usesFixedLabelAnchor(label) {
+    return label.binding?.kind === "point-coordinate-value"
+      || label.binding?.kind === "point-axis-value"
+      || label.binding?.kind === "point-distance-value";
+  }
+
+  /**
    * @param {PointHandle} handle
    * @returns {handle is Extract<PointHandle, { pointIndex: number }>}
    */
@@ -535,6 +545,8 @@
         visible: label.visible !== false,
         anchor: label.screenSpace
           ? { ...label.anchor }
+          : usesFixedLabelAnchor(label)
+            ? { ...label.anchor }
           : label.binding?.kind === "point-expression-value"
             ? attachPointCenteredLabelAnchor(label, hydratedLines)
             : attachLabelAnchor(label.anchor, hydratedLines),

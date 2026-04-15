@@ -143,6 +143,8 @@ pub(crate) fn remap_label_bindings(
             continue;
         };
         if let TextLabelBinding::PointExpressionValue { point_index, .. }
+        | TextLabelBinding::PointCoordinateValue { point_index, .. }
+        | TextLabelBinding::PointAxisValue { point_index, .. }
         | TextLabelBinding::PointBoundExpressionValue { point_index, .. }
         | TextLabelBinding::CustomTransformValue { point_index, .. } = binding
         {
@@ -157,6 +159,25 @@ pub(crate) fn remap_label_bindings(
             TextLabelBinding::ParameterValue { .. }
             | TextLabelBinding::FunctionLabel { .. }
             | TextLabelBinding::ExpressionValue { .. } => continue,
+            TextLabelBinding::PointDistanceValue {
+                left_index,
+                right_index,
+                ..
+            } => {
+                let Some(mapped_left_index) = mapped_index(group_to_point_index, *left_index)
+                else {
+                    label.binding = None;
+                    continue;
+                };
+                let Some(mapped_right_index) = mapped_index(group_to_point_index, *right_index)
+                else {
+                    label.binding = None;
+                    continue;
+                };
+                *left_index = mapped_left_index;
+                *right_index = mapped_right_index;
+                continue;
+            }
             TextLabelBinding::PolygonBoundaryParameter { point_index, .. } => point_index,
             TextLabelBinding::SegmentParameter { point_index, .. } => point_index,
             TextLabelBinding::CircleParameter { point_index, .. } => point_index,
@@ -185,6 +206,8 @@ pub(crate) fn remap_label_bindings(
                 *end_index = mapped_end_index;
                 continue;
             }
+            TextLabelBinding::PointCoordinateValue { .. } => unreachable!(),
+            TextLabelBinding::PointAxisValue { .. } => unreachable!(),
             TextLabelBinding::CustomTransformValue { .. } => unreachable!(),
             TextLabelBinding::PointExpressionValue { .. } => unreachable!(),
             TextLabelBinding::PointBoundExpressionValue { .. } => unreachable!(),

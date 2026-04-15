@@ -2,9 +2,11 @@ use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::format::{GspFile, ObjectGroup, read_f64, read_u16, read_u32};
-use crate::runtime::extract::points::collect_point_objects;
+use crate::runtime::extract::points::{collect_point_objects, resolve_line_like_points_raw};
 use crate::runtime::extract::shapes::collect_raw_object_anchors;
-use crate::runtime::extract::{find_indexed_path, try_decode_parameter_control_value_for_group};
+use crate::runtime::extract::{
+    decode_measurement_value, find_indexed_path, try_decode_parameter_control_value_for_group,
+};
 use crate::runtime::functions::{evaluate_expr_with_parameters, function_expr_label};
 use crate::runtime::payload_consts::{
     EXPR_OP_ADD, EXPR_OP_DIV, EXPR_OP_MUL, EXPR_OP_POW, EXPR_OP_SUB, EXPR_PARAMETER_MASK,
@@ -26,7 +28,12 @@ thread_local! {
 fn is_function_like_group(group: &ObjectGroup) -> bool {
     matches!(
         group.header.kind(),
-        crate::format::GroupKind::FunctionExpr | crate::format::GroupKind::Unknown(71)
+        crate::format::GroupKind::FunctionExpr
+            | crate::format::GroupKind::DistanceValue
+            | crate::format::GroupKind::PointLineDistanceValue
+            | crate::format::GroupKind::CoordinateXValue
+            | crate::format::GroupKind::CoordinateYValue
+            | crate::format::GroupKind::Unknown(71)
     )
 }
 
@@ -63,6 +70,9 @@ fn decode_function_expr_recursive(
         return Err(FunctionExprParseError::NoExpressionFound { word_len: 0 });
     }
     let expr = (|| {
+        if let Some(expr) = try_decode_numeric_helper_group(file, groups, group) {
+            return Ok(expr);
+        }
         if (group.header.kind()) == crate::format::GroupKind::ParameterControlledPoint
             && let Some(path) = find_indexed_path(file, group)
             && let Some(source_ordinal) = path.refs.first().copied()
@@ -94,6 +104,97 @@ fn decode_function_expr_recursive(
     })();
     visiting.remove(&group.ordinal);
     expr
+}
+
+fn try_decode_numeric_helper_group(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<FunctionExpr> {
+    let path = find_indexed_path(file, group)?;
+    let point_map = collect_point_objects(file, groups);
+    let anchors = collect_raw_object_anchors(file, groups, &point_map, None);
+    let graph = detect_graph_context(file, groups, &anchors);
+    let value = match group.header.kind() {
+        crate::format::GroupKind::DistanceValue => {
+            let left = anchors.get(path.refs.first()?.checked_sub(1)?)?.clone()?;
+            let right = anchors.get(path.refs.get(1)?.checked_sub(1)?)?.clone()?;
+            normalize_graph_distance(
+                ((right.x - left.x).powi(2) + (right.y - left.y).powi(2)).sqrt(),
+                graph.as_ref().map(|(_, raw_per_unit)| *raw_per_unit),
+            )
+        }
+        crate::format::GroupKind::PointLineDistanceValue => {
+            let point = anchors.get(path.refs.first()?.checked_sub(1)?)?.clone()?;
+            let line_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+            let (line_start, line_end) =
+                resolve_line_like_points_raw(file, groups, &anchors, line_group)?;
+            normalize_graph_distance(
+                point_line_distance_raw(&point, &line_start, &line_end)?,
+                graph.as_ref().map(|(_, raw_per_unit)| *raw_per_unit),
+            )
+        }
+        crate::format::GroupKind::CoordinateXValue | crate::format::GroupKind::CoordinateYValue => {
+            let point = anchors.get(path.refs.first()?.checked_sub(1)?)?.clone()?;
+            let (origin_raw, raw_per_unit) = graph?;
+            if group.header.kind() == crate::format::GroupKind::CoordinateXValue {
+                (point.x - origin_raw.x) / raw_per_unit
+            } else {
+                (origin_raw.y - point.y) / raw_per_unit
+            }
+        }
+        _ => return None,
+    };
+    value.is_finite().then_some(FunctionExpr::Constant(value))
+}
+
+fn detect_graph_context(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<crate::format::PointRecord>],
+) -> Option<(crate::format::PointRecord, f64)> {
+    let raw_per_unit = groups
+        .iter()
+        .filter(|group| group.header.kind().is_graph_calibration())
+        .find_map(|group| {
+            let record = group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x07d3 && record.length == 12)?;
+            decode_measurement_value(record.payload(&file.data))
+        })?;
+    let origin_raw = groups.iter().find_map(|group| {
+        if !group.header.kind().is_graph_calibration() {
+            return None;
+        }
+        let path = find_indexed_path(file, group)?;
+        path.refs
+            .iter()
+            .find_map(|object_ref| anchors.get(object_ref.saturating_sub(1)).cloned().flatten())
+    })?;
+    Some((origin_raw, raw_per_unit))
+}
+
+fn normalize_graph_distance(raw_distance: f64, raw_per_unit: Option<f64>) -> f64 {
+    match raw_per_unit {
+        Some(scale) if scale.is_finite() && scale > 1e-9 => raw_distance / scale,
+        _ => raw_distance,
+    }
+}
+
+fn point_line_distance_raw(
+    point: &crate::format::PointRecord,
+    line_start: &crate::format::PointRecord,
+    line_end: &crate::format::PointRecord,
+) -> Option<f64> {
+    let dx = line_end.x - line_start.x;
+    let dy = line_end.y - line_start.y;
+    let len_sq = dx * dx + dy * dy;
+    if len_sq <= 1e-9 {
+        return None;
+    }
+    let cross = (point.x - line_start.x) * dy - (point.y - line_start.y) * dx;
+    Some(cross.abs() / len_sq.sqrt())
 }
 
 fn decode_payload_function_expr(

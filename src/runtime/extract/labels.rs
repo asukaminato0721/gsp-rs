@@ -2,9 +2,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::decode::{
     RichTextHotspotRef, decode_label_anchor, decode_label_name, decode_label_name_raw,
-    decode_label_visible, decode_text_anchor, find_indexed_path, is_action_button_group,
-    try_decode_group_label_text, try_decode_group_rich_text, try_decode_link_button_url,
-    try_decode_parameter_control_value_for_group, try_decode_payload_anchor_point,
+    decode_label_visible, decode_measurement_value, decode_text_anchor, find_indexed_path,
+    is_action_button_group, try_decode_group_label_text, try_decode_group_rich_text,
+    try_decode_link_button_url, try_decode_parameter_control_value_for_group,
+    try_decode_payload_anchor_point,
 };
 use super::payload_debug_source;
 use super::points::{
@@ -56,6 +57,7 @@ fn supports_payload_label(kind: crate::format::GroupKind) -> bool {
             | crate::format::GroupKind::IntersectionPoint2
             | crate::format::GroupKind::CircleCircleIntersectionPoint1
             | crate::format::GroupKind::CircleCircleIntersectionPoint2
+            | crate::format::GroupKind::CoordinateReadoutLabel
             | crate::format::GroupKind::Segment
             | crate::format::GroupKind::Ray
             | crate::format::GroupKind::GraphObject40
@@ -257,6 +259,33 @@ fn parameter_anchor_value(
     }
 }
 
+fn detect_graph_context(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+) -> Option<(PointRecord, f64)> {
+    let raw_per_unit = groups
+        .iter()
+        .filter(|group| group.header.kind().is_graph_calibration())
+        .find_map(|group| {
+            let record = group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x07d3 && record.length == 12)?;
+            decode_measurement_value(record.payload(&file.data))
+        })?;
+    let origin_raw = groups.iter().find_map(|group| {
+        if !group.header.kind().is_graph_calibration() {
+            return None;
+        }
+        let path = find_indexed_path(file, group)?;
+        path.refs
+            .iter()
+            .find_map(|object_ref| anchors.get(object_ref.saturating_sub(1)).cloned().flatten())
+    })?;
+    Some((origin_raw, raw_per_unit))
+}
+
 fn payload_function_expr_label(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -346,7 +375,8 @@ pub(super) fn collect_labels(
                         rich_markup,
                         hotspots,
                     } = label_text;
-                    let binding = angle_marker_measurement_binding(file, group, &text);
+                    let binding = angle_marker_measurement_binding(file, group, &text)
+                        .or_else(|| coordinate_readout_binding(file, groups, group));
                     let visible = label_visible_for_group(file, group);
                     let label_index = labels.len();
                     label_group_to_index.insert(group.ordinal, label_index);
@@ -423,7 +453,8 @@ pub(super) fn collect_labels(
                         rich_markup,
                         hotspots,
                     } = label_text;
-                    let binding = angle_marker_measurement_binding(file, group, &text);
+                    let binding = angle_marker_measurement_binding(file, group, &text)
+                        .or_else(|| coordinate_readout_binding(file, groups, group));
                     let visible = label_visible_for_group(file, group);
                     let label_index = labels.len();
                     label_group_to_index.insert(group.ordinal, label_index);
@@ -517,6 +548,58 @@ fn angle_marker_measurement_binding(
     })
 }
 
+fn coordinate_readout_binding(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<TextLabelBinding> {
+    if group.header.kind() != crate::format::GroupKind::CoordinateReadoutLabel {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    let point_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+    let point_name = decode_label_name(file, point_group).unwrap_or_else(|| "点".to_string());
+    Some(TextLabelBinding::PointCoordinateValue {
+        point_index: path.refs.first()?.checked_sub(1)?,
+        point_name,
+    })
+}
+
+fn distance_value_label_name(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    path: &crate::format::IndexedPathRecord,
+) -> String {
+    if let Some(name) = decode_label_name(
+        file,
+        groups
+            .get(
+                path.refs
+                    .first()
+                    .copied()
+                    .unwrap_or_default()
+                    .saturating_sub(1),
+            )
+            .unwrap_or(&groups[0]),
+    ) {
+        if path.refs.len() == 1 {
+            return name;
+        }
+    }
+    if path.refs.len() >= 2 {
+        let left = groups
+            .get(path.refs[0].saturating_sub(1))
+            .and_then(|group| decode_label_name(file, group))
+            .unwrap_or_else(|| "P".to_string());
+        let right = groups
+            .get(path.refs[1].saturating_sub(1))
+            .and_then(|group| decode_label_name(file, group))
+            .unwrap_or_else(|| "Q".to_string());
+        return format!("{left}{right}");
+    }
+    "距离".to_string()
+}
+
 fn measurement_label_decimals(text: &str) -> Option<usize> {
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -604,6 +687,7 @@ pub(super) fn collect_coordinate_labels(
     anchors: &[Option<PointRecord>],
 ) -> Vec<TextLabel> {
     let mut labels = Vec::new();
+    let graph = detect_graph_context(file, groups, anchors);
     for group in groups {
         let kind = group.header.kind();
         let helper_visible = !group.header.is_hidden();
@@ -623,6 +707,96 @@ pub(super) fn collect_coordinate_labels(
                 visible: helper_visible,
                 binding,
                 screen_space: true,
+                debug: Some(payload_debug_source(group)),
+                ..Default::default()
+            });
+        } else if kind == crate::format::GroupKind::DistanceValue
+            && let Some(path) = find_indexed_path(file, group)
+            && path.refs.len() >= 2
+            && let (Some(left), Some(right)) = (
+                anchors
+                    .get(path.refs[0].saturating_sub(1))
+                    .cloned()
+                    .flatten(),
+                anchors
+                    .get(path.refs[1].saturating_sub(1))
+                    .cloned()
+                    .flatten(),
+            )
+        {
+            let name = decode_label_name(file, group)
+                .unwrap_or_else(|| distance_value_label_name(file, groups, &path));
+            let raw_value = ((right.x - left.x).powi(2) + (right.y - left.y).powi(2)).sqrt();
+            let value = if let Some((_, raw_per_unit)) = graph.as_ref() {
+                raw_value / raw_per_unit
+            } else {
+                raw_value
+            };
+            labels.push(TextLabel {
+                anchor: decode_label_anchor(file, group, anchors).unwrap_or(PointRecord {
+                    x: (left.x + right.x) * 0.5,
+                    y: (left.y + right.y) * 0.5,
+                }),
+                text: format!("{name} = {} 厘米", format_number(value)),
+                color: [30, 30, 30, 255],
+                visible: helper_visible,
+                binding: Some(TextLabelBinding::PointDistanceValue {
+                    left_index: path.refs[0].saturating_sub(1),
+                    right_index: path.refs[1].saturating_sub(1),
+                    name,
+                    value_suffix: " 厘米".to_string(),
+                }),
+                screen_space: false,
+                debug: Some(payload_debug_source(group)),
+                ..Default::default()
+            });
+        } else if matches!(
+            kind,
+            crate::format::GroupKind::CoordinateXValue | crate::format::GroupKind::CoordinateYValue
+        ) && let Some(path) = find_indexed_path(file, group)
+            && let Some(point_index) = path
+                .refs
+                .first()
+                .copied()
+                .map(|value| value.saturating_sub(1))
+            && let Some(point) = anchors.get(point_index).cloned().flatten()
+        {
+            let axis = if kind == crate::format::GroupKind::CoordinateYValue {
+                crate::runtime::scene::CoordinateAxis::Vertical
+            } else {
+                crate::runtime::scene::CoordinateAxis::Horizontal
+            };
+            let name = decode_label_name(file, group).unwrap_or_else(|| {
+                if axis == crate::runtime::scene::CoordinateAxis::Vertical {
+                    "y".to_string()
+                } else {
+                    "x".to_string()
+                }
+            });
+            let value = if axis == crate::runtime::scene::CoordinateAxis::Vertical {
+                if let Some((origin, raw_per_unit)) = graph.as_ref() {
+                    (origin.y - point.y) / raw_per_unit
+                } else {
+                    point.y
+                }
+            } else {
+                if let Some((origin, raw_per_unit)) = graph.as_ref() {
+                    (point.x - origin.x) / raw_per_unit
+                } else {
+                    point.x
+                }
+            };
+            labels.push(TextLabel {
+                anchor: decode_label_anchor(file, group, anchors).unwrap_or(point),
+                text: format!("{name} = {}", format_number(value)),
+                color: [30, 30, 30, 255],
+                visible: helper_visible,
+                binding: Some(TextLabelBinding::PointAxisValue {
+                    point_index,
+                    name,
+                    axis,
+                }),
+                screen_space: false,
                 debug: Some(payload_debug_source(group)),
                 ..Default::default()
             });

@@ -377,6 +377,30 @@ enum LabelBindingJson {
         parameter_name: String,
         expr: FunctionExprJson,
     },
+    #[serde(rename = "point-coordinate-value")]
+    PointCoordinateValue {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+        #[serde(rename = "pointName")]
+        point_name: String,
+    },
+    #[serde(rename = "point-distance-value")]
+    PointDistanceValue {
+        #[serde(rename = "leftIndex")]
+        left_index: usize,
+        #[serde(rename = "rightIndex")]
+        right_index: usize,
+        name: String,
+        #[serde(rename = "valueSuffix")]
+        value_suffix: String,
+    },
+    #[serde(rename = "point-axis-value")]
+    PointAxisValue {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+        name: String,
+        axis: AxisJson,
+    },
     #[serde(rename = "polygon-boundary-parameter")]
     PolygonBoundaryParameter {
         #[serde(rename = "pointIndex")]
@@ -478,6 +502,33 @@ impl LabelBindingJson {
                 parameter_name: parameter_name.clone(),
                 expr: FunctionExprJson::from_expr(expr),
             },
+            TextLabelBinding::PointCoordinateValue {
+                point_index,
+                point_name,
+            } => Self::PointCoordinateValue {
+                point_index: *point_index,
+                point_name: point_name.clone(),
+            },
+            TextLabelBinding::PointDistanceValue {
+                left_index,
+                right_index,
+                name,
+                value_suffix,
+            } => Self::PointDistanceValue {
+                left_index: *left_index,
+                right_index: *right_index,
+                name: name.clone(),
+                value_suffix: value_suffix.clone(),
+            },
+            TextLabelBinding::PointAxisValue {
+                point_index,
+                name,
+                axis,
+            } => Self::PointAxisValue {
+                point_index: *point_index,
+                name: name.clone(),
+                axis: AxisJson::from_axis(*axis),
+            },
             TextLabelBinding::PolygonBoundaryParameter {
                 point_index,
                 point_name,
@@ -529,6 +580,22 @@ impl LabelBindingJson {
                 value_scale: *value_scale,
                 value_suffix: value_suffix.clone(),
             },
+        }
+    }
+}
+
+#[derive(Serialize, TS)]
+#[serde(rename_all = "kebab-case")]
+enum AxisJson {
+    Horizontal,
+    Vertical,
+}
+
+impl AxisJson {
+    fn from_axis(axis: crate::runtime::scene::CoordinateAxis) -> Self {
+        match axis {
+            crate::runtime::scene::CoordinateAxis::Horizontal => Self::Horizontal,
+            crate::runtime::scene::CoordinateAxis::Vertical => Self::Vertical,
         }
     }
 }

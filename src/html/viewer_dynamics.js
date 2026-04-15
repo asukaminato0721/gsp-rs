@@ -2352,6 +2352,27 @@
         label.richMarkup = buildPlainTextRichMarkup(label.text);
       }
     },
+    "point-coordinate-value"(env, scene, label) {
+      const point = scene.points[label.binding.pointIndex];
+      if (!point) return;
+      label.text = `${label.binding.pointName}: (${env.formatNumber(point.x)}, ${env.formatNumber(point.y)})`;
+      label.richMarkup = buildPlainTextRichMarkup(label.text);
+    },
+    "point-distance-value"(env, scene, label) {
+      const left = scene.points[label.binding.leftIndex];
+      const right = scene.points[label.binding.rightIndex];
+      if (!left || !right) return;
+      const value = Math.hypot(right.x - left.x, right.y - left.y);
+      label.text = `${label.binding.name} = ${env.formatNumber(value)}${label.binding.valueSuffix || ""}`;
+      label.richMarkup = buildPlainTextRichMarkup(label.text);
+    },
+    "point-axis-value"(env, scene, label) {
+      const point = scene.points[label.binding.pointIndex];
+      if (!point) return;
+      const value = label.binding.axis === "vertical" ? point.y : point.x;
+      label.text = `${label.binding.name} = ${env.formatNumber(value)}`;
+      label.richMarkup = buildPlainTextRichMarkup(label.text);
+    },
     "expression-value"(env, _scene, label, parameters) {
       const value = evaluateExpr(label.binding.expr, 0, parameters);
       const valueText = value !== null

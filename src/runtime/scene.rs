@@ -879,6 +879,21 @@ pub(crate) enum TextLabelBinding {
         parameter_name: String,
         expr: FunctionExpr,
     },
+    PointCoordinateValue {
+        point_index: usize,
+        point_name: String,
+    },
+    PointDistanceValue {
+        left_index: usize,
+        right_index: usize,
+        name: String,
+        value_suffix: String,
+    },
+    PointAxisValue {
+        point_index: usize,
+        name: String,
+        axis: CoordinateAxis,
+    },
     PolygonBoundaryParameter {
         point_index: usize,
         point_name: String,
