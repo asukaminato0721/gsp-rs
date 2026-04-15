@@ -8,6 +8,7 @@ use super::constraints::{
 use super::{
     GspFile, ObjectGroup, PointRecord, TransformBindingKind,
     decode_non_graph_parameter_value_for_group, read_f64, try_decode_parameter_rotation_binding,
+    try_decode_transform_binding,
 };
 use crate::runtime::functions::{
     evaluate_expr_with_parameters, try_decode_function_expr, try_decode_function_plot_descriptor,
@@ -399,7 +400,7 @@ fn line_polyline_intersection(
 }
 
 #[derive(Clone)]
-enum CircularConstraintRaw {
+pub(crate) enum CircularConstraintRaw {
     Circle {
         center: PointRecord,
         radius: f64,
@@ -429,7 +430,7 @@ impl CircularConstraintRaw {
     }
 }
 
-fn resolve_circle_like_raw(
+pub(crate) fn resolve_circle_like_raw(
     file: &GspFile,
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
@@ -506,6 +507,45 @@ fn resolve_circle_like_raw(
                     ccw_span,
                     ccw_mid,
                 }),
+            }
+        }
+        crate::format::GroupKind::Scale => {
+            let binding = try_decode_transform_binding(file, group).ok()?;
+            let center = anchors.get(binding.center_group_index)?.clone()?;
+            let factor = match binding.kind {
+                TransformBindingKind::Scale { factor } => factor,
+                _ => return None,
+            };
+            let source_group = groups.get(binding.source_group_index)?;
+            let source = resolve_circle_like_raw(file, groups, anchors, source_group)?;
+            match source {
+                CircularConstraintRaw::Circle { center: source_center, radius } => {
+                    (radius > 1e-9).then_some(CircularConstraintRaw::Circle {
+                        center: PointRecord {
+                            x: center.x + (source_center.x - center.x) * factor,
+                            y: center.y + (source_center.y - center.y) * factor,
+                        },
+                        radius: radius * factor.abs(),
+                    })
+                }
+                CircularConstraintRaw::ThreePointArc { .. } => None,
+            }
+        }
+        crate::format::GroupKind::Reflection => {
+            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            let line_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+            let source = resolve_circle_like_raw(file, groups, anchors, source_group)?;
+            let (line_start, line_end) =
+                super::resolve_line_like_points_raw(file, groups, anchors, line_group)?;
+            match source {
+                CircularConstraintRaw::Circle { center, radius } => {
+                    let reflected_center = reflect_across_line(&center, &line_start, &line_end)?;
+                    (radius > 1e-9).then_some(CircularConstraintRaw::Circle {
+                        center: reflected_center,
+                        radius,
+                    })
+                }
+                CircularConstraintRaw::ThreePointArc { .. } => None,
             }
         }
         crate::format::GroupKind::CenterArc => {
@@ -1083,6 +1123,12 @@ pub(crate) fn decode_custom_transform_parameter(
                     let tau = std::f64::consts::TAU;
                     Some(((angle % tau) + tau) % tau / tau)
                 }
+                RawPointConstraint::Circular(constraint) => {
+                    let angle = (-constraint.unit_y).atan2(constraint.unit_x);
+                    let tau = std::f64::consts::TAU;
+                    let _ = constraint.circle_group_index;
+                    Some(((angle % tau) + tau) % tau / tau)
+                }
                 RawPointConstraint::CircleArc(constraint) => Some(constraint.t),
                 RawPointConstraint::Arc(constraint) => Some(constraint.t),
             }
@@ -1097,6 +1143,12 @@ pub(crate) fn decode_custom_transform_parameter(
                 RawPointConstraint::Circle(constraint) => {
                     let angle = (-constraint.unit_y).atan2(constraint.unit_x);
                     let tau = std::f64::consts::TAU;
+                    Some(((angle % tau) + tau) % tau / tau)
+                }
+                RawPointConstraint::Circular(constraint) => {
+                    let angle = (-constraint.unit_y).atan2(constraint.unit_x);
+                    let tau = std::f64::consts::TAU;
+                    let _ = constraint.circle_group_index;
                     Some(((angle % tau) + tau) % tau / tau)
                 }
                 RawPointConstraint::CircleArc(constraint) => Some(constraint.t),
@@ -1519,6 +1571,17 @@ pub(crate) fn decode_point_constraint_anchor(
                 constraint.unit_x,
                 constraint.unit_y,
             ))
+        }
+        RawPointConstraint::Circular(constraint) => {
+            let circle_group = groups.get(constraint.circle_group_index)?;
+            let circle = resolve_circle_like_raw(file, groups, anchors, circle_group)?;
+            match circle {
+                CircularConstraintRaw::Circle { center, radius } => Some(PointRecord {
+                    x: center.x + radius * constraint.unit_x,
+                    y: center.y - radius * constraint.unit_y,
+                }),
+                CircularConstraintRaw::ThreePointArc { .. } => None,
+            }
         }
         RawPointConstraint::CircleArc(constraint) => {
             let center = anchors.get(constraint.center_group_index)?.clone()?;

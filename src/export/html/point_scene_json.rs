@@ -379,6 +379,14 @@ enum PointConstraintJson {
         #[serde(rename = "unitY")]
         unit_y: f64,
     },
+    #[serde(rename = "circular-constraint")]
+    CircularConstraint {
+        circle: CircularConstraintJson,
+        #[serde(rename = "unitX")]
+        unit_x: f64,
+        #[serde(rename = "unitY")]
+        unit_y: f64,
+    },
     #[serde(rename = "circle-arc")]
     CircleArc {
         #[serde(rename = "centerIndex")]
@@ -529,6 +537,15 @@ impl PointConstraintJson {
                 unit_x: *unit_x,
                 unit_y: *unit_y,
             }),
+            ScenePointConstraint::OnCircularConstraint {
+                circle,
+                unit_x,
+                unit_y,
+            } => Some(Self::CircularConstraint {
+                circle: CircularConstraintJson::from_constraint(circle),
+                unit_x: *unit_x,
+                unit_y: *unit_y,
+            }),
             ScenePointConstraint::OnCircleArc {
                 center_index,
                 start_index,
@@ -647,6 +664,15 @@ enum CircularConstraintJson {
         dx: f64,
         dy: f64,
     },
+    ReflectCircle {
+        source: Box<CircularConstraintJson>,
+        #[serde(rename = "lineStartIndex", skip_serializing_if = "Option::is_none")]
+        line_start_index: Option<usize>,
+        #[serde(rename = "lineEndIndex", skip_serializing_if = "Option::is_none")]
+        line_end_index: Option<usize>,
+        #[serde(rename = "lineIndex", skip_serializing_if = "Option::is_none")]
+        line_index: Option<usize>,
+    },
     ScaleCircle {
         source: Box<CircularConstraintJson>,
         #[serde(rename = "centerIndex")]
@@ -694,6 +720,17 @@ impl CircularConstraintJson {
                 source: Box::new(Self::from_constraint(source)),
                 dx: *dx,
                 dy: *dy,
+            },
+            CircularConstraint::ReflectCircle {
+                source,
+                line_start_index,
+                line_end_index,
+                line_index,
+            } => Self::ReflectCircle {
+                source: Box::new(Self::from_constraint(source)),
+                line_start_index: *line_start_index,
+                line_end_index: *line_end_index,
+                line_index: *line_index,
             },
             CircularConstraint::ScaleCircle {
                 source,

@@ -250,6 +250,7 @@ fn parameter_anchor_value(
             constraint.unit_x,
             constraint.unit_y,
         ),
+        RawPointConstraint::Circular(_) => None,
         RawPointConstraint::CircleArc(_) => None,
         RawPointConstraint::Arc(_) => None,
         RawPointConstraint::Polyline { .. } => None,

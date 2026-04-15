@@ -317,6 +317,11 @@ pub(crate) enum ScenePointConstraint {
         unit_x: f64,
         unit_y: f64,
     },
+    OnCircularConstraint {
+        circle: CircularConstraint,
+        unit_x: f64,
+        unit_y: f64,
+    },
     OnCircleArc {
         center_index: usize,
         start_index: usize,
@@ -385,6 +390,12 @@ pub(crate) enum CircularConstraint {
         source: Box<CircularConstraint>,
         dx: f64,
         dy: f64,
+    },
+    ReflectCircle {
+        source: Box<CircularConstraint>,
+        line_start_index: Option<usize>,
+        line_end_index: Option<usize>,
+        line_index: Option<usize>,
     },
     ScaleCircle {
         source: Box<CircularConstraint>,

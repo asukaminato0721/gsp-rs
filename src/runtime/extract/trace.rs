@@ -474,6 +474,20 @@ fn resolve_trace_point(
                     y: center.y + radius * unit_y,
                 })
             }
+            ScenePointConstraint::OnCircularConstraint {
+                circle,
+                unit_x,
+                unit_y,
+            } => {
+                let circle = resolve_trace_circular_constraint(points, circle, visiting)?;
+                match circle {
+                    TraceCircularConstraint::Circle { center, radius } => Some(PointRecord {
+                        x: center.x + radius * unit_x,
+                        y: center.y + radius * unit_y,
+                    }),
+                    TraceCircularConstraint::ThreePointArc { .. } => None,
+                }
+            }
             ScenePointConstraint::OnCircleArc {
                 center_index,
                 start_index,
@@ -977,6 +991,32 @@ fn resolve_trace_circular_constraint(
                     ccw_span,
                     ccw_mid,
                 }),
+            }
+        }
+        CircularConstraint::ReflectCircle {
+            source,
+            line_start_index,
+            line_end_index,
+            line_index: _,
+        } => {
+            let source = resolve_trace_circular_constraint(points, source, visiting)?;
+            let line_start = line_start_index
+                .and_then(|index| resolve_trace_point(points, index, visiting));
+            let line_end = line_end_index
+                .and_then(|index| resolve_trace_point(points, index, visiting));
+            let (line_start, line_end) = match (line_start, line_end) {
+                (Some(line_start), Some(line_end)) => (line_start, line_end),
+                _ => return None,
+            };
+            match source {
+                TraceCircularConstraint::Circle { center, radius } => {
+                    let reflected_center = reflect_across_line(&center, &line_start, &line_end)?;
+                    Some(TraceCircularConstraint::Circle {
+                        center: reflected_center,
+                        radius,
+                    })
+                }
+                TraceCircularConstraint::ThreePointArc { .. } => None,
             }
         }
         CircularConstraint::ScaleCircle {

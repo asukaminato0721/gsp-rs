@@ -110,7 +110,7 @@
    * @returns {constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "circle" }>}
    */
   function isCircleConstraint(constraint) {
-    return !!constraint && constraint.kind === "circle";
+    return !!constraint && (constraint.kind === "circle" || constraint.kind === "circular-constraint");
   }
 
   /**
@@ -237,7 +237,14 @@
     circle(env, _draft, point, world) {
       const constraint = point.constraint;
       if (!isCircleConstraint(constraint)) return;
-      const center = env.resolveScenePoint(constraint.centerIndex);
+      const center = constraint.kind === "circle"
+        ? env.resolveScenePoint(constraint.centerIndex)
+        : window.GspViewerModules.scene._circleFromConstraint?.(
+            env,
+            constraint.circle,
+            (index) => env.resolveScenePoint(index),
+          )?.center;
+      if (!center) return;
       const dx = world.x - center.x;
       const dy = world.y - center.y;
       const length = Math.hypot(dx, dy);
@@ -245,6 +252,9 @@
         constraint.unitX = dx / length;
         constraint.unitY = dy / length;
       }
+    },
+    "circular-constraint"(env, draft, point, world) {
+      DRAGGED_POINT_CONSTRAINT_UPDATERS.circle(env, draft, point, world);
     },
     "circle-arc"(env, _draft, point, world) {
       const constraint = point.constraint;

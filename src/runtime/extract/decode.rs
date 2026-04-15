@@ -3,6 +3,7 @@ use crate::format::{
     GroupKind, GspFile, IndexedPathRecord, ObjectGroup, PointRecord, collect_strings,
     decode_indexed_path, read_f64, read_i16, read_u16, read_u32,
 };
+use crate::runtime::geometry::{reflect_across_line, rotate_around, scale_around};
 use crate::runtime::payload_consts::{EXPR_OP_ADD, EXPR_OP_SUB};
 use crate::runtime::payload_consts::{
     RECORD_ACTION_BUTTON_PAYLOAD, RECORD_FUNCTION_EXPR_PAYLOAD, RECORD_INDEXED_PATH_A,
@@ -91,6 +92,64 @@ pub(crate) fn resolve_circle_points_raw(
                     },
                 )
             })
+        }
+        GroupKind::CartesianOffsetPoint | GroupKind::PolarOffsetPoint => {
+            let constraint = super::decode_translated_point_constraint(file, group)?;
+            let source_group = groups.get(constraint.origin_group_index)?;
+            let (center, radius_point) =
+                resolve_circle_points_raw(file, groups, anchors, source_group)?;
+            Some((
+                PointRecord {
+                    x: center.x + constraint.dx,
+                    y: center.y + constraint.dy,
+                },
+                PointRecord {
+                    x: radius_point.x + constraint.dx,
+                    y: radius_point.y + constraint.dy,
+                },
+            ))
+        }
+        GroupKind::ParameterRotation => {
+            let binding = super::try_decode_parameter_rotation_binding(file, groups, group).ok()?;
+            let center = anchors.get(binding.center_group_index)?.clone()?;
+            let radians = match binding.kind {
+                TransformBindingKind::Rotate { angle_degrees, .. } => angle_degrees.to_radians(),
+                _ => return None,
+            };
+            let source_group = groups.get(binding.source_group_index)?;
+            let (source_center, source_radius) =
+                resolve_circle_points_raw(file, groups, anchors, source_group)?;
+            Some((
+                rotate_around(&source_center, &center, radians),
+                rotate_around(&source_radius, &center, radians),
+            ))
+        }
+        GroupKind::Scale => {
+            let binding = try_decode_transform_binding(file, group).ok()?;
+            let center = anchors.get(binding.center_group_index)?.clone()?;
+            let factor = match binding.kind {
+                TransformBindingKind::Scale { factor } => factor,
+                _ => return None,
+            };
+            let source_group = groups.get(binding.source_group_index)?;
+            let (source_center, source_radius) =
+                resolve_circle_points_raw(file, groups, anchors, source_group)?;
+            Some((
+                scale_around(&source_center, &center, factor),
+                scale_around(&source_radius, &center, factor),
+            ))
+        }
+        GroupKind::Reflection => {
+            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            let line_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+            let (source_center, source_radius) =
+                resolve_circle_points_raw(file, groups, anchors, source_group)?;
+            let (line_start, line_end) =
+                super::points::resolve_line_like_points_raw(file, groups, anchors, line_group)?;
+            Some((
+                reflect_across_line(&source_center, &line_start, &line_end)?,
+                reflect_across_line(&source_radius, &line_start, &line_end)?,
+            ))
         }
         _ => None,
     }

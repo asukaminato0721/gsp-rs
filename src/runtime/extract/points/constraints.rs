@@ -4,7 +4,9 @@ use super::super::decode::{
     decode_label_name, find_indexed_path, is_circle_group_kind,
     try_decode_parameter_control_value_for_group,
 };
-use super::anchors::{resolve_circle_point_raw, resolve_polygon_boundary_point_raw};
+use super::anchors::{
+    resolve_circle_like_raw, resolve_circle_point_raw, resolve_polygon_boundary_point_raw,
+};
 use super::{
     decode_non_graph_parameter_value_for_group, editable_non_graph_parameter_name_for_group,
 };
@@ -32,6 +34,12 @@ pub(crate) struct PointOnSegmentConstraint {
 pub(crate) struct PointOnCircleConstraint {
     pub(crate) center_group_index: usize,
     pub(crate) radius_group_index: usize,
+    pub(crate) unit_x: f64,
+    pub(crate) unit_y: f64,
+}
+
+pub(crate) struct PointOnCircularConstraint {
+    pub(crate) circle_group_index: usize,
     pub(crate) unit_x: f64,
     pub(crate) unit_y: f64,
 }
@@ -70,6 +78,7 @@ pub(crate) enum RawPointConstraint {
         t: f64,
     },
     Circle(PointOnCircleConstraint),
+    Circular(PointOnCircularConstraint),
     CircleArc(PointOnCircleArcConstraint),
     Arc(PointOnArcConstraint),
 }
@@ -224,6 +233,7 @@ fn parameter_anchor_value(
             constraint.unit_x,
             constraint.unit_y,
         )?,
+        RawPointConstraint::Circular(_) => return None,
         RawPointConstraint::CircleArc(_) => return None,
         RawPointConstraint::Arc(_) => return None,
         RawPointConstraint::Polyline { .. } => return None,
@@ -1174,7 +1184,16 @@ pub(crate) fn try_decode_point_constraint(
             .map(RawPointConstraint::Segment);
     }
 
-    if matches!(host_kind, crate::format::GroupKind::Circle) {
+    if matches!(host_kind, crate::format::GroupKind::Circle)
+        || (matches!(
+            host_kind,
+            crate::format::GroupKind::Reflection
+                | crate::format::GroupKind::Scale
+                | crate::format::GroupKind::CartesianOffsetPoint
+                | crate::format::GroupKind::PolarOffsetPoint
+                | crate::format::GroupKind::ParameterRotation
+        ) && anchors.is_some_and(|anchors| resolve_circle_like_raw(file, groups, anchors, host_group).is_some()))
+    {
         return try_decode_circle_point_constraint(file, host_group, payload);
     }
 
@@ -1410,6 +1429,20 @@ fn decode_path_point_constraint(
                 unit_y: angle.sin(),
             }))
         }
+        crate::format::GroupKind::Reflection
+        | crate::format::GroupKind::Scale
+        | crate::format::GroupKind::CartesianOffsetPoint
+        | crate::format::GroupKind::PolarOffsetPoint
+        | crate::format::GroupKind::ParameterRotation => {
+            let anchors = anchors?;
+            resolve_circle_like_raw(file, groups, anchors, host_group)?;
+            let angle = std::f64::consts::TAU * wrap_unit_interval(normalized_t);
+            Some(RawPointConstraint::Circular(PointOnCircularConstraint {
+                circle_group_index: host_group.ordinal.checked_sub(1)?,
+                unit_x: angle.cos(),
+                unit_y: angle.sin(),
+            }))
+        }
         crate::format::GroupKind::Polygon => {
             let host_path = find_indexed_path(file, host_group)?;
             if host_path.refs.len() < 2 {
@@ -1499,19 +1532,29 @@ fn try_decode_circle_point_constraint(
     host_group: &ObjectGroup,
     payload: &[u8],
 ) -> Result<RawPointConstraint, PointConstraintDecodeError> {
-    let host_path = find_indexed_path(file, host_group)
-        .filter(|path| path.refs.len() == 2)
-        .ok_or(PointConstraintDecodeError::InvalidCircleHostPath)?;
     let unit_x = read_f64(payload, 4);
     let unit_y = read_f64(payload, 12);
     if !unit_x.is_finite() || !unit_y.is_finite() {
         return Err(PointConstraintDecodeError::NonFiniteCircleUnit);
     }
-    Ok(RawPointConstraint::Circle(PointOnCircleConstraint {
-        center_group_index: host_path.refs[0]
-            .checked_sub(1)
-            .ok_or(PointConstraintDecodeError::InvalidCircleHostPath)?,
-        radius_group_index: host_path.refs[1]
+    if host_group.header.kind() == crate::format::GroupKind::Circle {
+        let host_path = find_indexed_path(file, host_group)
+            .filter(|path| path.refs.len() == 2)
+            .ok_or(PointConstraintDecodeError::InvalidCircleHostPath)?;
+        return Ok(RawPointConstraint::Circle(PointOnCircleConstraint {
+            center_group_index: host_path.refs[0]
+                .checked_sub(1)
+                .ok_or(PointConstraintDecodeError::InvalidCircleHostPath)?,
+            radius_group_index: host_path.refs[1]
+                .checked_sub(1)
+                .ok_or(PointConstraintDecodeError::InvalidCircleHostPath)?,
+            unit_x,
+            unit_y,
+        }));
+    }
+    Ok(RawPointConstraint::Circular(PointOnCircularConstraint {
+        circle_group_index: host_group
+            .ordinal
             .checked_sub(1)
             .ok_or(PointConstraintDecodeError::InvalidCircleHostPath)?,
         unit_x,

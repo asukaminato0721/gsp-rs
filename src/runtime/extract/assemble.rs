@@ -109,6 +109,19 @@ pub(super) fn build_world_data(
                         -*unit_y
                     },
                 },
+                ScenePointConstraint::OnCircularConstraint {
+                    circle,
+                    unit_x,
+                    unit_y,
+                } => ScenePointConstraint::OnCircularConstraint {
+                    circle: clone_circular_constraint(circle),
+                    unit_x: *unit_x,
+                    unit_y: if analysis.graph_ref.is_some() {
+                        *unit_y
+                    } else {
+                        -*unit_y
+                    },
+                },
                 ScenePointConstraint::OnCircleArc {
                     center_index,
                     start_index,
@@ -295,6 +308,17 @@ fn clone_circular_constraint(constraint: &CircularConstraint) -> CircularConstra
                 dy: *dy,
             }
         }
+        CircularConstraint::ReflectCircle {
+            source,
+            line_start_index,
+            line_end_index,
+            line_index,
+        } => CircularConstraint::ReflectCircle {
+            source: Box::new(clone_circular_constraint(source)),
+            line_start_index: *line_start_index,
+            line_end_index: *line_end_index,
+            line_index: *line_index,
+        },
         CircularConstraint::ScaleCircle {
             source,
             center_index,

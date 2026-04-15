@@ -207,6 +207,101 @@
   }
 
   /**
+   * @param {Point} point
+   * @param {Point} lineStart
+   * @param {Point} lineEnd
+   * @returns {Point}
+   */
+  function reflectPointAcrossLine(point, lineStart, lineEnd) {
+    const dx = lineEnd.x - lineStart.x;
+    const dy = lineEnd.y - lineStart.y;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq <= 1e-9) return point;
+    const t = ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / lenSq;
+    const projection = {
+      x: lineStart.x + t * dx,
+      y: lineStart.y + t * dy,
+    };
+    return {
+      x: projection.x * 2 - point.x,
+      y: projection.y * 2 - point.y,
+    };
+  }
+
+  /**
+   * @param {ViewerEnv | null} env
+   * @param {{ lineStartIndex?: number, lineEndIndex?: number, lineIndex?: number }} constraint
+   * @param {(index: number) => Point | null} resolveFn
+   * @returns {[Point | null, Point | null]}
+   */
+  function reflectionAxisPoints(env, constraint, resolveFn) {
+    const scene = typeof env?.currentScene === "function"
+      ? env.currentScene()
+      : env?.sourceScene || null;
+    const resolveFromBinding = (binding) => {
+      if (!binding) return null;
+      if (typeof binding.lineStartIndex === "number" && typeof binding.lineEndIndex === "number") {
+        const lineStart = resolveFn(binding.lineStartIndex);
+        const lineEnd = resolveFn(binding.lineEndIndex);
+        return lineStart && lineEnd ? [lineStart, lineEnd] : null;
+      }
+      if (typeof binding.lineIndex === "number") {
+        const line = scene?.lines?.[binding.lineIndex];
+        return line ? resolveFromLine(line) : null;
+      }
+      return null;
+    };
+    const resolveFromLine = (line) => {
+      if (!line) return null;
+      if (line.points?.length >= 2 && !line.binding) {
+        return [line.points[0], line.points[line.points.length - 1]];
+      }
+      if (line.binding?.kind === "segment") {
+        const start = resolveFn(line.binding.startIndex);
+        const end = resolveFn(line.binding.endIndex);
+        return start && end ? [start, end] : null;
+      }
+      if (line.binding?.kind === "perpendicular-line" || line.binding?.kind === "parallel-line") {
+        const through = resolveFn(line.binding.throughIndex);
+        const hostLine = resolveFromBinding(line.binding);
+        if (!through || !hostLine) return null;
+        const [lineStart, lineEnd] = hostLine;
+        const dx = lineEnd.x - lineStart.x;
+        const dy = lineEnd.y - lineStart.y;
+        const len = Math.hypot(dx, dy);
+        if (len <= 1e-9) return null;
+        return line.binding.kind === "perpendicular-line"
+          ? [through, { x: through.x - dy / len, y: through.y + dx / len }]
+          : [through, { x: through.x + dx / len, y: through.y + dy / len }];
+      }
+      if (line.binding?.kind === "angle-bisector-ray") {
+        const start = resolveFn(line.binding.startIndex);
+        const vertex = resolveFn(line.binding.vertexIndex);
+        const end = resolveFn(line.binding.endIndex);
+        if (!start || !vertex || !end) return null;
+        const direction = angleBisectorDirection(start, vertex, end);
+        return direction ? [vertex, { x: vertex.x + direction.x, y: vertex.y + direction.y }] : null;
+      }
+      if (line.points?.length >= 2) {
+        return [line.points[0], line.points[line.points.length - 1]];
+      }
+      return null;
+    };
+    if (typeof constraint.lineIndex === "number") {
+      const line = scene?.lines?.[constraint.lineIndex];
+      const resolved = resolveFromLine(line);
+      if (resolved) return resolved;
+    }
+    const lineStart = typeof constraint.lineStartIndex === "number"
+      ? resolveFn(constraint.lineStartIndex)
+      : null;
+    const lineEnd = typeof constraint.lineEndIndex === "number"
+      ? resolveFn(constraint.lineEndIndex)
+      : null;
+    return [lineStart, lineEnd];
+  }
+
+  /**
    * @param {ViewerEnv | null} env
    * @param {CircularConstraintJson | null} constraint
    * @param {(index: number) => Point | null} resolveFn
@@ -244,6 +339,16 @@
           x: source.center.x + constraint.dx,
           y: source.center.y + constraint.dy,
         },
+        radius: source.radius,
+      };
+    }
+    if (constraint.kind === "reflect-circle") {
+      const source = circleFromConstraint(env, constraint.source, resolveFn);
+      const [lineStart, lineEnd] = reflectionAxisPoints(env, constraint, resolveFn);
+      if (!source || !lineStart || !lineEnd) return null;
+      return {
+        kind: "circle",
+        center: reflectPointAcrossLine(source.center, lineStart, lineEnd),
         radius: source.radius,
       };
     }
@@ -306,6 +411,14 @@
       const start = resolveFn(constraint.vertexIndices[((constraint.edgeIndex % count) + count) % count]);
       const end = resolveFn(constraint.vertexIndices[(constraint.edgeIndex + 1 + count) % count]);
       return start && end ? lerpPoint(start, end, constraint.t) : null;
+    }
+    if (constraint.kind === "circular-constraint") {
+      const circle = circleFromConstraint(env, constraint.circle, resolveFn);
+      if (!circle) return null;
+      return {
+        x: circle.center.x + circle.radius * constraint.unitX,
+        y: circle.center.y - circle.radius * constraint.unitY,
+      };
     }
     const extra = extraPointConstraintResolvers[constraint.kind];
     return extra ? extra(env, constraint, resolveFn, reference) : null;

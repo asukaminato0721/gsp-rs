@@ -579,6 +579,32 @@ where
         )
 }
 
+fn circle_group_to_index_map(groups: &[ObjectGroup], shapes: &CollectedShapes) -> Vec<Option<usize>> {
+    let mut mapping = vec![None; groups.len()];
+    let mut next_index = 0usize;
+    for circle in shapes
+        .circles
+        .iter()
+        .chain(shapes.carried_iteration_circles.iter())
+        .chain(shapes.translated_circles.iter())
+        .chain(shapes.rotated_circles.iter())
+        .chain(shapes.transformed_circles.iter())
+        .chain(shapes.reflected_circles.iter())
+    {
+        let Some(group_ordinal) = circle.debug.as_ref().map(|debug| debug.group_ordinal) else {
+            next_index += 1;
+            continue;
+        };
+        if let Some(group_index) = group_ordinal.checked_sub(1)
+            && group_index < mapping.len()
+        {
+            mapping[group_index] = Some(next_index);
+        }
+        next_index += 1;
+    }
+    mapping
+}
+
 fn remap_scene_bindings(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -595,8 +621,7 @@ fn remap_scene_bindings(
     let line_group_to_index = group_shape_index_map(groups, |_, group| {
         group.header.kind().is_rendered_line_group()
     });
-    let circle_group_to_index =
-        group_shape_index_map(groups, |_, group| is_circle_group_kind(group.header.kind()));
+    let circle_group_to_index = circle_group_to_index_map(groups, shapes);
     remap_circle_bindings(
         &mut shapes.circles,
         group_to_point_index,
@@ -887,6 +912,7 @@ fn resolve_payload_color_parameter_value(
             constraint.unit_x,
             constraint.unit_y,
         ),
+        RawPointConstraint::Circular(_) => None,
         RawPointConstraint::CircleArc(constraint) => Some(constraint.t),
         RawPointConstraint::Arc(constraint) => Some(constraint.t),
         RawPointConstraint::Polyline { t, .. } => Some(t),
@@ -2276,6 +2302,12 @@ fn write_group_detail(output: &mut String, file: &GspFile, group: &ObjectGroup, 
                         "circle center=#{} radius=#{} unit=({:.6}, {:.6})",
                         constraint.center_group_index + 1,
                         constraint.radius_group_index + 1,
+                        constraint.unit_x,
+                        constraint.unit_y
+                    ),
+                    self::points::RawPointConstraint::Circular(constraint) => format!(
+                        "circle-like host=#{} unit=({:.6}, {:.6})",
+                        constraint.circle_group_index + 1,
                         constraint.unit_x,
                         constraint.unit_y
                     ),

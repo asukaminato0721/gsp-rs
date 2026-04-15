@@ -70,6 +70,18 @@ fn build_group_to_point_index(included_groups: &[bool]) -> Vec<Option<usize>> {
     group_to_point_index
 }
 
+fn build_group_to_line_index(groups: &[ObjectGroup]) -> Vec<Option<usize>> {
+    let mut group_to_line_index = vec![None; groups.len()];
+    let mut line_index = 0usize;
+    for (group_index, group) in groups.iter().enumerate() {
+        if group.header.kind().is_rendered_line_group() {
+            group_to_line_index[group_index] = Some(line_index);
+            line_index += 1;
+        }
+    }
+    group_to_line_index
+}
+
 fn build_scene_point_for_group(
     index: usize,
     group: &ObjectGroup,
@@ -152,6 +164,8 @@ fn build_scene_point_for_group(
                 try_decode_point_constraint(file, groups, group, Some(anchors), graph).ok()?;
             scene_point_from_constraint(
                 index,
+                file,
+                groups,
                 group_color(group),
                 anchors,
                 group_to_point_index,
@@ -165,6 +179,8 @@ fn build_scene_point_for_group(
             let parameter_point =
                 try_decode_parameter_controlled_point(file, groups, group, anchors).ok()?;
             scene_point_from_parameter_controlled(
+                file,
+                groups,
                 group_to_point_index,
                 parameter_point,
                 group_color(group),
@@ -367,6 +383,8 @@ fn build_scene_point_for_group_checked(
             };
             Ok(scene_point_from_constraint(
                 index,
+                file,
+                groups,
                 group_color(group),
                 anchors,
                 group_to_point_index,
@@ -506,6 +524,8 @@ fn build_scene_point_for_group_checked(
                 return Ok(None);
             };
             Ok(scene_point_from_parameter_controlled(
+                file,
+                groups,
                 group_to_point_index,
                 parameter_point,
                 group_color(group),
@@ -679,6 +699,8 @@ fn is_orphan_duplicate_point_helper(
 
 fn scene_point_from_constraint(
     index: usize,
+    file: &GspFile,
+    groups: &[ObjectGroup],
     color: [u8; 4],
     anchors: &[Option<PointRecord>],
     group_to_point_index: &[Option<usize>],
@@ -777,6 +799,23 @@ fn scene_point_from_constraint(
                 None,
             ))
         }
+        RawPointConstraint::Circular(constraint) => {
+            let circle_group = groups.get(constraint.circle_group_index)?;
+            let circle =
+                resolve_circular_constraint(file, groups, circle_group, group_to_point_index)?;
+            Some(scene_point(
+                position,
+                color,
+                visible,
+                draggable,
+                ScenePointConstraint::OnCircularConstraint {
+                    circle,
+                    unit_x: constraint.unit_x,
+                    unit_y: constraint.unit_y,
+                },
+                None,
+            ))
+        }
         RawPointConstraint::CircleArc(constraint) => {
             let center_index =
                 mapped_point_index(group_to_point_index, constraint.center_group_index)?;
@@ -820,6 +859,8 @@ fn scene_point_from_constraint(
 }
 
 fn scene_point_from_parameter_controlled(
+    file: &GspFile,
+    groups: &[ObjectGroup],
     group_to_point_index: &[Option<usize>],
     parameter_point: ParameterControlledPoint,
     color: [u8; 4],
@@ -892,6 +933,23 @@ fn scene_point_from_parameter_controlled(
                 ScenePointConstraint::OnCircle {
                     center_index,
                     radius_index,
+                    unit_x: constraint.unit_x,
+                    unit_y: constraint.unit_y,
+                },
+                binding,
+            ))
+        }
+        RawPointConstraint::Circular(constraint) => {
+            let circle_group = groups.get(constraint.circle_group_index)?;
+            let circle =
+                resolve_circular_constraint(file, groups, circle_group, group_to_point_index)?;
+            Some(scene_point(
+                parameter_point.position,
+                color,
+                visible,
+                true,
+                ScenePointConstraint::OnCircularConstraint {
+                    circle,
                     unit_x: constraint.unit_x,
                     unit_y: constraint.unit_y,
                 },
@@ -1529,6 +1587,19 @@ fn resolve_circular_constraint(
                 source: Box::new(source),
                 dx: constraint.dx,
                 dy: constraint.dy,
+            })
+        }
+        crate::format::GroupKind::Reflection => {
+            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            let source =
+                resolve_circular_constraint(file, groups, source_group, group_to_point_index)?;
+            let line_group_index = path.refs.get(1)?.checked_sub(1)?;
+            let group_to_line_index = build_group_to_line_index(groups);
+            Some(CircularConstraint::ReflectCircle {
+                source: Box::new(source),
+                line_start_index: None,
+                line_end_index: None,
+                line_index: group_to_line_index.get(line_group_index).copied().flatten(),
             })
         }
         crate::format::GroupKind::Scale => {

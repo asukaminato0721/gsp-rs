@@ -1042,7 +1042,7 @@
   function circleParameterFromPoint(scene, pointIndex) {
     const point = scene.points[pointIndex];
     const constraint = point?.constraint;
-    if (constraint?.kind !== "circle") {
+    if (constraint?.kind !== "circle" && constraint?.kind !== "circular-constraint") {
       return null;
     }
     const pointAngle = Math.atan2(-constraint.unitY, constraint.unitX);
@@ -1181,6 +1181,12 @@
       point.constraint.unitX = Math.cos(angle);
       point.constraint.unitY = -Math.sin(angle);
     },
+    "circular-constraint"(point, _scene, value) {
+      const wrapped = wrapUnitInterval(value);
+      const angle = Math.PI * 2 * wrapped;
+      point.constraint.unitX = Math.cos(angle);
+      point.constraint.unitY = -Math.sin(angle);
+    },
     "circle-arc"(point, _scene, value) {
       point.constraint.t = wrapUnitInterval(value);
     },
@@ -1313,7 +1319,7 @@
    */
   function applyTraceValueToPoint(point, scene, value, xMin, xMax) {
     if (!point?.constraint) return;
-    if (point.constraint.kind === "circle") {
+    if (point.constraint.kind === "circle" || point.constraint.kind === "circular-constraint") {
       point.constraint.unitX = Math.cos(value);
       point.constraint.unitY = -Math.sin(value);
       return;
