@@ -331,6 +331,8 @@
   scene.pointOnThreePointArc = pointOnThreePointArc;
   scene.projectToThreePointArc = projectToThreePointArc;
   scene.sampleArcBoundaryPoints = sampleArcBoundaryPoints;
+  scene._threePointArcGeometry = threePointArcGeometry;
+  scene._pointOnThreePointArcComplement = pointOnThreePointArcComplement;
   scene._circleFromConstraint = circleFromConstraint;
   scene._pointLiesOnCircularConstraint = pointLiesOnCircularConstraint;
 })();

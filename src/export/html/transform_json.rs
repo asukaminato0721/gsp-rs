@@ -72,10 +72,9 @@ impl TransformJson {
                 vector_start_index: *vector_start_index,
                 vector_end_index: *vector_end_index,
             },
-            ShapeTransformBinding::TranslateDelta { dx, dy } => Self::TranslateDelta {
-                dx: *dx,
-                dy: *dy,
-            },
+            ShapeTransformBinding::TranslateDelta { dx, dy } => {
+                Self::TranslateDelta { dx: *dx, dy: *dy }
+            }
             ShapeTransformBinding::Rotate(binding) => Self::Rotate {
                 center_index: binding.center_index,
                 angle_degrees: binding.angle_degrees,

@@ -4,6 +4,8 @@
   "packageManager": "pnpm@10",
   "scripts": {
     "generate:viewer-types": "cargo run --bin generate_viewer_types",
+    "generate:geometry-parity": "cargo run --bin generate_geometry_parity_vectors",
+    "test:geometry-parity": "npm run generate:geometry-parity && node tests/geometry-parity.mjs",
     "typecheck:js": "tsc -p tsconfig.json --noEmit",
     "typecheck:js:interactive": "tsc -p tsconfig.interaction.json --noEmit"
   },

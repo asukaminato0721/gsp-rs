@@ -906,7 +906,9 @@ mod tests {
         assert!(html.contains("\"kind\":\"derived\""));
         assert!(html.contains("\"kind\":\"angle-marker\""));
         assert!(html.contains("\"kind\":\"segment-marker\""));
-        assert!(html.contains("\"transform\":{\"kind\":\"translate\",\"vectorStartIndex\":0,\"vectorEndIndex\":3}"));
+        assert!(html.contains(
+            "\"transform\":{\"kind\":\"translate\",\"vectorStartIndex\":0,\"vectorEndIndex\":3}"
+        ));
         assert!(html.contains("\"text\":\"B'\""));
         assert!(html.contains("\"text\":\"C'\""));
     }
@@ -1180,21 +1182,17 @@ mod tests {
             .as_array()
             .expect("scene points should be an array");
         assert!(
-            points
-                .iter()
-                .any(|point| {
-                    point["binding"]["kind"].as_str() == Some("derived")
-                        && point["binding"]["transform"]["kind"].as_str() == Some("rotate")
-                }),
+            points.iter().any(|point| {
+                point["binding"]["kind"].as_str() == Some("derived")
+                    && point["binding"]["transform"]["kind"].as_str() == Some("rotate")
+            }),
             "expected the rotated payload point to keep its live binding"
         );
         assert!(
-            points
-                .iter()
-                .any(|point| {
-                    point["binding"]["kind"].as_str() == Some("derived")
-                        && point["binding"]["transform"]["kind"].as_str() == Some("scale")
-                }),
+            points.iter().any(|point| {
+                point["binding"]["kind"].as_str() == Some("derived")
+                    && point["binding"]["transform"]["kind"].as_str() == Some("scale")
+            }),
             "expected the scaled payload point to keep its live binding"
         );
 
@@ -1589,12 +1587,10 @@ mod tests {
             "expected both payload circles plus the scaled circle"
         );
         assert!(
-            circles
-                .iter()
-                .any(|circle| {
-                    circle["binding"]["kind"].as_str() == Some("derived")
-                        && circle["binding"]["transform"]["kind"].as_str() == Some("scale")
-                }),
+            circles.iter().any(|circle| {
+                circle["binding"]["kind"].as_str() == Some("derived")
+                    && circle["binding"]["transform"]["kind"].as_str() == Some("scale")
+            }),
             "expected the scaled payload circle to keep its live binding"
         );
 
@@ -1641,21 +1637,17 @@ mod tests {
             "expected original, reflected, and scaled-reflected circles"
         );
         assert!(
-            circles
-                .iter()
-                .any(|circle| {
-                    circle["binding"]["kind"].as_str() == Some("derived")
-                        && circle["binding"]["transform"]["kind"].as_str() == Some("reflect")
-                }),
+            circles.iter().any(|circle| {
+                circle["binding"]["kind"].as_str() == Some("derived")
+                    && circle["binding"]["transform"]["kind"].as_str() == Some("reflect")
+            }),
             "expected the reflected payload circle to keep its live binding"
         );
         assert!(
-            circles
-                .iter()
-                .any(|circle| {
-                    circle["binding"]["kind"].as_str() == Some("derived")
-                        && circle["binding"]["transform"]["kind"].as_str() == Some("scale")
-                }),
+            circles.iter().any(|circle| {
+                circle["binding"]["kind"].as_str() == Some("derived")
+                    && circle["binding"]["transform"]["kind"].as_str() == Some("scale")
+            }),
             "expected the scaled payload circle to keep its live binding"
         );
 
@@ -1689,12 +1681,10 @@ mod tests {
             .expect("scene circles should be an array");
         assert_eq!(circles.len(), 2, "expected original and translated circles");
         assert!(
-            circles
-                .iter()
-                .any(|circle| {
-                    circle["binding"]["kind"].as_str() == Some("derived")
-                        && circle["binding"]["transform"]["kind"].as_str() == Some("translate-delta")
-                }),
+            circles.iter().any(|circle| {
+                circle["binding"]["kind"].as_str() == Some("derived")
+                    && circle["binding"]["transform"]["kind"].as_str() == Some("translate-delta")
+            }),
             "expected the translated payload circle to keep its live binding"
         );
 

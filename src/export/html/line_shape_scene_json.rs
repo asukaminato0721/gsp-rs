@@ -561,7 +561,9 @@ impl ShapeBindingJson {
                 source_index: *source_index,
                 transform: TransformJson::from_shape_transform(transform),
             }),
-            ShapeBinding::PointRadiusCircle { .. } | ShapeBinding::SegmentRadiusCircle { .. } => None,
+            ShapeBinding::PointRadiusCircle { .. } | ShapeBinding::SegmentRadiusCircle { .. } => {
+                None
+            }
         }
     }
 

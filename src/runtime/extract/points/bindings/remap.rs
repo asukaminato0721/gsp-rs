@@ -62,7 +62,8 @@ fn remap_line_transform(
             true
         }
         LineTransformBinding::Rotate(binding) => {
-            let Some(mapped_center_index) = mapped_index(group_to_point_index, binding.center_index)
+            let Some(mapped_center_index) =
+                mapped_index(group_to_point_index, binding.center_index)
             else {
                 return false;
             };
@@ -70,7 +71,8 @@ fn remap_line_transform(
             true
         }
         LineTransformBinding::Scale(binding) => {
-            let Some(mapped_center_index) = mapped_index(group_to_point_index, binding.center_index)
+            let Some(mapped_center_index) =
+                mapped_index(group_to_point_index, binding.center_index)
             else {
                 return false;
             };
@@ -109,7 +111,8 @@ fn remap_shape_transform(
             true
         }
         ShapeTransformBinding::Rotate(binding) => {
-            let Some(mapped_center_index) = mapped_index(group_to_point_index, binding.center_index)
+            let Some(mapped_center_index) =
+                mapped_index(group_to_point_index, binding.center_index)
             else {
                 return false;
             };
@@ -117,7 +120,8 @@ fn remap_shape_transform(
             true
         }
         ShapeTransformBinding::Scale(binding) => {
-            let Some(mapped_center_index) = mapped_index(group_to_point_index, binding.center_index)
+            let Some(mapped_center_index) =
+                mapped_index(group_to_point_index, binding.center_index)
             else {
                 return false;
             };

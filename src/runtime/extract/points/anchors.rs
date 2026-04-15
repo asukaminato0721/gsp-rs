@@ -519,15 +519,16 @@ pub(crate) fn resolve_circle_like_raw(
             let source_group = groups.get(binding.source_group_index)?;
             let source = resolve_circle_like_raw(file, groups, anchors, source_group)?;
             match source {
-                CircularConstraintRaw::Circle { center: source_center, radius } => {
-                    (radius > 1e-9).then_some(CircularConstraintRaw::Circle {
-                        center: PointRecord {
-                            x: center.x + (source_center.x - center.x) * factor,
-                            y: center.y + (source_center.y - center.y) * factor,
-                        },
-                        radius: radius * factor.abs(),
-                    })
-                }
+                CircularConstraintRaw::Circle {
+                    center: source_center,
+                    radius,
+                } => (radius > 1e-9).then_some(CircularConstraintRaw::Circle {
+                    center: PointRecord {
+                        x: center.x + (source_center.x - center.x) * factor,
+                        y: center.y + (source_center.y - center.y) * factor,
+                    },
+                    radius: radius * factor.abs(),
+                }),
                 CircularConstraintRaw::ThreePointArc { .. } => None,
             }
         }

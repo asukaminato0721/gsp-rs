@@ -1,0 +1,1566 @@
+{
+  "version": 1,
+  "lerpPoint": [
+    {
+      "name": "midpoint-origin",
+      "start": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "end": {
+        "x": 10.0,
+        "y": -10.0
+      },
+      "t": 0.5,
+      "expected": {
+        "x": 5.0,
+        "y": -5.0
+      }
+    },
+    {
+      "name": "outside-segment-left",
+      "start": {
+        "x": -3.0,
+        "y": 7.0
+      },
+      "end": {
+        "x": 9.0,
+        "y": 1.0
+      },
+      "t": -0.25,
+      "expected": {
+        "x": -6.0,
+        "y": 8.5
+      }
+    },
+    {
+      "name": "outside-segment-right",
+      "start": {
+        "x": 2.0,
+        "y": -4.0
+      },
+      "end": {
+        "x": 8.0,
+        "y": 14.0
+      },
+      "t": 1.25,
+      "expected": {
+        "x": 9.5,
+        "y": 18.5
+      }
+    }
+  ],
+  "rotateAround": [
+    {
+      "name": "quarter-turn-origin",
+      "point": {
+        "x": 3.0,
+        "y": 1.0
+      },
+      "center": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "radians": 1.5707963267948966,
+      "expected": {
+        "x": 1.0000000000000002,
+        "y": -3.0
+      }
+    },
+    {
+      "name": "half-turn-offset-center",
+      "point": {
+        "x": 4.0,
+        "y": -2.0
+      },
+      "center": {
+        "x": 1.0,
+        "y": 3.0
+      },
+      "radians": 3.141592653589793,
+      "expected": {
+        "x": -2.0000000000000004,
+        "y": 8.0
+      }
+    },
+    {
+      "name": "negative-sixty",
+      "point": {
+        "x": -2.0,
+        "y": 5.0
+      },
+      "center": {
+        "x": 2.5,
+        "y": -1.5
+      },
+      "radians": -1.0471975511965976,
+      "expected": {
+        "x": -5.379165124598851,
+        "y": -2.147114317029973
+      }
+    }
+  ],
+  "scaleAround": [
+    {
+      "name": "double-from-origin",
+      "point": {
+        "x": 2.0,
+        "y": -3.0
+      },
+      "center": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "factor": 2.0,
+      "expected": {
+        "x": 4.0,
+        "y": -6.0
+      }
+    },
+    {
+      "name": "collapse-to-center",
+      "point": {
+        "x": 8.0,
+        "y": 4.0
+      },
+      "center": {
+        "x": 1.0,
+        "y": -2.0
+      },
+      "factor": 0.0,
+      "expected": {
+        "x": 1.0,
+        "y": -2.0
+      }
+    },
+    {
+      "name": "mirror-through-center",
+      "point": {
+        "x": -4.0,
+        "y": 7.0
+      },
+      "center": {
+        "x": 3.0,
+        "y": -1.0
+      },
+      "factor": -1.0,
+      "expected": {
+        "x": 10.0,
+        "y": -9.0
+      }
+    }
+  ],
+  "reflectAcrossLine": [
+    {
+      "name": "horizontal-axis",
+      "point": {
+        "x": 2.0,
+        "y": 3.0
+      },
+      "lineStart": {
+        "x": -5.0,
+        "y": 0.0
+      },
+      "lineEnd": {
+        "x": 5.0,
+        "y": 0.0
+      },
+      "expected": {
+        "x": 2.0,
+        "y": -3.0
+      }
+    },
+    {
+      "name": "vertical-offset-axis",
+      "point": {
+        "x": 4.0,
+        "y": -2.0
+      },
+      "lineStart": {
+        "x": 1.0,
+        "y": -5.0
+      },
+      "lineEnd": {
+        "x": 1.0,
+        "y": 5.0
+      },
+      "expected": {
+        "x": -2.0,
+        "y": -2.0
+      }
+    },
+    {
+      "name": "diagonal-axis",
+      "point": {
+        "x": 3.0,
+        "y": 1.0
+      },
+      "lineStart": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "lineEnd": {
+        "x": 5.0,
+        "y": 5.0
+      },
+      "expected": {
+        "x": 1.0,
+        "y": 3.0
+      }
+    },
+    {
+      "name": "degenerate-axis",
+      "point": {
+        "x": 7.0,
+        "y": -4.0
+      },
+      "lineStart": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "lineEnd": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "expected": null
+    }
+  ],
+  "clipLineToBounds": [
+    {
+      "name": "diagonal-across-box",
+      "start": {
+        "x": -10.0,
+        "y": -10.0
+      },
+      "end": {
+        "x": 10.0,
+        "y": 10.0
+      },
+      "bounds": {
+        "minX": -5.0,
+        "maxX": 5.0,
+        "minY": -3.0,
+        "maxY": 3.0
+      },
+      "expected": [
+        {
+          "x": -3.0,
+          "y": -3.0
+        },
+        {
+          "x": 3.0,
+          "y": 3.0
+        }
+      ]
+    },
+    {
+      "name": "vertical-through-box",
+      "start": {
+        "x": 1.0,
+        "y": -10.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 10.0
+      },
+      "bounds": {
+        "minX": -5.0,
+        "maxX": 5.0,
+        "minY": -3.0,
+        "maxY": 3.0
+      },
+      "expected": [
+        {
+          "x": 1.0,
+          "y": -3.0
+        },
+        {
+          "x": 1.0,
+          "y": 3.0
+        }
+      ]
+    },
+    {
+      "name": "outside-parallel-no-hit",
+      "start": {
+        "x": 10.0,
+        "y": 0.0
+      },
+      "end": {
+        "x": 10.0,
+        "y": 1.0
+      },
+      "bounds": {
+        "minX": -5.0,
+        "maxX": 5.0,
+        "minY": -3.0,
+        "maxY": 3.0
+      },
+      "expected": null
+    },
+    {
+      "name": "degenerate-line",
+      "start": {
+        "x": 2.0,
+        "y": 2.0
+      },
+      "end": {
+        "x": 2.0,
+        "y": 2.0
+      },
+      "bounds": {
+        "minX": -5.0,
+        "maxX": 5.0,
+        "minY": -3.0,
+        "maxY": 3.0
+      },
+      "expected": null
+    }
+  ],
+  "clipRayToBounds": [
+    {
+      "name": "inside-to-right",
+      "start": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "bounds": {
+        "minX": -5.0,
+        "maxX": 5.0,
+        "minY": -3.0,
+        "maxY": 3.0
+      },
+      "expected": [
+        {
+          "x": 0.0,
+          "y": 0.0
+        },
+        {
+          "x": 5.0,
+          "y": 0.0
+        }
+      ]
+    },
+    {
+      "name": "outside-left-through-box",
+      "start": {
+        "x": -10.0,
+        "y": 0.0
+      },
+      "end": {
+        "x": -9.0,
+        "y": 0.0
+      },
+      "bounds": {
+        "minX": -5.0,
+        "maxX": 5.0,
+        "minY": -3.0,
+        "maxY": 3.0
+      },
+      "expected": [
+        {
+          "x": -5.0,
+          "y": 0.0
+        },
+        {
+          "x": 5.0,
+          "y": 0.0
+        }
+      ]
+    },
+    {
+      "name": "outside-right-away-from-box",
+      "start": {
+        "x": 10.0,
+        "y": 0.0
+      },
+      "end": {
+        "x": 11.0,
+        "y": 0.0
+      },
+      "bounds": {
+        "minX": -5.0,
+        "maxX": 5.0,
+        "minY": -3.0,
+        "maxY": 3.0
+      },
+      "expected": null
+    },
+    {
+      "name": "degenerate-ray",
+      "start": {
+        "x": 2.0,
+        "y": -1.0
+      },
+      "end": {
+        "x": 2.0,
+        "y": -1.0
+      },
+      "bounds": {
+        "minX": -5.0,
+        "maxX": 5.0,
+        "minY": -3.0,
+        "maxY": 3.0
+      },
+      "expected": null
+    }
+  ],
+  "threePointArcGeometry": [
+    {
+      "name": "upper-semicircle",
+      "start": {
+        "x": -1.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 0.0,
+        "y": -1.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "expected": {
+        "center": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "radius": 1.0,
+        "startAngle": 3.141592653589793,
+        "endAngle": 0.0,
+        "counterclockwise": false
+      }
+    },
+    {
+      "name": "lower-semicircle",
+      "start": {
+        "x": -1.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 0.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "expected": {
+        "center": {
+          "x": -0.0,
+          "y": -0.0
+        },
+        "radius": 1.0,
+        "startAngle": 3.141592653589793,
+        "endAngle": 0.0,
+        "counterclockwise": true
+      }
+    },
+    {
+      "name": "skew-arc",
+      "start": {
+        "x": 2.0,
+        "y": 1.0
+      },
+      "mid": {
+        "x": 4.0,
+        "y": -1.0
+      },
+      "end": {
+        "x": 6.0,
+        "y": 1.0
+      },
+      "expected": {
+        "center": {
+          "x": 4.0,
+          "y": 1.0
+        },
+        "radius": 2.0,
+        "startAngle": 3.141592653589793,
+        "endAngle": 0.0,
+        "counterclockwise": false
+      }
+    },
+    {
+      "name": "degenerate-collinear",
+      "start": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 2.0,
+        "y": 2.0
+      },
+      "expected": null
+    }
+  ],
+  "pointOnThreePointArc": [
+    {
+      "name": "arc:upper-semicircle:t=0.00",
+      "start": {
+        "x": -1.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 0.0,
+        "y": -1.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "t": 0.0,
+      "expected": {
+        "x": -1.0,
+        "y": 1.2246467991473532e-16
+      }
+    },
+    {
+      "name": "arc:upper-semicircle:t=0.25",
+      "start": {
+        "x": -1.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 0.0,
+        "y": -1.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "t": 0.25,
+      "expected": {
+        "x": -0.7071067811865477,
+        "y": -0.7071067811865475
+      }
+    },
+    {
+      "name": "arc:upper-semicircle:t=0.50",
+      "start": {
+        "x": -1.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 0.0,
+        "y": -1.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "t": 0.5,
+      "expected": {
+        "x": -1.8369701987210297e-16,
+        "y": -1.0
+      }
+    },
+    {
+      "name": "arc:upper-semicircle:t=0.75",
+      "start": {
+        "x": -1.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 0.0,
+        "y": -1.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "t": 0.75,
+      "expected": {
+        "x": 0.7071067811865474,
+        "y": -0.7071067811865477
+      }
+    },
+    {
+      "name": "arc:upper-semicircle:t=1.00",
+      "start": {
+        "x": -1.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 0.0,
+        "y": -1.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "t": 1.0,
+      "expected": {
+        "x": 1.0,
+        "y": -2.4492935982947064e-16
+      }
+    },
+    {
+      "name": "arc:lower-semicircle:t=0.00",
+      "start": {
+        "x": -1.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 0.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "t": 0.0,
+      "expected": {
+        "x": -1.0,
+        "y": 1.2246467991473532e-16
+      }
+    },
+    {
+      "name": "arc:lower-semicircle:t=0.25",
+      "start": {
+        "x": -1.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 0.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "t": 0.25,
+      "expected": {
+        "x": -0.7071067811865475,
+        "y": 0.7071067811865476
+      }
+    },
+    {
+      "name": "arc:lower-semicircle:t=0.50",
+      "start": {
+        "x": -1.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 0.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "t": 0.5,
+      "expected": {
+        "x": 6.123233995736766e-17,
+        "y": 1.0
+      }
+    },
+    {
+      "name": "arc:lower-semicircle:t=0.75",
+      "start": {
+        "x": -1.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 0.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "t": 0.75,
+      "expected": {
+        "x": 0.7071067811865476,
+        "y": 0.7071067811865475
+      }
+    },
+    {
+      "name": "arc:lower-semicircle:t=1.00",
+      "start": {
+        "x": -1.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 0.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "t": 1.0,
+      "expected": {
+        "x": 1.0,
+        "y": 0.0
+      }
+    },
+    {
+      "name": "arc:skew-arc:t=0.00",
+      "start": {
+        "x": 2.0,
+        "y": 1.0
+      },
+      "mid": {
+        "x": 4.0,
+        "y": -1.0
+      },
+      "end": {
+        "x": 6.0,
+        "y": 1.0
+      },
+      "t": 0.0,
+      "expected": {
+        "x": 2.0,
+        "y": 1.0000000000000002
+      }
+    },
+    {
+      "name": "arc:skew-arc:t=0.25",
+      "start": {
+        "x": 2.0,
+        "y": 1.0
+      },
+      "mid": {
+        "x": 4.0,
+        "y": -1.0
+      },
+      "end": {
+        "x": 6.0,
+        "y": 1.0
+      },
+      "t": 0.25,
+      "expected": {
+        "x": 2.5857864376269046,
+        "y": -0.4142135623730949
+      }
+    },
+    {
+      "name": "arc:skew-arc:t=0.50",
+      "start": {
+        "x": 2.0,
+        "y": 1.0
+      },
+      "mid": {
+        "x": 4.0,
+        "y": -1.0
+      },
+      "end": {
+        "x": 6.0,
+        "y": 1.0
+      },
+      "t": 0.5,
+      "expected": {
+        "x": 3.9999999999999996,
+        "y": -1.0
+      }
+    },
+    {
+      "name": "arc:skew-arc:t=0.75",
+      "start": {
+        "x": 2.0,
+        "y": 1.0
+      },
+      "mid": {
+        "x": 4.0,
+        "y": -1.0
+      },
+      "end": {
+        "x": 6.0,
+        "y": 1.0
+      },
+      "t": 0.75,
+      "expected": {
+        "x": 5.414213562373095,
+        "y": -0.41421356237309537
+      }
+    },
+    {
+      "name": "arc:skew-arc:t=1.00",
+      "start": {
+        "x": 2.0,
+        "y": 1.0
+      },
+      "mid": {
+        "x": 4.0,
+        "y": -1.0
+      },
+      "end": {
+        "x": 6.0,
+        "y": 1.0
+      },
+      "t": 1.0,
+      "expected": {
+        "x": 6.0,
+        "y": 0.9999999999999996
+      }
+    },
+    {
+      "name": "arc:degenerate-collinear:t=0.00",
+      "start": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 2.0,
+        "y": 2.0
+      },
+      "t": 0.0,
+      "expected": null
+    },
+    {
+      "name": "arc:degenerate-collinear:t=0.25",
+      "start": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 2.0,
+        "y": 2.0
+      },
+      "t": 0.25,
+      "expected": null
+    },
+    {
+      "name": "arc:degenerate-collinear:t=0.50",
+      "start": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 2.0,
+        "y": 2.0
+      },
+      "t": 0.5,
+      "expected": null
+    },
+    {
+      "name": "arc:degenerate-collinear:t=0.75",
+      "start": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 2.0,
+        "y": 2.0
+      },
+      "t": 0.75,
+      "expected": null
+    },
+    {
+      "name": "arc:degenerate-collinear:t=1.00",
+      "start": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 2.0,
+        "y": 2.0
+      },
+      "t": 1.0,
+      "expected": null
+    }
+  ],
+  "pointOnThreePointArcComplement": [
+    {
+      "name": "arc-complement:upper-semicircle:t=0.00",
+      "start": {
+        "x": -1.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 0.0,
+        "y": -1.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "t": 0.0,
+      "expected": {
+        "x": -1.0,
+        "y": 1.2246467991473532e-16
+      }
+    },
+    {
+      "name": "arc-complement:upper-semicircle:t=0.25",
+      "start": {
+        "x": -1.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 0.0,
+        "y": -1.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "t": 0.25,
+      "expected": {
+        "x": -0.7071067811865475,
+        "y": 0.7071067811865476
+      }
+    },
+    {
+      "name": "arc-complement:upper-semicircle:t=0.50",
+      "start": {
+        "x": -1.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 0.0,
+        "y": -1.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "t": 0.5,
+      "expected": {
+        "x": 6.123233995736766e-17,
+        "y": 1.0
+      }
+    },
+    {
+      "name": "arc-complement:upper-semicircle:t=0.75",
+      "start": {
+        "x": -1.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 0.0,
+        "y": -1.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "t": 0.75,
+      "expected": {
+        "x": 0.7071067811865476,
+        "y": 0.7071067811865475
+      }
+    },
+    {
+      "name": "arc-complement:upper-semicircle:t=1.00",
+      "start": {
+        "x": -1.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 0.0,
+        "y": -1.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "t": 1.0,
+      "expected": {
+        "x": 1.0,
+        "y": 0.0
+      }
+    },
+    {
+      "name": "arc-complement:lower-semicircle:t=0.00",
+      "start": {
+        "x": -1.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 0.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "t": 0.0,
+      "expected": {
+        "x": -1.0,
+        "y": 1.2246467991473532e-16
+      }
+    },
+    {
+      "name": "arc-complement:lower-semicircle:t=0.25",
+      "start": {
+        "x": -1.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 0.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "t": 0.25,
+      "expected": {
+        "x": -0.7071067811865477,
+        "y": -0.7071067811865475
+      }
+    },
+    {
+      "name": "arc-complement:lower-semicircle:t=0.50",
+      "start": {
+        "x": -1.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 0.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "t": 0.5,
+      "expected": {
+        "x": -1.8369701987210297e-16,
+        "y": -1.0
+      }
+    },
+    {
+      "name": "arc-complement:lower-semicircle:t=0.75",
+      "start": {
+        "x": -1.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 0.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "t": 0.75,
+      "expected": {
+        "x": 0.7071067811865474,
+        "y": -0.7071067811865477
+      }
+    },
+    {
+      "name": "arc-complement:lower-semicircle:t=1.00",
+      "start": {
+        "x": -1.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 0.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "t": 1.0,
+      "expected": {
+        "x": 1.0,
+        "y": -2.4492935982947064e-16
+      }
+    },
+    {
+      "name": "arc-complement:skew-arc:t=0.00",
+      "start": {
+        "x": 2.0,
+        "y": 1.0
+      },
+      "mid": {
+        "x": 4.0,
+        "y": -1.0
+      },
+      "end": {
+        "x": 6.0,
+        "y": 1.0
+      },
+      "t": 0.0,
+      "expected": {
+        "x": 2.0,
+        "y": 1.0000000000000002
+      }
+    },
+    {
+      "name": "arc-complement:skew-arc:t=0.25",
+      "start": {
+        "x": 2.0,
+        "y": 1.0
+      },
+      "mid": {
+        "x": 4.0,
+        "y": -1.0
+      },
+      "end": {
+        "x": 6.0,
+        "y": 1.0
+      },
+      "t": 0.25,
+      "expected": {
+        "x": 2.585786437626905,
+        "y": 2.414213562373095
+      }
+    },
+    {
+      "name": "arc-complement:skew-arc:t=0.50",
+      "start": {
+        "x": 2.0,
+        "y": 1.0
+      },
+      "mid": {
+        "x": 4.0,
+        "y": -1.0
+      },
+      "end": {
+        "x": 6.0,
+        "y": 1.0
+      },
+      "t": 0.5,
+      "expected": {
+        "x": 4.0,
+        "y": 3.0
+      }
+    },
+    {
+      "name": "arc-complement:skew-arc:t=0.75",
+      "start": {
+        "x": 2.0,
+        "y": 1.0
+      },
+      "mid": {
+        "x": 4.0,
+        "y": -1.0
+      },
+      "end": {
+        "x": 6.0,
+        "y": 1.0
+      },
+      "t": 0.75,
+      "expected": {
+        "x": 5.414213562373095,
+        "y": 2.414213562373095
+      }
+    },
+    {
+      "name": "arc-complement:skew-arc:t=1.00",
+      "start": {
+        "x": 2.0,
+        "y": 1.0
+      },
+      "mid": {
+        "x": 4.0,
+        "y": -1.0
+      },
+      "end": {
+        "x": 6.0,
+        "y": 1.0
+      },
+      "t": 1.0,
+      "expected": {
+        "x": 6.0,
+        "y": 1.0
+      }
+    },
+    {
+      "name": "arc-complement:degenerate-collinear:t=0.00",
+      "start": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 2.0,
+        "y": 2.0
+      },
+      "t": 0.0,
+      "expected": null
+    },
+    {
+      "name": "arc-complement:degenerate-collinear:t=0.25",
+      "start": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 2.0,
+        "y": 2.0
+      },
+      "t": 0.25,
+      "expected": null
+    },
+    {
+      "name": "arc-complement:degenerate-collinear:t=0.50",
+      "start": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 2.0,
+        "y": 2.0
+      },
+      "t": 0.5,
+      "expected": null
+    },
+    {
+      "name": "arc-complement:degenerate-collinear:t=0.75",
+      "start": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 2.0,
+        "y": 2.0
+      },
+      "t": 0.75,
+      "expected": null
+    },
+    {
+      "name": "arc-complement:degenerate-collinear:t=1.00",
+      "start": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "mid": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 2.0,
+        "y": 2.0
+      },
+      "t": 1.0,
+      "expected": null
+    }
+  ],
+  "pointOnCircleArc": [
+    {
+      "name": "circle-arc:quarter-turn:t=0.00",
+      "center": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "start": {
+        "x": 3.0,
+        "y": 0.0
+      },
+      "end": {
+        "x": 0.0,
+        "y": -3.0
+      },
+      "t": 0.0,
+      "expected": {
+        "x": 3.0,
+        "y": 0.0
+      }
+    },
+    {
+      "name": "circle-arc:quarter-turn:t=0.25",
+      "center": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "start": {
+        "x": 3.0,
+        "y": 0.0
+      },
+      "end": {
+        "x": 0.0,
+        "y": -3.0
+      },
+      "t": 0.25,
+      "expected": {
+        "x": 2.77163859753386,
+        "y": -1.1480502970952695
+      }
+    },
+    {
+      "name": "circle-arc:quarter-turn:t=0.50",
+      "center": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "start": {
+        "x": 3.0,
+        "y": 0.0
+      },
+      "end": {
+        "x": 0.0,
+        "y": -3.0
+      },
+      "t": 0.5,
+      "expected": {
+        "x": 2.121320343559643,
+        "y": -2.1213203435596424
+      }
+    },
+    {
+      "name": "circle-arc:quarter-turn:t=0.75",
+      "center": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "start": {
+        "x": 3.0,
+        "y": 0.0
+      },
+      "end": {
+        "x": 0.0,
+        "y": -3.0
+      },
+      "t": 0.75,
+      "expected": {
+        "x": 1.1480502970952695,
+        "y": -2.77163859753386
+      }
+    },
+    {
+      "name": "circle-arc:quarter-turn:t=1.00",
+      "center": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "start": {
+        "x": 3.0,
+        "y": 0.0
+      },
+      "end": {
+        "x": 0.0,
+        "y": -3.0
+      },
+      "t": 1.0,
+      "expected": {
+        "x": 1.8369701987210297e-16,
+        "y": -3.0
+      }
+    },
+    {
+      "name": "circle-arc:three-quarter-turn:t=0.00",
+      "center": {
+        "x": 2.0,
+        "y": 1.0
+      },
+      "start": {
+        "x": 5.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 2.0,
+        "y": 4.0
+      },
+      "t": 0.0,
+      "expected": {
+        "x": 5.0,
+        "y": 1.0
+      }
+    },
+    {
+      "name": "circle-arc:three-quarter-turn:t=0.25",
+      "center": {
+        "x": 2.0,
+        "y": 1.0
+      },
+      "start": {
+        "x": 5.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 2.0,
+        "y": 4.0
+      },
+      "t": 0.25,
+      "expected": {
+        "x": 3.1480502970952697,
+        "y": -1.77163859753386
+      }
+    },
+    {
+      "name": "circle-arc:three-quarter-turn:t=0.50",
+      "center": {
+        "x": 2.0,
+        "y": 1.0
+      },
+      "start": {
+        "x": 5.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 2.0,
+        "y": 4.0
+      },
+      "t": 0.5,
+      "expected": {
+        "x": -0.1213203435596415,
+        "y": -1.1213203435596424
+      }
+    },
+    {
+      "name": "circle-arc:three-quarter-turn:t=0.75",
+      "center": {
+        "x": 2.0,
+        "y": 1.0
+      },
+      "start": {
+        "x": 5.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 2.0,
+        "y": 4.0
+      },
+      "t": 0.75,
+      "expected": {
+        "x": -0.7716385975338595,
+        "y": 2.148050297095269
+      }
+    },
+    {
+      "name": "circle-arc:three-quarter-turn:t=1.00",
+      "center": {
+        "x": 2.0,
+        "y": 1.0
+      },
+      "start": {
+        "x": 5.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 2.0,
+        "y": 4.0
+      },
+      "t": 1.0,
+      "expected": {
+        "x": 2.0,
+        "y": 3.9999999999999996
+      }
+    },
+    {
+      "name": "circle-arc:degenerate-radius:t=0.00",
+      "center": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "start": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "t": 0.0,
+      "expected": null
+    },
+    {
+      "name": "circle-arc:degenerate-radius:t=0.25",
+      "center": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "start": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "t": 0.25,
+      "expected": null
+    },
+    {
+      "name": "circle-arc:degenerate-radius:t=0.50",
+      "center": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "start": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "t": 0.5,
+      "expected": null
+    },
+    {
+      "name": "circle-arc:degenerate-radius:t=0.75",
+      "center": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "start": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "t": 0.75,
+      "expected": null
+    },
+    {
+      "name": "circle-arc:degenerate-radius:t=1.00",
+      "center": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "start": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "end": {
+        "x": 1.0,
+        "y": 1.0
+      },
+      "t": 1.0,
+      "expected": null
+    }
+  ]
+}

@@ -2281,6 +2281,7 @@
         const lineEnd = env.resolveScenePoint(transform.lineEndIndex);
         if (!lineStart || !lineEnd) return;
         const reflected = reflectAcrossLine(source, lineStart, lineEnd);
+        if (!reflected) return;
         point.x = reflected.x;
         point.y = reflected.y;
         return;
@@ -2293,6 +2294,7 @@
         );
         if (!line) return;
         const reflected = reflectAcrossLine(source, line[0], line[1]);
+        if (!reflected) return;
         point.x = reflected.x;
         point.y = reflected.y;
         return;
@@ -2807,9 +2809,14 @@
   }
 
   /**
-   * @param {TransformJson} transform
+   * @typedef {{ kind: "translate"; dx: number; dy: number } | { kind: "rotate"; center: Point; radians: number } | { kind: "scale"; center: Point; factor: number } | { kind: "reflect"; lineStart: Point; lineEnd: Point }} DerivedTransform
+   */
+
+  /**
+   * @param {import("./generated/TransformJson").TransformJson} transform
    * @param {ViewerSceneData} scene
    * @param {Map<string, number>} parameters
+   * @returns {DerivedTransform | null}
    */
   function resolveDerivedTransform(transform, scene, parameters) {
     if (transform.kind === "translate") {
@@ -2849,7 +2856,8 @@
 
   /**
    * @param {Point} point
-   * @param {{ kind: "translate", dx: number, dy: number } | { kind: "rotate", center: Point, radians: number } | { kind: "scale", center: Point, factor: number } | { kind: "reflect", lineStart: Point, lineEnd: Point }} transform
+   * @param {DerivedTransform} transform
+   * @returns {Point | null}
    */
   function applyDerivedTransform(point, transform) {
     if (transform.kind === "translate") {
@@ -2872,7 +2880,10 @@
     const source = env.scene.lines[line.binding.sourceIndex];
     const transform = resolveDerivedTransform(line.binding.transform, env.scene, env.parameters);
     if (!source || !transform) return;
-    line.points = source.points.map((/** @type {Point} */ point) => applyDerivedTransform(point, transform));
+    const nextPoints = source.points
+      .map((/** @type {Point} */ point) => applyDerivedTransform(point, transform));
+    if (nextPoints.some((/** @type {Point | null} */ point) => !point)) return;
+    line.points = /** @type {Point[]} */ (nextPoints);
   }
 
   /**
@@ -2883,10 +2894,12 @@
     const source = env.scene.polygons[polygon.binding.sourceIndex];
     const transform = resolveDerivedTransform(polygon.binding.transform, env.scene, env.parameters);
     if (!source || !transform) return;
-    polygon.points = source.points
+    const nextPoints = source.points
       .map((/** @type {PointHandle} */ handle) => env.resolveHandle(handle))
       .filter(Boolean)
       .map((/** @type {Point} */ point) => applyDerivedTransform(point, transform));
+    if (nextPoints.some((/** @type {Point | null} */ point) => !point)) return;
+    polygon.points = /** @type {Point[]} */ (nextPoints);
   }
 
   /**
@@ -2900,8 +2913,11 @@
     const sourceCenter = env.resolveHandle(source.center);
     const sourceRadius = env.resolveHandle(source.radiusPoint);
     if (!sourceCenter || !sourceRadius) return;
-    circle.center = applyDerivedTransform(sourceCenter, transform);
-    circle.radiusPoint = applyDerivedTransform(sourceRadius, transform);
+    const nextCenter = applyDerivedTransform(sourceCenter, transform);
+    const nextRadius = applyDerivedTransform(sourceRadius, transform);
+    if (!nextCenter || !nextRadius) return;
+    circle.center = nextCenter;
+    circle.radiusPoint = nextRadius;
   }
 
   /** @type {Record<string, LineBindingRefresher>} */

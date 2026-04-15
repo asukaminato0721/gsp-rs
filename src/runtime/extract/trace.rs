@@ -1000,10 +1000,10 @@ fn resolve_trace_circular_constraint(
             line_index: _,
         } => {
             let source = resolve_trace_circular_constraint(points, source, visiting)?;
-            let line_start = line_start_index
-                .and_then(|index| resolve_trace_point(points, index, visiting));
-            let line_end = line_end_index
-                .and_then(|index| resolve_trace_point(points, index, visiting));
+            let line_start =
+                line_start_index.and_then(|index| resolve_trace_point(points, index, visiting));
+            let line_end =
+                line_end_index.and_then(|index| resolve_trace_point(points, index, visiting));
             let (line_start, line_end) = match (line_start, line_end) {
                 (Some(line_start), Some(line_end)) => (line_start, line_end),
                 _ => return None,

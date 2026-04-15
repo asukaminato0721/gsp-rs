@@ -3,6 +3,7 @@
 mod config;
 pub mod export;
 mod format;
+pub mod geometry_parity;
 pub(crate) mod runtime;
 pub(crate) mod util;
 

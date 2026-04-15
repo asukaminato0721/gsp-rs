@@ -369,6 +369,31 @@ type ViewerSceneModule = {
   drawGrid: (env: ViewerEnv) => void;
 };
 
+type ViewerGeometryModule = {
+  normalizeAngleDelta: (from: number, to: number) => number;
+  lerpPoint: (start: Point, end: Point, t: number) => Point;
+  rotateAround: (point: Point, center: Point, radians: number) => Point;
+  scaleAround: (point: Point, center: Point, factor: number) => Point;
+  reflectAcrossLine: (point: Point, lineStart: Point, lineEnd: Point) => Point | null;
+  clipParametricLineToBounds: (
+    start: Point,
+    end: Point,
+    bounds: { minX: number; maxX: number; minY: number; maxY: number },
+    rayOnly: boolean,
+  ) => Point[] | null;
+  clipLineToBounds: (
+    start: Point,
+    end: Point,
+    bounds: { minX: number; maxX: number; minY: number; maxY: number },
+  ) => Point[] | null;
+  clipRayToBounds: (
+    start: Point,
+    end: Point,
+    bounds: { minX: number; maxX: number; minY: number; maxY: number },
+  ) => Point[] | null;
+  angleBisectorDirection: (start: Point, vertex: Point, end: Point) => Point | null;
+};
+
 type ViewerRenderModule = {
   labelMetrics: (env: ViewerEnv, text: string) => { lines: string[]; width: number; height: number };
   drawImages: (env: ViewerEnv) => void;
@@ -514,6 +539,7 @@ type ViewerOverlayModule = {
 };
 
 type ViewerModules = {
+  geometry: ViewerGeometryModule;
   scene: ViewerSceneModule;
   render: ViewerRenderModule;
   overlay: ViewerOverlayModule;

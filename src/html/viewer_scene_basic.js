@@ -97,6 +97,7 @@
     const scene = typeof env?.currentScene === "function"
       ? env.currentScene()
       : env?.sourceScene || null;
+    /** @type {(binding: any) => [Point, Point] | null} */
     const resolveFromBinding = (binding) => {
       if (!binding) return null;
       if (typeof binding.lineStartIndex === "number" && typeof binding.lineEndIndex === "number") {
@@ -110,6 +111,7 @@
       }
       return null;
     };
+    /** @type {(line: any) => [Point, Point] | null} */
     const resolveFromLine = (line) => {
       if (!line) return null;
       if (line.points?.length >= 2 && !line.binding) {
@@ -205,9 +207,11 @@
       const source = circleFromConstraint(env, constraint.source, resolveFn);
       const [lineStart, lineEnd] = reflectionAxisPoints(env, constraint.transform, resolveFn);
       if (!source || !lineStart || !lineEnd) return null;
+      const reflectedCenter = reflectPointAcrossLine(source.center, lineStart, lineEnd);
+      if (!reflectedCenter) return null;
       return {
         kind: "circle",
-        center: reflectPointAcrossLine(source.center, lineStart, lineEnd),
+        center: reflectedCenter,
         radius: source.radius,
       };
     }

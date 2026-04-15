@@ -579,7 +579,10 @@ where
         )
 }
 
-fn circle_group_to_index_map(groups: &[ObjectGroup], shapes: &CollectedShapes) -> Vec<Option<usize>> {
+fn circle_group_to_index_map(
+    groups: &[ObjectGroup],
+    shapes: &CollectedShapes,
+) -> Vec<Option<usize>> {
     let mut mapping = vec![None; groups.len()];
     let mut next_index = 0usize;
     for circle in shapes

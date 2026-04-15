@@ -43,11 +43,11 @@ pub(super) fn to_raw_from_world(point: &PointRecord, graph: &GraphTransform) -> 
     }
 }
 
-pub(super) fn lerp_point(start: &PointRecord, end: &PointRecord, t: f64) -> PointRecord {
+pub(crate) fn lerp_point(start: &PointRecord, end: &PointRecord, t: f64) -> PointRecord {
     start.clone() + (end.clone() - start.clone()) * t
 }
 
-pub(super) fn rotate_around(
+pub(crate) fn rotate_around(
     point: &PointRecord,
     center: &PointRecord,
     radians: f64,
@@ -61,11 +61,11 @@ pub(super) fn rotate_around(
     }
 }
 
-pub(super) fn scale_around(point: &PointRecord, center: &PointRecord, factor: f64) -> PointRecord {
+pub(crate) fn scale_around(point: &PointRecord, center: &PointRecord, factor: f64) -> PointRecord {
     center.clone() + (point.clone() - center.clone()) * factor
 }
 
-pub(super) fn reflect_across_line(
+pub(crate) fn reflect_across_line(
     point: &PointRecord,
     line_start: &PointRecord,
     line_end: &PointRecord,
@@ -112,7 +112,7 @@ pub(super) fn include_line_bounds(
     }
 }
 
-pub(super) fn clip_line_to_bounds(
+pub(crate) fn clip_line_to_bounds(
     start: &PointRecord,
     end: &PointRecord,
     bounds: &Bounds,
@@ -120,7 +120,7 @@ pub(super) fn clip_line_to_bounds(
     clip_parametric_line_to_bounds(start, end, bounds, false)
 }
 
-pub(super) fn clip_ray_to_bounds(
+pub(crate) fn clip_ray_to_bounds(
     start: &PointRecord,
     end: &PointRecord,
     bounds: &Bounds,

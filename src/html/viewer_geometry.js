@@ -58,13 +58,13 @@
    * @param {Point} point
    * @param {Point} lineStart
    * @param {Point} lineEnd
-   * @returns {Point}
+   * @returns {Point | null}
    */
   function reflectAcrossLine(point, lineStart, lineEnd) {
     const dx = lineEnd.x - lineStart.x;
     const dy = lineEnd.y - lineStart.y;
     const lenSq = dx * dx + dy * dy;
-    if (lenSq <= 1e-9) return point;
+    if (lenSq <= 1e-9) return null;
     const t = ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / lenSq;
     const projection = {
       x: lineStart.x + t * dx,

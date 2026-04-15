@@ -896,8 +896,8 @@ pub(crate) fn decode_coordinate_point(
         crate::format::GroupKind::CoordinatePoint => {
             if path.refs.len() >= 3 {
                 let x_calc_group = groups.get(path.refs[0].checked_sub(1)?)?;
-                if let Ok(x_expr) = try_decode_function_expr(file, groups, x_calc_group) {
-                    if let Some(point) = (|| {
+                if let Ok(x_expr) = try_decode_function_expr(file, groups, x_calc_group)
+                    && let Some(point) = (|| {
                         let y_calc_group = groups.get(path.refs[1].checked_sub(1)?)?;
                         let axis_group = groups.get(path.refs[2].checked_sub(1)?)?;
                         let axis_path = find_indexed_path(file, axis_group)?;
@@ -947,7 +947,6 @@ pub(crate) fn decode_coordinate_point(
                     })() {
                         return Some(point);
                     }
-                }
             }
 
             let parameter_group = groups.get(path.refs[0].checked_sub(1)?)?;
@@ -1192,7 +1191,9 @@ pub(crate) fn try_decode_point_constraint(
                 | crate::format::GroupKind::CartesianOffsetPoint
                 | crate::format::GroupKind::PolarOffsetPoint
                 | crate::format::GroupKind::ParameterRotation
-        ) && anchors.is_some_and(|anchors| resolve_circle_like_raw(file, groups, anchors, host_group).is_some()))
+        ) && anchors.is_some_and(|anchors| {
+            resolve_circle_like_raw(file, groups, anchors, host_group).is_some()
+        }))
     {
         return try_decode_circle_point_constraint(file, host_group, payload);
     }
