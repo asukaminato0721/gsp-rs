@@ -62,6 +62,12 @@ pub(super) fn build_world_data(
                     end_index: *end_index,
                     t: *t,
                 },
+                ScenePointConstraint::OnLineConstraint { line, t } => {
+                    ScenePointConstraint::OnLineConstraint {
+                        line: clone_line_constraint(line),
+                        t: *t,
+                    }
+                }
                 ScenePointConstraint::OnRay {
                     start_index,
                     end_index,
@@ -71,6 +77,12 @@ pub(super) fn build_world_data(
                     end_index: *end_index,
                     t: *t,
                 },
+                ScenePointConstraint::OnRayConstraint { line, t } => {
+                    ScenePointConstraint::OnRayConstraint {
+                        line: clone_line_constraint(line),
+                        t: *t,
+                    }
+                }
                 ScenePointConstraint::OnPolyline {
                     function_key,
                     points,

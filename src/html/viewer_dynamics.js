@@ -47,6 +47,34 @@
   }
 
   /**
+   * @param {Extract<PointTransformJson, { kind: "rotate" }>} transform
+   * @param {Map<string, number>} parameters
+   * @param {(index: number) => Point | null | undefined} resolvePoint
+   * @returns {number | null}
+   */
+  function resolveRotateTransformAngleDegrees(transform, parameters, resolvePoint) {
+    if (
+      typeof transform.angleStartIndex === "number"
+      && typeof transform.angleVertexIndex === "number"
+      && typeof transform.angleEndIndex === "number"
+    ) {
+      const start = resolvePoint(transform.angleStartIndex);
+      const vertex = resolvePoint(transform.angleVertexIndex);
+      const end = resolvePoint(transform.angleEndIndex);
+      if (!start || !vertex || !end) return null;
+      const radians = measuredRotationRadians(start, vertex, end);
+      return radians === null ? null : radians * 180 / Math.PI;
+    }
+    if (transform.angleExpr) {
+      return evaluateExpr(transform.angleExpr, 0, parameters);
+    }
+    if (transform.parameterName) {
+      return parameters.get(transform.parameterName) ?? null;
+    }
+    return transform.angleDegrees;
+  }
+
+  /**
    * @param {RuntimeLabelJson} label
    */
   function usesVerboseParameterLabel(label) {
@@ -977,7 +1005,9 @@
   const POINT_CONSTRAINT_PARAMETER_READERS = {
     segment: (scene, pointIndex) => scene.points[pointIndex]?.constraint?.t ?? null,
     line: (scene, pointIndex) => scene.points[pointIndex]?.constraint?.t ?? null,
+    "line-constraint": (scene, pointIndex) => scene.points[pointIndex]?.constraint?.t ?? null,
     ray: (scene, pointIndex) => scene.points[pointIndex]?.constraint?.t ?? null,
+    "ray-constraint": (scene, pointIndex) => scene.points[pointIndex]?.constraint?.t ?? null,
     polyline: (scene, pointIndex) => scene.points[pointIndex]?.constraint?.t ?? null,
     "polygon-boundary": polygonBoundaryParameterFromPoint,
     circle: circleParameterFromPoint,
@@ -993,7 +1023,13 @@
     line(point, _scene, value) {
       point.constraint.t = value;
     },
+    "line-constraint"(point, _scene, value) {
+      point.constraint.t = value;
+    },
     ray(point, _scene, value) {
+      point.constraint.t = Math.max(0, value);
+    },
+    "ray-constraint"(point, _scene, value) {
       point.constraint.t = Math.max(0, value);
     },
     polyline(point, _scene, value) {
@@ -1175,7 +1211,12 @@
       point.constraint.unitY = -Math.sin(value);
       return;
     }
-    if (point.constraint.kind === "line" || point.constraint.kind === "ray") {
+    if (
+      point.constraint.kind === "line"
+      || point.constraint.kind === "line-constraint"
+      || point.constraint.kind === "ray"
+      || point.constraint.kind === "ray-constraint"
+    ) {
       applyNormalizedParameterToPoint(point, scene, value);
       return;
     }
@@ -2302,11 +2343,11 @@
       if (transform.kind === "rotate") {
         const center = env.resolveScenePoint(transform.centerIndex);
         if (!center) return;
-        const angleDegrees = transform.angleExpr
-          ? evaluateExpr(transform.angleExpr, 0, parameters)
-          : transform.parameterName
-            ? parameters.get(transform.parameterName)
-            : transform.angleDegrees;
+        const angleDegrees = resolveRotateTransformAngleDegrees(
+          transform,
+          parameters,
+          (index) => env.resolveScenePoint(index),
+        );
         if (!Number.isFinite(angleDegrees)) return;
         const rotated = rotateAround(source, center, angleDegrees * Math.PI / 180);
         point.x = rotated.x;
@@ -2705,11 +2746,11 @@
           }
         } else if (transform.kind === "rotate") {
           const center = resolveTracePoint(points, transform.centerIndex, visiting);
-          const angleDegrees = transform.angleExpr
-            ? evaluateExpr(transform.angleExpr, 0, baseParameters)
-            : transform.parameterName
-              ? baseParameters.get(transform.parameterName)
-              : transform.angleDegrees;
+          const angleDegrees = resolveRotateTransformAngleDegrees(
+            transform,
+            baseParameters,
+            (pointIndex) => resolveTracePoint(points, pointIndex, visiting),
+          );
           if (source && center && Number.isFinite(angleDegrees)) {
             resolved = rotateAround(source, center, angleDegrees * Math.PI / 180);
           }
@@ -3449,6 +3490,7 @@
     refreshDerivedPoints,
     refreshDynamicLabels,
     refreshIterationGeometry,
+    resolveLineConstraintPoints,
     parameterRootId,
     sourcePointRootId,
     runDependencyGraph,

@@ -240,6 +240,7 @@ fn parameter_anchor_value(
     let point_group = groups.get(point_group_index)?;
     match try_decode_point_constraint(file, groups, point_group, None, &None).ok()? {
         RawPointConstraint::Segment(constraint) => Some(constraint.t),
+        RawPointConstraint::ConstructedLine { t, .. } => Some(t),
         RawPointConstraint::PolygonBoundary {
             edge_index,
             t,

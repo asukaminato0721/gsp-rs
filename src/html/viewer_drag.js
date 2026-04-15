@@ -82,11 +82,17 @@
 
   /**
    * @param {RuntimeScenePointJson["constraint"]} constraint
-   * @returns {constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "segment" | "line" | "ray" }>}
+   * @returns {constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "segment" | "line" | "line-constraint" | "ray" | "ray-constraint" }>}
    */
   function isLineLikeConstraint(constraint) {
     return !!constraint
-      && (constraint.kind === "segment" || constraint.kind === "line" || constraint.kind === "ray");
+      && (
+        constraint.kind === "segment"
+        || constraint.kind === "line"
+        || constraint.kind === "line-constraint"
+        || constraint.kind === "ray"
+        || constraint.kind === "ray-constraint"
+      );
   }
 
   /**
@@ -159,13 +165,23 @@
     segment(env, _draft, point, world) {
       const constraint = point.constraint;
       if (!isLineLikeConstraint(constraint)) return;
-      const start = env.resolveScenePoint(constraint.startIndex);
-      const end = env.resolveScenePoint(constraint.endIndex);
+      const line = "line" in constraint
+        ? window.GspViewerModules.dynamics.resolveLineConstraintPoints(
+            (index) => env.resolveScenePoint(index),
+            env.currentScene().bounds,
+            constraint.line,
+          )
+        : [
+            env.resolveScenePoint(constraint.startIndex),
+            env.resolveScenePoint(constraint.endIndex),
+          ];
+      const [start, end] = line || [];
+      if (!start || !end) return;
       const projection = window.GspViewerModules.scene.projectToLineLike(
         world,
         start,
         end,
-        constraint.kind,
+        constraint.kind === "ray-constraint" ? "ray" : constraint.kind === "line-constraint" ? "line" : constraint.kind,
       );
       if (projection) {
         constraint.t = projection.t;
@@ -174,7 +190,13 @@
     line(env, draft, point, world) {
       DRAGGED_POINT_CONSTRAINT_UPDATERS.segment(env, draft, point, world);
     },
+    "line-constraint"(env, draft, point, world) {
+      DRAGGED_POINT_CONSTRAINT_UPDATERS.segment(env, draft, point, world);
+    },
     ray(env, draft, point, world) {
+      DRAGGED_POINT_CONSTRAINT_UPDATERS.segment(env, draft, point, world);
+    },
+    "ray-constraint"(env, draft, point, world) {
       DRAGGED_POINT_CONSTRAINT_UPDATERS.segment(env, draft, point, world);
     },
     polyline(env, _draft, point, world) {

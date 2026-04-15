@@ -268,6 +268,19 @@
       const end = resolveFn(constraint.endIndex);
       return start && end ? lerpPoint(start, end, constraint.t) : null;
     }
+    if (constraint.kind === "line-constraint" || constraint.kind === "ray-constraint") {
+      const scene = typeof env?.currentScene === "function"
+        ? env.currentScene()
+        : env?.sourceScene || null;
+      const line = scene
+        ? window.GspViewerModules.dynamics.resolveLineConstraintPoints(
+            resolveFn,
+            scene.bounds,
+            constraint.line,
+          )
+        : null;
+      return line ? lerpPoint(line[0], line[1], constraint.t) : null;
+    }
     if (constraint.kind === "polygon-boundary") {
       const count = constraint.vertexIndices.length;
       if (count < 2) return null;

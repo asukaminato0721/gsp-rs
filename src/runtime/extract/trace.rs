@@ -304,11 +304,27 @@ fn resolve_trace_point(
             source_index,
             center_index,
             angle_degrees,
+            angle_start_index,
+            angle_vertex_index,
+            angle_end_index,
             ..
         }) => {
             let source = resolve_trace_point(points, *source_index, visiting)?;
             let center = resolve_trace_point(points, *center_index, visiting)?;
-            Some(rotate_around(&source, &center, angle_degrees.to_radians()))
+            let resolved_angle = match (angle_start_index, angle_vertex_index, angle_end_index) {
+                (Some(angle_start_index), Some(angle_vertex_index), Some(angle_end_index)) => {
+                    let angle_start = resolve_trace_point(points, *angle_start_index, visiting)?;
+                    let angle_vertex = resolve_trace_point(points, *angle_vertex_index, visiting)?;
+                    let angle_end = resolve_trace_point(points, *angle_end_index, visiting)?;
+                    crate::runtime::geometry::angle_degrees_from_points(
+                        &angle_start,
+                        &angle_vertex,
+                        &angle_end,
+                    )?
+                }
+                _ => *angle_degrees,
+            };
+            Some(rotate_around(&source, &center, resolved_angle.to_radians()))
         }
         Some(ScenePointBinding::Scale {
             source_index,
@@ -414,6 +430,10 @@ fn resolve_trace_point(
                 let end = resolve_trace_point(points, *end_index, visiting)?;
                 Some(lerp_point(&start, &end, *t))
             }
+            ScenePointConstraint::OnLineConstraint { line, t } => {
+                let (start, end, _) = resolve_trace_line_constraint(points, line, visiting)?;
+                Some(lerp_point(&start, &end, *t))
+            }
             ScenePointConstraint::OnRay {
                 start_index,
                 end_index,
@@ -421,6 +441,10 @@ fn resolve_trace_point(
             } => {
                 let start = resolve_trace_point(points, *start_index, visiting)?;
                 let end = resolve_trace_point(points, *end_index, visiting)?;
+                Some(lerp_point(&start, &end, *t))
+            }
+            ScenePointConstraint::OnRayConstraint { line, t } => {
+                let (start, end, _) = resolve_trace_line_constraint(points, line, visiting)?;
                 Some(lerp_point(&start, &end, *t))
             }
             ScenePointConstraint::OnPolyline {

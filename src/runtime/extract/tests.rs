@@ -465,21 +465,38 @@ fn builds_music1_fixture_with_legacy_frequency_expr() {
 }
 
 #[test]
-fn payload_log_reduces_unnamed1_to_type28_only() {
-    let log = fixture_log(
-        include_bytes!("../../../tests/fixtures/未实现的系统功能/未命名1.gsp"),
-        "tests/fixtures/未实现的系统功能/未命名1.gsp",
-    );
+fn builds_unnamed1_fixture_with_live_angle_rotation_points() {
+    let data = include_bytes!("../../../tests/fixtures/未实现的系统功能/未命名1.gsp");
+    let scene = fixture_scene(data);
+    let log = fixture_log(data, "tests/fixtures/未实现的系统功能/未命名1.gsp");
 
+    assert!(log.contains("问题数量: 0"));
     assert!(
-        log.contains("对象类型 28 还没有实现"),
-        "expected the remaining unsupported helper family to still be reported"
+        !log.contains("对象类型 28 还没有实现"),
+        "expected angle-defined rotation helpers to stop being reported"
     );
     assert!(
-        !log.contains("对象类型 37 还没有实现")
-            && !log.contains("对象类型 38 还没有实现")
-            && !log.contains("对象类型 65 还没有实现"),
-        "expected numeric helper payload kinds 37/38/65 to stop being reported"
+        log.contains("将 点 #13 围绕 #10 按 #1、#6、#8 所成角旋转得到的点"),
+        "expected the payload log to describe the recovered type-28 helper"
+    );
+    assert!(
+        scene
+            .points
+            .iter()
+            .filter(|point| {
+                matches!(
+                    point.binding,
+                    Some(ScenePointBinding::Rotate {
+                        angle_start_index: Some(_),
+                        angle_vertex_index: Some(_),
+                        angle_end_index: Some(_),
+                        ..
+                    })
+                )
+            })
+            .count()
+            >= 3,
+        "expected the three type-28 helper points to export as live angle-rotation bindings"
     );
 }
 

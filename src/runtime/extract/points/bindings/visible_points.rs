@@ -6,8 +6,9 @@ use super::{
     decode_custom_transform_binding, decode_reflection_anchor_raw,
     decode_translated_point_constraint, reflection_line_group_indices,
     regular_polygon_angle_expr_for_calc_group, translation_point_pair_group_indices,
-    try_decode_parameter_controlled_point, try_decode_parameter_rotation_binding,
-    try_decode_point_constraint, try_decode_transform_binding,
+    try_decode_angle_rotation_binding, try_decode_parameter_controlled_point,
+    try_decode_parameter_rotation_binding, try_decode_point_constraint,
+    try_decode_transform_binding,
 };
 use crate::runtime::extract::decode::{
     decode_bbox_anchor_raw, decode_label_name, decode_label_visible, is_parameter_control_group,
@@ -18,7 +19,7 @@ use crate::runtime::extract::points::constraints::CoordinatePointSource;
 use crate::runtime::functions::{
     evaluate_expr_with_parameters, try_decode_function_expr, try_decode_function_plot_descriptor,
 };
-use crate::runtime::geometry::{GraphTransform, color_from_style};
+use crate::runtime::geometry::{GraphTransform, angle_degrees_from_points, color_from_style};
 use crate::runtime::scene::{
     CircularConstraint, LineConstraint, ScenePoint, ScenePointBinding, ScenePointConstraint,
 };
@@ -312,6 +313,9 @@ fn build_scene_point_for_group(
                             angle_degrees,
                             parameter_name,
                             angle_expr: None,
+                            angle_start_index: None,
+                            angle_vertex_index: None,
+                            angle_end_index: None,
                         },
                         TransformBindingKind::Scale { factor } => ScenePointBinding::Scale {
                             source_index,
@@ -322,6 +326,39 @@ fn build_scene_point_for_group(
                 ))
             })()
         }
+        crate::format::GroupKind::AngleRotation => (|| {
+            let binding = try_decode_angle_rotation_binding(file, group).ok()?;
+            let position = anchors.get(index).cloned().flatten()?;
+            let source_index = mapped_point_index(group_to_point_index, binding.source_group_index)?;
+            let center_index = mapped_point_index(group_to_point_index, binding.center_group_index)?;
+            let angle_start_index =
+                mapped_point_index(group_to_point_index, binding.angle_start_group_index)?;
+            let angle_vertex_index =
+                mapped_point_index(group_to_point_index, binding.angle_vertex_group_index)?;
+            let angle_end_index =
+                mapped_point_index(group_to_point_index, binding.angle_end_group_index)?;
+            let angle_start = anchors.get(binding.angle_start_group_index)?.clone()?;
+            let angle_vertex = anchors.get(binding.angle_vertex_group_index)?.clone()?;
+            let angle_end = anchors.get(binding.angle_end_group_index)?.clone()?;
+            let angle_degrees = angle_degrees_from_points(&angle_start, &angle_vertex, &angle_end)?;
+            Some(scene_point(
+                position,
+                group_color(group),
+                visible,
+                false,
+                ScenePointConstraint::Free,
+                Some(ScenePointBinding::Rotate {
+                    source_index,
+                    center_index,
+                    angle_degrees,
+                    parameter_name: None,
+                    angle_expr: None,
+                    angle_start_index: Some(angle_start_index),
+                    angle_vertex_index: Some(angle_vertex_index),
+                    angle_end_index: Some(angle_end_index),
+                }),
+            ))
+        })(),
         crate::format::GroupKind::RatioScale => (|| {
             let position = anchors.get(index).cloned().flatten()?;
             let path = find_indexed_path(file, group)?;
@@ -425,6 +462,9 @@ fn build_scene_point_for_group_checked(
                             angle_degrees,
                             parameter_name,
                             angle_expr: None,
+                            angle_start_index: None,
+                            angle_vertex_index: None,
+                            angle_end_index: None,
                         },
                         TransformBindingKind::Scale { factor } => ScenePointBinding::Scale {
                             source_index,
@@ -461,6 +501,9 @@ fn build_scene_point_for_group_checked(
                                 angle_degrees,
                                 parameter_name,
                                 angle_expr: None,
+                                angle_start_index: None,
+                                angle_vertex_index: None,
+                                angle_end_index: None,
                             },
                             TransformBindingKind::Scale { factor } => ScenePointBinding::Scale {
                                 source_index,
@@ -507,6 +550,54 @@ fn build_scene_point_for_group_checked(
                         angle_degrees,
                         parameter_name,
                         angle_expr: Some(angle_expr),
+                        angle_start_index: None,
+                        angle_vertex_index: None,
+                        angle_end_index: None,
+                    }),
+                ))
+            })())
+        }
+        crate::format::GroupKind::AngleRotation => {
+            let visible = !group.header.is_hidden() && point_marker_visible(group);
+            let binding = try_decode_angle_rotation_binding(file, group).with_context(|| {
+                format!(
+                    "failed to decode angle rotation binding for group #{} {:?}",
+                    group.ordinal, kind
+                )
+            })?;
+            let position = anchors.get(index).cloned().flatten();
+            Ok((|| {
+                let position = position?;
+                let source_index =
+                    mapped_point_index(group_to_point_index, binding.source_group_index)?;
+                let center_index =
+                    mapped_point_index(group_to_point_index, binding.center_group_index)?;
+                let angle_start_index =
+                    mapped_point_index(group_to_point_index, binding.angle_start_group_index)?;
+                let angle_vertex_index =
+                    mapped_point_index(group_to_point_index, binding.angle_vertex_group_index)?;
+                let angle_end_index =
+                    mapped_point_index(group_to_point_index, binding.angle_end_group_index)?;
+                let angle_start = anchors.get(binding.angle_start_group_index)?.clone()?;
+                let angle_vertex = anchors.get(binding.angle_vertex_group_index)?.clone()?;
+                let angle_end = anchors.get(binding.angle_end_group_index)?.clone()?;
+                let angle_degrees =
+                    angle_degrees_from_points(&angle_start, &angle_vertex, &angle_end)?;
+                Some(scene_point(
+                    position,
+                    group_color(group),
+                    visible,
+                    false,
+                    ScenePointConstraint::Free,
+                    Some(ScenePointBinding::Rotate {
+                        source_index,
+                        center_index,
+                        angle_degrees,
+                        parameter_name: None,
+                        angle_expr: None,
+                        angle_start_index: Some(angle_start_index),
+                        angle_vertex_index: Some(angle_vertex_index),
+                        angle_end_index: Some(angle_end_index),
                     }),
                 ))
             })())
@@ -741,6 +832,31 @@ fn scene_point_from_constraint(
                 None,
             ))
         }
+        RawPointConstraint::ConstructedLine {
+            host_group_index,
+            t,
+            line_like_kind,
+        } => {
+            let line_group = groups.get(host_group_index)?;
+            let line = resolve_line_constraint(file, groups, line_group, group_to_point_index)?;
+            let scene_constraint = match line_like_kind {
+                crate::runtime::scene::LineLikeKind::Line => {
+                    ScenePointConstraint::OnLineConstraint { line, t }
+                }
+                crate::runtime::scene::LineLikeKind::Ray => {
+                    ScenePointConstraint::OnRayConstraint { line, t }
+                }
+                crate::runtime::scene::LineLikeKind::Segment => return None,
+            };
+            Some(scene_point(
+                position,
+                color,
+                visible,
+                draggable,
+                scene_constraint,
+                None,
+            ))
+        }
         RawPointConstraint::Polyline {
             function_key,
             points,
@@ -889,6 +1005,31 @@ fn scene_point_from_parameter_controlled(
                     end_index,
                     t: constraint.t,
                 },
+            };
+            Some(scene_point(
+                parameter_point.position.clone(),
+                color,
+                visible,
+                true,
+                scene_constraint,
+                binding,
+            ))
+        }
+        RawPointConstraint::ConstructedLine {
+            host_group_index,
+            t,
+            line_like_kind,
+        } => {
+            let line_group = groups.get(*host_group_index)?;
+            let line = resolve_line_constraint(file, groups, line_group, group_to_point_index)?;
+            let scene_constraint = match line_like_kind {
+                crate::runtime::scene::LineLikeKind::Line => {
+                    ScenePointConstraint::OnLineConstraint { line, t: *t }
+                }
+                crate::runtime::scene::LineLikeKind::Ray => {
+                    ScenePointConstraint::OnRayConstraint { line, t: *t }
+                }
+                crate::runtime::scene::LineLikeKind::Segment => return None,
             };
             Some(scene_point(
                 parameter_point.position.clone(),

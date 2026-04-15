@@ -250,6 +250,20 @@ mod tests {
     }
 
     #[test]
+    fn exports_unnamed1_fixture_with_live_angle_rotation_binding_in_json_and_html() {
+        let data = include_bytes!("../tests/fixtures/未实现的系统功能/未命名1.gsp");
+        let scene_json = fixture_scene_json(data, "unnamed1 fixture should compile");
+        let html = fixture_html(data, "unnamed1 fixture should compile to html");
+
+        assert!(scene_json.contains("\"angleStartIndex\":"));
+        assert!(scene_json.contains("\"angleVertexIndex\":"));
+        assert!(scene_json.contains("\"angleEndIndex\":"));
+        assert!(html.contains("\"angleStartIndex\":"));
+        assert!(html.contains("\"angleVertexIndex\":"));
+        assert!(html.contains("\"angleEndIndex\":"));
+    }
+
+    #[test]
     fn exports_segment_intersection_fixture_into_html() {
         let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/insection/segment_insection.gsp"),

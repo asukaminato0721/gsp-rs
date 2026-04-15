@@ -110,6 +110,7 @@ define_group_kinds! {
     DerivedSegment24 = 24,
     CustomTransformPoint = 26,
     Rotation = 27,
+    AngleRotation = 28,
     ParameterRotation = 29,
     Scale = 30,
     RatioScale = 32,

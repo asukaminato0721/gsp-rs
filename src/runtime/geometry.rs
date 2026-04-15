@@ -61,6 +61,25 @@ pub(crate) fn rotate_around(
     }
 }
 
+pub(crate) fn angle_degrees_from_points(
+    start: &PointRecord,
+    vertex: &PointRecord,
+    end: &PointRecord,
+) -> Option<f64> {
+    let start_dx = start.x - vertex.x;
+    let start_dy = vertex.y - start.y;
+    let end_dx = end.x - vertex.x;
+    let end_dy = vertex.y - end.y;
+    let start_len = start_dx.hypot(start_dy);
+    let end_len = end_dx.hypot(end_dy);
+    if start_len <= 1e-9 || end_len <= 1e-9 {
+        return None;
+    }
+    let dot = start_dx * end_dx + start_dy * end_dy;
+    let cross = start_dx * end_dy - start_dy * end_dx;
+    Some(cross.atan2(dot).to_degrees())
+}
+
 pub(crate) fn scale_around(point: &PointRecord, center: &PointRecord, factor: f64) -> PointRecord {
     center.clone() + (point.clone() - center.clone()) * factor
 }

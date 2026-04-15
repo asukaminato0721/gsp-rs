@@ -21,7 +21,10 @@ mod remap;
 #[path = "bindings/visible_points.rs"]
 mod visible_points;
 
-pub(crate) use decode::{try_decode_parameter_rotation_binding, try_decode_transform_binding};
+pub(crate) use decode::{
+    try_decode_angle_rotation_binding, try_decode_parameter_rotation_binding,
+    try_decode_transform_binding,
+};
 pub(crate) use iterations::collect_point_iteration_points;
 pub(crate) use remap::{
     remap_circle_bindings, remap_label_bindings, remap_line_bindings, remap_polygon_bindings,
@@ -34,6 +37,14 @@ pub(crate) struct TransformBinding {
     pub(crate) source_group_index: usize,
     pub(crate) center_group_index: usize,
     pub(crate) kind: TransformBindingKind,
+}
+
+pub(crate) struct AngleRotationBinding {
+    pub(crate) source_group_index: usize,
+    pub(crate) center_group_index: usize,
+    pub(crate) angle_start_group_index: usize,
+    pub(crate) angle_vertex_group_index: usize,
+    pub(crate) angle_end_group_index: usize,
 }
 
 pub(crate) enum TransformBindingKind {

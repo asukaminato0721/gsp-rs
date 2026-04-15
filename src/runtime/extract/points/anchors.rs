@@ -7,15 +7,16 @@ use super::constraints::{
 };
 use super::{
     GspFile, ObjectGroup, PointRecord, TransformBindingKind,
-    decode_non_graph_parameter_value_for_group, read_f64, try_decode_parameter_rotation_binding,
-    try_decode_transform_binding,
+    decode_non_graph_parameter_value_for_group, read_f64, try_decode_angle_rotation_binding,
+    try_decode_parameter_rotation_binding, try_decode_transform_binding,
 };
 use crate::runtime::functions::{
     evaluate_expr_with_parameters, try_decode_function_expr, try_decode_function_plot_descriptor,
 };
 use crate::runtime::geometry::{
-    GraphTransform, lerp_point, point_on_circle_arc, point_on_three_point_arc, reflect_across_line,
-    rotate_around, three_point_arc_geometry, to_raw_from_world, to_world,
+    GraphTransform, angle_degrees_from_points, lerp_point, point_on_circle_arc,
+    point_on_three_point_arc, reflect_across_line, rotate_around, three_point_arc_geometry,
+    to_raw_from_world, to_world,
 };
 
 const PX_PER_CM: f64 = 37.79527559055118;
@@ -1118,6 +1119,7 @@ pub(crate) fn decode_custom_transform_parameter(
                 .ok()?
             {
                 RawPointConstraint::Segment(constraint) => Some(constraint.t),
+                RawPointConstraint::ConstructedLine { t, .. } => Some(t),
                 RawPointConstraint::Polyline { t, .. } => Some(t),
                 RawPointConstraint::PolygonBoundary { t, .. } => Some(t),
                 RawPointConstraint::Circle(constraint) => {
@@ -1140,6 +1142,7 @@ pub(crate) fn decode_custom_transform_parameter(
                 try_decode_parameter_controlled_point(file, groups, source_group, anchors).ok()?;
             match parameter_point.constraint {
                 RawPointConstraint::Segment(constraint) => Some(constraint.t),
+                RawPointConstraint::ConstructedLine { t, .. } => Some(t),
                 RawPointConstraint::Polyline { t, .. } => Some(t),
                 RawPointConstraint::PolygonBoundary { t, .. } => Some(t),
                 RawPointConstraint::Circle(constraint) => {
@@ -1274,6 +1277,21 @@ pub(crate) fn decode_parameter_rotation_anchor_raw(
     let TransformBindingKind::Rotate { angle_degrees, .. } = binding.kind else {
         return None;
     };
+    Some(rotate_around(&source, &center, angle_degrees.to_radians()))
+}
+
+pub(crate) fn decode_angle_rotation_anchor_raw(
+    file: &GspFile,
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    let binding = try_decode_angle_rotation_binding(file, group).ok()?;
+    let source = anchors.get(binding.source_group_index)?.clone()?;
+    let center = anchors.get(binding.center_group_index)?.clone()?;
+    let angle_start = anchors.get(binding.angle_start_group_index)?.clone()?;
+    let angle_vertex = anchors.get(binding.angle_vertex_group_index)?.clone()?;
+    let angle_end = anchors.get(binding.angle_end_group_index)?.clone()?;
+    let angle_degrees = angle_degrees_from_points(&angle_start, &angle_vertex, &angle_end)?;
     Some(rotate_around(&source, &center, angle_degrees.to_radians()))
 }
 
@@ -1545,6 +1563,15 @@ pub(crate) fn decode_point_constraint_anchor(
             let end = anchors.get(constraint.end_group_index)?.clone()?;
 
             Some(lerp_point(&start, &end, constraint.t))
+        }
+        RawPointConstraint::ConstructedLine {
+            host_group_index,
+            t,
+            line_like_kind: _,
+        } => {
+            let host_group = groups.get(host_group_index)?;
+            let (start, end) = resolve_line_like_points_raw(file, groups, anchors, host_group)?;
+            Some(lerp_point(&start, &end, t))
         }
         RawPointConstraint::Polyline {
             points,

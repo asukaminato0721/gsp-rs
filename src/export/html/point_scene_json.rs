@@ -157,6 +157,12 @@ enum PointTransformJson {
         parameter_name: Option<String>,
         #[serde(rename = "angleExpr", skip_serializing_if = "Option::is_none")]
         angle_expr: Option<FunctionExprJson>,
+        #[serde(rename = "angleStartIndex", skip_serializing_if = "Option::is_none")]
+        angle_start_index: Option<usize>,
+        #[serde(rename = "angleVertexIndex", skip_serializing_if = "Option::is_none")]
+        angle_vertex_index: Option<usize>,
+        #[serde(rename = "angleEndIndex", skip_serializing_if = "Option::is_none")]
+        angle_end_index: Option<usize>,
     },
     #[serde(rename = "scale")]
     Scale {
@@ -236,6 +242,9 @@ impl PointBindingJson {
                 angle_degrees,
                 parameter_name,
                 angle_expr,
+                angle_start_index,
+                angle_vertex_index,
+                angle_end_index,
             } => Self::Derived {
                 source_index: *source_index,
                 transform: PointTransformJson::Rotate {
@@ -243,6 +252,9 @@ impl PointBindingJson {
                     angle_degrees: *angle_degrees,
                     parameter_name: parameter_name.clone(),
                     angle_expr: angle_expr.as_ref().map(FunctionExprJson::from_expr),
+                    angle_start_index: *angle_start_index,
+                    angle_vertex_index: *angle_vertex_index,
+                    angle_end_index: *angle_end_index,
                 },
             },
             ScenePointBinding::ScaleByRatio {
@@ -351,6 +363,8 @@ enum PointConstraintJson {
         end_index: usize,
         t: f64,
     },
+    #[serde(rename = "line-constraint")]
+    LineConstraint { line: LineConstraintJson, t: f64 },
     #[serde(rename = "ray")]
     Ray {
         #[serde(rename = "startIndex")]
@@ -359,6 +373,8 @@ enum PointConstraintJson {
         end_index: usize,
         t: f64,
     },
+    #[serde(rename = "ray-constraint")]
+    RayConstraint { line: LineConstraintJson, t: f64 },
     #[serde(rename = "polyline")]
     Polyline {
         #[serde(rename = "functionKey")]
@@ -505,6 +521,10 @@ impl PointConstraintJson {
                 end_index: *end_index,
                 t: *t,
             }),
+            ScenePointConstraint::OnLineConstraint { line, t } => Some(Self::LineConstraint {
+                line: LineConstraintJson::from_constraint(line),
+                t: *t,
+            }),
             ScenePointConstraint::OnRay {
                 start_index,
                 end_index,
@@ -512,6 +532,10 @@ impl PointConstraintJson {
             } => Some(Self::Ray {
                 start_index: *start_index,
                 end_index: *end_index,
+                t: *t,
+            }),
+            ScenePointConstraint::OnRayConstraint { line, t } => Some(Self::RayConstraint {
+                line: LineConstraintJson::from_constraint(line),
                 t: *t,
             }),
             ScenePointConstraint::OnPolyline {

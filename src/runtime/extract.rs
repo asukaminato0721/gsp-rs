@@ -42,7 +42,8 @@ use self::labels::{
 use self::points::{
     RawPointConstraint, TransformBindingKind, collect_non_graph_parameters,
     collect_point_iteration_points, collect_point_objects, collect_standalone_parameter_points,
-    collect_visible_points_checked, decode_line_midpoint_anchor_raw, decode_offset_anchor_raw,
+    collect_visible_points_checked, decode_angle_rotation_anchor_raw,
+    decode_line_midpoint_anchor_raw, decode_offset_anchor_raw,
     decode_parameter_controlled_anchor_raw, decode_parameter_rotation_anchor_raw,
     decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,
     decode_point_pair_translation_anchor_raw, decode_reflection_anchor_raw,
@@ -892,6 +893,7 @@ fn resolve_payload_color_parameter_value(
     let point_group = groups.get(point_group_index)?;
     match try_decode_point_constraint(file, groups, point_group, None, &None).ok()? {
         RawPointConstraint::Segment(constraint) => Some(constraint.t),
+        RawPointConstraint::ConstructedLine { t, .. } => Some(t),
         RawPointConstraint::PolygonBoundary {
             edge_index,
             t,
@@ -1398,6 +1400,7 @@ fn describe_group_in_chinese(
             describe_offset_point_in_chinese(file, group, &refs)
         }
         GroupKind::Rotation => describe_rotation_group_in_chinese(file, groups, group),
+        GroupKind::AngleRotation => describe_angle_rotation_group_in_chinese(file, groups, group),
         GroupKind::ParameterRotation => {
             describe_parameter_rotation_group_in_chinese(file, groups, group)
         }
@@ -1772,6 +1775,27 @@ fn describe_parameter_rotation_group_in_chinese(
     )
 }
 
+fn describe_angle_rotation_group_in_chinese(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> String {
+    let refs = find_indexed_path(file, group)
+        .map(|path| path.refs)
+        .unwrap_or_default();
+    if refs.len() >= 5 {
+        return format!(
+            "将 {} 围绕 {} 按 {}、{}、{} 所成角旋转得到的点",
+            format_ref_with_kind(groups, refs[0]),
+            format_ref(refs[1]),
+            format_ref(refs[2]),
+            format_ref(refs[3]),
+            format_ref(refs[4])
+        );
+    }
+    describe_generic_group(group, &refs)
+}
+
 fn describe_scale_group_in_chinese(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -1886,6 +1910,7 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::DerivedSegment24 => "派生线段",
         GroupKind::CustomTransformPoint => "自定义变换点",
         GroupKind::Rotation => "旋转对象",
+        GroupKind::AngleRotation => "角度旋转点",
         GroupKind::ParameterRotation => "参数旋转对象",
         GroupKind::Scale => "缩放对象",
         GroupKind::RatioScale => "比例缩放对象",
@@ -1950,6 +1975,7 @@ fn group_kind_noun_in_chinese(kind: GroupKind) -> &'static str {
         | GroupKind::CoordinateExpressionPointAlt
         | GroupKind::PolarOffsetPoint
         | GroupKind::CustomTransformPoint
+        | GroupKind::AngleRotation
         | GroupKind::OffsetAnchor
         | GroupKind::CoordinatePoint
         | GroupKind::ParameterAnchor
@@ -2363,6 +2389,16 @@ fn write_group_detail(output: &mut String, file: &GspFile, group: &ObjectGroup, 
                         constraint.end_group_index + 1,
                         constraint.t
                     ),
+                    self::points::RawPointConstraint::ConstructedLine {
+                        host_group_index,
+                        t,
+                        line_like_kind,
+                    } => format!(
+                        "constructed-line host=#{} kind={:?} t={:.6}",
+                        host_group_index + 1,
+                        line_like_kind,
+                        t
+                    ),
                     self::points::RawPointConstraint::PolygonBoundary { edge_index, t, .. } => {
                         format!("polygon edge={} t={:.6}", edge_index, t)
                     }
@@ -2438,7 +2474,10 @@ fn write_group_detail(output: &mut String, file: &GspFile, group: &ObjectGroup, 
         Err(error) => {
             if matches!(
                 group.header.kind(),
-                GroupKind::Rotation | GroupKind::Scale | GroupKind::ParameterRotation
+                GroupKind::Rotation
+                    | GroupKind::AngleRotation
+                    | GroupKind::Scale
+                    | GroupKind::ParameterRotation
             ) {
                 let _ = writeln!(output, "{indent}  变换绑定解析错误: {}", error);
             }
@@ -2616,6 +2655,7 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::DerivedSegment24
             | GroupKind::CustomTransformPoint
             | GroupKind::Rotation
+            | GroupKind::AngleRotation
             | GroupKind::ParameterRotation
             | GroupKind::Scale
             | GroupKind::RatioScale

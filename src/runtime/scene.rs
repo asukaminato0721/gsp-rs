@@ -311,9 +311,17 @@ pub(crate) enum ScenePointConstraint {
         end_index: usize,
         t: f64,
     },
+    OnLineConstraint {
+        line: LineConstraint,
+        t: f64,
+    },
     OnRay {
         start_index: usize,
         end_index: usize,
+        t: f64,
+    },
+    OnRayConstraint {
+        line: LineConstraint,
         t: f64,
     },
     OnPolyline {
@@ -671,6 +679,9 @@ pub(crate) enum ScenePointBinding {
         angle_degrees: f64,
         parameter_name: Option<String>,
         angle_expr: Option<FunctionExpr>,
+        angle_start_index: Option<usize>,
+        angle_vertex_index: Option<usize>,
+        angle_end_index: Option<usize>,
     },
     ScaleByRatio {
         source_index: usize,

@@ -11,7 +11,8 @@ mod constraints;
 
 pub(crate) use anchors::{
     custom_transform_expression_parameter_map, custom_transform_trace_parameter,
-    decode_coordinate_expression_anchor_raw, decode_custom_transform_anchor_raw,
+    decode_angle_rotation_anchor_raw, decode_coordinate_expression_anchor_raw,
+    decode_custom_transform_anchor_raw,
     decode_custom_transform_binding, decode_graph_calibration_anchor_raw,
     decode_intersection_anchor_raw, decode_line_midpoint_anchor_raw, decode_offset_anchor_raw,
     decode_parameter_controlled_anchor_raw, decode_parameter_rotation_anchor_raw,
@@ -25,7 +26,8 @@ pub(super) use bindings::{
     RawPointIterationFamily, TransformBindingKind, collect_point_iteration_points,
     collect_standalone_parameter_points, collect_visible_points_checked, remap_circle_bindings,
     remap_label_bindings, remap_line_bindings, remap_polygon_bindings,
-    try_decode_parameter_rotation_binding, try_decode_transform_binding,
+    try_decode_angle_rotation_binding, try_decode_parameter_rotation_binding,
+    try_decode_transform_binding,
 };
 pub(super) use constraints::{
     RawPointConstraint, decode_translated_point_constraint, regular_polygon_angle_expr,

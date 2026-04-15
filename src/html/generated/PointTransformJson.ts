@@ -2,4 +2,4 @@
 import type { FunctionExprJson } from "./FunctionExprJson";
 import type { LineConstraintJson } from "./LineConstraintJson";
 
-export type PointTransformJson = { "kind": "translate", vectorStartIndex: number, vectorEndIndex: number, } | { "kind": "reflect", lineStartIndex: number, lineEndIndex: number, } | { "kind": "reflect-constraint", line: LineConstraintJson, } | { "kind": "rotate", centerIndex: number, angleDegrees: number, parameterName: string | null, angleExpr: FunctionExprJson | null, } | { "kind": "scale", centerIndex: number, factor: number, };
+export type PointTransformJson = { "kind": "translate", vectorStartIndex: number, vectorEndIndex: number, } | { "kind": "reflect", lineStartIndex: number, lineEndIndex: number, } | { "kind": "reflect-constraint", line: LineConstraintJson, } | { "kind": "rotate", centerIndex: number, angleDegrees: number, parameterName: string | null, angleExpr: FunctionExprJson | null, angleStartIndex: number | null, angleVertexIndex: number | null, angleEndIndex: number | null, } | { "kind": "scale", centerIndex: number, factor: number, };

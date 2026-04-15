@@ -1,5 +1,5 @@
 use super::{
-    GspFile, ObjectGroup, TransformBinding, TransformBindingKind,
+    AngleRotationBinding, GspFile, ObjectGroup, TransformBinding, TransformBindingKind,
     decode_angle_parameter_value_for_group,
 };
 use crate::runtime::extract::points::editable_non_graph_parameter_name_for_group;
@@ -25,6 +25,8 @@ pub(crate) enum TransformBindingDecodeError {
     NonFiniteScaleFactor,
     #[error("parameter rotation source/center/angle references are missing")]
     MissingParameterRotationRefs,
+    #[error("angle rotation source/center/angle references are missing")]
+    MissingAngleRotationRefs,
     #[error("parameter rotation angle source is not a point group")]
     InvalidParameterRotationAngleSource,
     #[error("parameter rotation angle is not finite")]
@@ -145,5 +147,46 @@ pub(crate) fn try_decode_parameter_rotation_binding(
             angle_degrees,
             parameter_name,
         },
+    })
+}
+
+pub(crate) fn try_decode_angle_rotation_binding(
+    file: &GspFile,
+    group: &ObjectGroup,
+) -> Result<AngleRotationBinding, TransformBindingDecodeError> {
+    if (group.header.kind()) != crate::format::GroupKind::AngleRotation {
+        return Err(TransformBindingDecodeError::UnsupportedKind(
+            group.header.kind(),
+        ));
+    }
+    let path = try_find_indexed_path(file, group)
+        .map_err(|_| TransformBindingDecodeError::MissingPath)?
+        .ok_or(TransformBindingDecodeError::MissingPath)?;
+    Ok(AngleRotationBinding {
+        source_group_index: path
+            .refs
+            .first()
+            .and_then(|value| value.checked_sub(1))
+            .ok_or(TransformBindingDecodeError::MissingAngleRotationRefs)?,
+        center_group_index: path
+            .refs
+            .get(1)
+            .and_then(|value| value.checked_sub(1))
+            .ok_or(TransformBindingDecodeError::MissingAngleRotationRefs)?,
+        angle_start_group_index: path
+            .refs
+            .get(2)
+            .and_then(|value| value.checked_sub(1))
+            .ok_or(TransformBindingDecodeError::MissingAngleRotationRefs)?,
+        angle_vertex_group_index: path
+            .refs
+            .get(3)
+            .and_then(|value| value.checked_sub(1))
+            .ok_or(TransformBindingDecodeError::MissingAngleRotationRefs)?,
+        angle_end_group_index: path
+            .refs
+            .get(4)
+            .and_then(|value| value.checked_sub(1))
+            .ok_or(TransformBindingDecodeError::MissingAngleRotationRefs)?,
     })
 }
