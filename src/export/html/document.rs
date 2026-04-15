@@ -1,9 +1,9 @@
 use super::assets::{
     VIEWER_CSS, VIEWER_DRAG_JS, VIEWER_DRAG_PAN_JS, VIEWER_DYNAMICS_JS, VIEWER_DYNAMICS_STUB_JS,
-    VIEWER_JS, VIEWER_OVERLAY_JS, VIEWER_OVERLAY_STUB_JS, VIEWER_RENDER_BASIC_JS,
-    VIEWER_RENDER_CIRCULAR_JS, VIEWER_RENDER_HOTSPOTS_JS, VIEWER_RENDER_IMAGES_JS,
-    VIEWER_RENDER_LABELS_JS, VIEWER_RENDER_POLYGONS_JS, VIEWER_RENDER_TABLES_JS,
-    VIEWER_SCENE_BASIC_JS, indent_asset, van_runtime_to_global,
+    VIEWER_GEOMETRY_JS, VIEWER_JS, VIEWER_OVERLAY_JS, VIEWER_OVERLAY_STUB_JS,
+    VIEWER_RENDER_BASIC_JS, VIEWER_RENDER_CIRCULAR_JS, VIEWER_RENDER_HOTSPOTS_JS,
+    VIEWER_RENDER_IMAGES_JS, VIEWER_RENDER_LABELS_JS, VIEWER_RENDER_POLYGONS_JS,
+    VIEWER_RENDER_TABLES_JS, VIEWER_SCENE_BASIC_JS, indent_asset, van_runtime_to_global,
 };
 use super::render_scene_json;
 use crate::runtime::scene::{
@@ -186,7 +186,7 @@ impl ViewerScenePlan {
     }
 
     fn script_source(self) -> String {
-        let mut scripts = vec![VIEWER_SCENE_BASIC_JS];
+        let mut scripts = vec![VIEWER_GEOMETRY_JS, VIEWER_SCENE_BASIC_JS];
         if self.circular {
             scripts.push(include_str!("../../html/viewer_scene_circular.js"));
         }
@@ -455,9 +455,7 @@ fn point_requires_full_dynamics(point: &crate::runtime::scene::ScenePoint) -> bo
 fn line_binding_requires_full_dynamics(binding: &LineBinding) -> bool {
     matches!(
         binding,
-        LineBinding::RotateLine { .. }
-            | LineBinding::ScaleLine { .. }
-            | LineBinding::ReflectLine { .. }
+        LineBinding::DerivedTransform { .. }
             | LineBinding::CustomTransformTrace { .. }
             | LineBinding::CoordinateTrace { .. }
             | LineBinding::PointTrace { .. }

@@ -2639,7 +2639,10 @@ fn preserves_scaled_point_and_single_parameter_label_in_scale_gsp() {
     );
     assert!(scene.circles.iter().any(|circle| matches!(
         circle.binding,
-        Some(crate::runtime::scene::ShapeBinding::ScaleCircle { .. })
+        Some(crate::runtime::scene::ShapeBinding::DerivedTransform {
+            transform: crate::runtime::scene::ShapeTransformBinding::Scale(..),
+            ..
+        })
     )));
     assert_eq!(
         scene.polygons.len(),
@@ -2688,7 +2691,10 @@ fn preserves_translated_circle_and_intersection_in_translation_gsp() {
     );
     assert!(scene.circles.iter().any(|circle| matches!(
         circle.binding,
-        Some(crate::runtime::scene::ShapeBinding::TranslateCircle { .. })
+        Some(crate::runtime::scene::ShapeBinding::DerivedTransform {
+            transform: crate::runtime::scene::ShapeTransformBinding::TranslateDelta { .. },
+            ..
+        })
     )));
     let constrained_points = scene
         .points
@@ -2732,11 +2738,17 @@ fn preserves_reflection_point_circle_and_polygon_gsp() {
     );
     assert!(scene.circles.iter().any(|circle| matches!(
         circle.binding,
-        Some(crate::runtime::scene::ShapeBinding::ReflectCircle { .. })
+        Some(crate::runtime::scene::ShapeBinding::DerivedTransform {
+            transform: crate::runtime::scene::ShapeTransformBinding::Reflect(..),
+            ..
+        })
     )));
     assert!(scene.polygons.iter().any(|polygon| matches!(
         polygon.binding,
-        Some(crate::runtime::scene::ShapeBinding::ReflectPolygon { .. })
+        Some(crate::runtime::scene::ShapeBinding::DerivedTransform {
+            transform: crate::runtime::scene::ShapeTransformBinding::Reflect(..),
+            ..
+        })
     )));
 }
 
@@ -2751,8 +2763,13 @@ fn preserves_reflected_circle_across_constructed_perpendicular_line() {
     );
     assert!(scene.circles.iter().any(|circle| matches!(
         circle.binding,
-        Some(crate::runtime::scene::ShapeBinding::ReflectCircle {
-            line_index: Some(_),
+        Some(crate::runtime::scene::ShapeBinding::DerivedTransform {
+            transform: crate::runtime::scene::ShapeTransformBinding::Reflect(
+                crate::runtime::scene::AxisBinding {
+                    line_index: Some(_),
+                    ..
+                }
+            ),
             ..
         })
     )));
@@ -2773,7 +2790,13 @@ fn preserves_translated_triangle_segments_in_congruent_triangle_fixture() {
         scene
             .lines
             .iter()
-            .filter(|line| matches!(line.binding, Some(LineBinding::TranslateLine { .. })))
+            .filter(|line| matches!(
+                line.binding,
+                Some(LineBinding::DerivedTransform {
+                    transform: crate::runtime::scene::LineTransformBinding::Translate { .. },
+                    ..
+                })
+            ))
             .count(),
         3,
         "expected the translated triangle to contribute three translated segment bindings"
@@ -2799,9 +2822,11 @@ fn preserves_translated_triangle_segments_in_congruent_triangle_fixture() {
     assert!(scene.lines.iter().any(|line| {
         matches!(
             line.binding,
-            Some(LineBinding::TranslateLine {
-                vector_start_index: 0,
-                vector_end_index: 3,
+            Some(LineBinding::DerivedTransform {
+                transform: crate::runtime::scene::LineTransformBinding::Translate {
+                    vector_start_index: 0,
+                    vector_end_index: 3,
+                },
                 ..
             })
         ) && line.points.len() == 2

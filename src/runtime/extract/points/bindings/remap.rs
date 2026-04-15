@@ -1,6 +1,7 @@
 use crate::runtime::extract::CircleShape;
 use crate::runtime::scene::{
-    LineBinding, LineShape, PolygonShape, ShapeBinding, TextLabel, TextLabelBinding,
+    AxisBinding, LineBinding, LineShape, LineTransformBinding, PolygonShape, ShapeBinding,
+    ShapeTransformBinding, TextLabel, TextLabelBinding,
 };
 
 fn mapped_index(mapping: &[Option<usize>], index: usize) -> Option<usize> {
@@ -11,6 +12,121 @@ fn mapped_optional_index(mapping: &[Option<usize>], index: Option<usize>) -> Opt
     match index {
         Some(index) => Some(Some(mapped_index(mapping, index)?)),
         None => Some(None),
+    }
+}
+
+fn remap_axis_binding(
+    axis: &mut AxisBinding,
+    group_to_point_index: &[Option<usize>],
+    group_to_line_index: &[Option<usize>],
+) -> bool {
+    let mapped_line_start_index =
+        mapped_optional_index(group_to_point_index, axis.line_start_index).unwrap_or(None);
+    let mapped_line_end_index =
+        mapped_optional_index(group_to_point_index, axis.line_end_index).unwrap_or(None);
+    let mapped_line_index =
+        mapped_optional_index(group_to_line_index, axis.line_index).unwrap_or(None);
+    if mapped_line_index.is_none()
+        && (mapped_line_start_index.is_none() || mapped_line_end_index.is_none())
+    {
+        return false;
+    }
+    axis.line_start_index = mapped_line_start_index;
+    axis.line_end_index = mapped_line_end_index;
+    axis.line_index = mapped_line_index;
+    true
+}
+
+fn remap_line_transform(
+    transform: &mut LineTransformBinding,
+    group_to_point_index: &[Option<usize>],
+    group_to_line_index: &[Option<usize>],
+) -> bool {
+    match transform {
+        LineTransformBinding::Translate {
+            vector_start_index,
+            vector_end_index,
+        } => {
+            let Some(mapped_vector_start_index) =
+                mapped_index(group_to_point_index, *vector_start_index)
+            else {
+                return false;
+            };
+            let Some(mapped_vector_end_index) =
+                mapped_index(group_to_point_index, *vector_end_index)
+            else {
+                return false;
+            };
+            *vector_start_index = mapped_vector_start_index;
+            *vector_end_index = mapped_vector_end_index;
+            true
+        }
+        LineTransformBinding::Rotate(binding) => {
+            let Some(mapped_center_index) = mapped_index(group_to_point_index, binding.center_index)
+            else {
+                return false;
+            };
+            binding.center_index = mapped_center_index;
+            true
+        }
+        LineTransformBinding::Scale(binding) => {
+            let Some(mapped_center_index) = mapped_index(group_to_point_index, binding.center_index)
+            else {
+                return false;
+            };
+            binding.center_index = mapped_center_index;
+            true
+        }
+        LineTransformBinding::Reflect(axis) => {
+            remap_axis_binding(axis, group_to_point_index, group_to_line_index)
+        }
+    }
+}
+
+fn remap_shape_transform(
+    transform: &mut ShapeTransformBinding,
+    group_to_point_index: &[Option<usize>],
+    group_to_line_index: &[Option<usize>],
+) -> bool {
+    match transform {
+        ShapeTransformBinding::TranslateDelta { .. } => true,
+        ShapeTransformBinding::TranslateVector {
+            vector_start_index,
+            vector_end_index,
+        } => {
+            let Some(mapped_vector_start_index) =
+                mapped_index(group_to_point_index, *vector_start_index)
+            else {
+                return false;
+            };
+            let Some(mapped_vector_end_index) =
+                mapped_index(group_to_point_index, *vector_end_index)
+            else {
+                return false;
+            };
+            *vector_start_index = mapped_vector_start_index;
+            *vector_end_index = mapped_vector_end_index;
+            true
+        }
+        ShapeTransformBinding::Rotate(binding) => {
+            let Some(mapped_center_index) = mapped_index(group_to_point_index, binding.center_index)
+            else {
+                return false;
+            };
+            binding.center_index = mapped_center_index;
+            true
+        }
+        ShapeTransformBinding::Scale(binding) => {
+            let Some(mapped_center_index) = mapped_index(group_to_point_index, binding.center_index)
+            else {
+                return false;
+            };
+            binding.center_index = mapped_center_index;
+            true
+        }
+        ShapeTransformBinding::Reflect(axis) => {
+            remap_axis_binding(axis, group_to_point_index, group_to_line_index)
+        }
     }
 }
 
@@ -87,7 +203,7 @@ pub(crate) fn remap_circle_bindings(
         let Some(binding) = circle.binding.as_mut() else {
             continue;
         };
-        let (source_index, center_index) = match binding {
+        match binding {
             ShapeBinding::PointRadiusCircle {
                 center_index,
                 radius_index,
@@ -133,66 +249,23 @@ pub(crate) fn remap_circle_bindings(
                 *line_end_index = mapped_line_end_index;
                 continue;
             }
-            ShapeBinding::TranslateCircle { source_index, .. } => {
-                let Some(mapped_source_index) = mapped_index(group_to_circle_index, *source_index)
-                else {
-                    circle.binding = None;
-                    continue;
-                };
-                *source_index = mapped_source_index;
-                continue;
-            }
-            ShapeBinding::RotateCircle {
+            ShapeBinding::DerivedTransform {
                 source_index,
-                center_index,
-                ..
-            } => (source_index, center_index),
-            ShapeBinding::ScaleCircle {
-                source_index,
-                center_index,
-                ..
-            } => (source_index, center_index),
-            ShapeBinding::ReflectCircle {
-                source_index,
-                line_start_index,
-                line_end_index,
-                line_index,
+                transform,
             } => {
                 let Some(mapped_source_index) = mapped_index(group_to_circle_index, *source_index)
                 else {
                     circle.binding = None;
                     continue;
                 };
-                let mapped_line_start_index =
-                    mapped_optional_index(group_to_point_index, *line_start_index).unwrap_or(None);
-                let mapped_line_end_index =
-                    mapped_optional_index(group_to_point_index, *line_end_index).unwrap_or(None);
-                let mapped_line_index =
-                    mapped_optional_index(group_to_line_index, *line_index).unwrap_or(None);
-                if mapped_line_index.is_none()
-                    && (mapped_line_start_index.is_none() || mapped_line_end_index.is_none())
-                {
-                    circle.binding = None;
-                    continue;
-                }
                 *source_index = mapped_source_index;
-                *line_start_index = mapped_line_start_index;
-                *line_end_index = mapped_line_end_index;
-                *line_index = mapped_line_index;
+                if !remap_shape_transform(transform, group_to_point_index, group_to_line_index) {
+                    circle.binding = None;
+                }
                 continue;
             }
             _ => continue,
-        };
-        let Some(mapped_source_index) = mapped_index(group_to_circle_index, *source_index) else {
-            circle.binding = None;
-            continue;
-        };
-        let Some(mapped_center_index) = mapped_index(group_to_point_index, *center_index) else {
-            circle.binding = None;
-            continue;
-        };
-        *source_index = mapped_source_index;
-        *center_index = mapped_center_index;
+        }
     }
 }
 
@@ -206,7 +279,7 @@ pub(crate) fn remap_polygon_bindings(
         let Some(binding) = polygon.binding.as_mut() else {
             continue;
         };
-        let (source_index, center_index) = match binding {
+        match binding {
             ShapeBinding::PointPolygon { vertex_indices } => {
                 let mapped = vertex_indices
                     .iter()
@@ -256,84 +329,23 @@ pub(crate) fn remap_polygon_bindings(
                 }
                 continue;
             }
-            ShapeBinding::TranslatePolygon {
+            ShapeBinding::DerivedTransform {
                 source_index,
-                vector_start_index,
-                vector_end_index,
+                transform,
             } => {
                 let Some(mapped_source_index) = mapped_index(group_to_polygon_index, *source_index)
-                else {
-                    polygon.binding = None;
-                    continue;
-                };
-                let Some(mapped_vector_start_index) =
-                    mapped_index(group_to_point_index, *vector_start_index)
-                else {
-                    polygon.binding = None;
-                    continue;
-                };
-                let Some(mapped_vector_end_index) =
-                    mapped_index(group_to_point_index, *vector_end_index)
                 else {
                     polygon.binding = None;
                     continue;
                 };
                 *source_index = mapped_source_index;
-                *vector_start_index = mapped_vector_start_index;
-                *vector_end_index = mapped_vector_end_index;
-                continue;
-            }
-            ShapeBinding::RotatePolygon {
-                source_index,
-                center_index,
-                ..
-            } => (source_index, center_index),
-            ShapeBinding::ScalePolygon {
-                source_index,
-                center_index,
-                ..
-            } => (source_index, center_index),
-            ShapeBinding::ReflectPolygon {
-                source_index,
-                line_start_index,
-                line_end_index,
-                line_index,
-            } => {
-                let Some(mapped_source_index) = mapped_index(group_to_polygon_index, *source_index)
-                else {
+                if !remap_shape_transform(transform, group_to_point_index, group_to_line_index) {
                     polygon.binding = None;
-                    continue;
-                };
-                let mapped_line_start_index =
-                    mapped_optional_index(group_to_point_index, *line_start_index).unwrap_or(None);
-                let mapped_line_end_index =
-                    mapped_optional_index(group_to_point_index, *line_end_index).unwrap_or(None);
-                let mapped_line_index =
-                    mapped_optional_index(group_to_line_index, *line_index).unwrap_or(None);
-                if mapped_line_index.is_none()
-                    && (mapped_line_start_index.is_none() || mapped_line_end_index.is_none())
-                {
-                    polygon.binding = None;
-                    continue;
                 }
-                *source_index = mapped_source_index;
-                *line_start_index = mapped_line_start_index;
-                *line_end_index = mapped_line_end_index;
-                *line_index = mapped_line_index;
                 continue;
             }
             _ => continue,
-        };
-        let Some(mapped_source_index) = mapped_index(group_to_polygon_index, *source_index) else {
-            polygon.binding = None;
-            continue;
-        };
-        let Some(mapped_center_index) = mapped_index(group_to_point_index, *center_index) else {
-            polygon.binding = None;
-            continue;
-        };
-        *source_index = mapped_source_index;
-        *center_index = mapped_center_index;
+        }
     }
 }
 
@@ -448,31 +460,19 @@ pub(crate) fn remap_line_bindings(
                 *line_end_index = mapped_line_end_index;
                 *line_index = mapped_line_index;
             }
-            LineBinding::TranslateLine {
+            LineBinding::DerivedTransform {
                 source_index,
-                vector_start_index,
-                vector_end_index,
+                transform,
             } => {
                 let Some(mapped_source_index) = mapped_index(group_to_line_index, *source_index)
                 else {
                     line.binding = None;
                     continue;
                 };
-                let Some(mapped_vector_start_index) =
-                    mapped_index(group_to_point_index, *vector_start_index)
-                else {
-                    line.binding = None;
-                    continue;
-                };
-                let Some(mapped_vector_end_index) =
-                    mapped_index(group_to_point_index, *vector_end_index)
-                else {
-                    line.binding = None;
-                    continue;
-                };
                 *source_index = mapped_source_index;
-                *vector_start_index = mapped_vector_start_index;
-                *vector_end_index = mapped_vector_end_index;
+                if !remap_line_transform(transform, group_to_point_index, group_to_line_index) {
+                    line.binding = None;
+                }
             }
             LineBinding::Line {
                 start_index,
@@ -538,57 +538,6 @@ pub(crate) fn remap_line_bindings(
                 };
                 *start_index = mapped_start_index;
                 *end_index = mapped_end_index;
-            }
-            LineBinding::RotateLine {
-                source_index,
-                center_index,
-                ..
-            }
-            | LineBinding::ScaleLine {
-                source_index,
-                center_index,
-                ..
-            } => {
-                let Some(mapped_source_index) = mapped_index(group_to_line_index, *source_index)
-                else {
-                    line.binding = None;
-                    continue;
-                };
-                let Some(mapped_center_index) = mapped_index(group_to_point_index, *center_index)
-                else {
-                    line.binding = None;
-                    continue;
-                };
-                *source_index = mapped_source_index;
-                *center_index = mapped_center_index;
-            }
-            LineBinding::ReflectLine {
-                source_index,
-                line_start_index,
-                line_end_index,
-                line_index,
-            } => {
-                let Some(mapped_source_index) = mapped_index(group_to_line_index, *source_index)
-                else {
-                    line.binding = None;
-                    continue;
-                };
-                let mapped_line_start_index =
-                    mapped_optional_index(group_to_point_index, *line_start_index).unwrap_or(None);
-                let mapped_line_end_index =
-                    mapped_optional_index(group_to_point_index, *line_end_index).unwrap_or(None);
-                let mapped_line_index =
-                    mapped_optional_index(group_to_line_index, *line_index).unwrap_or(None);
-                if mapped_line_index.is_none()
-                    && (mapped_line_start_index.is_none() || mapped_line_end_index.is_none())
-                {
-                    line.binding = None;
-                    continue;
-                }
-                *source_index = mapped_source_index;
-                *line_start_index = mapped_line_start_index;
-                *line_end_index = mapped_line_end_index;
-                *line_index = mapped_line_index;
             }
             LineBinding::CustomTransformTrace { point_index, .. }
             | LineBinding::CoordinateTrace { point_index, .. } => {

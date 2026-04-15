@@ -8,6 +8,9 @@ use super::{
 };
 use crate::runtime::extract::decode::resolve_circle_points_raw;
 use crate::runtime::extract::points::resolve_line_like_points_raw;
+use crate::runtime::scene::{
+    AxisBinding, LineTransformBinding, RotationBinding, ScaleBinding, ShapeTransformBinding,
+};
 
 pub(crate) fn collect_rotated_line_shapes(
     file: &GspFile,
@@ -40,11 +43,13 @@ pub(crate) fn collect_rotated_line_shapes(
                 color: color_from_style(source_group.header.style_b),
                 dashed: line_is_dashed(source_group.header.style_a),
                 visible: !group.header.is_hidden(),
-                binding: Some(LineBinding::RotateLine {
+                binding: Some(LineBinding::DerivedTransform {
                     source_index: path.refs.first()?.checked_sub(1)?,
-                    center_index: binding.center_group_index,
-                    angle_degrees: binding_angle_degrees(&binding.kind)?,
-                    parameter_name: binding_parameter_name(&binding.kind),
+                    transform: LineTransformBinding::Rotate(RotationBinding {
+                        center_index: binding.center_group_index,
+                        angle_degrees: binding_angle_degrees(&binding.kind)?,
+                        parameter_name: binding_parameter_name(&binding.kind),
+                    }),
                 }),
                 debug: Some(payload_debug_source(group)),
             })
@@ -86,10 +91,12 @@ pub(crate) fn collect_translated_line_shapes(
                 color: color_from_style(source_group.header.style_b),
                 dashed: line_is_dashed(source_group.header.style_a),
                 visible: !group.header.is_hidden(),
-                binding: Some(LineBinding::TranslateLine {
+                binding: Some(LineBinding::DerivedTransform {
                     source_index: source_group_index,
-                    vector_start_index,
-                    vector_end_index,
+                    transform: LineTransformBinding::Translate {
+                        vector_start_index,
+                        vector_end_index,
+                    },
                 }),
                 debug: Some(payload_debug_source(group)),
             })
@@ -130,10 +137,12 @@ pub(crate) fn collect_scaled_line_shapes(
                 color: color_from_style(source_group.header.style_b),
                 dashed: line_is_dashed(source_group.header.style_a),
                 visible: !group.header.is_hidden(),
-                binding: Some(LineBinding::ScaleLine {
+                binding: Some(LineBinding::DerivedTransform {
                     source_index: path.refs.first()?.checked_sub(1)?,
-                    center_index: binding.center_group_index,
-                    factor,
+                    transform: LineTransformBinding::Scale(ScaleBinding {
+                        center_index: binding.center_group_index,
+                        factor,
+                    }),
                 }),
                 debug: Some(payload_debug_source(group)),
             })
@@ -178,11 +187,13 @@ pub(crate) fn collect_reflected_line_shapes(
                 color: color_from_style(source_group.header.style_b),
                 dashed: line_is_dashed(source_group.header.style_a),
                 visible: !group.header.is_hidden(),
-                binding: Some(LineBinding::ReflectLine {
+                binding: Some(LineBinding::DerivedTransform {
                     source_index: path.refs.first()?.checked_sub(1)?,
-                    line_start_index: None,
-                    line_end_index: None,
-                    line_index: Some(line_group_index),
+                    transform: LineTransformBinding::Reflect(AxisBinding {
+                        line_start_index: None,
+                        line_end_index: None,
+                        line_index: Some(line_group_index),
+                    }),
                 }),
                 debug: Some(payload_debug_source(group)),
             })
@@ -217,11 +228,13 @@ pub(crate) fn collect_rotated_circle_shapes(
                 fill_color_binding: None,
                 dashed: line_is_dashed(source_group.header.style_a),
                 visible: !group.header.is_hidden(),
-                binding: Some(ShapeBinding::RotateCircle {
+                binding: Some(ShapeBinding::DerivedTransform {
                     source_index: path.refs.first()?.checked_sub(1)?,
-                    center_index: binding.center_group_index,
-                    angle_degrees: binding_angle_degrees(&binding.kind)?,
-                    parameter_name: binding_parameter_name(&binding.kind),
+                    transform: ShapeTransformBinding::Rotate(RotationBinding {
+                        center_index: binding.center_group_index,
+                        angle_degrees: binding_angle_degrees(&binding.kind)?,
+                        parameter_name: binding_parameter_name(&binding.kind),
+                    }),
                 }),
                 debug: Some(payload_debug_source(group)),
             })
@@ -264,10 +277,12 @@ pub(crate) fn collect_translated_circle_shapes(
                 fill_color_binding: None,
                 dashed: line_is_dashed(source_group.header.style_a),
                 visible: !group.header.is_hidden(),
-                binding: Some(ShapeBinding::TranslateCircle {
+                binding: Some(ShapeBinding::DerivedTransform {
                     source_index: source_group_index,
-                    dx: constraint.dx,
-                    dy: constraint.dy,
+                    transform: ShapeTransformBinding::TranslateDelta {
+                        dx: constraint.dx,
+                        dy: constraint.dy,
+                    },
                 }),
                 debug: Some(payload_debug_source(group)),
             })
@@ -310,10 +325,12 @@ pub(crate) fn collect_translated_polygon_shapes(
                     source_group.header.style_c,
                 ),
                 visible: !group.header.is_hidden(),
-                binding: Some(ShapeBinding::TranslatePolygon {
+                binding: Some(ShapeBinding::DerivedTransform {
                     source_index: path.refs.first()?.checked_sub(1)?,
-                    vector_start_index,
-                    vector_end_index,
+                    transform: ShapeTransformBinding::TranslateVector {
+                        vector_start_index,
+                        vector_end_index,
+                    },
                 }),
                 debug: Some(payload_debug_source(group)),
             })
@@ -350,10 +367,12 @@ pub(crate) fn collect_transformed_circle_shapes(
                 fill_color_binding: None,
                 dashed: line_is_dashed(source_group.header.style_a),
                 visible: !group.header.is_hidden(),
-                binding: Some(ShapeBinding::ScaleCircle {
+                binding: Some(ShapeBinding::DerivedTransform {
                     source_index: path.refs.first()?.checked_sub(1)?,
-                    center_index: binding.center_group_index,
-                    factor,
+                    transform: ShapeTransformBinding::Scale(ScaleBinding {
+                        center_index: binding.center_group_index,
+                        factor,
+                    }),
                 }),
                 debug: Some(payload_debug_source(group)),
             })
@@ -394,11 +413,13 @@ pub(crate) fn collect_rotated_polygon_shapes(
                     source_group.header.style_c,
                 ),
                 visible: !group.header.is_hidden(),
-                binding: Some(ShapeBinding::RotatePolygon {
+                binding: Some(ShapeBinding::DerivedTransform {
                     source_index: path.refs.first()?.checked_sub(1)?,
-                    center_index: binding.center_group_index,
-                    angle_degrees: binding_angle_degrees(&binding.kind)?,
-                    parameter_name: binding_parameter_name(&binding.kind),
+                    transform: ShapeTransformBinding::Rotate(RotationBinding {
+                        center_index: binding.center_group_index,
+                        angle_degrees: binding_angle_degrees(&binding.kind)?,
+                        parameter_name: binding_parameter_name(&binding.kind),
+                    }),
                 }),
                 debug: Some(payload_debug_source(group)),
             })
@@ -441,10 +462,12 @@ pub(crate) fn collect_transformed_polygon_shapes(
                     source_group.header.style_c,
                 ),
                 visible: !group.header.is_hidden(),
-                binding: Some(ShapeBinding::ScalePolygon {
+                binding: Some(ShapeBinding::DerivedTransform {
                     source_index: path.refs.first()?.checked_sub(1)?,
-                    center_index: binding.center_group_index,
-                    factor,
+                    transform: ShapeTransformBinding::Scale(ScaleBinding {
+                        center_index: binding.center_group_index,
+                        factor,
+                    }),
                 }),
                 debug: Some(payload_debug_source(group)),
             })
@@ -482,11 +505,13 @@ pub(crate) fn collect_reflected_circle_shapes(
                 fill_color_binding: None,
                 dashed: line_is_dashed(source_group.header.style_a),
                 visible: !group.header.is_hidden(),
-                binding: Some(ShapeBinding::ReflectCircle {
+                binding: Some(ShapeBinding::DerivedTransform {
                     source_index: path.refs.first()?.checked_sub(1)?,
-                    line_start_index: None,
-                    line_end_index: None,
-                    line_index: Some(line_group_index),
+                    transform: ShapeTransformBinding::Reflect(AxisBinding {
+                        line_start_index: None,
+                        line_end_index: None,
+                        line_index: Some(line_group_index),
+                    }),
                 }),
                 debug: Some(payload_debug_source(group)),
             })
@@ -528,11 +553,13 @@ pub(crate) fn collect_reflected_polygon_shapes(
                     source_group.header.style_c,
                 ),
                 visible: !group.header.is_hidden(),
-                binding: Some(ShapeBinding::ReflectPolygon {
+                binding: Some(ShapeBinding::DerivedTransform {
                     source_index: path.refs.first()?.checked_sub(1)?,
-                    line_start_index: None,
-                    line_end_index: None,
-                    line_index: Some(line_group_index),
+                    transform: ShapeTransformBinding::Reflect(AxisBinding {
+                        line_start_index: None,
+                        line_end_index: None,
+                        line_index: Some(line_group_index),
+                    }),
                 }),
                 debug: Some(payload_debug_source(group)),
             })

@@ -1,6 +1,9 @@
 use super::scene_json::{DebugSourceJson, PointJson};
 use crate::runtime::geometry::darken;
-use crate::runtime::scene::{ArcBoundaryKind, ColorBinding, LineBinding, ShapeBinding};
+use crate::runtime::scene::{
+    ArcBoundaryKind, ColorBinding, LineBinding, LineTransformBinding, ShapeBinding,
+    ShapeTransformBinding,
+};
 use serde::Serialize;
 use ts_rs::TS;
 
@@ -288,46 +291,10 @@ impl LineBindingJson {
                 start_index: *start_index,
                 end_index: *end_index,
             },
-            LineBinding::TranslateLine {
+            LineBinding::DerivedTransform {
                 source_index,
-                vector_start_index,
-                vector_end_index,
-            } => Self::TranslateLine {
-                source_index: *source_index,
-                vector_start_index: *vector_start_index,
-                vector_end_index: *vector_end_index,
-            },
-            LineBinding::RotateLine {
-                source_index,
-                center_index,
-                angle_degrees,
-                parameter_name,
-            } => Self::RotateLine {
-                source_index: *source_index,
-                center_index: *center_index,
-                angle_degrees: *angle_degrees,
-                parameter_name: parameter_name.clone(),
-            },
-            LineBinding::ScaleLine {
-                source_index,
-                center_index,
-                factor,
-            } => Self::ScaleLine {
-                source_index: *source_index,
-                center_index: *center_index,
-                factor: *factor,
-            },
-            LineBinding::ReflectLine {
-                source_index,
-                line_start_index,
-                line_end_index,
-                line_index,
-            } => Self::ReflectLine {
-                source_index: *source_index,
-                line_start_index: *line_start_index,
-                line_end_index: *line_end_index,
-                line_index: *line_index,
-            },
+                transform,
+            } => Self::from_derived_transform(*source_index, transform),
             LineBinding::CustomTransformTrace {
                 point_index,
                 x_min,
@@ -386,6 +353,38 @@ impl LineBindingJson {
     }
 }
 
+impl LineBindingJson {
+    fn from_derived_transform(source_index: usize, transform: &LineTransformBinding) -> Self {
+        match transform {
+            LineTransformBinding::Translate {
+                vector_start_index,
+                vector_end_index,
+            } => Self::TranslateLine {
+                source_index,
+                vector_start_index: *vector_start_index,
+                vector_end_index: *vector_end_index,
+            },
+            LineTransformBinding::Rotate(binding) => Self::RotateLine {
+                source_index,
+                center_index: binding.center_index,
+                angle_degrees: binding.angle_degrees,
+                parameter_name: binding.parameter_name.clone(),
+            },
+            LineTransformBinding::Scale(binding) => Self::ScaleLine {
+                source_index,
+                center_index: binding.center_index,
+                factor: binding.factor,
+            },
+            LineTransformBinding::Reflect(axis) => Self::ReflectLine {
+                source_index,
+                line_start_index: axis.line_start_index,
+                line_end_index: axis.line_end_index,
+                line_index: axis.line_index,
+            },
+        }
+    }
+}
+
 #[derive(Serialize, TS)]
 #[serde(rename_all = "kebab-case")]
 enum ArcBoundaryKindJson {
@@ -421,7 +420,10 @@ impl PolygonJson {
             color: polygon.color,
             outline_color: darken(polygon.color, 80),
             visible: polygon.visible,
-            binding: polygon.binding.as_ref().map(ShapeBindingJson::from_binding),
+            binding: polygon
+                .binding
+                .as_ref()
+                .and_then(ShapeBindingJson::try_from_polygon_binding),
             debug: polygon.debug.as_ref().map(DebugSourceJson::from_source),
         }
     }
@@ -455,7 +457,10 @@ impl CircleJson {
                 .map(ColorBindingJson::from_binding),
             dashed: circle.dashed,
             visible: circle.visible,
-            binding: circle.binding.as_ref().map(ShapeBindingJson::from_binding),
+            binding: circle
+                .binding
+                .as_ref()
+                .and_then(ShapeBindingJson::try_from_circle_binding),
             debug: circle.debug.as_ref().map(DebugSourceJson::from_source),
         }
     }
@@ -658,19 +663,18 @@ enum ShapeBindingJson {
     },
 }
 
+#[derive(Clone, Copy)]
+enum ShapeBindingTarget {
+    Polygon,
+    Circle,
+}
+
 impl ShapeBindingJson {
-    fn from_binding(binding: &ShapeBinding) -> Self {
+    fn try_from_polygon_binding(binding: &ShapeBinding) -> Option<Self> {
         match binding {
-            ShapeBinding::PointRadiusCircle {
-                center_index,
-                radius_index,
-            } => Self::PointRadiusCircle {
-                center_index: *center_index,
-                radius_index: *radius_index,
-            },
-            ShapeBinding::PointPolygon { vertex_indices } => Self::PointPolygon {
+            ShapeBinding::PointPolygon { vertex_indices } => Some(Self::PointPolygon {
                 vertex_indices: vertex_indices.clone(),
-            },
+            }),
             ShapeBinding::ArcBoundaryPolygon {
                 host_key,
                 boundary_kind,
@@ -680,7 +684,7 @@ impl ShapeBindingJson {
                 end_index,
                 reversed,
                 complement,
-            } => Self::ArcBoundaryPolygon {
+            } => Some(Self::ArcBoundaryPolygon {
                 host_key: *host_key,
                 boundary_kind: ArcBoundaryKindJson::from_kind(*boundary_kind),
                 center_index: *center_index,
@@ -689,96 +693,112 @@ impl ShapeBindingJson {
                 end_index: *end_index,
                 reversed: *reversed,
                 complement: *complement,
-            },
+            }),
+            ShapeBinding::DerivedTransform {
+                source_index,
+                transform,
+            } => Self::try_from_transform(*source_index, transform, ShapeBindingTarget::Polygon),
+            ShapeBinding::PointRadiusCircle { .. } | ShapeBinding::SegmentRadiusCircle { .. } => None,
+        }
+    }
+
+    fn try_from_circle_binding(binding: &ShapeBinding) -> Option<Self> {
+        match binding {
+            ShapeBinding::PointRadiusCircle {
+                center_index,
+                radius_index,
+            } => Some(Self::PointRadiusCircle {
+                center_index: *center_index,
+                radius_index: *radius_index,
+            }),
             ShapeBinding::SegmentRadiusCircle {
                 center_index,
                 line_start_index,
                 line_end_index,
-            } => Self::SegmentRadiusCircle {
+            } => Some(Self::SegmentRadiusCircle {
                 center_index: *center_index,
                 line_start_index: *line_start_index,
                 line_end_index: *line_end_index,
-            },
-            ShapeBinding::TranslateCircle {
+            }),
+            ShapeBinding::DerivedTransform {
                 source_index,
-                dx,
-                dy,
-            } => Self::TranslateCircle {
-                source_index: *source_index,
-                dx: *dx,
-                dy: *dy,
-            },
-            ShapeBinding::TranslatePolygon {
+                transform,
+            } => Self::try_from_transform(*source_index, transform, ShapeBindingTarget::Circle),
+            ShapeBinding::PointPolygon { .. } | ShapeBinding::ArcBoundaryPolygon { .. } => None,
+        }
+    }
+
+    fn try_from_transform(
+        source_index: usize,
+        transform: &ShapeTransformBinding,
+        target: ShapeBindingTarget,
+    ) -> Option<Self> {
+        match (target, transform) {
+            (
+                ShapeBindingTarget::Polygon,
+                ShapeTransformBinding::TranslateVector {
+                    vector_start_index,
+                    vector_end_index,
+                },
+            ) => Some(Self::TranslatePolygon {
                 source_index,
-                vector_start_index,
-                vector_end_index,
-            } => Self::TranslatePolygon {
-                source_index: *source_index,
                 vector_start_index: *vector_start_index,
                 vector_end_index: *vector_end_index,
-            },
-            ShapeBinding::RotatePolygon {
-                source_index,
-                center_index,
-                angle_degrees,
-                parameter_name,
-            } => Self::RotatePolygon {
-                source_index: *source_index,
-                center_index: *center_index,
-                angle_degrees: *angle_degrees,
-                parameter_name: parameter_name.clone(),
-            },
-            ShapeBinding::RotateCircle {
-                source_index,
-                center_index,
-                angle_degrees,
-                parameter_name,
-            } => Self::RotateCircle {
-                source_index: *source_index,
-                center_index: *center_index,
-                angle_degrees: *angle_degrees,
-                parameter_name: parameter_name.clone(),
-            },
-            ShapeBinding::ScalePolygon {
-                source_index,
-                center_index,
-                factor,
-            } => Self::ScalePolygon {
-                source_index: *source_index,
-                center_index: *center_index,
-                factor: *factor,
-            },
-            ShapeBinding::ScaleCircle {
-                source_index,
-                center_index,
-                factor,
-            } => Self::ScaleCircle {
-                source_index: *source_index,
-                center_index: *center_index,
-                factor: *factor,
-            },
-            ShapeBinding::ReflectPolygon {
-                source_index,
-                line_start_index,
-                line_end_index,
-                line_index,
-            } => Self::ReflectPolygon {
-                source_index: *source_index,
-                line_start_index: *line_start_index,
-                line_end_index: *line_end_index,
-                line_index: *line_index,
-            },
-            ShapeBinding::ReflectCircle {
-                source_index,
-                line_start_index,
-                line_end_index,
-                line_index,
-            } => Self::ReflectCircle {
-                source_index: *source_index,
-                line_start_index: *line_start_index,
-                line_end_index: *line_end_index,
-                line_index: *line_index,
-            },
+            }),
+            (ShapeBindingTarget::Polygon, ShapeTransformBinding::Rotate(binding)) => {
+                Some(Self::RotatePolygon {
+                    source_index,
+                    center_index: binding.center_index,
+                    angle_degrees: binding.angle_degrees,
+                    parameter_name: binding.parameter_name.clone(),
+                })
+            }
+            (ShapeBindingTarget::Polygon, ShapeTransformBinding::Scale(binding)) => {
+                Some(Self::ScalePolygon {
+                    source_index,
+                    center_index: binding.center_index,
+                    factor: binding.factor,
+                })
+            }
+            (ShapeBindingTarget::Polygon, ShapeTransformBinding::Reflect(axis)) => {
+                Some(Self::ReflectPolygon {
+                    source_index,
+                    line_start_index: axis.line_start_index,
+                    line_end_index: axis.line_end_index,
+                    line_index: axis.line_index,
+                })
+            }
+            (ShapeBindingTarget::Circle, ShapeTransformBinding::TranslateDelta { dx, dy }) => {
+                Some(Self::TranslateCircle {
+                    source_index,
+                    dx: *dx,
+                    dy: *dy,
+                })
+            }
+            (ShapeBindingTarget::Circle, ShapeTransformBinding::Rotate(binding)) => {
+                Some(Self::RotateCircle {
+                    source_index,
+                    center_index: binding.center_index,
+                    angle_degrees: binding.angle_degrees,
+                    parameter_name: binding.parameter_name.clone(),
+                })
+            }
+            (ShapeBindingTarget::Circle, ShapeTransformBinding::Scale(binding)) => {
+                Some(Self::ScaleCircle {
+                    source_index,
+                    center_index: binding.center_index,
+                    factor: binding.factor,
+                })
+            }
+            (ShapeBindingTarget::Circle, ShapeTransformBinding::Reflect(axis)) => {
+                Some(Self::ReflectCircle {
+                    source_index,
+                    line_start_index: axis.line_start_index,
+                    line_end_index: axis.line_end_index,
+                    line_index: axis.line_index,
+                })
+            }
+            _ => None,
         }
     }
 }

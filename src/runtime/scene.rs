@@ -468,6 +468,52 @@ pub(crate) struct LineShape {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct AxisBinding {
+    pub(crate) line_start_index: Option<usize>,
+    pub(crate) line_end_index: Option<usize>,
+    pub(crate) line_index: Option<usize>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RotationBinding {
+    pub(crate) center_index: usize,
+    pub(crate) angle_degrees: f64,
+    pub(crate) parameter_name: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ScaleBinding {
+    pub(crate) center_index: usize,
+    pub(crate) factor: f64,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum LineTransformBinding {
+    Translate {
+        vector_start_index: usize,
+        vector_end_index: usize,
+    },
+    Rotate(RotationBinding),
+    Scale(ScaleBinding),
+    Reflect(AxisBinding),
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum ShapeTransformBinding {
+    TranslateDelta {
+        dx: f64,
+        dy: f64,
+    },
+    TranslateVector {
+        vector_start_index: usize,
+        vector_end_index: usize,
+    },
+    Rotate(RotationBinding),
+    Scale(ScaleBinding),
+    Reflect(AxisBinding),
+}
+
+#[derive(Debug, Clone)]
 pub(crate) enum LineBinding {
     GraphHelperLine {
         start_index: usize,
@@ -514,27 +560,9 @@ pub(crate) enum LineBinding {
         start_index: usize,
         end_index: usize,
     },
-    TranslateLine {
+    DerivedTransform {
         source_index: usize,
-        vector_start_index: usize,
-        vector_end_index: usize,
-    },
-    RotateLine {
-        source_index: usize,
-        center_index: usize,
-        angle_degrees: f64,
-        parameter_name: Option<String>,
-    },
-    ScaleLine {
-        source_index: usize,
-        center_index: usize,
-        factor: f64,
-    },
-    ReflectLine {
-        source_index: usize,
-        line_start_index: Option<usize>,
-        line_end_index: Option<usize>,
-        line_index: Option<usize>,
+        transform: LineTransformBinding,
     },
     CustomTransformTrace {
         point_index: usize,
@@ -753,49 +781,9 @@ pub(crate) enum ShapeBinding {
         line_start_index: usize,
         line_end_index: usize,
     },
-    TranslateCircle {
+    DerivedTransform {
         source_index: usize,
-        dx: f64,
-        dy: f64,
-    },
-    TranslatePolygon {
-        source_index: usize,
-        vector_start_index: usize,
-        vector_end_index: usize,
-    },
-    RotatePolygon {
-        source_index: usize,
-        center_index: usize,
-        angle_degrees: f64,
-        parameter_name: Option<String>,
-    },
-    RotateCircle {
-        source_index: usize,
-        center_index: usize,
-        angle_degrees: f64,
-        parameter_name: Option<String>,
-    },
-    ScalePolygon {
-        source_index: usize,
-        center_index: usize,
-        factor: f64,
-    },
-    ScaleCircle {
-        source_index: usize,
-        center_index: usize,
-        factor: f64,
-    },
-    ReflectPolygon {
-        source_index: usize,
-        line_start_index: Option<usize>,
-        line_end_index: Option<usize>,
-        line_index: Option<usize>,
-    },
-    ReflectCircle {
-        source_index: usize,
-        line_start_index: Option<usize>,
-        line_end_index: Option<usize>,
-        line_index: Option<usize>,
+        transform: ShapeTransformBinding,
     },
 }
 

@@ -2,6 +2,17 @@
 
 (function() {
   const modules = window.GspViewerModules || (window.GspViewerModules = {});
+  const geometry = modules.geometry;
+  const {
+    lerpPoint,
+    rotateAround,
+    scaleAround,
+    reflectAcrossLine,
+    clipParametricLineToBounds,
+    clipLineToBounds,
+    clipRayToBounds,
+    angleBisectorDirection,
+  } = geometry;
   /** @typedef {{ minX: number; maxX: number; minY: number; maxY: number; spanX?: number; spanY?: number }} ViewBounds */
   /**
    * @param {PointHandle} handle
@@ -21,34 +32,6 @@
 
   /**
    * @param {Point} start
-   * @param {Point} end
-   * @param {number} t
-   */
-  function lerpPoint(start, end, t) {
-    return {
-      x: start.x + (end.x - start.x) * t,
-      y: start.y + (end.y - start.y) * t,
-    };
-  }
-
-  /**
-   * @param {Point} point
-   * @param {Point} center
-   * @param {number} radians
-   */
-  function rotateAround(point, center, radians) {
-    const cos = Math.cos(radians);
-    const sin = Math.sin(radians);
-    const dx = point.x - center.x;
-    const dy = point.y - center.y;
-    return {
-      x: center.x + dx * cos + dy * sin,
-      y: center.y - dx * sin + dy * cos,
-    };
-  }
-
-  /**
-   * @param {Point} start
    * @param {Point} vertex
    * @param {Point} end
    */
@@ -64,142 +47,10 @@
   }
 
   /**
-   * @param {Point} point
-   * @param {Point} center
-   * @param {number} factor
-   */
-  function scaleAround(point, center, factor) {
-    return {
-      x: center.x + (point.x - center.x) * factor,
-      y: center.y + (point.y - center.y) * factor,
-    };
-  }
-
-  /**
-   * @param {Point} point
-   * @param {Point} lineStart
-   * @param {Point} lineEnd
-   */
-  function reflectAcrossLine(point, lineStart, lineEnd) {
-    const dx = lineEnd.x - lineStart.x;
-    const dy = lineEnd.y - lineStart.y;
-    const lenSq = dx * dx + dy * dy;
-    if (lenSq <= 1e-9) return point;
-    const t = ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / lenSq;
-    const projection = {
-      x: lineStart.x + t * dx,
-      y: lineStart.y + t * dy,
-    };
-    return {
-      x: projection.x * 2 - point.x,
-      y: projection.y * 2 - point.y,
-    };
-  }
-
-  /**
-   * @param {Point} start
-   * @param {Point} end
-   * @param {ViewBounds} bounds
-   * @param {boolean} rayOnly
-   * @returns {Point[] | null}
-   */
-  function clipParametricLineToBounds(start, end, bounds, rayOnly) {
-    const dx = end.x - start.x;
-    const dy = end.y - start.y;
-    if (Math.abs(dx) <= 1e-9 && Math.abs(dy) <= 1e-9) return null;
-
-    /** @type {Array<{ t: number; point: Point }>} */
-    const hits = [];
-    /**
-     * @param {number} t
-     * @param {Point} point
-     */
-    const pushHit = (t, point) => {
-      if (!Number.isFinite(t)) return;
-      if (rayOnly && t < -1e-9) return;
-      if (
-        point.x < bounds.minX - 1e-6 || point.x > bounds.maxX + 1e-6 ||
-        point.y < bounds.minY - 1e-6 || point.y > bounds.maxY + 1e-6
-      ) return;
-      if (hits.some((hit) =>
-        Math.abs(hit.t - t) < 1e-6 ||
-        (Math.abs(hit.point.x - point.x) < 1e-6 && Math.abs(hit.point.y - point.y) < 1e-6)
-      )) return;
-      hits.push({ t, point });
-    };
-
-    if (Math.abs(dx) > 1e-9) {
-      for (const x of [bounds.minX, bounds.maxX]) {
-        const t = (x - start.x) / dx;
-        pushHit(t, { x, y: start.y + dy * t });
-      }
-    }
-    if (Math.abs(dy) > 1e-9) {
-      for (const y of [bounds.minY, bounds.maxY]) {
-        const t = (y - start.y) / dy;
-        pushHit(t, { x: start.x + dx * t, y });
-      }
-    }
-    if (
-      rayOnly &&
-      start.x >= bounds.minX - 1e-6 && start.x <= bounds.maxX + 1e-6 &&
-      start.y >= bounds.minY - 1e-6 && start.y <= bounds.maxY + 1e-6
-    ) {
-      pushHit(0, { ...start });
-    }
-    if (hits.length < 2) return null;
-    hits.sort((a, b) => a.t - b.t);
-    return [hits[0].point, hits[hits.length - 1].point];
-  }
-
-  /**
-   * @param {Point} start
-   * @param {Point} end
-   * @param {ViewBounds} bounds
-   */
-  function clipLineToBounds(start, end, bounds) {
-    return clipParametricLineToBounds(start, end, bounds, false);
-  }
-
-  /**
-   * @param {Point} start
-   * @param {Point} end
-   * @param {ViewBounds} bounds
-   */
-  function clipRayToBounds(start, end, bounds) {
-    return clipParametricLineToBounds(start, end, bounds, true);
-  }
-
-  /**
    * @param {RuntimeLabelJson} label
    */
   function usesVerboseParameterLabel(label) {
     return typeof label.text === "string" && label.text.includes("在");
-  }
-
-  /**
-   * @param {Point} start
-   * @param {Point} vertex
-   * @param {Point} end
-   * @returns {Point | null}
-   */
-  function angleBisectorDirection(start, vertex, end) {
-    const startDx = start.x - vertex.x;
-    const startDy = start.y - vertex.y;
-    const startLen = Math.hypot(startDx, startDy);
-    const endDx = end.x - vertex.x;
-    const endDy = end.y - vertex.y;
-    const endLen = Math.hypot(endDx, endDy);
-    if (startLen <= 1e-9 || endLen <= 1e-9) return null;
-
-    const sumX = startDx / startLen + endDx / endLen;
-    const sumY = startDy / startLen + endDy / endLen;
-    const sumLen = Math.hypot(sumX, sumY);
-    if (sumLen > 1e-9) {
-      return { x: sumX / sumLen, y: sumY / sumLen };
-    }
-
-    return { x: -startDy / startLen, y: startDx / startLen };
   }
 
   /**
@@ -2952,6 +2803,114 @@
     return sampled.length >= 2 ? sampled : null;
   }
 
+  /** @param {string} kind */
+  function derivedTransformKind(kind) {
+    if (kind.startsWith("translate-")) return "translate";
+    if (kind.startsWith("rotate-")) return "rotate";
+    if (kind.startsWith("scale-")) return "scale";
+    if (kind.startsWith("reflect-")) return "reflect";
+    return null;
+  }
+
+  /**
+   * @param {LineBindingJson | ShapeBindingJson} binding
+   * @param {ViewerSceneData} scene
+   * @param {Map<string, number>} parameters
+   */
+  function resolveDerivedTransform(binding, scene, parameters) {
+    const kind = derivedTransformKind(binding.kind);
+    if (kind === "translate" && "vectorStartIndex" in binding && "vectorEndIndex" in binding) {
+      const vectorStart = scene.points[binding.vectorStartIndex];
+      const vectorEnd = scene.points[binding.vectorEndIndex];
+      if (!vectorStart || !vectorEnd) return null;
+      return {
+        kind: "translate",
+        dx: vectorEnd.x - vectorStart.x,
+        dy: vectorEnd.y - vectorStart.y,
+      };
+    }
+    if (kind === "translate" && "dx" in binding && "dy" in binding) {
+      return { kind: "translate", dx: binding.dx, dy: binding.dy };
+    }
+    if (kind === "rotate") {
+      const center = scene.points[binding.centerIndex];
+      if (!center) return null;
+      const angleDegrees = binding.parameterName
+        ? parameters.get(binding.parameterName)
+        : binding.angleDegrees;
+      if (!Number.isFinite(angleDegrees)) return null;
+      return { kind: "rotate", center, radians: angleDegrees * Math.PI / 180 };
+    }
+    if (kind === "scale") {
+      const center = scene.points[binding.centerIndex];
+      if (!center) return null;
+      return { kind: "scale", center, factor: binding.factor };
+    }
+    if (kind === "reflect") {
+      const [lineStart, lineEnd] = reflectionAxisPoints(scene, binding);
+      if (!lineStart || !lineEnd) return null;
+      return { kind: "reflect", lineStart, lineEnd };
+    }
+    return null;
+  }
+
+  /**
+   * @param {Point} point
+   * @param {{ kind: "translate", dx: number, dy: number } | { kind: "rotate", center: Point, radians: number } | { kind: "scale", center: Point, factor: number } | { kind: "reflect", lineStart: Point, lineEnd: Point }} transform
+   */
+  function applyDerivedTransform(point, transform) {
+    if (transform.kind === "translate") {
+      return { x: point.x + transform.dx, y: point.y + transform.dy };
+    }
+    if (transform.kind === "rotate") {
+      return rotateAround(point, transform.center, transform.radians);
+    }
+    if (transform.kind === "scale") {
+      return scaleAround(point, transform.center, transform.factor);
+    }
+    return reflectAcrossLine(point, transform.lineStart, transform.lineEnd);
+  }
+
+  /**
+   * @param {{ scene: ViewerSceneData, parameters: Map<string, number> }} env
+   * @param {RuntimeLineJson} line
+   */
+  function refreshDerivedLine(env, line) {
+    const source = env.scene.lines[line.binding.sourceIndex];
+    const transform = resolveDerivedTransform(line.binding, env.scene, env.parameters);
+    if (!source || !transform) return;
+    line.points = source.points.map((/** @type {Point} */ point) => applyDerivedTransform(point, transform));
+  }
+
+  /**
+   * @param {{ scene: ViewerSceneData, parameters: Map<string, number>, resolveHandle: (handle: PointHandle) => Point | null }} env
+   * @param {RuntimePolygonJson} polygon
+   */
+  function refreshDerivedPolygon(env, polygon) {
+    const source = env.scene.polygons[polygon.binding.sourceIndex];
+    const transform = resolveDerivedTransform(polygon.binding, env.scene, env.parameters);
+    if (!source || !transform) return;
+    polygon.points = source.points
+      .map((/** @type {PointHandle} */ handle) => env.resolveHandle(handle))
+      .filter(Boolean)
+      .map((/** @type {Point} */ point) => applyDerivedTransform(point, transform));
+  }
+
+  /**
+   * @param {{ scene: ViewerSceneData, parameters: Map<string, number>, resolveHandle: (handle: PointHandle) => Point | null }} env
+   * @param {RuntimeCircleJson} circle
+   */
+  function refreshDerivedCircle(env, circle) {
+    const source = env.scene.circles[circle.binding.sourceIndex];
+    const transform = resolveDerivedTransform(circle.binding, env.scene, env.parameters);
+    if (!source || !transform) return;
+    const sourceCenter = env.resolveHandle(source.center);
+    const sourceRadius = env.resolveHandle(source.radiusPoint);
+    if (!sourceCenter || !sourceRadius) return;
+    circle.center = applyDerivedTransform(sourceCenter, transform);
+    circle.radiusPoint = applyDerivedTransform(sourceRadius, transform);
+  }
+
   /** @type {Record<string, LineBindingRefresher>} */
   const LINE_BINDING_REFRESHERS = {
     segment({ scene }, line) {
@@ -3044,32 +3003,10 @@
         line.points = sampled;
       }
     },
-    "rotate-line"({ scene, parameters }, line) {
-      const source = scene.lines[line.binding.sourceIndex];
-      const center = scene.points[line.binding.centerIndex];
-      if (source && center) {
-        const angleDegrees = line.binding.parameterName
-          ? parameters.get(line.binding.parameterName)
-          : line.binding.angleDegrees;
-        if (!Number.isFinite(angleDegrees)) return;
-        const radians = angleDegrees * Math.PI / 180;
-        line.points = source.points.map((/** @type {Point} */ point) => rotateAround(point, center, radians));
-      }
-    },
-    "scale-line"({ scene }, line) {
-      const source = scene.lines[line.binding.sourceIndex];
-      const center = scene.points[line.binding.centerIndex];
-      if (source && center) {
-        line.points = source.points.map((/** @type {Point} */ point) => scaleAround(point, center, line.binding.factor));
-      }
-    },
-    "reflect-line"({ scene }, line) {
-      const source = scene.lines[line.binding.sourceIndex];
-      const [lineStart, lineEnd] = reflectionAxisPoints(scene, line.binding);
-      if (source && lineStart && lineEnd) {
-        line.points = source.points.map((/** @type {Point} */ point) => reflectAcrossLine(point, lineStart, lineEnd));
-      }
-    },
+    "translate-line": refreshDerivedLine,
+    "rotate-line": refreshDerivedLine,
+    "scale-line": refreshDerivedLine,
+    "reflect-line": refreshDerivedLine,
     "custom-transform-trace"({ scene, parameters }, line) {
       const sampled = sampleCustomTransformTraceLine(scene, line, parameters);
       if (sampled) {
@@ -3108,50 +3045,10 @@
       circle.center = { x: center.x, y: center.y };
       circle.radiusPoint = { x: center.x + radius, y: center.y };
     },
-    "translate-circle"({ scene, resolveHandle }, circle) {
-      const source = scene.circles[circle.binding.sourceIndex];
-      if (!source) return;
-      const sourceCenter = resolveHandle(source.center);
-      const sourceRadius = resolveHandle(source.radiusPoint);
-      circle.center = {
-        x: sourceCenter.x + circle.binding.dx,
-        y: sourceCenter.y + circle.binding.dy,
-      };
-      circle.radiusPoint = {
-        x: sourceRadius.x + circle.binding.dx,
-        y: sourceRadius.y + circle.binding.dy,
-      };
-    },
-    "rotate-circle"({ scene, parameters, resolveHandle }, circle) {
-      const source = scene.circles[circle.binding.sourceIndex];
-      const center = scene.points[circle.binding.centerIndex];
-      if (!source || !center) return;
-      const sourceCenter = resolveHandle(source.center);
-      const sourceRadius = resolveHandle(source.radiusPoint);
-      const angleDegrees = circle.binding.parameterName
-        ? parameters.get(circle.binding.parameterName)
-        : circle.binding.angleDegrees;
-      if (!Number.isFinite(angleDegrees)) return;
-      const radians = angleDegrees * Math.PI / 180;
-      circle.center = rotateAround(sourceCenter, center, radians);
-      circle.radiusPoint = rotateAround(sourceRadius, center, radians);
-    },
-    "scale-circle"({ scene, resolveHandle }, circle) {
-      const source = scene.circles[circle.binding.sourceIndex];
-      const center = scene.points[circle.binding.centerIndex];
-      if (!source || !center) return;
-      const sourceCenter = resolveHandle(source.center);
-      const sourceRadius = resolveHandle(source.radiusPoint);
-      circle.center = scaleAround(sourceCenter, center, circle.binding.factor);
-      circle.radiusPoint = scaleAround(sourceRadius, center, circle.binding.factor);
-    },
-    "reflect-circle"({ scene, resolveHandle }, circle) {
-      const source = scene.circles[circle.binding.sourceIndex];
-      const [lineStart, lineEnd] = reflectionAxisPoints(scene, circle.binding);
-      if (!source || !lineStart || !lineEnd) return;
-      circle.center = reflectAcrossLine(resolveHandle(source.center), lineStart, lineEnd);
-      circle.radiusPoint = reflectAcrossLine(resolveHandle(source.radiusPoint), lineStart, lineEnd);
-    },
+    "translate-circle": refreshDerivedCircle,
+    "rotate-circle": refreshDerivedCircle,
+    "scale-circle": refreshDerivedCircle,
+    "reflect-circle": refreshDerivedCircle,
   };
 
   /** @type {Record<string, PolygonBindingRefresher>} */
@@ -3170,50 +3067,10 @@
         polygon.points = sampled;
       }
     },
-    "translate-polygon"({ scene, resolveHandle }, polygon) {
-      const source = scene.polygons[polygon.binding.sourceIndex];
-      const vectorStart = scene.points[polygon.binding.vectorStartIndex];
-      const vectorEnd = scene.points[polygon.binding.vectorEndIndex];
-      if (!source || !vectorStart || !vectorEnd) return;
-      const dx = vectorEnd.x - vectorStart.x;
-      const dy = vectorEnd.y - vectorStart.y;
-      polygon.points = source.points.map((/** @type {PointHandle} */ handle) => {
-        const point = resolveHandle(handle);
-        return { x: point.x + dx, y: point.y + dy };
-      });
-    },
-    "rotate-polygon"({ scene, parameters, resolveHandle }, polygon) {
-      const source = scene.polygons[polygon.binding.sourceIndex];
-      const center = scene.points[polygon.binding.centerIndex];
-      if (!source || !center) return;
-      const angleDegrees = polygon.binding.parameterName
-        ? parameters.get(polygon.binding.parameterName)
-        : polygon.binding.angleDegrees;
-      if (!Number.isFinite(angleDegrees)) return;
-      const radians = angleDegrees * Math.PI / 180;
-      polygon.points = source.points.map((/** @type {PointHandle} */ handle) => {
-        const point = resolveHandle(handle);
-        return rotateAround(point, center, radians);
-      });
-    },
-    "scale-polygon"({ scene, resolveHandle }, polygon) {
-      const source = scene.polygons[polygon.binding.sourceIndex];
-      const center = scene.points[polygon.binding.centerIndex];
-      if (!source || !center) return;
-      polygon.points = source.points.map((/** @type {PointHandle} */ handle) => {
-        const point = resolveHandle(handle);
-        return scaleAround(point, center, polygon.binding.factor);
-      });
-    },
-    "reflect-polygon"({ scene, resolveHandle }, polygon) {
-      const source = scene.polygons[polygon.binding.sourceIndex];
-      const [lineStart, lineEnd] = reflectionAxisPoints(scene, polygon.binding);
-      if (!source || !lineStart || !lineEnd) return;
-      polygon.points = source.points.map((/** @type {PointHandle} */ handle) => {
-        const point = resolveHandle(handle);
-        return reflectAcrossLine(point, lineStart, lineEnd);
-      });
-    },
+    "translate-polygon": refreshDerivedPolygon,
+    "rotate-polygon": refreshDerivedPolygon,
+    "scale-polygon": refreshDerivedPolygon,
+    "reflect-polygon": refreshDerivedPolygon,
   };
 
   /**
