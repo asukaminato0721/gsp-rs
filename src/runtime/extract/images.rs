@@ -1,5 +1,7 @@
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u16, read_u32};
 use crate::runtime::geometry::GraphTransform;
+use std::collections::BTreeMap;
+
 use crate::runtime::scene::SceneImage;
 
 use super::payload_debug_source;
@@ -10,13 +12,20 @@ pub(super) fn collect_scene_images(
     file: &GspFile,
     groups: &[ObjectGroup],
     graph: &Option<GraphTransform>,
-) -> Vec<SceneImage> {
+) -> (Vec<SceneImage>, BTreeMap<usize, usize>) {
     let png_blobs = collect_embedded_pngs(&file.data);
+    let mut images = Vec::new();
+    let mut image_group_to_index = BTreeMap::new();
 
-    groups
-        .iter()
-        .filter_map(|group| decode_image_group(file, groups, group, graph, &png_blobs))
-        .collect()
+    for group in groups {
+        let Some(image) = decode_image_group(file, groups, group, graph, &png_blobs) else {
+            continue;
+        };
+        image_group_to_index.insert(group.ordinal, images.len());
+        images.push(image);
+    }
+
+    (images, image_group_to_index)
 }
 
 fn decode_image_group(
@@ -93,6 +102,7 @@ fn decode_image_group(
         top_left: raw_top_left,
         bottom_right: raw_bottom_right,
         src,
+        visible: !group.header.is_hidden(),
         screen_space: true,
         debug: Some(payload_debug_source(group)),
     })

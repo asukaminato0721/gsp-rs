@@ -42,6 +42,7 @@ pub(crate) struct SceneImage {
     pub(crate) top_left: PointRecord,
     pub(crate) bottom_right: PointRecord,
     pub(crate) src: String,
+    pub(crate) visible: bool,
     pub(crate) screen_space: bool,
     pub(crate) debug: Option<PayloadDebugSource>,
 }
@@ -61,6 +62,9 @@ pub(crate) enum ButtonAction {
         href: String,
     },
     ToggleVisibility {
+        button_indices: Vec<usize>,
+        label_indices: Vec<usize>,
+        image_indices: Vec<usize>,
         point_indices: Vec<usize>,
         line_indices: Vec<usize>,
         circle_indices: Vec<usize>,
@@ -68,12 +72,18 @@ pub(crate) enum ButtonAction {
     },
     SetVisibility {
         visible: bool,
+        button_indices: Vec<usize>,
+        label_indices: Vec<usize>,
+        image_indices: Vec<usize>,
         point_indices: Vec<usize>,
         line_indices: Vec<usize>,
         circle_indices: Vec<usize>,
         polygon_indices: Vec<usize>,
     },
     ShowHideVisibility {
+        button_indices: Vec<usize>,
+        label_indices: Vec<usize>,
+        image_indices: Vec<usize>,
         point_indices: Vec<usize>,
         line_indices: Vec<usize>,
         circle_indices: Vec<usize>,
@@ -87,6 +97,9 @@ pub(crate) enum ButtonAction {
         point_index: usize,
     },
     ScrollPoint {
+        point_index: usize,
+    },
+    FocusPoint {
         point_index: usize,
     },
     Sequence {

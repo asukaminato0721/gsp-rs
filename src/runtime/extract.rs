@@ -975,7 +975,7 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
     let point_map = collect_point_objects(file, &groups);
     let analysis = analyze_scene(file, &groups, &point_map);
     let mut shapes = collect_scene_shapes(file, &groups, &point_map, &analysis);
-    let images = collect_scene_images(file, &groups, &analysis.graph_ref);
+    let (images, image_group_to_index) = collect_scene_images(file, &groups, &analysis.graph_ref);
     let (mut labels, label_group_to_index, pending_hotspots) =
         collect_scene_labels(file, &groups, &analysis, &shapes);
 
@@ -1073,6 +1073,8 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
         file,
         &groups,
         &analysis.raw_anchors,
+        &label_group_to_index,
+        &image_group_to_index,
         &group_to_point_index,
         &binding_maps.line_group_to_index,
         &binding_maps.circle_group_to_index,
@@ -2073,7 +2075,33 @@ fn validate_action_button_payload(file: &GspFile, group: &ObjectGroup) -> Result
     let action_kind = (read_u16(payload, 12), read_u16(payload, 14));
     if matches!(
         action_kind,
-        (2, 0) | (4, 0) | (7, 0) | (3, 1) | (3, 3) | (0, 7) | (1, 7) | (1, 3) | (0, 3)
+        (2, 0)
+            | (4, 0)
+            | (4, 1)
+            | (7, 0)
+            | (7, 1)
+            | (7, 3)
+            | (7, 8)
+            | (3, 0)
+            | (3, 1)
+            | (3, 2)
+            | (3, 3)
+            | (0, 0)
+            | (0, 1)
+            | (0, 7)
+            | (0, 2)
+            | (0, 3)
+            | (0, 4)
+            | (0, 5)
+            | (0, 6)
+            | (1, 7)
+            | (1, 0)
+            | (1, 1)
+            | (1, 3)
+            | (1, 2)
+            | (1, 4)
+            | (1, 5)
+            | (1, 6)
     ) {
         return Ok(());
     }

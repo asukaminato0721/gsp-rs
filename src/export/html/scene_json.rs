@@ -131,6 +131,7 @@ struct ImageJson {
     top_left: PointJson,
     bottom_right: PointJson,
     src: String,
+    visible: bool,
     screen_space: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     debug: Option<DebugSourceJson>,
@@ -142,6 +143,7 @@ impl ImageJson {
             top_left: PointJson::from_point(&image.top_left),
             bottom_right: PointJson::from_point(&image.bottom_right),
             src: image.src.clone(),
+            visible: image.visible,
             screen_space: image.screen_space,
             debug: image.debug.as_ref().map(DebugSourceJson::from_source),
         }

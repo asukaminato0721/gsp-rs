@@ -944,9 +944,10 @@ pub(crate) fn decode_coordinate_point(
                             },
                             expr: y_expr,
                         })
-                    })() {
-                        return Some(point);
-                    }
+                    })()
+                {
+                    return Some(point);
+                }
             }
 
             let parameter_group = groups.get(path.refs[0].checked_sub(1)?)?;

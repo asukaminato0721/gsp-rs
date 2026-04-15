@@ -1,8 +1,13 @@
-use super::{build_scene_checked, render_payload_log};
+use super::{
+    analyze_scene, build_scene_checked, collect_buttons, collect_point_objects,
+    collect_scene_labels, collect_scene_shapes, collect_visible_points_checked,
+    remap_scene_bindings, render_payload_log,
+};
 use crate::format::GspFile;
 use crate::runtime::scene::{
-    LabelIterationFamily, LineBinding, LineConstraint, LineIterationFamily, PointIterationFamily,
-    PolygonIterationFamily, Scene, ScenePointBinding, ScenePointConstraint, TextLabelBinding,
+    ButtonAction, LabelIterationFamily, LineBinding, LineConstraint, LineIterationFamily,
+    PointIterationFamily, PolygonIterationFamily, Scene, SceneButton, ScenePointBinding,
+    ScenePointConstraint, TextLabelBinding,
 };
 use insta::assert_snapshot;
 use std::fs;
@@ -21,6 +26,45 @@ fn fixture_log(data: &[u8], source_path: &str) -> String {
 fn fixture_bytes(path: &str) -> Option<Vec<u8>> {
     fs::read(path).ok()
 }
+
+fn fixture_buttons_without_validation(data: &[u8]) -> Vec<SceneButton> {
+    let file = GspFile::parse(data).expect("fixture parses");
+    let groups = file.object_groups();
+    let point_map = collect_point_objects(&file, &groups);
+    let analysis = analyze_scene(&file, &groups, &point_map);
+    let mut shapes = collect_scene_shapes(&file, &groups, &point_map, &analysis);
+    let (_, image_group_to_index) =
+        super::images::collect_scene_images(&file, &groups, &analysis.graph_ref);
+    let (_, label_group_to_index, _) = collect_scene_labels(&file, &groups, &analysis, &shapes);
+    let (_, group_to_point_index) = collect_visible_points_checked(
+        &file,
+        &groups,
+        &point_map,
+        &analysis.raw_anchors,
+        &analysis.graph_ref,
+    )
+    .expect("visible points build");
+    let (binding_maps, _, _) = remap_scene_bindings(
+        &file,
+        &groups,
+        &analysis.raw_anchors,
+        &group_to_point_index,
+        &mut shapes,
+    );
+    let (buttons, _) = collect_buttons(
+        &file,
+        &groups,
+        &analysis.raw_anchors,
+        &label_group_to_index,
+        &image_group_to_index,
+        &group_to_point_index,
+        &binding_maps.line_group_to_index,
+        &binding_maps.circle_group_to_index,
+        &binding_maps.polygon_group_to_index,
+    );
+    buttons
+}
+
 #[test]
 fn preserves_function_iteration_coordinate_point_in_liyougui_fixture() {
     let Some(data) = fixture_bytes("tests/Samples/个人专栏/李有贵作品/函数图象迭代(liyougui).gsp")
@@ -179,6 +223,214 @@ fn snapshots_payload_log_for_point_fixture() {
     );
 
     assert_snapshot!("point_fixture_payload_log", log);
+}
+
+#[test]
+fn payload_log_accepts_show_hide_button_visibility_actions_in_jinhua_fixture() {
+    let Some(data) =
+        fixture_bytes("tests/Samples/个人专栏/李忠平作品/金华2010-24题(百年孤独)10.8.9.gsp")
+    else {
+        return;
+    };
+    let log = fixture_log(
+        &data,
+        "tests/Samples/个人专栏/李忠平作品/金华2010-24题(百年孤独)10.8.9.gsp",
+    );
+
+    assert!(
+        !log.contains("按钮动作类型 (1, 2) 目前还不支持"),
+        "expected show-button visibility payloads to be accepted"
+    );
+    assert!(
+        !log.contains("按钮动作类型 (0, 2) 目前还不支持"),
+        "expected hide-button visibility payloads to be accepted"
+    );
+    assert!(
+        !log.contains("按钮动作类型 (7, 1) 目前还不支持")
+            && !log.contains("按钮动作类型 (1, 6) 目前还不支持"),
+        "expected the updated button mappings to remove the remaining Jinhua button errors"
+    );
+}
+
+#[test]
+fn collects_button_visibility_targets_for_show_hide_line_segment_controls() {
+    let Some(data) =
+        fixture_bytes("tests/Samples/个人专栏/李忠平作品/金华2010-24题(百年孤独)10.8.9.gsp")
+    else {
+        return;
+    };
+    let buttons = fixture_buttons_without_validation(&data);
+
+    let hide_line = buttons
+        .iter()
+        .find(|button| button.text == "隐藏线段")
+        .expect("expected hide-line button");
+    match &hide_line.action {
+        ButtonAction::SetVisibility {
+            visible,
+            button_indices,
+            ..
+        } => {
+            assert!(!visible, "expected hide-line button to hide its targets");
+            assert_eq!(
+                button_indices.len(),
+                3,
+                "expected hide-line payload to target the three line-control buttons"
+            );
+        }
+        action => panic!("expected set-visibility action, got {action:?}"),
+    }
+
+    let show_line = buttons
+        .iter()
+        .find(|button| button.text == "显示线段")
+        .expect("expected show-line button");
+    match &show_line.action {
+        ButtonAction::SetVisibility {
+            visible,
+            button_indices,
+            ..
+        } => {
+            assert!(*visible, "expected show-line button to show its targets");
+            assert_eq!(
+                button_indices.len(),
+                3,
+                "expected show-line payload to target the same three line-control buttons"
+            );
+        }
+        action => panic!("expected set-visibility action, got {action:?}"),
+    }
+}
+
+#[test]
+fn preserves_show_image_button_in_wuxi_fixture() {
+    let Some(data) =
+        fixture_bytes("tests/Samples/个人专栏/李忠平作品/2011中考江苏无锡第26题(百年孤独)简化.gsp")
+    else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+
+    assert_eq!(scene.images.len(), 1, "expected one exported image");
+    let show_image = scene
+        .buttons
+        .iter()
+        .find(|button| button.text == "显示图片")
+        .expect("expected show-image button");
+    match &show_image.action {
+        ButtonAction::SetVisibility {
+            visible,
+            image_indices,
+            point_indices,
+            ..
+        } => {
+            assert!(*visible, "expected the image button to show its target");
+            assert_eq!(image_indices.as_slice(), &[0]);
+            assert!(
+                point_indices.is_empty(),
+                "expected image visibility to target the exported image, not a point fallback"
+            );
+        }
+        action => panic!("expected set-visibility action, got {action:?}"),
+    }
+}
+
+#[test]
+fn collects_label_visibility_button_without_validation() {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/向忠作品/正弦波与音乐.gsp")
+    else {
+        return;
+    };
+    let buttons = fixture_buttons_without_validation(&data);
+
+    let hide_help = buttons
+        .iter()
+        .find(|button| button.text == "隐藏说明")
+        .expect("expected hide-help button");
+    match &hide_help.action {
+        ButtonAction::SetVisibility {
+            visible,
+            label_indices,
+            ..
+        } => {
+            assert!(!visible, "expected hide-help button to hide its labels");
+            assert_eq!(label_indices.len(), 2);
+        }
+        action => panic!("expected set-visibility action, got {action:?}"),
+    }
+}
+
+#[test]
+fn collects_sequence_button_variants_without_validation() {
+    let Some(data) =
+        fixture_bytes("tests/Samples/个人专栏/李忠平作品/金华2010-24题(百年孤独)10.8.9.gsp")
+    else {
+        return;
+    };
+    let buttons = fixture_buttons_without_validation(&data);
+
+    let sequence = buttons
+        .iter()
+        .find(|button| button.text == "顺序3个动作")
+        .expect("expected sequence button");
+    match &sequence.action {
+        ButtonAction::Sequence {
+            button_indices,
+            interval_ms,
+        } => {
+            assert!(
+                !button_indices.is_empty(),
+                "expected sequence button to retain at least one exported child action"
+            );
+            assert!(
+                *interval_ms <= 10_000,
+                "expected sequence payload interval to remain a sane exported value"
+            );
+        }
+        action => panic!("expected sequence action, got {action:?}"),
+    }
+}
+
+#[test]
+fn collects_move_point_button_variants_without_validation() {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/常新德作品/3d_魔方.gsp")
+    else {
+        return;
+    };
+    let buttons = fixture_buttons_without_validation(&data);
+
+    let rotate_z = buttons
+        .iter()
+        .find(|button| button.text == "转动z")
+        .expect("expected rotate-z button");
+    match &rotate_z.action {
+        ButtonAction::MovePoint {
+            point_index,
+            target_point_index,
+        } => {
+            assert!(
+                target_point_index.is_some(),
+                "expected move-point variant to keep its target point"
+            );
+            assert!(*point_index != target_point_index.unwrap_or(*point_index));
+        }
+        action => panic!("expected move-point action, got {action:?}"),
+    }
+}
+
+#[test]
+fn collects_focus_point_button_without_validation() {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/孙禄京作品/正三角形重叠.gsp")
+    else {
+        return;
+    };
+    let buttons = fixture_buttons_without_validation(&data);
+
+    let focus = buttons
+        .iter()
+        .find(|button| matches!(button.action, ButtonAction::FocusPoint { .. }))
+        .expect("expected focus-point button");
+    assert_eq!(focus.text, "居中");
 }
 
 #[test]

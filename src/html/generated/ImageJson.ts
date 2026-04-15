@@ -2,4 +2,4 @@
 import type { DebugSourceJson } from "./DebugSourceJson";
 import type { PointJson } from "./PointJson";
 
-export type ImageJson = { topLeft: PointJson, bottomRight: PointJson, src: string, screenSpace: boolean, debug: DebugSourceJson | null, };
+export type ImageJson = { topLeft: PointJson, bottomRight: PointJson, src: string, visible: boolean, screenSpace: boolean, debug: DebugSourceJson | null, };

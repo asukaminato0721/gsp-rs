@@ -28,6 +28,7 @@
   /** @param {ViewerEnv} env */
   modules.render.drawImages = function drawImages(env) {
     (env.currentScene().images || []).forEach((image, index) => {
+      if (image.visible === false) return;
       const entry = loadImage(image.src, env);
       if (!entry.loaded) return;
 
@@ -62,6 +63,7 @@
     const images = env.currentScene().images || [];
     for (let index = images.length - 1; index >= 0; index -= 1) {
       const image = images[index];
+      if (image.visible === false) continue;
       const topLeft = image.screenSpace ? image.topLeft : env.toScreen(image.topLeft);
       const bottomRight = image.screenSpace ? image.bottomRight : env.toScreen(image.bottomRight);
       if (!topLeft || !bottomRight) continue;

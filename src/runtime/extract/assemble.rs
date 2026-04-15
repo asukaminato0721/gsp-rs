@@ -597,6 +597,7 @@ pub(super) fn assemble_scene(
                     to_world(&image.bottom_right, &analysis.graph_ref)
                 },
                 src: image.src,
+                visible: image.visible,
                 screen_space: image.screen_space,
                 debug: image.debug,
             })

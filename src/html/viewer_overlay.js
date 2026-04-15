@@ -297,7 +297,18 @@
        * @param {boolean} visible
        */
       function setTargetsVisibility(action, visible) {
+        updateButtons((buttons) => {
+          (action.buttonIndices || []).forEach((/** @type {number} */ index) => {
+            if (buttons[index]) buttons[index].visible = visible;
+          });
+        });
         env.updateScene((scene) => {
+          (action.labelIndices || []).forEach((/** @type {number} */ index) => {
+            if (scene.labels[index]) scene.labels[index].visible = visible;
+          });
+          (action.imageIndices || []).forEach((/** @type {number} */ index) => {
+            if (scene.images[index]) scene.images[index].visible = visible;
+          });
           (action.pointIndices || []).forEach((/** @type {number} */ index) => {
             if (scene.points[index]) scene.points[index].visible = visible;
           });
@@ -319,11 +330,14 @@
        */
       function visibilityTargetsMatch(action, visible) {
         const scene = env.currentScene();
+        const buttonsMatch = (action.buttonIndices || []).every((/** @type {number} */ index) => buttonsState.val[index]?.visible === visible);
+        const labelsMatch = (action.labelIndices || []).every((/** @type {number} */ index) => scene.labels[index]?.visible === visible);
+        const imagesMatch = (action.imageIndices || []).every((/** @type {number} */ index) => scene.images[index]?.visible === visible);
         const pointsMatch = (action.pointIndices || []).every((/** @type {number} */ index) => scene.points[index]?.visible === visible);
         const linesMatch = (action.lineIndices || []).every((/** @type {number} */ index) => scene.lines[index]?.visible === visible);
         const circlesMatch = (action.circleIndices || []).every((/** @type {number} */ index) => scene.circles[index]?.visible === visible);
         const polygonsMatch = (action.polygonIndices || []).every((/** @type {number} */ index) => scene.polygons[index]?.visible === visible);
-        return pointsMatch && linesMatch && circlesMatch && polygonsMatch;
+        return buttonsMatch && labelsMatch && imagesMatch && pointsMatch && linesMatch && circlesMatch && polygonsMatch;
       }
 
       /**
@@ -419,7 +433,22 @@
         const hiddenLine = (action.lineIndices || []).some((/** @type {number} */ index) => scene.lines[index]?.visible === false);
         const hiddenCircle = (action.circleIndices || []).some((/** @type {number} */ index) => scene.circles[index]?.visible === false);
         const hiddenPolygon = (action.polygonIndices || []).some((/** @type {number} */ index) => scene.polygons[index]?.visible === false);
-        setTargetsVisibility(action, hiddenPoint || hiddenLine || hiddenCircle || hiddenPolygon);
+        const hiddenButton = (action.buttonIndices || []).some((/** @type {number} */ index) => buttonsState.val[index]?.visible === false);
+        const hiddenLabel = (action.labelIndices || []).some((/** @type {number} */ index) => scene.labels[index]?.visible === false);
+        const hiddenImage = (action.imageIndices || []).some((/** @type {number} */ index) => scene.images[index]?.visible === false);
+        setTargetsVisibility(action, hiddenButton || hiddenLabel || hiddenImage || hiddenPoint || hiddenLine || hiddenCircle || hiddenPolygon);
+      }
+
+      /** @param {number} pointIndex */
+      function focusPoint(pointIndex) {
+        const point = env.currentScene().points[pointIndex];
+        if (!point) {
+          return;
+        }
+        env.updateViewState?.((view) => {
+          view.centerX = point.x;
+          view.centerY = point.y;
+        });
       }
 
       /** @param {(flashes: HotspotFlash[]) => void} mutator */
@@ -662,6 +691,11 @@
           case "scroll-point":
             if (typeof action.pointIndex === "number") {
               toggleAnimatedPoint(buttonIndex, action.pointIndex, "scroll");
+            }
+            break;
+          case "focus-point":
+            if (typeof action.pointIndex === "number") {
+              focusPoint(action.pointIndex);
             }
             break;
           case "sequence": {
