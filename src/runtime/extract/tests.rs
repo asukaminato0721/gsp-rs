@@ -419,6 +419,20 @@ fn payload_log_names_value_table_row_helper() {
 }
 
 #[test]
+fn payload_log_names_boundary_intersection_point_helper() {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/周维波作品/不变面积（雪山飞狐）.gsp")
+    else {
+        return;
+    };
+    let log = fixture_log(&data, "tests/Samples/个人专栏/周维波作品/不变面积（雪山飞狐）.gsp");
+
+    assert!(
+        log.contains("边界交点"),
+        "expected kind 93 payloads to render with a meaningful point name"
+    );
+}
+
+#[test]
 fn snapshots_payload_log_for_point_fixture() {
     let log = fixture_log(
         include_bytes!("../../../tests/fixtures/gsp/static/point.gsp"),

@@ -1989,6 +1989,7 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::GraphDistanceValue => "图像距离值",
         GroupKind::IterationPointAlias => "迭代结果点",
         GroupKind::ValueTableRow => "数值表行",
+        GroupKind::BoundaryIntersectionPoint => "边界交点",
         GroupKind::NamedAlias => "命名别名对象",
         GroupKind::RegularPolygonIteration => "正多边形迭代",
         GroupKind::LabelIterationSeed => "标签迭代种子",
@@ -2040,7 +2041,8 @@ fn group_kind_noun_in_chinese(kind: GroupKind) -> &'static str {
         | GroupKind::CoordinateTraceIntersectionPoint
         | GroupKind::PathPoint
         | GroupKind::Unknown(20)
-        | GroupKind::IterationPointAlias => "点",
+        | GroupKind::IterationPointAlias
+        | GroupKind::BoundaryIntersectionPoint => "点",
         GroupKind::DistanceValue
         | GroupKind::PointLineDistanceValue
         | GroupKind::AngleValue
@@ -2186,7 +2188,7 @@ fn validate_group_kind(group: &ObjectGroup) -> Result<()> {
             | GroupKind::GraphFunctionPoint
             | GroupKind::GraphMeasurementSegment
             | GroupKind::ValueTableRow
-            | GroupKind::Unknown(93)
+            | GroupKind::BoundaryIntersectionPoint
             | GroupKind::Unknown(99)
             | GroupKind::Unknown(100)
             | GroupKind::Unknown(101)
@@ -2817,7 +2819,7 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::Unknown(46)
             | GroupKind::GraphMeasurementSegment
             | GroupKind::ValueTableRow
-            | GroupKind::Unknown(93)
+            | GroupKind::BoundaryIntersectionPoint
             | GroupKind::Unknown(99)
             | GroupKind::Unknown(100)
             | GroupKind::Unknown(101)

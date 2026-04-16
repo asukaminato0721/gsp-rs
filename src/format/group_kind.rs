@@ -167,6 +167,7 @@ define_group_kinds! {
     LabelIterationSeed = 90,
     ValueTableRow = 91,
     IterationExpressionHelper = 92,
+    BoundaryIntersectionPoint = 93,
     ParameterAnchor = 94,
     ParameterControlledPoint = 95,
     CoordinateTrace = 97,
