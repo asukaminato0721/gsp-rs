@@ -72,9 +72,11 @@ pub(super) fn collect_point_traces(
                     groups,
                     group,
                     target_group,
-                    descriptor.x_min,
-                    trace_max,
-                    descriptor.sample_count,
+                    CoordinateTraceSampleSpec {
+                        x_min: descriptor.x_min,
+                        x_max: trace_max,
+                        sample_count: descriptor.sample_count,
+                    },
                     graph_ref,
                 )
             {
@@ -155,9 +157,7 @@ fn sample_coordinate_point_trace(
     groups: &[ObjectGroup],
     trace_group: &ObjectGroup,
     target_group: &ObjectGroup,
-    x_min: f64,
-    x_max: f64,
-    sample_count: usize,
+    sample_spec: CoordinateTraceSampleSpec,
     graph_ref: &Option<GraphTransform>,
 ) -> Option<Vec<PointRecord>> {
     let target_path = find_indexed_path(file, target_group)?;
@@ -178,11 +178,11 @@ fn sample_coordinate_point_trace(
     })?;
     let x_expr = try_decode_function_expr(file, groups, x_calc_group).ok()?;
     let y_expr = try_decode_function_expr(file, groups, y_calc_group).ok()?;
-    let last = sample_count.saturating_sub(1).max(1) as f64;
-    let mut points = Vec::with_capacity(sample_count);
-    for sample_index in 0..sample_count {
+    let last = sample_spec.sample_count.saturating_sub(1).max(1) as f64;
+    let mut points = Vec::with_capacity(sample_spec.sample_count);
+    for sample_index in 0..sample_spec.sample_count {
         let t = sample_index as f64 / last;
-        let value = x_min + (x_max - x_min) * t;
+        let value = sample_spec.x_min + (sample_spec.x_max - sample_spec.x_min) * t;
         let parameters = std::collections::BTreeMap::from([(parameter_name.clone(), value)]);
         let x = evaluate_expr_with_parameters(&x_expr, 0.0, &parameters)?;
         let y = evaluate_expr_with_parameters(&y_expr, 0.0, &parameters)?;
@@ -194,6 +194,13 @@ fn sample_coordinate_point_trace(
         });
     }
     (points.len() >= 2).then_some(points)
+}
+
+#[derive(Clone, Copy)]
+struct CoordinateTraceSampleSpec {
+    x_min: f64,
+    x_max: f64,
+    sample_count: usize,
 }
 
 fn point_accepts_trace_parameter(point: &ScenePoint) -> bool {

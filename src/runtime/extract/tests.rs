@@ -56,12 +56,14 @@ fn fixture_buttons_without_validation(data: &[u8]) -> Vec<SceneButton> {
         &file,
         &groups,
         &analysis.raw_anchors,
-        &label_group_to_index,
-        &image_group_to_index,
-        &group_to_point_index,
-        &binding_maps.line_group_to_index,
-        &binding_maps.circle_group_to_index,
-        &binding_maps.polygon_group_to_index,
+        super::buttons::ButtonIndexLookups {
+            label_group_to_index: &label_group_to_index,
+            image_group_to_index: &image_group_to_index,
+            group_to_point_index: &group_to_point_index,
+            line_group_to_index: &binding_maps.line_group_to_index,
+            circle_group_to_index: &binding_maps.circle_group_to_index,
+            polygon_group_to_index: &binding_maps.polygon_group_to_index,
+        },
     );
     buttons
 }

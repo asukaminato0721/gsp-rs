@@ -6,9 +6,21 @@ use crate::runtime::scene::{
     Scene, SceneArc, SceneCircle, SceneImage, ScenePoint, ScenePointConstraint, TextLabel,
 };
 
-use super::graph::{collect_bounds, dedupe_line_shapes, expand_bounds};
+use super::graph::{BoundsInputs, collect_bounds, dedupe_line_shapes, expand_bounds};
 use super::world::{world_line_iteration_family, world_line_shape, world_polygon_iteration_family};
 use super::{BoundsData, CollectedShapes, SceneAnalysis, WorldData};
+
+pub(super) struct SceneAssemblyArtifacts {
+    pub(super) circle_iterations: Vec<CircleIterationFamily>,
+    pub(super) line_iterations: Vec<LineIterationFamily>,
+    pub(super) polygon_iterations: Vec<PolygonIterationFamily>,
+    pub(super) label_iterations: Vec<LabelIterationFamily>,
+    pub(super) iteration_tables: Vec<crate::runtime::scene::IterationTable>,
+    pub(super) buttons: Vec<crate::runtime::scene::SceneButton>,
+    pub(super) images: Vec<SceneImage>,
+    pub(super) parameters: Vec<crate::runtime::scene::SceneParameter>,
+    pub(super) functions: Vec<crate::runtime::scene::SceneFunction>,
+}
 
 pub(super) fn build_world_data(
     analysis: &SceneAnalysis,
@@ -470,14 +482,16 @@ pub(super) fn compute_scene_bounds(
 
     let mut bounds = collect_bounds(
         &analysis.graph_ref,
-        &bounds_lines,
-        &[],
-        &[],
-        &bounds_polygons,
-        &bounds_circles,
-        &bounds_arcs,
-        labels,
-        world_point_positions,
+        BoundsInputs {
+            polylines: &bounds_lines,
+            measurements: &[],
+            axes: &[],
+            polygons: &bounds_polygons,
+            circles: &bounds_circles,
+            arcs: &bounds_arcs,
+            labels,
+            points_only: world_point_positions,
+        },
     );
     include_line_bounds(&mut bounds, &analysis.function_plots, &analysis.graph_ref);
     include_line_bounds(&mut bounds, &shapes.synthetic_axes, &analysis.graph_ref);
@@ -508,15 +522,7 @@ pub(super) fn assemble_scene(
     labels: Vec<TextLabel>,
     world_data: WorldData,
     bounds_data: BoundsData,
-    circle_iterations: Vec<CircleIterationFamily>,
-    line_iterations: Vec<LineIterationFamily>,
-    polygon_iterations: Vec<PolygonIterationFamily>,
-    label_iterations: Vec<LabelIterationFamily>,
-    iteration_tables: Vec<crate::runtime::scene::IterationTable>,
-    buttons: Vec<crate::runtime::scene::SceneButton>,
-    images: Vec<SceneImage>,
-    parameters: Vec<crate::runtime::scene::SceneParameter>,
-    functions: Vec<crate::runtime::scene::SceneFunction>,
+    artifacts: SceneAssemblyArtifacts,
 ) -> Scene {
     let CollectedShapes {
         polylines,
@@ -595,7 +601,8 @@ pub(super) fn assemble_scene(
             .as_ref()
             .map(|transform| to_world(&transform.origin_raw, &analysis.graph_ref)),
         bounds: bounds_data.bounds,
-        images: images
+        images: artifacts
+            .images
             .into_iter()
             .map(|image| SceneImage {
                 top_left: if image.screen_space {
@@ -686,20 +693,22 @@ pub(super) fn assemble_scene(
             .collect(),
         points: world_data.world_points,
         point_iterations: world_data.point_iterations,
-        circle_iterations,
-        line_iterations: line_iterations
+        circle_iterations: artifacts.circle_iterations,
+        line_iterations: artifacts
+            .line_iterations
             .into_iter()
             .map(|family| world_line_iteration_family(family, &analysis.graph_ref))
             .collect(),
-        polygon_iterations: polygon_iterations
+        polygon_iterations: artifacts
+            .polygon_iterations
             .into_iter()
             .map(|family| world_polygon_iteration_family(family, &analysis.graph_ref))
             .collect(),
-        label_iterations,
-        iteration_tables,
-        buttons,
-        parameters,
-        functions,
+        label_iterations: artifacts.label_iterations,
+        iteration_tables: artifacts.iteration_tables,
+        buttons: artifacts.buttons,
+        parameters: artifacts.parameters,
+        functions: artifacts.functions,
     }
 }
 

@@ -218,21 +218,13 @@ fn clip_parametric_line_to_bounds(
         return None;
     }
     hits.sort_by(|left, right| left.0.total_cmp(&right.0));
-    if ray_only {
-        let first = hits.first()?.1.clone();
-        let last = hits.last()?.1.clone();
-        if (first.x - last.x).abs() < 1e-6 && (first.y - last.y).abs() < 1e-6 {
-            return None;
-        }
-        Some([first, last])
-    } else {
-        let first = hits.first()?.1.clone();
-        let last = hits.last()?.1.clone();
-        if (first.x - last.x).abs() < 1e-6 && (first.y - last.y).abs() < 1e-6 {
-            return None;
-        }
-        Some([first, last])
+    let first = hits.first()?.1.clone();
+    let last = hits.last()?.1.clone();
+    if (first.x - last.x).abs() < 1e-6 && (first.y - last.y).abs() < 1e-6 {
+        return None;
     }
+    let _ = ray_only;
+    Some([first, last])
 }
 
 pub(super) fn format_number(value: f64) -> String {

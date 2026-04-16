@@ -83,6 +83,7 @@ fn build_group_to_line_index(groups: &[ObjectGroup]) -> Vec<Option<usize>> {
     group_to_line_index
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_scene_point_for_group(
     index: usize,
     group: &ObjectGroup,
@@ -400,6 +401,7 @@ fn build_scene_point_for_group(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_scene_point_for_group_checked(
     index: usize,
     group: &ObjectGroup,
@@ -795,6 +797,7 @@ fn is_orphan_duplicate_point_helper(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn scene_point_from_constraint(
     index: usize,
     file: &GspFile,

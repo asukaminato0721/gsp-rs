@@ -112,29 +112,31 @@ pub(super) fn has_graph_classes(groups: &[ObjectGroup]) -> bool {
         .any(|group| group.header.kind().is_graph_object())
 }
 
-pub(super) fn collect_bounds(
-    graph: &Option<GraphTransform>,
-    polylines: &[LineShape],
-    measurements: &[LineShape],
-    axes: &[LineShape],
-    polygons: &[PolygonShape],
-    circles: &[CircleShape],
-    arcs: &[ArcShape],
-    labels: &[TextLabel],
-    points_only: &[PointRecord],
-) -> Bounds {
+pub(super) struct BoundsInputs<'a> {
+    pub(super) polylines: &'a [LineShape],
+    pub(super) measurements: &'a [LineShape],
+    pub(super) axes: &'a [LineShape],
+    pub(super) polygons: &'a [PolygonShape],
+    pub(super) circles: &'a [CircleShape],
+    pub(super) arcs: &'a [ArcShape],
+    pub(super) labels: &'a [TextLabel],
+    pub(super) points_only: &'a [PointRecord],
+}
+
+pub(super) fn collect_bounds(graph: &Option<GraphTransform>, inputs: BoundsInputs<'_>) -> Bounds {
     let mut points = Vec::<PointRecord>::new();
-    for shape in polylines
+    for shape in inputs
+        .polylines
         .iter()
-        .chain(measurements.iter())
-        .chain(axes.iter())
+        .chain(inputs.measurements.iter())
+        .chain(inputs.axes.iter())
     {
         points.extend(shape.points.iter().cloned());
     }
-    for shape in polygons {
+    for shape in inputs.polygons {
         points.extend(shape.points.iter().cloned());
     }
-    for circle in circles {
+    for circle in inputs.circles {
         points.push(circle.center.clone());
         points.push(circle.radius_point.clone());
         let radius = ((circle.radius_point.x - circle.center.x).powi(2)
@@ -159,14 +161,14 @@ pub(super) fn collect_bounds(
             });
         }
     }
-    for arc in arcs {
+    for arc in inputs.arcs {
         if let Some(samples) = arc_sample_points(&arc.points[0], &arc.points[1], &arc.points[2]) {
             points.extend(samples);
         } else {
             points.extend(arc.points.iter().cloned());
         }
     }
-    for label in labels {
+    for label in inputs.labels {
         if matches!(
             label.binding,
             Some(
@@ -177,7 +179,7 @@ pub(super) fn collect_bounds(
         }
         points.push(label.anchor.clone());
     }
-    points.extend(points_only.iter().cloned());
+    points.extend(inputs.points_only.iter().cloned());
     if points.is_empty() {
         points.push(PointRecord { x: 0.0, y: 0.0 });
         points.push(PointRecord { x: 1.0, y: 1.0 });

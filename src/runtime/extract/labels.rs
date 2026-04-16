@@ -34,6 +34,14 @@ pub(super) struct PendingLabelHotspot {
     pub(super) group_ordinal: usize,
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct HotspotIndexLookups<'a> {
+    pub(super) group_to_point_index: &'a [Option<usize>],
+    pub(super) circle_group_to_index: &'a [Option<usize>],
+    pub(super) polygon_group_to_index: &'a [Option<usize>],
+    pub(super) button_group_to_index: &'a BTreeMap<usize, usize>,
+}
+
 struct ResolvedLabelText {
     text: String,
     rich_markup: Option<String>,
@@ -582,10 +590,10 @@ fn distance_value_label_name(
                     .saturating_sub(1),
             )
             .unwrap_or(&groups[0]),
-    )
-        && path.refs.len() == 1 {
-            return name;
-        }
+    ) && path.refs.len() == 1
+    {
+        return name;
+    }
     if path.refs.len() >= 2 {
         let left = groups
             .get(path.refs[0].saturating_sub(1))
@@ -882,10 +890,7 @@ pub(super) fn resolve_label_hotspots(
     groups: &[ObjectGroup],
     labels: &mut [TextLabel],
     pending_hotspots: &[PendingLabelHotspot],
-    group_to_point_index: &[Option<usize>],
-    circle_group_to_index: &[Option<usize>],
-    polygon_group_to_index: &[Option<usize>],
-    button_group_to_index: &BTreeMap<usize, usize>,
+    lookups: HotspotIndexLookups<'_>,
 ) {
     for pending in pending_hotspots {
         let Some(label) = labels.get_mut(pending.label_index) else {
@@ -896,29 +901,36 @@ pub(super) fn resolve_label_hotspots(
             continue;
         };
         let action = match group.header.kind() {
-            crate::format::GroupKind::ActionButton => button_group_to_index
+            crate::format::GroupKind::ActionButton => lookups
+                .button_group_to_index
                 .get(&pending.group_ordinal)
                 .copied()
                 .map(|button_index| TextLabelHotspotAction::Button { button_index }),
             crate::format::GroupKind::ButtonLabel => (|| {
                 let path = find_indexed_path(file, group)?;
                 let ordinal = path.refs.first().copied()?;
-                button_group_to_index
+                lookups
+                    .button_group_to_index
                     .get(&ordinal)
                     .copied()
                     .map(|button_index| TextLabelHotspotAction::Button { button_index })
             })(),
-            crate::format::GroupKind::Point => group_to_point_index
+            crate::format::GroupKind::Point => lookups
+                .group_to_point_index
                 .get(pending.group_ordinal.saturating_sub(1))
                 .copied()
                 .flatten()
                 .map(|point_index| TextLabelHotspotAction::Point { point_index }),
             crate::format::GroupKind::Segment => (|| {
                 let path = find_indexed_path(file, group)?;
-                let start_point_index =
-                    mapped_point_index(group_to_point_index, path.refs.first()?.saturating_sub(1))?;
-                let end_point_index =
-                    mapped_point_index(group_to_point_index, path.refs.get(1)?.saturating_sub(1))?;
+                let start_point_index = mapped_point_index(
+                    lookups.group_to_point_index,
+                    path.refs.first()?.saturating_sub(1),
+                )?;
+                let end_point_index = mapped_point_index(
+                    lookups.group_to_point_index,
+                    path.refs.get(1)?.saturating_sub(1),
+                )?;
                 Some(TextLabelHotspotAction::Segment {
                     start_point_index,
                     end_point_index,
@@ -926,24 +938,32 @@ pub(super) fn resolve_label_hotspots(
             })(),
             crate::format::GroupKind::AngleMarker => (|| {
                 let path = find_indexed_path(file, group)?;
-                let start_point_index =
-                    mapped_point_index(group_to_point_index, path.refs.first()?.saturating_sub(1))?;
-                let vertex_point_index =
-                    mapped_point_index(group_to_point_index, path.refs.get(1)?.saturating_sub(1))?;
-                let end_point_index =
-                    mapped_point_index(group_to_point_index, path.refs.get(2)?.saturating_sub(1))?;
+                let start_point_index = mapped_point_index(
+                    lookups.group_to_point_index,
+                    path.refs.first()?.saturating_sub(1),
+                )?;
+                let vertex_point_index = mapped_point_index(
+                    lookups.group_to_point_index,
+                    path.refs.get(1)?.saturating_sub(1),
+                )?;
+                let end_point_index = mapped_point_index(
+                    lookups.group_to_point_index,
+                    path.refs.get(2)?.saturating_sub(1),
+                )?;
                 Some(TextLabelHotspotAction::AngleMarker {
                     start_point_index,
                     vertex_point_index,
                     end_point_index,
                 })
             })(),
-            kind if super::decode::is_circle_group_kind(kind) => circle_group_to_index
+            kind if super::decode::is_circle_group_kind(kind) => lookups
+                .circle_group_to_index
                 .get(pending.group_ordinal.saturating_sub(1))
                 .copied()
                 .flatten()
                 .map(|circle_index| TextLabelHotspotAction::Circle { circle_index }),
-            crate::format::GroupKind::Polygon => polygon_group_to_index
+            crate::format::GroupKind::Polygon => lookups
+                .polygon_group_to_index
                 .get(pending.group_ordinal.saturating_sub(1))
                 .copied()
                 .flatten()

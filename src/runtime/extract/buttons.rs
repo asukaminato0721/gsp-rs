@@ -51,16 +51,31 @@ struct RawButton {
     action: RawButtonAction,
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct ButtonIndexLookups<'a> {
+    pub(super) label_group_to_index: &'a BTreeMap<usize, usize>,
+    pub(super) image_group_to_index: &'a BTreeMap<usize, usize>,
+    pub(super) group_to_point_index: &'a [Option<usize>],
+    pub(super) line_group_to_index: &'a [Option<usize>],
+    pub(super) circle_group_to_index: &'a [Option<usize>],
+    pub(super) polygon_group_to_index: &'a [Option<usize>],
+}
+
+struct VisibilityTargets {
+    button_indices: Vec<usize>,
+    label_indices: Vec<usize>,
+    image_indices: Vec<usize>,
+    point_indices: Vec<usize>,
+    line_indices: Vec<usize>,
+    circle_indices: Vec<usize>,
+    polygon_indices: Vec<usize>,
+}
+
 pub(super) fn collect_buttons(
     file: &GspFile,
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
-    label_group_to_index: &BTreeMap<usize, usize>,
-    image_group_to_index: &BTreeMap<usize, usize>,
-    group_to_point_index: &[Option<usize>],
-    line_group_to_index: &[Option<usize>],
-    circle_group_to_index: &[Option<usize>],
-    polygon_group_to_index: &[Option<usize>],
+    lookups: ButtonIndexLookups<'_>,
 ) -> (Vec<SceneButton>, BTreeMap<usize, usize>) {
     let button_label_groups = groups
         .iter()
@@ -213,7 +228,7 @@ pub(super) fn collect_buttons(
             let action = match button.action {
                 RawButtonAction::Link { href } => ButtonAction::Link { href },
                 RawButtonAction::ToggleVisibility { refs } => {
-                    let (
+                    let VisibilityTargets {
                         button_indices,
                         label_indices,
                         image_indices,
@@ -221,16 +236,7 @@ pub(super) fn collect_buttons(
                         line_indices,
                         circle_indices,
                         polygon_indices,
-                    ) = resolve_visibility_targets(
-                        &refs,
-                        &button_index_by_ordinal,
-                        label_group_to_index,
-                        image_group_to_index,
-                        group_to_point_index,
-                        line_group_to_index,
-                        circle_group_to_index,
-                        polygon_group_to_index,
-                    );
+                    } = resolve_visibility_targets(&refs, &button_index_by_ordinal, lookups);
                     ButtonAction::ToggleVisibility {
                         button_indices,
                         label_indices,
@@ -242,7 +248,7 @@ pub(super) fn collect_buttons(
                     }
                 }
                 RawButtonAction::SetVisibility { refs, visible } => {
-                    let (
+                    let VisibilityTargets {
                         button_indices,
                         label_indices,
                         image_indices,
@@ -250,16 +256,7 @@ pub(super) fn collect_buttons(
                         line_indices,
                         circle_indices,
                         polygon_indices,
-                    ) = resolve_visibility_targets(
-                        &refs,
-                        &button_index_by_ordinal,
-                        label_group_to_index,
-                        image_group_to_index,
-                        group_to_point_index,
-                        line_group_to_index,
-                        circle_group_to_index,
-                        polygon_group_to_index,
-                    );
+                    } = resolve_visibility_targets(&refs, &button_index_by_ordinal, lookups);
                     ButtonAction::SetVisibility {
                         visible,
                         button_indices,
@@ -272,7 +269,7 @@ pub(super) fn collect_buttons(
                     }
                 }
                 RawButtonAction::ShowHideVisibility { refs } => {
-                    let (
+                    let VisibilityTargets {
                         button_indices,
                         label_indices,
                         image_indices,
@@ -280,16 +277,7 @@ pub(super) fn collect_buttons(
                         line_indices,
                         circle_indices,
                         polygon_indices,
-                    ) = resolve_visibility_targets(
-                        &refs,
-                        &button_index_by_ordinal,
-                        label_group_to_index,
-                        image_group_to_index,
-                        group_to_point_index,
-                        line_group_to_index,
-                        circle_group_to_index,
-                        polygon_group_to_index,
-                    );
+                    } = resolve_visibility_targets(&refs, &button_index_by_ordinal, lookups);
                     ButtonAction::ShowHideVisibility {
                         button_indices,
                         label_indices,
@@ -304,12 +292,14 @@ pub(super) fn collect_buttons(
                     point_group_ordinal,
                     target_group_ordinal,
                 } => ButtonAction::MovePoint {
-                    point_index: group_to_point_index
+                    point_index: lookups
+                        .group_to_point_index
                         .get(point_group_ordinal.checked_sub(1)?)
                         .copied()
                         .flatten()?,
                     target_point_index: if let Some(ordinal) = target_group_ordinal {
-                        group_to_point_index
+                        lookups
+                            .group_to_point_index
                             .get(ordinal.checked_sub(1)?)
                             .copied()
                             .flatten()
@@ -320,7 +310,8 @@ pub(super) fn collect_buttons(
                 RawButtonAction::AnimatePoint {
                     point_group_ordinal,
                 } => ButtonAction::AnimatePoint {
-                    point_index: group_to_point_index
+                    point_index: lookups
+                        .group_to_point_index
                         .get(point_group_ordinal.checked_sub(1)?)
                         .copied()
                         .flatten()?,
@@ -328,7 +319,8 @@ pub(super) fn collect_buttons(
                 RawButtonAction::ScrollPoint {
                     point_group_ordinal,
                 } => ButtonAction::ScrollPoint {
-                    point_index: group_to_point_index
+                    point_index: lookups
+                        .group_to_point_index
                         .get(point_group_ordinal.checked_sub(1)?)
                         .copied()
                         .flatten()?,
@@ -336,7 +328,8 @@ pub(super) fn collect_buttons(
                 RawButtonAction::FocusPoint {
                     point_group_ordinal,
                 } => ButtonAction::FocusPoint {
-                    point_index: group_to_point_index
+                    point_index: lookups
+                        .group_to_point_index
                         .get(point_group_ordinal.checked_sub(1)?)
                         .copied()
                         .flatten()?,
@@ -375,21 +368,8 @@ pub(super) fn collect_buttons(
 fn resolve_visibility_targets(
     refs: &[usize],
     button_index_by_ordinal: &BTreeMap<usize, usize>,
-    label_group_to_index: &BTreeMap<usize, usize>,
-    image_group_to_index: &BTreeMap<usize, usize>,
-    group_to_point_index: &[Option<usize>],
-    line_group_to_index: &[Option<usize>],
-    circle_group_to_index: &[Option<usize>],
-    polygon_group_to_index: &[Option<usize>],
-) -> (
-    Vec<usize>,
-    Vec<usize>,
-    Vec<usize>,
-    Vec<usize>,
-    Vec<usize>,
-    Vec<usize>,
-    Vec<usize>,
-) {
+    lookups: ButtonIndexLookups<'_>,
+) -> VisibilityTargets {
     let button_indices = refs
         .iter()
         .filter_map(|ordinal| button_index_by_ordinal.get(ordinal).copied())
@@ -398,20 +378,21 @@ fn resolve_visibility_targets(
         .collect::<Vec<_>>();
     let label_indices = refs
         .iter()
-        .filter_map(|ordinal| label_group_to_index.get(ordinal).copied())
+        .filter_map(|ordinal| lookups.label_group_to_index.get(ordinal).copied())
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect::<Vec<_>>();
     let image_indices = refs
         .iter()
-        .filter_map(|ordinal| image_group_to_index.get(ordinal).copied())
+        .filter_map(|ordinal| lookups.image_group_to_index.get(ordinal).copied())
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect::<Vec<_>>();
     let point_indices = refs
         .iter()
         .filter_map(|ordinal| {
-            group_to_point_index
+            lookups
+                .group_to_point_index
                 .get(ordinal.checked_sub(1)?)
                 .copied()
                 .flatten()
@@ -422,7 +403,8 @@ fn resolve_visibility_targets(
     let line_indices = refs
         .iter()
         .filter_map(|ordinal| {
-            line_group_to_index
+            lookups
+                .line_group_to_index
                 .get(ordinal.checked_sub(1)?)
                 .copied()
                 .flatten()
@@ -433,7 +415,8 @@ fn resolve_visibility_targets(
     let circle_indices = refs
         .iter()
         .filter_map(|ordinal| {
-            circle_group_to_index
+            lookups
+                .circle_group_to_index
                 .get(ordinal.checked_sub(1)?)
                 .copied()
                 .flatten()
@@ -444,7 +427,8 @@ fn resolve_visibility_targets(
     let polygon_indices = refs
         .iter()
         .filter_map(|ordinal| {
-            polygon_group_to_index
+            lookups
+                .polygon_group_to_index
                 .get(ordinal.checked_sub(1)?)
                 .copied()
                 .flatten()
@@ -452,7 +436,7 @@ fn resolve_visibility_targets(
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect::<Vec<_>>();
-    (
+    VisibilityTargets {
         button_indices,
         label_indices,
         image_indices,
@@ -460,5 +444,5 @@ fn resolve_visibility_targets(
         line_indices,
         circle_indices,
         polygon_indices,
-    )
+    }
 }

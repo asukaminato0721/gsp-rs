@@ -232,10 +232,7 @@ pub(crate) fn collect_carried_iteration_lines(
                 return Some(lines);
             }
             let steps = carried_iteration_steps(file, groups, iter_group, anchors);
-            let Some((step, secondary_step, bidirectional)) = carried_iteration_basis(&steps)
-            else {
-                return None;
-            };
+            let (step, secondary_step, bidirectional) = carried_iteration_basis(&steps)?;
             let color = color_from_style(source_group.header.style_b);
             Some(
                 carried_iteration_line_deltas(&step, secondary_step.as_ref(), depth, bidirectional)
@@ -434,10 +431,7 @@ pub(crate) fn collect_carried_line_iteration_families(
             }
 
             let steps = carried_iteration_steps(file, groups, iter_group, anchors);
-            let Some((step, secondary_step, bidirectional)) = carried_iteration_basis(&steps)
-            else {
-                return None;
-            };
+            let (step, secondary_step, bidirectional) = carried_iteration_basis(&steps)?;
             Some(LineIterationFamily::Translate {
                 start_index,
                 end_index,
@@ -1081,10 +1075,7 @@ pub(crate) fn collect_carried_iteration_polygons(
                 .map(|ordinal| anchors.get(ordinal.checked_sub(1)?).cloned().flatten())
                 .collect::<Option<Vec<_>>>()?;
             let steps = carried_iteration_steps(file, groups, iter_group, anchors);
-            let Some((step, secondary_step, bidirectional)) = carried_iteration_basis(&steps)
-            else {
-                return None;
-            };
+            let (step, secondary_step, bidirectional) = carried_iteration_basis(&steps)?;
             let depth = iter_group
                 .records
                 .iter()
@@ -1166,9 +1157,7 @@ fn collect_coordinate_point_polygon_grid_iteration(
     }
 
     let parameter_group = groups.get(iter_path.refs.get(1)?.checked_sub(1)?)?;
-    let Some(parameter_name) = decode_label_name(file, parameter_group) else {
-        return None;
-    };
+    let parameter_name = decode_label_name(file, parameter_group)?;
     let mut parameter_value =
         crate::runtime::extract::try_decode_parameter_control_value_for_group(
             file,
@@ -1189,9 +1178,7 @@ fn collect_coordinate_point_polygon_grid_iteration(
         &parameter_name,
         parameter_value,
     );
-    let Some(base_anchor) = base_anchor else {
-        return None;
-    };
+    let base_anchor = base_anchor?;
     let color = fill_color_from_styles(polygon_group.header.style_b, polygon_group.header.style_c);
     let mut polygons: Vec<PolygonShape> = Vec::new();
     for _step in 1..=payload_depth {
@@ -1261,9 +1248,7 @@ fn evaluate_coordinate_iteration_anchor(
                 .cloned()
                 .flatten()
         });
-    let Some(source_position) = source_position else {
-        return None;
-    };
+    let source_position = source_position?;
     match coordinate_group.header.kind() {
         crate::format::GroupKind::Unknown(20) => {
             let x_calc_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
@@ -1377,10 +1362,7 @@ pub(crate) fn collect_carried_iteration_circles(
                 return Some(circles);
             }
             let steps = carried_iteration_steps(file, groups, iter_group, anchors);
-            let Some((step, secondary_step, bidirectional)) = carried_iteration_basis(&steps)
-            else {
-                return None;
-            };
+            let (step, secondary_step, bidirectional) = carried_iteration_basis(&steps)?;
             Some(
                 carried_iteration_polygon_deltas(
                     &step,
@@ -1742,10 +1724,7 @@ pub(crate) fn collect_carried_polygon_iteration_families(
                 })
                 .collect::<Option<Vec<_>>>()?;
             let steps = carried_iteration_steps(file, groups, iter_group, anchors);
-            let Some((step, secondary_step, bidirectional)) = carried_iteration_basis(&steps)
-            else {
-                return None;
-            };
+            let (step, secondary_step, bidirectional) = carried_iteration_basis(&steps)?;
             let depth = carried_iteration_depth(file, iter_group, 3);
             if depth == 0 {
                 return None;

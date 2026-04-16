@@ -17,8 +17,10 @@ mod tests;
 mod trace;
 mod world;
 
-use self::assemble::{assemble_scene, build_world_data, compute_scene_bounds};
-use self::buttons::collect_buttons;
+use self::assemble::{
+    SceneAssemblyArtifacts, assemble_scene, build_world_data, compute_scene_bounds,
+};
+use self::buttons::{ButtonIndexLookups, collect_buttons};
 pub(crate) use self::decode::decode_measurement_value;
 use crate::format::{
     GroupKind, GspFile, ObjectGroup, PointRecord, Record, collect_strings, decode_c_string,
@@ -33,7 +35,7 @@ use self::graph::{
 };
 use self::images::collect_scene_images;
 use self::labels::{
-    PendingLabelHotspot, bind_button_seed_expression_labels, circle_parameter,
+    HotspotIndexLookups, PendingLabelHotspot, bind_button_seed_expression_labels, circle_parameter,
     collect_circle_parameter_labels, collect_coordinate_labels,
     collect_custom_transform_expression_labels, collect_iteration_tables, collect_label_iterations,
     collect_labels, collect_polygon_parameter_labels, collect_segment_parameter_labels,
@@ -1064,22 +1066,26 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
         file,
         &groups,
         &analysis.raw_anchors,
-        &label_group_to_index,
-        &image_group_to_index,
-        &group_to_point_index,
-        &binding_maps.line_group_to_index,
-        &binding_maps.circle_group_to_index,
-        &binding_maps.polygon_group_to_index,
+        ButtonIndexLookups {
+            label_group_to_index: &label_group_to_index,
+            image_group_to_index: &image_group_to_index,
+            group_to_point_index: &group_to_point_index,
+            line_group_to_index: &binding_maps.line_group_to_index,
+            circle_group_to_index: &binding_maps.circle_group_to_index,
+            polygon_group_to_index: &binding_maps.polygon_group_to_index,
+        },
     );
     resolve_label_hotspots(
         file,
         &groups,
         &mut labels,
         &pending_hotspots,
-        &group_to_point_index,
-        &binding_maps.circle_group_to_index,
-        &binding_maps.polygon_group_to_index,
-        &button_group_to_index,
+        HotspotIndexLookups {
+            group_to_point_index: &group_to_point_index,
+            circle_group_to_index: &binding_maps.circle_group_to_index,
+            polygon_group_to_index: &binding_maps.polygon_group_to_index,
+            button_group_to_index: &button_group_to_index,
+        },
     );
     let functions = if analysis.graph_mode {
         collect_scene_functions(
@@ -1101,15 +1107,17 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
         labels,
         world_data,
         bounds_data,
-        circle_iterations,
-        line_iterations,
-        polygon_iterations,
-        label_iterations,
-        iteration_tables,
-        buttons,
-        images,
-        parameters,
-        functions,
+        SceneAssemblyArtifacts {
+            circle_iterations,
+            line_iterations,
+            polygon_iterations,
+            label_iterations,
+            iteration_tables,
+            buttons,
+            images,
+            parameters,
+            functions,
+        },
     ))
 }
 

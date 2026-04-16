@@ -391,9 +391,7 @@ fn evaluate_function_group_recursive(
                     overrides,
                     visiting,
                 );
-                let Some(binding) = binding else {
-                    return None;
-                };
+                let binding = binding?;
                 parameters.insert(index as u16, binding);
             }
         }
@@ -1042,12 +1040,9 @@ fn try_decode_special_grouped_payload(
         0x000c, 0x000c, 0x1003, 0x000b, 0x0002, 0x1002, 0x6001, 0x000c, 0x1002, 0x000b, 0x0001,
         0x1000, 0x000b, 0x1001, 0x0001, 0x000c, 0x1004, 0x6001, 0x000c, 0x1003, 0x0002, 0x000c,
     ];
-    let Some(start) = words
+    let start = words
         .windows(CHESSBOARD_X_PATTERN.len())
-        .position(|window| window == CHESSBOARD_X_PATTERN)
-    else {
-        return None;
-    };
+        .position(|window| window == CHESSBOARD_X_PATTERN)?;
     let relevant = &words[start..start + CHESSBOARD_X_PATTERN.len()];
     let _ = relevant;
 

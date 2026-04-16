@@ -584,8 +584,10 @@ pub(crate) fn try_decode_parameter_controlled_point(
         }
         let mut value = evaluate_expr_with_parameters(&expr, 0.0, &parameters)
             .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
-        if anchor_parameter_name.is_some() && anchor_parameter_value.is_some() {
-            value += anchor_parameter_value.unwrap();
+        if let (Some(_), Some(anchor_value)) =
+            (anchor_parameter_name.as_ref(), anchor_parameter_value)
+        {
+            value += anchor_value;
         }
         (
             anchor_parameter_name.unwrap_or_default(),
