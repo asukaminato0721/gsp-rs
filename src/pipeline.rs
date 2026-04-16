@@ -265,14 +265,50 @@ mod tests {
 
     #[test]
     fn exports_segment_intersection_fixture_into_html() {
-        let html = fixture_html(
+        let scene = fixture_scene(
             include_bytes!("../tests/fixtures/gsp/insection/segment_insection.gsp"),
             "segment intersection fixture should compile",
         );
 
-        assert!(html.contains("\"x\":416.3160761196899"));
-        assert!(html.contains("\"y\":321.2222079835971"));
-        assert!(html.contains("\"kind\":\"line-intersection\""));
+        let points = scene["points"]
+            .as_array()
+            .expect("scene points should be an array");
+        let intersection = points
+            .iter()
+            .find(|point| point["constraint"]["kind"].as_str() == Some("line-intersection"))
+            .expect("expected segment intersection point");
+        assert_eq!(
+            intersection["constraint"]["left"]["kind"].as_str(),
+            Some("segment")
+        );
+        assert_eq!(
+            intersection["constraint"]["right"]["kind"].as_str(),
+            Some("segment")
+        );
+        assert_eq!(intersection["x"].as_f64(), Some(416.3160761196899));
+        assert_eq!(intersection["y"].as_f64(), Some(321.2222079835971));
+    }
+
+    #[test]
+    fn exports_segment_circle_intersection_fixture_into_html() {
+        let scene = fixture_scene(
+            include_bytes!("../tests/fixtures/gsp/insection/circle_insection.gsp"),
+            "segment-circle intersection fixture should compile",
+        );
+
+        let points = scene["points"]
+            .as_array()
+            .expect("scene points should be an array");
+        let intersection = points
+            .iter()
+            .find(|point| point["constraint"]["kind"].as_str() == Some("line-circle-intersection"))
+            .expect("expected segment-circle intersection point");
+        assert_eq!(
+            intersection["constraint"]["line"]["kind"].as_str(),
+            Some("segment")
+        );
+        assert_eq!(intersection["x"].as_f64(), Some(566.0581863195608));
+        assert_eq!(intersection["y"].as_f64(), Some(393.2769704284295));
     }
 
     #[test]

@@ -18,6 +18,7 @@ use crate::runtime::geometry::{
     point_on_three_point_arc, reflect_across_line, rotate_around, three_point_arc_geometry,
     to_raw_from_world, to_world,
 };
+use crate::runtime::scene::LineLikeKind;
 
 const PX_PER_CM: f64 = 37.79527559055118;
 
@@ -191,41 +192,43 @@ pub(crate) fn decode_intersection_anchor_raw(
     let right_group = groups.get(path.refs[1].checked_sub(1)?)?;
 
     if kind == crate::format::GroupKind::CoordinateTraceIntersectionPoint {
-        if let (Some((line_start, line_end)), Some(trace_points)) = (
-            resolve_line_like_points_raw(file, groups, anchors, left_group),
+        if let (Some((line_start, line_end, line_kind)), Some(trace_points)) = (
+            resolve_line_like_constraint_raw(file, groups, anchors, left_group),
             sample_coordinate_trace_points_raw(file, groups, right_group, anchors, graph),
         ) {
-            return line_polyline_intersection(line_start, line_end, &trace_points);
+            return line_polyline_intersection(line_start, line_end, line_kind, &trace_points);
         }
 
-        if let (Some(trace_points), Some((line_start, line_end))) = (
+        if let (Some(trace_points), Some((line_start, line_end, line_kind))) = (
             sample_coordinate_trace_points_raw(file, groups, left_group, anchors, graph),
-            resolve_line_like_points_raw(file, groups, anchors, right_group),
+            resolve_line_like_constraint_raw(file, groups, anchors, right_group),
         ) {
-            return line_polyline_intersection(line_start, line_end, &trace_points);
+            return line_polyline_intersection(line_start, line_end, line_kind, &trace_points);
         }
     }
 
-    if let (Some((line_start, line_end)), Some(circle)) = (
-        resolve_line_like_points_raw(file, groups, anchors, left_group),
+    if let (Some((line_start, line_end, line_kind)), Some(circle)) = (
+        resolve_line_like_constraint_raw(file, groups, anchors, left_group),
         resolve_circle_like_raw(file, groups, anchors, right_group),
     ) {
         return select_line_circle_intersection(
             line_start,
             line_end,
+            line_kind,
             circle.center(),
             circle.radius(),
             variant.unwrap_or(0),
         );
     }
 
-    if let (Some(circle), Some((line_start, line_end))) = (
+    if let (Some(circle), Some((line_start, line_end, line_kind))) = (
         resolve_circle_like_raw(file, groups, anchors, left_group),
-        resolve_line_like_points_raw(file, groups, anchors, right_group),
+        resolve_line_like_constraint_raw(file, groups, anchors, right_group),
     ) {
         return select_line_circle_intersection(
             line_start,
             line_end,
+            line_kind,
             circle.center(),
             circle.radius(),
             variant.unwrap_or(0),
@@ -254,17 +257,32 @@ pub(crate) fn decode_intersection_anchor_raw(
     }
 
     if variant.is_none() {
-        let (left_start, left_end) =
-            resolve_line_like_points_raw(file, groups, anchors, left_group)?;
-        let (right_start, right_end) =
-            resolve_line_like_points_raw(file, groups, anchors, right_group)?;
-        return line_line_intersection(&left_start, &left_end, &right_start, &right_end);
+        let (left_start, left_end, left_kind) =
+            resolve_line_like_constraint_raw(file, groups, anchors, left_group)?;
+        let (right_start, right_end, right_kind) =
+            resolve_line_like_constraint_raw(file, groups, anchors, right_group)?;
+        return line_line_intersection(
+            &left_start,
+            &left_end,
+            left_kind,
+            &right_start,
+            &right_end,
+            right_kind,
+        );
     }
 
-    let (left_start, left_end) = resolve_line_like_points_raw(file, groups, anchors, left_group)?;
-    let (right_start, right_end) =
-        resolve_line_like_points_raw(file, groups, anchors, right_group)?;
-    line_line_intersection(&left_start, &left_end, &right_start, &right_end)
+    let (left_start, left_end, left_kind) =
+        resolve_line_like_constraint_raw(file, groups, anchors, left_group)?;
+    let (right_start, right_end, right_kind) =
+        resolve_line_like_constraint_raw(file, groups, anchors, right_group)?;
+    line_line_intersection(
+        &left_start,
+        &left_end,
+        left_kind,
+        &right_start,
+        &right_end,
+        right_kind,
+    )
 }
 
 fn sample_coordinate_trace_points_raw(
@@ -392,12 +410,20 @@ fn sample_coordinate_trace_points_raw(
 fn line_polyline_intersection(
     line_start: PointRecord,
     line_end: PointRecord,
+    line_kind: LineLikeKind,
     polyline: &[PointRecord],
 ) -> Option<PointRecord> {
     polyline.windows(2).find_map(|segment| {
         let start = segment.first()?;
         let end = segment.get(1)?;
-        line_line_intersection(&line_start, &line_end, start, end)
+        line_line_intersection(
+            &line_start,
+            &line_end,
+            line_kind,
+            start,
+            end,
+            LineLikeKind::Segment,
+        )
     })
 }
 
@@ -639,6 +665,16 @@ pub(crate) fn resolve_line_like_points_raw(
     anchors: &[Option<PointRecord>],
     group: &ObjectGroup,
 ) -> Option<(PointRecord, PointRecord)> {
+    let (start, end, _) = resolve_line_like_constraint_raw(file, groups, anchors, group)?;
+    Some((start, end))
+}
+
+pub(crate) fn resolve_line_like_constraint_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group: &ObjectGroup,
+) -> Option<(PointRecord, PointRecord, LineLikeKind)> {
     let path = find_indexed_path(file, group)?;
     match group.header.kind() {
         crate::format::GroupKind::Segment
@@ -651,7 +687,12 @@ pub(crate) fn resolve_line_like_points_raw(
             }
             let start = anchors.get(path.refs[0].checked_sub(1)?)?.clone()?;
             let end = anchors.get(path.refs[1].checked_sub(1)?)?.clone()?;
-            distinct_pair(start, end)
+            let kind = match group.header.kind() {
+                crate::format::GroupKind::Segment => LineLikeKind::Segment,
+                crate::format::GroupKind::Ray => LineLikeKind::Ray,
+                _ => LineLikeKind::Line,
+            };
+            distinct_pair(start, end).map(|(start, end)| (start, end, kind))
         }
         crate::format::GroupKind::LineKind5 => {
             if path.refs.len() != 2 {
@@ -674,6 +715,7 @@ pub(crate) fn resolve_line_like_points_raw(
                     y: through.y + dx / len,
                 },
             )
+            .map(|(start, end)| (start, end, LineLikeKind::Line))
         }
         crate::format::GroupKind::LineKind6 => {
             if path.refs.len() != 2 {
@@ -696,6 +738,7 @@ pub(crate) fn resolve_line_like_points_raw(
                     y: through.y + dy / len,
                 },
             )
+            .map(|(start, end)| (start, end, LineLikeKind::Line))
         }
         crate::format::GroupKind::LineKind7 => {
             if path.refs.len() != 3 {
@@ -728,13 +771,15 @@ pub(crate) fn resolve_line_like_points_raw(
                     y: vertex.y + dir_y,
                 },
             )
+            .map(|(start, end)| (start, end, LineLikeKind::Ray))
         }
         crate::format::GroupKind::Translation => {
             if path.refs.len() < 3 {
                 return None;
             }
             let source_group = groups.get(path.refs[0].checked_sub(1)?)?;
-            let (start, end) = resolve_line_like_points_raw(file, groups, anchors, source_group)?;
+            let (start, end, kind) =
+                resolve_line_like_constraint_raw(file, groups, anchors, source_group)?;
             let vector_start = anchors.get(path.refs[1].checked_sub(1)?)?.clone()?;
             let vector_end = anchors.get(path.refs[2].checked_sub(1)?)?.clone()?;
             let dx = vector_end.x - vector_start.x;
@@ -749,6 +794,7 @@ pub(crate) fn resolve_line_like_points_raw(
                     y: end.y + dy,
                 },
             )
+            .map(|(start, end)| (start, end, kind))
         }
         _ => None,
     }
@@ -761,6 +807,7 @@ fn distinct_pair(start: PointRecord, end: PointRecord) -> Option<(PointRecord, P
 fn select_line_circle_intersection(
     line_start: PointRecord,
     line_end: PointRecord,
+    line_kind: LineLikeKind,
     center: PointRecord,
     radius: f64,
     variant: usize,
@@ -780,13 +827,71 @@ fn select_line_circle_intersection(
         return None;
     }
     let root = discriminant.max(0.0).sqrt();
-    let mut ts = [(-b - root) / (2.0 * a), (-b + root) / (2.0 * a)];
+    let mut ts = [(-b - root) / (2.0 * a), (-b + root) / (2.0 * a)]
+        .into_iter()
+        .filter(|t| line_like_allows_param(*t, line_kind))
+        .collect::<Vec<_>>();
+    if ts.is_empty() {
+        return None;
+    }
     ts.sort_by(|left, right| left.total_cmp(right));
-    let t = ts[variant.min(1)];
+    let t = ts[variant.min(ts.len().saturating_sub(1))];
     Some(PointRecord {
         x: line_start.x + dx * t,
         y: line_start.y + dy * t,
     })
+}
+
+fn line_line_intersection(
+    left_start: &PointRecord,
+    left_end: &PointRecord,
+    left_kind: LineLikeKind,
+    right_start: &PointRecord,
+    right_end: &PointRecord,
+    right_kind: LineLikeKind,
+) -> Option<PointRecord> {
+    let left_dx = left_end.x - left_start.x;
+    let left_dy = left_end.y - left_start.y;
+    let right_dx = right_end.x - right_start.x;
+    let right_dy = right_end.y - right_start.y;
+    let determinant = left_dx * right_dy - left_dy * right_dx;
+    if determinant.abs() <= 1e-9 {
+        return None;
+    }
+    let delta_x = right_start.x - left_start.x;
+    let delta_y = right_start.y - left_start.y;
+    let t = (delta_x * right_dy - delta_y * right_dx) / determinant;
+    let point = PointRecord {
+        x: left_start.x + t * left_dx,
+        y: left_start.y + t * left_dy,
+    };
+    (line_like_contains(left_start, left_end, left_kind, &point)
+        && line_like_contains(right_start, right_end, right_kind, &point))
+    .then_some(point)
+}
+
+fn line_like_contains(
+    start: &PointRecord,
+    end: &PointRecord,
+    kind: LineLikeKind,
+    point: &PointRecord,
+) -> bool {
+    let dx = end.x - start.x;
+    let dy = end.y - start.y;
+    let len_sq = dx * dx + dy * dy;
+    if len_sq <= 1e-9 {
+        return false;
+    }
+    let t = ((point.x - start.x) * dx + (point.y - start.y) * dy) / len_sq;
+    line_like_allows_param(t, kind)
+}
+
+fn line_like_allows_param(t: f64, kind: LineLikeKind) -> bool {
+    match kind {
+        LineLikeKind::Line => true,
+        LineLikeKind::Ray => t >= -1e-9,
+        LineLikeKind::Segment => (-1e-9..=1.0 + 1e-9).contains(&t),
+    }
 }
 
 fn select_circular_intersection(
@@ -936,29 +1041,6 @@ fn point_lies_on_circular_constraint(
 fn normalize_angle_delta_raw(from: f64, to: f64) -> f64 {
     let tau = std::f64::consts::TAU;
     (to - from).rem_euclid(tau)
-}
-
-fn line_line_intersection(
-    left_start: &PointRecord,
-    left_end: &PointRecord,
-    right_start: &PointRecord,
-    right_end: &PointRecord,
-) -> Option<PointRecord> {
-    let left_dx = left_end.x - left_start.x;
-    let left_dy = left_end.y - left_start.y;
-    let right_dx = right_end.x - right_start.x;
-    let right_dy = right_end.y - right_start.y;
-    let determinant = left_dx * right_dy - left_dy * right_dx;
-    if determinant.abs() <= 1e-9 {
-        return None;
-    }
-    let delta_x = right_start.x - left_start.x;
-    let delta_y = right_start.y - left_start.y;
-    let t = (delta_x * right_dy - delta_y * right_dx) / determinant;
-    Some(PointRecord {
-        x: left_start.x + t * left_dx,
-        y: left_start.y + t * left_dy,
-    })
 }
 
 pub(crate) fn decode_regular_polygon_vertex_anchor_raw(

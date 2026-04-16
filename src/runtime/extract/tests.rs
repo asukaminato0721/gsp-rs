@@ -2216,19 +2216,22 @@ fn preserves_parameter_driven_point_iteration_family() {
 
 #[test]
 fn preserves_linear_intersection_points_in_insection_fixtures() {
-    for (name, data) in [
+    for (name, data, expected_right_kind) in [
         (
             "segment",
             include_bytes!("../../../tests/fixtures/gsp/insection/segment_insection.gsp")
                 .as_slice(),
+            crate::runtime::scene::LineLikeKind::Segment,
         ),
         (
             "line",
             include_bytes!("../../../tests/fixtures/gsp/insection/line_insection.gsp").as_slice(),
+            crate::runtime::scene::LineLikeKind::Line,
         ),
         (
             "ray",
             include_bytes!("../../../tests/fixtures/gsp/insection/ray_insection.gsp").as_slice(),
+            crate::runtime::scene::LineLikeKind::Ray,
         ),
     ] {
         let scene = fixture_scene(data);
@@ -2238,11 +2241,28 @@ fn preserves_linear_intersection_points_in_insection_fixtures() {
             5,
             "expected derived intersection point for {name}"
         );
-        assert!(scene.points.iter().any(|point| {
-            matches!(
+        assert!(scene.points.iter().any(|point| match expected_right_kind {
+            crate::runtime::scene::LineLikeKind::Segment => matches!(
                 point.constraint,
-                ScenePointConstraint::LineIntersection { .. }
-            )
+                ScenePointConstraint::LineIntersection {
+                    left: LineConstraint::Segment { .. },
+                    right: LineConstraint::Segment { .. },
+                }
+            ),
+            crate::runtime::scene::LineLikeKind::Line => matches!(
+                point.constraint,
+                ScenePointConstraint::LineIntersection {
+                    left: LineConstraint::Segment { .. },
+                    right: LineConstraint::Line { .. },
+                }
+            ),
+            crate::runtime::scene::LineLikeKind::Ray => matches!(
+                point.constraint,
+                ScenePointConstraint::LineIntersection {
+                    left: LineConstraint::Segment { .. },
+                    right: LineConstraint::Ray { .. },
+                }
+            ),
         }));
         assert!(
             scene.points.iter().any(|point| {
@@ -2538,12 +2558,15 @@ fn preserves_line_circle_intersection_points() {
     assert!(scene.points.iter().any(|point| {
         matches!(
             point.constraint,
-            ScenePointConstraint::LineCircleIntersection { .. }
+            ScenePointConstraint::LineCircleIntersection {
+                line: LineConstraint::Segment { .. },
+                ..
+            }
         )
     }));
     assert!(scene.points.iter().any(|point| {
-        (point.position.x - 167.5150597569313).abs() < 1e-6
-            && (point.position.y - 204.5902707856141).abs() < 1e-6
+        (point.position.x - 566.0581863195608).abs() < 1e-6
+            && (point.position.y - 393.2769704284295).abs() < 1e-6
     }));
 }
 

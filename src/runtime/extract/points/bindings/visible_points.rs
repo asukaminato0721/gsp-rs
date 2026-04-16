@@ -1516,38 +1516,7 @@ fn resolve_intersection_line_constraint(
     group: &ObjectGroup,
     group_to_point_index: &[Option<usize>],
 ) -> Option<LineConstraint> {
-    normalize_intersection_line_constraint(resolve_line_constraint(
-        file,
-        groups,
-        group,
-        group_to_point_index,
-    )?)
-}
-
-fn normalize_intersection_line_constraint(constraint: LineConstraint) -> Option<LineConstraint> {
-    match constraint {
-        LineConstraint::Segment {
-            start_index,
-            end_index,
-        }
-        | LineConstraint::Ray {
-            start_index,
-            end_index,
-        } => Some(LineConstraint::Line {
-            start_index,
-            end_index,
-        }),
-        LineConstraint::Translated {
-            line,
-            vector_start_index,
-            vector_end_index,
-        } => Some(LineConstraint::Translated {
-            line: Box::new(normalize_intersection_line_constraint(*line)?),
-            vector_start_index,
-            vector_end_index,
-        }),
-        other => Some(other),
-    }
+    resolve_line_constraint(file, groups, group, group_to_point_index)
 }
 
 fn resolve_line_constraint(
