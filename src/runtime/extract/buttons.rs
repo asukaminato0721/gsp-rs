@@ -165,7 +165,9 @@ pub(super) fn collect_buttons(
                         function_group_ordinal,
                     }
                 }),
-                (7, 0) | (7, 1) | (7, 3) | (7, 8) => Some(RawButtonAction::Sequence {
+                // Legacy sample payloads encode the same chained-button sequence family under
+                // many (7, *) variants while keeping the timing payload layout unchanged.
+                (7, _) => Some(RawButtonAction::Sequence {
                     button_group_ordinals: refs,
                     interval_ms: read_u32(action_payload, 16),
                 }),

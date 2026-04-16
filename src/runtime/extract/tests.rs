@@ -68,6 +68,55 @@ fn fixture_buttons_without_validation(data: &[u8]) -> Vec<SceneButton> {
     buttons
 }
 
+fn fixture_labels_without_validation(data: &[u8]) -> Vec<crate::runtime::scene::TextLabel> {
+    let file = GspFile::parse(data).expect("fixture parses");
+    let groups = file.object_groups();
+    let point_map = collect_point_objects(&file, &groups);
+    let analysis = analyze_scene(&file, &groups, &point_map);
+    let mut shapes = collect_scene_shapes(&file, &groups, &point_map, &analysis);
+    let (_, image_group_to_index) =
+        super::images::collect_scene_images(&file, &groups, &analysis.graph_ref);
+    let (labels, label_group_to_index, _) =
+        collect_scene_labels(&file, &groups, &analysis, &shapes);
+    let (_, group_to_point_index) = collect_visible_points_checked(
+        &file,
+        &groups,
+        &point_map,
+        &analysis.raw_anchors,
+        &analysis.graph_ref,
+    )
+    .expect("visible points build");
+    let (binding_maps, _, _) = remap_scene_bindings(
+        &file,
+        &groups,
+        &analysis.raw_anchors,
+        &group_to_point_index,
+        &mut shapes,
+    );
+    let _ = collect_buttons(
+        &file,
+        &groups,
+        &analysis.raw_anchors,
+        super::buttons::ButtonIndexLookups {
+            label_group_to_index: &label_group_to_index,
+            image_group_to_index: &image_group_to_index,
+            group_to_point_index: &group_to_point_index,
+            line_group_to_index: &binding_maps.line_group_to_index,
+            circle_group_to_index: &binding_maps.circle_group_to_index,
+            polygon_group_to_index: &binding_maps.polygon_group_to_index,
+        },
+    );
+    labels
+}
+
+fn fixture_images_without_validation(data: &[u8]) -> Vec<crate::runtime::scene::SceneImage> {
+    let file = GspFile::parse(data).expect("fixture parses");
+    let groups = file.object_groups();
+    let point_map = collect_point_objects(&file, &groups);
+    let analysis = analyze_scene(&file, &groups, &point_map);
+    super::images::collect_scene_images(&file, &groups, &analysis.graph_ref).0
+}
+
 #[test]
 fn preserves_function_iteration_coordinate_point_in_liyougui_fixture() {
     let Some(data) = fixture_bytes("tests/Samples/个人专栏/李有贵作品/函数图象迭代(liyougui).gsp")
@@ -399,6 +448,137 @@ fn payload_log_accepts_music_button_kinds_in_wave_fixture() {
         !log.contains("按钮动作类型 (1, 6) 目前还不支持"),
         "expected show-object button kind to be accepted in the wave fixture"
     );
+}
+
+#[test]
+fn payload_log_accepts_legacy_sequence_button_kinds_in_ad_clip_fixture() {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/郑飞宇作品/广告片断.gsp") else {
+        return;
+    };
+    let log = fixture_log(&data, "tests/Samples/个人专栏/郑飞宇作品/广告片断.gsp");
+
+    assert!(
+        !log.contains("按钮动作类型 (7, 14) 目前还不支持")
+            && !log.contains("按钮动作类型 (7, 15) 目前还不支持"),
+        "expected legacy sequence-button variants to be accepted"
+    );
+}
+
+#[test]
+fn collects_legacy_bbox_image_without_validation() {
+    let Some(data) = fixture_bytes("tests/Samples/热研系列/概率问题/抛豆实验.gsp") else {
+        return;
+    };
+    let images = fixture_images_without_validation(&data);
+
+    assert!(
+        !images.is_empty(),
+        "expected the legacy bbox-backed image payload to export"
+    );
+}
+
+#[test]
+fn collects_legacy_symbolic_labels_without_validation() {
+    let Some(data) = fixture_bytes("tests/Samples/热研系列/概率问题/抛豆实验.gsp") else {
+        return;
+    };
+    let labels = fixture_labels_without_validation(&data);
+
+    assert!(
+        labels.iter().any(|label| label.text == "k"),
+        "expected the legacy three-point helper label to export"
+    );
+    assert!(
+        labels.iter().any(|label| label.text == "圈内豆子数"),
+        "expected the legacy named helper label to export"
+    );
+}
+
+#[test]
+fn payload_log_skips_legacy_label_and_image_helper_errors_in_throw_beans_fixture() {
+    let Some(data) = fixture_bytes("tests/Samples/热研系列/概率问题/抛豆实验.gsp") else {
+        return;
+    };
+    let log = fixture_log(&data, "tests/Samples/热研系列/概率问题/抛豆实验.gsp");
+
+    assert!(
+        !log.contains("对象类型 47 还没有实现")
+            && !log.contains("对象类型 85 还没有实现")
+            && !log.contains("对象类型 88 还没有实现"),
+        "expected legacy helper labels and bbox image payloads to stop surfacing as unsupported"
+    );
+}
+
+#[test]
+fn builds_point_cood_expr_fixture_with_two_parameter_coordinate_binding() {
+    let Some(data) = fixture_bytes("tests/fixtures/gsp/point_cood_expr.gsp") else {
+        return;
+    };
+    let file = GspFile::parse(&data).expect("fixture parses");
+    let groups = file.object_groups();
+    let point_map = collect_point_objects(&file, &groups);
+    let analysis = analyze_scene(&file, &groups, &point_map);
+    let helper_group = groups.get(7).expect("group #8");
+    let helper_path = super::find_indexed_path(&file, helper_group).expect("helper path");
+    let parameter_group = groups
+        .get(helper_path.refs[0].saturating_sub(1))
+        .expect("parameter group");
+    let parameter_value =
+        super::try_decode_parameter_control_value_for_group(&file, &groups, parameter_group)
+            .expect("parameter value");
+    assert!((parameter_value - 1.0).abs() < 1e-6, "expected t₁ = 1");
+    assert!(
+        analysis.raw_anchors.get(1).and_then(|point| point.as_ref()).is_some(),
+        "expected origin anchor point to exist"
+    );
+    let helper_point = super::points::decode_coordinate_point(
+        &file,
+        &groups,
+        helper_group,
+        &analysis.raw_anchors,
+        &analysis.graph_ref,
+    );
+    assert!(
+        helper_point.is_some(),
+        "expected legacy helper group #8 to decode as a coordinate point"
+    );
+    let scene = fixture_scene(&data);
+    let log = fixture_log(&data, "tests/fixtures/gsp/point_cood_expr.gsp");
+
+    assert!(log.contains("问题数量: 0"));
+    let point = scene
+        .points
+        .iter()
+        .find(|point| {
+            matches!(
+                point.binding,
+                Some(ScenePointBinding::CoordinateSource2d {
+                    ref x_name,
+                    ref y_name,
+                    ..
+                }) if x_name == "t₂" && y_name == "t₁"
+            )
+        })
+        .expect("expected 2d coordinate point driven by both parameter controls");
+    assert!(point.visible, "expected exported coordinate point to stay visible");
+    assert!(point.draggable, "expected coordinate point to stay interactive");
+
+    let helper = scene
+        .points
+        .iter()
+        .find(|point| {
+            matches!(
+                point.binding,
+                Some(ScenePointBinding::CoordinateSource {
+                    ref name,
+                    axis: crate::runtime::scene::CoordinateAxis::Vertical,
+                    ..
+                }) if name == "t₁"
+            ) && (point.position.x.abs() < 1e-6) && ((point.position.y - 1.0).abs() < 1e-6)
+        })
+        .expect("expected legacy parameter helper point at (0,1)");
+    assert!(helper.visible, "expected helper point to stay visible");
+    assert!(helper.draggable, "expected helper point to stay interactive");
 }
 
 #[test]

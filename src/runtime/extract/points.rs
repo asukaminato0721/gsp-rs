@@ -34,6 +34,8 @@ pub(super) use constraints::{
     regular_polygon_angle_expr_for_calc_group, regular_polygon_iteration_step,
     try_decode_parameter_controlled_point, try_decode_point_constraint,
 };
+#[cfg(test)]
+pub(super) use constraints::decode_coordinate_point;
 
 pub(crate) fn collect_point_objects(
     file: &GspFile,

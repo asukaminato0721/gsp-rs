@@ -66,6 +66,8 @@ fn supports_payload_label(kind: crate::format::GroupKind) -> bool {
             | crate::format::GroupKind::CircleCircleIntersectionPoint1
             | crate::format::GroupKind::CircleCircleIntersectionPoint2
             | crate::format::GroupKind::CoordinateReadoutLabel
+            | crate::format::GroupKind::Unknown(47)
+            | crate::format::GroupKind::Unknown(88)
             | crate::format::GroupKind::Segment
             | crate::format::GroupKind::Ray
             | crate::format::GroupKind::GraphObject40
@@ -450,12 +452,27 @@ pub(super) fn collect_labels(
                             | crate::format::GroupKind::IntersectionPoint2
                             | crate::format::GroupKind::CircleCircleIntersectionPoint1
                             | crate::format::GroupKind::CircleCircleIntersectionPoint2
+                            | crate::format::GroupKind::Unknown(47)
+                            | crate::format::GroupKind::Unknown(88)
                     )
                     && !is_non_graph_parameter_group(file, groups, group))
                 .then(|| decode_label_name(file, group))
                 .flatten();
                 if let Some(label_text) = resolve_label_text(file, group, fallback_text)
-                    && let Some(anchor) = decode_label_anchor(file, group, anchors)
+                    && let Some(anchor) = decode_label_anchor(file, group, anchors).or_else(|| {
+                        if kind == crate::format::GroupKind::Unknown(88) {
+                            find_indexed_path(file, group)
+                                .and_then(|path| {
+                                    path.refs
+                                        .iter()
+                                        .find_map(|ordinal| {
+                                            anchors.get(ordinal.saturating_sub(1)).cloned().flatten()
+                                        })
+                                })
+                        } else {
+                            None
+                        }
+                    })
                 {
                     let ResolvedLabelText {
                         text,
@@ -879,10 +896,82 @@ pub(super) fn collect_coordinate_labels(
                 hotspots: Vec::new(),
                 debug: Some(payload_debug_source(group)),
             });
+        } else if matches!(
+            kind,
+            crate::format::GroupKind::Unknown(47) | crate::format::GroupKind::Unknown(88)
+        ) && let Some(label) = collect_legacy_expression_label(file, groups, anchors, group)
+        {
+            labels.push(label);
         }
     }
     labels.iter_mut().for_each(apply_fallback_rich_markup);
     labels
+}
+
+fn collect_legacy_expression_label(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group: &ObjectGroup,
+) -> Option<TextLabel> {
+    let path = find_indexed_path(file, group)?;
+    let expr_group = path
+        .refs
+        .iter()
+        .rev()
+        .filter_map(|ordinal| groups.get(ordinal.checked_sub(1)?))
+        .find(|candidate| {
+            matches!(
+                candidate.header.kind(),
+                crate::format::GroupKind::FunctionExpr
+                    | crate::format::GroupKind::DerivativeFunction
+            )
+        })?;
+    let expr = try_decode_function_expr(file, groups, expr_group).ok()?;
+    let (parameter_name, parameter_value) =
+        resolve_function_expr_parameter(file, groups, expr_group, anchors, &mut BTreeSet::new())?;
+    let expr_label = decode_label_name(file, group).unwrap_or_else(|| {
+        payload_function_expr_label(
+            file,
+            groups,
+            anchors,
+            expr_group,
+            &function_expr_label(expr.clone()),
+            &mut BTreeSet::new(),
+        )
+    });
+    let value_text = evaluate_expr_with_parameters(
+        &expr,
+        0.0,
+        &BTreeMap::from([(parameter_name.clone(), parameter_value)]),
+    )
+    .map(format_number)
+    .unwrap_or_else(|| "未定义".to_string());
+    let anchor = decode_label_anchor(file, group, anchors)
+        .or_else(|| try_decode_payload_anchor_point(file, expr_group).ok().flatten())
+        .or_else(|| {
+            path.refs
+                .first()
+                .and_then(|ordinal| anchors.get(ordinal.saturating_sub(1)))
+                .cloned()
+                .flatten()
+        })?;
+    Some(TextLabel {
+        anchor,
+        text: format!("{expr_label} = {value_text}"),
+        rich_markup: build_expression_rich_markup(&expr_label, &value_text),
+        color: [30, 30, 30, 255],
+        visible: label_visible_for_group(file, group),
+        binding: Some(TextLabelBinding::ExpressionValue {
+            parameter_name,
+            result_name: decode_label_name(file, group),
+            expr_label,
+            expr,
+        }),
+        screen_space: false,
+        hotspots: Vec::new(),
+        debug: Some(payload_debug_source(group)),
+    })
 }
 
 pub(super) fn resolve_label_hotspots(

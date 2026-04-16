@@ -40,6 +40,7 @@ macro_rules! define_group_kinds {
                     Self::CoordinatePoint
                         | Self::CoordinateExpressionPoint
                         | Self::CoordinateExpressionPointAlt
+                        | Self::LegacyCoordinateParameterHelper
                         | Self::Unknown(20)
                         | Self::CoordinateTrace
                 )
@@ -154,6 +155,8 @@ define_group_kinds! {
     CoordinateTrace = 97,
     CoordinateTraceIntersectionPoint = 98,
     CustomTransformTrace = 102,
+    LegacyCoordinateParameterHelper = 109,
+    LegacyCoordinatePointHelper = 110,
     AngleMarker = 113,
     PathPoint = 123,
     SegmentMarker = 121,
@@ -171,6 +174,13 @@ mod tests {
         assert_eq!(GroupKind::IterationExpressionHelper.raw(), 92);
         assert_eq!(GroupKind::from(121), GroupKind::SegmentMarker);
         assert_eq!(GroupKind::SegmentMarker.raw(), 121);
+        assert_eq!(
+            GroupKind::from(109),
+            GroupKind::LegacyCoordinateParameterHelper
+        );
+        assert_eq!(GroupKind::LegacyCoordinateParameterHelper.raw(), 109);
+        assert_eq!(GroupKind::from(110), GroupKind::LegacyCoordinatePointHelper);
+        assert_eq!(GroupKind::LegacyCoordinatePointHelper.raw(), 110);
         assert_eq!(GroupKind::from(999), GroupKind::Unknown(999));
         assert_eq!(GroupKind::Unknown(999).raw(), 999);
     }

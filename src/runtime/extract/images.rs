@@ -35,10 +35,20 @@ fn decode_image_group(
     _graph: &Option<GraphTransform>,
     png_blobs: &[Vec<u8>],
 ) -> Option<SceneImage> {
-    if (group.header.kind()) != crate::format::GroupKind::Point {
-        return None;
+    match group.header.kind() {
+        crate::format::GroupKind::Point => {
+            decode_affine_image_group(file, group, png_blobs)
+        }
+        crate::format::GroupKind::Unknown(85) => decode_bbox_image_group(file, group, png_blobs),
+        _ => None,
     }
+}
 
+fn decode_affine_image_group(
+    file: &GspFile,
+    group: &ObjectGroup,
+    png_blobs: &[Vec<u8>],
+) -> Option<SceneImage> {
     let size_payload = group
         .records
         .iter()
@@ -101,6 +111,53 @@ fn decode_image_group(
     Some(SceneImage {
         top_left: raw_top_left,
         bottom_right: raw_bottom_right,
+        src,
+        visible: !group.header.is_hidden(),
+        screen_space: true,
+        debug: Some(payload_debug_source(group)),
+    })
+}
+
+fn decode_bbox_image_group(
+    file: &GspFile,
+    group: &ObjectGroup,
+    png_blobs: &[Vec<u8>],
+) -> Option<SceneImage> {
+    let rect_payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x090c)
+        .map(|record| record.payload(&file.data))?;
+    let resource_payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x1f44)
+        .map(|record| record.payload(&file.data))?;
+    if rect_payload.len() < 16 || resource_payload.len() < 2 {
+        return None;
+    }
+
+    let left = read_u32(rect_payload, 0) as f64;
+    let top = read_u32(rect_payload, 4) as f64;
+    let right = read_u32(rect_payload, 8) as f64;
+    let bottom = read_u32(rect_payload, 12) as f64;
+    if !(left.is_finite() && top.is_finite() && right.is_finite() && bottom.is_finite()) {
+        return None;
+    }
+    if right <= left || bottom <= top {
+        return None;
+    }
+
+    let resource_index = read_u16(resource_payload, 0) as usize;
+    let png = png_blobs.get(resource_index)?;
+    let src = format!("data:image/png;base64,{}", crate::util::base64_encode(png));
+
+    Some(SceneImage {
+        top_left: PointRecord { x: left, y: top },
+        bottom_right: PointRecord {
+            x: right,
+            y: bottom,
+        },
         src,
         visible: !group.header.is_hidden(),
         screen_space: true,

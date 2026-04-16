@@ -1961,6 +1961,8 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::CoordinateTrace => "坐标轨迹",
         GroupKind::CoordinateTraceIntersectionPoint => "坐标轨迹交点",
         GroupKind::CustomTransformTrace => "自定义变换轨迹",
+        GroupKind::LegacyCoordinateParameterHelper => "旧版坐标参数辅助对象",
+        GroupKind::LegacyCoordinatePointHelper => "旧版坐标点辅助对象",
         GroupKind::AngleMarker => "角标记",
         GroupKind::PathPoint => "路径点",
         GroupKind::SegmentMarker => "线段记号",
@@ -1986,6 +1988,8 @@ fn group_kind_noun_in_chinese(kind: GroupKind) -> &'static str {
         | GroupKind::AngleRotation
         | GroupKind::OffsetAnchor
         | GroupKind::CoordinatePoint
+        | GroupKind::LegacyCoordinateParameterHelper
+        | GroupKind::LegacyCoordinatePointHelper
         | GroupKind::ParameterAnchor
         | GroupKind::ParameterControlledPoint
         | GroupKind::CoordinateTraceIntersectionPoint
@@ -2115,6 +2119,11 @@ fn validate_group_kind(group: &ObjectGroup) -> Result<()> {
             | GroupKind::CoordinateYValue
             | GroupKind::Unknown(71)
             | GroupKind::Unknown(122)
+            | GroupKind::Unknown(47)
+            | GroupKind::Unknown(85)
+            | GroupKind::Unknown(88)
+            | GroupKind::LegacyCoordinateParameterHelper
+            | GroupKind::LegacyCoordinatePointHelper
     ) || is_supported_group_kind(kind)
     {
         return Ok(());
@@ -2148,10 +2157,7 @@ fn validate_action_button_payload(file: &GspFile, group: &ObjectGroup) -> Result
         | (4, 0)
         | (4, 1)
         | (8, 0)
-        | (7, 0)
-        | (7, 1)
-        | (7, 3)
-        | (7, 8)
+        | (7, _)
         | (3, 0)
         | (3, 1)
         | (3, 2)
@@ -2704,5 +2710,10 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::SegmentMarker
             | GroupKind::Unknown(71)
             | GroupKind::Unknown(122)
+            | GroupKind::Unknown(47)
+            | GroupKind::Unknown(85)
+            | GroupKind::Unknown(88)
+            | GroupKind::LegacyCoordinateParameterHelper
+            | GroupKind::LegacyCoordinatePointHelper
     )
 }
