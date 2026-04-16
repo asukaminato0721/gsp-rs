@@ -1956,6 +1956,7 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::MeasuredValue => "度量值",
         GroupKind::GraphObject40 => "图像对象",
         GroupKind::AngleValue => "角度值",
+        GroupKind::PolygonAreaValue => "多边形面积值",
         GroupKind::GraphCoordinatePoint => "图像坐标点",
         GroupKind::CoordinateReadoutLabel => "坐标读数标签",
         GroupKind::RatioValue => "比值对象",
@@ -1987,6 +1988,8 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::CircularSegmentBoundary => "弓形边界",
         GroupKind::GraphDistanceValue => "图像距离值",
         GroupKind::IterationPointAlias => "迭代结果点",
+        GroupKind::ValueTableRow => "数值表行",
+        GroupKind::NamedAlias => "命名别名对象",
         GroupKind::RegularPolygonIteration => "正多边形迭代",
         GroupKind::LabelIterationSeed => "标签迭代种子",
         GroupKind::IterationExpressionHelper => "迭代表达式辅助对象",
@@ -2029,6 +2032,7 @@ fn group_kind_noun_in_chinese(kind: GroupKind) -> &'static str {
         | GroupKind::CoordinatePoint
         | GroupKind::GraphFunctionPoint
         | GroupKind::GraphValuePoint
+        | GroupKind::NamedAlias
         | GroupKind::LegacyCoordinateParameterHelper
         | GroupKind::LegacyCoordinatePointHelper
         | GroupKind::ParameterAnchor
@@ -2040,8 +2044,10 @@ fn group_kind_noun_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::DistanceValue
         | GroupKind::PointLineDistanceValue
         | GroupKind::AngleValue
+        | GroupKind::PolygonAreaValue
         | GroupKind::RatioValue
         | GroupKind::GraphDistanceValue
+        | GroupKind::ValueTableRow
         | GroupKind::MeasuredValue
         | GroupKind::CoordinateXValue
         | GroupKind::CoordinateYValue
@@ -2175,11 +2181,11 @@ fn validate_group_kind(group: &ObjectGroup) -> Result<()> {
             | GroupKind::GraphCoordinatePoint
             | GroupKind::RatioValue
             | GroupKind::GraphDistanceValue
-            | GroupKind::Unknown(42)
+            | GroupKind::PolygonAreaValue
             | GroupKind::Unknown(46)
             | GroupKind::GraphFunctionPoint
             | GroupKind::GraphMeasurementSegment
-            | GroupKind::Unknown(91)
+            | GroupKind::ValueTableRow
             | GroupKind::Unknown(93)
             | GroupKind::Unknown(99)
             | GroupKind::Unknown(100)
@@ -2187,7 +2193,7 @@ fn validate_group_kind(group: &ObjectGroup) -> Result<()> {
             | GroupKind::Unknown(108)
             | GroupKind::Unknown(115)
             | GroupKind::Unknown(116)
-            | GroupKind::Unknown(120)
+            | GroupKind::NamedAlias
             | GroupKind::Unknown(85)
             | GroupKind::IterationPointAlias
             | GroupKind::LegacyCoordinateParameterHelper
@@ -2807,10 +2813,10 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::AngleValue
             | GroupKind::RatioValue
             | GroupKind::GraphDistanceValue
-            | GroupKind::Unknown(42)
+            | GroupKind::PolygonAreaValue
             | GroupKind::Unknown(46)
             | GroupKind::GraphMeasurementSegment
-            | GroupKind::Unknown(91)
+            | GroupKind::ValueTableRow
             | GroupKind::Unknown(93)
             | GroupKind::Unknown(99)
             | GroupKind::Unknown(100)
@@ -2818,7 +2824,7 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::Unknown(108)
             | GroupKind::Unknown(115)
             | GroupKind::Unknown(116)
-            | GroupKind::Unknown(120)
+            | GroupKind::NamedAlias
             | GroupKind::Unknown(85)
             | GroupKind::IterationPointAlias
             | GroupKind::LegacyCoordinateParameterHelper

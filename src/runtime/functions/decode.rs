@@ -40,8 +40,10 @@ fn is_function_like_group(group: &ObjectGroup) -> bool {
             | crate::format::GroupKind::GraphYValue
             | crate::format::GroupKind::GraphXValue
             | crate::format::GroupKind::AngleValue
+            | crate::format::GroupKind::PolygonAreaValue
             | crate::format::GroupKind::RatioValue
             | crate::format::GroupKind::GraphDistanceValue
+            | crate::format::GroupKind::NamedAlias
             | crate::format::GroupKind::Unknown(71)
     )
 }
@@ -129,8 +131,10 @@ fn try_decode_numeric_helper_group(
             | crate::format::GroupKind::GraphYValue
             | crate::format::GroupKind::GraphXValue
             | crate::format::GroupKind::AngleValue
+            | crate::format::GroupKind::PolygonAreaValue
             | crate::format::GroupKind::RatioValue
             | crate::format::GroupKind::GraphDistanceValue
+            | crate::format::GroupKind::NamedAlias
     ) {
         return None;
     }
@@ -204,6 +208,19 @@ fn try_decode_numeric_helper_group(
             let end = anchors.get(path.refs.get(2)?.checked_sub(1)?)?.clone()?;
             angle_degrees_from_points(&start, &vertex, &end)?
         }
+        crate::format::GroupKind::PolygonAreaValue => {
+            let polygon_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            let polygon_path = find_indexed_path(file, polygon_group)?;
+            let points = polygon_path
+                .refs
+                .iter()
+                .filter_map(|ordinal| anchors.get(ordinal.saturating_sub(1)).cloned().flatten())
+                .collect::<Vec<_>>();
+            normalize_graph_area(
+                polygon_area_raw(&points)?,
+                graph.as_ref().map(|(_, raw_per_unit)| *raw_per_unit),
+            )
+        }
         crate::format::GroupKind::RatioValue => {
             decode_ratio_helper_group(file, helper_groups, &anchors, graph_transform.as_ref(), &path.refs)?
         }
@@ -214,6 +231,23 @@ fn try_decode_numeric_helper_group(
                 ((right.x - left.x).powi(2) + (right.y - left.y).powi(2)).sqrt(),
                 graph.as_ref().map(|(_, raw_per_unit)| *raw_per_unit),
             )
+        }
+        crate::format::GroupKind::NamedAlias => {
+            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            if matches!(source_group.header.kind(), crate::format::GroupKind::AngleMarker) {
+                let source_path = find_indexed_path(file, source_group)?;
+                let start = anchors.get(source_path.refs.first()?.checked_sub(1)?)?.clone()?;
+                let vertex = anchors.get(source_path.refs.get(1)?.checked_sub(1)?)?.clone()?;
+                let end = anchors.get(source_path.refs.get(2)?.checked_sub(1)?)?.clone()?;
+                angle_degrees_from_points(&start, &vertex, &end)?
+            } else {
+                try_decode_function_expr(file, groups, source_group)
+                    .ok()
+                    .and_then(|expr| match expr {
+                        FunctionExpr::Constant(value) => Some(value),
+                        _ => None,
+                    })?
+            }
         }
         _ => return None,
     };
@@ -438,6 +472,13 @@ fn normalize_graph_distance(raw_distance: f64, raw_per_unit: Option<f64>) -> f64
     }
 }
 
+fn normalize_graph_area(raw_area: f64, raw_per_unit: Option<f64>) -> f64 {
+    match raw_per_unit {
+        Some(scale) if scale.is_finite() && scale > 1e-9 => raw_area / (scale * scale),
+        _ => raw_area,
+    }
+}
+
 fn point_line_distance_raw(
     point: &crate::format::PointRecord,
     line_start: &crate::format::PointRecord,
@@ -451,6 +492,20 @@ fn point_line_distance_raw(
     }
     let cross = (point.x - line_start.x) * dy - (point.y - line_start.y) * dx;
     Some(cross.abs() / len_sq.sqrt())
+}
+
+fn polygon_area_raw(points: &[crate::format::PointRecord]) -> Option<f64> {
+    if points.len() < 3 {
+        return None;
+    }
+    let mut twice_area = 0.0;
+    for index in 0..points.len() {
+        let current = &points[index];
+        let next = &points[(index + 1) % points.len()];
+        twice_area += current.x * next.y - next.x * current.y;
+    }
+    let area = twice_area.abs() * 0.5;
+    area.is_finite().then_some(area)
 }
 
 fn decode_payload_function_expr(
@@ -2085,6 +2140,60 @@ mod parse_tests {
         assert!(
             value.is_finite() && value > 0.0,
             "expected kind 86 helper to decode to a positive finite distance, got {value}"
+        );
+    }
+
+    #[test]
+    fn decodes_named_alias_payload_kind_120_from_refraction_sample() {
+        let Ok(data) =
+            fs::read("tests/Samples/个人专栏/侯仰顺作品/光的折射(蚂蚁制作).gsp")
+        else {
+            return;
+        };
+        let file = GspFile::parse(&data).expect("sample parses");
+        let groups = file.object_groups();
+        let angle_alias = groups
+            .iter()
+            .find(|group| group.ordinal == 42)
+            .expect("expected named alias group");
+
+        let expr = try_decode_function_expr(&file, &groups, angle_alias)
+            .expect("expected kind 120 alias to decode as a function expression");
+        let value = match expr {
+            FunctionExpr::Constant(value) => value,
+            other => panic!("expected constant named alias, got {other:?}"),
+        };
+
+        assert!(
+            value.is_finite() && value > 0.0,
+            "expected named alias to decode to a positive finite value, got {value}"
+        );
+    }
+
+    #[test]
+    fn decodes_polygon_area_payload_kind_42_from_rubber_band_sample() {
+        let Ok(data) =
+            fs::read("tests/Samples/个人专栏/侯仰顺作品/橡皮筋大战钉子(蚂蚁制作).gsp")
+        else {
+            return;
+        };
+        let file = GspFile::parse(&data).expect("sample parses");
+        let groups = file.object_groups();
+        let area_group = groups
+            .iter()
+            .find(|group| group.ordinal == 26)
+            .expect("expected polygon area helper group");
+
+        let expr = try_decode_function_expr(&file, &groups, area_group)
+            .expect("expected kind 42 helper to decode as a function expression");
+        let value = match expr {
+            FunctionExpr::Constant(value) => value,
+            other => panic!("expected constant polygon area value, got {other:?}"),
+        };
+
+        assert!(
+            value.is_finite() && value > 0.0,
+            "expected polygon area helper to decode to a positive finite value, got {value}"
         );
     }
 

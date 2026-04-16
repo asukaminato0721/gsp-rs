@@ -565,7 +565,7 @@ pub(crate) fn decode_label_anchor(
             }
             crate::format::GroupKind::Unknown(42)
             | crate::format::GroupKind::Unknown(46)
-            | crate::format::GroupKind::Unknown(120) => decode_bbox_anchor_raw(file, group),
+            | crate::format::GroupKind::NamedAlias => decode_bbox_anchor_raw(file, group),
             _ => None,
         })
         .or_else(|| {

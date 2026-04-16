@@ -405,6 +405,20 @@ fn builds_square_area_invariance_sample_with_graph_helper_stack() {
 }
 
 #[test]
+fn payload_log_names_value_table_row_helper() {
+    let Some(data) = fixture_bytes("tests/Samples/未分类档/利用制表功能快速获取点的坐标.gsp")
+    else {
+        return;
+    };
+    let log = fixture_log(&data, "tests/Samples/未分类档/利用制表功能快速获取点的坐标.gsp");
+
+    assert!(
+        log.contains("#10 = 数值表行"),
+        "expected kind 91 payloads to render with a meaningful name"
+    );
+}
+
+#[test]
 fn snapshots_payload_log_for_point_fixture() {
     let log = fixture_log(
         include_bytes!("../../../tests/fixtures/gsp/static/point.gsp"),
