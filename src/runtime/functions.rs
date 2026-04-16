@@ -15,13 +15,9 @@ pub(crate) use expr::{
 };
 pub(crate) use plot::{
     collect_function_plot_domain, collect_function_plots, sample_plot_segments,
-    synthesize_function_axes,
-    synthesize_function_labels,
+    synthesize_function_axes, synthesize_function_labels,
 };
-pub(crate) use scene::{
-    collect_scene_functions, collect_scene_parameters,
-    function_uses_pi_scale,
-};
+pub(crate) use scene::{collect_scene_functions, collect_scene_parameters, function_uses_pi_scale};
 
 #[cfg(test)]
 mod tests {

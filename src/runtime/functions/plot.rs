@@ -68,7 +68,8 @@ pub(crate) fn sample_plot_segments(
         .records
         .iter()
         .find(|record| record.record_type == RECORD_FUNCTION_PLOT_DESCRIPTOR)?;
-    let descriptor = try_decode_function_plot_descriptor(descriptor_record.payload(&file.data)).ok()?;
+    let descriptor =
+        try_decode_function_plot_descriptor(descriptor_record.payload(&file.data)).ok()?;
 
     match group.header.kind() {
         crate::format::GroupKind::FunctionPlot => {

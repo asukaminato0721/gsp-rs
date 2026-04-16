@@ -12,8 +12,8 @@ use super::{
 };
 use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
 use crate::runtime::functions::{
-    BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters,
-    try_decode_function_expr, try_decode_function_plot_descriptor,
+    BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters, try_decode_function_expr,
+    try_decode_function_plot_descriptor,
 };
 use crate::runtime::geometry::{
     GraphTransform, arc_on_circle_control_points, lerp_point, locate_polyline_parameter_by_length,
@@ -480,7 +480,10 @@ fn decode_point_on_line_like_constraint(
                     } else {
                         line_path.refs[0]
                     };
-                    (host_path.refs[0].checked_sub(1)?, end_ordinal.checked_sub(1)?)
+                    (
+                        host_path.refs[0].checked_sub(1)?,
+                        end_ordinal.checked_sub(1)?,
+                    )
                 } else {
                     (
                         host_path.refs[0].checked_sub(1)?,
@@ -926,7 +929,8 @@ pub(crate) fn decode_coordinate_point(
                         groups.get(axis_path.refs.first()?.checked_sub(1)?)?;
                     let origin_measurement_path =
                         find_indexed_path(file, origin_measurement_group)?;
-                    let source_group_index = origin_measurement_path.refs.first()?.checked_sub(1)?;
+                    let source_group_index =
+                        origin_measurement_path.refs.first()?.checked_sub(1)?;
                     let source_position = anchors.get(source_group_index)?.clone()?;
                     let source_world = to_world(&source_position, graph);
                     let world = PointRecord {
@@ -1276,14 +1280,14 @@ fn resolve_function_expr_parameter_binding(
     if parameter_group.header.kind() == crate::format::GroupKind::FunctionExpr {
         return resolve_function_expr_parameter_binding(file, groups, parameter_group, anchors);
     }
-        if parameter_group.header.kind() == crate::format::GroupKind::ParameterAnchor {
-            let anchor_path = find_indexed_path(file, parameter_group)?;
-            let point_group = groups.get(anchor_path.refs.first()?.checked_sub(1)?)?;
-            let name = decode_label_name(file, parameter_group)
-                .or_else(|| decode_label_name(file, point_group))?;
-            let value = parameter_anchor_value(file, groups, parameter_group, anchors)?.1;
-            return Some((name, value));
-        }
+    if parameter_group.header.kind() == crate::format::GroupKind::ParameterAnchor {
+        let anchor_path = find_indexed_path(file, parameter_group)?;
+        let point_group = groups.get(anchor_path.refs.first()?.checked_sub(1)?)?;
+        let name = decode_label_name(file, parameter_group)
+            .or_else(|| decode_label_name(file, point_group))?;
+        let value = parameter_anchor_value(file, groups, parameter_group, anchors)?.1;
+        return Some((name, value));
+    }
     let name = editable_non_graph_parameter_name_for_group(file, groups, parameter_group)
         .or_else(|| decode_label_name(file, parameter_group))?;
     let value = try_decode_parameter_control_value_for_group(file, groups, parameter_group).ok()?;
@@ -1302,11 +1306,8 @@ fn coordinate_or_expr_binding(
     if group.header.kind() == crate::format::GroupKind::FunctionExpr {
         let expr = try_decode_function_expr(file, groups, group).ok()?;
         let (name, value) = resolve_function_expr_parameter_binding(file, groups, group, anchors)?;
-        let evaluated = evaluate_expr_with_parameters(
-            &expr,
-            0.0,
-            &BTreeMap::from([(name.clone(), value)]),
-        )?;
+        let evaluated =
+            evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::from([(name.clone(), value)]))?;
         return Some((name, evaluated, expr));
     }
     None
@@ -1319,7 +1320,8 @@ fn coordinate_parameter_binding(
     anchors: &[Option<PointRecord>],
 ) -> Option<(String, f64, FunctionExpr)> {
     if let Some(name) = decode_label_name(file, parameter_group)
-        && let Ok(value) = try_decode_parameter_control_value_for_group(file, groups, parameter_group)
+        && let Ok(value) =
+            try_decode_parameter_control_value_for_group(file, groups, parameter_group)
     {
         return Some((
             name.clone(),
@@ -1570,11 +1572,10 @@ fn decode_point_constraint_impl(
             })
         }
         (
-            crate::format::GroupKind::FunctionPlot | crate::format::GroupKind::ParametricFunctionPlot,
+            crate::format::GroupKind::FunctionPlot
+            | crate::format::GroupKind::ParametricFunctionPlot,
             12,
-        ) => {
-            decode_point_on_function_constraint(file, groups, host_group, payload, graph)
-        }
+        ) => decode_point_on_function_constraint(file, groups, host_group, payload, graph),
         (crate::format::GroupKind::ThreePointArc, 12) => {
             let host_path = find_indexed_path(file, host_group)?;
             if host_path.refs.len() != 3 {
@@ -1688,7 +1689,10 @@ fn decode_path_point_constraint(
                     } else {
                         line_path.refs[0]
                     };
-                    (host_path.refs[0].checked_sub(1)?, end_ordinal.checked_sub(1)?)
+                    (
+                        host_path.refs[0].checked_sub(1)?,
+                        end_ordinal.checked_sub(1)?,
+                    )
                 } else {
                     (
                         host_path.refs[0].checked_sub(1)?,

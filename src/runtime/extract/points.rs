@@ -10,19 +10,19 @@ mod bindings;
 mod constraints;
 
 pub(crate) use anchors::{
-    custom_transform_expression_parameter_map, custom_transform_trace_parameter,
-    decode_angle_rotation_anchor_raw, decode_coordinate_expression_anchor_raw,
-    decode_custom_transform_anchor_raw, decode_custom_transform_binding,
-    decode_expression_offset_anchor_raw, decode_expression_offset_binding,
-    decode_expression_rotation_anchor_raw, decode_expression_rotation_binding,
-    decode_graph_calibration_anchor_raw, decode_intersection_anchor_raw,
-    decode_iteration_binding_point_alias_raw, IterationBindingPointAliasKind,
+    IterationBindingPointAliasKind, custom_transform_expression_parameter_map,
+    custom_transform_trace_parameter, decode_angle_rotation_anchor_raw,
+    decode_coordinate_expression_anchor_raw, decode_custom_transform_anchor_raw,
+    decode_custom_transform_binding, decode_expression_offset_anchor_raw,
+    decode_expression_offset_binding, decode_expression_rotation_anchor_raw,
+    decode_expression_rotation_binding, decode_graph_calibration_anchor_raw,
+    decode_intersection_anchor_raw, decode_iteration_binding_point_alias_raw,
     decode_line_midpoint_anchor_raw, decode_offset_anchor_raw,
     decode_parameter_controlled_anchor_raw, decode_parameter_rotation_anchor_raw,
     decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,
     decode_point_pair_translation_anchor_raw, decode_ratio_scale_anchor_raw,
     decode_reflection_anchor_raw, decode_regular_polygon_vertex_anchor_raw,
-    decode_translated_point_anchor_raw, resolve_line_like_points_raw,
+    decode_translated_point_anchor_raw, resolve_circle_like_raw, resolve_line_like_points_raw,
     translation_point_pair_group_indices,
 };
 pub(super) use bindings::{
@@ -32,12 +32,12 @@ pub(super) use bindings::{
     try_decode_angle_rotation_binding, try_decode_parameter_rotation_binding,
     try_decode_transform_binding,
 };
+pub(crate) use constraints::decode_coordinate_point;
 pub(super) use constraints::{
     RawPointConstraint, decode_translated_point_constraint, regular_polygon_angle_expr,
     regular_polygon_angle_expr_for_calc_group, regular_polygon_iteration_step,
     try_decode_parameter_controlled_point, try_decode_point_constraint,
 };
-pub(crate) use constraints::decode_coordinate_point;
 
 pub(crate) fn collect_point_objects(
     file: &GspFile,

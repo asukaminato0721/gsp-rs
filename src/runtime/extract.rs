@@ -1958,7 +1958,7 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::GraphObject40 => "图像对象",
         GroupKind::AngleValue => "角度值",
         GroupKind::PolygonAreaValue => "多边形面积值",
-        GroupKind::GraphCoordinatePoint => "图像坐标点",
+        GroupKind::RadiusValue => "半径值",
         GroupKind::CoordinateReadoutLabel => "坐标读数标签",
         GroupKind::RatioValue => "比值对象",
         GroupKind::FunctionExpr => "函数表达式",
@@ -2200,11 +2200,10 @@ fn validate_group_kind(group: &ObjectGroup) -> Result<()> {
             | GroupKind::Unknown(122)
             | GroupKind::BoundaryLengthValue
             | GroupKind::AngleValue
-            | GroupKind::GraphCoordinatePoint
+            | GroupKind::RadiusValue
             | GroupKind::RatioValue
             | GroupKind::GraphDistanceValue
             | GroupKind::PolygonAreaValue
-            | GroupKind::Unknown(46)
             | GroupKind::GraphFunctionPoint
             | GroupKind::GraphMeasurementSegment
             | GroupKind::ValueTableRow
@@ -2807,7 +2806,6 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::GraphXValue
             | GroupKind::OffsetAnchor
             | GroupKind::CoordinatePoint
-            | GroupKind::GraphCoordinatePoint
             | GroupKind::GraphFunctionPoint
             | GroupKind::GraphValuePoint
             | GroupKind::FunctionPlot
@@ -2840,7 +2838,7 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::RatioValue
             | GroupKind::GraphDistanceValue
             | GroupKind::PolygonAreaValue
-            | GroupKind::Unknown(46)
+            | GroupKind::RadiusValue
             | GroupKind::GraphMeasurementSegment
             | GroupKind::ValueTableRow
             | GroupKind::BoundaryIntersectionPoint

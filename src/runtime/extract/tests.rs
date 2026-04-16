@@ -341,8 +341,9 @@ fn resolves_unknown_59_measurement_helper_in_statistics_sample() {
     let file = GspFile::parse(&data).expect("sample parses");
     let groups = file.object_groups();
     let point_map = collect_point_objects(&file, &groups);
-    let anchors =
-        crate::runtime::extract::shapes::collect_raw_object_anchors(&file, &groups, &point_map, None);
+    let anchors = crate::runtime::extract::shapes::collect_raw_object_anchors(
+        &file, &groups, &point_map, None,
+    );
     let helper = groups
         .iter()
         .find(|group| group.ordinal == 14)
@@ -368,8 +369,9 @@ fn resolves_unknown_88_iteration_point_alias_in_statistics_sample() {
     let file = GspFile::parse(&data).expect("sample parses");
     let groups = file.object_groups();
     let point_map = collect_point_objects(&file, &groups);
-    let anchors =
-        crate::runtime::extract::shapes::collect_raw_object_anchors(&file, &groups, &point_map, None);
+    let anchors = crate::runtime::extract::shapes::collect_raw_object_anchors(
+        &file, &groups, &point_map, None,
+    );
     let helper = groups
         .iter()
         .find(|group| group.ordinal == 58)
@@ -427,7 +429,10 @@ fn payload_log_names_value_table_row_helper() {
     else {
         return;
     };
-    let log = fixture_log(&data, "tests/Samples/未分类档/利用制表功能快速获取点的坐标.gsp");
+    let log = fixture_log(
+        &data,
+        "tests/Samples/未分类档/利用制表功能快速获取点的坐标.gsp",
+    );
 
     assert!(
         log.contains("#10 = 数值表行"),
@@ -441,7 +446,10 @@ fn payload_log_names_boundary_intersection_point_helper() {
     else {
         return;
     };
-    let log = fixture_log(&data, "tests/Samples/个人专栏/周维波作品/不变面积（雪山飞狐）.gsp");
+    let log = fixture_log(
+        &data,
+        "tests/Samples/个人专栏/周维波作品/不变面积（雪山飞狐）.gsp",
+    );
 
     assert!(
         log.contains("边界交点"),
@@ -465,14 +473,19 @@ fn payload_log_names_polar_and_vertex_angle_value_helpers() {
 
 #[test]
 fn payload_log_names_point_alias_projection_helpers() {
-    let Some(alias_data) = fixture_bytes("tests/Samples/个人专栏/周维波作品/不变面积（雪山飞狐）.gsp")
+    let Some(alias_data) =
+        fixture_bytes("tests/Samples/个人专栏/周维波作品/不变面积（雪山飞狐）.gsp")
     else {
         return;
     };
-    let alias_log = fixture_log(&alias_data, "tests/Samples/个人专栏/周维波作品/不变面积（雪山飞狐）.gsp");
+    let alias_log = fixture_log(
+        &alias_data,
+        "tests/Samples/个人专栏/周维波作品/不变面积（雪山飞狐）.gsp",
+    );
     assert!(alias_log.contains("点别名"));
 
-    let Some(derived_data) = fixture_bytes("tests/Samples/个人专栏/孙禄京作品/单摆.gsp") else {
+    let Some(derived_data) = fixture_bytes("tests/Samples/个人专栏/孙禄京作品/单摆.gsp")
+    else {
         return;
     };
     let derived_log = fixture_log(&derived_data, "tests/Samples/个人专栏/孙禄京作品/单摆.gsp");
@@ -535,7 +548,8 @@ fn payload_log_names_boundary_length_and_rect_image_helpers() {
     );
     assert!(length_log.contains("边界长度值"));
 
-    let Some(image_data) = fixture_bytes("tests/Samples/个人专栏/向忠作品/计时器3.gsp") else {
+    let Some(image_data) = fixture_bytes("tests/Samples/个人专栏/向忠作品/计时器3.gsp")
+    else {
         return;
     };
     let image_log = fixture_log(&image_data, "tests/Samples/个人专栏/向忠作品/计时器3.gsp");
@@ -727,7 +741,8 @@ fn payload_log_accepts_music_button_kinds_in_wave_fixture() {
 
 #[test]
 fn payload_log_accepts_legacy_sequence_button_kinds_in_ad_clip_fixture() {
-    let Some(data) = fixture_bytes("tests/Samples/个人专栏/郑飞宇作品/广告片断.gsp") else {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/郑飞宇作品/广告片断.gsp")
+    else {
         return;
     };
     let log = fixture_log(&data, "tests/Samples/个人专栏/郑飞宇作品/广告片断.gsp");
@@ -741,7 +756,8 @@ fn payload_log_accepts_legacy_sequence_button_kinds_in_ad_clip_fixture() {
 
 #[test]
 fn collects_legacy_bbox_image_without_validation() {
-    let Some(data) = fixture_bytes("tests/Samples/热研系列/概率问题/抛豆实验.gsp") else {
+    let Some(data) = fixture_bytes("tests/Samples/热研系列/概率问题/抛豆实验.gsp")
+    else {
         return;
     };
     let images = fixture_images_without_validation(&data);
@@ -754,7 +770,8 @@ fn collects_legacy_bbox_image_without_validation() {
 
 #[test]
 fn collects_legacy_symbolic_labels_without_validation() {
-    let Some(data) = fixture_bytes("tests/Samples/热研系列/概率问题/抛豆实验.gsp") else {
+    let Some(data) = fixture_bytes("tests/Samples/热研系列/概率问题/抛豆实验.gsp")
+    else {
         return;
     };
     let labels = fixture_labels_without_validation(&data);
@@ -771,7 +788,8 @@ fn collects_legacy_symbolic_labels_without_validation() {
 
 #[test]
 fn payload_log_skips_legacy_label_and_image_helper_errors_in_throw_beans_fixture() {
-    let Some(data) = fixture_bytes("tests/Samples/热研系列/概率问题/抛豆实验.gsp") else {
+    let Some(data) = fixture_bytes("tests/Samples/热研系列/概率问题/抛豆实验.gsp")
+    else {
         return;
     };
     let log = fixture_log(&data, "tests/Samples/热研系列/概率问题/抛豆实验.gsp");
@@ -803,7 +821,11 @@ fn builds_point_cood_expr_fixture_with_two_parameter_coordinate_binding() {
             .expect("parameter value");
     assert!((parameter_value - 1.0).abs() < 1e-6, "expected t₁ = 1");
     assert!(
-        analysis.raw_anchors.get(1).and_then(|point| point.as_ref()).is_some(),
+        analysis
+            .raw_anchors
+            .get(1)
+            .and_then(|point| point.as_ref())
+            .is_some(),
         "expected origin anchor point to exist"
     );
     let helper_point = super::points::decode_coordinate_point(
@@ -835,8 +857,14 @@ fn builds_point_cood_expr_fixture_with_two_parameter_coordinate_binding() {
             )
         })
         .expect("expected 2d coordinate point driven by both parameter controls");
-    assert!(point.visible, "expected exported coordinate point to stay visible");
-    assert!(point.draggable, "expected coordinate point to stay interactive");
+    assert!(
+        point.visible,
+        "expected exported coordinate point to stay visible"
+    );
+    assert!(
+        point.draggable,
+        "expected coordinate point to stay interactive"
+    );
 
     let helper = scene
         .points
@@ -849,11 +877,15 @@ fn builds_point_cood_expr_fixture_with_two_parameter_coordinate_binding() {
                     axis: crate::runtime::scene::CoordinateAxis::Vertical,
                     ..
                 }) if name == "t₁"
-            ) && (point.position.x.abs() < 1e-6) && ((point.position.y - 1.0).abs() < 1e-6)
+            ) && (point.position.x.abs() < 1e-6)
+                && ((point.position.y - 1.0).abs() < 1e-6)
         })
         .expect("expected legacy parameter helper point at (0,1)");
     assert!(helper.visible, "expected helper point to stay visible");
-    assert!(helper.draggable, "expected helper point to stay interactive");
+    assert!(
+        helper.draggable,
+        "expected helper point to stay interactive"
+    );
 }
 
 #[test]
@@ -959,7 +991,8 @@ fn builds_unnamed1_fixture_with_live_angle_rotation_points() {
 
 #[test]
 fn builds_equilateral_triangle_iteration_fixture_with_expression_rotation_helpers() {
-    let Some(data) = fixture_bytes("tests/Samples/热研系列/迭代系列/等边三角形迭代.gsp") else {
+    let Some(data) = fixture_bytes("tests/Samples/热研系列/迭代系列/等边三角形迭代.gsp")
+    else {
         return;
     };
     let scene = fixture_scene(&data);
@@ -1013,7 +1046,8 @@ fn builds_spiral_arrow_iteration_fixture_with_expression_offset_seed() {
 
 #[test]
 fn builds_golden_curve_iteration_fixture_without_polygon_helper_errors() {
-    let Some(data) = fixture_bytes("tests/Samples/热研系列/迭代系列/黄金曲线迭代.gsp") else {
+    let Some(data) = fixture_bytes("tests/Samples/热研系列/迭代系列/黄金曲线迭代.gsp")
+    else {
         return;
     };
     let _scene = fixture_scene(&data);
@@ -1024,7 +1058,8 @@ fn builds_golden_curve_iteration_fixture_without_polygon_helper_errors() {
 
 #[test]
 fn builds_iteration_example_fixture_without_bbox_helper_errors() {
-    let Some(data) = fixture_bytes("tests/Samples/热研系列/迭代系列/迭代举例.gsp") else {
+    let Some(data) = fixture_bytes("tests/Samples/热研系列/迭代系列/迭代举例.gsp")
+    else {
         return;
     };
     let _scene = fixture_scene(&data);

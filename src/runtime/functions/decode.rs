@@ -2,14 +2,16 @@ use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::format::{GspFile, ObjectGroup, read_f64, read_u16, read_u32};
-use crate::runtime::extract::points::{collect_point_objects, resolve_line_like_points_raw};
+use crate::runtime::extract::points::{
+    collect_point_objects, resolve_circle_like_raw, resolve_line_like_points_raw,
+};
 use crate::runtime::extract::shapes::collect_raw_object_anchors;
-use crate::runtime::geometry::GraphTransform;
 use crate::runtime::extract::{
     decode_measurement_value, find_indexed_path, try_decode_parameter_control_value_for_group,
 };
-use crate::runtime::geometry::angle_degrees_from_points;
 use crate::runtime::functions::{evaluate_expr_with_parameters, function_expr_label};
+use crate::runtime::geometry::GraphTransform;
+use crate::runtime::geometry::angle_degrees_from_points;
 use crate::runtime::payload_consts::{
     EXPR_OP_ADD, EXPR_OP_DIV, EXPR_OP_MUL, EXPR_OP_POW, EXPR_OP_SUB, EXPR_PARAMETER_MASK,
     EXPR_PARAMETER_PREFIX, EXPR_PI_SUFFIX, EXPR_PI_WORD, EXPR_VARIABLE_SUFFIX, EXPR_VARIABLE_WORD,
@@ -40,6 +42,7 @@ fn is_function_like_group(group: &ObjectGroup) -> bool {
             | crate::format::GroupKind::GraphYValue
             | crate::format::GroupKind::GraphXValue
             | crate::format::GroupKind::AngleValue
+            | crate::format::GroupKind::RadiusValue
             | crate::format::GroupKind::PolygonAreaValue
             | crate::format::GroupKind::RatioValue
             | crate::format::GroupKind::GraphDistanceValue
@@ -131,6 +134,7 @@ fn try_decode_numeric_helper_group(
             | crate::format::GroupKind::GraphYValue
             | crate::format::GroupKind::GraphXValue
             | crate::format::GroupKind::AngleValue
+            | crate::format::GroupKind::RadiusValue
             | crate::format::GroupKind::PolygonAreaValue
             | crate::format::GroupKind::RatioValue
             | crate::format::GroupKind::GraphDistanceValue
@@ -143,13 +147,16 @@ fn try_decode_numeric_helper_group(
     let helper_groups = groups.get(..max_ref_ordinal)?;
     let point_map = collect_point_objects(file, groups);
     let helper_point_map = point_map.get(..max_ref_ordinal)?;
-    let anchors_without_graph = collect_raw_object_anchors(file, helper_groups, helper_point_map, None);
+    let anchors_without_graph =
+        collect_raw_object_anchors(file, helper_groups, helper_point_map, None);
     let graph_transform = detect_graph_context(file, helper_groups, &anchors_without_graph)
         .map(|(origin_raw, raw_per_unit)| GraphTransform {
             origin_raw,
             raw_per_unit,
         })
-        .or_else(|| infer_default_helper_graph_transform(file, helper_groups, &anchors_without_graph));
+        .or_else(|| {
+            infer_default_helper_graph_transform(file, helper_groups, &anchors_without_graph)
+        });
     let anchors = if let Some(transform) = graph_transform.as_ref() {
         collect_raw_object_anchors(file, helper_groups, helper_point_map, Some(transform))
     } else {
@@ -194,7 +201,8 @@ fn try_decode_numeric_helper_group(
             let origin_path = find_indexed_path(file, origin_group)?;
             let source_group_index = origin_path.refs.first()?.checked_sub(1)?;
             let source_position = anchors.get(source_group_index)?.clone()?;
-            let source_world = crate::runtime::geometry::to_world(&source_position, &graph_transform);
+            let source_world =
+                crate::runtime::geometry::to_world(&source_position, &graph_transform);
             let point_world = crate::runtime::geometry::to_world(&point, &graph_transform);
             if group.header.kind() == crate::format::GroupKind::GraphXValue {
                 point_world.x - source_world.x
@@ -207,6 +215,22 @@ fn try_decode_numeric_helper_group(
             let vertex = anchors.get(path.refs.get(1)?.checked_sub(1)?)?.clone()?;
             let end = anchors.get(path.refs.get(2)?.checked_sub(1)?)?.clone()?;
             angle_degrees_from_points(&start, &vertex, &end)?
+        }
+        crate::format::GroupKind::RadiusValue => {
+            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            if let Some(circle) = resolve_circle_like_raw(file, groups, &anchors, source_group) {
+                normalize_graph_distance(
+                    circle.radius(),
+                    graph.as_ref().map(|(_, raw_per_unit)| *raw_per_unit),
+                )
+            } else {
+                evaluate_function_group_with_overrides(
+                    file,
+                    groups,
+                    source_group,
+                    &std::collections::BTreeMap::new(),
+                )?
+            }
         }
         crate::format::GroupKind::PolygonAreaValue => {
             let polygon_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
@@ -221,9 +245,13 @@ fn try_decode_numeric_helper_group(
                 graph.as_ref().map(|(_, raw_per_unit)| *raw_per_unit),
             )
         }
-        crate::format::GroupKind::RatioValue => {
-            decode_ratio_helper_group(file, helper_groups, &anchors, graph_transform.as_ref(), &path.refs)?
-        }
+        crate::format::GroupKind::RatioValue => decode_ratio_helper_group(
+            file,
+            helper_groups,
+            &anchors,
+            graph_transform.as_ref(),
+            &path.refs,
+        )?,
         crate::format::GroupKind::GraphDistanceValue => {
             let left = anchors.get(path.refs.first()?.checked_sub(1)?)?.clone()?;
             let right = anchors.get(path.refs.get(1)?.checked_sub(1)?)?.clone()?;
@@ -234,11 +262,20 @@ fn try_decode_numeric_helper_group(
         }
         crate::format::GroupKind::NamedAlias => {
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            if matches!(source_group.header.kind(), crate::format::GroupKind::AngleMarker) {
+            if matches!(
+                source_group.header.kind(),
+                crate::format::GroupKind::AngleMarker
+            ) {
                 let source_path = find_indexed_path(file, source_group)?;
-                let start = anchors.get(source_path.refs.first()?.checked_sub(1)?)?.clone()?;
-                let vertex = anchors.get(source_path.refs.get(1)?.checked_sub(1)?)?.clone()?;
-                let end = anchors.get(source_path.refs.get(2)?.checked_sub(1)?)?.clone()?;
+                let start = anchors
+                    .get(source_path.refs.first()?.checked_sub(1)?)?
+                    .clone()?;
+                let vertex = anchors
+                    .get(source_path.refs.get(1)?.checked_sub(1)?)?
+                    .clone()?;
+                let end = anchors
+                    .get(source_path.refs.get(2)?.checked_sub(1)?)?
+                    .clone()?;
                 angle_degrees_from_points(&start, &vertex, &end)?
             } else {
                 try_decode_function_expr(file, groups, source_group)
@@ -263,7 +300,10 @@ fn infer_default_helper_graph_transform(
         .iter()
         .find(|group| group.header.kind().is_graph_calibration())?;
     let path = find_indexed_path(file, calibration_group)?;
-    let origin_raw = anchors.get(path.refs.first()?.checked_sub(1)?).cloned().flatten()?;
+    let origin_raw = anchors
+        .get(path.refs.first()?.checked_sub(1)?)
+        .cloned()
+        .flatten()?;
     Some(GraphTransform {
         origin_raw,
         raw_per_unit: DEFAULT_GRAPH_RAW_PER_UNIT,
@@ -305,12 +345,11 @@ fn decode_ratio_helper_group(
 
             if let (Some(origin), Some(baseline_length), Some(target)) =
                 (anchor(*origin), length(*baseline), anchor(*target))
+                && baseline_length.abs() > 1e-9
             {
-                if baseline_length.abs() > 1e-9 {
-                    let target_distance =
-                        ((target.x - origin.x).powi(2) + (target.y - origin.y).powi(2)).sqrt();
-                    return Some(target_distance / baseline_length);
-                }
+                let target_distance =
+                    ((target.x - origin.x).powi(2) + (target.y - origin.y).powi(2)).sqrt();
+                return Some(target_distance / baseline_length);
             }
 
             let numerator = length(*origin)?;
@@ -332,7 +371,10 @@ fn resolve_helper_group_anchor(
     crate::runtime::extract::points::decode_graph_calibration_anchor_raw(group, graph)
         .or_else(|| {
             let path = find_indexed_path(file, group)?;
-            let base = anchors.get(path.refs.first()?.checked_sub(1)?).cloned().flatten()?;
+            let base = anchors
+                .get(path.refs.first()?.checked_sub(1)?)
+                .cloned()
+                .flatten()?;
             match group.header.kind() {
                 crate::format::GroupKind::GraphCalibrationX => Some(crate::format::PointRecord {
                     x: base.x + DEFAULT_GRAPH_RAW_PER_UNIT,
@@ -351,9 +393,9 @@ fn resolve_helper_group_anchor(
         .or_else(|| anchors.get(ordinal.checked_sub(1)?).cloned().flatten())
         .or_else(|| {
             let path = find_indexed_path(file, group)?;
-            path.refs.iter().find_map(|child| {
-                anchors.get(child.saturating_sub(1)).cloned().flatten()
-            })
+            path.refs
+                .iter()
+                .find_map(|child| anchors.get(child.saturating_sub(1)).cloned().flatten())
         })
 }
 
@@ -414,10 +456,7 @@ fn descend_helper_points(
     }
 
     visiting.remove(&ordinal);
-    points.sort_by(|a, b| {
-        a.x.total_cmp(&b.x)
-            .then_with(|| a.y.total_cmp(&b.y))
-    });
+    points.sort_by(|a, b| a.x.total_cmp(&b.x).then_with(|| a.y.total_cmp(&b.y)));
     points.dedup_by(|a, b| (a.x - b.x).abs() < 0.001 && (a.y - b.y).abs() < 0.001);
     memo[index] = Some(points.clone());
     points
@@ -428,8 +467,7 @@ fn farthest_pair_distance(points: &[crate::format::PointRecord]) -> Option<f64> 
     for i in 0..points.len() {
         for j in i + 1..points.len() {
             let distance =
-                ((points[j].x - points[i].x).powi(2) + (points[j].y - points[i].y).powi(2))
-                    .sqrt();
+                ((points[j].x - points[i].x).powi(2) + (points[j].y - points[i].y).powi(2)).sqrt();
             if distance.is_finite() && best.is_none_or(|current| distance > current) {
                 best = Some(distance);
             }
@@ -2040,8 +2078,7 @@ mod parse_tests {
 
     #[test]
     fn decodes_angle_helper_payload_kind_41_from_sample() {
-        let Ok(data) =
-            fs::read("tests/Samples/个人专栏/王伟君作品/多边形外角和(王伟君).gsp")
+        let Ok(data) = fs::read("tests/Samples/个人专栏/王伟君作品/多边形外角和(王伟君).gsp")
         else {
             return;
         };
@@ -2068,8 +2105,7 @@ mod parse_tests {
 
     #[test]
     fn decodes_ratio_helper_payload_kind_47_from_square_roll_sample() {
-        let Ok(data) =
-            fs::read("tests/Samples/个人专栏/况永胜作品/正方形在圆内滚动.gsp")
+        let Ok(data) = fs::read("tests/Samples/个人专栏/况永胜作品/正方形在圆内滚动.gsp")
         else {
             return;
         };
@@ -2077,7 +2113,8 @@ mod parse_tests {
         let groups = file.object_groups();
         let point_map = collect_point_objects(&file, &groups);
         let anchors_without_graph = collect_raw_object_anchors(&file, &groups, &point_map, None);
-        let graph = super::infer_default_helper_graph_transform(&file, &groups, &anchors_without_graph);
+        let graph =
+            super::infer_default_helper_graph_transform(&file, &groups, &anchors_without_graph);
         let anchors = if let Some(transform) = graph.as_ref() {
             collect_raw_object_anchors(&file, &groups, &point_map, Some(transform))
         } else {
@@ -2145,8 +2182,7 @@ mod parse_tests {
 
     #[test]
     fn decodes_named_alias_payload_kind_120_from_refraction_sample() {
-        let Ok(data) =
-            fs::read("tests/Samples/个人专栏/侯仰顺作品/光的折射(蚂蚁制作).gsp")
+        let Ok(data) = fs::read("tests/Samples/个人专栏/侯仰顺作品/光的折射(蚂蚁制作).gsp")
         else {
             return;
         };
@@ -2172,8 +2208,7 @@ mod parse_tests {
 
     #[test]
     fn decodes_polygon_area_payload_kind_42_from_rubber_band_sample() {
-        let Ok(data) =
-            fs::read("tests/Samples/个人专栏/侯仰顺作品/橡皮筋大战钉子(蚂蚁制作).gsp")
+        let Ok(data) = fs::read("tests/Samples/个人专栏/侯仰顺作品/橡皮筋大战钉子(蚂蚁制作).gsp")
         else {
             return;
         };
@@ -2194,6 +2229,31 @@ mod parse_tests {
         assert!(
             value.is_finite() && value > 0.0,
             "expected polygon area helper to decode to a positive finite value, got {value}"
+        );
+    }
+
+    #[test]
+    fn decodes_radius_value_payload_kind_46_from_timer_sample() {
+        let Ok(data) = fs::read("tests/Samples/个人专栏/向忠作品/计时器3.gsp") else {
+            return;
+        };
+        let file = GspFile::parse(&data).expect("sample parses");
+        let groups = file.object_groups();
+        let radius_group = groups
+            .iter()
+            .find(|group| group.ordinal == 47)
+            .expect("expected radius helper group");
+
+        let expr = try_decode_function_expr(&file, &groups, radius_group)
+            .expect("expected kind 46 helper to decode as a function expression");
+        let value = match expr {
+            FunctionExpr::Constant(value) => value,
+            other => panic!("expected constant radius helper, got {other:?}"),
+        };
+
+        assert!(
+            value.is_finite() && value > 0.0,
+            "expected radius helper to decode to a positive finite value, got {value}"
         );
     }
 

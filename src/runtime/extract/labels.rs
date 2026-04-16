@@ -469,14 +469,11 @@ pub(super) fn collect_labels(
                 if let Some(label_text) = resolve_label_text(file, group, fallback_text)
                     && let Some(anchor) = decode_label_anchor(file, group, anchors).or_else(|| {
                         if kind == crate::format::GroupKind::IterationPointAlias {
-                            find_indexed_path(file, group)
-                                .and_then(|path| {
-                                    path.refs
-                                        .iter()
-                                        .find_map(|ordinal| {
-                                            anchors.get(ordinal.saturating_sub(1)).cloned().flatten()
-                                        })
+                            find_indexed_path(file, group).and_then(|path| {
+                                path.refs.iter().find_map(|ordinal| {
+                                    anchors.get(ordinal.saturating_sub(1)).cloned().flatten()
                                 })
+                            })
                         } else {
                             None
                         }
@@ -906,9 +903,9 @@ pub(super) fn collect_coordinate_labels(
             });
         } else if matches!(
             kind,
-            crate::format::GroupKind::RatioValue
-                | crate::format::GroupKind::IterationPointAlias
-        ) && let Some(label) = collect_legacy_expression_label(file, groups, anchors, group)
+            crate::format::GroupKind::RatioValue | crate::format::GroupKind::IterationPointAlias
+        ) && let Some(label) =
+            collect_legacy_expression_label(file, groups, anchors, group)
         {
             labels.push(label);
         }
@@ -957,7 +954,11 @@ fn collect_legacy_expression_label(
     .map(format_number)
     .unwrap_or_else(|| "未定义".to_string());
     let anchor = decode_label_anchor(file, group, anchors)
-        .or_else(|| try_decode_payload_anchor_point(file, expr_group).ok().flatten())
+        .or_else(|| {
+            try_decode_payload_anchor_point(file, expr_group)
+                .ok()
+                .flatten()
+        })
         .or_else(|| {
             path.refs
                 .first()

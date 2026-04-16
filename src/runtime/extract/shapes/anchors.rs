@@ -9,11 +9,11 @@ use super::{
 };
 use crate::runtime::extract::decode::is_parameter_control_group;
 use crate::runtime::extract::points::{
-    decode_coordinate_point,
-    decode_coordinate_expression_anchor_raw, decode_custom_transform_anchor_raw,
-    decode_expression_offset_anchor_raw, decode_expression_rotation_anchor_raw,
-    decode_graph_calibration_anchor_raw, decode_intersection_anchor_raw,
-    decode_iteration_binding_point_alias_raw, decode_ratio_scale_anchor_raw,
+    decode_coordinate_expression_anchor_raw, decode_coordinate_point,
+    decode_custom_transform_anchor_raw, decode_expression_offset_anchor_raw,
+    decode_expression_rotation_anchor_raw, decode_graph_calibration_anchor_raw,
+    decode_intersection_anchor_raw, decode_iteration_binding_point_alias_raw,
+    decode_ratio_scale_anchor_raw,
 };
 
 pub(crate) fn collect_raw_object_anchors(

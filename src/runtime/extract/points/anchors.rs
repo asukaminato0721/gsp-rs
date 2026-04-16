@@ -5,8 +5,8 @@ use super::super::decode::{
     try_decode_parameter_control_value_for_group,
 };
 use super::constraints::{
-    RawPointConstraint, decode_translated_point_constraint, try_decode_parameter_controlled_point,
-    regular_polygon_iteration_step, try_decode_point_constraint,
+    RawPointConstraint, decode_translated_point_constraint, regular_polygon_iteration_step,
+    try_decode_parameter_controlled_point, try_decode_point_constraint,
 };
 use super::{
     GspFile, ObjectGroup, PointRecord, TransformBindingKind,
@@ -95,33 +95,32 @@ fn parameter_anchor_runtime_value(
     let path = find_indexed_path(file, group)?;
     let point_group_index = path.refs.first()?.checked_sub(1)?;
     let point_group = groups.get(point_group_index)?;
-    let value = match try_decode_point_constraint(file, groups, point_group, Some(anchors), &None)
-        .ok()?
-    {
-        RawPointConstraint::Segment(constraint) => constraint.t,
-        RawPointConstraint::ConstructedLine { t, .. } => t,
-        RawPointConstraint::PolygonBoundary {
-            edge_index,
-            t,
-            vertex_group_indices,
-        } => super::super::labels::polygon_boundary_parameter(
-            anchors,
-            &vertex_group_indices,
-            edge_index,
-            t,
-        )?,
-        RawPointConstraint::Circle(constraint) => super::super::labels::circle_parameter(
-            anchors,
-            constraint.center_group_index,
-            constraint.radius_group_index,
-            constraint.unit_x,
-            constraint.unit_y,
-        )?,
-        RawPointConstraint::Circular(_)
-        | RawPointConstraint::CircleArc(_)
-        | RawPointConstraint::Arc(_)
-        | RawPointConstraint::Polyline { .. } => return None,
-    };
+    let value =
+        match try_decode_point_constraint(file, groups, point_group, Some(anchors), &None).ok()? {
+            RawPointConstraint::Segment(constraint) => constraint.t,
+            RawPointConstraint::ConstructedLine { t, .. } => t,
+            RawPointConstraint::PolygonBoundary {
+                edge_index,
+                t,
+                vertex_group_indices,
+            } => super::super::labels::polygon_boundary_parameter(
+                anchors,
+                &vertex_group_indices,
+                edge_index,
+                t,
+            )?,
+            RawPointConstraint::Circle(constraint) => super::super::labels::circle_parameter(
+                anchors,
+                constraint.center_group_index,
+                constraint.radius_group_index,
+                constraint.unit_x,
+                constraint.unit_y,
+            )?,
+            RawPointConstraint::Circular(_)
+            | RawPointConstraint::CircleArc(_)
+            | RawPointConstraint::Arc(_)
+            | RawPointConstraint::Polyline { .. } => return None,
+        };
     let name = decode_label_name(file, group)
         .or_else(|| decode_label_name(file, point_group))
         .or_else(|| editable_non_graph_parameter_name_for_group(file, groups, point_group))?;
@@ -158,10 +157,9 @@ fn collect_expr_runtime_parameters(
                     }
                 }
                 GroupKind::Point if is_parameter_control_group(candidate) => {
-                    let Some(name) = editable_non_graph_parameter_name_for_group(
-                        file, groups, candidate,
-                    )
-                    .or_else(|| decode_label_name(file, candidate))
+                    let Some(name) =
+                        editable_non_graph_parameter_name_for_group(file, groups, candidate)
+                            .or_else(|| decode_label_name(file, candidate))
                     else {
                         continue;
                     };
@@ -317,8 +315,10 @@ pub(crate) fn decode_iteration_binding_point_alias_raw(
     match iter_group.header.kind() {
         GroupKind::AffineIteration => {
             let seed_group = groups.get(source_group_index)?;
-            if matches!(seed_group.header.kind(), GroupKind::ParameterRotation | GroupKind::Rotation)
-            {
+            if matches!(
+                seed_group.header.kind(),
+                GroupKind::ParameterRotation | GroupKind::Rotation
+            ) {
                 let binding = if seed_group.header.kind() == GroupKind::ParameterRotation {
                     try_decode_parameter_rotation_binding(file, groups, seed_group).ok()
                 } else {
@@ -897,7 +897,7 @@ impl CircularConstraintRaw {
         }
     }
 
-    fn radius(&self) -> f64 {
+    pub(crate) fn radius(&self) -> f64 {
         match self {
             Self::Circle { radius, .. } | Self::ThreePointArc { radius, .. } => *radius,
         }
@@ -1156,7 +1156,8 @@ pub(crate) fn resolve_line_like_constraint_raw(
             } else {
                 host_start
             };
-            distinct_pair(origin.clone(), end).map(|(start, end)| (start, end, LineLikeKind::Segment))
+            distinct_pair(origin.clone(), end)
+                .map(|(start, end)| (start, end, LineLikeKind::Segment))
         }
         crate::format::GroupKind::LineKind5 => {
             if path.refs.len() != 2 {

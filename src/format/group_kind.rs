@@ -132,7 +132,7 @@ define_group_kinds! {
     GraphObject40 = 40,
     AngleValue = 41,
     PolygonAreaValue = 42,
-    GraphCoordinatePoint = 46,
+    RadiusValue = 46,
     CoordinateReadoutLabel = 49,
     RatioValue = 47,
     FunctionExpr = 48,
