@@ -1955,11 +1955,14 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::PointTrace => "点轨迹",
         GroupKind::MeasuredValue => "度量值",
         GroupKind::GraphObject40 => "图像对象",
+        GroupKind::AngleValue => "角度值",
         GroupKind::CoordinateReadoutLabel => "坐标读数标签",
+        GroupKind::RatioValue => "比值对象",
         GroupKind::FunctionExpr => "函数表达式",
         GroupKind::Kind51 => "对象类型 51",
         GroupKind::GraphCalibrationX => "图像校准点 X",
         GroupKind::GraphCalibrationY | GroupKind::GraphCalibrationYAlt => "图像校准点 Y",
+        GroupKind::GraphMeasurementSegment => "图像测量线",
         GroupKind::MeasurementLine => "测量线",
         GroupKind::AxisLine => "坐标轴",
         GroupKind::ActionButton => "动作按钮",
@@ -1980,6 +1983,8 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::ThreePointArc => "过三点弧",
         GroupKind::SectorBoundary => "扇形边界",
         GroupKind::CircularSegmentBoundary => "弓形边界",
+        GroupKind::GraphDistanceValue => "图像距离值",
+        GroupKind::IterationPointAlias => "迭代结果点",
         GroupKind::RegularPolygonIteration => "正多边形迭代",
         GroupKind::LabelIterationSeed => "标签迭代种子",
         GroupKind::IterationExpressionHelper => "迭代表达式辅助对象",
@@ -2023,13 +2028,19 @@ fn group_kind_noun_in_chinese(kind: GroupKind) -> &'static str {
         | GroupKind::ParameterControlledPoint
         | GroupKind::CoordinateTraceIntersectionPoint
         | GroupKind::PathPoint
-        | GroupKind::Unknown(20) => "点",
+        | GroupKind::Unknown(20)
+        | GroupKind::IterationPointAlias => "点",
         GroupKind::DistanceValue
         | GroupKind::PointLineDistanceValue
+        | GroupKind::AngleValue
+        | GroupKind::RatioValue
+        | GroupKind::GraphDistanceValue
         | GroupKind::MeasuredValue
         | GroupKind::CoordinateXValue
         | GroupKind::CoordinateYValue => "数值对象",
-        GroupKind::Segment | GroupKind::DerivedSegment75 => "线段",
+        GroupKind::Segment | GroupKind::DerivedSegment75 | GroupKind::GraphMeasurementSegment => {
+            "线段"
+        }
         GroupKind::Line | GroupKind::LineKind5 | GroupKind::LineKind6 | GroupKind::LineKind7 => {
             "直线"
         }
@@ -2149,11 +2160,12 @@ fn validate_group_kind(group: &ObjectGroup) -> Result<()> {
             | GroupKind::Unknown(71)
             | GroupKind::Unknown(122)
             | GroupKind::Unknown(39)
-            | GroupKind::Unknown(41)
-            | GroupKind::Unknown(47)
+            | GroupKind::AngleValue
+            | GroupKind::RatioValue
+            | GroupKind::GraphDistanceValue
             | GroupKind::Unknown(42)
             | GroupKind::Unknown(46)
-            | GroupKind::Unknown(59)
+            | GroupKind::GraphMeasurementSegment
             | GroupKind::Unknown(91)
             | GroupKind::Unknown(93)
             | GroupKind::Unknown(99)
@@ -2164,7 +2176,7 @@ fn validate_group_kind(group: &ObjectGroup) -> Result<()> {
             | GroupKind::Unknown(116)
             | GroupKind::Unknown(120)
             | GroupKind::Unknown(85)
-            | GroupKind::Unknown(88)
+            | GroupKind::IterationPointAlias
             | GroupKind::LegacyCoordinateParameterHelper
             | GroupKind::LegacyCoordinatePointHelper
     ) || is_supported_group_kind(kind)
@@ -2771,11 +2783,12 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::Unknown(71)
             | GroupKind::Unknown(122)
             | GroupKind::Unknown(39)
-            | GroupKind::Unknown(41)
-            | GroupKind::Unknown(47)
+            | GroupKind::AngleValue
+            | GroupKind::RatioValue
+            | GroupKind::GraphDistanceValue
             | GroupKind::Unknown(42)
             | GroupKind::Unknown(46)
-            | GroupKind::Unknown(59)
+            | GroupKind::GraphMeasurementSegment
             | GroupKind::Unknown(91)
             | GroupKind::Unknown(93)
             | GroupKind::Unknown(99)
@@ -2786,7 +2799,7 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::Unknown(116)
             | GroupKind::Unknown(120)
             | GroupKind::Unknown(85)
-            | GroupKind::Unknown(88)
+            | GroupKind::IterationPointAlias
             | GroupKind::LegacyCoordinateParameterHelper
             | GroupKind::LegacyCoordinatePointHelper
     )

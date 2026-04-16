@@ -67,10 +67,10 @@ fn supports_payload_label(kind: crate::format::GroupKind) -> bool {
             | crate::format::GroupKind::CircleCircleIntersectionPoint1
             | crate::format::GroupKind::CircleCircleIntersectionPoint2
             | crate::format::GroupKind::Unknown(39)
-            | crate::format::GroupKind::Unknown(41)
+            | crate::format::GroupKind::AngleValue
             | crate::format::GroupKind::CoordinateReadoutLabel
-            | crate::format::GroupKind::Unknown(47)
-            | crate::format::GroupKind::Unknown(88)
+            | crate::format::GroupKind::RatioValue
+            | crate::format::GroupKind::IterationPointAlias
             | crate::format::GroupKind::Unknown(120)
             | crate::format::GroupKind::Segment
             | crate::format::GroupKind::Ray
@@ -458,9 +458,9 @@ pub(super) fn collect_labels(
                             | crate::format::GroupKind::CircleCircleIntersectionPoint1
                             | crate::format::GroupKind::CircleCircleIntersectionPoint2
                             | crate::format::GroupKind::Unknown(39)
-                            | crate::format::GroupKind::Unknown(41)
-                            | crate::format::GroupKind::Unknown(47)
-                            | crate::format::GroupKind::Unknown(88)
+                            | crate::format::GroupKind::AngleValue
+                            | crate::format::GroupKind::RatioValue
+                            | crate::format::GroupKind::IterationPointAlias
                             | crate::format::GroupKind::Unknown(120)
                     )
                     && !is_non_graph_parameter_group(file, groups, group))
@@ -468,7 +468,7 @@ pub(super) fn collect_labels(
                 .flatten();
                 if let Some(label_text) = resolve_label_text(file, group, fallback_text)
                     && let Some(anchor) = decode_label_anchor(file, group, anchors).or_else(|| {
-                        if kind == crate::format::GroupKind::Unknown(88) {
+                        if kind == crate::format::GroupKind::IterationPointAlias {
                             find_indexed_path(file, group)
                                 .and_then(|path| {
                                     path.refs
@@ -906,7 +906,8 @@ pub(super) fn collect_coordinate_labels(
             });
         } else if matches!(
             kind,
-            crate::format::GroupKind::Unknown(47) | crate::format::GroupKind::Unknown(88)
+            crate::format::GroupKind::RatioValue
+                | crate::format::GroupKind::IterationPointAlias
         ) && let Some(label) = collect_legacy_expression_label(file, groups, anchors, group)
         {
             labels.push(label);

@@ -24,7 +24,10 @@ macro_rules! define_group_kinds {
             }
 
             pub fn is_line_like(self) -> bool {
-                matches!(self, Self::Segment | Self::Line | Self::Ray)
+                matches!(
+                    self,
+                    Self::Segment | Self::Line | Self::Ray | Self::GraphMeasurementSegment
+                )
             }
 
             pub fn is_rendered_line_group(self) -> bool {
@@ -75,6 +78,7 @@ macro_rules! define_group_kinds {
                         | Self::GraphCalibrationY
                         | Self::GraphCalibrationYAlt
                         | Self::MeasurementLine
+                        | Self::GraphMeasurementSegment
                         | Self::AxisLine
                 )
             }
@@ -123,12 +127,15 @@ define_group_kinds! {
     PointTrace = 35,
     MeasuredValue = 36,
     GraphObject40 = 40,
+    AngleValue = 41,
     CoordinateReadoutLabel = 49,
+    RatioValue = 47,
     FunctionExpr = 48,
     Kind51 = 51,
     GraphCalibrationX = 52,
     GraphCalibrationY = 54,
     GraphCalibrationYAlt = 55,
+    GraphMeasurementSegment = 59,
     MeasurementLine = 58,
     AxisLine = 61,
     ActionButton = 62,
@@ -149,7 +156,9 @@ define_group_kinds! {
     ThreePointArc = 81,
     SectorBoundary = 82,
     CircularSegmentBoundary = 83,
+    GraphDistanceValue = 86,
     RegularPolygonIteration = 89,
+    IterationPointAlias = 88,
     LabelIterationSeed = 90,
     IterationExpressionHelper = 92,
     ParameterAnchor = 94,

@@ -16,6 +16,7 @@ pub(crate) use anchors::{
     decode_expression_offset_anchor_raw, decode_expression_offset_binding,
     decode_expression_rotation_anchor_raw, decode_expression_rotation_binding,
     decode_graph_calibration_anchor_raw, decode_intersection_anchor_raw,
+    decode_iteration_binding_point_alias_raw, IterationBindingPointAliasKind,
     decode_line_midpoint_anchor_raw, decode_offset_anchor_raw,
     decode_parameter_controlled_anchor_raw, decode_parameter_rotation_anchor_raw,
     decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,

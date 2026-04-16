@@ -333,6 +333,60 @@ fn builds_polygon_exterior_angle_sample_with_kind_41_helpers() {
 }
 
 #[test]
+fn resolves_unknown_59_measurement_helper_in_statistics_sample() {
+    let Some(data) = fixture_bytes("tests/Samples/工具例说/14 统计工具-统计工具示例.gsp")
+    else {
+        return;
+    };
+    let file = GspFile::parse(&data).expect("sample parses");
+    let groups = file.object_groups();
+    let point_map = collect_point_objects(&file, &groups);
+    let anchors =
+        crate::runtime::extract::shapes::collect_raw_object_anchors(&file, &groups, &point_map, None);
+    let helper = groups
+        .iter()
+        .find(|group| group.ordinal == 14)
+        .expect("expected unknown 59 helper");
+
+    let (start, end) = crate::runtime::extract::points::resolve_line_like_points_raw(
+        &file, &groups, &anchors, helper,
+    )
+    .expect("expected unknown 59 helper to resolve as a line-like object");
+
+    assert!(
+        ((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt() > 1.0,
+        "expected unknown 59 helper to expose a non-degenerate measurement segment"
+    );
+}
+
+#[test]
+fn resolves_unknown_88_iteration_point_alias_in_statistics_sample() {
+    let Some(data) = fixture_bytes("tests/Samples/工具例说/14 统计工具-统计工具示例.gsp")
+    else {
+        return;
+    };
+    let file = GspFile::parse(&data).expect("sample parses");
+    let groups = file.object_groups();
+    let point_map = collect_point_objects(&file, &groups);
+    let anchors =
+        crate::runtime::extract::shapes::collect_raw_object_anchors(&file, &groups, &point_map, None);
+    let helper = groups
+        .iter()
+        .find(|group| group.ordinal == 58)
+        .expect("expected unknown 88 helper");
+
+    let alias = crate::runtime::extract::points::decode_iteration_binding_point_alias_raw(
+        &file, &groups, helper, &anchors,
+    )
+    .expect("expected unknown 88 helper to resolve as an iteration point alias");
+
+    assert!(
+        alias.position.x.is_finite() && alias.position.y.is_finite(),
+        "expected unknown 88 helper to resolve to a concrete point"
+    );
+}
+
+#[test]
 fn snapshots_payload_log_for_point_fixture() {
     let log = fixture_log(
         include_bytes!("../../../tests/fixtures/gsp/static/point.gsp"),

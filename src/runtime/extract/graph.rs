@@ -49,7 +49,13 @@ fn collect_graph_window_hint(
 ) -> Option<(f64, f64)> {
     groups
         .iter()
-        .filter(|group| (group.header.kind()) == crate::format::GroupKind::MeasurementLine)
+        .filter(|group| {
+            matches!(
+                group.header.kind(),
+                crate::format::GroupKind::MeasurementLine
+                    | crate::format::GroupKind::GraphMeasurementSegment
+            )
+        })
         .find_map(|group| {
             if decode_label_name(file, group)
                 .as_deref()

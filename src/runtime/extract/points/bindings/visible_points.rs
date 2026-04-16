@@ -4,6 +4,7 @@ use super::{
     CoordinatePoint, GspFile, ObjectGroup, ParameterControlledPoint, PointRecord,
     RawPointConstraint, TransformBindingKind, decode_coordinate_point,
     decode_custom_transform_binding, decode_expression_offset_binding,
+    decode_iteration_binding_point_alias_raw,
     decode_expression_rotation_binding, decode_reflection_anchor_raw,
     decode_translated_point_constraint, reflection_line_group_indices,
     regular_polygon_angle_expr_for_calc_group, translation_point_pair_group_indices,
@@ -224,6 +225,49 @@ fn build_scene_point_for_group(
                     angle_degrees_scale: binding.angle_degrees_scale,
                 }),
             ))
+        })(),
+        crate::format::GroupKind::IterationPointAlias => (|| {
+            let alias = decode_iteration_binding_point_alias_raw(file, groups, group, anchors)?;
+            let source_index = mapped_point_index(group_to_point_index, alias.source_group_index)?;
+            let visible = !group.header.is_hidden() && point_marker_visible(group);
+            Some(match alias.kind {
+                super::IterationBindingPointAliasKind::Offset { dx, dy } => scene_point(
+                    alias.position,
+                    group_color(group),
+                    visible,
+                    false,
+                    ScenePointConstraint::Offset {
+                        origin_index: source_index,
+                        dx,
+                        dy,
+                    },
+                    None,
+                ),
+                super::IterationBindingPointAliasKind::Rotate {
+                    center_group_index,
+                    angle_degrees,
+                } => {
+                    let center_index =
+                        mapped_point_index(group_to_point_index, center_group_index)?;
+                    scene_point(
+                        alias.position,
+                        group_color(group),
+                        visible,
+                        false,
+                        ScenePointConstraint::Free,
+                        Some(ScenePointBinding::Rotate {
+                            source_index,
+                            center_index,
+                            angle_degrees,
+                            parameter_name: None,
+                            angle_expr: None,
+                            angle_start_index: None,
+                            angle_vertex_index: None,
+                            angle_end_index: None,
+                        }),
+                    )
+                }
+            })
         })(),
         crate::format::GroupKind::Reflection => (|| {
             let position = decode_reflection_anchor_raw(file, groups, group, anchors)?;

@@ -6,7 +6,7 @@ use super::super::decode::{
 };
 use super::constraints::{
     RawPointConstraint, decode_translated_point_constraint, try_decode_parameter_controlled_point,
-    try_decode_point_constraint,
+    regular_polygon_iteration_step, try_decode_point_constraint,
 };
 use super::{
     GspFile, ObjectGroup, PointRecord, TransformBindingKind,
@@ -15,6 +15,7 @@ use super::{
     try_decode_transform_binding,
 };
 use crate::format::GroupKind;
+use crate::format::read_u32;
 use crate::runtime::functions::{
     BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters, try_decode_function_expr,
     try_decode_function_plot_descriptor,
@@ -64,6 +65,25 @@ pub(crate) struct ExpressionOffsetBindingDef {
     pub(crate) source_group_index: usize,
     pub(crate) scaled_expr: FunctionExpr,
     pub(crate) parameter_name: Option<String>,
+}
+
+#[derive(Clone)]
+pub(crate) enum IterationBindingPointAliasKind {
+    Offset {
+        dx: f64,
+        dy: f64,
+    },
+    Rotate {
+        center_group_index: usize,
+        angle_degrees: f64,
+    },
+}
+
+#[derive(Clone)]
+pub(crate) struct IterationBindingPointAliasRaw {
+    pub(crate) position: PointRecord,
+    pub(crate) source_group_index: usize,
+    pub(crate) kind: IterationBindingPointAliasKind,
 }
 
 fn parameter_anchor_runtime_value(
@@ -266,6 +286,147 @@ pub(crate) fn decode_expression_rotation_anchor_raw(
         &center,
         binding.angle_degrees.to_radians(),
     ))
+}
+
+pub(crate) fn decode_iteration_binding_point_alias_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<IterationBindingPointAliasRaw> {
+    if group.header.kind() != GroupKind::IterationPointAlias {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    let binding_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+    if binding_group.header.kind() != GroupKind::IterationBinding {
+        return None;
+    }
+    let binding_path = find_indexed_path(file, binding_group)?;
+    if binding_path.refs.len() < 2 {
+        return None;
+    }
+    let source_group_index = binding_path.refs[0].checked_sub(1)?;
+    let iter_group = groups.get(binding_path.refs[1].checked_sub(1)?)?;
+    let source_position = anchors.get(source_group_index)?.clone()?;
+    let depth = iteration_depth_raw(file, iter_group, 3);
+    if depth == 0 {
+        return None;
+    }
+
+    match iter_group.header.kind() {
+        GroupKind::AffineIteration => {
+            let seed_group = groups.get(source_group_index)?;
+            if matches!(seed_group.header.kind(), GroupKind::ParameterRotation | GroupKind::Rotation)
+            {
+                let binding = if seed_group.header.kind() == GroupKind::ParameterRotation {
+                    try_decode_parameter_rotation_binding(file, groups, seed_group).ok()
+                } else {
+                    try_decode_transform_binding(file, seed_group).ok()
+                }?;
+                let TransformBindingKind::Rotate { angle_degrees, .. } = binding.kind else {
+                    return None;
+                };
+                let center_position = anchors.get(binding.center_group_index)?.clone()?;
+                let total_angle = angle_degrees * depth as f64;
+                return Some(IterationBindingPointAliasRaw {
+                    position: rotate_around(
+                        &source_position,
+                        &center_position,
+                        total_angle.to_radians(),
+                    ),
+                    source_group_index,
+                    kind: IterationBindingPointAliasKind::Rotate {
+                        center_group_index: binding.center_group_index,
+                        angle_degrees: total_angle,
+                    },
+                });
+            }
+
+            let iter_path = find_indexed_path(file, iter_group)?;
+            if iter_path.refs.len() < 2 {
+                return None;
+            }
+            let base_start = anchors.get(iter_path.refs[0].checked_sub(1)?)?.clone()?;
+            let base_end = anchors.get(iter_path.refs[1].checked_sub(1)?)?.clone()?;
+            let dx = (base_end.x - base_start.x) * depth as f64;
+            let dy = (base_end.y - base_start.y) * depth as f64;
+            Some(IterationBindingPointAliasRaw {
+                position: PointRecord {
+                    x: source_position.x + dx,
+                    y: source_position.y + dy,
+                },
+                source_group_index,
+                kind: IterationBindingPointAliasKind::Offset { dx, dy },
+            })
+        }
+        GroupKind::RegularPolygonIteration => {
+            if let Some((step_dx, step_dy)) =
+                point_iteration_offset_step_raw(file, groups, iter_group, anchors)
+            {
+                let dx = step_dx * depth as f64;
+                let dy = step_dy * depth as f64;
+                return Some(IterationBindingPointAliasRaw {
+                    position: PointRecord {
+                        x: source_position.x + dx,
+                        y: source_position.y + dy,
+                    },
+                    source_group_index,
+                    kind: IterationBindingPointAliasKind::Offset { dx, dy },
+                });
+            }
+
+            let (center_group_index, _angle_expr, _parameter_name, n) =
+                regular_polygon_iteration_step(file, groups, iter_group)?;
+            let center_position = anchors.get(center_group_index)?.clone()?;
+            let total_angle = (-360.0 / n) * depth as f64;
+            Some(IterationBindingPointAliasRaw {
+                position: rotate_around(
+                    &source_position,
+                    &center_position,
+                    total_angle.to_radians(),
+                ),
+                source_group_index,
+                kind: IterationBindingPointAliasKind::Rotate {
+                    center_group_index,
+                    angle_degrees: total_angle,
+                },
+            })
+        }
+        _ => None,
+    }
+}
+
+fn iteration_depth_raw(file: &GspFile, group: &ObjectGroup, default_depth: usize) -> usize {
+    group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x090a)
+        .map(|record| record.payload(&file.data))
+        .filter(|payload| payload.len() >= 20)
+        .map(|payload| read_u32(payload, 16) as usize)
+        .unwrap_or(default_depth)
+}
+
+fn point_iteration_offset_step_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    iter_group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<(f64, f64)> {
+    let path = find_indexed_path(file, iter_group)?;
+    if let Some((dx, dy)) = path
+        .refs
+        .iter()
+        .skip(1)
+        .filter_map(|ordinal| groups.get(ordinal.checked_sub(1)?))
+        .find_map(|group| decode_translated_point_constraint(file, group).map(|c| (c.dx, c.dy)))
+    {
+        return Some((dx, dy));
+    }
+    let base_start = anchors.get(path.refs.get(1)?.checked_sub(1)?)?.clone()?;
+    let base_end = anchors.get(path.refs.get(2)?.checked_sub(1)?)?.clone()?;
+    Some((base_end.x - base_start.x, base_end.y - base_start.y))
 }
 
 pub(crate) fn decode_expression_offset_binding(
@@ -978,6 +1139,24 @@ pub(crate) fn resolve_line_like_constraint_raw(
                 _ => LineLikeKind::Line,
             };
             distinct_pair(start, end).map(|(start, end)| (start, end, kind))
+        }
+        crate::format::GroupKind::GraphMeasurementSegment => {
+            if path.refs.len() != 2 {
+                return None;
+            }
+            let origin = anchors.get(path.refs[0].checked_sub(1)?)?.clone()?;
+            let host_group = groups.get(path.refs[1].checked_sub(1)?)?;
+            let (host_start, host_end) =
+                resolve_line_like_points_raw(file, groups, anchors, host_group)?;
+            let start_distance =
+                (host_start.x - origin.x).powi(2) + (host_start.y - origin.y).powi(2);
+            let end_distance = (host_end.x - origin.x).powi(2) + (host_end.y - origin.y).powi(2);
+            let end = if end_distance >= start_distance {
+                host_end
+            } else {
+                host_start
+            };
+            distinct_pair(origin.clone(), end).map(|(start, end)| (start, end, LineLikeKind::Segment))
         }
         crate::format::GroupKind::LineKind5 => {
             if path.refs.len() != 2 {

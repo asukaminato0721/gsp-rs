@@ -454,7 +454,8 @@ fn decode_point_on_line_like_constraint(
         crate::format::GroupKind::Segment
         | crate::format::GroupKind::Line
         | crate::format::GroupKind::Ray
-        | crate::format::GroupKind::MeasurementLine => {
+        | crate::format::GroupKind::MeasurementLine
+        | crate::format::GroupKind::GraphMeasurementSegment => {
             let host_path = find_indexed_path(file, host_group)?;
             if host_path.refs.len() != 2 {
                 return None;
@@ -464,11 +465,31 @@ fn decode_point_on_line_like_constraint(
                 crate::format::GroupKind::Line => LineLikeKind::Line,
                 crate::format::GroupKind::Ray => LineLikeKind::Ray,
                 crate::format::GroupKind::MeasurementLine => LineLikeKind::Segment,
+                crate::format::GroupKind::GraphMeasurementSegment => LineLikeKind::Segment,
                 _ => unreachable!(),
             };
+            let (start_group_index, end_group_index) =
+                if host_group.header.kind() == crate::format::GroupKind::GraphMeasurementSegment {
+                    let line_group = groups.get(host_path.refs[1].checked_sub(1)?)?;
+                    let line_path = find_indexed_path(file, line_group)?;
+                    if line_path.refs.len() != 2 {
+                        return None;
+                    }
+                    let end_ordinal = if line_path.refs[0] == host_path.refs[0] {
+                        line_path.refs[1]
+                    } else {
+                        line_path.refs[0]
+                    };
+                    (host_path.refs[0].checked_sub(1)?, end_ordinal.checked_sub(1)?)
+                } else {
+                    (
+                        host_path.refs[0].checked_sub(1)?,
+                        host_path.refs[1].checked_sub(1)?,
+                    )
+                };
             Some(RawPointConstraint::Segment(PointOnSegmentConstraint {
-                start_group_index: host_path.refs[0].checked_sub(1)?,
-                end_group_index: host_path.refs[1].checked_sub(1)?,
+                start_group_index,
+                end_group_index,
                 t,
                 line_like_kind,
             }))
@@ -1506,7 +1527,8 @@ fn decode_path_point_constraint(
         crate::format::GroupKind::Segment
         | crate::format::GroupKind::Line
         | crate::format::GroupKind::Ray
-        | crate::format::GroupKind::MeasurementLine => {
+        | crate::format::GroupKind::MeasurementLine
+        | crate::format::GroupKind::GraphMeasurementSegment => {
             let host_path = find_indexed_path(file, host_group)?;
             if host_path.refs.len() != 2 {
                 return None;
@@ -1516,6 +1538,7 @@ fn decode_path_point_constraint(
                 crate::format::GroupKind::Line => LineLikeKind::Line,
                 crate::format::GroupKind::Ray => LineLikeKind::Ray,
                 crate::format::GroupKind::MeasurementLine => LineLikeKind::Segment,
+                crate::format::GroupKind::GraphMeasurementSegment => LineLikeKind::Segment,
                 _ => unreachable!(),
             };
             let t = match line_like_kind {
@@ -1523,9 +1546,28 @@ fn decode_path_point_constraint(
                 LineLikeKind::Line => normalized_t,
                 LineLikeKind::Ray => normalized_t.max(0.0),
             };
+            let (start_group_index, end_group_index) =
+                if host_group.header.kind() == crate::format::GroupKind::GraphMeasurementSegment {
+                    let line_group = groups.get(host_path.refs[1].checked_sub(1)?)?;
+                    let line_path = find_indexed_path(file, line_group)?;
+                    if line_path.refs.len() != 2 {
+                        return None;
+                    }
+                    let end_ordinal = if line_path.refs[0] == host_path.refs[0] {
+                        line_path.refs[1]
+                    } else {
+                        line_path.refs[0]
+                    };
+                    (host_path.refs[0].checked_sub(1)?, end_ordinal.checked_sub(1)?)
+                } else {
+                    (
+                        host_path.refs[0].checked_sub(1)?,
+                        host_path.refs[1].checked_sub(1)?,
+                    )
+                };
             Some(RawPointConstraint::Segment(PointOnSegmentConstraint {
-                start_group_index: host_path.refs[0].checked_sub(1)?,
-                end_group_index: host_path.refs[1].checked_sub(1)?,
+                start_group_index,
+                end_group_index,
                 t,
                 line_like_kind,
             }))

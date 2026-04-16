@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::format::{GspFile, ObjectGroup, read_f64, read_u16, read_u32};
 use crate::runtime::extract::points::{collect_point_objects, resolve_line_like_points_raw};
 use crate::runtime::extract::shapes::collect_raw_object_anchors;
+use crate::runtime::geometry::GraphTransform;
 use crate::runtime::extract::{
     decode_measurement_value, find_indexed_path, try_decode_parameter_control_value_for_group,
 };
@@ -26,6 +27,8 @@ thread_local! {
     static RESOLVING_MEASURED_VALUE: Cell<bool> = const { Cell::new(false) };
 }
 
+const DEFAULT_GRAPH_RAW_PER_UNIT: f64 = 37.79527559055118;
+
 fn is_function_like_group(group: &ObjectGroup) -> bool {
     matches!(
         group.header.kind(),
@@ -34,7 +37,9 @@ fn is_function_like_group(group: &ObjectGroup) -> bool {
             | crate::format::GroupKind::PointLineDistanceValue
             | crate::format::GroupKind::CoordinateXValue
             | crate::format::GroupKind::CoordinateYValue
-            | crate::format::GroupKind::Unknown(41)
+            | crate::format::GroupKind::AngleValue
+            | crate::format::GroupKind::RatioValue
+            | crate::format::GroupKind::GraphDistanceValue
             | crate::format::GroupKind::Unknown(71)
     )
 }
@@ -119,7 +124,9 @@ fn try_decode_numeric_helper_group(
             | crate::format::GroupKind::PointLineDistanceValue
             | crate::format::GroupKind::CoordinateXValue
             | crate::format::GroupKind::CoordinateYValue
-            | crate::format::GroupKind::Unknown(41)
+            | crate::format::GroupKind::AngleValue
+            | crate::format::GroupKind::RatioValue
+            | crate::format::GroupKind::GraphDistanceValue
     ) {
         return None;
     }
@@ -128,8 +135,21 @@ fn try_decode_numeric_helper_group(
     let helper_groups = groups.get(..max_ref_ordinal)?;
     let point_map = collect_point_objects(file, groups);
     let helper_point_map = point_map.get(..max_ref_ordinal)?;
-    let anchors = collect_raw_object_anchors(file, helper_groups, helper_point_map, None);
-    let graph = detect_graph_context(file, helper_groups, &anchors);
+    let anchors_without_graph = collect_raw_object_anchors(file, helper_groups, helper_point_map, None);
+    let graph_transform = detect_graph_context(file, helper_groups, &anchors_without_graph)
+        .map(|(origin_raw, raw_per_unit)| GraphTransform {
+            origin_raw,
+            raw_per_unit,
+        })
+        .or_else(|| infer_default_helper_graph_transform(file, helper_groups, &anchors_without_graph));
+    let anchors = if let Some(transform) = graph_transform.as_ref() {
+        collect_raw_object_anchors(file, helper_groups, helper_point_map, Some(transform))
+    } else {
+        anchors_without_graph
+    };
+    let graph = graph_transform
+        .as_ref()
+        .map(|transform| (transform.origin_raw.clone(), transform.raw_per_unit));
     let value = match group.header.kind() {
         crate::format::GroupKind::DistanceValue => {
             let left = anchors.get(path.refs.first()?.checked_sub(1)?)?.clone()?;
@@ -158,15 +178,210 @@ fn try_decode_numeric_helper_group(
                 (origin_raw.y - point.y) / raw_per_unit
             }
         }
-        crate::format::GroupKind::Unknown(41) => {
+        crate::format::GroupKind::AngleValue => {
             let start = anchors.get(path.refs.first()?.checked_sub(1)?)?.clone()?;
             let vertex = anchors.get(path.refs.get(1)?.checked_sub(1)?)?.clone()?;
             let end = anchors.get(path.refs.get(2)?.checked_sub(1)?)?.clone()?;
             angle_degrees_from_points(&start, &vertex, &end)?
         }
+        crate::format::GroupKind::RatioValue => {
+            decode_ratio_helper_group(file, helper_groups, &anchors, graph_transform.as_ref(), &path.refs)?
+        }
+        crate::format::GroupKind::GraphDistanceValue => {
+            let left = anchors.get(path.refs.first()?.checked_sub(1)?)?.clone()?;
+            let right = anchors.get(path.refs.get(1)?.checked_sub(1)?)?.clone()?;
+            normalize_graph_distance(
+                ((right.x - left.x).powi(2) + (right.y - left.y).powi(2)).sqrt(),
+                graph.as_ref().map(|(_, raw_per_unit)| *raw_per_unit),
+            )
+        }
         _ => return None,
     };
     value.is_finite().then_some(FunctionExpr::Constant(value))
+}
+
+fn infer_default_helper_graph_transform(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<crate::format::PointRecord>],
+) -> Option<GraphTransform> {
+    let calibration_group = groups
+        .iter()
+        .find(|group| group.header.kind().is_graph_calibration())?;
+    let path = find_indexed_path(file, calibration_group)?;
+    let origin_raw = anchors.get(path.refs.first()?.checked_sub(1)?).cloned().flatten()?;
+    Some(GraphTransform {
+        origin_raw,
+        raw_per_unit: DEFAULT_GRAPH_RAW_PER_UNIT,
+    })
+}
+
+fn decode_ratio_helper_group(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<crate::format::PointRecord>],
+    graph: Option<&GraphTransform>,
+    refs: &[usize],
+) -> Option<f64> {
+    let anchor =
+        |ordinal: usize| resolve_helper_group_anchor(file, groups, anchors, graph, ordinal);
+    let length = |ordinal: usize| resolve_helper_group_length_raw(file, groups, anchors, ordinal);
+    match refs {
+        [left, right] => {
+            let numerator = length(*left).or_else(|| {
+                let start = anchor(*left)?;
+                let end = anchor(*right)?;
+                Some(((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt())
+            })?;
+            let denominator = length(*right)?;
+            (denominator.abs() > 1e-9).then_some(numerator / denominator)
+        }
+        [origin, baseline, target, ..] => {
+            if let (Some(origin), Some(baseline), Some(target)) =
+                (anchor(*origin), anchor(*baseline), anchor(*target))
+            {
+                let baseline_distance =
+                    ((baseline.x - origin.x).powi(2) + (baseline.y - origin.y).powi(2)).sqrt();
+                let target_distance =
+                    ((target.x - origin.x).powi(2) + (target.y - origin.y).powi(2)).sqrt();
+                if baseline_distance.abs() > 1e-9 {
+                    return Some(target_distance / baseline_distance);
+                }
+            }
+
+            if let (Some(origin), Some(baseline_length), Some(target)) =
+                (anchor(*origin), length(*baseline), anchor(*target))
+            {
+                if baseline_length.abs() > 1e-9 {
+                    let target_distance =
+                        ((target.x - origin.x).powi(2) + (target.y - origin.y).powi(2)).sqrt();
+                    return Some(target_distance / baseline_length);
+                }
+            }
+
+            let numerator = length(*origin)?;
+            let denominator = length(*baseline)?;
+            (denominator.abs() > 1e-9).then_some(numerator / denominator)
+        }
+        _ => None,
+    }
+}
+
+fn resolve_helper_group_anchor(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<crate::format::PointRecord>],
+    graph: Option<&GraphTransform>,
+    ordinal: usize,
+) -> Option<crate::format::PointRecord> {
+    let group = groups.get(ordinal.checked_sub(1)?)?;
+    crate::runtime::extract::points::decode_graph_calibration_anchor_raw(group, graph)
+        .or_else(|| {
+            let path = find_indexed_path(file, group)?;
+            let base = anchors.get(path.refs.first()?.checked_sub(1)?).cloned().flatten()?;
+            match group.header.kind() {
+                crate::format::GroupKind::GraphCalibrationX => Some(crate::format::PointRecord {
+                    x: base.x + DEFAULT_GRAPH_RAW_PER_UNIT,
+                    y: base.y,
+                }),
+                crate::format::GroupKind::GraphCalibrationY
+                | crate::format::GroupKind::GraphCalibrationYAlt => {
+                    Some(crate::format::PointRecord {
+                        x: base.x,
+                        y: base.y - DEFAULT_GRAPH_RAW_PER_UNIT,
+                    })
+                }
+                _ => None,
+            }
+        })
+        .or_else(|| anchors.get(ordinal.checked_sub(1)?).cloned().flatten())
+        .or_else(|| {
+            let path = find_indexed_path(file, group)?;
+            path.refs.iter().find_map(|child| {
+                anchors.get(child.saturating_sub(1)).cloned().flatten()
+            })
+        })
+}
+
+fn resolve_helper_group_length_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<crate::format::PointRecord>],
+    ordinal: usize,
+) -> Option<f64> {
+    let group = groups.get(ordinal.checked_sub(1)?)?;
+    if let Some((start, end)) = resolve_line_like_points_raw(file, groups, anchors, group) {
+        return Some(((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt());
+    }
+
+    match group.header.kind() {
+        crate::format::GroupKind::DerivedSegment24 | crate::format::GroupKind::DerivedSegment75 => {
+            let mut memo = vec![None; groups.len()];
+            let mut visiting = BTreeSet::new();
+            let points =
+                descend_helper_points(file, groups, anchors, ordinal, &mut memo, &mut visiting);
+            farthest_pair_distance(&points)
+        }
+        _ => None,
+    }
+}
+
+fn descend_helper_points(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<crate::format::PointRecord>],
+    ordinal: usize,
+    memo: &mut Vec<Option<Vec<crate::format::PointRecord>>>,
+    visiting: &mut BTreeSet<usize>,
+) -> Vec<crate::format::PointRecord> {
+    let Some(index) = ordinal.checked_sub(1) else {
+        return Vec::new();
+    };
+    if let Some(cached) = &memo[index] {
+        return cached.clone();
+    }
+    if !visiting.insert(ordinal) {
+        return Vec::new();
+    }
+
+    let mut points = Vec::new();
+    if let Some(point) = anchors.get(index).cloned().flatten() {
+        points.push(point);
+    } else if let Some(group) = groups.get(index)
+        && let Some(path) = find_indexed_path(file, group)
+    {
+        for child in path.refs {
+            if child > 0 && child <= groups.len() {
+                points.extend(descend_helper_points(
+                    file, groups, anchors, child, memo, visiting,
+                ));
+            }
+        }
+    }
+
+    visiting.remove(&ordinal);
+    points.sort_by(|a, b| {
+        a.x.total_cmp(&b.x)
+            .then_with(|| a.y.total_cmp(&b.y))
+    });
+    points.dedup_by(|a, b| (a.x - b.x).abs() < 0.001 && (a.y - b.y).abs() < 0.001);
+    memo[index] = Some(points.clone());
+    points
+}
+
+fn farthest_pair_distance(points: &[crate::format::PointRecord]) -> Option<f64> {
+    let mut best = None;
+    for i in 0..points.len() {
+        for j in i + 1..points.len() {
+            let distance =
+                ((points[j].x - points[i].x).powi(2) + (points[j].y - points[i].y).powi(2))
+                    .sqrt();
+            if distance.is_finite() && best.is_none_or(|current| distance > current) {
+                best = Some(distance);
+            }
+        }
+    }
+    best
 }
 
 fn detect_graph_context(
@@ -1603,6 +1818,8 @@ mod parse_tests {
         try_decode_inner_function_expr,
     };
     use crate::gsp::GspFile;
+    use crate::runtime::extract::points::collect_point_objects;
+    use crate::runtime::extract::shapes::collect_raw_object_anchors;
     use crate::runtime::functions::{
         BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters,
     };
@@ -1771,6 +1988,83 @@ mod parse_tests {
         assert!(
             (value - 75.31158261667414).abs() < 1e-6,
             "expected sample angle helper to decode from payload, got {value}"
+        );
+    }
+
+    #[test]
+    fn decodes_ratio_helper_payload_kind_47_from_square_roll_sample() {
+        let Ok(data) =
+            fs::read("tests/Samples/个人专栏/况永胜作品/正方形在圆内滚动.gsp")
+        else {
+            return;
+        };
+        let file = GspFile::parse(&data).expect("sample parses");
+        let groups = file.object_groups();
+        let point_map = collect_point_objects(&file, &groups);
+        let anchors_without_graph = collect_raw_object_anchors(&file, &groups, &point_map, None);
+        let graph = super::infer_default_helper_graph_transform(&file, &groups, &anchors_without_graph);
+        let anchors = if let Some(transform) = graph.as_ref() {
+            collect_raw_object_anchors(&file, &groups, &point_map, Some(transform))
+        } else {
+            anchors_without_graph
+        };
+
+        let ratio_group = groups
+            .iter()
+            .find(|group| group.ordinal == 9)
+            .expect("expected ratio helper group");
+        let origin = anchors[3].clone().expect("origin anchor");
+        let baseline = anchors[6].clone().expect("baseline anchor");
+        let target = anchors[7].clone().expect("target anchor");
+        let expected = ((target.x - origin.x).powi(2) + (target.y - origin.y).powi(2)).sqrt()
+            / ((baseline.x - origin.x).powi(2) + (baseline.y - origin.y).powi(2)).sqrt();
+
+        let refs = crate::runtime::extract::find_indexed_path(&file, ratio_group)
+            .expect("ratio helper path")
+            .refs;
+        let value = super::decode_ratio_helper_group(
+            &file,
+            &groups,
+            &anchors,
+            graph.as_ref(),
+            &refs,
+        )
+        .unwrap_or_else(|| {
+            panic!(
+                "expected kind 47 helper to decode from payload geometry; refs={refs:?} origin={origin:?} baseline={baseline:?} target={target:?} expected={expected}"
+            )
+        });
+
+        assert!(
+            (value - expected).abs() < 1e-6,
+            "expected sample ratio helper to decode from payload, got {value} vs {expected}"
+        );
+    }
+
+    #[test]
+    fn decodes_distance_helper_payload_kind_86_from_russian_exam_sample() {
+        let Ok(data) =
+            fs::read("tests/Samples/个人专栏/方益初作品/俄罗斯2004高考题（温州小刀）.gsp")
+        else {
+            return;
+        };
+        let file = GspFile::parse(&data).expect("sample parses");
+        let groups = file.object_groups();
+        let expr_group = groups
+            .iter()
+            .find(|group| group.ordinal == 17)
+            .expect("expected distance helper group");
+
+        let expr = try_decode_function_expr(&file, &groups, expr_group)
+            .expect("expected kind 86 helper to decode as a function expression");
+        let value = match expr {
+            FunctionExpr::Constant(value) => value,
+            other => panic!("expected constant distance helper, got {other:?}"),
+        };
+
+        assert!(
+            value.is_finite() && value > 0.0,
+            "expected kind 86 helper to decode to a positive finite distance, got {value}"
         );
     }
 
