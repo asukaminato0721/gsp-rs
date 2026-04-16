@@ -1991,6 +1991,7 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::ValueTableRow => "数值表行",
         GroupKind::BoundaryIntersectionPoint => "边界交点",
         GroupKind::NamedAlias => "命名别名对象",
+        GroupKind::FunctionDefinition => "函数定义对象",
         GroupKind::PolarAngleValue => "极角值",
         GroupKind::VertexAngleValue => "顶点角值",
         GroupKind::RegularPolygonIteration => "正多边形迭代",
@@ -2004,6 +2005,10 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::LegacyCoordinateParameterHelper => "旧版坐标参数辅助对象",
         GroupKind::LegacyCoordinatePointHelper => "旧版坐标点辅助对象",
         GroupKind::GraphValuePoint => "图像数值点",
+        GroupKind::PointAlias => "点别名",
+        GroupKind::ThreePointDerivedPoint => "三点派生点",
+        GroupKind::ProjectedCoordinatePoint => "投影坐标点",
+        GroupKind::PointReferenceAlias => "点引用别名",
         GroupKind::AngleMarker => "角标记",
         GroupKind::PathPoint => "路径点",
         GroupKind::GraphYValue => "图像 y 值",
@@ -2036,6 +2041,10 @@ fn group_kind_noun_in_chinese(kind: GroupKind) -> &'static str {
         | GroupKind::GraphFunctionPoint
         | GroupKind::GraphValuePoint
         | GroupKind::NamedAlias
+        | GroupKind::PointAlias
+        | GroupKind::ThreePointDerivedPoint
+        | GroupKind::ProjectedCoordinatePoint
+        | GroupKind::PointReferenceAlias
         | GroupKind::LegacyCoordinateParameterHelper
         | GroupKind::LegacyCoordinatePointHelper
         | GroupKind::ParameterAnchor
@@ -2180,7 +2189,7 @@ fn validate_group_kind(group: &ObjectGroup) -> Result<()> {
             | GroupKind::CoordinateYValue
             | GroupKind::GraphYValue
             | GroupKind::GraphXValue
-            | GroupKind::Unknown(71)
+            | GroupKind::FunctionDefinition
             | GroupKind::Unknown(122)
             | GroupKind::Unknown(39)
             | GroupKind::AngleValue
@@ -2193,10 +2202,10 @@ fn validate_group_kind(group: &ObjectGroup) -> Result<()> {
             | GroupKind::GraphMeasurementSegment
             | GroupKind::ValueTableRow
             | GroupKind::BoundaryIntersectionPoint
-            | GroupKind::Unknown(99)
-            | GroupKind::Unknown(100)
-            | GroupKind::Unknown(101)
-            | GroupKind::Unknown(108)
+            | GroupKind::PointAlias
+            | GroupKind::ThreePointDerivedPoint
+            | GroupKind::ProjectedCoordinatePoint
+            | GroupKind::PointReferenceAlias
             | GroupKind::PolarAngleValue
             | GroupKind::VertexAngleValue
             | GroupKind::NamedAlias
@@ -2380,7 +2389,7 @@ fn validate_function_payload(
             | GroupKind::PointLineDistanceValue
             | GroupKind::CoordinateXValue
             | GroupKind::CoordinateYValue
-            | GroupKind::Unknown(71)
+            | GroupKind::FunctionDefinition
     ) || definition_group
         .records
         .iter()
@@ -2813,7 +2822,7 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::AngleMarker
             | GroupKind::PathPoint
             | GroupKind::SegmentMarker
-            | GroupKind::Unknown(71)
+            | GroupKind::FunctionDefinition
             | GroupKind::Unknown(122)
             | GroupKind::Unknown(39)
             | GroupKind::AngleValue
@@ -2824,10 +2833,10 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::GraphMeasurementSegment
             | GroupKind::ValueTableRow
             | GroupKind::BoundaryIntersectionPoint
-            | GroupKind::Unknown(99)
-            | GroupKind::Unknown(100)
-            | GroupKind::Unknown(101)
-            | GroupKind::Unknown(108)
+            | GroupKind::PointAlias
+            | GroupKind::ThreePointDerivedPoint
+            | GroupKind::ProjectedCoordinatePoint
+            | GroupKind::PointReferenceAlias
             | GroupKind::PolarAngleValue
             | GroupKind::VertexAngleValue
             | GroupKind::NamedAlias

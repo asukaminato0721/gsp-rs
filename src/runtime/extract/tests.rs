@@ -447,6 +447,65 @@ fn payload_log_names_polar_and_vertex_angle_value_helpers() {
 }
 
 #[test]
+fn payload_log_names_point_alias_projection_helpers() {
+    let Some(alias_data) = fixture_bytes("tests/Samples/个人专栏/周维波作品/不变面积（雪山飞狐）.gsp")
+    else {
+        return;
+    };
+    let alias_log = fixture_log(&alias_data, "tests/Samples/个人专栏/周维波作品/不变面积（雪山飞狐）.gsp");
+    assert!(alias_log.contains("点别名"));
+
+    let Some(derived_data) = fixture_bytes("tests/Samples/个人专栏/孙禄京作品/单摆.gsp") else {
+        return;
+    };
+    let derived_log = fixture_log(&derived_data, "tests/Samples/个人专栏/孙禄京作品/单摆.gsp");
+    assert!(derived_log.contains("三点派生点"));
+
+    let Some(projected_data) =
+        fixture_bytes("tests/Samples/个人专栏/况永胜作品/正方体的展开（3D效果）.gsp")
+    else {
+        return;
+    };
+    let projected_log = fixture_log(
+        &projected_data,
+        "tests/Samples/个人专栏/况永胜作品/正方体的展开（3D效果）.gsp",
+    );
+    assert!(projected_log.contains("投影坐标点"));
+}
+
+#[test]
+fn payload_log_names_point_reference_alias_helper() {
+    let Some(data) =
+        fixture_bytes("tests/Samples/个人专栏/周维波作品/2010年四川眉山中考数学试题最后一题.gsp")
+    else {
+        return;
+    };
+    let log = fixture_log(
+        &data,
+        "tests/Samples/个人专栏/周维波作品/2010年四川眉山中考数学试题最后一题.gsp",
+    );
+
+    assert!(
+        log.contains("点引用别名"),
+        "expected kind 108 payloads to render with a meaningful alias name"
+    );
+}
+
+#[test]
+fn payload_log_names_function_definition_helper() {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/向忠作品/卡西尼卵形线.gsp")
+    else {
+        return;
+    };
+    let log = fixture_log(&data, "tests/Samples/个人专栏/向忠作品/卡西尼卵形线.gsp");
+
+    assert!(
+        log.contains("函数定义对象"),
+        "expected kind 71 payloads to render with a meaningful function-definition name"
+    );
+}
+
+#[test]
 fn snapshots_payload_log_for_point_fixture() {
     let log = fixture_log(
         include_bytes!("../../../tests/fixtures/gsp/static/point.gsp"),

@@ -44,7 +44,7 @@ fn is_function_like_group(group: &ObjectGroup) -> bool {
             | crate::format::GroupKind::RatioValue
             | crate::format::GroupKind::GraphDistanceValue
             | crate::format::GroupKind::NamedAlias
-            | crate::format::GroupKind::Unknown(71)
+            | crate::format::GroupKind::FunctionDefinition
     )
 }
 
