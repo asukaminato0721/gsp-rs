@@ -1,6 +1,6 @@
 use super::{
-    GraphTransform, GspFile, ObjectGroup, PointRecord, decode_bbox_anchor_raw,
-    decode_angle_rotation_anchor_raw, decode_line_midpoint_anchor_raw, decode_offset_anchor_raw,
+    GraphTransform, GspFile, ObjectGroup, PointRecord, decode_angle_rotation_anchor_raw,
+    decode_bbox_anchor_raw, decode_line_midpoint_anchor_raw, decode_offset_anchor_raw,
     decode_parameter_controlled_anchor_raw, decode_parameter_rotation_anchor_raw,
     decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,
     decode_point_pair_translation_anchor_raw, decode_reflection_anchor_raw,

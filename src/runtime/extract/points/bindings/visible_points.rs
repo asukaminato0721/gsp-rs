@@ -285,10 +285,14 @@ fn build_scene_point_for_group(
         crate::format::GroupKind::Rotation
         | crate::format::GroupKind::ParameterRotation
         | crate::format::GroupKind::Scale => {
-            let binding = if kind == crate::format::GroupKind::ParameterRotation {
-                try_decode_parameter_rotation_binding(file, groups, group).ok()
-            } else {
-                try_decode_transform_binding(file, group).ok()
+            let binding = match kind {
+                crate::format::GroupKind::ParameterRotation => {
+                    try_decode_parameter_rotation_binding(file, groups, group).ok()
+                }
+                crate::format::GroupKind::Rotation | crate::format::GroupKind::Scale => {
+                    try_decode_transform_binding(file, group).ok()
+                }
+                _ => None,
             };
             (|| {
                 let binding = binding?;
@@ -329,8 +333,10 @@ fn build_scene_point_for_group(
         crate::format::GroupKind::AngleRotation => (|| {
             let binding = try_decode_angle_rotation_binding(file, group).ok()?;
             let position = anchors.get(index).cloned().flatten()?;
-            let source_index = mapped_point_index(group_to_point_index, binding.source_group_index)?;
-            let center_index = mapped_point_index(group_to_point_index, binding.center_group_index)?;
+            let source_index =
+                mapped_point_index(group_to_point_index, binding.source_group_index)?;
+            let center_index =
+                mapped_point_index(group_to_point_index, binding.center_group_index)?;
             let angle_start_index =
                 mapped_point_index(group_to_point_index, binding.angle_start_group_index)?;
             let angle_vertex_index =

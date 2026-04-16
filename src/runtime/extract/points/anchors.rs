@@ -10,6 +10,7 @@ use super::{
     decode_non_graph_parameter_value_for_group, read_f64, try_decode_angle_rotation_binding,
     try_decode_parameter_rotation_binding, try_decode_transform_binding,
 };
+use crate::format::GroupKind;
 use crate::runtime::functions::{
     evaluate_expr_with_parameters, try_decode_function_expr, try_decode_function_plot_descriptor,
 };
@@ -316,45 +317,44 @@ fn sample_coordinate_trace_points_raw(
 
     let mut points = Vec::with_capacity(descriptor.sample_count);
     let last = descriptor.sample_count.saturating_sub(1).max(1) as f64;
-    let driver = if matches!(
-        driver_group.header.kind(),
-        crate::format::GroupKind::CoordinateExpressionPoint
-            | crate::format::GroupKind::CoordinateExpressionPointAlt
-            | crate::format::GroupKind::Unknown(20)
-    ) {
-        let driver_path = find_indexed_path(file, driver_group)?;
-        let source_group_index = driver_path.refs[0].checked_sub(1)?;
-        let source_position = anchors.get(source_group_index)?.clone()?;
-        let source_world = to_world(&source_position, &graph.cloned());
-        match driver_group.header.kind() {
-            crate::format::GroupKind::Unknown(20) => {
-                let x_calc_group = groups.get(driver_path.refs[1].checked_sub(1)?)?;
-                let y_calc_group = groups.get(driver_path.refs[2].checked_sub(1)?)?;
-                let x_expr = try_decode_function_expr(file, groups, x_calc_group).ok()?;
-                let y_expr = try_decode_function_expr(file, groups, y_calc_group).ok()?;
-                Some((source_world, None, Some((x_expr, y_expr))))
-            }
-            crate::format::GroupKind::CoordinateExpressionPointAlt => Some((
-                source_world,
-                Some(crate::runtime::scene::CoordinateAxis::Horizontal),
-                None,
-            )),
-            _ => {
-                let payload = driver_group
-                    .records
-                    .iter()
-                    .find(|record| record.record_type == 0x07d3)
-                    .map(|record| record.payload(&file.data))?;
-                let axis = match (payload.len() >= 24).then(|| crate::format::read_u32(payload, 20))
-                {
-                    Some(1) => crate::runtime::scene::CoordinateAxis::Vertical,
-                    _ => crate::runtime::scene::CoordinateAxis::Horizontal,
-                };
-                Some((source_world, Some(axis), None))
+    let driver = match driver_group.header.kind() {
+        GroupKind::Unknown(20)
+        | GroupKind::CoordinateExpressionPoint
+        | GroupKind::CoordinateExpressionPointAlt => {
+            let driver_path = find_indexed_path(file, driver_group)?;
+            let source_group_index = driver_path.refs[0].checked_sub(1)?;
+            let source_position = anchors.get(source_group_index)?.clone()?;
+            let source_world = to_world(&source_position, &graph.cloned());
+            match driver_group.header.kind() {
+                GroupKind::Unknown(20) => {
+                    let x_calc_group = groups.get(driver_path.refs[1].checked_sub(1)?)?;
+                    let y_calc_group = groups.get(driver_path.refs[2].checked_sub(1)?)?;
+                    let x_expr = try_decode_function_expr(file, groups, x_calc_group).ok()?;
+                    let y_expr = try_decode_function_expr(file, groups, y_calc_group).ok()?;
+                    Some((source_world, None, Some((x_expr, y_expr))))
+                }
+                GroupKind::CoordinateExpressionPointAlt => Some((
+                    source_world,
+                    Some(crate::runtime::scene::CoordinateAxis::Horizontal),
+                    None,
+                )),
+                GroupKind::CoordinateExpressionPoint => {
+                    let payload = driver_group
+                        .records
+                        .iter()
+                        .find(|record| record.record_type == 0x07d3)
+                        .map(|record| record.payload(&file.data))?;
+                    let axis =
+                        match (payload.len() >= 24).then(|| crate::format::read_u32(payload, 20)) {
+                            Some(1) => crate::runtime::scene::CoordinateAxis::Vertical,
+                            _ => crate::runtime::scene::CoordinateAxis::Horizontal,
+                        };
+                    Some((source_world, Some(axis), None))
+                }
+                _ => None,
             }
         }
-    } else {
-        None
+        _ => None,
     };
     for index in 0..descriptor.sample_count {
         let t = index as f64 / last;

@@ -582,11 +582,10 @@ fn distance_value_label_name(
                     .saturating_sub(1),
             )
             .unwrap_or(&groups[0]),
-    ) {
-        if path.refs.len() == 1 {
+    )
+        && path.refs.len() == 1 {
             return name;
         }
-    }
     if path.refs.len() >= 2 {
         let left = groups
             .get(path.refs[0].saturating_sub(1))

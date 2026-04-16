@@ -54,74 +54,69 @@ pub(crate) fn collect_point_iteration_points(
                     continue;
                 }
                 let seed_group = &groups[seed_group_index];
-                if matches!(
-                    seed_group.header.kind(),
-                    crate::format::GroupKind::Rotation
-                        | crate::format::GroupKind::ParameterRotation
-                ) {
-                    let rotation = if (seed_group.header.kind())
-                        == crate::format::GroupKind::ParameterRotation
-                    {
+                let rotation = match seed_group.header.kind() {
+                    crate::format::GroupKind::ParameterRotation => {
                         try_decode_parameter_rotation_binding(file, groups, seed_group).ok()
-                    } else {
-                        try_decode_transform_binding(file, seed_group).ok()
-                    };
-                    if let Some(binding) = rotation {
-                        let Some(center_index) =
-                            mapped_point_index(group_to_point_index, binding.center_group_index)
-                        else {
-                            continue;
-                        };
-                        let TransformBindingKind::Rotate { angle_degrees, .. } = binding.kind
-                        else {
-                            continue;
-                        };
-                        let Some(center_position) =
-                            anchors.get(binding.center_group_index).cloned().flatten()
-                        else {
-                            continue;
-                        };
-                        let Some(seed_position) = anchors.get(seed_group_index).cloned().flatten()
-                        else {
-                            continue;
-                        };
-
-                        let mut previous_index = seed_index;
-                        let mut current_position: PointRecord = seed_position;
-                        for _ in 0..depth {
-                            current_position = rotate_around(
-                                &current_position,
-                                &center_position,
-                                angle_degrees.to_radians(),
-                            );
-                            derived_points.push(ScenePoint {
-                                position: current_position.clone(),
-                                color: seed_color,
-                                visible: true,
-                                draggable: false,
-                                constraint: ScenePointConstraint::Free,
-                                binding: Some(ScenePointBinding::Rotate {
-                                    source_index: previous_index,
-                                    center_index,
-                                    angle_degrees,
-                                    parameter_name: None,
-                                    angle_expr: None,
-                                    angle_start_index: None,
-                                    angle_vertex_index: None,
-                                    angle_end_index: None,
-                                }),
-                                debug: None,
-                            });
-                            previous_index = seed_index + derived_points.len();
-                        }
-                        families.push(RawPointIterationFamily::RotateChain {
-                            seed_index,
-                            center_index,
-                            angle_degrees,
-                            depth,
-                        });
-                        continue;
                     }
+                    crate::format::GroupKind::Rotation => {
+                        try_decode_transform_binding(file, seed_group).ok()
+                    }
+                    _ => None,
+                };
+                if let Some(binding) = rotation {
+                    let Some(center_index) =
+                        mapped_point_index(group_to_point_index, binding.center_group_index)
+                    else {
+                        continue;
+                    };
+                    let TransformBindingKind::Rotate { angle_degrees, .. } = binding.kind else {
+                        continue;
+                    };
+                    let Some(center_position) =
+                        anchors.get(binding.center_group_index).cloned().flatten()
+                    else {
+                        continue;
+                    };
+                    let Some(seed_position) = anchors.get(seed_group_index).cloned().flatten()
+                    else {
+                        continue;
+                    };
+
+                    let mut previous_index = seed_index;
+                    let mut current_position: PointRecord = seed_position;
+                    for _ in 0..depth {
+                        current_position = rotate_around(
+                            &current_position,
+                            &center_position,
+                            angle_degrees.to_radians(),
+                        );
+                        derived_points.push(ScenePoint {
+                            position: current_position.clone(),
+                            color: seed_color,
+                            visible: true,
+                            draggable: false,
+                            constraint: ScenePointConstraint::Free,
+                            binding: Some(ScenePointBinding::Rotate {
+                                source_index: previous_index,
+                                center_index,
+                                angle_degrees,
+                                parameter_name: None,
+                                angle_expr: None,
+                                angle_start_index: None,
+                                angle_vertex_index: None,
+                                angle_end_index: None,
+                            }),
+                            debug: None,
+                        });
+                        previous_index = seed_index + derived_points.len();
+                    }
+                    families.push(RawPointIterationFamily::RotateChain {
+                        seed_index,
+                        center_index,
+                        angle_degrees,
+                        depth,
+                    });
+                    continue;
                 }
                 let Some(iter_path) = find_indexed_path(file, iter_group) else {
                     continue;

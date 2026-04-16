@@ -7,7 +7,7 @@ use super::{
     line_is_dashed, payload_debug_source, three_point_arc_geometry, to_raw_from_world,
     try_decode_function_expr, try_decode_function_plot_descriptor,
 };
-use crate::format::{read_f64, read_u32};
+use crate::format::{GroupKind, read_f64, read_u32};
 use crate::runtime::extract::decode::{is_circle_group_kind, resolve_circle_points_raw};
 use crate::runtime::geometry::{
     arc_on_circle_control_points, sample_three_point_arc, sample_three_point_arc_complement,
@@ -1436,46 +1436,47 @@ pub(crate) fn collect_coordinate_traces(
             let descriptor = try_decode_function_plot_descriptor(payload).ok()?;
             let expr = try_decode_function_expr(file, groups, calc_group).ok()?;
             let driver_group = groups.get(path.refs[0].checked_sub(1)?)?;
-            let driver = if matches!(
-                driver_group.header.kind(),
-                crate::format::GroupKind::CoordinateExpressionPoint
-                    | crate::format::GroupKind::CoordinateExpressionPointAlt
-                    | crate::format::GroupKind::Unknown(20)
-            ) {
-                let driver_path = find_indexed_path(file, driver_group)?;
-                let source_group_index = driver_path.refs[0].checked_sub(1)?;
-                let source_position = anchors.get(source_group_index)?.clone()?;
-                let source_world = crate::runtime::geometry::to_world(&source_position, graph);
-                match driver_group.header.kind() {
-                    crate::format::GroupKind::Unknown(20) => {
-                        let x_calc_group = groups.get(driver_path.refs[1].checked_sub(1)?)?;
-                        let y_calc_group = groups.get(driver_path.refs[2].checked_sub(1)?)?;
-                        let x_expr = try_decode_function_expr(file, groups, x_calc_group).ok()?;
-                        let y_expr = try_decode_function_expr(file, groups, y_calc_group).ok()?;
-                        Some((source_world, None, Some((x_expr, y_expr))))
-                    }
-                    _ => {
-                        let driver_payload = driver_group
-                            .records
-                            .iter()
-                            .find(|record| record.record_type == 0x07d3)
-                            .map(|record| record.payload(&file.data))?;
-                        let axis = match driver_group.header.kind() {
-                            crate::format::GroupKind::CoordinateExpressionPointAlt => {
-                                crate::runtime::scene::CoordinateAxis::Horizontal
-                            }
-                            _ => match (driver_payload.len() >= 24)
+            let driver = match driver_group.header.kind() {
+                GroupKind::Unknown(20)
+                | GroupKind::CoordinateExpressionPoint
+                | GroupKind::CoordinateExpressionPointAlt => {
+                    let driver_path = find_indexed_path(file, driver_group)?;
+                    let source_group_index = driver_path.refs[0].checked_sub(1)?;
+                    let source_position = anchors.get(source_group_index)?.clone()?;
+                    let source_world = crate::runtime::geometry::to_world(&source_position, graph);
+                    match driver_group.header.kind() {
+                        GroupKind::Unknown(20) => {
+                            let x_calc_group = groups.get(driver_path.refs[1].checked_sub(1)?)?;
+                            let y_calc_group = groups.get(driver_path.refs[2].checked_sub(1)?)?;
+                            let x_expr =
+                                try_decode_function_expr(file, groups, x_calc_group).ok()?;
+                            let y_expr =
+                                try_decode_function_expr(file, groups, y_calc_group).ok()?;
+                            Some((source_world, None, Some((x_expr, y_expr))))
+                        }
+                        GroupKind::CoordinateExpressionPointAlt => Some((
+                            source_world,
+                            Some(crate::runtime::scene::CoordinateAxis::Horizontal),
+                            None,
+                        )),
+                        GroupKind::CoordinateExpressionPoint => {
+                            let driver_payload = driver_group
+                                .records
+                                .iter()
+                                .find(|record| record.record_type == 0x07d3)
+                                .map(|record| record.payload(&file.data))?;
+                            let axis = match (driver_payload.len() >= 24)
                                 .then(|| crate::format::read_u32(driver_payload, 20))
                             {
                                 Some(1) => crate::runtime::scene::CoordinateAxis::Vertical,
                                 _ => crate::runtime::scene::CoordinateAxis::Horizontal,
-                            },
-                        };
-                        Some((source_world, Some(axis), None))
+                            };
+                            Some((source_world, Some(axis), None))
+                        }
+                        _ => None,
                     }
                 }
-            } else {
-                None
+                _ => None,
             };
 
             let mut points = Vec::with_capacity(descriptor.sample_count);

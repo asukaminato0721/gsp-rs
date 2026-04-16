@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use crate::format::{GspFile, ObjectGroup, PointRecord};
+use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord};
 use crate::runtime::extract::decode::decode_label_name;
 use crate::runtime::functions::{evaluate_expr_with_parameters, try_decode_function_expr};
 use crate::runtime::geometry::{
@@ -32,6 +32,7 @@ pub(super) fn collect_point_traces(
             )
         })
         .filter_map(|group| {
+            let group_kind = group.header.kind();
             let path = find_indexed_path(file, group)?;
             let target_group_index = path.refs.first()?.checked_sub(1)?;
             let target_group = groups.get(target_group_index)?;
@@ -49,20 +50,22 @@ pub(super) fn collect_point_traces(
                 let point = visible_points.get(point_index)?;
                 point_accepts_trace_parameter(point).then_some((point_index, group_index))
             });
-            let trace_max = if (group.header.kind())
-                == crate::format::GroupKind::CustomTransformTrace
-            {
-                let (driver_point_index, _) = driver?;
-                custom_transform_trace_parameter(visible_points.get(driver_point_index)?)?.clamp(
-                    descriptor.x_min.min(descriptor.x_max),
-                    descriptor.x_min.max(descriptor.x_max),
-                )
-            } else {
-                descriptor.x_max
+            let use_raw_parameter = matches!(group_kind, GroupKind::CustomTransformTrace);
+            let trace_max = match group_kind {
+                GroupKind::CustomTransformTrace => {
+                    let (driver_point_index, _) = driver?;
+                    custom_transform_trace_parameter(visible_points.get(driver_point_index)?)?
+                        .clamp(
+                            descriptor.x_min.min(descriptor.x_max),
+                            descriptor.x_min.max(descriptor.x_max),
+                        )
+                }
+                GroupKind::PointTrace => descriptor.x_max,
+                _ => return None,
             };
 
-            if (group.header.kind()) == crate::format::GroupKind::PointTrace
-                && (target_group.header.kind()) == crate::format::GroupKind::CoordinatePoint
+            if matches!(group_kind, GroupKind::PointTrace)
+                && matches!(target_group.header.kind(), GroupKind::CoordinatePoint)
                 && let Some((_, driver_group_index)) = driver
                 && let Some(points) = sample_coordinate_point_trace(
                     file,
@@ -106,7 +109,7 @@ pub(super) fn collect_point_traces(
                     parameter,
                     descriptor.x_min,
                     trace_max,
-                    (group.header.kind()) == crate::format::GroupKind::CustomTransformTrace,
+                    use_raw_parameter,
                 );
                 points.push(resolve_trace_point(
                     &mut sampled_points,
@@ -116,31 +119,31 @@ pub(super) fn collect_point_traces(
                 previous_points = sampled_points;
             }
 
+            let binding = match group_kind {
+                GroupKind::CustomTransformTrace => {
+                    Some(crate::runtime::scene::LineBinding::CustomTransformTrace {
+                        point_index: target_group_index,
+                        x_min: descriptor.x_min,
+                        x_max: descriptor.x_max,
+                        sample_count: descriptor.sample_count,
+                    })
+                }
+                GroupKind::PointTrace => Some(crate::runtime::scene::LineBinding::PointTrace {
+                    point_index: target_group_index,
+                    driver_index: driver_group_index,
+                    x_min: descriptor.x_min,
+                    x_max: descriptor.x_max,
+                    sample_count: descriptor.sample_count,
+                }),
+                _ => return None,
+            };
+
             (points.len() >= 2).then_some(crate::runtime::scene::LineShape {
                 points,
                 color: crate::runtime::geometry::color_from_style(group.header.style_b),
                 dashed: false,
                 visible: !group.header.is_hidden(),
-                binding: match group.header.kind() {
-                    crate::format::GroupKind::CustomTransformTrace => {
-                        Some(crate::runtime::scene::LineBinding::CustomTransformTrace {
-                            point_index: target_group_index,
-                            x_min: descriptor.x_min,
-                            x_max: descriptor.x_max,
-                            sample_count: descriptor.sample_count,
-                        })
-                    }
-                    crate::format::GroupKind::PointTrace => {
-                        Some(crate::runtime::scene::LineBinding::PointTrace {
-                            point_index: target_group_index,
-                            driver_index: driver_group_index,
-                            x_min: descriptor.x_min,
-                            x_max: descriptor.x_max,
-                            sample_count: descriptor.sample_count,
-                        })
-                    }
-                    _ => None,
-                },
+                binding,
                 debug: None,
             })
         })

@@ -10,7 +10,7 @@ use super::anchors::{
 use super::{
     decode_non_graph_parameter_value_for_group, editable_non_graph_parameter_name_for_group,
 };
-use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
+use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
 use crate::runtime::functions::{
     BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters, sample_function_points,
     try_decode_function_expr, try_decode_function_plot_descriptor,
@@ -1169,53 +1169,52 @@ pub(crate) fn try_decode_point_constraint(
         _ => {}
     }
 
-    if (group.header.kind()) == crate::format::GroupKind::PathPoint {
-        return try_decode_path_point_constraint(file, groups, host_group, payload, anchors, graph);
-    }
-
-    if host_kind.is_line_like()
-        || matches!(
-            host_kind,
-            crate::format::GroupKind::MeasurementLine
-                | crate::format::GroupKind::LineKind5
-                | crate::format::GroupKind::LineKind6
-                | crate::format::GroupKind::LineKind7
-        )
-    {
-        return decode_point_on_line_like_constraint(file, groups, group).ok_or(
-            PointConstraintDecodeError::UnsupportedOrMalformed {
-                host_kind,
-                payload_len: payload.len(),
-            },
-        );
-    }
-
-    if matches!(host_kind, crate::format::GroupKind::Circle)
-        || (matches!(
-            host_kind,
-            crate::format::GroupKind::Reflection
-                | crate::format::GroupKind::Scale
-                | crate::format::GroupKind::CartesianOffsetPoint
-                | crate::format::GroupKind::PolarOffsetPoint
-                | crate::format::GroupKind::ParameterRotation
-        ) && anchors.is_some_and(|anchors| {
+    match (group.header.kind(), host_kind) {
+        (GroupKind::PathPoint, _) => {
+            return try_decode_path_point_constraint(
+                file, groups, host_group, payload, anchors, graph,
+            );
+        }
+        (_, kind)
+            if kind.is_line_like()
+                || matches!(
+                    kind,
+                    GroupKind::MeasurementLine
+                        | GroupKind::LineKind5
+                        | GroupKind::LineKind6
+                        | GroupKind::LineKind7
+                ) =>
+        {
+            return decode_point_on_line_like_constraint(file, groups, group).ok_or(
+                PointConstraintDecodeError::UnsupportedOrMalformed {
+                    host_kind,
+                    payload_len: payload.len(),
+                },
+            );
+        }
+        (_, GroupKind::Circle) => {
+            return try_decode_circle_point_constraint(file, host_group, payload);
+        }
+        (
+            _,
+            GroupKind::Reflection
+            | GroupKind::Scale
+            | GroupKind::CartesianOffsetPoint
+            | GroupKind::PolarOffsetPoint
+            | GroupKind::ParameterRotation,
+        ) if anchors.is_some_and(|anchors| {
             resolve_circle_like_raw(file, groups, anchors, host_group).is_some()
-        }))
-    {
-        return try_decode_circle_point_constraint(file, host_group, payload);
-    }
-
-    if matches!(host_kind, crate::format::GroupKind::Polygon) {
-        return try_decode_polygon_boundary_constraint(file, host_group, payload);
-    }
-
-    if matches!(
-        host_kind,
-        crate::format::GroupKind::ThreePointArc
-            | crate::format::GroupKind::ArcOnCircle
-            | crate::format::GroupKind::CenterArc
-    ) {
-        return try_decode_arc_family_constraint(file, groups, host_group, payload);
+        }) =>
+        {
+            return try_decode_circle_point_constraint(file, host_group, payload);
+        }
+        (_, GroupKind::Polygon) => {
+            return try_decode_polygon_boundary_constraint(file, host_group, payload);
+        }
+        (_, GroupKind::ThreePointArc | GroupKind::ArcOnCircle | GroupKind::CenterArc) => {
+            return try_decode_arc_family_constraint(file, groups, host_group, payload);
+        }
+        _ => {}
     }
 
     decode_point_constraint_impl(file, groups, group, anchors, graph).ok_or(
