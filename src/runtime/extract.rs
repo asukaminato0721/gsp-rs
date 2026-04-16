@@ -1991,6 +1991,8 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::ValueTableRow => "数值表行",
         GroupKind::BoundaryIntersectionPoint => "边界交点",
         GroupKind::NamedAlias => "命名别名对象",
+        GroupKind::PolarAngleValue => "极角值",
+        GroupKind::VertexAngleValue => "顶点角值",
         GroupKind::RegularPolygonIteration => "正多边形迭代",
         GroupKind::LabelIterationSeed => "标签迭代种子",
         GroupKind::IterationExpressionHelper => "迭代表达式辅助对象",
@@ -2046,6 +2048,8 @@ fn group_kind_noun_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::DistanceValue
         | GroupKind::PointLineDistanceValue
         | GroupKind::AngleValue
+        | GroupKind::PolarAngleValue
+        | GroupKind::VertexAngleValue
         | GroupKind::PolygonAreaValue
         | GroupKind::RatioValue
         | GroupKind::GraphDistanceValue
@@ -2193,8 +2197,8 @@ fn validate_group_kind(group: &ObjectGroup) -> Result<()> {
             | GroupKind::Unknown(100)
             | GroupKind::Unknown(101)
             | GroupKind::Unknown(108)
-            | GroupKind::Unknown(115)
-            | GroupKind::Unknown(116)
+            | GroupKind::PolarAngleValue
+            | GroupKind::VertexAngleValue
             | GroupKind::NamedAlias
             | GroupKind::Unknown(85)
             | GroupKind::IterationPointAlias
@@ -2824,8 +2828,8 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::Unknown(100)
             | GroupKind::Unknown(101)
             | GroupKind::Unknown(108)
-            | GroupKind::Unknown(115)
-            | GroupKind::Unknown(116)
+            | GroupKind::PolarAngleValue
+            | GroupKind::VertexAngleValue
             | GroupKind::NamedAlias
             | GroupKind::Unknown(85)
             | GroupKind::IterationPointAlias

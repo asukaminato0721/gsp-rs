@@ -433,6 +433,20 @@ fn payload_log_names_boundary_intersection_point_helper() {
 }
 
 #[test]
+fn payload_log_names_polar_and_vertex_angle_value_helpers() {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/向忠作品/n叶草系列迭代.gsp")
+    else {
+        return;
+    };
+    let log = fixture_log(&data, "tests/Samples/个人专栏/向忠作品/n叶草系列迭代.gsp");
+
+    assert!(
+        log.contains("极角值") || log.contains("顶点角值"),
+        "expected angle-helper payloads to render with meaningful names"
+    );
+}
+
+#[test]
 fn snapshots_payload_log_for_point_fixture() {
     let log = fixture_log(
         include_bytes!("../../../tests/fixtures/gsp/static/point.gsp"),

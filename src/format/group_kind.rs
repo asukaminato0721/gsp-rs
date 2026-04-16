@@ -176,6 +176,8 @@ define_group_kinds! {
     LegacyCoordinateParameterHelper = 109,
     LegacyCoordinatePointHelper = 110,
     GraphValuePoint = 112,
+    PolarAngleValue = 115,
+    VertexAngleValue = 116,
     NamedAlias = 120,
     AngleMarker = 113,
     PathPoint = 123,
