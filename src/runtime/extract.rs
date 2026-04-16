@@ -1954,6 +1954,7 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::PointLineDistanceValue => "点到直线距离值",
         GroupKind::PointTrace => "点轨迹",
         GroupKind::MeasuredValue => "度量值",
+        GroupKind::BoundaryLengthValue => "边界长度值",
         GroupKind::GraphObject40 => "图像对象",
         GroupKind::AngleValue => "角度值",
         GroupKind::PolygonAreaValue => "多边形面积值",
@@ -1976,6 +1977,7 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::CoordinatePoint => "坐标点",
         GroupKind::GraphFunctionPoint => "图像函数点",
         GroupKind::FunctionPlot => "函数图像",
+        GroupKind::ParametricFunctionPlot => "参数曲线",
         GroupKind::ButtonLabel => "按钮标签",
         GroupKind::DerivedSegment75 => "派生线段",
         GroupKind::AffineIteration => "仿射迭代",
@@ -1987,6 +1989,7 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::SectorBoundary => "扇形边界",
         GroupKind::CircularSegmentBoundary => "弓形边界",
         GroupKind::GraphDistanceValue => "图像距离值",
+        GroupKind::RectImage => "矩形图片",
         GroupKind::IterationPointAlias => "迭代结果点",
         GroupKind::ValueTableRow => "数值表行",
         GroupKind::BoundaryIntersectionPoint => "边界交点",
@@ -2056,6 +2059,7 @@ fn group_kind_noun_in_chinese(kind: GroupKind) -> &'static str {
         | GroupKind::BoundaryIntersectionPoint => "点",
         GroupKind::DistanceValue
         | GroupKind::PointLineDistanceValue
+        | GroupKind::BoundaryLengthValue
         | GroupKind::AngleValue
         | GroupKind::PolarAngleValue
         | GroupKind::VertexAngleValue
@@ -2080,7 +2084,7 @@ fn group_kind_noun_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::ArcOnCircle | GroupKind::CenterArc | GroupKind::ThreePointArc => "圆弧",
         GroupKind::CoordinateReadoutLabel => "标签",
         GroupKind::ActionButton => "按钮",
-        GroupKind::FunctionPlot => "函数图像",
+        GroupKind::FunctionPlot | GroupKind::ParametricFunctionPlot => "函数图像",
         GroupKind::AngleMarker => "角标记",
         _ => "对象",
     }
@@ -2152,7 +2156,10 @@ fn function_issue_group_ordinals(
     group: &ObjectGroup,
 ) -> Vec<usize> {
     let mut ordinals = vec![group.ordinal];
-    if group.header.kind() != GroupKind::FunctionPlot {
+    if !matches!(
+        group.header.kind(),
+        GroupKind::FunctionPlot | GroupKind::ParametricFunctionPlot
+    ) {
         return ordinals;
     }
     if let Some(path) = find_indexed_path(file, group)
@@ -2191,7 +2198,7 @@ fn validate_group_kind(group: &ObjectGroup) -> Result<()> {
             | GroupKind::GraphXValue
             | GroupKind::FunctionDefinition
             | GroupKind::Unknown(122)
-            | GroupKind::Unknown(39)
+            | GroupKind::BoundaryLengthValue
             | GroupKind::AngleValue
             | GroupKind::GraphCoordinatePoint
             | GroupKind::RatioValue
@@ -2209,7 +2216,7 @@ fn validate_group_kind(group: &ObjectGroup) -> Result<()> {
             | GroupKind::PolarAngleValue
             | GroupKind::VertexAngleValue
             | GroupKind::NamedAlias
-            | GroupKind::Unknown(85)
+            | GroupKind::RectImage
             | GroupKind::IterationPointAlias
             | GroupKind::LegacyCoordinateParameterHelper
             | GroupKind::LegacyCoordinatePointHelper
@@ -2338,7 +2345,10 @@ fn validate_function_payload(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> Result<()> {
-    if group.header.kind() != GroupKind::FunctionPlot {
+    if !matches!(
+        group.header.kind(),
+        GroupKind::FunctionPlot | GroupKind::ParametricFunctionPlot
+    ) {
         return Ok(());
     }
 
@@ -2801,6 +2811,7 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::GraphFunctionPoint
             | GroupKind::GraphValuePoint
             | GroupKind::FunctionPlot
+            | GroupKind::ParametricFunctionPlot
             | GroupKind::ButtonLabel
             | GroupKind::DerivedSegment75
             | GroupKind::AffineIteration
@@ -2824,7 +2835,7 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::SegmentMarker
             | GroupKind::FunctionDefinition
             | GroupKind::Unknown(122)
-            | GroupKind::Unknown(39)
+            | GroupKind::BoundaryLengthValue
             | GroupKind::AngleValue
             | GroupKind::RatioValue
             | GroupKind::GraphDistanceValue
@@ -2840,7 +2851,7 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::PolarAngleValue
             | GroupKind::VertexAngleValue
             | GroupKind::NamedAlias
-            | GroupKind::Unknown(85)
+            | GroupKind::RectImage
             | GroupKind::IterationPointAlias
             | GroupKind::LegacyCoordinateParameterHelper
             | GroupKind::LegacyCoordinatePointHelper

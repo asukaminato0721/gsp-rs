@@ -405,6 +405,23 @@ fn builds_square_area_invariance_sample_with_graph_helper_stack() {
 }
 
 #[test]
+fn builds_parametric_curve_samples_with_kind_126_plot_support() {
+    for path in [
+        "tests/Samples/个人专栏/向忠作品/参数曲线一例.gsp",
+        "tests/Samples/未分类档/矩形曲线.gsp",
+    ] {
+        let Some(data) = fixture_bytes(path) else {
+            continue;
+        };
+        let scene = fixture_scene(&data);
+        assert!(
+            !scene.lines.is_empty(),
+            "expected parametric curve sample {path} to export plotted line geometry"
+        );
+    }
+}
+
+#[test]
 fn payload_log_names_value_table_row_helper() {
     let Some(data) = fixture_bytes("tests/Samples/未分类档/利用制表功能快速获取点的坐标.gsp")
     else {
@@ -503,6 +520,26 @@ fn payload_log_names_function_definition_helper() {
         log.contains("函数定义对象"),
         "expected kind 71 payloads to render with a meaningful function-definition name"
     );
+}
+
+#[test]
+fn payload_log_names_boundary_length_and_rect_image_helpers() {
+    let Some(length_data) =
+        fixture_bytes("tests/Samples/个人专栏/方小庆作品/圆在四边形上滚动(inRm).gsp")
+    else {
+        return;
+    };
+    let length_log = fixture_log(
+        &length_data,
+        "tests/Samples/个人专栏/方小庆作品/圆在四边形上滚动(inRm).gsp",
+    );
+    assert!(length_log.contains("边界长度值"));
+
+    let Some(image_data) = fixture_bytes("tests/Samples/个人专栏/向忠作品/计时器3.gsp") else {
+        return;
+    };
+    let image_log = fixture_log(&image_data, "tests/Samples/个人专栏/向忠作品/计时器3.gsp");
+    assert!(image_log.contains("矩形图片"));
 }
 
 #[test]

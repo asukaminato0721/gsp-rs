@@ -66,7 +66,7 @@ fn supports_payload_label(kind: crate::format::GroupKind) -> bool {
             | crate::format::GroupKind::IntersectionPoint2
             | crate::format::GroupKind::CircleCircleIntersectionPoint1
             | crate::format::GroupKind::CircleCircleIntersectionPoint2
-            | crate::format::GroupKind::Unknown(39)
+            | crate::format::GroupKind::BoundaryLengthValue
             | crate::format::GroupKind::AngleValue
             | crate::format::GroupKind::CoordinateReadoutLabel
             | crate::format::GroupKind::RatioValue
@@ -457,7 +457,7 @@ pub(super) fn collect_labels(
                             | crate::format::GroupKind::IntersectionPoint2
                             | crate::format::GroupKind::CircleCircleIntersectionPoint1
                             | crate::format::GroupKind::CircleCircleIntersectionPoint2
-                            | crate::format::GroupKind::Unknown(39)
+                            | crate::format::GroupKind::BoundaryLengthValue
                             | crate::format::GroupKind::AngleValue
                             | crate::format::GroupKind::RatioValue
                             | crate::format::GroupKind::IterationPointAlias

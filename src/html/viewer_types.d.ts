@@ -6,6 +6,7 @@ type SceneData = import("./generated/SceneData").SceneData;
 type ScenePointJson = import("./generated/ScenePointJson").ScenePointJson;
 type PointConstraintJson = import("./generated/PointConstraintJson").PointConstraintJson;
 type PointBindingJson = import("./generated/PointBindingJson").PointBindingJson;
+type PointTransformJson = import("./generated/PointTransformJson").PointTransformJson;
 type LineJson = import("./generated/LineJson").LineJson;
 type LineBindingJson = import("./generated/LineBindingJson").LineBindingJson;
 type PolygonJson = import("./generated/PolygonJson").PolygonJson;
@@ -524,6 +525,11 @@ type ViewerDynamicsModule = {
   refreshDerivedPoints: (env: ViewerEnv, scene: ViewerSceneData) => void;
   refreshIterationGeometry: (env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) => void;
   refreshDynamicLabels: (env: ViewerEnv, scene: ViewerSceneData) => void;
+  resolveLineConstraintPoints: (
+    resolvePointAt: (pointIndex: number) => Point | null,
+    bounds: { minX: number; maxX: number; minY: number; maxY: number; spanX?: number; spanY?: number },
+    constraint: LineConstraintJson,
+  ) => Point[] | null;
   parameterRootId?: (name: string) => string;
   sourcePointRootId?: (index: number) => string;
   runDependencyGraph?: (env: ViewerEnv, scene: ViewerSceneData, dirtyRootIds: string[]) => unknown;

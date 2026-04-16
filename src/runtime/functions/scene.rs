@@ -12,7 +12,7 @@ use super::expr::{
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub(super) struct ParameterBinding {
+pub(crate) struct ParameterBinding {
     pub(super) name: String,
     pub(super) value: f64,
 }
@@ -210,7 +210,7 @@ pub(crate) fn function_uses_pi_scale(file: &GspFile, groups: &[ObjectGroup]) -> 
         .any(function_expr_uses_trig)
 }
 
-pub(super) fn collect_parameter_bindings(
+pub(crate) fn collect_parameter_bindings(
     file: &GspFile,
     groups: &[ObjectGroup],
     group: &ObjectGroup,

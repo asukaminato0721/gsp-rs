@@ -39,7 +39,7 @@ fn decode_image_group(
         crate::format::GroupKind::Point => {
             decode_affine_image_group(file, group, png_blobs)
         }
-        crate::format::GroupKind::Unknown(85) => decode_bbox_image_group(file, group, png_blobs),
+        crate::format::GroupKind::RectImage => decode_bbox_image_group(file, group, png_blobs),
         _ => None,
     }
 }

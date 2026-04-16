@@ -16,6 +16,7 @@
     refreshDerivedPoints: noop,
     refreshDynamicLabels: noop,
     refreshIterationGeometry: noop,
+    resolveLineConstraintPoints: () => null,
     syncDynamicScene: noop,
   };
 })();

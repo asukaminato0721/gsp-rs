@@ -1,16 +1,20 @@
 use std::collections::BTreeMap;
 
 use crate::format::{GspFile, ObjectGroup, PointRecord};
-use crate::runtime::extract::find_indexed_path;
+use crate::runtime::extract::{find_indexed_path, try_decode_parameter_control_value_for_group};
 use crate::runtime::geometry::{
     Bounds, GraphTransform, has_distinct_points, include_line_bounds, to_raw_from_world,
 };
 use crate::runtime::payload_consts::RECORD_FUNCTION_PLOT_DESCRIPTOR;
 use crate::runtime::scene::{LineShape, TextLabel};
 
-use super::decode::{try_decode_function_expr, try_decode_function_plot_descriptor};
+use super::decode::{
+    evaluate_function_group_with_overrides, try_decode_function_expr,
+    try_decode_function_plot_descriptor,
+};
 use super::eval::sample_function_points;
 use super::expr::{FunctionPlotMode, function_expr_label_with_variable, function_variable_symbol};
+use super::scene::collect_parameter_bindings;
 
 pub(crate) fn collect_function_plots(
     file: &GspFile,
@@ -22,40 +26,17 @@ pub(crate) fn collect_function_plots(
     };
 
     let mut plots = Vec::new();
-    for group in groups
-        .iter()
-        .filter(|group| (group.header.kind()) == crate::format::GroupKind::FunctionPlot)
-    {
-        let Some(path) = find_indexed_path(file, group) else {
+    for group in groups.iter().filter(|group| {
+        matches!(
+            group.header.kind(),
+            crate::format::GroupKind::FunctionPlot
+                | crate::format::GroupKind::ParametricFunctionPlot
+        )
+    }) {
+        let Some(segments) = sample_plot_segments(file, groups, group) else {
             continue;
         };
-        if path.refs.len() < 2 {
-            continue;
-        }
-
-        let Some(definition_index) = path.refs[0].checked_sub(1) else {
-            continue;
-        };
-        let Some(definition_group) = groups.get(definition_index) else {
-            continue;
-        };
-        let Some(descriptor_record) = group
-            .records
-            .iter()
-            .find(|record| record.record_type == RECORD_FUNCTION_PLOT_DESCRIPTOR)
-        else {
-            continue;
-        };
-        let Some(descriptor) =
-            try_decode_function_plot_descriptor(descriptor_record.payload(&file.data)).ok()
-        else {
-            continue;
-        };
-        let Some(expr) = try_decode_function_expr(file, groups, definition_group).ok() else {
-            continue;
-        };
-
-        for mut points in sample_function_points(&expr, &descriptor) {
+        for mut points in segments {
             if !has_distinct_points(&points) {
                 continue;
             }
@@ -75,6 +56,85 @@ pub(crate) fn collect_function_plots(
     }
 
     plots
+}
+
+pub(crate) fn sample_plot_segments(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<Vec<Vec<PointRecord>>> {
+    let path = find_indexed_path(file, group)?;
+    let descriptor_record = group
+        .records
+        .iter()
+        .find(|record| record.record_type == RECORD_FUNCTION_PLOT_DESCRIPTOR)?;
+    let descriptor = try_decode_function_plot_descriptor(descriptor_record.payload(&file.data)).ok()?;
+
+    match group.header.kind() {
+        crate::format::GroupKind::FunctionPlot => {
+            let definition_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            let expr = try_decode_function_expr(file, groups, definition_group).ok()?;
+            Some(sample_function_points(&expr, &descriptor))
+        }
+        crate::format::GroupKind::ParametricFunctionPlot => {
+            if path.refs.len() < 3 {
+                return None;
+            }
+            let x_group = groups.get(path.refs[0].checked_sub(1)?)?;
+            let y_group = groups.get(path.refs[1].checked_sub(1)?)?;
+            sample_parametric_plot_segments(file, groups, x_group, y_group, &descriptor)
+        }
+        _ => None,
+    }
+}
+
+fn sample_parametric_plot_segments(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    x_group: &ObjectGroup,
+    y_group: &ObjectGroup,
+    descriptor: &crate::runtime::functions::FunctionPlotDescriptor,
+) -> Option<Vec<Vec<PointRecord>>> {
+    let mut parameter_names = collect_parameter_bindings(file, groups, x_group)
+        .into_values()
+        .map(|binding| binding.name)
+        .collect::<Vec<_>>();
+    parameter_names.extend(
+        collect_parameter_bindings(file, groups, y_group)
+            .into_values()
+            .map(|binding| binding.name),
+    );
+    parameter_names.sort();
+    parameter_names.dedup();
+
+    let mut segments = Vec::<Vec<PointRecord>>::new();
+    let mut points = Vec::with_capacity(descriptor.sample_count);
+    let span = descriptor.x_max - descriptor.x_min;
+    let last = descriptor.sample_count.saturating_sub(1).max(1) as f64;
+    for index in 0..descriptor.sample_count {
+        let t = index as f64 / last;
+        let parameter = descriptor.x_min + span * t;
+        let overrides = parameter_names
+            .iter()
+            .map(|name| (name.clone(), parameter))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let x = evaluate_function_group_with_overrides(file, groups, x_group, &overrides)
+            .or_else(|| try_decode_parameter_control_value_for_group(file, groups, x_group).ok())?;
+        let y = evaluate_function_group_with_overrides(file, groups, y_group, &overrides)
+            .or_else(|| try_decode_parameter_control_value_for_group(file, groups, y_group).ok())?;
+        let point = PointRecord { x, y };
+        if point.x.is_finite() && point.y.is_finite() {
+            points.push(point);
+        } else if points.len() >= 2 {
+            segments.push(std::mem::take(&mut points));
+        } else {
+            points.clear();
+        }
+    }
+    if points.len() >= 2 {
+        segments.push(points);
+    }
+    (!segments.is_empty()).then_some(segments)
 }
 
 pub(crate) fn collect_function_plot_domain(

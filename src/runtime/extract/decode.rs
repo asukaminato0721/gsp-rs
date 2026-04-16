@@ -563,7 +563,7 @@ pub(crate) fn decode_label_anchor(
             crate::format::GroupKind::AngleMarker => {
                 decode_angle_marker_label_anchor(file, group, anchors)
             }
-            crate::format::GroupKind::Unknown(42)
+            crate::format::GroupKind::PolygonAreaValue
             | crate::format::GroupKind::Unknown(46)
             | crate::format::GroupKind::NamedAlias => decode_bbox_anchor_raw(file, group),
             _ => None,

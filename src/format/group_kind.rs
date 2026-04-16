@@ -128,6 +128,7 @@ define_group_kinds! {
     Reflection = 34,
     PointTrace = 35,
     MeasuredValue = 36,
+    BoundaryLengthValue = 39,
     GraphObject40 = 40,
     AngleValue = 41,
     PolygonAreaValue = 42,
@@ -163,6 +164,7 @@ define_group_kinds! {
     SectorBoundary = 82,
     CircularSegmentBoundary = 83,
     GraphDistanceValue = 86,
+    RectImage = 85,
     RegularPolygonIteration = 89,
     IterationPointAlias = 88,
     LabelIterationSeed = 90,
@@ -188,6 +190,7 @@ define_group_kinds! {
     PathPoint = 123,
     GraphYValue = 124,
     GraphXValue = 125,
+    ParametricFunctionPlot = 126,
     SegmentMarker = 121,
 }
 

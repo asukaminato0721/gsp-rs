@@ -8,16 +8,20 @@ pub(crate) use decode::{
     evaluate_function_group_with_overrides, try_decode_function_expr,
     try_decode_function_plot_descriptor,
 };
-pub(crate) use eval::{evaluate_expr_with_parameters, sample_function_points};
+pub(crate) use eval::evaluate_expr_with_parameters;
 pub(crate) use expr::{
     BinaryOp, FunctionAst, FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode, UnaryFunction,
     function_expr_label,
 };
 pub(crate) use plot::{
-    collect_function_plot_domain, collect_function_plots, synthesize_function_axes,
+    collect_function_plot_domain, collect_function_plots, sample_plot_segments,
+    synthesize_function_axes,
     synthesize_function_labels,
 };
-pub(crate) use scene::{collect_scene_functions, collect_scene_parameters, function_uses_pi_scale};
+pub(crate) use scene::{
+    collect_scene_functions, collect_scene_parameters,
+    function_uses_pi_scale,
+};
 
 #[cfg(test)]
 mod tests {

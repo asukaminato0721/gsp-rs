@@ -12,7 +12,7 @@ use super::{
 };
 use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
 use crate::runtime::functions::{
-    BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters, sample_function_points,
+    BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters,
     try_decode_function_expr, try_decode_function_plot_descriptor,
 };
 use crate::runtime::geometry::{
@@ -1417,7 +1417,8 @@ pub(crate) fn try_decode_point_constraint(
                 actual: host_path.refs.len(),
             });
         }
-        crate::format::GroupKind::FunctionPlot => {
+        crate::format::GroupKind::FunctionPlot
+        | crate::format::GroupKind::ParametricFunctionPlot => {
             return try_decode_point_on_function_constraint(
                 file, groups, host_group, payload, graph,
             );
@@ -1568,7 +1569,10 @@ fn decode_point_constraint_impl(
                 t,
             })
         }
-        (crate::format::GroupKind::FunctionPlot, 12) => {
+        (
+            crate::format::GroupKind::FunctionPlot | crate::format::GroupKind::ParametricFunctionPlot,
+            12,
+        ) => {
             decode_point_on_function_constraint(file, groups, host_group, payload, graph)
         }
         (crate::format::GroupKind::ThreePointArc, 12) => {
@@ -1775,7 +1779,8 @@ fn decode_path_point_constraint(
                 t,
             })
         }
-        crate::format::GroupKind::FunctionPlot => {
+        crate::format::GroupKind::FunctionPlot
+        | crate::format::GroupKind::ParametricFunctionPlot => {
             decode_point_on_function_constraint(file, groups, host_group, payload, graph)
         }
         crate::format::GroupKind::ThreePointArc => {
@@ -2121,23 +2126,14 @@ fn decode_point_on_function_constraint(
         return None;
     }
 
-    let path = find_indexed_path(file, host_group)?;
-    let definition_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-    let descriptor_record = host_group
-        .records
-        .iter()
-        .find(|record| record.record_type == 0x0902)?;
-    let descriptor =
-        try_decode_function_plot_descriptor(descriptor_record.payload(&file.data)).ok()?;
-    let expr = try_decode_function_expr(file, groups, definition_group).ok()?;
-    let points = sample_function_points(&expr, &descriptor)
+    let points = crate::runtime::functions::sample_plot_segments(file, groups, host_group)?
         .into_iter()
         .flatten()
         .map(|point| to_raw_from_world(&point, transform))
         .collect::<Vec<_>>();
     let (segment_index, t) = locate_polyline_parameter(&points, normalized_t)?;
     Some(RawPointConstraint::Polyline {
-        function_key: *path.refs.first()?,
+        function_key: host_group.ordinal,
         points,
         segment_index,
         t,
@@ -2164,17 +2160,6 @@ fn try_decode_point_on_function_constraint(
     if graph.is_none() {
         return Err(PointConstraintDecodeError::MissingGraphTransform);
     }
-    let path = find_indexed_path(file, host_group)
-        .ok_or(PointConstraintDecodeError::MissingIndexedPath)?;
-    let definition_group = groups
-        .get(
-            *path
-                .refs
-                .first()
-                .ok_or(PointConstraintDecodeError::MissingHostReference)?
-                - 1,
-        )
-        .ok_or(PointConstraintDecodeError::MissingHostReference)?;
     let descriptor_record = host_group
         .records
         .iter()
@@ -2183,8 +2168,11 @@ fn try_decode_point_on_function_constraint(
     try_decode_function_plot_descriptor(descriptor_record.payload(&file.data)).map_err(
         |error| PointConstraintDecodeError::InvalidFunctionPlotDescriptor(error.to_string()),
     )?;
-    try_decode_function_expr(file, groups, definition_group)
-        .map_err(|error| PointConstraintDecodeError::InvalidFunctionExpr(error.to_string()))?;
+    crate::runtime::functions::sample_plot_segments(file, groups, host_group).ok_or(
+        PointConstraintDecodeError::InvalidFunctionExpr(
+            "unsupported parametric/function plot sources".to_string(),
+        ),
+    )?;
     decode_point_on_function_constraint(file, groups, host_group, payload, graph)
         .ok_or(PointConstraintDecodeError::PolylineParameterUnavailable)
 }
