@@ -13,6 +13,8 @@ pub(crate) use anchors::{
     custom_transform_expression_parameter_map, custom_transform_trace_parameter,
     decode_angle_rotation_anchor_raw, decode_coordinate_expression_anchor_raw,
     decode_custom_transform_anchor_raw, decode_custom_transform_binding,
+    decode_expression_offset_anchor_raw, decode_expression_offset_binding,
+    decode_expression_rotation_anchor_raw, decode_expression_rotation_binding,
     decode_graph_calibration_anchor_raw, decode_intersection_anchor_raw,
     decode_line_midpoint_anchor_raw, decode_offset_anchor_raw,
     decode_parameter_controlled_anchor_raw, decode_parameter_rotation_anchor_raw,

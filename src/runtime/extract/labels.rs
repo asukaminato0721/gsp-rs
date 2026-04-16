@@ -56,6 +56,7 @@ fn supports_payload_label(kind: crate::format::GroupKind) -> bool {
             | crate::format::GroupKind::Translation
             | crate::format::GroupKind::Reflection
             | crate::format::GroupKind::Rotation
+            | crate::format::GroupKind::ExpressionRotation
             | crate::format::GroupKind::ParameterRotation
             | crate::format::GroupKind::Scale
             | crate::format::GroupKind::PointConstraint
@@ -65,6 +66,8 @@ fn supports_payload_label(kind: crate::format::GroupKind) -> bool {
             | crate::format::GroupKind::IntersectionPoint2
             | crate::format::GroupKind::CircleCircleIntersectionPoint1
             | crate::format::GroupKind::CircleCircleIntersectionPoint2
+            | crate::format::GroupKind::Unknown(39)
+            | crate::format::GroupKind::Unknown(41)
             | crate::format::GroupKind::CoordinateReadoutLabel
             | crate::format::GroupKind::Unknown(47)
             | crate::format::GroupKind::Unknown(88)
@@ -440,6 +443,7 @@ pub(super) fn collect_labels(
                             | crate::format::GroupKind::Translation
                             | crate::format::GroupKind::Reflection
                             | crate::format::GroupKind::Rotation
+                            | crate::format::GroupKind::ExpressionRotation
                             | crate::format::GroupKind::ParameterRotation
                             | crate::format::GroupKind::Scale
                             | crate::format::GroupKind::Segment
@@ -452,6 +456,8 @@ pub(super) fn collect_labels(
                             | crate::format::GroupKind::IntersectionPoint2
                             | crate::format::GroupKind::CircleCircleIntersectionPoint1
                             | crate::format::GroupKind::CircleCircleIntersectionPoint2
+                            | crate::format::GroupKind::Unknown(39)
+                            | crate::format::GroupKind::Unknown(41)
                             | crate::format::GroupKind::Unknown(47)
                             | crate::format::GroupKind::Unknown(88)
                     )

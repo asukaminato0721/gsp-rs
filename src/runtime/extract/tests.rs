@@ -683,6 +683,82 @@ fn builds_unnamed1_fixture_with_live_angle_rotation_points() {
 }
 
 #[test]
+fn builds_equilateral_triangle_iteration_fixture_with_expression_rotation_helpers() {
+    let Some(data) = fixture_bytes("tests/Samples/热研系列/迭代系列/等边三角形迭代.gsp") else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+    let log = fixture_log(&data, "tests/Samples/热研系列/迭代系列/等边三角形迭代.gsp");
+
+    assert!(log.contains("问题数量: 0"));
+    assert!(
+        scene.points.iter().any(|point| {
+            matches!(
+                point.binding,
+                Some(ScenePointBinding::Rotate {
+                    angle_expr: Some(_),
+                    ..
+                })
+            )
+        }),
+        "expected the type-33 helper point to export as an expression-driven rotation"
+    );
+    assert!(
+        scene.points.iter().any(|point| {
+            !point.visible
+                && matches!(
+                    point.binding,
+                    Some(ScenePointBinding::CoordinateSource { axis, .. })
+                        if matches!(axis, crate::runtime::scene::CoordinateAxis::Horizontal)
+                )
+        }),
+        "expected the type-23 helper point to stay exported as a hidden horizontal expression offset"
+    );
+}
+
+#[test]
+fn builds_spiral_arrow_iteration_fixture_with_expression_offset_seed() {
+    let Some(data) =
+        fixture_bytes("tests/Samples/热研系列/迭代系列/长度为1,1,2,2,3,3…的螺旋箭头迭代.gsp")
+    else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+    let log = fixture_log(
+        &data,
+        "tests/Samples/热研系列/迭代系列/长度为1,1,2,2,3,3…的螺旋箭头迭代.gsp",
+    );
+
+    assert!(log.contains("问题数量: 0"));
+    assert!(
+        !scene.lines.is_empty(),
+        "expected the sample to stay exportable once the type-23 helper is accepted"
+    );
+}
+
+#[test]
+fn builds_golden_curve_iteration_fixture_without_polygon_helper_errors() {
+    let Some(data) = fixture_bytes("tests/Samples/热研系列/迭代系列/黄金曲线迭代.gsp") else {
+        return;
+    };
+    let _scene = fixture_scene(&data);
+    let log = fixture_log(&data, "tests/Samples/热研系列/迭代系列/黄金曲线迭代.gsp");
+
+    assert!(log.contains("问题数量: 0"));
+}
+
+#[test]
+fn builds_iteration_example_fixture_without_bbox_helper_errors() {
+    let Some(data) = fixture_bytes("tests/Samples/热研系列/迭代系列/迭代举例.gsp") else {
+        return;
+    };
+    let _scene = fixture_scene(&data);
+    let log = fixture_log(&data, "tests/Samples/热研系列/迭代系列/迭代举例.gsp");
+
+    assert!(log.contains("问题数量: 0"));
+}
+
+#[test]
 fn builds_xy_coordinate_fixture_with_live_coordinate_label() {
     let scene = fixture_scene(include_bytes!("../../../tests/fixtures/gsp/xy_cood.gsp"));
 

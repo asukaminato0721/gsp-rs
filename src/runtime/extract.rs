@@ -1407,10 +1407,33 @@ fn describe_group_in_chinese(
         GroupKind::CartesianOffsetPoint | GroupKind::PolarOffsetPoint => {
             describe_offset_point_in_chinese(file, group, &refs)
         }
+        GroupKind::ExpressionOffsetPoint => {
+            if refs.len() >= 2 {
+                format!(
+                    "以 {} 为基准、按 {} 做水平偏移得到的点",
+                    format_ref_with_kind(groups, refs[0]),
+                    format_ref_with_kind(groups, refs[1])
+                )
+            } else {
+                describe_generic_group(group, &refs)
+            }
+        }
         GroupKind::Rotation => describe_rotation_group_in_chinese(file, groups, group),
         GroupKind::AngleRotation => describe_angle_rotation_group_in_chinese(file, groups, group),
         GroupKind::ParameterRotation => {
             describe_parameter_rotation_group_in_chinese(file, groups, group)
+        }
+        GroupKind::ExpressionRotation => {
+            if refs.len() >= 3 {
+                format!(
+                    "将 {} 围绕 {} 按 {} 旋转得到的点",
+                    format_ref_with_kind(groups, refs[0]),
+                    format_ref(refs[1]),
+                    format_ref_with_kind(groups, refs[2])
+                )
+            } else {
+                describe_generic_group(group, &refs)
+            }
         }
         GroupKind::Scale => describe_scale_group_in_chinese(file, groups, group),
         GroupKind::RatioScale => {
@@ -1915,11 +1938,13 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::CoordinateExpressionPoint => "坐标表达式点",
         GroupKind::CoordinateExpressionPointAlt => "坐标表达式点",
         GroupKind::PolarOffsetPoint => "极坐标偏移点",
+        GroupKind::ExpressionOffsetPoint => "表达式偏移点",
         GroupKind::DerivedSegment24 => "派生线段",
         GroupKind::CustomTransformPoint => "自定义变换点",
         GroupKind::Rotation => "旋转对象",
         GroupKind::AngleRotation => "角度旋转点",
         GroupKind::ParameterRotation => "参数旋转对象",
+        GroupKind::ExpressionRotation => "表达式旋转点",
         GroupKind::Scale => "缩放对象",
         GroupKind::RatioScale => "比例缩放对象",
         GroupKind::Reflection => "镜像对象",
@@ -1984,8 +2009,10 @@ fn group_kind_noun_in_chinese(kind: GroupKind) -> &'static str {
         | GroupKind::CoordinateExpressionPoint
         | GroupKind::CoordinateExpressionPointAlt
         | GroupKind::PolarOffsetPoint
+        | GroupKind::ExpressionOffsetPoint
         | GroupKind::CustomTransformPoint
         | GroupKind::AngleRotation
+        | GroupKind::ExpressionRotation
         | GroupKind::OffsetAnchor
         | GroupKind::CoordinatePoint
         | GroupKind::LegacyCoordinateParameterHelper
@@ -2119,6 +2146,8 @@ fn validate_group_kind(group: &ObjectGroup) -> Result<()> {
             | GroupKind::CoordinateYValue
             | GroupKind::Unknown(71)
             | GroupKind::Unknown(122)
+            | GroupKind::Unknown(39)
+            | GroupKind::Unknown(41)
             | GroupKind::Unknown(47)
             | GroupKind::Unknown(85)
             | GroupKind::Unknown(88)
@@ -2664,11 +2693,13 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::CoordinateExpressionPoint
             | GroupKind::CoordinateExpressionPointAlt
             | GroupKind::PolarOffsetPoint
+            | GroupKind::ExpressionOffsetPoint
             | GroupKind::DerivedSegment24
             | GroupKind::CustomTransformPoint
             | GroupKind::Rotation
             | GroupKind::AngleRotation
             | GroupKind::ParameterRotation
+            | GroupKind::ExpressionRotation
             | GroupKind::Scale
             | GroupKind::RatioScale
             | GroupKind::Reflection
@@ -2710,6 +2741,8 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::SegmentMarker
             | GroupKind::Unknown(71)
             | GroupKind::Unknown(122)
+            | GroupKind::Unknown(39)
+            | GroupKind::Unknown(41)
             | GroupKind::Unknown(47)
             | GroupKind::Unknown(85)
             | GroupKind::Unknown(88)

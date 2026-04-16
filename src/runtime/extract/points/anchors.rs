@@ -1,18 +1,23 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-use super::super::decode::{decode_label_name, find_indexed_path};
+use super::super::decode::{
+    decode_label_name, find_indexed_path, is_parameter_control_group,
+    try_decode_parameter_control_value_for_group,
+};
 use super::constraints::{
     RawPointConstraint, decode_translated_point_constraint, try_decode_parameter_controlled_point,
     try_decode_point_constraint,
 };
 use super::{
     GspFile, ObjectGroup, PointRecord, TransformBindingKind,
-    decode_non_graph_parameter_value_for_group, read_f64, try_decode_angle_rotation_binding,
-    try_decode_parameter_rotation_binding, try_decode_transform_binding,
+    decode_non_graph_parameter_value_for_group, editable_non_graph_parameter_name_for_group,
+    read_f64, try_decode_angle_rotation_binding, try_decode_parameter_rotation_binding,
+    try_decode_transform_binding,
 };
 use crate::format::GroupKind;
 use crate::runtime::functions::{
-    evaluate_expr_with_parameters, try_decode_function_expr, try_decode_function_plot_descriptor,
+    BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters, try_decode_function_expr,
+    try_decode_function_plot_descriptor,
 };
 use crate::runtime::geometry::{
     GraphTransform, angle_degrees_from_points, lerp_point, point_on_circle_arc,
@@ -43,6 +48,286 @@ pub(crate) struct CustomTransformBindingDef {
     pub(crate) angle_expr: crate::runtime::functions::FunctionExpr,
     pub(crate) distance_raw_scale: f64,
     pub(crate) angle_degrees_scale: f64,
+}
+
+#[derive(Clone)]
+pub(crate) struct ExpressionRotationBindingDef {
+    pub(crate) source_group_index: usize,
+    pub(crate) center_group_index: usize,
+    pub(crate) angle_expr: FunctionExpr,
+    pub(crate) angle_degrees: f64,
+    pub(crate) parameter_name: Option<String>,
+}
+
+#[derive(Clone)]
+pub(crate) struct ExpressionOffsetBindingDef {
+    pub(crate) source_group_index: usize,
+    pub(crate) scaled_expr: FunctionExpr,
+    pub(crate) parameter_name: Option<String>,
+}
+
+fn parameter_anchor_runtime_value(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<(String, f64)> {
+    let path = find_indexed_path(file, group)?;
+    let point_group_index = path.refs.first()?.checked_sub(1)?;
+    let point_group = groups.get(point_group_index)?;
+    let value = match try_decode_point_constraint(file, groups, point_group, Some(anchors), &None)
+        .ok()?
+    {
+        RawPointConstraint::Segment(constraint) => constraint.t,
+        RawPointConstraint::ConstructedLine { t, .. } => t,
+        RawPointConstraint::PolygonBoundary {
+            edge_index,
+            t,
+            vertex_group_indices,
+        } => super::super::labels::polygon_boundary_parameter(
+            anchors,
+            &vertex_group_indices,
+            edge_index,
+            t,
+        )?,
+        RawPointConstraint::Circle(constraint) => super::super::labels::circle_parameter(
+            anchors,
+            constraint.center_group_index,
+            constraint.radius_group_index,
+            constraint.unit_x,
+            constraint.unit_y,
+        )?,
+        RawPointConstraint::Circular(_)
+        | RawPointConstraint::CircleArc(_)
+        | RawPointConstraint::Arc(_)
+        | RawPointConstraint::Polyline { .. } => return None,
+    };
+    let name = decode_label_name(file, group)
+        .or_else(|| decode_label_name(file, point_group))
+        .or_else(|| editable_non_graph_parameter_name_for_group(file, groups, point_group))?;
+    Some((name, value))
+}
+
+fn collect_expr_runtime_parameters(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+    parameters: &mut BTreeMap<String, f64>,
+    visiting: &mut BTreeSet<usize>,
+) {
+    if !visiting.insert(group.ordinal) {
+        return;
+    }
+    if let Some(path) = find_indexed_path(file, group) {
+        for ordinal in path.refs {
+            let Some(candidate) = groups.get(ordinal.saturating_sub(1)) else {
+                continue;
+            };
+            match candidate.header.kind() {
+                GroupKind::FunctionExpr => {
+                    collect_expr_runtime_parameters(
+                        file, groups, candidate, anchors, parameters, visiting,
+                    );
+                }
+                GroupKind::ParameterAnchor => {
+                    if let Some((name, value)) =
+                        parameter_anchor_runtime_value(file, groups, candidate, anchors)
+                    {
+                        parameters.insert(name, value);
+                    }
+                }
+                GroupKind::Point if is_parameter_control_group(candidate) => {
+                    let Some(name) = editable_non_graph_parameter_name_for_group(
+                        file, groups, candidate,
+                    )
+                    .or_else(|| decode_label_name(file, candidate))
+                    else {
+                        continue;
+                    };
+                    let Some(value) =
+                        try_decode_parameter_control_value_for_group(file, groups, candidate).ok()
+                    else {
+                        continue;
+                    };
+                    parameters.insert(name, value);
+                }
+                _ => {}
+            }
+        }
+    }
+    visiting.remove(&group.ordinal);
+}
+
+fn expression_runtime_context(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    expr_group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<(FunctionExpr, BTreeMap<String, f64>, Option<String>)> {
+    if expr_group.header.kind() != GroupKind::FunctionExpr {
+        return None;
+    }
+    let expr = try_decode_function_expr(file, groups, expr_group).ok()?;
+    let mut parameters = BTreeMap::new();
+    collect_expr_runtime_parameters(
+        file,
+        groups,
+        expr_group,
+        anchors,
+        &mut parameters,
+        &mut BTreeSet::new(),
+    );
+    let parameter_name = parameters.keys().next().cloned();
+    Some((expr, parameters, parameter_name))
+}
+
+fn expr_to_ast(expr: FunctionExpr) -> FunctionAst {
+    match expr {
+        FunctionExpr::Constant(value) => FunctionAst::Constant(value),
+        FunctionExpr::Identity => FunctionAst::Variable,
+        FunctionExpr::SinIdentity => FunctionAst::Unary {
+            op: crate::runtime::functions::UnaryFunction::Sin,
+            expr: Box::new(FunctionAst::Variable),
+        },
+        FunctionExpr::CosIdentityPlus(offset) => FunctionAst::Binary {
+            lhs: Box::new(FunctionAst::Unary {
+                op: crate::runtime::functions::UnaryFunction::Cos,
+                expr: Box::new(FunctionAst::Variable),
+            }),
+            op: BinaryOp::Add,
+            rhs: Box::new(FunctionAst::Constant(offset)),
+        },
+        FunctionExpr::TanIdentityMinus(offset) => FunctionAst::Binary {
+            lhs: Box::new(FunctionAst::Unary {
+                op: crate::runtime::functions::UnaryFunction::Tan,
+                expr: Box::new(FunctionAst::Variable),
+            }),
+            op: BinaryOp::Sub,
+            rhs: Box::new(FunctionAst::Constant(offset)),
+        },
+        FunctionExpr::Parsed(ast) => ast,
+    }
+}
+
+fn scale_function_expr(expr: FunctionExpr, factor: f64) -> FunctionExpr {
+    if (factor - 1.0).abs() <= 1e-9 {
+        return expr;
+    }
+    match expr {
+        FunctionExpr::Constant(value) => FunctionExpr::Constant(value * factor),
+        other => FunctionExpr::Parsed(FunctionAst::Binary {
+            lhs: Box::new(FunctionAst::Constant(factor)),
+            op: BinaryOp::Mul,
+            rhs: Box::new(expr_to_ast(other)),
+        }),
+    }
+}
+
+pub(crate) fn decode_expression_rotation_binding(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<ExpressionRotationBindingDef> {
+    if group.header.kind() != GroupKind::ExpressionRotation {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() < 3 {
+        return None;
+    }
+    let source_group_index = path.refs[0].checked_sub(1)?;
+    let center_group_index = path.refs[1].checked_sub(1)?;
+    let expr_group = groups.get(path.refs[2].checked_sub(1)?)?;
+    let (angle_expr, parameters, parameter_name) =
+        expression_runtime_context(file, groups, expr_group, anchors)?;
+    let angle_degrees = evaluate_expr_with_parameters(&angle_expr, 0.0, &parameters)?;
+    Some(ExpressionRotationBindingDef {
+        source_group_index,
+        center_group_index,
+        angle_expr,
+        angle_degrees,
+        parameter_name,
+    })
+}
+
+pub(crate) fn decode_expression_rotation_anchor_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    let binding = decode_expression_rotation_binding(file, groups, group, anchors)?;
+    let source = anchors.get(binding.source_group_index)?.clone()?;
+    let center = anchors.get(binding.center_group_index)?.clone()?;
+    Some(rotate_around(
+        &source,
+        &center,
+        binding.angle_degrees.to_radians(),
+    ))
+}
+
+pub(crate) fn decode_expression_offset_binding(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<ExpressionOffsetBindingDef> {
+    if group.header.kind() != GroupKind::ExpressionOffsetPoint {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() < 2 {
+        return None;
+    }
+    let expr_group = groups.get(path.refs[1].checked_sub(1)?)?;
+    let (expr, _parameters, parameter_name) =
+        expression_runtime_context(file, groups, expr_group, anchors)?;
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x07d3)
+        .map(|record| record.payload(&file.data))?;
+    if payload.len() < 20 {
+        return None;
+    }
+    let raw_distance = read_f64(payload, 4);
+    let world_distance = read_f64(payload, 12);
+    if !raw_distance.is_finite() || !world_distance.is_finite() {
+        return None;
+    }
+    let raw_scale = if world_distance.abs() > 1e-9 {
+        raw_distance / world_distance
+    } else {
+        PX_PER_CM
+    };
+    Some(ExpressionOffsetBindingDef {
+        source_group_index: path.refs[0].checked_sub(1)?,
+        scaled_expr: scale_function_expr(expr, raw_scale),
+        parameter_name,
+    })
+}
+
+pub(crate) fn decode_expression_offset_anchor_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    let binding = decode_expression_offset_binding(file, groups, group, anchors)?;
+    let source = anchors.get(binding.source_group_index)?.clone()?;
+    let offset = evaluate_expr_with_parameters(&binding.scaled_expr, 0.0, &BTreeMap::new())
+        .or_else(|| {
+            let expr_group = find_indexed_path(file, group)
+                .and_then(|path| groups.get(path.refs.get(1)?.checked_sub(1)?))?;
+            let (_, parameters, _) = expression_runtime_context(file, groups, expr_group, anchors)?;
+            evaluate_expr_with_parameters(&binding.scaled_expr, 0.0, &parameters)
+        })?;
+    Some(PointRecord {
+        x: source.x + offset,
+        y: source.y,
+    })
 }
 
 pub(crate) fn decode_graph_calibration_anchor_raw(

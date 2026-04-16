@@ -3,7 +3,8 @@ use anyhow::{Context, Result};
 use super::{
     CoordinatePoint, GspFile, ObjectGroup, ParameterControlledPoint, PointRecord,
     RawPointConstraint, TransformBindingKind, decode_coordinate_point,
-    decode_custom_transform_binding, decode_reflection_anchor_raw,
+    decode_custom_transform_binding, decode_expression_offset_binding,
+    decode_expression_rotation_binding, decode_reflection_anchor_raw,
     decode_translated_point_constraint, reflection_line_group_indices,
     regular_polygon_angle_expr_for_calc_group, translation_point_pair_group_indices,
     try_decode_angle_rotation_binding, try_decode_parameter_controlled_point,
@@ -286,17 +287,45 @@ fn build_scene_point_for_group(
         })(),
         crate::format::GroupKind::Rotation
         | crate::format::GroupKind::ParameterRotation
+        | crate::format::GroupKind::ExpressionRotation
         | crate::format::GroupKind::Scale => {
             let binding = match kind {
                 crate::format::GroupKind::ParameterRotation => {
                     try_decode_parameter_rotation_binding(file, groups, group).ok()
                 }
+                crate::format::GroupKind::ExpressionRotation => None,
                 crate::format::GroupKind::Rotation | crate::format::GroupKind::Scale => {
                     try_decode_transform_binding(file, group).ok()
                 }
                 _ => None,
             };
             (|| {
+                if kind == crate::format::GroupKind::ExpressionRotation {
+                    let binding =
+                        decode_expression_rotation_binding(file, groups, group, anchors)?;
+                    let position = anchors.get(index).cloned().flatten()?;
+                    let source_index =
+                        mapped_point_index(group_to_point_index, binding.source_group_index)?;
+                    let center_index =
+                        mapped_point_index(group_to_point_index, binding.center_group_index)?;
+                    return Some(scene_point(
+                        position,
+                        group_color(group),
+                        visible,
+                        false,
+                        ScenePointConstraint::Free,
+                        Some(ScenePointBinding::Rotate {
+                            source_index,
+                            center_index,
+                            angle_degrees: binding.angle_degrees,
+                            parameter_name: binding.parameter_name,
+                            angle_expr: Some(binding.angle_expr),
+                            angle_start_index: None,
+                            angle_vertex_index: None,
+                            angle_end_index: None,
+                        }),
+                    ));
+                }
                 let binding = binding?;
                 let position = anchors.get(index).cloned().flatten()?;
                 let source_index =
@@ -332,6 +361,24 @@ fn build_scene_point_for_group(
                 ))
             })()
         }
+        crate::format::GroupKind::ExpressionOffsetPoint => (|| {
+            let binding = decode_expression_offset_binding(file, groups, group, anchors)?;
+            let position = anchors.get(index).cloned().flatten()?;
+            let source_index = mapped_point_index(group_to_point_index, binding.source_group_index)?;
+            Some(scene_point(
+                position,
+                group_color(group),
+                visible,
+                false,
+                ScenePointConstraint::Free,
+                Some(ScenePointBinding::CoordinateSource {
+                    source_index,
+                    name: binding.parameter_name.unwrap_or_default(),
+                    expr: binding.scaled_expr,
+                    axis: crate::runtime::scene::CoordinateAxis::Horizontal,
+                }),
+            ))
+        })(),
         crate::format::GroupKind::AngleRotation => (|| {
             let binding = try_decode_angle_rotation_binding(file, group).ok()?;
             let position = anchors.get(index).cloned().flatten()?;
