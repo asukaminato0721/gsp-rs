@@ -30,8 +30,6 @@ pub(crate) enum IndexedPathDecodeError {
 pub(crate) enum LinkButtonDecodeError {
     #[error("action button payload at 0x{offset:x} is too short ({byte_len} bytes)")]
     PayloadTooShort { offset: usize, byte_len: usize },
-    #[error("unsupported action button kind {action_kind} at payload offset 0x{offset:x}")]
-    UnsupportedActionKind { offset: usize, action_kind: u32 },
     #[error("no URL found in action button payload at 0x{offset:x}")]
     MissingUrl { offset: usize },
 }
@@ -330,10 +328,7 @@ pub(crate) fn try_decode_link_button_url(
     }
     let action_kind = read_u32(payload, 12);
     if action_kind != 6 {
-        return Err(LinkButtonDecodeError::UnsupportedActionKind {
-            offset: record.offset,
-            action_kind,
-        });
+        return Ok(None);
     }
     let url = collect_strings(payload)
         .into_iter()
@@ -568,6 +563,9 @@ pub(crate) fn decode_label_anchor(
             crate::format::GroupKind::AngleMarker => {
                 decode_angle_marker_label_anchor(file, group, anchors)
             }
+            crate::format::GroupKind::Unknown(42)
+            | crate::format::GroupKind::Unknown(46)
+            | crate::format::GroupKind::Unknown(120) => decode_bbox_anchor_raw(file, group),
             _ => None,
         })
         .or_else(|| {

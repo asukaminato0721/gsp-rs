@@ -7,6 +7,7 @@ use crate::runtime::extract::shapes::collect_raw_object_anchors;
 use crate::runtime::extract::{
     decode_measurement_value, find_indexed_path, try_decode_parameter_control_value_for_group,
 };
+use crate::runtime::geometry::angle_degrees_from_points;
 use crate::runtime::functions::{evaluate_expr_with_parameters, function_expr_label};
 use crate::runtime::payload_consts::{
     EXPR_OP_ADD, EXPR_OP_DIV, EXPR_OP_MUL, EXPR_OP_POW, EXPR_OP_SUB, EXPR_PARAMETER_MASK,
@@ -33,6 +34,7 @@ fn is_function_like_group(group: &ObjectGroup) -> bool {
             | crate::format::GroupKind::PointLineDistanceValue
             | crate::format::GroupKind::CoordinateXValue
             | crate::format::GroupKind::CoordinateYValue
+            | crate::format::GroupKind::Unknown(41)
             | crate::format::GroupKind::Unknown(71)
     )
 }
@@ -117,13 +119,17 @@ fn try_decode_numeric_helper_group(
             | crate::format::GroupKind::PointLineDistanceValue
             | crate::format::GroupKind::CoordinateXValue
             | crate::format::GroupKind::CoordinateYValue
+            | crate::format::GroupKind::Unknown(41)
     ) {
         return None;
     }
     let path = find_indexed_path(file, group)?;
+    let max_ref_ordinal = path.refs.iter().copied().max()?;
+    let helper_groups = groups.get(..max_ref_ordinal)?;
     let point_map = collect_point_objects(file, groups);
-    let anchors = collect_raw_object_anchors(file, groups, &point_map, None);
-    let graph = detect_graph_context(file, groups, &anchors);
+    let helper_point_map = point_map.get(..max_ref_ordinal)?;
+    let anchors = collect_raw_object_anchors(file, helper_groups, helper_point_map, None);
+    let graph = detect_graph_context(file, helper_groups, &anchors);
     let value = match group.header.kind() {
         crate::format::GroupKind::DistanceValue => {
             let left = anchors.get(path.refs.first()?.checked_sub(1)?)?.clone()?;
@@ -135,9 +141,9 @@ fn try_decode_numeric_helper_group(
         }
         crate::format::GroupKind::PointLineDistanceValue => {
             let point = anchors.get(path.refs.first()?.checked_sub(1)?)?.clone()?;
-            let line_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+            let line_group = helper_groups.get(path.refs.get(1)?.checked_sub(1)?)?;
             let (line_start, line_end) =
-                resolve_line_like_points_raw(file, groups, &anchors, line_group)?;
+                resolve_line_like_points_raw(file, helper_groups, &anchors, line_group)?;
             normalize_graph_distance(
                 point_line_distance_raw(&point, &line_start, &line_end)?,
                 graph.as_ref().map(|(_, raw_per_unit)| *raw_per_unit),
@@ -151,6 +157,12 @@ fn try_decode_numeric_helper_group(
             } else {
                 (origin_raw.y - point.y) / raw_per_unit
             }
+        }
+        crate::format::GroupKind::Unknown(41) => {
+            let start = anchors.get(path.refs.first()?.checked_sub(1)?)?.clone()?;
+            let vertex = anchors.get(path.refs.get(1)?.checked_sub(1)?)?.clone()?;
+            let end = anchors.get(path.refs.get(2)?.checked_sub(1)?)?.clone()?;
+            angle_degrees_from_points(&start, &vertex, &end)?
         }
         _ => return None,
     };
@@ -1596,6 +1608,7 @@ mod parse_tests {
     };
     use crate::runtime::payload_consts::RECORD_FUNCTION_EXPR_PAYLOAD;
     use std::collections::BTreeMap;
+    use std::fs;
 
     fn payload_from_words(words: &[u16]) -> Vec<u8> {
         words
@@ -1730,6 +1743,34 @@ mod parse_tests {
                 ]),
             ),
             Some(0.0)
+        );
+    }
+
+    #[test]
+    fn decodes_angle_helper_payload_kind_41_from_sample() {
+        let Ok(data) =
+            fs::read("tests/Samples/个人专栏/王伟君作品/多边形外角和(王伟君).gsp")
+        else {
+            return;
+        };
+        let file = GspFile::parse(&data).expect("sample parses");
+        let groups = file.object_groups();
+        let angle_group = groups
+            .iter()
+            .find(|group| group.ordinal == 23)
+            .expect("expected angle helper group");
+
+        let expr = try_decode_function_expr(&file, &groups, angle_group)
+            .expect("expected kind 41 helper to decode as a function expression");
+
+        let value = match expr {
+            FunctionExpr::Constant(value) => value,
+            other => panic!("expected constant angle helper, got {other:?}"),
+        };
+
+        assert!(
+            (value - 75.31158261667414).abs() < 1e-6,
+            "expected sample angle helper to decode from payload, got {value}"
         );
     }
 

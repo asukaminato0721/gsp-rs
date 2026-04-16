@@ -117,6 +117,21 @@ fn fixture_images_without_validation(data: &[u8]) -> Vec<crate::runtime::scene::
     super::images::collect_scene_images(&file, &groups, &analysis.graph_ref).0
 }
 
+fn assert_supported_sample_log(path: &str) {
+    let Some(data) = fixture_bytes(path) else {
+        return;
+    };
+    let log = fixture_log(&data, path);
+    assert!(
+        log.contains("问题数量: 0"),
+        "expected {path} to stop reporting unsupported helper payloads, got:\n{log}"
+    );
+    assert!(
+        log.contains("未发现不支持的载荷。"),
+        "expected {path} to have a clean payload log"
+    );
+}
+
 #[test]
 fn preserves_function_iteration_coordinate_point_in_liyougui_fixture() {
     let Some(data) = fixture_bytes("tests/Samples/个人专栏/李有贵作品/函数图象迭代(liyougui).gsp")
@@ -265,6 +280,56 @@ fn renders_payload_log_for_supported_fixture_too() {
     assert!(log.contains("未发现不支持的载荷。"));
     assert!(log.contains("构造步骤"));
     assert!(log.contains("1. #1 = 自由点。"));
+}
+
+#[test]
+fn payload_log_accepts_helper_payload_families_in_sample_fixtures() {
+    for path in [
+        "tests/Samples/工具例说/14 统计工具-统计工具示例.gsp",
+        "tests/Samples/工具例说/19 显隐阴影-积分法-2作圆与正方形重叠面积函数图象.gsp",
+        "tests/Samples/工具例说/19 显隐阴影-积分法-3作多圆重叠面积函数图象.gsp",
+        "tests/Samples/未分类档/圆柱表面展开.gsp",
+    ] {
+        assert_supported_sample_log(path);
+    }
+}
+
+#[test]
+fn payload_log_ignores_non_link_button_payloads_when_rendering_labels() {
+    let Some(data) = fixture_bytes("tests/Samples/未分类档/100以内口算减法训练(秦国祥).gsp")
+    else {
+        return;
+    };
+    let log = fixture_log(
+        &data,
+        "tests/Samples/未分类档/100以内口算减法训练(秦国祥).gsp",
+    );
+
+    assert!(
+        !log.contains("链接解析失败（unsupported action button kind"),
+        "expected non-link action buttons to stop surfacing as malformed links"
+    );
+}
+
+#[test]
+fn builds_polygon_exterior_angle_sample_with_kind_41_helpers() {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/王伟君作品/多边形外角和(王伟君).gsp")
+    else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+
+    assert!(
+        scene.points.iter().filter(|point| point.draggable).count() >= 7,
+        "expected the exterior-angle sample to keep its seed vertices interactive"
+    );
+    assert!(
+        scene
+            .labels
+            .iter()
+            .any(|label| label.text.contains("∠1") || label.text.contains("360")),
+        "expected the sample labels driven by kind 41 helpers to remain exported"
+    );
 }
 
 #[test]

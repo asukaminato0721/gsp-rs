@@ -26,7 +26,9 @@ use crate::format::{
     GroupKind, GspFile, ObjectGroup, PointRecord, Record, collect_strings, decode_c_string,
     decode_indexed_path, decode_point_record, read_f64, read_u16, read_u32, record_name,
 };
-use crate::runtime::payload_consts::{RECORD_FUNCTION_PLOT_DESCRIPTOR, RECORD_POINT_F64_PAIR};
+use crate::runtime::payload_consts::{
+    RECORD_FUNCTION_EXPR_PAYLOAD, RECORD_FUNCTION_PLOT_DESCRIPTOR, RECORD_POINT_F64_PAIR,
+};
 use crate::util::{hex_bytes, truncate_text};
 
 use self::graph::{
@@ -2149,6 +2151,18 @@ fn validate_group_kind(group: &ObjectGroup) -> Result<()> {
             | GroupKind::Unknown(39)
             | GroupKind::Unknown(41)
             | GroupKind::Unknown(47)
+            | GroupKind::Unknown(42)
+            | GroupKind::Unknown(46)
+            | GroupKind::Unknown(59)
+            | GroupKind::Unknown(91)
+            | GroupKind::Unknown(93)
+            | GroupKind::Unknown(99)
+            | GroupKind::Unknown(100)
+            | GroupKind::Unknown(101)
+            | GroupKind::Unknown(108)
+            | GroupKind::Unknown(115)
+            | GroupKind::Unknown(116)
+            | GroupKind::Unknown(120)
             | GroupKind::Unknown(85)
             | GroupKind::Unknown(88)
             | GroupKind::LegacyCoordinateParameterHelper
@@ -2321,15 +2335,30 @@ fn validate_function_payload(
                 describe_group(group)
             )
         })?;
-    try_decode_function_expr(file, groups, definition_group)
-        .map_err(anyhow::Error::msg)
-        .with_context(|| {
-            format!(
-                "unsupported payload: invalid function expression in {} referenced by {}",
-                describe_group(definition_group),
-                describe_group(group)
-            )
-        })?;
+    let definition_kind = definition_group.header.kind();
+    let definition_is_expression_bearing = matches!(
+        definition_kind,
+        GroupKind::FunctionExpr
+            | GroupKind::DistanceValue
+            | GroupKind::PointLineDistanceValue
+            | GroupKind::CoordinateXValue
+            | GroupKind::CoordinateYValue
+            | GroupKind::Unknown(71)
+    ) || definition_group
+        .records
+        .iter()
+        .any(|record| record.record_type == RECORD_FUNCTION_EXPR_PAYLOAD);
+    if definition_is_expression_bearing {
+        try_decode_function_expr(file, groups, definition_group)
+            .map_err(anyhow::Error::msg)
+            .with_context(|| {
+                format!(
+                    "unsupported payload: invalid function expression in {} referenced by {}",
+                    describe_group(definition_group),
+                    describe_group(group)
+                )
+            })?;
+    }
 
     Ok(())
 }
@@ -2744,6 +2773,18 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::Unknown(39)
             | GroupKind::Unknown(41)
             | GroupKind::Unknown(47)
+            | GroupKind::Unknown(42)
+            | GroupKind::Unknown(46)
+            | GroupKind::Unknown(59)
+            | GroupKind::Unknown(91)
+            | GroupKind::Unknown(93)
+            | GroupKind::Unknown(99)
+            | GroupKind::Unknown(100)
+            | GroupKind::Unknown(101)
+            | GroupKind::Unknown(108)
+            | GroupKind::Unknown(115)
+            | GroupKind::Unknown(116)
+            | GroupKind::Unknown(120)
             | GroupKind::Unknown(85)
             | GroupKind::Unknown(88)
             | GroupKind::LegacyCoordinateParameterHelper

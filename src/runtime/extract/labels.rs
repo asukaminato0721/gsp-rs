@@ -71,6 +71,7 @@ fn supports_payload_label(kind: crate::format::GroupKind) -> bool {
             | crate::format::GroupKind::CoordinateReadoutLabel
             | crate::format::GroupKind::Unknown(47)
             | crate::format::GroupKind::Unknown(88)
+            | crate::format::GroupKind::Unknown(120)
             | crate::format::GroupKind::Segment
             | crate::format::GroupKind::Ray
             | crate::format::GroupKind::GraphObject40
@@ -460,6 +461,7 @@ pub(super) fn collect_labels(
                             | crate::format::GroupKind::Unknown(41)
                             | crate::format::GroupKind::Unknown(47)
                             | crate::format::GroupKind::Unknown(88)
+                            | crate::format::GroupKind::Unknown(120)
                     )
                     && !is_non_graph_parameter_group(file, groups, group))
                 .then(|| decode_label_name(file, group))
