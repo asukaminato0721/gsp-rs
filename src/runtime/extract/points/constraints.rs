@@ -897,6 +897,8 @@ pub(crate) fn decode_coordinate_point(
         crate::format::GroupKind::CoordinatePoint
             | crate::format::GroupKind::CoordinateExpressionPoint
             | crate::format::GroupKind::CoordinateExpressionPointAlt
+            | crate::format::GroupKind::GraphFunctionPoint
+            | crate::format::GroupKind::GraphValuePoint
             | crate::format::GroupKind::LegacyCoordinateParameterHelper
             | crate::format::GroupKind::Unknown(20)
     ) {
@@ -1131,6 +1133,83 @@ pub(crate) fn decode_coordinate_point(
                 expr,
             })
         }
+        crate::format::GroupKind::GraphFunctionPoint => {
+            if path.refs.len() < 3 {
+                return None;
+            }
+            let y_expr_group = groups.get(path.refs[0].checked_sub(1)?)?;
+            let x_group = groups.get(path.refs[1].checked_sub(1)?)?;
+            let axis_group = groups.get(path.refs[2].checked_sub(1)?)?;
+            let y_expr = try_decode_function_expr(file, groups, y_expr_group).ok()?;
+            let (x_parameter_name, x_value, x_expr) =
+                coordinate_or_expr_binding(file, groups, x_group, anchors)?;
+            let (y_parameter_name, y_value) =
+                resolve_function_expr_parameter_binding(file, groups, y_expr_group, anchors)?;
+            let axis_path = find_indexed_path(file, axis_group)?;
+            let origin_measurement_group = groups.get(axis_path.refs.first()?.checked_sub(1)?)?;
+            let origin_measurement_path = find_indexed_path(file, origin_measurement_group)?;
+            let source_group_index = origin_measurement_path.refs.first()?.checked_sub(1)?;
+            let source_position = anchors.get(source_group_index)?.clone()?;
+            let source_world = to_world(&source_position, graph);
+            let y = evaluate_expr_with_parameters(
+                &y_expr,
+                0.0,
+                &BTreeMap::from([(y_parameter_name.clone(), y_value)]),
+            )?;
+            let world = PointRecord {
+                x: source_world.x + x_value,
+                y: source_world.y + y,
+            };
+            let position = if let Some(transform) = graph {
+                to_raw_from_world(&world, transform)
+            } else {
+                world
+            };
+            Some(CoordinatePoint {
+                position,
+                source: CoordinatePointSource::SourcePoint2d {
+                    source_group_index,
+                    x_parameter_name,
+                    x_expr,
+                    y_parameter_name,
+                    y_expr: y_expr.clone(),
+                },
+                expr: y_expr,
+            })
+        }
+        crate::format::GroupKind::GraphValuePoint => {
+            if path.refs.len() < 2 {
+                return None;
+            }
+            let value_group = groups.get(path.refs[0].checked_sub(1)?)?;
+            let axis_group = groups.get(path.refs[1].checked_sub(1)?)?;
+            let (parameter_name, parameter_value, expr) =
+                coordinate_or_expr_binding(file, groups, value_group, anchors)?;
+            let axis_path = find_indexed_path(file, axis_group)?;
+            let origin_measurement_group = groups.get(axis_path.refs.first()?.checked_sub(1)?)?;
+            let origin_measurement_path = find_indexed_path(file, origin_measurement_group)?;
+            let source_group_index = origin_measurement_path.refs.first()?.checked_sub(1)?;
+            let source_position = anchors.get(source_group_index)?.clone()?;
+            let source_world = to_world(&source_position, graph);
+            let world = PointRecord {
+                x: source_world.x + parameter_value,
+                y: source_world.y,
+            };
+            let position = if let Some(transform) = graph {
+                to_raw_from_world(&world, transform)
+            } else {
+                world
+            };
+            Some(CoordinatePoint {
+                position,
+                source: CoordinatePointSource::SourcePoint {
+                    source_group_index,
+                    parameter_name,
+                    axis: crate::runtime::scene::CoordinateAxis::Horizontal,
+                },
+                expr,
+            })
+        }
         crate::format::GroupKind::Unknown(20) => {
             let source_group_index = path.refs[0].checked_sub(1)?;
             let source_position = anchors.get(source_group_index)?.clone()?;
@@ -1184,6 +1263,53 @@ pub(crate) fn decode_coordinate_point(
         }
         _ => None,
     }
+}
+
+fn resolve_function_expr_parameter_binding(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    expr_group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<(String, f64)> {
+    let path = find_indexed_path(file, expr_group)?;
+    let parameter_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+    if parameter_group.header.kind() == crate::format::GroupKind::FunctionExpr {
+        return resolve_function_expr_parameter_binding(file, groups, parameter_group, anchors);
+    }
+        if parameter_group.header.kind() == crate::format::GroupKind::ParameterAnchor {
+            let anchor_path = find_indexed_path(file, parameter_group)?;
+            let point_group = groups.get(anchor_path.refs.first()?.checked_sub(1)?)?;
+            let name = decode_label_name(file, parameter_group)
+                .or_else(|| decode_label_name(file, point_group))?;
+            let value = parameter_anchor_value(file, groups, parameter_group, anchors)?.1;
+            return Some((name, value));
+        }
+    let name = editable_non_graph_parameter_name_for_group(file, groups, parameter_group)
+        .or_else(|| decode_label_name(file, parameter_group))?;
+    let value = try_decode_parameter_control_value_for_group(file, groups, parameter_group).ok()?;
+    Some((name, value))
+}
+
+fn coordinate_or_expr_binding(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<(String, f64, FunctionExpr)> {
+    if let Some(binding) = coordinate_parameter_binding(file, groups, group, anchors) {
+        return Some(binding);
+    }
+    if group.header.kind() == crate::format::GroupKind::FunctionExpr {
+        let expr = try_decode_function_expr(file, groups, group).ok()?;
+        let (name, value) = resolve_function_expr_parameter_binding(file, groups, group, anchors)?;
+        let evaluated = evaluate_expr_with_parameters(
+            &expr,
+            0.0,
+            &BTreeMap::from([(name.clone(), value)]),
+        )?;
+        return Some((name, evaluated, expr));
+    }
+    None
 }
 
 fn coordinate_parameter_binding(

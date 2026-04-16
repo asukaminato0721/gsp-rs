@@ -9,6 +9,7 @@ use super::{
 };
 use crate::runtime::extract::decode::is_parameter_control_group;
 use crate::runtime::extract::points::{
+    decode_coordinate_point,
     decode_coordinate_expression_anchor_raw, decode_custom_transform_anchor_raw,
     decode_expression_offset_anchor_raw, decode_expression_rotation_anchor_raw,
     decode_graph_calibration_anchor_raw, decode_intersection_anchor_raw,
@@ -33,6 +34,13 @@ pub(crate) fn collect_raw_object_anchors(
             decode_coordinate_expression_anchor_raw(file, groups, group, &anchors, graph)
         {
             Some(anchor)
+        } else if matches!(
+            group.header.kind(),
+            crate::format::GroupKind::GraphFunctionPoint
+                | crate::format::GroupKind::GraphValuePoint
+        ) {
+            decode_coordinate_point(file, groups, group, &anchors, &graph.cloned())
+                .map(|point| point.position)
         } else if let Some(anchor) =
             decode_point_constraint_anchor(file, groups, group, &anchors, graph)
         {

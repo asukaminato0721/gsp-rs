@@ -387,6 +387,24 @@ fn resolves_unknown_88_iteration_point_alias_in_statistics_sample() {
 }
 
 #[test]
+fn builds_square_area_invariance_sample_with_graph_helper_stack() {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/向忠作品/正方形总面积不变.gsp")
+    else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+
+    assert!(
+        !scene.points.is_empty(),
+        "expected the graph-helper sample to export points"
+    );
+    assert!(
+        !scene.point_iterations.is_empty() || !scene.polygon_iterations.is_empty(),
+        "expected the graph-helper sample to export iteration-driven geometry"
+    );
+}
+
+#[test]
 fn snapshots_payload_log_for_point_fixture() {
     let log = fixture_log(
         include_bytes!("../../../tests/fixtures/gsp/static/point.gsp"),

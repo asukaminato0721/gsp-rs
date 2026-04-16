@@ -1956,6 +1956,7 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::MeasuredValue => "度量值",
         GroupKind::GraphObject40 => "图像对象",
         GroupKind::AngleValue => "角度值",
+        GroupKind::GraphCoordinatePoint => "图像坐标点",
         GroupKind::CoordinateReadoutLabel => "坐标读数标签",
         GroupKind::RatioValue => "比值对象",
         GroupKind::FunctionExpr => "函数表达式",
@@ -1972,6 +1973,7 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::CoordinateYValue => "图像 y 坐标值",
         GroupKind::OffsetAnchor => "偏移锚点",
         GroupKind::CoordinatePoint => "坐标点",
+        GroupKind::GraphFunctionPoint => "图像函数点",
         GroupKind::FunctionPlot => "函数图像",
         GroupKind::ButtonLabel => "按钮标签",
         GroupKind::DerivedSegment75 => "派生线段",
@@ -1995,8 +1997,11 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::CustomTransformTrace => "自定义变换轨迹",
         GroupKind::LegacyCoordinateParameterHelper => "旧版坐标参数辅助对象",
         GroupKind::LegacyCoordinatePointHelper => "旧版坐标点辅助对象",
+        GroupKind::GraphValuePoint => "图像数值点",
         GroupKind::AngleMarker => "角标记",
         GroupKind::PathPoint => "路径点",
+        GroupKind::GraphYValue => "图像 y 值",
+        GroupKind::GraphXValue => "图像 x 值",
         GroupKind::SegmentMarker => "线段记号",
         GroupKind::Unknown(_) => "未知对象",
     }
@@ -2022,6 +2027,8 @@ fn group_kind_noun_in_chinese(kind: GroupKind) -> &'static str {
         | GroupKind::ExpressionRotation
         | GroupKind::OffsetAnchor
         | GroupKind::CoordinatePoint
+        | GroupKind::GraphFunctionPoint
+        | GroupKind::GraphValuePoint
         | GroupKind::LegacyCoordinateParameterHelper
         | GroupKind::LegacyCoordinatePointHelper
         | GroupKind::ParameterAnchor
@@ -2037,7 +2044,9 @@ fn group_kind_noun_in_chinese(kind: GroupKind) -> &'static str {
         | GroupKind::GraphDistanceValue
         | GroupKind::MeasuredValue
         | GroupKind::CoordinateXValue
-        | GroupKind::CoordinateYValue => "数值对象",
+        | GroupKind::CoordinateYValue
+        | GroupKind::GraphYValue
+        | GroupKind::GraphXValue => "数值对象",
         GroupKind::Segment | GroupKind::DerivedSegment75 | GroupKind::GraphMeasurementSegment => {
             "线段"
         }
@@ -2157,14 +2166,18 @@ fn validate_group_kind(group: &ObjectGroup) -> Result<()> {
             | GroupKind::PointLineDistanceValue
             | GroupKind::CoordinateXValue
             | GroupKind::CoordinateYValue
+            | GroupKind::GraphYValue
+            | GroupKind::GraphXValue
             | GroupKind::Unknown(71)
             | GroupKind::Unknown(122)
             | GroupKind::Unknown(39)
             | GroupKind::AngleValue
+            | GroupKind::GraphCoordinatePoint
             | GroupKind::RatioValue
             | GroupKind::GraphDistanceValue
             | GroupKind::Unknown(42)
             | GroupKind::Unknown(46)
+            | GroupKind::GraphFunctionPoint
             | GroupKind::GraphMeasurementSegment
             | GroupKind::Unknown(91)
             | GroupKind::Unknown(93)
@@ -2751,13 +2764,21 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::Kind51
             | GroupKind::GraphCalibrationX
             | GroupKind::GraphCalibrationY
+            | GroupKind::GraphCalibrationYAlt
             | GroupKind::MeasurementLine
             | GroupKind::AxisLine
             | GroupKind::ActionButton
             | GroupKind::Line
             | GroupKind::Ray
+            | GroupKind::CoordinateXValue
+            | GroupKind::CoordinateYValue
+            | GroupKind::GraphYValue
+            | GroupKind::GraphXValue
             | GroupKind::OffsetAnchor
             | GroupKind::CoordinatePoint
+            | GroupKind::GraphCoordinatePoint
+            | GroupKind::GraphFunctionPoint
+            | GroupKind::GraphValuePoint
             | GroupKind::FunctionPlot
             | GroupKind::ButtonLabel
             | GroupKind::DerivedSegment75

@@ -37,6 +37,8 @@ fn is_function_like_group(group: &ObjectGroup) -> bool {
             | crate::format::GroupKind::PointLineDistanceValue
             | crate::format::GroupKind::CoordinateXValue
             | crate::format::GroupKind::CoordinateYValue
+            | crate::format::GroupKind::GraphYValue
+            | crate::format::GroupKind::GraphXValue
             | crate::format::GroupKind::AngleValue
             | crate::format::GroupKind::RatioValue
             | crate::format::GroupKind::GraphDistanceValue
@@ -124,6 +126,8 @@ fn try_decode_numeric_helper_group(
             | crate::format::GroupKind::PointLineDistanceValue
             | crate::format::GroupKind::CoordinateXValue
             | crate::format::GroupKind::CoordinateYValue
+            | crate::format::GroupKind::GraphYValue
+            | crate::format::GroupKind::GraphXValue
             | crate::format::GroupKind::AngleValue
             | crate::format::GroupKind::RatioValue
             | crate::format::GroupKind::GraphDistanceValue
@@ -176,6 +180,22 @@ fn try_decode_numeric_helper_group(
                 (point.x - origin_raw.x) / raw_per_unit
             } else {
                 (origin_raw.y - point.y) / raw_per_unit
+            }
+        }
+        crate::format::GroupKind::GraphYValue | crate::format::GroupKind::GraphXValue => {
+            let point = anchors.get(path.refs.first()?.checked_sub(1)?)?.clone()?;
+            let axis_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+            let axis_path = find_indexed_path(file, axis_group)?;
+            let origin_group = groups.get(axis_path.refs.first()?.checked_sub(1)?)?;
+            let origin_path = find_indexed_path(file, origin_group)?;
+            let source_group_index = origin_path.refs.first()?.checked_sub(1)?;
+            let source_position = anchors.get(source_group_index)?.clone()?;
+            let source_world = crate::runtime::geometry::to_world(&source_position, &graph_transform);
+            let point_world = crate::runtime::geometry::to_world(&point, &graph_transform);
+            if group.header.kind() == crate::format::GroupKind::GraphXValue {
+                point_world.x - source_world.x
+            } else {
+                point_world.y - source_world.y
             }
         }
         crate::format::GroupKind::AngleValue => {

@@ -195,6 +195,8 @@ fn build_scene_point_for_group(
         crate::format::GroupKind::CoordinatePoint
         | crate::format::GroupKind::CoordinateExpressionPoint
         | crate::format::GroupKind::CoordinateExpressionPointAlt
+        | crate::format::GroupKind::GraphFunctionPoint
+        | crate::format::GroupKind::GraphValuePoint
         | crate::format::GroupKind::LegacyCoordinateParameterHelper
         | crate::format::GroupKind::Unknown(20) => (|| {
             let point = decode_coordinate_point(file, groups, group, anchors, graph)?;

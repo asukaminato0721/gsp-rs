@@ -41,6 +41,8 @@ macro_rules! define_group_kinds {
                 matches!(
                     self,
                     Self::CoordinatePoint
+                        | Self::GraphFunctionPoint
+                        | Self::GraphValuePoint
                         | Self::CoordinateExpressionPoint
                         | Self::CoordinateExpressionPointAlt
                         | Self::LegacyCoordinateParameterHelper
@@ -128,6 +130,7 @@ define_group_kinds! {
     MeasuredValue = 36,
     GraphObject40 = 40,
     AngleValue = 41,
+    GraphCoordinatePoint = 46,
     CoordinateReadoutLabel = 49,
     RatioValue = 47,
     FunctionExpr = 48,
@@ -145,6 +148,7 @@ define_group_kinds! {
     CoordinateYValue = 66,
     OffsetAnchor = 67,
     CoordinatePoint = 69,
+    GraphFunctionPoint = 70,
     FunctionPlot = 72,
     ButtonLabel = 73,
     DerivedSegment75 = 75,
@@ -168,8 +172,11 @@ define_group_kinds! {
     CustomTransformTrace = 102,
     LegacyCoordinateParameterHelper = 109,
     LegacyCoordinatePointHelper = 110,
+    GraphValuePoint = 112,
     AngleMarker = 113,
     PathPoint = 123,
+    GraphYValue = 124,
+    GraphXValue = 125,
     SegmentMarker = 121,
 }
 
