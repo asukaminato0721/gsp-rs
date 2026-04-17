@@ -193,6 +193,16 @@ pub(crate) struct CoordinatePoint {
     pub(crate) expr: FunctionExpr,
 }
 
+pub(crate) struct LegacyCoordinateConstructPoint {
+    pub(crate) position: PointRecord,
+    pub(crate) first_source_group_index: usize,
+    pub(crate) second_source_group_index: usize,
+    pub(crate) first_axis_start_group_index: usize,
+    pub(crate) first_axis_end_group_index: usize,
+    pub(crate) second_axis_start_group_index: usize,
+    pub(crate) second_axis_end_group_index: usize,
+}
+
 const ARC_BOUNDARY_SUBDIVISIONS: usize = 48;
 
 fn wrap_unit_interval(value: f64) -> f64 {
@@ -900,6 +910,7 @@ pub(crate) fn decode_coordinate_point(
         crate::format::GroupKind::CoordinatePoint
             | crate::format::GroupKind::CoordinateExpressionPoint
             | crate::format::GroupKind::CoordinateExpressionPointAlt
+            | crate::format::GroupKind::FixedCoordinatePoint
             | crate::format::GroupKind::GraphFunctionPoint
             | crate::format::GroupKind::GraphValuePoint
             | crate::format::GroupKind::LegacyCoordinateParameterHelper
@@ -1214,6 +1225,46 @@ pub(crate) fn decode_coordinate_point(
                 expr,
             })
         }
+        crate::format::GroupKind::FixedCoordinatePoint => {
+            let axis_group = groups.get(path.refs[0].checked_sub(1)?)?;
+            let axis_path = find_indexed_path(file, axis_group)?;
+            let source_group_index = axis_path.refs.first()?.checked_sub(1)?;
+            let source_position = anchors.get(source_group_index)?.clone()?;
+            let source_world = to_world(&source_position, graph);
+            let payload = group
+                .records
+                .iter()
+                .find(|record| record.record_type == RECORD_BINDING_PAYLOAD)
+                .map(|record| record.payload(&file.data))?;
+            if payload.len() < 20 {
+                return None;
+            }
+            let radius = read_f64(payload, 4);
+            let angle_radians = read_f64(payload, 12);
+            if !radius.is_finite() || !angle_radians.is_finite() {
+                return None;
+            }
+            let world = PointRecord {
+                x: source_world.x + radius * angle_radians.cos(),
+                y: source_world.y + radius * angle_radians.sin(),
+            };
+            let position = if let Some(transform) = graph {
+                to_raw_from_world(&world, transform)
+            } else {
+                world
+            };
+            Some(CoordinatePoint {
+                position,
+                source: CoordinatePointSource::SourcePoint2d {
+                    source_group_index,
+                    x_parameter_name: "x".to_string(),
+                    x_expr: FunctionExpr::Constant(radius * angle_radians.cos()),
+                    y_parameter_name: "y".to_string(),
+                    y_expr: FunctionExpr::Constant(radius * angle_radians.sin()),
+                },
+                expr: FunctionExpr::Constant(radius),
+            })
+        }
         crate::format::GroupKind::Unknown(20) => {
             let source_group_index = path.refs[0].checked_sub(1)?;
             let source_position = anchors.get(source_group_index)?.clone()?;
@@ -1267,6 +1318,107 @@ pub(crate) fn decode_coordinate_point(
         }
         _ => None,
     }
+}
+
+fn axis_line_group_indices(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    axis_group_index: usize,
+    through_group_index: usize,
+) -> Option<(usize, usize)> {
+    let axis_group = groups.get(axis_group_index)?;
+    if let Some(path) = find_indexed_path(file, axis_group)
+        && path.refs.len() >= 2
+    {
+        return Some((path.refs[0].checked_sub(1)?, path.refs[1].checked_sub(1)?));
+    }
+    let through_anchor = anchors.get(through_group_index)?.clone()?;
+    let axis_anchor = anchors.get(axis_group_index)?.clone()?;
+    (((axis_anchor.x - through_anchor.x).powi(2) + (axis_anchor.y - through_anchor.y).powi(2)).sqrt()
+        > 1e-9)
+        .then_some((through_group_index, axis_group_index))
+}
+
+fn line_intersection_from_points(
+    first_point: PointRecord,
+    first_axis_start: PointRecord,
+    first_axis_end: PointRecord,
+    second_point: PointRecord,
+    second_axis_start: PointRecord,
+    second_axis_end: PointRecord,
+) -> Option<PointRecord> {
+    let first_dx = first_axis_end.x - first_axis_start.x;
+    let first_dy = first_axis_end.y - first_axis_start.y;
+    let second_dx = second_axis_end.x - second_axis_start.x;
+    let second_dy = second_axis_end.y - second_axis_start.y;
+    let det = first_dx * second_dy - first_dy * second_dx;
+    if det.abs() <= 1e-9 {
+        return None;
+    }
+    let offset_x = second_point.x - first_point.x;
+    let offset_y = second_point.y - first_point.y;
+    let t = (offset_x * second_dy - offset_y * second_dx) / det;
+    Some(PointRecord {
+        x: first_point.x + first_dx * t,
+        y: first_point.y + first_dy * t,
+    })
+}
+
+pub(crate) fn decode_legacy_coordinate_construct_point(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<LegacyCoordinateConstructPoint> {
+    if group.header.kind() != GroupKind::LegacyCoordinateConstructPoint {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() < 4 {
+        return None;
+    }
+    let first_source_group_index = path.refs[0].checked_sub(1)?;
+    let second_source_group_index = path.refs[1].checked_sub(1)?;
+    let first_axis_group_index = path.refs[2].checked_sub(1)?;
+    let second_axis_group_index = path.refs[3].checked_sub(1)?;
+    let first_point = anchors.get(first_source_group_index)?.clone()?;
+    let second_point = anchors.get(second_source_group_index)?.clone()?;
+    let (first_axis_start_group_index, first_axis_end_group_index) = axis_line_group_indices(
+        file,
+        groups,
+        anchors,
+        first_axis_group_index,
+        first_source_group_index,
+    )?;
+    let (second_axis_start_group_index, second_axis_end_group_index) = axis_line_group_indices(
+        file,
+        groups,
+        anchors,
+        second_axis_group_index,
+        second_source_group_index,
+    )?;
+    let first_axis_start = anchors.get(first_axis_start_group_index)?.clone()?;
+    let first_axis_end = anchors.get(first_axis_end_group_index)?.clone()?;
+    let second_axis_start = anchors.get(second_axis_start_group_index)?.clone()?;
+    let second_axis_end = anchors.get(second_axis_end_group_index)?.clone()?;
+    let position = line_intersection_from_points(
+        first_point,
+        first_axis_start,
+        first_axis_end,
+        second_point,
+        second_axis_start,
+        second_axis_end,
+    )?;
+    Some(LegacyCoordinateConstructPoint {
+        position,
+        first_source_group_index,
+        second_source_group_index,
+        first_axis_start_group_index,
+        first_axis_end_group_index,
+        second_axis_start_group_index,
+        second_axis_end_group_index,
+    })
 }
 
 fn resolve_function_expr_parameter_binding(
@@ -1840,6 +1992,12 @@ fn try_decode_circle_point_constraint(
     host_group: &ObjectGroup,
     payload: &[u8],
 ) -> Result<RawPointConstraint, PointConstraintDecodeError> {
+    if payload.len() < 20 {
+        return Err(PointConstraintDecodeError::PayloadTooShort {
+            byte_len: payload.len(),
+            expected: 20,
+        });
+    }
     let unit_x = read_f64(payload, 4);
     let unit_y = read_f64(payload, 12);
     if !unit_x.is_finite() || !unit_y.is_finite() {

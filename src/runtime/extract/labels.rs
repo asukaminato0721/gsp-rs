@@ -52,6 +52,8 @@ fn supports_payload_label(kind: crate::format::GroupKind) -> bool {
     matches!(
         kind,
         crate::format::GroupKind::Point
+            | crate::format::GroupKind::LegacyCoordinateConstructPoint
+            | crate::format::GroupKind::FixedCoordinatePoint
             | crate::format::GroupKind::CustomTransformPoint
             | crate::format::GroupKind::Translation
             | crate::format::GroupKind::Reflection
@@ -67,7 +69,10 @@ fn supports_payload_label(kind: crate::format::GroupKind) -> bool {
             | crate::format::GroupKind::CircleCircleIntersectionPoint1
             | crate::format::GroupKind::CircleCircleIntersectionPoint2
             | crate::format::GroupKind::BoundaryLengthValue
+            | crate::format::GroupKind::ArcAngleValue
+            | crate::format::GroupKind::BoundaryCurveLengthValue
             | crate::format::GroupKind::AngleValue
+            | crate::format::GroupKind::GraphSlopeValue
             | crate::format::GroupKind::CoordinateReadoutLabel
             | crate::format::GroupKind::RatioValue
             | crate::format::GroupKind::IterationPointAlias
@@ -77,8 +82,10 @@ fn supports_payload_label(kind: crate::format::GroupKind) -> bool {
             | crate::format::GroupKind::GraphObject40
             | crate::format::GroupKind::Kind51
             | crate::format::GroupKind::AngleMarker
+            | crate::format::GroupKind::LegacyAngleMarker
             | crate::format::GroupKind::ActionButton
             | crate::format::GroupKind::ButtonLabel
+            | crate::format::GroupKind::RichTextLabel
             | crate::format::GroupKind::LabelIterationSeed
     )
 }
@@ -440,6 +447,8 @@ pub(super) fn collect_labels(
                     && matches!(
                         kind,
                         crate::format::GroupKind::Point
+                            | crate::format::GroupKind::LegacyCoordinateConstructPoint
+                            | crate::format::GroupKind::FixedCoordinatePoint
                             | crate::format::GroupKind::CustomTransformPoint
                             | crate::format::GroupKind::Translation
                             | crate::format::GroupKind::Reflection
@@ -458,10 +467,14 @@ pub(super) fn collect_labels(
                             | crate::format::GroupKind::CircleCircleIntersectionPoint1
                             | crate::format::GroupKind::CircleCircleIntersectionPoint2
                             | crate::format::GroupKind::BoundaryLengthValue
+                            | crate::format::GroupKind::ArcAngleValue
+                            | crate::format::GroupKind::BoundaryCurveLengthValue
                             | crate::format::GroupKind::AngleValue
+                            | crate::format::GroupKind::GraphSlopeValue
                             | crate::format::GroupKind::RatioValue
                             | crate::format::GroupKind::IterationPointAlias
                             | crate::format::GroupKind::NamedAlias
+                            | crate::format::GroupKind::RichTextLabel
                     )
                     && !is_non_graph_parameter_group(file, groups, group))
                 .then(|| decode_label_name(file, group))

@@ -26,14 +26,22 @@ macro_rules! define_group_kinds {
             pub fn is_line_like(self) -> bool {
                 matches!(
                     self,
-                    Self::Segment | Self::Line | Self::Ray | Self::GraphMeasurementSegment
+                    Self::Segment
+                        | Self::Line
+                        | Self::Ray
+                        | Self::GraphMeasurementSegment
                 )
             }
 
             pub fn is_rendered_line_group(self) -> bool {
                 matches!(
                     self,
-                    Self::Segment | Self::AngleMarker | Self::LineKind5 | Self::LineKind6 | Self::LineKind7
+                    Self::Segment
+                        | Self::AngleMarker
+                        | Self::LegacyAngleMarker
+                        | Self::LineKind5
+                        | Self::LineKind6
+                        | Self::LineKind7
                 )
             }
 
@@ -45,6 +53,8 @@ macro_rules! define_group_kinds {
                         | Self::GraphValuePoint
                         | Self::CoordinateExpressionPoint
                         | Self::CoordinateExpressionPointAlt
+                        | Self::FixedCoordinatePoint
+                        | Self::LegacyCoordinateConstructPoint
                         | Self::LegacyCoordinateParameterHelper
                         | Self::Unknown(20)
                         | Self::CoordinateTrace
@@ -113,14 +123,17 @@ define_group_kinds! {
     CartesianOffsetPoint = 17,
     CoordinateExpressionPoint = 18,
     CoordinateExpressionPointAlt = 19,
+    LegacyVisibilityHelper = 22,
     PolarOffsetPoint = 21,
     ExpressionOffsetPoint = 23,
     DerivedSegment24 = 24,
+    LegacyCircularConstraintHelper = 25,
     CustomTransformPoint = 26,
     Rotation = 27,
     AngleRotation = 28,
     ParameterRotation = 29,
     Scale = 30,
+    LegacyCoordinateConstructPoint = 31,
     RatioScale = 32,
     ExpressionRotation = 33,
     DistanceValue = 37,
@@ -132,8 +145,11 @@ define_group_kinds! {
     GraphObject40 = 40,
     AngleValue = 41,
     PolygonAreaValue = 42,
+    ArcAngleValue = 43,
+    BoundaryCurveLengthValue = 44,
     RadiusValue = 46,
     CoordinateReadoutLabel = 49,
+    RichTextLabel = 50,
     RatioValue = 47,
     FunctionExpr = 48,
     Kind51 = 51,
@@ -143,12 +159,14 @@ define_group_kinds! {
     GraphMeasurementSegment = 59,
     MeasurementLine = 58,
     AxisLine = 61,
+    GraphViewHelper = 56,
     ActionButton = 62,
     Line = 63,
     Ray = 64,
     CoordinateXValue = 65,
     CoordinateYValue = 66,
     OffsetAnchor = 67,
+    FixedCoordinatePoint = 68,
     CoordinatePoint = 69,
     GraphFunctionPoint = 70,
     FunctionDefinition = 71,
@@ -164,6 +182,7 @@ define_group_kinds! {
     SectorBoundary = 82,
     CircularSegmentBoundary = 83,
     GraphDistanceValue = 86,
+    GraphSlopeValue = 87,
     RectImage = 85,
     RegularPolygonIteration = 89,
     IterationPointAlias = 88,
@@ -173,6 +192,7 @@ define_group_kinds! {
     BoundaryIntersectionPoint = 93,
     ParameterAnchor = 94,
     ParameterControlledPoint = 95,
+    SmoothCurvePlot = 96,
     CoordinateTrace = 97,
     CoordinateTraceIntersectionPoint = 98,
     PointAlias = 99,
@@ -185,6 +205,8 @@ define_group_kinds! {
     GraphValuePoint = 112,
     PolarAngleValue = 115,
     VertexAngleValue = 116,
+    LegacyAngleMarker = 114,
+    LegacyAngleRotation = 119,
     NamedAlias = 120,
     AngleMarker = 113,
     PathPoint = 123,

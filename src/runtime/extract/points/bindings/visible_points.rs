@@ -1,10 +1,11 @@
 use anyhow::{Context, Result};
 
 use super::{
-    CoordinatePoint, GspFile, ObjectGroup, ParameterControlledPoint, PointRecord,
-    RawPointConstraint, TransformBindingKind, decode_coordinate_point,
-    decode_custom_transform_binding, decode_expression_offset_binding,
-    decode_expression_rotation_binding, decode_iteration_binding_point_alias_raw,
+    CoordinatePoint, GspFile, LegacyCoordinateConstructPoint, ObjectGroup,
+    ParameterControlledPoint, PointRecord, RawPointConstraint, TransformBindingKind,
+    decode_coordinate_point, decode_custom_transform_binding,
+    decode_expression_offset_binding, decode_expression_rotation_binding,
+    decode_iteration_binding_point_alias_raw, decode_legacy_coordinate_construct_point,
     decode_reflection_anchor_raw, decode_translated_point_constraint,
     reflection_line_group_indices, regular_polygon_angle_expr_for_calc_group,
     translation_point_pair_group_indices, try_decode_angle_rotation_binding,
@@ -194,12 +195,22 @@ fn build_scene_point_for_group(
         crate::format::GroupKind::CoordinatePoint
         | crate::format::GroupKind::CoordinateExpressionPoint
         | crate::format::GroupKind::CoordinateExpressionPointAlt
+        | crate::format::GroupKind::FixedCoordinatePoint
         | crate::format::GroupKind::GraphFunctionPoint
         | crate::format::GroupKind::GraphValuePoint
         | crate::format::GroupKind::LegacyCoordinateParameterHelper
         | crate::format::GroupKind::Unknown(20) => (|| {
             let point = decode_coordinate_point(file, groups, group, anchors, graph)?;
             scene_point_from_coordinate(point, group_to_point_index, group_color(group), visible)
+        })(),
+        crate::format::GroupKind::LegacyCoordinateConstructPoint => (|| {
+            let point = decode_legacy_coordinate_construct_point(file, groups, group, anchors)?;
+            scene_point_from_legacy_coordinate_construct(
+                point,
+                group_to_point_index,
+                group_color(group),
+                visible,
+            )
         })(),
         crate::format::GroupKind::CustomTransformPoint => (|| {
             let position = anchors.get(index).cloned().flatten()?;
@@ -440,6 +451,52 @@ fn build_scene_point_for_group(
             let angle_start = anchors.get(binding.angle_start_group_index)?.clone()?;
             let angle_vertex = anchors.get(binding.angle_vertex_group_index)?.clone()?;
             let angle_end = anchors.get(binding.angle_end_group_index)?.clone()?;
+            let angle_degrees = angle_degrees_from_points(&angle_start, &angle_vertex, &angle_end)?;
+            Some(scene_point(
+                position,
+                group_color(group),
+                visible,
+                false,
+                ScenePointConstraint::Free,
+                Some(ScenePointBinding::Rotate {
+                    source_index,
+                    center_index,
+                    angle_degrees,
+                    parameter_name: None,
+                    angle_expr: None,
+                    angle_start_index: Some(angle_start_index),
+                    angle_vertex_index: Some(angle_vertex_index),
+                    angle_end_index: Some(angle_end_index),
+                }),
+            ))
+        })(),
+        crate::format::GroupKind::LegacyAngleRotation => (|| {
+            let path = find_indexed_path(file, group)?;
+            if path.refs.len() < 3 {
+                return None;
+            }
+            let position = anchors.get(index).cloned().flatten()?;
+            let source_group_index = path.refs[0].checked_sub(1)?;
+            let center_group_index = path.refs[1].checked_sub(1)?;
+            let angle_group = groups.get(path.refs[2].checked_sub(1)?)?;
+            let angle_path = find_indexed_path(file, angle_group)?;
+            if angle_path.refs.len() < 3 {
+                return None;
+            }
+            let source_index = mapped_point_index(group_to_point_index, source_group_index)?;
+            let center_index = mapped_point_index(group_to_point_index, center_group_index)?;
+            let angle_start_group_index = angle_path.refs[0].checked_sub(1)?;
+            let angle_vertex_group_index = angle_path.refs[1].checked_sub(1)?;
+            let angle_end_group_index = angle_path.refs[2].checked_sub(1)?;
+            let angle_start_index =
+                mapped_point_index(group_to_point_index, angle_start_group_index)?;
+            let angle_vertex_index =
+                mapped_point_index(group_to_point_index, angle_vertex_group_index)?;
+            let angle_end_index =
+                mapped_point_index(group_to_point_index, angle_end_group_index)?;
+            let angle_start = anchors.get(angle_start_group_index)?.clone()?;
+            let angle_vertex = anchors.get(angle_vertex_group_index)?.clone()?;
+            let angle_end = anchors.get(angle_end_group_index)?.clone()?;
             let angle_degrees = angle_degrees_from_points(&angle_start, &angle_vertex, &angle_end)?;
             Some(scene_point(
                 position,
@@ -1331,6 +1388,45 @@ fn scene_point_from_coordinate(
         true,
         ScenePointConstraint::Free,
         Some(binding),
+    ))
+}
+
+fn scene_point_from_legacy_coordinate_construct(
+    point: LegacyCoordinateConstructPoint,
+    group_to_point_index: &[Option<usize>],
+    color: [u8; 4],
+    visible: bool,
+) -> Option<ScenePoint> {
+    let first_source_index =
+        mapped_point_index(group_to_point_index, point.first_source_group_index)?;
+    let second_source_index =
+        mapped_point_index(group_to_point_index, point.second_source_group_index)?;
+    let first_axis_start_index =
+        mapped_point_index(group_to_point_index, point.first_axis_start_group_index)?;
+    let first_axis_end_index =
+        mapped_point_index(group_to_point_index, point.first_axis_end_group_index)?;
+    let second_axis_start_index =
+        mapped_point_index(group_to_point_index, point.second_axis_start_group_index)?;
+    let second_axis_end_index =
+        mapped_point_index(group_to_point_index, point.second_axis_end_group_index)?;
+    Some(scene_point(
+        point.position,
+        color,
+        visible,
+        true,
+        ScenePointConstraint::LineIntersection {
+            left: LineConstraint::ParallelLine {
+                through_index: first_source_index,
+                line_start_index: first_axis_start_index,
+                line_end_index: first_axis_end_index,
+            },
+            right: LineConstraint::ParallelLine {
+                through_index: second_source_index,
+                line_start_index: second_axis_start_index,
+                line_end_index: second_axis_end_index,
+            },
+        },
+        None,
     ))
 }
 

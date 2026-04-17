@@ -7,13 +7,14 @@ use super::{
     decode_regular_polygon_vertex_anchor_raw, decode_transform_anchor_raw,
     decode_translated_point_anchor_raw, find_indexed_path, try_decode_payload_anchor_point,
 };
+use crate::runtime::extract::points::decode_legacy_angle_rotation_anchor_raw;
 use crate::runtime::extract::decode::is_parameter_control_group;
 use crate::runtime::extract::points::{
     decode_coordinate_expression_anchor_raw, decode_coordinate_point,
     decode_custom_transform_anchor_raw, decode_expression_offset_anchor_raw,
     decode_expression_rotation_anchor_raw, decode_graph_calibration_anchor_raw,
     decode_intersection_anchor_raw, decode_iteration_binding_point_alias_raw,
-    decode_ratio_scale_anchor_raw,
+    decode_legacy_coordinate_construct_point, decode_ratio_scale_anchor_raw,
 };
 
 pub(crate) fn collect_raw_object_anchors(
@@ -38,8 +39,12 @@ pub(crate) fn collect_raw_object_anchors(
             group.header.kind(),
             crate::format::GroupKind::GraphFunctionPoint
                 | crate::format::GroupKind::GraphValuePoint
+                | crate::format::GroupKind::FixedCoordinatePoint
         ) {
             decode_coordinate_point(file, groups, group, &anchors, &graph.cloned())
+                .map(|point| point.position)
+        } else if group.header.kind() == crate::format::GroupKind::LegacyCoordinateConstructPoint {
+            decode_legacy_coordinate_construct_point(file, groups, group, &anchors)
                 .map(|point| point.position)
         } else if let Some(anchor) =
             decode_point_constraint_anchor(file, groups, group, &anchors, graph)
@@ -61,6 +66,10 @@ pub(crate) fn collect_raw_object_anchors(
         {
             Some(anchor)
         } else if let Some(anchor) = decode_angle_rotation_anchor_raw(file, group, &anchors) {
+            Some(anchor)
+        } else if let Some(anchor) =
+            decode_legacy_angle_rotation_anchor_raw(file, groups, group, &anchors)
+        {
             Some(anchor)
         } else if let Some(anchor) =
             decode_expression_rotation_anchor_raw(file, groups, group, &anchors)

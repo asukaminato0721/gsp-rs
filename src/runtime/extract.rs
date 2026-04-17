@@ -1420,6 +1420,19 @@ fn describe_group_in_chinese(
                 describe_generic_group(group, &refs)
             }
         }
+        GroupKind::LegacyCoordinateConstructPoint => {
+            if refs.len() >= 4 {
+                format!(
+                    "按 {}、{} 与 {}、{} 构造得到的坐标点",
+                    format_ref_with_kind(groups, refs[0]),
+                    format_ref_with_kind(groups, refs[1]),
+                    format_ref_with_kind(groups, refs[2]),
+                    format_ref_with_kind(groups, refs[3])
+                )
+            } else {
+                describe_generic_group(group, &refs)
+            }
+        }
         GroupKind::Rotation => describe_rotation_group_in_chinese(file, groups, group),
         GroupKind::AngleRotation => describe_angle_rotation_group_in_chinese(file, groups, group),
         GroupKind::ParameterRotation => {
@@ -1563,6 +1576,7 @@ fn describe_group_in_chinese(
         GroupKind::CoordinatePoint
         | GroupKind::CoordinateExpressionPoint
         | GroupKind::CoordinateExpressionPointAlt
+        | GroupKind::FixedCoordinatePoint
         | GroupKind::Unknown(20) => {
             if refs.is_empty() {
                 "坐标点".to_string()
@@ -1958,11 +1972,15 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::GraphObject40 => "图像对象",
         GroupKind::AngleValue => "角度值",
         GroupKind::PolygonAreaValue => "多边形面积值",
+        GroupKind::ArcAngleValue => "圆弧角度值",
+        GroupKind::BoundaryCurveLengthValue => "边界曲线长度值",
         GroupKind::RadiusValue => "半径值",
         GroupKind::CoordinateReadoutLabel => "坐标读数标签",
+        GroupKind::RichTextLabel => "富文本标签",
         GroupKind::RatioValue => "比值对象",
         GroupKind::FunctionExpr => "函数表达式",
         GroupKind::Kind51 => "对象类型 51",
+        GroupKind::GraphViewHelper => "图像视图辅助对象",
         GroupKind::GraphCalibrationX => "图像校准点 X",
         GroupKind::GraphCalibrationY | GroupKind::GraphCalibrationYAlt => "图像校准点 Y",
         GroupKind::GraphMeasurementSegment => "图像测量线",
@@ -1974,6 +1992,7 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::CoordinateXValue => "图像 x 坐标值",
         GroupKind::CoordinateYValue => "图像 y 坐标值",
         GroupKind::OffsetAnchor => "偏移锚点",
+        GroupKind::FixedCoordinatePoint => "固定坐标点",
         GroupKind::CoordinatePoint => "坐标点",
         GroupKind::GraphFunctionPoint => "图像函数点",
         GroupKind::FunctionPlot => "函数图像",
@@ -2002,17 +2021,24 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::IterationExpressionHelper => "迭代表达式辅助对象",
         GroupKind::ParameterAnchor => "参数锚点",
         GroupKind::ParameterControlledPoint => "参数控制点",
+        GroupKind::SmoothCurvePlot => "平滑曲线",
         GroupKind::CoordinateTrace => "坐标轨迹",
         GroupKind::CoordinateTraceIntersectionPoint => "坐标轨迹交点",
         GroupKind::CustomTransformTrace => "自定义变换轨迹",
         GroupKind::LegacyCoordinateParameterHelper => "旧版坐标参数辅助对象",
         GroupKind::LegacyCoordinatePointHelper => "旧版坐标点辅助对象",
         GroupKind::GraphValuePoint => "图像数值点",
+        GroupKind::GraphSlopeValue => "图像斜率值",
         GroupKind::PointAlias => "点别名",
         GroupKind::ThreePointDerivedPoint => "三点派生点",
         GroupKind::ProjectedCoordinatePoint => "投影坐标点",
         GroupKind::PointReferenceAlias => "点引用别名",
         GroupKind::AngleMarker => "角标记",
+        GroupKind::LegacyAngleMarker => "旧版角标记",
+        GroupKind::LegacyAngleRotation => "旧版角度旋转点",
+        GroupKind::LegacyVisibilityHelper => "旧版显隐辅助对象",
+        GroupKind::LegacyCircularConstraintHelper => "旧版圆形约束辅助对象",
+        GroupKind::LegacyCoordinateConstructPoint => "旧版坐标构造点",
         GroupKind::PathPoint => "路径点",
         GroupKind::GraphYValue => "图像 y 值",
         GroupKind::GraphXValue => "图像 x 值",
@@ -2034,13 +2060,16 @@ fn group_kind_noun_in_chinese(kind: GroupKind) -> &'static str {
         | GroupKind::CartesianOffsetPoint
         | GroupKind::CoordinateExpressionPoint
         | GroupKind::CoordinateExpressionPointAlt
+        | GroupKind::FixedCoordinatePoint
         | GroupKind::PolarOffsetPoint
         | GroupKind::ExpressionOffsetPoint
         | GroupKind::CustomTransformPoint
         | GroupKind::AngleRotation
+        | GroupKind::LegacyAngleRotation
         | GroupKind::ExpressionRotation
         | GroupKind::OffsetAnchor
         | GroupKind::CoordinatePoint
+        | GroupKind::LegacyCoordinateConstructPoint
         | GroupKind::GraphFunctionPoint
         | GroupKind::GraphValuePoint
         | GroupKind::NamedAlias
@@ -2060,12 +2089,15 @@ fn group_kind_noun_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::DistanceValue
         | GroupKind::PointLineDistanceValue
         | GroupKind::BoundaryLengthValue
+        | GroupKind::ArcAngleValue
+        | GroupKind::BoundaryCurveLengthValue
         | GroupKind::AngleValue
         | GroupKind::PolarAngleValue
         | GroupKind::VertexAngleValue
         | GroupKind::PolygonAreaValue
         | GroupKind::RatioValue
         | GroupKind::GraphDistanceValue
+        | GroupKind::GraphSlopeValue
         | GroupKind::ValueTableRow
         | GroupKind::MeasuredValue
         | GroupKind::CoordinateXValue
@@ -2085,7 +2117,7 @@ fn group_kind_noun_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::CoordinateReadoutLabel => "标签",
         GroupKind::ActionButton => "按钮",
         GroupKind::FunctionPlot | GroupKind::ParametricFunctionPlot => "函数图像",
-        GroupKind::AngleMarker => "角标记",
+        GroupKind::AngleMarker | GroupKind::LegacyAngleMarker => "角标记",
         _ => "对象",
     }
 }
@@ -2190,6 +2222,9 @@ fn validate_group_kind(group: &ObjectGroup) -> Result<()> {
     if matches!(
         kind,
         GroupKind::Unknown(20)
+            | GroupKind::LegacyVisibilityHelper
+            | GroupKind::LegacyCircularConstraintHelper
+            | GroupKind::LegacyCoordinateConstructPoint
             | GroupKind::DistanceValue
             | GroupKind::PointLineDistanceValue
             | GroupKind::CoordinateXValue
@@ -2200,18 +2235,27 @@ fn validate_group_kind(group: &ObjectGroup) -> Result<()> {
             | GroupKind::Unknown(122)
             | GroupKind::BoundaryLengthValue
             | GroupKind::AngleValue
+            | GroupKind::ArcAngleValue
+            | GroupKind::BoundaryCurveLengthValue
             | GroupKind::RadiusValue
             | GroupKind::RatioValue
             | GroupKind::GraphDistanceValue
+            | GroupKind::GraphSlopeValue
             | GroupKind::PolygonAreaValue
             | GroupKind::GraphFunctionPoint
             | GroupKind::GraphMeasurementSegment
+            | GroupKind::FixedCoordinatePoint
             | GroupKind::ValueTableRow
             | GroupKind::BoundaryIntersectionPoint
             | GroupKind::PointAlias
             | GroupKind::ThreePointDerivedPoint
             | GroupKind::ProjectedCoordinatePoint
             | GroupKind::PointReferenceAlias
+            | GroupKind::GraphViewHelper
+            | GroupKind::RichTextLabel
+            | GroupKind::SmoothCurvePlot
+            | GroupKind::LegacyAngleMarker
+            | GroupKind::LegacyAngleRotation
             | GroupKind::PolarAngleValue
             | GroupKind::VertexAngleValue
             | GroupKind::NamedAlias
@@ -2776,12 +2820,14 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::CartesianOffsetPoint
             | GroupKind::CoordinateExpressionPoint
             | GroupKind::CoordinateExpressionPointAlt
+            | GroupKind::LegacyCoordinateConstructPoint
             | GroupKind::PolarOffsetPoint
             | GroupKind::ExpressionOffsetPoint
             | GroupKind::DerivedSegment24
             | GroupKind::CustomTransformPoint
             | GroupKind::Rotation
             | GroupKind::AngleRotation
+            | GroupKind::LegacyAngleRotation
             | GroupKind::ParameterRotation
             | GroupKind::ExpressionRotation
             | GroupKind::Scale
@@ -2790,6 +2836,8 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::PointTrace
             | GroupKind::MeasuredValue
             | GroupKind::GraphObject40
+            | GroupKind::RichTextLabel
+            | GroupKind::GraphViewHelper
             | GroupKind::FunctionExpr
             | GroupKind::Kind51
             | GroupKind::GraphCalibrationX
@@ -2805,6 +2853,7 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::GraphYValue
             | GroupKind::GraphXValue
             | GroupKind::OffsetAnchor
+            | GroupKind::FixedCoordinatePoint
             | GroupKind::CoordinatePoint
             | GroupKind::GraphFunctionPoint
             | GroupKind::GraphValuePoint
@@ -2829,14 +2878,18 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::CoordinateTraceIntersectionPoint
             | GroupKind::CustomTransformTrace
             | GroupKind::AngleMarker
+            | GroupKind::LegacyAngleMarker
             | GroupKind::PathPoint
             | GroupKind::SegmentMarker
             | GroupKind::FunctionDefinition
             | GroupKind::Unknown(122)
             | GroupKind::BoundaryLengthValue
+            | GroupKind::ArcAngleValue
             | GroupKind::AngleValue
+            | GroupKind::BoundaryCurveLengthValue
             | GroupKind::RatioValue
             | GroupKind::GraphDistanceValue
+            | GroupKind::GraphSlopeValue
             | GroupKind::PolygonAreaValue
             | GroupKind::RadiusValue
             | GroupKind::GraphMeasurementSegment
@@ -2853,5 +2906,8 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::IterationPointAlias
             | GroupKind::LegacyCoordinateParameterHelper
             | GroupKind::LegacyCoordinatePointHelper
+            | GroupKind::LegacyVisibilityHelper
+            | GroupKind::LegacyCircularConstraintHelper
+            | GroupKind::SmoothCurvePlot
     )
 }

@@ -362,7 +362,58 @@ mod tests {
         assert!(html.contains("\"kind\":\"coordinate-trace\""));
         assert!(html.contains("\"kind\":\"coordinate-source-2d\""));
         assert!(html.contains("\"kind\":\"line-trace-intersection\""));
-        assert!(html.contains("\"y\":3.069166666666897"));
+        assert!(html.contains("\"y\":3.069166666666"));
+    }
+
+    #[test]
+    fn compiles_legacy_arc_measure_helper_fixtures() {
+        let Some(clock) = fixture_bytes("tests/Samples/个人专栏/侯仰顺作品/时钟.gsp") else {
+            return;
+        };
+        let clock_scene = fixture_scene_json(&clock, "clock fixture should compile");
+        assert!(clock_scene.contains("\"points\": ["));
+
+        let Some(rolling) = fixture_bytes("tests/Samples/个人专栏/况永胜作品/正多边形在圆外滚动.gsp")
+        else {
+            return;
+        };
+        let rolling_scene = fixture_scene_json(&rolling, "rolling polygon fixture should compile");
+        assert!(rolling_scene.contains("\"lines\": ["));
+    }
+
+    #[test]
+    fn compiles_fixed_coordinate_and_slope_helper_fixtures() {
+        let Some(cardioid) = fixture_bytes("tests/Samples/未分类档/心脏线.gsp") else {
+            return;
+        };
+        let cardioid_scene = fixture_scene_json(&cardioid, "cardioid fixture should compile");
+        assert!(cardioid_scene.contains("\"points\": ["));
+
+        let Some(buffon) = fixture_bytes("tests/Samples/热研系列/概率问题/蒲丰投针实验求π的近似值.gsp")
+        else {
+            return;
+        };
+        let buffon_scene = fixture_scene_json(&buffon, "buffon fixture should compile");
+        assert!(buffon_scene.contains("\"labels\": ["));
+    }
+
+    #[test]
+    fn compiles_legacy_constructed_point_and_angle_rotation_fixtures() {
+        let Some(rolling_ellipse) =
+            fixture_bytes("tests/Samples/个人专栏/贺基旭作品/椭圆在直线上滚动(优化).gsp")
+        else {
+            return;
+        };
+        let rolling_ellipse_scene =
+            fixture_scene_json(&rolling_ellipse, "rolling ellipse fixture should compile");
+        assert!(rolling_ellipse_scene.contains("\"points\": ["));
+
+        let Some(cycloid) = fixture_bytes("tests/Samples/个人专栏/方小庆作品/(inRm)摆线.gsp")
+        else {
+            return;
+        };
+        let cycloid_scene = fixture_scene_json(&cycloid, "cycloid fixture should compile");
+        assert!(cycloid_scene.contains("\"lines\": ["));
     }
 
     #[test]

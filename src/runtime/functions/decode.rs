@@ -42,10 +42,13 @@ fn is_function_like_group(group: &ObjectGroup) -> bool {
             | crate::format::GroupKind::GraphYValue
             | crate::format::GroupKind::GraphXValue
             | crate::format::GroupKind::AngleValue
+            | crate::format::GroupKind::ArcAngleValue
+            | crate::format::GroupKind::BoundaryCurveLengthValue
             | crate::format::GroupKind::RadiusValue
             | crate::format::GroupKind::PolygonAreaValue
             | crate::format::GroupKind::RatioValue
             | crate::format::GroupKind::GraphDistanceValue
+            | crate::format::GroupKind::GraphSlopeValue
             | crate::format::GroupKind::NamedAlias
             | crate::format::GroupKind::FunctionDefinition
     )
@@ -134,10 +137,13 @@ fn try_decode_numeric_helper_group(
             | crate::format::GroupKind::GraphYValue
             | crate::format::GroupKind::GraphXValue
             | crate::format::GroupKind::AngleValue
+            | crate::format::GroupKind::ArcAngleValue
+            | crate::format::GroupKind::BoundaryCurveLengthValue
             | crate::format::GroupKind::RadiusValue
             | crate::format::GroupKind::PolygonAreaValue
             | crate::format::GroupKind::RatioValue
             | crate::format::GroupKind::GraphDistanceValue
+            | crate::format::GroupKind::GraphSlopeValue
             | crate::format::GroupKind::NamedAlias
     ) {
         return None;
@@ -216,6 +222,20 @@ fn try_decode_numeric_helper_group(
             let end = anchors.get(path.refs.get(2)?.checked_sub(1)?)?.clone()?;
             angle_degrees_from_points(&start, &vertex, &end)?
         }
+        crate::format::GroupKind::ArcAngleValue => {
+            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            arc_angle_degrees_raw(file, groups, &anchors, source_group)?
+        }
+        crate::format::GroupKind::BoundaryCurveLengthValue => {
+            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            boundary_curve_length_raw(
+                file,
+                groups,
+                &anchors,
+                source_group,
+                graph.as_ref().map(|(_, raw_per_unit)| *raw_per_unit),
+            )?
+        }
         crate::format::GroupKind::RadiusValue => {
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
             if let Some(circle) = resolve_circle_like_raw(file, groups, &anchors, source_group) {
@@ -260,11 +280,21 @@ fn try_decode_numeric_helper_group(
                 graph.as_ref().map(|(_, raw_per_unit)| *raw_per_unit),
             )
         }
+        crate::format::GroupKind::GraphSlopeValue => {
+            let line_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            let (start, end) = resolve_line_like_points_raw(file, groups, &anchors, line_group)?;
+            let start_world = crate::runtime::geometry::to_world(&start, &graph_transform);
+            let end_world = crate::runtime::geometry::to_world(&end, &graph_transform);
+            let dx = end_world.x - start_world.x;
+            let dy = end_world.y - start_world.y;
+            (dx.abs() > 1e-9).then_some(dy / dx)?
+        }
         crate::format::GroupKind::NamedAlias => {
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
             if matches!(
                 source_group.header.kind(),
                 crate::format::GroupKind::AngleMarker
+                    | crate::format::GroupKind::LegacyAngleMarker
             ) {
                 let source_path = find_indexed_path(file, source_group)?;
                 let start = anchors
@@ -514,6 +544,112 @@ fn normalize_graph_area(raw_area: f64, raw_per_unit: Option<f64>) -> f64 {
     match raw_per_unit {
         Some(scale) if scale.is_finite() && scale > 1e-9 => raw_area / (scale * scale),
         _ => raw_area,
+    }
+}
+
+fn arc_angle_degrees_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<crate::format::PointRecord>],
+    group: &ObjectGroup,
+) -> Option<f64> {
+    let path = find_indexed_path(file, group)?;
+    match group.header.kind() {
+        crate::format::GroupKind::CenterArc => {
+            let center = anchors.get(path.refs.first()?.checked_sub(1)?)?.clone()?;
+            let start = anchors.get(path.refs.get(1)?.checked_sub(1)?)?.clone()?;
+            let end = anchors.get(path.refs.get(2)?.checked_sub(1)?)?.clone()?;
+            angle_degrees_from_points(&start, &center, &end)
+        }
+        crate::format::GroupKind::ArcOnCircle => {
+            let circle_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            let circle_path = find_indexed_path(file, circle_group)?;
+            let center = anchors.get(circle_path.refs.first()?.checked_sub(1)?)?.clone()?;
+            let start = anchors.get(path.refs.get(1)?.checked_sub(1)?)?.clone()?;
+            let end = anchors.get(path.refs.get(2)?.checked_sub(1)?)?.clone()?;
+            angle_degrees_from_points(&start, &center, &end)
+        }
+        crate::format::GroupKind::SectorBoundary
+        | crate::format::GroupKind::CircularSegmentBoundary => {
+            let host_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            arc_angle_degrees_raw(file, groups, anchors, host_group)
+        }
+        _ => None,
+    }
+}
+
+fn boundary_curve_length_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<crate::format::PointRecord>],
+    group: &ObjectGroup,
+    raw_per_unit: Option<f64>,
+) -> Option<f64> {
+    match group.header.kind() {
+        crate::format::GroupKind::Segment
+        | crate::format::GroupKind::MeasurementLine
+        | crate::format::GroupKind::GraphMeasurementSegment => {
+            let (start, end) = resolve_line_like_points_raw(file, groups, anchors, group)?;
+            Some(normalize_graph_distance(
+                ((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt(),
+                raw_per_unit,
+            ))
+        }
+        crate::format::GroupKind::ArcOnCircle
+        | crate::format::GroupKind::CenterArc
+        | crate::format::GroupKind::SectorBoundary
+        | crate::format::GroupKind::CircularSegmentBoundary => {
+            let degrees = arc_angle_degrees_raw(file, groups, anchors, group)?;
+            let host_group = if matches!(
+                group.header.kind(),
+                crate::format::GroupKind::SectorBoundary
+                    | crate::format::GroupKind::CircularSegmentBoundary
+            ) {
+                let path = find_indexed_path(file, group)?;
+                groups.get(path.refs.first()?.checked_sub(1)?)?
+            } else {
+                group
+            };
+            let path = find_indexed_path(file, host_group)?;
+            let circle_group = match host_group.header.kind() {
+                crate::format::GroupKind::CenterArc => None,
+                crate::format::GroupKind::ArcOnCircle => {
+                    Some(groups.get(path.refs.first()?.checked_sub(1)?)?)
+                }
+                _ => None,
+            };
+            let radius_raw = if let Some(circle_group) = circle_group {
+                resolve_circle_like_raw(file, groups, anchors, circle_group)?.radius()
+            } else {
+                let center = anchors.get(path.refs.first()?.checked_sub(1)?)?.clone()?;
+                let start = anchors.get(path.refs.get(1)?.checked_sub(1)?)?.clone()?;
+                ((start.x - center.x).powi(2) + (start.y - center.y).powi(2)).sqrt()
+            };
+            Some(normalize_graph_distance(
+                radius_raw * degrees.to_radians(),
+                raw_per_unit,
+            ))
+        }
+        crate::format::GroupKind::Polygon => {
+            let path = find_indexed_path(file, group)?;
+            let points = path
+                .refs
+                .iter()
+                .filter_map(|ordinal| anchors.get(ordinal.saturating_sub(1)).cloned().flatten())
+                .collect::<Vec<_>>();
+            if points.len() < 2 {
+                return None;
+            }
+            let length = (0..points.len())
+                .map(|index| {
+                    let start = &points[index];
+                    let end = &points[(index + 1) % points.len()];
+                    ((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt()
+                })
+                .sum::<f64>();
+            Some(normalize_graph_distance(length, raw_per_unit))
+        }
+        _ => None,
     }
 }
 

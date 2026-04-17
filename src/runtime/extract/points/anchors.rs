@@ -1842,6 +1842,33 @@ pub(crate) fn decode_angle_rotation_anchor_raw(
     Some(rotate_around(&source, &center, angle_degrees.to_radians()))
 }
 
+pub(crate) fn decode_legacy_angle_rotation_anchor_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    if group.header.kind() != GroupKind::LegacyAngleRotation {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() < 3 {
+        return None;
+    }
+    let source = anchors.get(path.refs[0].checked_sub(1)?)?.clone()?;
+    let center = anchors.get(path.refs[1].checked_sub(1)?)?.clone()?;
+    let angle_group = groups.get(path.refs[2].checked_sub(1)?)?;
+    let angle_path = find_indexed_path(file, angle_group)?;
+    if angle_path.refs.len() < 3 {
+        return None;
+    }
+    let angle_start = anchors.get(angle_path.refs[0].checked_sub(1)?)?.clone()?;
+    let angle_vertex = anchors.get(angle_path.refs[1].checked_sub(1)?)?.clone()?;
+    let angle_end = anchors.get(angle_path.refs[2].checked_sub(1)?)?.clone()?;
+    let angle_degrees = angle_degrees_from_points(&angle_start, &angle_vertex, &angle_end)?;
+    Some(rotate_around(&source, &center, angle_degrees.to_radians()))
+}
+
 pub(crate) fn decode_ratio_scale_anchor_raw(
     file: &GspFile,
     _groups: &[ObjectGroup],
