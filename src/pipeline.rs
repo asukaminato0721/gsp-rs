@@ -130,6 +130,7 @@ mod tests {
     };
     use insta::assert_snapshot;
     use serde_json::Value;
+    use std::collections::BTreeSet;
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -152,6 +153,21 @@ mod tests {
 
     fn fixture_bytes(path: &str) -> Option<Vec<u8>> {
         fs::read(path).ok()
+    }
+
+    fn collect_kind_literals(text: &str) -> BTreeSet<String> {
+        let mut kinds = BTreeSet::new();
+        let needle = "\"kind\": \"";
+        let mut rest = text;
+        while let Some(start) = rest.find(needle) {
+            let suffix = &rest[start + needle.len()..];
+            let Some(end) = suffix.find('"') else {
+                break;
+            };
+            kinds.insert(suffix[..end].to_string());
+            rest = &suffix[end + 1..];
+        }
+        kinds
     }
 
     #[test]
@@ -363,6 +379,61 @@ mod tests {
         assert!(html.contains("\"kind\":\"coordinate-source-2d\""));
         assert!(html.contains("\"kind\":\"line-trace-intersection\""));
         assert!(html.contains("\"y\":3.069166666666"));
+    }
+
+    #[test]
+    fn js_runtime_covers_exported_payload_kinds() {
+        let generated_sources = [
+            include_str!("html/generated/PointBindingJson.ts"),
+            include_str!("html/generated/PointConstraintJson.ts"),
+            include_str!("html/generated/LineBindingJson.ts"),
+            include_str!("html/generated/LineConstraintJson.ts"),
+            include_str!("html/generated/ShapeBindingJson.ts"),
+            include_str!("html/generated/LabelBindingJson.ts"),
+            include_str!("html/generated/LabelHotspotActionJson.ts"),
+            include_str!("html/generated/ButtonActionJson.ts"),
+            include_str!("html/generated/CircularConstraintJson.ts"),
+            include_str!("html/generated/PointIterationJson.ts"),
+            include_str!("html/generated/LineIterationJson.ts"),
+            include_str!("html/generated/PolygonIterationJson.ts"),
+        ];
+        let runtime_sources = [
+            include_str!("html/viewer.js"),
+            include_str!("html/viewer_drag.js"),
+            include_str!("html/viewer_drag_pan.js"),
+            include_str!("html/viewer_dynamics.js"),
+            include_str!("html/viewer_overlay.js"),
+            include_str!("html/viewer_render_basic.js"),
+            include_str!("html/viewer_render_circular.js"),
+            include_str!("html/viewer_render_hotspots.js"),
+            include_str!("html/viewer_render_images.js"),
+            include_str!("html/viewer_render_labels.js"),
+            include_str!("html/viewer_render_polygons.js"),
+            include_str!("html/viewer_render_tables.js"),
+            include_str!("html/viewer_scene_basic.js"),
+            include_str!("html/viewer_scene_circular.js"),
+            include_str!("html/viewer_scene_intersections.js"),
+            include_str!("html/viewer_scene_trace.js"),
+        ]
+        .join("\n");
+
+        let exported_kinds = generated_sources
+            .into_iter()
+            .flat_map(collect_kind_literals)
+            .collect::<BTreeSet<_>>();
+        let runtime_missing = exported_kinds
+            .into_iter()
+            .filter(|kind| {
+                !runtime_sources.contains(&format!("\"{kind}\""))
+                    && !runtime_sources.contains(&format!("'{kind}'"))
+            })
+            .collect::<BTreeSet<_>>();
+
+        let allowed_missing = BTreeSet::from(["function-label".to_string()]);
+        assert_eq!(
+            runtime_missing, allowed_missing,
+            "exported payload kinds should have explicit JS runtime coverage unless intentionally static",
+        );
     }
 
     #[test]

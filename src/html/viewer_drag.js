@@ -324,6 +324,10 @@
   function dragModeFor(env, pointIndex, labelIndex, polygonIndex, iterationTableIndex, imageIndex) {
     if (pointIndex !== null) {
       const point = env.currentScene().points[pointIndex];
+      const constraintKind = point?.constraint?.kind;
+      if (constraintKind && !DRAGGED_POINT_CONSTRAINT_UPDATERS[constraintKind]) {
+        return "pan";
+      }
       if (PAN_ONLY_POINT_BINDINGS.has(point?.binding?.kind)) {
         return "pan";
       }
