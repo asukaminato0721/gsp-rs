@@ -7,7 +7,7 @@ use super::{
     line_is_dashed, payload_debug_source, three_point_arc_geometry, to_raw_from_world,
     try_decode_function_expr, try_decode_function_plot_descriptor,
 };
-use crate::format::{GroupKind, read_f64, read_u32};
+use crate::format::{GroupKind, read_f64, read_u16, read_u32};
 use crate::runtime::extract::decode::{is_circle_group_kind, resolve_circle_points_raw};
 use crate::runtime::geometry::{
     arc_on_circle_control_points, sample_three_point_arc, sample_three_point_arc_complement,
@@ -506,8 +506,8 @@ fn decode_angle_marker_class(file: &GspFile, group: &ObjectGroup) -> u32 {
         .iter()
         .find(|record| record.record_type == 0x090e)
         .map(|record| record.payload(&file.data))
-        .filter(|payload| payload.len() >= 4)
-        .map(|payload| read_u32(payload, 0))
+        .filter(|payload| payload.len() >= 2)
+        .map(|payload| u32::from(read_u16(payload, 0)))
         .unwrap_or(1)
 }
 

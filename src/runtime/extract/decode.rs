@@ -641,8 +641,8 @@ fn decode_angle_marker_class(file: &GspFile, group: &ObjectGroup) -> u32 {
         .iter()
         .find(|record| record.record_type == 0x090e)
         .map(|record| record.payload(&file.data))
-        .filter(|payload| payload.len() >= 4)
-        .map(|payload| read_u32(payload, 0))
+        .filter(|payload| payload.len() >= 2)
+        .map(|payload| u32::from(read_u16(payload, 0)))
         .unwrap_or(1)
 }
 

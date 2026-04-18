@@ -588,17 +588,43 @@ fn build_scene_point_for_group_checked(
                 kind != crate::format::GroupKind::PathPoint,
             ))
         }
-        crate::format::GroupKind::Rotation | crate::format::GroupKind::Scale => {
+        crate::format::GroupKind::Rotation
+        | crate::format::GroupKind::ExpressionRotation
+        | crate::format::GroupKind::Scale => {
             let visible = !group.header.is_hidden() && point_marker_visible(group);
-            let binding = try_decode_transform_binding(file, group).with_context(|| {
-                format!(
-                    "failed to decode transform binding for group #{} {:?}",
-                    group.ordinal, kind
-                )
-            })?;
             let position = anchors.get(index).cloned().flatten();
             Ok((|| {
                 let position = position?;
+                if kind == crate::format::GroupKind::ExpressionRotation {
+                    let binding = decode_expression_rotation_binding(file, groups, group, anchors)?;
+                    let source_index =
+                        mapped_point_index(group_to_point_index, binding.source_group_index)?;
+                    let center_index =
+                        mapped_point_index(group_to_point_index, binding.center_group_index)?;
+                    return Some(scene_point(
+                        position,
+                        group_color(group),
+                        visible,
+                        false,
+                        ScenePointConstraint::Free,
+                        Some(ScenePointBinding::Rotate {
+                            source_index,
+                            center_index,
+                            angle_degrees: binding.angle_degrees,
+                            parameter_name: binding.parameter_name,
+                            angle_expr: Some(binding.angle_expr),
+                            angle_start_index: None,
+                            angle_vertex_index: None,
+                            angle_end_index: None,
+                        }),
+                    ));
+                }
+                let binding = try_decode_transform_binding(file, group).with_context(|| {
+                    format!(
+                        "failed to decode transform binding for group #{} {:?}",
+                        group.ordinal, kind
+                    )
+                }).ok()?;
                 let source_index =
                     mapped_point_index(group_to_point_index, binding.source_group_index)?;
                 let center_index =
@@ -1968,7 +1994,9 @@ fn resolve_circular_constraint(
 fn intersection_variant(kind: crate::format::GroupKind) -> usize {
     match kind {
         crate::format::GroupKind::IntersectionPoint1
-        | crate::format::GroupKind::CircleCircleIntersectionPoint1 => 1,
+        | crate::format::GroupKind::CircleCircleIntersectionPoint1 => 0,
+        crate::format::GroupKind::IntersectionPoint2
+        | crate::format::GroupKind::CircleCircleIntersectionPoint2 => 1,
         _ => 0,
     }
 }

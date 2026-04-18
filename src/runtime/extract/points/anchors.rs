@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::super::decode::{
     decode_label_name, find_indexed_path, is_parameter_control_group,
-    try_decode_parameter_control_value_for_group,
+    try_decode_parameter_control_value_for_group, try_decode_payload_anchor_point,
 };
 use super::constraints::{
     RawPointConstraint, decode_translated_point_constraint, regular_polygon_iteration_step,
@@ -10,6 +10,7 @@ use super::constraints::{
 };
 use super::{
     GspFile, ObjectGroup, PointRecord, TransformBindingKind,
+    decode_angle_parameter_value_for_group,
     decode_non_graph_parameter_value_for_group, editable_non_graph_parameter_name_for_group,
     read_f64, try_decode_angle_rotation_binding, try_decode_parameter_rotation_binding,
     try_decode_transform_binding,
@@ -258,9 +259,39 @@ pub(crate) fn decode_expression_rotation_binding(
     let source_group_index = path.refs[0].checked_sub(1)?;
     let center_group_index = path.refs[1].checked_sub(1)?;
     let expr_group = groups.get(path.refs[2].checked_sub(1)?)?;
-    let (angle_expr, parameters, parameter_name) =
-        expression_runtime_context(file, groups, expr_group, anchors)?;
-    let angle_degrees = evaluate_expr_with_parameters(&angle_expr, 0.0, &parameters)?;
+    let (angle_expr, angle_degrees, parameter_name) = if expr_group.header.kind() == GroupKind::FunctionExpr {
+        let (angle_expr, parameters, parameter_name) =
+            expression_runtime_context(file, groups, expr_group, anchors)?;
+        let angle_degrees = evaluate_expr_with_parameters(&angle_expr, 0.0, &parameters)?;
+        (angle_expr, angle_degrees, parameter_name)
+    } else if expr_group.header.kind() == GroupKind::Point {
+        let parameter_name = editable_non_graph_parameter_name_for_group(file, groups, expr_group)
+            .or_else(|| decode_label_name(file, expr_group));
+        let angle_expr = try_decode_function_expr(file, groups, expr_group)
+            .ok()
+            .or_else(|| {
+                let angle_value = decode_angle_parameter_value_for_group(file, expr_group)
+                    .or_else(|| {
+                        let control = try_decode_payload_anchor_point(file, expr_group).ok().flatten()?;
+                        Some((-control.y).atan2(control.x).to_degrees())
+                    })
+                    .or_else(|| {
+                        let value =
+                            try_decode_parameter_control_value_for_group(file, groups, expr_group).ok()?;
+                        value.is_finite().then_some(value)
+                    })?;
+                Some(FunctionExpr::Constant(angle_value))
+            })?;
+        let angle_degrees = evaluate_expr_with_parameters(&angle_expr, 0.0, &BTreeMap::new())?;
+        let angle_expr = if let (Some(name), FunctionExpr::Constant(value)) = (&parameter_name, &angle_expr) {
+            FunctionExpr::Parsed(FunctionAst::Parameter(name.clone(), *value))
+        } else {
+            angle_expr
+        };
+        (angle_expr, angle_degrees, parameter_name)
+    } else {
+        return None;
+    };
     Some(ExpressionRotationBindingDef {
         source_group_index,
         center_group_index,
@@ -622,10 +653,10 @@ pub(crate) fn decode_intersection_anchor_raw(
     let kind = group.header.kind();
     let variant = match kind {
         crate::format::GroupKind::LinearIntersectionPoint => None,
-        crate::format::GroupKind::IntersectionPoint1 => Some(1),
-        crate::format::GroupKind::IntersectionPoint2 => Some(0),
-        crate::format::GroupKind::CircleCircleIntersectionPoint1 => Some(1),
-        crate::format::GroupKind::CircleCircleIntersectionPoint2 => Some(0),
+        crate::format::GroupKind::IntersectionPoint1 => Some(0),
+        crate::format::GroupKind::IntersectionPoint2 => Some(1),
+        crate::format::GroupKind::CircleCircleIntersectionPoint1 => Some(0),
+        crate::format::GroupKind::CircleCircleIntersectionPoint2 => Some(1),
         crate::format::GroupKind::CoordinateTraceIntersectionPoint => Some(0),
         _ => return None,
     };

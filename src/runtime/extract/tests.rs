@@ -4,6 +4,7 @@ use super::{
     remap_scene_bindings, render_payload_log,
 };
 use crate::format::GspFile;
+use crate::runtime::extract::points::decode_expression_rotation_binding;
 use crate::runtime::functions::{BinaryOp, FunctionAst, FunctionExpr, UnaryFunction};
 use crate::runtime::scene::{
     ButtonAction, LabelIterationFamily, LineBinding, LineConstraint, LineIterationFamily,
@@ -3986,6 +3987,59 @@ fn preserves_angle_marker_label_in_angle_marker_label_gsp() {
             decimals: 1,
         })
     )));
+}
+
+#[test]
+fn decodes_bug_fixture_angle_marker_class_from_low_word() {
+    let scene = fixture_scene(include_bytes!("../../../tests/fixtures/bug/测试10.gsp"));
+
+    let angle_marker = scene
+        .lines
+        .iter()
+        .find(|line| matches!(line.binding, Some(LineBinding::AngleMarker { .. })))
+        .expect("expected payload-backed angle marker");
+
+    assert!(matches!(
+        angle_marker.binding,
+        Some(LineBinding::AngleMarker { marker_class: 1, .. })
+    ));
+}
+
+#[test]
+fn exports_test10_expression_rotation_as_live_point_binding() {
+    let data = include_bytes!("../../../tests/fixtures/bug/测试10.gsp");
+    let file = GspFile::parse(data).expect("fixture parses");
+    let groups = file.object_groups();
+    let point_map = collect_point_objects(&file, &groups);
+    let analysis = analyze_scene(&file, &groups, &point_map);
+    let scene = build_scene_checked(&file).expect("scene builds");
+
+    let expression_rotation_group = groups
+        .iter()
+        .find(|group| group.ordinal == 6)
+        .expect("expected payload group #6");
+    let binding = decode_expression_rotation_binding(
+        &file,
+        &groups,
+        expression_rotation_group,
+        &analysis.raw_anchors,
+    )
+    .expect("expected payload expression-rotation binding");
+
+    assert!(
+        scene.points.iter().any(|point| matches!(
+            point.binding,
+            Some(ScenePointBinding::Rotate {
+                angle_expr: Some(_),
+                source_index,
+                center_index,
+                ..
+            }) if source_index == 2 && center_index == 1
+        )),
+        "expected live expression-rotation point for group #6 (source #{}, center #{})",
+        binding.source_group_index + 1,
+        binding.center_group_index + 1,
+    );
 }
 
 #[test]
