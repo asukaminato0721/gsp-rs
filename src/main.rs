@@ -82,6 +82,7 @@ fn run_jobs_out_of_process(config: &Config) -> Result<()> {
     for job in &config.jobs {
         let mut child = Command::new(&exe_path)
             .env(WORKER_ENV, "1")
+            .arg("--no-upload")
             .arg(&job.gsp_path)
             .spawn()
             .map_err(|error| {

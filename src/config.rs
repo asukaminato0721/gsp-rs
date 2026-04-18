@@ -32,27 +32,13 @@ impl Config {
         }
 
         let mut jobs = Vec::new();
-        let mut upload_url = None;
+        let mut upload_url = Some(DEFAULT_UPLOAD_URL.to_string());
         let mut index = 0usize;
         while index < raw_args.len() {
             let arg = raw_args[index].to_string_lossy();
             match arg.as_ref() {
-                "--upload" => {
-                    upload_url = Some(DEFAULT_UPLOAD_URL.to_string());
-                }
-                "--upload-url" => {
-                    let Some(value) = raw_args.get(index + 1) else {
-                        return Err(miette!("missing value for --upload-url\n{}", Self::usage()));
-                    };
-                    upload_url = Some(value.to_string_lossy().into_owned());
-                    index += 1;
-                }
-                value if value.starts_with("--upload-url=") => {
-                    let provided = value.trim_start_matches("--upload-url=");
-                    if provided.is_empty() {
-                        return Err(miette!("missing value for --upload-url\n{}", Self::usage()));
-                    }
-                    upload_url = Some(provided.to_string());
+                "--no-upload" => {
+                    upload_url = None;
                 }
                 value if value.starts_with('-') => {
                     return Err(miette!("unknown flag: {value}\n{}", Self::usage()));
@@ -81,8 +67,7 @@ impl Config {
     }
 
     pub fn usage() -> String {
-        "usage: gsp-rs [--upload] [--upload-url <url>] <path/to/file1.gsp> [path/to/file2.gsp ...]"
-            .to_string()
+        "usage: gsp-rs [--no-upload] <path/to/file1.gsp> [path/to/file2.gsp ...]".to_string()
     }
 }
 
@@ -107,7 +92,10 @@ mod tests {
                 },
             ]
         );
-        assert_eq!(config.upload_url, None);
+        assert_eq!(
+            config.upload_url.as_deref(),
+            Some(super::DEFAULT_UPLOAD_URL)
+        );
     }
 
     #[test]
@@ -117,40 +105,18 @@ mod tests {
     }
 
     #[test]
-    fn upload_flag_enables_default_upload_endpoint() {
-        let config = Config::parse(["--upload", "a.gsp"].into_iter()).expect("config parses");
+    fn no_upload_flag_disables_default_upload() {
+        let config = Config::parse(["--no-upload", "a.gsp"].into_iter()).expect("config parses");
+        assert_eq!(config.upload_url, None);
+    }
+
+    #[test]
+    fn default_upload_applies_without_explicit_flags() {
+        let config = Config::parse(["a.gsp"].into_iter()).expect("config parses");
         assert_eq!(
             config.upload_url.as_deref(),
             Some(super::DEFAULT_UPLOAD_URL)
         );
-    }
-
-    #[test]
-    fn upload_url_flag_overrides_upload_endpoint() {
-        let config =
-            Config::parse(["--upload-url", "https://example.test/upload", "a.gsp"].into_iter())
-                .expect("config parses");
-        assert_eq!(
-            config.upload_url.as_deref(),
-            Some("https://example.test/upload")
-        );
-    }
-
-    #[test]
-    fn inline_upload_url_flag_enables_upload() {
-        let config =
-            Config::parse(["--upload-url=https://example.test/upload", "a.gsp"].into_iter())
-                .expect("config parses");
-        assert_eq!(
-            config.upload_url.as_deref(),
-            Some("https://example.test/upload")
-        );
-    }
-
-    #[test]
-    fn rejects_missing_upload_url_value() {
-        let error = Config::parse(["--upload-url"].into_iter()).expect_err("missing url");
-        assert!(error.to_string().contains("missing value for --upload-url"));
     }
 
     #[test]
