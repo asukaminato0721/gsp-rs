@@ -3,14 +3,14 @@ use anyhow::{Context, Result};
 use super::{
     CoordinatePoint, GspFile, LegacyCoordinateConstructPoint, ObjectGroup,
     ParameterControlledPoint, PointRecord, RawPointConstraint, TransformBindingKind,
-    decode_coordinate_point, decode_custom_transform_binding,
-    decode_expression_offset_binding, decode_expression_rotation_binding,
-    decode_iteration_binding_point_alias_raw, decode_legacy_coordinate_construct_point,
-    decode_reflection_anchor_raw, decode_translated_point_constraint,
-    reflection_line_group_indices, regular_polygon_angle_expr_for_calc_group,
-    translation_point_pair_group_indices, try_decode_angle_rotation_binding,
-    try_decode_parameter_controlled_point, try_decode_parameter_rotation_binding,
-    try_decode_point_constraint, try_decode_transform_binding,
+    decode_coordinate_point, decode_custom_transform_binding, decode_expression_offset_binding,
+    decode_expression_rotation_binding, decode_iteration_binding_point_alias_raw,
+    decode_legacy_coordinate_construct_point, decode_reflection_anchor_raw,
+    decode_translated_point_constraint, reflection_line_group_indices,
+    regular_polygon_angle_expr_for_calc_group, translation_point_pair_group_indices,
+    try_decode_angle_rotation_binding, try_decode_parameter_controlled_point,
+    try_decode_parameter_rotation_binding, try_decode_point_constraint,
+    try_decode_transform_binding,
 };
 use crate::runtime::extract::decode::{
     decode_bbox_anchor_raw, decode_label_name, decode_label_visible, is_parameter_control_group,
@@ -492,8 +492,7 @@ fn build_scene_point_for_group(
                 mapped_point_index(group_to_point_index, angle_start_group_index)?;
             let angle_vertex_index =
                 mapped_point_index(group_to_point_index, angle_vertex_group_index)?;
-            let angle_end_index =
-                mapped_point_index(group_to_point_index, angle_end_group_index)?;
+            let angle_end_index = mapped_point_index(group_to_point_index, angle_end_group_index)?;
             let angle_start = anchors.get(angle_start_group_index)?.clone()?;
             let angle_vertex = anchors.get(angle_vertex_group_index)?.clone()?;
             let angle_end = anchors.get(angle_end_group_index)?.clone()?;

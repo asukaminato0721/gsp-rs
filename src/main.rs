@@ -4,6 +4,7 @@ use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use gsp_rs::upload::upload_gsp_file;
 use gsp_rs::{Config, pipeline::compile_file_to_html};
 use miette::{Result, miette};
 
@@ -41,6 +42,22 @@ fn run_jobs_in_process(config: &Config) -> Result<()> {
                     job.html_path.display(),
                     job.gsp_path.display()
                 );
+                if let Some(upload_url) = &config.upload_url {
+                    match upload_gsp_file(&job.gsp_path, upload_url) {
+                        Ok(response) if response.is_empty() => {
+                            println!("uploaded {} to {}", job.gsp_path.display(), upload_url);
+                        }
+                        Ok(response) => {
+                            println!(
+                                "uploaded {} to {}: {}",
+                                job.gsp_path.display(),
+                                upload_url,
+                                response
+                            );
+                        }
+                        Err(error) => failures.push(format!("{}: {error}", job.gsp_path.display())),
+                    }
+                }
             }
             Err(error) => failures.push(format!("{}: {error}", job.gsp_path.display())),
         }
@@ -97,6 +114,24 @@ fn run_jobs_out_of_process(config: &Config) -> Result<()> {
                 job.gsp_path.display(),
                 format_exit_status(status)
             ));
+            continue;
+        }
+
+        if let Some(upload_url) = &config.upload_url {
+            match upload_gsp_file(&job.gsp_path, upload_url) {
+                Ok(response) if response.is_empty() => {
+                    println!("uploaded {} to {}", job.gsp_path.display(), upload_url);
+                }
+                Ok(response) => {
+                    println!(
+                        "uploaded {} to {}: {}",
+                        job.gsp_path.display(),
+                        upload_url,
+                        response
+                    );
+                }
+                Err(error) => failures.push(format!("{}: {error}", job.gsp_path.display())),
+            }
         }
     }
 

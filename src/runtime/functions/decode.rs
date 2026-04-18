@@ -293,8 +293,7 @@ fn try_decode_numeric_helper_group(
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
             if matches!(
                 source_group.header.kind(),
-                crate::format::GroupKind::AngleMarker
-                    | crate::format::GroupKind::LegacyAngleMarker
+                crate::format::GroupKind::AngleMarker | crate::format::GroupKind::LegacyAngleMarker
             ) {
                 let source_path = find_indexed_path(file, source_group)?;
                 let start = anchors
@@ -564,7 +563,9 @@ fn arc_angle_degrees_raw(
         crate::format::GroupKind::ArcOnCircle => {
             let circle_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
             let circle_path = find_indexed_path(file, circle_group)?;
-            let center = anchors.get(circle_path.refs.first()?.checked_sub(1)?)?.clone()?;
+            let center = anchors
+                .get(circle_path.refs.first()?.checked_sub(1)?)?
+                .clone()?;
             let start = anchors.get(path.refs.get(1)?.checked_sub(1)?)?.clone()?;
             let end = anchors.get(path.refs.get(2)?.checked_sub(1)?)?.clone()?;
             angle_degrees_from_points(&start, &center, &end)

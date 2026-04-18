@@ -7,8 +7,8 @@ use super::{
     decode_regular_polygon_vertex_anchor_raw, decode_transform_anchor_raw,
     decode_translated_point_anchor_raw, find_indexed_path, try_decode_payload_anchor_point,
 };
-use crate::runtime::extract::points::decode_legacy_angle_rotation_anchor_raw;
 use crate::runtime::extract::decode::is_parameter_control_group;
+use crate::runtime::extract::points::decode_legacy_angle_rotation_anchor_raw;
 use crate::runtime::extract::points::{
     decode_coordinate_expression_anchor_raw, decode_coordinate_point,
     decode_custom_transform_anchor_raw, decode_expression_offset_anchor_raw,

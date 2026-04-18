@@ -1,11 +1,14 @@
 use miette::{Result, miette};
 use std::path::PathBuf;
 
+const DEFAULT_UPLOAD_URL: &str = "https://gsp.dmath.net/upload.php";
+
 #[derive(Debug)]
 pub struct Config {
     pub jobs: Vec<RenderJob>,
     pub render_width: u32,
     pub render_height: u32,
+    pub upload_url: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,19 +32,40 @@ impl Config {
         }
 
         let mut jobs = Vec::new();
-        for arg in raw_args {
-            match arg.to_string_lossy().as_ref() {
+        let mut upload_url = None;
+        let mut index = 0usize;
+        while index < raw_args.len() {
+            let arg = raw_args[index].to_string_lossy();
+            match arg.as_ref() {
+                "--upload" => {
+                    upload_url = Some(DEFAULT_UPLOAD_URL.to_string());
+                }
+                "--upload-url" => {
+                    let Some(value) = raw_args.get(index + 1) else {
+                        return Err(miette!("missing value for --upload-url\n{}", Self::usage()));
+                    };
+                    upload_url = Some(value.to_string_lossy().into_owned());
+                    index += 1;
+                }
+                value if value.starts_with("--upload-url=") => {
+                    let provided = value.trim_start_matches("--upload-url=");
+                    if provided.is_empty() {
+                        return Err(miette!("missing value for --upload-url\n{}", Self::usage()));
+                    }
+                    upload_url = Some(provided.to_string());
+                }
                 value if value.starts_with('-') => {
                     return Err(miette!("unknown flag: {value}\n{}", Self::usage()));
                 }
                 _ => {
-                    let gsp_path = PathBuf::from(arg);
+                    let gsp_path = PathBuf::from(&raw_args[index]);
                     jobs.push(RenderJob {
                         html_path: gsp_path.with_extension("html"),
                         gsp_path,
                     });
                 }
             }
+            index += 1;
         }
 
         if jobs.is_empty() {
@@ -52,11 +76,13 @@ impl Config {
             jobs,
             render_width: 800,
             render_height: 600,
+            upload_url,
         })
     }
 
     pub fn usage() -> String {
-        "usage: gsp-rs <path/to/file1.gsp> [path/to/file2.gsp ...]".to_string()
+        "usage: gsp-rs [--upload] [--upload-url <url>] <path/to/file1.gsp> [path/to/file2.gsp ...]"
+            .to_string()
     }
 }
 
@@ -81,12 +107,50 @@ mod tests {
                 },
             ]
         );
+        assert_eq!(config.upload_url, None);
     }
 
     #[test]
     fn rejects_unknown_flags() {
         let error = Config::parse(["--wat", "a.gsp"].into_iter()).expect_err("unknown flag");
         assert!(error.to_string().contains("unknown flag: --wat"));
+    }
+
+    #[test]
+    fn upload_flag_enables_default_upload_endpoint() {
+        let config = Config::parse(["--upload", "a.gsp"].into_iter()).expect("config parses");
+        assert_eq!(
+            config.upload_url.as_deref(),
+            Some(super::DEFAULT_UPLOAD_URL)
+        );
+    }
+
+    #[test]
+    fn upload_url_flag_overrides_upload_endpoint() {
+        let config =
+            Config::parse(["--upload-url", "https://example.test/upload", "a.gsp"].into_iter())
+                .expect("config parses");
+        assert_eq!(
+            config.upload_url.as_deref(),
+            Some("https://example.test/upload")
+        );
+    }
+
+    #[test]
+    fn inline_upload_url_flag_enables_upload() {
+        let config =
+            Config::parse(["--upload-url=https://example.test/upload", "a.gsp"].into_iter())
+                .expect("config parses");
+        assert_eq!(
+            config.upload_url.as_deref(),
+            Some("https://example.test/upload")
+        );
+    }
+
+    #[test]
+    fn rejects_missing_upload_url_value() {
+        let error = Config::parse(["--upload-url"].into_iter()).expect_err("missing url");
+        assert!(error.to_string().contains("missing value for --upload-url"));
     }
 
     #[test]

@@ -438,13 +438,15 @@ mod tests {
 
     #[test]
     fn compiles_legacy_arc_measure_helper_fixtures() {
-        let Some(clock) = fixture_bytes("tests/Samples/个人专栏/侯仰顺作品/时钟.gsp") else {
+        let Some(clock) = fixture_bytes("tests/Samples/个人专栏/侯仰顺作品/时钟.gsp")
+        else {
             return;
         };
         let clock_scene = fixture_scene_json(&clock, "clock fixture should compile");
         assert!(clock_scene.contains("\"points\": ["));
 
-        let Some(rolling) = fixture_bytes("tests/Samples/个人专栏/况永胜作品/正多边形在圆外滚动.gsp")
+        let Some(rolling) =
+            fixture_bytes("tests/Samples/个人专栏/况永胜作品/正多边形在圆外滚动.gsp")
         else {
             return;
         };
@@ -460,7 +462,8 @@ mod tests {
         let cardioid_scene = fixture_scene_json(&cardioid, "cardioid fixture should compile");
         assert!(cardioid_scene.contains("\"points\": ["));
 
-        let Some(buffon) = fixture_bytes("tests/Samples/热研系列/概率问题/蒲丰投针实验求π的近似值.gsp")
+        let Some(buffon) =
+            fixture_bytes("tests/Samples/热研系列/概率问题/蒲丰投针实验求π的近似值.gsp")
         else {
             return;
         };

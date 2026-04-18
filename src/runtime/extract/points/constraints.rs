@@ -1335,7 +1335,8 @@ fn axis_line_group_indices(
     }
     let through_anchor = anchors.get(through_group_index)?.clone()?;
     let axis_anchor = anchors.get(axis_group_index)?.clone()?;
-    (((axis_anchor.x - through_anchor.x).powi(2) + (axis_anchor.y - through_anchor.y).powi(2)).sqrt()
+    (((axis_anchor.x - through_anchor.x).powi(2) + (axis_anchor.y - through_anchor.y).powi(2))
+        .sqrt()
         > 1e-9)
         .then_some((through_group_index, axis_group_index))
 }

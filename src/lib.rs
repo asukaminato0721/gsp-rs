@@ -5,6 +5,7 @@ pub mod export;
 mod format;
 pub mod geometry_parity;
 pub(crate) mod runtime;
+pub mod upload;
 pub(crate) mod util;
 
 pub mod pipeline;
