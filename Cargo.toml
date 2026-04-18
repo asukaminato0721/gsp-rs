@@ -17,3 +17,6 @@ thiserror = "2"
 
 [dev-dependencies]
 insta = "1"
+
+[profile.release]
+strip = true
