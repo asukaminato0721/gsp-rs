@@ -9,7 +9,7 @@ ab_glyph = "0.2"
 anyhow = "1"
 binrw = "0.14"
 miette = { version = "7", features = ["fancy"] }
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "multipart", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "multipart", "native-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ts-rs = "12"

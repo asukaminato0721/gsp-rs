@@ -1,35 +1,40 @@
 use miette::{IntoDiagnostic, Result, WrapErr, miette};
 use reqwest::blocking::multipart::Form;
-use std::path::Path;
+use reqwest::header::{CONNECTION, HeaderMap, HeaderValue, USER_AGENT};
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 pub fn upload_gsp_file(gsp_path: &Path, upload_url: &str) -> Result<String> {
+    let upload_path = resolve_upload_path(gsp_path)?;
     let form = Form::new()
-        .file("file", gsp_path)
+        .file("file", &upload_path)
         .into_diagnostic()
         .wrap_err_with(|| {
             format!(
                 "failed to prepare multipart upload for {}",
-                gsp_path.display()
+                upload_path.display()
             )
         })?;
 
-    let response = reqwest::blocking::Client::new()
+    let response = build_upload_client()?
         .post(upload_url)
         .multipart(form)
         .send()
         .into_diagnostic()
-        .wrap_err_with(|| format!("failed to upload {}", gsp_path.display()))?;
+        .wrap_err_with(|| format!("failed to upload {}", upload_path.display()))?;
     let status = response.status();
-    let body = response
-        .text()
-        .into_diagnostic()
-        .wrap_err_with(|| format!("failed to read upload response for {}", gsp_path.display()))?;
+    let body = response.text().into_diagnostic().wrap_err_with(|| {
+        format!(
+            "failed to read upload response for {}",
+            upload_path.display()
+        )
+    })?;
 
     if !status.is_success() {
         let detail = body.trim();
         return Err(miette!(
             "failed to upload {} to {}: HTTP {}{}",
-            gsp_path.display(),
+            upload_path.display(),
             upload_url,
             status,
             if detail.is_empty() {
@@ -43,9 +48,32 @@ pub fn upload_gsp_file(gsp_path: &Path, upload_url: &str) -> Result<String> {
     Ok(body.trim().to_string())
 }
 
+fn resolve_upload_path(gsp_path: &Path) -> Result<PathBuf> {
+    gsp_path.canonicalize().into_diagnostic().wrap_err_with(|| {
+        format!(
+            "failed to resolve full upload path for {}",
+            gsp_path.display()
+        )
+    })
+}
+
+fn build_upload_client() -> Result<reqwest::blocking::Client> {
+    let mut default_headers = HeaderMap::new();
+    default_headers.insert(USER_AGENT, HeaderValue::from_static("curl/8.0.0"));
+    default_headers.insert(CONNECTION, HeaderValue::from_static("close"));
+
+    reqwest::blocking::Client::builder()
+        .default_headers(default_headers)
+        .http1_only()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .into_diagnostic()
+        .wrap_err("failed to build upload client")
+}
+
 #[cfg(test)]
 mod tests {
-    use super::upload_gsp_file;
+    use super::{resolve_upload_path, upload_gsp_file};
     use std::fs;
     use std::io::{Read, Write};
     use std::net::TcpListener;
@@ -101,6 +129,39 @@ mod tests {
         );
 
         let _ = server.join();
+        let _ = fs::remove_dir_all(&temp_root);
+    }
+
+    #[test]
+    fn upload_failure_reports_resolved_full_path() {
+        let temp_root = unique_test_dir("upload-full-path-error");
+        let nested_root = temp_root.join("nested");
+        fs::create_dir_all(&nested_root).expect("temporary directory should be creatable");
+        let gsp_path = temp_root.join("sample.gsp");
+        fs::write(&gsp_path, b"sample gsp body").expect("fixture gsp should be writable");
+
+        let non_canonical = nested_root.join("..").join("sample.gsp");
+        let (upload_url, server) = start_test_server(500, "upload failed");
+        let error = upload_gsp_file(&non_canonical, &upload_url).expect_err("upload should fail");
+
+        assert!(error.to_string().contains(&gsp_path.display().to_string()));
+
+        let _ = server.join();
+        let _ = fs::remove_dir_all(&temp_root);
+    }
+
+    #[test]
+    fn resolves_upload_path_to_full_canonical_path() {
+        let temp_root = unique_test_dir("upload-canonical-path");
+        let nested_root = temp_root.join("nested");
+        fs::create_dir_all(&nested_root).expect("temporary directory should be creatable");
+        let gsp_path = temp_root.join("sample.gsp");
+        fs::write(&gsp_path, b"sample gsp body").expect("fixture gsp should be writable");
+
+        let non_canonical = nested_root.join("..").join("sample.gsp");
+        let resolved = resolve_upload_path(&non_canonical).expect("path should canonicalize");
+        assert_eq!(resolved, gsp_path);
+
         let _ = fs::remove_dir_all(&temp_root);
     }
 

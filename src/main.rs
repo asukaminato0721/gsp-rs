@@ -55,11 +55,11 @@ fn run_jobs_in_process(config: &Config) -> Result<()> {
                                 response
                             );
                         }
-                        Err(error) => failures.push(format!("{}: {error}", job.gsp_path.display())),
+                        Err(error) => failures.push(format_job_error(&job.gsp_path, &error)),
                     }
                 }
             }
-            Err(error) => failures.push(format!("{}: {error}", job.gsp_path.display())),
+            Err(error) => failures.push(format_job_error(&job.gsp_path, &error)),
         }
     }
     if failures.is_empty() {
@@ -131,7 +131,7 @@ fn run_jobs_out_of_process(config: &Config) -> Result<()> {
                         response
                     );
                 }
-                Err(error) => failures.push(format!("{}: {error}", job.gsp_path.display())),
+                Err(error) => failures.push(format_job_error(&job.gsp_path, &error)),
             }
         }
     }
@@ -145,6 +145,10 @@ fn run_jobs_out_of_process(config: &Config) -> Result<()> {
             failures.join("\n")
         ))
     }
+}
+
+fn format_job_error(job_path: &std::path::Path, error: &miette::Report) -> String {
+    format!("{}: {error:#}", job_path.display())
 }
 
 fn wait_for_child_exit(
@@ -182,7 +186,7 @@ fn format_exit_status(status: std::process::ExitStatus) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::format_exit_status;
+    use super::{format_exit_status, format_job_error};
     use std::process::Command;
     use std::time::Duration;
 
@@ -218,5 +222,14 @@ mod tests {
         assert!(status.is_none(), "expected timeout for sleepy child");
         let _ = child.kill();
         let _ = child.wait();
+    }
+
+    #[test]
+    fn formats_job_errors_with_full_cause_chain() {
+        let error = miette::miette!("outer context").wrap_err("inner context");
+        let rendered = format_job_error(std::path::Path::new("sample.gsp"), &error);
+        assert!(rendered.contains("sample.gsp:"));
+        assert!(rendered.contains("inner context"));
+        assert!(rendered.contains("outer context"));
     }
 }
