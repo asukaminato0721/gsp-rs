@@ -19,6 +19,7 @@ pub(crate) use plot::{
 };
 pub(crate) use scene::{
     collect_scene_functions, collect_scene_parameters, collect_standalone_function_definitions,
+    synthesize_standalone_function_definition_labels,
     function_uses_pi_scale,
 };
 

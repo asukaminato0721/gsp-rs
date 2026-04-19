@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 
 use crate::format::{GspFile, ObjectGroup, read_u16};
-use crate::runtime::extract::{find_indexed_path, try_decode_parameter_control_value_for_group};
+use crate::runtime::extract::{
+    find_indexed_path, try_decode_parameter_control_value_for_group, try_decode_payload_anchor_point,
+};
 use crate::runtime::extract::points::is_standalone_function_definition_group;
 use crate::runtime::scene::{
     SceneFunction, SceneFunctionDefinition, SceneParameter, ScenePoint, ScenePointConstraint,
@@ -211,16 +213,57 @@ pub(crate) fn collect_standalone_function_definitions(
         .filter(|group| is_standalone_function_definition_group(file, groups, group))
         .filter_map(|group| {
             let expr = super::decode::try_decode_standalone_function_expr(file, groups, group).ok()?;
+            let name = source_function_name(file, group)?;
+            let expected_label = format!(
+                "{name}(x) = {}",
+                super::expr::function_expr_label(expr.clone())
+            );
             function_expr_contains_variable(&expr).then_some(SceneFunctionDefinition {
                 key: group.ordinal,
-                name: source_function_name(file, group)?,
+                name,
                 expr,
                 label_index: labels.iter().position(|label| {
                     label
                         .debug
                         .as_ref()
                         .is_some_and(|debug| debug.group_ordinal == group.ordinal)
-                }),
+                }).or_else(|| labels.iter().position(|label| label.text == expected_label)),
+            })
+        })
+        .collect()
+}
+
+pub(crate) fn synthesize_standalone_function_definition_labels(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    existing_labels: &[TextLabel],
+) -> Vec<TextLabel> {
+    groups
+        .iter()
+        .filter(|group| is_standalone_function_definition_group(file, groups, group))
+        .filter(|group| {
+            !existing_labels.iter().any(|label| {
+                label
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == group.ordinal)
+            })
+        })
+        .filter_map(|group| {
+            let anchor = try_decode_payload_anchor_point(file, group).ok().flatten()?;
+            let name = source_function_name(file, group)?;
+            let expr = super::decode::try_decode_standalone_function_expr(file, groups, group).ok()?;
+            let text = format!("{name}(x) = {}", super::expr::function_expr_label(expr));
+            Some(TextLabel {
+                anchor,
+                text,
+                rich_markup: None,
+                color: [30, 30, 30, 255],
+                visible: true,
+                binding: None,
+                screen_space: true,
+                hotspots: Vec::new(),
+                debug: None,
             })
         })
         .collect()

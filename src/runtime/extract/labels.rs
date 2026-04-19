@@ -388,6 +388,8 @@ pub(super) fn collect_labels(
     let mut pending_hotspots = Vec::new();
     for group in groups {
         let kind = group.header.kind();
+        let is_standalone_function_definition = kind == crate::format::GroupKind::Point
+            && is_standalone_function_definition_group(file, groups, group);
         match kind {
             crate::format::GroupKind::Midpoint => {
                 if let Some(label_text) =
@@ -399,9 +401,7 @@ pub(super) fn collect_labels(
                         rich_markup,
                         hotspots,
                     } = label_text;
-                    let (text, rich_markup) = if kind == crate::format::GroupKind::Point
-                        && is_standalone_function_definition_group(file, groups, group)
-                    {
+                    let (text, rich_markup) = if is_standalone_function_definition {
                         if let (Some(name), Ok(expr)) = (
                             decode_label_name(file, group),
                             crate::runtime::functions::try_decode_standalone_function_expr(
@@ -419,14 +419,11 @@ pub(super) fn collect_labels(
                     };
                     let binding = angle_marker_measurement_binding(file, group, &text)
                         .or_else(|| coordinate_readout_binding(file, groups, group));
-                    let visible =
-                        if kind == crate::format::GroupKind::Point
-                            && is_standalone_function_definition_group(file, groups, group)
-                        {
-                            true
-                        } else {
-                            label_visible_for_group(file, group)
-                        };
+                    let visible = if is_standalone_function_definition {
+                        true
+                    } else {
+                        label_visible_for_group(file, group)
+                    };
                     let label_index = labels.len();
                     label_group_to_index.insert(group.ordinal, label_index);
                     labels.push(TextLabel {
@@ -524,9 +521,7 @@ pub(super) fn collect_labels(
                         rich_markup,
                         hotspots,
                     } = label_text;
-                    let (text, rich_markup) = if kind == crate::format::GroupKind::Point
-                        && is_standalone_function_definition_group(file, groups, group)
-                    {
+                    let (text, rich_markup) = if is_standalone_function_definition {
                         if let (Some(name), Ok(expr)) = (
                             decode_label_name(file, group),
                             crate::runtime::functions::try_decode_standalone_function_expr(
@@ -543,14 +538,11 @@ pub(super) fn collect_labels(
                     };
                     let binding = angle_marker_measurement_binding(file, group, &text)
                         .or_else(|| coordinate_readout_binding(file, groups, group));
-                    let visible =
-                        if kind == crate::format::GroupKind::Point
-                            && is_standalone_function_definition_group(file, groups, group)
-                        {
-                            true
-                        } else {
-                            label_visible_for_group(file, group)
-                        };
+                    let visible = if is_standalone_function_definition {
+                        true
+                    } else {
+                        label_visible_for_group(file, group)
+                    };
                     let label_index = labels.len();
                     label_group_to_index.insert(group.ordinal, label_index);
                     labels.push(TextLabel {
@@ -785,10 +777,13 @@ pub(super) fn collect_coordinate_labels(
     for group in groups {
         let kind = group.header.kind();
         let helper_visible = !group.header.is_hidden();
+        let is_standalone_function_definition = kind == crate::format::GroupKind::Point
+            && is_standalone_function_definition_group(file, groups, group);
         let is_non_graph_parameter = kind == crate::format::GroupKind::Point
             && is_non_graph_parameter_group(file, groups, group);
         let is_parametric_function_component = kind == crate::format::GroupKind::Point
-            && is_parametric_function_component_group(file, groups, group.ordinal);
+            && is_parametric_function_component_group(file, groups, group.ordinal)
+            && !is_standalone_function_definition;
         if (is_non_graph_parameter || is_parametric_function_component)
             && let Some(name) = decode_label_name(file, group)
             && let Some(value) =

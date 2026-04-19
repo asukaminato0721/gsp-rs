@@ -1108,6 +1108,52 @@ mod tests {
     }
 
     #[test]
+    fn exports_parameter_curve2_fixture_with_functions_and_parametric_curve() {
+        let scene = fixture_scene(
+            include_bytes!("../tests/fixtures/gsp/static/parameter_curve2.gsp"),
+            "parameter curve2 fixture should compile",
+        );
+
+        assert_eq!(scene["parameters"].as_array().map(Vec::len), Some(0));
+        let definitions = scene["functionDefinitions"]
+            .as_array()
+            .expect("scene function definitions should be an array");
+        assert_eq!(definitions.len(), 2);
+        assert_eq!(definitions[0]["name"].as_str(), Some("f"));
+        assert_eq!(definitions[1]["name"].as_str(), Some("h"));
+
+        let lines = scene["lines"]
+            .as_array()
+            .expect("scene lines should be an array");
+        let parametric_line = lines
+            .iter()
+            .find(|line| line["binding"]["kind"].as_str() == Some("parametric-curve"))
+            .expect("expected parametric curve line binding");
+        assert!(
+            parametric_line["points"]
+                .as_array()
+                .is_some_and(|points| points.len() > 2),
+            "expected sampled parametric curve points"
+        );
+        assert_eq!(
+            parametric_line["binding"]["yExpr"]["expr"]["kind"].as_str(),
+            Some("unary")
+        );
+        assert_eq!(
+            parametric_line["binding"]["yExpr"]["expr"]["op"].as_str(),
+            Some("cos")
+        );
+
+        let labels = scene["labels"]
+            .as_array()
+            .expect("scene labels should be an array");
+        assert_eq!(labels.len(), 2);
+        assert_eq!(labels[0]["text"].as_str(), Some("f(x) = sin(x)"));
+        assert_eq!(labels[1]["text"].as_str(), Some("h(x) = cos(2*x)"));
+        assert!(labels.iter().all(|label| label["visible"].as_bool() == Some(true)));
+    }
+
+    #[test]
     fn exports_insert_image_fixture() {
         let scene = fixture_scene(
             include_bytes!("../tests/fixtures/未实现的系统功能/插入图片.gsp"),

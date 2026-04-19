@@ -211,7 +211,6 @@ pub(crate) fn is_standalone_function_definition_group(
 ) -> bool {
     has_parameter_control_payload(group)
         && !is_non_graph_parameter_group(file, groups, group)
-        && !is_parametric_function_component_group(file, groups, group.ordinal)
         && try_decode_standalone_function_expr(file, groups, group)
             .ok()
             .is_some_and(|expr| function_expr_contains_variable(&expr))

@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::format::{GspFile, ObjectGroup, PointRecord};
 use crate::runtime::extract::{find_indexed_path, try_decode_parameter_control_value_for_group};
+use crate::runtime::extract::points::is_standalone_function_definition_group;
 use crate::runtime::geometry::{
     Bounds, GraphTransform, has_distinct_points, include_line_bounds, to_raw_from_world,
 };
@@ -11,6 +12,7 @@ use crate::runtime::scene::{LineBinding, LineShape, TextLabel};
 use super::decode::{
     evaluate_function_group_with_overrides, try_decode_function_expr,
     try_decode_function_plot_descriptor, try_decode_plot_component_expr,
+    try_decode_standalone_function_expr,
 };
 use super::eval::{evaluate_expr_with_parameters, sample_function_points};
 use super::expr::{
@@ -101,8 +103,8 @@ fn sample_parametric_plot_segments(
     descriptor: &crate::runtime::functions::FunctionPlotDescriptor,
 ) -> Option<Vec<Vec<PointRecord>>> {
     if let (Ok(x_expr), Ok(y_expr)) = (
-        try_decode_plot_component_expr(file, groups, x_group),
-        try_decode_plot_component_expr(file, groups, y_group),
+        decode_parametric_component_expr(file, groups, x_group),
+        decode_parametric_component_expr(file, groups, y_group),
     ) {
         return sample_parametric_expr_segments(&x_expr, &y_expr, descriptor);
     }
@@ -199,8 +201,8 @@ fn parametric_curve_binding(
         .find(|record| record.record_type == RECORD_FUNCTION_PLOT_DESCRIPTOR)?;
     let descriptor =
         try_decode_function_plot_descriptor(descriptor_record.payload(&file.data)).ok()?;
-    let x_expr = try_decode_plot_component_expr(file, groups, x_group).ok()?;
-    let y_expr = try_decode_plot_component_expr(file, groups, y_group).ok()?;
+    let x_expr = decode_parametric_component_expr(file, groups, x_group).ok()?;
+    let y_expr = decode_parametric_component_expr(file, groups, y_group).ok()?;
     Some(LineBinding::ParametricCurve {
         x_expr,
         y_expr,
@@ -208,6 +210,18 @@ fn parametric_curve_binding(
         x_max: descriptor.x_max,
         sample_count: descriptor.sample_count,
     })
+}
+
+fn decode_parametric_component_expr(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Result<FunctionExpr, super::decode::FunctionExprParseError> {
+    if is_standalone_function_definition_group(file, groups, group) {
+        try_decode_standalone_function_expr(file, groups, group)
+    } else {
+        try_decode_plot_component_expr(file, groups, group)
+    }
 }
 
 pub(crate) fn collect_function_plot_domain(
