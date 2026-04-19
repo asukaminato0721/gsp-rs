@@ -1049,6 +1049,33 @@ mod tests {
     }
 
     #[test]
+    fn exports_parameter_curve_fixture_as_parametric_line() {
+        let scene = fixture_scene(
+            include_bytes!("../tests/fixtures/gsp/static/parameter_curve.gsp"),
+            "parameter curve fixture should compile",
+        );
+
+        let lines = scene["lines"]
+            .as_array()
+            .expect("scene lines should be an array");
+        let parametric_line = lines
+            .iter()
+            .find(|line| line["binding"]["kind"].as_str() == Some("parametric-curve"))
+            .expect("expected parametric curve line binding");
+        assert!(
+            parametric_line["points"]
+                .as_array()
+                .is_some_and(|points| points.len() > 2),
+            "expected sampled parametric curve points"
+        );
+        assert!(
+            parametric_line["binding"]["xExpr"].is_object()
+                && parametric_line["binding"]["yExpr"].is_object(),
+            "expected exported parametric component expressions"
+        );
+    }
+
+    #[test]
     fn exports_insert_image_fixture() {
         let scene = fixture_scene(
             include_bytes!("../tests/fixtures/未实现的系统功能/插入图片.gsp"),

@@ -593,6 +593,7 @@ pub(crate) fn remap_line_bindings(
                 *point_index = mapped_point_index;
                 *driver_index = mapped_driver_index;
             }
+            LineBinding::ParametricCurve { .. } => {}
             LineBinding::ArcBoundary {
                 center_index,
                 start_index,

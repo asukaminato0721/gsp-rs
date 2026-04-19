@@ -909,6 +909,25 @@
     return points;
   }
 
+  /**
+   * @param {{ xExpr: FunctionExprJson, yExpr: FunctionExprJson, xMin: number, xMax: number, sampleCount: number }} binding
+   * @param {Map<string, number>} parameters
+   * @returns {Point[]}
+   */
+  function sampleParametricCurve(binding, parameters) {
+    const points = [];
+    const last = Math.max(1, binding.sampleCount - 1);
+    for (let index = 0; index < binding.sampleCount; index += 1) {
+      const t = index / last;
+      const value = binding.xMin + (binding.xMax - binding.xMin) * t;
+      const x = evaluateExpr(binding.xExpr, value, parameters);
+      const y = evaluateExpr(binding.yExpr, value, parameters);
+      if (x === null || y === null) continue;
+      points.push({ x, y });
+    }
+    return points;
+  }
+
   /** @param {number} value */
   function wrapUnitInterval(value) {
     return ((value % 1) + 1) % 1;
@@ -3090,6 +3109,12 @@
     "point-trace"({ scene, parameters }, line) {
       const sampled = samplePointTraceLine(scene, line, parameters);
       if (sampled) {
+        line.points = sampled;
+      }
+    },
+    "parametric-curve"({ parameters }, line) {
+      const sampled = sampleParametricCurve(line.binding, parameters);
+      if (sampled.length >= 2) {
         line.points = sampled;
       }
     },

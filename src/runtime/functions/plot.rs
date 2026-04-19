@@ -6,14 +6,16 @@ use crate::runtime::geometry::{
     Bounds, GraphTransform, has_distinct_points, include_line_bounds, to_raw_from_world,
 };
 use crate::runtime::payload_consts::RECORD_FUNCTION_PLOT_DESCRIPTOR;
-use crate::runtime::scene::{LineShape, TextLabel};
+use crate::runtime::scene::{LineBinding, LineShape, TextLabel};
 
 use super::decode::{
     evaluate_function_group_with_overrides, try_decode_function_expr,
-    try_decode_function_plot_descriptor,
+    try_decode_function_plot_descriptor, try_decode_plot_component_expr,
 };
-use super::eval::sample_function_points;
-use super::expr::{FunctionPlotMode, function_expr_label_with_variable, function_variable_symbol};
+use super::eval::{evaluate_expr_with_parameters, sample_function_points};
+use super::expr::{
+    FunctionExpr, FunctionPlotMode, function_expr_label_with_variable, function_variable_symbol,
+};
 use super::scene::collect_parameter_bindings;
 
 pub(crate) fn collect_function_plots(
@@ -33,6 +35,7 @@ pub(crate) fn collect_function_plots(
                 | crate::format::GroupKind::ParametricFunctionPlot
         )
     }) {
+        let binding = parametric_curve_binding(file, groups, group);
         let Some(segments) = sample_plot_segments(file, groups, group) else {
             continue;
         };
@@ -50,6 +53,7 @@ pub(crate) fn collect_function_plots(
                 color: crate::runtime::geometry::color_from_style(group.header.style_b),
                 dashed: false,
                 visible: !group.header.is_hidden(),
+                binding: binding.clone(),
                 ..Default::default()
             });
         }
@@ -96,6 +100,13 @@ fn sample_parametric_plot_segments(
     y_group: &ObjectGroup,
     descriptor: &crate::runtime::functions::FunctionPlotDescriptor,
 ) -> Option<Vec<Vec<PointRecord>>> {
+    if let (Ok(x_expr), Ok(y_expr)) = (
+        try_decode_plot_component_expr(file, groups, x_group),
+        try_decode_plot_component_expr(file, groups, y_group),
+    ) {
+        return sample_parametric_expr_segments(&x_expr, &y_expr, descriptor);
+    }
+
     let mut parameter_names = collect_parameter_bindings(file, groups, x_group)
         .into_values()
         .map(|binding| binding.name)
@@ -136,6 +147,67 @@ fn sample_parametric_plot_segments(
         segments.push(points);
     }
     (!segments.is_empty()).then_some(segments)
+}
+
+fn sample_parametric_expr_segments(
+    x_expr: &FunctionExpr,
+    y_expr: &FunctionExpr,
+    descriptor: &crate::runtime::functions::FunctionPlotDescriptor,
+) -> Option<Vec<Vec<PointRecord>>> {
+    let mut segments = Vec::<Vec<PointRecord>>::new();
+    let mut points = Vec::with_capacity(descriptor.sample_count);
+    let span = descriptor.x_max - descriptor.x_min;
+    let last = descriptor.sample_count.saturating_sub(1).max(1) as f64;
+    let parameters = BTreeMap::new();
+    for index in 0..descriptor.sample_count {
+        let t = index as f64 / last;
+        let parameter = descriptor.x_min + span * t;
+        let x = evaluate_expr_with_parameters(x_expr, parameter, &parameters)?;
+        let y = evaluate_expr_with_parameters(y_expr, parameter, &parameters)?;
+        let point = PointRecord { x, y };
+        if point.x.is_finite() && point.y.is_finite() {
+            points.push(point);
+        } else if points.len() >= 2 {
+            segments.push(std::mem::take(&mut points));
+        } else {
+            points.clear();
+        }
+    }
+    if points.len() >= 2 {
+        segments.push(points);
+    }
+    (!segments.is_empty()).then_some(segments)
+}
+
+fn parametric_curve_binding(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<LineBinding> {
+    if (group.header.kind()) != crate::format::GroupKind::ParametricFunctionPlot {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() < 3 {
+        return None;
+    }
+    let x_group = groups.get(path.refs[0].checked_sub(1)?)?;
+    let y_group = groups.get(path.refs[1].checked_sub(1)?)?;
+    let descriptor_record = group
+        .records
+        .iter()
+        .find(|record| record.record_type == RECORD_FUNCTION_PLOT_DESCRIPTOR)?;
+    let descriptor =
+        try_decode_function_plot_descriptor(descriptor_record.payload(&file.data)).ok()?;
+    let x_expr = try_decode_plot_component_expr(file, groups, x_group).ok()?;
+    let y_expr = try_decode_plot_component_expr(file, groups, y_group).ok()?;
+    Some(LineBinding::ParametricCurve {
+        x_expr,
+        y_expr,
+        x_min: descriptor.x_min,
+        x_max: descriptor.x_max,
+        sample_count: descriptor.sample_count,
+    })
 }
 
 pub(crate) fn collect_function_plot_domain(

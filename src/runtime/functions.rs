@@ -5,8 +5,7 @@ mod plot;
 mod scene;
 
 pub(crate) use decode::{
-    evaluate_function_group_with_overrides, try_decode_function_expr,
-    try_decode_function_plot_descriptor,
+    evaluate_function_group_with_overrides, try_decode_function_expr, try_decode_function_plot_descriptor,
 };
 pub(crate) use eval::evaluate_expr_with_parameters;
 pub(crate) use expr::{

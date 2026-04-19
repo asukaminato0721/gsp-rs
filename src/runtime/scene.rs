@@ -607,6 +607,13 @@ pub(crate) enum LineBinding {
         x_max: f64,
         sample_count: usize,
     },
+    ParametricCurve {
+        x_expr: FunctionExpr,
+        y_expr: FunctionExpr,
+        x_min: f64,
+        x_max: f64,
+        sample_count: usize,
+    },
     ArcBoundary {
         host_key: usize,
         boundary_kind: ArcBoundaryKind,

@@ -1,3 +1,4 @@
+use super::function_expr_json::FunctionExprJson;
 use super::scene_json::{DebugSourceJson, PointJson};
 use super::transform_json::TransformJson;
 use crate::runtime::geometry::darken;
@@ -153,6 +154,19 @@ enum LineBindingJson {
         #[serde(rename = "sampleCount")]
         sample_count: usize,
     },
+    #[serde(rename = "parametric-curve")]
+    ParametricCurve {
+        #[serde(rename = "xExpr")]
+        x_expr: FunctionExprJson,
+        #[serde(rename = "yExpr")]
+        y_expr: FunctionExprJson,
+        #[serde(rename = "xMin")]
+        x_min: f64,
+        #[serde(rename = "xMax")]
+        x_max: f64,
+        #[serde(rename = "sampleCount")]
+        sample_count: usize,
+    },
     #[serde(rename = "arc-boundary")]
     ArcBoundary {
         #[serde(rename = "hostKey")]
@@ -294,6 +308,19 @@ impl LineBindingJson {
             } => Self::PointTrace {
                 point_index: *point_index,
                 driver_index: *driver_index,
+                x_min: *x_min,
+                x_max: *x_max,
+                sample_count: *sample_count,
+            },
+            LineBinding::ParametricCurve {
+                x_expr,
+                y_expr,
+                x_min,
+                x_max,
+                sample_count,
+            } => Self::ParametricCurve {
+                x_expr: FunctionExprJson::from_expr(x_expr),
+                y_expr: FunctionExprJson::from_expr(y_expr),
                 x_min: *x_min,
                 x_max: *x_max,
                 sample_count: *sample_count,
