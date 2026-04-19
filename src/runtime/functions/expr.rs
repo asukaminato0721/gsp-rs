@@ -223,6 +223,52 @@ pub(crate) fn function_expr_contains_variable(expr: &FunctionExpr) -> bool {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RationalPiPeriod {
+    pub(crate) numerator: i64,
+    pub(crate) denominator: i64,
+}
+
+impl RationalPiPeriod {
+    fn new(numerator: i64, denominator: i64) -> Option<Self> {
+        if numerator <= 0 || denominator <= 0 {
+            return None;
+        }
+        let gcd = gcd_i64(numerator, denominator);
+        Some(Self {
+            numerator: numerator / gcd,
+            denominator: denominator / gcd,
+        })
+    }
+
+    pub(crate) fn as_f64(self) -> f64 {
+        std::f64::consts::PI * (self.numerator as f64) / (self.denominator as f64)
+    }
+}
+
+pub(crate) fn function_expr_period(expr: &FunctionExpr) -> Option<RationalPiPeriod> {
+    match expr {
+        FunctionExpr::Constant(_) | FunctionExpr::Identity => None,
+        FunctionExpr::SinIdentity | FunctionExpr::CosIdentityPlus(_) => {
+            RationalPiPeriod::new(2, 1)
+        }
+        FunctionExpr::TanIdentityMinus(_) => RationalPiPeriod::new(1, 1),
+        FunctionExpr::Parsed(ast) => function_ast_period(ast),
+    }
+}
+
+pub(crate) fn common_period(
+    left: RationalPiPeriod,
+    right: RationalPiPeriod,
+) -> Option<RationalPiPeriod> {
+    let common_denominator = lcm_i64(left.denominator, right.denominator)?;
+    let left_scaled = left.numerator.checked_mul(common_denominator / left.denominator)?;
+    let right_scaled = right
+        .numerator
+        .checked_mul(common_denominator / right.denominator)?;
+    RationalPiPeriod::new(lcm_i64(left_scaled, right_scaled)?, common_denominator)
+}
+
 fn function_ast_uses_trig(expr: &FunctionAst) -> bool {
     match expr {
         FunctionAst::Unary {
@@ -257,6 +303,134 @@ fn function_ast_contains_variable(expr: &FunctionAst) -> bool {
         }
         FunctionAst::Constant(_) | FunctionAst::PiAngle | FunctionAst::Parameter(_, _) => false,
     }
+}
+
+fn function_ast_period(expr: &FunctionAst) -> Option<RationalPiPeriod> {
+    match expr {
+        FunctionAst::Unary {
+            op:
+                op @ (UnaryFunction::Sin | UnaryFunction::Cos | UnaryFunction::Tan),
+            expr,
+        } => period_from_linear_arg(*op, expr),
+        FunctionAst::Unary { .. } => None,
+        FunctionAst::Binary { lhs, op, rhs } => match op {
+            BinaryOp::Add | BinaryOp::Sub => match (function_ast_period(lhs), function_ast_period(rhs))
+            {
+                (Some(left), Some(right)) => common_period(left, right),
+                (Some(period), None) if !function_ast_contains_variable(rhs) => Some(period),
+                (None, Some(period)) if !function_ast_contains_variable(lhs) => Some(period),
+                _ => None,
+            },
+            BinaryOp::Mul => match (function_ast_period(lhs), function_ast_period(rhs)) {
+                (Some(left), Some(right)) => common_period(left, right),
+                (Some(period), None) if !function_ast_contains_variable(rhs) => Some(period),
+                (None, Some(period)) if !function_ast_contains_variable(lhs) => Some(period),
+                _ => None,
+            },
+            BinaryOp::Div => match (function_ast_period(lhs), function_ast_period(rhs)) {
+                (Some(period), None) if !function_ast_contains_variable(rhs) => Some(period),
+                _ => None,
+            },
+            BinaryOp::Pow => None,
+        },
+        FunctionAst::Variable
+        | FunctionAst::Constant(_)
+        | FunctionAst::PiAngle
+        | FunctionAst::Parameter(_, _) => None,
+    }
+}
+
+fn period_from_linear_arg(op: UnaryFunction, expr: &FunctionAst) -> Option<RationalPiPeriod> {
+    let (coefficient, _) = linear_ast(expr)?;
+    let coefficient = coefficient.abs();
+    if coefficient <= 1e-9 {
+        return None;
+    }
+    let (num, den) = rationalize_f64(coefficient)?;
+    let base = match op {
+        UnaryFunction::Tan => 1i64,
+        UnaryFunction::Sin | UnaryFunction::Cos => 2i64,
+        _ => return None,
+    };
+    RationalPiPeriod::new(base.checked_mul(den)?, num)
+}
+
+fn linear_ast(expr: &FunctionAst) -> Option<(f64, f64)> {
+    match expr {
+        FunctionAst::Variable => Some((1.0, 0.0)),
+        FunctionAst::Constant(value) => Some((0.0, *value)),
+        FunctionAst::Binary { lhs, op, rhs } => match op {
+            BinaryOp::Add => {
+                let (la, lb) = linear_ast(lhs)?;
+                let (ra, rb) = linear_ast(rhs)?;
+                Some((la + ra, lb + rb))
+            }
+            BinaryOp::Sub => {
+                let (la, lb) = linear_ast(lhs)?;
+                let (ra, rb) = linear_ast(rhs)?;
+                Some((la - ra, lb - rb))
+            }
+            BinaryOp::Mul => {
+                if let Some(constant) = ast_constant(lhs) {
+                    let (a, b) = linear_ast(rhs)?;
+                    Some((constant * a, constant * b))
+                } else if let Some(constant) = ast_constant(rhs) {
+                    let (a, b) = linear_ast(lhs)?;
+                    Some((constant * a, constant * b))
+                } else {
+                    None
+                }
+            }
+            BinaryOp::Div => {
+                let constant = ast_constant(rhs)?;
+                if constant.abs() <= 1e-9 {
+                    return None;
+                }
+                let (a, b) = linear_ast(lhs)?;
+                Some((a / constant, b / constant))
+            }
+            BinaryOp::Pow => None,
+        },
+        _ => None,
+    }
+}
+
+fn ast_constant(expr: &FunctionAst) -> Option<f64> {
+    match expr {
+        FunctionAst::Constant(value) => Some(*value),
+        _ => None,
+    }
+}
+
+fn rationalize_f64(value: f64) -> Option<(i64, i64)> {
+    const MAX_DENOMINATOR: i64 = 64;
+    const EPSILON: f64 = 1e-9;
+
+    for denominator in 1..=MAX_DENOMINATOR {
+        let numerator = (value * denominator as f64).round();
+        if numerator <= 0.0 {
+            continue;
+        }
+        let candidate = numerator / denominator as f64;
+        if (candidate - value).abs() <= EPSILON {
+            return Some((numerator as i64, denominator));
+        }
+    }
+    None
+}
+
+fn gcd_i64(mut left: i64, mut right: i64) -> i64 {
+    while right != 0 {
+        let remainder = left % right;
+        left = right;
+        right = remainder;
+    }
+    left.abs()
+}
+
+fn lcm_i64(left: i64, right: i64) -> Option<i64> {
+    let gcd = gcd_i64(left, right);
+    left.checked_div(gcd)?.checked_mul(right).map(i64::abs)
 }
 
 pub(super) fn decode_unary_function(word: u16) -> Option<UnaryFunction> {

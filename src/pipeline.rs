@@ -1135,6 +1135,16 @@ mod tests {
                 .is_some_and(|points| points.len() > 2),
             "expected sampled parametric curve points"
         );
+        let x_min = parametric_line["binding"]["xMin"]
+            .as_f64()
+            .expect("parametric curve xMin should be a number");
+        let x_max = parametric_line["binding"]["xMax"]
+            .as_f64()
+            .expect("parametric curve xMax should be a number");
+        assert!(
+            (x_max - x_min - std::f64::consts::TAU).abs() < 1e-6,
+            "expected periodic parametric curve domain to reduce to one shared period"
+        );
         assert_eq!(
             parametric_line["binding"]["yExpr"]["expr"]["kind"].as_str(),
             Some("unary")

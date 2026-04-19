@@ -16,7 +16,8 @@ use super::decode::{
 };
 use super::eval::{evaluate_expr_with_parameters, sample_function_points};
 use super::expr::{
-    FunctionExpr, FunctionPlotMode, function_expr_label_with_variable, function_variable_symbol,
+    FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode, common_period, function_expr_label_with_variable,
+    function_expr_period, function_variable_symbol,
 };
 use super::scene::collect_parameter_bindings;
 
@@ -106,7 +107,8 @@ fn sample_parametric_plot_segments(
         decode_parametric_component_expr(file, groups, x_group),
         decode_parametric_component_expr(file, groups, y_group),
     ) {
-        return sample_parametric_expr_segments(&x_expr, &y_expr, descriptor);
+        let descriptor = reduce_periodic_parametric_descriptor(&x_expr, &y_expr, descriptor);
+        return sample_parametric_expr_segments(&x_expr, &y_expr, &descriptor);
     }
 
     let mut parameter_names = collect_parameter_bindings(file, groups, x_group)
@@ -203,6 +205,7 @@ fn parametric_curve_binding(
         try_decode_function_plot_descriptor(descriptor_record.payload(&file.data)).ok()?;
     let x_expr = decode_parametric_component_expr(file, groups, x_group).ok()?;
     let y_expr = decode_parametric_component_expr(file, groups, y_group).ok()?;
+    let descriptor = reduce_periodic_parametric_descriptor(&x_expr, &y_expr, &descriptor);
     Some(LineBinding::ParametricCurve {
         x_expr,
         y_expr,
@@ -221,6 +224,36 @@ fn decode_parametric_component_expr(
         try_decode_standalone_function_expr(file, groups, group)
     } else {
         try_decode_plot_component_expr(file, groups, group)
+    }
+}
+
+fn reduce_periodic_parametric_descriptor(
+    x_expr: &FunctionExpr,
+    y_expr: &FunctionExpr,
+    descriptor: &FunctionPlotDescriptor,
+) -> FunctionPlotDescriptor {
+    let Some(x_period) = function_expr_period(x_expr) else {
+        return descriptor.clone();
+    };
+    let Some(y_period) = function_expr_period(y_expr) else {
+        return descriptor.clone();
+    };
+    let Some(common_period) = common_period(x_period, y_period) else {
+        return descriptor.clone();
+    };
+    let period = common_period.as_f64();
+    if !period.is_finite() || period <= 1e-9 {
+        return descriptor.clone();
+    }
+    let span = descriptor.x_max - descriptor.x_min;
+    if !span.is_finite() || span <= period * 1.01 {
+        return descriptor.clone();
+    }
+    FunctionPlotDescriptor {
+        x_min: descriptor.x_min,
+        x_max: descriptor.x_min + period,
+        sample_count: descriptor.sample_count,
+        mode: descriptor.mode,
     }
 }
 
