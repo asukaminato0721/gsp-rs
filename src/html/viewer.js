@@ -22,8 +22,12 @@
   const sceneLayer = /** @type {SVGGElement} */ (/** @type {unknown} */ (document.getElementById("scene-layer")));
   /** @type {SVGTextElement} */
   const measureTextNode = /** @type {SVGTextElement} */ (/** @type {unknown} */ (document.getElementById("measure-text")));
+  /** @type {HTMLElement} */
+  const viewerShell = /** @type {HTMLElement} */ (document.getElementById("viewer-shell"));
   /** @type {HTMLButtonElement} */
   const resetButton = /** @type {HTMLButtonElement} */ (document.getElementById("reset-view"));
+  /** @type {HTMLButtonElement} */
+  const fullscreenToggleButton = /** @type {HTMLButtonElement} */ (document.getElementById("toggle-fullscreen"));
   /** @type {HTMLButtonElement} */
   const debugToggleButton = /** @type {HTMLButtonElement} */ (document.getElementById("toggle-debug"));
   /** @type {HTMLElement} */
@@ -1163,6 +1167,31 @@
     });
   }
 
+  function isViewerFullscreen() {
+    return document.fullscreenElement === viewerShell;
+  }
+
+  function syncFullscreenButton() {
+    const fullscreenActive = isViewerFullscreen();
+    if (!fullscreenToggleButton) {
+      return;
+    }
+    fullscreenToggleButton.textContent = fullscreenActive ? "退出全屏" : "全屏";
+    fullscreenToggleButton.classList.toggle("is-active", fullscreenActive);
+    fullscreenToggleButton.setAttribute("aria-pressed", fullscreenActive ? "true" : "false");
+  }
+
+  async function toggleFullscreen() {
+    if (!viewerShell) {
+      return;
+    }
+    if (isViewerFullscreen()) {
+      await document.exitFullscreen?.();
+      return;
+    }
+    await viewerShell.requestFullscreen?.();
+  }
+
   /** @param {boolean} open */
   function setDebugPanelOpen(open) {
     if (!debugPanel || !debugToggleButton) {
@@ -1707,6 +1736,11 @@
   debugToggleButton?.addEventListener("click", () => {
     setDebugPanelOpen(debugPanel?.hidden !== false);
   });
+  fullscreenToggleButton?.addEventListener("click", () => {
+    toggleFullscreen().catch((error) => {
+      console.warn("failed to toggle fullscreen", error);
+    });
+  });
   debugDumpConsoleButton?.addEventListener("click", () => {
     dumpDebugToConsole();
   });
@@ -1824,9 +1858,11 @@
       setDebugPanelOpen(debugPanel?.hidden !== false);
     }
   });
+  document.addEventListener("fullscreenchange", syncFullscreenButton);
 
   dynamicsModule.syncDynamicScene(viewerEnv);
   dynamicsModule.buildParameterControls(viewerEnv);
+  syncFullscreenButton();
   resetView();
   if (autoOpenDebug) {
     setDebugPanelOpen(true);

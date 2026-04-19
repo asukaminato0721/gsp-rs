@@ -186,23 +186,28 @@ mod tests {
     }
 
     #[test]
-    fn standalone_html_defaults_to_fullscreen_shell_and_minified_css() {
+    fn standalone_html_keeps_framed_default_and_includes_fullscreen_toggle() {
         let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/static/point.gsp"),
             "fixture should compile",
         );
 
-        assert!(html.contains("<div class=\"app-shell\">"));
+        assert!(html.contains("<main>"));
+        assert!(html.contains("<div id=\"viewer-shell\" class=\"app-shell\">"));
+        assert!(html.contains("id=\"toggle-fullscreen\""));
+        assert!(html.contains(">全屏</button>"));
         assert!(html.contains("--scene-width: 800;"));
         assert!(html.contains("--scene-height: 600;"));
-        assert!(html.contains(".app-shell{min-height:100dvh;display:grid;"));
         assert!(
-            !html.contains("<main>"),
-            "fullscreen export should not keep the centered document wrapper"
+            html.contains(".app-shell{width:100%;margin:0 auto;display:grid;min-height:calc(100dvh - 40px);")
+        );
+        assert!(html.contains(".app-shell:fullscreen{width:100vw;height:100dvh;"));
+        assert!(
+            html.contains("document.addEventListener(\"fullscreenchange\", syncFullscreenButton);")
         );
         assert!(
-            !html.contains(".frame {"),
-            "fullscreen export should not ship the removed frame stylesheet"
+            html.contains("viewerShell.requestFullscreen?.()"),
+            "fullscreen button should invoke the fullscreen api"
         );
     }
 

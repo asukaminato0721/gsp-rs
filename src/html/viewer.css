@@ -19,7 +19,7 @@ body {
 
 body {
   min-height: 100dvh;
-  background: var(--paper);
+  background: var(--stage-bg);
   color: var(--ink);
   font: 14px/1.45 "Noto Sans", "Segoe UI", sans-serif;
 }
@@ -33,10 +33,33 @@ button {
   cursor: pointer;
 }
 
+main {
+  width: 100vw;
+  padding: 20px;
+}
+
 .app-shell {
-  min-height: 100dvh;
+  width: 100%;
+  margin: 0 auto;
   display: grid;
+  min-height: calc(100dvh - 40px);
   grid-template-rows: auto minmax(0, 1fr) auto auto;
+  background: var(--paper);
+  border: 1px solid var(--frame);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.app-shell:fullscreen {
+  width: 100vw;
+  height: 100dvh;
+  border: 0;
+  border-radius: 0;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+}
+
+.app-shell:fullscreen .canvas-shell {
+  padding: 12px;
 }
 
 .toolbar,
@@ -93,6 +116,7 @@ button {
   min-height: 0;
   display: grid;
   place-items: center;
+  padding: 20px;
   overflow: hidden;
   background: var(--stage-bg);
 }
@@ -111,7 +135,9 @@ button {
 }
 
 .canvas-stage.is-document-layout {
+  display: inline-block;
   height: auto;
+  width: auto;
   max-width: none;
   max-height: none;
   aspect-ratio: auto;
@@ -124,10 +150,17 @@ button {
   max-height: none;
 }
 
+.app-shell:fullscreen .canvas-stage:not(.is-document-layout) {
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+}
+
 #view {
   display: block;
   width: 100%;
-  height: 100%;
+  height: auto;
   background: var(--paper);
   cursor: grab;
   touch-action: none;
@@ -138,6 +171,10 @@ button {
 
 #view.is-dragging {
   cursor: grabbing;
+}
+
+.app-shell:fullscreen #view {
+  height: 100%;
 }
 
 #view #grid-layer,
@@ -301,6 +338,7 @@ button {
   gap: 8px;
 }
 
+#toggle-fullscreen.is-active,
 #toggle-debug.is-active,
 .debug-actions .is-active {
   background: rgb(224, 236, 255);
