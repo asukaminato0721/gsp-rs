@@ -404,7 +404,7 @@ pub(super) fn collect_labels(
                     {
                         if let (Some(name), Ok(expr)) = (
                             decode_label_name(file, group),
-                            crate::runtime::functions::try_decode_plot_component_expr(
+                            crate::runtime::functions::try_decode_standalone_function_expr(
                                 file, groups, group,
                             ),
                         ) {
@@ -529,7 +529,7 @@ pub(super) fn collect_labels(
                     {
                         if let (Some(name), Ok(expr)) = (
                             decode_label_name(file, group),
-                            crate::runtime::functions::try_decode_plot_component_expr(
+                            crate::runtime::functions::try_decode_standalone_function_expr(
                                 file, groups, group,
                             ),
                         ) {

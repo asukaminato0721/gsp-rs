@@ -3,7 +3,9 @@ use super::decode::{
     is_parameter_control_group, try_decode_parameter_control_value_for_group,
 };
 use crate::format::{GspFile, ObjectGroup, PointRecord, decode_point_record, read_f64, read_u16};
-use crate::runtime::functions::{function_expr_contains_variable, try_decode_plot_component_expr};
+use crate::runtime::functions::{
+    function_expr_contains_variable, try_decode_standalone_function_expr,
+};
 use crate::runtime::scene::{SceneParameter, TextLabel};
 
 mod anchors;
@@ -210,7 +212,7 @@ pub(crate) fn is_standalone_function_definition_group(
     has_parameter_control_payload(group)
         && !is_non_graph_parameter_group(file, groups, group)
         && !is_parametric_function_component_group(file, groups, group.ordinal)
-        && try_decode_plot_component_expr(file, groups, group)
+        && try_decode_standalone_function_expr(file, groups, group)
             .ok()
             .is_some_and(|expr| function_expr_contains_variable(&expr))
 }

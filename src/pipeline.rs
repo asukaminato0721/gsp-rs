@@ -1078,6 +1078,36 @@ mod tests {
     }
 
     #[test]
+    fn exports_parameter_curve1_fixture_with_two_standalone_function_definitions() {
+        let scene = fixture_scene(
+            include_bytes!("../tests/fixtures/gsp/static/parameter_curve1.gsp"),
+            "parameter curve1 fixture should compile",
+        );
+
+        assert_eq!(scene["parameters"].as_array().map(Vec::len), Some(0));
+        assert_eq!(scene["points"].as_array().map(Vec::len), Some(0));
+        let definitions = scene["functionDefinitions"]
+            .as_array()
+            .expect("scene function definitions should be an array");
+        assert_eq!(definitions.len(), 2);
+        assert_eq!(definitions[0]["name"].as_str(), Some("f"));
+        assert_eq!(definitions[1]["name"].as_str(), Some("h"));
+        assert_eq!(
+            definitions[1]["expr"]["expr"]["kind"].as_str(),
+            Some("unary")
+        );
+        assert_eq!(definitions[1]["expr"]["expr"]["op"].as_str(), Some("cos"));
+
+        let labels = scene["labels"]
+            .as_array()
+            .expect("scene labels should be an array");
+        assert_eq!(labels.len(), 2);
+        assert_eq!(labels[0]["text"].as_str(), Some("f(x) = sin(x)"));
+        assert_eq!(labels[1]["text"].as_str(), Some("h(x) = cos(2*x)"));
+        assert!(labels.iter().all(|label| label["visible"].as_bool() == Some(true)));
+    }
+
+    #[test]
     fn exports_insert_image_fixture() {
         let scene = fixture_scene(
             include_bytes!("../tests/fixtures/未实现的系统功能/插入图片.gsp"),

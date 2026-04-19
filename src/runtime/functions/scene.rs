@@ -210,7 +210,7 @@ pub(crate) fn collect_standalone_function_definitions(
         .iter()
         .filter(|group| is_standalone_function_definition_group(file, groups, group))
         .filter_map(|group| {
-            let expr = super::decode::try_decode_plot_component_expr(file, groups, group).ok()?;
+            let expr = super::decode::try_decode_standalone_function_expr(file, groups, group).ok()?;
             function_expr_contains_variable(&expr).then_some(SceneFunctionDefinition {
                 key: group.ordinal,
                 name: source_function_name(file, group)?,

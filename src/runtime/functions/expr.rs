@@ -105,19 +105,51 @@ fn format_function_ast(expr: &FunctionAst, variable: &str, parent_prec: u8) -> S
         FunctionAst::PiAngle => "180".to_string(),
         FunctionAst::Parameter(name, _) => name.clone(),
         FunctionAst::Unary { op, expr } => {
-            let inner = format_function_ast(expr, variable, 4);
             match op {
-                UnaryFunction::Abs => format!("|{inner}|"),
-                UnaryFunction::Sqrt if is_atomic(expr) => format!("√{inner}"),
-                UnaryFunction::Sqrt => format!("√({inner})"),
-                UnaryFunction::Sin => format!("sin({inner})"),
-                UnaryFunction::Cos => format!("cos({inner})"),
-                UnaryFunction::Tan => format!("tan({inner})"),
-                UnaryFunction::Ln => format!("ln({inner})"),
-                UnaryFunction::Log10 => format!("log({inner})"),
-                UnaryFunction::Sign => format!("sgn({inner})"),
-                UnaryFunction::Round => format!("round({inner})"),
-                UnaryFunction::Trunc => format!("trunc({inner})"),
+                UnaryFunction::Abs => {
+                    let inner = format_function_ast(expr, variable, 4);
+                    format!("|{inner}|")
+                }
+                UnaryFunction::Sqrt if is_atomic(expr) => {
+                    let inner = format_function_ast(expr, variable, 4);
+                    format!("√{inner}")
+                }
+                UnaryFunction::Sqrt => {
+                    let inner = format_function_ast(expr, variable, 4);
+                    format!("√({inner})")
+                }
+                UnaryFunction::Sin => {
+                    let inner = format_function_ast(expr, variable, 0);
+                    format!("sin({inner})")
+                }
+                UnaryFunction::Cos => {
+                    let inner = format_function_ast(expr, variable, 0);
+                    format!("cos({inner})")
+                }
+                UnaryFunction::Tan => {
+                    let inner = format_function_ast(expr, variable, 0);
+                    format!("tan({inner})")
+                }
+                UnaryFunction::Ln => {
+                    let inner = format_function_ast(expr, variable, 0);
+                    format!("ln({inner})")
+                }
+                UnaryFunction::Log10 => {
+                    let inner = format_function_ast(expr, variable, 0);
+                    format!("log({inner})")
+                }
+                UnaryFunction::Sign => {
+                    let inner = format_function_ast(expr, variable, 0);
+                    format!("sgn({inner})")
+                }
+                UnaryFunction::Round => {
+                    let inner = format_function_ast(expr, variable, 0);
+                    format!("round({inner})")
+                }
+                UnaryFunction::Trunc => {
+                    let inner = format_function_ast(expr, variable, 0);
+                    format!("trunc({inner})")
+                }
             }
         }
         FunctionAst::Binary { lhs, op, rhs } => {
