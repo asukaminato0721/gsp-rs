@@ -619,12 +619,14 @@ fn build_scene_point_for_group_checked(
                         }),
                     ));
                 }
-                let binding = try_decode_transform_binding(file, group).with_context(|| {
-                    format!(
-                        "failed to decode transform binding for group #{} {:?}",
-                        group.ordinal, kind
-                    )
-                }).ok()?;
+                let binding = try_decode_transform_binding(file, group)
+                    .with_context(|| {
+                        format!(
+                            "failed to decode transform binding for group #{} {:?}",
+                            group.ordinal, kind
+                        )
+                    })
+                    .ok()?;
                 let source_index =
                     mapped_point_index(group_to_point_index, binding.source_group_index)?;
                 let center_index =
@@ -910,7 +912,11 @@ pub(crate) fn collect_standalone_parameter_points(
         .filter(|group| {
             is_parameter_control_group(group)
                 && !super::super::is_standalone_function_definition_group(file, groups, group)
-                && !super::super::is_parametric_function_component_group(file, groups, group.ordinal)
+                && !super::super::is_parametric_function_component_group(
+                    file,
+                    groups,
+                    group.ordinal,
+                )
         })
         .filter_map(|group| standalone_parameter_point(file, group))
         .collect()

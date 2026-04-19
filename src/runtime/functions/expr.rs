@@ -104,54 +104,52 @@ fn format_function_ast(expr: &FunctionAst, variable: &str, parent_prec: u8) -> S
         FunctionAst::Constant(value) => format_number(*value),
         FunctionAst::PiAngle => "180".to_string(),
         FunctionAst::Parameter(name, _) => name.clone(),
-        FunctionAst::Unary { op, expr } => {
-            match op {
-                UnaryFunction::Abs => {
-                    let inner = format_function_ast(expr, variable, 4);
-                    format!("|{inner}|")
-                }
-                UnaryFunction::Sqrt if is_atomic(expr) => {
-                    let inner = format_function_ast(expr, variable, 4);
-                    format!("√{inner}")
-                }
-                UnaryFunction::Sqrt => {
-                    let inner = format_function_ast(expr, variable, 4);
-                    format!("√({inner})")
-                }
-                UnaryFunction::Sin => {
-                    let inner = format_function_ast(expr, variable, 0);
-                    format!("sin({inner})")
-                }
-                UnaryFunction::Cos => {
-                    let inner = format_function_ast(expr, variable, 0);
-                    format!("cos({inner})")
-                }
-                UnaryFunction::Tan => {
-                    let inner = format_function_ast(expr, variable, 0);
-                    format!("tan({inner})")
-                }
-                UnaryFunction::Ln => {
-                    let inner = format_function_ast(expr, variable, 0);
-                    format!("ln({inner})")
-                }
-                UnaryFunction::Log10 => {
-                    let inner = format_function_ast(expr, variable, 0);
-                    format!("log({inner})")
-                }
-                UnaryFunction::Sign => {
-                    let inner = format_function_ast(expr, variable, 0);
-                    format!("sgn({inner})")
-                }
-                UnaryFunction::Round => {
-                    let inner = format_function_ast(expr, variable, 0);
-                    format!("round({inner})")
-                }
-                UnaryFunction::Trunc => {
-                    let inner = format_function_ast(expr, variable, 0);
-                    format!("trunc({inner})")
-                }
+        FunctionAst::Unary { op, expr } => match op {
+            UnaryFunction::Abs => {
+                let inner = format_function_ast(expr, variable, 4);
+                format!("|{inner}|")
             }
-        }
+            UnaryFunction::Sqrt if is_atomic(expr) => {
+                let inner = format_function_ast(expr, variable, 4);
+                format!("√{inner}")
+            }
+            UnaryFunction::Sqrt => {
+                let inner = format_function_ast(expr, variable, 4);
+                format!("√({inner})")
+            }
+            UnaryFunction::Sin => {
+                let inner = format_function_ast(expr, variable, 0);
+                format!("sin({inner})")
+            }
+            UnaryFunction::Cos => {
+                let inner = format_function_ast(expr, variable, 0);
+                format!("cos({inner})")
+            }
+            UnaryFunction::Tan => {
+                let inner = format_function_ast(expr, variable, 0);
+                format!("tan({inner})")
+            }
+            UnaryFunction::Ln => {
+                let inner = format_function_ast(expr, variable, 0);
+                format!("ln({inner})")
+            }
+            UnaryFunction::Log10 => {
+                let inner = format_function_ast(expr, variable, 0);
+                format!("log({inner})")
+            }
+            UnaryFunction::Sign => {
+                let inner = format_function_ast(expr, variable, 0);
+                format!("sgn({inner})")
+            }
+            UnaryFunction::Round => {
+                let inner = format_function_ast(expr, variable, 0);
+                format!("round({inner})")
+            }
+            UnaryFunction::Trunc => {
+                let inner = format_function_ast(expr, variable, 0);
+                format!("trunc({inner})")
+            }
+        },
         FunctionAst::Binary { lhs, op, rhs } => {
             let (prec, right_assoc) = binary_precedence(*op);
             let left = format_function_ast(lhs, variable, prec);
@@ -249,9 +247,7 @@ impl RationalPiPeriod {
 pub(crate) fn function_expr_period(expr: &FunctionExpr) -> Option<RationalPiPeriod> {
     match expr {
         FunctionExpr::Constant(_) | FunctionExpr::Identity => None,
-        FunctionExpr::SinIdentity | FunctionExpr::CosIdentityPlus(_) => {
-            RationalPiPeriod::new(2, 1)
-        }
+        FunctionExpr::SinIdentity | FunctionExpr::CosIdentityPlus(_) => RationalPiPeriod::new(2, 1),
         FunctionExpr::TanIdentityMinus(_) => RationalPiPeriod::new(1, 1),
         FunctionExpr::Parsed(ast) => function_ast_period(ast),
     }
@@ -262,7 +258,9 @@ pub(crate) fn common_period(
     right: RationalPiPeriod,
 ) -> Option<RationalPiPeriod> {
     let common_denominator = lcm_i64(left.denominator, right.denominator)?;
-    let left_scaled = left.numerator.checked_mul(common_denominator / left.denominator)?;
+    let left_scaled = left
+        .numerator
+        .checked_mul(common_denominator / left.denominator)?;
     let right_scaled = right
         .numerator
         .checked_mul(common_denominator / right.denominator)?;
@@ -308,19 +306,19 @@ fn function_ast_contains_variable(expr: &FunctionAst) -> bool {
 fn function_ast_period(expr: &FunctionAst) -> Option<RationalPiPeriod> {
     match expr {
         FunctionAst::Unary {
-            op:
-                op @ (UnaryFunction::Sin | UnaryFunction::Cos | UnaryFunction::Tan),
+            op: op @ (UnaryFunction::Sin | UnaryFunction::Cos | UnaryFunction::Tan),
             expr,
         } => period_from_linear_arg(*op, expr),
         FunctionAst::Unary { .. } => None,
         FunctionAst::Binary { lhs, op, rhs } => match op {
-            BinaryOp::Add | BinaryOp::Sub => match (function_ast_period(lhs), function_ast_period(rhs))
-            {
-                (Some(left), Some(right)) => common_period(left, right),
-                (Some(period), None) if !function_ast_contains_variable(rhs) => Some(period),
-                (None, Some(period)) if !function_ast_contains_variable(lhs) => Some(period),
-                _ => None,
-            },
+            BinaryOp::Add | BinaryOp::Sub => {
+                match (function_ast_period(lhs), function_ast_period(rhs)) {
+                    (Some(left), Some(right)) => common_period(left, right),
+                    (Some(period), None) if !function_ast_contains_variable(rhs) => Some(period),
+                    (None, Some(period)) if !function_ast_contains_variable(lhs) => Some(period),
+                    _ => None,
+                }
+            }
             BinaryOp::Mul => match (function_ast_period(lhs), function_ast_period(rhs)) {
                 (Some(left), Some(right)) => common_period(left, right),
                 (Some(period), None) if !function_ast_contains_variable(rhs) => Some(period),

@@ -168,9 +168,8 @@ fn is_function_plot_definition_group(
             group.header.kind(),
             crate::format::GroupKind::FunctionPlot
                 | crate::format::GroupKind::ParametricFunctionPlot
-        )
-            && find_indexed_path(file, group)
-                .is_some_and(|path| path.refs.first().copied() == Some(target_ordinal))
+        ) && find_indexed_path(file, group)
+            .is_some_and(|path| path.refs.first().copied() == Some(target_ordinal))
     })
 }
 
@@ -225,7 +224,12 @@ pub(super) fn parametric_function_component_slot(
         ((group.header.kind()) == crate::format::GroupKind::ParametricFunctionPlot)
             .then(|| find_indexed_path(file, group))
             .flatten()
-            .and_then(|path| path.refs.iter().take(2).position(|ordinal| *ordinal == target_ordinal))
+            .and_then(|path| {
+                path.refs
+                    .iter()
+                    .take(2)
+                    .position(|ordinal| *ordinal == target_ordinal)
+            })
     })
 }
 

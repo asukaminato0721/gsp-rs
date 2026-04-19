@@ -10,10 +10,9 @@ use super::constraints::{
 };
 use super::{
     GspFile, ObjectGroup, PointRecord, TransformBindingKind,
-    decode_angle_parameter_value_for_group,
-    decode_non_graph_parameter_value_for_group, editable_non_graph_parameter_name_for_group,
-    read_f64, try_decode_angle_rotation_binding, try_decode_parameter_rotation_binding,
-    try_decode_transform_binding,
+    decode_angle_parameter_value_for_group, decode_non_graph_parameter_value_for_group,
+    editable_non_graph_parameter_name_for_group, read_f64, try_decode_angle_rotation_binding,
+    try_decode_parameter_rotation_binding, try_decode_transform_binding,
 };
 use crate::format::GroupKind;
 use crate::format::read_u32;
@@ -259,7 +258,9 @@ pub(crate) fn decode_expression_rotation_binding(
     let source_group_index = path.refs[0].checked_sub(1)?;
     let center_group_index = path.refs[1].checked_sub(1)?;
     let expr_group = groups.get(path.refs[2].checked_sub(1)?)?;
-    let (angle_expr, angle_degrees, parameter_name) = if expr_group.header.kind() == GroupKind::FunctionExpr {
+    let (angle_expr, angle_degrees, parameter_name) = if expr_group.header.kind()
+        == GroupKind::FunctionExpr
+    {
         let (angle_expr, parameters, parameter_name) =
             expression_runtime_context(file, groups, expr_group, anchors)?;
         let angle_degrees = evaluate_expr_with_parameters(&angle_expr, 0.0, &parameters)?;
@@ -272,22 +273,26 @@ pub(crate) fn decode_expression_rotation_binding(
             .or_else(|| {
                 let angle_value = decode_angle_parameter_value_for_group(file, expr_group)
                     .or_else(|| {
-                        let control = try_decode_payload_anchor_point(file, expr_group).ok().flatten()?;
+                        let control = try_decode_payload_anchor_point(file, expr_group)
+                            .ok()
+                            .flatten()?;
                         Some((-control.y).atan2(control.x).to_degrees())
                     })
                     .or_else(|| {
                         let value =
-                            try_decode_parameter_control_value_for_group(file, groups, expr_group).ok()?;
+                            try_decode_parameter_control_value_for_group(file, groups, expr_group)
+                                .ok()?;
                         value.is_finite().then_some(value)
                     })?;
                 Some(FunctionExpr::Constant(angle_value))
             })?;
         let angle_degrees = evaluate_expr_with_parameters(&angle_expr, 0.0, &BTreeMap::new())?;
-        let angle_expr = if let (Some(name), FunctionExpr::Constant(value)) = (&parameter_name, &angle_expr) {
-            FunctionExpr::Parsed(FunctionAst::Parameter(name.clone(), *value))
-        } else {
-            angle_expr
-        };
+        let angle_expr =
+            if let (Some(name), FunctionExpr::Constant(value)) = (&parameter_name, &angle_expr) {
+                FunctionExpr::Parsed(FunctionAst::Parameter(name.clone(), *value))
+            } else {
+                angle_expr
+            };
         (angle_expr, angle_degrees, parameter_name)
     } else {
         return None;

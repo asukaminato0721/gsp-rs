@@ -32,3 +32,22 @@ pub(super) fn indent_asset(asset: &str, spaces: usize) -> String {
         .collect::<Vec<_>>()
         .join("\n")
 }
+
+pub(super) fn minify_css_asset(asset: &str) -> String {
+    let mut minified = asset
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("");
+    for (needle, replacement) in [
+        (": ", ":"),
+        ("; ", ";"),
+        (", ", ","),
+        (" {", "{"),
+        ("} ", "}"),
+    ] {
+        minified = minified.replace(needle, replacement);
+    }
+    minified
+}

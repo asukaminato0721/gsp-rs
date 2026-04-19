@@ -4,51 +4,64 @@
   --frame: rgb(214, 214, 214);
   --ink: rgb(32, 32, 32);
   --panel: rgb(247, 247, 247);
+  --stage-bg: rgb(242, 242, 242);
 }
 
 * {
   box-sizing: border-box;
 }
 
+html,
 body {
+  height: 100%;
   margin: 0;
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  background: rgb(242, 242, 242);
+}
+
+body {
+  min-height: 100dvh;
+  background: var(--paper);
   color: var(--ink);
   font: 14px/1.45 "Noto Sans", "Segoe UI", sans-serif;
 }
 
-main {
-  width: 100vw;
-  padding: 20px;
+button,
+input {
+  font: inherit;
 }
 
-.frame {
-  background: white;
-  border: 1px solid var(--frame);
-  border-radius: 8px;
-  overflow: hidden;
+button {
+  cursor: pointer;
 }
 
-.toolbar {
+.app-shell {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+}
+
+.toolbar,
+.debug-toolbar,
+.meta {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   flex-wrap: wrap;
   gap: 12px;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--frame);
   background: var(--panel);
-  font-size: 12px;
 }
 
-.toolbar .controls {
+.toolbar,
+.debug-toolbar {
+  border-bottom: 1px solid var(--frame);
+}
+
+.controls,
+.debug-actions,
+.meta .right {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
   gap: 10px;
-  align-items: center;
 }
 
 .toolbar label {
@@ -71,15 +84,50 @@ main {
 }
 
 .toolbar .hint {
+  margin-left: auto;
   opacity: 0.72;
   text-align: right;
-  margin-left: auto;
+}
+
+.canvas-shell {
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--stage-bg);
+}
+
+.canvas-stage {
+  position: relative;
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  aspect-ratio: var(--scene-width) / var(--scene-height);
+}
+
+.canvas-shell.is-document-layout {
+  overflow: auto;
+}
+
+.canvas-stage.is-document-layout {
+  height: auto;
+  max-width: none;
+  max-height: none;
+  aspect-ratio: auto;
+}
+
+.canvas-stage.is-document-layout #view {
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
 }
 
 #view {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
   background: var(--paper);
   cursor: grab;
   touch-action: none;
@@ -90,31 +138,6 @@ main {
 
 #view.is-dragging {
   cursor: grabbing;
-}
-
-.canvas-shell {
-  position: relative;
-  overflow: hidden;
-  background: var(--paper);
-}
-
-.canvas-stage {
-  position: relative;
-  width: 100%;
-}
-
-.canvas-shell.is-document-layout {
-  overflow: auto;
-}
-
-.canvas-stage.is-document-layout {
-  display: inline-block;
-  width: auto;
-}
-
-.canvas-stage.is-document-layout #view {
-  width: auto;
-  max-width: none;
 }
 
 #view #grid-layer,
@@ -270,23 +293,11 @@ main {
 }
 
 .debug-panel {
-  border-top: 1px solid var(--frame);
   background: rgb(252, 252, 252);
-}
-
-.debug-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--frame);
-  background: var(--panel);
+  border-top: 1px solid var(--frame);
 }
 
 .debug-actions {
-  display: flex;
-  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -318,17 +329,7 @@ main {
 }
 
 .meta {
-  display: flex;
   justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding: 10px 14px;
   border-top: 1px solid var(--frame);
-  background: var(--panel);
   font-size: 12px;
-}
-
-.meta .right {
-  display: flex;
-  gap: 14px;
 }

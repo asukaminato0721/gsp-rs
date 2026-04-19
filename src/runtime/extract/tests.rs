@@ -4001,7 +4001,10 @@ fn decodes_bug_fixture_angle_marker_class_from_low_word() {
 
     assert!(matches!(
         angle_marker.binding,
-        Some(LineBinding::AngleMarker { marker_class: 1, .. })
+        Some(LineBinding::AngleMarker {
+            marker_class: 1,
+            ..
+        })
     ));
 }
 

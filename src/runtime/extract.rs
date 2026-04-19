@@ -78,8 +78,9 @@ use self::trace::collect_point_traces;
 use super::functions::{
     collect_function_plot_domain, collect_function_plots, collect_scene_functions,
     collect_scene_parameters, collect_standalone_function_definitions, function_uses_pi_scale,
-    synthesize_function_axes, synthesize_standalone_function_definition_labels,
-    synthesize_function_labels, try_decode_function_expr, try_decode_function_plot_descriptor,
+    synthesize_function_axes, synthesize_function_labels,
+    synthesize_standalone_function_definition_labels, try_decode_function_expr,
+    try_decode_function_plot_descriptor,
 };
 use super::geometry::{Bounds, GraphTransform, distance_world};
 use super::scene::{
@@ -509,9 +510,7 @@ fn collect_scene_labels(
         ));
     }
     labels.extend(synthesize_standalone_function_definition_labels(
-        file,
-        groups,
-        &labels,
+        file, groups, &labels,
     ));
     append_circle_perimeter_label(
         &mut labels,

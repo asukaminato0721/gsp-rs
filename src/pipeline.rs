@@ -186,6 +186,27 @@ mod tests {
     }
 
     #[test]
+    fn standalone_html_defaults_to_fullscreen_shell_and_minified_css() {
+        let html = fixture_html(
+            include_bytes!("../tests/fixtures/gsp/static/point.gsp"),
+            "fixture should compile",
+        );
+
+        assert!(html.contains("<div class=\"app-shell\">"));
+        assert!(html.contains("--scene-width: 800;"));
+        assert!(html.contains("--scene-height: 600;"));
+        assert!(html.contains(".app-shell{min-height:100dvh;display:grid;"));
+        assert!(
+            !html.contains("<main>"),
+            "fullscreen export should not keep the centered document wrapper"
+        );
+        assert!(
+            !html.contains(".frame {"),
+            "fullscreen export should not ship the removed frame stylesheet"
+        );
+    }
+
+    #[test]
     fn svg_runtime_keeps_geometry_and_grid_layers_inside_the_same_stage() {
         let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/static/point.gsp"),
@@ -1104,7 +1125,11 @@ mod tests {
         assert_eq!(labels.len(), 2);
         assert_eq!(labels[0]["text"].as_str(), Some("f(x) = sin(x)"));
         assert_eq!(labels[1]["text"].as_str(), Some("h(x) = cos(2*x)"));
-        assert!(labels.iter().all(|label| label["visible"].as_bool() == Some(true)));
+        assert!(
+            labels
+                .iter()
+                .all(|label| label["visible"].as_bool() == Some(true))
+        );
     }
 
     #[test]
@@ -1160,7 +1185,11 @@ mod tests {
         assert_eq!(labels.len(), 2);
         assert_eq!(labels[0]["text"].as_str(), Some("f(x) = sin(x)"));
         assert_eq!(labels[1]["text"].as_str(), Some("h(x) = cos(2*x)"));
-        assert!(labels.iter().all(|label| label["visible"].as_bool() == Some(true)));
+        assert!(
+            labels
+                .iter()
+                .all(|label| label["visible"].as_bool() == Some(true))
+        );
     }
 
     #[test]

@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use crate::format::{GspFile, ObjectGroup, PointRecord};
-use crate::runtime::extract::{find_indexed_path, try_decode_parameter_control_value_for_group};
 use crate::runtime::extract::points::is_standalone_function_definition_group;
+use crate::runtime::extract::{find_indexed_path, try_decode_parameter_control_value_for_group};
 use crate::runtime::geometry::{
     Bounds, GraphTransform, has_distinct_points, include_line_bounds, to_raw_from_world,
 };
@@ -16,8 +16,8 @@ use super::decode::{
 };
 use super::eval::{evaluate_expr_with_parameters, sample_function_points};
 use super::expr::{
-    FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode, common_period, function_expr_label_with_variable,
-    function_expr_period, function_variable_symbol,
+    FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode, common_period,
+    function_expr_label_with_variable, function_expr_period, function_variable_symbol,
 };
 use super::scene::collect_parameter_bindings;
 

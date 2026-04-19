@@ -12,8 +12,8 @@ use super::points::{
     RawPointConstraint, editable_non_graph_parameter_name_for_group,
     is_editable_non_graph_parameter_name, is_non_graph_parameter_group,
     is_parametric_function_component_group, is_standalone_function_definition_group,
-    parametric_function_component_slot,
-    regular_polygon_angle_expr_for_calc_group, try_decode_point_constraint,
+    parametric_function_component_slot, regular_polygon_angle_expr_for_calc_group,
+    try_decode_point_constraint,
 };
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_u32};
 use crate::runtime::functions::{

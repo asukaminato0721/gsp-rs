@@ -5,8 +5,8 @@ mod plot;
 mod scene;
 
 pub(crate) use decode::{
-    evaluate_function_group_with_overrides, try_decode_function_expr, try_decode_function_plot_descriptor,
-    try_decode_standalone_function_expr,
+    evaluate_function_group_with_overrides, try_decode_function_expr,
+    try_decode_function_plot_descriptor, try_decode_standalone_function_expr,
 };
 pub(crate) use eval::evaluate_expr_with_parameters;
 pub(crate) use expr::{
@@ -19,8 +19,7 @@ pub(crate) use plot::{
 };
 pub(crate) use scene::{
     collect_scene_functions, collect_scene_parameters, collect_standalone_function_definitions,
-    synthesize_standalone_function_definition_labels,
-    function_uses_pi_scale,
+    function_uses_pi_scale, synthesize_standalone_function_definition_labels,
 };
 
 #[cfg(test)]
