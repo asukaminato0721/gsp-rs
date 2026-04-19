@@ -77,7 +77,8 @@ use self::shapes::{
 use self::trace::collect_point_traces;
 use super::functions::{
     collect_function_plot_domain, collect_function_plots, collect_scene_functions,
-    collect_scene_parameters, function_uses_pi_scale, synthesize_function_axes,
+    collect_scene_parameters, collect_standalone_function_definitions, function_uses_pi_scale,
+    synthesize_function_axes,
     synthesize_function_labels, try_decode_function_expr, try_decode_function_plot_descriptor,
 };
 use super::geometry::{Bounds, GraphTransform, distance_world};
@@ -1103,6 +1104,7 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
     } else {
         Vec::new()
     };
+    let function_definitions = collect_standalone_function_definitions(file, &groups, &labels);
     Ok(assemble_scene(
         analysis,
         shapes,
@@ -1119,6 +1121,7 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
             images,
             parameters,
             functions,
+            function_definitions,
         },
     ))
 }

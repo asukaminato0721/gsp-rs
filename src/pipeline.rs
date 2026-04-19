@@ -1055,24 +1055,26 @@ mod tests {
             "parameter curve fixture should compile",
         );
 
-        let lines = scene["lines"]
+        assert_eq!(scene["lines"].as_array().map(Vec::len), Some(0));
+        assert_eq!(scene["parameters"].as_array().map(Vec::len), Some(0));
+        assert_eq!(scene["points"].as_array().map(Vec::len), Some(0));
+        let definitions = scene["functionDefinitions"]
             .as_array()
-            .expect("scene lines should be an array");
-        let parametric_line = lines
-            .iter()
-            .find(|line| line["binding"]["kind"].as_str() == Some("parametric-curve"))
-            .expect("expected parametric curve line binding");
-        assert!(
-            parametric_line["points"]
-                .as_array()
-                .is_some_and(|points| points.len() > 2),
-            "expected sampled parametric curve points"
+            .expect("scene function definitions should be an array");
+        assert_eq!(definitions.len(), 1);
+        assert_eq!(definitions[0]["name"].as_str(), Some("f"));
+        assert_eq!(definitions[0]["expr"]["kind"].as_str(), Some("parsed"));
+        assert_eq!(
+            definitions[0]["expr"]["expr"]["kind"].as_str(),
+            Some("unary")
         );
-        assert!(
-            parametric_line["binding"]["xExpr"].is_object()
-                && parametric_line["binding"]["yExpr"].is_object(),
-            "expected exported parametric component expressions"
-        );
+        assert_eq!(definitions[0]["expr"]["expr"]["op"].as_str(), Some("sin"));
+        let labels = scene["labels"]
+            .as_array()
+            .expect("scene labels should be an array");
+        assert_eq!(labels.len(), 1);
+        assert_eq!(labels[0]["text"].as_str(), Some("f(x) = sin(x)"));
+        assert_eq!(labels[0]["visible"].as_bool(), Some(true));
     }
 
     #[test]

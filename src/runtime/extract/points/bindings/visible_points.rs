@@ -907,7 +907,11 @@ pub(crate) fn collect_standalone_parameter_points(
 ) -> Vec<ScenePoint> {
     groups
         .iter()
-        .filter(|group| is_parameter_control_group(group))
+        .filter(|group| {
+            is_parameter_control_group(group)
+                && !super::super::is_standalone_function_definition_group(file, groups, group)
+                && !super::super::is_parametric_function_component_group(file, groups, group.ordinal)
+        })
         .filter_map(|group| standalone_parameter_point(file, group))
         .collect()
 }

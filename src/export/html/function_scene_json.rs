@@ -53,6 +53,29 @@ impl FunctionJson {
 
 #[derive(Serialize, TS)]
 #[serde(rename_all = "camelCase")]
+pub(super) struct FunctionDefinitionJson {
+    key: usize,
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    label_index: Option<usize>,
+    expr: FunctionExprJson,
+}
+
+impl FunctionDefinitionJson {
+    pub(super) fn from_definition(
+        function_def: &crate::runtime::scene::SceneFunctionDefinition,
+    ) -> Self {
+        Self {
+            key: function_def.key,
+            name: function_def.name.clone(),
+            label_index: function_def.label_index,
+            expr: FunctionExprJson::from_expr(&function_def.expr),
+        }
+    }
+}
+
+#[derive(Serialize, TS)]
+#[serde(rename_all = "camelCase")]
 struct DomainJson {
     x_min: f64,
     x_max: f64,

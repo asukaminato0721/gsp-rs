@@ -1,4 +1,4 @@
-use super::function_scene_json::{FunctionJson, ParameterJson};
+use super::function_scene_json::{FunctionDefinitionJson, FunctionJson, ParameterJson};
 use super::iteration_scene_json::{
     CircleIterationJson, IterationTableJson, LabelIterationJson, LineIterationJson,
     PointIterationJson, PolygonIterationJson,
@@ -48,6 +48,7 @@ struct SceneJson {
     buttons: Vec<ButtonJson>,
     parameters: Vec<ParameterJson>,
     functions: Vec<FunctionJson>,
+    function_definitions: Vec<FunctionDefinitionJson>,
 }
 
 impl SceneJson {
@@ -116,6 +117,11 @@ impl SceneJson {
                 .functions
                 .iter()
                 .map(FunctionJson::from_function)
+                .collect(),
+            function_definitions: scene
+                .function_definitions
+                .iter()
+                .map(FunctionDefinitionJson::from_definition)
                 .collect(),
         }
     }

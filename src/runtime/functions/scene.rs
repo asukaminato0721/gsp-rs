@@ -2,13 +2,16 @@ use std::collections::BTreeMap;
 
 use crate::format::{GspFile, ObjectGroup, read_u16};
 use crate::runtime::extract::{find_indexed_path, try_decode_parameter_control_value_for_group};
+use crate::runtime::extract::points::is_standalone_function_definition_group;
 use crate::runtime::scene::{
-    SceneFunction, SceneParameter, ScenePoint, ScenePointConstraint, TextLabel,
+    SceneFunction, SceneFunctionDefinition, SceneParameter, ScenePoint, ScenePointConstraint,
+    TextLabel,
 };
 
 use super::decode::{try_decode_function_expr, try_decode_function_plot_descriptor};
 use super::expr::{
-    FunctionExpr, FunctionPlotDescriptor, function_expr_uses_trig, function_name_for_index,
+    FunctionExpr, FunctionPlotDescriptor, function_expr_contains_variable, function_expr_uses_trig,
+    function_name_for_index,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -196,6 +199,31 @@ pub(crate) fn collect_scene_functions(
     );
 
     functions
+}
+
+pub(crate) fn collect_standalone_function_definitions(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    labels: &[TextLabel],
+) -> Vec<SceneFunctionDefinition> {
+    groups
+        .iter()
+        .filter(|group| is_standalone_function_definition_group(file, groups, group))
+        .filter_map(|group| {
+            let expr = super::decode::try_decode_plot_component_expr(file, groups, group).ok()?;
+            function_expr_contains_variable(&expr).then_some(SceneFunctionDefinition {
+                key: group.ordinal,
+                name: source_function_name(file, group)?,
+                expr,
+                label_index: labels.iter().position(|label| {
+                    label
+                        .debug
+                        .as_ref()
+                        .is_some_and(|debug| debug.group_ordinal == group.ordinal)
+                }),
+            })
+        })
+        .collect()
 }
 
 pub(crate) fn function_uses_pi_scale(file: &GspFile, groups: &[ObjectGroup]) -> bool {

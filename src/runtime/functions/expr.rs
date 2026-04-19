@@ -180,6 +180,17 @@ pub(super) fn function_expr_uses_trig(expr: FunctionExpr) -> bool {
     }
 }
 
+pub(crate) fn function_expr_contains_variable(expr: &FunctionExpr) -> bool {
+    match expr {
+        FunctionExpr::Identity
+        | FunctionExpr::SinIdentity
+        | FunctionExpr::CosIdentityPlus(_)
+        | FunctionExpr::TanIdentityMinus(_) => true,
+        FunctionExpr::Parsed(ast) => function_ast_contains_variable(ast),
+        FunctionExpr::Constant(_) => false,
+    }
+}
+
 fn function_ast_uses_trig(expr: &FunctionAst) -> bool {
     match expr {
         FunctionAst::Unary {
@@ -202,6 +213,17 @@ pub(super) fn function_ast_contains_symbol(expr: &FunctionAst) -> bool {
             function_ast_contains_symbol(lhs) || function_ast_contains_symbol(rhs)
         }
         FunctionAst::Constant(_) | FunctionAst::PiAngle => false,
+    }
+}
+
+fn function_ast_contains_variable(expr: &FunctionAst) -> bool {
+    match expr {
+        FunctionAst::Variable => true,
+        FunctionAst::Unary { expr, .. } => function_ast_contains_variable(expr),
+        FunctionAst::Binary { lhs, rhs, .. } => {
+            function_ast_contains_variable(lhs) || function_ast_contains_variable(rhs)
+        }
+        FunctionAst::Constant(_) | FunctionAst::PiAngle | FunctionAst::Parameter(_, _) => false,
     }
 }
 

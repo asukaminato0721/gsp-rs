@@ -516,6 +516,7 @@ mod tests {
             buttons: Vec::new(),
             parameters: Vec::new(),
             functions: Vec::new(),
+            function_definitions: Vec::new(),
         }
     }
 

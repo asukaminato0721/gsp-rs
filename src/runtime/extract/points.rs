@@ -3,6 +3,7 @@ use super::decode::{
     is_parameter_control_group, try_decode_parameter_control_value_for_group,
 };
 use crate::format::{GspFile, ObjectGroup, PointRecord, decode_point_record, read_f64, read_u16};
+use crate::runtime::functions::{function_expr_contains_variable, try_decode_plot_component_expr};
 use crate::runtime::scene::{SceneParameter, TextLabel};
 
 mod anchors;
@@ -89,6 +90,9 @@ fn decode_non_graph_parameter(
     labels: &mut [TextLabel],
     allow_orphan_parameter_controls: bool,
 ) -> Option<SceneParameter> {
+    if is_standalone_function_definition_group(file, groups, group) {
+        return None;
+    }
     let name = if allow_orphan_parameter_controls && has_parameter_control_payload(group) {
         decode_label_name(file, group)?
     } else {
@@ -158,7 +162,11 @@ fn is_function_plot_definition_group(
     target_ordinal: usize,
 ) -> bool {
     groups.iter().any(|group| {
-        (group.header.kind()) == crate::format::GroupKind::FunctionPlot
+        matches!(
+            group.header.kind(),
+            crate::format::GroupKind::FunctionPlot
+                | crate::format::GroupKind::ParametricFunctionPlot
+        )
             && find_indexed_path(file, group)
                 .is_some_and(|path| path.refs.first().copied() == Some(target_ordinal))
     })
@@ -171,13 +179,53 @@ fn is_function_plot_parameter_group(
 ) -> bool {
     groups
         .iter()
-        .filter(|group| (group.header.kind()) == crate::format::GroupKind::FunctionPlot)
+        .filter(|group| {
+            matches!(
+                group.header.kind(),
+                crate::format::GroupKind::FunctionPlot
+                    | crate::format::GroupKind::ParametricFunctionPlot
+            )
+        })
         .filter_map(|group| find_indexed_path(file, group))
         .filter_map(|path| groups.get(path.refs.first()?.checked_sub(1)?))
         .any(|definition_group| {
             find_indexed_path(file, definition_group)
                 .is_some_and(|path| path.refs.contains(&target_ordinal))
         })
+}
+
+pub(super) fn is_parametric_function_component_group(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    target_ordinal: usize,
+) -> bool {
+    parametric_function_component_slot(file, groups, target_ordinal).is_some()
+}
+
+pub(crate) fn is_standalone_function_definition_group(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> bool {
+    has_parameter_control_payload(group)
+        && !is_non_graph_parameter_group(file, groups, group)
+        && !is_parametric_function_component_group(file, groups, group.ordinal)
+        && try_decode_plot_component_expr(file, groups, group)
+            .ok()
+            .is_some_and(|expr| function_expr_contains_variable(&expr))
+}
+
+pub(super) fn parametric_function_component_slot(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    target_ordinal: usize,
+) -> Option<usize> {
+    groups.iter().find_map(|group| {
+        ((group.header.kind()) == crate::format::GroupKind::ParametricFunctionPlot)
+            .then(|| find_indexed_path(file, group))
+            .flatten()
+            .and_then(|path| path.refs.iter().take(2).position(|ordinal| *ordinal == target_ordinal))
+    })
 }
 
 fn has_external_indexed_path_reference(
@@ -200,6 +248,7 @@ pub(super) fn is_non_graph_parameter_group(
     has_parameter_control_payload(group)
         && !is_function_plot_definition_group(file, groups, group.ordinal)
         && !is_function_plot_parameter_group(file, groups, group.ordinal)
+        && !is_parametric_function_component_group(file, groups, group.ordinal)
         && has_external_indexed_path_reference(file, groups, group.ordinal)
 }
 

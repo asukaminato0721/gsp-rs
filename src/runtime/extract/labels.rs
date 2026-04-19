@@ -11,6 +11,8 @@ use super::payload_debug_source;
 use super::points::{
     RawPointConstraint, editable_non_graph_parameter_name_for_group,
     is_editable_non_graph_parameter_name, is_non_graph_parameter_group,
+    is_parametric_function_component_group, is_standalone_function_definition_group,
+    parametric_function_component_slot,
     regular_polygon_angle_expr_for_calc_group, try_decode_point_constraint,
 };
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_u32};
@@ -397,9 +399,34 @@ pub(super) fn collect_labels(
                         rich_markup,
                         hotspots,
                     } = label_text;
+                    let (text, rich_markup) = if kind == crate::format::GroupKind::Point
+                        && is_standalone_function_definition_group(file, groups, group)
+                    {
+                        if let (Some(name), Ok(expr)) = (
+                            decode_label_name(file, group),
+                            crate::runtime::functions::try_decode_plot_component_expr(
+                                file, groups, group,
+                            ),
+                        ) {
+                            let text = format!("{name}(x) = {}", function_expr_label(expr));
+                            let rich_markup = build_plain_text_rich_markup(&text);
+                            (text, rich_markup)
+                        } else {
+                            (text, rich_markup)
+                        }
+                    } else {
+                        (text, rich_markup)
+                    };
                     let binding = angle_marker_measurement_binding(file, group, &text)
                         .or_else(|| coordinate_readout_binding(file, groups, group));
-                    let visible = label_visible_for_group(file, group);
+                    let visible =
+                        if kind == crate::format::GroupKind::Point
+                            && is_standalone_function_definition_group(file, groups, group)
+                        {
+                            true
+                        } else {
+                            label_visible_for_group(file, group)
+                        };
                     let label_index = labels.len();
                     label_group_to_index.insert(group.ordinal, label_index);
                     labels.push(TextLabel {
@@ -497,9 +524,33 @@ pub(super) fn collect_labels(
                         rich_markup,
                         hotspots,
                     } = label_text;
+                    let (text, rich_markup) = if kind == crate::format::GroupKind::Point
+                        && is_standalone_function_definition_group(file, groups, group)
+                    {
+                        if let (Some(name), Ok(expr)) = (
+                            decode_label_name(file, group),
+                            crate::runtime::functions::try_decode_plot_component_expr(
+                                file, groups, group,
+                            ),
+                        ) {
+                            let text = format!("{name}(x) = {}", function_expr_label(expr));
+                            (text.clone(), build_plain_text_rich_markup(&text))
+                        } else {
+                            (text, rich_markup)
+                        }
+                    } else {
+                        (text, rich_markup)
+                    };
                     let binding = angle_marker_measurement_binding(file, group, &text)
                         .or_else(|| coordinate_readout_binding(file, groups, group));
-                    let visible = label_visible_for_group(file, group);
+                    let visible =
+                        if kind == crate::format::GroupKind::Point
+                            && is_standalone_function_definition_group(file, groups, group)
+                        {
+                            true
+                        } else {
+                            label_visible_for_group(file, group)
+                        };
                     let label_index = labels.len();
                     label_group_to_index.insert(group.ordinal, label_index);
                     labels.push(TextLabel {
@@ -734,20 +785,30 @@ pub(super) fn collect_coordinate_labels(
     for group in groups {
         let kind = group.header.kind();
         let helper_visible = !group.header.is_hidden();
-        if kind == crate::format::GroupKind::Point
-            && is_non_graph_parameter_group(file, groups, group)
+        let is_non_graph_parameter = kind == crate::format::GroupKind::Point
+            && is_non_graph_parameter_group(file, groups, group);
+        let is_parametric_function_component = kind == crate::format::GroupKind::Point
+            && is_parametric_function_component_group(file, groups, group.ordinal);
+        if (is_non_graph_parameter || is_parametric_function_component)
             && let Some(name) = decode_label_name(file, group)
             && let Some(value) =
                 try_decode_parameter_control_value_for_group(file, groups, group).ok()
             && let Some(anchor) = try_decode_payload_anchor_point(file, group).ok().flatten()
         {
-            let binding = is_editable_non_graph_parameter_name(&name)
-                .then(|| TextLabelBinding::ParameterValue { name: name.clone() });
+            let binding = if is_non_graph_parameter && is_editable_non_graph_parameter_name(&name) {
+                Some(TextLabelBinding::ParameterValue { name: name.clone() })
+            } else {
+                None
+            };
             labels.push(TextLabel {
                 anchor,
                 text: format!("{name} = {:.2}", value),
                 color: [30, 30, 30, 255],
-                visible: helper_visible,
+                visible: if is_parametric_function_component {
+                    parametric_function_component_slot(file, groups, group.ordinal) == Some(1)
+                } else {
+                    helper_visible
+                },
                 binding,
                 screen_space: true,
                 debug: Some(payload_debug_source(group)),

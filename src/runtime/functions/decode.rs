@@ -165,26 +165,10 @@ fn decode_plot_component_expr_recursive(
             return Ok(expr);
         }
 
-        decode_plot_component_payload_expr(payload, &parameters)
+        decode_payload_function_expr(payload, &parameters)
     })();
     visiting.remove(&group.ordinal);
     expr
-}
-
-fn decode_plot_component_payload_expr(
-    payload: &[u8],
-    parameters: &BTreeMap<u16, ParameterBinding>,
-) -> Result<FunctionExpr, FunctionExprParseError> {
-    let words = payload
-        .chunks_exact(2)
-        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
-        .collect::<Vec<_>>();
-    if let Some(ast) = try_decode_special_grouped_payload(&words, parameters) {
-        return Ok(canonicalize_function_expr(ast));
-    }
-    let parsed = parse_grouped_function_expr_from_words(&words, parameters)
-        .or_else(|_| parse_function_expr_from_words(&words, parameters))?;
-    Ok(canonicalize_function_expr(parsed))
 }
 
 fn try_decode_numeric_helper_group(
@@ -2128,9 +2112,8 @@ fn parsed_contains_symbol(parsed: &FunctionAst) -> bool {
 #[cfg(test)]
 mod parse_tests {
     use super::{
-        FunctionExprParseError, ParameterBinding, parse_function_expr,
-        parse_function_expr_from_words, parse_grouped_function_expr_from_words,
-        try_decode_function_expr, try_decode_inner_function_expr, try_decode_plot_component_expr,
+        FunctionExprParseError, ParameterBinding, parse_function_expr, try_decode_function_expr,
+        try_decode_inner_function_expr, try_decode_plot_component_expr,
     };
     use crate::gsp::GspFile;
     use crate::runtime::extract::points::collect_point_objects;
@@ -2238,53 +2221,14 @@ mod parse_tests {
     }
 
     #[test]
-    fn decodes_parameter_curve_component_payload_with_grouped_unary_argument() {
+    fn decodes_parameter_curve_component_payload_as_plain_function_definition() {
         let data = include_bytes!("../../../tests/fixtures/gsp/static/parameter_curve.gsp");
         let file = GspFile::parse(data).expect("fixture parses");
         let groups = file.object_groups();
-        let y_group = &groups[1];
-        let payload = y_group
-            .records
-            .iter()
-            .find(|record| record.record_type == RECORD_FUNCTION_EXPR_PAYLOAD)
-            .expect("0907 payload")
-            .payload(&file.data);
-        let words = payload
-            .chunks_exact(2)
-            .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
-            .collect::<Vec<_>>();
-        assert_eq!(
-            parse_function_expr_from_words(&words, &BTreeMap::new()).ok(),
-            Some(FunctionAst::Binary {
-                lhs: Box::new(FunctionAst::Unary {
-                    op: crate::runtime::functions::UnaryFunction::Cos,
-                    expr: Box::new(FunctionAst::Constant(2.0)),
-                }),
-                op: BinaryOp::Mul,
-                rhs: Box::new(FunctionAst::Variable),
-            })
-        );
-        assert_eq!(
-            parse_grouped_function_expr_from_words(&words, &BTreeMap::new()).ok(),
-            Some(FunctionAst::Unary {
-                op: crate::runtime::functions::UnaryFunction::Cos,
-                expr: Box::new(FunctionAst::Binary {
-                    lhs: Box::new(FunctionAst::Constant(2.0)),
-                    op: BinaryOp::Mul,
-                    rhs: Box::new(FunctionAst::Variable),
-                }),
-            })
-        );
+        let y_group = &groups[0];
         assert_eq!(
             try_decode_plot_component_expr(&file, &groups, y_group).ok(),
-            Some(FunctionExpr::Parsed(FunctionAst::Unary {
-                op: crate::runtime::functions::UnaryFunction::Cos,
-                expr: Box::new(FunctionAst::Binary {
-                    lhs: Box::new(FunctionAst::Constant(2.0)),
-                    op: BinaryOp::Mul,
-                    rhs: Box::new(FunctionAst::Variable),
-                }),
-            }))
+            Some(FunctionExpr::SinIdentity)
         );
     }
 

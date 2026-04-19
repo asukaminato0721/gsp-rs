@@ -20,6 +20,7 @@ pub(super) struct SceneAssemblyArtifacts {
     pub(super) images: Vec<SceneImage>,
     pub(super) parameters: Vec<crate::runtime::scene::SceneParameter>,
     pub(super) functions: Vec<crate::runtime::scene::SceneFunction>,
+    pub(super) function_definitions: Vec<crate::runtime::scene::SceneFunctionDefinition>,
 }
 
 pub(super) fn build_world_data(
@@ -709,6 +710,7 @@ pub(super) fn assemble_scene(
         buttons: artifacts.buttons,
         parameters: artifacts.parameters,
         functions: artifacts.functions,
+        function_definitions: artifacts.function_definitions,
     }
 }
 

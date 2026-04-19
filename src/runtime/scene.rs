@@ -35,6 +35,7 @@ pub(crate) struct Scene {
     pub(crate) buttons: Vec<SceneButton>,
     pub(crate) parameters: Vec<SceneParameter>,
     pub(crate) functions: Vec<SceneFunction>,
+    pub(crate) function_definitions: Vec<SceneFunctionDefinition>,
 }
 
 #[derive(Debug, Clone)]
@@ -750,6 +751,14 @@ pub(crate) struct SceneFunction {
     pub(crate) line_index: Option<usize>,
     pub(crate) label_index: usize,
     pub(crate) constrained_point_indices: Vec<usize>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SceneFunctionDefinition {
+    pub(crate) key: usize,
+    pub(crate) name: String,
+    pub(crate) expr: FunctionExpr,
+    pub(crate) label_index: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
