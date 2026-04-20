@@ -10,7 +10,7 @@ pub(crate) mod util;
 
 pub mod pipeline;
 
-pub use config::{Config, RenderJob};
+pub use config::{CompileMode, Config, RenderJob};
 
 pub mod gsp {
     pub use crate::format::{GspFile, ParseError};

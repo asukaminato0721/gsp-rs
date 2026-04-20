@@ -1,11 +1,15 @@
 use std::env;
+use std::ffi::OsString;
 use std::process::Child;
 use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use gsp_rs::upload::upload_gsp_file;
-use gsp_rs::{Config, pipeline::compile_file_to_html};
+use gsp_rs::{
+    CompileMode, Config,
+    pipeline::{compile_file_to_html, compile_file_to_html_only},
+};
 use miette::{Result, miette};
 
 const WORKER_ENV: &str = "GSP_RS_WORKER";
@@ -30,12 +34,21 @@ fn run_jobs(config: &Config) -> Result<()> {
 fn run_jobs_in_process(config: &Config) -> Result<()> {
     let mut failures = Vec::new();
     for job in &config.jobs {
-        match compile_file_to_html(
-            &job.gsp_path,
-            &job.html_path,
-            config.render_width,
-            config.render_height,
-        ) {
+        let result = match config.mode {
+            CompileMode::Standard => compile_file_to_html(
+                &job.gsp_path,
+                &job.html_path,
+                config.render_width,
+                config.render_height,
+            ),
+            CompileMode::HtmlOnly => compile_file_to_html_only(
+                &job.gsp_path,
+                &job.html_path,
+                config.render_width,
+                config.render_height,
+            ),
+        };
+        match result {
             Ok(()) => {
                 println!(
                     "generated {} from {}",
@@ -82,8 +95,7 @@ fn run_jobs_out_of_process(config: &Config) -> Result<()> {
     for job in &config.jobs {
         let mut child = Command::new(&exe_path)
             .env(WORKER_ENV, "1")
-            .arg("--no-upload")
-            .arg(&job.gsp_path)
+            .args(worker_args_for_job(config, job))
             .spawn()
             .map_err(|error| {
                 miette!(
@@ -147,6 +159,17 @@ fn run_jobs_out_of_process(config: &Config) -> Result<()> {
     }
 }
 
+fn worker_args_for_job(config: &Config, job: &gsp_rs::RenderJob) -> Vec<OsString> {
+    let mut args = Vec::new();
+    if config.mode == CompileMode::HtmlOnly {
+        args.push(OsString::from("--html"));
+    } else {
+        args.push(OsString::from("--no-upload"));
+    }
+    args.push(job.gsp_path.as_os_str().to_owned());
+    args
+}
+
 fn format_job_error(job_path: &std::path::Path, error: &miette::Report) -> String {
     format!("{}: {error:#}", job_path.display())
 }
@@ -186,7 +209,10 @@ fn format_exit_status(status: std::process::ExitStatus) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{format_exit_status, format_job_error};
+    use super::{format_exit_status, format_job_error, worker_args_for_job};
+    use gsp_rs::{CompileMode, Config, RenderJob};
+    use std::ffi::OsString;
+    use std::path::PathBuf;
     use std::process::Command;
     use std::time::Duration;
 
@@ -231,5 +257,25 @@ mod tests {
         assert!(rendered.contains("sample.gsp:"));
         assert!(rendered.contains("inner context"));
         assert!(rendered.contains("outer context"));
+    }
+
+    #[test]
+    fn worker_uses_html_flag_for_html_only_mode() {
+        let config = Config {
+            jobs: vec![],
+            render_width: 800,
+            render_height: 600,
+            upload_url: None,
+            mode: CompileMode::HtmlOnly,
+        };
+        let job = RenderJob {
+            gsp_path: PathBuf::from("sample.gsp"),
+            html_path: PathBuf::from("sample.html"),
+        };
+        let args = worker_args_for_job(&config, &job);
+        assert_eq!(
+            args,
+            vec![OsString::from("--html"), OsString::from("sample.gsp")]
+        );
     }
 }

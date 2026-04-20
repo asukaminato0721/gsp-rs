@@ -34,6 +34,18 @@ pub fn compile_file_to_html(
     }
 }
 
+pub fn compile_file_to_html_only(
+    gsp_path: &Path,
+    html_path: &Path,
+    width: u32,
+    height: u32,
+) -> Result<()> {
+    let data = fs::read(gsp_path)
+        .into_diagnostic()
+        .wrap_err_with(|| format!("failed to read {}", gsp_path.display()))?;
+    compile_bytes_to_html_file(&data, html_path, width, height)
+}
+
 pub fn compile_file_to_scene_json(gsp_path: &Path, width: u32, height: u32) -> Result<String> {
     let data = fs::read(gsp_path)
         .into_diagnostic()
@@ -127,6 +139,7 @@ fn is_document_layout(file: &crate::format::GspFile, scene: &crate::runtime::sce
 mod tests {
     use super::{
         compile_bytes_to_html_document, compile_bytes_to_scene_json, compile_file_to_html,
+        compile_file_to_html_only,
     };
     use insta::assert_snapshot;
     use serde_json::Value;
@@ -198,9 +211,9 @@ mod tests {
         assert!(html.contains(">全屏</button>"));
         assert!(html.contains("--scene-width: 800;"));
         assert!(html.contains("--scene-height: 600;"));
-        assert!(
-            html.contains(".app-shell{width:100%;margin:0 auto;display:grid;min-height:calc(100dvh - 40px);")
-        );
+        assert!(html.contains(
+            ".app-shell{width:100%;margin:0 auto;display:grid;min-height:calc(100dvh - 40px);"
+        ));
         assert!(html.contains(".app-shell:fullscreen{width:100vw;height:100dvh;"));
         assert!(
             html.contains("document.addEventListener(\"fullscreenchange\", syncFullscreenButton);")
@@ -258,6 +271,37 @@ mod tests {
             fs::read_to_string(&debug_json_path).expect("debug json should be readable");
         assert!(debug_json.contains("\n  \"width\": 800,"));
         assert!(debug_json.contains("\"points\": ["));
+
+        let _ = fs::remove_dir_all(&temp_root);
+    }
+
+    #[test]
+    fn html_only_compile_writes_only_html() {
+        let temp_root = unique_test_dir("html-only-success");
+        fs::create_dir_all(&temp_root).expect("temporary directory should be creatable");
+
+        let gsp_path = temp_root.join("point.gsp");
+        let html_path = temp_root.join("point.html");
+        let log_path = temp_root.join("point.log");
+        let debug_json_path = temp_root.join("point.debug.json");
+        fs::write(
+            &gsp_path,
+            include_bytes!("../tests/fixtures/gsp/static/point.gsp"),
+        )
+        .expect("fixture gsp should be writable");
+
+        compile_file_to_html_only(&gsp_path, &html_path, FIXTURE_WIDTH, FIXTURE_HEIGHT)
+            .expect("fixture should compile to html without sidecars");
+
+        assert!(html_path.exists(), "expected html output to be written");
+        assert!(
+            !log_path.exists(),
+            "html-only compile should not emit a payload log"
+        );
+        assert!(
+            !debug_json_path.exists(),
+            "html-only compile should not emit debug json"
+        );
 
         let _ = fs::remove_dir_all(&temp_root);
     }

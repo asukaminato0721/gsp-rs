@@ -9,12 +9,19 @@ pub struct Config {
     pub render_width: u32,
     pub render_height: u32,
     pub upload_url: Option<String>,
+    pub mode: CompileMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderJob {
     pub gsp_path: PathBuf,
     pub html_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompileMode {
+    Standard,
+    HtmlOnly,
 }
 
 impl Config {
@@ -31,6 +38,7 @@ impl Config {
             return Err(miette!(Self::usage()));
         }
 
+        let mut mode = CompileMode::Standard;
         let mut jobs = Vec::new();
         let mut upload_url = Some(DEFAULT_UPLOAD_URL.to_string());
         let mut index = 0usize;
@@ -39,6 +47,9 @@ impl Config {
             match arg.as_ref() {
                 "--no-upload" => {
                     upload_url = None;
+                }
+                "--html" => {
+                    mode = CompileMode::HtmlOnly;
                 }
                 value if value.starts_with('-') => {
                     return Err(miette!("unknown flag: {value}\n{}", Self::usage()));
@@ -58,22 +69,32 @@ impl Config {
             return Err(miette!(Self::usage()));
         }
 
+        if mode == CompileMode::HtmlOnly {
+            upload_url = None;
+        }
+
         Ok(Self {
             jobs,
             render_width: 800,
             render_height: 600,
             upload_url,
+            mode,
         })
     }
 
     pub fn usage() -> String {
-        "usage: gsp-rs [--no-upload] <path/to/file1.gsp> [path/to/file2.gsp ...]".to_string()
+        [
+            "usage: gsp-rs [--no-upload] [--html] <path/to/file1.gsp> [path/to/file2.gsp ...]",
+            "",
+            "--html only writes the bundled .html output.",
+        ]
+        .join("\n")
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Config, RenderJob};
+    use super::{CompileMode, Config, RenderJob};
     use std::path::PathBuf;
 
     #[test]
@@ -92,6 +113,7 @@ mod tests {
                 },
             ]
         );
+        assert_eq!(config.mode, CompileMode::Standard);
         assert_eq!(
             config.upload_url.as_deref(),
             Some(super::DEFAULT_UPLOAD_URL)
@@ -108,6 +130,27 @@ mod tests {
     fn no_upload_flag_disables_default_upload() {
         let config = Config::parse(["--no-upload", "a.gsp"].into_iter()).expect("config parses");
         assert_eq!(config.upload_url, None);
+    }
+
+    #[test]
+    fn parses_html_only_flag() {
+        let config = Config::parse(["--html", "a.gsp", "nested/b.gsp"].into_iter())
+            .expect("html-only config parses");
+        assert_eq!(config.mode, CompileMode::HtmlOnly);
+        assert_eq!(config.upload_url, None);
+        assert_eq!(
+            config.jobs,
+            vec![
+                RenderJob {
+                    gsp_path: PathBuf::from("a.gsp"),
+                    html_path: PathBuf::from("a.html"),
+                },
+                RenderJob {
+                    gsp_path: PathBuf::from("nested/b.gsp"),
+                    html_path: PathBuf::from("nested/b.html"),
+                },
+            ]
+        );
     }
 
     #[test]
