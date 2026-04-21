@@ -13,7 +13,8 @@ use super::{
     try_decode_transform_binding,
 };
 use crate::runtime::extract::decode::{
-    decode_bbox_anchor_raw, decode_label_name, decode_label_visible, is_parameter_control_group,
+    decode_bbox_anchor_raw, decode_label_name, decode_label_visible,
+    detect_perpendicular_segment_payload, is_parameter_control_group,
     try_decode_payload_anchor_point,
 };
 use crate::runtime::extract::find_indexed_path;
@@ -59,6 +60,89 @@ fn scene_point(
         binding,
         debug: None,
     }
+}
+
+fn scene_point_from_perpendicular_segment_payload(
+    index: usize,
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group_to_point_index: &[Option<usize>],
+    color: [u8; 4],
+    visible: bool,
+) -> Option<ScenePoint> {
+    let payload = detect_perpendicular_segment_payload(file, groups, index)?;
+    let position = anchors.get(index).cloned().flatten()?;
+    let center_index = mapped_point_index(group_to_point_index, payload.center_group_index)?;
+    let through_index = mapped_point_index(group_to_point_index, payload.through_group_index)?;
+    let line_end_index = mapped_point_index(group_to_point_index, payload.line_end_group_index)?;
+    Some(scene_point(
+        position,
+        color,
+        visible,
+        false,
+        ScenePointConstraint::LineIntersection {
+            left: LineConstraint::Line {
+                start_index: center_index,
+                end_index: line_end_index,
+            },
+            right: LineConstraint::PerpendicularLine {
+                through_index,
+                line_start_index: center_index,
+                line_end_index: line_end_index,
+            },
+        },
+        None,
+    ))
+}
+
+fn scene_point_from_ratio_scale(
+    index: usize,
+    group: &ObjectGroup,
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group_to_point_index: &[Option<usize>],
+    visible: bool,
+) -> Option<ScenePoint> {
+    scene_point_from_perpendicular_segment_payload(
+        index,
+        file,
+        groups,
+        anchors,
+        group_to_point_index,
+        group_color(group),
+        visible,
+    )
+    .or_else(|| {
+        let position = anchors.get(index).cloned().flatten()?;
+        let path = find_indexed_path(file, group)?;
+        if path.refs.len() < 5 {
+            return None;
+        }
+        let source_index = mapped_point_index(group_to_point_index, path.refs[0].checked_sub(1)?)?;
+        let center_index = mapped_point_index(group_to_point_index, path.refs[1].checked_sub(1)?)?;
+        let ratio_origin_index =
+            mapped_point_index(group_to_point_index, path.refs[2].checked_sub(1)?)?;
+        let ratio_denominator_index =
+            mapped_point_index(group_to_point_index, path.refs[3].checked_sub(1)?)?;
+        let ratio_numerator_index =
+            mapped_point_index(group_to_point_index, path.refs[4].checked_sub(1)?)?;
+        Some(scene_point(
+            position,
+            group_color(group),
+            visible,
+            false,
+            ScenePointConstraint::Free,
+            Some(ScenePointBinding::ScaleByRatio {
+                source_index,
+                center_index,
+                ratio_origin_index,
+                ratio_denominator_index,
+                ratio_numerator_index,
+            }),
+        ))
+    })
 }
 
 fn build_group_to_point_index(included_groups: &[bool]) -> Vec<Option<usize>> {
@@ -515,37 +599,15 @@ fn build_scene_point_for_group(
                 }),
             ))
         })(),
-        crate::format::GroupKind::RatioScale => (|| {
-            let position = anchors.get(index).cloned().flatten()?;
-            let path = find_indexed_path(file, group)?;
-            if path.refs.len() < 5 {
-                return None;
-            }
-            let source_index =
-                mapped_point_index(group_to_point_index, path.refs[0].checked_sub(1)?)?;
-            let center_index =
-                mapped_point_index(group_to_point_index, path.refs[1].checked_sub(1)?)?;
-            let ratio_origin_index =
-                mapped_point_index(group_to_point_index, path.refs[2].checked_sub(1)?)?;
-            let ratio_denominator_index =
-                mapped_point_index(group_to_point_index, path.refs[3].checked_sub(1)?)?;
-            let ratio_numerator_index =
-                mapped_point_index(group_to_point_index, path.refs[4].checked_sub(1)?)?;
-            Some(scene_point(
-                position,
-                group_color(group),
-                visible,
-                false,
-                ScenePointConstraint::Free,
-                Some(ScenePointBinding::ScaleByRatio {
-                    source_index,
-                    center_index,
-                    ratio_origin_index,
-                    ratio_denominator_index,
-                    ratio_numerator_index,
-                }),
-            ))
-        })(),
+        crate::format::GroupKind::RatioScale => scene_point_from_ratio_scale(
+            index,
+            group,
+            file,
+            groups,
+            anchors,
+            group_to_point_index,
+            visible,
+        ),
         _ => None,
     }
 }

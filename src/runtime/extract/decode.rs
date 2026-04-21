@@ -16,6 +16,128 @@ pub(crate) fn is_circle_group_kind(kind: GroupKind) -> bool {
     matches!(kind, GroupKind::Circle | GroupKind::CircleCenterRadius)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PerpendicularSegmentPayload {
+    pub(crate) center_group_index: usize,
+    pub(crate) through_group_index: usize,
+    pub(crate) line_end_group_index: usize,
+    pub(crate) foot_group_index: usize,
+    pub(crate) perpendicular_segment_group_index: usize,
+    pub(crate) helper_segment_group_index: usize,
+    pub(crate) angle_marker_group_index: usize,
+    pub(crate) line_group_index: usize,
+}
+
+pub(crate) fn detect_perpendicular_segment_payload(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    foot_group_index: usize,
+) -> Option<PerpendicularSegmentPayload> {
+    let foot_group = groups.get(foot_group_index)?;
+    if foot_group.header.kind() != GroupKind::RatioScale {
+        return None;
+    }
+
+    let path = find_indexed_path(file, foot_group)?;
+    if path.refs.len() != 5 {
+        return None;
+    }
+
+    let line_end_group_index = path.refs[0].checked_sub(1)?;
+    let center_group_index = path.refs[1].checked_sub(1)?;
+    let ratio_origin_group_index = path.refs[2].checked_sub(1)?;
+    let ratio_denominator_group_index = path.refs[3].checked_sub(1)?;
+    let through_group_index = path.refs[4].checked_sub(1)?;
+    if center_group_index != ratio_origin_group_index
+        || line_end_group_index != ratio_denominator_group_index
+    {
+        return None;
+    }
+
+    let perpendicular_segment_group_index = groups.iter().position(|group| {
+        group.header.kind() == GroupKind::Segment
+            && group_matches_pair_refs(file, group, through_group_index, foot_group_index)
+    })?;
+    let helper_segment_group_index = groups.iter().position(|group| {
+        group.header.kind() == GroupKind::Segment
+            && group_matches_pair_refs(file, group, center_group_index, foot_group_index)
+    })?;
+    let angle_marker_group_index = groups.iter().position(|group| {
+        group.header.kind() == GroupKind::AngleMarker
+            && group_matches_angle_marker_refs(
+                file,
+                group,
+                center_group_index,
+                foot_group_index,
+                through_group_index,
+            )
+    })?;
+    let line_group_index = groups.iter().position(|group| {
+        group.header.kind() == GroupKind::Line
+            && group_matches_pair_refs(file, group, center_group_index, line_end_group_index)
+    })?;
+
+    Some(PerpendicularSegmentPayload {
+        center_group_index,
+        through_group_index,
+        line_end_group_index,
+        foot_group_index,
+        perpendicular_segment_group_index,
+        helper_segment_group_index,
+        angle_marker_group_index,
+        line_group_index,
+    })
+}
+
+fn group_matches_pair_refs(
+    file: &GspFile,
+    group: &ObjectGroup,
+    first_group_index: usize,
+    second_group_index: usize,
+) -> bool {
+    let Some(path) = find_indexed_path(file, group) else {
+        return false;
+    };
+    if path.refs.len() != 2 {
+        return false;
+    }
+    let Some(first_ref) = path.refs[0].checked_sub(1) else {
+        return false;
+    };
+    let Some(second_ref) = path.refs[1].checked_sub(1) else {
+        return false;
+    };
+    (first_ref == first_group_index && second_ref == second_group_index)
+        || (first_ref == second_group_index && second_ref == first_group_index)
+}
+
+fn group_matches_angle_marker_refs(
+    file: &GspFile,
+    group: &ObjectGroup,
+    start_group_index: usize,
+    vertex_group_index: usize,
+    end_group_index: usize,
+) -> bool {
+    let Some(path) = find_indexed_path(file, group) else {
+        return false;
+    };
+    if path.refs.len() != 3 {
+        return false;
+    }
+    let Some(start_ref) = path.refs[0].checked_sub(1) else {
+        return false;
+    };
+    let Some(vertex_ref) = path.refs[1].checked_sub(1) else {
+        return false;
+    };
+    let Some(end_ref) = path.refs[2].checked_sub(1) else {
+        return false;
+    };
+    vertex_ref == vertex_group_index
+        && ((start_ref == start_group_index && end_ref == end_group_index)
+            || (start_ref == end_group_index && end_ref == start_group_index))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub(crate) enum IndexedPathDecodeError {
     #[error("malformed indexed path record 0x{record_type:04x} at 0x{offset:x} (len={length})")]

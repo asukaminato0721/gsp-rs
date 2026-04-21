@@ -1828,6 +1828,100 @@ fn preserves_parallel_gsp() {
 }
 
 #[test]
+fn preserves_perpendicular_segment_fixture_as_line_with_perp_segment() {
+    let scene = fixture_scene(include_bytes!("../../../tests/fixtures/gsp/垂线段.gsp"));
+
+    assert_eq!(
+        scene.points.len(),
+        4,
+        "expected three free points and the foot point"
+    );
+    assert_eq!(
+        scene.lines.len(),
+        3,
+        "expected a base line, one perpendicular segment, and the right-angle marker"
+    );
+    assert!(
+        !scene.lines.iter().any(|line| {
+            matches!(
+                line.binding,
+                Some(
+                    LineBinding::Segment {
+                        start_index: 0,
+                        end_index: 3,
+                    } | LineBinding::Segment {
+                        start_index: 3,
+                        end_index: 0,
+                    }
+                )
+            )
+        }),
+        "expected the base helper segment to stay suppressed"
+    );
+
+    let foot = &scene.points[3];
+    assert!(
+        matches!(
+            foot.constraint,
+            ScenePointConstraint::LineIntersection {
+                left: LineConstraint::Line {
+                    start_index: 0,
+                    end_index: 2,
+                },
+                right: LineConstraint::PerpendicularLine {
+                    through_index: 1,
+                    line_start_index: 0,
+                    line_end_index: 2,
+                },
+            }
+        ),
+        "expected the foot point to stay constrained by the payload line and perpendicular segment"
+    );
+    assert!(
+        foot.binding.is_none(),
+        "expected the foot point to use the live constraint"
+    );
+
+    assert!(scene.lines.iter().any(|line| {
+        matches!(
+            line.binding,
+            Some(
+                LineBinding::Segment {
+                    start_index: 1,
+                    end_index: 3,
+                } | LineBinding::Segment {
+                    start_index: 3,
+                    end_index: 1,
+                }
+            )
+        )
+    }));
+    assert!(scene.lines.iter().any(|line| {
+        matches!(
+            line.binding,
+            Some(
+                LineBinding::Line {
+                    start_index: 0,
+                    end_index: 2,
+                } | LineBinding::Line {
+                    start_index: 2,
+                    end_index: 0,
+                }
+            )
+        )
+    }));
+    assert!(scene.lines.iter().any(|line| {
+        matches!(
+            line.binding,
+            Some(LineBinding::AngleMarker {
+                vertex_index: 3,
+                ..
+            })
+        )
+    }));
+}
+
+#[test]
 fn preserves_nested_perpendicular_parallel_bindings_in_pert_vert_gsp() {
     let scene = fixture_scene(include_bytes!("../../../tests/fixtures/gsp/pert_vert.gsp"));
 

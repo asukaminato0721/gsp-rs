@@ -411,6 +411,18 @@ mod tests {
     }
 
     #[test]
+    fn exports_perpendicular_segment_fixture_into_html() {
+        let html = fixture_html(
+            include_bytes!("../tests/fixtures/gsp/垂线段.gsp"),
+            "perpendicular segment fixture should compile",
+        );
+
+        assert!(html.contains("\"constraint\":{\"kind\":\"line-intersection\""));
+        assert!(html.contains("\"right\":{\"kind\":\"perpendicular-line\",\"throughIndex\":1"));
+        assert!(!html.contains("\"kind\":\"segment\",\"startIndex\":0,\"endIndex\":3"));
+    }
+
+    #[test]
     fn exports_coordinate_trace_intersection_fixture_into_html() {
         let html = fixture_html(
             include_bytes!("../tests/fixtures/gsp/insection/cood_intersection.gsp"),

@@ -8,7 +8,9 @@ use super::{
     try_decode_function_expr, try_decode_function_plot_descriptor,
 };
 use crate::format::{GroupKind, read_f64, read_u16, read_u32};
-use crate::runtime::extract::decode::{is_circle_group_kind, resolve_circle_points_raw};
+use crate::runtime::extract::decode::{
+    detect_perpendicular_segment_payload, is_circle_group_kind, resolve_circle_points_raw,
+};
 use crate::runtime::geometry::{
     arc_on_circle_control_points, sample_three_point_arc, sample_three_point_arc_complement,
 };
@@ -232,6 +234,9 @@ fn is_auxiliary_segment_group(file: &GspFile, groups: &[ObjectGroup], group: &Ob
     if (group.header.kind()) != crate::format::GroupKind::Segment {
         return false;
     }
+    if is_perpendicular_segment_helper_group(file, groups, group) {
+        return true;
+    }
     if groups.iter().any(|candidate| {
         if (candidate.header.kind()) != crate::format::GroupKind::IterationBinding {
             return false;
@@ -285,6 +290,31 @@ fn is_auxiliary_segment_group(file: &GspFile, groups: &[ObjectGroup], group: &Ob
             }
             _ => false,
         }
+    })
+}
+
+fn is_perpendicular_segment_helper_group(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> bool {
+    let Some(group_index) = group.ordinal.checked_sub(1) else {
+        return false;
+    };
+    let Some(path) = find_indexed_path(file, group) else {
+        return false;
+    };
+    if path.refs.len() != 2 {
+        return false;
+    }
+
+    path.refs.iter().any(|object_ref| {
+        let Some(foot_group_index) = object_ref.checked_sub(1) else {
+            return false;
+        };
+        detect_perpendicular_segment_payload(file, groups, foot_group_index)
+            .map(|payload| payload.helper_segment_group_index == group_index)
+            .unwrap_or(false)
     })
 }
 
