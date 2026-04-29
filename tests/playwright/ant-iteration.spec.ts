@@ -6,10 +6,9 @@ test('ant fixture rebuilds iterated lines without duplicating exported payload l
   await page.goto(`file://${file}`);
 
   const countsAtLoad = await page.evaluate(() => {
-    const source = JSON.parse(document.getElementById('scene-data')!.textContent!);
     const runtime = JSON.parse(window.gspDebug.json());
     return {
-      sourceLines: source.lines.length,
+      sourceLines: window.gspDebug.viewerEnv.sourceScene.lines.length,
       currentLines: runtime.scene.lines.length,
     };
   });

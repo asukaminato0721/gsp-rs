@@ -1357,6 +1357,23 @@ fn preserves_insert_image_fixture() {
 }
 
 #[test]
+fn calibration_only_geometry_fixture_does_not_enable_graph_mode() {
+    let Some(data) = fixture_bytes("tests/fixtures/bug/20260421角平分线的作用.gsp") else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+
+    assert!(
+        !scene.graph_mode,
+        "a lone graph calibration helper should not enable graph mode"
+    );
+    assert!(
+        !scene.lines.is_empty(),
+        "expected geometry lines to remain exported"
+    );
+}
+
+#[test]
 fn preserves_points_defined_by_path_value_fixture() {
     let scene = fixture_scene(include_bytes!(
         "../../../tests/fixtures/未实现的系统功能/给定的数值在路径上绘制点.gsp"

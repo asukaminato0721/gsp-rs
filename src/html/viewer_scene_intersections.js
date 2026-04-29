@@ -94,6 +94,15 @@
   }
 
   /**
+   * @param {Point[] | null} candidates
+   * @param {number} variant
+   */
+  function chooseVariantCandidate(candidates, variant) {
+    if (!Array.isArray(candidates) || candidates.length === 0) return null;
+    return candidates[Math.max(0, Math.min(candidates.length - 1, variant || 0))] || null;
+  }
+
+  /**
    * @param {ViewerEnv | null} env
    * @param {LineConstraintJson} constraint
    * @param {(index: number) => Point | null} resolveFn
@@ -239,7 +248,7 @@
     const leftRadius = Math.hypot(leftRadiusPoint.x - leftCenter.x, leftRadiusPoint.y - leftCenter.y);
     const rightRadius = Math.hypot(rightRadiusPoint.x - rightCenter.x, rightRadiusPoint.y - rightCenter.y);
     const points = circleCircleIntersections(leftCenter, leftRadius, rightCenter, rightRadius);
-    return points && points.length ? choosePointCandidate(points, reference, variant) : null;
+    return chooseVariantCandidate(points, variant);
   }
 
   /**

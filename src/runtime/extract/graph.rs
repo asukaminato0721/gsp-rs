@@ -1,6 +1,6 @@
 use super::decode::{decode_label_name, decode_measurement_value, find_indexed_path};
 use super::{ArcShape, CircleShape};
-use crate::format::{GspFile, ObjectGroup, PointRecord, read_u16};
+use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord, read_u16};
 use crate::runtime::functions::{evaluate_expr_with_parameters, try_decode_function_expr};
 use crate::runtime::geometry::{
     Bounds, GraphTransform, arc_sample_points, read_f32_unaligned, to_world,
@@ -158,9 +158,30 @@ fn detect_explicit_axis_graph_transform(
 }
 
 pub(super) fn has_graph_classes(groups: &[ObjectGroup]) -> bool {
-    groups
-        .iter()
-        .any(|group| group.header.kind().is_graph_object())
+    let mut has_calibration = false;
+    let mut has_graph_expression = false;
+
+    for group in groups {
+        match group.header.kind() {
+            GroupKind::GraphObject40
+            | GroupKind::MeasurementLine
+            | GroupKind::GraphMeasurementSegment
+            | GroupKind::AxisLine
+            | GroupKind::FunctionPlot
+            | GroupKind::LegacyFunctionPlot
+            | GroupKind::ParametricFunctionPlot => return true,
+            kind if kind.is_coordinate_object() => return true,
+            kind if kind.is_graph_calibration() => has_calibration = true,
+            GroupKind::FunctionExpr
+            | GroupKind::CoordinateXValue
+            | GroupKind::CoordinateYValue
+            | GroupKind::CoordinateReadoutLabel
+            | GroupKind::GraphViewHelper => has_graph_expression = true,
+            _ => {}
+        }
+    }
+
+    has_calibration && has_graph_expression
 }
 
 pub(super) struct BoundsInputs<'a> {
