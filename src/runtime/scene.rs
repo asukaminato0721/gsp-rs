@@ -714,6 +714,8 @@ pub(crate) enum ScenePointBinding {
         source_index: usize,
         center_index: usize,
         factor: f64,
+        parameter_name: Option<String>,
+        factor_expr: Option<FunctionExpr>,
     },
     Midpoint {
         start_index: usize,

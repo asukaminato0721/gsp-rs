@@ -1434,6 +1434,27 @@ fn rolling_triangle_inrm_fixture_stays_in_geometry_mode() {
     assert!(
         scene.points.iter().any(|point| matches!(
             point.binding,
+            Some(ScenePointBinding::Scale {
+                factor_expr: Some(_),
+                ..
+            })
+        )),
+        "expected the marked-ratio dilation point to stay live as a scale expression"
+    );
+    assert!(
+        scene.labels.iter().any(|label| {
+            label.visible
+                && matches!(
+                    label.binding,
+                    Some(TextLabelBinding::SegmentProjectionParameter { .. })
+                )
+                && label.text == "m在DE'上的值 = 0.70"
+        }),
+        "expected the initial DE' projection value to match the JavaSketchpad reference"
+    );
+    assert!(
+        scene.points.iter().any(|point| matches!(
+            point.binding,
             Some(ScenePointBinding::Rotate {
                 angle_parameter_point_index: Some(_),
                 angle_parameter_start_index: Some(_),

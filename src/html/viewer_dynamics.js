@@ -91,6 +91,21 @@
   }
 
   /**
+   * @param {Extract<PointTransformJson, { kind: "scale" }>} transform
+   * @param {Map<string, number>} parameters
+   * @returns {number | null}
+   */
+  function resolveScaleTransformFactor(transform, parameters) {
+    if (transform.factorExpr) {
+      return evaluateExpr(transform.factorExpr, 0, parameters);
+    }
+    if (transform.parameterName) {
+      return parameters.get(transform.parameterName) ?? null;
+    }
+    return transform.factor;
+  }
+
+  /**
    * @param {RuntimeLabelJson} label
    */
   function usesVerboseParameterLabel(label) {
@@ -2622,7 +2637,9 @@
       if (transform.kind === "scale") {
         const center = env.resolveScenePoint(transform.centerIndex);
         if (!center) return;
-        const scaled = scaleAround(source, center, transform.factor);
+        const factor = resolveScaleTransformFactor(transform, parameters);
+        if (!Number.isFinite(factor)) return;
+        const scaled = scaleAround(source, center, factor);
         point.x = scaled.x;
         point.y = scaled.y;
       }
@@ -3040,8 +3057,9 @@
           }
         } else if (transform.kind === "scale") {
           const center = resolveTracePoint(points, transform.centerIndex, visiting);
-          if (source && center) {
-            resolved = scaleAround(source, center, transform.factor);
+          const factor = resolveScaleTransformFactor(transform, baseParameters);
+          if (source && center && Number.isFinite(factor)) {
+            resolved = scaleAround(source, center, factor);
           }
         }
       } else if (point.binding?.kind === "scale-by-ratio") {

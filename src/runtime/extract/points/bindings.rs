@@ -1,5 +1,5 @@
 use super::anchors::{
-    decode_reflection_anchor_raw, reflection_line_group_indices,
+    decode_expression_scale_binding, decode_reflection_anchor_raw, reflection_line_group_indices,
     translation_point_pair_group_indices,
 };
 use super::constraints::{

@@ -595,6 +595,7 @@ fn resolve_trace_point(
             source_index,
             center_index,
             factor,
+            ..
         }) => {
             let source = resolve_trace_point(points, *source_index, visiting)?;
             let center = resolve_trace_point(points, *center_index, visiting)?;

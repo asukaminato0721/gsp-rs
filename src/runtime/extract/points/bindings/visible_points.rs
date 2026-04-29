@@ -4,13 +4,13 @@ use super::{
     CoordinatePoint, GspFile, LegacyCoordinateConstructPoint, ObjectGroup,
     ParameterControlledPoint, PointRecord, RawPointConstraint, TransformBindingKind,
     decode_coordinate_point, decode_custom_transform_binding, decode_expression_offset_binding,
-    decode_expression_rotation_binding, decode_iteration_binding_point_alias_raw,
-    decode_legacy_coordinate_construct_point, decode_reflection_anchor_raw,
-    decode_translated_point_constraint, reflection_line_group_indices,
-    regular_polygon_angle_expr_for_calc_group, translation_point_pair_group_indices,
-    try_decode_angle_rotation_binding, try_decode_parameter_controlled_point,
-    try_decode_parameter_rotation_binding, try_decode_point_constraint,
-    try_decode_transform_binding,
+    decode_expression_rotation_binding, decode_expression_scale_binding,
+    decode_iteration_binding_point_alias_raw, decode_legacy_coordinate_construct_point,
+    decode_reflection_anchor_raw, decode_translated_point_constraint,
+    reflection_line_group_indices, regular_polygon_angle_expr_for_calc_group,
+    translation_point_pair_group_indices, try_decode_angle_rotation_binding,
+    try_decode_parameter_controlled_point, try_decode_parameter_rotation_binding,
+    try_decode_point_constraint, try_decode_transform_binding,
 };
 use crate::runtime::extract::decode::{
     decode_bbox_anchor_raw, decode_label_name, decode_label_visible,
@@ -445,6 +445,29 @@ fn build_scene_point_for_group(
             };
             (|| {
                 if kind == crate::format::GroupKind::ExpressionRotation {
+                    if let Some(binding) =
+                        decode_expression_scale_binding(file, groups, group, anchors)
+                    {
+                        let position = anchors.get(index).cloned().flatten()?;
+                        let source_index =
+                            mapped_point_index(group_to_point_index, binding.source_group_index)?;
+                        let center_index =
+                            mapped_point_index(group_to_point_index, binding.center_group_index)?;
+                        return Some(scene_point(
+                            position,
+                            group_color(group),
+                            visible,
+                            false,
+                            ScenePointConstraint::Free,
+                            Some(ScenePointBinding::Scale {
+                                source_index,
+                                center_index,
+                                factor: binding.factor,
+                                parameter_name: binding.parameter_name,
+                                factor_expr: Some(binding.factor_expr),
+                            }),
+                        ));
+                    }
                     let binding = decode_expression_rotation_binding(file, groups, group, anchors)?;
                     let position = anchors.get(index).cloned().flatten()?;
                     let source_index =
@@ -507,6 +530,8 @@ fn build_scene_point_for_group(
                             source_index,
                             center_index,
                             factor,
+                            parameter_name: None,
+                            factor_expr: None,
                         },
                     }),
                 ))
@@ -739,6 +764,28 @@ fn build_scene_point_for_group_checked(
                             }),
                         ));
                     }
+                    if let Some(binding) =
+                        decode_expression_scale_binding(file, groups, group, anchors)
+                    {
+                        let source_index =
+                            mapped_point_index(group_to_point_index, binding.source_group_index)?;
+                        let center_index =
+                            mapped_point_index(group_to_point_index, binding.center_group_index)?;
+                        return Some(scene_point(
+                            position,
+                            group_color(group),
+                            visible,
+                            false,
+                            ScenePointConstraint::Free,
+                            Some(ScenePointBinding::Scale {
+                                source_index,
+                                center_index,
+                                factor: binding.factor,
+                                parameter_name: binding.parameter_name,
+                                factor_expr: Some(binding.factor_expr),
+                            }),
+                        ));
+                    }
                     let binding = decode_expression_rotation_binding(file, groups, group, anchors)?;
                     let source_index =
                         mapped_point_index(group_to_point_index, binding.source_group_index)?;
@@ -806,6 +853,8 @@ fn build_scene_point_for_group_checked(
                             source_index,
                             center_index,
                             factor,
+                            parameter_name: None,
+                            factor_expr: None,
                         },
                     }),
                 ))
@@ -849,6 +898,8 @@ fn build_scene_point_for_group_checked(
                                 source_index,
                                 center_index,
                                 factor,
+                                parameter_name: None,
+                                factor_expr: None,
                             },
                         }),
                     ));

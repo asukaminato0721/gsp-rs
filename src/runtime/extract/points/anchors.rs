@@ -22,8 +22,8 @@ use crate::runtime::functions::{
 };
 use crate::runtime::geometry::{
     GraphTransform, angle_degrees_from_points, lerp_point, point_on_circle_arc,
-    point_on_three_point_arc, reflect_across_line, rotate_around, three_point_arc_geometry,
-    to_raw_from_world, to_world,
+    point_on_three_point_arc, reflect_across_line, rotate_around, scale_around,
+    three_point_arc_geometry, to_raw_from_world, to_world,
 };
 use crate::runtime::scene::LineLikeKind;
 
@@ -57,6 +57,15 @@ pub(crate) struct ExpressionRotationBindingDef {
     pub(crate) center_group_index: usize,
     pub(crate) angle_expr: FunctionExpr,
     pub(crate) angle_degrees: f64,
+    pub(crate) parameter_name: Option<String>,
+}
+
+#[derive(Clone)]
+pub(crate) struct ExpressionScaleBindingDef {
+    pub(crate) source_group_index: usize,
+    pub(crate) center_group_index: usize,
+    pub(crate) factor_expr: FunctionExpr,
+    pub(crate) factor: f64,
     pub(crate) parameter_name: Option<String>,
 }
 
@@ -388,12 +397,51 @@ pub(crate) fn decode_expression_rotation_binding(
     })
 }
 
+pub(crate) fn decode_expression_scale_binding(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<ExpressionScaleBindingDef> {
+    if group.header.kind() != GroupKind::ExpressionRotation {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() < 3 {
+        return None;
+    }
+    let source_group_index = path.refs[0].checked_sub(1)?;
+    let center_group_index = path.refs[1].checked_sub(1)?;
+    let expr_group = groups.get(path.refs[2].checked_sub(1)?)?;
+    if expr_group.header.kind() != GroupKind::FunctionExpr {
+        return None;
+    }
+    if decode_label_name(file, expr_group).is_some_and(|label| label.contains('°')) {
+        return None;
+    }
+    let (factor_expr, parameters, parameter_name) =
+        expression_runtime_context(file, groups, expr_group, anchors)?;
+    let factor = evaluate_expr_with_parameters(&factor_expr, 0.0, &parameters)?;
+    Some(ExpressionScaleBindingDef {
+        source_group_index,
+        center_group_index,
+        factor_expr,
+        factor,
+        parameter_name,
+    })
+}
+
 pub(crate) fn decode_expression_rotation_anchor_raw(
     file: &GspFile,
     groups: &[ObjectGroup],
     group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
 ) -> Option<PointRecord> {
+    if let Some(binding) = decode_expression_scale_binding(file, groups, group, anchors) {
+        let source = anchors.get(binding.source_group_index)?.clone()?;
+        let center = anchors.get(binding.center_group_index)?.clone()?;
+        return Some(scale_around(&source, &center, binding.factor));
+    }
     let binding = decode_expression_rotation_binding(file, groups, group, anchors)?;
     let source = anchors.get(binding.source_group_index)?.clone()?;
     let center = anchors.get(binding.center_group_index)?.clone()?;
