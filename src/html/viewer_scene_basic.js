@@ -268,6 +268,11 @@
       const end = resolveFn(constraint.endIndex);
       return start && end ? lerpPoint(start, end, constraint.t) : null;
     }
+    if (constraint.kind === "line" || constraint.kind === "ray") {
+      const start = resolveFn(constraint.startIndex);
+      const end = resolveFn(constraint.endIndex);
+      return start && end ? lerpPoint(start, end, constraint.t) : null;
+    }
     if (constraint.kind === "line-constraint" || constraint.kind === "ray-constraint") {
       const scene = typeof env?.currentScene === "function"
         ? env.currentScene()
