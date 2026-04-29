@@ -118,35 +118,35 @@ fn format_function_ast(expr: &FunctionAst, variable: &str, parent_prec: u8) -> S
                 format!("√({inner})")
             }
             UnaryFunction::Sin => {
-                let inner = format_function_ast(expr, variable, 0);
+                let inner = format_unary_call_arg(expr, variable, parent_prec);
                 format!("sin({inner})")
             }
             UnaryFunction::Cos => {
-                let inner = format_function_ast(expr, variable, 0);
+                let inner = format_unary_call_arg(expr, variable, parent_prec);
                 format!("cos({inner})")
             }
             UnaryFunction::Tan => {
-                let inner = format_function_ast(expr, variable, 0);
+                let inner = format_unary_call_arg(expr, variable, parent_prec);
                 format!("tan({inner})")
             }
             UnaryFunction::Ln => {
-                let inner = format_function_ast(expr, variable, 0);
+                let inner = format_unary_call_arg(expr, variable, parent_prec);
                 format!("ln({inner})")
             }
             UnaryFunction::Log10 => {
-                let inner = format_function_ast(expr, variable, 0);
+                let inner = format_unary_call_arg(expr, variable, parent_prec);
                 format!("log({inner})")
             }
             UnaryFunction::Sign => {
-                let inner = format_function_ast(expr, variable, 0);
+                let inner = format_unary_call_arg(expr, variable, parent_prec);
                 format!("sgn({inner})")
             }
             UnaryFunction::Round => {
-                let inner = format_function_ast(expr, variable, 0);
+                let inner = format_unary_call_arg(expr, variable, parent_prec);
                 format!("round({inner})")
             }
             UnaryFunction::Trunc => {
-                let inner = format_function_ast(expr, variable, 0);
+                let inner = format_unary_call_arg(expr, variable, parent_prec);
                 format!("trunc({inner})")
             }
         },
@@ -183,6 +183,14 @@ fn is_atomic(expr: &FunctionAst) -> bool {
             | FunctionAst::PiAngle
             | FunctionAst::Parameter(_, _)
     )
+}
+
+fn format_unary_call_arg(expr: &FunctionAst, variable: &str, parent_prec: u8) -> String {
+    let inner = format_function_ast(expr, variable, 0);
+    match expr {
+        FunctionAst::Binary { .. } if parent_prec > 0 => format!("({inner})"),
+        _ => inner,
+    }
 }
 
 fn binary_precedence(op: BinaryOp) -> (u8, bool) {

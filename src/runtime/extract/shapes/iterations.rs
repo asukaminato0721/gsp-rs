@@ -1250,7 +1250,7 @@ fn evaluate_coordinate_iteration_anchor(
         });
     let source_position = source_position?;
     match coordinate_group.header.kind() {
-        crate::format::GroupKind::Unknown(20) => {
+        crate::format::GroupKind::CoordinateExpressionPointPair => {
             let x_calc_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
             let y_calc_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
             let parameters =

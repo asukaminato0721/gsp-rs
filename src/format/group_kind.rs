@@ -56,7 +56,7 @@ macro_rules! define_group_kinds {
                         | Self::FixedCoordinatePoint
                         | Self::LegacyCoordinateConstructPoint
                         | Self::LegacyCoordinateParameterHelper
-                        | Self::Unknown(20)
+                        | Self::CoordinateExpressionPointPair
                         | Self::CoordinateTrace
                 )
             }
@@ -123,6 +123,7 @@ define_group_kinds! {
     CartesianOffsetPoint = 17,
     CoordinateExpressionPoint = 18,
     CoordinateExpressionPointAlt = 19,
+    CoordinateExpressionPointPair = 20,
     LegacyVisibilityHelper = 22,
     PolarOffsetPoint = 21,
     ExpressionOffsetPoint = 23,
@@ -214,6 +215,7 @@ define_group_kinds! {
     GraphXValue = 125,
     ParametricFunctionPlot = 126,
     SegmentMarker = 121,
+    LegacyFunctionPlot = 122,
 }
 
 #[cfg(test)]

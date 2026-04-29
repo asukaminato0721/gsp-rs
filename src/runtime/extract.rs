@@ -1584,7 +1584,7 @@ fn describe_group_in_chinese(
         | GroupKind::CoordinateExpressionPoint
         | GroupKind::CoordinateExpressionPointAlt
         | GroupKind::FixedCoordinatePoint
-        | GroupKind::Unknown(20) => {
+        | GroupKind::CoordinateExpressionPointPair => {
             if refs.is_empty() {
                 "坐标点".to_string()
             } else {
@@ -1960,6 +1960,7 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::CartesianOffsetPoint => "直角坐标偏移点",
         GroupKind::CoordinateExpressionPoint => "坐标表达式点",
         GroupKind::CoordinateExpressionPointAlt => "坐标表达式点",
+        GroupKind::CoordinateExpressionPointPair => "双坐标表达式点",
         GroupKind::PolarOffsetPoint => "极坐标偏移点",
         GroupKind::ExpressionOffsetPoint => "表达式偏移点",
         GroupKind::DerivedSegment24 => "派生线段",
@@ -2002,7 +2003,7 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::FixedCoordinatePoint => "固定坐标点",
         GroupKind::CoordinatePoint => "坐标点",
         GroupKind::GraphFunctionPoint => "图像函数点",
-        GroupKind::FunctionPlot => "函数图像",
+        GroupKind::FunctionPlot | GroupKind::LegacyFunctionPlot => "函数图像",
         GroupKind::ParametricFunctionPlot => "参数曲线",
         GroupKind::ButtonLabel => "按钮标签",
         GroupKind::DerivedSegment75 => "派生线段",
@@ -2067,6 +2068,7 @@ fn group_kind_noun_in_chinese(kind: GroupKind) -> &'static str {
         | GroupKind::CartesianOffsetPoint
         | GroupKind::CoordinateExpressionPoint
         | GroupKind::CoordinateExpressionPointAlt
+        | GroupKind::CoordinateExpressionPointPair
         | GroupKind::FixedCoordinatePoint
         | GroupKind::PolarOffsetPoint
         | GroupKind::ExpressionOffsetPoint
@@ -2090,7 +2092,6 @@ fn group_kind_noun_in_chinese(kind: GroupKind) -> &'static str {
         | GroupKind::ParameterControlledPoint
         | GroupKind::CoordinateTraceIntersectionPoint
         | GroupKind::PathPoint
-        | GroupKind::Unknown(20)
         | GroupKind::IterationPointAlias
         | GroupKind::BoundaryIntersectionPoint => "点",
         GroupKind::DistanceValue
@@ -2123,7 +2124,9 @@ fn group_kind_noun_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::ArcOnCircle | GroupKind::CenterArc | GroupKind::ThreePointArc => "圆弧",
         GroupKind::CoordinateReadoutLabel => "标签",
         GroupKind::ActionButton => "按钮",
-        GroupKind::FunctionPlot | GroupKind::ParametricFunctionPlot => "函数图像",
+        GroupKind::FunctionPlot
+        | GroupKind::LegacyFunctionPlot
+        | GroupKind::ParametricFunctionPlot => "函数图像",
         GroupKind::AngleMarker | GroupKind::LegacyAngleMarker => "角标记",
         _ => "对象",
     }
@@ -2228,7 +2231,7 @@ fn validate_group_kind(group: &ObjectGroup) -> Result<()> {
     let kind = group.header.kind();
     if matches!(
         kind,
-        GroupKind::Unknown(20)
+        GroupKind::CoordinateExpressionPointPair
             | GroupKind::LegacyVisibilityHelper
             | GroupKind::LegacyCircularConstraintHelper
             | GroupKind::LegacyCoordinateConstructPoint
@@ -2239,7 +2242,7 @@ fn validate_group_kind(group: &ObjectGroup) -> Result<()> {
             | GroupKind::GraphYValue
             | GroupKind::GraphXValue
             | GroupKind::FunctionDefinition
-            | GroupKind::Unknown(122)
+            | GroupKind::LegacyFunctionPlot
             | GroupKind::BoundaryLengthValue
             | GroupKind::AngleValue
             | GroupKind::ArcAngleValue
@@ -2889,7 +2892,7 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::PathPoint
             | GroupKind::SegmentMarker
             | GroupKind::FunctionDefinition
-            | GroupKind::Unknown(122)
+            | GroupKind::LegacyFunctionPlot
             | GroupKind::BoundaryLengthValue
             | GroupKind::ArcAngleValue
             | GroupKind::AngleValue

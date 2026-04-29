@@ -186,7 +186,7 @@
     const root = Math.sqrt(Math.max(0, discriminant));
     const ts = [(-b - root) / (2 * a), (-b + root) / (2 * a)]
       .filter((t) => lineLikeAllowsParam(t, lineKind))
-      .sort((left, right) => left - right);
+      .sort((left, right) => right - left);
     if (ts.length === 0) return null;
     return choosePointCandidate(
       ts.map((t) => ({ x: lineStart.x + dx * t, y: lineStart.y + dy * t })),

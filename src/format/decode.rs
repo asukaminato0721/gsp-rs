@@ -117,6 +117,15 @@ pub fn decode_object_aux_u16(payload: &[u8]) -> Option<u16> {
     (payload.len() == 2).then(|| read_u16(payload, 0))
 }
 
+pub fn decode_object_aux_words(payload: &[u8]) -> Option<Vec<u16>> {
+    (!payload.is_empty() && payload.len().is_multiple_of(2)).then(|| {
+        (0..payload.len())
+            .step_by(2)
+            .map(|offset| read_u16(payload, offset))
+            .collect()
+    })
+}
+
 pub fn read_u16(data: &[u8], offset: usize) -> u16 {
     let bytes = data
         .get(offset..offset + 2)

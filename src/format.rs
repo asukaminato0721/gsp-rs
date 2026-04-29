@@ -11,8 +11,8 @@ use std::ops::{Add, AddAssign, Mul, Sub, SubAssign};
 
 #[allow(unused_imports)]
 pub use decode::{
-    decode_indexed_path, decode_object_aux_u16, decode_object_group_header, decode_point_record,
-    read_f64, read_i16, read_u16, read_u32,
+    decode_indexed_path, decode_object_aux_u16, decode_object_aux_words,
+    decode_object_group_header, decode_point_record, read_f64, read_i16, read_u16, read_u32,
 };
 pub use error::ParseError;
 pub use group_kind::GroupKind;
@@ -222,6 +222,7 @@ pub struct ObjectGroup {
     #[allow(dead_code)]
     pub end_offset: usize,
     pub header: ObjectGroupHeader,
+    pub object_aux_0x07d6_words: Option<Vec<u16>>,
     pub object_aux_u16: Option<u16>,
     pub records: Vec<Record>,
 }
@@ -302,6 +303,16 @@ mod tests {
     }
 
     #[test]
+    fn decodes_object_aux_words_payload() {
+        assert_eq!(
+            decode_object_aux_words(&[0x01, 0x00, 0x02, 0x00, 0xff, 0xff]),
+            Some(vec![1, 2, 0xffff])
+        );
+        assert_eq!(decode_object_aux_words(&[]), None);
+        assert_eq!(decode_object_aux_words(&[0x01]), None);
+    }
+
+    #[test]
     fn collects_object_group_with_minimal_header() {
         let mut data = Vec::new();
         data.extend_from_slice(b"GSP4");
@@ -310,6 +321,9 @@ mod tests {
         data.extend_from_slice(&3_u32.to_le_bytes());
         data.extend_from_slice(&0_u32.to_le_bytes());
         data.extend_from_slice(&0x0001_0004_u32.to_le_bytes());
+        data.extend_from_slice(&6_u32.to_le_bytes());
+        data.extend_from_slice(&0x07d6_u32.to_le_bytes());
+        data.extend_from_slice(&[0x01, 0x00, 0x02, 0x00, 0xff, 0xff]);
         data.extend_from_slice(&2_u32.to_le_bytes());
         data.extend_from_slice(&0x07d8_u32.to_le_bytes());
         data.extend_from_slice(&0x0123_u16.to_le_bytes());
@@ -321,6 +335,7 @@ mod tests {
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].header.kind(), GroupKind::Circle);
         assert_eq!(groups[0].header.style_b, 0);
+        assert_eq!(groups[0].object_aux_0x07d6_words, Some(vec![1, 2, 0xffff]));
         assert_eq!(groups[0].object_aux_u16, Some(0x0123));
     }
 

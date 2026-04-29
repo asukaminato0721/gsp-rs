@@ -557,7 +557,7 @@ pub(crate) fn decode_coordinate_expression_anchor_raw(
         group.header.kind(),
         crate::format::GroupKind::CoordinateExpressionPoint
             | crate::format::GroupKind::CoordinateExpressionPointAlt
-            | crate::format::GroupKind::Unknown(20)
+            | crate::format::GroupKind::CoordinateExpressionPointPair
     ) {
         return None;
     }
@@ -570,7 +570,7 @@ pub(crate) fn decode_coordinate_expression_anchor_raw(
     let source_position = anchors.get(source_group_index)?.clone()?;
     let source_world = to_world(&source_position, &graph.cloned());
     let world = match group.header.kind() {
-        crate::format::GroupKind::Unknown(20) => {
+        crate::format::GroupKind::CoordinateExpressionPointPair => {
             let x_calc_group = groups.get(path.refs[1].checked_sub(1)?)?;
             let y_calc_group = groups.get(path.refs[2].checked_sub(1)?)?;
             let x_expr = try_decode_function_expr(file, groups, x_calc_group).ok()?;
@@ -800,7 +800,7 @@ fn sample_coordinate_trace_points_raw(
     let mut points = Vec::with_capacity(descriptor.sample_count);
     let last = descriptor.sample_count.saturating_sub(1).max(1) as f64;
     let driver = match driver_group.header.kind() {
-        GroupKind::Unknown(20)
+        GroupKind::CoordinateExpressionPointPair
         | GroupKind::CoordinateExpressionPoint
         | GroupKind::CoordinateExpressionPointAlt => {
             let driver_path = find_indexed_path(file, driver_group)?;
@@ -808,7 +808,7 @@ fn sample_coordinate_trace_points_raw(
             let source_position = anchors.get(source_group_index)?.clone()?;
             let source_world = to_world(&source_position, &graph.cloned());
             match driver_group.header.kind() {
-                GroupKind::Unknown(20) => {
+                GroupKind::CoordinateExpressionPointPair => {
                     let x_calc_group = groups.get(driver_path.refs[1].checked_sub(1)?)?;
                     let y_calc_group = groups.get(driver_path.refs[2].checked_sub(1)?)?;
                     let x_expr = try_decode_function_expr(file, groups, x_calc_group).ok()?;
@@ -1335,7 +1335,7 @@ fn select_line_circle_intersection(
     if ts.is_empty() {
         return None;
     }
-    ts.sort_by(|left, right| left.total_cmp(right));
+    ts.sort_by(|left, right| right.total_cmp(left));
     let t = ts[variant.min(ts.len().saturating_sub(1))];
     Some(PointRecord {
         x: line_start.x + dx * t,

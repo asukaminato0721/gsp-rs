@@ -164,12 +164,9 @@ fn is_function_plot_definition_group(
     target_ordinal: usize,
 ) -> bool {
     groups.iter().any(|group| {
-        matches!(
-            group.header.kind(),
-            crate::format::GroupKind::FunctionPlot
-                | crate::format::GroupKind::ParametricFunctionPlot
-        ) && find_indexed_path(file, group)
-            .is_some_and(|path| path.refs.first().copied() == Some(target_ordinal))
+        (group.header.kind() == crate::format::GroupKind::FunctionPlot)
+            && find_indexed_path(file, group)
+                .is_some_and(|path| path.refs.first().copied() == Some(target_ordinal))
     })
 }
 
@@ -209,6 +206,7 @@ pub(crate) fn is_standalone_function_definition_group(
     group: &ObjectGroup,
 ) -> bool {
     has_parameter_control_payload(group)
+        && !is_function_plot_definition_group(file, groups, group.ordinal)
         && !is_non_graph_parameter_group(file, groups, group)
         && try_decode_standalone_function_expr(file, groups, group)
             .ok()

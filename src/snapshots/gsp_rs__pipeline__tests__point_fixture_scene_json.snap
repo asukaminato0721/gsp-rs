@@ -46,5 +46,6 @@ expression: scene_json
   "iterationTables": [],
   "buttons": [],
   "parameters": [],
-  "functions": []
+  "functions": [],
+  "functionDefinitions": []
 }

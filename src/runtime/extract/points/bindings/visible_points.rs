@@ -283,7 +283,7 @@ fn build_scene_point_for_group(
         | crate::format::GroupKind::GraphFunctionPoint
         | crate::format::GroupKind::GraphValuePoint
         | crate::format::GroupKind::LegacyCoordinateParameterHelper
-        | crate::format::GroupKind::Unknown(20) => (|| {
+        | crate::format::GroupKind::CoordinateExpressionPointPair => (|| {
             let point = decode_coordinate_point(file, groups, group, anchors, graph)?;
             scene_point_from_coordinate(point, group_to_point_index, group_color(group), visible)
         })(),

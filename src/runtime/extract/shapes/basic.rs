@@ -1467,7 +1467,7 @@ pub(crate) fn collect_coordinate_traces(
             let expr = try_decode_function_expr(file, groups, calc_group).ok()?;
             let driver_group = groups.get(path.refs[0].checked_sub(1)?)?;
             let driver = match driver_group.header.kind() {
-                GroupKind::Unknown(20)
+                GroupKind::CoordinateExpressionPointPair
                 | GroupKind::CoordinateExpressionPoint
                 | GroupKind::CoordinateExpressionPointAlt => {
                     let driver_path = find_indexed_path(file, driver_group)?;
@@ -1475,7 +1475,7 @@ pub(crate) fn collect_coordinate_traces(
                     let source_position = anchors.get(source_group_index)?.clone()?;
                     let source_world = crate::runtime::geometry::to_world(&source_position, graph);
                     match driver_group.header.kind() {
-                        GroupKind::Unknown(20) => {
+                        GroupKind::CoordinateExpressionPointPair => {
                             let x_calc_group = groups.get(driver_path.refs[1].checked_sub(1)?)?;
                             let y_calc_group = groups.get(driver_path.refs[2].checked_sub(1)?)?;
                             let x_expr =

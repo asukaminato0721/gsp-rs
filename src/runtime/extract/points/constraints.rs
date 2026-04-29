@@ -914,7 +914,7 @@ pub(crate) fn decode_coordinate_point(
             | crate::format::GroupKind::GraphFunctionPoint
             | crate::format::GroupKind::GraphValuePoint
             | crate::format::GroupKind::LegacyCoordinateParameterHelper
-            | crate::format::GroupKind::Unknown(20)
+            | crate::format::GroupKind::CoordinateExpressionPointPair
     ) {
         return None;
     }
@@ -1265,7 +1265,7 @@ pub(crate) fn decode_coordinate_point(
                 expr: FunctionExpr::Constant(radius),
             })
         }
-        crate::format::GroupKind::Unknown(20) => {
+        crate::format::GroupKind::CoordinateExpressionPointPair => {
             let source_group_index = path.refs[0].checked_sub(1)?;
             let source_position = anchors.get(source_group_index)?.clone()?;
             let source_world = to_world(&source_position, graph);
