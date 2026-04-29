@@ -184,48 +184,51 @@ pub(crate) fn collect_line_shapes(
             } else {
                 None
             };
-            (points.len() >= 2 && has_distinct_points(&points)).then_some(LineShape {
-                points,
-                color: if fallback_generic && !kinds.contains(&(group.header.kind())) {
-                    [40, 40, 40, 255]
-                } else {
-                    color_from_style(group.header.style_b)
-                },
-                dashed: (group.header.kind()) == crate::format::GroupKind::MeasurementLine
-                    || line_is_dashed(group.header.style_a),
-                visible: !group.header.is_hidden(),
-                binding: match (group.header.kind(), start_group_index, end_group_index) {
-                    (crate::format::GroupKind::Segment, Some(start_index), Some(end_index)) => {
-                        Some(LineBinding::Segment {
-                            start_index,
-                            end_index,
-                        })
-                    }
-                    (crate::format::GroupKind::Line, Some(start_index), Some(end_index)) => {
-                        Some(LineBinding::Line {
-                            start_index,
-                            end_index,
-                        })
-                    }
-                    (crate::format::GroupKind::Ray, Some(start_index), Some(end_index)) => {
-                        Some(LineBinding::Ray {
-                            start_index,
-                            end_index,
-                        })
-                    }
-                    (
-                        crate::format::GroupKind::MeasurementLine
-                        | crate::format::GroupKind::AxisLine,
-                        Some(start_index),
-                        Some(end_index),
-                    ) => Some(LineBinding::GraphHelperLine {
+            let binding = match (group.header.kind(), start_group_index, end_group_index) {
+                (crate::format::GroupKind::Segment, Some(start_index), Some(end_index)) => {
+                    Some(LineBinding::Segment {
                         start_index,
                         end_index,
-                    }),
-                    _ => None,
-                },
-                debug: Some(payload_debug_source(group)),
-            })
+                    })
+                }
+                (crate::format::GroupKind::Line, Some(start_index), Some(end_index)) => {
+                    Some(LineBinding::Line {
+                        start_index,
+                        end_index,
+                    })
+                }
+                (crate::format::GroupKind::Ray, Some(start_index), Some(end_index)) => {
+                    Some(LineBinding::Ray {
+                        start_index,
+                        end_index,
+                    })
+                }
+                (
+                    crate::format::GroupKind::MeasurementLine | crate::format::GroupKind::AxisLine,
+                    Some(start_index),
+                    Some(end_index),
+                ) => Some(LineBinding::GraphHelperLine {
+                    start_index,
+                    end_index,
+                }),
+                _ => None,
+            };
+            let has_distinct_refs = path.refs.first() != path.refs.get(1);
+            (points.len() >= 2
+                && (has_distinct_points(&points) || (binding.is_some() && has_distinct_refs)))
+                .then_some(LineShape {
+                    points,
+                    color: if fallback_generic && !kinds.contains(&(group.header.kind())) {
+                        [40, 40, 40, 255]
+                    } else {
+                        color_from_style(group.header.style_b)
+                    },
+                    dashed: (group.header.kind()) == crate::format::GroupKind::MeasurementLine
+                        || line_is_dashed(group.header.style_a),
+                    visible: !group.header.is_hidden(),
+                    binding,
+                    debug: Some(payload_debug_source(group)),
+                })
         })
         .collect()
 }

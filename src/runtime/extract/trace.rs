@@ -714,14 +714,25 @@ fn resolve_trace_point(
             let ratio_denominator =
                 resolve_trace_point(points, *ratio_denominator_index, visiting)?;
             let ratio_numerator = resolve_trace_point(points, *ratio_numerator_index, visiting)?;
-            let denominator =
-                (ratio_denominator.x - ratio_origin.x).hypot(ratio_denominator.y - ratio_origin.y);
+            let denominator_dx = ratio_denominator.x - ratio_origin.x;
+            let denominator_dy = ratio_denominator.y - ratio_origin.y;
+            let numerator_dx = ratio_numerator.x - ratio_origin.x;
+            let numerator_dy = ratio_numerator.y - ratio_origin.y;
+            let denominator = denominator_dx.hypot(denominator_dy);
             if denominator <= 1e-9 {
                 return None;
             }
-            let numerator =
-                (ratio_numerator.x - ratio_origin.x).hypot(ratio_numerator.y - ratio_origin.y);
-            Some(scale_around(&source, &center, numerator / denominator))
+            let numerator = numerator_dx.hypot(numerator_dy);
+            let direction = if denominator_dx * numerator_dx + denominator_dy * numerator_dy < 0.0 {
+                -1.0
+            } else {
+                1.0
+            };
+            Some(scale_around(
+                &source,
+                &center,
+                direction * numerator / denominator,
+            ))
         }
         Some(ScenePointBinding::Midpoint {
             start_index,

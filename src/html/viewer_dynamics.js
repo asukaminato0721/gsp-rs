@@ -91,8 +91,9 @@
   }
 
   /**
-   * @param {Extract<PointTransformJson, { kind: "scale" }>} transform
+   * @param {{ centerIndex: number; factor: number; parameterName?: string | null; factorExpr?: FunctionExprJson | null; factorParameterPointIndex?: number | null; factorParameterStartIndex?: number | null; factorParameterEndIndex?: number | null }} transform
    * @param {Map<string, number>} parameters
+   * @param {((index: number) => Point | null | undefined) | null} [resolvePointAt]
    * @returns {number | null}
    */
   function resolveScaleTransformFactor(transform, parameters, resolvePointAt = null) {
@@ -578,6 +579,9 @@
           || key === "originIndex"
           || key === "denominatorIndex"
           || key === "numeratorIndex"
+          || key === "ratioOriginIndex"
+          || key === "ratioDenominatorIndex"
+          || key === "ratioNumeratorIndex"
           || key === "radiusIndex"
           || key === "startIndex"
           || key === "endIndex"
@@ -2466,8 +2470,6 @@
   }
 
   /**
-   * GSP's three-point ratio is directed along the marked ratio line.
-   *
    * @param {Point} source
    * @param {Point} center
    * @param {Point} ratioOrigin
