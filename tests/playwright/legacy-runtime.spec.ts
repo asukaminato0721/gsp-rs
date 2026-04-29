@@ -127,3 +127,126 @@ test('angle-marker class payload renders bug fixture without path explosion', as
   expect(result.redPointCount).toBe(6);
   expect(result.bLabelAnchorKind).toBe('point');
 });
+
+test('one dragon fixture preserves JavaSketchpad visibility and clickable sequence action', async ({ page }) => {
+  const fixturePath = 'tests/Samples/个人专栏/李章博作品/一条龙.gsp';
+  test.skip(!fs.existsSync(path.resolve(process.cwd(), fixturePath)), 'sample fixture missing');
+  const file = compileFixtureToTempHtml(fixturePath);
+  await page.goto(`file://${file}`);
+
+  const before = await page.evaluate(() => {
+    const scene = window.gspDebug.runtime.scene;
+    const visibleButtons = Array.from(document.querySelectorAll('.scene-link-button'))
+      .map((button) => button.textContent || '');
+    const hiddenChildOrdinals = new Set([10, 11, 12, 14, 19, 21, 26, 28]);
+    return {
+      visiblePointCount: scene.points.filter((point: any) => point.visible).length,
+      redDomPointCount: document.querySelectorAll('circle[fill="rgba(255, 0, 0, 1.000)"]').length,
+      visibleButtons,
+      hiddenChildrenStayHidden: scene.buttons
+        .filter((button: any) => hiddenChildOrdinals.has(button.debug?.groupOrdinal))
+        .every((button: any) => button.visible === false),
+      animatedPointX: scene.points[9].x,
+      animatedPointY: scene.points[9].y,
+      dragonLineX: scene.lines.find((line: any) => line.debug?.groupOrdinal === 32)?.points[1]?.x,
+      dragonLineY: scene.lines.find((line: any) => line.debug?.groupOrdinal === 32)?.points[1]?.y,
+    };
+  });
+
+  expect(before.visiblePointCount).toBe(2);
+  expect(before.redDomPointCount).toBe(2);
+  expect(before.visibleButtons).toEqual(['系列2 个动作', 'http://exjh.com']);
+  expect(before.hiddenChildrenStayHidden).toBe(true);
+
+  await page.getByRole('button', { name: '系列2 个动作' }).click();
+  await page.waitForTimeout(1200);
+
+  const after = await page.evaluate(() => {
+    const scene = window.gspDebug.runtime.scene;
+    return {
+      animatedPointX: scene.points[9].x,
+      animatedPointY: scene.points[9].y,
+      dragonLineX: scene.lines.find((line: any) => line.debug?.groupOrdinal === 32)?.points[1]?.x,
+      dragonLineY: scene.lines.find((line: any) => line.debug?.groupOrdinal === 32)?.points[1]?.y,
+    };
+  });
+
+  expect(Math.hypot(
+    after.animatedPointX - before.animatedPointX,
+    after.animatedPointY - before.animatedPointY,
+  )).toBeGreaterThan(1);
+  expect(Math.hypot(
+    (after.dragonLineX ?? 0) - (before.dragonLineX ?? 0),
+    (after.dragonLineY ?? 0) - (before.dragonLineY ?? 0),
+  )).toBeGreaterThan(1);
+});
+
+test('Lizhangbo solid-geometry trace label buttons drive hidden parameters', async ({ page }) => {
+  const fixturePath = 'tests/Samples/个人专栏/李章博作品/动画演示立体几何轨迹形成（李章博）.gsp';
+  test.skip(!fs.existsSync(path.resolve(process.cwd(), fixturePath)), 'sample fixture missing');
+  const file = compileFixtureToTempHtml(fixturePath);
+  await page.goto(`file://${file}`);
+
+  const before = await page.evaluate(() => {
+    const dynamics = window.gspDebug.runtime.dynamics;
+    const scene = window.gspDebug.runtime.scene;
+    const generatedDepth = scene.pointIterations
+      .filter((family: any) => family.kind === 'parameterized')
+      .reduce((sum: number, family: any) => sum + (family.depth || 0), 0);
+    const standaloneParameters = scene.points
+      .filter((point: any) => point?.binding?.kind === 'parameter' && !point.constraint)
+      .length;
+    const generated = scene.points.slice(
+      Math.max(0, scene.points.length - standaloneParameters - generatedDepth),
+      Math.max(0, scene.points.length - standaloneParameters),
+    );
+    const xs = generated.map((point: any) => point.x);
+    const ys = generated.map((point: any) => point.y);
+    return {
+      t7: dynamics.parameters.find((parameter: any) => parameter.name === 't[7]')?.value,
+      buttons: scene.buttons.map((button: any) => button.action.kind),
+      pointCount: scene.points.length,
+      pointIterations: scene.pointIterations.map((family: any) => family.kind),
+      lineIterations: scene.lineIterations.length,
+      generatedTraceCount: generated.length,
+      generatedTraceWidth: Math.max(...xs) - Math.min(...xs),
+      generatedTraceHeight: Math.max(...ys) - Math.min(...ys),
+    };
+  });
+
+  expect(before.t7).toBe(399);
+  expect(before.buttons).toContain('set-parameter');
+  expect(before.buttons).toContain('animate-parameter');
+  expect(before.pointIterations).toContain('parameterized');
+  expect(before.lineIterations).toBe(0);
+  expect(before.generatedTraceCount).toBe(798);
+  expect(before.generatedTraceWidth).toBeGreaterThan(80);
+  expect(before.generatedTraceHeight).toBeGreaterThan(80);
+
+  await page.getByRole('button', { name: '初 始 化' }).click();
+  const reset = await page.evaluate(() => {
+    const dynamics = window.gspDebug.runtime.dynamics;
+    const scene = window.gspDebug.runtime.scene;
+    return {
+      t7: dynamics.parameters.find((parameter: any) => parameter.name === 't[7]')?.value,
+      pointCount: scene.points.length,
+    };
+  });
+
+  expect(reset.t7).toBe(0);
+  expect(reset.pointCount).toBeLessThan(before.pointCount);
+
+  await page.getByRole('button', { name: '轨迹生成' }).click();
+  await page.waitForTimeout(500);
+  const animated = await page.evaluate(() => {
+    const dynamics = window.gspDebug.runtime.dynamics;
+    const scene = window.gspDebug.runtime.scene;
+    return {
+      t7: dynamics.parameters.find((parameter: any) => parameter.name === 't[7]')?.value,
+      pointCount: scene.points.length,
+    };
+  });
+
+  expect(animated.t7).toBeGreaterThan(0);
+  expect(animated.pointCount).toBeGreaterThan(reset.pointCount);
+});

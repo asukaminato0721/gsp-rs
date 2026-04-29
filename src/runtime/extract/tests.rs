@@ -6,8 +6,8 @@ use super::{
 use crate::format::GspFile;
 use crate::runtime::extract::points::decode_expression_rotation_binding;
 use crate::runtime::functions::{
-    BinaryOp, FunctionAst, FunctionExpr, UnaryFunction, evaluate_expr_with_parameters,
-    function_expr_label,
+    evaluate_expr_with_parameters, function_expr_label, BinaryOp, FunctionAst, FunctionExpr,
+    UnaryFunction,
 };
 use crate::runtime::scene::{
     ButtonAction, LabelIterationFamily, LineBinding, LineConstraint, LineIterationFamily,
@@ -3102,12 +3102,10 @@ fn preserves_parameter_controlled_point_on_circle_gsp() {
         }),
         "expected the payload slider source point to remain visible"
     );
-    assert!(
-        scene
-            .points
-            .iter()
-            .any(|point| matches!(point.constraint, ScenePointConstraint::OnCircle { .. }))
-    );
+    assert!(scene
+        .points
+        .iter()
+        .any(|point| matches!(point.constraint, ScenePointConstraint::OnCircle { .. })));
 }
 
 #[test]
@@ -4030,11 +4028,9 @@ fn preserves_carried_segment_default_depth_iteration_fixture() {
         .iter()
         .map(|line| line.points.first().cloned().expect("segment start"))
         .collect::<Vec<_>>();
-    assert!(
-        starts
-            .iter()
-            .any(|point| { (point.x - 168.0).abs() < 1e-6 && (point.y - 376.0).abs() < 1e-6 })
-    );
+    assert!(starts
+        .iter()
+        .any(|point| { (point.x - 168.0).abs() < 1e-6 && (point.y - 376.0).abs() < 1e-6 }));
     assert!(starts.iter().any(|point| {
         (point.x - 205.79527559055117).abs() < 1e-6 && (point.y - 338.20472440944883).abs() < 1e-6
     }));
@@ -4061,12 +4057,10 @@ fn preserves_carried_polygon_iteration_fixture() {
         scene.lines.len() <= 1,
         "expected polygon edges to stay suppressed apart from any standalone parameter-control helper geometry"
     );
-    assert!(
-        scene
-            .parameters
-            .iter()
-            .any(|parameter| parameter.name == "n")
-    );
+    assert!(scene
+        .parameters
+        .iter()
+        .any(|parameter| parameter.name == "n"));
     assert!(
         scene.line_iterations.is_empty(),
         "expected carried polygon fixture to avoid duplicate line iteration metadata"
@@ -4120,11 +4114,9 @@ fn preserves_carried_polygon_iteration_fixture() {
         .iter()
         .map(|polygon| polygon.points.first().cloned().expect("polygon vertex"))
         .collect::<Vec<_>>();
-    assert!(
-        first_vertices
-            .iter()
-            .any(|point| { (point.x - 168.0).abs() < 1e-6 && (point.y - 376.0).abs() < 1e-6 })
-    );
+    assert!(first_vertices
+        .iter()
+        .any(|point| { (point.x - 168.0).abs() < 1e-6 && (point.y - 376.0).abs() < 1e-6 }));
     assert!(first_vertices.iter().any(|point| {
         (point.x - 168.0).abs() < 1e-6 && (point.y - 338.20472440944883).abs() < 1e-6
     }));
@@ -4206,12 +4198,10 @@ fn does_not_treat_triangle_point_labels_as_iteration_parameters() {
         "expected no editable parameters in triangle fixture"
     );
     assert_eq!(scene.line_iterations.len(), 3);
-    assert!(
-        scene
-            .line_iterations
-            .iter()
-            .all(|family| matches!(family, LineIterationFamily::Affine { .. }))
-    );
+    assert!(scene
+        .line_iterations
+        .iter()
+        .all(|family| matches!(family, LineIterationFamily::Affine { .. })));
 }
 
 #[test]
@@ -4440,12 +4430,10 @@ fn preserves_reflection_point_circle_and_polygon_gsp() {
         2,
         "expected original and reflected polygon"
     );
-    assert!(
-        scene
-            .points
-            .iter()
-            .any(|point| matches!(point.binding, Some(ScenePointBinding::Reflect { .. })))
-    );
+    assert!(scene
+        .points
+        .iter()
+        .any(|point| matches!(point.binding, Some(ScenePointBinding::Reflect { .. }))));
     assert!(scene.circles.iter().any(|circle| matches!(
         circle.binding,
         Some(crate::runtime::scene::ShapeBinding::DerivedTransform {
