@@ -325,6 +325,16 @@ fn payload_log_accepts_function_plot_expression_samples() {
 }
 
 #[test]
+fn payload_log_tolerates_malformed_rich_text_samples() {
+    for path in [
+        "tests/Samples/未分类档/自然数列的ｍ次方和.gsp",
+        "tests/Samples/个人专栏/向忠作品/y=Asin(wx+v).gsp",
+    ] {
+        assert_supported_sample_log(path);
+    }
+}
+
+#[test]
 fn builds_sine_transform_sample_with_domain_guarded_live_function() {
     let Some(data) = fixture_bytes("tests/Samples/个人专栏/向忠作品/正弦型函数图象变换.gsp")
     else {

@@ -1646,15 +1646,11 @@ fn describe_group_in_chinese(
     if let Some(name) = self::decode::decode_label_name_raw(file, group) {
         annotations.push(format!("名称“{}”", truncate_text(name.trim(), 48)));
     }
-    match try_decode_group_label_text(file, group) {
-        Ok(Some(text)) => {
-            let text = text.trim();
-            if !text.is_empty() {
-                annotations.push(format!("文字“{}”", truncate_text(text, 48)));
-            }
+    if let Some(text) = try_decode_group_label_text(file, group) {
+        let text = text.trim();
+        if !text.is_empty() {
+            annotations.push(format!("文字“{}”", truncate_text(text, 48)));
         }
-        Ok(None) => {}
-        Err(error) => annotations.push(format!("文字解析失败（{}）", error)),
     }
     match try_decode_link_button_url(file, group) {
         Ok(Some(url)) => annotations.push(format!("链接“{}”", truncate_text(url.trim(), 64))),
@@ -2526,27 +2522,17 @@ fn write_group_detail(output: &mut String, file: &GspFile, group: &ObjectGroup, 
     if let Some(name) = self::decode::decode_label_name_raw(file, group) {
         let _ = writeln!(output, "{indent}  名称: {:?}", name);
     }
-    match try_decode_group_label_text(file, group) {
-        Ok(Some(text)) => {
-            let _ = writeln!(output, "{indent}  标签文字: {:?}", text);
-        }
-        Ok(None) => {}
-        Err(error) => {
-            let _ = writeln!(output, "{indent}  标签文字解析错误: {}", error);
-        }
+    if let Some(text) = try_decode_group_label_text(file, group) {
+        let _ = writeln!(output, "{indent}  标签文字: {:?}", text);
     }
-    match try_decode_group_rich_text(file, group) {
-        Ok(Some(content)) if !content.hotspots.is_empty() => {
-            let _ = writeln!(
-                output,
-                "{indent}  富文本热点数量: {}",
-                content.hotspots.len()
-            );
-        }
-        Ok(_) => {}
-        Err(error) => {
-            let _ = writeln!(output, "{indent}  富文本解析错误: {}", error);
-        }
+    if let Some(content) = try_decode_group_rich_text(file, group)
+        && !content.hotspots.is_empty()
+    {
+        let _ = writeln!(
+            output,
+            "{indent}  富文本热点数量: {}",
+            content.hotspots.len()
+        );
     }
     match try_decode_link_button_url(file, group) {
         Ok(Some(url)) => {

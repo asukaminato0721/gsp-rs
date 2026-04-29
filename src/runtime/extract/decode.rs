@@ -590,30 +590,27 @@ pub(crate) fn try_find_indexed_path(
         })
 }
 
-pub(crate) fn try_decode_group_label_text(
-    file: &GspFile,
-    group: &ObjectGroup,
-) -> Result<Option<String>, RichTextDecodeError> {
+pub(crate) fn try_decode_group_label_text(file: &GspFile, group: &ObjectGroup) -> Option<String> {
     group
         .records
         .iter()
         .find_map(|record| match record.record_type {
-            RECORD_RICH_TEXT => Some(
-                try_decode_rich_text(record.payload(&file.data))
-                    .map(|content| content.map(|content| content.text)),
-            ),
+            RECORD_RICH_TEXT => {
+                Some(try_decode_rich_text(record.payload(&file.data)).map(|content| content.text))
+            }
             RECORD_LABEL_AUX
                 if matches!(group.header.kind(), crate::format::GroupKind::ActionButton) =>
             {
-                Some(Ok(collect_strings(record.payload(&file.data))
-                    .into_iter()
-                    .map(|entry| entry.text.trim().to_string())
-                    .find(|text| !text.is_empty())))
+                Some(
+                    collect_strings(record.payload(&file.data))
+                        .into_iter()
+                        .map(|entry| entry.text.trim().to_string())
+                        .find(|text| !text.is_empty()),
+                )
             }
             _ => None,
         })
-        .transpose()
-        .map(|value| value.flatten())
+        .flatten()
 }
 
 #[derive(Debug, Clone, Default)]
@@ -635,15 +632,12 @@ pub(crate) struct RichTextHotspotRef {
 pub(crate) fn try_decode_group_rich_text(
     file: &GspFile,
     group: &ObjectGroup,
-) -> Result<Option<RichTextContent>, RichTextDecodeError> {
+) -> Option<RichTextContent> {
     let record = group
         .records
         .iter()
         .find(|record| record.record_type == RECORD_RICH_TEXT);
-    record
-        .map(|record| try_decode_rich_text(record.payload(&file.data)))
-        .transpose()
-        .map(|value| value.flatten())
+    record.and_then(|record| try_decode_rich_text(record.payload(&file.data)))
 }
 
 pub(crate) fn decode_label_anchor(
@@ -964,31 +958,17 @@ pub(crate) fn decode_text_anchor(payload: &[u8]) -> Option<PointRecord> {
     })
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub(crate) enum RichTextDecodeError {
-    #[error("{0}")]
-    MarkupParse(MarkupParseError),
-}
-
-impl From<MarkupParseError> for RichTextDecodeError {
-    fn from(value: MarkupParseError) -> Self {
-        Self::MarkupParse(value)
-    }
-}
-
-fn try_decode_rich_text(payload: &[u8]) -> Result<Option<RichTextContent>, RichTextDecodeError> {
+fn try_decode_rich_text(payload: &[u8]) -> Option<RichTextContent> {
     let text = String::from_utf8_lossy(payload);
-    let Some(start) = text.find('<') else {
-        return Ok(None);
-    };
+    let start = text.find('<')?;
     let markup = text[start..].trim_end_matches('\0');
-    let nodes = parse_markup_nodes(markup)?;
+    let nodes = parse_markup_nodes(markup);
 
     if markup.starts_with("<VL") {
-        return Ok(extract_visual_rich_text(&nodes).map(|mut content| {
+        return extract_visual_rich_text(&nodes).map(|mut content| {
             content.markup = Some(markup.to_string());
             content
-        }));
+        });
     }
 
     let parsed = render_markup_plain(&nodes);
@@ -1010,10 +990,10 @@ fn try_decode_rich_text(payload: &[u8]) -> Result<Option<RichTextContent>, RichT
         .trim()
         .to_string();
 
-    Ok((!cleaned.is_empty()).then_some(RichTextContent {
+    (!cleaned.is_empty()).then_some(RichTextContent {
         text: cleaned,
         ..Default::default()
-    }))
+    })
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1032,14 +1012,6 @@ enum RichMarkupNode {
     Root(Vec<RichMarkupNode>),
     Superscript(Vec<RichMarkupNode>),
     Group(Vec<RichMarkupNode>),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub(crate) enum MarkupParseError {
-    #[error("empty markup tag at byte offset {index}")]
-    EmptyTagName { index: usize },
-    #[error("unterminated markup tag at byte offset {index}")]
-    UnterminatedTag { index: usize },
 }
 
 #[derive(Debug, Clone)]
@@ -1104,36 +1076,28 @@ impl<'a> MarkupParser<'a> {
         }
     }
 
-    fn parse(mut self) -> Result<Vec<RichMarkupNode>, MarkupParseError> {
+    fn parse(mut self) -> Vec<RichMarkupNode> {
         self.parse_children(false)
     }
 
-    fn parse_children(
-        &mut self,
-        stop_on_gt: bool,
-    ) -> Result<Vec<RichMarkupNode>, MarkupParseError> {
+    fn parse_children(&mut self, stop_on_gt: bool) -> Vec<RichMarkupNode> {
         let mut nodes = Vec::new();
         while let Some(byte) = self.peek() {
             if stop_on_gt && byte == b'>' {
                 self.bump();
-                return Ok(nodes);
+                return nodes;
             }
             if byte != b'<' {
                 self.bump();
                 continue;
             }
-            nodes.push(self.parse_node()?);
+            nodes.push(self.parse_node());
         }
-        if stop_on_gt {
-            Ok(nodes)
-        } else {
-            Ok(nodes)
-        }
+        nodes
     }
 
-    fn parse_node(&mut self) -> Result<RichMarkupNode, MarkupParseError> {
-        let tag_index = self.index;
-        self.expect_open_tag()?;
+    fn parse_node(&mut self) -> RichMarkupNode {
+        self.expect_open_tag();
         let name_start = self.index;
         while let Some(byte) = self.peek() {
             if byte == b'<' || byte == b'>' {
@@ -1142,27 +1106,23 @@ impl<'a> MarkupParser<'a> {
             self.bump();
         }
         if self.index == name_start {
-            return Ok(RichMarkupNode::Ignore);
+            return RichMarkupNode::Ignore;
         }
         let name = self.source[name_start..self.index].to_string();
         let children = if self.peek() == Some(b'<') {
-            self.parse_children(true)?
+            self.parse_children(true)
         } else if self.peek() == Some(b'>') {
             self.bump();
             Vec::new()
         } else {
             Vec::new()
         };
-        Ok(classify_markup_node(name, children))
+        classify_markup_node(name, children)
     }
 
-    fn expect_open_tag(&mut self) -> Result<(), MarkupParseError> {
-        match self.peek() {
-            Some(b'<') => {
-                self.bump();
-                Ok(())
-            }
-            _ => Err(MarkupParseError::UnterminatedTag { index: self.index }),
+    fn expect_open_tag(&mut self) {
+        if self.peek() == Some(b'<') {
+            self.bump();
         }
     }
 
@@ -1175,7 +1135,7 @@ impl<'a> MarkupParser<'a> {
     }
 }
 
-fn parse_markup_nodes(markup: &str) -> Result<Vec<RichMarkupNode>, MarkupParseError> {
+fn parse_markup_nodes(markup: &str) -> Vec<RichMarkupNode> {
     MarkupParser::new(markup).parse()
 }
 
@@ -1394,14 +1354,13 @@ fn render_markup_plain_node(node: &RichMarkupNode) -> String {
 #[cfg(test)]
 mod markup_tests {
     use super::{
-        MarkupParseError, RichMarkupNode, classify_markup_node, extract_visual_rich_text,
-        parse_markup_nodes, render_markup_plain,
+        RichMarkupNode, classify_markup_node, extract_visual_rich_text, parse_markup_nodes,
+        render_markup_plain,
     };
 
     #[test]
     fn parses_markup_into_semantic_nodes() {
-        let nodes = parse_markup_nodes("<VL<?1x2<TxAB>></<Txx><Txy>><R<Txz>><+<Txn2>>>")
-            .expect("markup parses");
+        let nodes = parse_markup_nodes("<VL<?1x2<TxAB>></<Txx><Txy>><R<Txz>><+<Txn2>>>");
         assert_eq!(
             nodes,
             vec![RichMarkupNode::VerticalLines(vec![
@@ -1421,14 +1380,13 @@ mod markup_tests {
 
     #[test]
     fn renders_plain_markup_from_semantic_ast() {
-        let nodes =
-            parse_markup_nodes("<Txf></<Txx><Txy>><R<Txz>><+<Txn2>>>").expect("markup parses");
+        let nodes = parse_markup_nodes("<Txf></<Txx><Txy>><R<Txz>><+<Txn2>>>");
         assert_eq!(render_markup_plain(&nodes), "fx/y√zn^2");
     }
 
     #[test]
     fn preserves_visual_hotspots_from_semantic_ast() {
-        let nodes = parse_markup_nodes("<VL<?1x2<TxAB>><Tx=><?1x3<TxCD>>>").expect("markup parses");
+        let nodes = parse_markup_nodes("<VL<?1x2<TxAB>><Tx=><?1x3<TxCD>>>");
         let rich = extract_visual_rich_text(&nodes).expect("visual rich text");
         assert_eq!(rich.text, "AB\n=\nCD");
         assert_eq!(
@@ -1449,19 +1407,19 @@ mod markup_tests {
     }
 
     #[test]
-    fn reports_unterminated_markup_tag_with_offset() {
+    fn tolerates_unterminated_markup_by_closing_at_eof() {
+        let nodes = parse_markup_nodes("<VL<TxA");
         assert_eq!(
-            parse_markup_nodes("<VL<TxA"),
-            Err(MarkupParseError::UnterminatedTag { index: 3 })
+            nodes,
+            vec![RichMarkupNode::VerticalLines(vec![RichMarkupNode::Text(
+                "A".to_string()
+            )])]
         );
     }
 
     #[test]
-    fn reports_empty_markup_tag_with_offset() {
-        assert_eq!(
-            parse_markup_nodes("<>"),
-            Err(MarkupParseError::EmptyTagName { index: 0 })
-        );
+    fn tolerates_empty_markup_tags_by_ignoring_them() {
+        assert_eq!(parse_markup_nodes("<>"), vec![RichMarkupNode::Ignore]);
     }
 }
 

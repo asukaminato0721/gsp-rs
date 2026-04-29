@@ -118,11 +118,11 @@ fn resolve_label_text(
     group: &ObjectGroup,
     fallback_text: Option<String>,
 ) -> Option<ResolvedLabelText> {
-    let rich_text = try_decode_group_rich_text(file, group).ok().flatten();
+    let rich_text = try_decode_group_rich_text(file, group);
     let text = rich_text
         .as_ref()
         .map(|content| content.text.clone())
-        .or_else(|| try_decode_group_label_text(file, group).ok().flatten())
+        .or_else(|| try_decode_group_label_text(file, group))
         .or(fallback_text)?;
     Some(ResolvedLabelText {
         text,
@@ -592,8 +592,6 @@ pub(super) fn collect_labels(
                 // without any user-visible label text. Only emit a label when the payload
                 // explicitly includes text instead of synthesizing one from the scale value.
                 let text = try_decode_group_label_text(file, group)
-                    .ok()
-                    .flatten()
                     .or_else(|| decode_label_name(file, group));
                 if let (Some(anchor), Some(text)) = (anchor, text) {
                     labels.push(TextLabel {
