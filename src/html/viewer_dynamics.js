@@ -4006,29 +4006,32 @@
   /** @param {ViewerEnv} env */
   function buildParameterControls(env) {
     env.parameterControls.replaceChildren();
-    const controls = env.currentDynamics().parameters.map((parameter, index) => env.labelTag(
-      `${parameter.name} =`,
-      env.inputTag({
-        type: "number",
-        step: isDiscreteIterationParameterName(env.sourceScene, parameter.name) ? "1" : "0.1",
-        min: isDiscreteIterationParameterName(env.sourceScene, parameter.name) ? "0" : undefined,
-        value: parameter.value.toFixed(2),
-        oninput: (event) => {
-          const target = /** @type {HTMLInputElement} */ (event.target);
-          let value = Number.parseFloat(target.value);
-          if (Number.isFinite(value)) {
-            if (isDiscreteIterationParameterName(env.sourceScene, parameter.name)) {
-              value = discreteIterationDepth(value);
+    const controls = env.currentDynamics().parameters
+      .map((parameter, index) => ({ parameter, index }))
+      .filter(({ parameter }) => parameter.visible !== false)
+      .map(({ parameter, index }) => env.labelTag(
+        `${parameter.name} =`,
+        env.inputTag({
+          type: "number",
+          step: isDiscreteIterationParameterName(env.sourceScene, parameter.name) ? "1" : "0.1",
+          min: isDiscreteIterationParameterName(env.sourceScene, parameter.name) ? "0" : undefined,
+          value: parameter.value.toFixed(2),
+          oninput: (event) => {
+            const target = /** @type {HTMLInputElement} */ (event.target);
+            let value = Number.parseFloat(target.value);
+            if (Number.isFinite(value)) {
+              if (isDiscreteIterationParameterName(env.sourceScene, parameter.name)) {
+                value = discreteIterationDepth(value);
+              }
+              env.updateDynamics((draft) => {
+                draft.parameters[index].value = value;
+              });
+              syncDynamicScene(env, [parameter.name]);
             }
-            env.updateDynamics((draft) => {
-              draft.parameters[index].value = value;
-            });
-            syncDynamicScene(env, [parameter.name]);
-          }
-        },
-      }),
-      parameterValueSuffix(parameter),
-    ));
+          },
+        }),
+        parameterValueSuffix(parameter),
+      ));
     if (controls.length > 0) {
       env.van.add(env.parameterControls, ...controls);
     }

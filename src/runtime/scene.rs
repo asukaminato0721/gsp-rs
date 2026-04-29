@@ -671,6 +671,7 @@ pub(crate) struct SceneParameter {
     pub(crate) value: f64,
     pub(crate) unit: Option<String>,
     pub(crate) label_index: Option<usize>,
+    pub(crate) visible: bool,
 }
 
 #[derive(Debug, Clone)]

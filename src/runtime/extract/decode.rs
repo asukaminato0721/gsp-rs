@@ -428,6 +428,25 @@ fn decode_named_decimal_parameter_tail_value(
     None
 }
 
+fn decode_decimal_digit_parameter_tail_value(payload: &[u8]) -> Option<f64> {
+    if payload.len() >= 98 {
+        let hundreds = read_u16(payload, 92);
+        let tens = read_u16(payload, 94);
+        let ones = read_u16(payload, 96);
+        if hundreds < 10 && tens < 10 && ones < 10 {
+            return Some(f64::from(hundreds * 100 + tens * 10 + ones));
+        }
+    }
+    if payload.len() >= 96 {
+        let tens = read_u16(payload, 92);
+        let ones = read_u16(payload, 94);
+        if tens < 10 && ones < 10 {
+            return Some(f64::from(tens * 10 + ones));
+        }
+    }
+    None
+}
+
 pub(crate) fn try_decode_parameter_control_value_for_group(
     file: &GspFile,
     _groups: &[ObjectGroup],
@@ -449,18 +468,20 @@ pub(crate) fn try_decode_parameter_control_value_for_group(
 
     let continuous = try_decode_continuous_parameter_value(payload)?;
     let discrete = try_decode_discrete_parameter_value(payload);
+    let decimal_digits = decode_decimal_digit_parameter_tail_value(payload);
 
     if parameter_group_drives_coordinate_value(file, group.ordinal) {
         return continuous
             .or_else(|| discrete.ok().flatten())
+            .or(decimal_digits)
             .ok_or(ParameterControlDecodeError::InvalidDiscreteFraction);
     }
 
     match discrete {
         Ok(Some(value)) if value < 4096.0 => Ok(value),
-        Ok(Some(_)) | Err(ParameterControlDecodeError::InvalidDiscreteFraction) => {
-            continuous.ok_or(ParameterControlDecodeError::InvalidDiscreteFraction)
-        }
+        Ok(Some(_)) | Err(ParameterControlDecodeError::InvalidDiscreteFraction) => decimal_digits
+            .or(continuous)
+            .ok_or(ParameterControlDecodeError::InvalidDiscreteFraction),
         Ok(None) => continuous.ok_or(ParameterControlDecodeError::InvalidDiscreteFraction),
         Err(error) => Err(error),
     }

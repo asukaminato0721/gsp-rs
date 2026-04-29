@@ -10,6 +10,7 @@ pub(super) struct ParameterJson {
     value: f64,
     unit: Option<String>,
     label_index: Option<usize>,
+    visible: bool,
 }
 
 impl ParameterJson {
@@ -19,6 +20,7 @@ impl ParameterJson {
             value: parameter.value,
             unit: parameter.unit.clone(),
             label_index: parameter.label_index,
+            visible: parameter.visible,
         }
     }
 }

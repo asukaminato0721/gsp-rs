@@ -79,6 +79,7 @@ pub(crate) fn collect_scene_parameters(
                 value,
                 unit: None,
                 label_index: Some(label_index),
+                visible: true,
             })
         })
         .collect()

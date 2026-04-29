@@ -126,6 +126,7 @@ fn decode_non_graph_parameter(
         value,
         unit,
         label_index,
+        visible: !group.header.is_hidden(),
     })
 }
 
