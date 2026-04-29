@@ -316,7 +316,11 @@ fn parameterized_point_iteration(
     groups: &[ObjectGroup],
     iter_group: &ObjectGroup,
     file: &GspFile,
-) -> Option<(Option<String>, String, crate::runtime::functions::FunctionExpr)> {
+) -> Option<(
+    Option<String>,
+    String,
+    crate::runtime::functions::FunctionExpr,
+)> {
     let path = find_indexed_path(file, iter_group)?;
     if path.refs.len() < 3 {
         return None;

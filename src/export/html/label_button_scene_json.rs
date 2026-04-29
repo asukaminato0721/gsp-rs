@@ -404,6 +404,15 @@ enum LabelBindingJson {
         parameter_name: String,
         expr: FunctionExprJson,
     },
+    #[serde(rename = "sequence-expression-value")]
+    SequenceExpressionValue {
+        #[serde(rename = "parameterName")]
+        parameter_name: String,
+        expr: FunctionExprJson,
+        depth: usize,
+        #[serde(rename = "depthParameterName")]
+        depth_parameter_name: Option<String>,
+    },
     #[serde(rename = "point-coordinate-value")]
     PointCoordinateValue {
         #[serde(rename = "pointIndex")]
@@ -551,6 +560,17 @@ impl LabelBindingJson {
                 point_index: *point_index,
                 parameter_name: parameter_name.clone(),
                 expr: FunctionExprJson::from_expr(expr),
+            },
+            TextLabelBinding::SequenceExpressionValue {
+                parameter_name,
+                expr,
+                depth,
+                depth_parameter_name,
+            } => Self::SequenceExpressionValue {
+                parameter_name: parameter_name.clone(),
+                expr: FunctionExprJson::from_expr(expr),
+                depth: *depth,
+                depth_parameter_name: depth_parameter_name.clone(),
             },
             TextLabelBinding::PointCoordinateValue {
                 point_index,

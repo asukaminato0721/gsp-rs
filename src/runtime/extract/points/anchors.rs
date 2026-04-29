@@ -413,7 +413,8 @@ pub(crate) fn decode_expression_scale_binding(
     let source_group_index = path.refs[0].checked_sub(1)?;
     let center_group_index = path.refs[1].checked_sub(1)?;
     let expr_group = groups.get(path.refs[2].checked_sub(1)?)?;
-    let (mut factor_expr, mut factor, parameter_name) = if expr_group.header.kind() == GroupKind::FunctionExpr
+    let (mut factor_expr, mut factor, parameter_name) = if expr_group.header.kind()
+        == GroupKind::FunctionExpr
     {
         if decode_label_name(file, expr_group).is_some_and(|label| label.contains('°')) {
             return None;
@@ -428,7 +429,8 @@ pub(crate) fn decode_expression_scale_binding(
         let parameter_name = editable_non_graph_parameter_name_for_group(file, groups, expr_group)
             .or_else(|| decode_label_name(file, expr_group))?;
         let factor = try_decode_parameter_control_value_for_group(file, groups, expr_group).ok()?;
-        let factor_expr = FunctionExpr::Parsed(FunctionAst::Parameter(parameter_name.clone(), factor));
+        let factor_expr =
+            FunctionExpr::Parsed(FunctionAst::Parameter(parameter_name.clone(), factor));
         (factor_expr, factor, Some(parameter_name))
     } else {
         return None;
@@ -2018,7 +2020,8 @@ pub(crate) fn decode_parameter_rotation_anchor_raw(
         if angle_group.header.kind() != GroupKind::ParameterAnchor {
             return None;
         }
-        let (_, angle_radians) = parameter_anchor_runtime_value(file, groups, angle_group, anchors)?;
+        let (_, angle_radians) =
+            parameter_anchor_runtime_value(file, groups, angle_group, anchors)?;
         super::bindings::TransformBinding {
             source_group_index,
             center_group_index,

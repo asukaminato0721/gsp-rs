@@ -38,7 +38,7 @@ fn derive_expression_label_parameters(
     seed: BTreeMap<String, f64>,
 ) -> BTreeMap<String, f64> {
     let mut parameters = seed;
-    for _ in 0..16 {
+    for _ in 0..scene.labels.len().max(16) {
         let mut changed = false;
         for label in &scene.labels {
             let (result_name, expr_label, expr) = match label.binding.as_ref() {
@@ -2765,6 +2765,136 @@ fn exports_lizhangbo_exponent_calculator_visible_parameters() {
             .any(|parameter| parameter.name == "a[101]" && !parameter.visible),
         "expected internal digit-carry parameters to stay hidden"
     );
+}
+
+#[test]
+fn exports_lizhangbo_exponent_calculator_text_iteration_labels() {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/李章博作品/指数计算器（李章博）.gsp")
+    else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+
+    let seed_label_count = scene
+        .labels
+        .iter()
+        .filter(|label| {
+            label
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_kind == "LabelIterationSeed")
+        })
+        .count();
+    assert_eq!(
+        seed_label_count, 105,
+        "expected all expanded PeggedText label-iteration seeds to export"
+    );
+    let iteration_output_count = scene
+        .labels
+        .iter()
+        .filter(|label| {
+            matches!(
+                label.binding,
+                Some(TextLabelBinding::SequenceExpressionValue { .. })
+            )
+        })
+        .count();
+    assert_eq!(
+        iteration_output_count, 101,
+        "expected label iteration bindings to export visible text outputs"
+    );
+    let sequence_bindings = scene
+        .labels
+        .iter()
+        .filter_map(|label| match label.binding.as_ref()? {
+            TextLabelBinding::SequenceExpressionValue {
+                parameter_name,
+                expr,
+                ..
+            } => Some((parameter_name.as_str(), expr)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        sequence_bindings.iter().any(|(name, _)| *name == "a₁"),
+        "expected sequence labels to target the first digit parameter"
+    );
+    assert!(
+        sequence_bindings.iter().any(|(name, _)| *name == "a₂"),
+        "expected sequence labels to target the second digit parameter"
+    );
+    assert!(
+        matches!(
+            sequence_bindings.first().map(|(_, expr)| *expr),
+            Some(FunctionExpr::Parsed(_))
+        ),
+        "expected digit iteration text to use the decoded payload expression, not a zero fallback"
+    );
+    let first_hidden_digit = scene
+        .labels
+        .iter()
+        .find(|label| {
+            label
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 425)
+        })
+        .expect("expected first hidden digit label");
+    assert_eq!(first_hidden_digit.text, "0");
+    assert_eq!(first_hidden_digit.anchor.x.round() as i32, 294);
+    assert_eq!(first_hidden_digit.anchor.y.round() as i32, 286);
+
+    let show_text = scene
+        .buttons
+        .iter()
+        .find(|button| button.text == "显示文本对象")
+        .expect("expected text-iteration visibility button");
+    match &show_text.action {
+        ButtonAction::SetVisibility {
+            visible,
+            label_indices,
+            point_indices,
+            ..
+        } => {
+            assert!(*visible, "expected text button to show hidden labels");
+            assert_eq!(
+                label_indices.len(),
+                101,
+                "expected the button payload to target the expanded text iterations"
+            );
+            assert!(
+                point_indices.is_empty(),
+                "expected text visibility to target labels, not point fallbacks"
+            );
+        }
+        action => panic!("expected set-visibility action, got {action:?}"),
+    }
+
+    let hide_iteration = scene
+        .buttons
+        .iter()
+        .find(|button| button.text == "隐藏迭代象")
+        .expect("expected label-iteration visibility button");
+    match &hide_iteration.action {
+        ButtonAction::SetVisibility {
+            visible,
+            label_indices,
+            point_indices,
+            ..
+        } => {
+            assert!(!visible, "expected iteration button to hide its targets");
+            assert_eq!(
+                label_indices.len(),
+                101,
+                "expected the button payload to target the label iteration outputs"
+            );
+            assert!(
+                point_indices.is_empty(),
+                "expected iteration visibility to target labels, not point fallbacks"
+            );
+        }
+        action => panic!("expected set-visibility action, got {action:?}"),
+    }
 }
 
 #[test]

@@ -541,7 +541,7 @@ pub(super) fn collect_labels(
                 }
                 if kind == crate::format::GroupKind::LabelIterationSeed {
                     if let Some(label) =
-                        collect_point_expression_label(file, groups, group, anchors)
+                        collect_label_iteration_seed_label(file, groups, group, anchors)
                     {
                         label_group_to_index.insert(group.ordinal, labels.len());
                         labels.push(label);
@@ -690,6 +690,13 @@ pub(super) fn collect_labels(
             _ => {}
         }
     }
+    collect_label_iteration_output_labels(
+        file,
+        groups,
+        anchors,
+        &mut labels,
+        &mut label_group_to_index,
+    );
     labels.iter_mut().for_each(apply_fallback_rich_markup);
     (labels, label_group_to_index, pending_hotspots)
 }
@@ -1315,7 +1322,7 @@ pub(super) fn resolve_label_hotspots(
     }
 }
 
-fn collect_point_expression_label(
+fn collect_label_iteration_seed_label(
     file: &GspFile,
     groups: &[ObjectGroup],
     group: &ObjectGroup,
@@ -1326,37 +1333,230 @@ fn collect_point_expression_label(
         return None;
     }
     let point_group_index = path.refs.first()?.checked_sub(1)?;
-    let expr_group = groups.get(path.refs[1].checked_sub(1)?)?;
-    if (expr_group.header.kind()) != crate::format::GroupKind::FunctionExpr {
-        return None;
+    let source_group = groups.get(path.refs[1].checked_sub(1)?)?;
+    let anchor = decode_label_anchor(file, group, anchors)
+        .or_else(|| label_iteration_seed_anchor(&path, anchors))?;
+    if (source_group.header.kind()) == crate::format::GroupKind::FunctionExpr {
+        return collect_point_expression_label_from_seed(
+            file,
+            groups,
+            group,
+            source_group,
+            point_group_index,
+            anchor,
+            anchors,
+        );
     }
+    let ResolvedLabelText {
+        text, rich_markup, ..
+    } = resolve_label_text(
+        file,
+        source_group,
+        try_decode_group_label_text(file, group)
+            .or_else(|| decode_label_name(file, source_group))
+            .or_else(|| decode_label_name(file, group)),
+    )?;
+    Some(TextLabel {
+        anchor,
+        text,
+        rich_markup,
+        color: label_color_for_group(group),
+        visible: label_visible_for_group(file, group),
+        screen_space: false,
+        debug: Some(payload_debug_source(group)),
+        ..Default::default()
+    })
+}
+
+fn label_iteration_seed_anchor(
+    path: &crate::format::IndexedPathRecord,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    let point_group_index = path.refs.first()?.checked_sub(1)?;
+    anchors.get(point_group_index).cloned().flatten()
+}
+
+fn collect_point_expression_label_from_seed(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    seed_group: &ObjectGroup,
+    expr_group: &ObjectGroup,
+    point_group_index: usize,
+    anchor: PointRecord,
+    anchors: &[Option<PointRecord>],
+) -> Option<TextLabel> {
     let expr = try_decode_function_expr(file, groups, expr_group).ok()?;
-    let expr_path = find_indexed_path(file, expr_group)?;
-    let parameter_group = groups.get(expr_path.refs.first()?.checked_sub(1)?)?;
-    let parameter_name =
-        editable_non_graph_parameter_name_for_group(file, groups, parameter_group)?;
-    let parameter_value =
-        try_decode_parameter_control_value_for_group(file, groups, parameter_group).ok()?;
+    let (parameter_name, parameter_value) =
+        resolve_function_expr_parameter(file, groups, expr_group, anchors, &mut BTreeSet::new())?;
     let value = evaluate_expr_with_parameters(
         &expr,
         0.0,
         &BTreeMap::from([(parameter_name.clone(), parameter_value)]),
     )?;
-    let anchor = decode_label_anchor(file, group, anchors)?;
     Some(TextLabel {
         anchor,
         text: format_number(value),
         color: [30, 30, 30, 255],
-        visible: label_visible_for_group(file, group),
+        visible: label_visible_for_group(file, seed_group),
         binding: Some(TextLabelBinding::PointExpressionValue {
             point_index: point_group_index,
             parameter_name,
             expr,
         }),
         screen_space: false,
-        debug: Some(payload_debug_source(group)),
+        debug: Some(payload_debug_source(seed_group)),
         ..Default::default()
     })
+}
+
+fn collect_label_iteration_output_labels(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    labels: &mut Vec<TextLabel>,
+    label_group_to_index: &mut BTreeMap<usize, usize>,
+) {
+    for binding_group in groups
+        .iter()
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::IterationBinding)
+    {
+        let Some(path) = find_indexed_path(file, binding_group) else {
+            continue;
+        };
+        let Some(seed_group) = path
+            .refs
+            .first()
+            .and_then(|ordinal| groups.get(ordinal.saturating_sub(1)))
+        else {
+            continue;
+        };
+        if (seed_group.header.kind()) != crate::format::GroupKind::LabelIterationSeed {
+            continue;
+        }
+        let Some(iter_group) = path
+            .refs
+            .get(1)
+            .and_then(|ordinal| groups.get(ordinal.saturating_sub(1)))
+        else {
+            continue;
+        };
+        let Some(label) =
+            collect_label_iteration_output_label(file, groups, seed_group, iter_group, anchors)
+        else {
+            continue;
+        };
+        label_group_to_index.insert(binding_group.ordinal, labels.len());
+        labels.push(TextLabel {
+            visible: !binding_group.header.is_hidden(),
+            debug: Some(payload_debug_source(binding_group)),
+            ..label
+        });
+    }
+}
+
+fn collect_label_iteration_output_label(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    seed_group: &ObjectGroup,
+    iter_group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<TextLabel> {
+    let seed_path = find_indexed_path(file, seed_group)?;
+    if seed_path.refs.len() < 2 {
+        return None;
+    }
+    let source_group = groups.get(seed_path.refs[1].checked_sub(1)?)?;
+    if (source_group.header.kind()) != crate::format::GroupKind::FunctionExpr {
+        return None;
+    }
+    let anchor = decode_label_anchor(file, seed_group, anchors)
+        .or_else(|| label_iteration_seed_anchor(&seed_path, anchors))?;
+    let expr = try_decode_function_expr(file, groups, source_group).ok()?;
+    let (parameter_name, parameter_value) =
+        resolve_sequence_expression_state_parameter(file, groups, source_group, anchors)
+            .or_else(|| {
+                resolve_function_expr_parameter(
+                    file,
+                    groups,
+                    source_group,
+                    anchors,
+                    &mut BTreeSet::new(),
+                )
+            })?;
+    let depth = iter_group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x090a)
+        .map(|record| record.payload(&file.data))
+        .filter(|payload| payload.len() >= 20)
+        .map(|payload| read_u32(payload, 16) as usize)
+        .unwrap_or(3);
+    let depth_parameter_name = iteration_depth_driver_name(file, groups, iter_group);
+    let text = evaluate_sequence_expression_value(&expr, &parameter_name, parameter_value, depth)
+        .map(format_number)
+        .or_else(|| try_decode_group_label_text(file, seed_group))
+        .or_else(|| decode_label_name(file, seed_group))
+        .unwrap_or_else(|| "未定义".to_string());
+    Some(TextLabel {
+        anchor,
+        text,
+        color: [30, 30, 30, 255],
+        binding: Some(TextLabelBinding::SequenceExpressionValue {
+            parameter_name,
+            expr,
+            depth,
+            depth_parameter_name,
+        }),
+        screen_space: false,
+        ..Default::default()
+    })
+}
+
+fn resolve_sequence_expression_state_parameter(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    source_group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<(String, f64)> {
+    let source_path = find_indexed_path(file, source_group)?;
+    let calc_group = groups.get(source_path.refs.first()?.checked_sub(1)?)?;
+    let calc_path = find_indexed_path(file, calc_group)?;
+    let first_group = groups.get(calc_path.refs.first()?.checked_sub(1)?)?;
+    if first_group.header.kind() != crate::format::GroupKind::FunctionExpr {
+        return resolve_function_expr_parameter(file, groups, calc_group, anchors, &mut BTreeSet::new());
+    }
+    calc_path
+        .refs
+        .iter()
+        .skip(1)
+        .filter_map(|ordinal| groups.get(ordinal.saturating_sub(1)))
+        .find(|group| group.header.kind() == crate::format::GroupKind::FunctionExpr)
+        .and_then(|group| {
+            resolve_function_expr_parameter(file, groups, group, anchors, &mut BTreeSet::new())
+        })
+}
+
+fn evaluate_sequence_expression_value(
+    expr: &crate::runtime::functions::FunctionExpr,
+    parameter_name: &str,
+    parameter_value: f64,
+    depth: usize,
+) -> Option<f64> {
+    let mut current_value = parameter_value;
+    let mut value = None;
+    for _ in 0..=depth {
+        let next_value = evaluate_expr_with_parameters(
+            expr,
+            0.0,
+            &BTreeMap::from([(parameter_name.to_string(), current_value)]),
+        )?;
+        if !next_value.is_finite() {
+            return None;
+        }
+        value = Some(next_value);
+        current_value = next_value;
+    }
+    value
 }
 
 pub(super) fn collect_polygon_parameter_labels(

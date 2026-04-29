@@ -940,6 +940,12 @@ pub(crate) enum TextLabelBinding {
         parameter_name: String,
         expr: FunctionExpr,
     },
+    SequenceExpressionValue {
+        parameter_name: String,
+        expr: FunctionExpr,
+        depth: usize,
+        depth_parameter_name: Option<String>,
+    },
     PointCoordinateValue {
         point_index: usize,
         point_name: String,

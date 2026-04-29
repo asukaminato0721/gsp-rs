@@ -1727,6 +1727,12 @@ fn lex_function_token(
             width_words: 1,
         },
         _ => {
+            if let Some((value, width_words)) = decode_decimal_digit_literal(words) {
+                return Ok(LexedFunctionToken {
+                    kind: FunctionToken::Constant(value),
+                    width_words,
+                });
+            }
             if word == EXPR_VARIABLE_SUFFIX {
                 return Ok(LexedFunctionToken {
                     kind: FunctionToken::Terminator,
@@ -1760,6 +1766,22 @@ fn lex_function_token(
         }
     };
     Ok(token)
+}
+
+fn decode_decimal_digit_literal(words: &[u16]) -> Option<(f64, usize)> {
+    let first = *words.first()?;
+    let second = *words.get(1)?;
+    if first > 9 || second > 9 {
+        return None;
+    }
+    let next = words.get(2).copied();
+    if !matches!(
+        next,
+        None | Some(EXPR_OP_ADD | EXPR_OP_SUB | EXPR_OP_MUL | EXPR_OP_DIV | EXPR_OP_POW | 0x000c)
+    ) {
+        return None;
+    }
+    Some((f64::from(first * 10 + second), 2))
 }
 
 pub(crate) fn try_decode_inner_function_expr(
@@ -2510,7 +2532,7 @@ mod parse_tests {
     use crate::runtime::extract::points::collect_point_objects;
     use crate::runtime::extract::shapes::collect_raw_object_anchors;
     use crate::runtime::functions::{
-        BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters,
+        BinaryOp, FunctionAst, FunctionExpr, UnaryFunction, evaluate_expr_with_parameters,
     };
     use crate::runtime::payload_consts::RECORD_FUNCTION_EXPR_PAYLOAD;
     use std::collections::BTreeMap;
@@ -2845,6 +2867,62 @@ mod parse_tests {
         assert!(
             value.is_finite() && value > 0.0,
             "expected named alias to decode to a positive finite value, got {value}"
+        );
+    }
+
+    #[test]
+    fn decodes_digit_and_carry_function_expressions_from_exponent_calculator() {
+        let Ok(data) = fs::read("tests/Samples/个人专栏/李章博作品/指数计算器（李章博）.gsp")
+        else {
+            return;
+        };
+        let file = GspFile::parse(&data).expect("sample parses");
+        let groups = file.object_groups();
+
+        let carry_group = groups
+            .iter()
+            .find(|group| group.ordinal == 209)
+            .expect("expected carry function expression group");
+        let carry_expr = try_decode_function_expr(&file, &groups, carry_group).expect("expression");
+        assert_eq!(
+            carry_expr,
+            FunctionExpr::Parsed(FunctionAst::Binary {
+                lhs: Box::new(FunctionAst::Unary {
+                    op: UnaryFunction::Trunc,
+                    expr: Box::new(FunctionAst::Binary {
+                        lhs: Box::new(FunctionAst::Parameter("m[189]".to_string(), 2.0)),
+                        op: BinaryOp::Div,
+                        rhs: Box::new(FunctionAst::Constant(10.0)),
+                    }),
+                }),
+                op: BinaryOp::Add,
+                rhs: Box::new(FunctionAst::Parameter("a₂*底数".to_string(), 0.0)),
+            })
+        );
+
+        let digit_group = groups
+            .iter()
+            .find(|group| group.ordinal == 309)
+            .expect("expected digit function expression group");
+        let digit_expr = try_decode_function_expr(&file, &groups, digit_group).expect("expression");
+        assert_eq!(
+            digit_expr,
+            FunctionExpr::Parsed(FunctionAst::Binary {
+                lhs: Box::new(FunctionAst::Parameter("m[189]".to_string(), 2.0)),
+                op: BinaryOp::Sub,
+                rhs: Box::new(FunctionAst::Binary {
+                    lhs: Box::new(FunctionAst::Unary {
+                        op: UnaryFunction::Trunc,
+                        expr: Box::new(FunctionAst::Binary {
+                            lhs: Box::new(FunctionAst::Parameter("m[189]".to_string(), 2.0)),
+                            op: BinaryOp::Div,
+                            rhs: Box::new(FunctionAst::Constant(10.0)),
+                        }),
+                    }),
+                    op: BinaryOp::Mul,
+                    rhs: Box::new(FunctionAst::Constant(10.0)),
+                }),
+            })
         );
     }
 

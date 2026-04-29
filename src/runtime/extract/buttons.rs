@@ -355,7 +355,7 @@ pub(super) fn collect_buttons(
                     } else {
                         return None;
                     }
-                },
+                }
                 RawButtonAction::AnimatePoint {
                     point_group_ordinal,
                 } => ButtonAction::AnimatePoint {

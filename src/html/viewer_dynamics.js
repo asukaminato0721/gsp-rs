@@ -417,12 +417,13 @@
    * @param {ViewerSceneData | null | undefined} scene
    * @param {Map<string, number>} seedParameters
    */
-  function deriveLabelParameters(scene, seedParameters) {
+  function deriveExpressionLabelParameters(scene, seedParameters) {
     const parameters = new Map(seedParameters);
     if (!scene?.labels?.length) {
       return parameters;
     }
-    for (let pass = 0; pass < 16; pass += 1) {
+    const maxPasses = Math.max(16, scene.labels.length + 1);
+    for (let pass = 0; pass < maxPasses; pass += 1) {
       let changed = false;
       scene.labels.forEach((/** @type {RuntimeLabelJson} */ label) => {
         const binding = label.binding;
@@ -487,6 +488,60 @@
       }
     }
     return parameters;
+  }
+
+  /**
+   * @param {ViewerSceneData | null | undefined} scene
+   * @param {Map<string, number>} seedParameters
+   */
+  function deriveSequenceLabelParameters(scene, seedParameters) {
+    const sequenceLabels = (scene?.labels || [])
+      .filter((/** @type {RuntimeLabelJson} */ label) => label.binding?.kind === "sequence-expression-value");
+    if (sequenceLabels.length === 0) {
+      return seedParameters;
+    }
+    const parameters = new Map(seedParameters);
+    const maxDepth = Math.max(
+      ...sequenceLabels.map((/** @type {RuntimeLabelJson} */ label) => pointIterationDepth({
+        depth: label.binding.depth,
+        parameterName: label.binding.depthParameterName,
+      }, parameters)),
+    );
+    for (let step = 0; step <= maxDepth; step += 1) {
+      const derived = deriveExpressionLabelParameters(scene, parameters);
+      /** @type {[string, number][]} */
+      const updates = [];
+      sequenceLabels.forEach((/** @type {RuntimeLabelJson} */ label) => {
+        const binding = label.binding;
+        const depth = pointIterationDepth({
+          depth: binding.depth,
+          parameterName: binding.depthParameterName,
+        }, derived);
+        if (step > depth) {
+          return;
+        }
+        const value = evaluateExpr(binding.expr, 0, derived);
+        if (Number.isFinite(value)) {
+          updates.push([binding.parameterName, value]);
+        }
+      });
+      if (updates.length === 0) {
+        break;
+      }
+      updates.forEach(([name, value]) => parameters.set(name, value));
+    }
+    return deriveExpressionLabelParameters(scene, parameters);
+  }
+
+  /**
+   * @param {ViewerSceneData | null | undefined} scene
+   * @param {Map<string, number>} seedParameters
+   */
+  function deriveLabelParameters(scene, seedParameters) {
+    return deriveSequenceLabelParameters(
+      scene,
+      deriveExpressionLabelParameters(scene, seedParameters),
+    );
   }
 
   /**
@@ -2841,6 +2896,35 @@
         currentValue,
         parameters,
       );
+      if (value !== null) {
+        label.text = formatSequenceValue(value);
+        label.richMarkup = buildPlainTextRichMarkup(label.text);
+      }
+    },
+    "sequence-expression-value"(_env, _scene, label, parameters) {
+      const stateValue = parameters.get(label.binding.parameterName);
+      if (Number.isFinite(stateValue)) {
+        label.text = formatSequenceValue(stateValue);
+        label.richMarkup = buildPlainTextRichMarkup(label.text);
+        return;
+      }
+      let currentValue = parameters.get(label.binding.parameterName);
+      if (!Number.isFinite(currentValue)) return;
+      const depth = pointIterationDepth({
+        depth: label.binding.depth,
+        parameterName: label.binding.depthParameterName,
+      }, parameters);
+      let value = null;
+      for (let step = 0; step <= depth; step += 1) {
+        value = evaluateRecursiveExpression(
+          label.binding.expr,
+          label.binding.parameterName,
+          currentValue,
+          parameters,
+        );
+        if (!Number.isFinite(value)) return;
+        currentValue = value;
+      }
       if (value !== null) {
         label.text = formatSequenceValue(value);
         label.richMarkup = buildPlainTextRichMarkup(label.text);

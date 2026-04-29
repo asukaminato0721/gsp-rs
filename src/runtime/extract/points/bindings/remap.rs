@@ -158,7 +158,8 @@ pub(crate) fn remap_label_bindings(
         let point_index = match binding {
             TextLabelBinding::ParameterValue { .. }
             | TextLabelBinding::FunctionLabel { .. }
-            | TextLabelBinding::ExpressionValue { .. } => continue,
+            | TextLabelBinding::ExpressionValue { .. }
+            | TextLabelBinding::SequenceExpressionValue { .. } => continue,
             TextLabelBinding::PointDistanceRatioValue {
                 origin_index,
                 denominator_index,
