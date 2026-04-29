@@ -10,7 +10,7 @@ function compileFixtureToTempHtml(relativeFixturePath: string): string {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsp-legacy-runtime-'));
   const tempFixturePath = path.join(tempDir, path.basename(sourcePath));
   fs.copyFileSync(sourcePath, tempFixturePath);
-  execFileSync('cargo', ['run', '--', tempFixturePath], {
+  execFileSync('cargo', ['run', '--', '--no-upload', tempFixturePath], {
     cwd: repoRoot,
     stdio: 'pipe',
   });
@@ -102,4 +102,28 @@ test('angle-referenced rotate points stay live in the browser runtime', async ({
   expect(result).not.toBeNull();
   expect(result?.hasAngleRefs).toBe(true);
   expect(result?.draggable).toBe(false);
+});
+
+test('angle-marker class payload renders bug fixture without path explosion', async ({ page }) => {
+  const file = compileFixtureToTempHtml('tests/fixtures/bug/测试10.gsp');
+  await page.goto(`file://${file}`);
+
+  const result = await page.evaluate(() => {
+    const svg = document.querySelector('svg#view');
+    const scene = window.gspDebug.runtime.scene;
+    const bLabel = scene.labels.find((label: any) => label.text === 'B');
+    return {
+      pathCount: svg?.querySelectorAll('path').length ?? 0,
+      redPointCount: svg?.querySelectorAll('circle[fill="rgba(255, 0, 0, 1.000)"]').length ?? 0,
+      angleMarkerClasses: scene.lines
+        .filter((line: any) => line.binding?.kind === 'angle-marker')
+        .map((line: any) => line.binding.markerClass),
+      bLabelAnchorKind: bLabel?.anchor && 'pointIndex' in bLabel.anchor ? 'point' : 'other',
+    };
+  });
+
+  expect(Math.max(...result.angleMarkerClasses)).toBeLessThanOrEqual(2);
+  expect(result.pathCount).toBe(20);
+  expect(result.redPointCount).toBe(6);
+  expect(result.bLabelAnchorKind).toBe('point');
 });

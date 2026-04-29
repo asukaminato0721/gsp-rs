@@ -10,7 +10,7 @@ function compileFixtureToTempHtml(relativeFixturePath: string): string {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsp-circle-formation-'));
   const tempFixturePath = path.join(tempDir, path.basename(sourcePath));
   fs.copyFileSync(sourcePath, tempFixturePath);
-  execFileSync('cargo', ['run', '--', tempFixturePath], {
+  execFileSync('cargo', ['run', '--', '--no-upload', tempFixturePath], {
     cwd: repoRoot,
     stdio: 'pipe',
   });
