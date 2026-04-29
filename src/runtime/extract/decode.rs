@@ -1125,9 +1125,7 @@ impl<'a> MarkupParser<'a> {
             nodes.push(self.parse_node()?);
         }
         if stop_on_gt {
-            Err(MarkupParseError::UnterminatedTag {
-                index: self.source.len().saturating_sub(1),
-            })
+            Ok(nodes)
         } else {
             Ok(nodes)
         }
@@ -1144,16 +1142,15 @@ impl<'a> MarkupParser<'a> {
             self.bump();
         }
         if self.index == name_start {
-            return Err(MarkupParseError::EmptyTagName { index: tag_index });
-        }
-        if self.peek().is_none() {
-            return Err(MarkupParseError::UnterminatedTag { index: tag_index });
+            return Ok(RichMarkupNode::Ignore);
         }
         let name = self.source[name_start..self.index].to_string();
         let children = if self.peek() == Some(b'<') {
             self.parse_children(true)?
-        } else {
+        } else if self.peek() == Some(b'>') {
             self.bump();
+            Vec::new()
+        } else {
             Vec::new()
         };
         Ok(classify_markup_node(name, children))
