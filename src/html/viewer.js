@@ -637,7 +637,7 @@
         ...button,
         debug: clonePayloadDebug(button.debug),
         baseText: button.text,
-        visible: true,
+        visible: button.visible !== false,
         active: false,
       })),
     };

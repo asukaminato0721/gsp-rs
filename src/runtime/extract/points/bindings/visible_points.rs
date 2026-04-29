@@ -40,7 +40,11 @@ fn graph_calibration_visible(group: &ObjectGroup) -> bool {
 }
 
 fn point_marker_visible(group: &ObjectGroup) -> bool {
-    (group.header.style_a & 0x0200_0000) != 0
+    (group.header.style_a & 0x0200_0000) != 0 || point_marker_style(group) == 0x2d
+}
+
+fn point_marker_style(group: &ObjectGroup) -> u32 {
+    group.header.style_a & 0xff
 }
 
 fn scene_point(

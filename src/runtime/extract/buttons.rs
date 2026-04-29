@@ -48,6 +48,7 @@ struct RawButton {
     text: String,
     anchor: ScreenPoint,
     rect: Option<ScreenRect>,
+    visible: bool,
     action: RawButtonAction,
 }
 
@@ -109,6 +110,7 @@ pub(super) fn collect_buttons(
                     .unwrap_or_else(|| href.clone()),
                 anchor: ScreenPoint { x, y },
                 rect: Some(ScreenRect { width, height }),
+                visible: !group.header.is_hidden(),
                 action: RawButtonAction::Link { href },
             });
             continue;
@@ -210,6 +212,7 @@ pub(super) fn collect_buttons(
                 y: anchor.y,
             },
             rect: None,
+            visible: !group.header.is_hidden(),
             action,
         });
     }
@@ -353,6 +356,7 @@ pub(super) fn collect_buttons(
                 text: button.text,
                 anchor: button.anchor,
                 rect: button.rect,
+                visible: button.visible,
                 action,
                 debug: groups
                     .get(button.group_ordinal.saturating_sub(1))

@@ -12,6 +12,7 @@ pub(super) struct ButtonJson {
     y: f64,
     width: Option<f64>,
     height: Option<f64>,
+    visible: bool,
     action: ButtonActionJson,
     #[serde(skip_serializing_if = "Option::is_none")]
     debug: Option<DebugSourceJson>,
@@ -25,6 +26,7 @@ impl ButtonJson {
             y: button.anchor.y,
             width: button.rect.as_ref().map(|rect| rect.width),
             height: button.rect.as_ref().map(|rect| rect.height),
+            visible: button.visible,
             action: ButtonActionJson::from_action(&button.action),
             debug: button.debug.as_ref().map(DebugSourceJson::from_source),
         }

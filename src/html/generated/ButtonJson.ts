@@ -2,4 +2,4 @@
 import type { ButtonActionJson } from "./ButtonActionJson";
 import type { DebugSourceJson } from "./DebugSourceJson";
 
-export type ButtonJson = { text: string, x: number, y: number, width: number | null, height: number | null, action: ButtonActionJson, debug: DebugSourceJson | null, };
+export type ButtonJson = { text: string, x: number, y: number, width: number | null, height: number | null, visible: boolean, action: ButtonActionJson, debug: DebugSourceJson | null, };

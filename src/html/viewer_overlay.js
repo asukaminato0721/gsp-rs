@@ -259,13 +259,13 @@
         ? env.van.state((sourceScene.buttons || []).map((button) => ({
             ...button,
             baseText: button.text,
-            visible: true,
+            visible: button.visible !== false,
             active: false,
           })))
         : { val: (sourceScene.buttons || []).map((button) => ({
             ...button,
             baseText: button.text,
-            visible: true,
+            visible: button.visible !== false,
             active: false,
           })) };
       const buttonTimers = new Map();
@@ -756,6 +756,19 @@
                 }
                 modules.dynamics.applyNormalizedParameterToPoint(draftPoint, draft, next);
               }
+            } else if (mode === "move" && typeof targetPointIndex === "number") {
+              const target = draft.points[targetPointIndex];
+              if (!target) {
+                state.stop = true;
+                return;
+              }
+              const durationMs = 700;
+              state.t = Math.min(1, state.t + dt / durationMs);
+              draftPoint.x = base.x + (target.x - base.x) * state.t;
+              draftPoint.y = base.y + (target.y - base.y) * state.t;
+              if (state.t >= 1) {
+                state.stop = true;
+              }
             } else if (mode === "scroll") {
               state.t += dt * 0.004;
               draftPoint.x = base.x + Math.sin(state.t) * 36;
@@ -794,6 +807,10 @@
               }
             }
           }, "graph");
+          if (state.stop) {
+            stopButtonAnimation(buttonIndex);
+            return;
+          }
           state.rafId = window.requestAnimationFrame(step);
         };
         state.rafId = window.requestAnimationFrame(step);

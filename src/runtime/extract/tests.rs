@@ -1252,6 +1252,41 @@ fn collects_move_point_button_variants_without_validation() {
 }
 
 #[test]
+fn exports_one_dragon_fixture_against_javasketch_visibility() {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/李章博作品/一条龙.gsp")
+    else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+
+    assert_eq!(
+        scene.points.iter().filter(|point| point.visible).count(),
+        2,
+        "expected the two red Intersect1/Intersect2 dot points from the paired .htm to stay visible"
+    );
+    assert!(
+        scene
+            .buttons
+            .iter()
+            .filter(|button| {
+                button.debug.as_ref().is_some_and(|debug| {
+                    matches!(debug.group_ordinal, 10 | 11 | 12 | 14 | 19 | 21 | 26 | 28)
+                })
+            })
+            .all(|button| !button.visible),
+        "expected hidden action buttons to remain callable but not rendered as visible controls"
+    );
+    assert!(
+        scene.buttons.iter().any(|button| button
+            .debug
+            .as_ref()
+            .is_some_and(|debug| debug.group_ordinal == 33)
+            && button.visible),
+        "expected the top-level visible sequence button to remain interactive"
+    );
+}
+
+#[test]
 fn collects_focus_point_button_without_validation() {
     let Some(data) = fixture_bytes("tests/Samples/个人专栏/孙禄京作品/正三角形重叠.gsp")
     else {

@@ -53,6 +53,7 @@ pub(crate) struct SceneButton {
     pub(crate) text: String,
     pub(crate) anchor: ScreenPoint,
     pub(crate) rect: Option<ScreenRect>,
+    pub(crate) visible: bool,
     pub(crate) action: ButtonAction,
     pub(crate) debug: Option<PayloadDebugSource>,
 }
