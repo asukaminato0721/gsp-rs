@@ -163,19 +163,27 @@ pub(super) fn has_graph_classes(groups: &[ObjectGroup]) -> bool {
 
     for group in groups {
         match group.header.kind() {
+            GroupKind::FunctionPlot
+            | GroupKind::LegacyFunctionPlot
+            | GroupKind::ParametricFunctionPlot => return true,
             GroupKind::GraphObject40
             | GroupKind::MeasurementLine
             | GroupKind::GraphMeasurementSegment
             | GroupKind::AxisLine
-            | GroupKind::FunctionPlot
-            | GroupKind::LegacyFunctionPlot
-            | GroupKind::ParametricFunctionPlot => return true,
-            kind if kind.is_coordinate_object() => return true,
+                if !group.header.is_hidden() =>
+            {
+                return true;
+            }
+            kind if kind.is_coordinate_object() => {}
             kind if kind.is_graph_calibration() => has_calibration = true,
             GroupKind::CoordinateXValue
             | GroupKind::CoordinateYValue
             | GroupKind::CoordinateReadoutLabel
-            | GroupKind::GraphViewHelper => has_graph_expression = true,
+            | GroupKind::GraphViewHelper
+                if !group.header.is_hidden() =>
+            {
+                has_graph_expression = true;
+            }
             _ => {}
         }
     }

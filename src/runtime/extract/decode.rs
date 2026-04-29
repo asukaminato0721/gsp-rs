@@ -428,6 +428,20 @@ fn decode_named_decimal_parameter_tail_value(
     None
 }
 
+fn decode_decimal_fraction_parameter_tail_value(payload: &[u8]) -> Option<f64> {
+    if payload.len() < 100 {
+        return None;
+    }
+    let whole = read_u16(payload, 92);
+    let tenths_denominator = read_u16(payload, 94);
+    let tenths = read_u16(payload, 96);
+    let hundredths = read_u16(payload, 98);
+    if whole == 0 && tenths_denominator == 10 && tenths < 10 && hundredths < 10 {
+        return Some(f64::from(whole) + f64::from(tenths) / 10.0 + f64::from(hundredths) / 100.0);
+    }
+    None
+}
+
 fn decode_decimal_digit_parameter_tail_value(payload: &[u8]) -> Option<f64> {
     if payload.len() >= 98 {
         let hundreds = read_u16(payload, 92);
@@ -463,6 +477,9 @@ pub(crate) fn try_decode_parameter_control_value_for_group(
         return Ok(value);
     }
     if let Some(value) = decode_named_decimal_parameter_tail_value(file, group, payload) {
+        return Ok(value);
+    }
+    if let Some(value) = decode_decimal_fraction_parameter_tail_value(payload) {
         return Ok(value);
     }
 

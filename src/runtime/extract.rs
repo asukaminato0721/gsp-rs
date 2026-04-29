@@ -82,7 +82,7 @@ use super::functions::{
     synthesize_standalone_function_definition_labels, try_decode_function_expr,
     try_decode_function_plot_descriptor,
 };
-use super::geometry::{Bounds, GraphTransform, distance_world};
+use super::geometry::{Bounds, GraphTransform, color_from_style, distance_world, to_world};
 use super::scene::{
     ColorBinding, LabelIterationFamily, LineIterationFamily, LineShape, PayloadDebugSource,
     PointIterationFamily, PolygonIterationFamily, PolygonShape, Scene, ScenePoint, TextLabel,
@@ -219,9 +219,19 @@ fn analyze_scene(
     let raw_anchors_for_graph = collect_raw_object_anchors(file, groups, point_map, None);
     let graph = detect_graph_transform(file, groups, &raw_anchors_for_graph);
     let graph_mode = graph.is_some() && has_graph_classes(groups);
-    let graph_ref = if graph_mode { graph.clone() } else { None };
+    let hidden_graph_transform = !graph_mode
+        && graph.as_ref().is_some_and(|graph| {
+            has_hidden_graph_panel(file, groups, &raw_anchors_for_graph, graph)
+        })
+        && count_function_coordinate_points(file, groups) >= 10
+        && count_polygon_payload_color_bindings(file, groups) >= 10;
+    let graph_ref = if graph_mode || hidden_graph_transform {
+        graph.clone()
+    } else {
+        None
+    };
     let raw_anchors = collect_raw_object_anchors(file, groups, point_map, graph.as_ref());
-    let saved_viewport = if graph_mode {
+    let saved_viewport = if graph_mode || hidden_graph_transform {
         collect_saved_viewport(file, groups)
     } else {
         None
@@ -232,7 +242,7 @@ fn analyze_scene(
             .iter()
             .any(|record| record.record_type == 0x08fc)
     });
-    let document_viewport = if !graph_mode && has_rich_text_layout {
+    let document_viewport = if !graph_mode && graph_ref.is_none() && has_rich_text_layout {
         collect_document_canvas_bounds(file)
     } else {
         None
@@ -271,6 +281,72 @@ fn analyze_scene(
         large_non_graph,
         raw_anchors,
     }
+}
+
+fn count_function_coordinate_points(file: &GspFile, groups: &[ObjectGroup]) -> usize {
+    groups
+        .iter()
+        .filter(|group| {
+            if !group.header.kind().is_coordinate_object() {
+                return false;
+            }
+            find_indexed_path(file, group).is_some_and(|path| {
+                path.refs
+                    .iter()
+                    .filter_map(|ordinal| groups.get(ordinal.saturating_sub(1)))
+                    .any(|source_group| source_group.header.kind() == GroupKind::FunctionExpr)
+            })
+        })
+        .count()
+}
+
+fn count_polygon_payload_color_bindings(file: &GspFile, groups: &[ObjectGroup]) -> usize {
+    groups
+        .iter()
+        .filter(|group| {
+            matches!(
+                group.header.kind(),
+                GroupKind::DerivedSegment24 | GroupKind::DerivedSegment75
+            ) && find_indexed_path(file, group).is_some_and(|path| {
+                if path.refs.len() < 4 {
+                    return false;
+                }
+                path.refs
+                    .first()
+                    .and_then(|ordinal| groups.get(ordinal.saturating_sub(1)))
+                    .is_some_and(|host_group| host_group.header.kind() == GroupKind::Polygon)
+            })
+        })
+        .count()
+}
+
+fn has_hidden_graph_panel(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    graph: &GraphTransform,
+) -> bool {
+    groups.iter().any(|group| {
+        group.header.kind() == GroupKind::Polygon
+            && !group.header.is_hidden()
+            && color_from_style(group.header.style_b) == [0, 0, 0, 255]
+            && find_indexed_path(file, group).is_some_and(|path| {
+                if path.refs.len() != 4 {
+                    return false;
+                }
+                let points = path
+                    .refs
+                    .iter()
+                    .filter_map(|ordinal| anchors.get(ordinal.saturating_sub(1)).cloned().flatten())
+                    .map(|point| to_world(&point, &Some(graph.clone())))
+                    .collect::<Vec<_>>();
+                points.len() == 4
+                    && points.iter().all(|point| {
+                        ((point.x - 0.0).abs() < 1e-9 || (point.x - 1.0).abs() < 1e-9)
+                            && ((point.y - 0.0).abs() < 1e-9 || (point.y - 1.0).abs() < 1e-9)
+                    })
+            })
+    })
 }
 
 fn collect_scene_shapes(
@@ -769,6 +845,7 @@ fn apply_payload_color_bindings(
     raw_anchors: &[Option<PointRecord>],
     group_to_point_index: &[Option<usize>],
     circle_group_to_index: &[Option<usize>],
+    polygon_group_to_index: &[Option<usize>],
     shapes: &mut CollectedShapes,
 ) {
     for group in groups.iter().filter(|group| {
@@ -790,6 +867,22 @@ fn apply_payload_color_bindings(
         let Some(host_group) = groups.get(host_group_index) else {
             continue;
         };
+        if host_group.header.kind() == GroupKind::Polygon {
+            let Some(polygon_index) = polygon_group_to_index
+                .get(host_group_index)
+                .copied()
+                .flatten()
+            else {
+                continue;
+            };
+            let Some(polygon) = shapes.polygons.get_mut(polygon_index) else {
+                continue;
+            };
+            let color = crate::runtime::geometry::color_from_style(group.header.style_b);
+            polygon.color = [color[0], color[1], color[2], polygon.color[3]];
+            polygon.visible = !group.header.is_hidden();
+            continue;
+        }
         if host_group.header.kind() != GroupKind::CircleInterior {
             continue;
         }
@@ -1050,6 +1143,7 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
         &analysis.raw_anchors,
         &group_to_point_index,
         &binding_maps.circle_group_to_index,
+        &binding_maps.polygon_group_to_index,
         &mut shapes,
     );
     let circle_iterations = collect_carried_circle_iteration_families(
@@ -1078,7 +1172,15 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
     } else {
         Vec::new()
     };
-    parameters.extend(collect_non_graph_parameters(file, &groups, &mut labels));
+    let show_hidden_parameter_controls = !analysis.graph_mode
+        && analysis.graph_ref.is_some()
+        && count_polygon_payload_color_bindings(file, &groups) >= 10;
+    parameters.extend(collect_non_graph_parameters(
+        file,
+        &groups,
+        &mut labels,
+        show_hidden_parameter_controls,
+    ));
     let (buttons, button_group_to_index) = collect_buttons(
         file,
         &groups,

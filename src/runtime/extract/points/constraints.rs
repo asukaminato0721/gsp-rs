@@ -14,7 +14,7 @@ use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord, read_f64, read
 use crate::runtime::functions::{
     BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters,
     payload_has_sliding_equilateral_square_expr, try_decode_function_expr,
-    try_decode_function_plot_descriptor,
+    try_decode_function_expr_with_inlined_refs, try_decode_function_plot_descriptor,
 };
 use crate::runtime::geometry::{
     GraphTransform, arc_on_circle_control_points, lerp_point, locate_polyline_parameter_by_length,
@@ -963,6 +963,11 @@ pub(crate) fn decode_coordinate_point(
                 if let Some(point) = (|| {
                     let x_parameter_group = groups.get(path.refs[0].checked_sub(1)?)?;
                     let y_parameter_group = groups.get(path.refs[1].checked_sub(1)?)?;
+                    if x_parameter_group.header.kind() == crate::format::GroupKind::FunctionExpr
+                        && y_parameter_group.header.kind() == crate::format::GroupKind::FunctionExpr
+                    {
+                        return None;
+                    }
                     let axis_group = groups.get(path.refs[2].checked_sub(1)?)?;
                     let (x_parameter_name, x_parameter_value, x_expr) =
                         coordinate_parameter_binding(file, groups, x_parameter_group, anchors)?;
@@ -1001,7 +1006,8 @@ pub(crate) fn decode_coordinate_point(
                     return Some(point);
                 }
                 let x_calc_group = groups.get(path.refs[0].checked_sub(1)?)?;
-                if let Ok(x_expr) = try_decode_function_expr(file, groups, x_calc_group)
+                if let Ok(x_expr) =
+                    try_decode_function_expr_with_inlined_refs(file, groups, x_calc_group)
                     && let Some(point) = (|| {
                         let y_calc_group = groups.get(path.refs[1].checked_sub(1)?)?;
                         let axis_group = groups.get(path.refs[2].checked_sub(1)?)?;
@@ -1014,14 +1020,18 @@ pub(crate) fn decode_coordinate_point(
                             origin_measurement_path.refs.first()?.checked_sub(1)?;
                         let source_position = anchors.get(source_group_index)?.clone()?;
                         let source_world = to_world(&source_position, graph);
-                        let y_expr = try_decode_function_expr(file, groups, y_calc_group).ok()?;
+                        let y_expr =
+                            try_decode_function_expr_with_inlined_refs(file, groups, y_calc_group)
+                                .ok()?;
                         let x_parameter_group = first_path_group(file, groups, x_calc_group)?;
                         let y_parameter_group = first_path_group(file, groups, y_calc_group)?;
-                        let x_parameter_name = decode_label_name(file, x_parameter_group)
+                        let x_parameter_name = decode_label_name(file, x_calc_group)
+                            .or_else(|| decode_label_name(file, x_parameter_group))
                             .unwrap_or_else(|| {
                                 crate::runtime::functions::function_expr_label(x_expr.clone())
                             });
-                        let y_parameter_name = decode_label_name(file, y_parameter_group)
+                        let y_parameter_name = decode_label_name(file, y_calc_group)
+                            .or_else(|| decode_label_name(file, y_parameter_group))
                             .unwrap_or_else(|| {
                                 crate::runtime::functions::function_expr_label(y_expr.clone())
                             });
@@ -1304,8 +1314,10 @@ pub(crate) fn decode_coordinate_point(
             let source_world = to_world(&source_position, graph);
             let x_calc_group = groups.get(path.refs[1].checked_sub(1)?)?;
             let y_calc_group = groups.get(path.refs[2].checked_sub(1)?)?;
-            let x_expr = try_decode_function_expr(file, groups, x_calc_group).ok()?;
-            let y_expr = try_decode_function_expr(file, groups, y_calc_group).ok()?;
+            let x_expr =
+                try_decode_function_expr_with_inlined_refs(file, groups, x_calc_group).ok()?;
+            let y_expr =
+                try_decode_function_expr_with_inlined_refs(file, groups, y_calc_group).ok()?;
 
             let x_parameter_group = first_path_group(file, groups, x_calc_group)?;
             let y_parameter_group = first_path_group(file, groups, y_calc_group)?;

@@ -624,7 +624,7 @@ pub(super) fn assemble_scene(
         graph_mode: analysis.graph_mode,
         pi_mode: analysis.pi_mode,
         saved_viewport: bounds_data.use_saved_viewport,
-        y_up: analysis.graph_mode,
+        y_up: analysis.graph_ref.is_some(),
         origin: analysis
             .graph_ref
             .as_ref()
@@ -656,16 +656,27 @@ pub(super) fn assemble_scene(
             .collect(),
         polygons: raw_polygons
             .into_iter()
-            .map(|polygon| PolygonShape {
-                points: polygon
-                    .points
-                    .into_iter()
-                    .map(|point| to_world(&point, &analysis.graph_ref))
-                    .collect(),
-                color: polygon.color,
-                visible: polygon.visible,
-                binding: polygon.binding,
-                debug: polygon.debug,
+            .map(|polygon| {
+                let is_hidden_graph_panel = is_hidden_graph_panel_polygon(&analysis, &polygon);
+                PolygonShape {
+                    points: if is_hidden_graph_panel {
+                        bounds_corners(&bounds_data.bounds)
+                    } else {
+                        polygon
+                            .points
+                            .into_iter()
+                            .map(|point| to_world(&point, &analysis.graph_ref))
+                            .collect()
+                    },
+                    color: polygon.color,
+                    visible: polygon.visible,
+                    binding: if is_hidden_graph_panel {
+                        None
+                    } else {
+                        polygon.binding
+                    },
+                    debug: polygon.debug,
+                }
             })
             .collect(),
         circles: circles
@@ -740,6 +751,44 @@ pub(super) fn assemble_scene(
         functions,
         function_definitions: artifacts.function_definitions,
     }
+}
+
+fn is_hidden_graph_panel_polygon(analysis: &SceneAnalysis, polygon: &PolygonShape) -> bool {
+    let world_points = polygon
+        .points
+        .iter()
+        .map(|point| to_world(point, &analysis.graph_ref))
+        .collect::<Vec<_>>();
+    !analysis.graph_mode
+        && analysis.graph_ref.is_some()
+        && polygon.visible
+        && polygon.color == [0, 0, 0, 255]
+        && world_points.len() == 4
+        && world_points.iter().all(|point| {
+            ((point.x - 0.0).abs() < 1e-9 || (point.x - 1.0).abs() < 1e-9)
+                && ((point.y - 0.0).abs() < 1e-9 || (point.y - 1.0).abs() < 1e-9)
+        })
+}
+
+fn bounds_corners(bounds: &crate::runtime::geometry::Bounds) -> Vec<PointRecord> {
+    vec![
+        PointRecord {
+            x: bounds.min_x,
+            y: bounds.min_y,
+        },
+        PointRecord {
+            x: bounds.max_x,
+            y: bounds.min_y,
+        },
+        PointRecord {
+            x: bounds.max_x,
+            y: bounds.max_y,
+        },
+        PointRecord {
+            x: bounds.min_x,
+            y: bounds.max_y,
+        },
+    ]
 }
 
 fn remap_function_line_indices(

@@ -18,7 +18,7 @@ use crate::format::GroupKind;
 use crate::format::read_u32;
 use crate::runtime::functions::{
     BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters, try_decode_function_expr,
-    try_decode_function_plot_descriptor,
+    try_decode_function_expr_with_inlined_refs, try_decode_function_plot_descriptor,
 };
 use crate::runtime::geometry::{
     GraphTransform, angle_degrees_from_points, lerp_point, point_on_circle_arc,
@@ -724,12 +724,16 @@ pub(crate) fn decode_coordinate_expression_anchor_raw(
         crate::format::GroupKind::CoordinateExpressionPointPair => {
             let x_calc_group = groups.get(path.refs[1].checked_sub(1)?)?;
             let y_calc_group = groups.get(path.refs[2].checked_sub(1)?)?;
-            let x_expr = try_decode_function_expr(file, groups, x_calc_group).ok()?;
-            let y_expr = try_decode_function_expr(file, groups, y_calc_group).ok()?;
+            let x_expr =
+                try_decode_function_expr_with_inlined_refs(file, groups, x_calc_group).ok()?;
+            let y_expr =
+                try_decode_function_expr_with_inlined_refs(file, groups, y_calc_group).ok()?;
             let x_parameter_group = first_path_group(file, groups, x_calc_group)?;
             let y_parameter_group = first_path_group(file, groups, y_calc_group)?;
-            let x_parameter_name = decode_label_name(file, x_parameter_group)?;
-            let y_parameter_name = decode_label_name(file, y_parameter_group)?;
+            let x_parameter_name = decode_label_name(file, x_calc_group)
+                .or_else(|| decode_label_name(file, x_parameter_group))?;
+            let y_parameter_name = decode_label_name(file, y_calc_group)
+                .or_else(|| decode_label_name(file, y_parameter_group))?;
             let x_parameter_value =
                 decode_non_graph_parameter_value_for_group(file, x_parameter_group)?;
             let y_parameter_value =
@@ -962,8 +966,12 @@ fn sample_coordinate_trace_points_raw(
                 GroupKind::CoordinateExpressionPointPair => {
                     let x_calc_group = groups.get(driver_path.refs[1].checked_sub(1)?)?;
                     let y_calc_group = groups.get(driver_path.refs[2].checked_sub(1)?)?;
-                    let x_expr = try_decode_function_expr(file, groups, x_calc_group).ok()?;
-                    let y_expr = try_decode_function_expr(file, groups, y_calc_group).ok()?;
+                    let x_expr =
+                        try_decode_function_expr_with_inlined_refs(file, groups, x_calc_group)
+                            .ok()?;
+                    let y_expr =
+                        try_decode_function_expr_with_inlined_refs(file, groups, y_calc_group)
+                            .ok()?;
                     Some((source_world, None, Some((x_expr, y_expr))))
                 }
                 GroupKind::CoordinateExpressionPointAlt => Some((

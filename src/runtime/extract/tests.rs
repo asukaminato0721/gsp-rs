@@ -6,8 +6,8 @@ use super::{
 use crate::format::GspFile;
 use crate::runtime::extract::points::decode_expression_rotation_binding;
 use crate::runtime::functions::{
-    evaluate_expr_with_parameters, function_expr_label, BinaryOp, FunctionAst, FunctionExpr,
-    UnaryFunction,
+    BinaryOp, FunctionAst, FunctionExpr, UnaryFunction, evaluate_expr_with_parameters,
+    function_expr_label,
 };
 use crate::runtime::scene::{
     ButtonAction, LabelIterationFamily, LineBinding, LineConstraint, LineIterationFamily,
@@ -91,6 +91,24 @@ fn function_ast_has_unary(ast: &FunctionAst, op: UnaryFunction) -> bool {
         }
         FunctionAst::Binary { lhs, rhs, .. } => {
             function_ast_has_unary(lhs, op) || function_ast_has_unary(rhs, op)
+        }
+        _ => false,
+    }
+}
+
+fn function_expr_has_parameter(expr: &FunctionExpr, expected: &str) -> bool {
+    match expr {
+        FunctionExpr::Parsed(ast) => function_ast_has_parameter(ast, expected),
+        _ => false,
+    }
+}
+
+fn function_ast_has_parameter(ast: &FunctionAst, expected: &str) -> bool {
+    match ast {
+        FunctionAst::Parameter(name, _) => name == expected,
+        FunctionAst::Unary { expr, .. } => function_ast_has_parameter(expr, expected),
+        FunctionAst::Binary { lhs, rhs, .. } => {
+            function_ast_has_parameter(lhs, expected) || function_ast_has_parameter(rhs, expected)
         }
         _ => false,
     }
@@ -3102,10 +3120,12 @@ fn preserves_parameter_controlled_point_on_circle_gsp() {
         }),
         "expected the payload slider source point to remain visible"
     );
-    assert!(scene
-        .points
-        .iter()
-        .any(|point| matches!(point.constraint, ScenePointConstraint::OnCircle { .. })));
+    assert!(
+        scene
+            .points
+            .iter()
+            .any(|point| matches!(point.constraint, ScenePointConstraint::OnCircle { .. }))
+    );
 }
 
 #[test]
@@ -4028,9 +4048,11 @@ fn preserves_carried_segment_default_depth_iteration_fixture() {
         .iter()
         .map(|line| line.points.first().cloned().expect("segment start"))
         .collect::<Vec<_>>();
-    assert!(starts
-        .iter()
-        .any(|point| { (point.x - 168.0).abs() < 1e-6 && (point.y - 376.0).abs() < 1e-6 }));
+    assert!(
+        starts
+            .iter()
+            .any(|point| { (point.x - 168.0).abs() < 1e-6 && (point.y - 376.0).abs() < 1e-6 })
+    );
     assert!(starts.iter().any(|point| {
         (point.x - 205.79527559055117).abs() < 1e-6 && (point.y - 338.20472440944883).abs() < 1e-6
     }));
@@ -4057,10 +4079,12 @@ fn preserves_carried_polygon_iteration_fixture() {
         scene.lines.len() <= 1,
         "expected polygon edges to stay suppressed apart from any standalone parameter-control helper geometry"
     );
-    assert!(scene
-        .parameters
-        .iter()
-        .any(|parameter| parameter.name == "n"));
+    assert!(
+        scene
+            .parameters
+            .iter()
+            .any(|parameter| parameter.name == "n")
+    );
     assert!(
         scene.line_iterations.is_empty(),
         "expected carried polygon fixture to avoid duplicate line iteration metadata"
@@ -4114,9 +4138,11 @@ fn preserves_carried_polygon_iteration_fixture() {
         .iter()
         .map(|polygon| polygon.points.first().cloned().expect("polygon vertex"))
         .collect::<Vec<_>>();
-    assert!(first_vertices
-        .iter()
-        .any(|point| { (point.x - 168.0).abs() < 1e-6 && (point.y - 376.0).abs() < 1e-6 }));
+    assert!(
+        first_vertices
+            .iter()
+            .any(|point| { (point.x - 168.0).abs() < 1e-6 && (point.y - 376.0).abs() < 1e-6 })
+    );
     assert!(first_vertices.iter().any(|point| {
         (point.x - 168.0).abs() < 1e-6 && (point.y - 338.20472440944883).abs() < 1e-6
     }));
@@ -4198,10 +4224,12 @@ fn does_not_treat_triangle_point_labels_as_iteration_parameters() {
         "expected no editable parameters in triangle fixture"
     );
     assert_eq!(scene.line_iterations.len(), 3);
-    assert!(scene
-        .line_iterations
-        .iter()
-        .all(|family| matches!(family, LineIterationFamily::Affine { .. })));
+    assert!(
+        scene
+            .line_iterations
+            .iter()
+            .all(|family| matches!(family, LineIterationFamily::Affine { .. }))
+    );
 }
 
 #[test]
@@ -4328,6 +4356,112 @@ fn preserves_regular_polygon_iteration_without_carried_duplicates() {
 }
 
 #[test]
+fn builds_icosahedron_sample_with_projected_vertices_and_visible_faces() {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/向忠作品/正二十面体.gsp")
+    else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+
+    assert!(
+        !scene.graph_mode,
+        "hidden coordinate scaffolding must not render the graph grid"
+    );
+    assert!(
+        scene.y_up,
+        "expected hidden coordinate scaffolding to keep graph-style projection coordinates"
+    );
+
+    let parameter_values = scene
+        .parameters
+        .iter()
+        .map(|parameter| (parameter.name.as_str(), parameter.value, parameter.visible))
+        .collect::<Vec<_>>();
+    for (name, expected) in [
+        ("r", 8.0),
+        ("H₁", 1.0),
+        ("H₂", 0.85),
+        ("H₃", 0.65),
+        ("H₄", 0.45),
+        ("H[5]", 0.25),
+    ] {
+        assert!(
+            parameter_values
+                .iter()
+                .any(|(parameter_name, value, visible)| {
+                    *parameter_name == name && *visible && (*value - expected).abs() < 1e-9
+                }),
+            "expected visible parameter {name} = {expected}, got {parameter_values:?}"
+        );
+    }
+
+    assert!(
+        scene.polygons.iter().any(|polygon| {
+            polygon.visible
+                && polygon.color == [0, 0, 0, 255]
+                && polygon
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == 41)
+        }),
+        "expected the payload black drawing panel to remain visible"
+    );
+
+    let projected_vertices: Vec<_> = scene
+        .points
+        .iter()
+        .filter(|point| {
+            point.visible
+                && matches!(
+                    point.binding.as_ref(),
+                    Some(ScenePointBinding::CoordinateSource2d {
+                        x_name,
+                        y_name,
+                        x_expr: FunctionExpr::Parsed(_),
+                        y_expr: FunctionExpr::Parsed(_),
+                        ..
+                    }) if x_name == "x[s]" && y_name == "y[s]"
+                )
+                && ((point.position.x - 0.5).abs() > 0.01 || (point.position.y - 0.5).abs() > 0.01)
+        })
+        .collect();
+    assert!(
+        projected_vertices.len() >= 10,
+        "expected the icosahedron vertices to evaluate from the PlotXY calculation payloads"
+    );
+    assert!(
+        projected_vertices.iter().any(|point| {
+            matches!(
+                point.binding.as_ref(),
+                Some(ScenePointBinding::CoordinateSource2d {
+                    x_expr,
+                    y_expr,
+                    ..
+                }) if function_expr_has_parameter(x_expr, "θ[Ov]")
+                    || function_expr_has_parameter(y_expr, "φ[Ov]")
+            )
+        }),
+        "expected projected vertices to keep live dependencies on the rotation controls"
+    );
+
+    let visible_faces = scene
+        .polygons
+        .iter()
+        .filter(|polygon| {
+            polygon.visible
+                && polygon
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal >= 332)
+        })
+        .count();
+    assert_eq!(
+        visible_faces, 20,
+        "expected Colorized_HSV payloads to make all icosahedron faces visible"
+    );
+}
+
+#[test]
 fn preserves_scaled_point_and_single_parameter_label_in_scale_gsp() {
     let scene = fixture_scene(include_bytes!(
         "../../../tests/fixtures/gsp/static/scale.gsp"
@@ -4430,10 +4564,12 @@ fn preserves_reflection_point_circle_and_polygon_gsp() {
         2,
         "expected original and reflected polygon"
     );
-    assert!(scene
-        .points
-        .iter()
-        .any(|point| matches!(point.binding, Some(ScenePointBinding::Reflect { .. }))));
+    assert!(
+        scene
+            .points
+            .iter()
+            .any(|point| matches!(point.binding, Some(ScenePointBinding::Reflect { .. })))
+    );
     assert!(scene.circles.iter().any(|circle| matches!(
         circle.binding,
         Some(crate::runtime::scene::ShapeBinding::DerivedTransform {

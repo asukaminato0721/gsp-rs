@@ -461,6 +461,21 @@
           return;
         }
         if (
+          binding.kind === "point-axis-value"
+          && typeof binding.name === "string"
+        ) {
+          const point = scene.points[binding.pointIndex];
+          if (!point) {
+            return;
+          }
+          const value = binding.axis === "vertical" ? point.y : point.x;
+          if (Number.isFinite(value) && parameters.get(binding.name) !== value) {
+            parameters.set(binding.name, value);
+            changed = true;
+          }
+          return;
+        }
+        if (
           (binding.kind === "expression-value" || binding.kind === "point-bound-expression-value")
           && (typeof binding.resultName === "string" || typeof binding.exprLabel === "string")
         ) {
@@ -764,7 +779,8 @@
     if (!binding) return null;
     if (
       (binding.kind === "point-distance-ratio-value"
-        || binding.kind === "parameter-value")
+        || binding.kind === "parameter-value"
+        || binding.kind === "point-axis-value")
       && typeof binding.name === "string"
     ) {
       return binding.name;

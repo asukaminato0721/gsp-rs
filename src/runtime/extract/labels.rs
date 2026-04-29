@@ -1472,17 +1472,15 @@ fn collect_label_iteration_output_label(
     let anchor = decode_label_anchor(file, seed_group, anchors)
         .or_else(|| label_iteration_seed_anchor(&seed_path, anchors))?;
     let expr = try_decode_function_expr(file, groups, source_group).ok()?;
-    let (parameter_name, parameter_value) =
-        resolve_sequence_expression_state_parameter(file, groups, source_group, anchors)
-            .or_else(|| {
-                resolve_function_expr_parameter(
-                    file,
-                    groups,
-                    source_group,
-                    anchors,
-                    &mut BTreeSet::new(),
-                )
-            })?;
+    let (parameter_name, parameter_value) = resolve_sequence_expression_state_parameter(
+        file,
+        groups,
+        source_group,
+        anchors,
+    )
+    .or_else(|| {
+        resolve_function_expr_parameter(file, groups, source_group, anchors, &mut BTreeSet::new())
+    })?;
     let depth = iter_group
         .records
         .iter()
@@ -1523,7 +1521,13 @@ fn resolve_sequence_expression_state_parameter(
     let calc_path = find_indexed_path(file, calc_group)?;
     let first_group = groups.get(calc_path.refs.first()?.checked_sub(1)?)?;
     if first_group.header.kind() != crate::format::GroupKind::FunctionExpr {
-        return resolve_function_expr_parameter(file, groups, calc_group, anchors, &mut BTreeSet::new());
+        return resolve_function_expr_parameter(
+            file,
+            groups,
+            calc_group,
+            anchors,
+            &mut BTreeSet::new(),
+        );
     }
     calc_path
         .refs

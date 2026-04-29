@@ -66,6 +66,7 @@ pub(super) fn collect_non_graph_parameters(
     file: &GspFile,
     groups: &[ObjectGroup],
     labels: &mut [TextLabel],
+    show_hidden_parameter_controls: bool,
 ) -> Vec<SceneParameter> {
     let allow_orphan_parameter_controls = groups.iter().all(has_parameter_control_payload);
     groups
@@ -79,6 +80,7 @@ pub(super) fn collect_non_graph_parameters(
                 group,
                 labels,
                 allow_orphan_parameter_controls,
+                show_hidden_parameter_controls,
             )
         })
         .collect()
@@ -91,6 +93,7 @@ fn decode_non_graph_parameter(
     group: &ObjectGroup,
     labels: &mut [TextLabel],
     allow_orphan_parameter_controls: bool,
+    show_hidden_parameter_controls: bool,
 ) -> Option<SceneParameter> {
     if is_standalone_function_definition_group(file, groups, group) {
         return None;
@@ -126,7 +129,7 @@ fn decode_non_graph_parameter(
         value,
         unit,
         label_index,
-        visible: !group.header.is_hidden(),
+        visible: !group.header.is_hidden() || show_hidden_parameter_controls,
     })
 }
 
