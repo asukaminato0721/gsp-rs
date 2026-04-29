@@ -2250,18 +2250,38 @@
     const ratioDenominator = resolvePointAt(point.binding.ratioDenominatorIndex);
     const ratioNumerator = resolvePointAt(point.binding.ratioNumeratorIndex);
     if (!source || !center || !ratioOrigin || !ratioDenominator || !ratioNumerator) return;
-    const denominator = Math.hypot(
-      ratioDenominator.x - ratioOrigin.x,
-      ratioDenominator.y - ratioOrigin.y,
-    );
-    if (denominator <= 1e-9) return;
-    const numerator = Math.hypot(
-      ratioNumerator.x - ratioOrigin.x,
-      ratioNumerator.y - ratioOrigin.y,
-    );
-    const scaled = scaleAround(source, center, numerator / denominator);
+    const scaled = scaleByThreePointRatio(source, center, ratioOrigin, ratioDenominator, ratioNumerator);
+    if (!scaled) return;
     point.x = scaled.x;
     point.y = scaled.y;
+  }
+
+  /**
+   * GSP's three-point ratio is directed along the marked ratio line.
+   *
+   * @param {Point} source
+   * @param {Point} center
+   * @param {Point} ratioOrigin
+   * @param {Point} ratioDenominator
+   * @param {Point} ratioNumerator
+   * @returns {Point | null}
+   */
+  function scaleByThreePointRatio(source, center, ratioOrigin, ratioDenominator, ratioNumerator) {
+    const denominatorDx = ratioDenominator.x - ratioOrigin.x;
+    const denominatorDy = ratioDenominator.y - ratioOrigin.y;
+    const numeratorDx = ratioNumerator.x - ratioOrigin.x;
+    const numeratorDy = ratioNumerator.y - ratioOrigin.y;
+    const denominator = Math.hypot(
+      denominatorDx,
+      denominatorDy,
+    );
+    if (denominator <= 1e-9) return null;
+    const numerator = Math.hypot(
+      numeratorDx,
+      numeratorDy,
+    );
+    const direction = denominatorDx * numeratorDx + denominatorDy * numeratorDy < 0 ? -1 : 1;
+    return scaleAround(source, center, direction * numerator / denominator);
   }
 
   /**
@@ -2845,14 +2865,8 @@
         const ratioOrigin = resolveTracePoint(points, point.binding.ratioOriginIndex, visiting);
         const ratioDenominator = resolveTracePoint(points, point.binding.ratioDenominatorIndex, visiting);
         const ratioNumerator = resolveTracePoint(points, point.binding.ratioNumeratorIndex, visiting);
-        const denominator = ratioOrigin && ratioDenominator
-          ? Math.hypot(ratioDenominator.x - ratioOrigin.x, ratioDenominator.y - ratioOrigin.y)
-          : null;
-        const numerator = ratioOrigin && ratioNumerator
-          ? Math.hypot(ratioNumerator.x - ratioOrigin.x, ratioNumerator.y - ratioOrigin.y)
-          : null;
-        if (source && center && Number.isFinite(denominator) && denominator > 1e-9 && Number.isFinite(numerator)) {
-          resolved = scaleAround(source, center, numerator / denominator);
+        if (source && center && ratioOrigin && ratioDenominator && ratioNumerator) {
+          resolved = scaleByThreePointRatio(source, center, ratioOrigin, ratioDenominator, ratioNumerator);
         }
       } else if (point.binding?.kind === "midpoint") {
         const start = resolveTracePoint(points, point.binding.startIndex, visiting);
