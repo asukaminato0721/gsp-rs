@@ -9,7 +9,7 @@ use crate::runtime::functions::{BinaryOp, FunctionAst, FunctionExpr, UnaryFuncti
 use crate::runtime::scene::{
     ButtonAction, LabelIterationFamily, LineBinding, LineConstraint, LineIterationFamily,
     PointIterationFamily, PolygonIterationFamily, Scene, SceneButton, ScenePointBinding,
-    ScenePointConstraint, TextLabelBinding,
+    ScenePointConstraint, ShapeBinding, ShapeTransformBinding, TextLabelBinding,
 };
 use insta::assert_snapshot;
 use std::fs;
@@ -1455,14 +1455,14 @@ fn rolling_triangle_inrm_fixture_stays_in_geometry_mode() {
     assert!(
         scene.points.iter().any(|point| matches!(
             point.binding,
-            Some(ScenePointBinding::Rotate {
-                angle_parameter_point_index: Some(_),
-                angle_parameter_start_index: Some(_),
-                angle_parameter_end_index: Some(_),
+            Some(ScenePointBinding::Scale {
+                factor_parameter_point_index: Some(_),
+                factor_parameter_start_index: Some(_),
+                factor_parameter_end_index: Some(_),
                 ..
             })
         )),
-        "expected parameter-anchor rotations to stay live"
+        "expected parameter-anchor helper points to stay live as scale-controlled marked-angle helpers"
     );
     assert!(
         scene
@@ -1470,6 +1470,46 @@ fn rolling_triangle_inrm_fixture_stays_in_geometry_mode() {
             .iter()
             .any(|line| matches!(line.binding, Some(LineBinding::PointTrace { .. }))),
         "expected the rolling vertex point trace to be exported"
+    );
+    let point_trace = scene
+        .lines
+        .iter()
+        .find_map(|line| match line.binding {
+            Some(LineBinding::PointTrace {
+                point_index,
+                driver_index,
+                ..
+            }) => Some((point_index, driver_index)),
+            _ => None,
+        })
+        .expect("expected rolling point trace binding");
+    assert_ne!(
+        point_trace.0, point_trace.1,
+        "expected the trace target and M driver to be distinct points"
+    );
+    assert!(
+        matches!(
+            scene.points[point_trace.0].constraint,
+            ScenePointConstraint::OnTranslatedPolygonBoundary { .. }
+        ),
+        "expected the traced point to be the blue point on the moving triangle"
+    );
+    assert!(
+        matches!(
+            scene.points[point_trace.1].constraint,
+            ScenePointConstraint::OnRay { .. }
+        ),
+        "expected M on the baseline ray to drive the point trace"
+    );
+    assert!(
+        scene.polygons.iter().any(|polygon| matches!(
+            polygon.binding,
+            Some(ShapeBinding::DerivedTransform {
+                transform: ShapeTransformBinding::TranslateVector { .. },
+                ..
+            })
+        )),
+        "expected the displayed rolling triangle to remain a translation of the multi-step rotated base triangle"
     );
 }
 

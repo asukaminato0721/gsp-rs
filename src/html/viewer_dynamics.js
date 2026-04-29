@@ -95,7 +95,19 @@
    * @param {Map<string, number>} parameters
    * @returns {number | null}
    */
-  function resolveScaleTransformFactor(transform, parameters) {
+  function resolveScaleTransformFactor(transform, parameters, resolvePointAt = null) {
+    if (
+      typeof transform.factorParameterPointIndex === "number"
+      && typeof transform.factorParameterStartIndex === "number"
+      && typeof transform.factorParameterEndIndex === "number"
+      && typeof resolvePointAt === "function"
+    ) {
+      const point = resolvePointAt(transform.factorParameterPointIndex);
+      const start = resolvePointAt(transform.factorParameterStartIndex);
+      const end = resolvePointAt(transform.factorParameterEndIndex);
+      const value = segmentProjectionParameterFromPoints(point, start, end);
+      if (Number.isFinite(value)) return value;
+    }
     if (transform.factorExpr) {
       return evaluateExpr(transform.factorExpr, 0, parameters);
     }
@@ -582,6 +594,9 @@
           || key === "angleParameterPointIndex"
           || key === "angleParameterStartIndex"
           || key === "angleParameterEndIndex"
+          || key === "factorParameterPointIndex"
+          || key === "factorParameterStartIndex"
+          || key === "factorParameterEndIndex"
         ) {
           deps.add(sourcePointRootId(child));
           return;
@@ -1126,6 +1141,15 @@
     const point = scene.points[binding.pointIndex];
     const start = scene.points[binding.startIndex];
     const end = scene.points[binding.endIndex];
+    return segmentProjectionParameterFromPoints(point, start, end);
+  }
+
+  /**
+   * @param {Point | null | undefined} point
+   * @param {Point | null | undefined} start
+   * @param {Point | null | undefined} end
+   */
+  function segmentProjectionParameterFromPoints(point, start, end) {
     if (!point || !start || !end) return null;
     const dx = end.x - start.x;
     const dy = end.y - start.y;
@@ -2637,7 +2661,11 @@
       if (transform.kind === "scale") {
         const center = env.resolveScenePoint(transform.centerIndex);
         if (!center) return;
-        const factor = resolveScaleTransformFactor(transform, parameters);
+        const factor = resolveScaleTransformFactor(
+          transform,
+          parameters,
+          (index) => env.resolveScenePoint(index),
+        );
         if (!Number.isFinite(factor)) return;
         const scaled = scaleAround(source, center, factor);
         point.x = scaled.x;
@@ -3057,7 +3085,11 @@
           }
         } else if (transform.kind === "scale") {
           const center = resolveTracePoint(points, transform.centerIndex, visiting);
-          const factor = resolveScaleTransformFactor(transform, baseParameters);
+          const factor = resolveScaleTransformFactor(
+            transform,
+            baseParameters,
+            (pointIndex) => resolveTracePoint(points, pointIndex, visiting),
+          );
           if (source && center && Number.isFinite(factor)) {
             resolved = scaleAround(source, center, factor);
           }
@@ -3200,6 +3232,23 @@
         line.binding.xMin,
         line.binding.xMax,
       );
+      const driverPoint = points[line.binding.driverIndex];
+      const resolvedDriver = driverPoint?.constraint
+        ? window.GspViewerModules.scene.resolveConstrainedPoint(
+          {
+            sourceScene: scene,
+            currentScene: () => sampleScene,
+            resolveScenePoint: (pointIndex) => points[pointIndex],
+          },
+          driverPoint.constraint,
+          (pointIndex) => points[pointIndex],
+          driverPoint,
+        )
+        : null;
+      if (resolvedDriver) {
+        driverPoint.x = resolvedDriver.x;
+        driverPoint.y = resolvedDriver.y;
+      }
       baseParameters = deriveLabelParameters(sampleScene, new Map(parameters));
       driverValue = parameterValueFromPoint(sampleScene, line.binding.driverIndex);
       resolvedCache = new Map();
@@ -3247,7 +3296,13 @@
     if (transform.kind === "scale") {
       const center = scene.points[transform.centerIndex];
       if (!center) return null;
-      return { kind: "scale", center, factor: transform.factor };
+      const factor = resolveScaleTransformFactor(
+        transform,
+        parameters,
+        (pointIndex) => scene.points[pointIndex] || null,
+      );
+      if (!Number.isFinite(factor)) return null;
+      return { kind: "scale", center, factor };
     }
     if (transform.kind === "reflect") {
       const [lineStart, lineEnd] = reflectionAxisPoints(scene, transform);
@@ -3719,6 +3774,12 @@
       env.currentDynamics().parameters.forEach((parameter) => {
         rootSet.add(parameterRootId(parameter.name));
       });
+    }
+    if (rootSet.size === 0) {
+      (env.sourceScene.points || []).forEach((_, index) => rootSet.add(sourcePointRootId(index)));
+      (env.sourceScene.lines || []).forEach((_, index) => rootSet.add(sourceLineRootId(index)));
+      (env.sourceScene.circles || []).forEach((_, index) => rootSet.add(sourceCircleRootId(index)));
+      (env.sourceScene.polygons || []).forEach((_, index) => rootSet.add(sourcePolygonRootId(index)));
     }
     const affected = new Set(rootSet);
     const queue = Array.from(rootSet);

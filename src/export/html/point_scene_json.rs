@@ -195,6 +195,21 @@ enum PointTransformJson {
         parameter_name: Option<String>,
         #[serde(rename = "factorExpr", skip_serializing_if = "Option::is_none")]
         factor_expr: Option<FunctionExprJson>,
+        #[serde(
+            rename = "factorParameterPointIndex",
+            skip_serializing_if = "Option::is_none"
+        )]
+        factor_parameter_point_index: Option<usize>,
+        #[serde(
+            rename = "factorParameterStartIndex",
+            skip_serializing_if = "Option::is_none"
+        )]
+        factor_parameter_start_index: Option<usize>,
+        #[serde(
+            rename = "factorParameterEndIndex",
+            skip_serializing_if = "Option::is_none"
+        )]
+        factor_parameter_end_index: Option<usize>,
     },
 }
 
@@ -312,6 +327,9 @@ impl PointBindingJson {
                 factor,
                 parameter_name,
                 factor_expr,
+                factor_parameter_point_index,
+                factor_parameter_start_index,
+                factor_parameter_end_index,
             } => Self::Derived {
                 source_index: *source_index,
                 transform: PointTransformJson::Scale {
@@ -319,6 +337,9 @@ impl PointBindingJson {
                     factor: *factor,
                     parameter_name: parameter_name.clone(),
                     factor_expr: factor_expr.as_ref().map(FunctionExprJson::from_expr),
+                    factor_parameter_point_index: *factor_parameter_point_index,
+                    factor_parameter_start_index: *factor_parameter_start_index,
+                    factor_parameter_end_index: *factor_parameter_end_index,
                 },
             },
             ScenePointBinding::Midpoint {

@@ -15,6 +15,21 @@ use crate::runtime::scene::{
 use super::find_indexed_path;
 use super::points::{custom_transform_expression_parameter_map, custom_transform_trace_parameter};
 
+fn segment_projection_parameter(
+    point: &PointRecord,
+    start: &PointRecord,
+    end: &PointRecord,
+) -> Option<f64> {
+    let dx = end.x - start.x;
+    let dy = end.y - start.y;
+    let len_sq = dx * dx + dy * dy;
+    if len_sq <= 1e-9 {
+        return None;
+    }
+    let t = ((point.x - start.x) * dx + (point.y - start.y) * dy) / len_sq;
+    Some(t.clamp(0.0, 1.0))
+}
+
 pub(super) fn collect_point_traces(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -46,6 +61,9 @@ pub(super) fn collect_point_traces(
                 crate::runtime::functions::try_decode_function_plot_descriptor(payload).ok()?;
             let driver = path.refs.iter().find_map(|ordinal| {
                 let group_index = ordinal.checked_sub(1)?;
+                if group_index == target_group_index {
+                    return None;
+                }
                 let point_index = (*group_to_point_index.get(group_index)?)?;
                 let point = visible_points.get(point_index)?;
                 point_accepts_trace_parameter(point).then_some((point_index, group_index))
@@ -113,6 +131,14 @@ pub(super) fn collect_point_traces(
                     trace_max,
                     use_raw_parameter,
                 );
+                let trace_parameters = trace_parameter_values(
+                    file,
+                    groups,
+                    &path.refs,
+                    &mut sampled_points,
+                    group_to_point_index,
+                );
+                refresh_trace_expression_scale_factors(&mut sampled_points, &trace_parameters);
                 points.push(resolve_trace_point(
                     &mut sampled_points,
                     target_point_index,
@@ -150,6 +176,64 @@ pub(super) fn collect_point_traces(
             })
         })
         .collect()
+}
+
+fn trace_parameter_values(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    trace_refs: &[usize],
+    points: &mut [ScenePoint],
+    group_to_point_index: &[Option<usize>],
+) -> BTreeMap<String, f64> {
+    trace_refs
+        .iter()
+        .filter_map(|ordinal| groups.get(ordinal.checked_sub(1)?))
+        .filter(|group| group.header.kind() == GroupKind::RatioValue)
+        .filter_map(|group| {
+            let name = decode_label_name(file, group)?;
+            let path = find_indexed_path(file, group)?;
+            let origin = trace_point_for_group(points, group_to_point_index, *path.refs.first()?)?;
+            let denominator =
+                trace_point_for_group(points, group_to_point_index, *path.refs.get(1)?)?;
+            let numerator =
+                trace_point_for_group(points, group_to_point_index, *path.refs.get(2)?)?;
+            let denominator_length = (denominator.x - origin.x).hypot(denominator.y - origin.y);
+            if denominator_length <= 1e-9 {
+                return None;
+            }
+            let numerator_length = (numerator.x - origin.x).hypot(numerator.y - origin.y);
+            Some((name, numerator_length / denominator_length))
+        })
+        .collect()
+}
+
+fn trace_point_for_group(
+    points: &mut [ScenePoint],
+    group_to_point_index: &[Option<usize>],
+    ordinal: usize,
+) -> Option<PointRecord> {
+    let group_index = ordinal.checked_sub(1)?;
+    let point_index = (*group_to_point_index.get(group_index)?)?;
+    resolve_trace_point(points, point_index, &mut BTreeSet::new())
+}
+
+fn refresh_trace_expression_scale_factors(
+    points: &mut [ScenePoint],
+    parameters: &BTreeMap<String, f64>,
+) {
+    for point in points {
+        let Some(ScenePointBinding::Scale {
+            factor,
+            factor_expr: Some(expr),
+            ..
+        }) = &mut point.binding
+        else {
+            continue;
+        };
+        if let Some(value) = evaluate_expr_with_parameters(expr, 0.0, parameters) {
+            *factor = value;
+        }
+    }
 }
 
 fn sample_coordinate_point_trace(
@@ -595,11 +679,27 @@ fn resolve_trace_point(
             source_index,
             center_index,
             factor,
+            factor_parameter_point_index,
+            factor_parameter_start_index,
+            factor_parameter_end_index,
             ..
         }) => {
             let source = resolve_trace_point(points, *source_index, visiting)?;
             let center = resolve_trace_point(points, *center_index, visiting)?;
-            Some(scale_around(&source, &center, *factor))
+            let factor = match (
+                factor_parameter_point_index,
+                factor_parameter_start_index,
+                factor_parameter_end_index,
+            ) {
+                (Some(point_index), Some(start_index), Some(end_index)) => {
+                    let point = resolve_trace_point(points, *point_index, visiting)?;
+                    let start = resolve_trace_point(points, *start_index, visiting)?;
+                    let end = resolve_trace_point(points, *end_index, visiting)?;
+                    segment_projection_parameter(&point, &start, &end)?
+                }
+                _ => *factor,
+            };
+            Some(scale_around(&source, &center, factor))
         }
         Some(ScenePointBinding::ScaleByRatio {
             source_index,

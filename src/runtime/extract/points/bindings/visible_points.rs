@@ -465,6 +465,9 @@ fn build_scene_point_for_group(
                                 factor: binding.factor,
                                 parameter_name: binding.parameter_name,
                                 factor_expr: Some(binding.factor_expr),
+                                factor_parameter_point_index: None,
+                                factor_parameter_start_index: None,
+                                factor_parameter_end_index: None,
                             }),
                         ));
                     }
@@ -532,6 +535,9 @@ fn build_scene_point_for_group(
                             factor,
                             parameter_name: None,
                             factor_expr: None,
+                            factor_parameter_point_index: None,
+                            factor_parameter_start_index: None,
+                            factor_parameter_end_index: None,
                         },
                     }),
                 ))
@@ -738,7 +744,7 @@ fn build_scene_point_for_group_checked(
                         if len_sq <= 1e-9 {
                             return None;
                         }
-                        let angle_radians = (((angle_point.x - angle_start.x) * dx
+                        let scale_factor = (((angle_point.x - angle_start.x) * dx
                             + (angle_point.y - angle_start.y) * dy)
                             / len_sq)
                             .clamp(0.0, 1.0);
@@ -748,19 +754,15 @@ fn build_scene_point_for_group_checked(
                             visible,
                             false,
                             ScenePointConstraint::Free,
-                            Some(ScenePointBinding::Rotate {
+                            Some(ScenePointBinding::Scale {
                                 source_index,
                                 center_index,
-                                angle_degrees: angle_radians.to_degrees(),
+                                factor: scale_factor,
                                 parameter_name: None,
-                                angle_expr: None,
-                                angle_start_index: None,
-                                angle_vertex_index: None,
-                                angle_end_index: None,
-                                angle_parameter_point_index: Some(angle_parameter_point_index),
-                                angle_parameter_start_index: Some(angle_parameter_start_index),
-                                angle_parameter_end_index: Some(angle_parameter_end_index),
-                                angle_parameter_scale: Some(180.0 / std::f64::consts::PI),
+                                factor_expr: None,
+                                factor_parameter_point_index: Some(angle_parameter_point_index),
+                                factor_parameter_start_index: Some(angle_parameter_start_index),
+                                factor_parameter_end_index: Some(angle_parameter_end_index),
                             }),
                         ));
                     }
@@ -783,6 +785,9 @@ fn build_scene_point_for_group_checked(
                                 factor: binding.factor,
                                 parameter_name: binding.parameter_name,
                                 factor_expr: Some(binding.factor_expr),
+                                factor_parameter_point_index: None,
+                                factor_parameter_start_index: None,
+                                factor_parameter_end_index: None,
                             }),
                         ));
                     }
@@ -855,6 +860,9 @@ fn build_scene_point_for_group_checked(
                             factor,
                             parameter_name: None,
                             factor_expr: None,
+                            factor_parameter_point_index: None,
+                            factor_parameter_start_index: None,
+                            factor_parameter_end_index: None,
                         },
                     }),
                 ))
@@ -900,6 +908,9 @@ fn build_scene_point_for_group_checked(
                                 factor,
                                 parameter_name: None,
                                 factor_expr: None,
+                                factor_parameter_point_index: None,
+                                factor_parameter_start_index: None,
+                                factor_parameter_end_index: None,
                             },
                         }),
                     ));
@@ -938,7 +949,7 @@ fn build_scene_point_for_group_checked(
                     if len_sq <= 1e-9 {
                         return None;
                     }
-                    let angle_radians = (((angle_point.x - angle_start.x) * dx
+                    let scale_factor = (((angle_point.x - angle_start.x) * dx
                         + (angle_point.y - angle_start.y) * dy)
                         / len_sq)
                         .clamp(0.0, 1.0);
@@ -948,19 +959,15 @@ fn build_scene_point_for_group_checked(
                         visible,
                         false,
                         ScenePointConstraint::Free,
-                        Some(ScenePointBinding::Rotate {
+                        Some(ScenePointBinding::Scale {
                             source_index,
                             center_index,
-                            angle_degrees: angle_radians.to_degrees(),
+                            factor: scale_factor,
                             parameter_name: None,
-                            angle_expr: None,
-                            angle_start_index: None,
-                            angle_vertex_index: None,
-                            angle_end_index: None,
-                            angle_parameter_point_index: Some(angle_parameter_point_index),
-                            angle_parameter_start_index: Some(angle_parameter_start_index),
-                            angle_parameter_end_index: Some(angle_parameter_end_index),
-                            angle_parameter_scale: Some(180.0 / std::f64::consts::PI),
+                            factor_expr: None,
+                            factor_parameter_point_index: Some(angle_parameter_point_index),
+                            factor_parameter_start_index: Some(angle_parameter_start_index),
+                            factor_parameter_end_index: Some(angle_parameter_end_index),
                         }),
                     ));
                 }

@@ -64,6 +64,18 @@ test('rolling triangle fixture keeps reference geometry coordinates without grap
       hasTriangle: afterScene.polygons.some((polygon) => polygon.binding?.kind === 'point-polygon'),
       hasTranslatedPolygonPoint: afterScene.points.some((point) => point.constraint?.kind === 'translated-polygon-boundary'),
       hasPointTrace: afterScene.lines.some((line) => line.binding?.kind === 'point-trace' && line.points.length > 20),
+      pointTrace: (() => {
+        const line = afterScene.lines.find((line) => line.binding?.kind === 'point-trace');
+        const ys = line?.points.map((point) => point.y) ?? [];
+        return line ? {
+          pointIndex: line.binding.pointIndex,
+          driverIndex: line.binding.driverIndex,
+          targetConstraint: afterScene.points[line.binding.pointIndex]?.constraint?.kind,
+          driverConstraint: afterScene.points[line.binding.driverIndex]?.constraint?.kind,
+          minY: Math.min(...ys),
+          maxY: Math.max(...ys),
+        } : null;
+      })(),
       beforeRatioText,
       afterRatioText: afterScene.labels.find((label) => label.binding?.kind === 'point-distance-ratio-value')?.text,
       beforeExpressionText,
@@ -84,8 +96,87 @@ test('rolling triangle fixture keeps reference geometry coordinates without grap
   expect(result.hasTriangle).toBe(true);
   expect(result.hasTranslatedPolygonPoint).toBe(true);
   expect(result.hasPointTrace).toBe(true);
+  expect(result.pointTrace?.pointIndex).not.toBe(result.pointTrace?.driverIndex);
+  expect(result.pointTrace?.targetConstraint).toBe('translated-polygon-boundary');
+  expect(result.pointTrace?.driverConstraint).toBe('ray');
+  expect((result.pointTrace?.maxY ?? 0) - (result.pointTrace?.minY ?? 0)).toBeGreaterThan(50);
   expect(result.beforeDeProjectionText).toBe("m在DE'上的值 = 0.70");
   expect(result.afterRatioText).not.toBe(result.beforeRatioText);
   expect(result.afterExpressionText).not.toBe(result.beforeExpressionText);
   expect(result.afterDeProjectionText).not.toBe(result.beforeDeProjectionText);
+});
+
+test('rolling triangle fixture scales marked-angle helpers and starts at the left triangle', async ({ page }) => {
+  const file = compileFixtureToTempHtml('tests/Samples/个人专栏/方小庆作品/三角形滚动(inRm).gsp');
+  await page.goto(`file://${file}`);
+
+  const result = await page.evaluate(() => {
+    const scene = window.gspDebug.runtime.scene;
+    const env = window.gspDebug.viewerEnv;
+    const rootId = window.GspViewerModules.dynamics?.sourcePointRootId;
+    if (typeof rootId === 'function') {
+      env.markDependencyRootsDirty(rootId(2));
+    }
+    const origin = scene.points[0];
+    const denominator = scene.points[7];
+    const unitPoint = scene.points[1];
+    const targetX = origin.x;
+    env.updateScene((draft) => {
+      draft.points[2].constraint.t = (targetX - origin.x) / (unitPoint.x - origin.x);
+      draft.points[2].x = targetX;
+      draft.points[2].y = origin.y;
+    }, 'graph');
+    const afterScene = window.gspDebug.runtime.scene;
+    const movingTriangle = afterScene.polygons.find((polygon) => polygon.binding?.kind === 'derived');
+    const scaleControlledHelpers = afterScene.points.filter((point) => {
+      const transform = point.binding?.transform;
+      return transform?.kind === 'scale'
+        && typeof transform.factorParameterPointIndex === 'number'
+        && typeof transform.factorParameterStartIndex === 'number'
+        && typeof transform.factorParameterEndIndex === 'number';
+    });
+
+    return {
+      scaleControlledHelperCount: scaleControlledHelpers.length,
+      movingTrianglePoints: movingTriangle?.points ?? [],
+    };
+  });
+
+  expect(result.scaleControlledHelperCount).toBeGreaterThanOrEqual(3);
+  expect(result.movingTrianglePoints[0].x).toBeCloseTo(39, 1);
+  expect(result.movingTrianglePoints[0].y).toBeCloseTo(291, 1);
+  expect(result.movingTrianglePoints[1].x).toBeCloseTo(180.461942, 1);
+  expect(result.movingTrianglePoints[1].y).toBeCloseTo(364, 1);
+  expect(result.movingTrianglePoints[2].x).toBeCloseTo(55, 1);
+  expect(result.movingTrianglePoints[2].y).toBeCloseTo(364, 1);
+});
+
+test('rolling triangle fixture is already synced before dragging M', async ({ page }) => {
+  const file = compileFixtureToTempHtml('tests/Samples/个人专栏/方小庆作品/三角形滚动(inRm).gsp');
+  await page.goto(`file://${file}`);
+
+  const result = await page.evaluate(() => {
+    const movingTrianglePoints = () => window.gspDebug.runtime.scene.polygons
+      .find((polygon) => polygon.binding?.kind === 'derived')
+      ?.points.map((point) => ({ x: point.x, y: point.y })) ?? [];
+    const before = movingTrianglePoints();
+    const scene = window.gspDebug.runtime.scene;
+    const env = window.gspDebug.viewerEnv;
+    const rootId = window.GspViewerModules.dynamics?.sourcePointRootId;
+    if (typeof rootId === 'function') {
+      env.markDependencyRootsDirty(rootId(2));
+    }
+    env.updateScene((draft) => {
+      draft.points[2].x = scene.points[2].x;
+      draft.points[2].y = scene.points[2].y;
+    }, 'graph');
+    return { before, after: movingTrianglePoints() };
+  });
+
+  expect(result.before.length).toBe(3);
+  expect(result.after.length).toBe(3);
+  result.before.forEach((point, index) => {
+    expect(point.x).toBeCloseTo(result.after[index].x, 6);
+    expect(point.y).toBeCloseTo(result.after[index].y, 6);
+  });
 });
