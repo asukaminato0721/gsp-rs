@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use super::{
     GspFile, ObjectGroup, PointRecord, RawPointIterationFamily, TransformBindingKind,
     decode_translated_point_constraint, iteration_depth, regular_polygon_iteration_step,
@@ -188,21 +190,22 @@ pub(crate) fn collect_point_iteration_points(
                 if let Some((depth_parameter_name, trace_parameter_name, step_expr)) =
                     parameterized_point_iteration(groups, iter_group, file)
                 {
-                    if !is_parameterized_point_trace_target(
+                    for point_index in parameterized_point_trace_indices(
                         file,
                         groups,
                         seed_group_index,
                         iter_group_index,
+                        seed_index,
+                        group_to_point_index,
                     ) {
-                        continue;
+                        families.push(RawPointIterationFamily::Parameterized {
+                            point_index,
+                            depth_parameter_name: depth_parameter_name.clone(),
+                            trace_parameter_name: trace_parameter_name.clone(),
+                            step_expr: step_expr.clone(),
+                            depth,
+                        });
                     }
-                    families.push(RawPointIterationFamily::Parameterized {
-                        point_index: seed_index,
-                        depth_parameter_name,
-                        trace_parameter_name,
-                        step_expr,
-                        depth,
-                    });
                     continue;
                 }
                 if let Some((parameter_name, dx, dy)) =
@@ -329,30 +332,82 @@ fn parameterized_point_iteration(
     Some((depth_parameter_name, trace_parameter_name, step_expr))
 }
 
-fn is_parameterized_point_trace_target(
+fn parameterized_point_trace_indices(
     file: &GspFile,
     groups: &[ObjectGroup],
     seed_group_index: usize,
     iter_group_index: usize,
-) -> bool {
-    groups.iter().any(|group| {
+    seed_index: usize,
+    group_to_point_index: &[Option<usize>],
+) -> Vec<usize> {
+    let mut point_indices = BTreeSet::new();
+    let has_seed_p_alias = groups.iter().any(|group| {
         group.header.kind() == crate::format::GroupKind::IterationPointAlias
             && decode_label_name(file, group).as_deref() == Some("P")
-            && find_indexed_path(file, group).is_some_and(|alias_path| {
-                let Some(binding_ordinal) = alias_path.refs.first().copied() else {
-                    return false;
-                };
-                let Some(binding_group) = groups.get(binding_ordinal.saturating_sub(1)) else {
-                    return false;
-                };
-                if binding_group.header.kind() != crate::format::GroupKind::IterationBinding {
-                    return false;
-                }
-                find_indexed_path(file, binding_group).is_some_and(|binding_path| {
-                    binding_path.refs.first().copied() == Some(seed_group_index + 1)
-                        && binding_path.refs.get(1).copied() == Some(iter_group_index + 1)
+            && iteration_alias_matches(file, groups, group, seed_group_index, iter_group_index)
+    });
+    if !has_seed_p_alias {
+        return Vec::new();
+    }
+
+    {
+        point_indices.insert(seed_index);
+    }
+
+    for (group_index, group) in groups.iter().enumerate() {
+        if group.header.kind() != crate::format::GroupKind::Translation {
+            continue;
+        }
+        let Some(point_index) = mapped_point_index(group_to_point_index, group_index) else {
+            continue;
+        };
+        let Some(path) = find_indexed_path(file, group) else {
+            continue;
+        };
+        let references_target_alias = path.refs.iter().any(|ordinal| {
+            groups
+                .get(ordinal.saturating_sub(1))
+                .is_some_and(|alias_group| {
+                    alias_group.header.kind() == crate::format::GroupKind::IterationPointAlias
+                        && iteration_alias_matches(
+                            file,
+                            groups,
+                            alias_group,
+                            seed_group_index,
+                            iter_group_index,
+                        )
                 })
-            })
+        });
+        if references_target_alias {
+            point_indices.insert(point_index);
+        }
+    }
+
+    point_indices.into_iter().collect()
+}
+
+fn iteration_alias_matches(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    alias_group: &ObjectGroup,
+    seed_group_index: usize,
+    iter_group_index: usize,
+) -> bool {
+    let Some(alias_path) = find_indexed_path(file, alias_group) else {
+        return false;
+    };
+    let Some(binding_ordinal) = alias_path.refs.first().copied() else {
+        return false;
+    };
+    let Some(binding_group) = groups.get(binding_ordinal.saturating_sub(1)) else {
+        return false;
+    };
+    if binding_group.header.kind() != crate::format::GroupKind::IterationBinding {
+        return false;
+    }
+    find_indexed_path(file, binding_group).is_some_and(|binding_path| {
+        binding_path.refs.first().copied() == Some(seed_group_index + 1)
+            && binding_path.refs.get(1).copied() == Some(iter_group_index + 1)
     })
 }
 

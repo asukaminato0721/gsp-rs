@@ -1978,10 +1978,11 @@
         updatePoint(draftEnv, draft, point, parameters);
       }
     });
+    for (let pass = 0; pass < 3; pass += 1) {
+      refreshDerivedPoints();
+      resolveConstrainedPoints();
+    }
     refreshDerivedPoints();
-    resolveConstrainedPoints();
-    refreshDerivedPoints();
-    resolveConstrainedPoints();
     return draft.points;
   }
 

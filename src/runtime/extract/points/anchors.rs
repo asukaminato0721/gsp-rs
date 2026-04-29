@@ -436,8 +436,7 @@ pub(crate) fn decode_expression_scale_binding(
     if groups
         .get(source_group_index)
         .and_then(|source_group| decode_label_name(file, source_group))
-        .as_deref()
-        == Some("z")
+        .is_some_and(|label| matches!(label.as_str(), "x" | "y" | "z"))
     {
         factor = -factor;
         factor_expr = scale_function_expr(factor_expr, -1.0);

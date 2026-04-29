@@ -1365,8 +1365,8 @@ fn exports_lizhangbo_solid_geometry_parameter_buttons() {
     );
     assert_eq!(
         scene.point_iterations.len(),
-        1,
-        "only P should be exported as the visible point trace; M and N remain current construction points"
+        2,
+        "expected P and the payload-derived N translation to be exported as point traces"
     );
     assert!(
         scene.point_iterations.iter().any(|family| matches!(
