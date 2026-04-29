@@ -3,6 +3,7 @@ use super::{
     decode_translated_point_constraint, iteration_depth, regular_polygon_iteration_step,
     rotate_around, try_decode_parameter_rotation_binding, try_decode_transform_binding,
 };
+use crate::runtime::extract::decode::decode_label_name;
 use crate::runtime::extract::find_indexed_path;
 use crate::runtime::extract::points::{
     editable_non_graph_parameter_name_for_group, is_editable_non_graph_parameter_name,
@@ -187,6 +188,14 @@ pub(crate) fn collect_point_iteration_points(
                 if let Some((depth_parameter_name, trace_parameter_name, step_expr)) =
                     parameterized_point_iteration(groups, iter_group, file)
                 {
+                    if !is_parameterized_point_trace_target(
+                        file,
+                        groups,
+                        seed_group_index,
+                        iter_group_index,
+                    ) {
+                        continue;
+                    }
                     families.push(RawPointIterationFamily::Parameterized {
                         point_index: seed_index,
                         depth_parameter_name,
@@ -318,6 +327,33 @@ fn parameterized_point_iteration(
     let depth_parameter_name =
         editable_non_graph_parameter_name_for_group(file, groups, depth_parameter_group);
     Some((depth_parameter_name, trace_parameter_name, step_expr))
+}
+
+fn is_parameterized_point_trace_target(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    seed_group_index: usize,
+    iter_group_index: usize,
+) -> bool {
+    groups.iter().any(|group| {
+        group.header.kind() == crate::format::GroupKind::IterationPointAlias
+            && decode_label_name(file, group).as_deref() == Some("P")
+            && find_indexed_path(file, group).is_some_and(|alias_path| {
+                let Some(binding_ordinal) = alias_path.refs.first().copied() else {
+                    return false;
+                };
+                let Some(binding_group) = groups.get(binding_ordinal.saturating_sub(1)) else {
+                    return false;
+                };
+                if binding_group.header.kind() != crate::format::GroupKind::IterationBinding {
+                    return false;
+                }
+                find_indexed_path(file, binding_group).is_some_and(|binding_path| {
+                    binding_path.refs.first().copied() == Some(seed_group_index + 1)
+                        && binding_path.refs.get(1).copied() == Some(iter_group_index + 1)
+                })
+            })
+    })
 }
 
 fn parameter_iteration_step(

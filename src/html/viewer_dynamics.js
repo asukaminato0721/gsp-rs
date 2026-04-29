@@ -1933,6 +1933,38 @@
       currentScene: () => draft,
       resolveScenePoint: (/** @type {number} */ index) => draft.points[index],
     };
+
+    const refreshDerivedPoints = () => {
+      draft.points.forEach((/** @type {RuntimeScenePointJson} */ point) => {
+        const refreshBinding = point.binding ? DERIVED_POINT_BINDING_REFRESHERS[point.binding.kind] : null;
+        if (refreshBinding) {
+          refreshBinding(draftEnv, draft, point, parameters);
+        }
+      });
+    };
+
+    const resolveConstrainedPoints = () => {
+      draft.points.forEach((/** @type {RuntimeScenePointJson} */ point, /** @type {number} */ pointIndex) => {
+        if (!point.constraint) {
+          return;
+        }
+        const resolved = window.GspViewerModules.scene.resolveConstrainedPoint(
+          {
+            sourceScene: env.sourceScene,
+            currentScene: () => draft,
+            resolveScenePoint: (/** @type {number} */ index) => draft.points[index],
+          },
+          point.constraint,
+          (/** @type {number} */ index) => draft.points[index],
+          point,
+        );
+        if (resolved) {
+          draft.points[pointIndex].x = resolved.x;
+          draft.points[pointIndex].y = resolved.y;
+        }
+      });
+    };
+
     draft.points.forEach((/** @type {RuntimeScenePointJson} */ point) => {
       if (point.binding?.kind === "parameter" && point.constraint) {
         const value = parameters.get(point.binding.name);
@@ -1946,31 +1978,10 @@
         updatePoint(draftEnv, draft, point, parameters);
       }
     });
-    draft.points.forEach((/** @type {RuntimeScenePointJson} */ point) => {
-      const refreshBinding = point.binding ? DERIVED_POINT_BINDING_REFRESHERS[point.binding.kind] : null;
-      if (refreshBinding) {
-        refreshBinding(draftEnv, draft, point, parameters);
-      }
-    });
-    draft.points.forEach((/** @type {RuntimeScenePointJson} */ point, /** @type {number} */ pointIndex) => {
-      if (!point.constraint) {
-        return;
-      }
-      const resolved = window.GspViewerModules.scene.resolveConstrainedPoint(
-        {
-          sourceScene: env.sourceScene,
-          currentScene: () => draft,
-          resolveScenePoint: (/** @type {number} */ index) => draft.points[index],
-        },
-        point.constraint,
-        (/** @type {number} */ index) => draft.points[index],
-        point,
-      );
-      if (resolved) {
-        draft.points[pointIndex].x = resolved.x;
-        draft.points[pointIndex].y = resolved.y;
-      }
-    });
+    refreshDerivedPoints();
+    resolveConstrainedPoints();
+    refreshDerivedPoints();
+    resolveConstrainedPoints();
     return draft.points;
   }
 

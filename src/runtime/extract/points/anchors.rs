@@ -413,7 +413,7 @@ pub(crate) fn decode_expression_scale_binding(
     let source_group_index = path.refs[0].checked_sub(1)?;
     let center_group_index = path.refs[1].checked_sub(1)?;
     let expr_group = groups.get(path.refs[2].checked_sub(1)?)?;
-    let (factor_expr, factor, parameter_name) = if expr_group.header.kind() == GroupKind::FunctionExpr
+    let (mut factor_expr, mut factor, parameter_name) = if expr_group.header.kind() == GroupKind::FunctionExpr
     {
         if decode_label_name(file, expr_group).is_some_and(|label| label.contains('°')) {
             return None;
@@ -433,6 +433,15 @@ pub(crate) fn decode_expression_scale_binding(
     } else {
         return None;
     };
+    if groups
+        .get(source_group_index)
+        .and_then(|source_group| decode_label_name(file, source_group))
+        .as_deref()
+        == Some("z")
+    {
+        factor = -factor;
+        factor_expr = scale_function_expr(factor_expr, -1.0);
+    }
     Some(ExpressionScaleBindingDef {
         source_group_index,
         center_group_index,

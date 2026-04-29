@@ -1363,6 +1363,11 @@ fn exports_lizhangbo_solid_geometry_parameter_buttons() {
         0,
         "the fixture uses point iteration, not carried segment iteration"
     );
+    assert_eq!(
+        scene.point_iterations.len(),
+        1,
+        "only P should be exported as the visible point trace; M and N remain current construction points"
+    );
     assert!(
         scene.point_iterations.iter().any(|family| matches!(
             family,
