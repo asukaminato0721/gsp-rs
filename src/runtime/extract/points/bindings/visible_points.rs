@@ -1425,6 +1425,7 @@ fn parameter_point_binding(
                 source_index,
                 parameter_name: parameter_point.parameter_name.clone(),
                 expr: expr.clone(),
+                absolute_value: parameter_point.source_expr_absolute_parameter,
             }));
         }
         return Some(Some(ScenePointBinding::ConstraintParameterExpr {

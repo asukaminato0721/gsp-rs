@@ -56,6 +56,8 @@ enum PointBindingJson {
         #[serde(rename = "parameterName")]
         parameter_name: String,
         expr: FunctionExprJson,
+        #[serde(rename = "absoluteValue")]
+        absolute_value: bool,
     },
     #[serde(rename = "derived")]
     Derived {
@@ -203,10 +205,12 @@ impl PointBindingJson {
                 source_index,
                 parameter_name,
                 expr,
+                absolute_value,
             } => Self::ConstraintParameterFromPointExpr {
                 source_index: *source_index,
                 parameter_name: parameter_name.clone(),
                 expr: FunctionExprJson::from_expr(expr),
+                absolute_value: *absolute_value,
             },
             ScenePointBinding::Translate {
                 source_index,

@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord};
 use crate::runtime::extract::decode::decode_label_name;
@@ -271,6 +271,191 @@ fn apply_trace_parameter_with_mode(
     }
 }
 
+fn trace_parameter_value_from_point(
+    points: &mut [ScenePoint],
+    index: usize,
+    visiting: &mut BTreeSet<usize>,
+) -> Option<f64> {
+    let constraint = points.get(index)?.constraint.clone();
+    match constraint {
+        ScenePointConstraint::OnSegment { t, .. }
+        | ScenePointConstraint::OnLine { t, .. }
+        | ScenePointConstraint::OnLineConstraint { t, .. }
+        | ScenePointConstraint::OnRay { t, .. }
+        | ScenePointConstraint::OnRayConstraint { t, .. }
+        | ScenePointConstraint::OnPolyline { t, .. }
+        | ScenePointConstraint::OnCircleArc { t, .. }
+        | ScenePointConstraint::OnArc { t, .. } => Some(t),
+        ScenePointConstraint::OnPolygonBoundary {
+            vertex_indices,
+            edge_index,
+            t,
+        } => trace_polygon_boundary_parameter(points, &vertex_indices, edge_index, t, visiting),
+        ScenePointConstraint::OnCircle { unit_x, unit_y, .. }
+        | ScenePointConstraint::OnCircularConstraint { unit_x, unit_y, .. } => {
+            Some((-unit_y).atan2(unit_x).rem_euclid(std::f64::consts::TAU) / std::f64::consts::TAU)
+        }
+        _ => None,
+    }
+}
+
+fn trace_polygon_boundary_parameter(
+    points: &mut [ScenePoint],
+    vertex_indices: &[usize],
+    edge_index: usize,
+    t: f64,
+    visiting: &mut BTreeSet<usize>,
+) -> Option<f64> {
+    if vertex_indices.len() < 2 {
+        return None;
+    }
+    let mut perimeter = 0.0;
+    let mut traveled = 0.0;
+    for index in 0..vertex_indices.len() {
+        let start = resolve_trace_point(points, vertex_indices[index], visiting)?;
+        let end = resolve_trace_point(
+            points,
+            vertex_indices[(index + 1) % vertex_indices.len()],
+            visiting,
+        )?;
+        let length = (end.x - start.x).hypot(end.y - start.y);
+        perimeter += length;
+        if index < edge_index % vertex_indices.len() {
+            traveled += length;
+        } else if index == edge_index % vertex_indices.len() {
+            traveled += length * t.clamp(0.0, 1.0);
+        }
+    }
+    (perimeter > 1e-9).then_some(traveled / perimeter)
+}
+
+fn resolve_trace_point_at_constraint_parameter(
+    points: &mut [ScenePoint],
+    point: &ScenePoint,
+    value: f64,
+    visiting: &mut BTreeSet<usize>,
+) -> Option<PointRecord> {
+    match &point.constraint {
+        ScenePointConstraint::OnSegment {
+            start_index,
+            end_index,
+            ..
+        }
+        | ScenePointConstraint::OnLine {
+            start_index,
+            end_index,
+            ..
+        }
+        | ScenePointConstraint::OnRay {
+            start_index,
+            end_index,
+            ..
+        } => {
+            let t = match &point.constraint {
+                ScenePointConstraint::OnSegment { .. } => value.rem_euclid(1.0),
+                ScenePointConstraint::OnRay { .. } => value.max(0.0),
+                _ => value,
+            };
+            let start = resolve_trace_point(points, *start_index, visiting)?;
+            let end = resolve_trace_point(points, *end_index, visiting)?;
+            Some(lerp_point(&start, &end, t))
+        }
+        ScenePointConstraint::OnPolygonBoundary { vertex_indices, .. } => {
+            let (edge_index, t) =
+                trace_polygon_parameter_to_edge(points, vertex_indices, value, visiting)?;
+            let start = resolve_trace_point(
+                points,
+                vertex_indices[edge_index % vertex_indices.len()],
+                visiting,
+            )?;
+            let end = resolve_trace_point(
+                points,
+                vertex_indices[(edge_index + 1) % vertex_indices.len()],
+                visiting,
+            )?;
+            Some(lerp_point(&start, &end, t))
+        }
+        ScenePointConstraint::OnCircle {
+            center_index,
+            radius_index,
+            ..
+        } => {
+            let angle = std::f64::consts::TAU * value.rem_euclid(1.0);
+            let center = resolve_trace_point(points, *center_index, visiting)?;
+            let radius_point = resolve_trace_point(points, *radius_index, visiting)?;
+            let radius = (radius_point.x - center.x).hypot(radius_point.y - center.y);
+            Some(PointRecord {
+                x: center.x + radius * angle.cos(),
+                y: center.y - radius * angle.sin(),
+            })
+        }
+        ScenePointConstraint::OnCircleArc {
+            center_index,
+            start_index,
+            end_index,
+            ..
+        } => {
+            let center = resolve_trace_point(points, *center_index, visiting)?;
+            let start = resolve_trace_point(points, *start_index, visiting)?;
+            let end = resolve_trace_point(points, *end_index, visiting)?;
+            point_on_circle_arc(&center, &start, &end, value.rem_euclid(1.0))
+        }
+        ScenePointConstraint::OnArc {
+            start_index,
+            mid_index,
+            end_index,
+            ..
+        } => {
+            let start = resolve_trace_point(points, *start_index, visiting)?;
+            let mid = resolve_trace_point(points, *mid_index, visiting)?;
+            let end = resolve_trace_point(points, *end_index, visiting)?;
+            point_on_three_point_arc(&start, &mid, &end, value.rem_euclid(1.0))
+        }
+        _ => None,
+    }
+}
+
+fn trace_polygon_parameter_to_edge(
+    points: &mut [ScenePoint],
+    vertex_indices: &[usize],
+    value: f64,
+    visiting: &mut BTreeSet<usize>,
+) -> Option<(usize, f64)> {
+    if vertex_indices.len() < 2 {
+        return None;
+    }
+    let mut lengths = Vec::with_capacity(vertex_indices.len());
+    let mut perimeter = 0.0;
+    for index in 0..vertex_indices.len() {
+        let start = resolve_trace_point(points, vertex_indices[index], visiting)?;
+        let end = resolve_trace_point(
+            points,
+            vertex_indices[(index + 1) % vertex_indices.len()],
+            visiting,
+        )?;
+        let length = (end.x - start.x).hypot(end.y - start.y);
+        lengths.push(length);
+        perimeter += length;
+    }
+    if perimeter <= 1e-9 {
+        return None;
+    }
+    let target = value.rem_euclid(1.0) * perimeter;
+    let mut traveled = 0.0;
+    for (edge_index, length) in lengths.iter().copied().enumerate() {
+        if traveled + length >= target || edge_index == lengths.len() - 1 {
+            let t = if length <= 1e-9 {
+                0.0
+            } else {
+                ((target - traveled) / length).clamp(0.0, 1.0)
+            };
+            return Some((edge_index, t));
+        }
+        traveled += length;
+    }
+    None
+}
+
 fn resolve_trace_point(
     points: &mut [ScenePoint],
     index: usize,
@@ -408,6 +593,29 @@ fn resolve_trace_point(
                 x: origin.x + distance * radians.cos(),
                 y: origin.y - distance * radians.sin(),
             })
+        }
+        Some(ScenePointBinding::ConstraintParameterExpr { expr }) => {
+            let value = evaluate_expr_with_parameters(expr, 0.0, &BTreeMap::new())?;
+            resolve_trace_point_at_constraint_parameter(points, &point, value, visiting)
+        }
+        Some(ScenePointBinding::ConstraintParameterFromPointExpr {
+            source_index,
+            parameter_name,
+            expr,
+            absolute_value,
+        }) => {
+            let source_value = trace_parameter_value_from_point(points, *source_index, visiting)?;
+            let mut parameters = BTreeMap::new();
+            if !parameter_name.is_empty() {
+                parameters.insert(parameter_name.clone(), source_value);
+            }
+            let expr_value = evaluate_expr_with_parameters(expr, 0.0, &parameters)?;
+            let value = if *absolute_value {
+                expr_value
+            } else {
+                source_value + expr_value
+            };
+            resolve_trace_point_at_constraint_parameter(points, &point, value, visiting)
         }
         _ => match &point.constraint {
             ScenePointConstraint::Free => Some(point.position.clone()),

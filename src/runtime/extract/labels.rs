@@ -62,6 +62,7 @@ fn supports_payload_label(kind: crate::format::GroupKind) -> bool {
             | crate::format::GroupKind::Rotation
             | crate::format::GroupKind::ExpressionRotation
             | crate::format::GroupKind::ParameterRotation
+            | crate::format::GroupKind::ParameterControlledPoint
             | crate::format::GroupKind::Scale
             | crate::format::GroupKind::PointConstraint
             | crate::format::GroupKind::PathPoint
@@ -163,7 +164,7 @@ fn push_pending_label_hotspots(
 }
 
 fn label_visible_for_group(file: &GspFile, group: &ObjectGroup) -> bool {
-    !group.header.is_hidden() && decode_label_visible(file, group).unwrap_or(true)
+    decode_label_visible(file, group).unwrap_or(!group.header.is_hidden())
 }
 
 fn resolve_function_expr_parameter(
@@ -337,23 +338,58 @@ fn payload_function_expr_label(
                 visiting,
             )
         } else {
-            decode_label_name(file, source_group).or_else(|| {
-                if source_group.header.kind() == crate::format::GroupKind::ParameterAnchor {
-                    let anchor_path = find_indexed_path(file, source_group)?;
-                    let point_group = groups.get(anchor_path.refs.first()?.checked_sub(1)?)?;
-                    decode_label_name(file, point_group)
-                } else {
-                    None
-                }
-            })?
+            parameter_anchor_display_label(file, groups, source_group)
+                .or_else(|| decode_label_name(file, source_group))
+                .or_else(|| {
+                    if source_group.header.kind() == crate::format::GroupKind::ParameterAnchor {
+                        let anchor_path = find_indexed_path(file, source_group)?;
+                        let point_group = groups.get(anchor_path.refs.first()?.checked_sub(1)?)?;
+                        decode_label_name(file, point_group)
+                    } else {
+                        None
+                    }
+                })?
         };
         let (parameter_name, _) =
             resolve_function_expr_parameter(file, groups, group, anchors, &mut BTreeSet::new())?;
-        Some(fallback_expr_label.replacen(&parameter_name, &source_label, 1))
+        Some(fallback_expr_label.replace(&parameter_name, &source_label))
     })()
     .unwrap_or_else(|| fallback_expr_label.to_string());
     visiting.remove(&group.ordinal);
     result
+}
+
+fn parameter_anchor_display_label(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<String> {
+    if group.header.kind() != crate::format::GroupKind::ParameterAnchor {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() < 2 {
+        return None;
+    }
+    let point_group = groups.get(path.refs[0].checked_sub(1)?)?;
+    let host_group = groups.get(path.refs[1].checked_sub(1)?)?;
+    if !point_group.header.kind().is_point_constraint() {
+        return None;
+    }
+    let point_name =
+        decode_label_name(file, group).or_else(|| decode_label_name(file, point_group))?;
+    match host_group.header.kind() {
+        crate::format::GroupKind::Polygon => {
+            let polygon_name = polygon_vertex_name(file, groups, host_group)?;
+            Some(format!("{point_name}在{polygon_name}上的值"))
+        }
+        kind if kind.is_line_like() => None,
+        kind if super::decode::is_circle_group_kind(kind) => {
+            let circle_name = circle_name(file, groups, host_group)?;
+            Some(format!("{point_name}在⊙{circle_name}上的值"))
+        }
+        _ => None,
+    }
 }
 
 fn decode_iteration_table_anchor(file: &GspFile, group: &ObjectGroup) -> Option<ScreenPoint> {
@@ -479,6 +515,7 @@ pub(super) fn collect_labels(
                             | crate::format::GroupKind::Rotation
                             | crate::format::GroupKind::ExpressionRotation
                             | crate::format::GroupKind::ParameterRotation
+                            | crate::format::GroupKind::ParameterControlledPoint
                             | crate::format::GroupKind::Scale
                             | crate::format::GroupKind::Segment
                             | crate::format::GroupKind::Ray
@@ -709,24 +746,85 @@ fn measurement_label_decimals(text: &str) -> Option<usize> {
 }
 
 fn build_expression_rich_markup(expr_label: &str, value_text: &str) -> Option<String> {
-    let render_part = |text: &str| text.replace('*', "\u{00b7}");
-    let slash_count = expr_label.matches(" / ").count();
-    if slash_count > 1 || (slash_count == 1 && expr_label.contains('(')) {
+    if expr_label.matches(" / ").count() > 1 {
         return None;
     }
     if let Some((numerator, denominator)) = split_top_level(expr_label, " / ") {
+        let numerator = strip_wrapping_parens(numerator);
         return Some(format!(
-            "<H</<Tx{}><Tx{}>><Tx = {}>>",
-            render_part(numerator),
-            render_part(denominator),
+            "<H</<H{}><H{}>><Tx = {}>>",
+            render_expression_rich_part(numerator),
+            render_expression_rich_part(denominator),
             value_text,
         ));
     }
     Some(format!(
-        "<H<Tx{} = {}>>",
-        render_part(expr_label),
+        "<H{}<Tx = {}>>",
+        render_expression_rich_part(expr_label),
         value_text,
     ))
+}
+
+fn render_expression_rich_part(text: &str) -> String {
+    let mut output = String::new();
+    let mut rest = text;
+    while let Some(index) = rest.find("√(") {
+        output.push_str(&rich_text_node(&rest[..index]));
+        let open_index = index + "√".len();
+        let Some(close_index) = matching_close_paren(rest, open_index) else {
+            output.push_str(&rich_text_node(&rest[index..]));
+            return output;
+        };
+        let inner = strip_wrapping_parens(&rest[open_index + 1..close_index]);
+        output.push_str("<R");
+        output.push_str(&render_expression_rich_part(inner));
+        output.push('>');
+        rest = &rest[close_index + 1..];
+    }
+    output.push_str(&rich_text_node(rest));
+    output
+}
+
+fn rich_text_node(text: &str) -> String {
+    if text.is_empty() {
+        return String::new();
+    }
+    format!(
+        "<Tx{}>",
+        text.replace('&', "＆")
+            .replace('<', "＜")
+            .replace('>', "＞")
+            .replace('*', "\u{00b7}")
+    )
+}
+
+fn matching_close_paren(text: &str, open_index: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    for (offset, ch) in text[open_index..].char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(open_index + offset);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn strip_wrapping_parens(text: &str) -> &str {
+    let trimmed = text.trim();
+    if !trimmed.starts_with('(') || !trimmed.ends_with(')') {
+        return trimmed;
+    }
+    if matching_close_paren(trimmed, 0) == Some(trimmed.len() - 1) {
+        &trimmed[1..trimmed.len() - 1]
+    } else {
+        trimmed
+    }
 }
 
 fn build_plain_text_rich_markup(text: &str) -> Option<String> {
@@ -774,7 +872,7 @@ pub(super) fn collect_coordinate_labels(
     let graph = detect_graph_context(file, groups, anchors);
     for group in groups {
         let kind = group.header.kind();
-        let helper_visible = !group.header.is_hidden();
+        let helper_visible = label_visible_for_group(file, group);
         let is_standalone_function_definition = kind == crate::format::GroupKind::Point
             && is_standalone_function_definition_group(file, groups, group);
         let is_non_graph_parameter = kind == crate::format::GroupKind::Point
@@ -1239,7 +1337,7 @@ pub(super) fn collect_polygon_parameter_labels(
                 text: if decode_label_name(file, group).is_some() {
                     format!("{point_name} = {:.2}", global_t)
                 } else {
-                    format!("{point_name}在{polygon_name}上的t值 = {:.2}", global_t)
+                    format!("{point_name}在{polygon_name}上的值 = {:.2}", global_t)
                 },
                 color: [30, 30, 30, 255],
                 visible: decode_label_name(file, group).is_some()

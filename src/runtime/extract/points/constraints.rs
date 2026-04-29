@@ -12,7 +12,8 @@ use super::{
 };
 use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
 use crate::runtime::functions::{
-    BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters, try_decode_function_expr,
+    BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters,
+    payload_has_sliding_equilateral_square_expr, try_decode_function_expr,
     try_decode_function_plot_descriptor,
 };
 use crate::runtime::geometry::{
@@ -94,6 +95,7 @@ pub(crate) struct ParameterControlledPoint {
     pub(crate) parameter_name: String,
     pub(crate) source_point_group_index: Option<usize>,
     pub(crate) source_expr: Option<FunctionExpr>,
+    pub(crate) source_expr_absolute_parameter: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Error)]
@@ -555,83 +557,91 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 .ok_or(ParameterControlledPointDecodeError::MissingHostGroup)?,
         )
         .ok_or(ParameterControlledPointDecodeError::MissingHostGroup)?;
-    let (parameter_name, parameter_value, source_point_group_index, source_expr): (
-        String,
-        f64,
-        Option<usize>,
-        Option<FunctionExpr>,
-    ) = if (source_group.header.kind()) == crate::format::GroupKind::Point {
-        (
-            decode_label_name(file, source_group)
-                .ok_or(ParameterControlledPointDecodeError::InvalidSource)?,
-            try_decode_parameter_control_value_for_group(file, groups, source_group)
-                .ok()
-                .ok_or(ParameterControlledPointDecodeError::InvalidSource)?,
-            None,
-            None,
-        )
-    } else if (source_group.header.kind()) == crate::format::GroupKind::ParameterAnchor {
-        let (_name, value, point_group_index) =
-            parameter_anchor_value(file, groups, source_group, anchors)
+    let (
+        parameter_name,
+        parameter_value,
+        source_point_group_index,
+        source_expr,
+        source_expr_absolute_parameter,
+    ): (String, f64, Option<usize>, Option<FunctionExpr>, bool) =
+        if (source_group.header.kind()) == crate::format::GroupKind::Point {
+            (
+                decode_label_name(file, source_group)
+                    .ok_or(ParameterControlledPointDecodeError::InvalidSource)?,
+                try_decode_parameter_control_value_for_group(file, groups, source_group)
+                    .ok()
+                    .ok_or(ParameterControlledPointDecodeError::InvalidSource)?,
+                None,
+                None,
+                false,
+            )
+        } else if (source_group.header.kind()) == crate::format::GroupKind::ParameterAnchor {
+            let (_name, value, point_group_index) =
+                parameter_anchor_value(file, groups, source_group, anchors)
+                    .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+            (String::new(), value, Some(point_group_index), None, false)
+        } else if (source_group.header.kind()) == crate::format::GroupKind::FunctionExpr {
+            let expr = try_decode_function_expr(file, groups, source_group)
+                .map_err(|_| ParameterControlledPointDecodeError::InvalidSource)?;
+            let source_path = find_indexed_path(file, source_group)
                 .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
-        (String::new(), value, Some(point_group_index), None)
-    } else if (source_group.header.kind()) == crate::format::GroupKind::FunctionExpr {
-        let expr = try_decode_function_expr(file, groups, source_group)
-            .map_err(|_| ParameterControlledPointDecodeError::InvalidSource)?;
-        let source_path = find_indexed_path(file, source_group)
-            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
-        let mut parameters = BTreeMap::new();
-        let mut source_point_group_index = None;
-        let mut anchor_parameter_name = None;
-        let mut anchor_parameter_value = None;
-        for object_ref in &source_path.refs {
-            let ref_group = groups
-                .get(
-                    object_ref
-                        .checked_sub(1)
-                        .ok_or(ParameterControlledPointDecodeError::InvalidSource)?,
-                )
-                .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
-            match ref_group.header.kind() {
-                crate::format::GroupKind::Point => {
-                    let name = decode_label_name(file, ref_group)
-                        .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
-                    let value =
-                        try_decode_parameter_control_value_for_group(file, groups, ref_group)
-                            .ok()
+            let mut parameters = BTreeMap::new();
+            let mut source_point_group_index = None;
+            let mut anchor_parameter_name = None;
+            let mut anchor_parameter_value = None;
+            for object_ref in &source_path.refs {
+                let ref_group = groups
+                    .get(
+                        object_ref
+                            .checked_sub(1)
+                            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?,
+                    )
+                    .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+                match ref_group.header.kind() {
+                    crate::format::GroupKind::Point => {
+                        let name = decode_label_name(file, ref_group)
                             .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
-                    parameters.insert(name, value);
-                }
-                crate::format::GroupKind::ParameterAnchor => {
-                    let (name, value, point_group_index) =
-                        parameter_anchor_value(file, groups, ref_group, anchors)
-                            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
-                    if !name.is_empty() {
-                        anchor_parameter_name = Some(name.clone());
-                        anchor_parameter_value = Some(value);
+                        let value =
+                            try_decode_parameter_control_value_for_group(file, groups, ref_group)
+                                .ok()
+                                .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
                         parameters.insert(name, value);
                     }
-                    source_point_group_index.get_or_insert(point_group_index);
+                    crate::format::GroupKind::ParameterAnchor => {
+                        let (name, value, point_group_index) =
+                            parameter_anchor_value(file, groups, ref_group, anchors)
+                                .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+                        if !name.is_empty() {
+                            anchor_parameter_name = Some(name.clone());
+                            anchor_parameter_value = Some(value);
+                            parameters.insert(name, value);
+                        }
+                        source_point_group_index.get_or_insert(point_group_index);
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
-        }
-        let mut value = evaluate_expr_with_parameters(&expr, 0.0, &parameters)
-            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
-        if let (Some(_), Some(anchor_value)) =
-            (anchor_parameter_name.as_ref(), anchor_parameter_value)
-        {
-            value += anchor_value;
-        }
-        (
-            anchor_parameter_name.unwrap_or_default(),
-            wrap_unit_interval(value),
-            source_point_group_index,
-            Some(expr),
-        )
-    } else {
-        return Err(ParameterControlledPointDecodeError::InvalidSource);
-    };
+            let mut value = evaluate_expr_with_parameters(&expr, 0.0, &parameters)
+                .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+            let source_expr_absolute_parameter =
+                payload_has_sliding_equilateral_square_expr(file, source_group);
+            if !source_expr_absolute_parameter {
+                if let (Some(_), Some(anchor_value)) =
+                    (anchor_parameter_name.as_ref(), anchor_parameter_value)
+                {
+                    value += anchor_value;
+                }
+            }
+            (
+                anchor_parameter_name.unwrap_or_default(),
+                wrap_unit_interval(value),
+                source_point_group_index,
+                Some(expr),
+                source_expr_absolute_parameter,
+            )
+        } else {
+            return Err(ParameterControlledPointDecodeError::InvalidSource);
+        };
 
     match host_group.header.kind() {
         crate::format::GroupKind::Segment
@@ -679,6 +689,7 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 parameter_name,
                 source_point_group_index,
                 source_expr: source_expr.clone(),
+                source_expr_absolute_parameter,
             })
         }
         crate::format::GroupKind::Polygon => {
@@ -709,6 +720,7 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 parameter_name,
                 source_point_group_index,
                 source_expr: source_expr.clone(),
+                source_expr_absolute_parameter,
             })
         }
         crate::format::GroupKind::Circle => {
@@ -746,6 +758,7 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 parameter_name,
                 source_point_group_index,
                 source_expr: source_expr.clone(),
+                source_expr_absolute_parameter,
             })
         }
         crate::format::GroupKind::ThreePointArc => {
@@ -789,6 +802,7 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 parameter_name,
                 source_point_group_index,
                 source_expr: source_expr.clone(),
+                source_expr_absolute_parameter,
             })
         }
         crate::format::GroupKind::ArcOnCircle => {
@@ -847,6 +861,7 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 parameter_name,
                 source_point_group_index,
                 source_expr: source_expr.clone(),
+                source_expr_absolute_parameter,
             })
         }
         crate::format::GroupKind::CenterArc => {
@@ -891,6 +906,7 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 parameter_name,
                 source_point_group_index,
                 source_expr,
+                source_expr_absolute_parameter,
             })
         }
         _ => Err(ParameterControlledPointDecodeError::InvalidHostGeometry),

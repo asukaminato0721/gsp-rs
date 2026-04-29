@@ -1726,7 +1726,7 @@ fn preserves_polygon_labels_in_poly_point_with_val_gsp() {
         "expected constrained point label E, got {texts:?}"
     );
     assert!(
-        texts.contains(&"E在ABCD上的t值 = 0.58"),
+        texts.contains(&"E在ABCD上的值 = 0.58"),
         "expected polygon parameter label, got {texts:?}"
     );
 }

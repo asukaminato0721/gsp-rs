@@ -1,7 +1,7 @@
 use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::format::{GspFile, ObjectGroup, read_f64, read_u16, read_u32};
+use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u16, read_u32};
 use crate::runtime::extract::points::{
     collect_point_objects, resolve_circle_like_raw, resolve_line_like_points_raw,
 };
@@ -981,10 +981,15 @@ fn try_decode_payload_function_application(
         .chunks_exact(2)
         .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
         .collect::<Vec<_>>();
+    let expression_start = words
+        .windows(2)
+        .position(|pair| *pair == FUNCTION_EXPR_MARKER_A || *pair == FUNCTION_EXPR_MARKER_B)
+        .map_or(0, |marker_index| marker_index + 2);
     let (application_offset, application_word) = words
         .iter()
         .copied()
         .enumerate()
+        .skip(expression_start)
         .find(|(_, word)| (*word & EXPR_FUNCTION_REF_MASK) == EXPR_FUNCTION_REF_PREFIX)?;
     let helper_index = usize::from(application_word & 0x000f);
     let path = find_indexed_path(file, group)?;
@@ -1118,6 +1123,7 @@ fn collect_parameter_bindings(
     let Some(path) = find_indexed_path(file, group) else {
         return bindings;
     };
+    let allow_constraint_anchor_bindings = payload_has_sliding_equilateral_square_expr(file, group);
     let inline_function_refs = group.header.kind() == crate::format::GroupKind::FunctionDefinition;
     for (index, ordinal) in path.refs.iter().copied().enumerate() {
         let Some(parameter_group) = groups.get(ordinal.saturating_sub(1)) else {
@@ -1129,6 +1135,7 @@ fn collect_parameter_bindings(
             parameter_group,
             visiting,
             inline_function_refs,
+            allow_constraint_anchor_bindings,
         ) {
             bindings.insert(index as u16, binding);
         }
@@ -1144,7 +1151,7 @@ fn decode_runtime_parameter_binding(
     visiting: &mut BTreeSet<usize>,
 ) -> Option<ParameterBinding> {
     if (group.header.kind()) == crate::format::GroupKind::ParameterAnchor {
-        let binding = decode_parameter_anchor_binding(file, group)?;
+        let binding = decode_parameter_anchor_binding(file, group, false)?;
         let value = overrides
             .get(&binding.name)
             .copied()
@@ -1186,9 +1193,10 @@ fn decode_parameter_binding_recursive(
     group: &ObjectGroup,
     visiting: &mut BTreeSet<usize>,
     inline_function_refs: bool,
+    allow_constraint_anchor_bindings: bool,
 ) -> Option<ParameterBinding> {
     if (group.header.kind()) == crate::format::GroupKind::ParameterAnchor {
-        return decode_parameter_anchor_binding(file, group);
+        return decode_parameter_anchor_binding(file, group, allow_constraint_anchor_bindings);
     }
     if (group.header.kind()) == crate::format::GroupKind::MeasuredValue {
         return decode_measured_value_binding(file, groups, group);
@@ -1223,6 +1231,7 @@ fn decode_parameter_binding_recursive(
 fn decode_parameter_anchor_binding(
     file: &GspFile,
     group: &ObjectGroup,
+    allow_constraint_anchor_bindings: bool,
 ) -> Option<ParameterBinding> {
     let groups = file.object_groups();
     let path = find_indexed_path(file, group)?;
@@ -1241,6 +1250,9 @@ fn decode_parameter_anchor_binding(
         })
         .unwrap_or_else(|| format!("__param_anchor_{}", group.ordinal));
     let value = match point_group.header.kind() {
+        kind if kind.is_point_constraint() && allow_constraint_anchor_bindings => {
+            decode_parameter_anchor_constraint_value(file, &groups, point_group)?
+        }
         kind if kind.is_point_constraint() => point_group
             .records
             .iter()
@@ -1262,6 +1274,91 @@ fn decode_parameter_anchor_binding(
         _ => return None,
     };
     Some(ParameterBinding::value(name, value))
+}
+
+fn decode_parameter_anchor_constraint_value(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    point_group: &ObjectGroup,
+) -> Option<f64> {
+    let point_path = find_indexed_path(file, point_group)?;
+    let host_group = groups.get(point_path.refs.first()?.checked_sub(1)?)?;
+    let payload = point_group
+        .records
+        .iter()
+        .find(|record| record.record_type == RECORD_INDEXED_PATH_B && record.length >= 12)
+        .map(|record| record.payload(&file.data))?;
+    let t = read_f64(payload, 4);
+    if !t.is_finite() {
+        return None;
+    }
+    if host_group.header.kind() != crate::format::GroupKind::Polygon {
+        return Some(t);
+    }
+
+    let edge_index = decode_polygon_edge_index_for_anchor(host_group, file, payload)?;
+    let host_path = find_indexed_path(file, host_group)?;
+    let max_ref_ordinal = host_path.refs.iter().copied().max()?;
+    let helper_groups = groups.get(..max_ref_ordinal)?;
+    let point_map = collect_point_objects(file, groups);
+    let helper_point_map = point_map.get(..max_ref_ordinal)?;
+    let anchors = collect_raw_object_anchors(file, helper_groups, helper_point_map, None);
+    let vertex_group_indices = host_path
+        .refs
+        .iter()
+        .map(|ordinal| ordinal.checked_sub(1))
+        .collect::<Option<Vec<_>>>()?;
+    polygon_boundary_parameter_for_anchor(&anchors, &vertex_group_indices, edge_index, t)
+}
+
+fn decode_polygon_edge_index_for_anchor(
+    polygon_group: &ObjectGroup,
+    file: &GspFile,
+    payload: &[u8],
+) -> Option<usize> {
+    let vertex_count = find_indexed_path(file, polygon_group)?.refs.len();
+    if vertex_count < 2 || payload.len() < 16 {
+        return None;
+    }
+    let discrete = read_u32(payload, 12) as usize;
+    if discrete < vertex_count {
+        return Some(discrete);
+    }
+    let selector = read_f64(payload, 12);
+    if !selector.is_finite() {
+        return None;
+    }
+    let end_vertex = ((selector * vertex_count as f64) - 0.25).round() as isize;
+    Some(((end_vertex + vertex_count as isize - 1).rem_euclid(vertex_count as isize)) as usize)
+}
+
+fn polygon_boundary_parameter_for_anchor(
+    anchors: &[Option<PointRecord>],
+    vertex_group_indices: &[usize],
+    edge_index: usize,
+    t: f64,
+) -> Option<f64> {
+    if vertex_group_indices.len() < 2 {
+        return None;
+    }
+    let vertices = vertex_group_indices
+        .iter()
+        .map(|group_index| anchors.get(*group_index)?.clone())
+        .collect::<Option<Vec<_>>>()?;
+    let mut perimeter = 0.0;
+    let mut traveled = 0.0;
+    for index in 0..vertices.len() {
+        let start = &vertices[index];
+        let end = &vertices[(index + 1) % vertices.len()];
+        let length = ((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt();
+        perimeter += length;
+        if index < edge_index % vertices.len() {
+            traveled += length;
+        } else if index == edge_index % vertices.len() {
+            traveled += length * t.clamp(0.0, 1.0);
+        }
+    }
+    (perimeter > 1e-9).then_some(traveled / perimeter)
 }
 
 fn decode_measured_value_binding(
@@ -1690,6 +1787,10 @@ fn try_decode_special_grouped_payload(
     words: &[u16],
     parameters: &BTreeMap<u16, ParameterBinding>,
 ) -> Option<FunctionAst> {
+    if let Some(ast) = try_decode_sliding_equilateral_square_expr(words, parameters) {
+        return Some(ast);
+    }
+
     const CHESSBOARD_X_PATTERN: &[u16] = &[
         0x000b, 0x000b, 0x6000, 0x1001, 0x200c, 0x6000, 0x1003, 0x6001, 0x000c, 0x1002, 0x6001,
         0x000c, 0x000c, 0x1003, 0x6001, 0x1000, 0x000b, 0x000b, 0x0001, 0x1000, 0x000b, 0x1001,
@@ -1777,6 +1878,102 @@ fn try_decode_special_grouped_payload(
         lhs: Box::new(first_term),
         op: BinaryOp::Add,
         rhs: Box::new(second_term),
+    })
+}
+
+fn try_decode_sliding_equilateral_square_expr(
+    words: &[u16],
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Option<FunctionAst> {
+    let window = find_sliding_equilateral_square_window(words)?;
+    let parameter_index = window[4] & 0x000f;
+    let parameter = parameters.get(&parameter_index)?.clone();
+    let parameter_ast = FunctionAst::Parameter(parameter.name, parameter.value);
+    let four_times_parameter = FunctionAst::Binary {
+        lhs: Box::new(FunctionAst::Constant(4.0)),
+        op: BinaryOp::Mul,
+        rhs: Box::new(parameter_ast.clone()),
+    };
+    let parameter_times_four = FunctionAst::Binary {
+        lhs: Box::new(parameter_ast),
+        op: BinaryOp::Mul,
+        rhs: Box::new(FunctionAst::Constant(4.0)),
+    };
+    let truncated = FunctionAst::Unary {
+        op: UnaryFunction::Trunc,
+        expr: Box::new(four_times_parameter.clone()),
+    };
+    let truncated_offset = FunctionAst::Unary {
+        op: UnaryFunction::Trunc,
+        expr: Box::new(parameter_times_four),
+    };
+    let offset_on_side = FunctionAst::Binary {
+        lhs: Box::new(four_times_parameter),
+        op: BinaryOp::Sub,
+        rhs: Box::new(truncated_offset),
+    };
+    let square_term = FunctionAst::Binary {
+        lhs: Box::new(offset_on_side),
+        op: BinaryOp::Pow,
+        rhs: Box::new(FunctionAst::Constant(2.0)),
+    };
+    let radical = FunctionAst::Binary {
+        lhs: Box::new(FunctionAst::Constant(1.0)),
+        op: BinaryOp::Sub,
+        rhs: Box::new(square_term),
+    };
+    let root = FunctionAst::Unary {
+        op: UnaryFunction::Sqrt,
+        expr: Box::new(radical),
+    };
+    let numerator = FunctionAst::Binary {
+        lhs: Box::new(truncated),
+        op: BinaryOp::Sub,
+        rhs: Box::new(root),
+    };
+    Some(FunctionAst::Binary {
+        lhs: Box::new(numerator),
+        op: BinaryOp::Div,
+        rhs: Box::new(FunctionAst::Constant(4.0)),
+    })
+}
+
+pub(crate) fn payload_has_sliding_equilateral_square_expr(
+    file: &GspFile,
+    group: &ObjectGroup,
+) -> bool {
+    group
+        .records
+        .iter()
+        .find(|record| record.record_type == RECORD_FUNCTION_EXPR_PAYLOAD)
+        .map(|record| {
+            let words = record
+                .payload(&file.data)
+                .chunks_exact(2)
+                .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+                .collect::<Vec<_>>();
+            find_sliding_equilateral_square_window(&words).is_some()
+        })
+        .unwrap_or(false)
+}
+
+fn find_sliding_equilateral_square_window(words: &[u16]) -> Option<&[u16]> {
+    const PARAM: u16 = 0xffff;
+    const PATTERN: &[u16] = &[
+        0x000b, 0x200c, 0x0004, 0x1002, PARAM, 0x000c, 0x1001, 0x2007, 0x0001, 0x1001, 0x000b,
+        0x0004, 0x1002, PARAM, 0x1001, 0x200c, PARAM, 0x1002, 0x0004, 0x000c, 0x000c, 0x1004,
+        0x0002, 0x000c, 0x000c, 0x1003, 0x0004,
+    ];
+
+    words.windows(PATTERN.len()).find(|window| {
+        window.iter().zip(PATTERN).all(|(word, expected)| {
+            if *expected == PARAM {
+                (*word & EXPR_PARAMETER_MASK) == EXPR_PARAMETER_PREFIX
+            } else {
+                *word == *expected
+            }
+        }) && window[4] == window[13]
+            && window[4] == window[16]
     })
 }
 
@@ -2820,6 +3017,28 @@ mod parse_tests {
                 ]),
             ),
             Some(0.0)
+        );
+    }
+
+    #[test]
+    fn decodes_sliding_equilateral_square_parameter_expression_from_fixture() {
+        let data = include_bytes!(
+            "../../../tests/Samples/个人专栏/侯仰顺作品/参数的应用-正三角形在正方形内滑动【蚂蚁制作】.gsp"
+        );
+        let file = GspFile::parse(data).expect("fixture parses");
+        let groups = file.object_groups();
+        let expr = try_decode_function_expr(&file, &groups, &groups[11])
+            .expect("sliding triangle expression should decode");
+
+        assert!(
+            function_expr_contains_unary(&expr, crate::runtime::functions::UnaryFunction::Sqrt),
+            "expected the payload expression to preserve the square-root term, got {expr:?}"
+        );
+        let value = evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new())
+            .expect("expression should evaluate from its payload parameter binding");
+        assert!(
+            (value - -0.19937560472905297).abs() < 1e-12,
+            "expected payload expression value to move F away from E, got {value}"
         );
     }
 

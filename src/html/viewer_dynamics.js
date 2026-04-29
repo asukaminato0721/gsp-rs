@@ -1438,17 +1438,59 @@
     if (typeof exprLabel !== "string") {
       return null;
     }
-    const renderPart = (/** @type {string} */ text) => text.split("*").join("\u00b7");
+    const richTextNode = (/** @type {string} */ text) => text
+      ? `<Tx${text.split("&").join("＆").split("<").join("＜").split(">").join("＞").split("*").join("\u00b7")}>`
+      : "";
+    const matchingCloseParen = (/** @type {string} */ text, /** @type {number} */ openIndex) => {
+      let depth = 0;
+      for (let index = openIndex; index < text.length; index += 1) {
+        if (text[index] === "(") {
+          depth += 1;
+        } else if (text[index] === ")") {
+          depth -= 1;
+          if (depth === 0) return index;
+          if (depth < 0) return -1;
+        }
+      }
+      return -1;
+    };
+    const stripWrappingParens = (/** @type {string} */ text) => {
+      const trimmed = text.trim();
+      if (!trimmed.startsWith("(") || !trimmed.endsWith(")")) return trimmed;
+      return matchingCloseParen(trimmed, 0) === trimmed.length - 1
+        ? trimmed.slice(1, -1)
+        : trimmed;
+    };
+    const renderExpressionPart = (/** @type {string} */ text) => {
+      let output = "";
+      let rest = text;
+      while (true) {
+        const index = rest.indexOf("√(");
+        if (index < 0) {
+          output += richTextNode(rest);
+          return output;
+        }
+        output += richTextNode(rest.slice(0, index));
+        const openIndex = index + 1;
+        const closeIndex = matchingCloseParen(rest, openIndex);
+        if (closeIndex < 0) {
+          output += richTextNode(rest.slice(index));
+          return output;
+        }
+        output += `<R${renderExpressionPart(stripWrappingParens(rest.slice(openIndex + 1, closeIndex)))}>`;
+        rest = rest.slice(closeIndex + 1);
+      }
+    };
     const additiveFraction = exprLabel.match(/^(.*)\s\+\s(.*)\s\/\s(.*)$/);
     if (additiveFraction) {
       const [, prefix, numerator, denominator] = additiveFraction;
-      return `<H<Tx${renderPart(prefix)} + ></<Tx${renderPart(numerator)}><Tx${renderPart(denominator)}>><Tx = ${valueText}>>`;
+      return `<H${renderExpressionPart(`${prefix} + `)}</<H${renderExpressionPart(numerator)}><H${renderExpressionPart(denominator)}>><Tx = ${valueText}>>`;
     }
     const parts = exprLabel.split(" / ");
     if (parts.length === 2) {
-      return `<H</<Tx${renderPart(parts[0])}><Tx${renderPart(parts[1])}>><Tx = ${valueText}>>`;
+      return `<H</<H${renderExpressionPart(stripWrappingParens(parts[0]))}><H${renderExpressionPart(parts[1])}>><Tx = ${valueText}>>`;
     }
-    return `<H<Tx${renderPart(exprLabel)} = ${valueText}>>`;
+    return `<H${renderExpressionPart(exprLabel)}<Tx = ${valueText}>>`;
   }
 
   /**
@@ -2323,9 +2365,13 @@
       if (point.binding.parameterName) {
         exprParameters.set(point.binding.parameterName, sourceValue);
       }
-      const delta = evaluateExpr(point.binding.expr, 0, exprParameters);
-      if (delta !== null) {
-        updateConstraintParameterizedPoint(point, scene, sourceValue + delta);
+      const value = evaluateExpr(point.binding.expr, 0, exprParameters);
+      if (value !== null) {
+        updateConstraintParameterizedPoint(
+          point,
+          scene,
+          point.binding.absoluteValue === true ? value : sourceValue + value,
+        );
       }
     },
     "coordinate-source"(env, _scene, point, parameters) {
@@ -2477,7 +2523,7 @@
       const value = polygonBoundaryParameterFromPoint(scene, label.binding.pointIndex);
       if (value !== null) {
         label.text = label.binding.polygonName
-          ? `${label.binding.pointName}在${label.binding.polygonName}上的t值 = ${env.formatNumber(value)}`
+          ? `${label.binding.pointName}在${label.binding.polygonName}上的值 = ${env.formatNumber(value)}`
           : `${label.binding.pointName} = ${env.formatNumber(value)}`;
         label.richMarkup = buildPlainTextRichMarkup(label.text);
       }
@@ -2572,9 +2618,13 @@
       if (point.binding.parameterName) {
         exprParameters.set(point.binding.parameterName, sourceValue);
       }
-      const delta = evaluateExpr(point.binding.expr, 0, exprParameters);
-      if (delta !== null) {
-        updateConstraintParameterizedPoint(point, draft, sourceValue + delta);
+      const value = evaluateExpr(point.binding.expr, 0, exprParameters);
+      if (value !== null) {
+        updateConstraintParameterizedPoint(
+          point,
+          draft,
+          point.binding.absoluteValue === true ? value : sourceValue + value,
+        );
       }
     },
   };
@@ -2843,6 +2893,51 @@
         const dy = evaluateExpr(point.binding.yExpr, 0, exprParameters);
         if (source && dx !== null && dy !== null) {
           resolved = { x: source.x + dx, y: source.y + dy };
+        }
+      } else if (point.binding?.kind === "constraint-parameter-expr") {
+        const value = evaluateExpr(point.binding.expr, 0, baseParameters);
+        if (value !== null) {
+          const derived = cloneTracePoint(point);
+          updateConstraintParameterizedPoint(derived, sampleScene, value);
+          sampleScene.points[index] = derived;
+          resolved = window.GspViewerModules.scene.resolveConstrainedPoint(
+            {
+              sourceScene: scene,
+              currentScene: () => sampleScene,
+              resolveScenePoint: (pointIndex) => resolveTracePoint(points, pointIndex, visiting),
+            },
+            derived.constraint,
+            (pointIndex) => resolveTracePoint(points, pointIndex, visiting),
+            derived,
+          );
+        }
+      } else if (point.binding?.kind === "constraint-parameter-from-point-expr") {
+        const sourceValue = parameterValueFromPoint(sampleScene, point.binding.sourceIndex);
+        if (Number.isFinite(sourceValue)) {
+          const exprParameters = new Map(baseParameters);
+          if (point.binding.parameterName) {
+            exprParameters.set(point.binding.parameterName, sourceValue);
+          }
+          const exprValue = evaluateExpr(point.binding.expr, 0, exprParameters);
+          if (exprValue !== null) {
+            const derived = cloneTracePoint(point);
+            updateConstraintParameterizedPoint(
+              derived,
+              sampleScene,
+              point.binding.absoluteValue === true ? exprValue : sourceValue + exprValue,
+            );
+            sampleScene.points[index] = derived;
+            resolved = window.GspViewerModules.scene.resolveConstrainedPoint(
+              {
+                sourceScene: scene,
+                currentScene: () => sampleScene,
+                resolveScenePoint: (pointIndex) => resolveTracePoint(points, pointIndex, visiting),
+              },
+              derived.constraint,
+              (pointIndex) => resolveTracePoint(points, pointIndex, visiting),
+              derived,
+            );
+          }
         }
       } else if (point.binding?.kind === "custom-transform") {
         const derived = { ...point };

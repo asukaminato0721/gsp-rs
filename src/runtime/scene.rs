@@ -666,6 +666,7 @@ pub(crate) enum ScenePointBinding {
         source_index: usize,
         parameter_name: String,
         expr: FunctionExpr,
+        absolute_value: bool,
     },
     Translate {
         source_index: usize,
