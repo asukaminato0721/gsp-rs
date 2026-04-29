@@ -23,6 +23,7 @@ use thiserror::Error;
 use super::expr::{
     BinaryOp, FunctionAst, FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode, UnaryFunction,
     canonicalize_function_expr, decode_unary_function, function_ast_contains_symbol,
+    function_expr_contains_variable,
 };
 
 thread_local! {
@@ -58,6 +59,25 @@ fn is_function_like_group(group: &ObjectGroup) -> bool {
 pub(crate) struct ParameterBinding {
     name: String,
     value: f64,
+    expr: Option<FunctionAst>,
+}
+
+impl ParameterBinding {
+    fn value(name: String, value: f64) -> Self {
+        Self {
+            name,
+            value,
+            expr: None,
+        }
+    }
+
+    fn expression(name: String, value: f64, expr: FunctionAst) -> Self {
+        Self {
+            name,
+            value,
+            expr: Some(expr),
+        }
+    }
 }
 
 pub(crate) fn try_decode_function_expr(
@@ -304,7 +324,16 @@ fn try_decode_numeric_helper_group(
         }
         crate::format::GroupKind::CoordinateXValue | crate::format::GroupKind::CoordinateYValue => {
             let point = anchors.get(path.refs.first()?.checked_sub(1)?)?.clone()?;
-            let (origin_raw, raw_per_unit) = graph?;
+            let (origin_raw, raw_per_unit) = graph.or_else(|| {
+                let axis_ordinal = *path.refs.get(1)?;
+                explicit_axis_context_for_coordinate_value(
+                    file,
+                    groups,
+                    &anchors,
+                    axis_ordinal,
+                    group.header.kind(),
+                )
+            })?;
             if group.header.kind() == crate::format::GroupKind::CoordinateXValue {
                 (point.x - origin_raw.x) / raw_per_unit
             } else {
@@ -430,6 +459,35 @@ fn try_decode_numeric_helper_group(
         _ => return None,
     };
     value.is_finite().then_some(FunctionExpr::Constant(value))
+}
+
+fn explicit_axis_context_for_coordinate_value(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<crate::format::PointRecord>],
+    axis_ordinal: usize,
+    coordinate_kind: crate::format::GroupKind,
+) -> Option<(crate::format::PointRecord, f64)> {
+    let axis_group = groups.get(axis_ordinal.checked_sub(1)?)?;
+    let axis_path = find_indexed_path(file, axis_group)?;
+    let measurement_ordinal = match coordinate_kind {
+        crate::format::GroupKind::CoordinateXValue => *axis_path.refs.first()?,
+        crate::format::GroupKind::CoordinateYValue => *axis_path.refs.get(1)?,
+        _ => return None,
+    };
+    let measurement_group = groups.get(measurement_ordinal.checked_sub(1)?)?;
+    let measurement_path = find_indexed_path(file, measurement_group)?;
+    let origin_raw = anchors
+        .get(measurement_path.refs.first()?.checked_sub(1)?)?
+        .clone()?;
+    let unit_expr_group = groups.get(measurement_path.refs.get(1)?.checked_sub(1)?)?;
+    let raw_per_unit = try_decode_function_expr(file, groups, unit_expr_group)
+        .ok()
+        .and_then(|unit_expr| evaluate_expr_with_parameters(&unit_expr, 0.0, &BTreeMap::new()))
+        .map(f64::abs)
+        .filter(|value| *value > 1e-9)
+        .unwrap_or(37.79527559055118);
+    (raw_per_unit > 1e-9).then_some((origin_raw, raw_per_unit))
 }
 
 fn infer_default_helper_graph_transform(
@@ -1060,13 +1118,18 @@ fn collect_parameter_bindings(
     let Some(path) = find_indexed_path(file, group) else {
         return bindings;
     };
+    let inline_function_refs = group.header.kind() == crate::format::GroupKind::FunctionDefinition;
     for (index, ordinal) in path.refs.iter().copied().enumerate() {
         let Some(parameter_group) = groups.get(ordinal.saturating_sub(1)) else {
             continue;
         };
-        if let Some(binding) =
-            decode_parameter_binding_recursive(file, groups, parameter_group, visiting)
-        {
+        if let Some(binding) = decode_parameter_binding_recursive(
+            file,
+            groups,
+            parameter_group,
+            visiting,
+            inline_function_refs,
+        ) {
             bindings.insert(index as u16, binding);
         }
     }
@@ -1089,6 +1152,7 @@ fn decode_runtime_parameter_binding(
         return Some(ParameterBinding {
             name: binding.name,
             value,
+            expr: None,
         });
     }
     if (group.header.kind()) == crate::format::GroupKind::MeasuredValue {
@@ -1098,7 +1162,7 @@ fn decode_runtime_parameter_binding(
         let expr = decode_function_expr_recursive(file, groups, group, visiting).ok()?;
         let name = group_name(file, group).unwrap_or_else(|| function_expr_label(expr.clone()));
         let value = evaluate_function_group_recursive(file, groups, group, overrides, visiting)?;
-        return Some(ParameterBinding { name, value });
+        return Some(ParameterBinding::value(name, value));
     }
 
     let label_payload = group
@@ -1113,7 +1177,7 @@ fn decode_runtime_parameter_binding(
         .or_else(|| try_decode_parameter_control_value_for_group(file, groups, group).ok())?;
     value
         .is_finite()
-        .then_some(ParameterBinding { name, value })
+        .then_some(ParameterBinding::value(name, value))
 }
 
 fn decode_parameter_binding_recursive(
@@ -1121,6 +1185,7 @@ fn decode_parameter_binding_recursive(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
     visiting: &mut BTreeSet<usize>,
+    inline_function_refs: bool,
 ) -> Option<ParameterBinding> {
     if (group.header.kind()) == crate::format::GroupKind::ParameterAnchor {
         return decode_parameter_anchor_binding(file, group);
@@ -1130,10 +1195,16 @@ fn decode_parameter_binding_recursive(
     }
     if is_function_like_group(group) {
         let expr = decode_function_expr_recursive(file, groups, group, visiting).ok()?;
-        return Some(ParameterBinding {
-            name: group_name(file, group).unwrap_or_else(|| function_expr_label(expr.clone())),
-            value: evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new())?,
-        });
+        let name = group_name(file, group).unwrap_or_else(|| function_expr_label(expr.clone()));
+        let value = evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new());
+        if !inline_function_refs || function_expr_contains_variable(&expr) {
+            return value.map(|value| ParameterBinding::value(name, value));
+        }
+        return Some(ParameterBinding::expression(
+            name,
+            value.unwrap_or(0.0),
+            function_expr_to_ast(expr),
+        ));
     }
 
     let label_payload = group
@@ -1146,7 +1217,7 @@ fn decode_parameter_binding_recursive(
     if !value.is_finite() {
         return None;
     }
-    Some(ParameterBinding { name, value })
+    Some(ParameterBinding::value(name, value))
 }
 
 fn decode_parameter_anchor_binding(
@@ -1190,7 +1261,7 @@ fn decode_parameter_anchor_binding(
         }
         _ => return None,
     };
-    Some(ParameterBinding { name, value })
+    Some(ParameterBinding::value(name, value))
 }
 
 fn decode_measured_value_binding(
@@ -1225,7 +1296,7 @@ fn decode_measured_value_binding(
     }
 
     let name = group_name(file, group).or_else(|| segment_name(file, groups, host_group))?;
-    Some(ParameterBinding { name, value })
+    Some(ParameterBinding::value(name, value))
 }
 
 fn group_name(file: &GspFile, group: &ObjectGroup) -> Option<String> {
@@ -1404,10 +1475,7 @@ impl<'a> FunctionExprParser<'a> {
 
     fn parse_expr_bp(&mut self, min_bp: u8) -> Result<FunctionAst, FunctionExprParseError> {
         let mut lhs = self.parse_prefix()?;
-        loop {
-            let Some((op, left_bp, right_bp)) = self.peek_infix()? else {
-                break;
-            };
+        while let Some((op, left_bp, right_bp)) = self.peek_infix()? {
             if left_bp < min_bp {
                 break;
             }
@@ -1427,9 +1495,9 @@ impl<'a> FunctionExprParser<'a> {
         match self.tokens.bump()? {
             FunctionToken::Variable => Ok(FunctionAst::Variable),
             FunctionToken::PiAngle => Ok(FunctionAst::PiAngle),
-            FunctionToken::Parameter(binding) => {
-                Ok(FunctionAst::Parameter(binding.name, binding.value))
-            }
+            FunctionToken::Parameter(binding) => Ok(binding
+                .expr
+                .unwrap_or(FunctionAst::Parameter(binding.name, binding.value))),
             FunctionToken::Constant(value) => Ok(FunctionAst::Constant(value)),
             FunctionToken::Unary(op) => {
                 let terminator_aware = self.tokens.has_standalone_terminator_ahead();
@@ -1763,6 +1831,7 @@ struct GroupedFunctionParser<'a> {
     parameters: &'a BTreeMap<u16, ParameterBinding>,
     base_offset: usize,
     offset: usize,
+    allow_unclosed_unary_argument: bool,
 }
 
 impl<'a> GroupedFunctionParser<'a> {
@@ -1776,7 +1845,13 @@ impl<'a> GroupedFunctionParser<'a> {
             parameters,
             base_offset,
             offset: 0,
+            allow_unclosed_unary_argument: false,
         }
+    }
+
+    fn allowing_unclosed_unary_argument(mut self) -> Self {
+        self.allow_unclosed_unary_argument = true;
+        self
     }
 
     fn peek(&self) -> Result<Option<GroupedFunctionToken>, FunctionExprParseError> {
@@ -1840,10 +1915,7 @@ impl<'a> GroupedFunctionParser<'a> {
 
     fn parse_expr_no_delim(&mut self, min_bp: u8) -> Result<FunctionAst, FunctionExprParseError> {
         let mut lhs = self.parse_prefix()?;
-        loop {
-            let Some((op, left_bp, right_bp)) = self.peek_infix()? else {
-                break;
-            };
+        while let Some((op, left_bp, right_bp)) = self.peek_infix()? {
             if left_bp < min_bp {
                 break;
             }
@@ -1863,13 +1935,13 @@ impl<'a> GroupedFunctionParser<'a> {
         match self.bump()? {
             GroupedFunctionToken::Variable => Ok(FunctionAst::Variable),
             GroupedFunctionToken::PiAngle => Ok(FunctionAst::PiAngle),
-            GroupedFunctionToken::Parameter(binding) => {
-                Ok(FunctionAst::Parameter(binding.name, binding.value))
-            }
+            GroupedFunctionToken::Parameter(binding) => Ok(binding
+                .expr
+                .unwrap_or(FunctionAst::Parameter(binding.name, binding.value))),
             GroupedFunctionToken::Constant(value) => Ok(FunctionAst::Constant(value)),
             GroupedFunctionToken::Unary(op) => {
                 let expr = if matches!(self.peek()?, Some(GroupedFunctionToken::LParen)) {
-                    self.parse_prefix()?
+                    self.parse_unary_grouped_argument()?
                 } else {
                     self.parse_expr_no_delim(0)?
                 };
@@ -1904,6 +1976,29 @@ impl<'a> GroupedFunctionParser<'a> {
             found @ (GroupedFunctionToken::Mul
             | GroupedFunctionToken::Div
             | GroupedFunctionToken::Pow) => Err(FunctionExprParseError::UnexpectedToken {
+                offset,
+                found: grouped_to_function_token(found),
+            }),
+        }
+    }
+
+    fn parse_unary_grouped_argument(&mut self) -> Result<FunctionAst, FunctionExprParseError> {
+        let offset = self.base_offset + self.offset;
+        match self.bump()? {
+            GroupedFunctionToken::LParen => {
+                let expr = self.parse_expr(0)?;
+                if self.allow_unclosed_unary_argument && self.offset >= self.words.len() {
+                    return Ok(expr);
+                }
+                match self.bump()? {
+                    GroupedFunctionToken::RParen => Ok(expr),
+                    found => Err(FunctionExprParseError::UnexpectedToken {
+                        offset,
+                        found: grouped_to_function_token(found),
+                    }),
+                }
+            }
+            found => Err(FunctionExprParseError::UnexpectedToken {
                 offset,
                 found: grouped_to_function_token(found),
             }),
@@ -1987,13 +2082,23 @@ fn parse_grouped_function_expr_from_words(
     words: &[u16],
     parameters: &BTreeMap<u16, ParameterBinding>,
 ) -> Result<FunctionAst, FunctionExprParseError> {
+    if let Some(ast) = parse_grouped_function_expr_after_marker(words, parameters) {
+        return Ok(ast);
+    }
     let normalized = normalize_grouped_words(words);
+    if let Some(ast) = parse_grouped_function_expr_after_marker(&normalized, parameters) {
+        return Ok(ast);
+    }
     if let Some(ast) = best_grouped_parse_candidate(&normalized, parameters) {
+        return Ok(ast);
+    }
+    if let Some(ast) = best_grouped_parse_candidate(words, parameters) {
         return Ok(ast);
     }
     let mut first_error = None;
     for start in 0..normalized.len() {
-        let mut parser = GroupedFunctionParser::new(&normalized[start..], parameters, start);
+        let mut parser = GroupedFunctionParser::new(&normalized[start..], parameters, start)
+            .allowing_unclosed_unary_argument();
         match parser.parse_expr(0) {
             Ok(expr) if parsed_contains_symbol(&expr) => {
                 let remaining = &parser.words[parser.offset..];
@@ -2010,6 +2115,29 @@ fn parse_grouped_function_expr_from_words(
             word_len: normalized.len(),
         }),
     )
+}
+
+fn parse_grouped_function_expr_after_marker(
+    words: &[u16],
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Option<FunctionAst> {
+    words
+        .windows(2)
+        .enumerate()
+        .find_map(|(marker_index, pair)| {
+            if !(*pair == FUNCTION_EXPR_MARKER_A || *pair == FUNCTION_EXPR_MARKER_B) {
+                return None;
+            }
+            let start = marker_index + 2;
+            let mut parser = GroupedFunctionParser::new(&words[start..], parameters, start)
+                .allowing_unclosed_unary_argument();
+            let expr = parser.parse_expr(0).ok()?;
+            if !parsed_contains_symbol(&expr) {
+                return None;
+            }
+            let remaining = &parser.words[parser.offset..];
+            (remaining.is_empty() || remaining.iter().all(|word| *word == 0x000c)).then_some(expr)
+        })
 }
 
 fn best_grouped_parse_candidate(
@@ -2038,7 +2166,8 @@ fn best_grouped_parse_candidate(
                     .collect::<Vec<_>>();
                 for start in 0..edited.len() {
                     let mut parser =
-                        GroupedFunctionParser::new(&edited[start..], parameters, start);
+                        GroupedFunctionParser::new(&edited[start..], parameters, start)
+                            .allowing_unclosed_unary_argument();
                     let Ok(expr) = parser.parse_expr(0) else {
                         continue;
                     };
@@ -2197,6 +2326,39 @@ mod parse_tests {
             .collect::<Vec<_>>()
     }
 
+    fn function_expr_contains_unary(
+        expr: &FunctionExpr,
+        op: crate::runtime::functions::UnaryFunction,
+    ) -> bool {
+        match expr {
+            FunctionExpr::Parsed(ast) => function_ast_contains_unary(ast, op),
+            FunctionExpr::SinIdentity => op == crate::runtime::functions::UnaryFunction::Sin,
+            FunctionExpr::CosIdentityPlus(_) => op == crate::runtime::functions::UnaryFunction::Cos,
+            FunctionExpr::TanIdentityMinus(_) => {
+                op == crate::runtime::functions::UnaryFunction::Tan
+            }
+            FunctionExpr::Constant(_) | FunctionExpr::Identity => false,
+        }
+    }
+
+    fn function_ast_contains_unary(
+        ast: &FunctionAst,
+        op: crate::runtime::functions::UnaryFunction,
+    ) -> bool {
+        match ast {
+            FunctionAst::Unary { op: ast_op, expr } => {
+                *ast_op == op || function_ast_contains_unary(expr, op)
+            }
+            FunctionAst::Binary { lhs, rhs, .. } => {
+                function_ast_contains_unary(lhs, op) || function_ast_contains_unary(rhs, op)
+            }
+            FunctionAst::Variable
+            | FunctionAst::Constant(_)
+            | FunctionAst::Parameter(_, _)
+            | FunctionAst::PiAngle => false,
+        }
+    }
+
     #[test]
     fn reports_missing_parameter_binding_with_offset() {
         let payload = payload_from_words(&[0x0094, 0x0001, 0x6001]);
@@ -2233,6 +2395,7 @@ mod parse_tests {
             ParameterBinding {
                 name: "t₁".to_string(),
                 value: 1.0,
+                expr: None,
             },
         )]);
         assert_eq!(
@@ -2265,6 +2428,7 @@ mod parse_tests {
             ParameterBinding {
                 name: "trunc((m₁ + 2))".to_string(),
                 value: 9.0,
+                expr: None,
             },
         )]);
         assert_eq!(
@@ -2332,6 +2496,7 @@ mod parse_tests {
                 ParameterBinding {
                     name: "t₁".to_string(),
                     value: 0.0,
+                    expr: None,
                 },
             ),
             (
@@ -2339,6 +2504,7 @@ mod parse_tests {
                 ParameterBinding {
                     name: "trunc((m₁ + 2))".to_string(),
                     value: 9.0,
+                    expr: None,
                 },
             ),
         ]);
@@ -2539,6 +2705,66 @@ mod parse_tests {
     }
 
     #[test]
+    fn decodes_coordinate_x_value_from_explicit_axis_sample() {
+        let Ok(data) = fs::read("tests/Samples/个人专栏/田野风作品/函数图象(田野风).gsp")
+        else {
+            return;
+        };
+        let file = GspFile::parse(&data).expect("sample parses");
+        let groups = file.object_groups();
+        let coordinate_group = groups
+            .iter()
+            .find(|group| group.ordinal == 239)
+            .expect("expected coordinate helper group");
+        let expr = try_decode_function_expr(&file, &groups, coordinate_group)
+            .expect("expected explicit axis coordinate helper to decode");
+        let value = match expr {
+            FunctionExpr::Constant(value) => value,
+            other => panic!("expected constant coordinate helper, got {other:?}"),
+        };
+
+        assert!(
+            value.is_finite(),
+            "expected coordinate helper to decode to a finite value, got {value}"
+        );
+    }
+
+    #[test]
+    fn decodes_function_definition_payload_from_sine_transform_sample() {
+        let Ok(data) = fs::read("tests/Samples/个人专栏/向忠作品/正弦型函数图象变换.gsp")
+        else {
+            return;
+        };
+        let file = GspFile::parse(&data).expect("sample parses");
+        let groups = file.object_groups();
+        let function_group = groups
+            .iter()
+            .find(|group| group.ordinal == 306)
+            .expect("expected function definition group");
+
+        let expr = try_decode_function_expr(&file, &groups, function_group)
+            .expect("expected sine transform function definition to decode");
+
+        assert!(
+            function_expr_contains_unary(&expr, crate::runtime::functions::UnaryFunction::Log10),
+            "expected decoded sine transform function to preserve the log10 domain guard, got {expr:?}"
+        );
+        assert_eq!(
+            evaluate_expr_with_parameters(
+                &expr,
+                10_000.0,
+                &BTreeMap::from([
+                    ("A".to_string(), 1.0),
+                    ("ω".to_string(), 1.0),
+                    ("φ".to_string(), 0.0),
+                ]),
+            ),
+            None,
+            "expected the decoded domain guard to reject samples outside its domain"
+        );
+    }
+
+    #[test]
     fn decodes_chessboard_x_expr_from_fixture_payload_with_fixture_bindings() {
         let data = include_bytes!("../../../tests/Samples/个人专栏/李有贵作品/棋盘（有贵）.gsp");
         let file = GspFile::parse(data).expect("fixture parses");
@@ -2571,6 +2797,7 @@ mod parse_tests {
                 ParameterBinding {
                     name: "t₁".to_string(),
                     value: 0.0,
+                    expr: None,
                 },
             ),
             (
@@ -2578,6 +2805,7 @@ mod parse_tests {
                 ParameterBinding {
                     name: "trunc((m₁ + 2))".to_string(),
                     value: 9.0,
+                    expr: None,
                 },
             ),
         ]);

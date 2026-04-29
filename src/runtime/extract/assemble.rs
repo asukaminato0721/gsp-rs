@@ -583,7 +583,7 @@ pub(super) fn assemble_scene(
                 .chain(measurements)
                 .chain(coordinate_traces)
                 .chain(axes)
-                .chain(analysis.function_plots)
+                .chain(analysis.function_plots.iter().cloned())
                 .chain(synthetic_axes)
                 .chain(iteration_lines)
                 .chain(carried_iteration_lines)
@@ -591,6 +591,8 @@ pub(super) fn assemble_scene(
         ),
         &raw_polygons,
     );
+    let functions =
+        remap_function_line_indices(artifacts.functions, &analysis.function_plots, &raw_lines);
 
     Scene {
         graph_mode: analysis.graph_mode,
@@ -709,9 +711,42 @@ pub(super) fn assemble_scene(
         iteration_tables: artifacts.iteration_tables,
         buttons: artifacts.buttons,
         parameters: artifacts.parameters,
-        functions: artifacts.functions,
+        functions,
         function_definitions: artifacts.function_definitions,
     }
+}
+
+fn remap_function_line_indices(
+    functions: Vec<crate::runtime::scene::SceneFunction>,
+    function_plots: &[LineShape],
+    raw_lines: &[LineShape],
+) -> Vec<crate::runtime::scene::SceneFunction> {
+    functions
+        .into_iter()
+        .enumerate()
+        .map(|(index, mut function)| {
+            if let Some(plot) = function_plots.get(index)
+                && let Some(line_index) = raw_lines
+                    .iter()
+                    .position(|line| line_shape_matches(line, plot))
+            {
+                function.line_index = Some(line_index);
+            }
+            function
+        })
+        .collect()
+}
+
+fn line_shape_matches(left: &LineShape, right: &LineShape) -> bool {
+    left.points.len() == right.points.len()
+        && left.color == right.color
+        && left.dashed == right.dashed
+        && left.visible == right.visible
+        && left
+            .points
+            .iter()
+            .zip(&right.points)
+            .all(|(left, right)| (left.x - right.x).abs() < 1e-9 && (left.y - right.y).abs() < 1e-9)
 }
 
 fn suppress_polygon_edge_segments(

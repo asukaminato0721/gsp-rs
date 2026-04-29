@@ -89,7 +89,7 @@ fn scene_point_from_perpendicular_segment_payload(
             right: LineConstraint::PerpendicularLine {
                 through_index,
                 line_start_index: center_index,
-                line_end_index: line_end_index,
+                line_end_index,
             },
         },
         None,

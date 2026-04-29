@@ -31,7 +31,7 @@ pub(super) struct FunctionJson {
     derivative: bool,
     domain: DomainJson,
     line_index: Option<usize>,
-    label_index: usize,
+    label_index: Option<usize>,
     constrained_point_indices: Vec<usize>,
     expr: FunctionExprJson,
 }

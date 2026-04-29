@@ -749,7 +749,7 @@ pub(crate) struct SceneFunction {
     pub(crate) expr: FunctionExpr,
     pub(crate) domain: FunctionPlotDescriptor,
     pub(crate) line_index: Option<usize>,
-    pub(crate) label_index: usize,
+    pub(crate) label_index: Option<usize>,
     pub(crate) constrained_point_indices: Vec<usize>,
 }
 

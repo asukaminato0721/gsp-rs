@@ -890,13 +890,20 @@
    * @param {Map<string, number>} parameters
    */
   function sampleDynamicFunction(functionDef, parameters) {
-    const points = [];
+    const segments = [];
+    let points = [];
     const last = Math.max(1, functionDef.domain.sampleCount - 1);
     for (let index = 0; index < functionDef.domain.sampleCount; index += 1) {
       const t = index / last;
       const x = functionDef.domain.xMin + (functionDef.domain.xMax - functionDef.domain.xMin) * t;
       const y = evaluateExpr(functionDef.expr, x, parameters);
-      if (y === null) continue;
+      if (y === null) {
+        if (points.length >= 2) {
+          segments.push(points);
+        }
+        points = [];
+        continue;
+      }
       if (functionDef.domain.plotMode === "polar") {
         points.push({
           x: y * Math.cos(x),
@@ -906,7 +913,10 @@
         points.push({ x, y });
       }
     }
-    return points;
+    if (points.length >= 2) {
+      segments.push(points);
+    }
+    return segments;
   }
 
   /**
@@ -3357,7 +3367,7 @@
       applyNormalizedParameterToPoint(point, draft, value);
     });
     env.currentDynamics().functions.forEach((/** @type {FunctionJson} */ functionDef) => {
-      if (draft.labels[functionDef.labelIndex]) {
+      if (typeof functionDef.labelIndex === "number" && draft.labels[functionDef.labelIndex]) {
         const variableLabel = functionDef.domain.plotMode === "polar" ? "θ" : "x";
         const head = functionDef.domain.plotMode === "polar"
           ? (functionDef.derivative ? `r'(${variableLabel})` : "r")
@@ -3366,9 +3376,12 @@
             : `${functionDef.name}(${variableLabel})`);
         draft.labels[functionDef.labelIndex].text = `${head} = ${formatExpr(functionDef.expr, env.formatAxisNumber, variableLabel)}`;
       }
-      const sampled = sampleDynamicFunction(functionDef, parameters);
+      const sampledSegments = sampleDynamicFunction(functionDef, parameters);
+      const sampled = sampledSegments.flat();
       if (typeof functionDef.lineIndex === "number" && draft.lines[functionDef.lineIndex]) {
         draft.lines[functionDef.lineIndex].points = sampled.map((point) => ({ ...point }));
+        draft.lines[functionDef.lineIndex].segments = sampledSegments
+          .map((segment) => segment.map((point) => ({ ...point })));
       }
       functionDef.constrainedPointIndices.forEach((/** @type {number} */ pointIndex) => {
         const constraint = draft.points[pointIndex]?.constraint;

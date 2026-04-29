@@ -42,6 +42,7 @@ pub(crate) fn collect_function_plots(
         let Some(segments) = sample_plot_segments(file, groups, group) else {
             continue;
         };
+        let mut pushed_plot = false;
         for mut points in segments {
             if !has_distinct_points(&points) {
                 continue;
@@ -51,12 +52,23 @@ pub(crate) fn collect_function_plots(
                 *point = to_raw_from_world(point, transform);
             }
 
+            pushed_plot = true;
             plots.push(LineShape {
                 points,
                 color: crate::runtime::geometry::color_from_style(group.header.style_b),
                 dashed: false,
                 visible: !group.header.is_hidden(),
                 binding: binding.clone(),
+                ..Default::default()
+            });
+        }
+        if !pushed_plot && (group.header.kind()) == crate::format::GroupKind::FunctionPlot {
+            plots.push(LineShape {
+                points: Vec::new(),
+                color: crate::runtime::geometry::color_from_style(group.header.style_b),
+                dashed: false,
+                visible: !group.header.is_hidden(),
+                binding,
                 ..Default::default()
             });
         }

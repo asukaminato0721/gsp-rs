@@ -2,4 +2,4 @@
 import type { DomainJson } from "./DomainJson";
 import type { FunctionExprJson } from "./FunctionExprJson";
 
-export type FunctionJson = { key: number, name: string, derivative: boolean, domain: DomainJson, lineIndex: number | null, labelIndex: number, constrainedPointIndices: Array<number>, expr: FunctionExprJson, };
+export type FunctionJson = { key: number, name: string, derivative: boolean, domain: DomainJson, lineIndex: number | null, labelIndex: number | null, constrainedPointIndices: Array<number>, expr: FunctionExprJson, };

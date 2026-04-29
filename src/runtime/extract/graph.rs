@@ -1,6 +1,7 @@
 use super::decode::{decode_label_name, decode_measurement_value, find_indexed_path};
 use super::{ArcShape, CircleShape};
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_u16};
+use crate::runtime::functions::{evaluate_expr_with_parameters, try_decode_function_expr};
 use crate::runtime::geometry::{
     Bounds, GraphTransform, arc_sample_points, read_f32_unaligned, to_world,
 };
@@ -85,6 +86,15 @@ pub(super) fn detect_graph_transform(
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
 ) -> Option<GraphTransform> {
+    detect_calibration_graph_transform(file, groups, anchors)
+        .or_else(|| detect_explicit_axis_graph_transform(file, groups, anchors))
+}
+
+fn detect_calibration_graph_transform(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+) -> Option<GraphTransform> {
     let raw_per_unit = groups
         .iter()
         .filter(|group| group.header.kind().is_graph_calibration())
@@ -110,6 +120,41 @@ pub(super) fn detect_graph_transform(
         origin_raw,
         raw_per_unit,
     })
+}
+
+fn detect_explicit_axis_graph_transform(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+) -> Option<GraphTransform> {
+    groups
+        .iter()
+        .filter(|group| group.header.kind() == crate::format::GroupKind::AxisLine)
+        .find_map(|axis_group| {
+            let axis_path = find_indexed_path(file, axis_group)?;
+            let x_measure_group = groups.get(axis_path.refs.first()?.checked_sub(1)?)?;
+            let x_measure_path = find_indexed_path(file, x_measure_group)?;
+            let origin_raw = anchors
+                .get(x_measure_path.refs.first()?.checked_sub(1)?)?
+                .clone()?;
+            let unit_expr_group = groups.get(x_measure_path.refs.get(1)?.checked_sub(1)?)?;
+            let raw_per_unit = try_decode_function_expr(file, groups, unit_expr_group)
+                .ok()
+                .and_then(|unit_expr| {
+                    evaluate_expr_with_parameters(
+                        &unit_expr,
+                        0.0,
+                        &std::collections::BTreeMap::new(),
+                    )
+                })
+                .map(f64::abs)
+                .filter(|value| *value > 1e-9)
+                .unwrap_or(37.79527559055118);
+            (raw_per_unit > 1e-9).then_some(GraphTransform {
+                origin_raw,
+                raw_per_unit,
+            })
+        })
 }
 
 pub(super) fn has_graph_classes(groups: &[ObjectGroup]) -> bool {

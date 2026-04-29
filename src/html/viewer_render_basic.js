@@ -511,11 +511,24 @@
           line.binding.kind === "ray" || line.binding.kind === "angle-bisector-ray",
         );
       } else {
-        const points = env.resolveLinePoints
-          ? env.resolveLinePoints(line)
-          : line.points.map((/** @type {PointHandle} */ handle) => env.resolvePoint(handle));
-        if (points && points.length >= 2) {
-          screenPoints = points.map((/** @type {Point} */ point) => env.toScreen(point));
+        const segments = Array.isArray(line.segments) ? line.segments : null;
+        if (segments) {
+          for (const segment of segments) {
+            if (!segment || segment.length < 2) continue;
+            appendPointPath(env, segment.map((/** @type {Point} */ point) => env.toScreen(point)), {
+              stroke: env.rgba(line.color),
+              dashed: !!line.dashed,
+              debugTarget: { category: "lines", index },
+            });
+          }
+          continue;
+        } else {
+          const points = env.resolveLinePoints
+            ? env.resolveLinePoints(line)
+            : line.points.map((/** @type {PointHandle} */ handle) => env.resolvePoint(handle));
+          if (points && points.length >= 2) {
+            screenPoints = points.map((/** @type {Point} */ point) => env.toScreen(point));
+          }
         }
       }
       if (!screenPoints || screenPoints.length < 2) continue;

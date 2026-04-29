@@ -130,7 +130,7 @@ pub(crate) fn collect_scene_functions(
                             derivative,
                         }) if *function_key == *definition_ordinal && !derivative
                     )
-                })?;
+                });
                 let constrained_point_indices = points
                     .iter()
                     .enumerate()
@@ -187,7 +187,7 @@ pub(crate) fn collect_scene_functions(
                             derivative,
                         }) if *function_key == base_definition_ordinal && *derivative
                     )
-                })?;
+                });
                 Some(SceneFunction {
                     key: base_definition_ordinal,
                     name: base_name,

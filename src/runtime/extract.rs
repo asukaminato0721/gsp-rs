@@ -1101,8 +1101,16 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
             &labels,
             &world_data.world_points,
             shapes.polylines.len()
+                + shapes.direct_lines.len()
+                + shapes.rays.len()
+                + shapes.translated_lines.len()
+                + shapes.segment_markers.len()
+                + shapes.rotated_lines.len()
+                + shapes.scaled_lines.len()
+                + shapes.reflected_lines.len()
                 + shapes.derived_segments.len()
                 + shapes.measurements.len()
+                + shapes.coordinate_traces.len()
                 + shapes.axes.len(),
         )
     } else {

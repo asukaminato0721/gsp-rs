@@ -29,6 +29,25 @@ fn fixture_bytes(path: &str) -> Option<Vec<u8>> {
     fs::read(path).ok()
 }
 
+fn function_expr_has_unary(expr: &FunctionExpr, op: UnaryFunction) -> bool {
+    match expr {
+        FunctionExpr::Parsed(ast) => function_ast_has_unary(ast, op),
+        _ => false,
+    }
+}
+
+fn function_ast_has_unary(ast: &FunctionAst, op: UnaryFunction) -> bool {
+    match ast {
+        FunctionAst::Unary { op: ast_op, expr } => {
+            *ast_op == op || function_ast_has_unary(expr, op)
+        }
+        FunctionAst::Binary { lhs, rhs, .. } => {
+            function_ast_has_unary(lhs, op) || function_ast_has_unary(rhs, op)
+        }
+        _ => false,
+    }
+}
+
 fn fixture_buttons_without_validation(data: &[u8]) -> Vec<SceneButton> {
     let file = GspFile::parse(data).expect("fixture parses");
     let groups = file.object_groups();
@@ -293,6 +312,46 @@ fn payload_log_accepts_helper_payload_families_in_sample_fixtures() {
     ] {
         assert_supported_sample_log(path);
     }
+}
+
+#[test]
+fn payload_log_accepts_function_plot_expression_samples() {
+    for path in [
+        "tests/Samples/个人专栏/田野风作品/函数图象(田野风).gsp",
+        "tests/Samples/个人专栏/向忠作品/正弦型函数图象变换.gsp",
+    ] {
+        assert_supported_sample_log(path);
+    }
+}
+
+#[test]
+fn builds_sine_transform_sample_with_domain_guarded_live_function() {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/向忠作品/正弦型函数图象变换.gsp")
+    else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+    let function = scene
+        .functions
+        .iter()
+        .find(|function| function.key == 306)
+        .expect("expected sine transform function to export");
+
+    assert!(
+        function_expr_has_unary(&function.expr, UnaryFunction::Log10),
+        "expected exported function to keep its log10 domain guard"
+    );
+    let line_index = function
+        .line_index
+        .expect("expected a runtime-updatable function line");
+    let line = scene
+        .lines
+        .get(line_index)
+        .expect("function line index should point at an exported line");
+    assert!(
+        line.points.is_empty(),
+        "default samples rejected by the function domain should not be drawn"
+    );
 }
 
 #[test]
