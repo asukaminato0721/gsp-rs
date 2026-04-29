@@ -19,6 +19,14 @@ struct RawIndexedPath {
 
 #[derive(BinRead)]
 #[br(little)]
+struct RawObjectGroupHeader12 {
+    class_id: u32,
+    flags: u32,
+    style_a: u32,
+}
+
+#[derive(BinRead)]
+#[br(little)]
 struct RawObjectGroupHeader16 {
     class_id: u32,
     flags: u32,
@@ -68,6 +76,17 @@ pub fn decode_indexed_path(record_type: u32, payload: &[u8]) -> Option<IndexedPa
 
 pub fn decode_object_group_header(payload: &[u8]) -> Option<ObjectGroupHeader> {
     match payload.len() {
+        0x0c => {
+            let mut cursor = Cursor::new(payload);
+            let raw = cursor.read_le::<RawObjectGroupHeader12>().ok()?;
+            Some(ObjectGroupHeader {
+                class_id: raw.class_id,
+                flags: raw.flags,
+                style_a: raw.style_a,
+                style_b: 0,
+                style_c: 0,
+            })
+        }
         0x10 => {
             let mut cursor = Cursor::new(payload);
             let raw = cursor.read_le::<RawObjectGroupHeader16>().ok()?;
@@ -92,6 +111,10 @@ pub fn decode_object_group_header(payload: &[u8]) -> Option<ObjectGroupHeader> {
         }
         _ => None,
     }
+}
+
+pub fn decode_object_aux_u16(payload: &[u8]) -> Option<u16> {
+    (payload.len() == 2).then(|| read_u16(payload, 0))
 }
 
 pub fn read_u16(data: &[u8], offset: usize) -> u16 {

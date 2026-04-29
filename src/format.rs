@@ -11,8 +11,8 @@ use std::ops::{Add, AddAssign, Mul, Sub, SubAssign};
 
 #[allow(unused_imports)]
 pub use decode::{
-    decode_indexed_path, decode_object_group_header, decode_point_record, read_f64, read_i16,
-    read_u16, read_u32,
+    decode_indexed_path, decode_object_aux_u16, decode_object_group_header, decode_point_record,
+    read_f64, read_i16, read_u16, read_u32,
 };
 pub use error::ParseError;
 pub use group_kind::GroupKind;
@@ -222,6 +222,7 @@ pub struct ObjectGroup {
     #[allow(dead_code)]
     pub end_offset: usize,
     pub header: ObjectGroupHeader,
+    pub object_aux_u16: Option<u16>,
     pub records: Vec<Record>,
 }
 
@@ -276,6 +277,51 @@ mod tests {
         assert_eq!(header.style_a, 0x0001_0004);
         assert_eq!(header.style_b, 0x2000_00ff);
         assert_eq!(header.style_c, 0);
+    }
+
+    #[test]
+    fn decodes_minimal_object_group_header() {
+        let payload = [
+            0x03, 0x00, 0x00, 0x00, //
+            0x00, 0x00, 0x01, 0x00, //
+            0x04, 0x00, 0x01, 0x00, //
+        ];
+        let header = decode_object_group_header(&payload).expect("header");
+        assert_eq!(header.class_id, 3);
+        assert_eq!(header.flags, 0x0001_0000);
+        assert_eq!(header.style_a, 0x0001_0004);
+        assert_eq!(header.style_b, 0);
+        assert_eq!(header.style_c, 0);
+    }
+
+    #[test]
+    fn decodes_object_aux_u16_payload() {
+        assert_eq!(decode_object_aux_u16(&[0x23, 0x01]), Some(0x0123));
+        assert_eq!(decode_object_aux_u16(&[0x23]), None);
+        assert_eq!(decode_object_aux_u16(&[0x23, 0x01, 0x00]), None);
+    }
+
+    #[test]
+    fn collects_object_group_with_minimal_header() {
+        let mut data = Vec::new();
+        data.extend_from_slice(b"GSP4");
+        data.extend_from_slice(&12_u32.to_le_bytes());
+        data.extend_from_slice(&0x07d0_u32.to_le_bytes());
+        data.extend_from_slice(&3_u32.to_le_bytes());
+        data.extend_from_slice(&0_u32.to_le_bytes());
+        data.extend_from_slice(&0x0001_0004_u32.to_le_bytes());
+        data.extend_from_slice(&2_u32.to_le_bytes());
+        data.extend_from_slice(&0x07d8_u32.to_le_bytes());
+        data.extend_from_slice(&0x0123_u16.to_le_bytes());
+        data.extend_from_slice(&0_u32.to_le_bytes());
+        data.extend_from_slice(&0x07d7_u32.to_le_bytes());
+
+        let file = GspFile::parse(&data).expect("valid file");
+        let groups = file.object_groups();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].header.kind(), GroupKind::Circle);
+        assert_eq!(groups[0].header.style_b, 0);
+        assert_eq!(groups[0].object_aux_u16, Some(0x0123));
     }
 
     #[test]

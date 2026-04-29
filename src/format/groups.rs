@@ -1,4 +1,4 @@
-use super::{ObjectGroup, Record, decode_object_group_header};
+use super::{ObjectGroup, Record, decode_object_aux_u16, decode_object_group_header};
 
 pub(super) fn collect_object_groups(records: &[Record], data: &[u8]) -> Vec<ObjectGroup> {
     let mut groups = Vec::new();
@@ -31,11 +31,17 @@ pub(super) fn collect_object_groups(records: &[Record], data: &[u8]) -> Vec<Obje
             }
         }
 
+        let object_aux_u16 = group_records
+            .iter()
+            .find(|record| record.record_type == 0x07d8)
+            .and_then(|record| decode_object_aux_u16(record.payload(data)));
+
         groups.push(ObjectGroup {
             ordinal: groups.len() + 1,
             start_offset,
             end_offset,
             header,
+            object_aux_u16,
             records: group_records,
         });
         index = cursor;

@@ -303,10 +303,7 @@ pub(crate) fn is_parameter_control_group(group: &ObjectGroup) -> bool {
             .records
             .iter()
             .any(|record| record.record_type == RECORD_LABEL_AUX)
-        && group
-            .records
-            .iter()
-            .any(|record| record.record_type == 0x07d8)
+        && group.object_aux_u16.is_some()
         && group
             .records
             .iter()
