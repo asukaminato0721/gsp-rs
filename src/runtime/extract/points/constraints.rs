@@ -83,6 +83,13 @@ pub(crate) enum RawPointConstraint {
         edge_index: usize,
         t: f64,
     },
+    TranslatedPolygonBoundary {
+        vertex_group_indices: Vec<usize>,
+        vector_start_group_index: usize,
+        vector_end_group_index: usize,
+        edge_index: usize,
+        t: f64,
+    },
     Circle(PointOnCircleConstraint),
     Circular(PointOnCircularConstraint),
     CircleArc(PointOnCircleArcConstraint),
@@ -238,6 +245,17 @@ fn parameter_anchor_value(
             edge_index,
             t,
             vertex_group_indices,
+        } => super::super::labels::polygon_boundary_parameter(
+            anchors,
+            &vertex_group_indices,
+            edge_index,
+            t,
+        )?,
+        RawPointConstraint::TranslatedPolygonBoundary {
+            edge_index,
+            t,
+            vertex_group_indices,
+            ..
         } => super::super::labels::polygon_boundary_parameter(
             anchors,
             &vertex_group_indices,
@@ -1637,6 +1655,28 @@ pub(crate) fn try_decode_point_constraint(
         }
         (_, GroupKind::Polygon) => {
             return try_decode_polygon_boundary_constraint(file, host_group, payload);
+        }
+        (_, GroupKind::Translation) => {
+            if host_path.refs.len() >= 3
+                && let Some(source_group) = groups.get(host_path.refs[0].saturating_sub(1))
+                && source_group.header.kind() == GroupKind::Polygon
+            {
+                let RawPointConstraint::PolygonBoundary {
+                    vertex_group_indices,
+                    edge_index,
+                    t,
+                } = try_decode_polygon_boundary_constraint(file, source_group, payload)?
+                else {
+                    unreachable!();
+                };
+                return Ok(RawPointConstraint::TranslatedPolygonBoundary {
+                    vertex_group_indices,
+                    vector_start_group_index: host_path.refs[1].saturating_sub(1),
+                    vector_end_group_index: host_path.refs[2].saturating_sub(1),
+                    edge_index,
+                    t,
+                });
+            }
         }
         (_, GroupKind::ThreePointArc | GroupKind::ArcOnCircle | GroupKind::CenterArc) => {
             return try_decode_arc_family_constraint(file, groups, host_group, payload);

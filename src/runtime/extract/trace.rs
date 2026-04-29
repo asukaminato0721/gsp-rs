@@ -213,6 +213,7 @@ fn point_accepts_trace_parameter(point: &ScenePoint) -> bool {
             | ScenePointConstraint::OnLine { .. }
             | ScenePointConstraint::OnRay { .. }
             | ScenePointConstraint::OnPolygonBoundary { .. }
+            | ScenePointConstraint::OnTranslatedPolygonBoundary { .. }
             | ScenePointConstraint::OnCircle { .. }
             | ScenePointConstraint::OnCircleArc { .. }
             | ScenePointConstraint::OnArc { .. }
@@ -247,6 +248,20 @@ fn apply_trace_parameter_with_mode(
             vertex_indices,
             edge_index,
             t,
+        } => {
+            if vertex_indices.len() < 2 {
+                return;
+            }
+            let scaled = normalized * vertex_indices.len() as f64;
+            let next_edge = scaled.floor() as usize;
+            *edge_index = next_edge.min(vertex_indices.len() - 1);
+            *t = scaled.fract();
+        }
+        ScenePointConstraint::OnTranslatedPolygonBoundary {
+            vertex_indices,
+            edge_index,
+            t,
+            ..
         } => {
             if vertex_indices.len() < 2 {
                 return;
@@ -375,6 +390,32 @@ fn resolve_trace_point_at_constraint_parameter(
             )?;
             Some(lerp_point(&start, &end, t))
         }
+        ScenePointConstraint::OnTranslatedPolygonBoundary {
+            vertex_indices,
+            vector_start_index,
+            vector_end_index,
+            ..
+        } => {
+            let (edge_index, t) =
+                trace_polygon_parameter_to_edge(points, vertex_indices, value, visiting)?;
+            let start = resolve_trace_point(
+                points,
+                vertex_indices[edge_index % vertex_indices.len()],
+                visiting,
+            )?;
+            let end = resolve_trace_point(
+                points,
+                vertex_indices[(edge_index + 1) % vertex_indices.len()],
+                visiting,
+            )?;
+            let vector_start = resolve_trace_point(points, *vector_start_index, visiting)?;
+            let vector_end = resolve_trace_point(points, *vector_end_index, visiting)?;
+            let point = lerp_point(&start, &end, t);
+            Some(PointRecord {
+                x: point.x + (vector_end.x - vector_start.x),
+                y: point.y + (vector_end.y - vector_start.y),
+            })
+        }
         ScenePointConstraint::OnCircle {
             center_index,
             radius_index,
@@ -502,22 +543,51 @@ fn resolve_trace_point(
             angle_start_index,
             angle_vertex_index,
             angle_end_index,
+            angle_parameter_point_index,
+            angle_parameter_start_index,
+            angle_parameter_end_index,
+            angle_parameter_scale,
             ..
         }) => {
             let source = resolve_trace_point(points, *source_index, visiting)?;
             let center = resolve_trace_point(points, *center_index, visiting)?;
-            let resolved_angle = match (angle_start_index, angle_vertex_index, angle_end_index) {
-                (Some(angle_start_index), Some(angle_vertex_index), Some(angle_end_index)) => {
-                    let angle_start = resolve_trace_point(points, *angle_start_index, visiting)?;
-                    let angle_vertex = resolve_trace_point(points, *angle_vertex_index, visiting)?;
-                    let angle_end = resolve_trace_point(points, *angle_end_index, visiting)?;
-                    crate::runtime::geometry::angle_degrees_from_points(
-                        &angle_start,
-                        &angle_vertex,
-                        &angle_end,
-                    )?
+            let resolved_angle = if let (
+                Some(angle_parameter_point_index),
+                Some(angle_parameter_start_index),
+                Some(angle_parameter_end_index),
+            ) = (
+                angle_parameter_point_index,
+                angle_parameter_start_index,
+                angle_parameter_end_index,
+            ) {
+                let point = resolve_trace_point(points, *angle_parameter_point_index, visiting)?;
+                let start = resolve_trace_point(points, *angle_parameter_start_index, visiting)?;
+                let end = resolve_trace_point(points, *angle_parameter_end_index, visiting)?;
+                let dx = end.x - start.x;
+                let dy = end.y - start.y;
+                let len_sq = dx * dx + dy * dy;
+                if len_sq <= 1e-9 {
+                    return None;
                 }
-                _ => *angle_degrees,
+                let t = (((point.x - start.x) * dx + (point.y - start.y) * dy) / len_sq)
+                    .clamp(0.0, 1.0);
+                t * angle_parameter_scale.unwrap_or(1.0)
+            } else {
+                match (angle_start_index, angle_vertex_index, angle_end_index) {
+                    (Some(angle_start_index), Some(angle_vertex_index), Some(angle_end_index)) => {
+                        let angle_start =
+                            resolve_trace_point(points, *angle_start_index, visiting)?;
+                        let angle_vertex =
+                            resolve_trace_point(points, *angle_vertex_index, visiting)?;
+                        let angle_end = resolve_trace_point(points, *angle_end_index, visiting)?;
+                        crate::runtime::geometry::angle_degrees_from_points(
+                            &angle_start,
+                            &angle_vertex,
+                            &angle_end,
+                        )?
+                    }
+                    _ => *angle_degrees,
+                }
             };
             Some(rotate_around(&source, &center, resolved_angle.to_radians()))
         }
@@ -698,6 +768,35 @@ fn resolve_trace_point(
                         visiting,
                     )?;
                     Some(lerp_point(&start, &end, *t))
+                }
+            }
+            ScenePointConstraint::OnTranslatedPolygonBoundary {
+                vertex_indices,
+                vector_start_index,
+                vector_end_index,
+                edge_index,
+                t,
+            } => {
+                if vertex_indices.len() < 2 {
+                    None
+                } else {
+                    let start = resolve_trace_point(
+                        points,
+                        vertex_indices[*edge_index % vertex_indices.len()],
+                        visiting,
+                    )?;
+                    let end = resolve_trace_point(
+                        points,
+                        vertex_indices[(*edge_index + 1) % vertex_indices.len()],
+                        visiting,
+                    )?;
+                    let vector_start = resolve_trace_point(points, *vector_start_index, visiting)?;
+                    let vector_end = resolve_trace_point(points, *vector_end_index, visiting)?;
+                    let point = lerp_point(&start, &end, *t);
+                    Some(PointRecord {
+                        x: point.x + (vector_end.x - vector_start.x),
+                        y: point.y + (vector_end.y - vector_start.y),
+                    })
                 }
             }
             ScenePointConstraint::OnCircle {

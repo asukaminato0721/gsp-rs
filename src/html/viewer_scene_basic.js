@@ -293,6 +293,20 @@
       const end = resolveFn(constraint.vertexIndices[(constraint.edgeIndex + 1 + count) % count]);
       return start && end ? lerpPoint(start, end, constraint.t) : null;
     }
+    if (constraint.kind === "translated-polygon-boundary") {
+      const count = constraint.vertexIndices.length;
+      if (count < 2) return null;
+      const start = resolveFn(constraint.vertexIndices[((constraint.edgeIndex % count) + count) % count]);
+      const end = resolveFn(constraint.vertexIndices[(constraint.edgeIndex + 1 + count) % count]);
+      const vectorStart = resolveFn(constraint.vectorStartIndex);
+      const vectorEnd = resolveFn(constraint.vectorEndIndex);
+      if (!start || !end || !vectorStart || !vectorEnd) return null;
+      const base = lerpPoint(start, end, constraint.t);
+      return {
+        x: base.x + (vectorEnd.x - vectorStart.x),
+        y: base.y + (vectorEnd.y - vectorStart.y),
+      };
+    }
     if (constraint.kind === "circular-constraint") {
       const circle = circleFromConstraint(env, constraint.circle, resolveFn);
       if (!circle) return null;

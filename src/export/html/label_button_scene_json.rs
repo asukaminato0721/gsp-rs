@@ -394,6 +394,16 @@ enum LabelBindingJson {
         #[serde(rename = "valueSuffix")]
         value_suffix: String,
     },
+    #[serde(rename = "point-distance-ratio-value")]
+    PointDistanceRatioValue {
+        #[serde(rename = "originIndex")]
+        origin_index: usize,
+        #[serde(rename = "denominatorIndex")]
+        denominator_index: usize,
+        #[serde(rename = "numeratorIndex")]
+        numerator_index: usize,
+        name: String,
+    },
     #[serde(rename = "point-axis-value")]
     PointAxisValue {
         #[serde(rename = "pointIndex")]
@@ -414,6 +424,19 @@ enum LabelBindingJson {
     SegmentParameter {
         #[serde(rename = "pointIndex")]
         point_index: usize,
+        #[serde(rename = "pointName")]
+        point_name: String,
+        #[serde(rename = "segmentName")]
+        segment_name: String,
+    },
+    #[serde(rename = "segment-projection-parameter")]
+    SegmentProjectionParameter {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
         #[serde(rename = "pointName")]
         point_name: String,
         #[serde(rename = "segmentName")]
@@ -520,6 +543,17 @@ impl LabelBindingJson {
                 name: name.clone(),
                 value_suffix: value_suffix.clone(),
             },
+            TextLabelBinding::PointDistanceRatioValue {
+                origin_index,
+                denominator_index,
+                numerator_index,
+                name,
+            } => Self::PointDistanceRatioValue {
+                origin_index: *origin_index,
+                denominator_index: *denominator_index,
+                numerator_index: *numerator_index,
+                name: name.clone(),
+            },
             TextLabelBinding::PointAxisValue {
                 point_index,
                 name,
@@ -544,6 +578,19 @@ impl LabelBindingJson {
                 segment_name,
             } => Self::SegmentParameter {
                 point_index: *point_index,
+                point_name: point_name.clone(),
+                segment_name: segment_name.clone(),
+            },
+            TextLabelBinding::SegmentProjectionParameter {
+                point_index,
+                start_index,
+                end_index,
+                point_name,
+                segment_name,
+            } => Self::SegmentProjectionParameter {
+                point_index: *point_index,
+                start_index: *start_index,
+                end_index: *end_index,
                 point_name: point_name.clone(),
                 segment_name: segment_name.clone(),
             },

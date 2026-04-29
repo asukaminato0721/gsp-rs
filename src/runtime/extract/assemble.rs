@@ -119,6 +119,19 @@ pub(super) fn build_world_data(
                     edge_index: *edge_index,
                     t: *t,
                 },
+                ScenePointConstraint::OnTranslatedPolygonBoundary {
+                    vertex_indices,
+                    vector_start_index,
+                    vector_end_index,
+                    edge_index,
+                    t,
+                } => ScenePointConstraint::OnTranslatedPolygonBoundary {
+                    vertex_indices: vertex_indices.clone(),
+                    vector_start_index: *vector_start_index,
+                    vector_end_index: *vector_end_index,
+                    edge_index: *edge_index,
+                    t: *t,
+                },
                 ScenePointConstraint::OnCircle {
                     center_index,
                     radius_index,

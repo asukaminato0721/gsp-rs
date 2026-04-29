@@ -1374,6 +1374,85 @@ fn calibration_only_geometry_fixture_does_not_enable_graph_mode() {
 }
 
 #[test]
+fn rolling_triangle_inrm_fixture_stays_in_geometry_mode() {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/方小庆作品/三角形滚动(inRm).gsp")
+    else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+
+    assert!(
+        !scene.graph_mode,
+        "the rolling-triangle fixture uses a unit point and calculations, but the reference htm is a plain geometry scene"
+    );
+    assert!(
+        scene
+            .points
+            .iter()
+            .any(|point| matches!(point.binding, Some(ScenePointBinding::GraphCalibration))),
+        "expected the unit point to stay exported as an interactive calibration/helper point"
+    );
+    let unit_point = scene
+        .points
+        .iter()
+        .find(|point| matches!(point.binding, Some(ScenePointBinding::GraphCalibration)))
+        .expect("expected exported unit point");
+    assert!(
+        (unit_point.position.x - 180.461_942).abs() < 0.01
+            && (unit_point.position.y - 364.0).abs() < 0.01,
+        "expected the non-graph unit point to match the JavaSketchpad reference position"
+    );
+    assert!(
+        scene.labels.iter().any(|label| {
+            label.visible
+                && matches!(
+                    label.binding,
+                    Some(TextLabelBinding::PointDistanceRatioValue { .. })
+                )
+        }),
+        "expected the visible M ratio measurement to be exported"
+    );
+    assert!(
+        scene
+            .labels
+            .iter()
+            .filter(|label| matches!(
+                label.binding,
+                Some(TextLabelBinding::SegmentProjectionParameter { .. })
+            ))
+            .count()
+            >= 3,
+        "expected the three parameter-anchor measurements to be exported"
+    );
+    assert!(
+        scene.points.iter().any(|point| matches!(
+            point.constraint,
+            ScenePointConstraint::OnTranslatedPolygonBoundary { .. }
+        )),
+        "expected the traced point on the translated triangle to be exported"
+    );
+    assert!(
+        scene.points.iter().any(|point| matches!(
+            point.binding,
+            Some(ScenePointBinding::Rotate {
+                angle_parameter_point_index: Some(_),
+                angle_parameter_start_index: Some(_),
+                angle_parameter_end_index: Some(_),
+                ..
+            })
+        )),
+        "expected parameter-anchor rotations to stay live"
+    );
+    assert!(
+        scene
+            .lines
+            .iter()
+            .any(|line| matches!(line.binding, Some(LineBinding::PointTrace { .. }))),
+        "expected the rolling vertex point trace to be exported"
+    );
+}
+
+#[test]
 fn preserves_points_defined_by_path_value_fixture() {
     let scene = fixture_scene(include_bytes!(
         "../../../tests/fixtures/未实现的系统功能/给定的数值在路径上绘制点.gsp"

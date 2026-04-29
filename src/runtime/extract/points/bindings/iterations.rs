@@ -105,6 +105,10 @@ pub(crate) fn collect_point_iteration_points(
                                 angle_start_index: None,
                                 angle_vertex_index: None,
                                 angle_end_index: None,
+                                angle_parameter_point_index: None,
+                                angle_parameter_start_index: None,
+                                angle_parameter_end_index: None,
+                                angle_parameter_scale: None,
                             }),
                             debug: None,
                         });
@@ -255,6 +259,10 @@ pub(crate) fn collect_point_iteration_points(
                                 angle_start_index: None,
                                 angle_vertex_index: None,
                                 angle_end_index: None,
+                                angle_parameter_point_index: None,
+                                angle_parameter_start_index: None,
+                                angle_parameter_end_index: None,
+                                angle_parameter_scale: None,
                             }),
                             debug: None,
                         });

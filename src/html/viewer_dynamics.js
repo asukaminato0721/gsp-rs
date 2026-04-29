@@ -54,6 +54,22 @@
    */
   function resolveRotateTransformAngleDegrees(transform, parameters, resolvePoint) {
     if (
+      typeof transform.angleParameterPointIndex === "number"
+      && typeof transform.angleParameterStartIndex === "number"
+      && typeof transform.angleParameterEndIndex === "number"
+    ) {
+      const point = resolvePoint(transform.angleParameterPointIndex);
+      const start = resolvePoint(transform.angleParameterStartIndex);
+      const end = resolvePoint(transform.angleParameterEndIndex);
+      if (!point || !start || !end) return null;
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const lenSq = dx * dx + dy * dy;
+      if (lenSq <= 1e-9) return null;
+      const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lenSq));
+      return t * (transform.angleParameterScale ?? 1);
+    }
+    if (
       typeof transform.angleStartIndex === "number"
       && typeof transform.angleVertexIndex === "number"
       && typeof transform.angleEndIndex === "number"
@@ -372,16 +388,30 @@
         }
         if (
           (binding.kind === "segment-parameter"
+            || binding.kind === "segment-projection-parameter"
             || binding.kind === "polygon-boundary-parameter"
             || binding.kind === "circle-parameter")
           && typeof binding.pointName === "string"
         ) {
-          const value = parameterValueFromPoint(scene, binding.pointIndex);
+          const value = binding.kind === "segment-projection-parameter"
+            ? segmentProjectionParameterFromBinding(scene, binding)
+            : parameterValueFromPoint(scene, binding.pointIndex);
           const nextValue = isDiscreteIterationParameterName(scene, binding.pointName)
             ? discreteIterationDepth(value)
             : value;
           if (Number.isFinite(nextValue) && parameters.get(binding.pointName) !== nextValue) {
             parameters.set(binding.pointName, nextValue);
+            changed = true;
+          }
+          return;
+        }
+        if (
+          binding.kind === "point-distance-ratio-value"
+          && typeof binding.name === "string"
+        ) {
+          const value = pointDistanceRatioValue(scene, binding);
+          if (Number.isFinite(value) && parameters.get(binding.name) !== value) {
+            parameters.set(binding.name, value);
             changed = true;
           }
           return;
@@ -473,26 +503,42 @@
 
   /**
    * @param {Set<string>} deps
+   * @param {string | null | undefined} name
+   * @param {Set<string>} knownParameters
+   * @param {Map<string, Set<string>>} derivedParameterDeps
+   */
+  function addParameterDep(deps, name, knownParameters, derivedParameterDeps) {
+    addKnownParameterDep(deps, name, knownParameters);
+    if (typeof name !== "string") return;
+    const derivedDeps = derivedParameterDeps.get(name);
+    if (!derivedDeps) return;
+    derivedDeps.forEach((dep) => deps.add(dep));
+  }
+
+  /**
+   * @param {Set<string>} deps
    * @param {FunctionExprJson | FunctionAstJson | null | undefined} expr
    * @param {Set<string>} knownParameters
+   * @param {Map<string, Set<string>>} [derivedParameterDeps]
    */
-  function addExprParameterDeps(deps, expr, knownParameters) {
+  function addExprParameterDeps(deps, expr, knownParameters, derivedParameterDeps = new Map()) {
     const names = new Set();
     collectExprParameterNames(expr, names);
-    names.forEach((name) => addKnownParameterDep(deps, name, knownParameters));
+    names.forEach((name) => addParameterDep(deps, name, knownParameters, derivedParameterDeps));
   }
 
   /**
    * @param {Set<string>} deps
    * @param {unknown} value
    * @param {Set<string>} knownParameters
+   * @param {Map<string, Set<string>>} [derivedParameterDeps]
    */
-  function collectSceneDependencyIds(deps, value, knownParameters) {
+  function collectSceneDependencyIds(deps, value, knownParameters, derivedParameterDeps = new Map()) {
     if (!value || typeof value !== "object") {
       return;
     }
     if (Array.isArray(value)) {
-      value.forEach((entry) => collectSceneDependencyIds(deps, entry, knownParameters));
+      value.forEach((entry) => collectSceneDependencyIds(deps, entry, knownParameters, derivedParameterDeps));
       return;
     }
     Object.entries(/** @type {Record<string, unknown>} */ (value)).forEach(([key, child]) => {
@@ -503,6 +549,8 @@
           || key === "sourceIndex"
           || key === "centerIndex"
           || key === "originIndex"
+          || key === "denominatorIndex"
+          || key === "numeratorIndex"
           || key === "radiusIndex"
           || key === "startIndex"
           || key === "endIndex"
@@ -516,6 +564,9 @@
           || key === "driverIndex"
           || key === "seedIndex"
           || key === "pointSeedIndex"
+          || key === "angleParameterPointIndex"
+          || key === "angleParameterStartIndex"
+          || key === "angleParameterEndIndex"
         ) {
           deps.add(sourcePointRootId(child));
           return;
@@ -568,7 +619,7 @@
             }
           });
         }
-        child.forEach((entry) => collectSceneDependencyIds(deps, entry, knownParameters));
+        child.forEach((entry) => collectSceneDependencyIds(deps, entry, knownParameters, derivedParameterDeps));
         return;
       }
       if (typeof child === "string") {
@@ -580,12 +631,91 @@
           || key === "name"
           || key === "resultName"
         ) {
-          addKnownParameterDep(deps, child, knownParameters);
+          addParameterDep(deps, child, knownParameters, derivedParameterDeps);
         }
         return;
       }
-      collectSceneDependencyIds(deps, child, knownParameters);
+      collectSceneDependencyIds(deps, child, knownParameters, derivedParameterDeps);
     });
+  }
+
+  /**
+   * @param {RuntimeLabelJson} label
+   * @returns {string | null}
+   */
+  function labelDerivedParameterName(label) {
+    const binding = label.binding;
+    if (!binding) return null;
+    if (
+      (binding.kind === "point-distance-ratio-value"
+        || binding.kind === "parameter-value")
+      && typeof binding.name === "string"
+    ) {
+      return binding.name;
+    }
+    if (
+      (binding.kind === "segment-parameter"
+        || binding.kind === "segment-projection-parameter"
+        || binding.kind === "polygon-boundary-parameter"
+        || binding.kind === "circle-parameter")
+      && typeof binding.pointName === "string"
+    ) {
+      return binding.pointName;
+    }
+    if (
+      (binding.kind === "expression-value" || binding.kind === "point-bound-expression-value")
+      && typeof binding.resultName === "string"
+    ) {
+      return binding.resultName;
+    }
+    return null;
+  }
+
+  /**
+   * @param {{ labels?: RuntimeLabelJson[] }} scene
+   * @param {Set<string>} knownParameters
+   * @returns {Map<string, Set<string>>}
+   */
+  function collectLabelDerivedParameterDeps(scene, knownParameters) {
+    /** @type {{ name: string, directDeps: Set<string>, exprNames: Set<string> }[]} */
+    const defs = [];
+    (scene.labels || []).forEach((/** @type {RuntimeLabelJson} */ label) => {
+      const name = labelDerivedParameterName(label);
+      if (!name || !label.binding) return;
+      /** @type {Set<string>} */
+      const directDeps = new Set();
+      collectSceneDependencyIds(directDeps, label.binding, knownParameters);
+      /** @type {Set<string>} */
+      const exprNames = new Set();
+      if ("expr" in label.binding) {
+        collectExprParameterNames(label.binding.expr, exprNames);
+      }
+      defs.push({ name, directDeps, exprNames });
+    });
+
+    /** @type {Map<string, Set<string>>} */
+    const depsByName = new Map();
+    defs.forEach((def) => depsByName.set(def.name, new Set(def.directDeps)));
+    for (let pass = 0; pass < 4; pass += 1) {
+      let changed = false;
+      defs.forEach((def) => {
+        /** @type {Set<string>} */
+        const deps = new Set(def.directDeps);
+        def.exprNames.forEach((name) => {
+          addParameterDep(deps, name, knownParameters, depsByName);
+        });
+        const current = depsByName.get(def.name) || new Set();
+        deps.forEach((dep) => {
+          if (!current.has(dep)) {
+            current.add(dep);
+            changed = true;
+          }
+        });
+        depsByName.set(def.name, current);
+      });
+      if (!changed) break;
+    }
+    return depsByName;
   }
 
   /**
@@ -601,6 +731,7 @@
     /** @type {Map<string, DependencyNode>} */
     const nodeMap = new Map();
     const knownParameters = new Set((env.currentDynamics().parameters || []).map((parameter) => parameter.name));
+    const derivedParameterDeps = collectLabelDerivedParameterDeps(env.sourceScene, knownParameters);
 
     /** @param {DependencyNode} node */
     const addNode = (node) => {
@@ -642,8 +773,8 @@
     (env.sourceScene.points || []).forEach((point, index) => {
       if (!point.binding && !point.constraint) return;
       const deps = new Set();
-      collectSceneDependencyIds(deps, point.binding, knownParameters);
-      collectSceneDependencyIds(deps, point.constraint, knownParameters);
+      collectSceneDependencyIds(deps, point.binding, knownParameters, derivedParameterDeps);
+      collectSceneDependencyIds(deps, point.constraint, knownParameters, derivedParameterDeps);
       addNode({
         id: `point:${index}`,
         kind: "point",
@@ -655,7 +786,7 @@
     (env.sourceScene.lines || []).forEach((line, index) => {
       if (!line.binding) return;
       const deps = new Set();
-      collectSceneDependencyIds(deps, line.binding, knownParameters);
+      collectSceneDependencyIds(deps, line.binding, knownParameters, derivedParameterDeps);
       addNode({
         id: `line:${index}`,
         kind: "line",
@@ -667,8 +798,8 @@
     (env.sourceScene.circles || []).forEach((circle, index) => {
       if (!circle.binding && !circle.fillColorBinding) return;
       const deps = new Set();
-      collectSceneDependencyIds(deps, circle.binding, knownParameters);
-      collectSceneDependencyIds(deps, circle.fillColorBinding, knownParameters);
+      collectSceneDependencyIds(deps, circle.binding, knownParameters, derivedParameterDeps);
+      collectSceneDependencyIds(deps, circle.fillColorBinding, knownParameters, derivedParameterDeps);
       addNode({
         id: `circle:${index}`,
         kind: "circle",
@@ -680,7 +811,7 @@
     (env.sourceScene.polygons || []).forEach((polygon, index) => {
       if (!polygon.binding) return;
       const deps = new Set();
-      collectSceneDependencyIds(deps, polygon.binding, knownParameters);
+      collectSceneDependencyIds(deps, polygon.binding, knownParameters, derivedParameterDeps);
       addNode({
         id: `polygon:${index}`,
         kind: "polygon",
@@ -691,8 +822,8 @@
 
     (env.currentDynamics().functions || []).forEach((functionDef, index) => {
       const deps = new Set();
-      addExprParameterDeps(deps, functionDef.expr, knownParameters);
-      collectSceneDependencyIds(deps, functionDef.constrainedPointIndices, knownParameters);
+      addExprParameterDeps(deps, functionDef.expr, knownParameters, derivedParameterDeps);
+      collectSceneDependencyIds(deps, functionDef.constrainedPointIndices, knownParameters, derivedParameterDeps);
       addNode({
         id: `function:${index}`,
         kind: "function",
@@ -704,9 +835,9 @@
     (env.sourceScene.labels || []).forEach((label, index) => {
       if (!label.binding) return;
       const deps = new Set();
-      collectSceneDependencyIds(deps, label.binding, knownParameters);
+      collectSceneDependencyIds(deps, label.binding, knownParameters, derivedParameterDeps);
       if ("expr" in label.binding) {
-        addExprParameterDeps(deps, label.binding.expr, knownParameters);
+        addExprParameterDeps(deps, label.binding.expr, knownParameters, derivedParameterDeps);
       }
       addNode({
         id: `label:${index}`,
@@ -718,9 +849,9 @@
 
     (env.sourceScene.pointIterations || []).forEach((family, index) => {
       const deps = new Set();
-      collectSceneDependencyIds(deps, family, knownParameters);
+      collectSceneDependencyIds(deps, family, knownParameters, derivedParameterDeps);
       if (family.kind === "rotate") {
-        addExprParameterDeps(deps, family.angleExpr, knownParameters);
+        addExprParameterDeps(deps, family.angleExpr, knownParameters, derivedParameterDeps);
       }
       addNode({
         id: `point-iteration:${index}`,
@@ -731,7 +862,7 @@
     });
     (env.sourceScene.circleIterations || []).forEach((family, index) => {
       const deps = new Set();
-      collectSceneDependencyIds(deps, family, knownParameters);
+      collectSceneDependencyIds(deps, family, knownParameters, derivedParameterDeps);
       addNode({
         id: `circle-iteration:${index}`,
         kind: "circle-iteration",
@@ -741,12 +872,12 @@
     });
     (env.sourceScene.lineIterations || []).forEach((family, index) => {
       const deps = new Set();
-      collectSceneDependencyIds(deps, family, knownParameters);
+      collectSceneDependencyIds(deps, family, knownParameters, derivedParameterDeps);
       if (family.kind === "rotate") {
-        addExprParameterDeps(deps, family.angleExpr, knownParameters);
+        addExprParameterDeps(deps, family.angleExpr, knownParameters, derivedParameterDeps);
       }
       if (family.kind === "parameterized-point-trace") {
-        addExprParameterDeps(deps, family.stepExpr, knownParameters);
+        addExprParameterDeps(deps, family.stepExpr, knownParameters, derivedParameterDeps);
       }
       addNode({
         id: `line-iteration:${index}`,
@@ -757,12 +888,12 @@
     });
     (env.sourceScene.polygonIterations || []).forEach((family, index) => {
       const deps = new Set();
-      collectSceneDependencyIds(deps, family, knownParameters);
+      collectSceneDependencyIds(deps, family, knownParameters, derivedParameterDeps);
       if (family.kind === "coordinate-grid") {
-        addExprParameterDeps(deps, family.stepExpr, knownParameters);
-        addExprParameterDeps(deps, family.xExpr, knownParameters);
-        addExprParameterDeps(deps, family.yExpr, knownParameters);
-        addExprParameterDeps(deps, family.depthExpr, knownParameters);
+        addExprParameterDeps(deps, family.stepExpr, knownParameters, derivedParameterDeps);
+        addExprParameterDeps(deps, family.xExpr, knownParameters, derivedParameterDeps);
+        addExprParameterDeps(deps, family.yExpr, knownParameters, derivedParameterDeps);
+        addExprParameterDeps(deps, family.depthExpr, knownParameters, derivedParameterDeps);
       }
       addNode({
         id: `polygon-iteration:${index}`,
@@ -773,8 +904,8 @@
     });
     (env.sourceScene.labelIterations || []).forEach((family, index) => {
       const deps = new Set();
-      collectSceneDependencyIds(deps, family, knownParameters);
-      addExprParameterDeps(deps, family.expr, knownParameters);
+      collectSceneDependencyIds(deps, family, knownParameters, derivedParameterDeps);
+      addExprParameterDeps(deps, family.expr, knownParameters, derivedParameterDeps);
       addNode({
         id: `label-iteration:${index}`,
         kind: "label-iteration",
@@ -784,8 +915,8 @@
     });
     (env.sourceScene.iterationTables || []).forEach((table, index) => {
       const deps = new Set();
-      collectSceneDependencyIds(deps, table, knownParameters);
-      addExprParameterDeps(deps, table.expr, knownParameters);
+      collectSceneDependencyIds(deps, table, knownParameters, derivedParameterDeps);
+      addExprParameterDeps(deps, table.expr, knownParameters, derivedParameterDeps);
       addNode({
         id: `iteration-table:${index}`,
         kind: "iteration-table",
@@ -960,12 +1091,47 @@
 
   /**
    * @param {ViewerSceneData} scene
+   * @param {{ originIndex: number, denominatorIndex: number, numeratorIndex: number }} binding
+   */
+  function pointDistanceRatioValue(scene, binding) {
+    const origin = scene.points[binding.originIndex];
+    const denominator = scene.points[binding.denominatorIndex];
+    const numerator = scene.points[binding.numeratorIndex];
+    if (!origin || !denominator || !numerator) return null;
+    const denominatorLength = Math.hypot(denominator.x - origin.x, denominator.y - origin.y);
+    if (denominatorLength <= 1e-9) return null;
+    return Math.hypot(numerator.x - origin.x, numerator.y - origin.y) / denominatorLength;
+  }
+
+  /**
+   * @param {ViewerSceneData} scene
+   * @param {{ pointIndex: number, startIndex: number, endIndex: number }} binding
+   */
+  function segmentProjectionParameterFromBinding(scene, binding) {
+    const point = scene.points[binding.pointIndex];
+    const start = scene.points[binding.startIndex];
+    const end = scene.points[binding.endIndex];
+    if (!point || !start || !end) return null;
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq <= 1e-9) return null;
+    const t = ((point.x - start.x) * dx + (point.y - start.y) * dy) / lenSq;
+    return Math.max(0, Math.min(1, t));
+  }
+
+  /**
+   * @param {ViewerSceneData} scene
    * @param {number} pointIndex
    */
   function polygonBoundaryParameterFromPoint(scene, pointIndex) {
     const point = scene.points[pointIndex];
     const constraint = point?.constraint;
-    if (!constraint || constraint.kind !== "polygon-boundary" || constraint.vertexIndices.length < 2) {
+    if (
+      !constraint
+      || (constraint.kind !== "polygon-boundary" && constraint.kind !== "translated-polygon-boundary")
+      || constraint.vertexIndices.length < 2
+    ) {
       return null;
     }
 
@@ -1039,6 +1205,7 @@
     "ray-constraint": (scene, pointIndex) => scene.points[pointIndex]?.constraint?.t ?? null,
     polyline: (scene, pointIndex) => scene.points[pointIndex]?.constraint?.t ?? null,
     "polygon-boundary": polygonBoundaryParameterFromPoint,
+    "translated-polygon-boundary": polygonBoundaryParameterFromPoint,
     circle: circleParameterFromPoint,
     "circle-arc": (scene, pointIndex) => scene.points[pointIndex]?.constraint?.t ?? null,
     arc: (scene, pointIndex) => scene.points[pointIndex]?.constraint?.t ?? null,
@@ -1090,6 +1257,9 @@
         }
         traveled += length;
       }
+    },
+    "translated-polygon-boundary"(point, scene, value) {
+      POINT_CONSTRAINT_PARAMETER_APPLIERS["polygon-boundary"](point, scene, value);
     },
     circle(point, _scene, value) {
       const wrapped = wrapUnitInterval(value);
@@ -2502,6 +2672,12 @@
       label.text = `${label.binding.name} = ${env.formatNumber(value)}${label.binding.valueSuffix || ""}`;
       label.richMarkup = buildPlainTextRichMarkup(label.text);
     },
+    "point-distance-ratio-value"(env, scene, label) {
+      const value = pointDistanceRatioValue(scene, label.binding);
+      if (value === null) return;
+      label.text = `${label.binding.name} = ${env.formatNumber(value)}`;
+      label.richMarkup = buildPlainTextRichMarkup(label.text);
+    },
     "point-axis-value"(env, scene, label) {
       const point = scene.points[label.binding.pointIndex];
       if (!point) return;
@@ -2553,6 +2729,15 @@
       if (value !== null) {
         label.text = usesVerboseParameterLabel(label)
           ? `${label.binding.pointName}在${label.binding.segmentName}上的t值 = ${env.formatNumber(value)}`
+          : `${label.binding.pointName} = ${env.formatNumber(value)}`;
+        label.richMarkup = buildPlainTextRichMarkup(label.text);
+      }
+    },
+    "segment-projection-parameter"(env, scene, label) {
+      const value = segmentProjectionParameterFromBinding(scene, label.binding);
+      if (value !== null) {
+        label.text = usesVerboseParameterLabel(label)
+          ? `${label.binding.pointName}在${label.binding.segmentName}上的值 = ${env.formatNumber(value)}`
           : `${label.binding.pointName} = ${env.formatNumber(value)}`;
         label.richMarkup = buildPlainTextRichMarkup(label.text);
       }

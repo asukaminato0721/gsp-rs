@@ -360,6 +360,10 @@ fn build_scene_point_for_group(
                             angle_start_index: None,
                             angle_vertex_index: None,
                             angle_end_index: None,
+                            angle_parameter_point_index: None,
+                            angle_parameter_start_index: None,
+                            angle_parameter_end_index: None,
+                            angle_parameter_scale: None,
                         }),
                     )
                 }
@@ -462,6 +466,10 @@ fn build_scene_point_for_group(
                             angle_start_index: None,
                             angle_vertex_index: None,
                             angle_end_index: None,
+                            angle_parameter_point_index: None,
+                            angle_parameter_start_index: None,
+                            angle_parameter_end_index: None,
+                            angle_parameter_scale: None,
                         }),
                     ));
                 }
@@ -490,6 +498,10 @@ fn build_scene_point_for_group(
                             angle_start_index: None,
                             angle_vertex_index: None,
                             angle_end_index: None,
+                            angle_parameter_point_index: None,
+                            angle_parameter_start_index: None,
+                            angle_parameter_end_index: None,
+                            angle_parameter_scale: None,
                         },
                         TransformBindingKind::Scale { factor } => ScenePointBinding::Scale {
                             source_index,
@@ -551,6 +563,10 @@ fn build_scene_point_for_group(
                     angle_start_index: Some(angle_start_index),
                     angle_vertex_index: Some(angle_vertex_index),
                     angle_end_index: Some(angle_end_index),
+                    angle_parameter_point_index: None,
+                    angle_parameter_start_index: None,
+                    angle_parameter_end_index: None,
+                    angle_parameter_scale: None,
                 }),
             ))
         })(),
@@ -596,6 +612,10 @@ fn build_scene_point_for_group(
                     angle_start_index: Some(angle_start_index),
                     angle_vertex_index: Some(angle_vertex_index),
                     angle_end_index: Some(angle_end_index),
+                    angle_parameter_point_index: None,
+                    angle_parameter_start_index: None,
+                    angle_parameter_end_index: None,
+                    angle_parameter_scale: None,
                 }),
             ))
         })(),
@@ -658,6 +678,67 @@ fn build_scene_point_for_group_checked(
             Ok((|| {
                 let position = position?;
                 if kind == crate::format::GroupKind::ExpressionRotation {
+                    let path = find_indexed_path(file, group)?;
+                    if let Some(calc_group) = path
+                        .refs
+                        .get(2)
+                        .and_then(|ordinal| ordinal.checked_sub(1))
+                        .and_then(|index| groups.get(index))
+                        && calc_group.header.kind() == crate::format::GroupKind::ParameterAnchor
+                    {
+                        let source_group_index = path.refs.first()?.checked_sub(1)?;
+                        let center_group_index = path.refs.get(1)?.checked_sub(1)?;
+                        let anchor_path = find_indexed_path(file, calc_group)?;
+                        let angle_point_group_index = anchor_path.refs.first()?.checked_sub(1)?;
+                        let segment_group = groups.get(anchor_path.refs.get(1)?.checked_sub(1)?)?;
+                        let segment_path = find_indexed_path(file, segment_group)?;
+                        let angle_start_group_index = segment_path.refs.first()?.checked_sub(1)?;
+                        let angle_end_group_index = segment_path.refs.get(1)?.checked_sub(1)?;
+                        let source_index =
+                            mapped_point_index(group_to_point_index, source_group_index)?;
+                        let center_index =
+                            mapped_point_index(group_to_point_index, center_group_index)?;
+                        let angle_parameter_point_index =
+                            mapped_point_index(group_to_point_index, angle_point_group_index)?;
+                        let angle_parameter_start_index =
+                            mapped_point_index(group_to_point_index, angle_start_group_index)?;
+                        let angle_parameter_end_index =
+                            mapped_point_index(group_to_point_index, angle_end_group_index)?;
+                        let angle_point = anchors.get(angle_point_group_index)?.as_ref()?;
+                        let angle_start = anchors.get(angle_start_group_index)?.as_ref()?;
+                        let angle_end = anchors.get(angle_end_group_index)?.as_ref()?;
+                        let dx = angle_end.x - angle_start.x;
+                        let dy = angle_end.y - angle_start.y;
+                        let len_sq = dx * dx + dy * dy;
+                        if len_sq <= 1e-9 {
+                            return None;
+                        }
+                        let angle_radians = (((angle_point.x - angle_start.x) * dx
+                            + (angle_point.y - angle_start.y) * dy)
+                            / len_sq)
+                            .clamp(0.0, 1.0);
+                        return Some(scene_point(
+                            position,
+                            group_color(group),
+                            visible,
+                            false,
+                            ScenePointConstraint::Free,
+                            Some(ScenePointBinding::Rotate {
+                                source_index,
+                                center_index,
+                                angle_degrees: angle_radians.to_degrees(),
+                                parameter_name: None,
+                                angle_expr: None,
+                                angle_start_index: None,
+                                angle_vertex_index: None,
+                                angle_end_index: None,
+                                angle_parameter_point_index: Some(angle_parameter_point_index),
+                                angle_parameter_start_index: Some(angle_parameter_start_index),
+                                angle_parameter_end_index: Some(angle_parameter_end_index),
+                                angle_parameter_scale: Some(180.0 / std::f64::consts::PI),
+                            }),
+                        ));
+                    }
                     let binding = decode_expression_rotation_binding(file, groups, group, anchors)?;
                     let source_index =
                         mapped_point_index(group_to_point_index, binding.source_group_index)?;
@@ -678,6 +759,10 @@ fn build_scene_point_for_group_checked(
                             angle_start_index: None,
                             angle_vertex_index: None,
                             angle_end_index: None,
+                            angle_parameter_point_index: None,
+                            angle_parameter_start_index: None,
+                            angle_parameter_end_index: None,
+                            angle_parameter_scale: None,
                         }),
                     ));
                 }
@@ -712,6 +797,10 @@ fn build_scene_point_for_group_checked(
                             angle_start_index: None,
                             angle_vertex_index: None,
                             angle_end_index: None,
+                            angle_parameter_point_index: None,
+                            angle_parameter_start_index: None,
+                            angle_parameter_end_index: None,
+                            angle_parameter_scale: None,
                         },
                         TransformBindingKind::Scale { factor } => ScenePointBinding::Scale {
                             source_index,
@@ -751,6 +840,10 @@ fn build_scene_point_for_group_checked(
                                 angle_start_index: None,
                                 angle_vertex_index: None,
                                 angle_end_index: None,
+                                angle_parameter_point_index: None,
+                                angle_parameter_start_index: None,
+                                angle_parameter_end_index: None,
+                                angle_parameter_scale: None,
                             },
                             TransformBindingKind::Scale { factor } => ScenePointBinding::Scale {
                                 source_index,
@@ -765,6 +858,61 @@ fn build_scene_point_for_group_checked(
                 let source_group_index = path.refs.first()?.checked_sub(1)?;
                 let center_group_index = path.refs.get(1)?.checked_sub(1)?;
                 let calc_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
+                if (calc_group.header.kind()) == crate::format::GroupKind::ParameterAnchor {
+                    let anchor_path = find_indexed_path(file, calc_group)?;
+                    let angle_point_group_index = anchor_path.refs.first()?.checked_sub(1)?;
+                    let segment_group = groups.get(anchor_path.refs.get(1)?.checked_sub(1)?)?;
+                    if !segment_group.header.kind().is_line_like() {
+                        return None;
+                    }
+                    let segment_path = find_indexed_path(file, segment_group)?;
+                    let angle_start_group_index = segment_path.refs.first()?.checked_sub(1)?;
+                    let angle_end_group_index = segment_path.refs.get(1)?.checked_sub(1)?;
+                    let source_index =
+                        mapped_point_index(group_to_point_index, source_group_index)?;
+                    let center_index =
+                        mapped_point_index(group_to_point_index, center_group_index)?;
+                    let angle_parameter_point_index =
+                        mapped_point_index(group_to_point_index, angle_point_group_index)?;
+                    let angle_parameter_start_index =
+                        mapped_point_index(group_to_point_index, angle_start_group_index)?;
+                    let angle_parameter_end_index =
+                        mapped_point_index(group_to_point_index, angle_end_group_index)?;
+                    let angle_point = anchors.get(angle_point_group_index)?.as_ref()?;
+                    let angle_start = anchors.get(angle_start_group_index)?.as_ref()?;
+                    let angle_end = anchors.get(angle_end_group_index)?.as_ref()?;
+                    let dx = angle_end.x - angle_start.x;
+                    let dy = angle_end.y - angle_start.y;
+                    let len_sq = dx * dx + dy * dy;
+                    if len_sq <= 1e-9 {
+                        return None;
+                    }
+                    let angle_radians = (((angle_point.x - angle_start.x) * dx
+                        + (angle_point.y - angle_start.y) * dy)
+                        / len_sq)
+                        .clamp(0.0, 1.0);
+                    return Some(scene_point(
+                        position,
+                        group_color(group),
+                        visible,
+                        false,
+                        ScenePointConstraint::Free,
+                        Some(ScenePointBinding::Rotate {
+                            source_index,
+                            center_index,
+                            angle_degrees: angle_radians.to_degrees(),
+                            parameter_name: None,
+                            angle_expr: None,
+                            angle_start_index: None,
+                            angle_vertex_index: None,
+                            angle_end_index: None,
+                            angle_parameter_point_index: Some(angle_parameter_point_index),
+                            angle_parameter_start_index: Some(angle_parameter_start_index),
+                            angle_parameter_end_index: Some(angle_parameter_end_index),
+                            angle_parameter_scale: Some(180.0 / std::f64::consts::PI),
+                        }),
+                    ));
+                }
                 if (calc_group.header.kind()) != crate::format::GroupKind::FunctionExpr {
                     return None;
                 }
@@ -800,6 +948,10 @@ fn build_scene_point_for_group_checked(
                         angle_start_index: None,
                         angle_vertex_index: None,
                         angle_end_index: None,
+                        angle_parameter_point_index: None,
+                        angle_parameter_start_index: None,
+                        angle_parameter_end_index: None,
+                        angle_parameter_scale: None,
                     }),
                 ))
             })())
@@ -845,6 +997,10 @@ fn build_scene_point_for_group_checked(
                         angle_start_index: Some(angle_start_index),
                         angle_vertex_index: Some(angle_vertex_index),
                         angle_end_index: Some(angle_end_index),
+                        angle_parameter_point_index: None,
+                        angle_parameter_start_index: None,
+                        angle_parameter_end_index: None,
+                        angle_parameter_scale: None,
                     }),
                 ))
             })())
@@ -1153,6 +1309,36 @@ fn scene_point_from_constraint(
                 None,
             ))
         }
+        RawPointConstraint::TranslatedPolygonBoundary {
+            vertex_group_indices,
+            vector_start_group_index,
+            vector_end_group_index,
+            edge_index,
+            t,
+        } => {
+            let vertex_indices = vertex_group_indices
+                .iter()
+                .map(|group_index| mapped_point_index(group_to_point_index, *group_index))
+                .collect::<Option<Vec<_>>>()?;
+            let vector_start_index =
+                mapped_point_index(group_to_point_index, vector_start_group_index)?;
+            let vector_end_index =
+                mapped_point_index(group_to_point_index, vector_end_group_index)?;
+            Some(scene_point(
+                position,
+                color,
+                visible,
+                draggable,
+                ScenePointConstraint::OnTranslatedPolygonBoundary {
+                    vertex_indices,
+                    vector_start_index,
+                    vector_end_index,
+                    edge_index,
+                    t,
+                },
+                None,
+            ))
+        }
         RawPointConstraint::Circle(constraint) => {
             let center_index =
                 mapped_point_index(group_to_point_index, constraint.center_group_index)?;
@@ -1312,6 +1498,36 @@ fn scene_point_from_parameter_controlled(
                 true,
                 ScenePointConstraint::OnPolygonBoundary {
                     vertex_indices,
+                    edge_index: *edge_index,
+                    t: *t,
+                },
+                binding,
+            ))
+        }
+        RawPointConstraint::TranslatedPolygonBoundary {
+            vertex_group_indices,
+            vector_start_group_index,
+            vector_end_group_index,
+            edge_index,
+            t,
+        } => {
+            let vertex_indices = vertex_group_indices
+                .iter()
+                .map(|group_index| mapped_point_index(group_to_point_index, *group_index))
+                .collect::<Option<Vec<_>>>()?;
+            let vector_start_index =
+                mapped_point_index(group_to_point_index, *vector_start_group_index)?;
+            let vector_end_index =
+                mapped_point_index(group_to_point_index, *vector_end_group_index)?;
+            Some(scene_point(
+                parameter_point.position.clone(),
+                color,
+                visible,
+                true,
+                ScenePointConstraint::OnTranslatedPolygonBoundary {
+                    vertex_indices,
+                    vector_start_index,
+                    vector_end_index,
                     edge_index: *edge_index,
                     t: *t,
                 },

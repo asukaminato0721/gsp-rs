@@ -172,8 +172,7 @@ pub(super) fn has_graph_classes(groups: &[ObjectGroup]) -> bool {
             | GroupKind::ParametricFunctionPlot => return true,
             kind if kind.is_coordinate_object() => return true,
             kind if kind.is_graph_calibration() => has_calibration = true,
-            GroupKind::FunctionExpr
-            | GroupKind::CoordinateXValue
+            GroupKind::CoordinateXValue
             | GroupKind::CoordinateYValue
             | GroupKind::CoordinateReadoutLabel
             | GroupKind::GraphViewHelper => has_graph_expression = true,

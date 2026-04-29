@@ -194,11 +194,15 @@ fn resolve_function_expr_parameter(
             let point_group = groups.get(anchor_path.refs.first()?.checked_sub(1)?)?;
             decode_label_name(file, parameter_group)
                 .or_else(|| decode_label_name(file, point_group))?
+        } else if parameter_group.header.kind() == crate::format::GroupKind::RatioValue {
+            decode_label_name(file, parameter_group)?
         } else {
             editable_non_graph_parameter_name_for_group(file, groups, parameter_group)?
         };
         let value = if parameter_group.header.kind() == crate::format::GroupKind::ParameterAnchor {
             parameter_anchor_value(file, groups, parameter_group, anchors)?
+        } else if parameter_group.header.kind() == crate::format::GroupKind::RatioValue {
+            ratio_value(file, parameter_group, anchors)?
         } else {
             try_decode_parameter_control_value_for_group(file, groups, parameter_group).ok()?
         };
@@ -270,6 +274,12 @@ fn parameter_anchor_value(
             t,
             vertex_group_indices,
         } => polygon_boundary_parameter(anchors, &vertex_group_indices, edge_index, t),
+        RawPointConstraint::TranslatedPolygonBoundary {
+            edge_index,
+            t,
+            vertex_group_indices,
+            ..
+        } => polygon_boundary_parameter(anchors, &vertex_group_indices, edge_index, t),
         RawPointConstraint::Circle(constraint) => circle_parameter(
             anchors,
             constraint.center_group_index,
@@ -282,6 +292,41 @@ fn parameter_anchor_value(
         RawPointConstraint::Arc(_) => None,
         RawPointConstraint::Polyline { .. } => None,
     }
+}
+
+fn ratio_value(
+    file: &GspFile,
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<f64> {
+    if group.header.kind() != crate::format::GroupKind::RatioValue {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    let origin = anchors.get(path.refs.first()?.checked_sub(1)?)?.as_ref()?;
+    let denominator = anchors.get(path.refs.get(1)?.checked_sub(1)?)?.as_ref()?;
+    let numerator = anchors.get(path.refs.get(2)?.checked_sub(1)?)?.as_ref()?;
+    let denominator_length = (denominator.x - origin.x).hypot(denominator.y - origin.y);
+    if denominator_length <= 1e-9 {
+        return None;
+    }
+    let numerator_length = (numerator.x - origin.x).hypot(numerator.y - origin.y);
+    Some(numerator_length / denominator_length)
+}
+
+fn segment_projection_parameter(
+    point: &PointRecord,
+    start: &PointRecord,
+    end: &PointRecord,
+) -> Option<f64> {
+    let dx = end.x - start.x;
+    let dy = end.y - start.y;
+    let len_sq = dx * dx + dy * dy;
+    if len_sq <= 1e-9 {
+        return None;
+    }
+    let t = ((point.x - start.x) * dx + (point.y - start.y) * dy) / len_sq;
+    Some(t.clamp(0.0, 1.0))
 }
 
 fn detect_graph_context(
@@ -945,6 +990,29 @@ pub(super) fn collect_coordinate_labels(
                 debug: Some(payload_debug_source(group)),
                 ..Default::default()
             });
+        } else if kind == crate::format::GroupKind::RatioValue
+            && let Some(path) = find_indexed_path(file, group)
+            && path.refs.len() >= 3
+            && let Some(name) = decode_label_name(file, group)
+            && let Some(value) = ratio_value(file, group, anchors)
+            && let Some(anchor) = decode_label_anchor(file, group, anchors)
+                .or_else(|| try_decode_payload_anchor_point(file, group).ok().flatten())
+        {
+            labels.push(TextLabel {
+                anchor,
+                text: format!("{name} = {}", format_number(value)),
+                color: [30, 30, 30, 255],
+                visible: true,
+                binding: Some(TextLabelBinding::PointDistanceRatioValue {
+                    origin_index: path.refs[0].saturating_sub(1),
+                    denominator_index: path.refs[1].saturating_sub(1),
+                    numerator_index: path.refs[2].saturating_sub(1),
+                    name,
+                }),
+                screen_space: true,
+                debug: Some(payload_debug_source(group)),
+                ..Default::default()
+            });
         } else if matches!(
             kind,
             crate::format::GroupKind::CoordinateXValue | crate::format::GroupKind::CoordinateYValue
@@ -1360,6 +1428,7 @@ pub(super) fn collect_polygon_parameter_labels(
 pub(super) fn collect_segment_parameter_labels(
     file: &GspFile,
     groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
 ) -> Vec<TextLabel> {
     let mut labels = groups
         .iter()
@@ -1372,11 +1441,12 @@ pub(super) fn collect_segment_parameter_labels(
 
             let point_group = groups.get(path.refs[0].checked_sub(1)?)?;
             let segment_group = groups.get(path.refs[1].checked_sub(1)?)?;
-            if !point_group.header.kind().is_point_constraint()
-                || !segment_group.header.kind().is_line_like()
-            {
+            if !segment_group.header.kind().is_line_like() {
                 return None;
             }
+            let segment_path = find_indexed_path(file, segment_group)?;
+            let start_group_index = segment_path.refs.first()?.checked_sub(1)?;
+            let end_group_index = segment_path.refs.get(1)?.checked_sub(1)?;
 
             let point_name =
                 decode_label_name(file, group).or_else(|| decode_label_name(file, point_group))?;
@@ -1386,27 +1456,48 @@ pub(super) fn collect_segment_parameter_labels(
                 .iter()
                 .find(|record| record.record_type == 0x0903)?;
             let anchor = decode_text_anchor(anchor_record.payload(&file.data))?;
-            let RawPointConstraint::Segment(constraint) =
-                try_decode_point_constraint(file, groups, point_group, None, &None).ok()?
-            else {
-                return None;
+            let constrained_segment_t = if point_group.header.kind().is_point_constraint() {
+                match try_decode_point_constraint(file, groups, point_group, None, &None).ok()? {
+                    RawPointConstraint::Segment(constraint) => Some(constraint.t),
+                    _ => None,
+                }
+            } else {
+                None
             };
+            let projected_t = constrained_segment_t.or_else(|| {
+                let point = anchors.get(path.refs[0].checked_sub(1)?)?.as_ref()?;
+                let start = anchors.get(start_group_index)?.as_ref()?;
+                let end = anchors.get(end_group_index)?.as_ref()?;
+                segment_projection_parameter(point, start, end)
+            })?;
 
             Some(TextLabel {
                 anchor,
                 text: if decode_label_name(file, group).is_some() {
-                    format!("{point_name} = {:.2}", constraint.t)
+                    format!("{point_name} = {:.2}", projected_t)
+                } else if constrained_segment_t.is_some() {
+                    format!("{point_name}在{segment_name}上的t值 = {:.2}", projected_t)
                 } else {
-                    format!("{point_name}在{segment_name}上的t值 = {:.2}", constraint.t)
+                    format!("{point_name}在{segment_name}上的值 = {:.2}", projected_t)
                 },
                 color: [30, 30, 30, 255],
                 visible: decode_label_name(file, group).is_some()
                     || label_visible_for_group(file, group),
-                binding: Some(TextLabelBinding::SegmentParameter {
-                    point_index: path.refs[0].checked_sub(1)?,
-                    point_name,
-                    segment_name,
-                }),
+                binding: if constrained_segment_t.is_some() {
+                    Some(TextLabelBinding::SegmentParameter {
+                        point_index: path.refs[0].checked_sub(1)?,
+                        point_name,
+                        segment_name,
+                    })
+                } else {
+                    Some(TextLabelBinding::SegmentProjectionParameter {
+                        point_index: path.refs[0].checked_sub(1)?,
+                        start_index: start_group_index,
+                        end_index: end_group_index,
+                        point_name,
+                        segment_name,
+                    })
+                },
                 screen_space: false,
                 debug: Some(payload_debug_source(group)),
                 ..Default::default()

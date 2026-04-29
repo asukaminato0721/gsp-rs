@@ -165,6 +165,26 @@ enum PointTransformJson {
         angle_vertex_index: Option<usize>,
         #[serde(rename = "angleEndIndex", skip_serializing_if = "Option::is_none")]
         angle_end_index: Option<usize>,
+        #[serde(
+            rename = "angleParameterPointIndex",
+            skip_serializing_if = "Option::is_none"
+        )]
+        angle_parameter_point_index: Option<usize>,
+        #[serde(
+            rename = "angleParameterStartIndex",
+            skip_serializing_if = "Option::is_none"
+        )]
+        angle_parameter_start_index: Option<usize>,
+        #[serde(
+            rename = "angleParameterEndIndex",
+            skip_serializing_if = "Option::is_none"
+        )]
+        angle_parameter_end_index: Option<usize>,
+        #[serde(
+            rename = "angleParameterScale",
+            skip_serializing_if = "Option::is_none"
+        )]
+        angle_parameter_scale: Option<f64>,
     },
     #[serde(rename = "scale")]
     Scale {
@@ -249,6 +269,10 @@ impl PointBindingJson {
                 angle_start_index,
                 angle_vertex_index,
                 angle_end_index,
+                angle_parameter_point_index,
+                angle_parameter_start_index,
+                angle_parameter_end_index,
+                angle_parameter_scale,
             } => Self::Derived {
                 source_index: *source_index,
                 transform: PointTransformJson::Rotate {
@@ -259,6 +283,10 @@ impl PointBindingJson {
                     angle_start_index: *angle_start_index,
                     angle_vertex_index: *angle_vertex_index,
                     angle_end_index: *angle_end_index,
+                    angle_parameter_point_index: *angle_parameter_point_index,
+                    angle_parameter_start_index: *angle_parameter_start_index,
+                    angle_parameter_end_index: *angle_parameter_end_index,
+                    angle_parameter_scale: *angle_parameter_scale,
                 },
             },
             ScenePointBinding::ScaleByRatio {
@@ -392,6 +420,18 @@ enum PointConstraintJson {
     PolygonBoundary {
         #[serde(rename = "vertexIndices")]
         vertex_indices: Vec<usize>,
+        #[serde(rename = "edgeIndex")]
+        edge_index: usize,
+        t: f64,
+    },
+    #[serde(rename = "translated-polygon-boundary")]
+    TranslatedPolygonBoundary {
+        #[serde(rename = "vertexIndices")]
+        vertex_indices: Vec<usize>,
+        #[serde(rename = "vectorStartIndex")]
+        vector_start_index: usize,
+        #[serde(rename = "vectorEndIndex")]
+        vector_end_index: usize,
         #[serde(rename = "edgeIndex")]
         edge_index: usize,
         t: f64,
@@ -559,6 +599,19 @@ impl PointConstraintJson {
                 t,
             } => Some(Self::PolygonBoundary {
                 vertex_indices: vertex_indices.clone(),
+                edge_index: *edge_index,
+                t: *t,
+            }),
+            ScenePointConstraint::OnTranslatedPolygonBoundary {
+                vertex_indices,
+                vector_start_index,
+                vector_end_index,
+                edge_index,
+                t,
+            } => Some(Self::TranslatedPolygonBoundary {
+                vertex_indices: vertex_indices.clone(),
+                vector_start_index: *vector_start_index,
+                vector_end_index: *vector_end_index,
                 edge_index: *edge_index,
                 t: *t,
             }),

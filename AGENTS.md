@@ -1,6 +1,6 @@
 this proj compile .gsp to single html file
 
-always based on .gsp file payload, don't heuristic
+always based on .gsp file payload and .htm file, which has part of the geometry object definition, don't heuristic
 
 make sure the element is interactive.
 

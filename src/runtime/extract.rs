@@ -220,7 +220,7 @@ fn analyze_scene(
     let graph = detect_graph_transform(file, groups, &raw_anchors_for_graph);
     let graph_mode = graph.is_some() && has_graph_classes(groups);
     let graph_ref = if graph_mode { graph.clone() } else { None };
-    let raw_anchors = collect_raw_object_anchors(file, groups, point_map, graph_ref.as_ref());
+    let raw_anchors = collect_raw_object_anchors(file, groups, point_map, graph.as_ref());
     let saved_viewport = if graph_mode {
         collect_saved_viewport(file, groups)
     } else {
@@ -489,7 +489,11 @@ fn collect_scene_labels(
         groups,
         &analysis.raw_anchors,
     ));
-    labels.extend(collect_segment_parameter_labels(file, groups));
+    labels.extend(collect_segment_parameter_labels(
+        file,
+        groups,
+        &analysis.raw_anchors,
+    ));
     labels.extend(collect_custom_transform_expression_labels(
         file,
         groups,
@@ -907,6 +911,12 @@ fn resolve_payload_color_parameter_value(
             edge_index,
             t,
             vertex_group_indices,
+        } => polygon_boundary_parameter(raw_anchors, &vertex_group_indices, edge_index, t),
+        RawPointConstraint::TranslatedPolygonBoundary {
+            edge_index,
+            t,
+            vertex_group_indices,
+            ..
         } => polygon_boundary_parameter(raw_anchors, &vertex_group_indices, edge_index, t),
         RawPointConstraint::Circle(constraint) => circle_parameter(
             raw_anchors,
@@ -2550,6 +2560,13 @@ fn write_group_detail(output: &mut String, file: &GspFile, group: &ObjectGroup, 
                     ),
                     self::points::RawPointConstraint::PolygonBoundary { edge_index, t, .. } => {
                         format!("polygon edge={} t={:.6}", edge_index, t)
+                    }
+                    self::points::RawPointConstraint::TranslatedPolygonBoundary {
+                        edge_index,
+                        t,
+                        ..
+                    } => {
+                        format!("translated-polygon edge={} t={:.6}", edge_index, t)
                     }
                     self::points::RawPointConstraint::Circle(constraint) => format!(
                         "circle center=#{} radius=#{} unit=({:.6}, {:.6})",

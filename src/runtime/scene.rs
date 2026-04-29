@@ -336,6 +336,13 @@ pub(crate) enum ScenePointConstraint {
         edge_index: usize,
         t: f64,
     },
+    OnTranslatedPolygonBoundary {
+        vertex_indices: Vec<usize>,
+        vector_start_index: usize,
+        vector_end_index: usize,
+        edge_index: usize,
+        t: f64,
+    },
     OnCircle {
         center_index: usize,
         radius_index: usize,
@@ -691,6 +698,10 @@ pub(crate) enum ScenePointBinding {
         angle_start_index: Option<usize>,
         angle_vertex_index: Option<usize>,
         angle_end_index: Option<usize>,
+        angle_parameter_point_index: Option<usize>,
+        angle_parameter_start_index: Option<usize>,
+        angle_parameter_end_index: Option<usize>,
+        angle_parameter_scale: Option<f64>,
     },
     ScaleByRatio {
         source_index: usize,
@@ -917,6 +928,12 @@ pub(crate) enum TextLabelBinding {
         name: String,
         value_suffix: String,
     },
+    PointDistanceRatioValue {
+        origin_index: usize,
+        denominator_index: usize,
+        numerator_index: usize,
+        name: String,
+    },
     PointAxisValue {
         point_index: usize,
         name: String,
@@ -929,6 +946,13 @@ pub(crate) enum TextLabelBinding {
     },
     SegmentParameter {
         point_index: usize,
+        point_name: String,
+        segment_name: String,
+    },
+    SegmentProjectionParameter {
+        point_index: usize,
+        start_index: usize,
+        end_index: usize,
         point_name: String,
         segment_name: String,
     },

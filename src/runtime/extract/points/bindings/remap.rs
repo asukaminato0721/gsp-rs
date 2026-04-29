@@ -159,6 +159,34 @@ pub(crate) fn remap_label_bindings(
             TextLabelBinding::ParameterValue { .. }
             | TextLabelBinding::FunctionLabel { .. }
             | TextLabelBinding::ExpressionValue { .. } => continue,
+            TextLabelBinding::PointDistanceRatioValue {
+                origin_index,
+                denominator_index,
+                numerator_index,
+                ..
+            } => {
+                let Some(mapped_origin_index) = mapped_index(group_to_point_index, *origin_index)
+                else {
+                    label.binding = None;
+                    continue;
+                };
+                let Some(mapped_denominator_index) =
+                    mapped_index(group_to_point_index, *denominator_index)
+                else {
+                    label.binding = None;
+                    continue;
+                };
+                let Some(mapped_numerator_index) =
+                    mapped_index(group_to_point_index, *numerator_index)
+                else {
+                    label.binding = None;
+                    continue;
+                };
+                *origin_index = mapped_origin_index;
+                *denominator_index = mapped_denominator_index;
+                *numerator_index = mapped_numerator_index;
+                continue;
+            }
             TextLabelBinding::PointDistanceValue {
                 left_index,
                 right_index,
@@ -180,6 +208,31 @@ pub(crate) fn remap_label_bindings(
             }
             TextLabelBinding::PolygonBoundaryParameter { point_index, .. } => point_index,
             TextLabelBinding::SegmentParameter { point_index, .. } => point_index,
+            TextLabelBinding::SegmentProjectionParameter {
+                point_index,
+                start_index,
+                end_index,
+                ..
+            } => {
+                let Some(mapped_point_index) = mapped_index(group_to_point_index, *point_index)
+                else {
+                    label.binding = None;
+                    continue;
+                };
+                let Some(mapped_start_index) = mapped_index(group_to_point_index, *start_index)
+                else {
+                    label.binding = None;
+                    continue;
+                };
+                let Some(mapped_end_index) = mapped_index(group_to_point_index, *end_index) else {
+                    label.binding = None;
+                    continue;
+                };
+                *point_index = mapped_point_index;
+                *start_index = mapped_start_index;
+                *end_index = mapped_end_index;
+                continue;
+            }
             TextLabelBinding::CircleParameter { point_index, .. } => point_index,
             TextLabelBinding::AngleMarkerValue {
                 start_index,

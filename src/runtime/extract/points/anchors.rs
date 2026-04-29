@@ -95,14 +95,27 @@ fn parameter_anchor_runtime_value(
     let path = find_indexed_path(file, group)?;
     let point_group_index = path.refs.first()?.checked_sub(1)?;
     let point_group = groups.get(point_group_index)?;
-    let value =
-        match try_decode_point_constraint(file, groups, point_group, Some(anchors), &None).ok()? {
+    let value = if let Ok(constraint) =
+        try_decode_point_constraint(file, groups, point_group, Some(anchors), &None)
+    {
+        match constraint {
             RawPointConstraint::Segment(constraint) => constraint.t,
             RawPointConstraint::ConstructedLine { t, .. } => t,
             RawPointConstraint::PolygonBoundary {
                 edge_index,
                 t,
                 vertex_group_indices,
+            } => super::super::labels::polygon_boundary_parameter(
+                anchors,
+                &vertex_group_indices,
+                edge_index,
+                t,
+            )?,
+            RawPointConstraint::TranslatedPolygonBoundary {
+                edge_index,
+                t,
+                vertex_group_indices,
+                ..
             } => super::super::labels::polygon_boundary_parameter(
                 anchors,
                 &vertex_group_indices,
@@ -120,11 +133,58 @@ fn parameter_anchor_runtime_value(
             | RawPointConstraint::CircleArc(_)
             | RawPointConstraint::Arc(_)
             | RawPointConstraint::Polyline { .. } => return None,
-        };
+        }
+    } else {
+        let host_group_index = path.refs.get(1)?.checked_sub(1)?;
+        let host_group = groups.get(host_group_index)?;
+        if !host_group.header.kind().is_line_like() {
+            return None;
+        }
+        let host_path = find_indexed_path(file, host_group)?;
+        let start = anchors
+            .get(host_path.refs.first()?.checked_sub(1)?)?
+            .as_ref()?;
+        let end = anchors
+            .get(host_path.refs.get(1)?.checked_sub(1)?)?
+            .as_ref()?;
+        let point = anchors.get(point_group_index)?.as_ref()?;
+        let dx = end.x - start.x;
+        let dy = end.y - start.y;
+        let len_sq = dx * dx + dy * dy;
+        if len_sq <= 1e-9 {
+            return None;
+        }
+        (((point.x - start.x) * dx + (point.y - start.y) * dy) / len_sq).clamp(0.0, 1.0)
+    };
     let name = decode_label_name(file, group)
         .or_else(|| decode_label_name(file, point_group))
         .or_else(|| editable_non_graph_parameter_name_for_group(file, groups, point_group))?;
     Some((name, value))
+}
+
+fn ratio_value_runtime_value(
+    file: &GspFile,
+    _groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<(String, f64)> {
+    if group.header.kind() != GroupKind::RatioValue {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    let origin_index = path.refs.first()?.checked_sub(1)?;
+    let denominator_index = path.refs.get(1)?.checked_sub(1)?;
+    let numerator_index = path.refs.get(2)?.checked_sub(1)?;
+    let origin = anchors.get(origin_index)?.as_ref()?;
+    let denominator = anchors.get(denominator_index)?.as_ref()?;
+    let numerator = anchors.get(numerator_index)?.as_ref()?;
+    let denominator_length = (denominator.x - origin.x).hypot(denominator.y - origin.y);
+    if denominator_length <= 1e-9 {
+        return None;
+    }
+    let numerator_length = (numerator.x - origin.x).hypot(numerator.y - origin.y);
+    let name = decode_label_name(file, group)?;
+    Some((name, numerator_length / denominator_length))
 }
 
 fn collect_expr_runtime_parameters(
@@ -152,6 +212,13 @@ fn collect_expr_runtime_parameters(
                 GroupKind::ParameterAnchor => {
                     if let Some((name, value)) =
                         parameter_anchor_runtime_value(file, groups, candidate, anchors)
+                    {
+                        parameters.insert(name, value);
+                    }
+                }
+                GroupKind::RatioValue => {
+                    if let Some((name, value)) =
+                        ratio_value_runtime_value(file, groups, candidate, anchors)
                     {
                         parameters.insert(name, value);
                     }
@@ -263,6 +330,13 @@ pub(crate) fn decode_expression_rotation_binding(
     {
         let (angle_expr, parameters, parameter_name) =
             expression_runtime_context(file, groups, expr_group, anchors)?;
+        let angle_is_degrees =
+            decode_label_name(file, expr_group).is_some_and(|label| label.contains('°'));
+        let angle_expr = if angle_is_degrees {
+            angle_expr
+        } else {
+            scale_function_expr(angle_expr, 180.0 / std::f64::consts::PI)
+        };
         let angle_degrees = evaluate_expr_with_parameters(&angle_expr, 0.0, &parameters)?;
         (angle_expr, angle_degrees, parameter_name)
     } else if expr_group.header.kind() == GroupKind::Point {
@@ -294,6 +368,14 @@ pub(crate) fn decode_expression_rotation_binding(
                 angle_expr
             };
         (angle_expr, angle_degrees, parameter_name)
+    } else if expr_group.header.kind() == GroupKind::ParameterAnchor {
+        let (_name, angle_radians) =
+            parameter_anchor_runtime_value(file, groups, expr_group, anchors)?;
+        (
+            FunctionExpr::Constant(angle_radians.to_degrees()),
+            angle_radians.to_degrees(),
+            None,
+        )
     } else {
         return None;
     };
@@ -1705,6 +1787,7 @@ pub(crate) fn decode_custom_transform_parameter(
                 RawPointConstraint::ConstructedLine { t, .. } => Some(t),
                 RawPointConstraint::Polyline { t, .. } => Some(t),
                 RawPointConstraint::PolygonBoundary { t, .. } => Some(t),
+                RawPointConstraint::TranslatedPolygonBoundary { t, .. } => Some(t),
                 RawPointConstraint::Circle(constraint) => {
                     let angle = (-constraint.unit_y).atan2(constraint.unit_x);
                     let tau = std::f64::consts::TAU;
@@ -1728,6 +1811,7 @@ pub(crate) fn decode_custom_transform_parameter(
                 RawPointConstraint::ConstructedLine { t, .. } => Some(t),
                 RawPointConstraint::Polyline { t, .. } => Some(t),
                 RawPointConstraint::PolygonBoundary { t, .. } => Some(t),
+                RawPointConstraint::TranslatedPolygonBoundary { t, .. } => Some(t),
                 RawPointConstraint::Circle(constraint) => {
                     let angle = (-constraint.unit_y).atan2(constraint.unit_x);
                     let tau = std::f64::consts::TAU;
@@ -1804,7 +1888,10 @@ pub(crate) fn custom_transform_trace_parameter(
         | crate::runtime::scene::ScenePointConstraint::OnRay { t, .. }
         | crate::runtime::scene::ScenePointConstraint::OnCircleArc { t, .. }
         | crate::runtime::scene::ScenePointConstraint::OnArc { t, .. } => Some(*t),
-        crate::runtime::scene::ScenePointConstraint::OnPolygonBoundary { t, .. } => Some(*t),
+        crate::runtime::scene::ScenePointConstraint::OnPolygonBoundary { t, .. }
+        | crate::runtime::scene::ScenePointConstraint::OnTranslatedPolygonBoundary { t, .. } => {
+            Some(*t)
+        }
         crate::runtime::scene::ScenePointConstraint::OnCircle { unit_x, unit_y, .. } => {
             let angle = (-*unit_y).atan2(*unit_x);
             let tau = std::f64::consts::TAU;
@@ -1854,12 +1941,34 @@ pub(crate) fn decode_parameter_rotation_anchor_raw(
     group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
 ) -> Option<PointRecord> {
-    let binding = try_decode_parameter_rotation_binding(file, groups, group).ok()?;
-    let source = anchors.get(binding.source_group_index)?.clone()?;
-    let center = anchors.get(binding.center_group_index)?.clone()?;
-    let TransformBindingKind::Rotate { angle_degrees, .. } = binding.kind else {
-        return None;
-    };
+    let (source_group_index, center_group_index, angle_degrees) =
+        if let Ok(binding) = try_decode_parameter_rotation_binding(file, groups, group) {
+            let TransformBindingKind::Rotate { angle_degrees, .. } = binding.kind else {
+                return None;
+            };
+            (
+                binding.source_group_index,
+                binding.center_group_index,
+                angle_degrees,
+            )
+        } else {
+            let path = find_indexed_path(file, group)?;
+            let source_group_index = path.refs.first()?.checked_sub(1)?;
+            let center_group_index = path.refs.get(1)?.checked_sub(1)?;
+            let angle_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
+            if angle_group.header.kind() != GroupKind::ParameterAnchor {
+                return None;
+            }
+            let (_, angle_radians) =
+                parameter_anchor_runtime_value(file, groups, angle_group, anchors)?;
+            (
+                source_group_index,
+                center_group_index,
+                angle_radians.to_degrees(),
+            )
+        };
+    let source = anchors.get(source_group_index)?.clone()?;
+    let center = anchors.get(center_group_index)?.clone()?;
     Some(rotate_around(&source, &center, angle_degrees.to_radians()))
 }
 
@@ -2199,6 +2308,25 @@ pub(crate) fn decode_point_constraint_anchor(
                 .map(|group_index| anchors.get(*group_index)?.clone())
                 .collect::<Option<Vec<_>>>()?;
             resolve_polygon_boundary_point_raw(&vertices, edge_index, t)
+        }
+        RawPointConstraint::TranslatedPolygonBoundary {
+            vertex_group_indices,
+            vector_start_group_index,
+            vector_end_group_index,
+            edge_index,
+            t,
+        } => {
+            let vertices = vertex_group_indices
+                .iter()
+                .map(|group_index| anchors.get(*group_index)?.clone())
+                .collect::<Option<Vec<_>>>()?;
+            let base = resolve_polygon_boundary_point_raw(&vertices, edge_index, t)?;
+            let vector_start = anchors.get(vector_start_group_index)?.clone()?;
+            let vector_end = anchors.get(vector_end_group_index)?.clone()?;
+            Some(PointRecord {
+                x: base.x + vector_end.x - vector_start.x,
+                y: base.y + vector_end.y - vector_start.y,
+            })
         }
         RawPointConstraint::Circle(constraint) => {
             let center = anchors.get(constraint.center_group_index)?.clone()?;
