@@ -200,11 +200,10 @@ fn format_exit_status(status: std::process::ExitStatus) -> String {
         }
     }
 
-    if let Some(code) = status.code() {
-        format!("exit code {code}")
-    } else {
-        "unknown exit status".to_string()
-    }
+    status.code().map_or_else(
+        || "unknown exit status".to_string(),
+        |code| format!("exit code {code}"),
+    )
 }
 
 #[cfg(test)]

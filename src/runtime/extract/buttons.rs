@@ -171,7 +171,7 @@ pub(super) fn collect_buttons(
                     button_group_ordinals: refs,
                     interval_ms: read_u32(action_payload, 16),
                 }),
-                (3, 0) | (3, 1) | (3, 2) | (3, 3) => {
+                (3, 0..=3) => {
                     refs.first()
                         .copied()
                         .map(|point_group_ordinal| RawButtonAction::MovePoint {
@@ -181,18 +181,14 @@ pub(super) fn collect_buttons(
                 }
                 (0, 7) => Some(RawButtonAction::ToggleVisibility { refs }),
                 (1, 7) => Some(RawButtonAction::ShowHideVisibility { refs }),
-                (1, 0) | (1, 1) | (1, 2) | (1, 3) | (1, 4) | (1, 5) | (1, 6) => {
-                    Some(RawButtonAction::SetVisibility {
-                        refs,
-                        visible: true,
-                    })
-                }
-                (0, 0) | (0, 1) | (0, 2) | (0, 3) | (0, 4) | (0, 5) | (0, 6) => {
-                    Some(RawButtonAction::SetVisibility {
-                        refs,
-                        visible: false,
-                    })
-                }
+                (1, 0..=6) => Some(RawButtonAction::SetVisibility {
+                    refs,
+                    visible: true,
+                }),
+                (0, 0..=6) => Some(RawButtonAction::SetVisibility {
+                    refs,
+                    visible: false,
+                }),
                 _ => None,
             };
         let Some(action) = action else {

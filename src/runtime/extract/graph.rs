@@ -149,7 +149,7 @@ fn detect_explicit_axis_graph_transform(
                 })
                 .map(f64::abs)
                 .filter(|value| *value > 1e-9)
-                .unwrap_or(37.79527559055118);
+                .unwrap_or(crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT);
             (raw_per_unit > 1e-9).then_some(GraphTransform {
                 origin_raw,
                 raw_per_unit,

@@ -27,7 +27,7 @@ use crate::runtime::geometry::{
 };
 use crate::runtime::scene::LineLikeKind;
 
-const PX_PER_CM: f64 = 37.79527559055118;
+const PX_PER_CM: f64 = crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT;
 
 fn first_path_group<'a>(
     file: &GspFile,

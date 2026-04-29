@@ -540,65 +540,65 @@ pub(crate) fn synthesize_function_labels(
         },
     ));
 
-    let derivative_entries = groups
-        .iter()
-        .filter(|group| (group.header.kind()) == crate::format::GroupKind::DerivativeFunction)
-        .filter_map(|group| {
-            let path = find_indexed_path(file, group)?;
-            let base_definition_ordinal = *path.refs.first()?;
-            let base_index = base_entries
-                .iter()
-                .position(|(definition_ordinal, _, _, _)| {
-                    *definition_ordinal == base_definition_ordinal
-                })?;
-            let expr = try_decode_function_expr(file, groups, group).ok()?;
-            Some((base_index, expr))
-        })
-        .collect::<Vec<_>>();
-
     let span_x = (bounds.max_x - bounds.min_x).max(1.0);
     let span_y = (bounds.max_y - bounds.min_y).max(1.0);
     let base_count = labels.len();
-    labels.extend(derivative_entries.into_iter().enumerate().map(
-        |(offset, (base_index, expr))| {
-            let label_index = base_count + offset;
-            let world_anchor = PointRecord {
-                x: bounds.min_x + span_x * 0.18,
-                y: bounds.max_y - span_y * (0.16 + 0.11 * label_index as f64),
-            };
-            TextLabel {
-                anchor: to_raw_from_world(&world_anchor, transform),
-                text: if base_entries[base_index].3.mode == FunctionPlotMode::Polar {
-                    format!(
-                        "r'({}) = {}",
-                        function_variable_symbol(base_entries[base_index].3.mode),
-                        function_expr_label_with_variable(
-                            expr,
+    labels.extend(
+        groups
+            .iter()
+            .filter(|group| (group.header.kind()) == crate::format::GroupKind::DerivativeFunction)
+            .filter_map(|group| {
+                let path = find_indexed_path(file, group)?;
+                let base_definition_ordinal = *path.refs.first()?;
+                let base_index =
+                    base_entries
+                        .iter()
+                        .position(|(definition_ordinal, _, _, _)| {
+                            *definition_ordinal == base_definition_ordinal
+                        })?;
+                let expr = try_decode_function_expr(file, groups, group).ok()?;
+                Some((base_index, expr))
+            })
+            .enumerate()
+            .map(|(offset, (base_index, expr))| {
+                let label_index = base_count + offset;
+                let world_anchor = PointRecord {
+                    x: bounds.min_x + span_x * 0.18,
+                    y: bounds.max_y - span_y * (0.16 + 0.11 * label_index as f64),
+                };
+                TextLabel {
+                    anchor: to_raw_from_world(&world_anchor, transform),
+                    text: if base_entries[base_index].3.mode == FunctionPlotMode::Polar {
+                        format!(
+                            "r'({}) = {}",
                             function_variable_symbol(base_entries[base_index].3.mode),
+                            function_expr_label_with_variable(
+                                expr,
+                                function_variable_symbol(base_entries[base_index].3.mode),
+                            )
                         )
-                    )
-                } else {
-                    format!(
-                        "{}'({}) = {}",
-                        base_entries[base_index].1,
-                        function_variable_symbol(base_entries[base_index].3.mode),
-                        function_expr_label_with_variable(
-                            expr,
+                    } else {
+                        format!(
+                            "{}'({}) = {}",
+                            base_entries[base_index].1,
                             function_variable_symbol(base_entries[base_index].3.mode),
+                            function_expr_label_with_variable(
+                                expr,
+                                function_variable_symbol(base_entries[base_index].3.mode),
+                            )
                         )
-                    )
-                },
-                color: [30, 30, 30, 255],
-                visible: true,
-                binding: Some(crate::runtime::scene::TextLabelBinding::FunctionLabel {
-                    function_key: base_entries[base_index].0,
-                    derivative: true,
-                }),
-                screen_space: false,
-                ..Default::default()
-            }
-        },
-    ));
+                    },
+                    color: [30, 30, 30, 255],
+                    visible: true,
+                    binding: Some(crate::runtime::scene::TextLabelBinding::FunctionLabel {
+                        function_key: base_entries[base_index].0,
+                        derivative: true,
+                    }),
+                    screen_space: false,
+                    ..Default::default()
+                }
+            }),
+    );
 
     labels
 }

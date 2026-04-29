@@ -1280,7 +1280,7 @@ fn function_group_raw_scale(
         return 1.0;
     }
     let scale = match group.header.kind() {
-        crate::format::GroupKind::MeasuredValue => 37.79527559055118,
+        crate::format::GroupKind::MeasuredValue => crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT,
         crate::format::GroupKind::FunctionExpr => find_indexed_path(file, group)
             .map(|path| {
                 path.refs
@@ -1899,7 +1899,7 @@ pub(crate) fn collect_iteration_shapes(
                 (payload.len() >= 40).then(|| super::read_f64(payload, 32))
             })
             .filter(|v| v.is_finite() && *v > 1.0)
-            .unwrap_or(37.79527559055118);
+            .unwrap_or(crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT);
 
         let param_value = groups
             .iter()

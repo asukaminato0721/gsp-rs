@@ -21,10 +21,7 @@ pub(crate) fn write_standalone_html(output_path: &Path, html: &str) -> Result<()
         Some(ext) => ext.to_str(),
         None => None,
     };
-    if !matches!(
-        extension,
-        Some("html") | Some("HTML") | Some("htm") | Some("HTM")
-    ) {
+    if !matches!(extension, Some("html" | "HTML" | "htm" | "HTM")) {
         return Err(format!(
             "html output path must end with .html or .htm: {}",
             output_path.display()

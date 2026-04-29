@@ -2,6 +2,7 @@ use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u16, read_u32};
+use crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT;
 use crate::runtime::extract::points::{
     collect_point_objects, resolve_circle_like_raw, resolve_line_like_points_raw,
 };
@@ -29,8 +30,6 @@ use super::expr::{
 thread_local! {
     static RESOLVING_MEASURED_VALUE: Cell<bool> = const { Cell::new(false) };
 }
-
-const DEFAULT_GRAPH_RAW_PER_UNIT: f64 = 37.79527559055118;
 
 fn is_function_like_group(group: &ObjectGroup) -> bool {
     matches!(
@@ -486,7 +485,7 @@ fn explicit_axis_context_for_coordinate_value(
         .and_then(|unit_expr| evaluate_expr_with_parameters(&unit_expr, 0.0, &BTreeMap::new()))
         .map(f64::abs)
         .filter(|value| *value > 1e-9)
-        .unwrap_or(37.79527559055118);
+        .unwrap_or(DEFAULT_GRAPH_RAW_PER_UNIT);
     (raw_per_unit > 1e-9).then_some((origin_raw, raw_per_unit))
 }
 
@@ -1387,7 +1386,8 @@ fn decode_measured_value_binding(
     })?;
     let start = anchors.get(host_path.refs[0].checked_sub(1)?)?.clone()?;
     let end = anchors.get(host_path.refs[1].checked_sub(1)?)?.clone()?;
-    let value = ((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt() / 37.79527559055118;
+    let value =
+        ((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt() / DEFAULT_GRAPH_RAW_PER_UNIT;
     if !value.is_finite() {
         return None;
     }
