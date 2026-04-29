@@ -3915,7 +3915,7 @@ fn preserves_translated_circle_and_intersection_in_translation_gsp() {
             ..
         })
     )));
-    let constrained_points = scene
+    let constrained_point_count = scene
         .points
         .iter()
         .filter(|point| {
@@ -3925,10 +3925,9 @@ fn preserves_translated_circle_and_intersection_in_translation_gsp() {
                     | crate::runtime::scene::ScenePointConstraint::CircleCircleIntersection { .. }
             )
         })
-        .collect::<Vec<_>>();
+        .count();
     assert_eq!(
-        constrained_points.len(),
-        1,
+        constrained_point_count, 1,
         "expected the translated-circle intersection point to stay live"
     );
 }

@@ -2491,7 +2491,7 @@ fn has_ignorable_expr_suffix(words: &[u16], end: usize) -> bool {
     let suffix = &words[end..];
     matches!(
         suffix,
-        [0x000c] | [0x0201] | [0x0101] | [0x0000, 0x0101] | [0x0000, 0x0000, 0x0101]
+        [0x000c | 0x0201 | 0x0101] | [0x0000, 0x0101] | [0x0000, 0x0000, 0x0101]
     )
 }
 
@@ -2759,11 +2759,9 @@ mod parse_tests {
         let anchors_without_graph = collect_raw_object_anchors(&file, &groups, &point_map, None);
         let graph =
             super::infer_default_helper_graph_transform(&file, &groups, &anchors_without_graph);
-        let anchors = if let Some(transform) = graph.as_ref() {
+        let anchors = graph.as_ref().map_or(anchors_without_graph, |transform| {
             collect_raw_object_anchors(&file, &groups, &point_map, Some(transform))
-        } else {
-            anchors_without_graph
-        };
+        });
 
         let ratio_group = groups
             .iter()

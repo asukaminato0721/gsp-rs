@@ -1455,10 +1455,12 @@ mod tests {
             .expect("expected the payload source edge to remain interactive");
         let start_index = interactive_segment["binding"]["startIndex"]
             .as_u64()
-            .expect("segment start index should serialize") as usize;
+            .and_then(|index| usize::try_from(index).ok())
+            .expect("segment start index should serialize as usize");
         let end_index = interactive_segment["binding"]["endIndex"]
             .as_u64()
-            .expect("segment end index should serialize") as usize;
+            .and_then(|index| usize::try_from(index).ok())
+            .expect("segment end index should serialize as usize");
 
         let points = scene["points"]
             .as_array()
@@ -2111,7 +2113,7 @@ mod tests {
             "expected the translated payload circle to keep its live binding"
         );
 
-        let constrained_points = scene["points"]
+        let constrained_point_count = scene["points"]
             .as_array()
             .expect("scene points should be an array")
             .iter()
@@ -2121,10 +2123,9 @@ mod tests {
                     Some("circular-intersection") | Some("circle-circle-intersection")
                 )
             })
-            .collect::<Vec<_>>();
+            .count();
         assert_eq!(
-            constrained_points.len(),
-            1,
+            constrained_point_count, 1,
             "expected the translated-circle intersection point to stay live"
         );
 
