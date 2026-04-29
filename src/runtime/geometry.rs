@@ -347,23 +347,6 @@ pub(crate) fn arc_sample_points(
     Some(points)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::line_is_dashed;
-
-    #[test]
-    fn detects_dashed_line_like_styles() {
-        assert!(line_is_dashed(0x0112_000c), "expected dashed line style");
-        assert!(line_is_dashed(0x0112_000d), "expected dashed ray style");
-        assert!(
-            line_is_dashed(0x0111_002f),
-            "expected dashed perpendicular/parallel helper line style"
-        );
-        assert!(!line_is_dashed(0x0122_000c), "expected solid line style");
-        assert!(!line_is_dashed(0x0122_000d), "expected solid ray style");
-    }
-}
-
 pub(crate) fn point_on_three_point_arc(
     start: &PointRecord,
     mid: &PointRecord,
@@ -534,4 +517,21 @@ fn normalized_angle_delta(from: f64, to: f64) -> f64 {
 
 fn mid_angle(center: &PointRecord, point: &PointRecord) -> f64 {
     (point.y - center.y).atan2(point.x - center.x)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::line_is_dashed;
+
+    #[test]
+    fn detects_dashed_line_like_styles() {
+        assert!(line_is_dashed(0x0112_000c), "expected dashed line style");
+        assert!(line_is_dashed(0x0112_000d), "expected dashed ray style");
+        assert!(
+            line_is_dashed(0x0111_002f),
+            "expected dashed perpendicular/parallel helper line style"
+        );
+        assert!(!line_is_dashed(0x0122_000c), "expected solid line style");
+        assert!(!line_is_dashed(0x0122_000d), "expected solid ray style");
+    }
 }

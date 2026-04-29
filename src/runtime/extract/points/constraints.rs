@@ -625,12 +625,11 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
             let source_expr_absolute_parameter =
                 payload_has_sliding_equilateral_square_expr(file, source_group);
-            if !source_expr_absolute_parameter {
-                if let (Some(_), Some(anchor_value)) =
+            if !source_expr_absolute_parameter
+                && let (Some(_), Some(anchor_value)) =
                     (anchor_parameter_name.as_ref(), anchor_parameter_value)
-                {
-                    value += anchor_value;
-                }
+            {
+                value += anchor_value;
             }
             (
                 anchor_parameter_name.unwrap_or_default(),

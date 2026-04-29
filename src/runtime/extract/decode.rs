@@ -1351,6 +1351,30 @@ fn render_markup_plain_node(node: &RichMarkupNode) -> String {
     }
 }
 
+fn render_markup_plain_inline(nodes: &[RichMarkupNode]) -> String {
+    render_markup_plain(nodes)
+}
+
+fn collapse_markup_superscript(text: String) -> String {
+    if text.is_empty() {
+        return text;
+    }
+    let chars = text.chars().collect::<Vec<_>>();
+    let split = chars
+        .iter()
+        .rposition(|ch| !ch.is_ascii_digit())
+        .map(|index| index + 1)
+        .unwrap_or(0);
+    if split >= chars.len() {
+        return text;
+    }
+    let exponent = chars[split..].iter().collect::<String>();
+    let mut base = chars[..split].iter().collect::<String>();
+    base.push('^');
+    base.push_str(&exponent);
+    base
+}
+
 #[cfg(test)]
 mod markup_tests {
     use super::{
@@ -1421,28 +1445,4 @@ mod markup_tests {
     fn tolerates_empty_markup_tags_by_ignoring_them() {
         assert_eq!(parse_markup_nodes("<>"), vec![RichMarkupNode::Ignore]);
     }
-}
-
-fn render_markup_plain_inline(nodes: &[RichMarkupNode]) -> String {
-    render_markup_plain(nodes)
-}
-
-fn collapse_markup_superscript(text: String) -> String {
-    if text.is_empty() {
-        return text;
-    }
-    let chars = text.chars().collect::<Vec<_>>();
-    let split = chars
-        .iter()
-        .rposition(|ch| !ch.is_ascii_digit())
-        .map(|index| index + 1)
-        .unwrap_or(0);
-    if split >= chars.len() {
-        return text;
-    }
-    let exponent = chars[split..].iter().collect::<String>();
-    let mut base = chars[..split].iter().collect::<String>();
-    base.push('^');
-    base.push_str(&exponent);
-    base
 }
