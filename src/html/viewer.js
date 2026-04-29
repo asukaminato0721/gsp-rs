@@ -12,10 +12,41 @@
   } = window.GspViewerModules;
   const SVG_NS = "http://www.w3.org/2000/svg";
   const XLINK_NS = "http://www.w3.org/1999/xlink";
+  /** @typedef {{ index: number; title: string; scene: SceneData }} DocumentScenePage */
+  /** @typedef {{ kind: "gsp-document"; pages: DocumentScenePage[] }} DocumentSceneData */
+  const rawSceneData = JSON.parse(document.getElementById("scene-data").textContent);
+  /**
+   * @param {unknown} data
+   * @returns {data is DocumentSceneData}
+   */
+  function isDocumentSceneData(data) {
+    return !!data
+      && typeof data === "object"
+      && /** @type {{ kind?: unknown; pages?: unknown }} */ (data).kind === "gsp-document"
+      && Array.isArray(/** @type {{ pages?: unknown }} */ (data).pages);
+  }
+
+  /**
+   * @param {DocumentScenePage[]} pages
+   * @returns {number}
+   */
+  function activeDocumentPageIndex(pages) {
+    const match = /^#page-(\d+)$/.exec(window.location.hash);
+    const index = match ? Number(match[1]) - 1 : 0;
+    return Math.min(Math.max(Number.isFinite(index) ? index : 0, 0), pages.length - 1);
+  }
+
+  const documentPages = isDocumentSceneData(rawSceneData) ? rawSceneData.pages : null;
+  const activePageIndex = documentPages ? activeDocumentPageIndex(documentPages) : 0;
   /** @type {SceneData} */
-  const sourceScene = JSON.parse(document.getElementById("scene-data").textContent);
+  const sourceScene = documentPages ? documentPages[activePageIndex].scene : rawSceneData;
   /** @type {SVGSVGElement} */
   const canvas = /** @type {SVGSVGElement} */ (/** @type {unknown} */ (document.getElementById("view")));
+  document.documentElement.style.setProperty("--scene-width", String(sourceScene.width));
+  document.documentElement.style.setProperty("--scene-height", String(sourceScene.height));
+  canvas.setAttribute("viewBox", `0 0 ${sourceScene.width} ${sourceScene.height}`);
+  canvas.setAttribute("width", String(sourceScene.width));
+  canvas.setAttribute("height", String(sourceScene.height));
   /** @type {SVGGElement} */
   const gridLayer = /** @type {SVGGElement} */ (/** @type {unknown} */ (document.getElementById("grid-layer")));
   /** @type {SVGGElement} */
@@ -43,6 +74,10 @@
   /** @type {HTMLButtonElement[]} */
   const debugTabButtons = /** @type {HTMLButtonElement[]} */ (Array.from(
     document.querySelectorAll("[data-debug-tab]"),
+  ));
+  /** @type {HTMLButtonElement[]} */
+  const pageTabButtons = /** @type {HTMLButtonElement[]} */ (Array.from(
+    document.querySelectorAll("[data-page-index]"),
   ));
   /** @type {HTMLElement} */
   const coordReadout = /** @type {HTMLElement} */ (document.getElementById("coord-readout"));
@@ -80,6 +115,35 @@
   /** @type {Map<string, { element: Element, target: DebugTarget }>} */
   const debugElementRegistry = new Map();
   let nextDebugElementId = 1;
+
+  function syncPageTabs() {
+    pageTabButtons.forEach((button) => {
+      const index = Number(button.dataset.pageIndex);
+      const selected = index === activePageIndex;
+      button.setAttribute("aria-selected", selected ? "true" : "false");
+      button.classList.toggle("is-active", selected);
+    });
+  }
+
+  /** @param {number} index */
+  function activateDocumentPage(index) {
+    if (!documentPages || index === activePageIndex || index < 0 || index >= documentPages.length) {
+      return;
+    }
+    window.location.hash = `page-${index + 1}`;
+    window.location.reload();
+  }
+
+  pageTabButtons.forEach((button) => {
+    button.addEventListener("click", () => activateDocumentPage(Number(button.dataset.pageIndex)));
+  });
+  window.addEventListener("hashchange", () => {
+    if (documentPages) {
+      window.location.reload();
+    }
+  });
+  syncPageTabs();
+
   const viewState = van?.state ? van.state({
     centerX: baseCenterX,
     centerY: baseCenterY,

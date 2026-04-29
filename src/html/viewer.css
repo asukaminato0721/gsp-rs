@@ -58,6 +58,14 @@ main {
   grid-template-rows: auto minmax(0, 1fr) auto auto;
 }
 
+.app-shell.has-page-tabs {
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+}
+
+.app-shell.has-page-tabs:fullscreen {
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+}
+
 .app-shell:fullscreen .canvas-shell {
   padding: 12px;
 }
@@ -76,6 +84,31 @@ main {
 .toolbar,
 .debug-toolbar {
   border-bottom: 1px solid var(--frame);
+}
+
+.page-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  overflow-x: auto;
+  background: var(--paper);
+  border-bottom: 1px solid var(--frame);
+}
+
+.page-tab {
+  flex: 0 0 auto;
+  min-width: 64px;
+  padding: 5px 10px;
+  border: 1px solid var(--frame);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.page-tab.is-active {
+  background: rgb(225, 235, 255);
+  border-color: rgb(113, 148, 207);
 }
 
 .controls,

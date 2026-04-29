@@ -12,16 +12,25 @@ use crate::runtime::scene::{
 };
 use std::fmt::Write as _;
 
-pub(super) fn render_standalone_html_document(
-    scene: &Scene,
-    width: u32,
-    height: u32,
-    document_layout: bool,
-) -> String {
+pub(crate) struct StandaloneHtmlPage<'a> {
+    pub(crate) title: &'a str,
+    pub(crate) scene: &'a Scene,
+    pub(crate) width: u32,
+    pub(crate) height: u32,
+    pub(crate) document_layout: bool,
+}
+
+pub(super) fn render_standalone_html_pages(pages: &[StandaloneHtmlPage<'_>]) -> String {
+    let first_page = pages
+        .first()
+        .expect("standalone html export requires at least one page");
+    let width = first_page.width;
+    let height = first_page.height;
+    let document_layout = pages.iter().any(|page| page.document_layout);
     let mut html = String::new();
-    let scene_json = render_scene_json(scene, width, height, false);
+    let scene_json = render_document_scene_json(pages);
     let van_js = van_runtime_to_global();
-    let runtime_plan = viewer_runtime_plan(scene);
+    let runtime_plan = viewer_runtime_plan_for_pages(pages);
     let viewer_modules_js = format!(
         "{}\n{}\n{}\n{}\n{}",
         runtime_plan.scene.script_source(),
@@ -40,12 +49,16 @@ pub(super) fn render_standalone_html_document(
     } else {
         "canvas-stage"
     };
-    let shape_count = scene.images.len()
-        + scene.lines.len()
-        + scene.polygons.len()
-        + scene.circles.len()
-        + scene.arcs.len()
-        + scene.labels.len();
+    let shape_count = pages
+        .iter()
+        .map(|page| shape_count(page.scene))
+        .sum::<usize>();
+    let page_tabs = render_page_tabs(pages);
+    let app_shell_class = if pages.len() > 1 {
+        "app-shell has-page-tabs"
+    } else {
+        "app-shell"
+    };
     let _ = write!(
         html,
         r#"<!doctype html>
@@ -64,7 +77,7 @@ pub(super) fn render_standalone_html_document(
 </head>
 <body>
   <main>
-    <div id="viewer-shell" class="app-shell">
+    <div id="viewer-shell" class="{app_shell_class}">
       <div class="toolbar">
         <div class="controls">
           <button id="reset-view" type="button">Reset View</button>
@@ -74,6 +87,7 @@ pub(super) fn render_standalone_html_document(
         </div>
         <span class="hint">Drag a point to edit, drag empty space to pan, wheel to zoom</span>
       </div>
+      {page_tabs}
       <div class="{canvas_shell_class}">
         <div class="{canvas_stage_class}">
           <svg id="view" viewBox="0 0 {width} {height}" width="{width}" height="{height}" aria-label="GSP viewer">
@@ -124,9 +138,11 @@ pub(super) fn render_standalone_html_document(
 "#,
         width = width,
         height = height,
+        app_shell_class = app_shell_class,
         canvas_shell_class = canvas_shell_class,
         canvas_stage_class = canvas_stage_class,
         shape_count = shape_count,
+        page_tabs = page_tabs,
         scene_json = scene_json,
         viewer_scene_profile = runtime_plan.scene.label(),
         viewer_render_profile = runtime_plan.render.label(),
@@ -139,6 +155,64 @@ pub(super) fn render_standalone_html_document(
         embedded_js = indent_asset(VIEWER_JS, 4),
     );
     html
+}
+
+fn render_document_scene_json(pages: &[StandaloneHtmlPage<'_>]) -> String {
+    if pages.len() == 1 {
+        let page = &pages[0];
+        return render_scene_json(page.scene, page.width, page.height, false);
+    }
+
+    let mut json = String::from(r#"{"kind":"gsp-document","pages":["#);
+    for (index, page) in pages.iter().enumerate() {
+        if index > 0 {
+            json.push(',');
+        }
+        let title = serde_json::to_string(page.title).expect("page title should serialize");
+        let scene_json = render_scene_json(page.scene, page.width, page.height, false);
+        let _ = write!(
+            json,
+            r#"{{"index":{index},"title":{title},"scene":{scene_json}}}"#,
+        );
+    }
+    json.push_str("]}");
+    json
+}
+
+fn render_page_tabs(pages: &[StandaloneHtmlPage<'_>]) -> String {
+    if pages.len() <= 1 {
+        return String::new();
+    }
+
+    let mut html = String::from(r#"<div id="page-tabs" class="page-tabs" role="tablist">"#);
+    for (index, page) in pages.iter().enumerate() {
+        let selected = if index == 0 { "true" } else { "false" };
+        let active_class = if index == 0 { " is-active" } else { "" };
+        let title = html_escape(page.title);
+        let _ = write!(
+            html,
+            r#"<button type="button" class="page-tab{active_class}" role="tab" aria-selected="{selected}" data-page-index="{index}">{title}</button>"#,
+        );
+    }
+    html.push_str("</div>");
+    html
+}
+
+fn html_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+fn shape_count(scene: &Scene) -> usize {
+    scene.images.len()
+        + scene.lines.len()
+        + scene.polygons.len()
+        + scene.circles.len()
+        + scene.arcs.len()
+        + scene.labels.len()
 }
 
 #[derive(Clone, Copy)]
@@ -309,6 +383,67 @@ struct ViewerRuntimePlan {
     overlay: ViewerOverlayProfile,
     drag: ViewerDragProfile,
     dynamics: ViewerDynamicsProfile,
+}
+
+fn viewer_runtime_plan_for_pages(pages: &[StandaloneHtmlPage<'_>]) -> ViewerRuntimePlan {
+    pages
+        .iter()
+        .map(|page| viewer_runtime_plan(page.scene))
+        .reduce(ViewerRuntimePlan::union)
+        .expect("runtime plan requires at least one page")
+}
+
+impl ViewerRuntimePlan {
+    fn union(self, other: Self) -> Self {
+        Self {
+            scene: self.scene.union(other.scene),
+            render: self.render.union(other.render),
+            overlay: if matches!(self.overlay, ViewerOverlayProfile::Full)
+                || matches!(other.overlay, ViewerOverlayProfile::Full)
+            {
+                ViewerOverlayProfile::Full
+            } else {
+                ViewerOverlayProfile::Stub
+            },
+            drag: if matches!(self.drag, ViewerDragProfile::Full)
+                || matches!(other.drag, ViewerDragProfile::Full)
+            {
+                ViewerDragProfile::Full
+            } else {
+                ViewerDragProfile::PanOnly
+            },
+            dynamics: if matches!(self.dynamics, ViewerDynamicsProfile::Full)
+                || matches!(other.dynamics, ViewerDynamicsProfile::Full)
+            {
+                ViewerDynamicsProfile::Full
+            } else {
+                ViewerDynamicsProfile::Stub
+            },
+        }
+    }
+}
+
+impl ViewerScenePlan {
+    fn union(self, other: Self) -> Self {
+        Self {
+            circular: self.circular || other.circular,
+            trace: self.trace || other.trace,
+            intersections: self.intersections || other.intersections,
+        }
+    }
+}
+
+impl ViewerRenderPlan {
+    fn union(self, other: Self) -> Self {
+        Self {
+            images: self.images || other.images,
+            polygons: self.polygons || other.polygons,
+            circular: self.circular || other.circular,
+            labels: self.labels || other.labels,
+            tables: self.tables || other.tables,
+            hotspots: self.hotspots || other.hotspots,
+        }
+    }
 }
 
 fn viewer_runtime_plan(scene: &Scene) -> ViewerRuntimePlan {

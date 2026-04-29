@@ -14,6 +14,8 @@ use std::fs;
 use std::path::Path;
 use ts_rs::{Config, ExportError};
 
+pub(crate) use document::StandaloneHtmlPage;
+
 pub(crate) fn write_standalone_html(output_path: &Path, html: &str) -> Result<(), String> {
     let extension = match output_path.extension() {
         Some(ext) => ext.to_str(),
@@ -43,13 +45,8 @@ pub(crate) fn write_standalone_html(output_path: &Path, html: &str) -> Result<()
     Ok(())
 }
 
-pub(crate) fn render_standalone_html_document(
-    scene: &Scene,
-    width: u32,
-    height: u32,
-    document_layout: bool,
-) -> String {
-    document::render_standalone_html_document(scene, width, height, document_layout)
+pub(crate) fn render_standalone_html_pages(pages: &[StandaloneHtmlPage<'_>]) -> String {
+    document::render_standalone_html_pages(pages)
 }
 
 pub(crate) fn render_scene_json(scene: &Scene, width: u32, height: u32, pretty: bool) -> String {

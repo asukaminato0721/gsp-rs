@@ -21,7 +21,7 @@ pub use records::{parse_records, record_name};
 #[allow(unused_imports)]
 pub use strings::{collect_strings, decode_c_string};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GspFile {
     pub magic: String,
     pub data: Vec<u8>,
@@ -95,6 +95,29 @@ impl GspFile {
         groups::collect_object_groups(&self.records, &self.data)
     }
 
+    pub fn page_files(&self) -> Vec<Self> {
+        self.page_record_sections()
+            .into_iter()
+            .map(|records| Self {
+                magic: self.magic.clone(),
+                data: self.data.clone(),
+                records: records.to_vec(),
+            })
+            .collect()
+    }
+
+    pub fn document_page_count(&self) -> usize {
+        self.records
+            .first()
+            .filter(|record| record.record_type == 0x0384)
+            .and_then(|record| {
+                let payload = record.payload(&self.data);
+                (payload.len() >= 4).then(|| usize::from(read_u16(payload, 2)))
+            })
+            .filter(|count| *count > 0)
+            .unwrap_or(1)
+    }
+
     pub fn document_canvas_size(&self) -> Option<(u32, u32)> {
         let header = self
             .records
@@ -107,6 +130,36 @@ impl GspFile {
         let width = u32::from(read_u16(payload, 18));
         let height = u32::from(read_u16(payload, 20));
         (width > 0 && height > 0).then_some((width, height))
+    }
+
+    fn page_record_sections(&self) -> Vec<&[Record]> {
+        let page_count = self.document_page_count();
+        if page_count <= 1 {
+            return vec![&self.records];
+        }
+        let Some(section_start) = self
+            .records
+            .iter()
+            .position(|record| record.record_type == 0x0387)
+        else {
+            return vec![&self.records];
+        };
+        let mut sections = Vec::new();
+        let mut page_start = section_start + 1;
+        while page_start <= self.records.len() {
+            let page_end = self.records[page_start..]
+                .iter()
+                .position(|record| record.record_type == 0x0387)
+                .map_or(self.records.len(), |relative| page_start + relative);
+            sections.push(&self.records[page_start..page_end]);
+            if page_end == self.records.len() {
+                break;
+            }
+            page_start = page_end + 1;
+        }
+        let page_count = page_count.min(sections.len()).max(1);
+        sections.truncate(page_count);
+        sections
     }
 }
 
@@ -337,6 +390,98 @@ mod tests {
         assert_eq!(groups[0].header.style_b, 0);
         assert_eq!(groups[0].object_aux_0x07d6_words, Some(vec![1, 2, 0xffff]));
         assert_eq!(groups[0].object_aux_u16, Some(0x0123));
+    }
+
+    #[test]
+    fn page_files_keep_object_ordinals_local_to_each_page() {
+        let mut data = Vec::new();
+        data.extend_from_slice(b"GSP4");
+        data.extend_from_slice(&28_u32.to_le_bytes());
+        data.extend_from_slice(&0x0384_u32.to_le_bytes());
+        data.extend_from_slice(&5_u16.to_le_bytes());
+        data.extend_from_slice(&2_u16.to_le_bytes());
+        data.extend_from_slice(&1_u16.to_le_bytes());
+        data.extend_from_slice(&[0; 22]);
+        data.extend_from_slice(&0_u32.to_le_bytes());
+        data.extend_from_slice(&0x0387_u32.to_le_bytes());
+        data.extend_from_slice(&12_u32.to_le_bytes());
+        data.extend_from_slice(&0x07d0_u32.to_le_bytes());
+        data.extend_from_slice(&2_u32.to_le_bytes());
+        data.extend_from_slice(&0_u32.to_le_bytes());
+        data.extend_from_slice(&0x0001_0004_u32.to_le_bytes());
+        data.extend_from_slice(&0_u32.to_le_bytes());
+        data.extend_from_slice(&0x07d7_u32.to_le_bytes());
+        data.extend_from_slice(&0_u32.to_le_bytes());
+        data.extend_from_slice(&0x0387_u32.to_le_bytes());
+        data.extend_from_slice(&12_u32.to_le_bytes());
+        data.extend_from_slice(&0x07d0_u32.to_le_bytes());
+        data.extend_from_slice(&3_u32.to_le_bytes());
+        data.extend_from_slice(&0_u32.to_le_bytes());
+        data.extend_from_slice(&0x0001_0004_u32.to_le_bytes());
+        data.extend_from_slice(&0_u32.to_le_bytes());
+        data.extend_from_slice(&0x07d7_u32.to_le_bytes());
+
+        let file = GspFile::parse(&data).expect("valid sectioned file");
+        assert_eq!(file.document_page_count(), 2);
+
+        let pages = file.page_files();
+        assert_eq!(pages.len(), 2);
+        assert_eq!(pages[0].object_groups().len(), 1);
+        assert_eq!(
+            pages[0].object_groups()[0].header.kind(),
+            GroupKind::Segment
+        );
+        assert_eq!(pages[1].object_groups().len(), 1);
+        assert_eq!(pages[1].object_groups()[0].header.kind(), GroupKind::Circle);
+    }
+
+    #[test]
+    fn page_files_use_header_page_count() {
+        let mut data = Vec::new();
+        data.extend_from_slice(b"GSP4");
+        data.extend_from_slice(&28_u32.to_le_bytes());
+        data.extend_from_slice(&0x0384_u32.to_le_bytes());
+        data.extend_from_slice(&5_u16.to_le_bytes());
+        data.extend_from_slice(&2_u16.to_le_bytes());
+        data.extend_from_slice(&1_u16.to_le_bytes());
+        data.extend_from_slice(&[0; 22]);
+        data.extend_from_slice(&0_u32.to_le_bytes());
+        data.extend_from_slice(&0x0387_u32.to_le_bytes());
+        data.extend_from_slice(&12_u32.to_le_bytes());
+        data.extend_from_slice(&0x07d0_u32.to_le_bytes());
+        data.extend_from_slice(&2_u32.to_le_bytes());
+        data.extend_from_slice(&0_u32.to_le_bytes());
+        data.extend_from_slice(&0x0001_0004_u32.to_le_bytes());
+        data.extend_from_slice(&0_u32.to_le_bytes());
+        data.extend_from_slice(&0x07d7_u32.to_le_bytes());
+        data.extend_from_slice(&0_u32.to_le_bytes());
+        data.extend_from_slice(&0x0387_u32.to_le_bytes());
+        data.extend_from_slice(&12_u32.to_le_bytes());
+        data.extend_from_slice(&0x07d0_u32.to_le_bytes());
+        data.extend_from_slice(&3_u32.to_le_bytes());
+        data.extend_from_slice(&0_u32.to_le_bytes());
+        data.extend_from_slice(&0x0001_0004_u32.to_le_bytes());
+        data.extend_from_slice(&0_u32.to_le_bytes());
+        data.extend_from_slice(&0x07d7_u32.to_le_bytes());
+        data.extend_from_slice(&0_u32.to_le_bytes());
+        data.extend_from_slice(&0x0387_u32.to_le_bytes());
+        data.extend_from_slice(&12_u32.to_le_bytes());
+        data.extend_from_slice(&0x07d0_u32.to_le_bytes());
+        data.extend_from_slice(&8_u32.to_le_bytes());
+        data.extend_from_slice(&0_u32.to_le_bytes());
+        data.extend_from_slice(&0x0001_0004_u32.to_le_bytes());
+        data.extend_from_slice(&0_u32.to_le_bytes());
+        data.extend_from_slice(&0x07d7_u32.to_le_bytes());
+
+        let file = GspFile::parse(&data).expect("valid multipage file");
+        assert_eq!(file.document_page_count(), 2);
+        let pages = file.page_files();
+        assert_eq!(pages.len(), 2);
+        assert_eq!(
+            pages[0].object_groups()[0].header.kind(),
+            GroupKind::Segment
+        );
+        assert_eq!(pages[1].object_groups()[0].header.kind(), GroupKind::Circle);
     }
 
     #[test]

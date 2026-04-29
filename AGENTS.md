@@ -8,6 +8,8 @@ Break compatibility if necessary.
 
 Always clean the reduntant code.
 
+refer to GSP5Chs.exe.c and GSP5Chs.exe.h for reference, if necessary you can rename some functions.
+
 ---
 
 the whole step is
