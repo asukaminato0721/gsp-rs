@@ -575,6 +575,8 @@ fn button_action_requires_full_dynamics(action: &ButtonAction) -> bool {
     matches!(
         action,
         ButtonAction::MovePoint { .. }
+            | ButtonAction::SetParameter { .. }
+            | ButtonAction::AnimateParameter { .. }
             | ButtonAction::AnimatePoint { .. }
             | ButtonAction::ScrollPoint { .. }
     )

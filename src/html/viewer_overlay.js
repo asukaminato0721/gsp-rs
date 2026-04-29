@@ -519,6 +519,83 @@
         });
       }
 
+      /**
+       * @param {string} parameterName
+       * @param {number} value
+       */
+      function setParameterValue(parameterName, value) {
+        if (typeof parameterName !== "string" || !Number.isFinite(value)) {
+          return;
+        }
+        let updated = false;
+        env.updateDynamics((draft) => {
+          const parameter = draft.parameters.find((candidate) => candidate.name === parameterName);
+          if (!parameter) {
+            return;
+          }
+          parameter.value = value;
+          updated = true;
+        });
+        if (!updated) {
+          return;
+        }
+        modules.dynamics?.syncDynamicScene?.(env, [parameterName]);
+        modules.dynamics?.buildParameterControls?.(env);
+      }
+
+      /**
+       * @param {number} buttonIndex
+       * @param {string} parameterName
+       * @param {number} targetValue
+       */
+      function toggleAnimatedParameter(buttonIndex, parameterName, targetValue) {
+        if (buttonsState.val[buttonIndex]?.active) {
+          stopButtonAnimation(buttonIndex);
+          return;
+        }
+        const parameter = env.currentDynamics().parameters.find((candidate) => candidate.name === parameterName);
+        if (!parameter || !Number.isFinite(targetValue)) {
+          return;
+        }
+        const state = {
+          stop: false,
+          startValue: parameter.value,
+          targetValue,
+          elapsedMs: 0,
+          durationMs: Math.max(900, Math.min(9000, Math.abs(targetValue - parameter.value) * 18)),
+          rafId: 0,
+        };
+        buttonAnimations.set(buttonIndex, state);
+        updateButtons((buttons) => {
+          if (buttons[buttonIndex]) {
+            buttons[buttonIndex].active = true;
+          }
+        });
+        /** @type {number | null} */
+        let lastTime = null;
+        /** @param {number} timestamp */
+        const step = (timestamp) => {
+          if (state.stop) {
+            return;
+          }
+          if (lastTime === null) {
+            lastTime = timestamp;
+          }
+          const dt = Math.min(64, timestamp - lastTime);
+          lastTime = timestamp;
+          state.elapsedMs += dt;
+          const t = Math.min(1, state.elapsedMs / state.durationMs);
+          const eased = t * (2 - t);
+          setParameterValue(parameterName, state.startValue + (state.targetValue - state.startValue) * eased);
+          if (t >= 1) {
+            stopButtonAnimation(buttonIndex);
+            return;
+          }
+          state.rafId = window.requestAnimationFrame(step);
+        };
+        state.rafId = window.requestAnimationFrame(step);
+      }
+
       async function ensureAudioContext() {
         const AudioContextCtor = window.AudioContext
           || /** @type {typeof AudioContext | undefined} */ ((/** @type {any} */ (window)).webkitAudioContext);
@@ -853,6 +930,12 @@
                 action.targetPointIndex ?? null,
               );
             }
+            break;
+          case "set-parameter":
+            setParameterValue(action.parameterName, action.value);
+            break;
+          case "animate-parameter":
+            toggleAnimatedParameter(buttonIndex, action.parameterName, action.targetValue);
             break;
           case "animate-point":
             if (typeof action.pointIndex === "number") {

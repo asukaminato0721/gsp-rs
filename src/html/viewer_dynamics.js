@@ -199,11 +199,12 @@
    * @param {number} x
    * @returns {number | null}
    */
-  function evaluateUnary(op, x) {
+  function evaluateUnary(op, x, degrees = false) {
+    const value = degrees ? x * Math.PI / 180 : x;
     switch (op) {
-      case "sin": return Math.sin(x);
-      case "cos": return Math.cos(x);
-      case "tan": return Math.tan(x);
+      case "sin": return Math.sin(value);
+      case "cos": return Math.cos(value);
+      case "tan": return Math.tan(value);
       case "abs": return Math.abs(x);
       case "sqrt": return x >= 0 ? Math.sqrt(x) : null;
       case "ln": return x > 0 ? Math.log(x) : null;
@@ -287,7 +288,7 @@
         return 180;
       case "unary": {
         const inner = evaluateExprAst(expr.expr, x, parameters);
-        return inner === null ? null : evaluateUnary(expr.op, inner);
+        return inner === null ? null : evaluateUnary(expr.op, inner, exprContainsPiAngle(expr.expr));
       }
       case "binary": {
         const lhs = evaluateExprAst(expr.lhs, x, parameters);
@@ -307,6 +308,20 @@
       default:
         return null;
     }
+  }
+
+  /**
+   * @param {FunctionAstJson | null | undefined} expr
+   * @returns {boolean}
+   */
+  function exprContainsPiAngle(expr) {
+    if (!expr || typeof expr !== "object") return false;
+    if (expr.kind === "pi-angle") return true;
+    if (expr.kind === "unary") return exprContainsPiAngle(expr.expr);
+    if (expr.kind === "binary") {
+      return exprContainsPiAngle(expr.lhs) || exprContainsPiAngle(expr.rhs);
+    }
+    return false;
   }
 
   /**
@@ -407,7 +422,7 @@
     if (!scene?.labels?.length) {
       return parameters;
     }
-    for (let pass = 0; pass < 4; pass += 1) {
+    for (let pass = 0; pass < 16; pass += 1) {
       let changed = false;
       scene.labels.forEach((/** @type {RuntimeLabelJson} */ label) => {
         const binding = label.binding;
@@ -446,12 +461,24 @@
         }
         if (
           (binding.kind === "expression-value" || binding.kind === "point-bound-expression-value")
-          && typeof binding.resultName === "string"
+          && (typeof binding.resultName === "string" || typeof binding.exprLabel === "string")
         ) {
           const value = evaluateExpr(binding.expr, 0, parameters);
-          if (Number.isFinite(value) && parameters.get(binding.resultName) !== value) {
-            parameters.set(binding.resultName, value);
-            changed = true;
+          const resultNames = new Set();
+          if (typeof binding.resultName === "string") {
+            resultNames.add(binding.resultName);
+          }
+          if (typeof binding.exprLabel === "string") {
+            resultNames.add(binding.exprLabel);
+          }
+          resultNames.add(formatExpr(binding.expr, formatSequenceValue));
+          if (Number.isFinite(value)) {
+            resultNames.forEach((/** @type {string} */ resultName) => {
+              if (resultName && parameters.get(resultName) !== value) {
+                parameters.set(resultName, value);
+                changed = true;
+              }
+            });
           }
         }
       });
@@ -1731,7 +1758,12 @@
     if (families.length === 0) {
       return;
     }
-    const exportedDepth = families.reduce((sum, family) => sum + (family.depth || 0), 0);
+    const exportedDepth = families.reduce((sum, family) => {
+      if (family.kind === "parameterized") {
+        return sum;
+      }
+      return sum + (family.depth || 0);
+    }, 0);
     const standaloneParameterPoints = env.sourceScene.points.filter((/** @type {RuntimeScenePointJson} */ point) =>
       point?.binding?.kind === "parameter" && !point.constraint
     );
@@ -1833,6 +1865,44 @@
             debug: null,
           });
         }
+        return;
+      }
+
+      if (family.kind === "parameterized") {
+        let currentValue = parameters.get(family.traceParameterName);
+        if (!Number.isFinite(currentValue)) {
+          return;
+        }
+        for (let step = 1; step <= depth; step += 1) {
+          currentValue = evaluateRecursiveExpression(
+            family.stepExpr,
+            family.traceParameterName,
+            currentValue,
+            parameters,
+          );
+          if (!Number.isFinite(currentValue)) {
+            break;
+          }
+          const traceParameters = deriveLabelParameters(
+            scene,
+            new Map(parameters).set(family.traceParameterName, currentValue),
+          );
+          const points = resolvePointsWithParameters(env, scene, traceParameters);
+          const source = points[family.pointIndex];
+          if (!source) {
+            continue;
+          }
+          scene.points.push({
+            x: source.x,
+            y: source.y,
+            color: source.color || [255, 60, 40, 255],
+            visible: true,
+            draggable: false,
+            constraint: null,
+            binding: null,
+            debug: null,
+          });
+        }
       }
     });
 
@@ -1843,6 +1913,65 @@
         binding: point.binding ? { ...point.binding } : null,
       });
     });
+  }
+
+  /**
+   * @param {ViewerEnv} env
+   * @param {ViewerSceneData} scene
+   * @param {Map<string, number>} parameters
+   * @returns {RuntimeScenePointJson[]}
+   */
+  function resolvePointsWithParameters(env, scene, parameters) {
+    const draft = {
+      ...scene,
+      lines: scene.lines,
+      circles: scene.circles,
+      points: scene.points.map(cloneTracePoint),
+    };
+    const draftEnv = {
+      ...env,
+      currentScene: () => draft,
+      resolveScenePoint: (/** @type {number} */ index) => draft.points[index],
+    };
+    draft.points.forEach((/** @type {RuntimeScenePointJson} */ point) => {
+      if (point.binding?.kind === "parameter" && point.constraint) {
+        const value = parameters.get(point.binding.name);
+        if (Number.isFinite(value)) {
+          applyNormalizedParameterToPoint(point, draft, value);
+        }
+        return;
+      }
+      const updatePoint = point.binding ? SYNC_DYNAMIC_POINT_BINDING_UPDATERS[point.binding.kind] : null;
+      if (updatePoint) {
+        updatePoint(draftEnv, draft, point, parameters);
+      }
+    });
+    draft.points.forEach((/** @type {RuntimeScenePointJson} */ point) => {
+      const refreshBinding = point.binding ? DERIVED_POINT_BINDING_REFRESHERS[point.binding.kind] : null;
+      if (refreshBinding) {
+        refreshBinding(draftEnv, draft, point, parameters);
+      }
+    });
+    draft.points.forEach((/** @type {RuntimeScenePointJson} */ point, /** @type {number} */ pointIndex) => {
+      if (!point.constraint) {
+        return;
+      }
+      const resolved = window.GspViewerModules.scene.resolveConstrainedPoint(
+        {
+          sourceScene: env.sourceScene,
+          currentScene: () => draft,
+          resolveScenePoint: (/** @type {number} */ index) => draft.points[index],
+        },
+        point.constraint,
+        (/** @type {number} */ index) => draft.points[index],
+        point,
+      );
+      if (resolved) {
+        draft.points[pointIndex].x = resolved.x;
+        draft.points[pointIndex].y = resolved.y;
+      }
+    });
+    return draft.points;
   }
 
   /**

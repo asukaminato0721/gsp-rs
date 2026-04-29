@@ -95,6 +95,14 @@ pub(crate) enum ButtonAction {
         point_index: usize,
         target_point_index: Option<usize>,
     },
+    SetParameter {
+        parameter_name: String,
+        value: f64,
+    },
+    AnimateParameter {
+        parameter_name: String,
+        target_value: f64,
+    },
     AnimatePoint {
         point_index: usize,
     },
@@ -157,6 +165,13 @@ pub(crate) enum PointIterationFamily {
         angle_expr: FunctionExpr,
         depth: usize,
         parameter_name: Option<String>,
+    },
+    Parameterized {
+        point_index: usize,
+        depth_parameter_name: Option<String>,
+        trace_parameter_name: String,
+        step_expr: FunctionExpr,
+        depth: usize,
     },
 }
 

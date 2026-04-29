@@ -5,13 +5,17 @@ use super::{
 };
 use crate::format::GspFile;
 use crate::runtime::extract::points::decode_expression_rotation_binding;
-use crate::runtime::functions::{BinaryOp, FunctionAst, FunctionExpr, UnaryFunction};
+use crate::runtime::functions::{
+    BinaryOp, FunctionAst, FunctionExpr, UnaryFunction, evaluate_expr_with_parameters,
+    function_expr_label,
+};
 use crate::runtime::scene::{
     ButtonAction, LabelIterationFamily, LineBinding, LineConstraint, LineIterationFamily,
     PointIterationFamily, PolygonIterationFamily, Scene, SceneButton, ScenePointBinding,
     ScenePointConstraint, ShapeBinding, ShapeTransformBinding, TextLabelBinding,
 };
 use insta::assert_snapshot;
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
@@ -27,6 +31,50 @@ fn fixture_log(data: &[u8], source_path: &str) -> String {
 
 fn fixture_bytes(path: &str) -> Option<Vec<u8>> {
     fs::read(path).ok()
+}
+
+fn derive_expression_label_parameters(
+    scene: &Scene,
+    seed: BTreeMap<String, f64>,
+) -> BTreeMap<String, f64> {
+    let mut parameters = seed;
+    for _ in 0..16 {
+        let mut changed = false;
+        for label in &scene.labels {
+            let (result_name, expr_label, expr) = match label.binding.as_ref() {
+                Some(TextLabelBinding::ExpressionValue {
+                    result_name,
+                    expr_label,
+                    expr,
+                    ..
+                })
+                | Some(TextLabelBinding::PointBoundExpressionValue {
+                    result_name,
+                    expr_label,
+                    expr,
+                    ..
+                }) => (result_name, expr_label, expr),
+                _ => continue,
+            };
+            let Some(value) = evaluate_expr_with_parameters(expr, 0.0, &parameters) else {
+                continue;
+            };
+            let mut names = vec![expr_label.clone(), function_expr_label(expr.clone())];
+            if let Some(result_name) = result_name {
+                names.push(result_name.clone());
+            }
+            for name in names {
+                if parameters.get(&name).copied() != Some(value) {
+                    parameters.insert(name, value);
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    parameters
 }
 
 fn function_expr_has_unary(expr: &FunctionExpr, op: UnaryFunction) -> bool {
@@ -1248,6 +1296,115 @@ fn collects_move_point_button_variants_without_validation() {
             assert!(*point_index != target_point_index.unwrap_or(*point_index));
         }
         action => panic!("expected move-point action, got {action:?}"),
+    }
+}
+
+#[test]
+fn exports_lizhangbo_solid_geometry_parameter_buttons() {
+    let Some(data) =
+        fixture_bytes("tests/Samples/个人专栏/李章博作品/动画演示立体几何轨迹形成（李章博）.gsp")
+    else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+
+    let parameter_value = |name: &str| {
+        scene
+            .parameters
+            .iter()
+            .find(|parameter| parameter.name == name)
+            .map(|parameter| parameter.value)
+            .unwrap_or_else(|| panic!("expected parameter {name}"))
+    };
+    assert_eq!(parameter_value("棱长"), 6.0);
+    assert_eq!(parameter_value("t[7]"), 399.0);
+    assert_eq!(parameter_value("t[8]"), 0.0);
+    assert_eq!(parameter_value("t[9]"), 20.0);
+    assert_eq!(parameter_value("t[10]"), 0.05);
+    assert_eq!(parameter_value("t[5]"), 0.0);
+    let quarter_turn_parameters = derive_expression_label_parameters(
+        &scene,
+        BTreeMap::from([
+            ("棱长".to_string(), 6.0),
+            ("t[7]".to_string(), 399.0),
+            ("t[8]".to_string(), 10.0),
+            ("t[9]".to_string(), 20.0),
+            ("t[10]".to_string(), 0.05),
+            ("t[5]".to_string(), 0.0),
+        ]),
+    );
+    let hidden_calc_value = |ordinal: usize| {
+        let label = scene
+            .labels
+            .iter()
+            .find(|label| {
+                label
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .unwrap_or_else(|| panic!("expected hidden calculation #{ordinal}"));
+        let Some(TextLabelBinding::ExpressionValue { expr, .. }) = label.binding.as_ref() else {
+            panic!("expected hidden calculation #{ordinal} to carry an expression binding");
+        };
+        evaluate_expr_with_parameters(expr, 0.0, &quarter_turn_parameters)
+            .unwrap_or_else(|| panic!("expected hidden calculation #{ordinal} to evaluate"))
+    };
+    assert!(
+        (hidden_calc_value(106) - 3.0 * 2.0_f64.sqrt()).abs() < 1e-6,
+        "expected hidden sine calculation to use GSP degree-mode pi-angle payload"
+    );
+    assert!(
+        (hidden_calc_value(108) - 3.0 * 2.0_f64.sqrt()).abs() < 1e-6,
+        "expected hidden cosine calculation to use GSP degree-mode pi-angle payload"
+    );
+    assert_eq!(
+        scene.line_iterations.len(),
+        0,
+        "the fixture uses point iteration, not carried segment iteration"
+    );
+    assert!(
+        scene.point_iterations.iter().any(|family| matches!(
+            family,
+            PointIterationFamily::Parameterized {
+                depth_parameter_name: Some(depth_parameter_name),
+                trace_parameter_name,
+                ..
+            } if depth_parameter_name == "t[7]" && trace_parameter_name == "t[8]"
+        )),
+        "expected the RegularPolygonIteration payload to export parameterized point iteration"
+    );
+
+    let reset = scene
+        .buttons
+        .iter()
+        .find(|button| button.text == "初 始 化")
+        .expect("expected initialization move button");
+    match &reset.action {
+        ButtonAction::SetParameter {
+            parameter_name,
+            value,
+        } => {
+            assert_eq!(parameter_name, "t[7]");
+            assert_eq!(*value, 0.0);
+        }
+        action => panic!("expected set-parameter action, got {action:?}"),
+    }
+
+    let trace = scene
+        .buttons
+        .iter()
+        .find(|button| button.text == "轨迹生成")
+        .expect("expected trace-generation move button");
+    match &trace.action {
+        ButtonAction::AnimateParameter {
+            parameter_name,
+            target_value,
+        } => {
+            assert_eq!(parameter_name, "t[7]");
+            assert_eq!(*target_value, 399.0);
+        }
+        action => panic!("expected animate-parameter action, got {action:?}"),
     }
 }
 

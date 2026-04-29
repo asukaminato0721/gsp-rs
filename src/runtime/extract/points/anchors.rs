@@ -413,15 +413,26 @@ pub(crate) fn decode_expression_scale_binding(
     let source_group_index = path.refs[0].checked_sub(1)?;
     let center_group_index = path.refs[1].checked_sub(1)?;
     let expr_group = groups.get(path.refs[2].checked_sub(1)?)?;
-    if expr_group.header.kind() != GroupKind::FunctionExpr {
+    let (factor_expr, factor, parameter_name) = if expr_group.header.kind() == GroupKind::FunctionExpr
+    {
+        if decode_label_name(file, expr_group).is_some_and(|label| label.contains('°')) {
+            return None;
+        }
+        let (factor_expr, parameters, parameter_name) =
+            expression_runtime_context(file, groups, expr_group, anchors)?;
+        let factor = evaluate_expr_with_parameters(&factor_expr, 0.0, &parameters)?;
+        (factor_expr, factor, parameter_name)
+    } else if expr_group.header.kind() == GroupKind::Point
+        && decode_angle_parameter_value_for_group(file, expr_group).is_none()
+    {
+        let parameter_name = editable_non_graph_parameter_name_for_group(file, groups, expr_group)
+            .or_else(|| decode_label_name(file, expr_group))?;
+        let factor = try_decode_parameter_control_value_for_group(file, groups, expr_group).ok()?;
+        let factor_expr = FunctionExpr::Parsed(FunctionAst::Parameter(parameter_name.clone(), factor));
+        (factor_expr, factor, Some(parameter_name))
+    } else {
         return None;
-    }
-    if decode_label_name(file, expr_group).is_some_and(|label| label.contains('°')) {
-        return None;
-    }
-    let (factor_expr, parameters, parameter_name) =
-        expression_runtime_context(file, groups, expr_group, anchors)?;
-    let factor = evaluate_expr_with_parameters(&factor_expr, 0.0, &parameters)?;
+    };
     Some(ExpressionScaleBindingDef {
         source_group_index,
         center_group_index,
@@ -1989,35 +2000,34 @@ pub(crate) fn decode_parameter_rotation_anchor_raw(
     group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
 ) -> Option<PointRecord> {
-    let (source_group_index, center_group_index, angle_degrees) =
-        if let Ok(binding) = try_decode_parameter_rotation_binding(file, groups, group) {
-            let TransformBindingKind::Rotate { angle_degrees, .. } = binding.kind else {
-                return None;
-            };
-            (
-                binding.source_group_index,
-                binding.center_group_index,
-                angle_degrees,
-            )
-        } else {
-            let path = find_indexed_path(file, group)?;
-            let source_group_index = path.refs.first()?.checked_sub(1)?;
-            let center_group_index = path.refs.get(1)?.checked_sub(1)?;
-            let angle_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
-            if angle_group.header.kind() != GroupKind::ParameterAnchor {
-                return None;
-            }
-            let (_, angle_radians) =
-                parameter_anchor_runtime_value(file, groups, angle_group, anchors)?;
-            (
-                source_group_index,
-                center_group_index,
-                angle_radians.to_degrees(),
-            )
-        };
-    let source = anchors.get(source_group_index)?.clone()?;
-    let center = anchors.get(center_group_index)?.clone()?;
-    Some(rotate_around(&source, &center, angle_degrees.to_radians()))
+    let binding = if let Ok(binding) = try_decode_parameter_rotation_binding(file, groups, group) {
+        binding
+    } else {
+        let path = find_indexed_path(file, group)?;
+        let source_group_index = path.refs.first()?.checked_sub(1)?;
+        let center_group_index = path.refs.get(1)?.checked_sub(1)?;
+        let angle_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
+        if angle_group.header.kind() != GroupKind::ParameterAnchor {
+            return None;
+        }
+        let (_, angle_radians) = parameter_anchor_runtime_value(file, groups, angle_group, anchors)?;
+        super::bindings::TransformBinding {
+            source_group_index,
+            center_group_index,
+            kind: TransformBindingKind::Rotate {
+                angle_degrees: angle_radians.to_degrees(),
+                parameter_name: None,
+            },
+        }
+    };
+    let source = anchors.get(binding.source_group_index)?.clone()?;
+    let center = anchors.get(binding.center_group_index)?.clone()?;
+    match binding.kind {
+        TransformBindingKind::Rotate { angle_degrees, .. } => {
+            Some(rotate_around(&source, &center, angle_degrees.to_radians()))
+        }
+        TransformBindingKind::Scale { factor } => Some(scale_around(&source, &center, factor)),
+    }
 }
 
 pub(crate) fn decode_angle_rotation_anchor_raw(

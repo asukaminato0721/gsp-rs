@@ -311,6 +311,19 @@ pub(super) fn build_world_data(
                 depth,
                 parameter_name,
             },
+            super::points::RawPointIterationFamily::Parameterized {
+                point_index,
+                depth_parameter_name,
+                trace_parameter_name,
+                step_expr,
+                depth,
+            } => PointIterationFamily::Parameterized {
+                point_index,
+                depth_parameter_name,
+                trace_parameter_name,
+                step_expr,
+                depth,
+            },
         })
         .collect::<Vec<_>>();
 

@@ -79,12 +79,20 @@ fn evaluate_ast(expr: &FunctionAst, x: f64, parameters: &BTreeMap<String, f64>) 
         FunctionAst::Parameter(name, value) => *parameters.get(name).unwrap_or(value),
         FunctionAst::Unary { op, expr } => {
             let value = evaluate_ast(expr, x, parameters)?;
+            let trig_value = || {
+                if ast_contains_pi_angle(expr) {
+                    value.to_radians()
+                } else {
+                    value
+                }
+            };
             match op {
-                UnaryFunction::Sin => value.sin(),
-                UnaryFunction::Cos => value.cos(),
+                UnaryFunction::Sin => trig_value().sin(),
+                UnaryFunction::Cos => trig_value().cos(),
                 UnaryFunction::Tan => {
-                    let y = value.tan();
-                    if !y.is_finite() || value.cos().abs() < 0.04 || y.abs() > 5.0 {
+                    let radians = trig_value();
+                    let y = radians.tan();
+                    if !y.is_finite() || radians.cos().abs() < 0.04 || y.abs() > 5.0 {
                         return None;
                     }
                     y
@@ -119,4 +127,15 @@ fn evaluate_ast(expr: &FunctionAst, x: f64, parameters: &BTreeMap<String, f64>) 
         }
     };
     value.is_finite().then_some(value)
+}
+
+fn ast_contains_pi_angle(expr: &FunctionAst) -> bool {
+    match expr {
+        FunctionAst::PiAngle => true,
+        FunctionAst::Unary { expr, .. } => ast_contains_pi_angle(expr),
+        FunctionAst::Binary { lhs, rhs, .. } => {
+            ast_contains_pi_angle(lhs) || ast_contains_pi_angle(rhs)
+        }
+        FunctionAst::Variable | FunctionAst::Constant(_) | FunctionAst::Parameter(_, _) => false,
+    }
 }

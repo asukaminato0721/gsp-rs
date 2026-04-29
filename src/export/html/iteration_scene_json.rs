@@ -69,6 +69,17 @@ pub(super) enum PointIterationJson {
         #[serde(rename = "parameterName")]
         parameter_name: Option<String>,
     },
+    Parameterized {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+        #[serde(rename = "depthParameterName")]
+        depth_parameter_name: Option<String>,
+        #[serde(rename = "traceParameterName")]
+        trace_parameter_name: String,
+        #[serde(rename = "stepExpr")]
+        step_expr: FunctionExprJson,
+        depth: usize,
+    },
 }
 
 impl PointIterationJson {
@@ -110,6 +121,19 @@ impl PointIterationJson {
                 angle_expr: FunctionExprJson::from_expr(angle_expr),
                 depth: *depth,
                 parameter_name: parameter_name.clone(),
+            },
+            PointIterationFamily::Parameterized {
+                point_index,
+                depth_parameter_name,
+                trace_parameter_name,
+                step_expr,
+                depth,
+            } => Self::Parameterized {
+                point_index: *point_index,
+                depth_parameter_name: depth_parameter_name.clone(),
+                trace_parameter_name: trace_parameter_name.clone(),
+                step_expr: FunctionExprJson::from_expr(step_expr),
+                depth: *depth,
             },
         }
     }

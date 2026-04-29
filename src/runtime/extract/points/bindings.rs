@@ -89,4 +89,11 @@ pub(crate) enum RawPointIterationFamily {
         depth: usize,
         parameter_name: Option<String>,
     },
+    Parameterized {
+        point_index: usize,
+        depth_parameter_name: Option<String>,
+        trace_parameter_name: String,
+        step_expr: FunctionExpr,
+        depth: usize,
+    },
 }

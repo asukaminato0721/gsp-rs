@@ -2,6 +2,7 @@ use super::{
     AngleRotationBinding, GspFile, ObjectGroup, TransformBinding, TransformBindingKind,
     decode_angle_parameter_value_for_group,
 };
+use crate::runtime::extract::decode::try_decode_parameter_control_value_for_group;
 use crate::runtime::extract::points::editable_non_graph_parameter_name_for_group;
 use crate::runtime::extract::try_find_indexed_path;
 use crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD;
@@ -133,20 +134,31 @@ pub(crate) fn try_decode_parameter_rotation_binding(
     if (angle_group.header.kind()) != crate::format::GroupKind::Point {
         return Err(TransformBindingDecodeError::InvalidParameterRotationAngleSource);
     }
-    let angle_degrees = decode_angle_parameter_value_for_group(file, angle_group)
-        .ok_or(TransformBindingDecodeError::NonFiniteParameterRotationAngle)?;
-    if !angle_degrees.is_finite() {
+    if let Some(angle_degrees) = decode_angle_parameter_value_for_group(file, angle_group) {
+        if !angle_degrees.is_finite() {
+            return Err(TransformBindingDecodeError::NonFiniteParameterRotationAngle);
+        }
+        let parameter_name = editable_non_graph_parameter_name_for_group(file, groups, angle_group);
+
+        return Ok(TransformBinding {
+            source_group_index,
+            center_group_index,
+            kind: TransformBindingKind::Rotate {
+                angle_degrees,
+                parameter_name,
+            },
+        });
+    }
+
+    let factor = try_decode_parameter_control_value_for_group(file, groups, angle_group)
+        .map_err(|_| TransformBindingDecodeError::NonFiniteParameterRotationAngle)?;
+    if !factor.is_finite() {
         return Err(TransformBindingDecodeError::NonFiniteParameterRotationAngle);
     }
-    let parameter_name = editable_non_graph_parameter_name_for_group(file, groups, angle_group);
-
     Ok(TransformBinding {
         source_group_index,
         center_group_index,
-        kind: TransformBindingKind::Rotate {
-            angle_degrees,
-            parameter_name,
-        },
+        kind: TransformBindingKind::Scale { factor },
     })
 }
 

@@ -94,6 +94,17 @@ enum ButtonActionJson {
         #[serde(rename = "targetPointIndex")]
         target_point_index: Option<usize>,
     },
+    SetParameter {
+        #[serde(rename = "parameterName")]
+        parameter_name: String,
+        value: f64,
+    },
+    AnimateParameter {
+        #[serde(rename = "parameterName")]
+        parameter_name: String,
+        #[serde(rename = "targetValue")]
+        target_value: f64,
+    },
     AnimatePoint {
         #[serde(rename = "pointIndex")]
         point_index: usize,
@@ -181,6 +192,20 @@ impl ButtonActionJson {
             } => Self::MovePoint {
                 point_index: *point_index,
                 target_point_index: *target_point_index,
+            },
+            ButtonAction::SetParameter {
+                parameter_name,
+                value,
+            } => Self::SetParameter {
+                parameter_name: parameter_name.clone(),
+                value: *value,
+            },
+            ButtonAction::AnimateParameter {
+                parameter_name,
+                target_value,
+            } => Self::AnimateParameter {
+                parameter_name: parameter_name.clone(),
+                target_value: *target_value,
             },
             ButtonAction::AnimatePoint { point_index } => Self::AnimatePoint {
                 point_index: *point_index,

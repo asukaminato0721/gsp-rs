@@ -129,10 +129,6 @@ fn decode_non_graph_parameter(
     })
 }
 
-fn is_slider_parameter_name(name: &str) -> bool {
-    name.contains('₁') || name.contains('₂') || name.contains('₃') || name.contains('₄')
-}
-
 fn format_parameter_label(name: &str, unit: Option<&str>, value: f64) -> String {
     format!("{name} = {:.2}{}", value, parameter_unit_suffix(unit))
 }
@@ -151,6 +147,12 @@ fn has_parameter_control_payload(group: &ObjectGroup) -> bool {
 
 fn is_angle_parameter_group(file: &GspFile, groups: &[ObjectGroup], target_index: usize) -> bool {
     let target_ordinal = target_index + 1;
+    let Some(target_group) = groups.get(target_index) else {
+        return false;
+    };
+    if decode_angle_parameter_value_for_group(file, target_group).is_none() {
+        return false;
+    }
     groups.iter().any(|group| {
         (group.header.kind()) == crate::format::GroupKind::ParameterRotation
             && find_indexed_path(file, group)
@@ -256,12 +258,7 @@ pub(super) fn is_non_graph_parameter_group(
 }
 
 pub(super) fn is_editable_non_graph_parameter_name(name: &str) -> bool {
-    is_slider_parameter_name(name)
-        || (name.chars().count() == 1
-            && name
-                .chars()
-                .next()
-                .is_some_and(|ch| ch.is_ascii_alphabetic()))
+    !name.trim().is_empty()
 }
 
 pub(super) fn editable_non_graph_parameter_name_for_group(
@@ -354,6 +351,9 @@ pub(super) fn decode_angle_parameter_value_for_group(
     let max = (payload.len() >= 76)
         .then(|| read_f64(payload, 68))
         .filter(|value| value.is_finite())?;
+    if max.abs() > std::f64::consts::TAU * 2.0 {
+        return None;
+    }
     let step = (payload.len() >= 84)
         .then(|| read_f64(payload, 76))
         .filter(|value| value.is_finite() && *value > 0.0)?;

@@ -8,6 +8,7 @@ use crate::runtime::extract::points::{
     editable_non_graph_parameter_name_for_group, is_editable_non_graph_parameter_name,
     regular_polygon_angle_expr,
 };
+use crate::runtime::functions::try_decode_function_expr;
 use crate::runtime::geometry::color_from_style;
 use crate::runtime::scene::{ScenePoint, ScenePointBinding, ScenePointConstraint};
 
@@ -183,6 +184,18 @@ pub(crate) fn collect_point_iteration_points(
                 if depth == 0 {
                     continue;
                 }
+                if let Some((depth_parameter_name, trace_parameter_name, step_expr)) =
+                    parameterized_point_iteration(groups, iter_group, file)
+                {
+                    families.push(RawPointIterationFamily::Parameterized {
+                        point_index: seed_index,
+                        depth_parameter_name,
+                        trace_parameter_name,
+                        step_expr,
+                        depth,
+                    });
+                    continue;
+                }
                 if let Some((parameter_name, dx, dy)) =
                     parameter_iteration_step(groups, iter_group, anchors, file)
                 {
@@ -285,6 +298,26 @@ pub(crate) fn collect_point_iteration_points(
     }
 
     (derived_points, families)
+}
+
+fn parameterized_point_iteration(
+    groups: &[ObjectGroup],
+    iter_group: &ObjectGroup,
+    file: &GspFile,
+) -> Option<(Option<String>, String, crate::runtime::functions::FunctionExpr)> {
+    let path = find_indexed_path(file, iter_group)?;
+    if path.refs.len() < 3 {
+        return None;
+    }
+    let depth_parameter_group = groups.get(path.refs[0].checked_sub(1)?)?;
+    let trace_parameter_group = groups.get(path.refs[1].checked_sub(1)?)?;
+    let step_group = groups.get(path.refs[2].checked_sub(1)?)?;
+    let trace_parameter_name =
+        editable_non_graph_parameter_name_for_group(file, groups, trace_parameter_group)?;
+    let step_expr = try_decode_function_expr(file, groups, step_group).ok()?;
+    let depth_parameter_name =
+        editable_non_graph_parameter_name_for_group(file, groups, depth_parameter_group);
+    Some((depth_parameter_name, trace_parameter_name, step_expr))
 }
 
 fn parameter_iteration_step(

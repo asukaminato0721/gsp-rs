@@ -1,9 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_u16, read_u32};
+use crate::runtime::functions::evaluate_function_group_with_overrides;
 use crate::runtime::scene::{ButtonAction, SceneButton, ScreenPoint, ScreenRect};
 
-use super::{decode, find_indexed_path, payload_debug_source};
+use super::points::editable_non_graph_parameter_name_for_group;
+use super::{
+    decode, find_indexed_path, payload_debug_source, try_decode_parameter_control_value_for_group,
+};
 
 #[derive(Clone)]
 enum RawButtonAction {
@@ -23,6 +27,7 @@ enum RawButtonAction {
     MovePoint {
         point_group_ordinal: usize,
         target_group_ordinal: Option<usize>,
+        animated: bool,
     },
     AnimatePoint {
         point_group_ordinal: usize,
@@ -50,6 +55,11 @@ struct RawButton {
     rect: Option<ScreenRect>,
     visible: bool,
     action: RawButtonAction,
+}
+
+struct ButtonParameter {
+    name: String,
+    value: f64,
 }
 
 #[derive(Clone, Copy)]
@@ -179,6 +189,7 @@ pub(super) fn collect_buttons(
                         .map(|point_group_ordinal| RawButtonAction::MovePoint {
                             point_group_ordinal,
                             target_group_ordinal: refs.get(1).copied(),
+                            animated: action_kind_hi == 0,
                         })
                 }
                 (0, 7) => Some(RawButtonAction::ToggleVisibility { refs }),
@@ -222,6 +233,11 @@ pub(super) fn collect_buttons(
         .enumerate()
         .map(|(button_index, button)| (button.group_ordinal, button_index))
         .collect::<BTreeMap<usize, usize>>();
+    let parameters_by_ordinal = collect_button_parameters(file, groups);
+    let parameter_values = parameters_by_ordinal
+        .values()
+        .map(|parameter| (parameter.name.clone(), parameter.value))
+        .collect::<BTreeMap<_, _>>();
 
     let buttons = raw_buttons
         .into_iter()
@@ -292,21 +308,53 @@ pub(super) fn collect_buttons(
                 RawButtonAction::MovePoint {
                     point_group_ordinal,
                     target_group_ordinal,
-                } => ButtonAction::MovePoint {
-                    point_index: lookups
+                    animated,
+                } => {
+                    if let Some(point_index) = lookups
                         .group_to_point_index
                         .get(point_group_ordinal.checked_sub(1)?)
                         .copied()
-                        .flatten()?,
-                    target_point_index: if let Some(ordinal) = target_group_ordinal {
-                        lookups
-                            .group_to_point_index
-                            .get(ordinal.checked_sub(1)?)
-                            .copied()
-                            .flatten()
+                        .flatten()
+                    {
+                        ButtonAction::MovePoint {
+                            point_index,
+                            target_point_index: if let Some(ordinal) = target_group_ordinal {
+                                lookups
+                                    .group_to_point_index
+                                    .get(ordinal.checked_sub(1)?)
+                                    .copied()
+                                    .flatten()
+                            } else {
+                                None
+                            },
+                        }
+                    } else if let Some(parameter) = parameters_by_ordinal.get(&point_group_ordinal)
+                    {
+                        let target_value = target_group_ordinal
+                            .and_then(|ordinal| {
+                                resolve_parameter_button_target_value(
+                                    file,
+                                    groups,
+                                    &parameters_by_ordinal,
+                                    &parameter_values,
+                                    ordinal,
+                                )
+                            })
+                            .unwrap_or(parameter.value);
+                        if animated {
+                            ButtonAction::AnimateParameter {
+                                parameter_name: parameter.name.clone(),
+                                target_value,
+                            }
+                        } else {
+                            ButtonAction::SetParameter {
+                                parameter_name: parameter.name.clone(),
+                                value: target_value,
+                            }
+                        }
                     } else {
-                        None
-                    },
+                        return None;
+                    }
                 },
                 RawButtonAction::AnimatePoint {
                     point_group_ordinal,
@@ -365,6 +413,35 @@ pub(super) fn collect_buttons(
         })
         .collect::<Vec<_>>();
     (buttons, button_index_by_ordinal)
+}
+
+fn collect_button_parameters(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+) -> BTreeMap<usize, ButtonParameter> {
+    groups
+        .iter()
+        .filter(|group| decode::is_parameter_control_group(group))
+        .filter_map(|group| {
+            let name = editable_non_graph_parameter_name_for_group(file, groups, group)?;
+            let value = try_decode_parameter_control_value_for_group(file, groups, group).ok()?;
+            Some((group.ordinal, ButtonParameter { name, value }))
+        })
+        .collect()
+}
+
+fn resolve_parameter_button_target_value(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    parameters_by_ordinal: &BTreeMap<usize, ButtonParameter>,
+    parameter_values: &BTreeMap<String, f64>,
+    target_group_ordinal: usize,
+) -> Option<f64> {
+    if let Some(parameter) = parameters_by_ordinal.get(&target_group_ordinal) {
+        return Some(parameter.value);
+    }
+    let group = groups.get(target_group_ordinal.checked_sub(1)?)?;
+    evaluate_function_group_with_overrides(file, groups, group, parameter_values)
 }
 
 fn resolve_visibility_targets(

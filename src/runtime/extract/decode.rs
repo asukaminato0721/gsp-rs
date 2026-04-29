@@ -392,6 +392,42 @@ fn decode_signed_parameter_tail_value(payload: &[u8]) -> Option<f64> {
     }
 }
 
+fn decode_named_decimal_parameter_tail_value(
+    file: &GspFile,
+    group: &ObjectGroup,
+    payload: &[u8],
+) -> Option<f64> {
+    let name = decode_label_name(file, group)?;
+    if !name.starts_with("t[") {
+        return None;
+    }
+    if payload.len() >= 100 {
+        let whole = read_u16(payload, 92);
+        let denominator = read_u16(payload, 94);
+        let tenths = read_u16(payload, 96);
+        let hundredths = read_u16(payload, 98);
+        if whole == 0 && denominator == 10 && tenths == 0 && hundredths < 10 {
+            return Some(f64::from(hundredths) / 100.0);
+        }
+    }
+    if payload.len() >= 98 {
+        let hundreds = read_u16(payload, 92);
+        let tens = read_u16(payload, 94);
+        let ones = read_u16(payload, 96);
+        if hundreds < 10 && tens < 10 && ones < 10 && ones >= tens {
+            return Some(f64::from(hundreds * 100 + tens * 10 + ones));
+        }
+    }
+    if payload.len() >= 96 {
+        let tens = read_u16(payload, 92);
+        let ones = read_u16(payload, 94);
+        if tens < 10 && ones == 0 {
+            return Some(f64::from(tens * 10));
+        }
+    }
+    None
+}
+
 pub(crate) fn try_decode_parameter_control_value_for_group(
     file: &GspFile,
     _groups: &[ObjectGroup],
@@ -405,6 +441,9 @@ pub(crate) fn try_decode_parameter_control_value_for_group(
         .ok_or(ParameterControlDecodeError::MissingPayloadRecord)?;
 
     if let Some(value) = decode_signed_parameter_tail_value(payload) {
+        return Ok(value);
+    }
+    if let Some(value) = decode_named_decimal_parameter_tail_value(file, group, payload) {
         return Ok(value);
     }
 
