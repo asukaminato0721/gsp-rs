@@ -299,10 +299,6 @@ pub(crate) fn is_parameter_control_group(group: &ObjectGroup) -> bool {
             .records
             .iter()
             .any(|record| record.record_type == RECORD_FUNCTION_EXPR_PAYLOAD)
-        && group
-            .records
-            .iter()
-            .any(|record| record.record_type == RECORD_LABEL_AUX)
         && group.object_aux_u16.is_some()
         && group
             .records
@@ -1386,8 +1382,11 @@ fn decode_markup_text(token: &str) -> Option<String> {
 
 fn decode_markup_symbol(token: &str) -> Option<String> {
     match token {
+        "!7E" => Some("∼".to_string()),
         "!102" => Some("△".to_string()),
         "!D0" => Some("∠".to_string()),
+        "!D7" => Some("*".to_string()),
+        "!DE" => Some("⇒".to_string()),
         _ => None,
     }
 }
@@ -1466,10 +1465,13 @@ fn collapse_markup_superscript(text: String) -> String {
         return text;
     }
     let exponent = chars[split..].iter().collect::<String>();
-    let mut base = chars[..split].iter().collect::<String>();
-    base.push('^');
-    base.push_str(&exponent);
-    base
+    let base = chars[..split].iter().collect::<String>();
+    let rendered = format!("{base}^{exponent}");
+    if base.chars().count() > 1 {
+        format!("({rendered})")
+    } else {
+        rendered
+    }
 }
 
 #[cfg(test)]

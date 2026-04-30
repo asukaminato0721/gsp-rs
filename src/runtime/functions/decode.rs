@@ -902,13 +902,36 @@ fn decode_payload_function_expr(
         Ok(FunctionExpr::Identity)
     } else if let Ok(value) = text.parse::<f64>() {
         if value == 0.0 {
-            try_decode_inner_function_expr(payload, parameters)
+            try_decode_embedded_static_function_expr(payload, parameters)
+                .or_else(|_| try_decode_inner_function_expr(payload, parameters))
                 .or(Ok(FunctionExpr::Constant(value)))
         } else {
             Ok(FunctionExpr::Constant(value))
         }
     } else {
         try_decode_inner_function_expr(payload, parameters)
+    }
+}
+
+fn try_decode_embedded_static_function_expr(
+    payload: &[u8],
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Result<FunctionExpr, FunctionExprParseError> {
+    let words = payload
+        .chunks_exact(2)
+        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+        .collect::<Vec<_>>();
+    let start =
+        embedded_calculate_expr_start(&words).ok_or(FunctionExprParseError::NoExpressionFound {
+            word_len: words.len(),
+        })?;
+    let (parsed, end) = parse_function_expr_from(&words, start, parameters)?;
+    if has_ignorable_expr_suffix(&words, end) {
+        Ok(canonicalize_function_expr(parsed))
+    } else {
+        Err(FunctionExprParseError::NoExpressionFound {
+            word_len: words.len(),
+        })
     }
 }
 
@@ -2863,9 +2886,9 @@ fn parsed_contains_symbol(parsed: &FunctionAst) -> bool {
 #[cfg(test)]
 mod parse_tests {
     use super::{
-        FunctionExprParseError, ParameterBinding, parse_function_expr, try_decode_function_expr,
-        try_decode_inner_function_expr, try_decode_plot_component_expr,
-        try_decode_standalone_function_expr,
+        FunctionExprParseError, ParameterBinding, decode_payload_function_expr,
+        parse_function_expr, try_decode_function_expr, try_decode_inner_function_expr,
+        try_decode_plot_component_expr, try_decode_standalone_function_expr,
     };
     use crate::gsp::GspFile;
     use crate::runtime::extract::points::collect_point_objects;
@@ -2972,6 +2995,27 @@ mod parse_tests {
                 op: BinaryOp::Div,
                 rhs: Box::new(FunctionAst::Constant(2.0)),
             }))
+        );
+    }
+
+    #[test]
+    fn decodes_inline_zero_display_with_embedded_static_sqrt_expr() {
+        let payload = payload_from_words(&[
+            2300, 0, 22, 0, 4, 0, 10, 5, 3, 12348, 62, 4102, 6, 0, 2, 24578, 2311, 0, 66, 0, 48, 0,
+            3, 4, 0, 3, 42864, 495, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 23, 0, 0, 0,
+            59782, 30530, 8199, 6, 12,
+        ]);
+        let expr = decode_payload_function_expr(&payload, &BTreeMap::new()).expect("expression");
+        assert_eq!(
+            expr,
+            FunctionExpr::Parsed(FunctionAst::Unary {
+                op: UnaryFunction::Sqrt,
+                expr: Box::new(FunctionAst::Constant(6.0)),
+            })
+        );
+        assert_eq!(
+            evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new()),
+            Some(6.0_f64.sqrt())
         );
     }
 

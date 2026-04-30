@@ -427,11 +427,22 @@ pub(crate) fn decode_expression_scale_binding(
         && decode_angle_parameter_value_for_group(file, expr_group).is_none()
     {
         let parameter_name = editable_non_graph_parameter_name_for_group(file, groups, expr_group)
-            .or_else(|| decode_label_name(file, expr_group))?;
-        let factor = try_decode_parameter_control_value_for_group(file, groups, expr_group).ok()?;
-        let factor_expr =
-            FunctionExpr::Parsed(FunctionAst::Parameter(parameter_name.clone(), factor));
-        (factor_expr, factor, Some(parameter_name))
+            .or_else(|| decode_label_name(file, expr_group));
+        let decoded_expr = try_decode_function_expr(file, groups, expr_group).ok();
+        let factor = decoded_expr
+            .as_ref()
+            .and_then(|expr| evaluate_expr_with_parameters(expr, 0.0, &BTreeMap::new()))
+            .filter(|value| value.is_finite())
+            .or_else(|| {
+                try_decode_parameter_control_value_for_group(file, groups, expr_group).ok()
+            })?;
+        let factor_expr = decoded_expr.unwrap_or_else(|| {
+            parameter_name
+                .as_ref()
+                .map(|name| FunctionExpr::Parsed(FunctionAst::Parameter(name.clone(), factor)))
+                .unwrap_or(FunctionExpr::Constant(factor))
+        });
+        (factor_expr, factor, parameter_name)
     } else {
         return None;
     };
@@ -1487,14 +1498,13 @@ fn select_line_circle_intersection(
         return None;
     }
     let root = discriminant.max(0.0).sqrt();
-    let mut ts = [(-b - root) / (2.0 * a), (-b + root) / (2.0 * a)]
+    let ts = [(-b - root) / (2.0 * a), (-b + root) / (2.0 * a)]
         .into_iter()
         .filter(|t| line_like_allows_param(*t, line_kind))
         .collect::<Vec<_>>();
     if ts.is_empty() {
         return None;
     }
-    ts.sort_by(|left, right| right.total_cmp(left));
     let t = ts[variant.min(ts.len().saturating_sub(1))];
     Some(PointRecord {
         x: line_start.x + dx * t,

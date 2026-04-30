@@ -1079,11 +1079,15 @@ pub(crate) fn collect_three_point_arc_shapes(
                 color: color_from_style(group.header.style_b),
                 center,
                 counterclockwise,
-                visible: !group.header.is_hidden(),
+                visible: !group.header.is_hidden() && arc_stroke_visible(group.header.style_c),
                 debug: Some(payload_debug_source(group)),
             })
         })
         .collect()
+}
+
+fn arc_stroke_visible(style_c: u32) -> bool {
+    style_c != 0x0000_ffff
 }
 
 fn resolve_arc_boundary_points(

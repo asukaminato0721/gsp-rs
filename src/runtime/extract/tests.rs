@@ -4,7 +4,6 @@ use super::{
     remap_scene_bindings, render_payload_log,
 };
 use crate::format::GspFile;
-use crate::runtime::extract::points::decode_expression_rotation_binding;
 use crate::runtime::functions::{
     BinaryOp, FunctionAst, FunctionExpr, UnaryFunction, evaluate_expr_with_parameters,
     function_expr_label,
@@ -5182,39 +5181,92 @@ fn decodes_bug_fixture_angle_marker_class_from_low_word() {
 }
 
 #[test]
-fn exports_test10_expression_rotation_as_live_point_binding() {
+fn exports_test10_marked_ratio_scale_and_reference_geometry() {
     let data = include_bytes!("../../../tests/fixtures/bug/测试10.gsp");
     let file = GspFile::parse(data).expect("fixture parses");
-    let groups = file.object_groups();
-    let point_map = collect_point_objects(&file, &groups);
-    let analysis = analyze_scene(&file, &groups, &point_map);
     let scene = build_scene_checked(&file).expect("scene builds");
 
-    let expression_rotation_group = groups
-        .iter()
-        .find(|group| group.ordinal == 6)
-        .expect("expected payload group #6");
-    let binding = decode_expression_rotation_binding(
-        &file,
-        &groups,
-        expression_rotation_group,
-        &analysis.raw_anchors,
-    )
-    .expect("expected payload expression-rotation binding");
+    let point_by_ordinal = |ordinal| {
+        scene
+            .points
+            .iter()
+            .find(|point| {
+                point
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .expect("expected point ordinal")
+    };
+
+    let b = point_by_ordinal(6);
+    match &b.binding {
+        Some(ScenePointBinding::Scale {
+            factor,
+            factor_expr: Some(factor_expr),
+            parameter_name,
+            factor_parameter_point_index,
+            factor_parameter_start_index,
+            factor_parameter_end_index,
+            source_index,
+            center_index,
+        }) => {
+            assert_eq!((*source_index, *center_index), (2, 1));
+            assert_eq!(parameter_name, &None);
+            assert_eq!(factor_parameter_point_index, &None);
+            assert_eq!(factor_parameter_start_index, &None);
+            assert_eq!(factor_parameter_end_index, &None);
+            assert!((*factor - 6.0_f64.sqrt()).abs() < 1e-12);
+            assert!(function_expr_has_unary(factor_expr, UnaryFunction::Sqrt));
+        }
+        other => panic!("expected marked-ratio scale binding for group #6, got {other:?}"),
+    }
+
+    assert!((b.position.x - 943.2872383623309).abs() < 1e-9);
+    assert!((b.position.y - 309.37346662472527).abs() < 1e-9);
+
+    let d0 = point_by_ordinal(18);
+    assert!((d0.position.x - 538.0).abs() < 1e-9);
+    assert!((d0.position.y - 428.0).abs() < 1e-9);
+
+    let e = point_by_ordinal(20);
+    assert!((e.position.x - 714.459085867259).abs() < 1e-9);
+    assert!((e.position.y - 647.5843289845315).abs() < 1e-9);
+
+    let e0 = point_by_ordinal(24);
+    assert!((e0.position.x - 486.0).abs() < 1e-9);
+    assert!((e0.position.y - 551.0).abs() < 1e-9);
 
     assert!(
         scene.points.iter().any(|point| matches!(
             point.binding,
-            Some(ScenePointBinding::Rotate {
-                angle_expr: Some(_),
+            Some(ScenePointBinding::Scale {
+                factor_expr: Some(_),
                 source_index,
                 center_index,
                 ..
             }) if source_index == 2 && center_index == 1
         )),
-        "expected live expression-rotation point for group #6 (source #{}, center #{})",
-        binding.source_group_index + 1,
-        binding.center_group_index + 1,
+        "expected live marked-ratio scale point for group #6"
+    );
+
+    assert!(
+        scene.arcs.iter().filter(|arc| arc.visible).all(|arc| !arc
+            .debug
+            .as_ref()
+            .is_some_and(|debug| matches!(debug.group_ordinal, 49 | 51))),
+        "expected the style-c hidden three-point arcs omitted by the reference htm to stay non-rendering"
+    );
+    assert!(
+        scene.labels.iter().any(|label| label.text == "⇒△CBD∼△CEB"),
+        "expected rich-text symbols from the reference htm label"
+    );
+    assert!(
+        scene
+            .labels
+            .iter()
+            .any(|label| label.text == "⇒(BC^2)=CD*CE"),
+        "expected rich-text operator symbols from the reference htm label"
     );
 }
 
