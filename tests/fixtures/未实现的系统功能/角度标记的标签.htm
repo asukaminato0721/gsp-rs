@@ -1,0 +1,115 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>角度标记的标签</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(943,286)[label('A'),mediumPoint];
+{2} Point(680,531)[label('B'),mediumPoint];
+{3} Segment(2,1)[color(0,0,128),mediumLine];
+{4} Point(1089,533)[label('C'),mediumPoint];
+{5} Segment(4,2)[color(0,0,128),mediumLine];
+{6} Segment(1,4)[color(0,0,128),mediumLine];
+{7} Rotation(4,2,-0.523599)[hidden];
+{8} Rotation(2,4,0.785398)[hidden];
+{9} Ray(7,2)[hidden];
+{10} Ray(8,4)[hidden];
+{11} Intersect(10,9)[label('P'),red,mediumPoint];
+{12} Rotation(1,4,-0.785398)[hidden];
+{13} Rotation(4,1,0.523599)[hidden];
+{14} Ray(13,1)[hidden];
+{15} Ray(12,4)[hidden];
+{16} Intersect(15,14)[label('Q'),red,mediumPoint];
+{17} Rotation(1,2,0.261799)[hidden];
+{18} Rotation(2,1,-0.261799)[hidden];
+{19} Ray(18,1)[hidden];
+{20} Ray(17,2)[hidden];
+{21} Intersect(20,19)[label('R'),red,mediumPoint];
+{22} Segment(2,21)[color(0,0,128),mediumLine];
+{23} Segment(1,21)[color(0,0,128),mediumLine];
+{24} Segment(16,1)[color(0,0,128),mediumLine];
+{25} Segment(4,16)[color(0,0,128),mediumLine];
+{26} Segment(11,4)[color(0,0,128),mediumLine];
+{27} Segment(2,11)[color(0,0,128),mediumLine];
+{28} Segment(16,21)[color(0,0,128),mediumLine];
+{29} Segment(11,16)[color(0,0,128),mediumLine];
+{30} Segment(21,11)[color(0,0,128),mediumLine];
+{31} FixedText(497,224,'三角形ABC为任意三角形，已知条件如图，求证：△PQR为正三角形')[black];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>角度标记的标签</P></H4>
+</BODY>
+</HTML>

@@ -1352,11 +1352,15 @@ pub(crate) fn render_payload_log(source_path: &Path, file: &GspFile) -> String {
     let htm_context = HtmPayloadContext {
         ordinal_map: &construction_ordinals,
         graph: graph.as_ref(),
-        has_function_plot: groups.iter().any(|group| {
+        has_point_function_plot: groups.iter().any(|group| {
             matches!(
                 group.header.kind(),
                 GroupKind::FunctionPlot | GroupKind::LegacyFunctionPlot
-            )
+            ) && find_indexed_path(file, group)
+                .and_then(|path| path.refs.first().copied())
+                .and_then(|ordinal| groups.get(ordinal.saturating_sub(1)))
+                .is_some_and(|source| source.header.kind() == GroupKind::Point)
+                && htm_function_plot_mode(file, group) == Some(FunctionPlotMode::Cartesian)
         }),
     };
     for (index, group) in construction_groups.iter().enumerate() {
@@ -1384,8 +1388,10 @@ fn collect_htm_payload_groups<'a>(
     file: &GspFile,
     groups: &'a [ObjectGroup],
 ) -> Vec<&'a ObjectGroup> {
+    let blocked_ordinals = htm_payload_blocked_ordinals(file, groups);
     groups
         .iter()
+        .filter(|group| !blocked_ordinals.contains(&group.ordinal))
         .filter(|group| match group.header.kind() {
             GroupKind::Point => {
                 group
@@ -1431,6 +1437,7 @@ fn collect_htm_payload_groups<'a>(
             | GroupKind::Polygon
             | GroupKind::Translation
             | GroupKind::Rotation
+            | GroupKind::ParameterRotation
             | GroupKind::Scale
             | GroupKind::RatioScale
             | GroupKind::PointTrace
@@ -1442,12 +1449,93 @@ fn collect_htm_payload_groups<'a>(
             | GroupKind::GraphDistanceValue
             | GroupKind::FunctionPlot
             | GroupKind::LegacyFunctionPlot
+            | GroupKind::FunctionDefinition
             | GroupKind::FunctionExpr
             | GroupKind::RichTextLabel => true,
             GroupKind::ActionButton => htm_action_button_kind(file, group) == Some((0, 7)),
             _ => false,
         })
         .collect()
+}
+
+fn htm_payload_blocked_ordinals(file: &GspFile, groups: &[ObjectGroup]) -> BTreeSet<usize> {
+    let mut blocked = BTreeSet::new();
+    if let Some(iteration_ordinal) = groups
+        .iter()
+        .find(|group| group.header.kind() == GroupKind::RegularPolygonIteration)
+        .map(|group| group.ordinal)
+    {
+        blocked.extend(
+            groups
+                .iter()
+                .filter(|group| group.ordinal >= iteration_ordinal)
+                .map(|group| group.ordinal),
+        );
+    }
+    for group in groups {
+        if htm_group_is_payload_blocking_seed(file, groups, group) {
+            blocked.insert(group.ordinal);
+        }
+    }
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for group in groups {
+            if blocked.contains(&group.ordinal) {
+                continue;
+            }
+            if find_indexed_path(file, group).is_some_and(|path| {
+                path.refs
+                    .iter()
+                    .any(|reference| blocked.contains(reference))
+            }) {
+                changed |= blocked.insert(group.ordinal);
+            }
+        }
+    }
+    blocked
+}
+
+fn htm_group_is_payload_blocking_seed(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> bool {
+    if htm_point_is_image_anchor(file, group) {
+        return true;
+    }
+    if group.header.kind() == GroupKind::PathPoint
+        && group
+            .records
+            .iter()
+            .any(|record| matches!(record.record_type, 0x07d5 | 0x07d8))
+    {
+        return true;
+    }
+    if matches!(
+        group.header.kind(),
+        GroupKind::PointConstraint | GroupKind::PathPoint | GroupKind::ParameterControlledPoint
+    ) && find_indexed_path(file, group)
+        .and_then(|path| path.refs.first().copied())
+        .and_then(|host| groups.get(host.saturating_sub(1)))
+        .is_some_and(|host_group| {
+            matches!(
+                host_group.header.kind(),
+                GroupKind::ArcOnCircle
+                    | GroupKind::CenterArc
+                    | GroupKind::ThreePointArc
+                    | GroupKind::SectorBoundary
+                    | GroupKind::CircularSegmentBoundary
+            )
+        })
+    {
+        return true;
+    }
+    group.header.kind() == GroupKind::FunctionExpr
+        && find_indexed_path(file, group)
+            .and_then(|path| path.refs.first().copied())
+            .and_then(|reference| groups.get(reference.saturating_sub(1)))
+            .is_some_and(|source| source.header.kind() == GroupKind::ParameterAnchor)
 }
 
 fn try_decode_group_label_text_placeholder(group: &ObjectGroup) -> bool {
@@ -1462,7 +1550,7 @@ fn try_decode_group_label_text_placeholder(group: &ObjectGroup) -> bool {
 struct HtmPayloadContext<'a> {
     ordinal_map: &'a BTreeMap<usize, usize>,
     graph: Option<&'a GraphTransform>,
-    has_function_plot: bool,
+    has_point_function_plot: bool,
 }
 
 fn describe_group_as_htm_payload(
@@ -1478,6 +1566,12 @@ fn describe_group_as_htm_payload(
     let (object_type, args) = htm_payload_signature(file, groups, group, &refs, context);
     let attrs = htm_payload_attributes(file, groups, group, context);
     if object_type == "Function" {
+        if let Some((function_args, ref_args)) = args.split_once('\u{1f}') {
+            if attrs.is_empty() {
+                return format!("{{{ordinal}}} {object_type}({function_args})({ref_args});");
+            }
+            return format!("{{{ordinal}}} {object_type}({function_args})({ref_args})[{attrs}];");
+        }
         if attrs.is_empty() {
             return format!("{{{ordinal}}} {object_type}({args})();");
         }
@@ -1509,12 +1603,14 @@ fn htm_payload_signature(
     let graph = context.graph;
     match group.header.kind() {
         GroupKind::Point if self::decode::is_parameter_control_group(group) => {
-            if context.has_function_plot && function_definition_refs_this_group(file, groups, group)
-            {
+            if function_definition_refs_this_group(file, groups, group) {
                 ("Function", htm_function_args(file, groups, group))
             } else {
                 ("Parameter", htm_parameter_args(file, groups, group))
             }
+        }
+        GroupKind::Point if htm_point_is_image_anchor(file, group) => {
+            ("ImageAnchor", String::new())
         }
         GroupKind::Point if decode_group_point(file, group).is_none() => {
             ("FixedText", htm_fixed_text_args(file, group))
@@ -1561,7 +1657,7 @@ fn htm_payload_signature(
             ),
         ),
         GroupKind::GraphCalibrationY | GroupKind::GraphCalibrationYAlt => {
-            if context.has_function_plot {
+            if context.has_point_function_plot {
                 (
                     "RectangularUnitPoint",
                     format!(
@@ -1603,6 +1699,9 @@ fn htm_payload_signature(
         GroupKind::Polygon => ("Polygon", format_ref_args(refs, ordinal_map)),
         GroupKind::Translation => ("VectorTranslation", format_ref_args(refs, ordinal_map)),
         GroupKind::Rotation => ("Rotation", htm_rotation_args(file, group, ordinal_map)),
+        GroupKind::ParameterRotation => {
+            ("Rotation/MeasuredAngle", format_ref_args(refs, ordinal_map))
+        }
         GroupKind::Scale => ("Dilation", htm_scale_args(file, group, ordinal_map)),
         GroupKind::RatioScale => ("Dilation/3PtRatio", format_ref_args(refs, ordinal_map)),
         GroupKind::PointTrace => (
@@ -1629,6 +1728,10 @@ fn htm_payload_signature(
         GroupKind::FunctionPlot | GroupKind::LegacyFunctionPlot => (
             "FunctionPlot",
             htm_function_plot_args(file, group, refs, ordinal_map),
+        ),
+        GroupKind::FunctionDefinition => (
+            "Function",
+            htm_function_definition_args(file, groups, group, refs, ordinal_map),
         ),
         GroupKind::FunctionExpr => (
             "Calculate",
@@ -1710,7 +1813,7 @@ fn htm_payload_attributes(
     if matches!(
         group.header.kind(),
         GroupKind::GraphCalibrationY | GroupKind::GraphCalibrationYAlt
-    ) && !context.has_function_plot
+    ) && !context.has_point_function_plot
     {
         attrs.push("hidden".to_string());
         return attrs.join(",");
@@ -1736,6 +1839,7 @@ fn htm_payload_attributes(
             | GroupKind::ParameterControlledPoint
             | GroupKind::Translation
             | GroupKind::Rotation
+            | GroupKind::ParameterRotation
             | GroupKind::Scale
             | GroupKind::RatioScale
     );
@@ -1775,10 +1879,19 @@ fn htm_payload_attributes(
             }
             attrs.push("mediumPoint".to_string());
         }
-        GroupKind::Translation | GroupKind::Rotation | GroupKind::Scale | GroupKind::RatioScale => {
+        GroupKind::Translation
+        | GroupKind::Rotation
+        | GroupKind::ParameterRotation
+        | GroupKind::Scale
+        | GroupKind::RatioScale => {
             if htm_transform_result_is_line(file, groups, group) {
-                attrs.push(htm_rgb_color_attr(color_from_style(group.header.style_b)));
+                attrs.push(htm_stroke_color_attr(color_from_style(
+                    group.header.style_b,
+                )));
                 if line_is_dashed(group.header.style_a) {
+                    if htm_line_has_medium_width(group.header.style_a) {
+                        attrs.push("mediumLine".to_string());
+                    }
                     attrs.push("dashed".to_string());
                 } else {
                     attrs.push("mediumLine".to_string());
@@ -1800,20 +1913,35 @@ fn htm_payload_attributes(
         | GroupKind::LineKind7
         | GroupKind::Ray
         | GroupKind::GraphMeasurementSegment => {
-            attrs.push(htm_rgb_color_attr(color_from_style(group.header.style_b)));
+            attrs.push(htm_stroke_color_attr(color_from_style(
+                group.header.style_b,
+            )));
             if line_is_dashed(group.header.style_a) && group.header.kind() == GroupKind::Segment {
+                if htm_line_has_medium_width(group.header.style_a) {
+                    attrs.push("mediumLine".to_string());
+                }
+                attrs.push("dashed".to_string());
+            } else if line_is_dashed(group.header.style_a)
+                && matches!(
+                    group.header.kind(),
+                    GroupKind::Circle | GroupKind::CircleCenterRadius
+                )
+            {
+                attrs.push("mediumLine".to_string());
+                attrs.push("dashed".to_string());
+            } else if line_is_dashed(group.header.style_a) {
                 attrs.push("dashed".to_string());
             } else {
                 attrs.push("mediumLine".to_string());
-                if line_is_dashed(group.header.style_a) {
-                    attrs.push("dashed".to_string());
-                }
             }
         }
         GroupKind::MeasurementLine | GroupKind::AxisLine => {
-            attrs.push(htm_rgb_color_attr(color_from_style(group.header.style_b)));
+            attrs.push(htm_stroke_color_attr(color_from_style(
+                group.header.style_b,
+            )));
         }
         GroupKind::FunctionExpr
+        | GroupKind::FunctionDefinition
         | GroupKind::CoordinateXValue
         | GroupKind::CoordinateYValue
         | GroupKind::CoordinateReadoutLabel
@@ -1822,7 +1950,12 @@ fn htm_payload_attributes(
             attrs.push("black".to_string());
         }
         GroupKind::FunctionPlot | GroupKind::LegacyFunctionPlot => {
-            attrs.push(htm_rgb_color_attr(color_from_style(group.header.style_b)));
+            attrs.push(htm_stroke_color_attr(color_from_style(
+                group.header.style_b,
+            )));
+            if htm_line_has_medium_width(group.header.style_a) {
+                attrs.push("mediumLine".to_string());
+            }
         }
         GroupKind::Polygon => {
             attrs.push(htm_color_attr(super::geometry::fill_color_from_styles(
@@ -1865,6 +1998,18 @@ fn htm_rgb_color_attr(color: [u8; 4]) -> String {
     format!("color({r},{g},{b})")
 }
 
+fn htm_stroke_color_attr(color: [u8; 4]) -> String {
+    match color {
+        [255, 0, 0, _] => "red".to_string(),
+        [0, 0, 255, _] => "blue".to_string(),
+        [r, g, b, _] => format!("color({r},{g},{b})"),
+    }
+}
+
+fn htm_line_has_medium_width(style_a: u32) -> bool {
+    matches!((style_a >> 16) & 0xff, 0x12 | 0x22)
+}
+
 fn format_ref_args(refs: &[usize], ordinal_map: &BTreeMap<usize, usize>) -> String {
     refs.iter()
         .map(|reference| map_htm_ordinal(*reference, ordinal_map).to_string())
@@ -1892,6 +2037,20 @@ fn htm_quote_text(text: &str) -> String {
     text.replace('\'', "''").replace('\n', " ")
 }
 
+fn htm_point_is_image_anchor(file: &GspFile, group: &ObjectGroup) -> bool {
+    group.header.kind() == GroupKind::Point
+        && !self::decode::is_parameter_control_group(group)
+        && decode_group_point(file, group).is_none()
+        && group
+            .records
+            .iter()
+            .any(|record| matches!(record.record_type, 0x08a3 | 0x08a8 | 0x08fc))
+        && try_decode_group_label_text(file, group)
+            .unwrap_or_default()
+            .trim()
+            .is_empty()
+}
+
 fn function_definition_refs_this_group(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -1907,21 +2066,29 @@ fn function_definition_refs_this_group(
 }
 
 fn htm_fixed_text_args(file: &GspFile, group: &ObjectGroup) -> String {
-    let text = try_decode_group_rich_text(file, group)
-        .map(|content| content.text)
+    let rich_text = try_decode_group_rich_text(file, group);
+    let text = rich_text
+        .as_ref()
+        .map(|content| content.text.clone())
         .or_else(|| try_decode_group_label_text(file, group))
         .unwrap_or_default();
-    try_decode_payload_anchor_point(file, group)
+    try_decode_bbox_rect_raw(file, group)
         .ok()
         .flatten()
-        .or_else(|| {
-            try_decode_bbox_rect_raw(file, group).ok().flatten().map(
-                |(left, top, _width, _height)| PointRecord {
-                    x: left,
-                    y: top + 40.0,
-                },
-            )
+        .map(|(left, top, _width, height)| {
+            let y_offset = htm_fixed_text_bbox_y_offset(
+                rich_text
+                    .as_ref()
+                    .and_then(|content| content.markup.as_deref()),
+                &text,
+                height,
+            );
+            PointRecord {
+                x: left,
+                y: top + y_offset,
+            }
         })
+        .or_else(|| try_decode_payload_anchor_point(file, group).ok().flatten())
         .map(|anchor| {
             format!(
                 "{},{},'{}'",
@@ -1931,6 +2098,28 @@ fn htm_fixed_text_args(file: &GspFile, group: &ObjectGroup) -> String {
             )
         })
         .unwrap_or_default()
+}
+
+fn htm_fixed_text_bbox_y_offset(markup: Option<&str>, text: &str, height: f64) -> f64 {
+    let Some(markup) = markup else {
+        return 48.0;
+    };
+    if markup.starts_with("<H") {
+        return 36.0;
+    }
+    if markup.starts_with("<VL<H") && height < 70.0 {
+        return 48.0;
+    }
+    if text.contains('\n') {
+        return 40.0;
+    }
+    if height >= 70.0 {
+        return 32.0;
+    }
+    if height >= 50.0 {
+        return 36.0;
+    }
+    24.0
 }
 
 fn htm_payload_position(file: &GspFile, group: &ObjectGroup, dx: f64, dy: f64) -> (f64, f64) {
@@ -1970,7 +2159,18 @@ fn htm_parameter_args(file: &GspFile, groups: &[ObjectGroup], group: &ObjectGrou
         })
         .map(|(x, y)| {
             let mut point = file.document_display_point(PointRecord { x, y });
-            if !has_graph_classes(groups) {
+            if !has_graph_classes(groups)
+                && groups.iter().any(|candidate| {
+                    candidate.header.kind() == GroupKind::FunctionExpr
+                        && find_indexed_path(file, candidate)
+                            .is_some_and(|path| path.refs.contains(&group.ordinal))
+                })
+                || groups.iter().any(|candidate| {
+                    candidate.header.kind() == GroupKind::FunctionDefinition
+                        && find_indexed_path(file, candidate)
+                            .is_some_and(|path| path.refs.contains(&group.ordinal))
+                })
+            {
                 point.y += 1.0;
             }
             (point.x, point.y)
@@ -1989,22 +2189,110 @@ fn htm_parameter_args(file: &GspFile, groups: &[ObjectGroup], group: &ObjectGrou
 fn htm_function_args(file: &GspFile, groups: &[ObjectGroup], group: &ObjectGroup) -> String {
     let (x, y) = htm_payload_position(file, group, 4.0, 20.0);
     let name = decode_htm_label_name(file, group).unwrap_or_else(|| "f".to_string());
+    let plot_mode = htm_referencing_function_plot_mode(file, groups, group.ordinal)
+        .unwrap_or(FunctionPlotMode::Cartesian);
+    let variable = match plot_mode {
+        FunctionPlotMode::Cartesian => "x",
+        FunctionPlotMode::Polar => "θ",
+    };
     let expr = try_decode_function_expr(file, groups, group).ok();
     let label = expr
         .clone()
-        .map(|expr| htm_expr_label(&expr, "x", &BTreeMap::new()))
+        .map(|expr| htm_expr_label(&expr, variable, &BTreeMap::new()))
         .unwrap_or_default();
     let rpn = expr
         .as_ref()
         .map(|expr| htm_expr_rpn(expr, &BTreeMap::new()))
         .unwrap_or_default();
+    match plot_mode {
+        FunctionPlotMode::Cartesian => format!(
+            "{},{},'{}(x) = {}','{} '",
+            format_number(x),
+            format_number(y),
+            htm_quote_text(&name),
+            htm_quote_text(&label),
+            rpn
+        ),
+        FunctionPlotMode::Polar => format!(
+            "{},{},'r = {}','{} '",
+            format_number(x),
+            format_number(y),
+            htm_quote_text(&label),
+            rpn
+        ),
+    }
+}
+
+fn htm_referencing_function_plot_mode(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    function_ordinal: usize,
+) -> Option<FunctionPlotMode> {
+    groups.iter().find_map(|group| {
+        if !matches!(
+            group.header.kind(),
+            GroupKind::FunctionPlot | GroupKind::LegacyFunctionPlot
+        ) {
+            return None;
+        }
+        let refs_this_function = find_indexed_path(file, group)
+            .and_then(|path| path.refs.first().copied())
+            == Some(function_ordinal);
+        if !refs_this_function {
+            return None;
+        }
+        htm_function_plot_mode(file, group)
+    })
+}
+
+fn htm_function_plot_mode(file: &GspFile, group: &ObjectGroup) -> Option<FunctionPlotMode> {
+    group
+        .records
+        .iter()
+        .find(|record| record.record_type == RECORD_FUNCTION_PLOT_DESCRIPTOR)
+        .and_then(|record| {
+            crate::runtime::functions::try_decode_function_plot_descriptor(
+                record.payload(&file.data),
+            )
+            .ok()
+        })
+        .map(|descriptor| descriptor.mode)
+}
+
+fn htm_function_definition_args(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    refs: &[usize],
+    ordinal_map: &BTreeMap<usize, usize>,
+) -> String {
+    let (x, mut y) = try_decode_bbox_rect_raw(file, group)
+        .ok()
+        .flatten()
+        .map(|(left, top, _width, height)| (left + 4.0, top + height - 9.0))
+        .map(|(x, y)| {
+            let point = file.document_display_point(PointRecord { x, y });
+            (point.x, point.y)
+        })
+        .unwrap_or_else(|| htm_payload_position(file, group, 4.0, 20.0));
+    y += 1.0;
+    let parameter_letters = htm_parameter_letters(file, groups, refs);
+    let expr = try_decode_function_expr(file, groups, group).ok();
+    let label = expr
+        .as_ref()
+        .map(htm_function_definition_label)
+        .unwrap_or_default();
+    let rpn = expr
+        .as_ref()
+        .map(|expr| htm_expr_rpn(expr, &parameter_letters))
+        .unwrap_or_default();
     format!(
-        "{},{},'{}(x) = {}','{} '",
+        "{},{},'y = {}','{} '\u{1f}{}",
         format_number(x),
         format_number(y),
-        htm_quote_text(&name),
         htm_quote_text(&label),
-        rpn
+        rpn,
+        format_ref_args(refs, ordinal_map)
     )
 }
 
@@ -2018,9 +2306,18 @@ fn htm_calculate_args(
 ) -> String {
     let parameter_letters = htm_parameter_letters(file, groups, refs);
     let expr = try_decode_function_expr(file, groups, group).ok();
-    let (x, mut y) =
-        htm_payload_position(file, group, 4.0, if graph.is_some() { 20.0 } else { 14.0 });
+    let (x, mut y) = htm_payload_position(
+        file,
+        group,
+        4.0,
+        if graph.is_some() || group.header.is_hidden() {
+            20.0
+        } else {
+            14.0
+        },
+    );
     if graph.is_none()
+        && !group.header.is_hidden()
         && expr
             .as_ref()
             .is_some_and(|expr| !matches!(expr, FunctionExpr::Parsed(FunctionAst::Parameter(_, _))))
@@ -2038,7 +2335,11 @@ fn htm_calculate_args(
             y += 9.0;
         }
     }
-    let mut expr_label = expr.as_ref().map(htm_calculate_label).unwrap_or_default();
+    let mut expr_label = if group.header.is_hidden() {
+        String::new()
+    } else {
+        expr.as_ref().map(htm_calculate_label).unwrap_or_default()
+    };
     if y >= 120.0
         && expr.as_ref().is_some_and(|expr| {
             matches!(
@@ -2073,6 +2374,15 @@ fn htm_calculate_args(
         expr_label.push_str(" 厘米");
     }
     let refs = format_ref_args(refs, ordinal_map);
+    if group.header.is_hidden() {
+        return format!(
+            "{},{},'','{} ')({}",
+            format_number(x),
+            format_number(y),
+            rpn,
+            refs
+        );
+    }
     format!(
         "{},{},'{} = ','{} ')({}",
         format_number(x),
@@ -2118,6 +2428,56 @@ fn htm_calculate_label(expr: &FunctionExpr) -> String {
             _ => htm_ast_label(ast, "x", false),
         },
         _ => htm_unsubscript_digits(&function_expr_label_with_variable(expr.clone(), "x")),
+    }
+}
+
+fn htm_function_definition_label(expr: &FunctionExpr) -> String {
+    match expr {
+        FunctionExpr::Parsed(ast) => htm_ast_label_for_function_definition(ast),
+        _ => htm_unsubscript_digits(&function_expr_label_with_variable(expr.clone(), "x")),
+    }
+}
+
+fn htm_ast_label_for_function_definition(ast: &FunctionAst) -> String {
+    match ast {
+        FunctionAst::Binary {
+            lhs,
+            op: BinaryOp::Add,
+            rhs,
+        } => format!(
+            "{} + {}",
+            htm_ast_label_for_function_definition(lhs),
+            htm_ast_label_for_function_definition(rhs)
+        ),
+        FunctionAst::Binary {
+            lhs,
+            op: BinaryOp::Sub,
+            rhs,
+        } => format!(
+            "{} - {}",
+            htm_ast_label_for_function_definition(lhs),
+            htm_ast_label_for_function_definition(rhs)
+        ),
+        FunctionAst::Binary {
+            lhs,
+            op: BinaryOp::Mul,
+            rhs,
+        } => {
+            let left = htm_ast_label_for_function_definition(lhs);
+            let right = htm_ast_label_for_function_definition(rhs);
+            if matches!(
+                **rhs,
+                FunctionAst::Binary {
+                    op: BinaryOp::Pow,
+                    ..
+                }
+            ) {
+                format!("{left}*({right})")
+            } else {
+                format!("{left}*{right}")
+            }
+        }
+        _ => htm_ast_label(ast, "x", false),
     }
 }
 

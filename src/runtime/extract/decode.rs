@@ -1069,7 +1069,8 @@ fn try_decode_rich_text(payload: &[u8]) -> Option<RichTextContent> {
 
     (!cleaned.is_empty()).then_some(RichTextContent {
         text: cleaned,
-        ..Default::default()
+        hotspots: Vec::new(),
+        markup: Some(markup.to_string()),
     })
 }
 
@@ -1220,6 +1221,9 @@ fn classify_markup_node(name: String, children: Vec<RichMarkupNode>) -> RichMark
     if let Some(text) = decode_markup_text(&name) {
         return RichMarkupNode::Text(text);
     }
+    if let Some(text) = decode_markup_symbol(&name) {
+        return RichMarkupNode::Text(text);
+    }
     if name.starts_with('!') {
         return RichMarkupNode::Ignore;
     }
@@ -1287,12 +1291,20 @@ fn render_markup_node(
             if numerator.is_empty() || denominator.is_empty() {
                 return vec![numerator.into_iter().chain(denominator).collect()];
             }
-            let mut runs = numerator;
+            let mut runs = vec![RichMarkupRun {
+                text: "(".to_string(),
+                path_slot: active_slot,
+            }];
+            runs.extend(numerator);
             runs.push(RichMarkupRun {
                 text: "/".to_string(),
                 path_slot: active_slot,
             });
             runs.extend(denominator);
+            runs.push(RichMarkupRun {
+                text: ")".to_string(),
+                path_slot: active_slot,
+            });
             vec![runs]
         }
         RichMarkupNode::Root(children) => {
@@ -1372,6 +1384,14 @@ fn decode_markup_text(token: &str) -> Option<String> {
     Some(stripped[x_index + 1..].to_string())
 }
 
+fn decode_markup_symbol(token: &str) -> Option<String> {
+    match token {
+        "!102" => Some("△".to_string()),
+        "!D0" => Some("∠".to_string()),
+        _ => None,
+    }
+}
+
 fn decode_markup_path_slot(token: &str) -> Option<usize> {
     let reference = token.strip_prefix("?1x")?;
     if reference.chars().all(|ch| ch.is_ascii_digit()) {
@@ -1412,7 +1432,7 @@ fn render_markup_plain_node(node: &RichMarkupNode) -> String {
             if numerator.is_empty() || denominator.is_empty() {
                 return numerator + &denominator;
             }
-            format!("{numerator}/{denominator}")
+            format!("({numerator}/{denominator})")
         }
         RichMarkupNode::Root(children) => {
             let inner = render_markup_plain_inline(children);
@@ -1482,7 +1502,7 @@ mod markup_tests {
     #[test]
     fn renders_plain_markup_from_semantic_ast() {
         let nodes = parse_markup_nodes("<Txf></<Txx><Txy>><R<Txz>><+<Txn2>>>");
-        assert_eq!(render_markup_plain(&nodes), "fx/y√zn^2");
+        assert_eq!(render_markup_plain(&nodes), "f(x/y)√zn^2");
     }
 
     #[test]

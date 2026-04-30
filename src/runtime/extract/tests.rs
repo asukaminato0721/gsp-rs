@@ -464,6 +464,38 @@ fn top_level_gsp_payload_logs_match_new_reference_htm_construction() {
 }
 
 #[test]
+fn unimplemented_system_payload_logs_match_reference_htm_construction() {
+    let fixture_names = [
+        "parameter",
+        "三角形的四心",
+        "函数",
+        "圆的形成",
+        "弓形周界动点",
+        "扇形周界动点",
+        "插入图片",
+        "未命名1",
+        "极坐标",
+        "绘图函数",
+        "给定的数值在路径上绘制点",
+        "自定义变换",
+        "角度标记的标签",
+    ];
+
+    for name in fixture_names {
+        let gsp_path = format!("tests/fixtures/未实现的系统功能/{name}.gsp");
+        let htm_path = format!("tests/fixtures/未实现的系统功能/{name}.htm");
+        let gsp = fs::read(&gsp_path).expect("fixture gsp should be readable");
+        let htm = fs::read_to_string(&htm_path).expect("reference htm should be readable");
+        let log = fixture_log(&gsp, &gsp_path);
+        assert_eq!(
+            construction_lines_from_log(&log),
+            construction_lines_from_htm(&htm),
+            "expected payload log Construction VALUE to match {htm_path}"
+        );
+    }
+}
+
+#[test]
 fn payload_log_accepts_helper_payload_families_in_sample_fixtures() {
     for path in [
         "tests/Samples/工具例说/14 统计工具-统计工具示例.gsp",
@@ -2037,22 +2069,18 @@ fn preserves_hot_text_actions_in_rich_text_gsp() {
         .iter()
         .find(|label| label.text.contains("BAC"))
         .expect("expected hot text label");
-    assert_eq!(rich_label.text, "在ACB中，CA=AB，BAC=CBA");
+    assert_eq!(rich_label.text, "在△ACB中，CA=AB，∠BAC=∠CBA");
     assert_eq!(
         rich_label
             .hotspots
             .iter()
             .map(|hotspot| hotspot.text.as_str())
             .collect::<Vec<_>>(),
-        vec!["ACB", "CA", "AB", "BAC", "CBA"]
+        vec!["△", "ACB", "CA", "AB", "∠", "BAC", "∠", "CBA"]
     );
     assert!(matches!(
         rich_label.hotspots[0].action,
         crate::runtime::scene::TextLabelHotspotAction::Polygon { .. }
-    ));
-    assert!(matches!(
-        rich_label.hotspots[1].action,
-        crate::runtime::scene::TextLabelHotspotAction::Segment { .. }
     ));
     assert!(matches!(
         rich_label.hotspots[2].action,
@@ -2060,10 +2088,14 @@ fn preserves_hot_text_actions_in_rich_text_gsp() {
     ));
     assert!(matches!(
         rich_label.hotspots[3].action,
-        crate::runtime::scene::TextLabelHotspotAction::AngleMarker { .. }
+        crate::runtime::scene::TextLabelHotspotAction::Segment { .. }
     ));
     assert!(matches!(
         rich_label.hotspots[4].action,
+        crate::runtime::scene::TextLabelHotspotAction::AngleMarker { .. }
+    ));
+    assert!(matches!(
+        rich_label.hotspots[6].action,
         crate::runtime::scene::TextLabelHotspotAction::AngleMarker { .. }
     ));
     assert_eq!(scene.buttons.len(), 1, "expected linked action button");

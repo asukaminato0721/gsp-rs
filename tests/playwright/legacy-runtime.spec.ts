@@ -118,7 +118,10 @@ test('angle-marker class payload renders bug fixture without path explosion', as
       angleMarkerClasses: scene.lines
         .filter((line: any) => line.binding?.kind === 'angle-marker')
         .map((line: any) => line.binding.markerClass),
-      bLabelAnchorKind: bLabel?.anchor && 'pointIndex' in bLabel.anchor ? 'point' : 'other',
+      bLabelAnchorKind:
+        bLabel?.binding?.kind === 'point-anchor' || (bLabel?.anchor && 'pointIndex' in bLabel.anchor)
+          ? 'point'
+          : 'other',
     };
   });
 
