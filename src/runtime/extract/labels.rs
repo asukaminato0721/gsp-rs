@@ -544,7 +544,7 @@ pub(super) fn collect_labels(
                         color: label_color_for_group(group),
                         visible,
                         binding,
-                        screen_space: false,
+                        screen_space: kind == crate::format::GroupKind::ButtonLabel,
                         hotspots: Vec::new(),
                         debug: Some(payload_debug_source(group)),
                     });
@@ -664,7 +664,7 @@ pub(super) fn collect_labels(
                         color: label_color_for_group(group),
                         visible,
                         binding,
-                        screen_space: false,
+                        screen_space: kind == crate::format::GroupKind::ButtonLabel,
                         hotspots: Vec::new(),
                         debug: Some(payload_debug_source(group)),
                     });

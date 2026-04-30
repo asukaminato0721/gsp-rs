@@ -34,7 +34,7 @@ use crate::util::{hex_bytes, truncate_text};
 
 use self::graph::{
     collect_document_canvas_bounds, collect_saved_viewport, detect_graph_transform,
-    has_graph_classes,
+    has_coordinate_transform_consumers, has_graph_classes,
 };
 use self::images::collect_scene_images;
 use self::labels::{
@@ -227,7 +227,10 @@ fn analyze_scene(
         })
         && count_function_coordinate_points(file, groups) >= 10
         && count_polygon_payload_color_bindings(file, groups) >= 10;
-    let graph_ref = if graph_mode || hidden_graph_transform {
+    let graph_ref = if graph_mode
+        || hidden_graph_transform
+        || has_coordinate_transform_consumers(groups)
+    {
         graph.clone()
     } else {
         None

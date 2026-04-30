@@ -1260,6 +1260,47 @@ fn builds_xy_coordinate_fixture_with_live_coordinate_label() {
 }
 
 #[test]
+fn simple_coordinate_sample_follows_exported_axis_coordinate_system() {
+    let Some(data) = fixture_bytes("tests/Samples/简易数轴与坐标系/最简坐标系/样本1.gsp")
+    else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+
+    assert!(
+        !scene.graph_mode,
+        "hidden CoordSysByAxes scaffolding must not render the viewer grid"
+    );
+    assert!(scene.y_up, "expected hidden coordinate system to map y upward");
+    let point = scene
+        .points
+        .iter()
+        .find(|point| {
+            point.visible
+                && point.color == [255, 0, 0, 255]
+                && (point.position.x - 2.51).abs() < 0.01
+                && (point.position.y - 2.86).abs() < 0.01
+        })
+        .expect("expected visible point A");
+    assert!((point.position.x - 2.51).abs() < 0.01);
+    assert!((point.position.y - 2.86).abs() < 0.01);
+    assert!(
+        scene.labels.iter().any(|label| {
+            label.visible
+                && label.text == "A: (2.51, 2.86)"
+                && matches!(label.binding, Some(TextLabelBinding::PointCoordinateValue { .. }))
+        }),
+        "expected coordinate readout from the exported Coordinates(42,12,...) object"
+    );
+    assert!(
+        scene.labels.iter().any(|label| {
+            label.visible && label.screen_space && label.text == "※标准化\n※控制点"
+        }),
+        "expected button label to follow the exported screen-space button placement"
+    );
+}
+
+#[test]
 fn collects_sequence_button_variants_without_validation() {
     let Some(data) =
         fixture_bytes("tests/Samples/个人专栏/李忠平作品/金华2010-24题(百年孤独)10.8.9.gsp")

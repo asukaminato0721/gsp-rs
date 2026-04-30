@@ -182,8 +182,25 @@ fn graph_calibration_offset_constraint(
     group_to_point_index: &[Option<usize>],
 ) -> Option<ScenePointConstraint> {
     let path = find_indexed_path(file, group)?;
-    let mut origin_group_index = path.refs.first()?.checked_sub(1)?;
-    if group.header.kind() != crate::format::GroupKind::GraphCalibrationX
+    let origin_group_index =
+        graph_calibration_origin_group_index(file, groups, group.header.kind(), *path.refs.first()?)?;
+    let origin_index = mapped_point_index(group_to_point_index, origin_group_index)?;
+    let origin = anchors.get(origin_group_index).cloned().flatten()?;
+    Some(ScenePointConstraint::Offset {
+        origin_index,
+        dx: position.x - origin.x,
+        dy: position.y - origin.y,
+    })
+}
+
+fn graph_calibration_origin_group_index(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    calibration_kind: crate::format::GroupKind,
+    origin_ordinal: usize,
+) -> Option<usize> {
+    let mut origin_group_index = origin_ordinal.checked_sub(1)?;
+    if calibration_kind != crate::format::GroupKind::GraphCalibrationX
         && groups
             .get(origin_group_index)
             .is_some_and(|group| group.header.kind() == crate::format::GroupKind::GraphCalibrationX)
@@ -193,13 +210,37 @@ fn graph_calibration_offset_constraint(
             .first()?
             .checked_sub(1)?;
     }
-    let origin_index = mapped_point_index(group_to_point_index, origin_group_index)?;
-    let origin = anchors.get(origin_group_index).cloned().flatten()?;
-    Some(ScenePointConstraint::Offset {
-        origin_index,
-        dx: position.x - origin.x,
-        dy: position.y - origin.y,
-    })
+    if groups
+        .get(origin_group_index)
+        .is_some_and(|group| group.header.kind() == crate::format::GroupKind::OffsetAnchor)
+    {
+        return offset_anchor_origin_group_index(file, groups, origin_group_index);
+    }
+    Some(origin_group_index)
+}
+
+fn offset_anchor_origin_group_index(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    offset_anchor_group_index: usize,
+) -> Option<usize> {
+    let axis_group_index = find_indexed_path(file, groups.get(offset_anchor_group_index)?)?
+        .refs
+        .first()?
+        .checked_sub(1)?;
+    let axis_group = groups.get(axis_group_index)?;
+    if axis_group.header.kind() != crate::format::GroupKind::AxisLine {
+        return Some(axis_group_index);
+    }
+    let measurement_group_index = find_indexed_path(file, axis_group)?
+        .refs
+        .first()?
+        .checked_sub(1)?;
+    let measurement_group = groups.get(measurement_group_index)?;
+    find_indexed_path(file, measurement_group)?
+        .refs
+        .first()?
+        .checked_sub(1)
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -4,6 +4,7 @@ use crate::runtime::scene::{
     CircleIterationFamily, CircularConstraint, LabelIterationFamily, LineBinding, LineConstraint,
     LineIterationFamily, LineShape, PointIterationFamily, PolygonIterationFamily, PolygonShape,
     Scene, SceneArc, SceneCircle, SceneImage, ScenePoint, ScenePointConstraint, TextLabel,
+    TextLabelBinding,
 };
 
 use super::graph::{BoundsInputs, collect_bounds, dedupe_line_shapes, expand_bounds};
@@ -258,7 +259,7 @@ pub(super) fn build_world_data(
         })
         .collect::<Vec<_>>();
 
-    let world_point_positions = world_points
+    let world_point_positions = visible_points
         .iter()
         .filter(|point| point.visible)
         .map(|point| point.position.clone())
@@ -725,7 +726,7 @@ pub(super) fn assemble_scene(
                 rich_markup: label.rich_markup,
                 color: label.color,
                 visible: label.visible,
-                binding: label.binding,
+                binding: world_label_binding(label.binding, &analysis.graph_ref),
                 screen_space: label.screen_space,
                 hotspots: label.hotspots,
                 debug: label.debug,
@@ -789,6 +790,85 @@ fn bounds_corners(bounds: &crate::runtime::geometry::Bounds) -> Vec<PointRecord>
             y: bounds.max_y,
         },
     ]
+}
+
+fn world_label_delta(
+    dx: f64,
+    dy: f64,
+    graph_ref: &Option<crate::runtime::geometry::GraphTransform>,
+) -> (f64, f64) {
+    if let Some(transform) = graph_ref {
+        (dx / transform.raw_per_unit, -dy / transform.raw_per_unit)
+    } else {
+        (dx, dy)
+    }
+}
+
+fn world_label_binding(
+    binding: Option<TextLabelBinding>,
+    graph_ref: &Option<crate::runtime::geometry::GraphTransform>,
+) -> Option<TextLabelBinding> {
+    match binding {
+        Some(TextLabelBinding::PointBoundExpressionValue {
+            point_index,
+            anchor_dx,
+            anchor_dy,
+            parameter_name,
+            result_name,
+            expr_label,
+            expr,
+        }) => {
+            let (anchor_dx, anchor_dy) = world_label_delta(anchor_dx, anchor_dy, graph_ref);
+            Some(TextLabelBinding::PointBoundExpressionValue {
+                point_index,
+                anchor_dx,
+                anchor_dy,
+                parameter_name,
+                result_name,
+                expr_label,
+                expr,
+            })
+        }
+        Some(TextLabelBinding::PointAnchor {
+            point_index,
+            anchor_dx,
+            anchor_dy,
+            anchor_y_point_index,
+            anchor_y_dy,
+        }) => {
+            let (anchor_dx, anchor_dy) = world_label_delta(anchor_dx, anchor_dy, graph_ref);
+            let anchor_y_dy = anchor_y_dy.map(|dy| world_label_delta(0.0, dy, graph_ref).1);
+            Some(TextLabelBinding::PointAnchor {
+                point_index,
+                anchor_dx,
+                anchor_dy,
+                anchor_y_point_index,
+                anchor_y_dy,
+            })
+        }
+        Some(TextLabelBinding::PointExpressionValue {
+            point_index,
+            anchor_dx,
+            anchor_dy,
+            anchor_y_point_index,
+            anchor_y_dy,
+            parameter_name,
+            expr,
+        }) => {
+            let (anchor_dx, anchor_dy) = world_label_delta(anchor_dx, anchor_dy, graph_ref);
+            let anchor_y_dy = anchor_y_dy.map(|dy| world_label_delta(0.0, dy, graph_ref).1);
+            Some(TextLabelBinding::PointExpressionValue {
+                point_index,
+                anchor_dx,
+                anchor_dy,
+                anchor_y_point_index,
+                anchor_y_dy,
+                parameter_name,
+                expr,
+            })
+        }
+        other => other,
+    }
 }
 
 fn remap_function_line_indices(

@@ -86,8 +86,8 @@ pub(super) fn detect_graph_transform(
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
 ) -> Option<GraphTransform> {
-    detect_calibration_graph_transform(file, groups, anchors)
-        .or_else(|| detect_explicit_axis_graph_transform(file, groups, anchors))
+    detect_explicit_axis_graph_transform(file, groups, anchors)
+        .or_else(|| detect_calibration_graph_transform(file, groups, anchors))
 }
 
 fn detect_calibration_graph_transform(
@@ -149,12 +149,37 @@ fn detect_explicit_axis_graph_transform(
                 })
                 .map(f64::abs)
                 .filter(|value| *value > 1e-9)
+                .or_else(|| {
+                    unit_expr_group
+                        .records
+                        .iter()
+                        .find(|record| record.record_type == 0x07d3 && record.length == 12)
+                        .and_then(|record| decode_measurement_value(record.payload(&file.data)))
+                })
+                .or_else(|| {
+                    let unit_raw = anchors
+                        .get(x_measure_path.refs.get(1)?.checked_sub(1)?)?
+                        .clone()?;
+                    let distance = (unit_raw.x - origin_raw.x).hypot(unit_raw.y - origin_raw.y);
+                    (distance > 1e-9).then_some(distance)
+                })
                 .unwrap_or(crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT);
             (raw_per_unit > 1e-9).then_some(GraphTransform {
                 origin_raw,
                 raw_per_unit,
             })
         })
+}
+
+pub(super) fn has_coordinate_transform_consumers(groups: &[ObjectGroup]) -> bool {
+    groups.iter().any(|group| {
+        matches!(
+            group.header.kind(),
+            GroupKind::CoordinateXValue
+                | GroupKind::CoordinateYValue
+                | GroupKind::CoordinateReadoutLabel
+        ) || group.header.kind().is_coordinate_object()
+    })
 }
 
 pub(super) fn has_graph_classes(groups: &[ObjectGroup]) -> bool {
@@ -178,7 +203,6 @@ pub(super) fn has_graph_classes(groups: &[ObjectGroup]) -> bool {
             kind if kind.is_graph_calibration() => has_calibration = true,
             GroupKind::CoordinateXValue
             | GroupKind::CoordinateYValue
-            | GroupKind::CoordinateReadoutLabel
             | GroupKind::GraphViewHelper
                 if !group.header.is_hidden() =>
             {
@@ -248,6 +272,9 @@ pub(super) fn collect_bounds(graph: &Option<GraphTransform>, inputs: BoundsInput
         }
     }
     for label in inputs.labels {
+        if !label.visible || label.screen_space {
+            continue;
+        }
         if matches!(
             label.binding,
             Some(
