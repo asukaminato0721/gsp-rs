@@ -182,8 +182,12 @@ fn graph_calibration_offset_constraint(
     group_to_point_index: &[Option<usize>],
 ) -> Option<ScenePointConstraint> {
     let path = find_indexed_path(file, group)?;
-    let origin_group_index =
-        graph_calibration_origin_group_index(file, groups, group.header.kind(), *path.refs.first()?)?;
+    let origin_group_index = graph_calibration_origin_group_index(
+        file,
+        groups,
+        group.header.kind(),
+        *path.refs.first()?,
+    )?;
     let origin_index = mapped_point_index(group_to_point_index, origin_group_index)?;
     let origin = anchors.get(origin_group_index).cloned().flatten()?;
     Some(ScenePointConstraint::Offset {
@@ -2352,24 +2356,27 @@ fn mapped_rotated_endpoint_index(
     if source_group_index == center_group_index {
         return mapped_point_index(group_to_point_index, source_group_index);
     }
-    groups.iter().enumerate().find_map(|(candidate_index, candidate)| {
-        if candidate.header.kind() != crate::format::GroupKind::Rotation {
-            return None;
-        }
-        let binding = try_decode_transform_binding(file, candidate).ok()?;
-        let TransformBindingKind::Rotate {
-            angle_degrees: candidate_angle,
-            ..
-        } = binding.kind
-        else {
-            return None;
-        };
-        (binding.source_group_index == source_group_index
-            && binding.center_group_index == center_group_index
-            && (candidate_angle - angle_degrees).abs() < 1e-6)
-            .then(|| mapped_point_index(group_to_point_index, candidate_index))
-            .flatten()
-    })
+    groups
+        .iter()
+        .enumerate()
+        .find_map(|(candidate_index, candidate)| {
+            if candidate.header.kind() != crate::format::GroupKind::Rotation {
+                return None;
+            }
+            let binding = try_decode_transform_binding(file, candidate).ok()?;
+            let TransformBindingKind::Rotate {
+                angle_degrees: candidate_angle,
+                ..
+            } = binding.kind
+            else {
+                return None;
+            };
+            (binding.source_group_index == source_group_index
+                && binding.center_group_index == center_group_index
+                && (candidate_angle - angle_degrees).abs() < 1e-6)
+                .then(|| mapped_point_index(group_to_point_index, candidate_index))
+                .flatten()
+        })
 }
 
 fn decode_coordinate_trace_constraint(

@@ -674,6 +674,8 @@
           || key === "sourceIndex"
           || key === "centerIndex"
           || key === "originIndex"
+          || key === "xUnitIndex"
+          || key === "yUnitIndex"
           || key === "denominatorIndex"
           || key === "numeratorIndex"
           || key === "ratioOriginIndex"
@@ -1240,6 +1242,28 @@
     const denominatorLength = Math.hypot(denominator.x - origin.x, denominator.y - origin.y);
     if (denominatorLength <= 1e-9) return null;
     return Math.hypot(numerator.x - origin.x, numerator.y - origin.y) / denominatorLength;
+  }
+
+  /**
+   * @param {Point | null | undefined} point
+   * @param {Point | null | undefined} origin
+   * @param {Point | null | undefined} xUnit
+   * @param {Point | null | undefined} yUnit
+   */
+  function pointCoordinatesInBasis(point, origin, xUnit, yUnit) {
+    if (!point || !origin || !xUnit || !yUnit) return null;
+    const xAxisX = xUnit.x - origin.x;
+    const xAxisY = xUnit.y - origin.y;
+    const yAxisX = yUnit.x - origin.x;
+    const yAxisY = yUnit.y - origin.y;
+    const pointX = point.x - origin.x;
+    const pointY = point.y - origin.y;
+    const det = xAxisX * yAxisY - xAxisY * yAxisX;
+    if (!Number.isFinite(det) || Math.abs(det) <= 1e-9) return null;
+    return {
+      x: (pointX * yAxisY - pointY * yAxisX) / det,
+      y: (xAxisX * pointY - xAxisY * pointX) / det,
+    };
   }
 
   /**
@@ -3090,7 +3114,13 @@
     "point-coordinate-value"(env, scene, label) {
       const point = scene.points[label.binding.pointIndex];
       if (!point) return;
-      label.text = `${label.binding.pointName}: (${env.formatNumber(point.x)}, ${env.formatNumber(point.y)})`;
+      const coordinates = pointCoordinatesInBasis(
+        point,
+        scene.points[label.binding.originIndex],
+        scene.points[label.binding.xUnitIndex],
+        scene.points[label.binding.yUnitIndex],
+      ) ?? point;
+      label.text = `${label.binding.pointName}: (${env.formatNumber(coordinates.x)}, ${env.formatNumber(coordinates.y)})`;
       label.richMarkup = buildPlainTextRichMarkup(label.text);
     },
     "point-distance-value"(env, scene, label) {

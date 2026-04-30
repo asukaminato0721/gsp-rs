@@ -227,14 +227,12 @@ fn analyze_scene(
         })
         && count_function_coordinate_points(file, groups) >= 10
         && count_polygon_payload_color_bindings(file, groups) >= 10;
-    let graph_ref = if graph_mode
-        || hidden_graph_transform
-        || has_coordinate_transform_consumers(groups)
-    {
-        graph.clone()
-    } else {
-        None
-    };
+    let graph_ref =
+        if graph_mode || hidden_graph_transform || has_coordinate_transform_consumers(groups) {
+            graph.clone()
+        } else {
+            None
+        };
     let raw_anchors = collect_raw_object_anchors(file, groups, point_map, graph.as_ref());
     let saved_viewport = if graph_mode || hidden_graph_transform {
         collect_saved_viewport(file, groups)

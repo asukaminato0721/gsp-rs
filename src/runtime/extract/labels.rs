@@ -763,10 +763,58 @@ fn coordinate_readout_binding(
     let path = find_indexed_path(file, group)?;
     let point_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
     let point_name = decode_label_name(file, point_group).unwrap_or_else(|| "点".to_string());
+    let (origin_index, x_unit_index, y_unit_index) = path
+        .refs
+        .get(1)
+        .and_then(|axis_ordinal| coordinate_system_point_group_indices(file, groups, *axis_ordinal))
+        .unwrap_or((None, None, None));
     Some(TextLabelBinding::PointCoordinateValue {
         point_index: path.refs.first()?.checked_sub(1)?,
         point_name,
+        origin_index,
+        x_unit_index,
+        y_unit_index,
     })
+}
+
+fn coordinate_system_point_group_indices(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    axis_ordinal: usize,
+) -> Option<(Option<usize>, Option<usize>, Option<usize>)> {
+    let axis_group = groups.get(axis_ordinal.checked_sub(1)?)?;
+    if axis_group.header.kind() != crate::format::GroupKind::AxisLine {
+        return None;
+    }
+    let axis_path = find_indexed_path(file, axis_group)?;
+    let horizontal_group = axis_path
+        .refs
+        .first()
+        .and_then(|ordinal| groups.get(ordinal.checked_sub(1)?));
+    let vertical_group = axis_path
+        .refs
+        .get(1)
+        .and_then(|ordinal| groups.get(ordinal.checked_sub(1)?));
+    let horizontal_path = horizontal_group.and_then(|group| find_indexed_path(file, group));
+    let vertical_path = vertical_group.and_then(|group| find_indexed_path(file, group));
+    let origin_index = horizontal_path
+        .as_ref()
+        .and_then(|path| path.refs.first().copied())
+        .or_else(|| {
+            vertical_path
+                .as_ref()
+                .and_then(|path| path.refs.first().copied())
+        })
+        .and_then(|ordinal| ordinal.checked_sub(1));
+    let x_unit_index = horizontal_path
+        .as_ref()
+        .and_then(|path| path.refs.get(1).copied())
+        .and_then(|ordinal| ordinal.checked_sub(1));
+    let y_unit_index = vertical_path
+        .as_ref()
+        .and_then(|path| path.refs.get(1).copied())
+        .and_then(|ordinal| ordinal.checked_sub(1));
+    Some((origin_index, x_unit_index, y_unit_index))
 }
 
 fn distance_value_label_name(

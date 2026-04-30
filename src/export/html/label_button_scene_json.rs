@@ -440,6 +440,12 @@ enum LabelBindingJson {
         point_index: usize,
         #[serde(rename = "pointName")]
         point_name: String,
+        #[serde(rename = "originIndex", skip_serializing_if = "Option::is_none")]
+        origin_index: Option<usize>,
+        #[serde(rename = "xUnitIndex", skip_serializing_if = "Option::is_none")]
+        x_unit_index: Option<usize>,
+        #[serde(rename = "yUnitIndex", skip_serializing_if = "Option::is_none")]
+        y_unit_index: Option<usize>,
     },
     #[serde(rename = "point-distance-value")]
     PointDistanceValue {
@@ -617,9 +623,15 @@ impl LabelBindingJson {
             TextLabelBinding::PointCoordinateValue {
                 point_index,
                 point_name,
+                origin_index,
+                x_unit_index,
+                y_unit_index,
             } => Self::PointCoordinateValue {
                 point_index: *point_index,
                 point_name: point_name.clone(),
+                origin_index: *origin_index,
+                x_unit_index: *x_unit_index,
+                y_unit_index: *y_unit_index,
             },
             TextLabelBinding::PointDistanceValue {
                 left_index,

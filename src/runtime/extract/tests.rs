@@ -1271,7 +1271,10 @@ fn simple_coordinate_sample_follows_exported_axis_coordinate_system() {
         !scene.graph_mode,
         "hidden CoordSysByAxes scaffolding must not render the viewer grid"
     );
-    assert!(scene.y_up, "expected hidden coordinate system to map y upward");
+    assert!(
+        scene.y_up,
+        "expected hidden coordinate system to map y upward"
+    );
     let point = scene
         .points
         .iter()
@@ -1288,7 +1291,10 @@ fn simple_coordinate_sample_follows_exported_axis_coordinate_system() {
         scene.labels.iter().any(|label| {
             label.visible
                 && label.text == "A: (2.51, 2.86)"
-                && matches!(label.binding, Some(TextLabelBinding::PointCoordinateValue { .. }))
+                && matches!(
+                    label.binding,
+                    Some(TextLabelBinding::PointCoordinateValue { .. })
+                )
         }),
         "expected coordinate readout from the exported Coordinates(42,12,...) object"
     );

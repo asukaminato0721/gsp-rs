@@ -977,6 +977,9 @@ pub(crate) enum TextLabelBinding {
     PointCoordinateValue {
         point_index: usize,
         point_name: String,
+        origin_index: Option<usize>,
+        x_unit_index: Option<usize>,
+        y_unit_index: Option<usize>,
     },
     PointDistanceValue {
         left_index: usize,
