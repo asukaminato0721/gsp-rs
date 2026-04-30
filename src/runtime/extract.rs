@@ -158,8 +158,8 @@ struct SceneAnalysis {
 }
 
 struct CollectedShapes {
-    polylines: Vec<LineShape>,
-    direct_lines: Vec<LineShape>,
+    segments: Vec<LineShape>,
+    lines: Vec<LineShape>,
     rays: Vec<LineShape>,
     translated_lines: Vec<LineShape>,
     segment_markers: Vec<LineShape>,
@@ -359,7 +359,7 @@ fn collect_scene_shapes(
 ) -> CollectedShapes {
     let suppressed_segment_groups = collect_carried_polygon_edge_segment_groups(file, groups);
     let suppressed_ray_groups = collect_materialized_ray_groups(file, groups);
-    let polylines = collect_line_shapes(
+    let segments = collect_line_shapes(
         file,
         groups,
         &analysis.raw_anchors,
@@ -371,7 +371,7 @@ fn collect_scene_shapes(
         &BTreeSet::new(),
     );
     let boundary_lines = collect_arc_boundary_shapes(file, groups, &analysis.raw_anchors);
-    let direct_lines = collect_bound_line_shapes(
+    let lines = collect_bound_line_shapes(
         file,
         groups,
         &analysis.raw_anchors,
@@ -469,8 +469,8 @@ fn collect_scene_shapes(
     let synthetic_axes = synthesize_axes_if_needed(analysis, &axes);
 
     CollectedShapes {
-        polylines: polylines.into_iter().chain(boundary_lines).collect(),
-        direct_lines,
+        segments: segments.into_iter().chain(boundary_lines).collect(),
+        lines,
         rays,
         translated_lines,
         segment_markers,
@@ -744,12 +744,12 @@ fn remap_scene_bindings(
         &line_group_to_index,
     );
     remap_line_bindings(
-        &mut shapes.polylines,
+        &mut shapes.segments,
         group_to_point_index,
         &line_group_to_index,
     );
     remap_line_bindings(
-        &mut shapes.direct_lines,
+        &mut shapes.lines,
         group_to_point_index,
         &line_group_to_index,
     );
@@ -1232,8 +1232,8 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
             &groups,
             &labels,
             &world_data.world_points,
-            shapes.polylines.len()
-                + shapes.direct_lines.len()
+            shapes.segments.len()
+                + shapes.lines.len()
                 + shapes.rays.len()
                 + shapes.translated_lines.len()
                 + shapes.segment_markers.len()

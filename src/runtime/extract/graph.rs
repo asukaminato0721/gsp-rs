@@ -216,7 +216,7 @@ pub(super) fn has_graph_classes(groups: &[ObjectGroup]) -> bool {
 }
 
 pub(super) struct BoundsInputs<'a> {
-    pub(super) polylines: &'a [LineShape],
+    pub(super) segments: &'a [LineShape],
     pub(super) measurements: &'a [LineShape],
     pub(super) axes: &'a [LineShape],
     pub(super) polygons: &'a [PolygonShape],
@@ -229,7 +229,7 @@ pub(super) struct BoundsInputs<'a> {
 pub(super) fn collect_bounds(graph: &Option<GraphTransform>, inputs: BoundsInputs<'_>) -> Bounds {
     let mut points = Vec::<PointRecord>::new();
     for shape in inputs
-        .polylines
+        .segments
         .iter()
         .chain(inputs.measurements.iter())
         .chain(inputs.axes.iter())

@@ -470,9 +470,9 @@ pub(super) fn compute_scene_bounds(
     world_point_positions: &[PointRecord],
 ) -> BoundsData {
     let bounds_lines = shapes
-        .polylines
+        .segments
         .iter()
-        .chain(shapes.direct_lines.iter())
+        .chain(shapes.lines.iter())
         .chain(shapes.rays.iter())
         .chain(shapes.translated_lines.iter())
         .chain(shapes.segment_markers.iter())
@@ -511,7 +511,7 @@ pub(super) fn compute_scene_bounds(
     let mut bounds = collect_bounds(
         &analysis.graph_ref,
         BoundsInputs {
-            polylines: &bounds_lines,
+            segments: &bounds_lines,
             measurements: &[],
             axes: &[],
             polygons: &bounds_polygons,
@@ -553,8 +553,8 @@ pub(super) fn assemble_scene(
     artifacts: SceneAssemblyArtifacts,
 ) -> Scene {
     let CollectedShapes {
-        polylines,
-        direct_lines,
+        segments,
+        lines,
         rays,
         translated_lines,
         segment_markers,
@@ -595,9 +595,9 @@ pub(super) fn assemble_scene(
         .collect::<Vec<_>>();
 
     let raw_lines = dedupe_line_shapes(
-        polylines
+        segments
             .into_iter()
-            .chain(direct_lines)
+            .chain(lines)
             .chain(rays)
             .chain(translated_lines)
             .chain(segment_markers)
