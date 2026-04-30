@@ -9,6 +9,7 @@ mod buttons;
 mod decode;
 mod graph;
 mod images;
+mod iteration_depth;
 mod labels;
 pub(crate) mod points;
 pub(crate) mod shapes;
@@ -37,7 +38,8 @@ use self::graph::{
 };
 use self::images::collect_scene_images;
 use self::labels::{
-    HotspotIndexLookups, PendingLabelHotspot, bind_button_seed_expression_labels, circle_parameter,
+    HotspotIndexLookups, PendingLabelHotspot, bind_button_seed_expression_labels,
+    bind_label_iteration_seed_anchors, bind_point_label_anchors, circle_parameter,
     collect_circle_parameter_labels, collect_coordinate_labels,
     collect_custom_transform_expression_labels, collect_iteration_tables, collect_label_iterations,
     collect_labels, collect_polygon_parameter_labels, collect_segment_parameter_labels,
@@ -1099,27 +1101,55 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
     let (derived_iteration_points, raw_point_iterations) =
         collect_point_iteration_points(file, &groups, &analysis.raw_anchors, &group_to_point_index);
     let standalone_parameter_points = collect_standalone_parameter_points(file, &groups);
-    let label_iterations =
-        collect_label_iterations(file, &groups, &label_group_to_index, &group_to_point_index)
-            .into_iter()
-            .map(|family| match family {
-                LabelIterationFamily::PointExpression {
-                    seed_label_index,
-                    point_seed_index,
-                    parameter_name,
-                    expr,
-                    depth,
-                    depth_parameter_name,
-                } => LabelIterationFamily::PointExpression {
-                    seed_label_index,
-                    point_seed_index,
-                    parameter_name,
-                    expr,
-                    depth,
-                    depth_parameter_name,
-                },
-            })
-            .collect::<Vec<_>>();
+    let label_iterations = collect_label_iterations(
+        file,
+        &groups,
+        &label_group_to_index,
+        &group_to_point_index,
+        &analysis.raw_anchors,
+    )
+    .into_iter()
+    .map(|family| match family {
+        LabelIterationFamily::PointExpression {
+            seed_label_index,
+            point_seed_index,
+            parameter_name,
+            expr,
+            depth,
+            depth_parameter_name,
+        } => LabelIterationFamily::PointExpression {
+            seed_label_index,
+            point_seed_index,
+            parameter_name,
+            expr,
+            depth,
+            depth_parameter_name,
+        },
+        LabelIterationFamily::TranslateExpression {
+            seed_label_index,
+            first_output_label_index,
+            output_label_count,
+            vector_start_index,
+            vector_end_index,
+            parameter_name,
+            expr,
+            depth,
+            depth_expr,
+            depth_parameter_name,
+        } => LabelIterationFamily::TranslateExpression {
+            seed_label_index,
+            first_output_label_index,
+            output_label_count,
+            vector_start_index,
+            vector_end_index,
+            parameter_name,
+            expr,
+            depth,
+            depth_expr,
+            depth_parameter_name,
+        },
+    })
+    .collect::<Vec<_>>();
     bind_button_seed_expression_labels(
         file,
         &groups,
@@ -1130,6 +1160,23 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
     );
     let iteration_tables = collect_iteration_tables(file, &groups, &analysis.raw_anchors);
     remap_label_bindings(&mut labels, &group_to_point_index);
+    bind_point_label_anchors(
+        file,
+        &groups,
+        &analysis.raw_anchors,
+        &group_to_point_index,
+        &mut labels,
+        &label_group_to_index,
+    );
+    bind_label_iteration_seed_anchors(
+        file,
+        &groups,
+        &mut labels,
+        &label_group_to_index,
+        &label_iterations,
+        &visible_points,
+        &group_to_point_index,
+    );
     let (binding_maps, line_iterations, polygon_iterations) = remap_scene_bindings(
         file,
         &groups,

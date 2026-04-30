@@ -146,6 +146,7 @@ pub(crate) fn remap_label_bindings(
         | TextLabelBinding::PointCoordinateValue { point_index, .. }
         | TextLabelBinding::PointAxisValue { point_index, .. }
         | TextLabelBinding::PointBoundExpressionValue { point_index, .. }
+        | TextLabelBinding::PointAnchor { point_index, .. }
         | TextLabelBinding::CustomTransformValue { point_index, .. } = binding
         {
             let Some(mapped_index) = mapped_index(group_to_point_index, *point_index) else {
@@ -265,6 +266,7 @@ pub(crate) fn remap_label_bindings(
             TextLabelBinding::CustomTransformValue { .. } => unreachable!(),
             TextLabelBinding::PointExpressionValue { .. } => unreachable!(),
             TextLabelBinding::PointBoundExpressionValue { .. } => unreachable!(),
+            TextLabelBinding::PointAnchor { .. } => unreachable!(),
         };
         let Some(mapped_index) = mapped_index(group_to_point_index, *point_index) else {
             label.binding = None;

@@ -689,6 +689,11 @@
           || key === "lineEndIndex"
           || key === "sourceCenterIndex"
           || key === "sourceNextCenterIndex"
+          || key === "vectorStartIndex"
+          || key === "vectorEndIndex"
+          || key === "startControlIndex"
+          || key === "endControlIndex"
+          || key === "anchorYPointIndex"
           || key === "driverIndex"
           || key === "seedIndex"
           || key === "pointSeedIndex"
@@ -1008,6 +1013,7 @@
       if (family.kind === "rotate") {
         addExprParameterDeps(deps, family.angleExpr, knownParameters, derivedParameterDeps);
       }
+      addExprParameterDeps(deps, family.depthExpr, knownParameters, derivedParameterDeps);
       if (family.kind === "parameterized-point-trace") {
         addExprParameterDeps(deps, family.stepExpr, knownParameters, derivedParameterDeps);
       }
@@ -1038,6 +1044,7 @@
       const deps = new Set();
       collectSceneDependencyIds(deps, family, knownParameters, derivedParameterDeps);
       addExprParameterDeps(deps, family.expr, knownParameters, derivedParameterDeps);
+      addExprParameterDeps(deps, family.depthExpr, knownParameters, derivedParameterDeps);
       addNode({
         id: `label-iteration:${index}`,
         kind: "label-iteration",
@@ -1567,12 +1574,17 @@
   }
 
   /**
-   * @param {{ depth: number; parameterName?: string | null; depthParameterName?: string | null }} family
+   * @param {{ depth: number; parameterName?: string | null; depthParameterName?: string | null; depthExpr?: FunctionExprJson | null }} family
    * @param {Map<string, number>} parameters
    */
   function pointIterationDepth(family, parameters) {
     const rawValue = family.depthParameterName
       ? parameters.get(family.depthParameterName)
+      : family.depthExpr
+        ? Math.max(
+          Number.isFinite(family.depth) ? family.depth : 0,
+          evaluateExpr(family.depthExpr, 0, parameters) ?? 0,
+        )
       : family.parameterName
         ? parameters.get(family.parameterName)
         : family.depth;
@@ -2101,6 +2113,10 @@
     }, 0);
     const baseCount = Math.max(0, env.sourceScene.lines.length - exportedDepth);
     scene.lines = scene.lines.slice(0, baseCount);
+    /** @type {Set<string>} */
+    const resetControlledTickColors = new Set();
+    /** @type {Set<string>} */
+    const emittedControlledTickSeeds = new Set();
 
     families.forEach((family) => {
       const depth = pointIterationDepth(family, parameters);
@@ -2293,6 +2309,52 @@
       if (!start || !end) {
         return;
       }
+      let primaryDx = family.dx;
+      let primaryDy = family.dy;
+      if (Number.isFinite(family.vectorStartIndex) && Number.isFinite(family.vectorEndIndex)) {
+        const vectorStart = env.resolveScenePoint(family.vectorStartIndex);
+        const vectorEnd = env.resolveScenePoint(family.vectorEndIndex);
+        if (vectorStart && vectorEnd) {
+          primaryDx = vectorEnd.x - vectorStart.x;
+          primaryDy = vectorEnd.y - vectorStart.y;
+        }
+      }
+      const controlledEndpoint = (point, controlIndex) => {
+        if (!Number.isFinite(controlIndex)) return point;
+        const control = env.resolveScenePoint(controlIndex);
+        if (!control) return point;
+        return { x: point.x, y: control.y };
+      };
+      const liveStart = controlledEndpoint(start, family.startControlIndex);
+      const liveEnd = controlledEndpoint(end, family.endControlIndex);
+      if (Number.isFinite(family.startControlIndex) || Number.isFinite(family.endControlIndex)) {
+        const colorKey = JSON.stringify(family.color || null);
+        if (!resetControlledTickColors.has(colorKey)) {
+          scene.lines = scene.lines.filter((line) => {
+            if (line.binding || !Array.isArray(line.points) || line.points.length !== 2) return true;
+            const lineStart = resolveHandle(line.points[0]);
+            const lineEnd = resolveHandle(line.points[1]);
+            if (!lineStart || !lineEnd) return true;
+            const sameColor = JSON.stringify(line.color || null) === colorKey;
+            const vertical = Math.abs(lineStart.x - lineEnd.x) < 1e-6;
+            return !(sameColor && vertical);
+          });
+          resetControlledTickColors.add(colorKey);
+        }
+        const seedKey = `${colorKey}:${family.startIndex}:${family.endIndex}`;
+        if (!emittedControlledTickSeeds.has(seedKey)) {
+          scene.lines.push({
+            points: [
+              { x: liveStart.x, y: liveStart.y },
+              { x: liveEnd.x, y: liveEnd.y },
+            ],
+            color: family.color,
+            dashed: !!family.dashed,
+            binding: null,
+          });
+          emittedControlledTickSeeds.add(seedKey);
+        }
+      }
       const hasSecondary = Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy);
       const deltas = [];
       if (family.bidirectional && hasSecondary) {
@@ -2305,16 +2367,16 @@
               continue;
             }
             deltas.push({
-              dx: family.dx * primary + family.secondaryDx * secondary,
-              dy: family.dy * primary + family.secondaryDy * secondary,
+              dx: primaryDx * primary + family.secondaryDx * secondary,
+              dy: primaryDy * primary + family.secondaryDy * secondary,
             });
           }
         }
       } else if (family.bidirectional) {
         for (let step = 1; step <= depth; step += 1) {
           deltas.push(
-            { dx: family.dx * step, dy: family.dy * step },
-            { dx: -family.dx * step, dy: -family.dy * step },
+            { dx: primaryDx * step, dy: primaryDy * step },
+            { dx: -primaryDx * step, dy: -primaryDy * step },
           );
         }
       } else if (hasSecondary) {
@@ -2324,24 +2386,24 @@
               continue;
             }
             deltas.push({
-              dx: family.dx * primary + family.secondaryDx * secondary,
-              dy: family.dy * primary + family.secondaryDy * secondary,
+              dx: primaryDx * primary + family.secondaryDx * secondary,
+              dy: primaryDy * primary + family.secondaryDy * secondary,
             });
           }
         }
       } else {
         for (let step = 1; step <= depth; step += 1) {
           deltas.push({
-            dx: family.dx * step,
-            dy: family.dy * step,
+            dx: primaryDx * step,
+            dy: primaryDy * step,
           });
         }
       }
       deltas.forEach(({ dx, dy }) => {
         scene.lines.push({
           points: [
-            { x: start.x + dx, y: start.y + dy },
-            { x: end.x + dx, y: end.y + dy },
+            { x: liveStart.x + dx, y: liveStart.y + dy },
+            { x: liveEnd.x + dx, y: liveEnd.y + dy },
           ],
           color: family.color,
           dashed: !!family.dashed,
@@ -2498,6 +2560,69 @@
 
     families.forEach((family) => {
       if (family.kind !== "point-expression") {
+        if (family.kind !== "translate-expression") {
+          return;
+        }
+        const seedLabel = scene.labels[family.seedLabelIndex];
+        const vectorStart = scene.points[family.vectorStartIndex];
+        const vectorEnd = scene.points[family.vectorEndIndex];
+        if (!seedLabel || !vectorStart || !vectorEnd) {
+          return;
+        }
+        if (Number.isFinite(family.firstOutputLabelIndex) && Number.isFinite(family.outputLabelCount)) {
+          for (let index = 0; index < family.outputLabelCount; index += 1) {
+            const label = scene.labels[family.firstOutputLabelIndex + index];
+            if (label) {
+              label.visible = false;
+            }
+          }
+        }
+        const depth = pointIterationDepth({
+          depth: family.depth,
+          depthExpr: family.depthExpr,
+          depthParameterName: family.depthParameterName,
+        }, parameters);
+        const seedAnchor = seedLabel.anchor;
+        let currentValue = parameters.get(family.parameterName);
+        if (!seedAnchor || !Number.isFinite(currentValue)) {
+          return;
+        }
+        const seedAnchorPoint = env.resolvePoint(seedAnchor);
+        if (!seedAnchorPoint) {
+          return;
+        }
+        const dx = vectorEnd.x - vectorStart.x;
+        const dy = vectorEnd.y - vectorStart.y;
+        const seedValue = evaluateRecursiveExpression(
+          family.expr,
+          family.parameterName,
+          currentValue,
+          parameters,
+        );
+        if (!Number.isFinite(seedValue)) {
+          return;
+        }
+        currentValue = seedValue;
+        for (let step = 1; step <= depth; step += 1) {
+          const value = evaluateRecursiveExpression(
+            family.expr,
+            family.parameterName,
+            currentValue,
+            parameters,
+          );
+          if (!Number.isFinite(value)) {
+            break;
+          }
+          currentValue = value;
+          const text = formatSequenceValue(value);
+          scene.labels.push({
+            ...seedLabel,
+            text,
+            richMarkup: buildPlainTextRichMarkup(text),
+            binding: null,
+            anchor: { x: seedAnchorPoint.x + dx * step, y: seedAnchorPoint.y + dy * step },
+          });
+        }
         return;
       }
       const seedLabel = scene.labels[family.seedLabelIndex];
@@ -2896,6 +3021,21 @@
 
   /** @type {Record<string, DynamicLabelRefresher>} */
   const DYNAMIC_LABEL_REFRESHERS = {
+    "point-anchor"(_env, scene, label) {
+      const point = scene.points[label.binding.pointIndex];
+      if (!point) return;
+      const anchor = {
+        x: point.x + (label.binding.anchorDx || 0),
+        y: point.y + (label.binding.anchorDy || 0),
+      };
+      if (Number.isFinite(label.binding.anchorYPointIndex)) {
+        const yPoint = scene.points[label.binding.anchorYPointIndex];
+        if (yPoint) {
+          anchor.y = yPoint.y + (label.binding.anchorYDy || 0);
+        }
+      }
+      label.anchor = anchor;
+    },
     "parameter-value"(env, _scene, label, parameters) {
       const value = parameters.get(label.binding.name);
       if (value !== null && value !== undefined) {
@@ -2903,9 +3043,10 @@
         label.richMarkup = buildPlainTextRichMarkup(label.text);
       }
     },
-    "point-expression-value"(_env, _scene, label, parameters) {
+    "point-expression-value"(_env, scene, label, parameters) {
       const currentValue = parameters.get(label.binding.parameterName);
       if (!Number.isFinite(currentValue)) return;
+      DYNAMIC_LABEL_REFRESHERS["point-anchor"](_env, scene, label, parameters);
       const value = evaluateRecursiveExpression(
         label.binding.expr,
         label.binding.parameterName,
@@ -4052,6 +4193,10 @@
         runRecipe(env, scene);
       }
     });
+    if (seenRecipes.has("refresh-dynamic-labels") && (env.sourceScene.labelIterations || []).length > 0) {
+      refreshIterationGeometry(env, scene, parameterMapForScene(env, scene));
+      executedRecipes.push("rebuild-label-iteration-anchors");
+    }
     return {
       dirtyRoots: Array.from(rootSet),
       affectedNodes: orderedNodes.map((node) => ({

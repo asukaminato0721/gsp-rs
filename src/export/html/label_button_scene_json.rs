@@ -396,10 +396,31 @@ enum LabelBindingJson {
         expr_label: String,
         expr: FunctionExprJson,
     },
+    #[serde(rename = "point-anchor")]
+    PointAnchor {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+        #[serde(rename = "anchorDx")]
+        anchor_dx: f64,
+        #[serde(rename = "anchorDy")]
+        anchor_dy: f64,
+        #[serde(rename = "anchorYPointIndex", skip_serializing_if = "Option::is_none")]
+        anchor_y_point_index: Option<usize>,
+        #[serde(rename = "anchorYDy", skip_serializing_if = "Option::is_none")]
+        anchor_y_dy: Option<f64>,
+    },
     #[serde(rename = "point-expression-value")]
     PointExpressionValue {
         #[serde(rename = "pointIndex")]
         point_index: usize,
+        #[serde(rename = "anchorDx")]
+        anchor_dx: f64,
+        #[serde(rename = "anchorDy")]
+        anchor_dy: f64,
+        #[serde(rename = "anchorYPointIndex", skip_serializing_if = "Option::is_none")]
+        anchor_y_point_index: Option<usize>,
+        #[serde(rename = "anchorYDy", skip_serializing_if = "Option::is_none")]
+        anchor_y_dy: Option<f64>,
         #[serde(rename = "parameterName")]
         parameter_name: String,
         expr: FunctionExprJson,
@@ -552,12 +573,33 @@ impl LabelBindingJson {
                 expr_label: expr_label.clone(),
                 expr: FunctionExprJson::from_expr(expr),
             },
+            TextLabelBinding::PointAnchor {
+                point_index,
+                anchor_dx,
+                anchor_dy,
+                anchor_y_point_index,
+                anchor_y_dy,
+            } => Self::PointAnchor {
+                point_index: *point_index,
+                anchor_dx: *anchor_dx,
+                anchor_dy: *anchor_dy,
+                anchor_y_point_index: *anchor_y_point_index,
+                anchor_y_dy: *anchor_y_dy,
+            },
             TextLabelBinding::PointExpressionValue {
                 point_index,
+                anchor_dx,
+                anchor_dy,
+                anchor_y_point_index,
+                anchor_y_dy,
                 parameter_name,
                 expr,
             } => Self::PointExpressionValue {
                 point_index: *point_index,
+                anchor_dx: *anchor_dx,
+                anchor_dy: *anchor_dy,
+                anchor_y_point_index: *anchor_y_point_index,
+                anchor_y_dy: *anchor_y_dy,
                 parameter_name: parameter_name.clone(),
                 expr: FunctionExprJson::from_expr(expr),
             },

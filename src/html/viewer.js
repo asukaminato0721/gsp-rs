@@ -512,7 +512,11 @@
    */
   function attachPointCenteredLabelAnchor(label, hydratedLines) {
     if (typeof label.binding?.pointIndex === "number") {
-      return { pointIndex: label.binding.pointIndex };
+      return {
+        pointIndex: label.binding.pointIndex,
+        dx: label.binding.anchorDx || 0,
+        dy: label.binding.anchorDy || 0,
+      };
     }
     return attachLabelAnchor(label.anchor, hydratedLines);
   }
@@ -615,12 +619,18 @@
           ? { ...label.anchor }
           : usesFixedLabelAnchor(label)
             ? { ...label.anchor }
+          : label.binding?.kind === "point-anchor"
+            ? {
+                pointIndex: label.binding.pointIndex,
+                dx: label.binding.anchorDx,
+                dy: label.binding.anchorDy,
+              }
           : label.binding?.kind === "point-expression-value"
             ? attachPointCenteredLabelAnchor(label, hydratedLines)
             : attachLabelAnchor(label.anchor, hydratedLines),
         binding: label.binding ? { ...label.binding } : null,
         screenSpace: !!label.screenSpace,
-        centeredOnAnchor: label.binding?.kind === "point-expression-value",
+        centeredOnAnchor: false,
         hotspots: (label.hotspots || []).map((hotspot) => ({
           ...hotspot,
           action: hotspot.action ? { ...hotspot.action } : null,

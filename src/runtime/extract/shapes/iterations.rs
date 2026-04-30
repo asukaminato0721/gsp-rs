@@ -8,8 +8,11 @@ use super::{
     try_decode_point_constraint,
 };
 use crate::runtime::extract::decode::resolve_circle_points_raw;
+use crate::runtime::extract::iteration_depth::decode_iteration_depth_expr;
 use crate::runtime::extract::points::editable_non_graph_parameter_name_for_group;
-use crate::runtime::functions::{evaluate_function_group_with_overrides, try_decode_function_expr};
+use crate::runtime::functions::{
+    FunctionExpr, evaluate_function_group_with_overrides, try_decode_function_expr,
+};
 use crate::runtime::scene::{CircleIterationFamily, IterationPointHandle};
 
 #[derive(Clone)]
@@ -190,6 +193,25 @@ pub(crate) fn collect_carried_iteration_lines(
             if depth == 0 {
                 return None;
             }
+            if let Some(step) =
+                regular_polygon_translation_iteration_step(file, groups, iter_group, anchors)
+            {
+                let color = color_from_style(source_group.header.style_b);
+                return Some(
+                    (1..=depth)
+                        .map(|index| {
+                            let delta = step.clone() * index as f64;
+                            LineShape {
+                                points: vec![start.clone() + delta.clone(), end.clone() + delta],
+                                color,
+                                dashed: line_is_dashed(source_group.header.style_a),
+                                visible: !iter_group.header.is_hidden(),
+                                ..Default::default()
+                            }
+                        })
+                        .collect::<Vec<_>>(),
+                );
+            }
             if let Some(branching) =
                 regular_polygon_branch_iteration(file, groups, iter_group, source_group)
             {
@@ -362,17 +384,83 @@ pub(crate) fn collect_carried_line_iteration_families(
             if source_path.refs.len() != 2 {
                 return None;
             }
-            let start_index = group_to_point_index
-                .get(source_path.refs[0].checked_sub(1)?)
-                .copied()
-                .flatten()?;
-            let end_index = group_to_point_index
-                .get(source_path.refs[1].checked_sub(1)?)
-                .copied()
-                .flatten()?;
+            let start_index = mapped_or_equivalent_point_index(
+                group_to_point_index,
+                anchors,
+                source_path.refs[0].checked_sub(1)?,
+            )?;
+            let end_index = mapped_or_equivalent_point_index(
+                group_to_point_index,
+                anchors,
+                source_path.refs[1].checked_sub(1)?,
+            )?;
             let depth = carried_iteration_depth(file, iter_group, 3);
             if depth == 0 {
                 return None;
+            }
+
+            if let Some(step) =
+                regular_polygon_translation_iteration_step(file, groups, iter_group, anchors)
+            {
+                let depth_expr = regular_polygon_translation_iteration_depth_expr(
+                    file, groups, iter_group, depth,
+                );
+                let vector_start_index = regular_polygon_translation_vector_index(
+                    file,
+                    iter_group,
+                    anchors,
+                    group_to_point_index,
+                    1,
+                );
+                let vector_end_index = regular_polygon_translation_vector_index(
+                    file,
+                    iter_group,
+                    anchors,
+                    group_to_point_index,
+                    2,
+                );
+                let start_control_index = source_path
+                    .refs
+                    .first()
+                    .and_then(|ordinal| ordinal.checked_sub(1))
+                    .and_then(|group_index| {
+                        translated_control_point_index(
+                            file,
+                            groups,
+                            group_to_point_index,
+                            group_index,
+                        )
+                    });
+                let end_control_index = source_path
+                    .refs
+                    .get(1)
+                    .and_then(|ordinal| ordinal.checked_sub(1))
+                    .and_then(|group_index| {
+                        translated_control_point_index(
+                            file,
+                            groups,
+                            group_to_point_index,
+                            group_index,
+                        )
+                    });
+                return Some(LineIterationFamily::Translate {
+                    start_index,
+                    end_index,
+                    start_control_index,
+                    end_control_index,
+                    dx: step.x,
+                    dy: step.y,
+                    vector_start_index,
+                    vector_end_index,
+                    secondary_dx: None,
+                    secondary_dy: None,
+                    depth,
+                    depth_expr,
+                    parameter_name: carried_iteration_parameter_name(file, groups, iter_group),
+                    bidirectional: false,
+                    color: color_from_style(source_group.header.style_b),
+                    dashed: line_is_dashed(source_group.header.style_a),
+                });
             }
 
             if let Some(branching) =
@@ -435,11 +523,16 @@ pub(crate) fn collect_carried_line_iteration_families(
             Some(LineIterationFamily::Translate {
                 start_index,
                 end_index,
+                start_control_index: None,
+                end_control_index: None,
                 dx: step.x,
                 dy: step.y,
+                vector_start_index: None,
+                vector_end_index: None,
                 secondary_dx: secondary_step.as_ref().map(|step| step.x),
                 secondary_dy: secondary_step.as_ref().map(|step| step.y),
                 depth,
+                depth_expr: None,
                 parameter_name: carried_iteration_parameter_name(file, groups, iter_group),
                 bidirectional,
                 color: color_from_style(source_group.header.style_b),
@@ -703,6 +796,100 @@ fn carried_iteration_steps(
         x: base_end.x - base_start.x,
         y: base_end.y - base_start.y,
     }]
+}
+
+fn regular_polygon_translation_iteration_step(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    iter_group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    if (iter_group.header.kind()) != crate::format::GroupKind::RegularPolygonIteration
+        || regular_polygon_iteration_step(file, groups, iter_group).is_some()
+    {
+        return None;
+    }
+    let path = find_indexed_path(file, iter_group)?;
+    if path.refs.len() < 3 {
+        return None;
+    }
+    if groups.get(path.refs[0].checked_sub(1)?)?.header.kind()
+        != crate::format::GroupKind::FunctionExpr
+    {
+        return None;
+    }
+    let start = anchors.get(path.refs[1].checked_sub(1)?)?.clone()?;
+    let end = anchors.get(path.refs[2].checked_sub(1)?)?.clone()?;
+    let step = end - start;
+    (!is_zero_step(&step)).then_some(step)
+}
+
+fn regular_polygon_translation_vector_index(
+    file: &GspFile,
+    iter_group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+    group_to_point_index: &[Option<usize>],
+    ref_slot: usize,
+) -> Option<usize> {
+    let path = find_indexed_path(file, iter_group)?;
+    let group_index = path.refs.get(ref_slot)?.checked_sub(1)?;
+    mapped_or_equivalent_point_index(group_to_point_index, anchors, group_index)
+}
+
+fn translated_control_point_index(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group_to_point_index: &[Option<usize>],
+    source_group_index: usize,
+) -> Option<usize> {
+    groups.iter().enumerate().find_map(|(group_index, group)| {
+        if group.header.kind() != crate::format::GroupKind::Translation || group.header.is_hidden()
+        {
+            return None;
+        }
+        let path = find_indexed_path(file, group)?;
+        (path.refs.first()?.checked_sub(1)? == source_group_index)
+            .then(|| group_to_point_index.get(group_index).copied().flatten())
+            .flatten()
+    })
+}
+
+fn mapped_or_equivalent_point_index(
+    group_to_point_index: &[Option<usize>],
+    anchors: &[Option<PointRecord>],
+    group_index: usize,
+) -> Option<usize> {
+    if let Some(point_index) = group_to_point_index.get(group_index).copied().flatten() {
+        return Some(point_index);
+    }
+    let anchor = anchors.get(group_index).cloned().flatten()?;
+    group_to_point_index
+        .iter()
+        .enumerate()
+        .filter_map(|(candidate_index, point_index)| {
+            let point_index = (*point_index)?;
+            let candidate = anchors.get(candidate_index).cloned().flatten()?;
+            same_iteration_step(
+                &(candidate - anchor.clone()),
+                &PointRecord { x: 0.0, y: 0.0 },
+            )
+            .then_some(point_index)
+        })
+        .next()
+}
+
+fn regular_polygon_translation_iteration_depth_expr(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    iter_group: &ObjectGroup,
+    _payload_depth: usize,
+) -> Option<FunctionExpr> {
+    let path = find_indexed_path(file, iter_group)?;
+    let depth_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+    if depth_group.header.kind() != crate::format::GroupKind::FunctionExpr {
+        return None;
+    }
+    decode_iteration_depth_expr(file, groups, depth_group)
 }
 
 fn carried_iteration_basis(

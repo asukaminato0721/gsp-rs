@@ -16,13 +16,14 @@ use super::points::{
     try_decode_point_constraint,
 };
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_u32};
+use crate::runtime::extract::iteration_depth::decode_iteration_depth_expr;
 use crate::runtime::functions::{
-    evaluate_expr_with_parameters, function_expr_label, try_decode_function_expr,
+    FunctionExpr, evaluate_expr_with_parameters, function_expr_label, try_decode_function_expr,
 };
 use crate::runtime::geometry::{color_from_style, format_number};
 use crate::runtime::payload_consts::RECORD_POINT_F64_PAIR;
 use crate::runtime::scene::{
-    IterationTable, LabelIterationFamily, ScreenPoint, TextLabel, TextLabelBinding,
+    IterationTable, LabelIterationFamily, ScenePoint, ScreenPoint, TextLabel, TextLabelBinding,
     TextLabelHotspot, TextLabelHotspotAction,
 };
 
@@ -164,7 +165,36 @@ fn push_pending_label_hotspots(
 }
 
 fn label_visible_for_group(file: &GspFile, group: &ObjectGroup) -> bool {
+    if group.header.is_hidden() && group.header.kind() == crate::format::GroupKind::Rotation {
+        return false;
+    }
     decode_label_visible(file, group).unwrap_or(!group.header.is_hidden())
+}
+
+fn hidden_measurement_is_button_controlled(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    ordinal: usize,
+) -> bool {
+    groups.iter().any(|group| {
+        group.header.kind() == crate::format::GroupKind::ActionButton
+            && find_indexed_path(file, group)
+                .is_some_and(|path| path.refs.iter().copied().any(|entry| entry == ordinal))
+    })
+}
+
+fn ratio_value_label_visible(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    helper_visible: bool,
+) -> bool {
+    if group.header.is_hidden()
+        && hidden_measurement_is_button_controlled(file, groups, group.ordinal)
+    {
+        return false;
+    }
+    helper_visible || group.header.kind() == crate::format::GroupKind::RatioValue
 }
 
 fn resolve_function_expr_parameter(
@@ -1009,7 +1039,7 @@ pub(super) fn collect_coordinate_labels(
                 anchor,
                 text: format!("{name} = {}", format_number(value)),
                 color: [30, 30, 30, 255],
-                visible: true,
+                visible: ratio_value_label_visible(file, groups, group, helper_visible),
                 binding: Some(TextLabelBinding::PointDistanceRatioValue {
                     origin_index: path.refs[0].saturating_sub(1),
                     denominator_index: path.refs[1].saturating_sub(1),
@@ -1393,13 +1423,22 @@ fn collect_point_expression_label_from_seed(
         0.0,
         &BTreeMap::from([(parameter_name.clone(), parameter_value)]),
     )?;
+    let point_anchor = anchors
+        .get(point_group_index)
+        .cloned()
+        .flatten()
+        .unwrap_or(anchor.clone());
     Some(TextLabel {
-        anchor,
+        anchor: anchor.clone(),
         text: format_number(value),
         color: [30, 30, 30, 255],
         visible: label_visible_for_group(file, seed_group),
         binding: Some(TextLabelBinding::PointExpressionValue {
             point_index: point_group_index,
+            anchor_dx: anchor.x - point_anchor.x,
+            anchor_dy: anchor.y - point_anchor.y,
+            anchor_y_point_index: None,
+            anchor_y_dy: None,
             parameter_name,
             expr,
         }),
@@ -1440,27 +1479,29 @@ fn collect_label_iteration_output_labels(
         else {
             continue;
         };
-        let Some(label) =
-            collect_label_iteration_output_label(file, groups, seed_group, iter_group, anchors)
-        else {
+        let Some(output_labels) = collect_label_iteration_output_labels_for_binding(
+            file, groups, seed_group, iter_group, anchors,
+        ) else {
             continue;
         };
         label_group_to_index.insert(binding_group.ordinal, labels.len());
-        labels.push(TextLabel {
-            visible: !binding_group.header.is_hidden(),
-            debug: Some(payload_debug_source(binding_group)),
-            ..label
-        });
+        for label in output_labels {
+            labels.push(TextLabel {
+                visible: !binding_group.header.is_hidden(),
+                debug: Some(payload_debug_source(binding_group)),
+                ..label
+            });
+        }
     }
 }
 
-fn collect_label_iteration_output_label(
+fn collect_label_iteration_output_labels_for_binding(
     file: &GspFile,
     groups: &[ObjectGroup],
     seed_group: &ObjectGroup,
     iter_group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
-) -> Option<TextLabel> {
+) -> Option<Vec<TextLabel>> {
     let seed_path = find_indexed_path(file, seed_group)?;
     if seed_path.refs.len() < 2 {
         return None;
@@ -1490,24 +1531,69 @@ fn collect_label_iteration_output_label(
         .map(|payload| read_u32(payload, 16) as usize)
         .unwrap_or(3);
     let depth_parameter_name = iteration_depth_driver_name(file, groups, iter_group);
-    let text = evaluate_sequence_expression_value(&expr, &parameter_name, parameter_value, depth)
-        .map(format_number)
-        .or_else(|| try_decode_group_label_text(file, seed_group))
-        .or_else(|| decode_label_name(file, seed_group))
-        .unwrap_or_else(|| "未定义".to_string());
-    Some(TextLabel {
-        anchor,
-        text,
-        color: [30, 30, 30, 255],
-        binding: Some(TextLabelBinding::SequenceExpressionValue {
-            parameter_name,
-            expr,
-            depth,
-            depth_parameter_name,
-        }),
-        screen_space: false,
-        ..Default::default()
-    })
+    let Some(anchor_step) = label_iteration_anchor_step(file, groups, &seed_path, anchors) else {
+        let text =
+            evaluate_sequence_expression_value(&expr, &parameter_name, parameter_value, depth)
+                .map(format_number)
+                .or_else(|| try_decode_group_label_text(file, seed_group))
+                .or_else(|| decode_label_name(file, seed_group))
+                .unwrap_or_else(|| "未定义".to_string());
+        return Some(vec![TextLabel {
+            anchor,
+            text,
+            color: [30, 30, 30, 255],
+            binding: Some(TextLabelBinding::SequenceExpressionValue {
+                parameter_name,
+                expr,
+                depth,
+                depth_parameter_name,
+            }),
+            screen_space: false,
+            ..Default::default()
+        }]);
+    };
+
+    let output_labels = (1..=depth)
+        .filter_map(|step_index| {
+            let text = evaluate_sequence_expression_value(
+                &expr,
+                &parameter_name,
+                parameter_value,
+                step_index,
+            )
+            .map(format_number)?;
+            let delta = anchor_step.clone() * step_index as f64;
+            Some(TextLabel {
+                anchor: anchor.clone() + delta,
+                text,
+                color: [30, 30, 30, 255],
+                binding: None,
+                screen_space: false,
+                ..Default::default()
+            })
+        })
+        .collect::<Vec<_>>();
+    (!output_labels.is_empty()).then_some(output_labels)
+}
+
+fn label_iteration_anchor_step(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    seed_path: &crate::format::IndexedPathRecord,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    let point_group = groups.get(seed_path.refs.first()?.checked_sub(1)?)?;
+    if point_group.header.kind() != crate::format::GroupKind::Translation {
+        return None;
+    }
+    let path = find_indexed_path(file, point_group)?;
+    if path.refs.len() < 3 {
+        return None;
+    }
+    let start = anchors.get(path.refs[1].checked_sub(1)?)?.clone()?;
+    let end = anchors.get(path.refs[2].checked_sub(1)?)?.clone()?;
+    let step = end - start;
+    ((step.x.abs() >= 1e-6) || (step.y.abs() >= 1e-6)).then_some(step)
 }
 
 fn resolve_sequence_expression_state_parameter(
@@ -1907,6 +1993,7 @@ pub(super) fn collect_label_iterations(
     groups: &[ObjectGroup],
     label_group_to_index: &BTreeMap<usize, usize>,
     group_to_point_index: &[Option<usize>],
+    anchors: &[Option<PointRecord>],
 ) -> Vec<LabelIterationFamily> {
     groups
         .iter()
@@ -1922,7 +2009,6 @@ pub(super) fn collect_label_iterations(
             }
             let seed_path = find_indexed_path(file, seed_group)?;
             let point_group_index = seed_path.refs.first()?.checked_sub(1)?;
-            let point_seed_index = mapped_point_index(group_to_point_index, point_group_index)?;
             let expr_group = groups.get(seed_path.refs.get(1)?.checked_sub(1)?)?;
             if (expr_group.header.kind()) != crate::format::GroupKind::FunctionExpr {
                 return None;
@@ -1943,6 +2029,28 @@ pub(super) fn collect_label_iterations(
                 .map(|payload| read_u32(payload, 16) as usize)
                 .unwrap_or(3);
             let depth_parameter_name = iteration_depth_driver_name(file, groups, iter_group);
+            if let Some((vector_start_index, vector_end_index)) = label_iteration_vector_indices(
+                file,
+                groups,
+                &seed_path,
+                group_to_point_index,
+                anchors,
+            ) {
+                return Some(LabelIterationFamily::TranslateExpression {
+                    seed_label_index,
+                    first_output_label_index: label_group_to_index.get(&group.ordinal).copied(),
+                    output_label_count: depth,
+                    vector_start_index,
+                    vector_end_index,
+                    parameter_name,
+                    expr,
+                    depth,
+                    depth_expr: label_iteration_depth_expr(file, groups, iter_group),
+                    depth_parameter_name,
+                });
+            }
+
+            let point_seed_index = mapped_point_index(group_to_point_index, point_group_index)?;
 
             Some(LabelIterationFamily::PointExpression {
                 seed_label_index,
@@ -1954,6 +2062,70 @@ pub(super) fn collect_label_iterations(
             })
         })
         .collect()
+}
+
+fn label_iteration_vector_indices(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    seed_path: &crate::format::IndexedPathRecord,
+    group_to_point_index: &[Option<usize>],
+    anchors: &[Option<PointRecord>],
+) -> Option<(usize, usize)> {
+    let point_group_index = seed_path.refs.first()?.checked_sub(1)?;
+    let point_group = groups.get(point_group_index)?;
+    if point_group.header.kind() != crate::format::GroupKind::Translation {
+        return None;
+    }
+    let path = find_indexed_path(file, point_group)?;
+    if path.refs.len() < 3 {
+        return None;
+    }
+    Some((
+        mapped_or_equivalent_point_index(
+            group_to_point_index,
+            anchors,
+            path.refs[1].checked_sub(1)?,
+        )?,
+        mapped_or_equivalent_point_index(
+            group_to_point_index,
+            anchors,
+            path.refs[2].checked_sub(1)?,
+        )?,
+    ))
+}
+
+fn mapped_or_equivalent_point_index(
+    group_to_point_index: &[Option<usize>],
+    anchors: &[Option<PointRecord>],
+    group_index: usize,
+) -> Option<usize> {
+    if let Some(point_index) = mapped_point_index(group_to_point_index, group_index) {
+        return Some(point_index);
+    }
+    let anchor = anchors.get(group_index).cloned().flatten()?;
+    group_to_point_index
+        .iter()
+        .enumerate()
+        .filter_map(|(candidate_index, point_index)| {
+            let point_index = (*point_index)?;
+            let candidate = anchors.get(candidate_index).cloned().flatten()?;
+            ((candidate.x - anchor.x).abs() < 1e-6 && (candidate.y - anchor.y).abs() < 1e-6)
+                .then_some(point_index)
+        })
+        .next()
+}
+
+fn label_iteration_depth_expr(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    iter_group: &ObjectGroup,
+) -> Option<FunctionExpr> {
+    let path = find_indexed_path(file, iter_group)?;
+    let depth_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+    if depth_group.header.kind() != crate::format::GroupKind::FunctionExpr {
+        return None;
+    }
+    decode_iteration_depth_expr(file, groups, depth_group)
 }
 
 pub(super) fn bind_button_seed_expression_labels(
@@ -2055,6 +2227,283 @@ pub(super) fn bind_button_seed_expression_labels(
             expr,
         });
     }
+}
+
+pub(super) fn bind_point_label_anchors(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group_to_point_index: &[Option<usize>],
+    labels: &mut [TextLabel],
+    label_group_to_index: &BTreeMap<usize, usize>,
+) {
+    for group in groups {
+        let Some(label_index) = label_group_to_index.get(&group.ordinal).copied() else {
+            continue;
+        };
+        let Some(point_group_index) = point_label_anchor_group_index(file, group) else {
+            continue;
+        };
+        let Some(point_index) =
+            mapped_or_equivalent_point_index(group_to_point_index, anchors, point_group_index)
+        else {
+            continue;
+        };
+        let Some(point_anchor) = anchors.get(point_group_index).cloned().flatten() else {
+            continue;
+        };
+        let Some(label) = labels.get_mut(label_index) else {
+            continue;
+        };
+        if label.binding.is_some() {
+            continue;
+        }
+        label.binding = Some(TextLabelBinding::PointAnchor {
+            point_index,
+            anchor_dx: label.anchor.x - point_anchor.x,
+            anchor_dy: label.anchor.y - point_anchor.y,
+            anchor_y_point_index: None,
+            anchor_y_dy: None,
+        });
+    }
+}
+
+pub(super) fn bind_label_iteration_seed_anchors(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    labels: &mut [TextLabel],
+    label_group_to_index: &BTreeMap<usize, usize>,
+    label_iterations: &[LabelIterationFamily],
+    points: &[ScenePoint],
+    group_to_point_index: &[Option<usize>],
+) {
+    let mut origin_by_parameter = BTreeMap::new();
+    let label_y_control =
+        label_iteration_vertical_control(file, groups, group_to_point_index, points);
+    for family in label_iterations {
+        let LabelIterationFamily::TranslateExpression {
+            seed_label_index,
+            vector_start_index,
+            vector_end_index,
+            parameter_name,
+            expr,
+            ..
+        } = family
+        else {
+            continue;
+        };
+        origin_by_parameter.insert(parameter_name.clone(), *vector_start_index);
+        let Some(label) = labels.get_mut(*seed_label_index) else {
+            continue;
+        };
+        let Some(point) = points.get(*vector_end_index) else {
+            continue;
+        };
+        label.binding = Some(TextLabelBinding::PointExpressionValue {
+            point_index: *vector_end_index,
+            anchor_dx: label.anchor.x - point.position.x,
+            anchor_dy: label.anchor.y - point.position.y,
+            anchor_y_point_index: label_y_control.as_ref().map(|control| control.point_index),
+            anchor_y_dy: label_y_control
+                .as_ref()
+                .map(|control| label.anchor.y - control.base_y),
+            parameter_name: parameter_name.clone(),
+            expr: expr.clone(),
+        });
+    }
+    for group in groups {
+        if group.header.kind() != crate::format::GroupKind::LabelIterationSeed {
+            continue;
+        }
+        let Some(label_index) = label_group_to_index.get(&group.ordinal).copied() else {
+            continue;
+        };
+        let Some(label) = labels.get_mut(label_index) else {
+            continue;
+        };
+        if label.binding.is_some() {
+            continue;
+        }
+        let Some(path) = find_indexed_path(file, group) else {
+            continue;
+        };
+        let Some(expr_group) = path
+            .refs
+            .get(1)
+            .and_then(|ordinal| groups.get(ordinal.saturating_sub(1)))
+        else {
+            continue;
+        };
+        if expr_group.header.kind() != crate::format::GroupKind::FunctionExpr {
+            if label.text == "0"
+                && let Some(point_index) = origin_by_parameter.values().next().copied()
+                && let Some(point) = points.get(point_index)
+            {
+                label.binding = Some(TextLabelBinding::PointAnchor {
+                    point_index,
+                    anchor_dx: label.anchor.x - point.position.x,
+                    anchor_dy: label.anchor.y - point.position.y,
+                    anchor_y_point_index: label_y_control
+                        .as_ref()
+                        .map(|control| control.point_index),
+                    anchor_y_dy: label_y_control
+                        .as_ref()
+                        .map(|control| label.anchor.y - control.base_y),
+                });
+            }
+            continue;
+        }
+        let Some(expr_path) = find_indexed_path(file, expr_group) else {
+            continue;
+        };
+        let Some(parameter_name) = expr_path
+            .refs
+            .first()
+            .and_then(|ordinal| groups.get(ordinal.saturating_sub(1)))
+            .and_then(|parameter_group| decode_label_name(file, parameter_group))
+        else {
+            if label.text == "0"
+                && let Some(point_index) = origin_by_parameter.values().next().copied()
+                && let Some(point) = points.get(point_index)
+            {
+                label.binding = Some(TextLabelBinding::PointAnchor {
+                    point_index,
+                    anchor_dx: label.anchor.x - point.position.x,
+                    anchor_dy: label.anchor.y - point.position.y,
+                    anchor_y_point_index: label_y_control
+                        .as_ref()
+                        .map(|control| control.point_index),
+                    anchor_y_dy: label_y_control
+                        .as_ref()
+                        .map(|control| label.anchor.y - control.base_y),
+                });
+            }
+            continue;
+        };
+        let Some(point_index) = origin_by_parameter.get(&parameter_name).copied() else {
+            if label.text != "0" {
+                continue;
+            }
+            let Some(point_index) = origin_by_parameter.values().next().copied() else {
+                continue;
+            };
+            let Some(point) = points.get(point_index) else {
+                continue;
+            };
+            label.binding = Some(TextLabelBinding::PointAnchor {
+                point_index,
+                anchor_dx: label.anchor.x - point.position.x,
+                anchor_dy: label.anchor.y - point.position.y,
+                anchor_y_point_index: label_y_control.as_ref().map(|control| control.point_index),
+                anchor_y_dy: label_y_control
+                    .as_ref()
+                    .map(|control| label.anchor.y - control.base_y),
+            });
+            continue;
+        };
+        let Some(point) = points.get(point_index) else {
+            continue;
+        };
+        label.binding = Some(TextLabelBinding::PointAnchor {
+            point_index,
+            anchor_dx: label.anchor.x - point.position.x,
+            anchor_dy: label.anchor.y - point.position.y,
+            anchor_y_point_index: label_y_control.as_ref().map(|control| control.point_index),
+            anchor_y_dy: label_y_control
+                .as_ref()
+                .map(|control| label.anchor.y - control.base_y),
+        });
+    }
+}
+
+struct LabelVerticalControl {
+    point_index: usize,
+    base_y: f64,
+}
+
+fn label_iteration_vertical_control(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group_to_point_index: &[Option<usize>],
+    points: &[ScenePoint],
+) -> Option<LabelVerticalControl> {
+    let zero_label_point_group_index = groups.iter().find_map(|group| {
+        if group.header.kind() != crate::format::GroupKind::LabelIterationSeed {
+            return None;
+        }
+        let path = find_indexed_path(file, group)?;
+        let expr_group = path
+            .refs
+            .get(1)
+            .and_then(|ordinal| groups.get(ordinal.checked_sub(1)?))?;
+        (expr_group.header.kind() != crate::format::GroupKind::FunctionExpr)
+            .then(|| path.refs.first()?.checked_sub(1))
+            .flatten()
+    })?;
+    groups.iter().enumerate().find_map(|(group_index, group)| {
+        if group.header.kind() != crate::format::GroupKind::Translation || group.header.is_hidden()
+        {
+            return None;
+        }
+        let path = find_indexed_path(file, group)?;
+        if path.refs.first()?.checked_sub(1)? != zero_label_point_group_index {
+            return None;
+        }
+        let point_index = group_to_point_index.get(group_index).copied().flatten()?;
+        let vector_start_index = path
+            .refs
+            .get(1)
+            .and_then(|ordinal| group_to_point_index.get(ordinal.checked_sub(1)?))
+            .copied()
+            .flatten()?;
+        let vector_end_index = path
+            .refs
+            .get(2)
+            .and_then(|ordinal| group_to_point_index.get(ordinal.checked_sub(1)?))
+            .copied()
+            .flatten()?;
+        let control = points.get(point_index)?;
+        let vector_start = points.get(vector_start_index)?;
+        let vector_end = points.get(vector_end_index)?;
+        Some(LabelVerticalControl {
+            point_index,
+            base_y: control.position.y - (vector_end.position.y - vector_start.position.y),
+        })
+    })
+}
+
+fn point_label_anchor_group_index(file: &GspFile, group: &ObjectGroup) -> Option<usize> {
+    if group.header.kind() == crate::format::GroupKind::LabelIterationSeed {
+        let path = find_indexed_path(file, group)?;
+        return path.refs.first()?.checked_sub(1);
+    }
+    if matches!(
+        group.header.kind(),
+        crate::format::GroupKind::Point
+            | crate::format::GroupKind::LegacyCoordinateConstructPoint
+            | crate::format::GroupKind::FixedCoordinatePoint
+            | crate::format::GroupKind::CustomTransformPoint
+            | crate::format::GroupKind::Translation
+            | crate::format::GroupKind::Reflection
+            | crate::format::GroupKind::Rotation
+            | crate::format::GroupKind::ExpressionRotation
+            | crate::format::GroupKind::ParameterRotation
+            | crate::format::GroupKind::ParameterControlledPoint
+            | crate::format::GroupKind::Scale
+            | crate::format::GroupKind::PointConstraint
+            | crate::format::GroupKind::PathPoint
+            | crate::format::GroupKind::LinearIntersectionPoint
+            | crate::format::GroupKind::IntersectionPoint1
+            | crate::format::GroupKind::IntersectionPoint2
+            | crate::format::GroupKind::CircleCircleIntersectionPoint1
+            | crate::format::GroupKind::CircleCircleIntersectionPoint2
+            | crate::format::GroupKind::GraphCalibrationX
+            | crate::format::GroupKind::GraphCalibrationY
+            | crate::format::GroupKind::GraphCalibrationYAlt
+    ) {
+        return group.ordinal.checked_sub(1);
+    }
+    None
 }
 
 pub(super) fn collect_iteration_tables(

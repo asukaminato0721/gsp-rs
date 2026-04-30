@@ -537,6 +537,28 @@ fn decode_point_on_line_like_constraint(
                 _ => LineLikeKind::Line,
             },
         }),
+        crate::format::GroupKind::Rotation => Some(RawPointConstraint::ConstructedLine {
+            host_group_index,
+            t,
+            line_like_kind: transformed_line_like_kind(file, groups, host_group)?,
+        }),
+        _ => None,
+    }
+}
+
+fn transformed_line_like_kind(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<LineLikeKind> {
+    let path = find_indexed_path(file, group)?;
+    let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+    match source_group.header.kind() {
+        GroupKind::Segment | GroupKind::MeasurementLine | GroupKind::GraphMeasurementSegment => {
+            Some(LineLikeKind::Segment)
+        }
+        GroupKind::Line => Some(LineLikeKind::Line),
+        GroupKind::Ray => Some(LineLikeKind::Ray),
         _ => None,
     }
 }
@@ -1640,6 +1662,7 @@ pub(crate) fn try_decode_point_constraint(
                         | GroupKind::LineKind5
                         | GroupKind::LineKind6
                         | GroupKind::LineKind7
+                        | GroupKind::Rotation
                 ) =>
         {
             return decode_point_on_line_like_constraint(file, groups, group).ok_or(
@@ -1936,6 +1959,19 @@ fn decode_path_point_constraint(
             let t = match line_like_kind {
                 LineLikeKind::Ray => normalized_t.max(0.0),
                 _ => normalized_t,
+            };
+            Some(RawPointConstraint::ConstructedLine {
+                host_group_index: host_group.ordinal.checked_sub(1)?,
+                t,
+                line_like_kind,
+            })
+        }
+        crate::format::GroupKind::Rotation => {
+            let line_like_kind = transformed_line_like_kind(file, groups, host_group)?;
+            let t = match line_like_kind {
+                LineLikeKind::Segment => wrap_unit_interval(normalized_t),
+                LineLikeKind::Line => normalized_t,
+                LineLikeKind::Ray => normalized_t.max(0.0),
             };
             Some(RawPointConstraint::ConstructedLine {
                 host_group_index: host_group.ordinal.checked_sub(1)?,

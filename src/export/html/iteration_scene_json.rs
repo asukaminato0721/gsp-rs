@@ -162,13 +162,23 @@ pub(super) enum LineIterationJson {
         start_index: usize,
         #[serde(rename = "endIndex")]
         end_index: usize,
+        #[serde(rename = "startControlIndex")]
+        start_control_index: Option<usize>,
+        #[serde(rename = "endControlIndex")]
+        end_control_index: Option<usize>,
         dx: f64,
         dy: f64,
+        #[serde(rename = "vectorStartIndex")]
+        vector_start_index: Option<usize>,
+        #[serde(rename = "vectorEndIndex")]
+        vector_end_index: Option<usize>,
         #[serde(rename = "secondaryDx")]
         secondary_dx: Option<f64>,
         #[serde(rename = "secondaryDy")]
         secondary_dy: Option<f64>,
         depth: usize,
+        #[serde(rename = "depthExpr")]
+        depth_expr: Option<FunctionExprJson>,
         #[serde(rename = "parameterName")]
         parameter_name: Option<String>,
         bidirectional: bool,
@@ -316,11 +326,16 @@ impl LineIterationJson {
             LineIterationFamily::Translate {
                 start_index,
                 end_index,
+                start_control_index,
+                end_control_index,
                 dx,
                 dy,
+                vector_start_index,
+                vector_end_index,
                 secondary_dx,
                 secondary_dy,
                 depth,
+                depth_expr,
                 parameter_name,
                 bidirectional,
                 color,
@@ -328,11 +343,16 @@ impl LineIterationJson {
             } => Self::Translate {
                 start_index: *start_index,
                 end_index: *end_index,
+                start_control_index: *start_control_index,
+                end_control_index: *end_control_index,
                 dx: *dx,
                 dy: *dy,
+                vector_start_index: *vector_start_index,
+                vector_end_index: *vector_end_index,
                 secondary_dx: *secondary_dx,
                 secondary_dy: *secondary_dy,
                 depth: *depth,
+                depth_expr: depth_expr.as_ref().map(FunctionExprJson::from_expr),
                 parameter_name: parameter_name.clone(),
                 bidirectional: *bidirectional,
                 color: *color,
@@ -491,6 +511,26 @@ pub(super) enum LabelIterationJson {
         #[serde(rename = "depthParameterName")]
         depth_parameter_name: Option<String>,
     },
+    TranslateExpression {
+        #[serde(rename = "seedLabelIndex")]
+        seed_label_index: usize,
+        #[serde(rename = "firstOutputLabelIndex")]
+        first_output_label_index: Option<usize>,
+        #[serde(rename = "outputLabelCount")]
+        output_label_count: usize,
+        #[serde(rename = "vectorStartIndex")]
+        vector_start_index: usize,
+        #[serde(rename = "vectorEndIndex")]
+        vector_end_index: usize,
+        #[serde(rename = "parameterName")]
+        parameter_name: String,
+        expr: FunctionExprJson,
+        depth: usize,
+        #[serde(rename = "depthExpr")]
+        depth_expr: Option<FunctionExprJson>,
+        #[serde(rename = "depthParameterName")]
+        depth_parameter_name: Option<String>,
+    },
 }
 
 impl LabelIterationJson {
@@ -509,6 +549,29 @@ impl LabelIterationJson {
                 parameter_name: parameter_name.clone(),
                 expr: FunctionExprJson::from_expr(expr),
                 depth: *depth,
+                depth_parameter_name: depth_parameter_name.clone(),
+            },
+            LabelIterationFamily::TranslateExpression {
+                seed_label_index,
+                first_output_label_index,
+                output_label_count,
+                vector_start_index,
+                vector_end_index,
+                parameter_name,
+                expr,
+                depth,
+                depth_expr,
+                depth_parameter_name,
+            } => Self::TranslateExpression {
+                seed_label_index: *seed_label_index,
+                first_output_label_index: *first_output_label_index,
+                output_label_count: *output_label_count,
+                vector_start_index: *vector_start_index,
+                vector_end_index: *vector_end_index,
+                parameter_name: parameter_name.clone(),
+                expr: FunctionExprJson::from_expr(expr),
+                depth: *depth,
+                depth_expr: depth_expr.as_ref().map(FunctionExprJson::from_expr),
                 depth_parameter_name: depth_parameter_name.clone(),
             },
         }

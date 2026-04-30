@@ -152,6 +152,13 @@
     offset(env, draft, point, world) {
       const constraint = point.constraint;
       if (!isOffsetConstraint(constraint)) return;
+      if (point.binding?.kind === "graph-calibration") {
+        const origin = env.resolveScenePoint(constraint.originIndex);
+        if (!origin) return;
+        constraint.dx = world.x - origin.x;
+        constraint.dy = world.y - origin.y;
+        return;
+      }
       const originPoint = draft.points[constraint.originIndex];
       if (originPoint && !originPoint.constraint) {
         originPoint.x = world.x - constraint.dx;
@@ -181,10 +188,16 @@
         world,
         start,
         end,
-        constraint.kind === "ray-constraint" ? "ray" : constraint.kind === "line-constraint" ? "line" : constraint.kind,
+        constraint.kind === "ray-constraint"
+          ? "ray"
+          : constraint.kind === "line-constraint"
+            ? constraint.line?.kind === "segment" ? "segment" : "line"
+            : constraint.kind,
       );
       if (projection) {
         constraint.t = projection.t;
+        point.x = projection.projected.x;
+        point.y = projection.projected.y;
       }
     },
     line(env, draft, point, world) {

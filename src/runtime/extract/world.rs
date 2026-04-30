@@ -68,11 +68,16 @@ pub(super) fn world_line_iteration_family(
         LineIterationFamily::Translate {
             start_index,
             end_index,
+            start_control_index,
+            end_control_index,
             dx,
             dy,
+            vector_start_index,
+            vector_end_index,
             secondary_dx,
             secondary_dy,
             depth,
+            depth_expr,
             parameter_name,
             bidirectional,
             color,
@@ -82,8 +87,12 @@ pub(super) fn world_line_iteration_family(
             LineIterationFamily::Translate {
                 start_index,
                 end_index,
+                start_control_index,
+                end_control_index,
                 dx: delta.x,
                 dy: delta.y,
+                vector_start_index,
+                vector_end_index,
                 secondary_dx: match (secondary_dx, secondary_dy) {
                     (Some(dx), Some(dy)) => {
                         Some(world_delta(&PointRecord { x: dx, y: dy }, graph_ref).x)
@@ -97,6 +106,7 @@ pub(super) fn world_line_iteration_family(
                     _ => None,
                 },
                 depth,
+                depth_expr,
                 parameter_name,
                 bidirectional,
                 color,

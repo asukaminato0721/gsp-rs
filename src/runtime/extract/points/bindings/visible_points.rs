@@ -173,6 +173,35 @@ fn build_group_to_line_index(groups: &[ObjectGroup]) -> Vec<Option<usize>> {
     group_to_line_index
 }
 
+fn graph_calibration_offset_constraint(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    position: &PointRecord,
+    anchors: &[Option<PointRecord>],
+    group_to_point_index: &[Option<usize>],
+) -> Option<ScenePointConstraint> {
+    let path = find_indexed_path(file, group)?;
+    let mut origin_group_index = path.refs.first()?.checked_sub(1)?;
+    if group.header.kind() != crate::format::GroupKind::GraphCalibrationX
+        && groups
+            .get(origin_group_index)
+            .is_some_and(|group| group.header.kind() == crate::format::GroupKind::GraphCalibrationX)
+    {
+        origin_group_index = find_indexed_path(file, groups.get(origin_group_index)?)?
+            .refs
+            .first()?
+            .checked_sub(1)?;
+    }
+    let origin_index = mapped_point_index(group_to_point_index, origin_group_index)?;
+    let origin = anchors.get(origin_group_index).cloned().flatten()?;
+    Some(ScenePointConstraint::Offset {
+        origin_index,
+        dx: position.x - origin.x,
+        dy: position.y - origin.y,
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 fn build_scene_point_for_group(
     index: usize,
@@ -205,12 +234,21 @@ fn build_scene_point_for_group(
         | crate::format::GroupKind::GraphCalibrationY
         | crate::format::GroupKind::GraphCalibrationYAlt => {
             anchors.get(index).cloned().flatten().map(|position| {
+                let constraint = graph_calibration_offset_constraint(
+                    file,
+                    groups,
+                    group,
+                    &position,
+                    anchors,
+                    group_to_point_index,
+                )
+                .unwrap_or(ScenePointConstraint::Free);
                 scene_point(
                     position,
                     group_color(group),
                     visible && graph_calibration_visible(group),
                     true,
-                    ScenePointConstraint::Free,
+                    constraint,
                     Some(ScenePointBinding::GraphCalibration),
                 )
             })
@@ -415,22 +453,28 @@ fn build_scene_point_for_group(
             let source_group_index = path.refs.first()?.checked_sub(1)?;
             let (vector_start_group_index, vector_end_group_index) =
                 translation_point_pair_group_indices(file, group)?;
-            let source_index = mapped_point_index(group_to_point_index, source_group_index)?;
+            let source_index = mapped_point_index(group_to_point_index, source_group_index);
             let vector_start_index =
-                mapped_point_index(group_to_point_index, vector_start_group_index)?;
-            let vector_end_index =
-                mapped_point_index(group_to_point_index, vector_end_group_index)?;
+                mapped_point_index(group_to_point_index, vector_start_group_index);
+            let vector_end_index = mapped_point_index(group_to_point_index, vector_end_group_index);
+            let binding = match (source_index, vector_start_index, vector_end_index) {
+                (Some(source_index), Some(vector_start_index), Some(vector_end_index)) => {
+                    Some(ScenePointBinding::Translate {
+                        source_index,
+                        vector_start_index,
+                        vector_end_index,
+                    })
+                }
+                _ if visible => None,
+                _ => return None,
+            };
             Some(scene_point(
                 position,
                 group_color(group),
                 visible,
-                false,
+                visible,
                 ScenePointConstraint::Free,
-                Some(ScenePointBinding::Translate {
-                    source_index,
-                    vector_start_index,
-                    vector_end_index,
-                }),
+                binding,
             ))
         })(),
         crate::format::GroupKind::Rotation
@@ -1130,7 +1174,6 @@ pub(crate) fn collect_visible_points_checked(
                 .map(|point| point.is_some())
             })
             .collect::<Result<Vec<_>>>()?;
-
         if next_included_groups == included_groups {
             let points_by_group = groups
                 .iter()
@@ -1313,14 +1356,49 @@ fn scene_point_from_constraint(
         } => {
             let line_group = groups.get(host_group_index)?;
             let line = resolve_line_constraint(file, groups, line_group, group_to_point_index)?;
-            let scene_constraint = match line_like_kind {
-                crate::runtime::scene::LineLikeKind::Line => {
+            let scene_constraint = match (line_like_kind, line) {
+                (
+                    crate::runtime::scene::LineLikeKind::Segment,
+                    LineConstraint::Segment {
+                        start_index,
+                        end_index,
+                    },
+                ) => ScenePointConstraint::OnSegment {
+                    start_index,
+                    end_index,
+                    t,
+                },
+                (
+                    crate::runtime::scene::LineLikeKind::Line,
+                    LineConstraint::Line {
+                        start_index,
+                        end_index,
+                    },
+                ) => ScenePointConstraint::OnLine {
+                    start_index,
+                    end_index,
+                    t,
+                },
+                (
+                    crate::runtime::scene::LineLikeKind::Ray,
+                    LineConstraint::Ray {
+                        start_index,
+                        end_index,
+                    },
+                ) => ScenePointConstraint::OnRay {
+                    start_index,
+                    end_index,
+                    t,
+                },
+                (crate::runtime::scene::LineLikeKind::Line, line) => {
                     ScenePointConstraint::OnLineConstraint { line, t }
                 }
-                crate::runtime::scene::LineLikeKind::Ray => {
+                (crate::runtime::scene::LineLikeKind::Ray, line) => {
                     ScenePointConstraint::OnRayConstraint { line, t }
                 }
-                crate::runtime::scene::LineLikeKind::Segment => return None,
+                (crate::runtime::scene::LineLikeKind::Segment, line) => {
+                    ScenePointConstraint::OnLineConstraint { line, t }
+                }
             };
             Some(scene_point(
                 position,
@@ -2163,6 +2241,49 @@ fn resolve_line_constraint(
                 end_index: (*group_to_point_index.get(path.refs[2].checked_sub(1)?)?)?,
             })
         }
+        crate::format::GroupKind::Rotation => {
+            let binding = try_decode_transform_binding(file, group).ok()?;
+            let TransformBindingKind::Rotate { angle_degrees, .. } = binding.kind else {
+                return None;
+            };
+            let source_group = groups.get(binding.source_group_index)?;
+            let source_path = find_indexed_path(file, source_group)?;
+            if source_path.refs.len() != 2 || !source_group.header.kind().is_line_like() {
+                return None;
+            }
+            let start_group_index = source_path.refs[0].checked_sub(1)?;
+            let end_group_index = source_path.refs[1].checked_sub(1)?;
+            let start_index = mapped_rotated_endpoint_index(
+                file,
+                groups,
+                group_to_point_index,
+                start_group_index,
+                binding.center_group_index,
+                angle_degrees,
+            )?;
+            let end_index = mapped_rotated_endpoint_index(
+                file,
+                groups,
+                group_to_point_index,
+                end_group_index,
+                binding.center_group_index,
+                angle_degrees,
+            )?;
+            Some(match source_group.header.kind() {
+                crate::format::GroupKind::Segment => LineConstraint::Segment {
+                    start_index,
+                    end_index,
+                },
+                crate::format::GroupKind::Ray => LineConstraint::Ray {
+                    start_index,
+                    end_index,
+                },
+                _ => LineConstraint::Line {
+                    start_index,
+                    end_index,
+                },
+            })
+        }
         crate::format::GroupKind::Translation => {
             if path.refs.len() < 3 {
                 return None;
@@ -2177,6 +2298,37 @@ fn resolve_line_constraint(
         }
         _ => None,
     }
+}
+
+fn mapped_rotated_endpoint_index(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group_to_point_index: &[Option<usize>],
+    source_group_index: usize,
+    center_group_index: usize,
+    angle_degrees: f64,
+) -> Option<usize> {
+    if source_group_index == center_group_index {
+        return mapped_point_index(group_to_point_index, source_group_index);
+    }
+    groups.iter().enumerate().find_map(|(candidate_index, candidate)| {
+        if candidate.header.kind() != crate::format::GroupKind::Rotation {
+            return None;
+        }
+        let binding = try_decode_transform_binding(file, candidate).ok()?;
+        let TransformBindingKind::Rotate {
+            angle_degrees: candidate_angle,
+            ..
+        } = binding.kind
+        else {
+            return None;
+        };
+        (binding.source_group_index == source_group_index
+            && binding.center_group_index == center_group_index
+            && (candidate_angle - angle_degrees).abs() < 1e-6)
+            .then(|| mapped_point_index(group_to_point_index, candidate_index))
+            .flatten()
+    })
 }
 
 fn decode_coordinate_trace_constraint(
