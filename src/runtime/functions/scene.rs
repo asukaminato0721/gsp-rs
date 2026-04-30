@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use crate::format::{GspFile, ObjectGroup, read_u16};
 use crate::runtime::extract::points::is_standalone_function_definition_group;
 use crate::runtime::extract::{
-    find_indexed_path, try_decode_parameter_control_value_for_group,
+    find_indexed_path, payload_debug_source, try_decode_parameter_control_value_for_group,
     try_decode_payload_anchor_point,
 };
 use crate::runtime::scene::{
@@ -272,7 +272,7 @@ pub(crate) fn synthesize_standalone_function_definition_labels(
                 binding: None,
                 screen_space: true,
                 hotspots: Vec::new(),
-                debug: None,
+                debug: Some(payload_debug_source(group)),
             })
         })
         .collect()

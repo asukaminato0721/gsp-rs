@@ -2651,6 +2651,7 @@ fn point_label_anchor_group_index(file: &GspFile, group: &ObjectGroup) -> Option
             | crate::format::GroupKind::IntersectionPoint2
             | crate::format::GroupKind::CircleCircleIntersectionPoint1
             | crate::format::GroupKind::CircleCircleIntersectionPoint2
+            | crate::format::GroupKind::Midpoint
             | crate::format::GroupKind::GraphCalibrationX
             | crate::format::GroupKind::GraphCalibrationY
             | crate::format::GroupKind::GraphCalibrationYAlt

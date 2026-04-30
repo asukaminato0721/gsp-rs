@@ -35,7 +35,19 @@ expression: scene_json
       "visible": true,
       "draggable": true,
       "constraint": null,
-      "binding": null
+      "binding": null,
+      "debug": {
+        "groupOrdinal": 1,
+        "groupKind": "Point",
+        "recordTypes": [
+          2201,
+          2007
+        ],
+        "recordNames": [
+          "0x0899 POINT_F64_PAIR",
+          "0x07d7 OBJECT_MARKER_0x7d7"
+        ]
+      }
     }
   ],
   "pointIterations": [],

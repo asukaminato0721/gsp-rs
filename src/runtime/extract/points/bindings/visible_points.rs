@@ -17,8 +17,8 @@ use crate::runtime::extract::decode::{
     detect_perpendicular_segment_payload, is_parameter_control_group,
     try_decode_payload_anchor_point,
 };
-use crate::runtime::extract::find_indexed_path;
 use crate::runtime::extract::points::constraints::CoordinatePointSource;
+use crate::runtime::extract::{find_indexed_path, payload_debug_source};
 use crate::runtime::functions::{
     evaluate_expr_with_parameters, try_decode_function_expr, try_decode_function_plot_descriptor,
 };
@@ -1311,6 +1311,14 @@ pub(crate) fn collect_visible_points_checked(
                             graph,
                             &final_group_to_point_index,
                         )
+                        .map(|point| {
+                            point.map(|mut point| {
+                                point
+                                    .debug
+                                    .get_or_insert_with(|| payload_debug_source(group));
+                                point
+                            })
+                        })
                     })
                     .collect::<Result<Vec<_>>>()?
                     .into_iter()

@@ -1,7 +1,7 @@
 use crate::format::PointRecord;
 use crate::runtime::geometry::{include_line_bounds, to_world};
 use crate::runtime::scene::{
-    CircleIterationFamily, CircularConstraint, LabelIterationFamily, LineBinding, LineConstraint,
+    CircleIterationFamily, CircularConstraint, LabelIterationFamily, LineConstraint,
     LineIterationFamily, LineShape, PointIterationFamily, PolygonIterationFamily, PolygonShape,
     Scene, SceneArc, SceneCircle, SceneImage, ScenePoint, ScenePointConstraint, TextLabel,
     TextLabelBinding,
@@ -568,7 +568,6 @@ pub(super) fn assemble_scene(
         measurements,
         coordinate_traces,
         axes,
-        iteration_polygon_indices: _,
         polygons,
         circles,
         arcs,
@@ -595,28 +594,25 @@ pub(super) fn assemble_scene(
         .chain(carried_iteration_polygons)
         .collect::<Vec<_>>();
 
-    let raw_lines = suppress_polygon_edge_segments(
-        dedupe_line_shapes(
-            polylines
-                .into_iter()
-                .chain(direct_lines)
-                .chain(rays)
-                .chain(translated_lines)
-                .chain(segment_markers)
-                .chain(rotated_lines)
-                .chain(scaled_lines)
-                .chain(reflected_lines)
-                .chain(derived_segments)
-                .chain(measurements)
-                .chain(coordinate_traces)
-                .chain(axes)
-                .chain(analysis.function_plots.iter().cloned())
-                .chain(synthetic_axes)
-                .chain(iteration_lines)
-                .chain(carried_iteration_lines)
-                .collect(),
-        ),
-        &raw_polygons,
+    let raw_lines = dedupe_line_shapes(
+        polylines
+            .into_iter()
+            .chain(direct_lines)
+            .chain(rays)
+            .chain(translated_lines)
+            .chain(segment_markers)
+            .chain(rotated_lines)
+            .chain(scaled_lines)
+            .chain(reflected_lines)
+            .chain(derived_segments)
+            .chain(measurements)
+            .chain(coordinate_traces)
+            .chain(axes)
+            .chain(analysis.function_plots.iter().cloned())
+            .chain(synthetic_axes)
+            .chain(iteration_lines)
+            .chain(carried_iteration_lines)
+            .collect(),
     );
     let functions =
         remap_function_line_indices(artifacts.functions, &analysis.function_plots, &raw_lines);
@@ -902,48 +898,4 @@ fn line_shape_matches(left: &LineShape, right: &LineShape) -> bool {
             .iter()
             .zip(&right.points)
             .all(|(left, right)| (left.x - right.x).abs() < 1e-9 && (left.y - right.y).abs() < 1e-9)
-}
-
-fn suppress_polygon_edge_segments(
-    lines: Vec<LineShape>,
-    polygons: &[PolygonShape],
-) -> Vec<LineShape> {
-    lines
-        .into_iter()
-        .filter(|line| {
-            matches!(line.binding, Some(LineBinding::Segment { .. }))
-                .then(|| {
-                    !polygons
-                        .iter()
-                        .any(|polygon| polygon_has_matching_edge(polygon, line))
-                })
-                .unwrap_or(true)
-        })
-        .collect()
-}
-
-fn polygon_has_matching_edge(polygon: &PolygonShape, line: &LineShape) -> bool {
-    if polygon.points.len() < 3 || line.points.len() != 2 {
-        return false;
-    }
-    polygon
-        .points
-        .iter()
-        .zip(polygon.points.iter().cycle().skip(1))
-        .take(polygon.points.len())
-        .any(|(start, end)| points_match_segment(start, end, &line.points[0], &line.points[1]))
-}
-
-fn points_match_segment(
-    left_start: &PointRecord,
-    left_end: &PointRecord,
-    right_start: &PointRecord,
-    right_end: &PointRecord,
-) -> bool {
-    points_equal(left_start, right_start) && points_equal(left_end, right_end)
-        || points_equal(left_start, right_end) && points_equal(left_end, right_start)
-}
-
-fn points_equal(left: &PointRecord, right: &PointRecord) -> bool {
-    (left.x - right.x).abs() < 1e-6 && (left.y - right.y).abs() < 1e-6
 }

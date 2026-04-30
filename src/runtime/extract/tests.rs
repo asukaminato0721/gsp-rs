@@ -2162,6 +2162,26 @@ fn preserves_polygon_in_poly_gsp() {
 }
 
 #[test]
+fn preserves_explicit_polygon_edge_segments_from_basic_shapes_htm() {
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/static/基本图形.gsp"
+    ));
+
+    for ordinal in 14..=18 {
+        assert!(
+            scene.lines.iter().any(|line| {
+                matches!(line.binding, Some(LineBinding::Segment { .. }))
+                    && line
+                        .debug
+                        .as_ref()
+                        .is_some_and(|debug| debug.group_ordinal == ordinal)
+            }),
+            "expected explicit htm segment #{ordinal} to stay exported"
+        );
+    }
+}
+
+#[test]
 fn preserves_polygon_boundary_point_in_poly_point_gsp() {
     let scene = fixture_scene(include_bytes!(
         "../../../tests/fixtures/gsp/static/poly_point.gsp"
@@ -4226,13 +4246,28 @@ fn preserves_carried_polygon_iteration_fixture() {
 
     assert_eq!(
         scene.polygons.len(),
-        15,
-        "expected triangular lattice of seed polygon plus carried copies"
+        16,
+        "expected htm source polygon plus triangular lattice of carried copies"
     );
     assert!(
-        scene.lines.len() <= 1,
-        "expected polygon edges to stay suppressed apart from any standalone parameter-control helper geometry"
+        scene.polygons.iter().any(|polygon| polygon
+            .debug
+            .as_ref()
+            .is_some_and(|debug| debug.group_ordinal == 5)),
+        "expected htm source polygon #5 to stay exported"
     );
+    for ordinal in 6..=8 {
+        assert!(
+            scene.lines.iter().any(|line| {
+                matches!(line.binding, Some(LineBinding::Segment { .. }))
+                    && line
+                        .debug
+                        .as_ref()
+                        .is_some_and(|debug| debug.group_ordinal == ordinal)
+            }),
+            "expected htm source segment #{ordinal} to stay exported"
+        );
+    }
     assert!(
         scene
             .parameters
@@ -4391,6 +4426,16 @@ fn preserves_midpoint_triangle_iteration_geometry() {
     let scene = fixture_scene(include_bytes!(
         "../../../tests/fixtures/gsp/static/简单迭代/三角形.gsp"
     ));
+
+    for name in ["D", "E", "F"] {
+        assert!(
+            scene.labels.iter().any(|label| {
+                label.text == name
+                    && matches!(label.binding, Some(TextLabelBinding::PointAnchor { .. }))
+            }),
+            "expected midpoint label {name} to stay anchored to its point"
+        );
+    }
 
     assert!(scene.lines.iter().any(|line| {
         line.points.len() == 2

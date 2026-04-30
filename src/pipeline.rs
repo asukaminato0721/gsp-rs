@@ -1234,6 +1234,8 @@ mod tests {
                 .iter()
                 .all(|label| label["visible"].as_bool() == Some(true))
         );
+        assert_eq!(labels[0]["debug"]["groupOrdinal"].as_u64(), Some(1));
+        assert_eq!(labels[1]["debug"]["groupOrdinal"].as_u64(), Some(2));
     }
 
     #[test]
@@ -1294,6 +1296,8 @@ mod tests {
                 .iter()
                 .all(|label| label["visible"].as_bool() == Some(true))
         );
+        assert_eq!(labels[0]["debug"]["groupOrdinal"].as_u64(), Some(1));
+        assert_eq!(labels[1]["debug"]["groupOrdinal"].as_u64(), Some(2));
     }
 
     #[test]

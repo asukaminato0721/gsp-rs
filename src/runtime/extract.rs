@@ -173,7 +173,6 @@ struct CollectedShapes {
     measurements: Vec<LineShape>,
     coordinate_traces: Vec<LineShape>,
     axes: Vec<LineShape>,
-    iteration_polygon_indices: BTreeSet<usize>,
     polygons: Vec<PolygonShape>,
     circles: Vec<CircleShape>,
     arcs: Vec<ArcShape>,
@@ -369,7 +368,7 @@ fn collect_scene_shapes(
             crate::format::GroupKind::AngleMarker,
         ],
         !analysis.graph_mode && !analysis.large_non_graph,
-        &suppressed_segment_groups,
+        &BTreeSet::new(),
     );
     let boundary_lines = collect_arc_boundary_shapes(file, groups, &analysis.raw_anchors);
     let direct_lines = collect_bound_line_shapes(
@@ -440,7 +439,6 @@ fn collect_scene_shapes(
     } else {
         Vec::new()
     };
-    let iteration_polygon_indices = collect_iteration_polygon_indices(file, groups);
     let polygons = collect_polygon_shapes(
         file,
         groups,
@@ -448,16 +446,6 @@ fn collect_scene_shapes(
         &[crate::format::GroupKind::Polygon],
     )
     .into_iter()
-    .enumerate()
-    .filter_map(|(ordinal, polygon)| {
-        let group_index = groups
-            .iter()
-            .enumerate()
-            .filter(|(_, group)| (group.header.kind()) == crate::format::GroupKind::Polygon)
-            .nth(ordinal)
-            .map(|(index, _)| index)?;
-        (!iteration_polygon_indices.contains(&group_index)).then_some(polygon)
-    })
     .chain(collect_arc_boundary_fill_polygons(
         file,
         groups,
@@ -496,7 +484,6 @@ fn collect_scene_shapes(
         measurements,
         coordinate_traces,
         axes,
-        iteration_polygon_indices,
         polygons,
         circles,
         arcs,
@@ -512,20 +499,6 @@ fn collect_scene_shapes(
         iteration_polygons,
         synthetic_axes,
     }
-}
-
-fn collect_iteration_polygon_indices(file: &GspFile, groups: &[ObjectGroup]) -> BTreeSet<usize> {
-    groups
-        .iter()
-        .filter(|group| (group.header.kind()) == crate::format::GroupKind::RegularPolygonIteration)
-        .filter_map(|group| find_indexed_path(file, group))
-        .flat_map(|path| path.refs)
-        .filter_map(|obj_ref| {
-            let index = obj_ref.checked_sub(1)?;
-            let group = groups.get(index)?;
-            ((group.header.kind()) == crate::format::GroupKind::Polygon).then_some(index)
-        })
-        .collect()
 }
 
 fn synthesize_axes_if_needed(analysis: &SceneAnalysis, axes: &[LineShape]) -> Vec<LineShape> {
@@ -713,9 +686,8 @@ fn remap_scene_bindings(
         &circle_group_to_index,
         &line_group_to_index,
     );
-    let polygon_group_to_index = group_shape_index_map(groups, |index, group| {
+    let polygon_group_to_index = group_shape_index_map(groups, |_, group| {
         (group.header.kind()) == crate::format::GroupKind::Polygon
-            && !shapes.iteration_polygon_indices.contains(&index)
     });
     remap_polygon_bindings(
         &mut shapes.polygons,
