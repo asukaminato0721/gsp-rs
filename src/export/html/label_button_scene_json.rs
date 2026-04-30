@@ -473,6 +473,12 @@ enum LabelBindingJson {
         point_index: usize,
         name: String,
         axis: AxisJson,
+        #[serde(rename = "originIndex", skip_serializing_if = "Option::is_none")]
+        origin_index: Option<usize>,
+        #[serde(rename = "xUnitIndex", skip_serializing_if = "Option::is_none")]
+        x_unit_index: Option<usize>,
+        #[serde(rename = "yUnitIndex", skip_serializing_if = "Option::is_none")]
+        y_unit_index: Option<usize>,
     },
     #[serde(rename = "polygon-boundary-parameter")]
     PolygonBoundaryParameter {
@@ -659,10 +665,16 @@ impl LabelBindingJson {
                 point_index,
                 name,
                 axis,
+                origin_index,
+                x_unit_index,
+                y_unit_index,
             } => Self::PointAxisValue {
                 point_index: *point_index,
                 name: name.clone(),
                 axis: AxisJson::from_axis(*axis),
+                origin_index: *origin_index,
+                x_unit_index: *x_unit_index,
+                y_unit_index: *y_unit_index,
             },
             TextLabelBinding::PolygonBoundaryParameter {
                 point_index,

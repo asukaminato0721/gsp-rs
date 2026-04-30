@@ -1307,6 +1307,113 @@ fn simple_coordinate_sample_follows_exported_axis_coordinate_system() {
 }
 
 #[test]
+fn simple_coordinate_sample_exports_left_calculation_labels() {
+    let Some(data) = fixture_bytes("tests/Samples/简易数轴与坐标系/最简坐标系/样本2.gsp")
+    else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+
+    for expected in ["Xmax = 1", "Xmin = -1", "Ymax = 1", "Ymin = -1"] {
+        assert!(
+            scene.labels.iter().any(|label| {
+                label.visible
+                    && label.screen_space
+                    && label.text == expected
+                    && label.anchor.x < 20.0
+                    && label.anchor.y < 110.0
+                    && matches!(label.binding, Some(TextLabelBinding::PointAxisValue { .. }))
+            }),
+            "expected visible left-side calculation label {expected}"
+        );
+    }
+
+    for (prefix, x, y, axis) in [
+        (
+            "Xmax",
+            1.0,
+            0.0,
+            crate::runtime::scene::CoordinateAxis::Horizontal,
+        ),
+        (
+            "Xmin",
+            -1.0,
+            0.0,
+            crate::runtime::scene::CoordinateAxis::Horizontal,
+        ),
+        (
+            "Ymax",
+            0.0,
+            1.0,
+            crate::runtime::scene::CoordinateAxis::Vertical,
+        ),
+        (
+            "Ymin",
+            0.0,
+            -1.0,
+            crate::runtime::scene::CoordinateAxis::Vertical,
+        ),
+    ] {
+        let label = scene
+            .labels
+            .iter()
+            .find(|label| label.text.starts_with(prefix))
+            .expect("expected axis calculation label");
+        let Some(TextLabelBinding::PointAxisValue {
+            point_index,
+            axis: label_axis,
+            origin_index,
+            x_unit_index,
+            y_unit_index,
+            ..
+        }) = label.binding
+        else {
+            panic!("expected {prefix} to be bound to a point axis");
+        };
+        assert_eq!(label_axis, axis);
+        assert_eq!(origin_index, Some(0));
+        assert_eq!(x_unit_index, Some(1));
+        assert_eq!(y_unit_index, Some(2));
+        let point = &scene.points[point_index];
+        assert!((point.position.x - x).abs() < 1e-6);
+        assert!((point.position.y - y).abs() < 1e-6);
+    }
+
+    for (x, y) in [(1.0, 0.0), (0.0, 1.0)] {
+        assert!(
+            scene.points.iter().any(|point| {
+                point.visible
+                    && point.draggable
+                    && (point.position.x - x).abs() < 1e-6
+                    && (point.position.y - y).abs() < 1e-6
+                    && matches!(point.binding, Some(ScenePointBinding::GraphCalibration))
+                    && matches!(
+                        point.constraint,
+                        ScenePointConstraint::Offset {
+                            origin_index: 3,
+                            ..
+                        }
+                    )
+            }),
+            "expected visible arrow control graph calibration point at ({x},{y})"
+        );
+    }
+
+    for (x, y) in [(-1.0, 0.0), (0.0, -1.0)] {
+        assert!(
+            scene.points.iter().any(|point| {
+                point.visible
+                    && point.draggable
+                    && (point.position.x - x).abs() < 1e-6
+                    && (point.position.y - y).abs() < 1e-6
+                    && matches!(point.binding, Some(ScenePointBinding::Rotate { .. }))
+            }),
+            "expected visible constructed arrow endpoint at ({x},{y})"
+        );
+    }
+}
+
+#[test]
 fn collects_sequence_button_variants_without_validation() {
     let Some(data) =
         fixture_bytes("tests/Samples/个人专栏/李忠平作品/金华2010-24题(百年孤独)10.8.9.gsp")

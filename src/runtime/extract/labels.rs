@@ -2,10 +2,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::decode::{
     RichTextHotspotRef, decode_label_anchor, decode_label_name, decode_label_name_raw,
-    decode_label_visible, decode_measurement_value, decode_text_anchor, find_indexed_path,
-    is_action_button_group, try_decode_group_label_text, try_decode_group_rich_text,
-    try_decode_link_button_url, try_decode_parameter_control_value_for_group,
-    try_decode_payload_anchor_point,
+    decode_label_offset, decode_label_visible, decode_measurement_value, decode_text_anchor,
+    find_indexed_path, is_action_button_group, try_decode_group_label_text,
+    try_decode_group_rich_text, try_decode_link_button_url,
+    try_decode_parameter_control_value_for_group, try_decode_payload_anchor_point,
 };
 use super::payload_debug_source;
 use super::points::{
@@ -219,6 +219,15 @@ fn resolve_function_expr_parameter(
                 visiting,
             );
         }
+        if let Some((name, value)) =
+            numeric_helper_function_parameter(file, groups, parameter_group)
+            && !matches!(
+                parameter_group.header.kind(),
+                crate::format::GroupKind::ParameterAnchor | crate::format::GroupKind::RatioValue
+            )
+        {
+            return Some((name, value));
+        }
         let name = if parameter_group.header.kind() == crate::format::GroupKind::ParameterAnchor {
             let anchor_path = find_indexed_path(file, parameter_group)?;
             let point_group = groups.get(anchor_path.refs.first()?.checked_sub(1)?)?;
@@ -240,6 +249,68 @@ fn resolve_function_expr_parameter(
     })();
     visiting.remove(&group.ordinal);
     result
+}
+
+fn numeric_helper_function_parameter(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<(String, f64)> {
+    let expr = try_decode_function_expr(file, groups, group).ok()?;
+    let value = snap_near_integer(evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new())?);
+    if !value.is_finite() {
+        return None;
+    }
+    let name = decode_label_name(file, group).unwrap_or_else(|| function_expr_label(expr));
+    Some((name, value))
+}
+
+fn numeric_helper_axis_binding(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    name: &str,
+) -> Option<TextLabelBinding> {
+    let path = find_indexed_path(file, group)?;
+    let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+    let source_path = find_indexed_path(file, source_group)?;
+    let point_index = source_path.refs.first()?.checked_sub(1)?;
+    let (origin_index, x_unit_index, y_unit_index) = source_path
+        .refs
+        .get(1)
+        .and_then(|coord_sys_ordinal| {
+            coordinate_system_point_group_indices(file, groups, *coord_sys_ordinal)
+        })
+        .unwrap_or((None, None, None));
+    let axis = match source_group.header.kind() {
+        crate::format::GroupKind::CoordinateXValue => {
+            crate::runtime::scene::CoordinateAxis::Horizontal
+        }
+        crate::format::GroupKind::CoordinateYValue => {
+            crate::runtime::scene::CoordinateAxis::Vertical
+        }
+        crate::format::GroupKind::FunctionExpr => {
+            return numeric_helper_axis_binding(file, groups, source_group, name);
+        }
+        _ => return None,
+    };
+    Some(TextLabelBinding::PointAxisValue {
+        point_index,
+        name: name.to_string(),
+        axis,
+        origin_index,
+        x_unit_index,
+        y_unit_index,
+    })
+}
+
+fn snap_near_integer(value: f64) -> f64 {
+    let rounded = value.round();
+    if (value - rounded).abs() < 1e-9 {
+        rounded
+    } else {
+        value
+    }
 }
 
 fn direct_function_expr_parameter_name(
@@ -481,6 +552,20 @@ fn decode_iteration_table_anchor(file: &GspFile, group: &ObjectGroup) -> Option<
 
 fn mapped_point_index(group_to_point_index: &[Option<usize>], group_index: usize) -> Option<usize> {
     group_to_point_index.get(group_index).copied().flatten()
+}
+
+fn function_expr_screen_anchor(file: &GspFile, group: &ObjectGroup) -> Option<PointRecord> {
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x0907)
+        .map(|record| record.payload(&file.data))?;
+    let anchor = decode_text_anchor(payload)?;
+    let offset = decode_label_offset(file, group).unwrap_or((0.0, 0.0));
+    Some(PointRecord {
+        x: anchor.x + offset.0,
+        y: anchor.y + offset.1,
+    })
 }
 
 pub(super) fn collect_labels(
@@ -1121,6 +1206,13 @@ pub(super) fn collect_coordinate_labels(
                     "x".to_string()
                 }
             });
+            let (origin_index, x_unit_index, y_unit_index) = path
+                .refs
+                .get(1)
+                .and_then(|coord_sys_ordinal| {
+                    coordinate_system_point_group_indices(file, groups, *coord_sys_ordinal)
+                })
+                .unwrap_or((None, None, None));
             let value = if axis == crate::runtime::scene::CoordinateAxis::Vertical {
                 if let Some((origin, raw_per_unit)) = graph.as_ref() {
                     (origin.y - point.y) / raw_per_unit
@@ -1143,6 +1235,9 @@ pub(super) fn collect_coordinate_labels(
                     point_index,
                     name,
                     axis,
+                    origin_index,
+                    x_unit_index,
+                    y_unit_index,
                 }),
                 screen_space: false,
                 debug: Some(payload_debug_source(group)),
@@ -1168,9 +1263,16 @@ pub(super) fn collect_coordinate_labels(
                             anchors,
                             &mut BTreeSet::new(),
                         )?;
-                        Some((expr, parameter_name, parameter_value, None))
+                        let semantic_kind = parameter_name
+                            .parse::<f64>()
+                            .is_ok()
+                            .then_some("numeric-helper");
+                        Some((expr, parameter_name, parameter_value, semantic_kind))
                     })
-            && let Some(anchor) = try_decode_payload_anchor_point(file, group).ok().flatten()
+            && let Some(anchor) = try_decode_payload_anchor_point(file, group)
+                .ok()
+                .flatten()
+                .or_else(|| function_expr_screen_anchor(file, group))
         {
             let (expr, parameter_name, parameter_value, semantic_kind) = override_expr;
             let value = evaluate_expr_with_parameters(
@@ -1190,14 +1292,17 @@ pub(super) fn collect_coordinate_labels(
                     &mut BTreeSet::new(),
                 )
             };
-            let binding = is_editable_non_graph_parameter_name(&parameter_name).then(|| {
-                TextLabelBinding::ExpressionValue {
-                    parameter_name: parameter_name.clone(),
-                    result_name: decode_label_name(file, group),
-                    expr_label: expr_label.clone(),
-                    expr: expr.clone(),
-                }
-            });
+            let binding = if semantic_kind == Some("numeric-helper") {
+                numeric_helper_axis_binding(file, groups, group, &expr_label)
+            } else {
+                (semantic_kind.is_none() && is_editable_non_graph_parameter_name(&parameter_name))
+                    .then(|| TextLabelBinding::ExpressionValue {
+                        parameter_name: parameter_name.clone(),
+                        result_name: decode_label_name(file, group),
+                        expr_label: expr_label.clone(),
+                        expr: expr.clone(),
+                    })
+            };
             let value_text = value
                 .map(|value| {
                     if semantic_kind == Some("regular-polygon-angle") {
@@ -1213,7 +1318,7 @@ pub(super) fn collect_coordinate_labels(
                 text,
                 rich_markup: build_expression_rich_markup(&expr_label, &value_text),
                 color: [30, 30, 30, 255],
-                visible: helper_visible,
+                visible: !group.header.is_hidden(),
                 binding,
                 screen_space: true,
                 hotspots: Vec::new(),

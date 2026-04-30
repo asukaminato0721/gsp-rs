@@ -4,7 +4,6 @@
   const modules = window.GspViewerModules || (window.GspViewerModules = {});
   /** @type {Set<string>} */
   const PAN_ONLY_POINT_BINDINGS = new Set([
-    "graph-calibration",
     "midpoint",
     "coordinate",
     "coordinate-source",
@@ -33,10 +32,17 @@
     if (typeof rootId !== "function") {
       return [];
     }
-    const roots = new Set([rootId(pointIndex)]);
-    const constraint = point.constraint;
-    if (isOffsetConstraint(constraint)) {
-      roots.add(rootId(constraint.originIndex));
+    const roots = new Set();
+    const addPointRoots = (index) => {
+      roots.add(rootId(index));
+      const constraint = env.currentScene().points?.[index]?.constraint;
+      if (isOffsetConstraint(constraint)) {
+        roots.add(rootId(constraint.originIndex));
+      }
+    };
+    addPointRoots(pointIndex);
+    if (point.binding?.kind === "derived" && typeof point.binding.sourceIndex === "number") {
+      addPointRoots(point.binding.sourceIndex);
     }
     return Array.from(roots);
   }
@@ -155,8 +161,13 @@
       if (point.binding?.kind === "graph-calibration") {
         const origin = env.resolveScenePoint(constraint.originIndex);
         if (!origin) return;
-        constraint.dx = world.x - origin.x;
-        constraint.dy = world.y - origin.y;
+        const baseDx = constraint.dx;
+        const baseDy = constraint.dy;
+        const lenSq = baseDx * baseDx + baseDy * baseDy;
+        if (lenSq <= 1e-9) return;
+        const t = ((world.x - origin.x) * baseDx + (world.y - origin.y) * baseDy) / lenSq;
+        constraint.dx = baseDx * t;
+        constraint.dy = baseDy * t;
         return;
       }
       const originPoint = draft.points[constraint.originIndex];
@@ -328,6 +339,50 @@
 
   /**
    * @param {ViewerEnv} env
+   * @param {ViewerSceneData} draft
+   * @param {number} pointIndex
+   * @param {Point} world
+   */
+  function updatePointToWorld(env, draft, pointIndex, world) {
+    const point = draft.points[pointIndex];
+    if (!point) return;
+    const constraintKind = point.constraint?.kind;
+    const updateConstraint = typeof constraintKind === "string"
+      ? DRAGGED_POINT_CONSTRAINT_UPDATERS[constraintKind]
+      : null;
+    if (updateConstraint) {
+      updateConstraint(env, draft, point, world);
+    } else {
+      point.x = world.x;
+      point.y = world.y;
+    }
+  }
+
+  /**
+   * @param {ViewerEnv} env
+   * @param {ViewerSceneData} draft
+   * @param {RuntimeScenePointJson} point
+   * @param {Point} world
+   * @returns {boolean}
+   */
+  function updateDerivedPointSourceToWorld(env, draft, point, world) {
+    if (point.binding?.kind !== "derived") return false;
+    const transform = point.binding.transform;
+    if (transform?.kind !== "rotate" || typeof transform.angleDegrees !== "number") {
+      return false;
+    }
+    const center = env.resolveScenePoint(transform.centerIndex);
+    const rotateAround = window.GspViewerModules.geometry?.rotateAround;
+    if (!center || typeof rotateAround !== "function") {
+      return false;
+    }
+    const sourceWorld = rotateAround(world, center, -transform.angleDegrees * Math.PI / 180);
+    updatePointToWorld(env, draft, point.binding.sourceIndex, sourceWorld);
+    return true;
+  }
+
+  /**
+   * @param {ViewerEnv} env
    * @param {number | null} pointIndex
    * @param {number | null} labelIndex
    * @param {number | null} polygonIndex
@@ -392,15 +447,8 @@
     env.markDependencyRootsDirty?.(dependencyRootsForDraggedPoint(env, env.dragState.val.pointIndex));
     env.updateScene((/** @type {ViewerSceneData} */ draft) => {
       const point = draft.points[env.dragState.val.pointIndex];
-      const constraintKind = point.constraint?.kind;
-      const updateConstraint = typeof constraintKind === "string"
-        ? DRAGGED_POINT_CONSTRAINT_UPDATERS[constraintKind]
-        : null;
-      if (updateConstraint) {
-        updateConstraint(env, draft, point, world);
-      } else {
-        point.x = world.x;
-        point.y = world.y;
+      if (!updateDerivedPointSourceToWorld(env, draft, point, world)) {
+        updatePointToWorld(env, draft, env.dragState.val.pointIndex, world);
       }
     }, "graph");
     env.hoverPointIndex.val = env.dragState.val.pointIndex;

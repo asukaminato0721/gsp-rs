@@ -997,6 +997,9 @@ pub(crate) enum TextLabelBinding {
         point_index: usize,
         name: String,
         axis: CoordinateAxis,
+        origin_index: Option<usize>,
+        x_unit_index: Option<usize>,
+        y_unit_index: Option<usize>,
     },
     PolygonBoundaryParameter {
         point_index: usize,

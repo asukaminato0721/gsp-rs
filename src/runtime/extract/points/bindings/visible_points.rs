@@ -35,8 +35,48 @@ fn group_color(group: &ObjectGroup) -> [u8; 4] {
     color_from_style(group.header.style_b)
 }
 
-fn graph_calibration_visible(group: &ObjectGroup) -> bool {
-    !group.header.is_hidden() && (group.header.class_id & 0x0004_0000) == 0
+fn graph_calibration_visible(file: &GspFile, groups: &[ObjectGroup], group: &ObjectGroup) -> bool {
+    !group.header.is_hidden()
+        && (point_marker_visible(group) && (group.header.class_id & 0x0004_0000) == 0
+            || used_by_visible_control_shape(file, groups, group.ordinal))
+}
+
+fn visible_point_or_control_shape_point(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> bool {
+    !group.header.is_hidden()
+        && (point_marker_visible(group)
+            || used_by_visible_control_shape(file, groups, group.ordinal))
+}
+
+fn draggable_derived_axis_control(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    source_group_index: usize,
+) -> bool {
+    !group.header.is_hidden()
+        && used_by_visible_control_shape(file, groups, group.ordinal)
+        && groups
+            .get(source_group_index)
+            .is_some_and(|source| source.header.kind().is_graph_calibration())
+}
+
+fn used_by_visible_control_shape(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    point_ordinal: usize,
+) -> bool {
+    groups.iter().any(|shape_group| {
+        matches!(
+            shape_group.header.kind(),
+            crate::format::GroupKind::Segment | crate::format::GroupKind::Polygon
+        ) && !shape_group.header.is_hidden()
+            && find_indexed_path(file, shape_group)
+                .is_some_and(|path| path.refs.contains(&point_ordinal))
+    })
 }
 
 fn point_marker_visible(group: &ObjectGroup) -> bool {
@@ -291,7 +331,7 @@ fn build_scene_point_for_group(
                 scene_point(
                     position,
                     group_color(group),
-                    visible && graph_calibration_visible(group),
+                    graph_calibration_visible(file, groups, group),
                     true,
                     constraint,
                     Some(ScenePointBinding::GraphCalibration),
@@ -598,11 +638,18 @@ fn build_scene_point_for_group(
                     mapped_point_index(group_to_point_index, binding.source_group_index)?;
                 let center_index =
                     mapped_point_index(group_to_point_index, binding.center_group_index)?;
+                let draggable = matches!(&binding.kind, TransformBindingKind::Rotate { .. })
+                    && draggable_derived_axis_control(
+                        file,
+                        groups,
+                        group,
+                        binding.source_group_index,
+                    );
                 Some(scene_point(
                     position,
                     group_color(group),
                     visible,
-                    false,
+                    draggable,
                     ScenePointConstraint::Free,
                     Some(match binding.kind {
                         TransformBindingKind::Rotate {
@@ -797,7 +844,7 @@ fn build_scene_point_for_group_checked(
         crate::format::GroupKind::Rotation
         | crate::format::GroupKind::ExpressionRotation
         | crate::format::GroupKind::Scale => {
-            let visible = !group.header.is_hidden() && point_marker_visible(group);
+            let visible = visible_point_or_control_shape_point(file, groups, group);
             let position = anchors.get(index).cloned().flatten();
             Ok((|| {
                 let position = position?;
@@ -923,11 +970,18 @@ fn build_scene_point_for_group_checked(
                     mapped_point_index(group_to_point_index, binding.source_group_index)?;
                 let center_index =
                     mapped_point_index(group_to_point_index, binding.center_group_index)?;
+                let draggable = matches!(&binding.kind, TransformBindingKind::Rotate { .. })
+                    && draggable_derived_axis_control(
+                        file,
+                        groups,
+                        group,
+                        binding.source_group_index,
+                    );
                 Some(scene_point(
                     position,
                     group_color(group),
                     visible,
-                    false,
+                    draggable,
                     ScenePointConstraint::Free,
                     Some(match binding.kind {
                         TransformBindingKind::Rotate {

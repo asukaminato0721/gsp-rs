@@ -3148,8 +3148,16 @@
     "point-axis-value"(env, scene, label) {
       const point = scene.points[label.binding.pointIndex];
       if (!point) return;
-      const value = label.binding.axis === "vertical" ? point.y : point.x;
-      label.text = `${label.binding.name} = ${env.formatNumber(value)}`;
+      const coordinates = pointCoordinatesInBasis(
+        point,
+        scene.points[label.binding.originIndex],
+        scene.points[label.binding.xUnitIndex],
+        scene.points[label.binding.yUnitIndex],
+      );
+      const value = label.binding.axis === "vertical"
+        ? (coordinates?.y ?? point.y)
+        : (coordinates?.x ?? point.x);
+      label.text = `${label.binding.name} = ${env.formatAxisNumber(value)}`;
       label.richMarkup = buildPlainTextRichMarkup(label.text);
     },
     "expression-value"(env, _scene, label, parameters) {

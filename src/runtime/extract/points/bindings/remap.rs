@@ -143,7 +143,6 @@ pub(crate) fn remap_label_bindings(
             continue;
         };
         if let TextLabelBinding::PointExpressionValue { point_index, .. }
-        | TextLabelBinding::PointAxisValue { point_index, .. }
         | TextLabelBinding::PointBoundExpressionValue { point_index, .. }
         | TextLabelBinding::PointAnchor { point_index, .. }
         | TextLabelBinding::CustomTransformValue { point_index, .. } = binding
@@ -153,6 +152,27 @@ pub(crate) fn remap_label_bindings(
                 continue;
             };
             *point_index = mapped_index;
+            continue;
+        }
+        if let TextLabelBinding::PointAxisValue {
+            point_index,
+            origin_index,
+            x_unit_index,
+            y_unit_index,
+            ..
+        } = binding
+        {
+            let Some(new_point_index) = mapped_index(group_to_point_index, *point_index) else {
+                label.binding = None;
+                continue;
+            };
+            *point_index = new_point_index;
+            *origin_index =
+                origin_index.and_then(|index| mapped_index(group_to_point_index, index));
+            *x_unit_index =
+                x_unit_index.and_then(|index| mapped_index(group_to_point_index, index));
+            *y_unit_index =
+                y_unit_index.and_then(|index| mapped_index(group_to_point_index, index));
             continue;
         }
         if let TextLabelBinding::PointCoordinateValue {
