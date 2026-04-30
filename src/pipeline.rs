@@ -307,8 +307,8 @@ mod tests {
         let log = fs::read_to_string(&log_path).expect("payload log should be readable");
         assert!(log.contains("载荷说明"));
         assert!(log.contains("问题数量: 0"));
-        assert!(log.contains("构造步骤"));
-        assert!(log.contains("1. #1 = 自由点。"));
+        assert!(log.contains("Construction VALUE"));
+        assert!(log.contains("{1} Point(323,217)[mediumPoint];"));
 
         let debug_json =
             fs::read_to_string(&debug_json_path).expect("debug json should be readable");

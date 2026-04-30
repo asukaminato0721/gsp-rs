@@ -351,8 +351,8 @@ fn renders_unsupported_payload_log_in_natural_chinese() {
     assert!(log.contains("#15 = 过 #10 且垂直于 线段 #14 的直线。"));
     assert!(log.contains("#1 = 自由点，名称“O”。"));
     assert!(log.contains("原始载荷："));
-    assert!(log.contains("构造步骤"));
-    assert!(log.contains("1. #1 = 自由点，名称“O”。"));
+    assert!(log.contains("Construction VALUE"));
+    assert!(log.contains("{1} Point("));
 }
 
 #[test]
@@ -364,8 +364,8 @@ fn renders_payload_log_for_supported_fixture_too() {
 
     assert!(log.contains("问题数量: 0"));
     assert!(log.contains("未发现不支持的载荷。"));
-    assert!(log.contains("构造步骤"));
-    assert!(log.contains("1. #1 = 自由点。"));
+    assert!(log.contains("Construction VALUE"));
+    assert!(log.contains("{1} Point(323,217)[mediumPoint];"));
 }
 
 #[test]

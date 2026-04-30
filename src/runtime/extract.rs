@@ -28,7 +28,8 @@ use crate::format::{
     decode_indexed_path, decode_point_record, read_f64, read_u16, read_u32, record_name,
 };
 use crate::runtime::payload_consts::{
-    RECORD_FUNCTION_EXPR_PAYLOAD, RECORD_FUNCTION_PLOT_DESCRIPTOR, RECORD_POINT_F64_PAIR,
+    RECORD_BINDING_PAYLOAD, RECORD_FUNCTION_EXPR_PAYLOAD, RECORD_FUNCTION_PLOT_DESCRIPTOR,
+    RECORD_POINT_F64_PAIR,
 };
 use crate::util::{hex_bytes, truncate_text};
 
@@ -84,7 +85,9 @@ use super::functions::{
     synthesize_standalone_function_definition_labels, try_decode_function_expr,
     try_decode_function_plot_descriptor,
 };
-use super::geometry::{Bounds, GraphTransform, color_from_style, distance_world, to_world};
+use super::geometry::{
+    Bounds, GraphTransform, color_from_style, distance_world, line_is_dashed, to_world,
+};
 use super::scene::{
     ColorBinding, LabelIterationFamily, LineIterationFamily, LineShape, PayloadDebugSource,
     PointIterationFamily, PolygonIterationFamily, PolygonShape, Scene, ScenePoint, TextLabel,
@@ -1332,7 +1335,22 @@ pub(crate) fn render_payload_log(source_path: &Path, file: &GspFile) -> String {
     }
 
     let _ = writeln!(output);
-    let _ = writeln!(output, "构造步骤");
+    let _ = writeln!(output, "Construction VALUE");
+    let construction_groups = collect_htm_payload_groups(&groups);
+    let construction_ordinals = construction_groups
+        .iter()
+        .enumerate()
+        .map(|(index, group)| (group.ordinal, index + 1))
+        .collect::<BTreeMap<_, _>>();
+    for (index, group) in construction_groups.iter().enumerate() {
+        let _ = writeln!(
+            output,
+            "{}",
+            describe_group_as_htm_payload(file, &groups, group, index + 1, &construction_ordinals)
+        );
+    }
+    let _ = writeln!(output);
+    let _ = writeln!(output, "Payload Objects");
     for (index, group) in groups.iter().enumerate() {
         let _ = writeln!(
             output,
@@ -1343,6 +1361,312 @@ pub(crate) fn render_payload_log(source_path: &Path, file: &GspFile) -> String {
     }
 
     output
+}
+
+fn collect_htm_payload_groups(groups: &[ObjectGroup]) -> Vec<&ObjectGroup> {
+    groups
+        .iter()
+        .filter(|group| match group.header.kind() {
+            GroupKind::Point => !self::decode::is_parameter_control_group(group),
+            GroupKind::PointConstraint
+            | GroupKind::PathPoint
+            | GroupKind::Midpoint
+            | GroupKind::Segment
+            | GroupKind::Circle
+            | GroupKind::CircleCenterRadius
+            | GroupKind::Line
+            | GroupKind::LineKind5
+            | GroupKind::LineKind6
+            | GroupKind::LineKind7
+            | GroupKind::MeasurementLine
+            | GroupKind::AxisLine
+            | GroupKind::GraphMeasurementSegment
+            | GroupKind::Ray
+            | GroupKind::Polygon
+            | GroupKind::RichTextLabel
+            | GroupKind::ButtonLabel => true,
+            _ => false,
+        })
+        .collect()
+}
+
+fn describe_group_as_htm_payload(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    ordinal: usize,
+    ordinal_map: &BTreeMap<usize, usize>,
+) -> String {
+    let refs = find_indexed_path(file, group)
+        .map(|path| path.refs)
+        .unwrap_or_default();
+    let (object_type, args) = htm_payload_signature(file, groups, group, &refs, ordinal_map);
+    let attrs = htm_payload_attributes(file, group);
+    if attrs.is_empty() {
+        format!("{{{ordinal}}} {object_type}({args});")
+    } else {
+        format!("{{{ordinal}}} {object_type}({args})[{attrs}];")
+    }
+}
+
+fn htm_payload_signature(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    refs: &[usize],
+    ordinal_map: &BTreeMap<usize, usize>,
+) -> (&'static str, String) {
+    match group.header.kind() {
+        GroupKind::Point => (
+            "Point",
+            decode_group_point(file, group)
+                .map(|point| format!("{},{}", format_number(point.x), format_number(point.y)))
+                .unwrap_or_default(),
+        ),
+        GroupKind::PointConstraint | GroupKind::PathPoint | GroupKind::ParameterControlledPoint => {
+            let t = decode_htm_object_parameter(file, groups, group).unwrap_or(0.0);
+            (
+                "Point on object",
+                refs.first()
+                    .map(|host| {
+                        format!(
+                            "{},{}",
+                            map_htm_ordinal(*host, ordinal_map),
+                            format_htm_parameter(t)
+                        )
+                    })
+                    .unwrap_or_else(|| format!("0,{}", format_htm_parameter(t))),
+            )
+        }
+        GroupKind::Midpoint => ("Midpoint", format_ref_args(refs, ordinal_map)),
+        GroupKind::Segment => ("Segment", format_reversed_ref_args(refs, ordinal_map)),
+        GroupKind::Circle | GroupKind::CircleCenterRadius => {
+            ("Circle", format_ref_args(refs, ordinal_map))
+        }
+        GroupKind::Line
+        | GroupKind::MeasurementLine
+        | GroupKind::AxisLine
+        | GroupKind::GraphMeasurementSegment => {
+            ("Line", format_reversed_ref_args(refs, ordinal_map))
+        }
+        GroupKind::LineKind5 => ("Perpendicular", format_reversed_ref_args(refs, ordinal_map)),
+        GroupKind::LineKind6 => ("Parallel", format_reversed_ref_args(refs, ordinal_map)),
+        GroupKind::LineKind7 => ("Bisector", format_ref_args(refs, ordinal_map)),
+        GroupKind::Ray => ("Ray", format_reversed_ref_args(refs, ordinal_map)),
+        GroupKind::Polygon => ("Polygon", format_ref_args(refs, ordinal_map)),
+        GroupKind::ArcOnCircle | GroupKind::CenterArc | GroupKind::ThreePointArc => {
+            ("Arc", format_ref_args(refs, ordinal_map))
+        }
+        GroupKind::RichTextLabel | GroupKind::ButtonLabel => (
+            "FixedText",
+            try_decode_payload_anchor_point(file, group)
+                .ok()
+                .flatten()
+                .map(|anchor| {
+                    let text = try_decode_group_label_text(file, group)
+                        .unwrap_or_default()
+                        .replace('\'', "\\'");
+                    format!(
+                        "{},{},'{}'",
+                        format_number(anchor.x),
+                        format_number(anchor.y),
+                        text
+                    )
+                })
+                .unwrap_or_default(),
+        ),
+        _ => (
+            htm_payload_type_name(group.header.kind()),
+            format_ref_args(refs, ordinal_map),
+        ),
+    }
+}
+
+fn htm_payload_type_name(kind: GroupKind) -> &'static str {
+    match kind {
+        GroupKind::Point => "Point",
+        GroupKind::Midpoint => "Midpoint",
+        GroupKind::Segment => "Segment",
+        GroupKind::Circle | GroupKind::CircleCenterRadius => "Circle",
+        GroupKind::Line
+        | GroupKind::MeasurementLine
+        | GroupKind::AxisLine
+        | GroupKind::GraphMeasurementSegment => "Line",
+        GroupKind::LineKind5 => "Perpendicular",
+        GroupKind::LineKind6 => "Parallel",
+        GroupKind::LineKind7 => "Bisector",
+        GroupKind::Ray => "Ray",
+        GroupKind::Polygon => "Polygon",
+        GroupKind::PointConstraint | GroupKind::PathPoint | GroupKind::ParameterControlledPoint => {
+            "Point on object"
+        }
+        GroupKind::ArcOnCircle | GroupKind::CenterArc | GroupKind::ThreePointArc => "Arc",
+        GroupKind::RichTextLabel | GroupKind::ButtonLabel => "FixedText",
+        GroupKind::FunctionPlot | GroupKind::LegacyFunctionPlot => "Function",
+        GroupKind::ParametricFunctionPlot => "ParametricFunction",
+        GroupKind::ActionButton => "Button",
+        GroupKind::CircleInterior => "CircleInterior",
+        GroupKind::SectorBoundary => "SectorBoundary",
+        GroupKind::CircularSegmentBoundary => "CircularSegmentBoundary",
+        GroupKind::AngleMarker => "AngleMarker",
+        GroupKind::SegmentMarker => "SegmentMarker",
+        GroupKind::Translation => "Translation",
+        GroupKind::Rotation | GroupKind::AngleRotation | GroupKind::ParameterRotation => "Rotation",
+        GroupKind::Scale | GroupKind::RatioScale => "Scale",
+        GroupKind::Reflection => "Reflection",
+        GroupKind::RegularPolygonIteration => "RegularPolygonIteration",
+        GroupKind::IterationBinding => "IterationBinding",
+        GroupKind::ParameterAnchor => "ParameterAnchor",
+        GroupKind::FunctionDefinition => "FunctionDefinition",
+        GroupKind::Unknown(_) => "Unknown",
+        _ => "PayloadObject",
+    }
+}
+
+fn htm_payload_attributes(file: &GspFile, group: &ObjectGroup) -> String {
+    let mut attrs = Vec::new();
+    if group.header.is_hidden() {
+        attrs.push("hidden".to_string());
+        return attrs.join(",");
+    }
+    let htm_label_lives_on_object = matches!(
+        group.header.kind(),
+        GroupKind::Point
+            | GroupKind::Midpoint
+            | GroupKind::PointConstraint
+            | GroupKind::PathPoint
+            | GroupKind::ParameterControlledPoint
+    );
+    if htm_label_lives_on_object
+        && let Some(name) = self::decode::decode_label_name_raw(file, group)
+    {
+        attrs.push(format!("label('{}')", name.replace('\'', "\\'")));
+    }
+    match group.header.kind() {
+        GroupKind::Point => {
+            let color = color_from_style(group.header.style_b);
+            if !matches!(color, [255, 0, 0, 255] | [0, 0, 0, 255]) {
+                attrs.push(htm_color_attr(color));
+            }
+            attrs.push("mediumPoint".to_string());
+        }
+        GroupKind::Midpoint
+        | GroupKind::PointConstraint
+        | GroupKind::PathPoint
+        | GroupKind::ParameterControlledPoint => {
+            let color = color_from_style(group.header.style_b);
+            if color != [0, 0, 0, 255] {
+                attrs.push(htm_color_attr(color));
+            }
+            attrs.push("mediumPoint".to_string());
+        }
+        GroupKind::Segment
+        | GroupKind::Circle
+        | GroupKind::CircleCenterRadius
+        | GroupKind::Line
+        | GroupKind::LineKind5
+        | GroupKind::LineKind6
+        | GroupKind::LineKind7
+        | GroupKind::Ray
+        | GroupKind::MeasurementLine
+        | GroupKind::AxisLine
+        | GroupKind::GraphMeasurementSegment => {
+            attrs.push(htm_rgb_color_attr(color_from_style(group.header.style_b)));
+            attrs.push("mediumLine".to_string());
+            if line_is_dashed(group.header.style_a) {
+                attrs.push("dashed".to_string());
+            }
+        }
+        GroupKind::Polygon => {
+            attrs.push(htm_color_attr(super::geometry::fill_color_from_styles(
+                group.header.style_b,
+                group.header.style_c,
+            )));
+        }
+        _ => {}
+    }
+    attrs.join(",")
+}
+
+fn htm_color_attr(color: [u8; 4]) -> String {
+    match color {
+        [0, 0, 0, _] => "black".to_string(),
+        [255, 0, 0, _] => "red".to_string(),
+        [0, 128, 0, _] | [0, 255, 0, _] => "green".to_string(),
+        [0, 0, 255, _] => "blue".to_string(),
+        [r, g, b, _] => format!("color({r},{g},{b})"),
+    }
+}
+
+fn htm_rgb_color_attr(color: [u8; 4]) -> String {
+    let [r, g, b, _] = color;
+    format!("color({r},{g},{b})")
+}
+
+fn format_ref_args(refs: &[usize], ordinal_map: &BTreeMap<usize, usize>) -> String {
+    refs.iter()
+        .map(|reference| map_htm_ordinal(*reference, ordinal_map).to_string())
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn format_reversed_ref_args(refs: &[usize], ordinal_map: &BTreeMap<usize, usize>) -> String {
+    if refs.len() == 2 {
+        format!(
+            "{},{}",
+            map_htm_ordinal(refs[1], ordinal_map),
+            map_htm_ordinal(refs[0], ordinal_map)
+        )
+    } else {
+        format_ref_args(refs, ordinal_map)
+    }
+}
+
+fn map_htm_ordinal(ordinal: usize, ordinal_map: &BTreeMap<usize, usize>) -> usize {
+    ordinal_map.get(&ordinal).copied().unwrap_or(ordinal)
+}
+
+fn decode_group_point(file: &GspFile, group: &ObjectGroup) -> Option<PointRecord> {
+    group
+        .records
+        .iter()
+        .find(|record| record.record_type == RECORD_POINT_F64_PAIR)
+        .and_then(|record| decode_point_record(record.payload(&file.data)))
+}
+
+fn decode_object_parameter(file: &GspFile, group: &ObjectGroup) -> Option<f64> {
+    group
+        .records
+        .iter()
+        .find(|record| record.record_type == RECORD_BINDING_PAYLOAD)
+        .map(|record| record.payload(&file.data))
+        .filter(|payload| payload.len() >= 12)
+        .map(|payload| read_f64(payload, 4))
+        .filter(|value| value.is_finite())
+}
+
+fn decode_htm_object_parameter(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<f64> {
+    let graph = None;
+    match try_decode_point_constraint(file, groups, group, None, &graph).ok()? {
+        RawPointConstraint::Segment(constraint) => Some(constraint.t),
+        RawPointConstraint::ConstructedLine { t, .. } => Some(t),
+        RawPointConstraint::Polyline { t, .. } => Some(t),
+        RawPointConstraint::PolygonBoundary { t, .. } => Some(t),
+        RawPointConstraint::TranslatedPolygonBoundary { t, .. } => Some(t),
+        RawPointConstraint::Circle(constraint) => {
+            Some((-constraint.unit_y).atan2(constraint.unit_x))
+        }
+        RawPointConstraint::Circular(constraint) => {
+            Some((-constraint.unit_y).atan2(constraint.unit_x))
+        }
+        RawPointConstraint::CircleArc(constraint) => Some(constraint.t),
+        RawPointConstraint::Arc(constraint) => Some(constraint.t),
+    }
+    .or_else(|| decode_object_parameter(file, group))
 }
 
 fn collect_related_group_ordinals(
@@ -2299,6 +2623,12 @@ fn format_ref_list(refs: &[usize]) -> String {
 fn format_number(value: f64) -> String {
     let rounded = if value.abs() < 1e-9 { 0.0 } else { value };
     let text = format!("{rounded:.3}");
+    text.trim_end_matches('0').trim_end_matches('.').to_string()
+}
+
+fn format_htm_parameter(value: f64) -> String {
+    let rounded = if value.abs() < 1e-9 { 0.0 } else { value };
+    let text = format!("{rounded:.6}");
     text.trim_end_matches('0').trim_end_matches('.').to_string()
 }
 
