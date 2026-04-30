@@ -248,6 +248,48 @@ pub(crate) fn remap_label_bindings(
                 *right_index = mapped_right_index;
                 continue;
             }
+            TextLabelBinding::PointAngleValue {
+                start_index,
+                vertex_index,
+                end_index,
+                ..
+            } => {
+                let Some(mapped_start_index) = mapped_index(group_to_point_index, *start_index)
+                else {
+                    label.binding = None;
+                    continue;
+                };
+                let Some(mapped_vertex_index) = mapped_index(group_to_point_index, *vertex_index)
+                else {
+                    label.binding = None;
+                    continue;
+                };
+                let Some(mapped_end_index) = mapped_index(group_to_point_index, *end_index) else {
+                    label.binding = None;
+                    continue;
+                };
+                *start_index = mapped_start_index;
+                *vertex_index = mapped_vertex_index;
+                *end_index = mapped_end_index;
+                continue;
+            }
+            TextLabelBinding::PolygonAreaValue { point_indices, .. } => {
+                let mut mapped_indices = Vec::with_capacity(point_indices.len());
+                let mut missing_point = false;
+                for point_index in point_indices.iter().copied() {
+                    let Some(mapped_index) = mapped_index(group_to_point_index, point_index) else {
+                        missing_point = true;
+                        continue;
+                    };
+                    mapped_indices.push(mapped_index);
+                }
+                if missing_point {
+                    label.binding = None;
+                    continue;
+                }
+                *point_indices = mapped_indices;
+                continue;
+            }
             TextLabelBinding::PolygonBoundaryParameter { point_index, .. } => point_index,
             TextLabelBinding::SegmentParameter { point_index, .. } => point_index,
             TextLabelBinding::SegmentProjectionParameter {

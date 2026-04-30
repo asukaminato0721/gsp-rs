@@ -450,6 +450,39 @@
           return;
         }
         if (
+          binding.kind === "point-distance-value"
+          && typeof binding.name === "string"
+        ) {
+          const value = pointDistanceValue(scene, binding);
+          if (Number.isFinite(value) && parameters.get(binding.name) !== value) {
+            parameters.set(binding.name, value);
+            changed = true;
+          }
+          return;
+        }
+        if (
+          binding.kind === "point-angle-value"
+          && typeof binding.name === "string"
+        ) {
+          const value = pointAngleValue(scene, binding);
+          if (Number.isFinite(value) && parameters.get(binding.name) !== value) {
+            parameters.set(binding.name, value);
+            changed = true;
+          }
+          return;
+        }
+        if (
+          binding.kind === "polygon-area-value"
+          && typeof binding.name === "string"
+        ) {
+          const value = polygonAreaValue(scene, binding);
+          if (Number.isFinite(value) && parameters.get(binding.name) !== value) {
+            parameters.set(binding.name, value);
+            changed = true;
+          }
+          return;
+        }
+        if (
           binding.kind === "point-distance-ratio-value"
           && typeof binding.name === "string"
         ) {
@@ -1246,6 +1279,54 @@
     const denominatorLength = Math.hypot(denominator.x - origin.x, denominator.y - origin.y);
     if (denominatorLength <= 1e-9) return null;
     return Math.hypot(numerator.x - origin.x, numerator.y - origin.y) / denominatorLength;
+  }
+
+  /**
+   * @param {ViewerSceneData} scene
+   * @param {{ leftIndex: number, rightIndex: number, valueScale?: number | null }} binding
+   */
+  function pointDistanceValue(scene, binding) {
+    const left = scene.points[binding.leftIndex];
+    const right = scene.points[binding.rightIndex];
+    if (!left || !right) return null;
+    return Math.hypot(right.x - left.x, right.y - left.y) * (binding.valueScale ?? 1);
+  }
+
+  /**
+   * @param {ViewerSceneData} scene
+   * @param {{ startIndex: number, vertexIndex: number, endIndex: number }} binding
+   */
+  function pointAngleValue(scene, binding) {
+    const start = scene.points[binding.startIndex];
+    const vertex = scene.points[binding.vertexIndex];
+    const end = scene.points[binding.endIndex];
+    if (!start || !vertex || !end) return null;
+    const first = { x: start.x - vertex.x, y: start.y - vertex.y };
+    const second = { x: end.x - vertex.x, y: end.y - vertex.y };
+    const firstLen = Math.hypot(first.x, first.y);
+    const secondLen = Math.hypot(second.x, second.y);
+    if (firstLen <= 1e-9 || secondLen <= 1e-9) return null;
+    const cross = (first.x / firstLen) * (second.y / secondLen)
+      - (first.y / firstLen) * (second.x / secondLen);
+    const dot = (first.x / firstLen) * (second.x / secondLen)
+      + (first.y / firstLen) * (second.y / secondLen);
+    return Math.abs(Math.atan2(cross, dot)) * 180 / Math.PI;
+  }
+
+  /**
+   * @param {ViewerSceneData} scene
+   * @param {{ pointIndices: number[], valueScale?: number | null }} binding
+   */
+  function polygonAreaValue(scene, binding) {
+    const points = binding.pointIndices.map((index) => scene.points[index]);
+    if (points.length < 3 || points.some((point) => !point)) return null;
+    let twiceArea = 0;
+    for (let index = 0; index < points.length; index += 1) {
+      const left = points[index];
+      const right = points[(index + 1) % points.length];
+      twiceArea += left.x * right.y - right.x * left.y;
+    }
+    return Math.abs(twiceArea) * 0.5 * (binding.valueScale ?? 1);
   }
 
   /**
@@ -3132,10 +3213,20 @@
       label.richMarkup = buildPlainTextRichMarkup(label.text);
     },
     "point-distance-value"(env, scene, label) {
-      const left = scene.points[label.binding.leftIndex];
-      const right = scene.points[label.binding.rightIndex];
-      if (!left || !right) return;
-      const value = Math.hypot(right.x - left.x, right.y - left.y);
+      const value = pointDistanceValue(scene, label.binding);
+      if (value === null) return;
+      label.text = `${label.binding.name} = ${env.formatNumber(value)}${label.binding.valueSuffix || ""}`;
+      label.richMarkup = buildPlainTextRichMarkup(label.text);
+    },
+    "point-angle-value"(env, scene, label) {
+      const value = pointAngleValue(scene, label.binding);
+      if (value === null) return;
+      label.text = `${label.binding.name} = ${value.toFixed(2)}${label.binding.valueSuffix || ""}`;
+      label.richMarkup = buildPlainTextRichMarkup(label.text);
+    },
+    "polygon-area-value"(env, scene, label) {
+      const value = polygonAreaValue(scene, label.binding);
+      if (value === null) return;
       label.text = `${label.binding.name} = ${env.formatNumber(value)}${label.binding.valueSuffix || ""}`;
       label.richMarkup = buildPlainTextRichMarkup(label.text);
     },

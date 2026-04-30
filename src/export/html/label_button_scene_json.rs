@@ -454,6 +454,30 @@ enum LabelBindingJson {
         #[serde(rename = "rightIndex")]
         right_index: usize,
         name: String,
+        #[serde(rename = "valueScale")]
+        value_scale: f64,
+        #[serde(rename = "valueSuffix")]
+        value_suffix: String,
+    },
+    #[serde(rename = "point-angle-value")]
+    PointAngleValue {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "vertexIndex")]
+        vertex_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+        name: String,
+        #[serde(rename = "valueSuffix")]
+        value_suffix: String,
+    },
+    #[serde(rename = "polygon-area-value")]
+    PolygonAreaValue {
+        #[serde(rename = "pointIndices")]
+        point_indices: Vec<usize>,
+        name: String,
+        #[serde(rename = "valueScale")]
+        value_scale: f64,
         #[serde(rename = "valueSuffix")]
         value_suffix: String,
     },
@@ -643,11 +667,37 @@ impl LabelBindingJson {
                 left_index,
                 right_index,
                 name,
+                value_scale,
                 value_suffix,
             } => Self::PointDistanceValue {
                 left_index: *left_index,
                 right_index: *right_index,
                 name: name.clone(),
+                value_scale: *value_scale,
+                value_suffix: value_suffix.clone(),
+            },
+            TextLabelBinding::PointAngleValue {
+                start_index,
+                vertex_index,
+                end_index,
+                name,
+                value_suffix,
+            } => Self::PointAngleValue {
+                start_index: *start_index,
+                vertex_index: *vertex_index,
+                end_index: *end_index,
+                name: name.clone(),
+                value_suffix: value_suffix.clone(),
+            },
+            TextLabelBinding::PolygonAreaValue {
+                point_indices,
+                name,
+                value_scale,
+                value_suffix,
+            } => Self::PolygonAreaValue {
+                point_indices: point_indices.clone(),
+                name: name.clone(),
+                value_scale: *value_scale,
                 value_suffix: value_suffix.clone(),
             },
             TextLabelBinding::PointDistanceRatioValue {

@@ -16,6 +16,7 @@ use super::points::{
     try_decode_point_constraint,
 };
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_u32};
+use crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT;
 use crate::runtime::extract::iteration_depth::decode_iteration_depth_expr;
 use crate::runtime::functions::{
     FunctionExpr, evaluate_expr_with_parameters, function_expr_label, try_decode_function_expr,
@@ -936,6 +937,92 @@ fn distance_value_label_name(
     "距离".to_string()
 }
 
+fn measurement_screen_anchor(file: &GspFile, group: &ObjectGroup) -> Option<PointRecord> {
+    group.records.iter().find_map(|record| {
+        matches!(record.record_type, 0x0903 | 0x0907)
+            .then(|| decode_text_anchor(record.payload(&file.data)))
+            .flatten()
+    })
+}
+
+fn point_label_or_default(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    index: usize,
+    default: &str,
+) -> String {
+    groups
+        .get(index)
+        .and_then(|group| decode_label_name(file, group))
+        .unwrap_or_else(|| default.to_string())
+}
+
+fn measured_segment_points_and_name(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<(usize, usize, String)> {
+    let path = find_indexed_path(file, group)?;
+    let host_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+    let host_path = find_indexed_path(file, host_group)?;
+    if host_path.refs.len() != 2 {
+        return None;
+    }
+    let left_index = host_path.refs[0].checked_sub(1)?;
+    let right_index = host_path.refs[1].checked_sub(1)?;
+    let left_name = point_label_or_default(file, groups, left_index, "P");
+    let right_name = point_label_or_default(file, groups, right_index, "Q");
+    Some((left_index, right_index, format!("{left_name}{right_name}")))
+}
+
+fn angle_value_label_name(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    path: &crate::format::IndexedPathRecord,
+) -> String {
+    let start = point_label_or_default(file, groups, path.refs[0].saturating_sub(1), "P");
+    let vertex = point_label_or_default(file, groups, path.refs[1].saturating_sub(1), "Q");
+    let end = point_label_or_default(file, groups, path.refs[2].saturating_sub(1), "R");
+    format!("∠{start}{vertex}{end}")
+}
+
+fn polygon_area_label_name(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    path: &crate::format::IndexedPathRecord,
+) -> String {
+    let names = path
+        .refs
+        .iter()
+        .enumerate()
+        .map(|(index, ordinal)| {
+            point_label_or_default(
+                file,
+                groups,
+                ordinal.saturating_sub(1),
+                &format!("P{index}"),
+            )
+        })
+        .collect::<String>();
+    if path.refs.len() == 3 {
+        format!("△{names}的面积")
+    } else {
+        format!("{names}的面积")
+    }
+}
+
+fn polygon_area_for_points(points: &[PointRecord]) -> Option<f64> {
+    if points.len() < 3 {
+        return None;
+    }
+    let twice_area = points
+        .iter()
+        .zip(points.iter().cycle().skip(1))
+        .map(|(left, right)| left.x * right.y - right.x * left.y)
+        .sum::<f64>();
+    Some(twice_area.abs() * 0.5)
+}
+
 fn measurement_label_decimals(text: &str) -> Option<usize> {
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -1154,9 +1241,117 @@ pub(super) fn collect_coordinate_labels(
                     left_index: path.refs[0].saturating_sub(1),
                     right_index: path.refs[1].saturating_sub(1),
                     name,
+                    value_scale: graph
+                        .as_ref()
+                        .map(|(_, raw_per_unit)| 1.0 / raw_per_unit)
+                        .unwrap_or(1.0),
                     value_suffix: " 厘米".to_string(),
                 }),
                 screen_space: false,
+                debug: Some(payload_debug_source(group)),
+                ..Default::default()
+            });
+        } else if kind == crate::format::GroupKind::MeasuredValue
+            && let Some((left_index, right_index, name)) =
+                measured_segment_points_and_name(file, groups, group)
+            && let (Some(left), Some(right)) = (
+                anchors.get(left_index).cloned().flatten(),
+                anchors.get(right_index).cloned().flatten(),
+            )
+        {
+            let value = ((right.x - left.x).powi(2) + (right.y - left.y).powi(2)).sqrt()
+                / DEFAULT_GRAPH_RAW_PER_UNIT;
+            labels.push(TextLabel {
+                anchor: measurement_screen_anchor(file, group).unwrap_or(PointRecord {
+                    x: (left.x + right.x) * 0.5,
+                    y: (left.y + right.y) * 0.5,
+                }),
+                text: format!("{name} = {} 厘米", format_number(value)),
+                color: [30, 30, 30, 255],
+                visible: helper_visible,
+                binding: Some(TextLabelBinding::PointDistanceValue {
+                    left_index,
+                    right_index,
+                    name,
+                    value_scale: 1.0 / DEFAULT_GRAPH_RAW_PER_UNIT,
+                    value_suffix: " 厘米".to_string(),
+                }),
+                screen_space: true,
+                debug: Some(payload_debug_source(group)),
+                ..Default::default()
+            });
+        } else if kind == crate::format::GroupKind::AngleValue
+            && let Some(path) = find_indexed_path(file, group)
+            && path.refs.len() >= 3
+            && let (Some(start), Some(vertex), Some(end)) = (
+                anchors
+                    .get(path.refs[0].saturating_sub(1))
+                    .cloned()
+                    .flatten(),
+                anchors
+                    .get(path.refs[1].saturating_sub(1))
+                    .cloned()
+                    .flatten(),
+                anchors
+                    .get(path.refs[2].saturating_sub(1))
+                    .cloned()
+                    .flatten(),
+            )
+        {
+            let name = angle_value_label_name(file, groups, &path);
+            let value = crate::runtime::geometry::angle_degrees_from_points(&start, &vertex, &end)
+                .unwrap_or(0.0);
+            labels.push(TextLabel {
+                anchor: measurement_screen_anchor(file, group).unwrap_or(vertex),
+                text: format!("{name} = {value:.2}°"),
+                color: [30, 30, 30, 255],
+                visible: helper_visible,
+                binding: Some(TextLabelBinding::PointAngleValue {
+                    start_index: path.refs[0].saturating_sub(1),
+                    vertex_index: path.refs[1].saturating_sub(1),
+                    end_index: path.refs[2].saturating_sub(1),
+                    name,
+                    value_suffix: "°".to_string(),
+                }),
+                screen_space: true,
+                debug: Some(payload_debug_source(group)),
+                ..Default::default()
+            });
+        } else if kind == crate::format::GroupKind::PolygonAreaValue
+            && let Some(path) = find_indexed_path(file, group)
+            && let Some(polygon_group) = path
+                .refs
+                .first()
+                .and_then(|ordinal| groups.get(ordinal.saturating_sub(1)))
+            && let Some(polygon_path) = find_indexed_path(file, polygon_group)
+        {
+            let point_indices = polygon_path
+                .refs
+                .iter()
+                .map(|ordinal| ordinal.saturating_sub(1))
+                .collect::<Vec<_>>();
+            let points = point_indices
+                .iter()
+                .filter_map(|index| anchors.get(*index).cloned().flatten())
+                .collect::<Vec<_>>();
+            let name = polygon_area_label_name(file, groups, &polygon_path);
+            let value = polygon_area_for_points(&points)
+                .map(|area| area / (DEFAULT_GRAPH_RAW_PER_UNIT * DEFAULT_GRAPH_RAW_PER_UNIT))
+                .unwrap_or(0.0);
+            labels.push(TextLabel {
+                anchor: measurement_screen_anchor(file, group)
+                    .or_else(|| decode_label_anchor(file, group, anchors))
+                    .unwrap_or(PointRecord { x: 0.0, y: 0.0 }),
+                text: format!("{name} = {} 平方厘米", format_number(value)),
+                color: [30, 30, 30, 255],
+                visible: helper_visible,
+                binding: Some(TextLabelBinding::PolygonAreaValue {
+                    point_indices,
+                    name,
+                    value_scale: 1.0 / (DEFAULT_GRAPH_RAW_PER_UNIT * DEFAULT_GRAPH_RAW_PER_UNIT),
+                    value_suffix: " 平方厘米".to_string(),
+                }),
+                screen_space: true,
                 debug: Some(payload_debug_source(group)),
                 ..Default::default()
             });
@@ -1269,6 +1464,10 @@ pub(super) fn collect_coordinate_labels(
                             .then_some("numeric-helper");
                         Some((expr, parameter_name, parameter_value, semantic_kind))
                     })
+                    .or_else(|| {
+                        let expr = try_decode_function_expr(file, groups, group).ok()?;
+                        Some((expr, String::new(), 0.0, Some("multi-parameter")))
+                    })
             && let Some(anchor) = try_decode_payload_anchor_point(file, group)
                 .ok()
                 .flatten()
@@ -1295,8 +1494,11 @@ pub(super) fn collect_coordinate_labels(
             let binding = if semantic_kind == Some("numeric-helper") {
                 numeric_helper_axis_binding(file, groups, group, &expr_label)
             } else {
-                (matches!(semantic_kind, None | Some("regular-polygon-angle"))
-                    && is_editable_non_graph_parameter_name(&parameter_name))
+                (matches!(
+                    semantic_kind,
+                    None | Some("regular-polygon-angle") | Some("multi-parameter")
+                ) && (semantic_kind == Some("multi-parameter")
+                    || is_editable_non_graph_parameter_name(&parameter_name)))
                 .then(|| TextLabelBinding::ExpressionValue {
                     parameter_name: parameter_name.clone(),
                     result_name: decode_label_name(file, group),

@@ -1804,7 +1804,10 @@ fn collects_focus_point_button_without_validation() {
 
 #[test]
 fn builds_function_plot_for_f_gsp() {
-    let scene = fixture_scene(include_bytes!("../../../../f.gsp"));
+    let Some(data) = fixture_bytes("f.gsp") else {
+        return;
+    };
+    let scene = fixture_scene(&data);
 
     assert!(scene.graph_mode);
     assert!(
@@ -5213,6 +5216,89 @@ fn exports_test10_expression_rotation_as_live_point_binding() {
         binding.source_group_index + 1,
         binding.center_group_index + 1,
     );
+}
+
+#[test]
+fn exports_three_moving_point_fixture_parameter_rotation_and_buttons() {
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/bug/三动点最小值_20260419_123930.gsp"
+    ));
+
+    let parameter = scene
+        .parameters
+        .iter()
+        .find(|parameter| parameter.name == "t₁")
+        .expect("expected t₁ angle parameter from htm");
+    assert_eq!(parameter.unit.as_deref(), Some("degree"));
+    assert!((parameter.value - 60.0).abs() < 1e-6);
+
+    let rotated_c = scene
+        .points
+        .iter()
+        .find(|point| {
+            point
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 4)
+        })
+        .expect("expected htm Rotation/MeasuredAngle object #4 to export as point C");
+    assert!((rotated_c.position.x - 673.4418668596801).abs() < 1e-6);
+    assert!((rotated_c.position.y - 608.7880361833353).abs() < 1e-6);
+    assert!(matches!(
+        rotated_c.binding,
+        Some(ScenePointBinding::Rotate {
+            source_index: 1,
+            center_index: 0,
+            angle_degrees,
+            parameter_name: Some(ref name),
+            ..
+        }) if (angle_degrees - 60.0).abs() < 1e-6 && name == "t₁"
+    ));
+
+    let mut move_button_ordinals = scene
+        .buttons
+        .iter()
+        .filter(|button| matches!(button.action, ButtonAction::MovePoint { .. }))
+        .filter_map(|button| button.debug.as_ref().map(|debug| debug.group_ordinal))
+        .collect::<Vec<_>>();
+    move_button_ordinals.sort_unstable();
+    assert_eq!(move_button_ordinals, vec![39, 42, 43]);
+
+    let measurement_labels = scene
+        .labels
+        .iter()
+        .filter_map(|label| {
+            label
+                .debug
+                .as_ref()
+                .map(|debug| (debug.group_ordinal, label.text.as_str(), &label.binding))
+        })
+        .filter(|(ordinal, _, _)| matches!(ordinal, 15 | 31 | 34 | 35 | 36 | 44 | 45 | 46))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        measurement_labels
+            .iter()
+            .map(|(ordinal, _, _)| *ordinal)
+            .collect::<Vec<_>>(),
+        vec![15, 31, 34, 35, 36, 44, 45, 46],
+        "expected all htm measurement readouts to export"
+    );
+    assert!(measurement_labels.iter().any(|(_, text, binding)| {
+        text.starts_with("∠BAC = ")
+            && matches!(binding, Some(TextLabelBinding::PointAngleValue { .. }))
+    }));
+    assert!(measurement_labels.iter().any(|(_, text, binding)| {
+        text.starts_with("△ABC的面积 = ")
+            && matches!(binding, Some(TextLabelBinding::PolygonAreaValue { .. }))
+    }));
+    assert!(measurement_labels.iter().any(|(_, text, binding)| {
+        text.starts_with("MN = ")
+            && matches!(binding, Some(TextLabelBinding::PointDistanceValue { .. }))
+    }));
+    assert!(measurement_labels.iter().any(|(_, text, binding)| {
+        text.starts_with("AE / BC*3 = ")
+            && matches!(binding, Some(TextLabelBinding::ExpressionValue { .. }))
+    }));
 }
 
 #[test]

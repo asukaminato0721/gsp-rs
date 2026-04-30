@@ -352,6 +352,9 @@ pub(super) fn decode_angle_parameter_value_for_group(
         .iter()
         .find(|record| record.record_type == 0x0907)
         .map(|record| record.payload(&file.data))?;
+    if decode_parameter_unit_from_payload(payload) == Some("degree") {
+        return try_decode_parameter_control_value_for_group(file, &[], group).ok();
+    }
     let current = decode_non_graph_parameter_value(payload)?;
     let max = (payload.len() >= 76)
         .then(|| read_f64(payload, 68))

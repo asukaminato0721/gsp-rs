@@ -985,6 +985,20 @@ pub(crate) enum TextLabelBinding {
         left_index: usize,
         right_index: usize,
         name: String,
+        value_scale: f64,
+        value_suffix: String,
+    },
+    PointAngleValue {
+        start_index: usize,
+        vertex_index: usize,
+        end_index: usize,
+        name: String,
+        value_suffix: String,
+    },
+    PolygonAreaValue {
+        point_indices: Vec<usize>,
+        name: String,
+        value_scale: f64,
         value_suffix: String,
     },
     PointDistanceRatioValue {
