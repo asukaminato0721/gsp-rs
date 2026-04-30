@@ -4,4 +4,4 @@ import type { DebugSourceJson } from "./DebugSourceJson";
 import type { PointJson } from "./PointJson";
 import type { ShapeBindingJson } from "./ShapeBindingJson";
 
-export type CircleJson = { center: PointJson, radiusPoint: PointJson, color: [number, number, number, number], fillColor: [number, number, number, number] | null, fillColorBinding: ColorBindingJson | null, dashed: boolean, visible: boolean, binding: ShapeBindingJson | null, debug: DebugSourceJson | null, };
+export type CircleJson = { center: PointJson, radiusPoint: PointJson, color: [number, number, number, number], fillColor: [number, number, number, number] | null, fillVisible: boolean, fillColorBinding: ColorBindingJson | null, dashed: boolean, visible: boolean, binding: ShapeBindingJson | null, debug: DebugSourceJson | null, };

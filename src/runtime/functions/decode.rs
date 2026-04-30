@@ -600,35 +600,35 @@ fn resolve_helper_group_anchor(
     ordinal: usize,
 ) -> Option<crate::format::PointRecord> {
     let group = groups.get(ordinal.checked_sub(1)?)?;
-    crate::runtime::extract::points::decode_graph_calibration_anchor_raw(group, graph)
-        .or_else(|| {
-            let path = find_indexed_path(file, group)?;
-            let base = anchors
-                .get(path.refs.first()?.checked_sub(1)?)
-                .cloned()
-                .flatten()?;
-            match group.header.kind() {
-                crate::format::GroupKind::GraphCalibrationX => Some(crate::format::PointRecord {
-                    x: base.x + DEFAULT_GRAPH_RAW_PER_UNIT,
-                    y: base.y,
-                }),
-                crate::format::GroupKind::GraphCalibrationY
-                | crate::format::GroupKind::GraphCalibrationYAlt => {
-                    Some(crate::format::PointRecord {
-                        x: base.x,
-                        y: base.y - DEFAULT_GRAPH_RAW_PER_UNIT,
-                    })
-                }
-                _ => None,
-            }
-        })
-        .or_else(|| anchors.get(ordinal.checked_sub(1)?).cloned().flatten())
-        .or_else(|| {
-            let path = find_indexed_path(file, group)?;
-            path.refs
-                .iter()
-                .find_map(|child| anchors.get(child.saturating_sub(1)).cloned().flatten())
-        })
+    crate::runtime::extract::points::decode_graph_calibration_anchor_raw(
+        file, groups, group, anchors, graph,
+    )
+    .or_else(|| {
+        let path = find_indexed_path(file, group)?;
+        let base = anchors
+            .get(path.refs.first()?.checked_sub(1)?)
+            .cloned()
+            .flatten()?;
+        match group.header.kind() {
+            crate::format::GroupKind::GraphCalibrationX => Some(crate::format::PointRecord {
+                x: base.x + DEFAULT_GRAPH_RAW_PER_UNIT,
+                y: base.y,
+            }),
+            crate::format::GroupKind::GraphCalibrationY
+            | crate::format::GroupKind::GraphCalibrationYAlt => Some(crate::format::PointRecord {
+                x: base.x,
+                y: base.y - DEFAULT_GRAPH_RAW_PER_UNIT,
+            }),
+            _ => None,
+        }
+    })
+    .or_else(|| anchors.get(ordinal.checked_sub(1)?).cloned().flatten())
+    .or_else(|| {
+        let path = find_indexed_path(file, group)?;
+        path.refs
+            .iter()
+            .find_map(|child| anchors.get(child.saturating_sub(1)).cloned().flatten())
+    })
 }
 
 fn resolve_helper_group_length_raw(
@@ -1228,7 +1228,8 @@ fn decode_runtime_parameter_binding(
     }
     if is_function_like_group(group) {
         let expr = decode_function_expr_recursive(file, groups, group, visiting).ok()?;
-        let name = group_name(file, group).unwrap_or_else(|| function_expr_label(expr.clone()));
+        let name =
+            group_name(file, groups, group).unwrap_or_else(|| function_expr_label(expr.clone()));
         let value = evaluate_function_group_recursive(file, groups, group, overrides, visiting)?;
         return Some(ParameterBinding::value(name, value));
     }
@@ -1264,7 +1265,8 @@ fn decode_parameter_binding_recursive(
     }
     if is_function_like_group(group) {
         let expr = decode_function_expr_recursive(file, groups, group, visiting).ok()?;
-        let name = group_name(file, group).unwrap_or_else(|| function_expr_label(expr.clone()));
+        let name =
+            group_name(file, groups, group).unwrap_or_else(|| function_expr_label(expr.clone()));
         let value = evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new());
         if !inline_function_refs || function_expr_contains_variable(&expr) {
             return value.map(|value| ParameterBinding::value(name, value));
@@ -1454,16 +1456,49 @@ fn decode_measured_value_binding(
         return None;
     }
 
-    let name = group_name(file, group).or_else(|| segment_name(file, groups, host_group))?;
+    let name =
+        group_name(file, groups, group).or_else(|| segment_name(file, groups, host_group))?;
     Some(ParameterBinding::value(name, value))
 }
 
-fn group_name(file: &GspFile, group: &ObjectGroup) -> Option<String> {
+fn group_name(file: &GspFile, groups: &[ObjectGroup], group: &ObjectGroup) -> Option<String> {
     group
         .records
         .iter()
         .find(|record| record.record_type == RECORD_LABEL_AUX)
         .and_then(|record| decode_parameter_name(record.payload(&file.data)))
+        .or_else(|| numeric_helper_group_name(file, groups, group))
+}
+
+fn numeric_helper_group_name(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<String> {
+    if group.header.kind() != crate::format::GroupKind::DistanceValue {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() == 1 {
+        return path
+            .refs
+            .first()
+            .and_then(|ordinal| groups.get(ordinal.checked_sub(1)?))
+            .and_then(|group| group_name(file, groups, group));
+    }
+    let left = path
+        .refs
+        .first()
+        .and_then(|ordinal| groups.get(ordinal.checked_sub(1)?))
+        .and_then(|group| group_name(file, groups, group))
+        .unwrap_or_else(|| "P".to_string());
+    let right = path
+        .refs
+        .get(1)
+        .and_then(|ordinal| groups.get(ordinal.checked_sub(1)?))
+        .and_then(|group| group_name(file, groups, group))
+        .unwrap_or_else(|| "Q".to_string());
+    Some(format!("{left}{right}"))
 }
 
 fn segment_name(
@@ -1475,7 +1510,7 @@ fn segment_name(
     let names = path
         .refs
         .iter()
-        .map(|ordinal| group_name(file, groups.get(ordinal.checked_sub(1)?)?))
+        .map(|ordinal| group_name(file, groups, groups.get(ordinal.checked_sub(1)?)?))
         .collect::<Option<Vec<_>>>()?;
     (names.len() >= 2).then(|| names.join(""))
 }
@@ -2077,13 +2112,6 @@ fn parse_postfix_function_expr_from_words(
                 index += 1 + postfix_suffix_width(word, words.get(index + 1).copied());
             }
             _ if decode_unary_function(word).is_some() => {
-                if let Ok((expr, end)) = parse_function_expr_from(words, index, parameters)
-                    && end > index + 1
-                {
-                    stack.push(expr);
-                    index = end;
-                    continue;
-                }
                 let expr = stack.pop().ok_or(FunctionExprParseError::UnexpectedToken {
                     offset: index,
                     found: FunctionToken::Unary(decode_unary_function(word).unwrap()),
@@ -2124,6 +2152,14 @@ pub(crate) fn try_decode_inner_function_expr(
         .collect::<Vec<_>>();
     if let Some(ast) = try_decode_special_grouped_payload(&words, parameters) {
         return Ok(canonicalize_function_expr(ast));
+    }
+    if words.contains(&0x000b)
+        && let Ok(ast) = parse_grouped_function_expr_from_words(&words, parameters)
+    {
+        return Ok(canonicalize_function_expr(ast));
+    }
+    if let Ok(expr) = decode_embedded_postfix_payload_function_expr(payload, parameters) {
+        return Ok(expr);
     }
     let parsed = if words.contains(&0x000b) {
         parse_grouped_function_expr_from_words(&words, parameters)
@@ -2441,6 +2477,27 @@ impl<'a> GroupedFunctionParser<'a> {
         }
     }
 
+    fn skip_group_delimiter_before_infix(&mut self) {
+        if self.offset >= self.words.len() || self.words[self.offset] != 0x000c {
+            return;
+        }
+        let infix_index = self.offset + 1;
+        if !matches!(
+            self.words.get(infix_index).copied(),
+            Some(EXPR_OP_ADD | EXPR_OP_SUB | EXPR_OP_MUL | EXPR_OP_DIV | EXPR_OP_POW)
+        ) {
+            return;
+        }
+        let has_group_close_before_nested_group = self.words[infix_index + 1..]
+            .iter()
+            .copied()
+            .find(|word| matches!(*word, 0x000b | 0x000c))
+            == Some(0x000c);
+        if has_group_close_before_nested_group {
+            self.offset += 1;
+        }
+    }
+
     fn parse_expr(&mut self, min_bp: u8) -> Result<FunctionAst, FunctionExprParseError> {
         let mut lhs = self.parse_prefix()?;
         loop {
@@ -2453,6 +2510,27 @@ impl<'a> GroupedFunctionParser<'a> {
             }
             let _ = self.bump()?;
             let rhs = self.parse_expr(right_bp)?;
+            lhs = FunctionAst::Binary {
+                lhs: Box::new(lhs),
+                op,
+                rhs: Box::new(rhs),
+            };
+        }
+        Ok(lhs)
+    }
+
+    fn parse_group_body(&mut self, min_bp: u8) -> Result<FunctionAst, FunctionExprParseError> {
+        let mut lhs = self.parse_prefix()?;
+        loop {
+            self.skip_group_delimiter_before_infix();
+            let Some((op, left_bp, right_bp)) = self.peek_infix()? else {
+                break;
+            };
+            if left_bp < min_bp {
+                break;
+            }
+            let _ = self.bump()?;
+            let rhs = self.parse_group_body(right_bp)?;
             lhs = FunctionAst::Binary {
                 lhs: Box::new(lhs),
                 op,
@@ -2506,7 +2584,7 @@ impl<'a> GroupedFunctionParser<'a> {
                 })
             }
             GroupedFunctionToken::LParen => {
-                let expr = self.parse_expr_no_delim(0)?;
+                let expr = self.parse_group_body(0)?;
                 match self.bump()? {
                     GroupedFunctionToken::RParen => Ok(expr),
                     found => Err(FunctionExprParseError::UnexpectedToken {
@@ -2532,7 +2610,7 @@ impl<'a> GroupedFunctionParser<'a> {
         let offset = self.base_offset + self.offset;
         match self.bump()? {
             GroupedFunctionToken::LParen => {
-                let expr = self.parse_expr(0)?;
+                let expr = self.parse_group_body(0)?;
                 if self.allow_unclosed_unary_argument && self.offset >= self.words.len() {
                     return Ok(expr);
                 }
@@ -2635,10 +2713,10 @@ fn parse_grouped_function_expr_from_words(
     if let Some(ast) = parse_grouped_function_expr_after_marker(&normalized, parameters) {
         return Ok(ast);
     }
-    if let Some(ast) = best_grouped_parse_candidate(&normalized, parameters) {
+    if let Some(ast) = best_grouped_parse_candidate(words, parameters) {
         return Ok(ast);
     }
-    if let Some(ast) = best_grouped_parse_candidate(words, parameters) {
+    if let Some(ast) = best_grouped_parse_candidate(&normalized, parameters) {
         return Ok(ast);
     }
     let mut first_error = None;
@@ -2995,6 +3073,41 @@ mod parse_tests {
                 op: BinaryOp::Div,
                 rhs: Box::new(FunctionAst::Constant(2.0)),
             }))
+        );
+    }
+
+    #[test]
+    fn decodes_grouped_sign_membership_expr_without_postfix_flattening() {
+        let payload = payload_from_words(&[
+            0x000b, 0x200a, 0x6000, 0x1000, 0x6001, 0x1001, 0x000f, 0x000c, 0x1000, 0x0001, 0x000c,
+            0x1003, 0x0002,
+        ]);
+        let parameters = BTreeMap::from([
+            (
+                0u16,
+                ParameterBinding {
+                    name: "R".to_string(),
+                    value: 1.0,
+                    expr: None,
+                },
+            ),
+            (
+                1u16,
+                ParameterBinding {
+                    name: "r".to_string(),
+                    value: 0.5,
+                    expr: None,
+                },
+            ),
+        ]);
+        let expr = try_decode_inner_function_expr(&payload, &parameters).expect("expression");
+        assert_eq!(
+            function_expr_label(expr.clone()),
+            "(sgn(R + r - x) + 1) / 2"
+        );
+        assert_eq!(
+            evaluate_expr_with_parameters(&expr, 1.6, &BTreeMap::new()),
+            Some(0.0)
         );
     }
 

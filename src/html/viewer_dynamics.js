@@ -358,7 +358,7 @@
         return "180";
       case "unary": {
         /** @type {string} */
-        const inner = formatExprAst(expr.expr, formatAxisNumber, variableLabel, 4);
+        const inner = formatExprAst(expr.expr, formatAxisNumber, variableLabel, 0);
         if (expr.op === "abs") return `|${inner}|`;
         if (expr.op === "sqrt") {
           return expr.expr?.kind === "binary" ? `√(${inner})` : `√${inner}`;
@@ -700,6 +700,16 @@
       return;
     }
     Object.entries(/** @type {Record<string, unknown>} */ (value)).forEach(([key, child]) => {
+      if (key === "expr" && child && typeof child === "object") {
+        addExprParameterDeps(
+          deps,
+          /** @type {FunctionExprJson | FunctionAstJson} */ (child),
+          knownParameters,
+          derivedParameterDeps,
+        );
+        collectSceneDependencyIds(deps, child, knownParameters, derivedParameterDeps);
+        return;
+      }
       if (typeof child === "number") {
         if (
           key === "pointIndex"
@@ -717,6 +727,8 @@
           || key === "radiusIndex"
           || key === "startIndex"
           || key === "endIndex"
+          || key === "leftIndex"
+          || key === "rightIndex"
           || key === "midIndex"
           || key === "throughIndex"
           || key === "vertexIndex"
@@ -819,6 +831,9 @@
     if (!binding) return null;
     if (
       (binding.kind === "point-distance-ratio-value"
+        || binding.kind === "point-distance-value"
+        || binding.kind === "point-angle-value"
+        || binding.kind === "polygon-area-value"
         || binding.kind === "parameter-value"
         || binding.kind === "point-axis-value")
       && typeof binding.name === "string"
@@ -1938,6 +1953,88 @@
       .split("<").join("＜")
       .split(">").join("＞")
       .split("*").join("\u00b7")}>>`;
+  }
+
+  /** @param {string} text */
+  function escapeRichText(text) {
+    return String(text)
+      .split("&").join("＆")
+      .split("<").join("＜")
+      .split(">").join("＞")
+      .split("*").join("\u00b7");
+  }
+
+  /**
+   * @param {string | null | undefined} markup
+   * @param {Map<number, string>} valuesBySlot
+   */
+  function replaceRichMarkupPathValues(markup, valuesBySlot) {
+    if (typeof markup !== "string" || valuesBySlot.size === 0) {
+      return markup || null;
+    }
+    let output = "";
+    let index = 0;
+    while (index < markup.length) {
+      if (!markup.startsWith("<?1x", index)) {
+        output += markup[index];
+        index += 1;
+        continue;
+      }
+      const nodeStart = index;
+      let nameEnd = index + 4;
+      while (nameEnd < markup.length && markup[nameEnd] !== "<" && markup[nameEnd] !== ">") {
+        nameEnd += 1;
+      }
+      const slotText = markup.slice(index + 4, nameEnd);
+      const slot = /^\d+$/.test(slotText)
+        ? Number(slotText)
+        : (/^B\d+$/.test(slotText) ? Number(slotText.slice(1)) : NaN);
+      const replacement = valuesBySlot.get(slot);
+      if (replacement === undefined || markup[nameEnd] !== "<") {
+        output += markup.slice(nodeStart, nameEnd);
+        index = nameEnd;
+        continue;
+      }
+      let depth = 1;
+      let end = nameEnd;
+      while (end < markup.length) {
+        if (markup[end] === "<") {
+          depth += 1;
+        } else if (markup[end] === ">") {
+          depth -= 1;
+          if (depth === 0) {
+            end += 1;
+            break;
+          }
+        }
+        end += 1;
+      }
+      if (depth !== 0) {
+        output += markup.slice(nodeStart);
+        return output;
+      }
+      output += `<?1x${slotText}<H<T1x${escapeRichText(replacement)}>>>`;
+      index = end;
+    }
+    return output;
+  }
+
+  /**
+   * @param {string} templateText
+   * @param {{ line: number; start: number; end: number; valueText: string }[]} replacements
+   */
+  function replaceTemplateTextRanges(templateText, replacements) {
+    const lines = String(templateText).split("\n").map((line) => Array.from(line));
+    [...replacements]
+      .sort((left, right) => right.line - left.line || right.start - left.start)
+      .forEach((replacement) => {
+        const line = lines[replacement.line];
+        if (!line) return;
+        const start = Math.max(0, Math.min(line.length, replacement.start));
+        const end = Math.max(start, Math.min(line.length, replacement.end));
+        line.splice(start, end - start, ...Array.from(replacement.valueText));
+      });
+    return lines.map((line) => line.join("")).join("\n");
   }
 
   /**
@@ -3240,6 +3337,24 @@
         label.richMarkup = buildPlainTextRichMarkup(label.text);
       }
     },
+    "rich-text-expression-values"(env, _scene, label, parameters) {
+      const valuesBySlot = new Map();
+      const replacements = [];
+      (label.binding.refs || []).forEach((ref) => {
+        const value = evaluateExpr(ref.expr, 0, parameters);
+        const valueText = value !== null ? formatSequenceValue(value) : "未定义";
+        valuesBySlot.set(ref.slot, valueText);
+        replacements.push({
+          line: ref.line,
+          start: ref.start,
+          end: ref.end,
+          valueText,
+        });
+      });
+      label.text = replaceTemplateTextRanges(label.binding.templateText || label.text || "", replacements);
+      label.richMarkup = replaceRichMarkupPathValues(label.binding.templateRichMarkup, valuesBySlot)
+        || buildPlainTextRichMarkup(label.text);
+    },
     "point-coordinate-value"(env, scene, label) {
       const point = scene.points[label.binding.pointIndex];
       if (!point) return;
@@ -4240,6 +4355,7 @@
             },
             color: source.color,
             fillColor: source.fillColor,
+            fillVisible: source.fillVisible !== false,
             fillColorBinding: null,
             dashed: source.dashed,
             visible: family.visible !== false,

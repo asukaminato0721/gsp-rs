@@ -1,6 +1,8 @@
 use super::function_expr_json::FunctionExprJson;
 use super::scene_json::{DebugSourceJson, PointJson};
-use crate::runtime::scene::{ButtonAction, SceneButton, TextLabelBinding, TextLabelHotspotAction};
+use crate::runtime::scene::{
+    ButtonAction, RichTextExpressionRef, SceneButton, TextLabelBinding, TextLabelHotspotAction,
+};
 use serde::Serialize;
 use ts_rs::TS;
 
@@ -434,6 +436,14 @@ enum LabelBindingJson {
         #[serde(rename = "depthParameterName")]
         depth_parameter_name: Option<String>,
     },
+    #[serde(rename = "rich-text-expression-values")]
+    RichTextExpressionValues {
+        #[serde(rename = "templateText")]
+        template_text: String,
+        #[serde(rename = "templateRichMarkup")]
+        template_rich_markup: Option<String>,
+        refs: Vec<RichTextExpressionRefJson>,
+    },
     #[serde(rename = "point-coordinate-value")]
     PointCoordinateValue {
         #[serde(rename = "pointIndex")]
@@ -568,6 +578,31 @@ enum LabelBindingJson {
     },
 }
 
+#[derive(Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+struct RichTextExpressionRefJson {
+    #[serde(rename = "sourceGroupOrdinal")]
+    source_group_ordinal: usize,
+    slot: usize,
+    line: usize,
+    start: usize,
+    end: usize,
+    expr: FunctionExprJson,
+}
+
+impl RichTextExpressionRefJson {
+    fn from_ref(reference: &RichTextExpressionRef) -> Self {
+        Self {
+            source_group_ordinal: reference.source_group_ordinal,
+            slot: reference.slot,
+            line: reference.line,
+            start: reference.start,
+            end: reference.end,
+            expr: FunctionExprJson::from_expr(&reference.expr),
+        }
+    }
+}
+
 impl LabelBindingJson {
     fn from_binding(binding: &TextLabelBinding) -> Self {
         match binding {
@@ -649,6 +684,18 @@ impl LabelBindingJson {
                 expr: FunctionExprJson::from_expr(expr),
                 depth: *depth,
                 depth_parameter_name: depth_parameter_name.clone(),
+            },
+            TextLabelBinding::RichTextExpressionValues {
+                template_text,
+                template_rich_markup,
+                refs,
+            } => Self::RichTextExpressionValues {
+                template_text: template_text.clone(),
+                template_rich_markup: template_rich_markup.clone(),
+                refs: refs
+                    .iter()
+                    .map(RichTextExpressionRefJson::from_ref)
+                    .collect(),
             },
             TextLabelBinding::PointCoordinateValue {
                 point_index,

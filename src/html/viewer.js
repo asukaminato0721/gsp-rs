@@ -594,6 +594,7 @@
       circles: scene.circles.map((circle) => ({
         color: circle.color,
         fillColor: circle.fillColor || null,
+        fillVisible: circle.fillVisible !== false,
         fillColorBinding: circle.fillColorBinding ? { ...circle.fillColorBinding } : null,
         dashed: !!circle.dashed,
         visible: circle.visible !== false,
@@ -1501,7 +1502,7 @@
     const strokeTolerance = 10;
     for (let index = circles.length - 1; index >= 0; index -= 1) {
       const circle = circles[index];
-      if (circle.visible === false) {
+      if (circle.visible === false && !(circle.fillColor && circle.fillVisible !== false)) {
         continue;
       }
       const centerWorld = viewerEnv.resolvePoint(circle.center);
@@ -1518,8 +1519,8 @@
         continue;
       }
       const distance = Math.hypot(screenX - center.x, screenY - center.y);
-      const hitsStroke = Math.abs(distance - radius) <= strokeTolerance;
-      const hitsFill = !!circle.fillColor && distance <= radius;
+      const hitsStroke = circle.visible !== false && Math.abs(distance - radius) <= strokeTolerance;
+      const hitsFill = !!circle.fillColor && circle.fillVisible !== false && distance <= radius;
       if (hitsStroke || hitsFill) {
         return index;
       }

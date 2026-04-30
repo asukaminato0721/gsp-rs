@@ -200,7 +200,8 @@ pub(crate) fn remap_label_bindings(
             TextLabelBinding::ParameterValue { .. }
             | TextLabelBinding::FunctionLabel { .. }
             | TextLabelBinding::ExpressionValue { .. }
-            | TextLabelBinding::SequenceExpressionValue { .. } => continue,
+            | TextLabelBinding::SequenceExpressionValue { .. }
+            | TextLabelBinding::RichTextExpressionValues { .. } => continue,
             TextLabelBinding::PointDistanceRatioValue {
                 origin_index,
                 denominator_index,

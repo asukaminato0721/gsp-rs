@@ -29,7 +29,9 @@ pub(crate) fn collect_raw_object_anchors(
             Some(point)
         } else if is_parameter_control_group(group) {
             try_decode_payload_anchor_point(file, group).ok().flatten()
-        } else if let Some(anchor) = decode_graph_calibration_anchor_raw(group, graph) {
+        } else if let Some(anchor) =
+            decode_graph_calibration_anchor_raw(file, groups, group, &anchors, graph)
+        {
             Some(anchor)
         } else if let Some(anchor) =
             decode_coordinate_expression_anchor_raw(file, groups, group, &anchors, graph)

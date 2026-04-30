@@ -185,12 +185,8 @@ fn is_atomic(expr: &FunctionAst) -> bool {
     )
 }
 
-fn format_unary_call_arg(expr: &FunctionAst, variable: &str, parent_prec: u8) -> String {
-    let inner = format_function_ast(expr, variable, 0);
-    match expr {
-        FunctionAst::Binary { .. } if parent_prec > 0 => format!("({inner})"),
-        _ => inner,
-    }
+fn format_unary_call_arg(expr: &FunctionAst, variable: &str, _parent_prec: u8) -> String {
+    format_function_ast(expr, variable, 0)
 }
 
 fn binary_precedence(op: BinaryOp) -> (u8, bool) {

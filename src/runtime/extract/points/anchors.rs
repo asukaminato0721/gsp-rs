@@ -690,19 +690,33 @@ pub(crate) fn decode_expression_offset_anchor_raw(
 }
 
 pub(crate) fn decode_graph_calibration_anchor_raw(
+    file: &GspFile,
+    _groups: &[ObjectGroup],
     group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
     graph: Option<&GraphTransform>,
 ) -> Option<PointRecord> {
-    let graph = graph?;
+    let unit_length = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x07d3 && record.length == 12)
+        .and_then(|record| {
+            crate::runtime::extract::decode::decode_measurement_value(record.payload(&file.data))
+        })
+        .or_else(|| graph.map(|graph| graph.raw_per_unit))?;
+    let source = find_indexed_path(file, group)
+        .and_then(|path| path.refs.first().copied())
+        .and_then(|ordinal| anchors.get(ordinal.saturating_sub(1)).cloned().flatten())
+        .or_else(|| graph.map(|graph| graph.origin_raw.clone()))?;
     match group.header.kind() {
         crate::format::GroupKind::GraphCalibrationX => Some(PointRecord {
-            x: graph.origin_raw.x + graph.raw_per_unit,
-            y: graph.origin_raw.y,
+            x: source.x + unit_length,
+            y: source.y,
         }),
         crate::format::GroupKind::GraphCalibrationY
         | crate::format::GroupKind::GraphCalibrationYAlt => Some(PointRecord {
-            x: graph.origin_raw.x,
-            y: graph.origin_raw.y - graph.raw_per_unit,
+            x: graph.map(|graph| graph.origin_raw.x).unwrap_or(source.x),
+            y: graph.map(|graph| graph.origin_raw.y).unwrap_or(source.y) - unit_length,
         }),
         _ => None,
     }

@@ -823,6 +823,7 @@ pub(crate) struct SceneCircle {
     pub(crate) radius_point: PointRecord,
     pub(crate) color: [u8; 4],
     pub(crate) fill_color: Option<[u8; 4]>,
+    pub(crate) fill_visible: bool,
     pub(crate) fill_color_binding: Option<ColorBinding>,
     pub(crate) dashed: bool,
     pub(crate) visible: bool,
@@ -934,6 +935,16 @@ pub(crate) enum TextLabelHotspotAction {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct RichTextExpressionRef {
+    pub(crate) source_group_ordinal: usize,
+    pub(crate) slot: usize,
+    pub(crate) line: usize,
+    pub(crate) start: usize,
+    pub(crate) end: usize,
+    pub(crate) expr: FunctionExpr,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) enum TextLabelBinding {
     ParameterValue {
         name: String,
@@ -978,6 +989,11 @@ pub(crate) enum TextLabelBinding {
         expr: FunctionExpr,
         depth: usize,
         depth_parameter_name: Option<String>,
+    },
+    RichTextExpressionValues {
+        template_text: String,
+        template_rich_markup: Option<String>,
+        refs: Vec<RichTextExpressionRef>,
     },
     PointCoordinateValue {
         point_index: usize,

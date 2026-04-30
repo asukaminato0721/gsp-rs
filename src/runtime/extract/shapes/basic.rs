@@ -22,7 +22,7 @@ pub(crate) fn collect_circle_fill_colors(
     file: &GspFile,
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
-) -> BTreeMap<usize, [u8; 4]> {
+) -> BTreeMap<usize, ([u8; 4], bool)> {
     let suppressed_circle_indices = collect_boundary_fill_circle_indices(file, groups, anchors);
     groups
         .iter()
@@ -36,7 +36,10 @@ pub(crate) fn collect_circle_fill_colors(
             }
             Some((
                 circle_group_index,
-                fill_color_from_styles(group.header.style_b, group.header.style_c),
+                (
+                    fill_color_from_styles(group.header.style_b, group.header.style_c),
+                    !group.header.is_hidden(),
+                ),
             ))
         })
         .collect()
@@ -1000,7 +1003,10 @@ pub(crate) fn collect_circle_shapes(
                 center,
                 radius_point,
                 color: color_from_style(group.header.style_b),
-                fill_color: circle_fill_colors.get(&group_index).copied(),
+                fill_color: circle_fill_colors.get(&group_index).map(|fill| fill.0),
+                fill_visible: circle_fill_colors
+                    .get(&group_index)
+                    .is_some_and(|fill| fill.1),
                 fill_color_binding: None,
                 dashed: dashed_circle_indices.contains(&group_index),
                 visible: !group.header.is_hidden(),

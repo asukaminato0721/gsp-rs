@@ -111,6 +111,7 @@ struct CircleShape {
     radius_point: PointRecord,
     color: [u8; 4],
     fill_color: Option<[u8; 4]>,
+    fill_visible: bool,
     fill_color_binding: Option<super::scene::ColorBinding>,
     dashed: bool,
     visible: bool,
@@ -962,6 +963,7 @@ fn apply_payload_color_bindings(
 
         if let Some(circle) = shapes.circles.get_mut(circle_index) {
             circle.fill_color = Some(resolved_fill);
+            circle.fill_visible = true;
             circle.fill_color_binding = Some(binding);
         }
     }
@@ -1209,12 +1211,14 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
         &mut labels,
         show_hidden_parameter_controls,
     ));
+    let button_label_group_to_index =
+        label_group_index_with_debug_ordinals(&labels, &label_group_to_index);
     let (buttons, button_group_to_index) = collect_buttons(
         file,
         &groups,
         &analysis.raw_anchors,
         ButtonIndexLookups {
-            label_group_to_index: &label_group_to_index,
+            label_group_to_index: &button_label_group_to_index,
             image_group_to_index: &image_group_to_index,
             group_to_point_index: &group_to_point_index,
             line_group_to_index: &binding_maps.line_group_to_index,
@@ -1276,6 +1280,19 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
             function_definitions,
         },
     ))
+}
+
+fn label_group_index_with_debug_ordinals(
+    labels: &[TextLabel],
+    base: &BTreeMap<usize, usize>,
+) -> BTreeMap<usize, usize> {
+    let mut expanded = base.clone();
+    for (index, label) in labels.iter().enumerate() {
+        if let Some(group_ordinal) = label.debug.as_ref().map(|debug| debug.group_ordinal) {
+            expanded.entry(group_ordinal).or_insert(index);
+        }
+    }
+    expanded
 }
 
 fn validate_scene_payloads(file: &GspFile, groups: &[ObjectGroup]) -> Result<()> {
@@ -1698,8 +1715,9 @@ fn htm_payload_signature(
                 refs.first()
                     .map(|reference| map_htm_ordinal(*reference, ordinal_map))
                     .unwrap_or(0),
-                graph
-                    .map(|graph| format_htm_unit_length(graph.raw_per_unit))
+                decode_graph_calibration_unit_length(file, group)
+                    .or_else(|| graph.map(|graph| graph.raw_per_unit))
+                    .map(format_htm_unit_length)
                     .unwrap_or_default()
             ),
         ),
@@ -3143,6 +3161,14 @@ fn decode_object_parameter(file: &GspFile, group: &ObjectGroup) -> Option<f64> {
         .filter(|payload| payload.len() >= 12)
         .map(|payload| read_f64(payload, 4))
         .filter(|value| value.is_finite())
+}
+
+fn decode_graph_calibration_unit_length(file: &GspFile, group: &ObjectGroup) -> Option<f64> {
+    group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x07d3 && record.length == 12)
+        .and_then(|record| self::decode::decode_measurement_value(record.payload(&file.data)))
 }
 
 fn decode_htm_object_parameter(

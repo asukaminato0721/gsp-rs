@@ -1,8 +1,8 @@
 use super::{
     CircleShape, GspFile, LineBinding, LineShape, ObjectGroup, PointRecord, PolygonShape,
     ShapeBinding, TransformBindingKind, collect_circle_fill_colors, color_from_style,
-    fill_color_from_styles, find_indexed_path, has_distinct_points, line_is_dashed,
-    payload_debug_source, reflect_across_line, rotate_around, scale_around,
+    fill_color_from_styles, find_indexed_path, has_distinct_points, is_circle_group_kind,
+    line_is_dashed, payload_debug_source, reflect_across_line, rotate_around, scale_around,
     translation_point_pair_group_indices, try_decode_parameter_rotation_binding,
     try_decode_transform_binding,
 };
@@ -218,13 +218,13 @@ pub(crate) fn collect_rotated_circle_shapes(
             let radians = binding_angle_radians(&binding.kind)?;
             let (source_center, source_radius) =
                 resolve_circle_points_raw(file, groups, anchors, source_group)?;
+            let source_fill = circle_fill_colors.get(&(path.refs.first()?.checked_sub(1)?));
             Some(CircleShape {
                 center: rotate_around(&source_center, &center, radians),
                 radius_point: rotate_around(&source_radius, &center, radians),
                 color: color_from_style(source_group.header.style_b),
-                fill_color: circle_fill_colors
-                    .get(&(path.refs.first()?.checked_sub(1)?))
-                    .copied(),
+                fill_color: source_fill.map(|fill| fill.0),
+                fill_visible: source_fill.is_some_and(|fill| fill.1),
                 fill_color_binding: None,
                 dashed: line_is_dashed(source_group.header.style_a),
                 visible: !group.header.is_hidden(),
@@ -253,16 +253,55 @@ pub(crate) fn collect_translated_circle_shapes(
         .filter(|group| {
             matches!(
                 group.header.kind(),
-                crate::format::GroupKind::CartesianOffsetPoint
+                crate::format::GroupKind::Translation
+                    | crate::format::GroupKind::CartesianOffsetPoint
                     | crate::format::GroupKind::PolarOffsetPoint
             )
         })
         .filter_map(|group| {
+            if group.header.kind() == crate::format::GroupKind::Translation {
+                let path = find_indexed_path(file, group)?;
+                let source_group_index = path.refs.first()?.checked_sub(1)?;
+                let source_group = groups.get(source_group_index)?;
+                if !is_circle_group_kind(source_group.header.kind()) {
+                    return None;
+                }
+                let (dx, dy, vector_start_index, vector_end_index) =
+                    translation_delta(file, group, anchors)?;
+                let (source_center, source_radius) =
+                    resolve_circle_points_raw(file, groups, anchors, source_group)?;
+                let source_fill = circle_fill_colors.get(&source_group_index);
+                return Some(CircleShape {
+                    center: PointRecord {
+                        x: source_center.x + dx,
+                        y: source_center.y + dy,
+                    },
+                    radius_point: PointRecord {
+                        x: source_radius.x + dx,
+                        y: source_radius.y + dy,
+                    },
+                    color: color_from_style(group.header.style_b),
+                    fill_color: source_fill.map(|fill| fill.0),
+                    fill_visible: source_fill.is_some_and(|fill| fill.1),
+                    fill_color_binding: None,
+                    dashed: line_is_dashed(source_group.header.style_a),
+                    visible: !group.header.is_hidden(),
+                    binding: Some(ShapeBinding::DerivedTransform {
+                        source_index: source_group_index,
+                        transform: ShapeTransformBinding::TranslateVector {
+                            vector_start_index,
+                            vector_end_index,
+                        },
+                    }),
+                    debug: Some(payload_debug_source(group)),
+                });
+            }
             let constraint = super::decode_translated_point_constraint(file, group)?;
             let source_group_index = constraint.origin_group_index;
             let source_group = groups.get(source_group_index)?;
             let (source_center, source_radius) =
                 resolve_circle_points_raw(file, groups, anchors, source_group)?;
+            let source_fill = circle_fill_colors.get(&source_group_index);
             Some(CircleShape {
                 center: PointRecord {
                     x: source_center.x + constraint.dx,
@@ -273,7 +312,8 @@ pub(crate) fn collect_translated_circle_shapes(
                     y: source_radius.y + constraint.dy,
                 },
                 color: color_from_style(source_group.header.style_b),
-                fill_color: circle_fill_colors.get(&source_group_index).copied(),
+                fill_color: source_fill.map(|fill| fill.0),
+                fill_visible: source_fill.is_some_and(|fill| fill.1),
                 fill_color_binding: None,
                 dashed: line_is_dashed(source_group.header.style_a),
                 visible: !group.header.is_hidden(),
@@ -357,13 +397,13 @@ pub(crate) fn collect_transformed_circle_shapes(
             let scale_center = anchors.get(binding.center_group_index)?.clone()?;
             let (source_center, source_radius) =
                 resolve_circle_points_raw(file, groups, anchors, source_group)?;
+            let source_fill = circle_fill_colors.get(&(path.refs.first()?.checked_sub(1)?));
             Some(CircleShape {
                 center: scale_around(&source_center, &scale_center, factor),
                 radius_point: scale_around(&source_radius, &scale_center, factor),
                 color: color_from_style(source_group.header.style_b),
-                fill_color: circle_fill_colors
-                    .get(&(path.refs.first()?.checked_sub(1)?))
-                    .copied(),
+                fill_color: source_fill.map(|fill| fill.0),
+                fill_visible: source_fill.is_some_and(|fill| fill.1),
                 fill_color_binding: None,
                 dashed: line_is_dashed(source_group.header.style_a),
                 visible: !group.header.is_hidden(),
@@ -495,13 +535,13 @@ pub(crate) fn collect_reflected_circle_shapes(
                 resolve_line_like_points_raw(file, groups, anchors, line_group)?;
             let center = reflect_across_line(&source_center, &line_start, &line_end)?;
             let radius_point = reflect_across_line(&source_radius, &line_start, &line_end)?;
+            let source_fill = circle_fill_colors.get(&(path.refs.first()?.checked_sub(1)?));
             Some(CircleShape {
                 center,
                 radius_point,
                 color: color_from_style(source_group.header.style_b),
-                fill_color: circle_fill_colors
-                    .get(&(path.refs.first()?.checked_sub(1)?))
-                    .copied(),
+                fill_color: source_fill.map(|fill| fill.0),
+                fill_visible: source_fill.is_some_and(|fill| fill.1),
                 fill_color_binding: None,
                 dashed: line_is_dashed(source_group.header.style_a),
                 visible: !group.header.is_hidden(),

@@ -562,6 +562,8 @@
         fill: index === env.hoverPointIndex.val
           ? "rgba(255, 120, 20, 1)"
           : env.rgba(point.color || [255, 60, 40, 255]),
+        stroke: "rgba(0, 0, 0, 1)",
+        "stroke-width": 1.25,
       }, null, { category: "points", index });
     });
   }

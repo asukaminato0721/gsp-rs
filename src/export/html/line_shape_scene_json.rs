@@ -399,6 +399,7 @@ pub(super) struct CircleJson {
     radius_point: PointJson,
     color: [u8; 4],
     fill_color: Option<[u8; 4]>,
+    fill_visible: bool,
     fill_color_binding: Option<ColorBindingJson>,
     dashed: bool,
     visible: bool,
@@ -414,6 +415,7 @@ impl CircleJson {
             radius_point: PointJson::from_point(&circle.radius_point),
             color: circle.color,
             fill_color: circle.fill_color,
+            fill_visible: circle.fill_visible,
             fill_color_binding: circle
                 .fill_color_binding
                 .as_ref()

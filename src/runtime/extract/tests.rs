@@ -1004,6 +1004,207 @@ fn collects_label_visibility_button_without_validation() {
 }
 
 #[test]
+fn collects_hjx4882_subtraction_text_visibility_targets() {
+    let path = "tests/Samples/个人专栏/贺基旭作品/10以内的减法（hjx4882）.gsp";
+    let Some(data) = fixture_bytes(path) else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+    let log = fixture_log(&data, path);
+
+    assert!(
+        log.contains("{102} Function(1479,140,'','A B + x - @sgn_ 1 + 2 / ')(100,101)[hidden]"),
+        "expected the subtraction membership function to come from the payload"
+    );
+
+    assert_eq!(
+        scene
+            .circles
+            .iter()
+            .filter(|circle| circle.fill_color.is_some())
+            .count(),
+        20,
+        "expected every visible Circle interior payload to export as a filled disk"
+    );
+    assert_eq!(
+        scene
+            .circles
+            .iter()
+            .filter(|circle| !circle.visible && circle.fill_color.is_some() && circle.fill_visible)
+            .count(),
+        20,
+        "hidden helper circle outlines should not suppress their visible circle interiors"
+    );
+    assert!(
+        scene.circles.len() >= 22,
+        "expected the two large circles plus the filled helper circles"
+    );
+    let translated_circle = scene
+        .circles
+        .iter()
+        .find(|circle| {
+            circle
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 7)
+        })
+        .expect("expected VectorTranslation(4,2,6) to export the cyan minuend circle");
+    assert_eq!(
+        translated_circle.color,
+        [0, 255, 255, 255],
+        "translated circle should use the payload color on group #7"
+    );
+    assert!(translated_circle.visible);
+    assert_eq!(translated_circle.fill_color, None);
+    match &translated_circle.binding {
+        Some(ShapeBinding::DerivedTransform {
+            source_index,
+            transform:
+                ShapeTransformBinding::TranslateVector {
+                    vector_start_index,
+                    vector_end_index,
+                },
+        }) => {
+            assert_eq!(
+                *source_index, 0,
+                "group #7 should translate the first exported source circle"
+            );
+            let vector_group_ordinals =
+                [*vector_start_index, *vector_end_index].map(|point_index| {
+                    scene.points[point_index]
+                        .debug
+                        .as_ref()
+                        .expect("translation vector point should keep payload debug source")
+                        .group_ordinal
+                });
+            assert_eq!(
+                vector_group_ordinals,
+                [2, 6],
+                "group #7 should use vector #2 -> #6"
+            );
+        }
+        binding => panic!("expected vector translation binding, got {binding:?}"),
+    }
+
+    let function_value = scene
+        .labels
+        .iter()
+        .find(|label| {
+            label
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 103)
+        })
+        .expect("expected f(1A) expression value label");
+    assert_eq!(function_value.text, "f(1A) = 0");
+    match &function_value.binding {
+        Some(TextLabelBinding::ExpressionValue {
+            expr, expr_label, ..
+        }) => {
+            assert_eq!(expr_label, "f(1A)");
+            assert!(
+                function_expr_has_unary(expr, UnaryFunction::Sign),
+                "expected the function payload to decode the @sgn_ operation"
+            );
+        }
+        binding => panic!("expected expression value for f(1A), got {binding:?}"),
+    }
+    let minuend_sum = scene
+        .labels
+        .iter()
+        .find(|label| {
+            label
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 113)
+        })
+        .expect("expected displayed minuend sum calculation");
+    assert_eq!(
+        minuend_sum.text,
+        "f(1A) + f(2A) + f(3A) + f(4A) + f(5A) + f(6A) + f(7A) + f(8A) + f(9A) + f(10A) = 6"
+    );
+    let subtrahend_sum = scene
+        .labels
+        .iter()
+        .find(|label| {
+            label
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 134)
+        })
+        .expect("expected displayed subtrahend sum calculation");
+    assert_eq!(
+        subtrahend_sum.text,
+        "f(B1') + f(B2') + f(B3') + f(B4') + f(B5') + f(B6') + f(B7') + f(B8') + f(B9') + f(B10') = 5"
+    );
+    let difference = scene
+        .labels
+        .iter()
+        .find(|label| {
+            label
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 136)
+        })
+        .expect("expected displayed subtraction result calculation");
+    assert_eq!(difference.text, "被减数 - 减数 = 1");
+    let headline_equation = scene
+        .labels
+        .iter()
+        .find(|label| label.visible && label.text.contains("6 － 5 = 1"))
+        .expect("expected visible subtraction headline equation");
+    match &headline_equation.binding {
+        Some(TextLabelBinding::RichTextExpressionValues { refs, .. }) => {
+            assert_eq!(
+                refs.iter()
+                    .map(|reference| (reference.slot, reference.source_group_ordinal))
+                    .collect::<Vec<_>>(),
+                vec![(1, 113), (2, 134), (3, 136)],
+                "headline equation should follow the rich-text payload links to the calculations"
+            );
+        }
+        binding => panic!("expected rich-text expression binding for headline, got {binding:?}"),
+    }
+
+    let show_text = scene
+        .buttons
+        .iter()
+        .find(|button| button.text == "显示文本对象")
+        .expect("expected text visibility button");
+    match &show_text.action {
+        ButtonAction::ShowHideVisibility {
+            label_indices,
+            point_indices,
+            ..
+        } => {
+            assert!(
+                point_indices.is_empty(),
+                "text visibility should target labels, not point fallbacks"
+            );
+            let target_group_ordinals = label_indices
+                .iter()
+                .filter_map(|index| scene.labels.get(*index))
+                .filter_map(|label| label.debug.as_ref())
+                .map(|debug| debug.group_ordinal)
+                .collect::<Vec<_>>();
+            for expected in [90, 113, 134] {
+                assert!(
+                    target_group_ordinals.contains(&expected),
+                    "expected text visibility payload to target calculation label group #{expected}"
+                );
+            }
+            for label_index in label_indices {
+                assert_eq!(
+                    scene.labels[*label_index].visible, false,
+                    "payload-hidden text group should stay hidden until the button is used"
+                );
+            }
+        }
+        action => panic!("expected show-hide visibility action, got {action:?}"),
+    }
+}
+
+#[test]
 fn collects_play_function_button_without_validation() {
     let Some(data) = fixture_bytes("tests/Samples/个人专栏/向忠作品/正弦波与音乐.gsp")
     else {
@@ -1949,8 +2150,13 @@ fn calibration_only_geometry_fixture_does_not_enable_graph_mode() {
     else {
         panic!("expected O to carry a circumcenter binding");
     };
-    let circumcenter_ordinals = [*start_index, *mid_index, *end_index]
-        .map(|point_index| scene.points[point_index].debug.as_ref().unwrap().group_ordinal);
+    let circumcenter_ordinals = [*start_index, *mid_index, *end_index].map(|point_index| {
+        scene.points[point_index]
+            .debug
+            .as_ref()
+            .unwrap()
+            .group_ordinal
+    });
     assert_eq!(
         circumcenter_ordinals,
         [2, 5, 1],
@@ -3162,6 +3368,10 @@ fn preserves_circle_inner_fill_gsp() {
         circle.fill_color,
         Some([255, 255, 0, 127]),
         "expected circle interior payload to preserve its fill color"
+    );
+    assert!(
+        circle.fill_visible,
+        "expected visible circle interior payload to render even when tracked separately"
     );
     assert!(matches!(
         circle.binding,

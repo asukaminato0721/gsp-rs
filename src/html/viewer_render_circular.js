@@ -75,7 +75,9 @@
   /** @param {ViewerEnv} env */
   modules.render.drawCircles = function drawCircles(env) {
     env.currentScene().circles.forEach((circle, index) => {
-      if (circle.visible === false) return;
+      const fillVisible = circle.fillColor && circle.fillVisible !== false;
+      const strokeVisible = circle.visible !== false;
+      if (!fillVisible && !strokeVisible) return;
       const centerWorld = env.resolvePoint(circle.center);
       const radiusPointWorld = env.resolvePoint(circle.radiusPoint);
       if (!centerWorld || !radiusPointWorld) return;
@@ -89,10 +91,10 @@
         cx: center.x,
         cy: center.y,
         r: radius,
-        fill: circle.fillColor ? env.rgba(circle.fillColor) : "none",
-        stroke: env.rgba(circle.color),
+        fill: fillVisible ? env.rgba(circle.fillColor) : "none",
+        stroke: strokeVisible ? env.rgba(circle.color) : "none",
         "stroke-width": 2,
-        "stroke-dasharray": circle.dashed ? "8 8" : null,
+        "stroke-dasharray": strokeVisible && circle.dashed ? "8 8" : null,
       }, null, { category: "circles", index });
     });
   };
