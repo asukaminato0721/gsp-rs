@@ -12,6 +12,7 @@ use super::{
     try_decode_parameter_controlled_point, try_decode_parameter_rotation_binding,
     try_decode_point_constraint, try_decode_transform_binding,
 };
+use crate::runtime::extract::context::SceneContext;
 use crate::runtime::extract::decode::{
     decode_bbox_anchor_raw, decode_label_name, decode_label_visible,
     detect_perpendicular_segment_payload, is_parameter_control_group,
@@ -37,10 +38,36 @@ fn group_color(group: &ObjectGroup) -> [u8; 4] {
     color_from_style(group.header.style_b)
 }
 
+fn indexed_path_for(
+    file: &GspFile,
+    context: Option<&SceneContext<'_>>,
+    group: &ObjectGroup,
+) -> Option<crate::format::IndexedPathRecord> {
+    context
+        .and_then(|context| context.indexed_path(group).cloned())
+        .or_else(|| find_indexed_path(file, group))
+}
+
+fn group_by_ordinal<'a>(
+    context: Option<&SceneContext<'a>>,
+    groups: &'a [ObjectGroup],
+    ordinal: usize,
+) -> Option<&'a ObjectGroup> {
+    context
+        .and_then(|context| context.group_by_ordinal(ordinal))
+        .or_else(|| groups.get(ordinal.checked_sub(1)?))
+}
+
 fn graph_calibration_visible(file: &GspFile, groups: &[ObjectGroup], group: &ObjectGroup) -> bool {
     !group.header.is_hidden()
         && (point_marker_visible(group) && (group.header.class_id & 0x0004_0000) == 0
             || used_by_visible_control_shape(file, groups, group.ordinal))
+}
+
+fn graph_calibration_visible_with_context(context: &SceneContext<'_>, group: &ObjectGroup) -> bool {
+    !group.header.is_hidden()
+        && (point_marker_visible(group) && (group.header.class_id & 0x0004_0000) == 0
+            || used_by_visible_control_shape_with_context(context, group.ordinal))
 }
 
 fn visible_point_or_control_shape_point(
@@ -51,6 +78,15 @@ fn visible_point_or_control_shape_point(
     !group.header.is_hidden()
         && (point_marker_visible(group)
             || used_by_visible_control_shape(file, groups, group.ordinal))
+}
+
+fn visible_point_or_control_shape_point_with_context(
+    context: &SceneContext<'_>,
+    group: &ObjectGroup,
+) -> bool {
+    !group.header.is_hidden()
+        && (point_marker_visible(group)
+            || used_by_visible_control_shape_with_context(context, group.ordinal))
 }
 
 fn draggable_derived_axis_control(
@@ -66,6 +102,18 @@ fn draggable_derived_axis_control(
             .is_some_and(|source| source.header.kind().is_graph_calibration())
 }
 
+fn draggable_derived_axis_control_with_context(
+    context: &SceneContext<'_>,
+    group: &ObjectGroup,
+    source_group_index: usize,
+) -> bool {
+    !group.header.is_hidden()
+        && used_by_visible_control_shape_with_context(context, group.ordinal)
+        && context
+            .group(source_group_index)
+            .is_some_and(|source| source.header.kind().is_graph_calibration())
+}
+
 fn used_by_visible_control_shape(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -78,6 +126,18 @@ fn used_by_visible_control_shape(
         ) && !shape_group.header.is_hidden()
             && find_indexed_path(file, shape_group)
                 .is_some_and(|path| path.refs.contains(&point_ordinal))
+    })
+}
+
+fn used_by_visible_control_shape_with_context(
+    context: &SceneContext<'_>,
+    point_ordinal: usize,
+) -> bool {
+    context.has_referrer_matching(point_ordinal, |shape_group, _| {
+        matches!(
+            shape_group.header.kind(),
+            crate::format::GroupKind::Segment | crate::format::GroupKind::Polygon
+        ) && !shape_group.header.is_hidden()
     })
 }
 
@@ -295,6 +355,7 @@ fn build_scene_point_for_group(
     group: &ObjectGroup,
     file: &GspFile,
     groups: &[ObjectGroup],
+    context: Option<&SceneContext<'_>>,
     point_map: &[Option<PointRecord>],
     anchors: &[Option<PointRecord>],
     graph: &Option<GraphTransform>,
@@ -304,7 +365,10 @@ fn build_scene_point_for_group(
     let visible = !group.header.is_hidden() && point_marker_visible(group);
     match kind {
         crate::format::GroupKind::Point => (!is_parameter_control_group(group)
-            && !is_orphan_duplicate_point_helper(file, groups, group))
+            && !context.map_or_else(
+                || is_orphan_duplicate_point_helper(file, groups, group),
+                |context| is_orphan_duplicate_point_helper_with_context(file, context, group),
+            ))
         .then(|| point_map.get(index).cloned().flatten())
         .flatten()
         .map(|position| {
@@ -333,7 +397,10 @@ fn build_scene_point_for_group(
                 scene_point(
                     position,
                     group_color(group),
-                    graph_calibration_visible(file, groups, group),
+                    context.map_or_else(
+                        || graph_calibration_visible(file, groups, group),
+                        |context| graph_calibration_visible_with_context(context, group),
+                    ),
                     true,
                     constraint,
                     Some(ScenePointBinding::GraphCalibration),
@@ -500,13 +567,13 @@ fn build_scene_point_for_group(
             })
         })(),
         crate::format::GroupKind::Reflection => (|| {
-            let path = find_indexed_path(file, group)?;
+            let path = indexed_path_for(file, context, group)?;
             let source_group_index = path.refs.first()?.checked_sub(1)?;
             let position = decode_reflection_anchor_raw(file, groups, group, anchors)
                 .or_else(|| anchors.get(index).cloned().flatten())
                 .or_else(|| anchors.get(source_group_index).cloned().flatten())?;
             let source_index = mapped_point_index(group_to_point_index, source_group_index)?;
-            let line_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+            let line_group = group_by_ordinal(context, groups, *path.refs.get(1)?)?;
             let binding = if line_group.header.kind().is_line_like() {
                 let (line_start_group_index, line_end_group_index) =
                     reflection_line_group_indices(file, groups, group)?;
@@ -539,7 +606,7 @@ fn build_scene_point_for_group(
         })(),
         crate::format::GroupKind::Translation => (|| {
             let position = anchors.get(index).cloned().flatten()?;
-            let path = find_indexed_path(file, group)?;
+            let path = indexed_path_for(file, context, group)?;
             let source_group_index = path.refs.first()?.checked_sub(1)?;
             let (vector_start_group_index, vector_end_group_index) =
                 translation_point_pair_group_indices(file, group)?;
@@ -644,11 +711,22 @@ fn build_scene_point_for_group(
                 let center_index =
                     mapped_point_index(group_to_point_index, binding.center_group_index)?;
                 let draggable = matches!(&binding.kind, TransformBindingKind::Rotate { .. })
-                    && draggable_derived_axis_control(
-                        file,
-                        groups,
-                        group,
-                        binding.source_group_index,
+                    && context.map_or_else(
+                        || {
+                            draggable_derived_axis_control(
+                                file,
+                                groups,
+                                group,
+                                binding.source_group_index,
+                            )
+                        },
+                        |context| {
+                            draggable_derived_axis_control_with_context(
+                                context,
+                                group,
+                                binding.source_group_index,
+                            )
+                        },
                     );
                 Some(scene_point(
                     position,
@@ -747,15 +825,15 @@ fn build_scene_point_for_group(
             ))
         })(),
         crate::format::GroupKind::LegacyAngleRotation => (|| {
-            let path = find_indexed_path(file, group)?;
+            let path = indexed_path_for(file, context, group)?;
             if path.refs.len() < 3 {
                 return None;
             }
             let position = anchors.get(index).cloned().flatten()?;
             let source_group_index = path.refs[0].checked_sub(1)?;
             let center_group_index = path.refs[1].checked_sub(1)?;
-            let angle_group = groups.get(path.refs[2].checked_sub(1)?)?;
-            let angle_path = find_indexed_path(file, angle_group)?;
+            let angle_group = group_by_ordinal(context, groups, path.refs[2])?;
+            let angle_path = indexed_path_for(file, context, angle_group)?;
             if angle_path.refs.len() < 3 {
                 return None;
             }
@@ -814,6 +892,7 @@ fn build_scene_point_for_group_checked(
     group: &ObjectGroup,
     file: &GspFile,
     groups: &[ObjectGroup],
+    context: Option<&SceneContext<'_>>,
     point_map: &[Option<PointRecord>],
     anchors: &[Option<PointRecord>],
     graph: &Option<GraphTransform>,
@@ -850,25 +929,28 @@ fn build_scene_point_for_group_checked(
         crate::format::GroupKind::Rotation
         | crate::format::GroupKind::ExpressionRotation
         | crate::format::GroupKind::Scale => {
-            let visible = visible_point_or_control_shape_point(file, groups, group);
+            let visible = context.map_or_else(
+                || visible_point_or_control_shape_point(file, groups, group),
+                |context| visible_point_or_control_shape_point_with_context(context, group),
+            );
             let position = anchors.get(index).cloned().flatten();
             Ok((|| {
                 let position = position?;
                 if kind == crate::format::GroupKind::ExpressionRotation {
-                    let path = find_indexed_path(file, group)?;
+                    let path = indexed_path_for(file, context, group)?;
                     if let Some(calc_group) = path
                         .refs
                         .get(2)
-                        .and_then(|ordinal| ordinal.checked_sub(1))
-                        .and_then(|index| groups.get(index))
+                        .and_then(|ordinal| group_by_ordinal(context, groups, *ordinal))
                         && calc_group.header.kind() == crate::format::GroupKind::ParameterAnchor
                     {
                         let source_group_index = path.refs.first()?.checked_sub(1)?;
                         let center_group_index = path.refs.get(1)?.checked_sub(1)?;
-                        let anchor_path = find_indexed_path(file, calc_group)?;
+                        let anchor_path = indexed_path_for(file, context, calc_group)?;
                         let angle_point_group_index = anchor_path.refs.first()?.checked_sub(1)?;
-                        let segment_group = groups.get(anchor_path.refs.get(1)?.checked_sub(1)?)?;
-                        let segment_path = find_indexed_path(file, segment_group)?;
+                        let segment_group =
+                            group_by_ordinal(context, groups, *anchor_path.refs.get(1)?)?;
+                        let segment_path = indexed_path_for(file, context, segment_group)?;
                         let angle_start_group_index = segment_path.refs.first()?.checked_sub(1)?;
                         let angle_end_group_index = segment_path.refs.get(1)?.checked_sub(1)?;
                         let source_index =
@@ -977,11 +1059,22 @@ fn build_scene_point_for_group_checked(
                 let center_index =
                     mapped_point_index(group_to_point_index, binding.center_group_index)?;
                 let draggable = matches!(&binding.kind, TransformBindingKind::Rotate { .. })
-                    && draggable_derived_axis_control(
-                        file,
-                        groups,
-                        group,
-                        binding.source_group_index,
+                    && context.map_or_else(
+                        || {
+                            draggable_derived_axis_control(
+                                file,
+                                groups,
+                                group,
+                                binding.source_group_index,
+                            )
+                        },
+                        |context| {
+                            draggable_derived_axis_control_with_context(
+                                context,
+                                group,
+                                binding.source_group_index,
+                            )
+                        },
                     );
                 Some(scene_point(
                     position,
@@ -1069,18 +1162,19 @@ fn build_scene_point_for_group_checked(
                     ));
                 }
 
-                let path = find_indexed_path(file, group)?;
+                let path = indexed_path_for(file, context, group)?;
                 let source_group_index = path.refs.first()?.checked_sub(1)?;
                 let center_group_index = path.refs.get(1)?.checked_sub(1)?;
-                let calc_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
+                let calc_group = group_by_ordinal(context, groups, *path.refs.get(2)?)?;
                 if (calc_group.header.kind()) == crate::format::GroupKind::ParameterAnchor {
-                    let anchor_path = find_indexed_path(file, calc_group)?;
+                    let anchor_path = indexed_path_for(file, context, calc_group)?;
                     let angle_point_group_index = anchor_path.refs.first()?.checked_sub(1)?;
-                    let segment_group = groups.get(anchor_path.refs.get(1)?.checked_sub(1)?)?;
+                    let segment_group =
+                        group_by_ordinal(context, groups, *anchor_path.refs.get(1)?)?;
                     if !segment_group.header.kind().is_line_like() {
                         return None;
                     }
-                    let segment_path = find_indexed_path(file, segment_group)?;
+                    let segment_path = indexed_path_for(file, context, segment_group)?;
                     let angle_start_group_index = segment_path.refs.first()?.checked_sub(1)?;
                     let angle_end_group_index = segment_path.refs.get(1)?.checked_sub(1)?;
                     let source_index =
@@ -1135,7 +1229,10 @@ fn build_scene_point_for_group_checked(
                     (angle_expr, Some(parameter_name))
                 } else {
                     (
-                        try_decode_function_expr(file, groups, calc_group).ok()?,
+                        context.map_or_else(
+                            || try_decode_function_expr(file, groups, calc_group).ok(),
+                            |context| context.function_expr(calc_group).ok(),
+                        )?,
                         None,
                     )
                 };
@@ -1243,6 +1340,7 @@ fn build_scene_point_for_group_checked(
             group,
             file,
             groups,
+            context,
             point_map,
             anchors,
             graph,
@@ -1251,9 +1349,32 @@ fn build_scene_point_for_group_checked(
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn collect_visible_points_checked(
     file: &GspFile,
     groups: &[ObjectGroup],
+    point_map: &[Option<PointRecord>],
+    anchors: &[Option<PointRecord>],
+    graph: &Option<GraphTransform>,
+) -> Result<(Vec<ScenePoint>, Vec<Option<usize>>)> {
+    collect_visible_points_checked_impl(file, groups, None, point_map, anchors, graph)
+}
+
+pub(crate) fn collect_visible_points_checked_with_context(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    context: &SceneContext<'_>,
+    point_map: &[Option<PointRecord>],
+    anchors: &[Option<PointRecord>],
+    graph: &Option<GraphTransform>,
+) -> Result<(Vec<ScenePoint>, Vec<Option<usize>>)> {
+    collect_visible_points_checked_impl(file, groups, Some(context), point_map, anchors, graph)
+}
+
+fn collect_visible_points_checked_impl(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    context: Option<&SceneContext<'_>>,
     point_map: &[Option<PointRecord>],
     anchors: &[Option<PointRecord>],
     graph: &Option<GraphTransform>,
@@ -1271,6 +1392,7 @@ pub(crate) fn collect_visible_points_checked(
                     group,
                     file,
                     groups,
+                    context,
                     point_map,
                     anchors,
                     graph,
@@ -1289,6 +1411,7 @@ pub(crate) fn collect_visible_points_checked(
                         group,
                         file,
                         groups,
+                        context,
                         point_map,
                         anchors,
                         graph,
@@ -1312,6 +1435,7 @@ pub(crate) fn collect_visible_points_checked(
                             group,
                             file,
                             groups,
+                            context,
                             point_map,
                             anchors,
                             graph,
@@ -1411,6 +1535,52 @@ fn is_orphan_duplicate_point_helper(
             && decode_label_name(file, other).as_deref() == Some(name.as_str())
             && (is_referenced(other.ordinal)
                 || find_indexed_path(file, other).is_some_and(|path| !path.refs.is_empty())
+                || other
+                    .records
+                    .iter()
+                    .any(|record| record.record_type == 0x0907))
+    })
+}
+
+fn is_orphan_duplicate_point_helper_with_context(
+    file: &GspFile,
+    context: &SceneContext<'_>,
+    group: &ObjectGroup,
+) -> bool {
+    if (group.header.kind()) != crate::format::GroupKind::Point {
+        return false;
+    }
+    if group
+        .records
+        .iter()
+        .any(|record| record.record_type == 0x0907)
+    {
+        return false;
+    }
+    if decode_label_visible(file, group).unwrap_or(true) {
+        return false;
+    }
+    let Some(name) = decode_label_name(file, group) else {
+        return false;
+    };
+    let is_referenced = |ordinal: usize| {
+        context.referrers(ordinal).iter().any(|index| {
+            context
+                .group(*index)
+                .is_some_and(|other| other.ordinal != ordinal)
+        })
+    };
+    let referenced = is_referenced(group.ordinal);
+    if referenced {
+        return false;
+    }
+    context.groups.iter().any(|other| {
+        other.ordinal != group.ordinal
+            && decode_label_name(file, other).as_deref() == Some(name.as_str())
+            && (is_referenced(other.ordinal)
+                || context
+                    .indexed_path(other)
+                    .is_some_and(|path| !path.refs.is_empty())
                 || other
                     .records
                     .iter()

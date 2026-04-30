@@ -1,3 +1,4 @@
+use super::context::SceneContext;
 use super::{
     analyze_scene, build_scene_checked, collect_buttons, collect_point_objects,
     collect_scene_labels, collect_scene_shapes, collect_visible_points_checked,
@@ -144,12 +145,14 @@ fn function_ast_has_parameter(ast: &FunctionAst, expected: &str) -> bool {
 fn fixture_buttons_without_validation(data: &[u8]) -> Vec<SceneButton> {
     let file = GspFile::parse(data).expect("fixture parses");
     let groups = file.object_groups();
+    let context = SceneContext::new(&file, &groups);
     let point_map = collect_point_objects(&file, &groups);
-    let analysis = analyze_scene(&file, &groups, &point_map);
+    let analysis = analyze_scene(&file, &groups, &context, &point_map);
     let mut shapes = collect_scene_shapes(&file, &groups, &point_map, &analysis);
     let (_, image_group_to_index) =
         super::images::collect_scene_images(&file, &groups, &analysis.graph_ref);
-    let (_, label_group_to_index, _) = collect_scene_labels(&file, &groups, &analysis, &shapes);
+    let (_, label_group_to_index, _) =
+        collect_scene_labels(&file, &groups, &context, &analysis, &shapes);
     let (_, group_to_point_index) = collect_visible_points_checked(
         &file,
         &groups,
@@ -184,13 +187,14 @@ fn fixture_buttons_without_validation(data: &[u8]) -> Vec<SceneButton> {
 fn fixture_labels_without_validation(data: &[u8]) -> Vec<crate::runtime::scene::TextLabel> {
     let file = GspFile::parse(data).expect("fixture parses");
     let groups = file.object_groups();
+    let context = SceneContext::new(&file, &groups);
     let point_map = collect_point_objects(&file, &groups);
-    let analysis = analyze_scene(&file, &groups, &point_map);
+    let analysis = analyze_scene(&file, &groups, &context, &point_map);
     let mut shapes = collect_scene_shapes(&file, &groups, &point_map, &analysis);
     let (_, image_group_to_index) =
         super::images::collect_scene_images(&file, &groups, &analysis.graph_ref);
     let (labels, label_group_to_index, _) =
-        collect_scene_labels(&file, &groups, &analysis, &shapes);
+        collect_scene_labels(&file, &groups, &context, &analysis, &shapes);
     let (_, group_to_point_index) = collect_visible_points_checked(
         &file,
         &groups,
@@ -225,8 +229,9 @@ fn fixture_labels_without_validation(data: &[u8]) -> Vec<crate::runtime::scene::
 fn fixture_images_without_validation(data: &[u8]) -> Vec<crate::runtime::scene::SceneImage> {
     let file = GspFile::parse(data).expect("fixture parses");
     let groups = file.object_groups();
+    let context = SceneContext::new(&file, &groups);
     let point_map = collect_point_objects(&file, &groups);
-    let analysis = analyze_scene(&file, &groups, &point_map);
+    let analysis = analyze_scene(&file, &groups, &context, &point_map);
     super::images::collect_scene_images(&file, &groups, &analysis.graph_ref).0
 }
 
@@ -1465,8 +1470,9 @@ fn builds_point_cood_expr_fixture_with_two_parameter_coordinate_binding() {
     };
     let file = GspFile::parse(&data).expect("fixture parses");
     let groups = file.object_groups();
+    let context = SceneContext::new(&file, &groups);
     let point_map = collect_point_objects(&file, &groups);
-    let analysis = analyze_scene(&file, &groups, &point_map);
+    let analysis = analyze_scene(&file, &groups, &context, &point_map);
     let helper_group = groups.get(7).expect("group #8");
     let helper_path = super::find_indexed_path(&file, helper_group).expect("helper path");
     let parameter_group = groups
@@ -3526,11 +3532,19 @@ fn preserves_hjx_arc_unfold_function_rotation_and_visible_arc() {
         panic!("expected H to be a live function-rotation point");
     };
     assert_eq!(
-        scene.points[*source_index].debug.as_ref().unwrap().group_ordinal,
+        scene.points[*source_index]
+            .debug
+            .as_ref()
+            .unwrap()
+            .group_ordinal,
         7
     );
     assert_eq!(
-        scene.points[*center_index].debug.as_ref().unwrap().group_ordinal,
+        scene.points[*center_index]
+            .debug
+            .as_ref()
+            .unwrap()
+            .group_ordinal,
         10
     );
     assert!(function_expr_has_parameter(angle_expr, "m₂"));

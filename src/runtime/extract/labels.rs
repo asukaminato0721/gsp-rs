@@ -11,12 +11,14 @@ use super::payload_debug_source;
 use super::points::{
     RawPointConstraint, editable_non_graph_parameter_name_for_group,
     is_editable_non_graph_parameter_name, is_non_graph_parameter_group,
-    is_parametric_function_component_group, is_standalone_function_definition_group,
-    parametric_function_component_slot, regular_polygon_angle_expr_for_calc_group,
+    is_non_graph_parameter_group_with_context, is_parametric_function_component_group_with_context,
+    is_standalone_function_definition_group, is_standalone_function_definition_group_with_context,
+    parametric_function_component_slot_with_context, regular_polygon_angle_expr_for_calc_group,
     try_decode_point_constraint,
 };
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
 use crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT;
+use crate::runtime::extract::context::SceneContext;
 use crate::runtime::extract::iteration_depth::decode_iteration_depth_expr;
 use crate::runtime::functions::{
     FunctionExpr, evaluate_expr_with_parameters, function_expr_label, try_decode_function_expr,
@@ -1754,6 +1756,7 @@ fn split_top_level<'a>(text: &'a str, needle: &str) -> Option<(&'a str, &'a str)
 pub(super) fn collect_coordinate_labels(
     file: &GspFile,
     groups: &[ObjectGroup],
+    context: &SceneContext<'_>,
     anchors: &[Option<PointRecord>],
 ) -> Vec<TextLabel> {
     let mut labels = Vec::new();
@@ -1762,11 +1765,11 @@ pub(super) fn collect_coordinate_labels(
         let kind = group.header.kind();
         let helper_visible = label_visible_for_group(file, group);
         let is_standalone_function_definition = kind == crate::format::GroupKind::Point
-            && is_standalone_function_definition_group(file, groups, group);
+            && is_standalone_function_definition_group_with_context(file, context, group);
         let is_non_graph_parameter = kind == crate::format::GroupKind::Point
-            && is_non_graph_parameter_group(file, groups, group);
+            && is_non_graph_parameter_group_with_context(file, context, group);
         let is_parametric_function_component = kind == crate::format::GroupKind::Point
-            && is_parametric_function_component_group(file, groups, group.ordinal)
+            && is_parametric_function_component_group_with_context(context, group.ordinal)
             && !is_standalone_function_definition;
         if (is_non_graph_parameter || is_parametric_function_component)
             && let Some(name) = decode_label_name(file, group)
@@ -1784,7 +1787,8 @@ pub(super) fn collect_coordinate_labels(
                 text: format!("{name} = {}", format_number(value)),
                 color: [30, 30, 30, 255],
                 visible: if is_parametric_function_component {
-                    parametric_function_component_slot(file, groups, group.ordinal) == Some(1)
+                    parametric_function_component_slot_with_context(context, group.ordinal)
+                        == Some(1)
                 } else {
                     helper_visible
                 },
@@ -2872,20 +2876,21 @@ pub(super) fn collect_circle_parameter_labels(
 pub(super) fn collect_custom_transform_expression_labels(
     file: &GspFile,
     groups: &[ObjectGroup],
+    context: &SceneContext<'_>,
     anchors: &[Option<PointRecord>],
 ) -> Vec<TextLabel> {
     groups
         .iter()
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::CustomTransformTrace)
         .filter_map(|group| {
-            let path = find_indexed_path(file, group)?;
+            let path = context.indexed_path(group)?;
             if path.refs.len() < 6 {
                 return None;
             }
-            let source_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
-            let parameter_anchor_group = groups.get(path.refs.get(3)?.checked_sub(1)?)?;
-            let distance_expr_group = groups.get(path.refs.get(4)?.checked_sub(1)?)?;
-            let angle_expr_group = groups.get(path.refs.get(5)?.checked_sub(1)?)?;
+            let source_group = context.group_by_ordinal(*path.refs.get(2)?)?;
+            let parameter_anchor_group = context.group_by_ordinal(*path.refs.get(3)?)?;
+            let distance_expr_group = context.group_by_ordinal(*path.refs.get(4)?)?;
+            let angle_expr_group = context.group_by_ordinal(*path.refs.get(5)?)?;
             let base_label =
                 custom_transform_parameter_anchor_label(file, groups, parameter_anchor_group)?;
             let t =
@@ -2922,7 +2927,7 @@ pub(super) fn collect_custom_transform_expression_labels(
                 let anchor = try_decode_payload_anchor_point(file, expr_group)
                     .ok()
                     .flatten()?;
-                let expr = try_decode_function_expr(file, groups, expr_group).ok()?;
+                let expr = context.function_expr(expr_group).ok()?;
                 let value = evaluate_expr_with_parameters(
                     &expr,
                     t,
@@ -3134,6 +3139,7 @@ fn label_iteration_depth_expr(
 pub(super) fn bind_button_seed_expression_labels(
     file: &GspFile,
     groups: &[ObjectGroup],
+    context: &SceneContext<'_>,
     anchors: &[Option<PointRecord>],
     labels: &mut [TextLabel],
     label_group_to_index: &BTreeMap<usize, usize>,
@@ -3143,7 +3149,7 @@ pub(super) fn bind_button_seed_expression_labels(
         .iter()
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::LabelIterationSeed)
     {
-        let Some(seed_path) = find_indexed_path(file, seed_group) else {
+        let Some(seed_path) = context.indexed_path(seed_group) else {
             continue;
         };
         if seed_path.refs.len() < 2 {
@@ -3165,7 +3171,7 @@ pub(super) fn bind_button_seed_expression_labels(
         let Some(button_group) = seed_path
             .refs
             .get(1)
-            .and_then(|ordinal| groups.get(ordinal.saturating_sub(1)))
+            .and_then(|ordinal| context.group_by_ordinal(*ordinal))
         else {
             continue;
         };
@@ -3175,16 +3181,17 @@ pub(super) fn bind_button_seed_expression_labels(
         let Some(label_index) = label_group_to_index.get(&button_group.ordinal).copied() else {
             continue;
         };
-        let Some(expr_group) = find_indexed_path(file, button_group)
+        let Some(expr_group) = context
+            .indexed_path(button_group)
             .and_then(|path| path.refs.first().copied())
-            .and_then(|ordinal| groups.get(ordinal.saturating_sub(1)))
+            .and_then(|ordinal| context.group_by_ordinal(ordinal))
         else {
             continue;
         };
         if (expr_group.header.kind()) != crate::format::GroupKind::FunctionExpr {
             continue;
         }
-        let Some(expr) = try_decode_function_expr(file, groups, expr_group).ok() else {
+        let Some(expr) = context.function_expr(expr_group).ok() else {
             continue;
         };
         let Some((parameter_name, parameter_value)) = resolve_function_expr_parameter(
@@ -3513,6 +3520,7 @@ fn point_label_anchor_group_index(file: &GspFile, group: &ObjectGroup) -> Option
 pub(super) fn collect_iteration_tables(
     file: &GspFile,
     groups: &[ObjectGroup],
+    context: &SceneContext<'_>,
     anchors: &[Option<PointRecord>],
 ) -> Vec<IterationTable> {
     groups
@@ -3521,16 +3529,16 @@ pub(super) fn collect_iteration_tables(
             (group.header.kind()) == crate::format::GroupKind::IterationExpressionHelper
         })
         .filter_map(|group| {
-            let path = find_indexed_path(file, group)?;
+            let path = context.indexed_path(group)?;
             if path.refs.len() < 2 {
                 return None;
             }
-            let iter_group = groups.get(path.refs[0].checked_sub(1)?)?;
-            let expr_group = groups.get(path.refs[1].checked_sub(1)?)?;
+            let iter_group = context.group_by_ordinal(path.refs[0])?;
+            let expr_group = context.group_by_ordinal(path.refs[1])?;
             if expr_group.header.kind() != crate::format::GroupKind::FunctionExpr {
                 return None;
             }
-            let expr = try_decode_function_expr(file, groups, expr_group).ok()?;
+            let expr = context.function_expr(expr_group).ok()?;
             let parameter_name = direct_function_expr_parameter_name(file, groups, expr_group)
                 .or_else(|| {
                     resolve_function_expr_parameter(

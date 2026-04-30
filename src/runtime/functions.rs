@@ -5,9 +5,10 @@ mod plot;
 mod scene;
 
 pub(crate) use decode::{
-    evaluate_function_group_with_overrides, payload_has_sliding_equilateral_square_expr,
-    try_decode_function_expr, try_decode_function_expr_with_inlined_refs,
-    try_decode_function_plot_descriptor, try_decode_standalone_function_expr,
+    FunctionExprParseError, evaluate_function_group_with_overrides,
+    payload_has_sliding_equilateral_square_expr, try_decode_function_expr,
+    try_decode_function_expr_with_inlined_refs, try_decode_function_plot_descriptor,
+    try_decode_standalone_function_expr,
 };
 pub(crate) use eval::evaluate_expr_with_parameters;
 pub(crate) use expr::{
@@ -214,10 +215,7 @@ mod tests {
         assert_eq!(
             expr,
             FunctionExpr::Parsed(FunctionAst::Binary {
-                lhs: Box::new(FunctionAst::Parameter(
-                    "m₂".to_string(),
-                    0.2483244197822397,
-                )),
+                lhs: Box::new(FunctionAst::Parameter("m₂".to_string(), 0.2483244197822397,)),
                 op: BinaryOp::Mul,
                 rhs: Box::new(FunctionAst::Constant(360.0)),
             })

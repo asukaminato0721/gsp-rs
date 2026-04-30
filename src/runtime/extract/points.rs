@@ -1,3 +1,4 @@
+use super::context::SceneContext;
 use super::decode::{
     decode_discrete_parameter_value, decode_label_name, find_indexed_path,
     is_parameter_control_group, try_decode_parameter_control_value_for_group,
@@ -28,12 +29,13 @@ pub(crate) use anchors::{
     decode_regular_polygon_vertex_anchor_raw, decode_translated_point_anchor_raw,
     resolve_circle_like_raw, resolve_line_like_points_raw, translation_point_pair_group_indices,
 };
+#[allow(unused_imports)]
 pub(super) use bindings::{
     RawPointIterationFamily, TransformBindingKind, collect_point_iteration_points,
-    collect_standalone_parameter_points, collect_visible_points_checked, remap_circle_bindings,
-    remap_label_bindings, remap_line_bindings, remap_polygon_bindings,
-    try_decode_angle_rotation_binding, try_decode_parameter_rotation_binding,
-    try_decode_transform_binding,
+    collect_standalone_parameter_points, collect_visible_points_checked,
+    collect_visible_points_checked_with_context, remap_circle_bindings, remap_label_bindings,
+    remap_line_bindings, remap_polygon_bindings, try_decode_angle_rotation_binding,
+    try_decode_parameter_rotation_binding, try_decode_transform_binding,
 };
 pub(super) use constraints::{
     LegacyCoordinateConstructPoint, RawPointConstraint, decode_translated_point_constraint,
@@ -177,6 +179,21 @@ fn is_function_plot_definition_group(
     })
 }
 
+fn is_function_plot_definition_group_with_context(
+    context: &SceneContext<'_>,
+    target_ordinal: usize,
+) -> bool {
+    context
+        .group_indices_by_kind(crate::format::GroupKind::FunctionPlot)
+        .iter()
+        .filter_map(|index| context.group(*index))
+        .any(|group| {
+            context
+                .indexed_path(group)
+                .is_some_and(|path| path.refs.first().copied() == Some(target_ordinal))
+        })
+}
+
 fn is_function_plot_parameter_group(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -199,12 +216,45 @@ fn is_function_plot_parameter_group(
         })
 }
 
+fn is_function_plot_parameter_group_with_context(
+    context: &SceneContext<'_>,
+    target_ordinal: usize,
+) -> bool {
+    context
+        .group_indices_by_kind(crate::format::GroupKind::FunctionPlot)
+        .iter()
+        .chain(
+            context
+                .group_indices_by_kind(crate::format::GroupKind::ParametricFunctionPlot)
+                .iter(),
+        )
+        .filter_map(|index| context.group(*index))
+        .filter_map(|group| context.indexed_path(group))
+        .filter_map(|path| {
+            path.refs
+                .first()
+                .and_then(|ordinal| context.group_by_ordinal(*ordinal))
+        })
+        .any(|definition_group| {
+            context
+                .indexed_path(definition_group)
+                .is_some_and(|path| path.refs.contains(&target_ordinal))
+        })
+}
+
 pub(super) fn is_parametric_function_component_group(
     file: &GspFile,
     groups: &[ObjectGroup],
     target_ordinal: usize,
 ) -> bool {
     parametric_function_component_slot(file, groups, target_ordinal).is_some()
+}
+
+pub(super) fn is_parametric_function_component_group_with_context(
+    context: &SceneContext<'_>,
+    target_ordinal: usize,
+) -> bool {
+    parametric_function_component_slot_with_context(context, target_ordinal).is_some()
 }
 
 pub(crate) fn is_standalone_function_definition_group(
@@ -216,6 +266,20 @@ pub(crate) fn is_standalone_function_definition_group(
         && !is_function_plot_definition_group(file, groups, group.ordinal)
         && !is_non_graph_parameter_group(file, groups, group)
         && try_decode_standalone_function_expr(file, groups, group)
+            .ok()
+            .is_some_and(|expr| function_expr_contains_variable(&expr))
+}
+
+pub(crate) fn is_standalone_function_definition_group_with_context(
+    file: &GspFile,
+    context: &SceneContext<'_>,
+    group: &ObjectGroup,
+) -> bool {
+    has_parameter_control_payload(group)
+        && !is_function_plot_definition_group_with_context(context, group.ordinal)
+        && !is_non_graph_parameter_group_with_context(file, context, group)
+        && context
+            .standalone_function_expr(group)
             .ok()
             .is_some_and(|expr| function_expr_contains_variable(&expr))
 }
@@ -238,6 +302,24 @@ pub(super) fn parametric_function_component_slot(
     })
 }
 
+pub(super) fn parametric_function_component_slot_with_context(
+    context: &SceneContext<'_>,
+    target_ordinal: usize,
+) -> Option<usize> {
+    context
+        .group_indices_by_kind(crate::format::GroupKind::ParametricFunctionPlot)
+        .iter()
+        .filter_map(|index| context.group(*index))
+        .find_map(|group| {
+            context.indexed_path(group).and_then(|path| {
+                path.refs
+                    .iter()
+                    .take(2)
+                    .position(|ordinal| *ordinal == target_ordinal)
+            })
+        })
+}
+
 fn has_external_indexed_path_reference(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -247,6 +329,17 @@ fn has_external_indexed_path_reference(
         group.ordinal != target_ordinal
             && find_indexed_path(file, group)
                 .is_some_and(|path| path.refs.contains(&target_ordinal))
+    })
+}
+
+fn has_external_indexed_path_reference_with_context(
+    context: &SceneContext<'_>,
+    target_ordinal: usize,
+) -> bool {
+    context.referrers(target_ordinal).iter().any(|index| {
+        context
+            .group(*index)
+            .is_some_and(|group| group.ordinal != target_ordinal)
     })
 }
 
@@ -260,6 +353,18 @@ pub(super) fn is_non_graph_parameter_group(
         && !is_function_plot_parameter_group(file, groups, group.ordinal)
         && !is_parametric_function_component_group(file, groups, group.ordinal)
         && has_external_indexed_path_reference(file, groups, group.ordinal)
+}
+
+pub(super) fn is_non_graph_parameter_group_with_context(
+    _file: &GspFile,
+    context: &SceneContext<'_>,
+    group: &ObjectGroup,
+) -> bool {
+    has_parameter_control_payload(group)
+        && !is_function_plot_definition_group_with_context(context, group.ordinal)
+        && !is_function_plot_parameter_group_with_context(context, group.ordinal)
+        && !is_parametric_function_component_group_with_context(context, group.ordinal)
+        && has_external_indexed_path_reference_with_context(context, group.ordinal)
 }
 
 pub(super) fn is_editable_non_graph_parameter_name(name: &str) -> bool {

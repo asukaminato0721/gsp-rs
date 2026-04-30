@@ -7,6 +7,7 @@ use anyhow::{Context, Result, bail};
 
 mod assemble;
 mod buttons;
+mod context;
 mod decode;
 mod graph;
 mod images;
@@ -23,6 +24,7 @@ use self::assemble::{
     SceneAssemblyArtifacts, assemble_scene, build_world_data, compute_scene_bounds,
 };
 use self::buttons::{ButtonIndexLookups, collect_buttons};
+use self::context::SceneContext;
 pub(crate) use self::decode::decode_measurement_value;
 use crate::format::{
     GroupKind, GspFile, ObjectGroup, PointRecord, Record, collect_strings, decode_c_string,
@@ -51,10 +53,12 @@ use self::labels::{
     collect_labels, collect_polygon_parameter_labels, collect_polyline_parameter_labels,
     collect_segment_parameter_labels, polygon_boundary_parameter, resolve_label_hotspots,
 };
+#[cfg(test)]
+use self::points::collect_visible_points_checked;
 use self::points::{
     RawPointConstraint, TransformBindingKind, collect_non_graph_parameters,
     collect_point_iteration_points, collect_point_objects, collect_standalone_parameter_points,
-    collect_visible_points_checked, decode_angle_rotation_anchor_raw,
+    collect_visible_points_checked_with_context, decode_angle_rotation_anchor_raw,
     decode_line_midpoint_anchor_raw, decode_offset_anchor_raw,
     decode_parameter_controlled_anchor_raw, decode_parameter_rotation_anchor_raw,
     decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,
@@ -225,17 +229,18 @@ struct BoundsData {
 fn analyze_scene(
     file: &GspFile,
     groups: &[ObjectGroup],
+    context: &SceneContext<'_>,
     point_map: &[Option<PointRecord>],
 ) -> SceneAnalysis {
     let raw_anchors_for_graph = collect_raw_object_anchors(file, groups, point_map, None);
     let graph = detect_graph_transform(file, groups, &raw_anchors_for_graph);
     let graph_mode = graph.is_some() && has_graph_classes(groups);
     let hidden_graph_transform = !graph_mode
-        && graph.as_ref().is_some_and(|graph| {
-            has_hidden_graph_panel(file, groups, &raw_anchors_for_graph, graph)
-        })
-        && count_function_coordinate_points(file, groups) >= 10
-        && count_polygon_payload_color_bindings(file, groups) >= 10;
+        && graph
+            .as_ref()
+            .is_some_and(|graph| has_hidden_graph_panel(context, &raw_anchors_for_graph, graph))
+        && count_function_coordinate_points(context) >= 10
+        && count_polygon_payload_color_bindings(context) >= 10;
     let graph_ref =
         if graph_mode || hidden_graph_transform || has_coordinate_transform_consumers(groups) {
             graph.clone()
@@ -295,37 +300,42 @@ fn analyze_scene(
     }
 }
 
-fn count_function_coordinate_points(file: &GspFile, groups: &[ObjectGroup]) -> usize {
-    groups
+fn count_function_coordinate_points(context: &SceneContext<'_>) -> usize {
+    context
+        .groups
         .iter()
         .filter(|group| {
             if !group.header.kind().is_coordinate_object() {
                 return false;
             }
-            find_indexed_path(file, group).is_some_and(|path| {
+            context.indexed_path(group).is_some_and(|path| {
                 path.refs
                     .iter()
-                    .filter_map(|ordinal| groups.get(ordinal.saturating_sub(1)))
+                    .filter_map(|ordinal| context.group_by_ordinal(*ordinal))
                     .any(|source_group| source_group.header.kind() == GroupKind::FunctionExpr)
             })
         })
         .count()
 }
 
-fn count_polygon_payload_color_bindings(file: &GspFile, groups: &[ObjectGroup]) -> usize {
-    groups
+fn count_polygon_payload_color_bindings(context: &SceneContext<'_>) -> usize {
+    context
+        .group_indices_by_kind(GroupKind::DerivedSegment24)
         .iter()
+        .chain(
+            context
+                .group_indices_by_kind(GroupKind::DerivedSegment75)
+                .iter(),
+        )
+        .filter_map(|index| context.group(*index))
         .filter(|group| {
-            matches!(
-                group.header.kind(),
-                GroupKind::DerivedSegment24 | GroupKind::DerivedSegment75
-            ) && find_indexed_path(file, group).is_some_and(|path| {
+            context.indexed_path(group).is_some_and(|path| {
                 if path.refs.len() < 4 {
                     return false;
                 }
                 path.refs
                     .first()
-                    .and_then(|ordinal| groups.get(ordinal.saturating_sub(1)))
+                    .and_then(|ordinal| context.group_by_ordinal(*ordinal))
                     .is_some_and(|host_group| host_group.header.kind() == GroupKind::Polygon)
             })
         })
@@ -333,32 +343,36 @@ fn count_polygon_payload_color_bindings(file: &GspFile, groups: &[ObjectGroup]) 
 }
 
 fn has_hidden_graph_panel(
-    file: &GspFile,
-    groups: &[ObjectGroup],
+    context: &SceneContext<'_>,
     anchors: &[Option<PointRecord>],
     graph: &GraphTransform,
 ) -> bool {
-    groups.iter().any(|group| {
-        group.header.kind() == GroupKind::Polygon
-            && !group.header.is_hidden()
-            && color_from_style(group.header.style_b) == [0, 0, 0, 255]
-            && find_indexed_path(file, group).is_some_and(|path| {
-                if path.refs.len() != 4 {
-                    return false;
-                }
-                let points = path
-                    .refs
-                    .iter()
-                    .filter_map(|ordinal| anchors.get(ordinal.saturating_sub(1)).cloned().flatten())
-                    .map(|point| to_world(&point, &Some(graph.clone())))
-                    .collect::<Vec<_>>();
-                points.len() == 4
-                    && points.iter().all(|point| {
-                        ((point.x - 0.0).abs() < 1e-9 || (point.x - 1.0).abs() < 1e-9)
-                            && ((point.y - 0.0).abs() < 1e-9 || (point.y - 1.0).abs() < 1e-9)
-                    })
-            })
-    })
+    context
+        .group_indices_by_kind(GroupKind::Polygon)
+        .iter()
+        .filter_map(|index| context.group(*index))
+        .any(|group| {
+            !group.header.is_hidden()
+                && color_from_style(group.header.style_b) == [0, 0, 0, 255]
+                && context.indexed_path(group).is_some_and(|path| {
+                    if path.refs.len() != 4 {
+                        return false;
+                    }
+                    let points = path
+                        .refs
+                        .iter()
+                        .filter_map(|ordinal| {
+                            anchors.get(ordinal.saturating_sub(1)).cloned().flatten()
+                        })
+                        .map(|point| to_world(&point, &Some(graph.clone())))
+                        .collect::<Vec<_>>();
+                    points.len() == 4
+                        && points.iter().all(|point| {
+                            ((point.x - 0.0).abs() < 1e-9 || (point.x - 1.0).abs() < 1e-9)
+                                && ((point.y - 0.0).abs() < 1e-9 || (point.y - 1.0).abs() < 1e-9)
+                        })
+                })
+        })
 }
 
 fn collect_scene_shapes(
@@ -527,6 +541,7 @@ fn synthesize_axes_if_needed(analysis: &SceneAnalysis, axes: &[LineShape]) -> Ve
 fn collect_scene_labels(
     file: &GspFile,
     groups: &[ObjectGroup],
+    context: &SceneContext<'_>,
     analysis: &SceneAnalysis,
     shapes: &CollectedShapes,
 ) -> (
@@ -544,6 +559,7 @@ fn collect_scene_labels(
     labels.extend(collect_coordinate_labels(
         file,
         groups,
+        context,
         &analysis.raw_anchors,
     ));
     labels.extend(collect_polygon_parameter_labels(
@@ -564,6 +580,7 @@ fn collect_scene_labels(
     labels.extend(collect_custom_transform_expression_labels(
         file,
         groups,
+        context,
         &analysis.raw_anchors,
     ));
     labels.extend(collect_circle_parameter_labels(
@@ -1097,21 +1114,24 @@ fn normalized_hsb(hue: f64, saturation: f64, brightness: f64) -> [u8; 3] {
 
 pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
     let groups = file.object_groups();
+    let context = SceneContext::new(file, &groups);
     validate_scene_payloads(file, &groups)?;
     let point_map = collect_point_objects(file, &groups);
-    let analysis = analyze_scene(file, &groups, &point_map);
+    let analysis = analyze_scene(file, &groups, &context, &point_map);
     let mut shapes = collect_scene_shapes(file, &groups, &point_map, &analysis);
     let (images, image_group_to_index) = collect_scene_images(file, &groups, &analysis.graph_ref);
     let (mut labels, label_group_to_index, pending_hotspots) =
-        collect_scene_labels(file, &groups, &analysis, &shapes);
+        collect_scene_labels(file, &groups, &context, &analysis, &shapes);
 
-    let (mut visible_points, mut group_to_point_index) = collect_visible_points_checked(
-        file,
-        &groups,
-        &point_map,
-        &analysis.raw_anchors,
-        &analysis.graph_ref,
-    )?;
+    let (mut visible_points, mut group_to_point_index) =
+        collect_visible_points_checked_with_context(
+            file,
+            &groups,
+            &context,
+            &point_map,
+            &analysis.raw_anchors,
+            &analysis.graph_ref,
+        )?;
     shapes.coordinate_traces.extend(collect_point_traces(
         file,
         &groups,
@@ -1222,12 +1242,13 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
     bind_button_seed_expression_labels(
         file,
         &groups,
+        &context,
         &analysis.raw_anchors,
         &mut labels,
         &label_group_to_index,
         &group_to_point_index,
     );
-    let iteration_tables = collect_iteration_tables(file, &groups, &analysis.raw_anchors);
+    let iteration_tables = collect_iteration_tables(file, &groups, &context, &analysis.raw_anchors);
     remap_label_bindings(&mut labels, &group_to_point_index);
     bind_point_label_anchors(
         file,
@@ -1290,7 +1311,7 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
     };
     let show_hidden_parameter_controls = !analysis.graph_mode
         && analysis.graph_ref.is_some()
-        && count_polygon_payload_color_bindings(file, &groups) >= 10;
+        && count_polygon_payload_color_bindings(&context) >= 10;
     parameters.extend(collect_non_graph_parameters(
         file,
         &groups,
