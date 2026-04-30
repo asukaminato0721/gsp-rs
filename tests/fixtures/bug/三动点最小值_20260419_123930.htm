@@ -1,0 +1,129 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>三动点最小值_20260419_123930</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Parameter(60,14,122,'t[1] = ')[black];
+{2} Point(538,358)[hidden];
+{3} Point(388.532,600.69)[label('B'),mediumPoint];
+{4} Rotation/MeasuredAngle(3,2,1)[label('C'),black,mediumPoint];
+{5} Circle(2,3)[hidden];
+{6} Ray(2,3)[hidden];
+{7} Intersect2(6,5)[hidden];
+{8} Ray(4,7)[hidden];
+{9} Segment(4,3)[color(0,0,128),mediumLine];
+{10} Segment(4,2)[hidden];
+{11} Point on object(5,-1.19381)[label('A'),red,mediumPoint];
+{12} Segment(3,11)[color(0,0,128),mediumLine];
+{13} Segment(4,11)[color(0,0,128),mediumLine];
+{14} Angle(3,11,4,14,150,'∠BAC = ')[black];
+{15} Point on object(12,0.661984)[label('D'),red,mediumPoint];
+{16} Point on object(13,0.712221)[label('F'),red,mediumPoint];
+{17} Point on object(9,0.579957)[label('E'),red,mediumPoint];
+{18} Segment(16,15)[color(0,0,128),mediumLine];
+{19} Segment(17,16)[color(0,0,128),mediumLine];
+{20} Segment(15,17)[color(0,0,128),mediumLine];
+{21} Reflection(17,12)[label('M'),red,mediumPoint];
+{22} Reflection(17,13)[label('N'),red,mediumPoint];
+{23} Segment(22,21)[color(0,0,128),dashed];
+{24} Segment(17,21)[color(0,0,128),dashed];
+{25} Segment(21,15)[color(0,0,128),dashed];
+{26} Segment(22,16)[color(0,0,128),dashed];
+{27} Segment(22,17)[color(0,0,128),dashed];
+{28} Segment(17,11)[color(0,0,128),dashed];
+{29} Polygon(11,3,4)[color(192,133,74)];
+{30} Area(29,14,177,'△ABC的面积 = ')[black];
+{31} Segment(21,11)[color(0,0,128),dashed];
+{32} Segment(22,11)[color(0,0,128),dashed];
+{33} Length(23,14,203,'MN = ')[black];
+{34} Length(31,14,229,'AM = ')[black];
+{35} Length(32,14,255,'AN = ')[black];
+{36} Perpendicular(9,11)[hidden];
+{37} Intersect(36,9)[red,mediumPoint];
+{38} MoveButton(10,263,3,'移动点')(37,17)[color(255,128,0)];
+{39} Intersect(23,12)[red,mediumPoint];
+{40} Intersect(23,13)[red,mediumPoint];
+{41} MoveButton(10,287,3,'移动点')(39,15)[color(255,128,0)];
+{42} MoveButton(10,311,3,'移动点')(40,16)[color(255,128,0)];
+{43} Length(28,252,179,'AE = ')[black];
+{44} Length(9,252,205,'BC = ')[black];
+{45} Calculate(252,237,'(AE/BC)*3 = ','A B / 3 * ')(43,44)[black];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>三动点最小值_20260419_123930</P></H4>
+</BODY>
+</HTML>

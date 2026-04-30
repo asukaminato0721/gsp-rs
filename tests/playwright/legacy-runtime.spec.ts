@@ -131,6 +131,76 @@ test('angle-marker class payload renders bug fixture without path explosion', as
   expect(result.bLabelAnchorKind).toBe('point');
 });
 
+test('three-moving-point fixture keeps measured rotation and move buttons live', async ({ page }) => {
+  const file = compileFixtureToTempHtml('tests/fixtures/bug/三动点最小值_20260419_123930.gsp');
+  await page.goto(`file://${file}`);
+
+  const before = await page.evaluate(() => {
+    const scene = window.gspDebug.runtime.scene;
+    const moveButtons = scene.buttons.filter((button: any) => button.action?.kind === 'move-point');
+    return {
+      cPoint: scene.points.find((point: any) => point.debug?.groupOrdinal === 4),
+      parameter: scene.parameters.find((parameter: any) => parameter.name === 't₁'),
+      moveButtonOrdinals: moveButtons.map((button: any) => button.debug?.groupOrdinal),
+      measurementTexts: scene.labels
+        .filter((label: any) => [15, 31, 34, 35, 36, 44, 45, 46].includes(label.debug?.groupOrdinal))
+        .map((label: any) => label.text),
+      movingPoints: moveButtons.map((button: any) => {
+        const point = scene.points[button.action.pointIndex];
+        return { x: point.x, y: point.y };
+      }),
+    };
+  });
+
+  expect(before.parameter?.value).toBeCloseTo(60, 6);
+  expect(before.parameter?.unit).toBe('degree');
+  expect(before.cPoint?.binding?.transform?.kind).toBe('rotate');
+  expect(before.cPoint?.binding?.transform?.parameterName).toBe('t₁');
+  expect(before.cPoint?.x).toBeCloseTo(673.4418668596801, 6);
+  expect(before.cPoint?.y).toBeCloseTo(608.7880361833353, 6);
+  expect(before.moveButtonOrdinals).toEqual([39, 42, 43]);
+  expect(before.measurementTexts).toHaveLength(8);
+  expect(before.measurementTexts).toEqual(expect.arrayContaining([
+    expect.stringMatching(/^∠BAC = /),
+    expect.stringMatching(/^△ABC的面积 = /),
+    expect.stringMatching(/^MN = /),
+    expect.stringMatching(/^AM = /),
+    expect.stringMatching(/^AN = /),
+    expect.stringMatching(/^AE = /),
+    expect.stringMatching(/^BC = /),
+    expect.stringMatching(/^AE \/ BC\*3 = /),
+  ]));
+
+  const buttons = page.getByRole('button', { name: '移动点' });
+  await expect(buttons).toHaveCount(3);
+  for (let index = 0; index < 3; index += 1) {
+    await buttons.nth(index).click();
+    await page.waitForTimeout(220);
+  }
+
+  const after = await page.evaluate(() => {
+    const scene = window.gspDebug.runtime.scene;
+    return {
+      movingPoints: scene.buttons
+        .filter((button: any) => button.action?.kind === 'move-point')
+        .map((button: any) => {
+          const point = scene.points[button.action.pointIndex];
+          return { x: point.x, y: point.y };
+        }),
+      measurementTexts: scene.labels
+        .filter((label: any) => [15, 31, 34, 35, 36, 44, 45, 46].includes(label.debug?.groupOrdinal))
+        .map((label: any) => label.text),
+    };
+  });
+
+  for (let index = 0; index < 3; index += 1) {
+    const dx = after.movingPoints[index].x - before.movingPoints[index].x;
+    const dy = after.movingPoints[index].y - before.movingPoints[index].y;
+    expect(Math.hypot(dx, dy)).toBeGreaterThan(1);
+  }
+  expect(after.measurementTexts).not.toEqual(before.measurementTexts);
+});
+
 test('one dragon fixture preserves JavaSketchpad visibility and clickable sequence action', async ({ page }) => {
   const fixturePath = 'tests/Samples/个人专栏/李章博作品/一条龙.gsp';
   test.skip(!fs.existsSync(path.resolve(process.cwd(), fixturePath)), 'sample fixture missing');
