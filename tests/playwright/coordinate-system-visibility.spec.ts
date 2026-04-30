@@ -25,11 +25,63 @@ test('calibration-only geometry fixture hides the coordinate system', async ({ p
     graphMode: window.gspDebug.viewerEnv.sourceScene.graphMode,
     gridChildren: document.querySelector('#grid-layer')?.childElementCount ?? -1,
     sceneLineCount: window.gspDebug.runtime.scene.lines.length,
+    ...(() => {
+      const env = window.gspDebug.viewerEnv;
+      const drag = window.GspViewerModules.drag;
+      const scene = window.gspDebug.runtime.scene;
+      const aIndex = scene.points.findIndex((point) => point.debug?.groupOrdinal === 1);
+      const pointA = scene.points[aIndex];
+      const oIndex = scene.points.findIndex((point) => point.debug?.groupOrdinal === 8);
+      const eIndex = scene.points.findIndex((point) => point.debug?.groupOrdinal === 10);
+      const pointO = scene.points[oIndex];
+      const problemLabel = scene.labels.find((label) => label.text.startsWith('如图，O是△ABC的外接圆'));
+      const problemBounds = problemLabel
+        ? window.GspViewerModules.render.labelBounds(env, problemLabel)
+        : null;
+      const beforeA = { ...env.resolveScenePoint(aIndex) };
+      const beforeO = { ...env.resolveScenePoint(oIndex) };
+      const beforeE = { ...env.resolveScenePoint(eIndex) };
+      const dragMode = drag.dragModeFor(env, aIndex, null, null, null, null);
+      if (beforeA) {
+        drag.beginDrag(env, 1, env.toScreen(beforeA), aIndex, null, null, null, null);
+        drag.updateDraggedPoint(env, { x: beforeA.x - 40, y: beforeA.y + 35 });
+      }
+      const afterA = env.resolveScenePoint(aIndex);
+      const afterO = env.resolveScenePoint(oIndex);
+      const afterE = env.resolveScenePoint(eIndex);
+      return {
+        pointAVisible: pointA?.visible === true,
+        pointODraggable: pointO?.draggable === true,
+        pointOBinding: pointO?.binding?.kind ?? null,
+        pointADragMode: dragMode,
+        pointAMoved: beforeA && afterA ? Math.hypot(afterA.x - beforeA.x, afterA.y - beforeA.y) : 0,
+        pointOMoved: beforeO && afterO ? Math.hypot(afterO.x - beforeO.x, afterO.y - beforeO.y) : 0,
+        pointEMoved: beforeE && afterE ? Math.hypot(afterE.x - beforeE.x, afterE.y - beforeE.y) : 0,
+        visibleArcOrdinals: scene.arcs
+          .filter((arc) => arc.visible)
+          .map((arc) => arc.debug?.groupOrdinal)
+          .filter((ordinal) => typeof ordinal === 'number'),
+        problemTextVisible: problemLabel?.visible === true,
+        problemTextScreenSpace: problemLabel?.screenSpace === true,
+        problemTextTop: problemBounds?.top ?? -Infinity,
+      };
+    })(),
   }));
 
   expect(result.graphMode).toBe(false);
   expect(result.gridChildren).toBe(0);
   expect(result.sceneLineCount).toBeGreaterThan(0);
+  expect(result.pointAVisible).toBe(true);
+  expect(result.pointODraggable).toBe(false);
+  expect(result.pointOBinding).toBe('circumcenter');
+  expect(result.pointADragMode).toBe('point');
+  expect(result.pointAMoved).toBeGreaterThan(20);
+  expect(result.pointOMoved).toBeGreaterThan(1);
+  expect(result.pointEMoved).toBeGreaterThan(1);
+  expect(result.visibleArcOrdinals).toEqual(expect.arrayContaining([6, 9]));
+  expect(result.problemTextVisible).toBe(true);
+  expect(result.problemTextScreenSpace).toBe(true);
+  expect(result.problemTextTop).toBeGreaterThanOrEqual(0);
 });
 
 test('rolling triangle fixture keeps reference geometry coordinates without graph grid', async ({ page }) => {

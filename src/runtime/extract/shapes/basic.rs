@@ -1093,7 +1093,9 @@ pub(crate) fn collect_three_point_arc_shapes(
 }
 
 fn arc_stroke_visible(group: &ObjectGroup) -> bool {
-    group.header.style_c != 0x0000_ffff || color_from_style(group.header.style_b) == [0, 0, 0, 255]
+    group.header.kind() != crate::format::GroupKind::ThreePointArc
+        || group.header.style_c != 0x0000_ffff
+        || color_from_style(group.header.style_b) == [0, 0, 0, 255]
 }
 
 fn resolve_arc_boundary_points(

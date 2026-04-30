@@ -2049,17 +2049,28 @@ pub(crate) fn decode_parameter_rotation_anchor_raw(
         let source_group_index = path.refs.first()?.checked_sub(1)?;
         let center_group_index = path.refs.get(1)?.checked_sub(1)?;
         let angle_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
-        if angle_group.header.kind() != GroupKind::ParameterAnchor {
-            return None;
-        }
-        let (_, angle_radians) =
-            parameter_anchor_runtime_value(file, groups, angle_group, anchors)?;
+        let (angle_degrees, parameter_name) = match angle_group.header.kind() {
+            GroupKind::FunctionExpr => {
+                let (angle_expr, parameters, parameter_name) =
+                    expression_runtime_context(file, groups, angle_group, anchors)?;
+                (
+                    evaluate_expr_with_parameters(&angle_expr, 0.0, &parameters)?,
+                    parameter_name,
+                )
+            }
+            GroupKind::ParameterAnchor => {
+                let (_, angle_radians) =
+                    parameter_anchor_runtime_value(file, groups, angle_group, anchors)?;
+                (angle_radians.to_degrees(), None)
+            }
+            _ => return None,
+        };
         super::bindings::TransformBinding {
             source_group_index,
             center_group_index,
             kind: TransformBindingKind::Rotate {
-                angle_degrees: angle_radians.to_degrees(),
-                parameter_name: None,
+                angle_degrees,
+                parameter_name,
             },
         }
     };

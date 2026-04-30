@@ -115,9 +115,67 @@ test('angle-marker class payload renders bug fixture without path explosion', as
     return {
       pathCount: svg?.querySelectorAll('path').length ?? 0,
       redPointCount: svg?.querySelectorAll('circle[fill="rgba(255, 0, 0, 1.000)"]').length ?? 0,
+      visibleArcOrdinals: scene.arcs
+        .filter((arc: any) => arc.visible !== false)
+        .map((arc: any) => arc.debug?.groupOrdinal),
+      labelTexts: scene.labels.map((label: any) => label.text),
       angleMarkerClasses: scene.lines
         .filter((line: any) => line.binding?.kind === 'angle-marker')
         .map((line: any) => line.binding.markerClass),
+      pointsByOrdinal: Object.fromEntries(
+        scene.points
+          .filter((point: any) => [6, 18, 20, 24].includes(point.debug?.groupOrdinal))
+          .map((point: any) => [
+            point.debug.groupOrdinal,
+            {
+              x: point.x,
+              y: point.y,
+              bindingKind: point.binding?.transform?.kind ?? null,
+              factor: point.binding?.transform?.factor ?? null,
+            },
+          ]),
+      ),
+      crossing: (() => {
+        const env = window.gspDebug.viewerEnv;
+        const dynamics = window.GspViewerModules.dynamics;
+        const startScene = window.gspDebug.runtime.scene;
+        const a = startScene.points[0];
+        const c = startScene.points[1];
+        const cAngle = Math.atan2(-(c.y - a.y), c.x - a.x);
+        const cParameter = ((cAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2) / (Math.PI * 2);
+        const moveD = (value: number) => {
+          env.markDependencyRootsDirty?.([dynamics.sourcePointRootId(4)]);
+          env.updateScene((draft: any) => {
+            dynamics.applyNormalizedParameterToPoint(draft.points[4], draft, value);
+          }, 'graph');
+        };
+        const lineCircleVariant = () => {
+          const current = window.gspDebug.runtime.scene;
+          const lineStart = current.points[1];
+          const lineEnd = current.points[4];
+          const center = current.points[6];
+          const radiusPoint = current.points[4];
+          const dx = lineEnd.x - lineStart.x;
+          const dy = lineEnd.y - lineStart.y;
+          const radius = Math.hypot(radiusPoint.x - center.x, radiusPoint.y - center.y);
+          const fx = lineStart.x - center.x;
+          const fy = lineStart.y - center.y;
+          const aCoef = dx * dx + dy * dy;
+          const bCoef = 2 * (fx * dx + fy * dy);
+          const cCoef = fx * fx + fy * fy - radius * radius;
+          const root = Math.sqrt(Math.max(0, bCoef * bCoef - 4 * aCoef * cCoef));
+          const candidates = [(-bCoef - root) / (2 * aCoef), (-bCoef + root) / (2 * aCoef)]
+            .map((t) => ({ x: lineStart.x + dx * t, y: lineStart.y + dy * t }));
+          return candidates[1];
+        };
+        moveD(cParameter - 0.0005);
+        moveD(cParameter);
+        moveD(cParameter + 0.0005);
+        return {
+          actual: window.gspDebug.runtime.scene.points[8],
+          expected: lineCircleVariant(),
+        };
+      })(),
       bLabelAnchorKind:
         bLabel?.binding?.kind === 'point-anchor' || (bLabel?.anchor && 'pointIndex' in bLabel.anchor)
           ? 'point'
@@ -126,8 +184,23 @@ test('angle-marker class payload renders bug fixture without path explosion', as
   });
 
   expect(Math.max(...result.angleMarkerClasses)).toBeLessThanOrEqual(2);
-  expect(result.pathCount).toBe(20);
+  expect(result.pathCount).toBe(19);
   expect(result.redPointCount).toBe(6);
+  expect(result.visibleArcOrdinals).toEqual([]);
+  expect(result.labelTexts).toContain('⇒△CBD∼△CEB');
+  expect(result.labelTexts).toContain('⇒(BC^2)=CD*CE');
+  expect(result.pointsByOrdinal[6]?.bindingKind).toBe('scale');
+  expect(result.pointsByOrdinal[6]?.factor).toBeCloseTo(Math.sqrt(6), 12);
+  expect(result.pointsByOrdinal[6]?.x).toBeCloseTo(943.2872383623309, 6);
+  expect(result.pointsByOrdinal[6]?.y).toBeCloseTo(309.37346662472527, 6);
+  expect(result.pointsByOrdinal[18]?.x).toBeCloseTo(538, 6);
+  expect(result.pointsByOrdinal[18]?.y).toBeCloseTo(428, 6);
+  expect(result.pointsByOrdinal[20]?.x).toBeCloseTo(714.459085867259, 6);
+  expect(result.pointsByOrdinal[20]?.y).toBeCloseTo(647.5843289845315, 6);
+  expect(result.pointsByOrdinal[24]?.x).toBeCloseTo(486, 6);
+  expect(result.pointsByOrdinal[24]?.y).toBeCloseTo(551, 6);
+  expect(result.crossing.actual.x).toBeCloseTo(result.crossing.expected.x, 6);
+  expect(result.crossing.actual.y).toBeCloseTo(result.crossing.expected.y, 6);
   expect(result.bLabelAnchorKind).toBe('point');
 });
 

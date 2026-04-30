@@ -203,6 +203,29 @@ mod tests {
     }
 
     #[test]
+    fn decodes_arc_unfold_angle_function_expr() {
+        let data = include_bytes!(
+            "../../tests/Samples/个人专栏/贺基旭作品/20180905圆弧的展开(hjx4882).gsp"
+        );
+        let file = GspFile::parse(data).expect("fixture parses");
+        let groups = file.object_groups();
+        let expr = try_decode_function_expr(&file, &groups, &groups[8]).expect("expression #9");
+
+        assert_eq!(
+            expr,
+            FunctionExpr::Parsed(FunctionAst::Binary {
+                lhs: Box::new(FunctionAst::Parameter(
+                    "m₂".to_string(),
+                    0.2483244197822397,
+                )),
+                op: BinaryOp::Mul,
+                rhs: Box::new(FunctionAst::Constant(360.0)),
+            })
+        );
+        assert_eq!(function_expr_label(expr), "m₂*360");
+    }
+
+    #[test]
     fn decodes_marker_based_function_expr_with_structured_parser() {
         let payload = payload_from_words(&[0x0094, 0x0001, 0x2006, 0x000f, 0x000c, 0x1000, 0x0002]);
 

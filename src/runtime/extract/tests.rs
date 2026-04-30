@@ -3411,6 +3411,69 @@ fn preserves_parameter_controlled_arc_on_circle_gsp() {
 }
 
 #[test]
+fn preserves_hjx_arc_unfold_function_rotation_and_visible_arc() {
+    let Some(data) =
+        fixture_bytes("tests/Samples/个人专栏/贺基旭作品/20180905圆弧的展开(hjx4882).gsp")
+    else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+
+    let point_by_ordinal = |ordinal| {
+        scene
+            .points
+            .iter()
+            .find(|point| {
+                point
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .expect("expected point ordinal")
+    };
+    let rotated = point_by_ordinal(11);
+    let Some(ScenePointBinding::Rotate {
+        source_index,
+        center_index,
+        angle_degrees,
+        angle_expr: Some(angle_expr),
+        ..
+    }) = &rotated.binding
+    else {
+        panic!("expected H to be a live function-rotation point");
+    };
+    assert_eq!(
+        scene.points[*source_index].debug.as_ref().unwrap().group_ordinal,
+        7
+    );
+    assert_eq!(
+        scene.points[*center_index].debug.as_ref().unwrap().group_ordinal,
+        10
+    );
+    assert!(function_expr_has_parameter(angle_expr, "m₂"));
+    assert!((*angle_degrees - 89.3967911216063).abs() < 1e-9);
+    assert!(
+        (rotated.position.x - 887.5801047234683).abs() < 1e-6
+            && (rotated.position.y - 333.1981957068289).abs() < 1e-6,
+        "expected H to be placed by the decoded (BM/BA)*360 degree rotation"
+    );
+
+    let arc = scene
+        .arcs
+        .iter()
+        .find(|arc| {
+            arc.debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 12)
+        })
+        .expect("expected center arc #12");
+    assert!(arc.visible, "the payload CenterArc #12 should render");
+    assert_eq!(arc.color, [255, 0, 0, 255]);
+    assert!((arc.points[2].x - rotated.position.x).abs() < 1e-6);
+    assert!((arc.points[2].y - rotated.position.y).abs() < 1e-6);
+}
+
+#[test]
 fn uses_document_canvas_bounds_for_rich_text_triangle_centers_layout() {
     let scene = fixture_scene(include_bytes!(
         "../../../tests/fixtures/未实现的系统功能/三角形的四心.gsp"
