@@ -1,0 +1,121 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>椭圆规(inRm)</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=1206 HEIGHT=677 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(354,302);
+{2} Translation(1,37.7953,0)[cyan,dot];
+{3} Line(2,1)[color(0,0,128),dashed];
+{4} Point on object(3,2.40771)[cyan,mediumPoint];
+{5} Point on object(3,5.26521)[cyan,mediumPoint];
+{6} Perpendicular(3,1)[color(0,0,128),dashed];
+{7} Rotation(4,1,-1.5708)[red];
+{8} Rotation(4,1,1.5708)[cyan];
+{9} Circle(1,5)[color(0,128,0),dashed];
+{10} Point on object(9,-0.935424)[red];
+{11} Perpendicular(3,10)[color(0,0,128),dashed];
+{12} Intersect1(6,9)[red];
+{13} Intersect(3,11)[red];
+{14} Segment(5,1)[color(0,0,128)];
+{15} Circle by radius(7,14)[color(0,0,128)];
+{16} Intersect1(6,15)[red];
+{17} Dilation/3PtRatio(10,13,1,12,16)[red];
+{18} Locus(17,10,9,255)[color(128,0,0)];
+{19} Point on object(18,0.881639)[label('M'),cyan,large];
+{20} Circle by radius(19,14)[color(0,128,0)];
+{21} Intersect2(6,20)[yellow];
+{22} Segment(8,7)[color(0,0,128),mediumLine];
+{23} Perpendicular(3,19)[color(0,0,128),dashed];
+{24} Intersect(23,3)[red];
+{25} Ray(19,24)[color(0,0,128)];
+{26} Intersect1(6,20)[yellow];
+{27} Translation(24,0,0.377953)[red,mediumPoint];
+{28} Translation(27,37.7953,0)[red];
+{29} Circle(27,28)[color(0,0,128)];
+{30} Intersect2(25,29)[cyan];
+{31} Intersect2(23,29)[red,mediumPoint];
+{32} Intersect1(23,29)[red,mediumPoint];
+{33} Dilation/3PtRatio(21,26,31,32,30)[red,mediumPoint];
+{34} Segment(33,19)[red,mediumLine];
+{35} Intersect(34,3)[red,mediumPoint];
+{36} Dilation(4,1,-1)[cyan];
+{37} Segment(4,36)[color(0,0,128),mediumLine];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>椭圆规(inRm)</P></H4>
+</BODY>
+</HTML>

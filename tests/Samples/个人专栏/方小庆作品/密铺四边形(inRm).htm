@@ -1,0 +1,113 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>密铺四边形(inRm)</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=1206 HEIGHT=677 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Function(60,277,'f(x) = ((x/2) - trunc((x/2)))*2','x 2 / x 2 / @trnc - 2 * ')()[black];
+{2} Parameter(33,55,95,'n = ')[black];
+{3} Parameter(6,55,55,'m = ')[black];
+{4} Parameter(0,57,134,'t = ')[black];
+{5} Point(312,149);
+{6} Point(318,53)[mediumPoint];
+{7} Point(330,78)[mediumPoint];
+{8} Point(272,82)[mediumPoint];
+{9} Point(289,42)[mediumPoint];
+{10} Polygon(9,8,7,6)[hidden];
+{11} Dilation(8,9,0.5)[red];
+{12} Calculate(57,157,'t + 1 = ','A 1 + ')(4)[black];
+{13} Dilation(7,8,0.5)[red];
+{14} Dilation(7,6,0.5)[red];
+{15} Dilation(14,11,0.5)[yellow];
+{16} Dilation(6,9,0.5)[red];
+{17} VectorTranslation(5,11,14)[red];
+{18} VectorTranslation(5,16,13)[red];
+{19} Calculate(60,190,'y = ','A B / @trnc ')(4,3)[black];
+{20} Calculate(60,211,'x = ','A B C * - ')(4,19,3)[black];
+{21} Dilation/MarkedRatio(17,5,20)[yellow,mediumPoint];
+{22} Dilation/MarkedRatio(18,5,19)[yellow,mediumPoint];
+{23} VectorTranslation(22,5,21)[blue,large];
+{24} Calculate(59,369,'((f(t)/2) + (1 - f(y))/2) = ','B @fA 2 / 1 C @fA - + 2 / ')(1,4,19)[black];
+{25} Calculate(59,319,'t*180° + f(y)*f(m + 1)*180° = ','A 3.14159 * C @fB D 1 + @fB * 3.14159 * + ')(4,1,19,3)[black];
+{26} Rotation/MeasuredAngle(10,15,25)[hidden];
+{27} Colorized_Grayscale(26,24,0,1,2);
+{28} VectorTranslation(27,15,23)[hidden];
+{29} Colorized_Grayscale(28,24,0,1,2);
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>密铺四边形(inRm)</P></H4>
+</BODY>
+</HTML>

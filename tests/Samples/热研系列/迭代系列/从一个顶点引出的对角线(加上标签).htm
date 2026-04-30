@@ -1,0 +1,109 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>从一个顶点引出的对角线(加上标签)</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=1206 HEIGHT=677 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(250,70)[label('A')];
+{2} Point(253,563)[label('C')];
+{3} Segment(2,1)[color(0,0,128)];
+{4} Point on object(3,0.401966)[label('B'),red];
+{5} Ratio/Points(1,2,4,14,25,'(AB/AC) = ')[blue];
+{6} Parameter(0,14,64,'t[1] = ')[blue];
+{7} Parameter(100,14,115,'t[2] = ')[blue];
+{8} Calculate(14,88,'t[1] + 1 = ','A 1 + ')(6)[blue];
+{9} Calculate(14,139,'n = ','A B ^ @rond ')(7,5)[blue];
+{10} Calculate(14,165,'(360°/n) = ','6.28319 A / ')(9)[blue];
+{11} Calculate(14,217,'trunc((t[1] + 1/n))*((360°/n)) = ','A B / @trnc C * ')(8,9,10)[blue];
+{12} Calculate(14,259,'(t[1] + 1)*(360°/n) = ','A B * ')(8,10)[blue];
+{13} Point(564,304)[hidden];
+{14} Point(733,204);
+{15} Distance(14,13,14,289,'DA = ')[blue];
+{16} Calculate(14,309,'DA + 0.4 厘米 = ','A 15.1181 + ')(15)[blue];
+{17} Circle by radius(13,16)[hidden];
+{18} Ray(14,13)[hidden];
+{19} Intersect2(18,17)[red,hidden];
+{20} Rotation/MeasuredAngle(14,13,10)[red];
+{21} Calculate(14,329,'n - 1 = ','A 1 - ')(9)[blue];
+{22} Segment(20,14)[blue];
+{23} Rotation/MeasuredAngle(14,13,12)[red];
+{24} Segment(23,14)[hidden];
+{25} Calculate(14,349,'n - 3 = ','A 3 - ')(9)[blue];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>从一个顶点引出的对角线(加上标签)</P></H4>
+</BODY>
+</HTML>

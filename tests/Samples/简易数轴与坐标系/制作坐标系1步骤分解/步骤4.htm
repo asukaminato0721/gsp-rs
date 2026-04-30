@@ -1,0 +1,157 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>4</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=1206 HEIGHT=677 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Parameter(0,29,251,'n = ')[black];
+{2} Calculate(29,281,'n + 1 = ','A 1 + ')(1)[black];
+{3} Calculate(110,281,'n - 1 = ','A 1 - ')(1)[black];
+{4} Point(486,389)[label('O')];
+{5} UnitPoint(4,37.7953)[hidden];
+{6} Translation(5,-3.29904e-014,-9.44882)[label('A'''),red,hidden];
+{7} PeggedText(6,2)[black];
+{8} Translation(5,2.31429e-016,3.77953)[hidden];
+{9} Segment(8,5)[color(0,0,128)];
+{10} SquareUnitPoint(5)[hidden];
+{11} VerticalAxis(4,10)[hidden];
+{12} Point on object(11,1.465)[label('H'),red];
+{13} Point on object(11,-0.53)[label('F'),red];
+{14} VerticalAxis(4,10)[hidden];
+{15} HorizontalAxis(4,5)[hidden];
+{16} Point on object(15,-0.405)[label('D'),red];
+{17} CoordSysByAxes(15,14)[hidden];
+{18} PlotFixedXY(17,0,-1)[hidden];
+{19} Translation(18,-10.5827,-7.38984e-014)[red,hidden];
+{20} PeggedText(19,3)[black];
+{21} Translation(18,3.77953,0)[hidden];
+{22} Segment(21,18)[color(0,0,128)];
+{23} Ratio/Points(4,18,12,29,639,'(OH/OG) = ')[black];
+{24} Calculate(29,701,'trunc((OH/OG) - 1.2) = ','A 1.2 - @trnc ')(23)[black];
+{25} PlotFixedXY(17,0,1)[hidden];
+{26} Translation(25,-9.44882,-6.59807e-014)[red,hidden];
+{27} PeggedText(26,2)[black];
+{28} Ratio/Points(4,25,13,29,531,'(OF/OE) = ')[black];
+{29} Calculate(29,593,'trunc((OF/OE) - 1.4) = ','A 1.4 - @trnc ')(28)[black];
+{30} Translation(25,3.77953,0)[hidden];
+{31} Segment(30,25)[color(0,0,128)];
+{32} PlotFixedXY(17,-1,0)[hidden];
+{33} Translation(32,2.31429e-016,3.77953)[hidden];
+{34} Segment(32,33)[color(0,0,128)];
+{35} Ratio/Points(4,32,16,29,423,'(OD/OC) = ')[black];
+{36} Calculate(29,485,'trunc((OD/OC) - 1.2) = ','A 1.2 - @trnc ')(35)[black];
+{37} Translation(32,-3.29904e-014,-9.44882)[red,hidden];
+{38} PeggedText(37,3)[black];
+{39} HorizontalAxis(4,5)[hidden];
+{40} Point on object(39,1.55)[label('B'),red];
+{41} Ratio/Points(4,5,40,29,315,'(OB/OA) = ')[black];
+{42} Calculate(29,377,'trunc((OB/OA) - 1.4) = ','A 1.4 - @trnc ')(41)[black];
+{43} FixedText(43,47,'第十一步，隐藏不需要的对象，用箭头工具建立坐标轴，大功告成  注：基本原理是如此，里面有些小技巧可以自己在制作过程中揣摩')[blue];
+{44} Translation(40,7.6378,0)[hidden];
+{45} Translation(40,11.4567,0)[hidden];
+{46} Ray(16,40)[hidden];
+{47} Circle(40,44)[hidden];
+{48} Circle(40,45)[hidden];
+{49} Intersect2(46,47)[hidden];
+{50} Intersect2(46,48)[hidden];
+{51} Segment(16,49)[black];
+{52} Rotation(50,40,0.261799)[hidden];
+{53} Segment(40,52)[black];
+{54} Segment(52,49)[black];
+{55} Rotation(52,40,-0.523599)[hidden];
+{56} Polygon(55,40,52,49)[black];
+{57} Segment(49,55)[black];
+{58} Segment(55,40)[black];
+{59} Translation(13,7.6378,0)[hidden];
+{60} Translation(13,11.4567,0)[hidden];
+{61} Ray(12,13)[hidden];
+{62} Circle(13,59)[hidden];
+{63} Circle(13,60)[hidden];
+{64} Intersect2(61,62)[hidden];
+{65} Intersect2(61,63)[hidden];
+{66} Segment(12,64)[black];
+{67} Rotation(65,13,0.261799)[hidden];
+{68} Segment(13,67)[black];
+{69} Segment(67,64)[black];
+{70} Rotation(67,13,-0.523599)[hidden];
+{71} Polygon(70,13,67,64)[black];
+{72} Segment(64,70)[black];
+{73} Segment(70,13)[black];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>4</P></H4>
+</BODY>
+</HTML>

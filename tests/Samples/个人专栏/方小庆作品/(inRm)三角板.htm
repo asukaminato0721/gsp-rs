@@ -1,0 +1,119 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>(inRm)三角板</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=1206 HEIGHT=677 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(321,179);
+{2} Point(546,121)[mediumPoint];
+{3} Distance(2,1,35,34,'AB = ')[black];
+{4} Calculate(36,57,'trunc(AB) = ','A @trnc ')(3)[black];
+{5} Calculate(30,125,'(trunc(AB)/AB) = ','A B / ')(4,3)[black];
+{6} Dilation/MarkedRatio(2,1,5)[hidden];
+{7} Dilation(6,1,0.5)[hidden];
+{8} Calculate(30,83,'(trunc(AB) + 1.5 厘米/AB) = ','A 56.6929 + B / ')(4,3)[black];
+{9} Dilation/MarkedRatio(2,1,8)[hidden];
+{10} Dilation/3PtRatio(6,1,6,1,9)[hidden];
+{11} Calculate(38,169,'n = ','A 10 * 37.7953 / ')(4)[black];
+{12} Rotation(10,1,1.5708)[hidden];
+{13} Rotation(10,7,1.5708)[hidden];
+{14} Dilation(13,7,0.4)[hidden];
+{15} Polygon(10,9,13)[blue];
+{16} Dilation(15,14,0.4)[white];
+{17} Calculate(84,167,'(1/n) = ','1 A / ')(11)[black];
+{18} Calculate(41,212,'t = ','0 A * ')(11)[black];
+{19} Calculate(90,213,'t + 1 = ','A 1 + ')(18)[black];
+{20} Calculate(42,266,'t[10] = ','1 A 10 A 10 / @trnc * - @sgn_ - 0.4 * ')(18)[black];
+{21} Calculate(42,242,'t[5] = ','1 A 5 + 10 A 5 + 10 / @trnc * - @sgn_ - 0.3 * ')(18)[black];
+{22} Calculate(39,298,'t[5] + t[10] + (1 - sgn(t[5] + t[10]))*0.2 = ','A B + 1 A B + @sgn_ - 0.2 * + ')(21,20)[black];
+{23} Dilation/MarkedRatio(6,1,17)[hidden];
+{24} VectorTranslation(6,1,12)[hidden];
+{25} Dilation/MarkedRatio(24,6,22)[hidden];
+{26} Segment(25,6)[color(0,0,128)];
+{27} Dilation(23,1,10)[hidden];
+{28} Calculate(40,336,'k = ','0 A * ')(11)[black];
+{29} Calculate(86,337,'k + 1 = ','A 1 + ')(28)[black];
+{30} Calculate(40,362,'(n/10) - 1 = ','A 10 / 1 - ')(11)[black];
+{31} VectorTranslation(6,23,1)[hidden];
+{32} Dilation(12,1,0.55)[red,hidden];
+{33} PeggedText(32,28)[black];
+{34} VectorTranslation(32,1,27)[red,hidden];
+{35} PeggedText(34,29)[black];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>(inRm)三角板</P></H4>
+</BODY>
+</HTML>

@@ -1295,13 +1295,14 @@ pub(super) fn collect_coordinate_labels(
             let binding = if semantic_kind == Some("numeric-helper") {
                 numeric_helper_axis_binding(file, groups, group, &expr_label)
             } else {
-                (semantic_kind.is_none() && is_editable_non_graph_parameter_name(&parameter_name))
-                    .then(|| TextLabelBinding::ExpressionValue {
-                        parameter_name: parameter_name.clone(),
-                        result_name: decode_label_name(file, group),
-                        expr_label: expr_label.clone(),
-                        expr: expr.clone(),
-                    })
+                (matches!(semantic_kind, None | Some("regular-polygon-angle"))
+                    && is_editable_non_graph_parameter_name(&parameter_name))
+                .then(|| TextLabelBinding::ExpressionValue {
+                    parameter_name: parameter_name.clone(),
+                    result_name: decode_label_name(file, group),
+                    expr_label: expr_label.clone(),
+                    expr: expr.clone(),
+                })
             };
             let value_text = value
                 .map(|value| {

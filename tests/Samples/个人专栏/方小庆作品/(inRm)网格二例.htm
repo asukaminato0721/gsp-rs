@@ -1,0 +1,108 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>(inRm)网格二例</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=1206 HEIGHT=677 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(171,234)[label('O'),mediumPoint];
+{2} Parameter(6,100,153,'x = ')[black];
+{3} Parameter(8,100,180,'y = ')[black];
+{4} Point(172,484)[label('O'),mediumPoint];
+{5} UnitPoint(1,46.4619)[cyan,mediumPoint];
+{6} Dilation/MarkedRatio(5,1,2)[label('w'),cyan,mediumPoint];
+{7} Segment(6,1)[color(0,0,128)];
+{8} RectangularUnitPoint(5,21.6703)[cyan,mediumPoint];
+{9} UnitPoint(4,297.795)[label('w'),cyan,mediumPoint];
+{10} Segment(9,4)[color(0,0,128),dashed];
+{11} Point on object(10,0.19048)[label('x'),cyan,mediumPoint];
+{12} Ratio/Points(4,11,9,32,414,'w[0] = ')[black];
+{13} Calculate(105,414,'w[1] = ','A @trnc ')(12)[black];
+{14} RectangularUnitPoint(9,133.795)[label('h'),cyan,mediumPoint];
+{15} Dilation/MarkedRatio(8,1,3)[label('h'),cyan,mediumPoint];
+{16} Segment(15,1)[color(0,0,128),mediumLine];
+{17} Dilation/MarkedRatio(11,4,13)[red];
+{18} Segment(17,4)[color(0,0,128)];
+{19} Segment(14,4)[color(0,0,128),dashed];
+{20} Point on object(19,0.133047)[label('y'),cyan,mediumPoint];
+{21} Ratio/Points(4,20,14,32,440,'h[0] = ')[black];
+{22} Calculate(105,440,'h[1] = ','A @trnc ')(21)[black];
+{23} Dilation/MarkedRatio(20,4,22)[red];
+{24} Segment(23,4)[color(0,0,128),mediumLine];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>(inRm)网格二例</P></H4>
+</BODY>
+</HTML>

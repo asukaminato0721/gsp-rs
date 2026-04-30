@@ -1,0 +1,132 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>m×n网格的交错填充</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=1206 HEIGHT=677 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Parameter(1,14,94,'')[hidden];
+{2} Parameter(0,14,121,'')[hidden];
+{3} Parameter(0,14,149,'')[hidden];
+{4} Parameter(1,14,177,'')[hidden];
+{5} Point(345,503)[mediumPoint];
+{6} UnitPoint(5,77.7953)[red,mediumPoint];
+{7} HorizontalAxis(5,6)[hidden];
+{8} SquareUnitPoint(6)[hidden];
+{9} VerticalAxis(5,8)[hidden];
+{10} CoordSysByAxes(7,9)[hidden];
+{11} Calculate(14,204,'','A 1 + ')(1)[hidden];
+{12} Calculate(14,246,'','A B + ')(2,4)[hidden];
+{13} Calculate(14,271,'','A B + ')(3,4)[hidden];
+{14} PlotXY(3,10,2)[red,mediumPoint];
+{15} PlotXY(13,10,2)[hidden];
+{16} PlotXY(3,10,12)[hidden];
+{17} PlotXY(13,10,12)[hidden];
+{18} Calculate(14,382,'','A B + 1 + ')(12,13)[hidden];
+{19} Calculate(14,403,'','A 2 / A 2 / @trnc - @sgn_ ')(18)[hidden];
+{20} Polygon(15,17,16,14)[hidden];
+{21} Colorized_Grayscale(20,19,0,1,2);
+{22} Point(327,544);
+{23} Point(324,588);
+{24} Translation(23,18.8976,0)[hidden];
+{25} Translation(22,18.8976,0)[hidden];
+{26} Ray(25,22)[color(0,0,128)];
+{27} Ray(24,23)[color(0,0,128)];
+{28} Point on object(26,5.34458)[label('m'),red];
+{29} Point on object(27,8.09625)[label('n'),red];
+{30} Ratio/Points(22,25,28,14,445,'')[hidden];
+{31} Ratio/Points(23,24,29,14,487,'')[hidden];
+{32} Calculate(14,529,'','A @trnc ')(30)[hidden];
+{33} Calculate(14,39,'m = ','A ')(32)[black,hidden];
+{34} Dilation/MarkedRatio(15,5,33)[hidden];
+{35} Segment(5,34)[color(0,0,128),mediumLine];
+{36} Calculate(14,571,'','A @trnc ')(31)[hidden];
+{37} Calculate(14,67,'n = ','A ')(36)[black,hidden];
+{38} Dilation/MarkedRatio(16,5,37)[hidden];
+{39} VectorTranslation(35,5,38)[color(0,0,128),mediumLine];
+{40} VectorTranslation(34,5,38)[hidden];
+{41} Segment(40,34)[color(0,0,128),mediumLine];
+{42} Segment(38,14)[color(0,0,128),mediumLine];
+{43} Calculate(14,339,'','A B C D / @trnc C 1 - D / @trnc - * + ')(3,4,1,37)[hidden];
+{44} Calculate(14,296,'','A B 1 C D C / @trnc D 1 - C / @trnc - * - * + ')(2,4,37,1)[hidden];
+{45} Calculate(14,225,'','A B * 1 - ')(33,37)[hidden];
+{46} Translation(28,-6.59807e-014,18.8976)[red,hidden];
+{47} Translation(29,-6.59807e-014,18.8976)[red,hidden];
+{48} PeggedText(46,33)[red];
+{49} PeggedText(47,37)[red];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>m×n网格的交错填充</P></H4>
+</BODY>
+</HTML>
