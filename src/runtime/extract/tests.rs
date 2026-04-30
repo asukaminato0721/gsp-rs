@@ -496,6 +496,24 @@ fn unimplemented_system_payload_logs_match_reference_htm_construction() {
 }
 
 #[test]
+fn unimplemented_payload_logs_match_reference_htm_construction() {
+    let fixture_names = ["(inRm)两圆之交", "圆系(inRm)"];
+
+    for name in fixture_names {
+        let gsp_path = format!("tests/fixtures/未实现/{name}.gsp");
+        let htm_path = format!("tests/fixtures/未实现/{name}.htm");
+        let gsp = fs::read(&gsp_path).expect("fixture gsp should be readable");
+        let htm = fs::read_to_string(&htm_path).expect("reference htm should be readable");
+        let log = fixture_log(&gsp, &gsp_path);
+        assert_eq!(
+            construction_lines_from_log(&log),
+            construction_lines_from_htm(&htm),
+            "expected payload log Construction VALUE to match {htm_path}"
+        );
+    }
+}
+
+#[test]
 fn payload_log_accepts_helper_payload_families_in_sample_fixtures() {
     for path in [
         "tests/Samples/工具例说/14 统计工具-统计工具示例.gsp",
@@ -3871,7 +3889,7 @@ fn preserves_two_circle_intersection_inrm_fixture_interactivity() {
     assert_eq!(
         scene.polygons.len(),
         2,
-        "expected two circular segments that make up the lens"
+        "expected the payload circular segments that make up the lens"
     );
     assert_eq!(
         scene.lines.len(),
@@ -3902,7 +3920,7 @@ fn preserves_two_circle_intersection_inrm_fixture_interactivity() {
             .filter(|circle| circle.fill_color.is_some())
             .count(),
         0,
-        "expected duplicate helper circles to avoid rendering full-disk fills"
+        "expected payload helper circle interiors not to render as full-disk circle fills"
     );
     assert_eq!(
         scene
@@ -3942,6 +3960,15 @@ fn preserves_two_circle_intersection_inrm_fixture_interactivity() {
             .count(),
         1,
         "expected the payload baseline to stay interactive"
+    );
+    assert_eq!(
+        scene
+            .lines
+            .iter()
+            .filter(|line| matches!(line.binding, Some(LineBinding::ArcBoundary { .. })))
+            .count(),
+        2,
+        "expected both payload circular-segment boundaries to stay interactive"
     );
 
     let circle_circle_points = scene

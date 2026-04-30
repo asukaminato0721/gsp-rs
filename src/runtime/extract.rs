@@ -1391,7 +1391,10 @@ fn collect_htm_payload_groups<'a>(
     let blocked_ordinals = htm_payload_blocked_ordinals(file, groups);
     groups
         .iter()
-        .filter(|group| !blocked_ordinals.contains(&group.ordinal))
+        .filter(|group| {
+            !blocked_ordinals.contains(&group.ordinal)
+                || htm_blocked_group_still_renders(file, group, &blocked_ordinals)
+        })
         .filter(|group| match group.header.kind() {
             GroupKind::Point => {
                 group
@@ -1399,7 +1402,7 @@ fn collect_htm_payload_groups<'a>(
                     .iter()
                     .any(|record| record.record_type == RECORD_POINT_F64_PAIR)
                     || self::decode::is_parameter_control_group(group)
-                    || try_decode_group_label_text_placeholder(group)
+                    || (!group.header.is_hidden() && try_decode_group_label_text_placeholder(group))
             }
             GroupKind::PointConstraint | GroupKind::PathPoint => find_indexed_path(file, group)
                 .and_then(|path| path.refs.first().copied())
@@ -1426,6 +1429,7 @@ fn collect_htm_payload_groups<'a>(
             | GroupKind::Segment
             | GroupKind::Circle
             | GroupKind::CircleCenterRadius
+            | GroupKind::CircleInterior
             | GroupKind::Line
             | GroupKind::LineKind5
             | GroupKind::LineKind6
@@ -1435,6 +1439,8 @@ fn collect_htm_payload_groups<'a>(
             | GroupKind::GraphMeasurementSegment
             | GroupKind::Ray
             | GroupKind::Polygon
+            | GroupKind::CartesianOffsetPoint
+            | GroupKind::PolarOffsetPoint
             | GroupKind::Translation
             | GroupKind::Rotation
             | GroupKind::ParameterRotation
@@ -1452,10 +1458,27 @@ fn collect_htm_payload_groups<'a>(
             | GroupKind::FunctionDefinition
             | GroupKind::FunctionExpr
             | GroupKind::RichTextLabel => true,
-            GroupKind::ActionButton => htm_action_button_kind(file, group) == Some((0, 7)),
+            GroupKind::ActionButton => {
+                matches!(htm_action_button_kind(file, group), Some((0, 7) | (2, 0)))
+            }
             _ => false,
         })
         .collect()
+}
+
+fn htm_blocked_group_still_renders(
+    file: &GspFile,
+    group: &ObjectGroup,
+    blocked_ordinals: &BTreeSet<usize>,
+) -> bool {
+    group.header.kind() == GroupKind::ActionButton
+        && htm_action_button_kind(file, group) == Some((2, 0))
+        && find_indexed_path(file, group).is_some_and(|path| {
+            !path
+                .refs
+                .iter()
+                .any(|reference| blocked_ordinals.contains(reference))
+        })
 }
 
 fn htm_payload_blocked_ordinals(file: &GspFile, groups: &[ObjectGroup]) -> BTreeSet<usize> {
@@ -1682,6 +1705,7 @@ fn htm_payload_signature(
         GroupKind::Segment => ("Segment", format_reversed_ref_args(refs, ordinal_map)),
         GroupKind::Circle => ("Circle", format_ref_args(refs, ordinal_map)),
         GroupKind::CircleCenterRadius => ("Circle by radius", format_ref_args(refs, ordinal_map)),
+        GroupKind::CircleInterior => ("Circle interior", format_ref_args(refs, ordinal_map)),
         GroupKind::Line | GroupKind::GraphMeasurementSegment => {
             ("Line", format_reversed_ref_args(refs, ordinal_map))
         }
@@ -1697,6 +1721,10 @@ fn htm_payload_signature(
         GroupKind::LineKind7 => ("Bisector", format_ref_args(refs, ordinal_map)),
         GroupKind::Ray => ("Ray", format_reversed_ref_args(refs, ordinal_map)),
         GroupKind::Polygon => ("Polygon", format_ref_args(refs, ordinal_map)),
+        GroupKind::CartesianOffsetPoint | GroupKind::PolarOffsetPoint => (
+            "Translation",
+            htm_offset_point_args(file, group, ordinal_map),
+        ),
         GroupKind::Translation => ("VectorTranslation", format_ref_args(refs, ordinal_map)),
         GroupKind::Rotation => ("Rotation", htm_rotation_args(file, group, ordinal_map)),
         GroupKind::ParameterRotation => {
@@ -1741,10 +1769,16 @@ fn htm_payload_signature(
             ("Arc", format_ref_args(refs, ordinal_map))
         }
         GroupKind::RichTextLabel => ("FixedText", htm_fixed_text_args(file, group)),
-        GroupKind::ActionButton => (
-            "ToggleVisibilityButton",
-            htm_action_button_args(file, group, refs, ordinal_map),
-        ),
+        GroupKind::ActionButton => match htm_action_button_kind(file, group) {
+            Some((2, 0)) => (
+                "AnimateButton",
+                htm_animate_button_args(file, groups, group, refs, ordinal_map),
+            ),
+            _ => (
+                "ToggleVisibilityButton",
+                htm_action_button_args(file, group, refs, ordinal_map),
+            ),
+        },
         _ => (
             htm_payload_type_name(group.header.kind()),
             format_ref_args(refs, ordinal_map),
@@ -1759,6 +1793,7 @@ fn htm_payload_type_name(kind: GroupKind) -> &'static str {
         GroupKind::Segment => "Segment",
         GroupKind::Circle => "Circle",
         GroupKind::CircleCenterRadius => "Circle by radius",
+        GroupKind::CircleInterior => "Circle interior",
         GroupKind::Line | GroupKind::GraphMeasurementSegment => "Line",
         GroupKind::MeasurementLine => "Axis",
         GroupKind::AxisLine => "CoordSysByAxes",
@@ -1781,7 +1816,6 @@ fn htm_payload_type_name(kind: GroupKind) -> &'static str {
         GroupKind::FunctionExpr => "Calculate",
         GroupKind::ParametricFunctionPlot => "ParametricFunction",
         GroupKind::ActionButton => "ToggleVisibilityButton",
-        GroupKind::CircleInterior => "CircleInterior",
         GroupKind::SectorBoundary => "SectorBoundary",
         GroupKind::CircularSegmentBoundary => "CircularSegmentBoundary",
         GroupKind::AngleMarker => "AngleMarker",
@@ -1819,7 +1853,7 @@ fn htm_payload_attributes(
         return attrs.join(",");
     }
     if group.header.kind() == GroupKind::Point && self::decode::is_parameter_control_group(group) {
-        attrs.push("black".to_string());
+        attrs.push(htm_color_attr(color_from_style(group.header.style_b)));
         return attrs.join(",");
     }
     let htm_label_lives_on_object = matches!(
@@ -1837,6 +1871,8 @@ fn htm_payload_attributes(
             | GroupKind::GraphCalibrationY
             | GroupKind::GraphCalibrationYAlt
             | GroupKind::ParameterControlledPoint
+            | GroupKind::CartesianOffsetPoint
+            | GroupKind::PolarOffsetPoint
             | GroupKind::Translation
             | GroupKind::Rotation
             | GroupKind::ParameterRotation
@@ -1859,7 +1895,9 @@ fn htm_payload_attributes(
             if !matches!(color, [255, 0, 0, 255] | [0, 0, 0, 255]) {
                 attrs.push(htm_color_attr(color));
             }
-            attrs.push("mediumPoint".to_string());
+            if htm_free_point_has_medium_size(group.header.style_a) {
+                attrs.push("mediumPoint".to_string());
+            }
         }
         GroupKind::Midpoint
         | GroupKind::PointConstraint
@@ -1874,12 +1912,21 @@ fn htm_payload_attributes(
         | GroupKind::GraphCalibrationYAlt
         | GroupKind::ParameterControlledPoint => {
             let color = color_from_style(group.header.style_b);
-            if color != [0, 0, 0, 255] {
+            if color == [0, 0, 0, 255] {
+                attrs.push("black".to_string());
+            } else {
                 attrs.push(htm_color_attr(color));
             }
-            attrs.push("mediumPoint".to_string());
+            if htm_point_has_medium_size(group.header.style_a)
+                || (!matches!(color, [255, 0, 0, 255] | [0, 0, 0, 255])
+                    && htm_free_point_has_medium_size(group.header.style_a))
+            {
+                attrs.push("mediumPoint".to_string());
+            }
         }
         GroupKind::Translation
+        | GroupKind::CartesianOffsetPoint
+        | GroupKind::PolarOffsetPoint
         | GroupKind::Rotation
         | GroupKind::ParameterRotation
         | GroupKind::Scale
@@ -1901,7 +1948,9 @@ fn htm_payload_attributes(
                 if color != [0, 0, 0, 255] {
                     attrs.push(htm_color_attr(color));
                 }
-                attrs.push("mediumPoint".to_string());
+                if htm_point_has_medium_size(group.header.style_a) {
+                    attrs.push("mediumPoint".to_string());
+                }
             }
         }
         GroupKind::Segment
@@ -1931,7 +1980,7 @@ fn htm_payload_attributes(
                 attrs.push("dashed".to_string());
             } else if line_is_dashed(group.header.style_a) {
                 attrs.push("dashed".to_string());
-            } else {
+            } else if htm_line_has_medium_width(group.header.style_a) {
                 attrs.push("mediumLine".to_string());
             }
         }
@@ -1963,6 +2012,12 @@ fn htm_payload_attributes(
                 group.header.style_c,
             )));
         }
+        GroupKind::CircleInterior => {
+            attrs.push(htm_color_attr(super::geometry::fill_color_from_styles(
+                group.header.style_b,
+                group.header.style_c,
+            )));
+        }
         GroupKind::PointTrace => {
             attrs.push(htm_rgb_color_attr(color_from_style(group.header.style_b)));
             attrs.push("mediumLine".to_string());
@@ -1986,6 +2041,8 @@ fn htm_color_attr(color: [u8; 4]) -> String {
     match color {
         [0, 0, 0, _] => "black".to_string(),
         [255, 0, 0, _] => "red".to_string(),
+        [255, 0, 255, _] => "magenta".to_string(),
+        [255, 255, 0, _] => "yellow".to_string(),
         [0, 128, 0, _] | [0, 255, 0, _] => "green".to_string(),
         [0, 0, 255, _] => "blue".to_string(),
         [0, 255, 255, _] => "cyan".to_string(),
@@ -2010,6 +2067,14 @@ fn htm_line_has_medium_width(style_a: u32) -> bool {
     matches!((style_a >> 16) & 0xff, 0x12 | 0x22)
 }
 
+fn htm_point_has_medium_size(style_a: u32) -> bool {
+    ((style_a >> 24) & 0xff) == 0x02
+}
+
+fn htm_free_point_has_medium_size(style_a: u32) -> bool {
+    htm_point_has_medium_size(style_a)
+}
+
 fn format_ref_args(refs: &[usize], ordinal_map: &BTreeMap<usize, usize>) -> String {
     refs.iter()
         .map(|reference| map_htm_ordinal(*reference, ordinal_map).to_string())
@@ -2027,6 +2092,27 @@ fn format_reversed_ref_args(refs: &[usize], ordinal_map: &BTreeMap<usize, usize>
     } else {
         format_ref_args(refs, ordinal_map)
     }
+}
+
+fn htm_offset_point_args(
+    file: &GspFile,
+    group: &ObjectGroup,
+    ordinal_map: &BTreeMap<usize, usize>,
+) -> String {
+    let Some(constraint) = decode_translated_point_constraint(file, group) else {
+        return format_ref_args(
+            &find_indexed_path(file, group)
+                .map(|path| path.refs)
+                .unwrap_or_default(),
+            ordinal_map,
+        );
+    };
+    format!(
+        "{},{},{}",
+        map_htm_ordinal(constraint.origin_group_index + 1, ordinal_map),
+        format_htm_unit_length(constraint.dx),
+        format_htm_unit_length(-constraint.dy)
+    )
 }
 
 fn map_htm_ordinal(ordinal: usize, ordinal_map: &BTreeMap<usize, usize>) -> usize {
@@ -2140,6 +2226,14 @@ fn htm_parameter_args(file: &GspFile, groups: &[ObjectGroup], group: &ObjectGrou
     let mut value = try_decode_parameter_control_value_for_group(file, groups, group)
         .ok()
         .unwrap_or(0.0);
+    let is_iteration_depth_parameter = groups.iter().any(|candidate| {
+        candidate.header.kind() == GroupKind::RegularPolygonIteration
+            && find_indexed_path(file, candidate).and_then(|path| path.refs.first().copied())
+                == Some(group.ordinal)
+    });
+    if is_iteration_depth_parameter {
+        value *= 10.0;
+    }
     if groups.iter().any(|candidate| {
         candidate.header.kind() == GroupKind::CoordinatePoint
             && find_indexed_path(file, candidate).and_then(|path| path.refs.first().copied())
@@ -2159,7 +2253,9 @@ fn htm_parameter_args(file: &GspFile, groups: &[ObjectGroup], group: &ObjectGrou
         })
         .map(|(x, y)| {
             let mut point = file.document_display_point(PointRecord { x, y });
-            if !has_graph_classes(groups)
+            if is_iteration_depth_parameter {
+                point.y += 2.0;
+            } else if !has_graph_classes(groups)
                 && groups.iter().any(|candidate| {
                     candidate.header.kind() == GroupKind::FunctionExpr
                         && find_indexed_path(file, candidate)
@@ -2926,6 +3022,50 @@ fn htm_action_button_args(
         htm_quote_text(&alternate),
         format_ref_args(refs, ordinal_map)
     )
+}
+
+fn htm_animate_button_args(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    refs: &[usize],
+    ordinal_map: &BTreeMap<usize, usize>,
+) -> String {
+    let anchor = self::decode::decode_button_screen_anchor(file, group)
+        .unwrap_or(PointRecord { x: 24.0, y: 24.0 });
+    let text =
+        self::decode::decode_label_name_raw(file, group).unwrap_or_else(|| "动画点".to_string());
+    let target_refs = htm_animate_button_target_refs(file, groups, refs);
+    format!(
+        "{},{},'{}')({})(1)(0)(1",
+        format_number(anchor.x),
+        format_number(anchor.y),
+        htm_quote_text(&text),
+        format_ref_args(&target_refs, ordinal_map)
+    )
+}
+
+fn htm_animate_button_target_refs(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    refs: &[usize],
+) -> Vec<usize> {
+    let mut target_refs = refs.to_vec();
+    if refs.len() == 1
+        && let Some(target_group) = refs
+            .first()
+            .and_then(|reference| groups.get(reference.saturating_sub(1)))
+        && matches!(
+            target_group.header.kind(),
+            GroupKind::PointConstraint | GroupKind::PathPoint | GroupKind::ParameterControlledPoint
+        )
+        && let Some(host) =
+            find_indexed_path(file, target_group).and_then(|path| path.refs.first().copied())
+        && host != refs[0]
+    {
+        target_refs.push(host);
+    }
+    target_refs
 }
 
 fn htm_action_button_kind(file: &GspFile, group: &ObjectGroup) -> Option<(u16, u16)> {

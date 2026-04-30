@@ -1701,7 +1701,7 @@ mod tests {
         );
         assert!(
             circles.iter().all(|circle| circle["fillColor"].is_null()),
-            "expected helper duplicate circles to avoid exporting full-disk fills"
+            "expected payload helper circle interiors not to render as full-disk circle fills"
         );
 
         let polygons = scene["polygons"]
@@ -1710,7 +1710,7 @@ mod tests {
         assert_eq!(
             polygons.len(),
             2,
-            "expected the lens to export as two circular segments"
+            "expected the payload circular segments that make up the lens"
         );
         assert!(
             polygons
@@ -1745,6 +1745,14 @@ mod tests {
                 .count(),
             1,
             "expected the baseline to remain interactive"
+        );
+        assert_eq!(
+            lines
+                .iter()
+                .filter(|line| line["binding"]["kind"].as_str() == Some("arc-boundary"))
+                .count(),
+            2,
+            "expected both payload circular-segment boundaries to stay interactive"
         );
 
         let points = scene["points"]
