@@ -2,6 +2,8 @@ this proj compile .gsp to single html file
 
 always based on .gsp file payload and .htm file, which has part of the geometry object definition, don't heuristic
 
+if possible, stick to htm file's definition. you can update current tests if they are wrong.
+
 make sure the element is interactive.
 
 Break compatibility if necessary.
