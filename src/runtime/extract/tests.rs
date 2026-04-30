@@ -1579,7 +1579,7 @@ fn builds_music_fixture_with_play_button() {
         scene
             .labels
             .iter()
-            .any(|label| label.text == "f(x) = 5*sin((25*x))"),
+            .any(|label| label.text == "f(x) = 5*sin(25*x)"),
         "expected the music fixture label to expose the recovered legacy function expression"
     );
 }
@@ -1606,6 +1606,89 @@ fn builds_music1_fixture_with_legacy_frequency_expr() {
                 }),
             }),
         })
+    );
+}
+
+#[test]
+fn yx2_axis_symmetry_honors_function_definition_visibility() {
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/Samples/个人专栏/贺基旭作品/y=x^2的轴对称性(hjx4882).gsp"
+    ));
+
+    assert_eq!(scene.functions.len(), 1, "expected one plotted function");
+    assert_eq!(scene.functions[0].key, 8);
+    assert!(
+        scene.labels.iter().any(|label| {
+            label.visible
+                && label.text == "y = a*(x^2)"
+                && label
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == 25)
+        }),
+        "expected visible payload function definition label #25"
+    );
+    assert!(
+        !scene.labels.iter().any(|label| {
+            label.visible
+                && matches!(
+                    label.binding,
+                    Some(TextLabelBinding::FunctionLabel {
+                        function_key: 8,
+                        derivative: false
+                    })
+                )
+        }),
+        "hidden plotted helper function #8 must not get a synthesized visible label"
+    );
+    let segment_trace_count = scene
+        .lines
+        .iter()
+        .filter(|line| {
+            line.visible
+                && line.points.len() == 2
+                && line
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == 21)
+        })
+        .count();
+    assert!(
+        segment_trace_count >= 500,
+        "expected visible line trace #21, got {segment_trace_count} sampled segments"
+    );
+    assert!(
+        scene.lines.iter().any(|line| {
+            line.visible
+                && line.points.len() >= 100
+                && line
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == 22)
+                && matches!(line.binding, Some(LineBinding::PointTrace { .. }))
+        }),
+        "expected visible point trace #22"
+    );
+    assert!(
+        scene.lines.iter().any(|line| {
+            line.visible
+                && line.points.len() >= 100
+                && line
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == 24)
+                && matches!(line.binding, Some(LineBinding::PointTrace { .. }))
+        }),
+        "expected visible function/reflection point trace #24"
+    );
+    assert!(
+        scene.buttons.iter().any(|button| button.visible
+            && matches!(button.action, ButtonAction::Sequence { .. })
+            && button
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 27)),
+        "expected the payload-only sequence button to stay visible and interactive"
     );
 }
 

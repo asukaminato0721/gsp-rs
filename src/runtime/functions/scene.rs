@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
 
-use crate::format::{GspFile, ObjectGroup, read_u16};
+use crate::format::{GspFile, ObjectGroup, PointRecord, read_u16};
 use crate::runtime::extract::points::is_standalone_function_definition_group;
 use crate::runtime::extract::{
-    find_indexed_path, payload_debug_source, try_decode_parameter_control_value_for_group,
-    try_decode_payload_anchor_point,
+    find_indexed_path, payload_debug_source, try_decode_bbox_rect_raw,
+    try_decode_parameter_control_value_for_group, try_decode_payload_anchor_point,
 };
 use crate::runtime::scene::{
     SceneFunction, SceneFunctionDefinition, SceneParameter, ScenePoint, ScenePointConstraint,
@@ -13,8 +13,8 @@ use crate::runtime::scene::{
 
 use super::decode::{try_decode_function_expr, try_decode_function_plot_descriptor};
 use super::expr::{
-    FunctionExpr, FunctionPlotDescriptor, function_expr_contains_variable, function_expr_uses_trig,
-    function_name_for_index,
+    BinaryOp, FunctionAst, FunctionExpr, FunctionPlotDescriptor, function_expr_contains_variable,
+    function_expr_label_with_variable, function_expr_uses_trig, function_name_for_index,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -246,7 +246,7 @@ pub(crate) fn synthesize_standalone_function_definition_labels(
 ) -> Vec<TextLabel> {
     groups
         .iter()
-        .filter(|group| is_standalone_function_definition_group(file, groups, group))
+        .filter(|group| standalone_function_label_candidate(file, groups, group).is_some())
         .filter(|group| {
             !existing_labels.iter().any(|label| {
                 label
@@ -256,13 +256,14 @@ pub(crate) fn synthesize_standalone_function_definition_labels(
             })
         })
         .filter_map(|group| {
-            let anchor = try_decode_payload_anchor_point(file, group)
-                .ok()
-                .flatten()?;
-            let name = source_function_name(file, group)?;
-            let expr =
-                super::decode::try_decode_standalone_function_expr(file, groups, group).ok()?;
-            let text = format!("{name}(x) = {}", super::expr::function_expr_label(expr));
+            let anchor = if group.header.kind() == crate::format::GroupKind::FunctionDefinition {
+                function_definition_screen_anchor(file, group)?
+            } else {
+                try_decode_payload_anchor_point(file, group)
+                    .ok()
+                    .flatten()?
+            };
+            let (_expr, text) = standalone_function_label_candidate(file, groups, group)?;
             Some(TextLabel {
                 anchor,
                 text,
@@ -276,6 +277,175 @@ pub(crate) fn synthesize_standalone_function_definition_labels(
             })
         })
         .collect()
+}
+
+fn standalone_function_label_candidate(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<(FunctionExpr, String)> {
+    if is_standalone_function_definition_group(file, groups, group) {
+        let name = source_function_name(file, group)?;
+        let expr = super::decode::try_decode_standalone_function_expr(file, groups, group).ok()?;
+        let text = format!(
+            "{name}(x) = {}",
+            super::expr::function_expr_label(expr.clone())
+        );
+        return Some((expr, text));
+    }
+
+    if group.header.kind() != crate::format::GroupKind::FunctionDefinition
+        || function_definition_has_plot(file, groups, group.ordinal)
+        || !function_definition_label_visible(group)
+    {
+        return None;
+    }
+
+    let expr = try_decode_function_expr(file, groups, group).ok()?;
+    if !function_expr_contains_variable(&expr) {
+        return None;
+    }
+    let text = format!("y = {}", function_definition_label(&expr));
+    Some((expr, text))
+}
+
+fn function_definition_has_plot(file: &GspFile, groups: &[ObjectGroup], ordinal: usize) -> bool {
+    groups.iter().any(|group| {
+        group.header.kind() == crate::format::GroupKind::FunctionPlot
+            && find_indexed_path(file, group)
+                .is_some_and(|path| path.refs.first().copied() == Some(ordinal))
+    })
+}
+
+fn function_definition_label_visible(group: &ObjectGroup) -> bool {
+    !group.header.is_hidden()
+}
+
+fn function_definition_screen_anchor(file: &GspFile, group: &ObjectGroup) -> Option<PointRecord> {
+    let (x, mut y) = try_decode_bbox_rect_raw(file, group)
+        .ok()
+        .flatten()
+        .map(|(left, top, _width, height)| (left + 4.0, top + height - 9.0))
+        .map(|(x, y)| {
+            let point = file.document_display_point(PointRecord { x, y });
+            (point.x, point.y)
+        })
+        .or_else(|| {
+            try_decode_payload_anchor_point(file, group)
+                .ok()
+                .flatten()
+                .map(|anchor| {
+                    file.document_display_point(PointRecord {
+                        x: anchor.x + 4.0,
+                        y: anchor.y + 20.0,
+                    })
+                })
+                .map(|point| (point.x, point.y))
+        })?;
+    y += 1.0;
+    Some(PointRecord { x, y })
+}
+
+fn function_definition_label(expr: &FunctionExpr) -> String {
+    match expr {
+        FunctionExpr::Parsed(ast) => function_definition_ast_label(ast),
+        _ => htm_unsubscript_digits(&function_expr_label_with_variable(expr.clone(), "x")),
+    }
+}
+
+fn function_definition_ast_label(ast: &FunctionAst) -> String {
+    match ast {
+        FunctionAst::Binary {
+            lhs,
+            op: BinaryOp::Add,
+            rhs,
+        } => format!(
+            "{} + {}",
+            function_definition_ast_label(lhs),
+            function_definition_ast_label(rhs)
+        ),
+        FunctionAst::Binary {
+            lhs,
+            op: BinaryOp::Sub,
+            rhs,
+        } => format!(
+            "{} - {}",
+            function_definition_ast_label(lhs),
+            function_definition_ast_label(rhs)
+        ),
+        FunctionAst::Binary {
+            lhs,
+            op: BinaryOp::Mul,
+            rhs,
+        } => {
+            let left = function_definition_ast_label(lhs);
+            let right = function_definition_ast_label(rhs);
+            if matches!(
+                **rhs,
+                FunctionAst::Binary {
+                    op: BinaryOp::Pow,
+                    ..
+                }
+            ) {
+                format!("{left}*({right})")
+            } else {
+                format!("{left}*{right}")
+            }
+        }
+        _ => htm_ast_label(ast, "x", false),
+    }
+}
+
+fn htm_ast_label(ast: &FunctionAst, variable: &str, wrap_binary: bool) -> String {
+    let text = match ast {
+        FunctionAst::Variable => variable.to_string(),
+        FunctionAst::Constant(value) => crate::runtime::geometry::format_number(*value),
+        FunctionAst::PiAngle => "π".to_string(),
+        FunctionAst::Parameter(name, _) => htm_unsubscript_digits(name),
+        FunctionAst::Unary { op, expr } => {
+            let inner = htm_ast_label(expr, variable, false);
+            match op {
+                super::UnaryFunction::Sin => format!("sin({inner})"),
+                super::UnaryFunction::Cos => format!("cos({inner})"),
+                super::UnaryFunction::Tan => format!("tan({inner})"),
+                super::UnaryFunction::Abs => format!("abs({inner})"),
+                super::UnaryFunction::Sqrt => format!("√{inner}"),
+                super::UnaryFunction::Ln => format!("ln({inner})"),
+                super::UnaryFunction::Log10 => format!("log({inner})"),
+                super::UnaryFunction::Sign => format!("sgn({inner})"),
+                super::UnaryFunction::Round => format!("round({inner})"),
+                super::UnaryFunction::Trunc => format!("trunc({inner})"),
+            }
+        }
+        FunctionAst::Binary { lhs, op, rhs } => {
+            let lhs_text = htm_ast_label(lhs, variable, false);
+            let rhs_text = match (&**rhs, op) {
+                (FunctionAst::Binary { .. }, _) => {
+                    format!("({})", htm_ast_label(rhs, variable, false))
+                }
+                _ => htm_ast_label(rhs, variable, false),
+            };
+            match op {
+                BinaryOp::Add => format!("{lhs_text} + {rhs_text}"),
+                BinaryOp::Sub => format!("{lhs_text} - {rhs_text}"),
+                BinaryOp::Mul => format!("{lhs_text}*{rhs_text}"),
+                BinaryOp::Div => format!("{lhs_text} / {rhs_text}"),
+                BinaryOp::Pow => format!("{lhs_text}^{rhs_text}"),
+            }
+        }
+    };
+    if wrap_binary && matches!(ast, FunctionAst::Binary { .. }) {
+        format!("({text})")
+    } else {
+        text
+    }
+}
+
+fn htm_unsubscript_digits(text: &str) -> String {
+    text.replace('₁', "[1]")
+        .replace('₂', "[2]")
+        .replace('₃', "[3]")
+        .replace('₄', "[4]")
 }
 
 pub(crate) fn function_uses_pi_scale(file: &GspFile, groups: &[ObjectGroup]) -> bool {

@@ -82,7 +82,7 @@ use self::shapes::{
     collect_translated_circle_shapes, collect_translated_line_shapes,
     collect_translated_polygon_shapes,
 };
-use self::trace::collect_point_traces;
+use self::trace::{collect_point_traces, collect_segment_traces};
 use super::functions::{
     collect_function_plot_domain, collect_function_plots, collect_scene_functions,
     collect_scene_parameters, collect_standalone_function_definitions, function_uses_pi_scale,
@@ -1126,6 +1126,38 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
         &mut group_to_point_index,
         &shapes.coordinate_traces,
     );
+    let existing_point_trace_ordinals = shapes
+        .coordinate_traces
+        .iter()
+        .filter_map(|trace| trace.debug.as_ref().map(|debug| debug.group_ordinal))
+        .collect::<BTreeSet<_>>();
+    shapes.coordinate_traces.extend(
+        collect_point_traces(
+            file,
+            &groups,
+            &visible_points,
+            &group_to_point_index,
+            &analysis.graph_ref,
+        )
+        .into_iter()
+        .filter(|trace| match trace.debug.as_ref() {
+            Some(debug) => !existing_point_trace_ordinals.contains(&debug.group_ordinal),
+            None => true,
+        }),
+    );
+    shapes.coordinate_traces.extend(collect_segment_traces(
+        file,
+        &groups,
+        &visible_points,
+        &group_to_point_index,
+        &analysis.graph_ref,
+    ));
+    let (mut point_trace_overlays, mut base_traces): (Vec<_>, Vec<_>) =
+        shapes.coordinate_traces.drain(..).partition(|trace| {
+            trace.visible && matches!(trace.binding, Some(LineBinding::PointTrace { .. }))
+        });
+    base_traces.append(&mut point_trace_overlays);
+    shapes.coordinate_traces = base_traces;
     shapes
         .coordinate_traces
         .extend(collect_colorized_spectrum_lines(

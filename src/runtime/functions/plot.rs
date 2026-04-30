@@ -490,17 +490,20 @@ pub(crate) fn synthesize_function_labels(
         })
         .collect::<Vec<_>>();
     let parameter_count = labels.len();
-    labels.extend(base_entries.iter().enumerate().map(
+    labels.extend(base_entries.iter().enumerate().filter_map(
         |(index, (definition_ordinal, source_name, expr, descriptor))| {
+            let definition_group = groups
+                .get(definition_ordinal.saturating_sub(1))
+                .expect("function definition ordinal should resolve");
+            if !function_definition_label_visible(definition_group) {
+                return None;
+            }
             let span_x = (bounds.max_x - bounds.min_x).max(1.0);
             let span_y = (bounds.max_y - bounds.min_y).max(1.0);
             let world_anchor = PointRecord {
                 x: bounds.min_x + span_x * 0.18,
                 y: bounds.max_y - span_y * (0.16 + 0.11 * (index + parameter_count) as f64),
             };
-            let definition_group = groups
-                .get(definition_ordinal.saturating_sub(1))
-                .expect("function definition ordinal should resolve");
             let name = if source_name.is_empty() {
                 super::scene::function_name_for_definition(
                     file,
@@ -525,7 +528,7 @@ pub(crate) fn synthesize_function_labels(
                     function_expr_label_with_variable(expr.clone(), variable)
                 )
             };
-            TextLabel {
+            Some(TextLabel {
                 anchor: to_raw_from_world(&world_anchor, transform),
                 text,
                 color: [30, 30, 30, 255],
@@ -536,7 +539,7 @@ pub(crate) fn synthesize_function_labels(
                 }),
                 screen_space: false,
                 ..Default::default()
-            }
+            })
         },
     ));
 
@@ -601,6 +604,10 @@ pub(crate) fn synthesize_function_labels(
     );
 
     labels
+}
+
+fn function_definition_label_visible(group: &ObjectGroup) -> bool {
+    group.header.kind() != crate::format::GroupKind::FunctionDefinition || !group.header.is_hidden()
 }
 
 pub(super) fn bounds_from_function_plots(
