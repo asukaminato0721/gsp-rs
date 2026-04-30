@@ -426,6 +426,44 @@ fn insection_payload_logs_match_reference_htm_construction() {
 }
 
 #[test]
+fn top_level_gsp_payload_logs_match_new_reference_htm_construction() {
+    let fixture_names = [
+        "calculation",
+        "circle_center_radius",
+        "circle_y_intersection",
+        "middle_point",
+        "music",
+        "music1",
+        "parallel",
+        "perp",
+        "pert_vert",
+        "point_cood_expr",
+        "point_on_arc1",
+        "point_on_arc2",
+        "trace",
+        "vert",
+        "xy_cood",
+        "两个三角形标记全等",
+        "垂线段",
+        "多行文本",
+        "热文本",
+    ];
+
+    for name in fixture_names {
+        let gsp_path = format!("tests/fixtures/gsp/{name}.gsp");
+        let htm_path = format!("tests/fixtures/gsp/{name}.htm");
+        let gsp = fs::read(&gsp_path).expect("fixture gsp should be readable");
+        let htm = fs::read_to_string(&htm_path).expect("reference htm should be readable");
+        let log = fixture_log(&gsp, &gsp_path);
+        assert_eq!(
+            construction_lines_from_log(&log),
+            construction_lines_from_htm(&htm),
+            "expected payload log Construction VALUE to match {htm_path}"
+        );
+    }
+}
+
+#[test]
 fn payload_log_accepts_helper_payload_families_in_sample_fixtures() {
     for path in [
         "tests/Samples/工具例说/14 统计工具-统计工具示例.gsp",
