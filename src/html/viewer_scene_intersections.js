@@ -196,9 +196,8 @@
     const ts = [(-b - root) / (2 * a), (-b + root) / (2 * a)]
       .filter((t) => lineLikeAllowsParam(t, lineKind));
     if (ts.length === 0) return null;
-    return choosePointCandidate(
+    return chooseVariantCandidate(
       ts.map((t) => ({ x: lineStart.x + dx * t, y: lineStart.y + dy * t })),
-      reference,
       variant,
     );
   }
