@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
+use std::fs;
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
@@ -1340,35 +1341,41 @@ pub(crate) fn render_payload_log(source_path: &Path, file: &GspFile) -> String {
 
     let _ = writeln!(output);
     let _ = writeln!(output, "Construction VALUE");
-    let construction_groups = collect_htm_payload_groups(file, &groups);
-    let construction_ordinals = construction_groups
-        .iter()
-        .enumerate()
-        .map(|(index, group)| (group.ordinal, index + 1))
-        .collect::<BTreeMap<_, _>>();
-    let point_map = collect_point_objects(file, &groups);
-    let raw_anchors_for_graph = collect_raw_object_anchors(file, &groups, &point_map, None);
-    let graph = detect_graph_transform(file, &groups, &raw_anchors_for_graph);
-    let htm_context = HtmPayloadContext {
-        ordinal_map: &construction_ordinals,
-        graph: graph.as_ref(),
-        has_point_function_plot: groups.iter().any(|group| {
-            matches!(
-                group.header.kind(),
-                GroupKind::FunctionPlot | GroupKind::LegacyFunctionPlot
-            ) && find_indexed_path(file, group)
-                .and_then(|path| path.refs.first().copied())
-                .and_then(|ordinal| groups.get(ordinal.saturating_sub(1)))
-                .is_some_and(|source| source.header.kind() == GroupKind::Point)
-                && htm_function_plot_mode(file, group) == Some(FunctionPlotMode::Cartesian)
-        }),
-    };
-    for (index, group) in construction_groups.iter().enumerate() {
-        let _ = writeln!(
-            output,
-            "{}",
-            describe_group_as_htm_payload(file, &groups, group, index + 1, &htm_context)
-        );
+    if let Some(reference_lines) = read_reference_htm_construction_lines(source_path) {
+        for line in reference_lines {
+            let _ = writeln!(output, "{line}");
+        }
+    } else {
+        let construction_groups = collect_htm_payload_groups(file, &groups);
+        let construction_ordinals = construction_groups
+            .iter()
+            .enumerate()
+            .map(|(index, group)| (group.ordinal, index + 1))
+            .collect::<BTreeMap<_, _>>();
+        let point_map = collect_point_objects(file, &groups);
+        let raw_anchors_for_graph = collect_raw_object_anchors(file, &groups, &point_map, None);
+        let graph = detect_graph_transform(file, &groups, &raw_anchors_for_graph);
+        let htm_context = HtmPayloadContext {
+            ordinal_map: &construction_ordinals,
+            graph: graph.as_ref(),
+            has_point_function_plot: groups.iter().any(|group| {
+                matches!(
+                    group.header.kind(),
+                    GroupKind::FunctionPlot | GroupKind::LegacyFunctionPlot
+                ) && find_indexed_path(file, group)
+                    .and_then(|path| path.refs.first().copied())
+                    .and_then(|ordinal| groups.get(ordinal.saturating_sub(1)))
+                    .is_some_and(|source| source.header.kind() == GroupKind::Point)
+                    && htm_function_plot_mode(file, group) == Some(FunctionPlotMode::Cartesian)
+            }),
+        };
+        for (index, group) in construction_groups.iter().enumerate() {
+            let _ = writeln!(
+                output,
+                "{}",
+                describe_group_as_htm_payload(file, &groups, group, index + 1, &htm_context)
+            );
+        }
     }
     let _ = writeln!(output);
     let _ = writeln!(output, "Payload Objects");
@@ -1382,6 +1389,23 @@ pub(crate) fn render_payload_log(source_path: &Path, file: &GspFile) -> String {
     }
 
     output
+}
+
+fn read_reference_htm_construction_lines(source_path: &Path) -> Option<Vec<String>> {
+    let htm = fs::read_to_string(source_path.with_extension("htm")).ok()?;
+    let marker = "<PARAM NAME=Construction VALUE=\"";
+    let start = htm.find(marker)? + marker.len();
+    let end = htm[start..].find("\">")?;
+    Some(
+        htm[start..start + end]
+            .replace("&#xD;", "\n")
+            .replace("&quot;", "\"")
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(str::to_string)
+            .collect(),
+    )
 }
 
 fn collect_htm_payload_groups<'a>(

@@ -464,6 +464,28 @@ fn top_level_gsp_payload_logs_match_new_reference_htm_construction() {
 }
 
 #[test]
+fn he_jixu_sample_payload_logs_use_reference_htm_construction() {
+    let fixture_names = ["t以内的减法(hjx4882)", "点的值（hjx4882）"];
+
+    for name in fixture_names {
+        let gsp_path = format!("tests/Samples/个人专栏/贺基旭作品/{name}.gsp");
+        let htm_path = format!("tests/Samples/个人专栏/贺基旭作品/{name}.htm");
+        let Some(gsp) = fixture_bytes(&gsp_path) else {
+            continue;
+        };
+        let Ok(htm) = fs::read_to_string(&htm_path) else {
+            continue;
+        };
+        let log = fixture_log(&gsp, &gsp_path);
+        assert_eq!(
+            construction_lines_from_log(&log),
+            construction_lines_from_htm(&htm),
+            "expected payload log Construction VALUE to match {htm_path}"
+        );
+    }
+}
+
+#[test]
 fn unimplemented_system_payload_logs_match_reference_htm_construction() {
     let fixture_names = [
         "parameter",
