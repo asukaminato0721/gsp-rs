@@ -2946,6 +2946,36 @@
   }
 
   /**
+   * @param {Point} start
+   * @param {Point} mid
+   * @param {Point} end
+   * @returns {Point | null}
+   */
+  function circumcenter(start, mid, end) {
+    const determinant = 2 * (
+      start.x * (mid.y - end.y)
+      + mid.x * (end.y - start.y)
+      + end.x * (start.y - mid.y)
+    );
+    if (Math.abs(determinant) <= 1e-9) return null;
+    const startSq = start.x * start.x + start.y * start.y;
+    const midSq = mid.x * mid.x + mid.y * mid.y;
+    const endSq = end.x * end.x + end.y * end.y;
+    return {
+      x: (
+        startSq * (mid.y - end.y)
+        + midSq * (end.y - start.y)
+        + endSq * (start.y - mid.y)
+      ) / determinant,
+      y: (
+        startSq * (end.x - mid.x)
+        + midSq * (start.x - end.x)
+        + endSq * (mid.x - start.x)
+      ) / determinant,
+    };
+  }
+
+  /**
    * @param {(pointIndex: number) => Point | null} resolvePointAt
    * @param {ViewBounds} bounds
    * @param {LineConstraintJson} constraint
@@ -3061,21 +3091,21 @@
     "coordinate-source-2d"(env, _scene, point, parameters) {
       updateCoordinateSource2dPoint(point, env.resolveScenePoint(point.binding.sourceIndex), parameters);
     },
-    derived(env, _scene, point, parameters) {
-      const source = env.resolveScenePoint(point.binding.sourceIndex);
+    derived(env, scene, point, parameters) {
+      const source = resolveScenePointInScene(env, scene, point.binding.sourceIndex);
       if (!source) return;
       const transform = point.binding.transform;
       if (transform.kind === "translate") {
-        const vectorStart = env.resolveScenePoint(transform.vectorStartIndex);
-        const vectorEnd = env.resolveScenePoint(transform.vectorEndIndex);
+        const vectorStart = resolveScenePointInScene(env, scene, transform.vectorStartIndex);
+        const vectorEnd = resolveScenePointInScene(env, scene, transform.vectorEndIndex);
         if (!vectorStart || !vectorEnd) return;
         point.x = source.x + (vectorEnd.x - vectorStart.x);
         point.y = source.y + (vectorEnd.y - vectorStart.y);
         return;
       }
       if (transform.kind === "reflect") {
-        const lineStart = env.resolveScenePoint(transform.lineStartIndex);
-        const lineEnd = env.resolveScenePoint(transform.lineEndIndex);
+        const lineStart = resolveScenePointInScene(env, scene, transform.lineStartIndex);
+        const lineEnd = resolveScenePointInScene(env, scene, transform.lineEndIndex);
         if (!lineStart || !lineEnd) return;
         const reflected = reflectAcrossLine(source, lineStart, lineEnd);
         if (!reflected) return;
@@ -3085,7 +3115,7 @@
       }
       if (transform.kind === "reflect-constraint") {
         const line = resolveLineConstraintPoints(
-          (/** @type {number} */ index) => env.resolveScenePoint(index),
+          (/** @type {number} */ index) => resolveScenePointInScene(env, scene, index),
           env.getViewBounds ? env.getViewBounds() : env.sourceScene.bounds,
           transform.line,
         );
@@ -3097,12 +3127,12 @@
         return;
       }
       if (transform.kind === "rotate") {
-        const center = env.resolveScenePoint(transform.centerIndex);
+        const center = resolveScenePointInScene(env, scene, transform.centerIndex);
         if (!center) return;
         const angleDegrees = resolveRotateTransformAngleDegrees(
           transform,
           parameters,
-          (index) => env.resolveScenePoint(index),
+          (index) => resolveScenePointInScene(env, scene, index),
         );
         if (!Number.isFinite(angleDegrees)) return;
         const rotated = rotateAround(source, center, angleDegrees * Math.PI / 180);
@@ -3111,12 +3141,12 @@
         return;
       }
       if (transform.kind === "scale") {
-        const center = env.resolveScenePoint(transform.centerIndex);
+        const center = resolveScenePointInScene(env, scene, transform.centerIndex);
         if (!center) return;
         const factor = resolveScaleTransformFactor(
           transform,
           parameters,
-          (index) => env.resolveScenePoint(index),
+          (index) => resolveScenePointInScene(env, scene, index),
         );
         if (!Number.isFinite(factor)) return;
         const scaled = scaleAround(source, center, factor);
@@ -3126,6 +3156,16 @@
     },
     "scale-by-ratio"(env, _scene, point) {
       updateScaleByRatioPoint(point, (/** @type {number} */ index) => env.resolveScenePoint(index));
+    },
+    circumcenter(env, scene, point) {
+      const start = resolveScenePointInScene(env, scene, point.binding.startIndex);
+      const mid = resolveScenePointInScene(env, scene, point.binding.midIndex);
+      const end = resolveScenePointInScene(env, scene, point.binding.endIndex);
+      if (!start || !mid || !end) return;
+      const center = circumcenter(start, mid, end);
+      if (!center) return;
+      point.x = center.x;
+      point.y = center.y;
     },
     "custom-transform"(_env, scene, point, parameters) {
       updateCustomTransformPoint(point, parameters, (/** @type {number} */ index) => scene.points[index], scene);
@@ -3378,6 +3418,16 @@
     "scale-by-ratio"(_env, draft, point) {
       updateScaleByRatioPoint(point, (index) => draft.points[index]);
     },
+    circumcenter(_env, draft, point) {
+      const start = draft.points[point.binding.startIndex];
+      const mid = draft.points[point.binding.midIndex];
+      const end = draft.points[point.binding.endIndex];
+      if (!start || !mid || !end) return;
+      const center = circumcenter(start, mid, end);
+      if (!center) return;
+      point.x = center.x;
+      point.y = center.y;
+    },
     "constraint-parameter-expr"(_env, draft, point, parameters) {
       const value = evaluateExpr(point.binding.expr, 0, parameters);
       updateConstraintParameterizedPoint(point, draft, value);
@@ -3629,6 +3679,13 @@
         const end = resolveTracePoint(points, point.binding.endIndex, visiting);
         if (start && end) {
           resolved = lerpPoint(start, end, 0.5);
+        }
+      } else if (point.binding?.kind === "circumcenter") {
+        const start = resolveTracePoint(points, point.binding.startIndex, visiting);
+        const mid = resolveTracePoint(points, point.binding.midIndex, visiting);
+        const end = resolveTracePoint(points, point.binding.endIndex, visiting);
+        if (start && mid && end) {
+          resolved = circumcenter(start, mid, end);
         }
       } else if (point.binding?.kind === "coordinate") {
         const exprParameters = applyDriverParameterGuesses(new Map(baseParameters), point.binding.expr);
@@ -4018,6 +4075,29 @@
     },
   };
 
+  /**
+   * @param {ViewerEnv} env
+   * @param {ViewerSceneData} scene
+   * @param {number} index
+   * @param {Set<number>} [visiting]
+   * @returns {Point | null}
+   */
+  function resolveScenePointInScene(env, scene, index, visiting = new Set()) {
+    const point = scene.points[index];
+    if (!point) return null;
+    if (!point.constraint) return point;
+    if (visiting.has(index)) return null;
+    visiting.add(index);
+    const resolved = window.GspViewerModules.scene.resolveConstrainedPoint(
+      env,
+      point.constraint,
+      (pointIndex) => resolveScenePointInScene(env, scene, pointIndex, visiting),
+      point,
+    );
+    visiting.delete(index);
+    return resolved;
+  }
+
   /** @type {Record<string, CircleBindingRefresher>} */
   const CIRCLE_BINDING_REFRESHERS = {
     "point-radius-circle"({ env }, circle) {
@@ -4095,7 +4175,7 @@
       if (!point.constraint) {
         return;
       }
-      const resolved = env.resolveScenePoint(pointIndex);
+      const resolved = resolveScenePointInScene(env, scene, pointIndex);
       if (!resolved) {
         return;
       }

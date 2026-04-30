@@ -758,6 +758,11 @@ pub(crate) enum ScenePointBinding {
         start_index: usize,
         end_index: usize,
     },
+    Circumcenter {
+        start_index: usize,
+        mid_index: usize,
+        end_index: usize,
+    },
     Coordinate {
         name: String,
         expr: FunctionExpr,

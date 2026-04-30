@@ -85,6 +85,15 @@ enum PointBindingJson {
         #[serde(rename = "endIndex")]
         end_index: usize,
     },
+    #[serde(rename = "circumcenter")]
+    Circumcenter {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "midIndex")]
+        mid_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+    },
     #[serde(rename = "coordinate")]
     Coordinate {
         name: String,
@@ -347,6 +356,15 @@ impl PointBindingJson {
                 end_index,
             } => Self::Midpoint {
                 start_index: *start_index,
+                end_index: *end_index,
+            },
+            ScenePointBinding::Circumcenter {
+                start_index,
+                mid_index,
+                end_index,
+            } => Self::Circumcenter {
+                start_index: *start_index,
+                mid_index: *mid_index,
                 end_index: *end_index,
             },
             ScenePointBinding::Coordinate { name, expr } => Self::Coordinate {

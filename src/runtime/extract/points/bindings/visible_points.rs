@@ -22,7 +22,9 @@ use crate::runtime::extract::{find_indexed_path, payload_debug_source};
 use crate::runtime::functions::{
     evaluate_expr_with_parameters, try_decode_function_expr, try_decode_function_plot_descriptor,
 };
-use crate::runtime::geometry::{GraphTransform, angle_degrees_from_points, color_from_style};
+use crate::runtime::geometry::{
+    GraphTransform, angle_degrees_from_points, color_from_style, three_point_arc_geometry,
+};
 use crate::runtime::scene::{
     CircularConstraint, LineConstraint, ScenePoint, ScenePointBinding, ScenePointConstraint,
 };
@@ -80,7 +82,7 @@ fn used_by_visible_control_shape(
 }
 
 fn point_marker_visible(group: &ObjectGroup) -> bool {
-    (group.header.style_a & 0x0200_0000) != 0 || point_marker_style(group) == 0x2d
+    (group.header.style_a & 0x0200_0000) != 0 || matches!(point_marker_style(group), 0x04 | 0x2d)
 }
 
 fn point_marker_style(group: &ObjectGroup) -> u32 {
@@ -382,12 +384,13 @@ fn build_scene_point_for_group(
                 index,
                 file,
                 groups,
+                group,
                 group_color(group),
                 anchors,
                 group_to_point_index,
                 constraint,
                 visible,
-                kind != crate::format::GroupKind::PathPoint,
+                true,
             )
         })(
         ),
@@ -833,12 +836,13 @@ fn build_scene_point_for_group_checked(
                 index,
                 file,
                 groups,
+                group,
                 group_color(group),
                 anchors,
                 group_to_point_index,
                 constraint,
                 visible,
-                kind != crate::format::GroupKind::PathPoint,
+                true,
             ))
         }
         crate::format::GroupKind::Rotation
@@ -1417,6 +1421,7 @@ fn scene_point_from_constraint(
     index: usize,
     file: &GspFile,
     groups: &[ObjectGroup],
+    group: &ObjectGroup,
     color: [u8; 4],
     anchors: &[Option<PointRecord>],
     group_to_point_index: &[Option<usize>],
@@ -1521,19 +1526,34 @@ fn scene_point_from_constraint(
             points,
             segment_index,
             t,
-        } => Some(scene_point(
-            position,
-            color,
-            visible,
-            draggable,
-            ScenePointConstraint::OnPolyline {
-                function_key,
-                points,
+        } => {
+            if let Some(center_point) = scene_point_from_sector_boundary_center(
+                file,
+                groups,
+                group,
+                color,
+                anchors,
+                group_to_point_index,
+                visible,
                 segment_index,
                 t,
-            },
-            None,
-        )),
+            ) {
+                return Some(center_point);
+            }
+            Some(scene_point(
+                position,
+                color,
+                visible,
+                draggable,
+                ScenePointConstraint::OnPolyline {
+                    function_key,
+                    points,
+                    segment_index,
+                    t,
+                },
+                None,
+            ))
+        }
         RawPointConstraint::PolygonBoundary {
             vertex_group_indices,
             edge_index,
@@ -1662,6 +1682,59 @@ fn scene_point_from_constraint(
             ))
         }
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn scene_point_from_sector_boundary_center(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    color: [u8; 4],
+    anchors: &[Option<PointRecord>],
+    group_to_point_index: &[Option<usize>],
+    visible: bool,
+    segment_index: usize,
+    t: f64,
+) -> Option<ScenePoint> {
+    if group.header.kind() != crate::format::GroupKind::PathPoint
+        || segment_index != 0
+        || t.abs() > 1e-9
+    {
+        return None;
+    }
+    let host_ref = find_indexed_path(file, group)?.refs.first().copied()?;
+    let host_group = groups.get(host_ref.checked_sub(1)?)?;
+    if host_group.header.kind() != crate::format::GroupKind::SectorBoundary {
+        return None;
+    }
+    let arc_ref = find_indexed_path(file, host_group)?.refs.first().copied()?;
+    let arc_group = groups.get(arc_ref.checked_sub(1)?)?;
+    if arc_group.header.kind() != crate::format::GroupKind::ThreePointArc {
+        return None;
+    }
+    let arc_path = find_indexed_path(file, arc_group)?;
+    if arc_path.refs.len() != 3 {
+        return None;
+    }
+    let start_group_index = arc_path.refs[0].checked_sub(1)?;
+    let mid_group_index = arc_path.refs[1].checked_sub(1)?;
+    let end_group_index = arc_path.refs[2].checked_sub(1)?;
+    let start = anchors.get(start_group_index)?.clone()?;
+    let mid = anchors.get(mid_group_index)?.clone()?;
+    let end = anchors.get(end_group_index)?.clone()?;
+    let center = three_point_arc_geometry(&start, &mid, &end)?.center;
+    Some(scene_point(
+        center,
+        color,
+        visible,
+        false,
+        ScenePointConstraint::Free,
+        Some(ScenePointBinding::Circumcenter {
+            start_index: mapped_point_index(group_to_point_index, start_group_index)?,
+            mid_index: mapped_point_index(group_to_point_index, mid_group_index)?,
+            end_index: mapped_point_index(group_to_point_index, end_group_index)?,
+        }),
+    ))
 }
 
 fn scene_point_from_parameter_controlled(

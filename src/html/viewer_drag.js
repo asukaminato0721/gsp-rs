@@ -33,7 +33,7 @@
       return [];
     }
     const roots = new Set();
-    const addPointRoots = (index) => {
+    const addPointRoots = (/** @type {number} */ index) => {
       roots.add(rootId(index));
       const constraint = env.currentScene().points?.[index]?.constraint;
       if (isOffsetConstraint(constraint)) {

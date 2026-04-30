@@ -726,6 +726,7 @@ pub(crate) fn decode_label_anchor(
         .find(|record| record.record_type == RECORD_RICH_TEXT)
     {
         decode_text_anchor(record.payload(&file.data))
+            .map(|anchor| file.document_display_point(anchor))
     } else {
         None
     };

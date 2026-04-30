@@ -1909,6 +1909,75 @@ fn calibration_only_geometry_fixture_does_not_enable_graph_mode() {
         !scene.lines.is_empty(),
         "expected geometry lines to remain exported"
     );
+    let point_a = scene
+        .points
+        .iter()
+        .find(|point| {
+            point
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 1)
+        })
+        .expect("expected source point A");
+    assert!(
+        point_a.visible,
+        "the reference htm declares A as Point(...)[label('A'),dot]"
+    );
+    let point_o = scene
+        .points
+        .iter()
+        .find(|point| {
+            point
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 8)
+        })
+        .expect("expected point O on the sector boundary");
+    assert!(
+        point_o.visible && !point_o.draggable,
+        "payload places O at the sector boundary center, so it should behave as the derived circumcenter"
+    );
+    assert!(
+        matches!(point_o.constraint, ScenePointConstraint::Free),
+        "the exported O point should be driven by its circumcenter binding, not by a draggable static polyline"
+    );
+    let Some(ScenePointBinding::Circumcenter {
+        start_index,
+        mid_index,
+        end_index,
+    }) = &point_o.binding
+    else {
+        panic!("expected O to carry a circumcenter binding");
+    };
+    let circumcenter_ordinals = [*start_index, *mid_index, *end_index]
+        .map(|point_index| scene.points[point_index].debug.as_ref().unwrap().group_ordinal);
+    assert_eq!(
+        circumcenter_ordinals,
+        [2, 5, 1],
+        "O should be the center of the payload three-point arc through B, C, and A"
+    );
+    let visible_arc_ordinals = scene
+        .arcs
+        .iter()
+        .filter(|arc| arc.visible)
+        .filter_map(|arc| arc.debug.as_ref().map(|debug| debug.group_ordinal))
+        .collect::<Vec<_>>();
+    assert!(
+        visible_arc_ordinals.contains(&6) && visible_arc_ordinals.contains(&9),
+        "the source payload's two black arcs should render as the circumcircle outline"
+    );
+    let problem_text = scene
+        .labels
+        .iter()
+        .find(|label| label.text.starts_with("如图，O是△ABC的外接圆"))
+        .expect("expected the rich problem statement label");
+    assert!(problem_text.visible, "expected problem text to be visible");
+    assert!(
+        problem_text.screen_space,
+        "problem text should stay anchored in document screen space"
+    );
+    assert_eq!(problem_text.anchor.x, 38.0);
+    assert_eq!(problem_text.anchor.y, 24.0);
 }
 
 #[test]
