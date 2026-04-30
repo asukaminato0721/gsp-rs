@@ -1,0 +1,187 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>平行线的判定（hjx4882）</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=209>
+<PARAM NAME=BackGreen VALUE=224>
+<PARAM NAME=BackBlue VALUE=215>
+<PARAM NAME=Construction VALUE="
+{1} Point(5,667)[hidden,mediumPoint];
+{2} Translation(1,18.8976,0)[hidden];
+{3} Dilation(2,1,2)[hidden];
+{4} Dilation(2,1,3)[hidden];
+{5} Segment(4,3)[hidden];
+{6} Dilation(2,1,4)[hidden];
+{7} Segment(6,4)[hidden];
+{8} Segment(2,1)[red,hidden,thick];
+{9} Segment(3,2)[hidden];
+{10} Dilation(2,1,5)[hidden];
+{11} Segment(10,6)[hidden];
+{12} Segment(10,1)[hidden];
+{13} Point on object(12,0.4)[hidden];
+{14} Translation(13,4.52436,-12.4306)[hidden];
+{15} Translation(13,-4.52436,-12.4306)[hidden];
+{16} Polygon(15,14,13)[hidden];
+{17} Translation(13,-5.27846e-014,15.1181)[black,hidden,dot];
+{18} MoveButton(10,4,0,'')(3,13)[hidden];
+{19} HideButton(10,4,'隐藏点 A')(1)[white,hidden];
+{20} Point(5,5)[hidden,mediumPoint];
+{21} Translation(20,-5.34506,5.34506)[hidden];
+{22} Translation(20,37.7896,-37.7896)[hidden];
+{23} Segment(22,20)[hidden];
+{24} Point on object(23,0.333333)[hidden];
+{25} Dilation(22,20,0.333333)[hidden];
+{26} MoveButton(10,4,0,'')(25,24)[hidden];
+{27} Translation(24,8.01759,-8.01759)[hidden];
+{28} Segment(24,27)[hidden];
+{29} HideButton(10,4,'隐藏点 D')(20)[white,hidden];
+{30} Point(365,495)[large];
+{31} Translation(30,37.7953,0)[hidden];
+{32} Ray(31,30)[hidden];
+{33} Rotation(32,30,-3.14159)[hidden];
+{34} Point on object(32,9.44563)[red];
+{35} Point on object(33,2.80458)[red];
+{36} Distance(34,30,952,43,'')[hidden];
+{37} Circle by radius(30,36)[hidden];
+{38} Point on object(37,-2.0944)[red];
+{39} Line(38,30)[color(0,0,128)];
+{40} Circle(30,35)[hidden];
+{41} Intersect1(39,40)[hidden];
+{42} Segment(38,30)[hidden];
+{43} Point on object(42,0.699776)[yellow,large];
+{44} Circle by radius(43,36)[hidden];
+{45} Point on object(44,0.234223)[red];
+{46} Line(45,43)[color(0,0,128)];
+{47} Distance(30,35,952,64,'')[hidden];
+{48} Circle by radius(43,47)[hidden];
+{49} Intersect1(46,48)[hidden];
+{50} Parameter(0.2,952,85,'')[hidden];
+{51} Parameter(1.5,952,114,'')[hidden];
+{52} Circle by radius(49,50)[hidden];
+{53} Circle by radius(38,50)[hidden];
+{54} Circle by radius(45,50)[hidden];
+{55} Circle by radius(34,50)[hidden];
+{56} Circle by radius(35,50)[hidden];
+{57} Circle by radius(41,50)[hidden];
+{58} Perpendicular(46,49)[hidden];
+{59} Perpendicular(46,45)[hidden];
+{60} Perpendicular(33,35)[hidden];
+{61} Perpendicular(32,34)[hidden];
+{62} Perpendicular(39,38)[hidden];
+{63} Perpendicular(39,41)[hidden];
+{64} Intersect1(60,56)[hidden];
+{65} Intersect2(60,56)[hidden];
+{66} Intersect1(61,55)[hidden];
+{67} Intersect2(61,55)[hidden];
+{68} Intersect1(63,57)[hidden];
+{69} Intersect2(63,57)[hidden];
+{70} Intersect1(62,53)[hidden];
+{71} Intersect2(62,53)[hidden];
+{72} Intersect1(58,52)[hidden];
+{73} Intersect2(58,52)[hidden];
+{74} Intersect1(59,54)[hidden];
+{75} Intersect2(59,54)[hidden];
+{76} Polygon(65,66,67,64)[color(128,0,0)];
+{77} Polygon(72,74,75,73)[color(128,0,0)];
+{78} Polygon(68,70,71,69)[color(128,0,0)];
+{79} Calculate(952,143,'','A B - ')(51,50)[hidden];
+{80} Calculate(952,169,'','A B + ')(51,50)[hidden];
+{81} Circle by radius(43,79)[hidden];
+{82} Circle by radius(43,80)[hidden];
+{83} Circle by radius(30,79)[hidden];
+{84} Circle by radius(30,80)[hidden];
+{85} Intersect1(39,84)[hidden];
+{86} Intersect2(32,84)[hidden];
+{87} Intersect1(39,82)[hidden];
+{88} Intersect2(46,82)[hidden];
+{89} Intersect1(46,82)[hidden];
+{90} Intersect2(39,82)[hidden];
+{91} Intersect2(39,84)[hidden];
+{92} Intersect2(33,84)[hidden];
+{93} Rotation(34,30,2.0944)[hidden];
+{94} MoveButton(26,536,3,'移动a60度')(93,38)[color(255,128,0)];
+{95} Parallel(32,43)[hidden];
+{96} Intersect2(95,44)[hidden];
+{97} MoveButton(26,578,3,'移动b')(96,45)[color(255,128,0)];
+{98} Rotation(34,30,1.0472)[hidden];
+{99} MoveButton(26,557,3,'移动a120度')(98,38)[color(255,128,0)];
+{100} Line(34,35)[color(0,0,128)];
+{101} Intersect(46,100)[label('M'),red,large];
+{102} FixedText(234,75,'第二节 平行线的判定（1） 　 　　　　　　　　　　By hjx4882')[color(0,0,1)];
+{103} ToggleVisibilityButton(26,493,'隐藏说明|显示说明')(102)[color(255,128,0),hidden];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>平行线的判定（hjx4882）</P></H4>
+</BODY>
+</HTML>

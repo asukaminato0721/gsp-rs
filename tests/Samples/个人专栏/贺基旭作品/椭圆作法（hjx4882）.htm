@@ -1,0 +1,106 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>椭圆作法（hjx4882）</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(319,344)[hidden];
+{2} Point(959,344)[hidden];
+{3} Line(2,1)[color(0,0,128),dashed];
+{4} Point on object(3,0.428125)[label('1'),yellow,mediumPoint];
+{5} Point on object(3,0.090625)[label('2'),yellow,mediumPoint];
+{6} Rotation(5,4,-3.14159)[label('3'),yellow,mediumPoint];
+{7} Segment(5,4)[hidden];
+{8} Segment(6,5)[hidden];
+{9} Point on object(8,0.300279)[label('4'),white,mediumPoint];
+{10} Circle by radius(9,7)[color(0,128,0),dashed];
+{11} Point on object(10,-1.15989)[white,mediumPoint];
+{12} Line(11,4)[color(0,0,128),dashed];
+{13} Intersect2(12,10)[label('5'),yellow,mediumPoint];
+{14} Segment(13,9)[color(0,0,128),dashed];
+{15} Point on object(14,0.243036)[label('6'),red,mediumPoint];
+{16} Reflection(15,3)[label('7'),red,mediumPoint];
+{17} Locus(15,9,8,500)[color(128,0,0),mediumLine];
+{18} Locus(16,9,8,500)[color(128,0,0),mediumLine];
+{19} AnimateButton(10,5,'怪物')(11,10)(3)(0)(0)[color(255,128,0),hidden];
+{20} Perpendicular(3,4)[color(0,0,128),dashed];
+{21} Intersect1(20,10)[label('8'),red,mediumPoint];
+{22} MoveButton(10,29,3,'椭圆')(21,11)[color(255,128,0),hidden];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>椭圆作法（hjx4882）</P></H4>
+</BODY>
+</HTML>

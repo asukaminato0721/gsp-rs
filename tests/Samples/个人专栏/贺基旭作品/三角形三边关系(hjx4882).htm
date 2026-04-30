@@ -1,0 +1,129 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>三角形三边关系(hjx4882)</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(75,296)[dot];
+{2} UnitPoint(1,37.7953)[hidden];
+{3} RectangularUnitPoint(2,59.7953)[red,dot];
+{4} Translation(1,-0,0)[red,mediumPoint];
+{5} UnitPoint(4,218.795)[label('c'),yellow,large];
+{6} Ratio/Points(1,2,5,130,350,'a = ')[black];
+{7} Calculate(130,378,'trunc(a) = ','A @trnc ')(6)[black];
+{8} Dilation/MarkedRatio(2,1,7)[red,dot];
+{9} Dilation(8,1,0.5)[color(0,128,0),dot];
+{10} PeggedText(9,7)[black];
+{11} Segment(1,8)[color(0,128,0),thick];
+{12} UnitPoint(3,37.7953)[hidden];
+{13} Translation(3,-0,0)[red,mediumPoint];
+{14} UnitPoint(13,256.795)[label('b'),yellow,large];
+{15} Ratio/Points(3,12,14,130,406,'b = ')[black];
+{16} Calculate(130,434,'trunc(b) = ','A @trnc ')(15)[black];
+{17} Dilation/MarkedRatio(12,3,16)[red,dot];
+{18} Dilation(17,3,0.5)[blue,dot];
+{19} PeggedText(18,16)[black];
+{20} Segment(3,17)[blue,thick];
+{21} VectorTranslation(3,1,13)[red,dot];
+{22} Translation(21,-0,0)[red,mediumPoint];
+{23} UnitPoint(22,200.795)[label('a'),yellow,large];
+{24} UnitPoint(21,37.7953)[hidden];
+{25} Ratio/Points(21,24,23,130,462,'c = ')[black];
+{26} Calculate(130,490,'trunc(c) = ','A @trnc ')(25)[black];
+{27} Dilation/MarkedRatio(24,21,26)[red,dot];
+{28} Segment(21,27)[red,thick];
+{29} Dilation(27,21,0.5)[red,dot];
+{30} PeggedText(29,26)[black];
+{31} Point(701,326)[mediumPoint];
+{32} VectorTranslation(31,1,8)[cyan,mediumPoint];
+{33} VectorTranslation(31,17,3)[red,dot];
+{34} VectorTranslation(32,21,27)[red,dot];
+{35} Circle(31,33)[color(0,128,0),dashed];
+{36} Circle(32,34)[color(0,128,0),dashed];
+{37} Point on object(35,-0.927312)[label('a'),yellow,large];
+{38} Point on object(36,-1.85462)[label('b'),cyan,mediumPoint];
+{39} Segment(37,31)[red,thick];
+{40} Segment(32,38)[blue,thick];
+{41} Segment(32,31)[color(0,128,0),thick];
+{42} MoveButton(838,369,3,'移动a →b')(38,37)[color(255,128,0)];
+{43} Translation(31,-0,0)[yellow,large];
+{44} Translation(32,-0,0)[yellow,large];
+{45} MoveButton(838,392,3,'移动b →a')(37,38)[color(255,128,0)];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>三角形三边关系(hjx4882)</P></H4>
+</BODY>
+</HTML>

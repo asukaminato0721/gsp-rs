@@ -1,0 +1,166 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>正方体展开图11种（hjx4882）</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=220>
+<PARAM NAME=BackGreen VALUE=228>
+<PARAM NAME=BackBlue VALUE=223>
+<PARAM NAME=Construction VALUE="
+{1} Point(51,238)[hidden];
+{2} Translation(1,37.7953,0)[hidden];
+{3} Ray(2,1)[hidden];
+{4} Point on object(3,3.70417)[hidden];
+{5} Translation(1,-1.31961e-013,37.7953)[hidden];
+{6} Translation(4,-1.31961e-013,37.7953)[hidden];
+{7} Segment(1,4)[blue,hairline];
+{8} Dilation(4,1,0.0833333)[hidden];
+{9} Dilation(4,1,0.166667)[hidden];
+{10} Dilation(4,1,0.25)[hidden];
+{11} Dilation(4,1,0.416667)[hidden];
+{12} Dilation(4,1,0.333333)[hidden];
+{13} Dilation(4,1,0.5)[hidden];
+{14} Dilation(4,1,0.583333)[hidden];
+{15} Dilation(4,1,0.666667)[hidden];
+{16} Dilation(4,1,0.75)[hidden];
+{17} Dilation(4,1,0.833333)[hidden];
+{18} Dilation(4,1,0.916667)[hidden];
+{19} Point on object(7,0.992857)[label('P'),white,mediumPoint];
+{20} Segment(4,18)[hidden];
+{21} Segment(17,18)[hidden];
+{22} Segment(16,17)[hidden];
+{23} Segment(15,16)[hidden];
+{24} Segment(14,15)[hidden];
+{25} Segment(13,14)[hidden];
+{26} Segment(11,13)[hidden];
+{27} Segment(12,11)[hidden];
+{28} Segment(10,12)[hidden];
+{29} Segment(9,10)[hidden];
+{30} Segment(8,9)[hidden];
+{31} Segment(1,8)[hidden];
+{32} Translation(8,-1.31961e-013,37.7953)[hidden];
+{33} Translation(9,-1.31961e-013,37.7953)[hidden];
+{34} Translation(10,-1.31961e-013,37.7953)[hidden];
+{35} Translation(11,-1.31961e-013,37.7953)[hidden];
+{36} Translation(12,-1.31961e-013,37.7953)[hidden];
+{37} Translation(13,-1.31961e-013,37.7953)[hidden];
+{38} Translation(14,-1.31961e-013,37.7953)[hidden];
+{39} Translation(15,-1.31961e-013,37.7953)[hidden];
+{40} Translation(16,-1.31961e-013,37.7953)[hidden];
+{41} Translation(17,-1.31961e-013,37.7953)[hidden];
+{42} Translation(18,-1.31961e-013,37.7953)[hidden];
+{43} Translation(20,-1.31961e-013,37.7953)[hidden];
+{44} Translation(21,-1.31961e-013,37.7953)[hidden];
+{45} Translation(22,-1.31961e-013,37.7953)[hidden];
+{46} Translation(23,-1.31961e-013,37.7953)[hidden];
+{47} Translation(24,-1.31961e-013,37.7953)[hidden];
+{48} Translation(25,-1.31961e-013,37.7953)[hidden];
+{49} Translation(26,-1.31961e-013,37.7953)[hidden];
+{50} Translation(27,-1.31961e-013,37.7953)[hidden];
+{51} Translation(28,-1.31961e-013,37.7953)[hidden];
+{52} Translation(29,-1.31961e-013,37.7953)[hidden];
+{53} Translation(30,-1.31961e-013,37.7953)[hidden];
+{54} Translation(31,-1.31961e-013,37.7953)[hidden];
+{55} Perpendicular(7,19)[hidden];
+{56} Intersect(43,55)[label('End'),color(214,226,225),dot];
+{57} Intersect(44,55)[label('11'),color(213,227,227),dot];
+{58} Intersect(45,55)[label('10'),color(218,228,228),dot];
+{59} Intersect(46,55)[label('9'),color(221,232,232),dot];
+{60} Intersect(47,55)[label('8'),color(218,228,225),dot];
+{61} Intersect(48,55)[label('7'),color(231,238,239),dot];
+{62} Intersect(49,55)[label('6'),color(220,232,233),dot];
+{63} Intersect(50,55)[label('5'),color(218,230,231),dot];
+{64} Intersect(51,55)[label('4'),color(222,235,233),dot];
+{65} Intersect(52,55)[label('3'),color(233,239,238),dot];
+{66} Intersect(53,55)[label('2'),color(224,235,235),dot];
+{67} Intersect(54,55)[label('1'),color(222,231,228),dot];
+{68} Translation(1,-7.91769e-014,-22.6772)[hidden];
+{69} Translation(4,-7.91769e-014,-22.6772)[hidden];
+{70} Segment(69,68)[blue,hairline];
+{71} Point(277,495)[hidden];
+{72} Translation(71,-2.63923e-013,75.5906)[hidden];
+{73} Translation(71,75.5906,0)[hidden];
+{74} Translation(72,75.5906,0)[hidden];
+{75} Segment(71,72)[blue];
+{76} Segment(73,71)[blue];
+{77} Segment(74,73)[blue];
+{78} Segment(72,74)[blue];
+{79} Point(631,159)[hidden];
+{80} Polygon(71,72,74,73)[cyan];
+{81} Point on object(70,0.342857)[label('M'),white,mediumPoint];
+{82} FixedText(79,53,'正方体侧面展开图11种（习作）    　　用到以下4个知识点： 　　1、点的值；2、平移变换；3、旋转变换；4、sgn函数。  　　　　　　　　　　　　　　　　　　　　　　By hjx4882')[color(0,0,128)];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>正方体展开图11种（hjx4882）</P></H4>
+</BODY>
+</HTML>

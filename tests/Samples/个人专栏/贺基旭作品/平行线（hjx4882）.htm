@@ -1,0 +1,159 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>平行线（hjx4882）</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=209>
+<PARAM NAME=BackGreen VALUE=224>
+<PARAM NAME=BackBlue VALUE=215>
+<PARAM NAME=Construction VALUE="
+{1} Point(-210,555)[hidden];
+{2} Point(442,555)[hidden];
+{3} Line(2,1)[color(0,0,128),hairline];
+{4} Point on object(3,1.08129)[yellow,large];
+{5} Point on object(3,1.7638)[red];
+{6} Circle(4,5)[color(0,128,0),hidden,hairline];
+{7} Point on object(6,-1.0472)[red];
+{8} Line(7,4)[color(0,0,128),hairline];
+{9} Point on object(8,0.524909)[yellow,large];
+{10} Distance(5,4,56,69,'')[hidden];
+{11} Circle by radius(9,10)[hidden];
+{12} Point on object(11,-0)[label('F'),red];
+{13} Line(12,9)[color(0,0,128),hairline];
+{14} ToggleVisibilityButton(52,76,'隐藏圆|显示圆')(11,6)[hidden];
+{15} Point on object(3,0.894172)[label('C'),red];
+{16} Distance(15,4,56,112,'')[hidden];
+{17} Circle by radius(9,16)[hidden];
+{18} Intersect1(13,17)[red];
+{19} Circle(4,15)[hidden];
+{20} Intersect1(8,19)[red];
+{21} Parameter(0.2,56,133,'')[hidden];
+{22} Perpendicular(8,20)[hidden];
+{23} Perpendicular(8,7)[hidden];
+{24} Circle by radius(20,21)[hidden];
+{25} Circle by radius(7,21)[hidden];
+{26} Intersect1(23,25)[hidden];
+{27} Intersect2(23,25)[hidden];
+{28} Intersect1(22,24)[hidden];
+{29} Intersect2(22,24)[hidden];
+{30} Perpendicular(3,15)[hidden];
+{31} Perpendicular(3,5)[hidden];
+{32} Circle by radius(5,21)[hidden];
+{33} Circle by radius(15,21)[hidden];
+{34} Intersect1(30,33)[hidden];
+{35} Intersect2(30,33)[hidden];
+{36} Intersect1(31,32)[hidden];
+{37} Intersect2(31,32)[hidden];
+{38} Perpendicular(13,12)[hidden];
+{39} Perpendicular(13,18)[hidden];
+{40} Circle by radius(18,21)[hidden];
+{41} Circle by radius(12,21)[hidden];
+{42} Intersect1(39,40)[hidden];
+{43} Intersect2(39,40)[hidden];
+{44} Intersect1(38,41)[hidden];
+{45} Intersect2(38,41)[hidden];
+{46} Polygon(35,37,36,34)[color(128,0,0)];
+{47} Polygon(43,45,44,42)[color(128,0,0)];
+{48} Polygon(28,29,27,26)[color(128,0,0)];
+{49} Parameter(1.5,56,162,'')[hidden];
+{50} Calculate(56,191,'','A B - ')(49,21)[hidden];
+{51} Calculate(56,217,'','A B + ')(49,21)[hidden];
+{52} Circle by radius(9,49)[hidden];
+{53} Circle by radius(9,50)[hidden];
+{54} Circle by radius(9,51)[hidden];
+{55} Circle by radius(4,51)[hidden];
+{56} Circle by radius(4,50)[hidden];
+{57} Circle by radius(4,49)[hidden];
+{58} Intersect2(13,53)[hidden];
+{59} Intersect2(8,53)[hidden];
+{60} Intersect2(13,52)[hidden];
+{61} Intersect2(8,52)[hidden];
+{62} Intersect2(13,54)[hidden];
+{63} Intersect2(8,54)[hidden];
+{64} Intersect2(3,56)[hidden];
+{65} Intersect2(8,56)[hidden];
+{66} Intersect2(3,57)[hidden];
+{67} Intersect2(8,57)[hidden];
+{68} Intersect2(3,55)[hidden];
+{69} Intersect2(8,55)[hidden];
+{70} Rotation(5,4,1.0472)[hidden];
+{71} MoveButton(68,155,3,'移动E')(70,7)[color(255,128,0)];
+{72} Parallel(3,9)[hidden];
+{73} Intersect2(72,11)[hidden];
+{74} MoveButton(67,187,3,'移动F')(73,12)[color(255,128,0)];
+{75} Intersect(3,13)[label('M'),red,large];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>平行线（hjx4882）</P></H4>
+</BODY>
+</HTML>

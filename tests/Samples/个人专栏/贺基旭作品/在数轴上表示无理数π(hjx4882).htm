@@ -1,0 +1,145 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>在数轴上表示无理数π(hjx4882)</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Parameter(1,54,53,'')[hidden];
+{2} Point(869,534)[hidden,mediumPoint];
+{3} Point(308,444)[mediumPoint];
+{4} Translation(2,37.7953,0)[hidden];
+{5} Translation(2,-37.7953,-2.63923e-013)[hidden];
+{6} Segment(4,2)[black,hidden,mediumLine];
+{7} Segment(5,2)[black,hidden,mediumLine];
+{8} Point on object(6,0.5)[hidden];
+{9} Point on object(7,0.5)[hidden];
+{10} Midpoint(6)[hidden];
+{11} Midpoint(7)[hidden];
+{12} UnitPoint(3,112.795)[hidden];
+{13} RectangularUnitPoint(12,0.1)[hidden];
+{14} Distance(12,3,54,344,'')[hidden];
+{15} Distance(13,3,54,371,'')[hidden];
+{16} Calculate(54,398,'','A B / ')(14,1)[hidden];
+{17} Rotation(12,3,-3.14159)[hidden];
+{18} Translation(3,0,0)[cyan];
+{19} UnitPoint(18,146.1)[hidden];
+{20} Rotation(19,3,-3.14159)[hidden];
+{21} Ratio/Points(3,17,20,54,427,'')[hidden];
+{22} Calculate(54,483,'','A 0.2 - @trnc ')(21)[hidden];
+{23} Calculate(54,539,'','A ')(15)[hidden];
+{24} Translation(3,37.7953,0)[hidden];
+{25} Dilation/MarkedRatio(17,3,22)[hidden];
+{26} Segment(25,20)[black];
+{27} MoveButton(50,650,0,'初始设置')(10,8,11,9,24,12)[color(255,128,0),hidden];
+{28} FixedText(953,562,'d=1')[black];
+{29} FixedText(205,146,'在数轴上表示无理数π')[color(0,128,0)];
+{30} Point(358,645)[hidden,mediumPoint];
+{31} Translation(30,18.8976,0)[hidden];
+{32} Dilation(31,30,2)[hidden];
+{33} Dilation(31,30,3)[hidden];
+{34} Segment(33,32)[hidden];
+{35} Dilation(31,30,4)[hidden];
+{36} Segment(35,33)[hidden];
+{37} Segment(31,30)[red,hidden,thick];
+{38} Segment(32,31)[hidden];
+{39} Dilation(31,30,5)[hidden];
+{40} Segment(39,35)[hidden];
+{41} Segment(39,30)[hidden];
+{42} Point on object(41,0.4)[hidden];
+{43} Translation(42,4.52436,-12.4306)[hidden];
+{44} Translation(42,-4.52436,-12.4306)[hidden];
+{45} Polygon(44,43,42)[hidden];
+{46} Translation(42,-5.27846e-014,15.1181)[black,hidden,dot];
+{47} MoveButton(50,9,0,'')(32,42)[hidden];
+{48} HideButton(50,9,'隐藏点 M')(30)[white,hidden];
+{49} Point(5,5)[hidden,mediumPoint];
+{50} Translation(49,-5.34506,5.34506)[hidden];
+{51} Translation(49,37.7896,-37.7896)[hidden];
+{52} Segment(51,49)[hidden];
+{53} Point on object(52,0.333333)[hidden];
+{54} Dilation(51,49,0.333333)[hidden];
+{55} MoveButton(50,9,0,'')(54,53)[hidden];
+{56} Translation(53,8.01759,-8.01759)[hidden];
+{57} Segment(53,56)[hidden];
+{58} HideButton(50,9,'隐藏点 P')(49)[white,hidden];
+{59} FixedText(513,203,'旦八初级中学　贺基旭')[color(0,128,0)];
+{60} FixedText(209,149,'在数轴上表示无理数π')[color(192,192,192)];
+{61} Parameter(0.001,951,529,'t[2] = ')[black];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>在数轴上表示无理数π(hjx4882)</P></H4>
+</BODY>
+</HTML>

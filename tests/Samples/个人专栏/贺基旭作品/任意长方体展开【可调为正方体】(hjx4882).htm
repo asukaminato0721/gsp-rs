@@ -1,0 +1,209 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>任意长方体展开【可调为正方体】(hjx4882)</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=220>
+<PARAM NAME=BackGreen VALUE=228>
+<PARAM NAME=BackBlue VALUE=223>
+<PARAM NAME=Construction VALUE="
+{1} Point(582,115)[hidden];
+{2} Translation(1,3.77953,0)[hidden];
+{3} Ray(2,1)[blue,hidden];
+{4} Point on object(3,41.0104)[hidden];
+{5} Dilation(4,1,0.0909091)[hidden];
+{6} Segment(5,1)[red,mediumLine];
+{7} VectorTranslation(6,1,5)[blue,mediumLine];
+{8} VectorTranslation(7,1,5)[red,mediumLine];
+{9} VectorTranslation(8,1,5)[blue,mediumLine];
+{10} VectorTranslation(9,1,5)[red,mediumLine];
+{11} VectorTranslation(10,1,5)[blue,mediumLine];
+{12} VectorTranslation(11,1,5)[red,mediumLine];
+{13} VectorTranslation(12,1,5)[blue,mediumLine];
+{14} VectorTranslation(13,1,5)[red,mediumLine];
+{15} VectorTranslation(14,1,5)[blue,mediumLine];
+{16} VectorTranslation(15,1,5)[red,mediumLine];
+{17} Translation(1,-1.05569e-013,30.2362)[hidden];
+{18} Translation(4,-1.05569e-013,30.2362)[hidden];
+{19} Dilation(18,17,0.2)[hidden];
+{20} Segment(19,17)[blue,mediumLine];
+{21} VectorTranslation(20,17,19)[red,mediumLine];
+{22} VectorTranslation(21,17,19)[blue,mediumLine];
+{23} VectorTranslation(22,17,19)[red,mediumLine];
+{24} VectorTranslation(23,17,19)[blue,mediumLine];
+{25} Segment(4,1)[blue,hidden,thick];
+{26} Segment(18,17)[hidden];
+{27} Point on object(26,0)[label('M'),white,large];
+{28} Point on object(25,0)[white,large];
+{29} Perpendicular(25,28)[blue,hidden,hairline];
+{30} Intersect(6,29)[label('1'),red,dot];
+{31} Intersect(7,29)[label('2'),color(0,0,128),dot];
+{32} Intersect(8,29)[label('3'),red,dot];
+{33} Intersect(9,29)[label('4'),color(0,0,128),dot];
+{34} Intersect(10,29)[label('5'),red,dot];
+{35} Intersect(11,29)[label('6'),color(0,0,128),dot];
+{36} Intersect(12,29)[label('7'),red,dot];
+{37} Intersect(13,29)[label('8'),color(0,0,128),dot];
+{38} Intersect(14,29)[label('9'),red,dot];
+{39} Intersect(15,29)[label('10'),color(0,0,128),dot];
+{40} Intersect(16,29)[label('11'),red,dot];
+{41} Point(335,546)[mediumPoint];
+{42} Translation(41,3.77953,0)[hidden];
+{43} Ray(42,41)[blue,hidden,hairline];
+{44} Rotation(43,41,0.785398)[blue,hidden,hairline];
+{45} Rotation(44,41,0.785398)[blue,hidden,hairline];
+{46} Point on object(43,21.8651)[white,mediumPoint];
+{47} Point on object(45,30.8609)[white,mediumPoint];
+{48} Point on object(44,20.3252)[white,mediumPoint];
+{49} Dilation(48,41,2)[hidden];
+{50} VectorTranslation(48,41,46)[hidden];
+{51} VectorTranslation(48,41,47)[hidden];
+{52} VectorTranslation(50,41,47)[hidden];
+{53} VectorTranslation(46,41,47)[hidden];
+{54} Segment(46,41)[blue,hairline];
+{55} Segment(50,46)[blue,hairline];
+{56} Segment(48,50)[blue,hairline,dashed];
+{57} Segment(41,48)[blue,hairline,dashed];
+{58} Segment(53,47)[blue,hairline];
+{59} Segment(52,53)[blue,hairline];
+{60} Segment(51,52)[blue,hairline];
+{61} Segment(47,51)[blue,hairline];
+{62} Segment(41,47)[blue,hairline];
+{63} Segment(53,46)[blue,hairline];
+{64} Segment(52,50)[blue,hairline];
+{65} Segment(48,51)[blue,hairline,dashed];
+{66} Point(981,397)[hidden];
+{67} VectorTranslation(47,41,66)[hidden];
+{68} VectorTranslation(49,41,66)[hidden];
+{69} VectorTranslation(46,41,66)[hidden];
+{70} Rotation(69,66,1.5708)[white,hidden];
+{71} Rotation(70,66,1.5708)[hidden];
+{72} Rotation(71,66,1.5708)[white,hidden];
+{73} Rotation(68,66,0.785398)[hidden];
+{74} Rotation(73,66,1.5708)[hidden];
+{75} Rotation(74,66,1.5708)[hidden];
+{76} Rotation(67,66,1.5708)[hidden];
+{77} Rotation(76,66,1.5708)[hidden];
+{78} Rotation(77,66,1.5708)[hidden];
+{79} Rotation(66,73,-1.5708)[hidden];
+{80} Rotation(66,75,-1.5708)[hidden];
+{81} Line(73,79)[hidden];
+{82} VectorTranslation(79,66,73)[hidden];
+{83} Reflection(66,81)[hidden];
+{84} Reflection(67,81)[hidden];
+{85} Reflection(69,81)[hidden];
+{86} Reflection(70,81)[hidden];
+{87} Reflection(71,81)[hidden];
+{88} Reflection(72,81)[hidden];
+{89} Reflection(74,81)[hidden];
+{90} Reflection(75,81)[hidden];
+{91} Reflection(76,81)[hidden];
+{92} Reflection(77,81)[hidden];
+{93} Reflection(78,81)[hidden];
+{94} Perpendicular(81,89)[hidden];
+{95} Intersect(81,94)[hidden];
+{96} Dilation(89,95,0.5)[hidden];
+{97} Rotation(96,95,-0.785398)[hidden];
+{98} Rotation(75,66,1.5708)[hidden];
+{99} Reflection(98,81)[hidden];
+{100} Line(98,80)[hidden];
+{101} Reflection(73,100)[hidden];
+{102} Reflection(66,100)[hidden];
+{103} Reflection(67,100)[hidden];
+{104} Reflection(69,100)[hidden];
+{105} Reflection(70,100)[hidden];
+{106} Reflection(71,100)[hidden];
+{107} Reflection(72,100)[hidden];
+{108} Reflection(74,100)[hidden];
+{109} Reflection(75,100)[hidden];
+{110} Reflection(76,100)[hidden];
+{111} Reflection(77,100)[hidden];
+{112} Reflection(78,100)[hidden];
+{113} Perpendicular(100,109)[hidden];
+{114} Intersect(100,113)[hidden];
+{115} Dilation(109,114,0.5)[hidden];
+{116} Rotation(115,114,0.785398)[hidden];
+{117} Polygon(41,46,50,48)[cyan];
+{118} Segment(49,41)[blue,hidden];
+{119} Length(54,1167,553,'')[hidden];
+{120} Length(118,1167,574,'')[hidden];
+{121} Length(62,1167,595,'')[hidden];
+{122} Rotation(46,41,0.785398)[hidden];
+{123} Rotation(122,41,0.785398)[hidden];
+{124} Dilation(122,41,0.5)[hidden];
+{125} MoveButton(612,33,3,'长方体变正方体')(123,47,124,48)[color(255,128,0),hidden];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>任意长方体展开【可调为正方体】(hjx4882)</P></H4>
+</BODY>
+</HTML>

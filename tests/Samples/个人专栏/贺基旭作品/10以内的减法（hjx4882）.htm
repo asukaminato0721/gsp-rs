@@ -1,0 +1,221 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>10以内的减法（hjx4882）</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} FixedText(1546,29,'10以内的减法')[black,hidden];
+{2} Point(468,312)[hidden,mediumPoint];
+{3} UnitPoint(2,118.795)[hidden];
+{4} Circle(2,3)[color(255,128,0)];
+{5} Ray(3,2)[hidden];
+{6} Point on object(5,2.34735)[hidden];
+{7} VectorTranslation(4,2,6)[cyan];
+{8} FixedText(1546,51,'被减数')[black,hidden];
+{9} FixedText(1546,73,'减数')[black,hidden];
+{10} Point(265,428)[large];
+{11} UnitPoint(10,18.7953)[hidden];
+{12} Circle(10,11)[hidden];
+{13} Circle interior(12)[color(255,128,0)];
+{14} Point(265,273)[large];
+{15} Point(259,379)[large];
+{16} Point(450,251)[large];
+{17} Point(492,381)[large];
+{18} Point(530,361)[large];
+{19} Point(498,245)[large];
+{20} Point(262,324)[large];
+{21} Point(530,276)[large];
+{22} Point(548,320)[large];
+{23} VectorTranslation(11,10,14)[hidden];
+{24} VectorTranslation(23,14,15)[hidden];
+{25} VectorTranslation(24,15,16)[hidden];
+{26} VectorTranslation(25,16,17)[hidden];
+{27} VectorTranslation(26,17,18)[hidden];
+{28} VectorTranslation(27,18,19)[hidden];
+{29} VectorTranslation(28,19,20)[hidden];
+{30} VectorTranslation(29,20,21)[hidden];
+{31} VectorTranslation(30,21,22)[hidden];
+{32} Circle(14,23)[hidden];
+{33} Circle(15,24)[hidden];
+{34} Circle(16,25)[hidden];
+{35} Circle(17,26)[hidden];
+{36} Circle(18,27)[hidden];
+{37} Circle(19,28)[hidden];
+{38} Circle(20,29)[hidden];
+{39} Circle(21,30)[hidden];
+{40} Circle(22,31)[hidden];
+{41} Circle interior(40)[color(255,128,0)];
+{42} Circle interior(39)[color(255,128,0)];
+{43} Circle interior(38)[color(255,128,0)];
+{44} Circle interior(37)[color(255,128,0)];
+{45} Circle interior(36)[color(255,128,0)];
+{46} Circle interior(35)[color(255,128,0)];
+{47} Circle interior(34)[color(255,128,0)];
+{48} Circle interior(33)[color(255,128,0)];
+{49} Circle interior(32)[color(255,128,0)];
+{50} Point(733,390)[large];
+{51} Point(1004,386)[large];
+{52} Point(943,325)[large];
+{53} Point(996,321)[large];
+{54} Point(667,291)[large];
+{55} Point(695,376)[large];
+{56} Point(987,265)[large];
+{57} Point(681,259)[large];
+{58} Point(934,272)[large];
+{59} Point(667,336)[large];
+{60} UnitPoint(59,18.7953)[hidden];
+{61} Circle(59,60)[hidden];
+{62} Circle interior(61)[cyan];
+{63} VectorTranslation(60,59,58)[hidden];
+{64} VectorTranslation(63,58,57)[hidden];
+{65} VectorTranslation(64,57,56)[hidden];
+{66} VectorTranslation(65,56,55)[hidden];
+{67} VectorTranslation(66,55,54)[hidden];
+{68} VectorTranslation(67,54,53)[hidden];
+{69} VectorTranslation(68,53,52)[hidden];
+{70} VectorTranslation(69,52,51)[hidden];
+{71} VectorTranslation(70,51,50)[hidden];
+{72} Circle(58,63)[hidden];
+{73} Circle(57,64)[hidden];
+{74} Circle(56,65)[hidden];
+{75} Circle(55,66)[hidden];
+{76} Circle(54,67)[hidden];
+{77} Circle(53,68)[hidden];
+{78} Circle(52,69)[hidden];
+{79} Circle(51,70)[hidden];
+{80} Circle(50,71)[hidden];
+{81} Circle interior(80)[cyan];
+{82} Circle interior(79)[cyan];
+{83} Circle interior(78)[cyan];
+{84} Circle interior(77)[cyan];
+{85} Circle interior(76)[cyan];
+{86} Circle interior(75)[cyan];
+{87} Circle interior(74)[cyan];
+{88} Circle interior(73)[cyan];
+{89} Circle interior(72)[cyan];
+{90} Distance(2,10,1469,182,'')[hidden];
+{91} Distance(2,15,1469,204,'')[hidden];
+{92} Distance(2,17,1469,226,'')[hidden];
+{93} Distance(2,18,1469,248,'')[hidden];
+{94} Distance(2,22,1469,270,'')[hidden];
+{95} Distance(2,20,1469,292,'')[hidden];
+{96} Distance(2,14,1469,314,'')[hidden];
+{97} Distance(2,16,1469,336,'')[hidden];
+{98} Distance(2,19,1469,358,'')[hidden];
+{99} Distance(2,21,1469,380,'')[hidden];
+{100} Distance(2,3,1469,402,'')[hidden];
+{101} Distance(11,10,1469,424,'')[hidden];
+{102} Function(1479,140,'','A B + x - @sgn_ 1 + 2 / ')(100,101)[hidden];
+{103} Calculate(1579,183,'','B @fA ')(102,90)[hidden];
+{104} Calculate(1579,205,'','B @fA ')(102,91)[hidden];
+{105} Calculate(1579,227,'','B @fA ')(102,92)[hidden];
+{106} Calculate(1579,249,'','B @fA ')(102,93)[hidden];
+{107} Calculate(1579,271,'','B @fA ')(102,94)[hidden];
+{108} Calculate(1579,293,'','B @fA ')(102,95)[hidden];
+{109} Calculate(1579,315,'','B @fA ')(102,96)[hidden];
+{110} Calculate(1579,337,'','B @fA ')(102,97)[hidden];
+{111} Calculate(1579,359,'','B @fA ')(102,98)[hidden];
+{112} Calculate(1579,381,'','B @fA ')(102,99)[hidden];
+{113} Calculate(1579,403,'被减数 = ','A B + C + D + E + F + G + H + I + J + ')(103,104,105,106,107,108,109,110,111,112)[black,hidden];
+{114} Distance(59,6,1687,183,'')[hidden];
+{115} Distance(57,6,1687,204,'')[hidden];
+{116} Distance(55,6,1687,225,'')[hidden];
+{117} Distance(54,6,1687,246,'')[hidden];
+{118} Distance(50,6,1687,267,'')[hidden];
+{119} Distance(52,6,1687,288,'')[hidden];
+{120} Distance(58,6,1687,309,'')[hidden];
+{121} Distance(56,6,1687,330,'')[hidden];
+{122} Distance(53,6,1687,351,'')[hidden];
+{123} Distance(51,6,1687,372,'')[hidden];
+{124} Calculate(1809,183,'','B @fA ')(102,114)[hidden];
+{125} Calculate(1809,204,'','B @fA ')(102,115)[hidden];
+{126} Calculate(1809,225,'','B @fA ')(102,116)[hidden];
+{127} Calculate(1809,246,'','B @fA ')(102,117)[hidden];
+{128} Calculate(1809,267,'','B @fA ')(102,118)[hidden];
+{129} Calculate(1809,288,'','B @fA ')(102,119)[hidden];
+{130} Calculate(1809,309,'','B @fA ')(102,120)[hidden];
+{131} Calculate(1809,330,'','B @fA ')(102,121)[hidden];
+{132} Calculate(1809,351,'','B @fA ')(102,122)[hidden];
+{133} Calculate(1809,372,'','B @fA ')(102,123)[hidden];
+{134} Calculate(1809,393,'减数 = ','A B + C + D + E + F + G + H + I + J + ')(124,125,126,127,128,129,130,131,132,133)[black,hidden];
+{135} ToggleVisibilityButton(1467,396,'隐藏点|显示点')(6,2,3)[hidden];
+{136} Calculate(1718,139,'被减数 - 减数 = ','A B - ')(113,134)[black,hidden];
+{137} ToggleVisibilityButton(1467,420,'隐藏文本对象|显示文本对象')(1,8,9,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,136)[hidden];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>10以内的减法（hjx4882）</P></H4>
+</BODY>
+</HTML>

@@ -1,0 +1,107 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>y=x^2的轴对称性(hjx4882)</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Parameter(0.5,197,261,'a = ')[black];
+{2} Point(646,568)[mediumPoint];
+{3} UnitPoint(2,37.7953)[red,mediumPoint];
+{4} HorizontalAxis(2,3)[color(96,96,96)];
+{5} SquareUnitPoint(3)[hidden];
+{6} VerticalAxis(2,5)[color(96,96,96)];
+{7} CoordSysByAxes(4,6)[color(192,192,192)];
+{8} Function(14,300,'','A x 2 ^ * 0 0 x - @sqrt * x 5 + @sqrt * + ')(1)[hidden];
+{9} FunctionPlot(8,7,750,-17.0921,17.0921,0)[color(0,128,0),mediumLine];
+{10} Point on object(9,0.353733)[red,mediumPoint];
+{11} Reflection(10,6)[red,mediumPoint];
+{12} Dilation(11,10,0.5)[hidden];
+{13} Circle(12,11)[hidden];
+{14} Point on object(13,1.22055)[hidden];
+{15} Dilation/3PtRatio(11,12,12,11,14)[hidden];
+{16} Segment(14,15)[hidden];
+{17} Point on object(16,0.315191)[hidden];
+{18} Locus(17,14,13,500)[hidden];
+{19} Point on object(18,0.990229)[red,mediumPoint];
+{20} Segment(12,19)[hidden];
+{21} MoveButton(10,125,3,'')(10,19)[hidden];
+{22} Function(197,355,'y = a*(x^2)','A x 2 ^ * ')(1)[black];
+{23} MoveButton(10,149,3,'')(11,19)[hidden];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>y=x^2的轴对称性(hjx4882)</P></H4>
+</BODY>
+</HTML>

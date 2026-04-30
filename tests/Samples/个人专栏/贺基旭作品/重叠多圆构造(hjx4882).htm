@@ -1,0 +1,122 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>重叠多圆构造(hjx4882)</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(229,524)[label('B')];
+{2} UnitPoint(1,336.795)[label('C'),red];
+{3} Dilation(2,1,0.75)[red,dot];
+{4} Dilation(2,1,0.5)[label('M'),red];
+{5} Segment(4,1)[color(0,0,128)];
+{6} Rotation(4,2,-3.14159)[label('F'),red];
+{7} Segment(6,4)[color(0,0,128)];
+{8} Point on object(7,0.174607)[label('Q'),cyan,mediumPoint];
+{9} Dilation(2,1,0.649519)[red,dot];
+{10} Rotation(9,1,1.5708)[label('A'),red];
+{11} VectorTranslation(3,1,10)[label('D'),red];
+{12} Rotation(8,4,-3.14159)[cyan];
+{13} Translation(1,-1.31961e-019,3.77953e-005)[cyan,mediumPoint];
+{14} Circle(13,12)[color(0,128,0),dashed];
+{15} Intersect2(5,14)[label('P'),red];
+{16} Dilation(6,2,0.25)[red];
+{17} Translation(16,-1.31961e-019,3.77953e-005)[cyan,mediumPoint];
+{18} Segment(4,16)[color(0,0,128)];
+{19} Dilation(17,8,0.5)[cyan,dot];
+{20} Circle(19,17)[color(0,128,0),dashed];
+{21} Intersect2(18,20)[yellow,large];
+{22} Translation(21,9.44882,-16.3658)[yellow];
+{23} Ray(21,22)[color(0,0,128),dashed];
+{24} Translation(15,-9.44882,-16.3658)[red,dot];
+{25} Ray(15,24)[color(0,0,128),dashed];
+{26} Rotation(8,15,1.0472)[cyan];
+{27} Segment(10,1)[color(0,0,128)];
+{28} Dilation/3PtRatio(10,1,1,10,26)[red];
+{29} Translation(10,-0.000188976,-0.000327317)[cyan,mediumPoint];
+{30} Dilation(29,28,0.5)[cyan];
+{31} Circle(30,29)[color(0,128,0),dashed];
+{32} Intersect1(27,31)[yellow,large];
+{33} Translation(32,-9.44882,6.59807e-014)[yellow];
+{34} Ray(32,33)[color(0,0,128),dashed];
+{35} Dilation(11,2,1.0625)[red,dot];
+{36} Polygon(35,2,1,2)[blue];
+{37} Polygon(10,11,2,11)[blue];
+{38} Intersect(34,23)[yellow];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>重叠多圆构造(hjx4882)</P></H4>
+</BODY>
+</HTML>
