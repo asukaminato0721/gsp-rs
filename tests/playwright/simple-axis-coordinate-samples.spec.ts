@@ -46,6 +46,9 @@ const samples = [
   {
     path: 'tests/Samples/简易数轴与坐标系/最简坐标系/样本2.gsp',
     buttons: 0,
+    visibleLabels: ['Xmax = 1', 'Xmin = -1', 'Ymax = 1', 'Ymin = -1'],
+    graphCalibrationControls: true,
+    visibleAxisEndpointControls: true,
   },
   {
     path: 'tests/Samples/简易数轴与坐标系/数轴.gsp',
@@ -147,12 +150,55 @@ for (const sample of samples) {
       });
       const initialAxis = axisState();
       const scene = window.gspDebug.runtime.scene;
+      const graphCalibrationControlSnapshot = () => window.gspDebug.runtime.scene.points
+        .map((point: any, index: number) => ({ point, index }))
+        .filter(({ point }: any) =>
+          point.visible !== false
+          && point.draggable !== false
+          && point.binding?.kind === 'graph-calibration'
+          && point.constraint?.kind === 'offset'
+          && point.constraint.originIndex === 3
+        )
+        .map(({ point, index }: any) => ({
+          index,
+          x: point.x,
+          y: point.y,
+          draggable: point.draggable !== false,
+        }));
+      const initialGraphCalibrationControls = graphCalibrationControlSnapshot();
+      const axisEndpointControlSnapshot = () => window.gspDebug.runtime.scene.points
+        .map((point: any, index: number) => ({ point, index }))
+        .filter(({ point }: any) => {
+          const color = point.color ?? [];
+          return point.visible !== false
+            && color[0] === 255
+            && color[1] === 0
+            && color[2] === 0
+            && (
+              (Math.abs(Math.abs(point.x) - 1.0) < 1e-6 && Math.abs(point.y) < 1e-6)
+              || (Math.abs(point.x) < 1e-6 && Math.abs(Math.abs(point.y) - 1.0) < 1e-6)
+            );
+        })
+        .map(({ point, index }: any) => ({
+          index,
+          x: point.x,
+          y: point.y,
+          draggable: point.draggable !== false,
+          bindingKind: point.binding?.kind ?? null,
+        }));
+      const axisEndpointControls = axisEndpointControlSnapshot();
       const initialVisibleLabels = scene.labels
         .filter((label: any) => label.visible !== false)
+        .map((label: any) => label.text);
+      const calculationLabels = () => window.gspDebug.runtime.scene.labels
+        .filter((label: any) => label.visible !== false && /^[XY](max|min) = /.test(label.text))
         .map((label: any) => label.text);
       const firstInteractivePointIndex = scene.points.findIndex((point: any) => point.draggable !== false);
       let movedPoint = null;
       let centerAxisDrag = null;
+      let graphCalibrationControlDrag = null;
+      let axisEndpointControlDrag = null;
+      let centerPointDrag = null;
       const centerAxisSnapshot = () => {
         const current = window.gspDebug.runtime.scene;
         return {
@@ -169,7 +215,8 @@ for (const sample of samples) {
         };
       };
 
-      if (firstInteractivePointIndex >= 0) {
+      const shouldMoveFirstInteractivePoint = !options.graphCalibrationControls && !options.visibleAxisEndpointControls;
+      if (shouldMoveFirstInteractivePoint && firstInteractivePointIndex >= 0) {
         const before = scene.points[firstInteractivePointIndex];
         const beforeCenterAxis = options.dragCenterAxis ? centerAxisSnapshot() : null;
         const rootId = window.GspViewerModules.dynamics?.sourcePointRootId;
@@ -189,6 +236,79 @@ for (const sample of samples) {
           centerAxisDrag = {
             before: beforeCenterAxis,
             after: centerAxisSnapshot(),
+          };
+        }
+      }
+      if (options.graphCalibrationControls) {
+        const env = window.gspDebug.viewerEnv;
+        const drag = window.GspViewerModules.drag;
+        const controlsBefore = graphCalibrationControlSnapshot();
+        const control = controlsBefore.find((candidate: any) =>
+          Math.abs(candidate.x - 1.0) < 1e-6 && Math.abs(candidate.y) < 1e-6
+        ) ?? controlsBefore[0];
+        if (control) {
+          const point = env.currentScene().points[control.index];
+          const before = { x: point.x, y: point.y };
+          const dragMode = drag.dragModeFor(env, control.index, null, null, null, null);
+          drag.beginDrag(env, 9, { x: point.x, y: point.y }, control.index, null, null, null, null);
+          drag.updateDraggedPoint(env, { x: point.x + 0.2, y: point.y + 0.15 });
+          env.dragState.val = null;
+          const after = env.currentScene().points[control.index];
+          graphCalibrationControlDrag = {
+            controlsBefore,
+            dragMode,
+            before,
+            after: { x: after.x, y: after.y },
+            labelsAfter: calculationLabels(),
+          };
+        }
+      }
+      if (options.visibleAxisEndpointControls) {
+        const env = window.gspDebug.viewerEnv;
+        const drag = window.GspViewerModules.drag;
+        const control = axisEndpointControls.find((candidate: any) =>
+          Math.abs(candidate.x + 1.0) < 1e-6 && Math.abs(candidate.y) < 1e-6
+        );
+        if (control) {
+          const point = env.currentScene().points[control.index];
+          const before = { x: point.x, y: point.y };
+          const dragMode = drag.dragModeFor(env, control.index, null, null, null, null);
+          drag.beginDrag(env, 10, { x: point.x, y: point.y }, control.index, null, null, null, null);
+          drag.updateDraggedPoint(env, { x: point.x - 0.2, y: point.y + 0.2 });
+          env.dragState.val = null;
+          const after = env.currentScene().points[control.index];
+          axisEndpointControlDrag = {
+            dragMode,
+            before,
+            after: { x: after.x, y: after.y },
+            labelsAfter: calculationLabels(),
+          };
+        }
+      }
+      if (options.visibleAxisEndpointControls) {
+        const env = window.gspDebug.viewerEnv;
+        const drag = window.GspViewerModules.drag;
+        const centerIndex = env.currentScene().points.findIndex((point: any) =>
+          point.visible !== false
+          && point.draggable !== false
+          && Math.abs(point.x) < 1e-6
+          && Math.abs(point.y) < 1e-6
+        );
+        if (centerIndex >= 0) {
+          const point = env.currentScene().points[centerIndex];
+          const before = { x: point.x, y: point.y };
+          const labelsBefore = calculationLabels();
+          const dragMode = drag.dragModeFor(env, centerIndex, null, null, null, null);
+          drag.beginDrag(env, 11, { x: point.x, y: point.y }, centerIndex, null, null, null, null);
+          drag.updateDraggedPoint(env, { x: point.x + 0.25, y: point.y - 0.2 });
+          env.dragState.val = null;
+          const after = env.currentScene().points[centerIndex];
+          centerPointDrag = {
+            dragMode,
+            before,
+            after: { x: after.x, y: after.y },
+            labelsBefore,
+            labelsAfter: calculationLabels(),
           };
         }
       }
@@ -274,6 +394,11 @@ for (const sample of samples) {
           .filter((label: any) => label.visible !== false)
           .map((label: any) => label.text),
         initialVisibleLabels,
+        initialGraphCalibrationControls,
+        axisEndpointControls,
+        graphCalibrationControlDrag,
+        axisEndpointControlDrag,
+        centerPointDrag,
         axisTickXs: initialAxis.axisTickXs,
         movedPoint,
         axisDrag,
@@ -284,6 +409,8 @@ for (const sample of samples) {
       shouldCheckAxisDrag: sample.path.endsWith('/数轴.gsp'),
       dragCoordinateLabel: sample.dragCoordinateLabel === true,
       dragCenterAxis: sample.dragCenterAxis === true,
+      graphCalibrationControls: sample.graphCalibrationControls === true,
+      visibleAxisEndpointControls: sample.visibleAxisEndpointControls === true,
     });
 
     expect(pageErrors).toEqual([]);
@@ -307,6 +434,67 @@ for (const sample of samples) {
     }
     if (sample.gridChildren !== undefined) {
       expect(result.gridChildren).toBe(sample.gridChildren);
+    }
+    if (sample.graphCalibrationControls) {
+      expect(result.initialGraphCalibrationControls).toHaveLength(2);
+      expect(result.initialGraphCalibrationControls.some((point: any) =>
+        Math.abs(point.x - 1.0) < 1e-6 && Math.abs(point.y) < 1e-6 && point.draggable
+      )).toBe(true);
+      expect(result.initialGraphCalibrationControls.some((point: any) =>
+        Math.abs(point.x) < 1e-6 && Math.abs(point.y - 1.0) < 1e-6 && point.draggable
+      )).toBe(true);
+      expect(result.graphCalibrationControlDrag?.dragMode).toBe('point');
+      expect(result.graphCalibrationControlDrag?.after.x).toBeCloseTo(
+        (result.graphCalibrationControlDrag?.before.x ?? 0) + 0.2,
+        3,
+      );
+      expect(result.graphCalibrationControlDrag?.after.y).toBeCloseTo(
+        result.graphCalibrationControlDrag?.before.y ?? 0,
+        3,
+      );
+      expect(result.graphCalibrationControlDrag?.labelsAfter).toContain('Xmax = 1.2');
+      expect(result.graphCalibrationControlDrag?.labelsAfter).toContain('Xmin = -1');
+      expect(result.graphCalibrationControlDrag?.labelsAfter).toContain('Ymax = 1');
+      expect(result.graphCalibrationControlDrag?.labelsAfter).toContain('Ymin = -1');
+    }
+    if (sample.visibleAxisEndpointControls) {
+      expect(result.axisEndpointControls).toHaveLength(4);
+      for (const [x, y, draggable, bindingKind] of [
+        [1.0, 0.0, true, 'graph-calibration'],
+        [0.0, 1.0, true, 'graph-calibration'],
+        [-1.0, 0.0, true, 'derived'],
+        [0.0, -1.0, true, 'derived'],
+      ] as const) {
+        expect(result.axisEndpointControls.some((point: any) =>
+          Math.abs(point.x - x) < 1e-6
+          && Math.abs(point.y - y) < 1e-6
+          && point.draggable === draggable
+          && point.bindingKind === bindingKind
+        )).toBe(true);
+      }
+      expect(result.axisEndpointControlDrag?.dragMode).toBe('point');
+      expect(result.axisEndpointControlDrag?.after.x).toBeCloseTo(
+        (result.axisEndpointControlDrag?.before.x ?? 0) - 0.2,
+        3,
+      );
+      expect(result.axisEndpointControlDrag?.after.y).toBeCloseTo(
+        result.axisEndpointControlDrag?.before.y ?? 0,
+        3,
+      );
+      expect(result.axisEndpointControlDrag?.labelsAfter).toContain('Xmax = 1.2');
+      expect(result.axisEndpointControlDrag?.labelsAfter).toContain('Xmin = -1.2');
+      expect(result.axisEndpointControlDrag?.labelsAfter).toContain('Ymax = 1');
+      expect(result.axisEndpointControlDrag?.labelsAfter).toContain('Ymin = -1');
+      expect(result.centerPointDrag?.dragMode).toBe('point');
+      expect(result.centerPointDrag?.after.x).toBeCloseTo(
+        (result.centerPointDrag?.before.x ?? 0) + 0.25,
+        3,
+      );
+      expect(result.centerPointDrag?.after.y).toBeCloseTo(
+        (result.centerPointDrag?.before.y ?? 0) - 0.2,
+        3,
+      );
+      expect(result.centerPointDrag?.labelsAfter).toEqual(result.centerPointDrag?.labelsBefore);
     }
     if (sample.dragCoordinateLabel) {
       const before = result.coordinateLabelDrag?.before;
@@ -379,8 +567,10 @@ for (const sample of samples) {
         (result.axisDrag?.afterRightDrag.arrow.headLength ?? 0) - 4,
       );
     }
-    expect(result.movedPoint).not.toBeNull();
-    expect(result.movedPoint?.after.x).toBeCloseTo((result.movedPoint?.before.x ?? 0) + 0.25, 3);
-    expect(result.movedPoint?.after.y).toBeCloseTo((result.movedPoint?.before.y ?? 0) - 0.2, 3);
+    if (!sample.graphCalibrationControls && !sample.visibleAxisEndpointControls) {
+      expect(result.movedPoint).not.toBeNull();
+      expect(result.movedPoint?.after.x).toBeCloseTo((result.movedPoint?.before.x ?? 0) + 0.25, 3);
+      expect(result.movedPoint?.after.y).toBeCloseTo((result.movedPoint?.before.y ?? 0) - 0.2, 3);
+    }
   });
 }
