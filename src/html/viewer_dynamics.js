@@ -1015,7 +1015,9 @@
       if (family.kind === "rotate") {
         addExprParameterDeps(deps, family.angleExpr, knownParameters, derivedParameterDeps);
       }
-      addExprParameterDeps(deps, family.depthExpr, knownParameters, derivedParameterDeps);
+      if ("depthExpr" in family) {
+        addExprParameterDeps(deps, family.depthExpr, knownParameters, derivedParameterDeps);
+      }
       if (family.kind === "parameterized-point-trace") {
         addExprParameterDeps(deps, family.stepExpr, knownParameters, derivedParameterDeps);
       }
@@ -1046,7 +1048,9 @@
       const deps = new Set();
       collectSceneDependencyIds(deps, family, knownParameters, derivedParameterDeps);
       addExprParameterDeps(deps, family.expr, knownParameters, derivedParameterDeps);
-      addExprParameterDeps(deps, family.depthExpr, knownParameters, derivedParameterDeps);
+      if ("depthExpr" in family) {
+        addExprParameterDeps(deps, family.depthExpr, knownParameters, derivedParameterDeps);
+      }
       addNode({
         id: `label-iteration:${index}`,
         kind: "label-iteration",
@@ -2343,6 +2347,10 @@
           primaryDy = vectorEnd.y - vectorStart.y;
         }
       }
+      /**
+       * @param {Point} point
+       * @param {number | null} controlIndex
+       */
       const controlledEndpoint = (point, controlIndex) => {
         if (!Number.isFinite(controlIndex)) return point;
         const control = env.resolveScenePoint(controlIndex);

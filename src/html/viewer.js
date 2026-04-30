@@ -507,7 +507,7 @@
   }
 
   /**
-   * @param {{ binding?: { kind?: string; pointIndex?: number } | null; anchor: Point }} label
+   * @param {{ binding?: { kind?: string; pointIndex?: number; anchorDx?: number; anchorDy?: number } | null; anchor: Point }} label
    * @param {Array<{ points: PointHandle[] }>} hydratedLines
    */
   function attachPointCenteredLabelAnchor(label, hydratedLines) {

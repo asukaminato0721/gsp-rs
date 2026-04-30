@@ -37,6 +37,11 @@ const samples = [
   {
     path: 'tests/Samples/简易数轴与坐标系/最简坐标系/样本1.gsp',
     buttons: 2,
+    visibleLabels: ['A: (2.51, 2.86)'],
+    graphMode: false,
+    gridChildren: 0,
+    dragCoordinateLabel: true,
+    dragCenterAxis: true,
   },
   {
     path: 'tests/Samples/简易数轴与坐标系/最简坐标系/样本2.gsp',
@@ -60,7 +65,7 @@ for (const sample of samples) {
     await page.goto(`file://${file}`);
     await page.waitForTimeout(100);
 
-    const result = await page.evaluate((shouldCheckAxisDrag) => {
+    const result = await page.evaluate((options) => {
       const sourceScene = window.gspDebug.sourceScene;
       const resolvePoint = (handle: any) => {
         const scene = window.gspDebug.runtime.scene;
@@ -142,11 +147,31 @@ for (const sample of samples) {
       });
       const initialAxis = axisState();
       const scene = window.gspDebug.runtime.scene;
+      const initialVisibleLabels = scene.labels
+        .filter((label: any) => label.visible !== false)
+        .map((label: any) => label.text);
       const firstInteractivePointIndex = scene.points.findIndex((point: any) => point.draggable !== false);
       let movedPoint = null;
+      let centerAxisDrag = null;
+      const centerAxisSnapshot = () => {
+        const current = window.gspDebug.runtime.scene;
+        return {
+          center: { ...current.points[0] },
+          readoutText: current.labels.find((label: any) => label.visible !== false && label.text.startsWith('A:'))?.text ?? null,
+          lines: current.lines
+            .filter((line: any) => line.visible !== false)
+            .slice(0, 2)
+            .map((line: any) => line.points.map(resolvePoint).map((point: any) => ({ x: point.x, y: point.y }))),
+          polygons: current.polygons
+            .filter((polygon: any) => polygon.visible !== false)
+            .slice(0, 2)
+            .map((polygon: any) => polygon.points.map(resolvePoint).map((point: any) => ({ x: point.x, y: point.y }))),
+        };
+      };
 
       if (firstInteractivePointIndex >= 0) {
         const before = scene.points[firstInteractivePointIndex];
+        const beforeCenterAxis = options.dragCenterAxis ? centerAxisSnapshot() : null;
         const rootId = window.GspViewerModules.dynamics?.sourcePointRootId;
         if (typeof rootId === 'function') {
           window.gspDebug.viewerEnv.markDependencyRootsDirty(rootId(firstInteractivePointIndex));
@@ -160,9 +185,45 @@ for (const sample of samples) {
           before: { x: before.x, y: before.y },
           after: { x: after.x, y: after.y },
         };
+        if (beforeCenterAxis) {
+          centerAxisDrag = {
+            before: beforeCenterAxis,
+            after: centerAxisSnapshot(),
+          };
+        }
       }
       let axisDrag = null;
-      if (shouldCheckAxisDrag) {
+      let coordinateLabelDrag = null;
+      if (options.dragCoordinateLabel) {
+        const env = window.gspDebug.viewerEnv;
+        const drag = window.GspViewerModules.drag;
+        const pointIndex = scene.points.findIndex((point: any) =>
+          point.visible !== false
+          && Math.abs(point.x - 2.5135416666666672) < 0.01
+          && Math.abs(point.y - 2.857500000000001) < 0.01
+        );
+        const labelIndex = scene.labels.findIndex((label: any) => label.text === 'A');
+        const readoutIndex = scene.labels.findIndex((label: any) => label.text === 'A: (2.51, 2.86)');
+        const screenPoint = (index: number) => env.toScreen(env.currentScene().points[index]);
+        const screenLabel = (index: number) => env.toScreen(env.resolvePoint(env.currentScene().labels[index].anchor));
+        const before = {
+          point: screenPoint(pointIndex),
+          label: screenLabel(labelIndex),
+          readout: screenLabel(readoutIndex),
+        };
+        const point = env.currentScene().points[pointIndex];
+        drag.beginDrag(env, 7, env.toScreen(point), pointIndex, null, null, null, null);
+        drag.updateDraggedPoint(env, { x: point.x + 0.75, y: point.y + 0.5 });
+        env.dragState.val = null;
+        const afterScene = env.currentScene();
+        const after = {
+          point: screenPoint(pointIndex),
+          label: screenLabel(labelIndex),
+          readoutText: afterScene.labels[readoutIndex]?.text,
+        };
+        coordinateLabelDrag = { before, after };
+      }
+      if (options.shouldCheckAxisDrag) {
         const drag = window.GspViewerModules.drag;
         const env = window.gspDebug.viewerEnv;
         const dragPoint = (pointIndex: number, dx: number, dy: number) => {
@@ -201,6 +262,8 @@ for (const sample of samples) {
         sourcePoints: sourceScene.points.length,
         sourceLines: sourceScene.lines.length,
         sourceLabels: sourceScene.labels.length,
+        graphMode: sourceScene.graphMode,
+        gridChildren: document.querySelector('#grid-layer')?.childElementCount ?? -1,
         runtimePoints: scene.points.length,
         runtimeLines: scene.lines.length,
         runtimeLabels: scene.labels.length,
@@ -210,11 +273,18 @@ for (const sample of samples) {
         visibleLabels: scene.labels
           .filter((label: any) => label.visible !== false)
           .map((label: any) => label.text),
+        initialVisibleLabels,
         axisTickXs: initialAxis.axisTickXs,
         movedPoint,
         axisDrag,
+        coordinateLabelDrag,
+        centerAxisDrag,
       };
-    }, sample.path.endsWith('/数轴.gsp'));
+    }, {
+      shouldCheckAxisDrag: sample.path.endsWith('/数轴.gsp'),
+      dragCoordinateLabel: sample.dragCoordinateLabel === true,
+      dragCenterAxis: sample.dragCenterAxis === true,
+    });
 
     expect(pageErrors).toEqual([]);
     expect(result.sourcePoints).toBeGreaterThan(0);
@@ -230,7 +300,45 @@ for (const sample of samples) {
       expect(result.visibleLabels).not.toContain(hiddenLabel);
     }
     for (const visibleLabel of sample.visibleLabels ?? []) {
-      expect(result.visibleLabels).toContain(visibleLabel);
+      expect(result.initialVisibleLabels).toContain(visibleLabel);
+    }
+    if (sample.graphMode !== undefined) {
+      expect(result.graphMode).toBe(sample.graphMode);
+    }
+    if (sample.gridChildren !== undefined) {
+      expect(result.gridChildren).toBe(sample.gridChildren);
+    }
+    if (sample.dragCoordinateLabel) {
+      const before = result.coordinateLabelDrag?.before;
+      const after = result.coordinateLabelDrag?.after;
+      expect(after?.readoutText).toBe('A: (3.01, 3.56)');
+      expect((after?.point.x ?? 0) - (before?.point.x ?? 0)).toBeCloseTo(
+        (after?.label.x ?? 0) - (before?.label.x ?? 0),
+        3,
+      );
+      expect((after?.point.y ?? 0) - (before?.point.y ?? 0)).toBeCloseTo(
+        (after?.label.y ?? 0) - (before?.label.y ?? 0),
+        3,
+      );
+    }
+    if (sample.dragCenterAxis) {
+      const before = result.centerAxisDrag?.before;
+      const after = result.centerAxisDrag?.after;
+      const dx = (after?.center.x ?? 0) - (before?.center.x ?? 0);
+      const dy = (after?.center.y ?? 0) - (before?.center.y ?? 0);
+      expect(after?.readoutText).toBe('A: (2.26, 3.06)');
+      for (const [shapeIndex, line] of (before?.lines ?? []).entries()) {
+        for (const [pointIndex, point] of line.entries()) {
+          expect((after?.lines[shapeIndex][pointIndex].x ?? 0) - point.x).toBeCloseTo(dx, 3);
+          expect((after?.lines[shapeIndex][pointIndex].y ?? 0) - point.y).toBeCloseTo(dy, 3);
+        }
+      }
+      for (const [shapeIndex, polygon] of (before?.polygons ?? []).entries()) {
+        for (const [pointIndex, point] of polygon.entries()) {
+          expect((after?.polygons[shapeIndex][pointIndex].x ?? 0) - point.x).toBeCloseTo(dx, 3);
+          expect((after?.polygons[shapeIndex][pointIndex].y ?? 0) - point.y).toBeCloseTo(dy, 3);
+        }
+      }
     }
     if (sample.axisTickCount !== undefined) {
       expect(result.axisTickXs).toHaveLength(sample.axisTickCount);
