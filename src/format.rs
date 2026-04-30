@@ -132,6 +132,29 @@ impl GspFile {
         (width > 0 && height > 0).then_some((width, height))
     }
 
+    pub fn document_display_offset(&self) -> Option<PointRecord> {
+        let payload = self
+            .records
+            .iter()
+            .find(|record| record.record_type == 0x03e8)?
+            .payload(&self.data);
+        (payload.len() >= 8).then(|| PointRecord {
+            x: f64::from(read_i16(payload, 4)),
+            y: f64::from(read_i16(payload, 6)),
+        })
+    }
+
+    pub fn document_display_point(&self, point: PointRecord) -> PointRecord {
+        if let Some(offset) = self.document_display_offset() {
+            PointRecord {
+                x: point.x - offset.x,
+                y: point.y - offset.y,
+            }
+        } else {
+            point
+        }
+    }
+
     fn page_record_sections(&self) -> Vec<&[Record]> {
         let page_count = self.document_page_count();
         if page_count <= 1 {

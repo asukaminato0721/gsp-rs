@@ -29,7 +29,7 @@ use crate::format::{
 };
 use crate::runtime::payload_consts::{
     RECORD_BINDING_PAYLOAD, RECORD_FUNCTION_EXPR_PAYLOAD, RECORD_FUNCTION_PLOT_DESCRIPTOR,
-    RECORD_POINT_F64_PAIR,
+    RECORD_LABEL_AUX, RECORD_POINT_F64_PAIR,
 };
 use crate::util::{hex_bytes, truncate_text};
 
@@ -80,8 +80,8 @@ use self::shapes::{
 use self::trace::collect_point_traces;
 use super::functions::{
     collect_function_plot_domain, collect_function_plots, collect_scene_functions,
-    collect_scene_parameters, collect_standalone_function_definitions, function_uses_pi_scale,
-    synthesize_function_axes, synthesize_function_labels,
+    collect_scene_parameters, collect_standalone_function_definitions, function_expr_label,
+    function_uses_pi_scale, synthesize_function_axes, synthesize_function_labels,
     synthesize_standalone_function_definition_labels, try_decode_function_expr,
     try_decode_function_plot_descriptor,
 };
@@ -1342,11 +1342,21 @@ pub(crate) fn render_payload_log(source_path: &Path, file: &GspFile) -> String {
         .enumerate()
         .map(|(index, group)| (group.ordinal, index + 1))
         .collect::<BTreeMap<_, _>>();
+    let point_map = collect_point_objects(file, &groups);
+    let raw_anchors_for_graph = collect_raw_object_anchors(file, &groups, &point_map, None);
+    let graph = detect_graph_transform(file, &groups, &raw_anchors_for_graph);
     for (index, group) in construction_groups.iter().enumerate() {
         let _ = writeln!(
             output,
             "{}",
-            describe_group_as_htm_payload(file, &groups, group, index + 1, &construction_ordinals)
+            describe_group_as_htm_payload(
+                file,
+                &groups,
+                group,
+                index + 1,
+                &construction_ordinals,
+                graph.as_ref()
+            )
         );
     }
     let _ = writeln!(output);
@@ -1367,10 +1377,18 @@ fn collect_htm_payload_groups(groups: &[ObjectGroup]) -> Vec<&ObjectGroup> {
     groups
         .iter()
         .filter(|group| match group.header.kind() {
-            GroupKind::Point => !self::decode::is_parameter_control_group(group),
+            GroupKind::Point => true,
             GroupKind::PointConstraint
             | GroupKind::PathPoint
             | GroupKind::Midpoint
+            | GroupKind::LinearIntersectionPoint
+            | GroupKind::IntersectionPoint1
+            | GroupKind::IntersectionPoint2
+            | GroupKind::CircleCircleIntersectionPoint1
+            | GroupKind::CircleCircleIntersectionPoint2
+            | GroupKind::GraphCalibrationX
+            | GroupKind::GraphCalibrationY
+            | GroupKind::GraphCalibrationYAlt
             | GroupKind::Segment
             | GroupKind::Circle
             | GroupKind::CircleCenterRadius
@@ -1383,6 +1401,7 @@ fn collect_htm_payload_groups(groups: &[ObjectGroup]) -> Vec<&ObjectGroup> {
             | GroupKind::GraphMeasurementSegment
             | GroupKind::Ray
             | GroupKind::Polygon
+            | GroupKind::FunctionExpr
             | GroupKind::RichTextLabel
             | GroupKind::ButtonLabel => true,
             _ => false,
@@ -1396,11 +1415,12 @@ fn describe_group_as_htm_payload(
     group: &ObjectGroup,
     ordinal: usize,
     ordinal_map: &BTreeMap<usize, usize>,
+    graph: Option<&GraphTransform>,
 ) -> String {
     let refs = find_indexed_path(file, group)
         .map(|path| path.refs)
         .unwrap_or_default();
-    let (object_type, args) = htm_payload_signature(file, groups, group, &refs, ordinal_map);
+    let (object_type, args) = htm_payload_signature(file, groups, group, &refs, ordinal_map, graph);
     let attrs = htm_payload_attributes(file, group);
     if attrs.is_empty() {
         format!("{{{ordinal}}} {object_type}({args});")
@@ -1415,8 +1435,12 @@ fn htm_payload_signature(
     group: &ObjectGroup,
     refs: &[usize],
     ordinal_map: &BTreeMap<usize, usize>,
+    graph: Option<&GraphTransform>,
 ) -> (&'static str, String) {
     match group.header.kind() {
+        GroupKind::Point if self::decode::is_parameter_control_group(group) => {
+            ("Parameter", htm_parameter_args(file, groups, group))
+        }
         GroupKind::Point => (
             "Point",
             decode_group_point(file, group)
@@ -1439,21 +1463,54 @@ fn htm_payload_signature(
             )
         }
         GroupKind::Midpoint => ("Midpoint", format_ref_args(refs, ordinal_map)),
+        GroupKind::LinearIntersectionPoint => ("Intersect", format_ref_args(refs, ordinal_map)),
+        GroupKind::IntersectionPoint1 | GroupKind::CircleCircleIntersectionPoint1 => {
+            ("Intersect1", format_ref_args(refs, ordinal_map))
+        }
+        GroupKind::IntersectionPoint2 | GroupKind::CircleCircleIntersectionPoint2 => {
+            ("Intersect2", format_ref_args(refs, ordinal_map))
+        }
+        GroupKind::GraphCalibrationX => (
+            "UnitPoint",
+            format!(
+                "{},{}",
+                refs.first()
+                    .map(|reference| map_htm_ordinal(*reference, ordinal_map))
+                    .unwrap_or(0),
+                graph
+                    .map(|graph| format_htm_unit_length(graph.raw_per_unit))
+                    .unwrap_or_default()
+            ),
+        ),
+        GroupKind::GraphCalibrationY | GroupKind::GraphCalibrationYAlt => (
+            "SquareUnitPoint",
+            refs.first()
+                .map(|reference| map_htm_ordinal(*reference, ordinal_map).to_string())
+                .unwrap_or_default(),
+        ),
         GroupKind::Segment => ("Segment", format_reversed_ref_args(refs, ordinal_map)),
         GroupKind::Circle | GroupKind::CircleCenterRadius => {
             ("Circle", format_ref_args(refs, ordinal_map))
         }
-        GroupKind::Line
-        | GroupKind::MeasurementLine
-        | GroupKind::AxisLine
-        | GroupKind::GraphMeasurementSegment => {
+        GroupKind::Line | GroupKind::GraphMeasurementSegment => {
             ("Line", format_reversed_ref_args(refs, ordinal_map))
         }
+        GroupKind::MeasurementLine => match self::decode::decode_label_name(file, group).as_deref()
+        {
+            Some("x") => ("HorizontalAxis", format_ref_args(refs, ordinal_map)),
+            Some("y") => ("VerticalAxis", format_ref_args(refs, ordinal_map)),
+            _ => ("Line", format_reversed_ref_args(refs, ordinal_map)),
+        },
+        GroupKind::AxisLine => ("CoordSysByAxes", format_ref_args(refs, ordinal_map)),
         GroupKind::LineKind5 => ("Perpendicular", format_reversed_ref_args(refs, ordinal_map)),
         GroupKind::LineKind6 => ("Parallel", format_reversed_ref_args(refs, ordinal_map)),
         GroupKind::LineKind7 => ("Bisector", format_ref_args(refs, ordinal_map)),
         GroupKind::Ray => ("Ray", format_reversed_ref_args(refs, ordinal_map)),
         GroupKind::Polygon => ("Polygon", format_ref_args(refs, ordinal_map)),
+        GroupKind::FunctionExpr => (
+            "Calculate",
+            htm_calculate_args(file, groups, group, refs, ordinal_map, graph),
+        ),
         GroupKind::ArcOnCircle | GroupKind::CenterArc | GroupKind::ThreePointArc => {
             ("Arc", format_ref_args(refs, ordinal_map))
         }
@@ -1488,10 +1545,9 @@ fn htm_payload_type_name(kind: GroupKind) -> &'static str {
         GroupKind::Midpoint => "Midpoint",
         GroupKind::Segment => "Segment",
         GroupKind::Circle | GroupKind::CircleCenterRadius => "Circle",
-        GroupKind::Line
-        | GroupKind::MeasurementLine
-        | GroupKind::AxisLine
-        | GroupKind::GraphMeasurementSegment => "Line",
+        GroupKind::Line | GroupKind::GraphMeasurementSegment => "Line",
+        GroupKind::MeasurementLine => "Axis",
+        GroupKind::AxisLine => "CoordSysByAxes",
         GroupKind::LineKind5 => "Perpendicular",
         GroupKind::LineKind6 => "Parallel",
         GroupKind::LineKind7 => "Bisector",
@@ -1500,9 +1556,15 @@ fn htm_payload_type_name(kind: GroupKind) -> &'static str {
         GroupKind::PointConstraint | GroupKind::PathPoint | GroupKind::ParameterControlledPoint => {
             "Point on object"
         }
+        GroupKind::LinearIntersectionPoint => "Intersect",
+        GroupKind::IntersectionPoint1 | GroupKind::CircleCircleIntersectionPoint1 => "Intersect1",
+        GroupKind::IntersectionPoint2 | GroupKind::CircleCircleIntersectionPoint2 => "Intersect2",
+        GroupKind::GraphCalibrationX => "UnitPoint",
+        GroupKind::GraphCalibrationY | GroupKind::GraphCalibrationYAlt => "SquareUnitPoint",
         GroupKind::ArcOnCircle | GroupKind::CenterArc | GroupKind::ThreePointArc => "Arc",
         GroupKind::RichTextLabel | GroupKind::ButtonLabel => "FixedText",
         GroupKind::FunctionPlot | GroupKind::LegacyFunctionPlot => "Function",
+        GroupKind::FunctionExpr => "Calculate",
         GroupKind::ParametricFunctionPlot => "ParametricFunction",
         GroupKind::ActionButton => "Button",
         GroupKind::CircleInterior => "CircleInterior",
@@ -1529,12 +1591,31 @@ fn htm_payload_attributes(file: &GspFile, group: &ObjectGroup) -> String {
         attrs.push("hidden".to_string());
         return attrs.join(",");
     }
+    if matches!(
+        group.header.kind(),
+        GroupKind::GraphCalibrationY | GroupKind::GraphCalibrationYAlt
+    ) {
+        attrs.push("hidden".to_string());
+        return attrs.join(",");
+    }
+    if group.header.kind() == GroupKind::Point && self::decode::is_parameter_control_group(group) {
+        attrs.push("black".to_string());
+        return attrs.join(",");
+    }
     let htm_label_lives_on_object = matches!(
         group.header.kind(),
         GroupKind::Point
             | GroupKind::Midpoint
             | GroupKind::PointConstraint
             | GroupKind::PathPoint
+            | GroupKind::LinearIntersectionPoint
+            | GroupKind::IntersectionPoint1
+            | GroupKind::IntersectionPoint2
+            | GroupKind::CircleCircleIntersectionPoint1
+            | GroupKind::CircleCircleIntersectionPoint2
+            | GroupKind::GraphCalibrationX
+            | GroupKind::GraphCalibrationY
+            | GroupKind::GraphCalibrationYAlt
             | GroupKind::ParameterControlledPoint
     );
     if htm_label_lives_on_object
@@ -1553,6 +1634,14 @@ fn htm_payload_attributes(file: &GspFile, group: &ObjectGroup) -> String {
         GroupKind::Midpoint
         | GroupKind::PointConstraint
         | GroupKind::PathPoint
+        | GroupKind::LinearIntersectionPoint
+        | GroupKind::IntersectionPoint1
+        | GroupKind::IntersectionPoint2
+        | GroupKind::CircleCircleIntersectionPoint1
+        | GroupKind::CircleCircleIntersectionPoint2
+        | GroupKind::GraphCalibrationX
+        | GroupKind::GraphCalibrationY
+        | GroupKind::GraphCalibrationYAlt
         | GroupKind::ParameterControlledPoint => {
             let color = color_from_style(group.header.style_b);
             if color != [0, 0, 0, 255] {
@@ -1568,14 +1657,18 @@ fn htm_payload_attributes(file: &GspFile, group: &ObjectGroup) -> String {
         | GroupKind::LineKind6
         | GroupKind::LineKind7
         | GroupKind::Ray
-        | GroupKind::MeasurementLine
-        | GroupKind::AxisLine
         | GroupKind::GraphMeasurementSegment => {
             attrs.push(htm_rgb_color_attr(color_from_style(group.header.style_b)));
             attrs.push("mediumLine".to_string());
             if line_is_dashed(group.header.style_a) {
                 attrs.push("dashed".to_string());
             }
+        }
+        GroupKind::MeasurementLine | GroupKind::AxisLine => {
+            attrs.push(htm_rgb_color_attr(color_from_style(group.header.style_b)));
+        }
+        GroupKind::FunctionExpr => {
+            attrs.push("black".to_string());
         }
         GroupKind::Polygon => {
             attrs.push(htm_color_attr(super::geometry::fill_color_from_styles(
@@ -1626,12 +1719,94 @@ fn map_htm_ordinal(ordinal: usize, ordinal_map: &BTreeMap<usize, usize>) -> usiz
     ordinal_map.get(&ordinal).copied().unwrap_or(ordinal)
 }
 
+fn htm_parameter_args(file: &GspFile, groups: &[ObjectGroup], group: &ObjectGroup) -> String {
+    let value = try_decode_parameter_control_value_for_group(file, groups, group)
+        .ok()
+        .map(format_htm_parameter)
+        .unwrap_or_default();
+    let (x, y) = try_decode_bbox_rect_raw(file, group)
+        .ok()
+        .flatten()
+        .map(|(left, top, _width, height)| (left + 4.0, top + height - 9.0))
+        .or_else(|| {
+            try_decode_payload_anchor_point(file, group)
+                .ok()
+                .flatten()
+                .map(|anchor| (anchor.x + 4.0, anchor.y + 23.0))
+        })
+        .unwrap_or((0.0, 0.0));
+    let name = decode_htm_label_name(file, group).unwrap_or_default();
+    format!(
+        "{},{},{},'{} = '",
+        value,
+        format_number(x),
+        format_number(y),
+        name.replace('\'', "\\'")
+    )
+}
+
+fn htm_calculate_args(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    refs: &[usize],
+    ordinal_map: &BTreeMap<usize, usize>,
+    graph: Option<&GraphTransform>,
+) -> String {
+    let (x, y) = try_decode_payload_anchor_point(file, group)
+        .ok()
+        .flatten()
+        .map(|anchor| (anchor.x + 4.0, anchor.y + 20.0))
+        .unwrap_or((0.0, 0.0));
+    let expr_label = try_decode_function_expr(file, groups, group)
+        .ok()
+        .map(function_expr_label)
+        .map(|label| htm_unsubscript_digits(&label))
+        .unwrap_or_default();
+    let unit = graph
+        .map(|graph| format_htm_unit_length(graph.raw_per_unit))
+        .unwrap_or_default();
+    let refs = format_ref_args(refs, ordinal_map);
+    format!(
+        "{},{},'{} 厘米 = ','A {} * ')({}",
+        format_number(x),
+        format_number(y),
+        expr_label.replace('\'', "\\'"),
+        unit,
+        refs
+    )
+}
+
+fn decode_htm_label_name(file: &GspFile, group: &ObjectGroup) -> Option<String> {
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == RECORD_LABEL_AUX)
+        .map(|record| record.payload(&file.data))?;
+    if payload.len() < 24 {
+        return None;
+    }
+    let name_len = read_u16(payload, 22) as usize;
+    if name_len == 0 || 24 + name_len > payload.len() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&payload[24..24 + name_len]).to_string())
+}
+
+fn htm_unsubscript_digits(text: &str) -> String {
+    text.replace('₁', "[1]")
+        .replace('₂', "[2]")
+        .replace('₃', "[3]")
+        .replace('₄', "[4]")
+}
+
 fn decode_group_point(file: &GspFile, group: &ObjectGroup) -> Option<PointRecord> {
     group
         .records
         .iter()
         .find(|record| record.record_type == RECORD_POINT_F64_PAIR)
         .and_then(|record| decode_point_record(record.payload(&file.data)))
+        .map(|point| file.document_display_point(point))
 }
 
 fn decode_object_parameter(file: &GspFile, group: &ObjectGroup) -> Option<f64> {
@@ -2629,6 +2804,12 @@ fn format_number(value: f64) -> String {
 fn format_htm_parameter(value: f64) -> String {
     let rounded = if value.abs() < 1e-9 { 0.0 } else { value };
     let text = format!("{rounded:.6}");
+    text.trim_end_matches('0').trim_end_matches('.').to_string()
+}
+
+fn format_htm_unit_length(value: f64) -> String {
+    let rounded = if value.abs() < 1e-9 { 0.0 } else { value };
+    let text = format!("{rounded:.4}");
     text.trim_end_matches('0').trim_end_matches('.').to_string()
 }
 

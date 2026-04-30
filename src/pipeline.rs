@@ -415,7 +415,7 @@ mod tests {
             Some("segment")
         );
         assert_eq!(intersection["x"].as_f64(), Some(416.3160761196899));
-        assert_eq!(intersection["y"].as_f64(), Some(321.2222079835971));
+        assert_eq!(intersection["y"].as_f64(), Some(345.2222079835971));
     }
 
     #[test]
@@ -437,7 +437,7 @@ mod tests {
             Some("segment")
         );
         assert_eq!(intersection["x"].as_f64(), Some(566.0581863195608));
-        assert_eq!(intersection["y"].as_f64(), Some(393.2769704284295));
+        assert_eq!(intersection["y"].as_f64(), Some(417.2769704284295));
     }
 
     #[test]
@@ -941,10 +941,10 @@ mod tests {
             "circle-center-radius fixture should compile",
         );
 
-        assert!(html.contains("\"circles\":[{\"center\":{\"x\":348.0,\"y\":177.0}"));
+        assert!(html.contains("\"circles\":[{\"center\":{\"x\":348.0,\"y\":201.0}"));
         assert!(html.contains("\"kind\":\"segment-radius-circle\""));
         assert!(html.contains(
-            "\"lines\":[{\"points\":[{\"x\":318.0,\"y\":391.0},{\"x\":403.0,\"y\":390.0}]"
+            "\"lines\":[{\"points\":[{\"x\":318.0,\"y\":415.0},{\"x\":403.0,\"y\":414.0}]"
         ));
     }
 
@@ -2400,7 +2400,7 @@ mod tests {
             },
         );
         assert!(
-            min_x > 206.0 && max_x < 416.0 && min_y > 154.0 && max_y < 364.0,
+            min_x > 206.0 && max_x < 416.0 && min_y > 178.0 && max_y < 388.0,
             "expected G trace to stay inside the square, got x={min_x}..{max_x}, y={min_y}..{max_y}"
         );
         assert!(

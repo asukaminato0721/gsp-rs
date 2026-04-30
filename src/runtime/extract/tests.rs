@@ -29,6 +29,34 @@ fn fixture_log(data: &[u8], source_path: &str) -> String {
     render_payload_log(Path::new(source_path), &file)
 }
 
+fn construction_lines_from_log(log: &str) -> Vec<String> {
+    let mut lines = log.lines().skip_while(|line| *line != "Construction VALUE");
+    lines.next();
+    lines
+        .take_while(|line| !line.trim().is_empty())
+        .map(|line| line.trim().to_string())
+        .collect()
+}
+
+fn construction_lines_from_htm(htm: &str) -> Vec<String> {
+    let marker = "<PARAM NAME=Construction VALUE=\"";
+    let start = htm
+        .find(marker)
+        .expect("reference htm should contain Construction VALUE")
+        + marker.len();
+    let end = htm[start..]
+        .find("\">")
+        .expect("reference htm construction should close");
+    htm[start..start + end]
+        .replace("&#xD;", "\n")
+        .replace("&quot;", "\"")
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
 fn fixture_bytes(path: &str) -> Option<Vec<u8>> {
     fs::read(path).ok()
 }
@@ -366,6 +394,35 @@ fn renders_payload_log_for_supported_fixture_too() {
     assert!(log.contains("未发现不支持的载荷。"));
     assert!(log.contains("Construction VALUE"));
     assert!(log.contains("{1} Point(323,217)[mediumPoint];"));
+}
+
+#[test]
+fn insection_payload_logs_match_reference_htm_construction() {
+    let fixture_names = [
+        "segment_insection",
+        "ray_insection",
+        "line_insection",
+        "circle_insection",
+        "circle_circle_insection",
+        "segment_circle",
+        "cood",
+        "cood_intersection",
+        "cood_intersection_xy",
+        "cood_intersection_y",
+    ];
+
+    for name in fixture_names {
+        let gsp_path = format!("tests/fixtures/gsp/insection/{name}.gsp");
+        let htm_path = format!("tests/fixtures/gsp/insection/{name}.htm");
+        let gsp = fs::read(&gsp_path).expect("fixture gsp should be readable");
+        let htm = fs::read_to_string(&htm_path).expect("reference htm should be readable");
+        let log = fixture_log(&gsp, &gsp_path);
+        assert_eq!(
+            construction_lines_from_log(&log),
+            construction_lines_from_htm(&htm),
+            "expected payload log Construction VALUE to match {htm_path}"
+        );
+    }
 }
 
 #[test]
@@ -2886,7 +2943,7 @@ fn preserves_circle_center_radius_gsp() {
 
     let circle = &scene.circles[0];
     assert!((circle.center.x - 348.0).abs() < 1e-6);
-    assert!((circle.center.y - 177.0).abs() < 1e-6);
+    assert!((circle.center.y - 201.0).abs() < 1e-6);
     assert!(matches!(
         circle.binding,
         Some(crate::runtime::scene::ShapeBinding::SegmentRadiusCircle {
@@ -3599,13 +3656,13 @@ fn preserves_midpoint_binding_and_trace_in_trace_gsp() {
             let first = line.points.first().expect("non-empty line");
             let last = line.points.last().expect("non-empty line");
             ((first.x - 846.5).abs() < 0.01
-                && (first.y - 480.0).abs() < 0.01
+                && (first.y - 504.0).abs() < 0.01
                 && (last.x - 766.0).abs() < 0.01
-                && (last.y - 359.25).abs() < 0.01)
+                && (last.y - 383.25).abs() < 0.01)
                 || ((last.x - 846.5).abs() < 0.01
-                    && (last.y - 480.0).abs() < 0.01
+                    && (last.y - 504.0).abs() < 0.01
                     && (first.x - 766.0).abs() < 0.01
-                    && (first.y - 359.25).abs() < 0.01)
+                    && (first.y - 383.25).abs() < 0.01)
         }),
         "expected sampled midpoint trace line"
     );
@@ -3700,7 +3757,7 @@ fn preserves_linear_intersection_points_in_insection_fixtures() {
         assert!(
             scene.points.iter().any(|point| {
                 (point.position.x - 416.3160761196899).abs() < 1e-6
-                    && (point.position.y - 321.2222079835971).abs() < 1e-6
+                    && (point.position.y - 345.2222079835971).abs() < 1e-6
             }),
             "expected derived intersection coordinates for {name}"
         );
@@ -3726,11 +3783,11 @@ fn preserves_circle_circle_intersection_points() {
     }));
     assert!(scene.points.iter().any(|point| {
         (point.position.x - 421.3993346591643).abs() < 1e-6
-            && (point.position.y - 189.66291724683578).abs() < 1e-6
+            && (point.position.y - 213.66291724683578).abs() < 1e-6
     }));
     assert!(scene.points.iter().any(|point| {
         (point.position.x - 445.71654184257966).abs() < 1e-6
-            && (point.position.y - 470.02601183209464).abs() < 1e-6
+            && (point.position.y - 494.02601183209464).abs() < 1e-6
     }));
 }
 
@@ -3999,7 +4056,7 @@ fn preserves_line_circle_intersection_points() {
     }));
     assert!(scene.points.iter().any(|point| {
         (point.position.x - 566.0581863195608).abs() < 1e-6
-            && (point.position.y - 393.2769704284295).abs() < 1e-6
+            && (point.position.y - 417.2769704284295).abs() < 1e-6
     }));
 }
 

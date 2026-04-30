@@ -57,6 +57,7 @@ pub(crate) fn collect_point_objects(
                 (record.record_type == 0x0899)
                     .then(|| decode_point_record(record.payload(&file.data)))
                     .flatten()
+                    .map(|point| file.document_display_point(point))
             })
         })
         .collect()
