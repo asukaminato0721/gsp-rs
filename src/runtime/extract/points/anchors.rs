@@ -1396,8 +1396,8 @@ pub(crate) fn resolve_line_like_constraint_raw(
             distinct_pair(
                 through.clone(),
                 PointRecord {
-                    x: through.x - dy / len,
-                    y: through.y + dx / len,
+                    x: through.x - dy,
+                    y: through.y + dx,
                 },
             )
             .map(|(start, end)| (start, end, LineLikeKind::Line))
@@ -1419,8 +1419,8 @@ pub(crate) fn resolve_line_like_constraint_raw(
             distinct_pair(
                 through.clone(),
                 PointRecord {
-                    x: through.x + dx / len,
-                    y: through.y + dy / len,
+                    x: through.x + dx,
+                    y: through.y + dy,
                 },
             )
             .map(|(start, end)| (start, end, LineLikeKind::Line))

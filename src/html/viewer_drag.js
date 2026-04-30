@@ -184,9 +184,8 @@
       const constraint = point.constraint;
       if (!isLineLikeConstraint(constraint)) return;
       const line = "line" in constraint
-        ? window.GspViewerModules.dynamics.resolveLineConstraintPoints(
+        ? window.GspViewerModules.dynamics.resolveLineConstraintParameterPoints(
             (index) => env.resolveScenePoint(index),
-            env.currentScene().bounds,
             constraint.line,
           )
         : [
@@ -231,6 +230,12 @@
             env,
             env.currentScene().lines.find((/** @type {SceneLineJson} */ line) =>
               line?.binding?.kind === "arc-boundary" && line.binding.hostKey === constraint.functionKey
+              || line?.debug?.groupOrdinal === constraint.functionKey
+                && (
+                  line?.binding?.kind === "point-trace"
+                  || line?.binding?.kind === "coordinate-trace"
+                  || line?.binding?.kind === "custom-transform-trace"
+                )
             ),
           ) || constraint.points
         : constraint.points;

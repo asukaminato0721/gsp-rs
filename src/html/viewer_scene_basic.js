@@ -278,9 +278,8 @@
         ? env.currentScene()
         : env?.sourceScene || null;
       const line = scene
-        ? window.GspViewerModules.dynamics.resolveLineConstraintPoints(
+        ? window.GspViewerModules.dynamics.resolveLineConstraintParameterPoints(
             resolveFn,
-            scene.bounds,
             constraint.line,
           )
         : null;

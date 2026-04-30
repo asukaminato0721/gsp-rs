@@ -648,6 +648,20 @@ pub(crate) enum LineBinding {
         x_max: f64,
         sample_count: usize,
     },
+    ColorizedSpectrum {
+        line_index: usize,
+        trace_line_index: usize,
+        point_index: usize,
+        trace_endpoint_index: usize,
+        reflection_source_index: Option<usize>,
+        reflection_axis_line_index: Option<usize>,
+        reflection_focus_index: Option<usize>,
+        reflection_directrix_line_index: Option<usize>,
+        step_index: usize,
+        depth: usize,
+        depth_parameter_name: Option<String>,
+        ray: bool,
+    },
     ParametricCurve {
         x_expr: FunctionExpr,
         y_expr: FunctionExpr,
@@ -1052,6 +1066,11 @@ pub(crate) enum TextLabelBinding {
         end_index: usize,
         point_name: String,
         segment_name: String,
+    },
+    PolylineParameter {
+        point_index: usize,
+        point_name: String,
+        object_name: String,
     },
     CircleParameter {
         point_index: usize,

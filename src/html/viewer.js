@@ -725,7 +725,10 @@
 
   /** @param {number} value */
   function formatNumber(value) {
-    return Number.isFinite(value) ? value.toFixed(2) : "-";
+    if (!Number.isFinite(value)) return "-";
+    return Math.abs(value - Math.round(value)) < 0.005
+      ? String(Math.round(value))
+      : value.toFixed(2);
   }
 
   /** @param {number} value */

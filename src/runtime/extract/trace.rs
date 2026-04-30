@@ -12,8 +12,8 @@ use crate::runtime::scene::{
     ScenePointConstraint,
 };
 
-use super::find_indexed_path;
 use super::points::{custom_transform_expression_parameter_map, custom_transform_trace_parameter};
+use super::{find_indexed_path, payload_debug_source};
 
 fn segment_projection_parameter(
     point: &PointRecord,
@@ -110,7 +110,7 @@ pub(super) fn collect_point_traces(
                         x_max: descriptor.x_max,
                         sample_count: descriptor.sample_count,
                     }),
-                    debug: None,
+                    debug: Some(payload_debug_source(group)),
                 });
             }
 
@@ -172,7 +172,7 @@ pub(super) fn collect_point_traces(
                 dashed: false,
                 visible: !group.header.is_hidden(),
                 binding,
-                debug: None,
+                debug: Some(payload_debug_source(group)),
             })
         })
         .collect()
@@ -295,7 +295,9 @@ fn point_accepts_trace_parameter(point: &ScenePoint) -> bool {
         point.constraint,
         ScenePointConstraint::OnSegment { .. }
             | ScenePointConstraint::OnLine { .. }
+            | ScenePointConstraint::OnLineConstraint { .. }
             | ScenePointConstraint::OnRay { .. }
+            | ScenePointConstraint::OnRayConstraint { .. }
             | ScenePointConstraint::OnPolygonBoundary { .. }
             | ScenePointConstraint::OnTranslatedPolygonBoundary { .. }
             | ScenePointConstraint::OnCircle { .. }
@@ -325,7 +327,13 @@ fn apply_trace_parameter_with_mode(
         ScenePointConstraint::OnLine { t, .. } => {
             *t = value;
         }
+        ScenePointConstraint::OnLineConstraint { t, .. } => {
+            *t = value;
+        }
         ScenePointConstraint::OnRay { t, .. } => {
+            *t = value.max(0.0);
+        }
+        ScenePointConstraint::OnRayConstraint { t, .. } => {
             *t = value.max(0.0);
         }
         ScenePointConstraint::OnPolygonBoundary {
@@ -1118,8 +1126,8 @@ fn resolve_trace_line_constraint(
             (len > 1e-9).then_some((
                 through.clone(),
                 PointRecord {
-                    x: through.x - dy / len,
-                    y: through.y + dx / len,
+                    x: through.x - dy,
+                    y: through.y + dx,
                 },
                 LineLikeKind::Line,
             ))
@@ -1138,8 +1146,8 @@ fn resolve_trace_line_constraint(
             (len > 1e-9).then_some((
                 through.clone(),
                 PointRecord {
-                    x: through.x + dx / len,
-                    y: through.y + dy / len,
+                    x: through.x + dx,
+                    y: through.y + dy,
                 },
                 LineLikeKind::Line,
             ))

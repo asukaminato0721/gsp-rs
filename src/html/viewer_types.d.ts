@@ -530,6 +530,10 @@ type ViewerDynamicsModule = {
     bounds: { minX: number; maxX: number; minY: number; maxY: number; spanX?: number; spanY?: number },
     constraint: LineConstraintJson,
   ) => Point[] | null;
+  resolveLineConstraintParameterPoints: (
+    resolvePointAt: (pointIndex: number) => Point | null,
+    constraint: LineConstraintJson,
+  ) => Point[] | null;
   parameterRootId?: (name: string) => string;
   sourcePointRootId?: (index: number) => string;
   runDependencyGraph?: (env: ViewerEnv, scene: ViewerSceneData, dirtyRootIds: string[]) => unknown;

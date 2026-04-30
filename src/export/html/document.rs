@@ -596,6 +596,7 @@ fn line_binding_requires_full_dynamics(binding: &LineBinding) -> bool {
             | LineBinding::CustomTransformTrace { .. }
             | LineBinding::CoordinateTrace { .. }
             | LineBinding::PointTrace { .. }
+            | LineBinding::ColorizedSpectrum { .. }
             | LineBinding::ParametricCurve { .. }
     )
 }

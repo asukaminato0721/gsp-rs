@@ -1929,6 +1929,20 @@ fn decode_decimal_digit_literal(words: &[u16]) -> Option<(f64, usize)> {
     let first = *words.first()?;
     let second = *words.get(1)?;
     let next = words.get(2).copied();
+    if first == 0 && second == 10 {
+        let digit = *words.get(2)?;
+        let after_digit = words.get(3).copied();
+        if digit < 10
+            && matches!(
+                after_digit,
+                None | Some(
+                    EXPR_OP_ADD | EXPR_OP_SUB | EXPR_OP_MUL | EXPR_OP_DIV | EXPR_OP_POW | 0x000c
+                )
+            )
+        {
+            return Some((f64::from(digit) / 10.0, 3));
+        }
+    }
     if first > 9 || second > 9 {
         return None;
     }

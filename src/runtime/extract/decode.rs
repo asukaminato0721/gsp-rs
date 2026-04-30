@@ -478,6 +478,11 @@ pub(crate) fn try_decode_parameter_control_value_for_group(
     if let Some(value) = decode_decimal_fraction_parameter_tail_value(payload) {
         return Ok(value);
     }
+    if payload.len() == 96
+        && let Some(value) = decode_decimal_digit_parameter_tail_value(payload)
+    {
+        return Ok(value);
+    }
 
     let continuous = try_decode_continuous_parameter_value(payload)?;
     let discrete = try_decode_discrete_parameter_value(payload);

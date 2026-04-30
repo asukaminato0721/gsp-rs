@@ -433,13 +433,12 @@
         if (
           (binding.kind === "segment-parameter"
             || binding.kind === "segment-projection-parameter"
+            || binding.kind === "polyline-parameter"
             || binding.kind === "polygon-boundary-parameter"
             || binding.kind === "circle-parameter")
           && typeof binding.pointName === "string"
         ) {
-          const value = binding.kind === "segment-projection-parameter"
-            ? segmentProjectionParameterFromBinding(scene, binding)
-            : parameterValueFromPoint(scene, binding.pointIndex);
+          const value = labelParameterValueFromBinding(scene, binding);
           const nextValue = isDiscreteIterationParameterName(scene, binding.pointName)
             ? discreteIterationDepth(value)
             : value;
@@ -736,6 +735,7 @@
           || key === "lineEndIndex"
           || key === "sourceCenterIndex"
           || key === "sourceNextCenterIndex"
+          || key === "reflectionSourceIndex"
           || key === "vectorStartIndex"
           || key === "vectorEndIndex"
           || key === "startControlIndex"
@@ -750,11 +750,17 @@
           || key === "factorParameterPointIndex"
           || key === "factorParameterStartIndex"
           || key === "factorParameterEndIndex"
+          || key === "reflectionFocusIndex"
         ) {
           deps.add(sourcePointRootId(child));
           return;
         }
-        if (key === "lineIndex") {
+        if (
+          key === "lineIndex"
+          || key === "traceLineIndex"
+          || key === "reflectionAxisLineIndex"
+          || key === "reflectionDirectrixLineIndex"
+        ) {
           deps.add(sourceLineRootId(child));
           return;
         }
@@ -843,6 +849,7 @@
     if (
       (binding.kind === "segment-parameter"
         || binding.kind === "segment-projection-parameter"
+        || binding.kind === "polyline-parameter"
         || binding.kind === "polygon-boundary-parameter"
         || binding.kind === "circle-parameter")
       && typeof binding.pointName === "string"
@@ -974,6 +981,13 @@
       if (!line.binding) return;
       const deps = new Set();
       collectSceneDependencyIds(deps, line.binding, knownParameters, derivedParameterDeps);
+      if (line.binding.kind === "point-trace") {
+        [line.binding.pointIndex, line.binding.driverIndex].forEach((/** @type {number} */ pointIndex) => {
+          const point = env.sourceScene.points?.[pointIndex];
+          collectSceneDependencyIds(deps, point?.binding, knownParameters, derivedParameterDeps);
+          collectSceneDependencyIds(deps, point?.constraint, knownParameters, derivedParameterDeps);
+        });
+      }
       addNode({
         id: `line:${index}`,
         kind: "line",
@@ -1429,6 +1443,43 @@
   }
 
   /**
+   * @param {ViewerSceneData} scene
+   * @param {number} pointIndex
+   */
+  function polylineParameterFromPoint(scene, pointIndex) {
+    const point = scene.points[pointIndex];
+    const constraint = point?.constraint;
+    if (constraint?.kind !== "polyline" || !Array.isArray(constraint.points) || constraint.points.length < 2) {
+      return null;
+    }
+    const segmentIndex = Number.isFinite(constraint.segmentIndex) ? constraint.segmentIndex : 0;
+    const t = Number.isFinite(constraint.t) ? Math.max(0, Math.min(1, constraint.t)) : 0;
+    return (segmentIndex + t) / (constraint.points.length - 1);
+  }
+
+  /**
+   * @param {Point[]} points
+   * @param {number} normalized
+   * @returns {Point | null}
+   */
+  function pointOnPolylineByIndex(points, normalized) {
+    if (!Array.isArray(points) || points.length < 2 || !Number.isFinite(normalized)) {
+      return null;
+    }
+    const wrapped = ((normalized % 1) + 1) % 1;
+    const scaled = wrapped * (points.length - 1);
+    const segmentIndex = Math.max(0, Math.min(points.length - 2, Math.floor(scaled)));
+    const t = scaled - segmentIndex;
+    const start = points[segmentIndex];
+    const end = points[segmentIndex + 1];
+    if (!start || !end) return null;
+    return {
+      x: start.x + (end.x - start.x) * t,
+      y: start.y + (end.y - start.y) * t,
+    };
+  }
+
+  /**
    * @param {Point[]} vertices
    * @param {number} parameter
    * @returns {Point | null}
@@ -1567,6 +1618,25 @@
 
   /**
    * @param {ViewerSceneData} scene
+   * @param {LabelBindingJson} binding
+   */
+  function labelParameterValueFromBinding(scene, binding) {
+    if (binding.kind === "segment-projection-parameter") {
+      return segmentProjectionParameterFromBinding(scene, binding);
+    }
+    if (binding.kind === "polyline-parameter") {
+      return polylineParameterFromPoint(scene, binding.pointIndex);
+    }
+    if (binding.kind === "polygon-boundary-parameter") {
+      return polygonBoundaryParameterFromPoint(scene, binding.pointIndex);
+    }
+    return "pointIndex" in binding && typeof binding.pointIndex === "number"
+      ? parameterValueFromPoint(scene, binding.pointIndex)
+      : null;
+  }
+
+  /**
+   * @param {ViewerSceneData} scene
    * @param {number} pointIndex
    * @returns {string | null}
    */
@@ -1578,6 +1648,7 @@
       }
       if (
         binding.kind === "segment-parameter"
+        || binding.kind === "polyline-parameter"
         || binding.kind === "polygon-boundary-parameter"
         || binding.kind === "circle-parameter"
       ) {
@@ -1753,6 +1824,11 @@
       }
       if ("depthParameterName" in family) {
         add(family.depthParameterName);
+      }
+    });
+    (scene?.lines || []).forEach((line) => {
+      if (line.binding?.kind === "colorized-spectrum") {
+        add(line.binding.depthParameterName);
       }
     });
     (scene?.polygonIterations || []).forEach((family) => add(family.parameterName));
@@ -3154,6 +3230,72 @@
     return null;
   }
 
+  /**
+   * @param {(pointIndex: number) => Point | null} resolvePointAt
+   * @param {LineConstraintJson} constraint
+   * @returns {Point[] | null}
+   */
+  function resolveLineConstraintParameterPoints(resolvePointAt, constraint) {
+    if (!constraint) return null;
+    if (
+      constraint.kind === "segment"
+      || constraint.kind === "line"
+      || constraint.kind === "ray"
+    ) {
+      const start = resolvePointAt(constraint.startIndex);
+      const end = resolvePointAt(constraint.endIndex);
+      return start && end ? [start, end] : null;
+    }
+    if (constraint.kind === "perpendicular-line") {
+      const through = resolvePointAt(constraint.throughIndex);
+      const lineStart = resolvePointAt(constraint.lineStartIndex);
+      const lineEnd = resolvePointAt(constraint.lineEndIndex);
+      if (!through || !lineStart || !lineEnd) return null;
+      const dx = lineEnd.x - lineStart.x;
+      const dy = lineEnd.y - lineStart.y;
+      const len = Math.hypot(dx, dy);
+      if (len <= 1e-9) return null;
+      return [
+        through,
+        { x: through.x - dy, y: through.y + dx },
+      ];
+    }
+    if (constraint.kind === "parallel-line") {
+      const through = resolvePointAt(constraint.throughIndex);
+      const lineStart = resolvePointAt(constraint.lineStartIndex);
+      const lineEnd = resolvePointAt(constraint.lineEndIndex);
+      if (!through || !lineStart || !lineEnd) return null;
+      const dx = lineEnd.x - lineStart.x;
+      const dy = lineEnd.y - lineStart.y;
+      const len = Math.hypot(dx, dy);
+      if (len <= 1e-9) return null;
+      return [
+        through,
+        { x: through.x + dx, y: through.y + dy },
+      ];
+    }
+    if (constraint.kind === "angle-bisector-ray") {
+      const start = resolvePointAt(constraint.startIndex);
+      const vertex = resolvePointAt(constraint.vertexIndex);
+      const end = resolvePointAt(constraint.endIndex);
+      if (!start || !vertex || !end) return null;
+      const direction = angleBisectorDirection(start, vertex, end);
+      return direction
+        ? [vertex, { x: vertex.x + direction.x, y: vertex.y + direction.y }]
+        : null;
+    }
+    if (constraint.kind === "translated") {
+      const source = resolveLineConstraintParameterPoints(resolvePointAt, constraint.line);
+      const vectorStart = resolvePointAt(constraint.vectorStartIndex);
+      const vectorEnd = resolvePointAt(constraint.vectorEndIndex);
+      if (!source || !vectorStart || !vectorEnd) return null;
+      const dx = vectorEnd.x - vectorStart.x;
+      const dy = vectorEnd.y - vectorStart.y;
+      return source.map((/** @type {Point} */ point) => ({ x: point.x + dx, y: point.y + dy }));
+    }
+    return null;
+  }
+
   /** @type {Record<string, PointBindingRefresher>} */
   const DERIVED_POINT_BINDING_REFRESHERS = {
     "derived-parameter"(env, scene, point) {
@@ -3338,9 +3480,11 @@
       }
     },
     "rich-text-expression-values"(env, _scene, label, parameters) {
+      /** @type {Map<number, string>} */
       const valuesBySlot = new Map();
+      /** @type {{ line: number, start: number, end: number, valueText: string }[]} */
       const replacements = [];
-      (label.binding.refs || []).forEach((ref) => {
+      (label.binding.refs || []).forEach((/** @type {any} */ ref) => {
         const value = evaluateExpr(ref.expr, 0, parameters);
         const valueText = value !== null ? formatSequenceValue(value) : "未定义";
         valuesBySlot.set(ref.slot, valueText);
@@ -3459,6 +3603,15 @@
       if (value !== null) {
         label.text = usesVerboseParameterLabel(label)
           ? `${label.binding.pointName}在${label.binding.segmentName}上的值 = ${env.formatNumber(value)}`
+          : `${label.binding.pointName} = ${env.formatNumber(value)}`;
+        label.richMarkup = buildPlainTextRichMarkup(label.text);
+      }
+    },
+    "polyline-parameter"(env, scene, label) {
+      const value = polylineParameterFromPoint(scene, label.binding.pointIndex);
+      if (value !== null) {
+        label.text = usesVerboseParameterLabel(label)
+          ? `${label.binding.pointName}在${label.binding.objectName}上的值 = ${env.formatNumber(value)}`
           : `${label.binding.pointName} = ${env.formatNumber(value)}`;
         label.richMarkup = buildPlainTextRichMarkup(label.text);
       }
@@ -4038,6 +4191,126 @@
   }
 
   /**
+   * @param {{ scene: ViewerSceneData, bounds: BoundsJson, parameters: Map<string, number> }} context
+   * @param {RuntimeLineJson} line
+   */
+  function refreshColorizedSpectrumLine(context, line) {
+    const binding = line.binding;
+    const hostLine = context.scene.lines[binding.lineIndex];
+    const traceLine = context.scene.lines[binding.traceLineIndex];
+    const baseParameter = polylineParameterFromPoint(context.scene, binding.pointIndex);
+    if (!traceLine?.points || traceLine.points.length < 2 || !Number.isFinite(baseParameter)) {
+      return;
+    }
+    const rawDepth = binding.depthParameterName
+      ? context.parameters.get(binding.depthParameterName)
+      : binding.depth;
+    const depth = discreteIterationDepth(Number.isFinite(rawDepth) ? rawDepth : binding.depth);
+    line.visible = binding.stepIndex < depth;
+    if (depth <= 0 || binding.stepIndex >= depth) {
+      return;
+    }
+    line.color = hsbToRgba((binding.stepIndex || 0) / depth, 1, 1, 255);
+    const sample = pointOnPolylineByIndex(
+      traceLine.points,
+      baseParameter + (binding.stepIndex || 0) / depth,
+    );
+    if (!sample) return;
+
+    const hostPoints = hostLine?.points;
+    if (!hostPoints || hostPoints.length < 2) return;
+    const traceEndpointIndex = binding.traceEndpointIndex === 1 ? 1 : 0;
+    const hostStart = hostPoints[traceEndpointIndex];
+    let hostEnd = hostPoints[1 - traceEndpointIndex];
+    let rayStart = hostStart;
+    let rayEnd = hostEnd;
+    if (
+      Number.isFinite(binding.reflectionSourceIndex)
+      && Number.isFinite(binding.reflectionAxisLineIndex)
+    ) {
+      const source = context.scene.points[binding.reflectionSourceIndex];
+      const sampledAxis = sampledReflectionAxis(context.scene, binding, sample);
+      const axisLine = sampledAxis ? null : context.scene.lines[binding.reflectionAxisLineIndex];
+      const axisStart = sampledAxis?.[0] ?? axisLine?.points?.[0];
+      const axisEnd = sampledAxis?.[1] ?? axisLine?.points?.[axisLine.points.length - 1];
+      if (source && axisStart && axisEnd) {
+        const reflected = reflectAcrossLine(source, axisStart, axisEnd);
+        if (reflected) {
+          if (sampledAxis && binding.ray) {
+            rayStart = reflected;
+            rayEnd = sample;
+          } else {
+            rayStart = sample;
+            rayEnd = reflected;
+          }
+          hostEnd = reflected;
+        }
+      }
+    }
+    if (!hostStart || !hostEnd || !rayStart || !rayEnd) return;
+
+    if (binding.ray) {
+      const dx = rayEnd.x - rayStart.x;
+      const dy = rayEnd.y - rayStart.y;
+      if (Math.hypot(dx, dy) <= 1e-9) return;
+      const clipped = clipRayToBounds(sample, { x: sample.x + dx, y: sample.y + dy }, context.bounds);
+      if (clipped) {
+        line.points = clipped;
+      }
+      return;
+    }
+
+    line.points = [sample, { x: hostEnd.x, y: hostEnd.y }];
+  }
+
+  /**
+   * @param {ViewerSceneData} scene
+   * @param {LineBindingJson & { kind: "colorized-spectrum" }} binding
+   * @param {Point} sample
+   * @returns {[Point, Point] | null}
+   */
+  function sampledReflectionAxis(scene, binding, sample) {
+    if (
+      !Number.isFinite(binding.reflectionFocusIndex)
+      || !Number.isFinite(binding.reflectionDirectrixLineIndex)
+    ) {
+      return null;
+    }
+    const focus = scene.points[binding.reflectionFocusIndex];
+    const directrixLine = scene.lines[binding.reflectionDirectrixLineIndex];
+    const directrixStart = directrixLine?.points?.[0];
+    const directrixEnd = directrixLine?.points?.[directrixLine.points.length - 1];
+    if (!focus || !directrixStart || !directrixEnd) return null;
+    const projection = projectPointToLine(sample, directrixStart, directrixEnd);
+    if (!projection) return null;
+    const normalX = focus.x - projection.x;
+    const normalY = focus.y - projection.y;
+    if (Math.hypot(normalX, normalY) <= 1e-9) return null;
+    return [
+      sample,
+      { x: sample.x - normalY, y: sample.y + normalX },
+    ];
+  }
+
+  /**
+   * @param {Point} point
+   * @param {Point} lineStart
+   * @param {Point} lineEnd
+   * @returns {Point | null}
+   */
+  function projectPointToLine(point, lineStart, lineEnd) {
+    const dx = lineEnd.x - lineStart.x;
+    const dy = lineEnd.y - lineStart.y;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq <= 1e-9) return null;
+    const t = ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / lenSq;
+    return {
+      x: lineStart.x + t * dx,
+      y: lineStart.y + t * dy,
+    };
+  }
+
+  /**
    * @param {{ scene: ViewerSceneData, parameters: Map<string, number>, resolveHandle: (handle: PointHandle) => Point | null }} env
    * @param {RuntimePolygonJson} polygon
    */
@@ -4182,6 +4455,7 @@
         line.points = sampled;
       }
     },
+    "colorized-spectrum": refreshColorizedSpectrumLine,
     "parametric-curve"({ parameters }, line) {
       const sampled = sampleParametricCurve(line.binding, parameters);
       if (sampled.length >= 2) {
@@ -4286,17 +4560,7 @@
       }
     });
 
-    scene.points.forEach((/** @type {RuntimeScenePointJson} */ point, /** @type {number} */ pointIndex) => {
-      if (!point.constraint) {
-        return;
-      }
-      const resolved = resolveScenePointInScene(env, scene, pointIndex);
-      if (!resolved) {
-        return;
-      }
-      point.x = resolved.x;
-      point.y = resolved.y;
-    });
+    refreshConstrainedPointPositions(env, scene);
 
     const shapeContext = { env, scene, parameters, resolveHandle };
     scene.circles.forEach((/** @type {RuntimeCircleJson} */ circle) => {
@@ -4388,6 +4652,43 @@
       preservedLines.push(line);
     });
     scene.lines = preservedLines;
+    refreshTraceConstrainedPointPositions(env, scene);
+  }
+
+  /**
+   * @param {ViewerEnv} env
+   * @param {ViewerSceneData} scene
+   */
+  function refreshConstrainedPointPositions(env, scene) {
+    scene.points.forEach((/** @type {RuntimeScenePointJson} */ point, /** @type {number} */ pointIndex) => {
+      if (!point.constraint) {
+        return;
+      }
+      const resolved = resolveScenePointInScene(env, scene, pointIndex);
+      if (!resolved) {
+        return;
+      }
+      point.x = resolved.x;
+      point.y = resolved.y;
+    });
+  }
+
+  /**
+   * @param {ViewerEnv} env
+   * @param {ViewerSceneData} scene
+   */
+  function refreshTraceConstrainedPointPositions(env, scene) {
+    scene.points.forEach((/** @type {RuntimeScenePointJson} */ point, /** @type {number} */ pointIndex) => {
+      if (point.constraint?.kind !== "polyline" || typeof point.constraint.functionKey !== "number") {
+        return;
+      }
+      const resolved = resolveScenePointInScene(env, scene, pointIndex);
+      if (!resolved) {
+        return;
+      }
+      point.x = resolved.x;
+      point.y = resolved.y;
+    });
   }
 
   /**
@@ -4435,7 +4736,7 @@
     env.currentDynamics().parameters.forEach((/** @type {ParameterJson} */ parameter) => {
       if (typeof parameter.labelIndex === "number" && draft.labels[parameter.labelIndex]) {
         draft.labels[parameter.labelIndex].text =
-          `${parameter.name} = ${parameter.value.toFixed(2)}${parameterValueSuffix(parameter)}`;
+          `${parameter.name} = ${env.formatNumber(parameter.value)}${parameterValueSuffix(parameter)}`;
       }
     });
     draft.points.forEach((/** @type {RuntimeScenePointJson} */ point) => {
@@ -4593,7 +4894,7 @@
           type: "number",
           step: isDiscreteIterationParameterName(env.sourceScene, parameter.name) ? "1" : "0.1",
           min: isDiscreteIterationParameterName(env.sourceScene, parameter.name) ? "0" : undefined,
-          value: parameter.value.toFixed(2),
+          value: env.formatNumber(parameter.value),
           oninput: (event) => {
             const target = /** @type {HTMLInputElement} */ (event.target);
             let value = Number.parseFloat(target.value);
@@ -4626,6 +4927,7 @@
     refreshDynamicLabels,
     refreshIterationGeometry,
     resolveLineConstraintPoints,
+    resolveLineConstraintParameterPoints,
     parameterRootId,
     sourcePointRootId,
     runDependencyGraph,

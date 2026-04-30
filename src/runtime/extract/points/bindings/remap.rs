@@ -318,6 +318,7 @@ pub(crate) fn remap_label_bindings(
                 *end_index = mapped_end_index;
                 continue;
             }
+            TextLabelBinding::PolylineParameter { point_index, .. } => point_index,
             TextLabelBinding::CircleParameter { point_index, .. } => point_index,
             TextLabelBinding::AngleMarkerValue {
                 start_index,
@@ -731,6 +732,61 @@ pub(crate) fn remap_line_bindings(
                 };
                 *point_index = mapped_point_index;
                 *driver_index = mapped_driver_index;
+            }
+            LineBinding::ColorizedSpectrum {
+                line_index,
+                trace_line_index,
+                point_index,
+                reflection_source_index,
+                reflection_axis_line_index,
+                reflection_focus_index,
+                reflection_directrix_line_index,
+                ..
+            } => {
+                let Some(mapped_line_index) = mapped_index(group_to_line_index, *line_index) else {
+                    line.binding = None;
+                    continue;
+                };
+                let Some(mapped_trace_line_index) =
+                    mapped_index(group_to_line_index, *trace_line_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                let Some(mapped_point_index) = mapped_index(group_to_point_index, *point_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                let mapped_reflection_source_index =
+                    mapped_optional_index(group_to_point_index, *reflection_source_index)
+                        .unwrap_or(None);
+                let mapped_reflection_axis_line_index =
+                    mapped_optional_index(group_to_line_index, *reflection_axis_line_index)
+                        .unwrap_or(None);
+                let mapped_reflection_focus_index =
+                    mapped_optional_index(group_to_point_index, *reflection_focus_index)
+                        .unwrap_or(None);
+                let mapped_reflection_directrix_line_index =
+                    mapped_optional_index(group_to_line_index, *reflection_directrix_line_index)
+                        .unwrap_or(None);
+                if (reflection_source_index.is_some() && mapped_reflection_source_index.is_none())
+                    || (reflection_axis_line_index.is_some()
+                        && mapped_reflection_axis_line_index.is_none())
+                    || (reflection_focus_index.is_some() && mapped_reflection_focus_index.is_none())
+                    || (reflection_directrix_line_index.is_some()
+                        && mapped_reflection_directrix_line_index.is_none())
+                {
+                    line.binding = None;
+                    continue;
+                }
+                *line_index = mapped_line_index;
+                *trace_line_index = mapped_trace_line_index;
+                *point_index = mapped_point_index;
+                *reflection_source_index = mapped_reflection_source_index;
+                *reflection_axis_line_index = mapped_reflection_axis_line_index;
+                *reflection_focus_index = mapped_reflection_focus_index;
+                *reflection_directrix_line_index = mapped_reflection_directrix_line_index;
             }
             LineBinding::ParametricCurve { .. } => {}
             LineBinding::ArcBoundary {

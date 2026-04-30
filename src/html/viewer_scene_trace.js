@@ -72,6 +72,12 @@
     if (typeof constraint.functionKey === "number") {
       const hostLine = currentScene?.lines?.find((/** @type {RuntimeLineJson} */ line) =>
         line?.binding?.kind === "arc-boundary" && line.binding.hostKey === constraint.functionKey
+        || line?.debug?.groupOrdinal === constraint.functionKey
+          && (
+            line?.binding?.kind === "point-trace"
+            || line?.binding?.kind === "coordinate-trace"
+            || line?.binding?.kind === "custom-transform-trace"
+          )
       );
       if (hostLine?.binding?.kind === "arc-boundary") {
         if (hasRuntimeScene && typeof scene.sampleArcBoundaryPoints === "function") {
@@ -83,6 +89,13 @@
           }
           return /** @type {Point} */ (handle);
         });
+      }
+      if (
+        hostLine?.binding?.kind === "point-trace"
+        || hostLine?.binding?.kind === "coordinate-trace"
+        || hostLine?.binding?.kind === "custom-transform-trace"
+      ) {
+        return scene.resolveLinePoints(env, hostLine) || hostLine.points;
       }
     }
     return constraint.points.map((/** @type {PointHandle} */ handle) => {

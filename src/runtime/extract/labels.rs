@@ -15,7 +15,7 @@ use super::points::{
     parametric_function_component_slot, regular_polygon_angle_expr_for_calc_group,
     try_decode_point_constraint,
 };
-use crate::format::{GspFile, ObjectGroup, PointRecord, read_u32};
+use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
 use crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT;
 use crate::runtime::extract::iteration_depth::decode_iteration_depth_expr;
 use crate::runtime::functions::{
@@ -25,7 +25,8 @@ use crate::runtime::geometry::{color_from_style, format_number};
 use crate::runtime::payload_consts::{
     EXPR_OP_ADD, EXPR_OP_DIV, EXPR_OP_MUL, EXPR_OP_POW, EXPR_OP_SUB, EXPR_PARAMETER_MASK,
     EXPR_PARAMETER_PREFIX, EXPR_PI_WORD, EXPR_VARIABLE_WORD, FUNCTION_EXPR_MARKER_A,
-    FUNCTION_EXPR_MARKER_B, RECORD_FUNCTION_EXPR_PAYLOAD, RECORD_POINT_F64_PAIR,
+    FUNCTION_EXPR_MARKER_B, RECORD_BINDING_PAYLOAD, RECORD_FUNCTION_EXPR_PAYLOAD,
+    RECORD_POINT_F64_PAIR,
 };
 use crate::runtime::scene::{
     IterationTable, LabelIterationFamily, RichTextExpressionRef, ScenePoint, ScreenPoint,
@@ -434,7 +435,12 @@ fn parameter_anchor_value(
         RawPointConstraint::Circular(_) => None,
         RawPointConstraint::CircleArc(_) => None,
         RawPointConstraint::Arc(_) => None,
-        RawPointConstraint::Polyline { .. } => None,
+        RawPointConstraint::Polyline {
+            points,
+            segment_index,
+            t,
+            ..
+        } => polyline_parameter(points.len(), segment_index, t),
     }
 }
 
@@ -512,6 +518,16 @@ fn payload_function_expr_label(
         return fallback_expr_label.to_string();
     }
     let result = (|| {
+        if let Some(display_label) = expanded_fallback_expr_label(
+            file,
+            groups,
+            anchors,
+            group,
+            fallback_expr_label,
+            visiting,
+        ) {
+            return Some(display_label);
+        }
         if let Some(display_label) =
             payload_function_expr_display_label(file, groups, anchors, group, visiting)
         {
@@ -550,7 +566,111 @@ fn payload_function_expr_label(
     })()
     .unwrap_or_else(|| fallback_expr_label.to_string());
     visiting.remove(&group.ordinal);
-    result
+    trim_decimal_literal_zeros(&result)
+}
+
+fn trim_decimal_literal_zeros(text: &str) -> String {
+    let mut output = String::with_capacity(text.len());
+    let mut chars = text.char_indices().peekable();
+    while let Some((start, ch)) = chars.next() {
+        if !ch.is_ascii_digit() {
+            output.push(ch);
+            continue;
+        }
+        let mut end = start + ch.len_utf8();
+        let mut number = String::from(ch);
+        while let Some((next_index, next_ch)) = chars.peek().copied() {
+            if next_ch.is_ascii_digit() || next_ch == '.' {
+                chars.next();
+                end = next_index + next_ch.len_utf8();
+                number.push(next_ch);
+            } else {
+                break;
+            }
+        }
+        if number.contains('.') {
+            while number.ends_with('0') {
+                number.pop();
+            }
+            if number.ends_with('.') {
+                number.pop();
+            }
+        }
+        output.push_str(&number);
+        if end >= text.len() {
+            break;
+        }
+    }
+    output
+}
+
+fn expanded_fallback_expr_label(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group: &ObjectGroup,
+    fallback_expr_label: &str,
+    visiting: &mut BTreeSet<usize>,
+) -> Option<String> {
+    let path = find_indexed_path(file, group)?;
+    let mut text = fallback_expr_label.to_string();
+    let mut changed = false;
+    for ordinal in path.refs.iter().copied() {
+        let source_group = groups.get(ordinal.checked_sub(1)?)?;
+        let source_name = if source_group.header.kind() == crate::format::GroupKind::ParameterAnchor
+        {
+            let anchor_path = find_indexed_path(file, source_group)?;
+            let point_group = groups.get(anchor_path.refs.first()?.checked_sub(1)?)?;
+            decode_label_name(file, source_group).or_else(|| decode_label_name(file, point_group))
+        } else {
+            decode_label_name(file, source_group)
+        };
+        let Some(source_name) = source_name else {
+            continue;
+        };
+        let Some(display_name) =
+            display_group_reference_label(file, groups, anchors, source_group, visiting)
+        else {
+            continue;
+        };
+        if display_name == source_name {
+            continue;
+        }
+        let next = replace_expr_identifier(&text, &source_name, &display_name);
+        changed |= next != text;
+        text = next;
+    }
+    changed.then_some(text)
+}
+
+fn replace_expr_identifier(text: &str, needle: &str, replacement: &str) -> String {
+    if needle.is_empty() {
+        return text.to_string();
+    }
+    let mut output = String::with_capacity(text.len());
+    let mut cursor = 0;
+    while let Some(relative_index) = text[cursor..].find(needle) {
+        let start = cursor + relative_index;
+        let end = start + needle.len();
+        let before = text[..start].chars().next_back();
+        let after = text[end..].chars().next();
+        output.push_str(&text[cursor..start]);
+        if expr_identifier_boundary(before) && expr_identifier_boundary(after) {
+            output.push_str(replacement);
+        } else {
+            output.push_str(needle);
+        }
+        cursor = end;
+    }
+    output.push_str(&text[cursor..]);
+    output
+}
+
+fn expr_identifier_boundary(value: Option<char>) -> bool {
+    match value {
+        Some(ch) => !(ch.is_alphanumeric() || matches!(ch, '_' | '.' | '[' | ']' | '₀'..='₉')),
+        None => true,
+    }
 }
 
 #[derive(Clone)]
@@ -598,10 +718,6 @@ fn payload_function_expr_display_label(
     let start = function_expr_word_start(&words)?;
     payload_function_application_label(file, groups, anchors, group, &words[start..], visiting)
         .or_else(|| {
-            linear_display_label_from_words(file, groups, anchors, group, &words[start..], visiting)
-                .map(|label| label.text)
-        })
-        .or_else(|| {
             postfix_display_label_from_words(
                 file,
                 groups,
@@ -611,6 +727,10 @@ fn payload_function_expr_display_label(
                 visiting,
             )
             .map(|label| label.text)
+        })
+        .or_else(|| {
+            linear_display_label_from_words(file, groups, anchors, group, &words[start..], visiting)
+                .map(|label| label.text)
         })
 }
 
@@ -971,6 +1091,12 @@ fn parameter_anchor_display_label(
             Some(format!("{point_name}在{polygon_name}上的值"))
         }
         kind if kind.is_line_like() => None,
+        crate::format::GroupKind::PointTrace
+        | crate::format::GroupKind::CoordinateTrace
+        | crate::format::GroupKind::CustomTransformTrace => {
+            let object_name = trace_object_name(file, groups, host_group)?;
+            Some(format!("{point_name}在{object_name}上的值"))
+        }
         kind if super::decode::is_circle_group_kind(kind) => {
             let circle_name = circle_name(file, groups, host_group)?;
             Some(format!("{point_name}在⊙{circle_name}上的值"))
@@ -1655,7 +1781,7 @@ pub(super) fn collect_coordinate_labels(
             };
             labels.push(TextLabel {
                 anchor,
-                text: format!("{name} = {:.2}", value),
+                text: format!("{name} = {}", format_number(value)),
                 color: [30, 30, 30, 255],
                 visible: if is_parametric_function_component {
                     parametric_function_component_slot(file, groups, group.ordinal) == Some(1)
@@ -1707,7 +1833,7 @@ pub(super) fn collect_coordinate_labels(
                         .unwrap_or(1.0),
                     value_suffix: " 厘米".to_string(),
                 }),
-                screen_space: false,
+                screen_space: true,
                 debug: Some(payload_debug_source(group)),
                 ..Default::default()
             });
@@ -2490,11 +2616,13 @@ pub(super) fn collect_polygon_parameter_labels(
             let point_name =
                 decode_label_name(file, group).or_else(|| decode_label_name(file, point_group))?;
             let polygon_name = polygon_vertex_name(file, groups, polygon_group)?;
-            let anchor_record = group
-                .records
-                .iter()
-                .find(|record| record.record_type == 0x0903)?;
-            let anchor = decode_text_anchor(anchor_record.payload(&file.data))?;
+            let anchor = decode_label_anchor(file, group, anchors).or_else(|| {
+                let anchor_record = group
+                    .records
+                    .iter()
+                    .find(|record| record.record_type == 0x0903)?;
+                decode_text_anchor(anchor_record.payload(&file.data))
+            })?;
             let RawPointConstraint::PolygonBoundary {
                 vertex_group_indices,
                 edge_index,
@@ -2605,6 +2733,65 @@ pub(super) fn collect_segment_parameter_labels(
                     })
                 },
                 screen_space: false,
+                debug: Some(payload_debug_source(group)),
+                ..Default::default()
+            })
+        })
+        .collect::<Vec<_>>();
+    labels.iter_mut().for_each(apply_fallback_rich_markup);
+    labels
+}
+
+pub(super) fn collect_polyline_parameter_labels(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    _anchors: &[Option<PointRecord>],
+) -> Vec<TextLabel> {
+    let mut labels = groups
+        .iter()
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::ParameterAnchor)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            if path.refs.len() < 2 {
+                return None;
+            }
+
+            let point_group = groups.get(path.refs[0].checked_sub(1)?)?;
+            let host_group = groups.get(path.refs[1].checked_sub(1)?)?;
+            if !matches!(
+                host_group.header.kind(),
+                crate::format::GroupKind::PointTrace
+                    | crate::format::GroupKind::CoordinateTrace
+                    | crate::format::GroupKind::CustomTransformTrace
+            ) {
+                return None;
+            }
+
+            let value = point_on_trace_payload_parameter(file, point_group)?;
+            let point_name =
+                decode_label_name(file, group).or_else(|| decode_label_name(file, point_group))?;
+            let object_name = trace_object_name(file, groups, host_group)?;
+            let anchor_record = group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x0903)?;
+            let anchor = decode_text_anchor(anchor_record.payload(&file.data))?;
+
+            Some(TextLabel {
+                anchor,
+                text: format!(
+                    "{point_name}在{object_name}上的值 = {}",
+                    format_number(value)
+                ),
+                color: [30, 30, 30, 255],
+                visible: decode_label_name(file, group).is_some()
+                    || label_visible_for_group(file, group),
+                binding: Some(TextLabelBinding::PolylineParameter {
+                    point_index: path.refs[0].checked_sub(1)?,
+                    point_name,
+                    object_name,
+                }),
+                screen_space: true,
                 debug: Some(payload_debug_source(group)),
                 ..Default::default()
             })
@@ -3418,6 +3605,61 @@ fn circle_name(
         })
         .collect::<Option<Vec<_>>>()?;
     (names.len() >= 2).then(|| names.join(""))
+}
+
+fn trace_object_name(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    trace_group: &ObjectGroup,
+) -> Option<String> {
+    decode_label_name(file, trace_group).or_else(|| {
+        let kind = trace_group.header.kind();
+        let index = groups
+            .iter()
+            .filter(|group| group.header.kind() == kind)
+            .take_while(|group| group.ordinal <= trace_group.ordinal)
+            .count()
+            .max(1);
+        Some(format!("L{}", subscript_number(index)))
+    })
+}
+
+fn subscript_number(value: usize) -> String {
+    value
+        .to_string()
+        .chars()
+        .map(|digit| match digit {
+            '0' => '₀',
+            '1' => '₁',
+            '2' => '₂',
+            '3' => '₃',
+            '4' => '₄',
+            '5' => '₅',
+            '6' => '₆',
+            '7' => '₇',
+            '8' => '₈',
+            '9' => '₉',
+            other => other,
+        })
+        .collect()
+}
+
+fn polyline_parameter(point_count: usize, segment_index: usize, t: f64) -> Option<f64> {
+    if point_count < 2 {
+        return None;
+    }
+    let denominator = point_count.checked_sub(1)? as f64;
+    Some((segment_index as f64 + t.clamp(0.0, 1.0)) / denominator)
+}
+
+fn point_on_trace_payload_parameter(file: &GspFile, point_group: &ObjectGroup) -> Option<f64> {
+    let payload = point_group
+        .records
+        .iter()
+        .find(|record| record.record_type == RECORD_BINDING_PAYLOAD)
+        .map(|record| record.payload(&file.data))?;
+    let value = read_f64(payload, 4);
+    value.is_finite().then_some(value)
 }
 
 pub(super) fn circle_parameter(

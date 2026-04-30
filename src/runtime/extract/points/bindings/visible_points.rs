@@ -500,9 +500,11 @@ fn build_scene_point_for_group(
             })
         })(),
         crate::format::GroupKind::Reflection => (|| {
-            let position = decode_reflection_anchor_raw(file, groups, group, anchors)?;
             let path = find_indexed_path(file, group)?;
             let source_group_index = path.refs.first()?.checked_sub(1)?;
+            let position = decode_reflection_anchor_raw(file, groups, group, anchors)
+                .or_else(|| anchors.get(index).cloned().flatten())
+                .or_else(|| anchors.get(source_group_index).cloned().flatten())?;
             let source_index = mapped_point_index(group_to_point_index, source_group_index)?;
             let line_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
             let binding = if line_group.header.kind().is_line_like() {

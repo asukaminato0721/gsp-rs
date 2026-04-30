@@ -307,6 +307,159 @@ fn preserves_function_iteration_coordinate_point_in_liyougui_fixture() {
 }
 
 #[test]
+fn preserves_parabola_locus_with_constructed_line_driver() {
+    let Some(data) =
+        fixture_bytes("tests/Samples/个人专栏/贺基旭作品/20171231抛物线的光学性质_hjx4882.gsp")
+    else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+    let trace_line = scene
+        .lines
+        .iter()
+        .find(|line| {
+            line.debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 11)
+                && matches!(line.binding, Some(LineBinding::PointTrace { .. }))
+        })
+        .expect("expected payload #11 Locus to export as a point trace");
+    assert!(
+        trace_line.points.len() >= 100,
+        "expected the parabola locus to keep its sampled payload curve"
+    );
+    let (min_x, max_x, min_y, max_y) = trace_line.points.iter().fold(
+        (
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+        ),
+        |(min_x, max_x, min_y, max_y), point| {
+            (
+                min_x.min(point.x),
+                max_x.max(point.x),
+                min_y.min(point.y),
+                max_y.max(point.y),
+            )
+        },
+    );
+    assert!(
+        max_x - min_x > 250.0 && max_y - min_y > 300.0,
+        "expected the constructed-line locus parameter to use the payload host scale"
+    );
+    let Some(LineBinding::PointTrace {
+        point_index,
+        driver_index,
+        ..
+    }) = trace_line.binding
+    else {
+        unreachable!();
+    };
+    assert!(
+        matches!(
+            scene.points[driver_index].constraint,
+            ScenePointConstraint::OnLineConstraint { .. }
+        ),
+        "expected the locus driver to remain constrained to the constructed perpendicular line"
+    );
+    assert_ne!(
+        point_index, driver_index,
+        "expected the traced intersection and driver point to stay distinct"
+    );
+    assert!(
+        scene.points.iter().any(|point| matches!(
+            &point.constraint,
+            ScenePointConstraint::OnPolyline {
+                function_key,
+                points,
+                ..
+            } if *function_key == 11 && points.len() == trace_line.points.len()
+        )),
+        "expected the point on Locus #11 to stay constrained to the live trace polyline"
+    );
+    assert!(
+        scene
+            .parameters
+            .iter()
+            .any(|parameter| parameter.name == "N" && (parameter.value - 28.0).abs() < 1e-6),
+        "expected payload parameter N to decode as 28 for the spectrum iteration"
+    );
+    assert!(
+        scene.labels.iter().any(|label| {
+            label.text == "5在L₁上的值 = 0.03"
+                && matches!(
+                    label.binding,
+                    Some(TextLabelBinding::PolylineParameter { point_index: 8, .. })
+                )
+        }),
+        "expected the point-on-locus parameter label to follow the payload ParameterAnchor"
+    );
+    assert!(
+        scene
+            .labels
+            .iter()
+            .any(|label| label.text == "5在L₁上的值 + 1 / N = 0.06"),
+        "expected the dependent calculation label to use the point-on-locus parameter name"
+    );
+    assert!(
+        scene
+            .labels
+            .iter()
+            .any(|label| label.text == "t₁ + 0.1 = 0.10"),
+        "expected the htm-style decimal calculation t₁ + 0.1 to stay decoded"
+    );
+    let spectrum_line_count = scene
+        .lines
+        .iter()
+        .filter(|line| {
+            line.debug
+                .as_ref()
+                .is_some_and(|debug| matches!(debug.group_ordinal, 30 | 31))
+        })
+        .count();
+    assert!(
+        spectrum_line_count >= 56,
+        "expected both Colorized_Spectrum derived segments to expand across N steps"
+    );
+    assert!(
+        scene.lines.iter().any(|line| {
+            line.debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 30)
+                && matches!(
+                    line.binding,
+                    Some(LineBinding::ColorizedSpectrum {
+                        point_index: 8,
+                        trace_endpoint_index: 1,
+                        depth_parameter_name: Some(ref name),
+                        ray: false,
+                        ..
+                    }) if name == "N"
+                )
+        }),
+        "expected the segment Colorized_Spectrum payload to stay bound to point 4"
+    );
+    assert!(
+        scene.lines.iter().any(|line| {
+            line.debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 31)
+                && matches!(
+                    line.binding,
+                    Some(LineBinding::ColorizedSpectrum {
+                        point_index: 8,
+                        depth_parameter_name: Some(ref name),
+                        ray: true,
+                        ..
+                    }) if name == "N"
+                )
+        }),
+        "expected the ray Colorized_Spectrum payload to stay bound to its live ray direction"
+    );
+}
+
+#[test]
 fn preserves_binary_tree_multimap_iteration() {
     let Some(data) = fixture_bytes("../Samples/个人专栏/方小庆作品/二叉树(inRm).gsp")
     else {

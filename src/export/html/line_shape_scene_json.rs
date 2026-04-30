@@ -154,6 +154,43 @@ enum LineBindingJson {
         #[serde(rename = "sampleCount")]
         sample_count: usize,
     },
+    #[serde(rename = "colorized-spectrum")]
+    ColorizedSpectrum {
+        #[serde(rename = "lineIndex")]
+        line_index: usize,
+        #[serde(rename = "traceLineIndex")]
+        trace_line_index: usize,
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+        #[serde(rename = "traceEndpointIndex")]
+        trace_endpoint_index: usize,
+        #[serde(
+            rename = "reflectionSourceIndex",
+            skip_serializing_if = "Option::is_none"
+        )]
+        reflection_source_index: Option<usize>,
+        #[serde(
+            rename = "reflectionAxisLineIndex",
+            skip_serializing_if = "Option::is_none"
+        )]
+        reflection_axis_line_index: Option<usize>,
+        #[serde(
+            rename = "reflectionFocusIndex",
+            skip_serializing_if = "Option::is_none"
+        )]
+        reflection_focus_index: Option<usize>,
+        #[serde(
+            rename = "reflectionDirectrixLineIndex",
+            skip_serializing_if = "Option::is_none"
+        )]
+        reflection_directrix_line_index: Option<usize>,
+        #[serde(rename = "stepIndex")]
+        step_index: usize,
+        depth: usize,
+        #[serde(rename = "depthParameterName", skip_serializing_if = "Option::is_none")]
+        depth_parameter_name: Option<String>,
+        ray: bool,
+    },
     #[serde(rename = "parametric-curve")]
     ParametricCurve {
         #[serde(rename = "xExpr")]
@@ -311,6 +348,33 @@ impl LineBindingJson {
                 x_min: *x_min,
                 x_max: *x_max,
                 sample_count: *sample_count,
+            },
+            LineBinding::ColorizedSpectrum {
+                line_index,
+                trace_line_index,
+                point_index,
+                trace_endpoint_index,
+                reflection_source_index,
+                reflection_axis_line_index,
+                reflection_focus_index,
+                reflection_directrix_line_index,
+                step_index,
+                depth,
+                depth_parameter_name,
+                ray,
+            } => Self::ColorizedSpectrum {
+                line_index: *line_index,
+                trace_line_index: *trace_line_index,
+                point_index: *point_index,
+                trace_endpoint_index: *trace_endpoint_index,
+                reflection_source_index: *reflection_source_index,
+                reflection_axis_line_index: *reflection_axis_line_index,
+                reflection_focus_index: *reflection_focus_index,
+                reflection_directrix_line_index: *reflection_directrix_line_index,
+                step_index: *step_index,
+                depth: *depth,
+                depth_parameter_name: depth_parameter_name.clone(),
+                ray: *ray,
             },
             LineBinding::ParametricCurve {
                 x_expr,
