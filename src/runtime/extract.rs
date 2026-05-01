@@ -13,8 +13,12 @@ mod graph;
 mod images;
 mod iteration_depth;
 mod labels;
+#[cfg(test)]
+mod payload_log_tests;
 pub(crate) mod points;
 pub(crate) mod shapes;
+#[cfg(test)]
+mod test_support;
 #[cfg(test)]
 mod tests;
 mod trace;
