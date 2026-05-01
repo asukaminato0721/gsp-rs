@@ -1,0 +1,198 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>经典动态题(一线天)</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(118,192)[hidden,dot];
+{2} Point(129,192)[hidden];
+{3} Line(2,1)[color(0,0,128),dashed];
+{4} Point on object(3,33.0909)[label('O[1]'),red,mediumPoint];
+{5} Point on object(3,43.4545)[label('M'),red,dot];
+{6} Rotation(4,5,1.5708)[hidden];
+{7} Circle(4,6)[hidden];
+{8} Reflection(6,3)[hidden];
+{9} Intersect2(3,7)[hidden];
+{10} Intersect1(3,7)[hidden];
+{11} Dilation(9,10,0.25)[hidden];
+{12} Rotation(6,4,-3.14159)[hidden];
+{13} Dilation(9,10,0.125)[hidden];
+{14} VectorTranslation(13,4,5)[hidden];
+{15} FixedText(66,-284,'A')[black,hidden];
+{16} FixedText(65,-240,'B')[black,hidden];
+{17} FixedText(64,-201,'C')[black,hidden];
+{18} FixedText(66,-157,'D')[black,hidden];
+{19} VectorTranslation(5,14,9)[hidden];
+{20} Segment(9,10)[hidden];
+{21} Point on object(3,66.0678)[label('O[2]'),green,mediumPoint];
+{22} Distance(21,4,120,-264,'')[hidden];
+{23} VectorTranslation(21,10,11)[label('G'),color(138,102,217),dot];
+{24} Rotation(23,21,1.5708)[label('H'),color(138,102,217),dot];
+{25} Reflection(24,3)[label('F'),color(138,102,217),dot];
+{26} Segment(23,25)[color(138,102,217),mediumLine];
+{27} Segment(24,23)[color(138,102,217),mediumLine];
+{28} Rotation(23,21,-3.14159)[label('E'),color(138,102,217),dot];
+{29} Segment(28,24)[color(138,102,217),mediumLine];
+{30} VectorTranslation(19,28,21)[hidden];
+{31} MoveButton(1497,797,0,'')(30,21)[hidden];
+{32} Dilation(19,30,1.5)[hidden];
+{33} Distance(30,32,120,-235,'')[hidden];
+{34} Calculate(268,-283,'','3 A * B / ')(22,33)[hidden];
+{35} Calculate(686,43,'O[1]O[2] = ','A ')(34)[black];
+{36} MoveButton(1497,815,1,'')(32,21)[hidden];
+{37} Segment(30,32)[hidden];
+{38} Segment(25,28)[color(138,102,217),mediumLine];
+{39} Ray(9,32)[hidden];
+{40} MoveButton(1493,854,3,'')(1,21)[hidden];
+{41} Parameter(2,698,833,'')[hidden];
+{42} Parameter(2,747,833,'')[hidden];
+{43} Calculate(1269,881,'','1 A @abs_ - @sgn_ 1 + A @abs_ 1 - @sgn_ 1 + A @abs_ @trnc * + 2 / ')(41)[hidden];
+{44} Calculate(1269,881,'','1 A @abs_ - @sgn_ 1 + A @abs_ 1 - @sgn_ 1 + A @abs_ @trnc * + 2 / ')(42)[hidden];
+{45} Point(751,750)[hidden,mediumPoint];
+{46} Translation(45,2.31429e-015,37.7953)[red,hidden,dot];
+{47} Translation(45,37.7953,0)[hidden];
+{48} Translation(45,11.3386,0)[hidden];
+{49} Ray(47,48)[hidden];
+{50} Point on object(49,1.71815)[hidden];
+{51} Rotation(49,45,1.5708)[hidden];
+{52} Rotation(50,45,1.5708)[red,hidden,dot];
+{53} Point on object(51,1.71815)[yellow,hidden];
+{54} Translation(50,-3.77953,-11.3386)[hidden];
+{55} Translation(50,3.77953,-11.3386)[hidden];
+{56} Polygon(50,54,55)[hidden];
+{57} Translation(53,-11.3386,3.77953)[hidden];
+{58} Translation(53,-11.3386,-3.77953)[hidden];
+{59} Polygon(53,57,58)[hidden];
+{60} Translation(45,-56.6929,-3.95884e-013)[hidden];
+{61} Segment(45,60)[hidden];
+{62} Point on object(61,0)[hidden];
+{63} Point on object(61,0.262778)[hidden];
+{64} Translation(62,3.77953,11.3386)[hidden];
+{65} Translation(62,-3.77953,11.3386)[hidden];
+{66} Polygon(62,64,65)[hidden];
+{67} Translation(63,-3.77953,-11.3386)[hidden];
+{68} Translation(63,3.77953,-11.3386)[hidden];
+{69} Polygon(63,67,68)[hidden];
+{70} Segment(53,45)[color(0,128,0),hidden,mediumLine];
+{71} Segment(50,45)[magenta,hidden,mediumLine];
+{72} Translation(45,-9.2373e-014,-26.4567)[hidden];
+{73} Translation(72,37.7953,0)[hidden];
+{74} Translation(72,-37.7953,-2.63923e-013)[hidden];
+{75} Segment(73,74)[hidden];
+{76} Point on object(75,0.39)[hidden];
+{77} Translation(76,3.77953,11.3386)[hidden];
+{78} Translation(76,-3.77953,11.3386)[hidden];
+{79} Polygon(76,77,78)[hidden];
+{80} Point on object(75,0.664687)[hidden];
+{81} Translation(80,-3.77953,-11.3386)[hidden];
+{82} Translation(80,3.77953,-11.3386)[hidden];
+{83} Polygon(80,81,82)[hidden];
+{84} Segment(72,74)[hidden];
+{85} Segment(73,72)[hidden];
+{86} Dilation(73,72,0.25)[hidden];
+{87} Dilation(74,72,0.22)[hidden];
+{88} Translation(60,18.8976,0)[hidden];
+{89} Translation(72,-37.7953,-18.8976)[hidden];
+{90} Translation(89,75.5906,0)[hidden];
+{91} Segment(90,89)[hidden];
+{92} Point on object(91,0)[hidden];
+{93} Translation(92,-3.77953,-11.3386)[hidden];
+{94} Translation(92,3.77953,-11.3386)[hidden];
+{95} Polygon(92,93,94)[hidden];
+{96} Length(71,1269,881,'')[hidden];
+{97} Length(70,1269,881,'')[hidden];
+{98} Calculate(1269,881,'','A B / ')(96,43)[hidden];
+{99} Calculate(1269,881,'','A B / ')(97,44)[hidden];
+{100} Ratio/Points(72,73,80,1269,881,'')[hidden];
+{101} Ratio/Points(72,74,76,1269,881,'')[hidden];
+{102} Calculate(1269,881,'','37.7953 A * ')(100)[hidden];
+{103} Calculate(1269,881,'','A 26.4567 / @trnc ')(96)[hidden];
+{104} Calculate(1269,881,'','A 26.4567 / @trnc ')(97)[hidden];
+{105} MoveButton(1106,472,0,'xy等单位长')(52,53)[color(255,128,0),hidden];
+{106} Point(240,623)[hidden,mediumPoint];
+{107} Translation(106,1.01829e-014,166.299)[red,hidden,dot];
+{108} Translation(106,166.299,0)[hidden];
+{109} Translation(106,-158.74,-1.10848e-012)[hidden];
+{110} Translation(106,-5.54238e-013,-158.74)[hidden];
+{111} HideButton(1106,472,'隐藏点')(106,45)[color(255,128,0),hidden];
+{112} Segment(21,32)[hidden];
+{113} MoveButton(1515,806,0,'')(32,21)[hidden];
+{114} FixedText(41,560,'陈发铨制作 晋江 • 养中 2011.05.21')[color(128,128,128)];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>经典动态题(一线天)</P></H4>
+</BODY>
+</HTML>
