@@ -1307,7 +1307,8 @@
     if (!origin || !denominator || !numerator) return null;
     const denominatorLength = Math.hypot(denominator.x - origin.x, denominator.y - origin.y);
     if (denominatorLength <= 1e-9) return null;
-    return Math.hypot(numerator.x - origin.x, numerator.y - origin.y) / denominatorLength;
+    const ratio = Math.hypot(numerator.x - origin.x, numerator.y - origin.y) / denominatorLength;
+    return binding.clampToUnit === true ? Math.min(ratio, 1) : ratio;
   }
 
   /**
@@ -3086,7 +3087,15 @@
     const ratioDenominator = resolvePointAt(point.binding.ratioDenominatorIndex);
     const ratioNumerator = resolvePointAt(point.binding.ratioNumeratorIndex);
     if (!source || !center || !ratioOrigin || !ratioDenominator || !ratioNumerator) return;
-    const scaled = scaleByThreePointRatio(source, center, ratioOrigin, ratioDenominator, ratioNumerator);
+    const scaled = scaleByThreePointRatio(
+      source,
+      center,
+      ratioOrigin,
+      ratioDenominator,
+      ratioNumerator,
+      point.binding.signed !== false,
+      point.binding.clampToUnit === true,
+    );
     if (!scaled) return;
     point.x = scaled.x;
     point.y = scaled.y;
@@ -3098,9 +3107,19 @@
    * @param {Point} ratioOrigin
    * @param {Point} ratioDenominator
    * @param {Point} ratioNumerator
+   * @param {boolean} signed
+   * @param {boolean} clampToUnit
    * @returns {Point | null}
    */
-  function scaleByThreePointRatio(source, center, ratioOrigin, ratioDenominator, ratioNumerator) {
+  function scaleByThreePointRatio(
+    source,
+    center,
+    ratioOrigin,
+    ratioDenominator,
+    ratioNumerator,
+    signed = true,
+    clampToUnit = false,
+  ) {
     const denominatorDx = ratioDenominator.x - ratioOrigin.x;
     const denominatorDy = ratioDenominator.y - ratioOrigin.y;
     const numeratorDx = ratioNumerator.x - ratioOrigin.x;
@@ -3110,11 +3129,14 @@
       denominatorDy,
     );
     if (denominator <= 1e-9) return null;
-    const numerator = Math.hypot(
+    const rawNumerator = Math.hypot(
       numeratorDx,
       numeratorDy,
     );
-    const direction = denominatorDx * numeratorDx + denominatorDy * numeratorDy < 0 ? -1 : 1;
+    const numerator = clampToUnit ? Math.min(rawNumerator, denominator) : rawNumerator;
+    const direction = signed && denominatorDx * numeratorDx + denominatorDy * numeratorDy < 0
+      ? -1
+      : 1;
     return scaleAround(source, center, direction * numerator / denominator);
   }
 
@@ -3940,7 +3962,15 @@
         const ratioDenominator = resolveTracePoint(points, point.binding.ratioDenominatorIndex, visiting);
         const ratioNumerator = resolveTracePoint(points, point.binding.ratioNumeratorIndex, visiting);
         if (source && center && ratioOrigin && ratioDenominator && ratioNumerator) {
-          resolved = scaleByThreePointRatio(source, center, ratioOrigin, ratioDenominator, ratioNumerator);
+          resolved = scaleByThreePointRatio(
+            source,
+            center,
+            ratioOrigin,
+            ratioDenominator,
+            ratioNumerator,
+            point.binding.signed !== false,
+            point.binding.clampToUnit === true,
+          );
         }
       } else if (point.binding?.kind === "midpoint") {
         const start = resolveTracePoint(points, point.binding.startIndex, visiting);

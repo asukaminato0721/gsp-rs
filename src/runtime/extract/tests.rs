@@ -2569,6 +2569,103 @@ fn rolling_triangle_inrm_fixture_stays_in_geometry_mode() {
 }
 
 #[test]
+fn hejixu_fold2_exports_marked_ratio_dilation_and_reflection() {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/贺基旭作品/翻折2(hjx4882).gsp")
+    else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+
+    let point_index_for_group = |ordinal| {
+        scene
+            .points
+            .iter()
+            .position(|point| {
+                point
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .expect("expected point for payload group")
+    };
+    let f_index = point_index_for_group(9);
+    let g_index = point_index_for_group(11);
+    let h_index = point_index_for_group(12);
+
+    assert!(
+        matches!(
+            scene.points[f_index].binding,
+            Some(ScenePointBinding::ScaleByRatio {
+                source_index: 3,
+                center_index: 1,
+                ratio_origin_index: 1,
+                ratio_denominator_index: 3,
+                ratio_numerator_index: 4,
+                signed: false,
+                clamp_to_unit: true,
+            })
+        ),
+        "expected F from Dilation/MarkedRatio(4,2,8) to stay live as a scale-by-ratio point"
+    );
+    assert!(
+        (scene.points[f_index].position.x - 628.795).abs() < 0.01
+            && (scene.points[f_index].position.y - 242.205).abs() < 0.01,
+        "expected F to match the initial clamped marked-ratio dilation position"
+    );
+    assert!(
+        matches!(
+            scene.points[h_index].binding,
+            Some(ScenePointBinding::Reflect {
+                source_index,
+                line_start_index: 0,
+                line_end_index: 4,
+            }) if source_index == f_index
+        ),
+        "expected H to reflect F across segment AE"
+    );
+    assert!(
+        scene.polygons.iter().any(|polygon| matches!(
+            &polygon.binding,
+            Some(ShapeBinding::PointPolygon { vertex_indices })
+                if vertex_indices == &vec![0, g_index, h_index, 4]
+        )),
+        "expected folded polygon A-G-H-E to stay linked to reflected points"
+    );
+    assert!(
+        scene.labels.iter().any(|label| {
+            label.text == "F"
+                && matches!(
+                    label.binding,
+                    Some(TextLabelBinding::PointAnchor {
+                        point_index,
+                        ..
+                    }) if point_index == f_index
+                )
+        }),
+        "expected label F to bind to the marked-ratio dilation point"
+    );
+    assert!(
+        scene.labels.iter().any(|label| {
+            label.text == "(BE/BD) = 1"
+                && label.visible
+                && label.anchor.x <= 20.0
+                && label.anchor.y <= 60.0
+                && matches!(
+                    label.binding,
+                    Some(TextLabelBinding::PointDistanceRatioValue {
+                        origin_index: 1,
+                        denominator_index: 3,
+                        numerator_index: 4,
+                        clamp_to_unit: true,
+                        ..
+                    })
+                )
+        }),
+        "expected the clamped BE/BD ratio measurement label at the left-top payload anchor"
+    );
+}
+
+#[test]
 fn preserves_points_defined_by_path_value_fixture() {
     let scene = fixture_scene(include_bytes!(
         "../../../tests/fixtures/未实现的系统功能/给定的数值在路径上绘制点.gsp"

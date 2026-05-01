@@ -69,6 +69,16 @@ pub(crate) struct ExpressionScaleBindingDef {
     pub(crate) parameter_name: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct ExpressionRatioScaleBindingDef {
+    pub(crate) source_group_index: usize,
+    pub(crate) center_group_index: usize,
+    pub(crate) ratio_origin_group_index: usize,
+    pub(crate) ratio_denominator_group_index: usize,
+    pub(crate) ratio_numerator_group_index: usize,
+    pub(crate) factor: f64,
+}
+
 #[derive(Clone)]
 pub(crate) struct ExpressionOffsetBindingDef {
     pub(crate) source_group_index: usize,
@@ -194,6 +204,42 @@ fn ratio_value_runtime_value(
     let numerator_length = (numerator.x - origin.x).hypot(numerator.y - origin.y);
     let name = decode_label_name(file, group)?;
     Some((name, numerator_length / denominator_length))
+}
+
+fn ratio_scale_binding_from_value_group(
+    file: &GspFile,
+    source_group_index: usize,
+    center_group_index: usize,
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<ExpressionRatioScaleBindingDef> {
+    if group.header.kind() != GroupKind::RatioValue {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    let ratio_origin_group_index = path.refs.first()?.checked_sub(1)?;
+    let ratio_denominator_group_index = path.refs.get(1)?.checked_sub(1)?;
+    let ratio_numerator_group_index = path.refs.get(2)?.checked_sub(1)?;
+    let ratio_origin = anchors.get(ratio_origin_group_index)?.as_ref()?;
+    let ratio_denominator = anchors.get(ratio_denominator_group_index)?.as_ref()?;
+    let ratio_numerator = anchors.get(ratio_numerator_group_index)?.as_ref()?;
+    let denominator_dx = ratio_denominator.x - ratio_origin.x;
+    let denominator_dy = ratio_denominator.y - ratio_origin.y;
+    let numerator_dx = ratio_numerator.x - ratio_origin.x;
+    let numerator_dy = ratio_numerator.y - ratio_origin.y;
+    let denominator = denominator_dx.hypot(denominator_dy);
+    if denominator <= 1e-9 {
+        return None;
+    }
+    let numerator = numerator_dx.hypot(numerator_dy).min(denominator);
+    Some(ExpressionRatioScaleBindingDef {
+        source_group_index,
+        center_group_index,
+        ratio_origin_group_index,
+        ratio_denominator_group_index,
+        ratio_numerator_group_index,
+        factor: numerator / denominator,
+    })
 }
 
 fn collect_expr_runtime_parameters(
@@ -463,12 +509,42 @@ pub(crate) fn decode_expression_scale_binding(
     })
 }
 
+pub(crate) fn decode_expression_ratio_scale_binding(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<ExpressionRatioScaleBindingDef> {
+    if group.header.kind() != GroupKind::ExpressionRotation {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() < 3 {
+        return None;
+    }
+    let source_group_index = path.refs[0].checked_sub(1)?;
+    let center_group_index = path.refs[1].checked_sub(1)?;
+    let ratio_group = groups.get(path.refs[2].checked_sub(1)?)?;
+    ratio_scale_binding_from_value_group(
+        file,
+        source_group_index,
+        center_group_index,
+        ratio_group,
+        anchors,
+    )
+}
+
 pub(crate) fn decode_expression_rotation_anchor_raw(
     file: &GspFile,
     groups: &[ObjectGroup],
     group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
 ) -> Option<PointRecord> {
+    if let Some(binding) = decode_expression_ratio_scale_binding(file, groups, group, anchors) {
+        let source = anchors.get(binding.source_group_index)?.clone()?;
+        let center = anchors.get(binding.center_group_index)?.clone()?;
+        return Some(scale_around(&source, &center, binding.factor));
+    }
     if let Some(binding) = decode_expression_scale_binding(file, groups, group, anchors) {
         let source = anchors.get(binding.source_group_index)?.clone()?;
         let center = anchors.get(binding.center_group_index)?.clone()?;

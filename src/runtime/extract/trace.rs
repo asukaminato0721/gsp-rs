@@ -988,6 +988,8 @@ fn resolve_trace_point(
             ratio_origin_index,
             ratio_denominator_index,
             ratio_numerator_index,
+            signed,
+            clamp_to_unit,
         }) => {
             let source = resolve_trace_point(points, *source_index, visiting)?;
             let center = resolve_trace_point(points, *center_index, visiting)?;
@@ -1003,12 +1005,17 @@ fn resolve_trace_point(
             if denominator <= 1e-9 {
                 return None;
             }
-            let numerator = numerator_dx.hypot(numerator_dy);
-            let direction = if denominator_dx * numerator_dx + denominator_dy * numerator_dy < 0.0 {
-                -1.0
+            let numerator = if *clamp_to_unit {
+                numerator_dx.hypot(numerator_dy).min(denominator)
             } else {
-                1.0
+                numerator_dx.hypot(numerator_dy)
             };
+            let direction =
+                if *signed && denominator_dx * numerator_dx + denominator_dy * numerator_dy < 0.0 {
+                    -1.0
+                } else {
+                    1.0
+                };
             Some(scale_around(
                 &source,
                 &center,

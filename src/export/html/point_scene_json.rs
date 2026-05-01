@@ -77,6 +77,9 @@ enum PointBindingJson {
         ratio_denominator_index: usize,
         #[serde(rename = "ratioNumeratorIndex")]
         ratio_numerator_index: usize,
+        signed: bool,
+        #[serde(rename = "clampToUnit")]
+        clamp_to_unit: bool,
     },
     #[serde(rename = "midpoint")]
     Midpoint {
@@ -323,12 +326,16 @@ impl PointBindingJson {
                 ratio_origin_index,
                 ratio_denominator_index,
                 ratio_numerator_index,
+                signed,
+                clamp_to_unit,
             } => Self::ScaleByRatio {
                 source_index: *source_index,
                 center_index: *center_index,
                 ratio_origin_index: *ratio_origin_index,
                 ratio_denominator_index: *ratio_denominator_index,
                 ratio_numerator_index: *ratio_numerator_index,
+                signed: *signed,
+                clamp_to_unit: *clamp_to_unit,
             },
             ScenePointBinding::Scale {
                 source_index,

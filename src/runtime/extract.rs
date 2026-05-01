@@ -3909,6 +3909,17 @@ fn describe_group_in_chinese(
         }
         GroupKind::ExpressionRotation => {
             if refs.len() >= 3 {
+                if groups
+                    .get(refs[2].saturating_sub(1))
+                    .is_some_and(|group| group.header.kind() == GroupKind::RatioValue)
+                {
+                    return format!(
+                        "将 {} 以 {} 为中心，按 {} 缩放得到的点",
+                        format_ref_with_kind(groups, refs[0]),
+                        format_ref(refs[1]),
+                        format_ref_with_kind(groups, refs[2])
+                    );
+                }
                 format!(
                     "将 {} 围绕 {} 按 {} 旋转得到的点",
                     format_ref_with_kind(groups, refs[0]),

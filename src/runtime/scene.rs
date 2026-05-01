@@ -757,6 +757,8 @@ pub(crate) enum ScenePointBinding {
         ratio_origin_index: usize,
         ratio_denominator_index: usize,
         ratio_numerator_index: usize,
+        signed: bool,
+        clamp_to_unit: bool,
     },
     Scale {
         source_index: usize,
@@ -1041,6 +1043,7 @@ pub(crate) enum TextLabelBinding {
         denominator_index: usize,
         numerator_index: usize,
         name: String,
+        clamp_to_unit: bool,
     },
     PointAxisValue {
         point_index: usize,

@@ -16,7 +16,7 @@ use super::points::{
     parametric_function_component_slot_with_context, regular_polygon_angle_expr_for_calc_group,
     try_decode_point_constraint,
 };
-use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
+use crate::format::{GspFile, IndexedPathRecord, ObjectGroup, PointRecord, read_f64, read_u32};
 use crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT;
 use crate::runtime::extract::context::SceneContext;
 use crate::runtime::extract::iteration_depth::decode_iteration_depth_expr;
@@ -464,6 +464,18 @@ fn ratio_value(
     }
     let numerator_length = (numerator.x - origin.x).hypot(numerator.y - origin.y);
     Some(numerator_length / denominator_length)
+}
+
+fn ratio_value_label_name(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    path: &IndexedPathRecord,
+) -> Option<String> {
+    let origin = point_label_or_default(file, groups, path.refs.first()?.saturating_sub(1), "P");
+    let denominator =
+        point_label_or_default(file, groups, path.refs.get(1)?.saturating_sub(1), "Q");
+    let numerator = point_label_or_default(file, groups, path.refs.get(2)?.saturating_sub(1), "R");
+    Some(format!("({origin}{numerator}/{origin}{denominator})"))
 }
 
 fn segment_projection_parameter(
@@ -1948,11 +1960,15 @@ pub(super) fn collect_coordinate_labels(
         } else if kind == crate::format::GroupKind::RatioValue
             && let Some(path) = find_indexed_path(file, group)
             && path.refs.len() >= 3
-            && let Some(name) = decode_label_name(file, group)
             && let Some(value) = ratio_value(file, group, anchors)
             && let Some(anchor) = decode_label_anchor(file, group, anchors)
                 .or_else(|| try_decode_payload_anchor_point(file, group).ok().flatten())
         {
+            let name = decode_label_name(file, group)
+                .or_else(|| ratio_value_label_name(file, groups, &path))
+                .unwrap_or_else(|| "ratio".to_string());
+            let clamp_to_unit = true;
+            let value = if clamp_to_unit { value.min(1.0) } else { value };
             labels.push(TextLabel {
                 anchor,
                 text: format!("{name} = {}", format_number(value)),
@@ -1963,6 +1979,7 @@ pub(super) fn collect_coordinate_labels(
                     denominator_index: path.refs[1].saturating_sub(1),
                     numerator_index: path.refs[2].saturating_sub(1),
                     name,
+                    clamp_to_unit,
                 }),
                 screen_space: true,
                 debug: Some(payload_debug_source(group)),

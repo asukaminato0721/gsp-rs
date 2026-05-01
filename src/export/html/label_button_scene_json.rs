@@ -500,6 +500,8 @@ enum LabelBindingJson {
         #[serde(rename = "numeratorIndex")]
         numerator_index: usize,
         name: String,
+        #[serde(rename = "clampToUnit")]
+        clamp_to_unit: bool,
     },
     #[serde(rename = "point-axis-value")]
     PointAxisValue {
@@ -761,11 +763,13 @@ impl LabelBindingJson {
                 denominator_index,
                 numerator_index,
                 name,
+                clamp_to_unit,
             } => Self::PointDistanceRatioValue {
                 origin_index: *origin_index,
                 denominator_index: *denominator_index,
                 numerator_index: *numerator_index,
                 name: name.clone(),
+                clamp_to_unit: *clamp_to_unit,
             },
             TextLabelBinding::PointAxisValue {
                 point_index,

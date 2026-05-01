@@ -760,6 +760,7 @@ pub(crate) fn decode_label_anchor(
             | crate::format::GroupKind::BoundaryCurveLengthValue
             | crate::format::GroupKind::GraphSlopeValue
             | crate::format::GroupKind::RadiusValue
+            | crate::format::GroupKind::RatioValue
             | crate::format::GroupKind::NamedAlias
             | crate::format::GroupKind::RichTextLabel => decode_bbox_anchor_raw(file, group),
             _ => None,

@@ -4,13 +4,14 @@ use super::{
     CoordinatePoint, GspFile, LegacyCoordinateConstructPoint, ObjectGroup,
     ParameterControlledPoint, PointRecord, RawPointConstraint, TransformBindingKind,
     decode_coordinate_point, decode_custom_transform_binding, decode_expression_offset_binding,
-    decode_expression_rotation_binding, decode_expression_scale_binding,
-    decode_iteration_binding_point_alias_raw, decode_legacy_coordinate_construct_point,
-    decode_reflection_anchor_raw, decode_translated_point_constraint,
-    reflection_line_group_indices, regular_polygon_angle_expr_for_calc_group,
-    translation_point_pair_group_indices, try_decode_angle_rotation_binding,
-    try_decode_parameter_controlled_point, try_decode_parameter_rotation_binding,
-    try_decode_point_constraint, try_decode_transform_binding,
+    decode_expression_ratio_scale_binding, decode_expression_rotation_binding,
+    decode_expression_scale_binding, decode_iteration_binding_point_alias_raw,
+    decode_legacy_coordinate_construct_point, decode_reflection_anchor_raw,
+    decode_translated_point_constraint, reflection_line_group_indices,
+    regular_polygon_angle_expr_for_calc_group, translation_point_pair_group_indices,
+    try_decode_angle_rotation_binding, try_decode_parameter_controlled_point,
+    try_decode_parameter_rotation_binding, try_decode_point_constraint,
+    try_decode_transform_binding,
 };
 use crate::runtime::extract::context::SceneContext;
 use crate::runtime::extract::decode::{
@@ -246,9 +247,48 @@ fn scene_point_from_ratio_scale(
                 ratio_origin_index,
                 ratio_denominator_index,
                 ratio_numerator_index,
+                signed: true,
+                clamp_to_unit: false,
             }),
         ))
     })
+}
+
+fn scene_point_from_expression_ratio_scale(
+    index: usize,
+    group: &ObjectGroup,
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group_to_point_index: &[Option<usize>],
+    visible: bool,
+) -> Option<ScenePoint> {
+    let binding = decode_expression_ratio_scale_binding(file, groups, group, anchors)?;
+    let position = anchors.get(index).cloned().flatten()?;
+    let source_index = mapped_point_index(group_to_point_index, binding.source_group_index)?;
+    let center_index = mapped_point_index(group_to_point_index, binding.center_group_index)?;
+    let ratio_origin_index =
+        mapped_point_index(group_to_point_index, binding.ratio_origin_group_index)?;
+    let ratio_denominator_index =
+        mapped_point_index(group_to_point_index, binding.ratio_denominator_group_index)?;
+    let ratio_numerator_index =
+        mapped_point_index(group_to_point_index, binding.ratio_numerator_group_index)?;
+    Some(scene_point(
+        position,
+        group_color(group),
+        visible,
+        false,
+        ScenePointConstraint::Free,
+        Some(ScenePointBinding::ScaleByRatio {
+            source_index,
+            center_index,
+            ratio_origin_index,
+            ratio_denominator_index,
+            ratio_numerator_index,
+            signed: false,
+            clamp_to_unit: true,
+        }),
+    ))
 }
 
 fn build_group_to_point_index(included_groups: &[bool]) -> Vec<Option<usize>> {
@@ -650,6 +690,17 @@ fn build_scene_point_for_group(
             };
             (|| {
                 if kind == crate::format::GroupKind::ExpressionRotation {
+                    if let Some(point) = scene_point_from_expression_ratio_scale(
+                        index,
+                        group,
+                        file,
+                        groups,
+                        anchors,
+                        group_to_point_index,
+                        visible,
+                    ) {
+                        return Some(point);
+                    }
                     if let Some(binding) =
                         decode_expression_scale_binding(file, groups, group, anchors)
                     {
@@ -993,6 +1044,17 @@ fn build_scene_point_for_group_checked(
                                 factor_parameter_end_index: Some(angle_parameter_end_index),
                             }),
                         ));
+                    }
+                    if let Some(point) = scene_point_from_expression_ratio_scale(
+                        index,
+                        group,
+                        file,
+                        groups,
+                        anchors,
+                        group_to_point_index,
+                        visible,
+                    ) {
+                        return Some(point);
                     }
                     if let Some(binding) =
                         decode_expression_scale_binding(file, groups, group, anchors)
