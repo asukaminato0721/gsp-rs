@@ -1,7 +1,7 @@
 use super::decode::{decode_label_name, find_indexed_path};
 use crate::format::{GspFile, ObjectGroup};
 use crate::runtime::functions::{
-    BinaryOp, FunctionAst, FunctionExpr, UnaryFunction, try_decode_function_expr,
+    BinaryOp, FunctionAst, FunctionExpr, UnaryFunction, function_expr_ast, try_decode_function_expr,
 };
 
 pub(super) fn decode_iteration_depth_expr(
@@ -49,32 +49,4 @@ fn decoded_expr_is_placeholder_minus_one(
             if matches!(*lhs, FunctionAst::Parameter(_, _))
                 && matches!(*rhs, FunctionAst::Constant(value) if (value - 1.0).abs() < 1e-9)
     )
-}
-
-fn function_expr_ast(expr: FunctionExpr) -> FunctionAst {
-    match expr {
-        FunctionExpr::Constant(value) => FunctionAst::Constant(value),
-        FunctionExpr::Identity => FunctionAst::Variable,
-        FunctionExpr::SinIdentity => FunctionAst::Unary {
-            op: UnaryFunction::Sin,
-            expr: Box::new(FunctionAst::Variable),
-        },
-        FunctionExpr::CosIdentityPlus(offset) => FunctionAst::Binary {
-            lhs: Box::new(FunctionAst::Unary {
-                op: UnaryFunction::Cos,
-                expr: Box::new(FunctionAst::Variable),
-            }),
-            op: BinaryOp::Add,
-            rhs: Box::new(FunctionAst::Constant(offset)),
-        },
-        FunctionExpr::TanIdentityMinus(offset) => FunctionAst::Binary {
-            lhs: Box::new(FunctionAst::Unary {
-                op: UnaryFunction::Tan,
-                expr: Box::new(FunctionAst::Variable),
-            }),
-            op: BinaryOp::Sub,
-            rhs: Box::new(FunctionAst::Constant(offset)),
-        },
-        FunctionExpr::Parsed(ast) => ast,
-    }
 }

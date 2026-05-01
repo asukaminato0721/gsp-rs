@@ -2,10 +2,13 @@ use super::*;
 
 #[test]
 fn exports_scaled_circle_intersections_fixture_with_live_constraints() {
-    let Some(data) = fixture_bytes("tests/fixtures/bug/圆的伸缩变换.gsp") else {
+    let Some(output) = standard_fixture_output(
+        "scaled-circle-intersections",
+        "tests/fixtures/bug/圆的伸缩变换.gsp",
+    ) else {
         return;
     };
-    let scene = fixture_scene(&data, "scaled-circle intersection fixture should compile");
+    let scene = &output.scene;
     let bounds = &scene["bounds"];
     assert!(
         bounds["minX"].as_f64().is_some_and(|min_x| min_x < 832.0)
@@ -46,11 +49,12 @@ fn exports_scaled_circle_intersections_fixture_with_live_constraints() {
                 && point["constraint"]["right"]["transform"]["kind"].as_str() == Some("scale"))
     }));
 
-    let html = fixture_html(&data, "scaled-circle intersection fixture should compile");
     assert!(
-        html.contains("function circleCircleIntersection("),
+        output.html.contains("function circleCircleIntersection("),
         "expected live circular intersections to pull in the intersections runtime"
     );
+    assert!(output.payload_log.contains("问题数量: 0"));
+    assert!(output.payload_log.contains("伸缩"));
 }
 
 #[test]

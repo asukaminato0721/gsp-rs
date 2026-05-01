@@ -65,12 +65,34 @@ impl<'a> SceneContext<'a> {
         self.groups.get(ordinal.checked_sub(1)?)
     }
 
+    pub(crate) fn group_index_by_ordinal(&self, ordinal: usize) -> Option<usize> {
+        let index = ordinal.checked_sub(1)?;
+        self.groups.get(index)?;
+        Some(index)
+    }
+
     pub(crate) fn indexed_path(&self, group: &ObjectGroup) -> Option<&IndexedPathRecord> {
         self.indexed_paths
             .get(group.ordinal.checked_sub(1)?)?
             .as_ref()
             .ok()
             .and_then(Option::as_ref)
+    }
+
+    pub(crate) fn path_ref_group_index(
+        &self,
+        path: &IndexedPathRecord,
+        ref_index: usize,
+    ) -> Option<usize> {
+        self.group_index_by_ordinal(*path.refs.get(ref_index)?)
+    }
+
+    pub(crate) fn path_ref_group(
+        &self,
+        path: &IndexedPathRecord,
+        ref_index: usize,
+    ) -> Option<&'a ObjectGroup> {
+        self.group(self.path_ref_group_index(path, ref_index)?)
     }
 
     pub(crate) fn referrers(&self, ordinal: usize) -> &[usize] {

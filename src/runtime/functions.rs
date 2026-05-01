@@ -13,7 +13,8 @@ pub(crate) use decode::{
 pub(crate) use eval::evaluate_expr_with_parameters;
 pub(crate) use expr::{
     BinaryOp, FunctionAst, FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode, UnaryFunction,
-    function_expr_contains_variable, function_expr_label, function_expr_label_with_variable,
+    function_expr_ast, function_expr_contains_variable, function_expr_label,
+    function_expr_label_with_variable,
 };
 pub(crate) use plot::{
     collect_function_plot_domain, collect_function_plots, sample_plot_segments,

@@ -1,8 +1,8 @@
 use super::{
     CircleShape, GspFile, LineBinding, LineShape, ObjectGroup, PointRecord, PolygonShape,
-    ShapeBinding, TransformBindingKind, collect_circle_fill_colors, color_from_style,
-    fill_color_from_styles, find_indexed_path, has_distinct_points, is_circle_group_kind,
-    line_is_dashed, payload_debug_source, reflect_across_line, rotate_around, scale_around,
+    SceneContext, ShapeBinding, TransformBindingKind, collect_circle_fill_colors, color_from_style,
+    fill_color_from_styles, has_distinct_points, is_circle_group_kind, line_is_dashed,
+    payload_debug_source, reflect_across_line, rotate_around, scale_around,
     translation_point_pair_group_indices, try_decode_parameter_rotation_binding,
     try_decode_transform_binding,
 };
@@ -15,6 +15,7 @@ use crate::runtime::scene::{
 pub(crate) fn collect_rotated_line_shapes(
     file: &GspFile,
     groups: &[ObjectGroup],
+    context: &SceneContext<'_>,
     anchors: &[Option<PointRecord>],
 ) -> Vec<LineShape> {
     groups
@@ -22,37 +23,29 @@ pub(crate) fn collect_rotated_line_shapes(
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::ParameterRotation)
         .filter_map(|group| {
             let binding = try_decode_parameter_rotation_binding(file, groups, group).ok()?;
-            let path = find_indexed_path(file, group)?;
-            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            let path = context.indexed_path(group)?;
+            let source_group_index = context.path_ref_group_index(path, 0)?;
+            let source_group = context.path_ref_group(path, 0)?;
             if (source_group.header.kind()) != crate::format::GroupKind::Segment {
                 return None;
             }
-            let source_path = find_indexed_path(file, source_group)?;
             let center = anchors.get(binding.center_group_index)?.clone()?;
             let radians = binding_angle_radians(&binding.kind)?;
-            let points = source_path
-                .refs
-                .iter()
-                .filter_map(|object_ref| {
-                    anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
-                })
+            let points = source_path_points(context, anchors, source_group)?
+                .into_iter()
                 .map(|point| rotate_around(&point, &center, radians))
                 .collect::<Vec<_>>();
-            (points.len() >= 2 && has_distinct_points(&points)).then_some(LineShape {
+            derived_line_shape(
+                group,
+                source_group_index,
+                source_group,
                 points,
-                color: color_from_style(source_group.header.style_b),
-                dashed: line_is_dashed(source_group.header.style_a),
-                visible: !group.header.is_hidden(),
-                binding: Some(LineBinding::DerivedTransform {
-                    source_index: path.refs.first()?.checked_sub(1)?,
-                    transform: LineTransformBinding::Rotate(RotationBinding {
-                        center_index: binding.center_group_index,
-                        angle_degrees: binding_angle_degrees(&binding.kind)?,
-                        parameter_name: binding_parameter_name(&binding.kind),
-                    }),
+                LineTransformBinding::Rotate(RotationBinding {
+                    center_index: binding.center_group_index,
+                    angle_degrees: binding_angle_degrees(&binding.kind)?,
+                    parameter_name: binding_parameter_name(&binding.kind),
                 }),
-                debug: Some(payload_debug_source(group)),
-            })
+            )
         })
         .collect()
 }
@@ -60,46 +53,38 @@ pub(crate) fn collect_rotated_line_shapes(
 pub(crate) fn collect_translated_line_shapes(
     file: &GspFile,
     groups: &[ObjectGroup],
+    context: &SceneContext<'_>,
     anchors: &[Option<PointRecord>],
 ) -> Vec<LineShape> {
     groups
         .iter()
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::Translation)
         .filter_map(|group| {
-            let path = find_indexed_path(file, group)?;
-            let source_group_index = path.refs.first()?.checked_sub(1)?;
-            let source_group = groups.get(source_group_index)?;
+            let path = context.indexed_path(group)?;
+            let source_group_index = context.path_ref_group_index(path, 0)?;
+            let source_group = context.path_ref_group(path, 0)?;
             if (source_group.header.kind()) != crate::format::GroupKind::Segment {
                 return None;
             }
             let (dx, dy, vector_start_index, vector_end_index) =
                 translation_delta(file, group, anchors)?;
-            let source_path = find_indexed_path(file, source_group)?;
-            let points = source_path
-                .refs
-                .iter()
-                .filter_map(|object_ref| {
-                    anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
-                })
+            let points = source_path_points(context, anchors, source_group)?
+                .into_iter()
                 .map(|point| PointRecord {
                     x: point.x + dx,
                     y: point.y + dy,
                 })
                 .collect::<Vec<_>>();
-            (points.len() >= 2 && has_distinct_points(&points)).then_some(LineShape {
+            derived_line_shape(
+                group,
+                source_group_index,
+                source_group,
                 points,
-                color: color_from_style(source_group.header.style_b),
-                dashed: line_is_dashed(source_group.header.style_a),
-                visible: !group.header.is_hidden(),
-                binding: Some(LineBinding::DerivedTransform {
-                    source_index: source_group_index,
-                    transform: LineTransformBinding::Translate {
-                        vector_start_index,
-                        vector_end_index,
-                    },
-                }),
-                debug: Some(payload_debug_source(group)),
-            })
+                LineTransformBinding::Translate {
+                    vector_start_index,
+                    vector_end_index,
+                },
+            )
         })
         .collect()
 }
@@ -107,6 +92,7 @@ pub(crate) fn collect_translated_line_shapes(
 pub(crate) fn collect_scaled_line_shapes(
     file: &GspFile,
     groups: &[ObjectGroup],
+    context: &SceneContext<'_>,
     anchors: &[Option<PointRecord>],
 ) -> Vec<LineShape> {
     groups
@@ -117,35 +103,27 @@ pub(crate) fn collect_scaled_line_shapes(
             let TransformBindingKind::Scale { factor } = binding.kind else {
                 return None;
             };
-            let path = find_indexed_path(file, group)?;
-            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            let path = context.indexed_path(group)?;
+            let source_group_index = context.path_ref_group_index(path, 0)?;
+            let source_group = context.path_ref_group(path, 0)?;
             if (source_group.header.kind()) != crate::format::GroupKind::Segment {
                 return None;
             }
-            let source_path = find_indexed_path(file, source_group)?;
             let center = anchors.get(binding.center_group_index)?.clone()?;
-            let points = source_path
-                .refs
-                .iter()
-                .filter_map(|object_ref| {
-                    anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
-                })
+            let points = source_path_points(context, anchors, source_group)?
+                .into_iter()
                 .map(|point| scale_around(&point, &center, factor))
                 .collect::<Vec<_>>();
-            (points.len() >= 2 && has_distinct_points(&points)).then_some(LineShape {
+            derived_line_shape(
+                group,
+                source_group_index,
+                source_group,
                 points,
-                color: color_from_style(source_group.header.style_b),
-                dashed: line_is_dashed(source_group.header.style_a),
-                visible: !group.header.is_hidden(),
-                binding: Some(LineBinding::DerivedTransform {
-                    source_index: path.refs.first()?.checked_sub(1)?,
-                    transform: LineTransformBinding::Scale(ScaleBinding {
-                        center_index: binding.center_group_index,
-                        factor,
-                    }),
+                LineTransformBinding::Scale(ScaleBinding {
+                    center_index: binding.center_group_index,
+                    factor,
                 }),
-                debug: Some(payload_debug_source(group)),
-            })
+            )
         })
         .collect()
 }
@@ -153,6 +131,7 @@ pub(crate) fn collect_scaled_line_shapes(
 pub(crate) fn collect_reflected_line_shapes(
     file: &GspFile,
     groups: &[ObjectGroup],
+    context: &SceneContext<'_>,
     anchors: &[Option<PointRecord>],
 ) -> Vec<LineShape> {
     groups
@@ -164,39 +143,31 @@ pub(crate) fn collect_reflected_line_shapes(
             )
         })
         .filter_map(|group| {
-            let path = find_indexed_path(file, group)?;
-            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            let path = context.indexed_path(group)?;
+            let source_group_index = context.path_ref_group_index(path, 0)?;
+            let source_group = context.path_ref_group(path, 0)?;
             if (source_group.header.kind()) != crate::format::GroupKind::Segment {
                 return None;
             }
-            let line_group_index = path.refs.get(1)?.checked_sub(1)?;
-            let line_group = groups.get(line_group_index)?;
-            let source_path = find_indexed_path(file, source_group)?;
+            let line_group_index = context.path_ref_group_index(path, 1)?;
+            let line_group = context.path_ref_group(path, 1)?;
             let (line_start, line_end) =
                 resolve_line_like_points_raw(file, groups, anchors, line_group)?;
-            let points = source_path
-                .refs
-                .iter()
-                .filter_map(|object_ref| {
-                    anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
-                })
+            let points = source_path_points(context, anchors, source_group)?
+                .into_iter()
                 .filter_map(|point| reflect_across_line(&point, &line_start, &line_end))
                 .collect::<Vec<_>>();
-            (points.len() >= 2 && has_distinct_points(&points)).then_some(LineShape {
+            derived_line_shape(
+                group,
+                source_group_index,
+                source_group,
                 points,
-                color: color_from_style(source_group.header.style_b),
-                dashed: line_is_dashed(source_group.header.style_a),
-                visible: !group.header.is_hidden(),
-                binding: Some(LineBinding::DerivedTransform {
-                    source_index: path.refs.first()?.checked_sub(1)?,
-                    transform: LineTransformBinding::Reflect(AxisBinding {
-                        line_start_index: None,
-                        line_end_index: None,
-                        line_index: Some(line_group_index),
-                    }),
+                LineTransformBinding::Reflect(AxisBinding {
+                    line_start_index: None,
+                    line_end_index: None,
+                    line_index: Some(line_group_index),
                 }),
-                debug: Some(payload_debug_source(group)),
-            })
+            )
         })
         .collect()
 }
@@ -204,6 +175,7 @@ pub(crate) fn collect_reflected_line_shapes(
 pub(crate) fn collect_rotated_circle_shapes(
     file: &GspFile,
     groups: &[ObjectGroup],
+    context: &SceneContext<'_>,
     anchors: &[Option<PointRecord>],
 ) -> Vec<CircleShape> {
     let circle_fill_colors = collect_circle_fill_colors(file, groups, anchors);
@@ -212,32 +184,28 @@ pub(crate) fn collect_rotated_circle_shapes(
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::ParameterRotation)
         .filter_map(|group| {
             let binding = try_decode_parameter_rotation_binding(file, groups, group).ok()?;
-            let path = find_indexed_path(file, group)?;
-            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            let path = context.indexed_path(group)?;
+            let source_group_index = context.path_ref_group_index(path, 0)?;
+            let source_group = context.path_ref_group(path, 0)?;
             let center = anchors.get(binding.center_group_index)?.clone()?;
             let radians = binding_angle_radians(&binding.kind)?;
             let (source_center, source_radius) =
                 resolve_circle_points_raw(file, groups, anchors, source_group)?;
-            let source_fill = circle_fill_colors.get(&(path.refs.first()?.checked_sub(1)?));
-            Some(CircleShape {
-                center: rotate_around(&source_center, &center, radians),
-                radius_point: rotate_around(&source_radius, &center, radians),
-                color: color_from_style(source_group.header.style_b),
-                fill_color: source_fill.map(|fill| fill.0),
-                fill_visible: source_fill.is_some_and(|fill| fill.1),
-                fill_color_binding: None,
-                dashed: line_is_dashed(source_group.header.style_a),
-                visible: !group.header.is_hidden(),
-                binding: Some(ShapeBinding::DerivedTransform {
-                    source_index: path.refs.first()?.checked_sub(1)?,
-                    transform: ShapeTransformBinding::Rotate(RotationBinding {
-                        center_index: binding.center_group_index,
-                        angle_degrees: binding_angle_degrees(&binding.kind)?,
-                        parameter_name: binding_parameter_name(&binding.kind),
-                    }),
+            let source_fill = circle_fill_colors.get(&source_group_index);
+            Some(derived_circle_shape(
+                group,
+                source_group_index,
+                source_group,
+                source_group,
+                rotate_around(&source_center, &center, radians),
+                rotate_around(&source_radius, &center, radians),
+                source_fill,
+                ShapeTransformBinding::Rotate(RotationBinding {
+                    center_index: binding.center_group_index,
+                    angle_degrees: binding_angle_degrees(&binding.kind)?,
+                    parameter_name: binding_parameter_name(&binding.kind),
                 }),
-                debug: Some(payload_debug_source(group)),
-            })
+            ))
         })
         .collect()
 }
@@ -245,6 +213,7 @@ pub(crate) fn collect_rotated_circle_shapes(
 pub(crate) fn collect_translated_circle_shapes(
     file: &GspFile,
     groups: &[ObjectGroup],
+    context: &SceneContext<'_>,
     anchors: &[Option<PointRecord>],
 ) -> Vec<CircleShape> {
     let circle_fill_colors = collect_circle_fill_colors(file, groups, anchors);
@@ -260,9 +229,9 @@ pub(crate) fn collect_translated_circle_shapes(
         })
         .filter_map(|group| {
             if group.header.kind() == crate::format::GroupKind::Translation {
-                let path = find_indexed_path(file, group)?;
-                let source_group_index = path.refs.first()?.checked_sub(1)?;
-                let source_group = groups.get(source_group_index)?;
+                let path = context.indexed_path(group)?;
+                let source_group_index = context.path_ref_group_index(path, 0)?;
+                let source_group = context.path_ref_group(path, 0)?;
                 if !is_circle_group_kind(source_group.header.kind()) {
                     return None;
                 }
@@ -271,30 +240,25 @@ pub(crate) fn collect_translated_circle_shapes(
                 let (source_center, source_radius) =
                     resolve_circle_points_raw(file, groups, anchors, source_group)?;
                 let source_fill = circle_fill_colors.get(&source_group_index);
-                return Some(CircleShape {
-                    center: PointRecord {
+                return Some(derived_circle_shape(
+                    group,
+                    source_group_index,
+                    source_group,
+                    group,
+                    PointRecord {
                         x: source_center.x + dx,
                         y: source_center.y + dy,
                     },
-                    radius_point: PointRecord {
+                    PointRecord {
                         x: source_radius.x + dx,
                         y: source_radius.y + dy,
                     },
-                    color: color_from_style(group.header.style_b),
-                    fill_color: source_fill.map(|fill| fill.0),
-                    fill_visible: source_fill.is_some_and(|fill| fill.1),
-                    fill_color_binding: None,
-                    dashed: line_is_dashed(source_group.header.style_a),
-                    visible: !group.header.is_hidden(),
-                    binding: Some(ShapeBinding::DerivedTransform {
-                        source_index: source_group_index,
-                        transform: ShapeTransformBinding::TranslateVector {
-                            vector_start_index,
-                            vector_end_index,
-                        },
-                    }),
-                    debug: Some(payload_debug_source(group)),
-                });
+                    source_fill,
+                    ShapeTransformBinding::TranslateVector {
+                        vector_start_index,
+                        vector_end_index,
+                    },
+                ));
             }
             let constraint = super::decode_translated_point_constraint(file, group)?;
             let source_group_index = constraint.origin_group_index;
@@ -302,30 +266,25 @@ pub(crate) fn collect_translated_circle_shapes(
             let (source_center, source_radius) =
                 resolve_circle_points_raw(file, groups, anchors, source_group)?;
             let source_fill = circle_fill_colors.get(&source_group_index);
-            Some(CircleShape {
-                center: PointRecord {
+            Some(derived_circle_shape(
+                group,
+                source_group_index,
+                source_group,
+                source_group,
+                PointRecord {
                     x: source_center.x + constraint.dx,
                     y: source_center.y + constraint.dy,
                 },
-                radius_point: PointRecord {
+                PointRecord {
                     x: source_radius.x + constraint.dx,
                     y: source_radius.y + constraint.dy,
                 },
-                color: color_from_style(source_group.header.style_b),
-                fill_color: source_fill.map(|fill| fill.0),
-                fill_visible: source_fill.is_some_and(|fill| fill.1),
-                fill_color_binding: None,
-                dashed: line_is_dashed(source_group.header.style_a),
-                visible: !group.header.is_hidden(),
-                binding: Some(ShapeBinding::DerivedTransform {
-                    source_index: source_group_index,
-                    transform: ShapeTransformBinding::TranslateDelta {
-                        dx: constraint.dx,
-                        dy: constraint.dy,
-                    },
-                }),
-                debug: Some(payload_debug_source(group)),
-            })
+                source_fill,
+                ShapeTransformBinding::TranslateDelta {
+                    dx: constraint.dx,
+                    dy: constraint.dy,
+                },
+            ))
         })
         .collect()
 }
@@ -333,47 +292,38 @@ pub(crate) fn collect_translated_circle_shapes(
 pub(crate) fn collect_translated_polygon_shapes(
     file: &GspFile,
     groups: &[ObjectGroup],
+    context: &SceneContext<'_>,
     anchors: &[Option<PointRecord>],
 ) -> Vec<PolygonShape> {
     groups
         .iter()
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::Translation)
         .filter_map(|group| {
-            let path = find_indexed_path(file, group)?;
-            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            let path = context.indexed_path(group)?;
+            let source_group_index = context.path_ref_group_index(path, 0)?;
+            let source_group = context.path_ref_group(path, 0)?;
             if (source_group.header.kind()) != crate::format::GroupKind::Polygon {
                 return None;
             }
             let (dx, dy, vector_start_index, vector_end_index) =
                 translation_delta(file, group, anchors)?;
-            let source_path = find_indexed_path(file, source_group)?;
-            let points = source_path
-                .refs
-                .iter()
-                .filter_map(|object_ref| {
-                    anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
-                })
+            let points = source_path_points(context, anchors, source_group)?
+                .into_iter()
                 .map(|point| PointRecord {
                     x: point.x + dx,
                     y: point.y + dy,
                 })
                 .collect::<Vec<_>>();
-            (points.len() >= 3).then_some(PolygonShape {
+            derived_polygon_shape(
+                group,
+                source_group_index,
+                source_group,
                 points,
-                color: fill_color_from_styles(
-                    source_group.header.style_b,
-                    source_group.header.style_c,
-                ),
-                visible: !group.header.is_hidden(),
-                binding: Some(ShapeBinding::DerivedTransform {
-                    source_index: path.refs.first()?.checked_sub(1)?,
-                    transform: ShapeTransformBinding::TranslateVector {
-                        vector_start_index,
-                        vector_end_index,
-                    },
-                }),
-                debug: Some(payload_debug_source(group)),
-            })
+                ShapeTransformBinding::TranslateVector {
+                    vector_start_index,
+                    vector_end_index,
+                },
+            )
         })
         .collect()
 }
@@ -381,6 +331,7 @@ pub(crate) fn collect_translated_polygon_shapes(
 pub(crate) fn collect_transformed_circle_shapes(
     file: &GspFile,
     groups: &[ObjectGroup],
+    context: &SceneContext<'_>,
     anchors: &[Option<PointRecord>],
 ) -> Vec<CircleShape> {
     let circle_fill_colors = collect_circle_fill_colors(file, groups, anchors);
@@ -392,30 +343,26 @@ pub(crate) fn collect_transformed_circle_shapes(
             let TransformBindingKind::Scale { factor } = binding.kind else {
                 return None;
             };
-            let path = find_indexed_path(file, group)?;
-            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            let path = context.indexed_path(group)?;
+            let source_group_index = context.path_ref_group_index(path, 0)?;
+            let source_group = context.path_ref_group(path, 0)?;
             let scale_center = anchors.get(binding.center_group_index)?.clone()?;
             let (source_center, source_radius) =
                 resolve_circle_points_raw(file, groups, anchors, source_group)?;
-            let source_fill = circle_fill_colors.get(&(path.refs.first()?.checked_sub(1)?));
-            Some(CircleShape {
-                center: scale_around(&source_center, &scale_center, factor),
-                radius_point: scale_around(&source_radius, &scale_center, factor),
-                color: color_from_style(source_group.header.style_b),
-                fill_color: source_fill.map(|fill| fill.0),
-                fill_visible: source_fill.is_some_and(|fill| fill.1),
-                fill_color_binding: None,
-                dashed: line_is_dashed(source_group.header.style_a),
-                visible: !group.header.is_hidden(),
-                binding: Some(ShapeBinding::DerivedTransform {
-                    source_index: path.refs.first()?.checked_sub(1)?,
-                    transform: ShapeTransformBinding::Scale(ScaleBinding {
-                        center_index: binding.center_group_index,
-                        factor,
-                    }),
+            let source_fill = circle_fill_colors.get(&source_group_index);
+            Some(derived_circle_shape(
+                group,
+                source_group_index,
+                source_group,
+                source_group,
+                scale_around(&source_center, &scale_center, factor),
+                scale_around(&source_radius, &scale_center, factor),
+                source_fill,
+                ShapeTransformBinding::Scale(ScaleBinding {
+                    center_index: binding.center_group_index,
+                    factor,
                 }),
-                debug: Some(payload_debug_source(group)),
-            })
+            ))
         })
         .collect()
 }
@@ -423,6 +370,7 @@ pub(crate) fn collect_transformed_circle_shapes(
 pub(crate) fn collect_rotated_polygon_shapes(
     file: &GspFile,
     groups: &[ObjectGroup],
+    context: &SceneContext<'_>,
     anchors: &[Option<PointRecord>],
 ) -> Vec<PolygonShape> {
     groups
@@ -430,39 +378,29 @@ pub(crate) fn collect_rotated_polygon_shapes(
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::ParameterRotation)
         .filter_map(|group| {
             let binding = try_decode_parameter_rotation_binding(file, groups, group).ok()?;
-            let path = find_indexed_path(file, group)?;
-            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            let path = context.indexed_path(group)?;
+            let source_group_index = context.path_ref_group_index(path, 0)?;
+            let source_group = context.path_ref_group(path, 0)?;
             if (source_group.header.kind()) != crate::format::GroupKind::Polygon {
                 return None;
             }
-            let source_path = find_indexed_path(file, source_group)?;
             let center = anchors.get(binding.center_group_index)?.clone()?;
             let radians = binding_angle_radians(&binding.kind)?;
-            let points = source_path
-                .refs
-                .iter()
-                .filter_map(|object_ref| {
-                    anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
-                })
+            let points = source_path_points(context, anchors, source_group)?
+                .into_iter()
                 .map(|point| rotate_around(&point, &center, radians))
                 .collect::<Vec<_>>();
-            (points.len() >= 3).then_some(PolygonShape {
+            derived_polygon_shape(
+                group,
+                source_group_index,
+                source_group,
                 points,
-                color: fill_color_from_styles(
-                    source_group.header.style_b,
-                    source_group.header.style_c,
-                ),
-                visible: !group.header.is_hidden(),
-                binding: Some(ShapeBinding::DerivedTransform {
-                    source_index: path.refs.first()?.checked_sub(1)?,
-                    transform: ShapeTransformBinding::Rotate(RotationBinding {
-                        center_index: binding.center_group_index,
-                        angle_degrees: binding_angle_degrees(&binding.kind)?,
-                        parameter_name: binding_parameter_name(&binding.kind),
-                    }),
+                ShapeTransformBinding::Rotate(RotationBinding {
+                    center_index: binding.center_group_index,
+                    angle_degrees: binding_angle_degrees(&binding.kind)?,
+                    parameter_name: binding_parameter_name(&binding.kind),
                 }),
-                debug: Some(payload_debug_source(group)),
-            })
+            )
         })
         .collect()
 }
@@ -470,6 +408,7 @@ pub(crate) fn collect_rotated_polygon_shapes(
 pub(crate) fn collect_transformed_polygon_shapes(
     file: &GspFile,
     groups: &[ObjectGroup],
+    context: &SceneContext<'_>,
     anchors: &[Option<PointRecord>],
 ) -> Vec<PolygonShape> {
     groups
@@ -480,37 +419,27 @@ pub(crate) fn collect_transformed_polygon_shapes(
             let TransformBindingKind::Scale { factor } = binding.kind else {
                 return None;
             };
-            let path = find_indexed_path(file, group)?;
-            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            let path = context.indexed_path(group)?;
+            let source_group_index = context.path_ref_group_index(path, 0)?;
+            let source_group = context.path_ref_group(path, 0)?;
             if (source_group.header.kind()) != crate::format::GroupKind::Polygon {
                 return None;
             }
-            let source_path = find_indexed_path(file, source_group)?;
             let scale_center = anchors.get(binding.center_group_index)?.clone()?;
-            let points = source_path
-                .refs
-                .iter()
-                .filter_map(|object_ref| {
-                    anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
-                })
+            let points = source_path_points(context, anchors, source_group)?
+                .into_iter()
                 .map(|point| scale_around(&point, &scale_center, factor))
                 .collect::<Vec<_>>();
-            (points.len() >= 3).then_some(PolygonShape {
+            derived_polygon_shape(
+                group,
+                source_group_index,
+                source_group,
                 points,
-                color: fill_color_from_styles(
-                    source_group.header.style_b,
-                    source_group.header.style_c,
-                ),
-                visible: !group.header.is_hidden(),
-                binding: Some(ShapeBinding::DerivedTransform {
-                    source_index: path.refs.first()?.checked_sub(1)?,
-                    transform: ShapeTransformBinding::Scale(ScaleBinding {
-                        center_index: binding.center_group_index,
-                        factor,
-                    }),
+                ShapeTransformBinding::Scale(ScaleBinding {
+                    center_index: binding.center_group_index,
+                    factor,
                 }),
-                debug: Some(payload_debug_source(group)),
-            })
+            )
         })
         .collect()
 }
@@ -518,6 +447,7 @@ pub(crate) fn collect_transformed_polygon_shapes(
 pub(crate) fn collect_reflected_circle_shapes(
     file: &GspFile,
     groups: &[ObjectGroup],
+    context: &SceneContext<'_>,
     anchors: &[Option<PointRecord>],
 ) -> Vec<CircleShape> {
     let circle_fill_colors = collect_circle_fill_colors(file, groups, anchors);
@@ -525,36 +455,32 @@ pub(crate) fn collect_reflected_circle_shapes(
         .iter()
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::Reflection)
         .filter_map(|group| {
-            let path = find_indexed_path(file, group)?;
-            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            let line_group_index = path.refs.get(1)?.checked_sub(1)?;
-            let line_group = groups.get(line_group_index)?;
+            let path = context.indexed_path(group)?;
+            let source_group_index = context.path_ref_group_index(path, 0)?;
+            let source_group = context.path_ref_group(path, 0)?;
+            let line_group_index = context.path_ref_group_index(path, 1)?;
+            let line_group = context.path_ref_group(path, 1)?;
             let (source_center, source_radius) =
                 resolve_circle_points_raw(file, groups, anchors, source_group)?;
             let (line_start, line_end) =
                 resolve_line_like_points_raw(file, groups, anchors, line_group)?;
             let center = reflect_across_line(&source_center, &line_start, &line_end)?;
             let radius_point = reflect_across_line(&source_radius, &line_start, &line_end)?;
-            let source_fill = circle_fill_colors.get(&(path.refs.first()?.checked_sub(1)?));
-            Some(CircleShape {
+            let source_fill = circle_fill_colors.get(&source_group_index);
+            Some(derived_circle_shape(
+                group,
+                source_group_index,
+                source_group,
+                source_group,
                 center,
                 radius_point,
-                color: color_from_style(source_group.header.style_b),
-                fill_color: source_fill.map(|fill| fill.0),
-                fill_visible: source_fill.is_some_and(|fill| fill.1),
-                fill_color_binding: None,
-                dashed: line_is_dashed(source_group.header.style_a),
-                visible: !group.header.is_hidden(),
-                binding: Some(ShapeBinding::DerivedTransform {
-                    source_index: path.refs.first()?.checked_sub(1)?,
-                    transform: ShapeTransformBinding::Reflect(AxisBinding {
-                        line_start_index: None,
-                        line_end_index: None,
-                        line_index: Some(line_group_index),
-                    }),
+                source_fill,
+                ShapeTransformBinding::Reflect(AxisBinding {
+                    line_start_index: None,
+                    line_end_index: None,
+                    line_index: Some(line_group_index),
                 }),
-                debug: Some(payload_debug_source(group)),
-            })
+            ))
         })
         .collect()
 }
@@ -562,49 +488,121 @@ pub(crate) fn collect_reflected_circle_shapes(
 pub(crate) fn collect_reflected_polygon_shapes(
     file: &GspFile,
     groups: &[ObjectGroup],
+    context: &SceneContext<'_>,
     anchors: &[Option<PointRecord>],
 ) -> Vec<PolygonShape> {
     groups
         .iter()
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::Reflection)
         .filter_map(|group| {
-            let path = find_indexed_path(file, group)?;
-            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            let path = context.indexed_path(group)?;
+            let source_group_index = context.path_ref_group_index(path, 0)?;
+            let source_group = context.path_ref_group(path, 0)?;
             if (source_group.header.kind()) != crate::format::GroupKind::Polygon {
                 return None;
             }
-            let line_group_index = path.refs.get(1)?.checked_sub(1)?;
-            let line_group = groups.get(line_group_index)?;
-            let source_path = find_indexed_path(file, source_group)?;
+            let line_group_index = context.path_ref_group_index(path, 1)?;
+            let line_group = context.path_ref_group(path, 1)?;
             let (line_start, line_end) =
                 resolve_line_like_points_raw(file, groups, anchors, line_group)?;
-            let points = source_path
-                .refs
-                .iter()
-                .filter_map(|object_ref| {
-                    anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
-                })
+            let points = source_path_points(context, anchors, source_group)?
+                .into_iter()
                 .filter_map(|point| reflect_across_line(&point, &line_start, &line_end))
                 .collect::<Vec<_>>();
-            (points.len() >= 3).then_some(PolygonShape {
+            derived_polygon_shape(
+                group,
+                source_group_index,
+                source_group,
                 points,
-                color: fill_color_from_styles(
-                    source_group.header.style_b,
-                    source_group.header.style_c,
-                ),
-                visible: !group.header.is_hidden(),
-                binding: Some(ShapeBinding::DerivedTransform {
-                    source_index: path.refs.first()?.checked_sub(1)?,
-                    transform: ShapeTransformBinding::Reflect(AxisBinding {
-                        line_start_index: None,
-                        line_end_index: None,
-                        line_index: Some(line_group_index),
-                    }),
+                ShapeTransformBinding::Reflect(AxisBinding {
+                    line_start_index: None,
+                    line_end_index: None,
+                    line_index: Some(line_group_index),
                 }),
-                debug: Some(payload_debug_source(group)),
-            })
+            )
         })
         .collect()
+}
+
+fn source_path_points(
+    context: &SceneContext<'_>,
+    anchors: &[Option<PointRecord>],
+    source_group: &ObjectGroup,
+) -> Option<Vec<PointRecord>> {
+    Some(
+        context
+            .indexed_path(source_group)?
+            .refs
+            .iter()
+            .filter_map(|object_ref| anchors.get(object_ref.saturating_sub(1)).cloned().flatten())
+            .collect(),
+    )
+}
+
+fn derived_line_shape(
+    group: &ObjectGroup,
+    source_group_index: usize,
+    source_group: &ObjectGroup,
+    points: Vec<PointRecord>,
+    transform: LineTransformBinding,
+) -> Option<LineShape> {
+    (points.len() >= 2 && has_distinct_points(&points)).then_some(LineShape {
+        points,
+        color: color_from_style(source_group.header.style_b),
+        dashed: line_is_dashed(source_group.header.style_a),
+        visible: !group.header.is_hidden(),
+        binding: Some(LineBinding::DerivedTransform {
+            source_index: source_group_index,
+            transform,
+        }),
+        debug: Some(payload_debug_source(group)),
+    })
+}
+
+fn derived_circle_shape(
+    group: &ObjectGroup,
+    source_group_index: usize,
+    source_group: &ObjectGroup,
+    color_group: &ObjectGroup,
+    center: PointRecord,
+    radius_point: PointRecord,
+    source_fill: Option<&([u8; 4], bool)>,
+    transform: ShapeTransformBinding,
+) -> CircleShape {
+    CircleShape {
+        center,
+        radius_point,
+        color: color_from_style(color_group.header.style_b),
+        fill_color: source_fill.map(|fill| fill.0),
+        fill_visible: source_fill.is_some_and(|fill| fill.1),
+        fill_color_binding: None,
+        dashed: line_is_dashed(source_group.header.style_a),
+        visible: !group.header.is_hidden(),
+        binding: Some(ShapeBinding::DerivedTransform {
+            source_index: source_group_index,
+            transform,
+        }),
+        debug: Some(payload_debug_source(group)),
+    }
+}
+
+fn derived_polygon_shape(
+    group: &ObjectGroup,
+    source_group_index: usize,
+    source_group: &ObjectGroup,
+    points: Vec<PointRecord>,
+    transform: ShapeTransformBinding,
+) -> Option<PolygonShape> {
+    (points.len() >= 3).then_some(PolygonShape {
+        points,
+        color: fill_color_from_styles(source_group.header.style_b, source_group.header.style_c),
+        visible: !group.header.is_hidden(),
+        binding: Some(ShapeBinding::DerivedTransform {
+            source_index: source_group_index,
+            transform,
+        }),
+        debug: Some(payload_debug_source(group)),
+    })
 }
 
 fn binding_angle_degrees(binding: &TransformBindingKind) -> Option<f64> {

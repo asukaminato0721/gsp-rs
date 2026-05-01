@@ -17,8 +17,9 @@ use super::{
 use crate::format::GroupKind;
 use crate::format::read_u32;
 use crate::runtime::functions::{
-    BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters, try_decode_function_expr,
-    try_decode_function_expr_with_inlined_refs, try_decode_function_plot_descriptor,
+    BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters, function_expr_ast,
+    try_decode_function_expr, try_decode_function_expr_with_inlined_refs,
+    try_decode_function_plot_descriptor,
 };
 use crate::runtime::geometry::{
     GraphTransform, angle_degrees_from_points, lerp_point, point_on_circle_arc,
@@ -322,34 +323,6 @@ fn expression_runtime_context(
     Some((expr, parameters, parameter_name))
 }
 
-fn expr_to_ast(expr: FunctionExpr) -> FunctionAst {
-    match expr {
-        FunctionExpr::Constant(value) => FunctionAst::Constant(value),
-        FunctionExpr::Identity => FunctionAst::Variable,
-        FunctionExpr::SinIdentity => FunctionAst::Unary {
-            op: crate::runtime::functions::UnaryFunction::Sin,
-            expr: Box::new(FunctionAst::Variable),
-        },
-        FunctionExpr::CosIdentityPlus(offset) => FunctionAst::Binary {
-            lhs: Box::new(FunctionAst::Unary {
-                op: crate::runtime::functions::UnaryFunction::Cos,
-                expr: Box::new(FunctionAst::Variable),
-            }),
-            op: BinaryOp::Add,
-            rhs: Box::new(FunctionAst::Constant(offset)),
-        },
-        FunctionExpr::TanIdentityMinus(offset) => FunctionAst::Binary {
-            lhs: Box::new(FunctionAst::Unary {
-                op: crate::runtime::functions::UnaryFunction::Tan,
-                expr: Box::new(FunctionAst::Variable),
-            }),
-            op: BinaryOp::Sub,
-            rhs: Box::new(FunctionAst::Constant(offset)),
-        },
-        FunctionExpr::Parsed(ast) => ast,
-    }
-}
-
 fn scale_function_expr(expr: FunctionExpr, factor: f64) -> FunctionExpr {
     if (factor - 1.0).abs() <= 1e-9 {
         return expr;
@@ -359,7 +332,7 @@ fn scale_function_expr(expr: FunctionExpr, factor: f64) -> FunctionExpr {
         other => FunctionExpr::Parsed(FunctionAst::Binary {
             lhs: Box::new(FunctionAst::Constant(factor)),
             op: BinaryOp::Mul,
-            rhs: Box::new(expr_to_ast(other)),
+            rhs: Box::new(function_expr_ast(other)),
         }),
     }
 }

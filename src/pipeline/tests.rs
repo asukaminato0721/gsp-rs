@@ -1,6 +1,6 @@
 pub(super) use super::test_support::{
     FixtureArtifacts, collect_kind_literals, fixture_bytes, fixture_html, fixture_scene,
-    fixture_scene_json,
+    fixture_scene_json, standard_fixture_output,
 };
 pub(super) use insta::assert_snapshot;
 pub(super) use serde_json::Value;

@@ -24,7 +24,7 @@ use thiserror::Error;
 use super::expr::{
     BinaryOp, FunctionAst, FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode, UnaryFunction,
     canonicalize_function_expr, decode_unary_function, function_ast_contains_symbol,
-    function_expr_contains_variable,
+    function_expr_ast, function_expr_contains_variable,
 };
 
 thread_local! {
@@ -120,6 +120,13 @@ pub(crate) fn evaluate_function_group_with_overrides(
     evaluate_function_group_recursive(file, groups, group, overrides, &mut BTreeSet::new())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PayloadExprDecodeMode {
+    Standard,
+    EmbeddedPostfixPreferred,
+    GroupedPreferred,
+}
+
 fn decode_function_expr_recursive(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -160,36 +167,64 @@ fn decode_function_expr_recursive_impl(
         {
             return decode_function_expr_recursive(file, groups, source_group, visiting);
         }
-        let payload = group
-            .records
-            .iter()
-            .find(|record| record.record_type == RECORD_FUNCTION_EXPR_PAYLOAD)
-            .map(|record| record.payload(&file.data))
-            .ok_or(FunctionExprParseError::NoExpressionFound { word_len: 0 })?;
-        let parameters =
-            collect_parameter_bindings(file, groups, group, visiting, inline_function_refs);
-
-        if let Some(expr) = try_decode_payload_function_application(
+        let mode = if inline_function_refs {
+            PayloadExprDecodeMode::EmbeddedPostfixPreferred
+        } else {
+            PayloadExprDecodeMode::Standard
+        };
+        decode_group_function_payload_expr(
             file,
             groups,
             group,
             visiting,
-            payload,
-            &parameters,
-        ) {
-            return Ok(expr);
-        }
-
-        if inline_function_refs
-            && let Ok(expr) = decode_embedded_postfix_payload_function_expr(payload, &parameters)
-        {
-            return Ok(expr);
-        }
-
-        decode_payload_function_expr(payload, &parameters)
+            inline_function_refs,
+            mode,
+        )
     })();
     visiting.remove(&group.ordinal);
     expr
+}
+
+fn decode_group_function_payload_expr(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    visiting: &mut BTreeSet<usize>,
+    inline_function_refs: bool,
+    mode: PayloadExprDecodeMode,
+) -> Result<FunctionExpr, FunctionExprParseError> {
+    let payload = group_function_payload(file, group)?;
+    let parameters =
+        collect_parameter_bindings(file, groups, group, visiting, inline_function_refs);
+
+    if let Some(expr) =
+        try_decode_payload_function_application(file, groups, group, visiting, payload, &parameters)
+    {
+        return Ok(expr);
+    }
+
+    match mode {
+        PayloadExprDecodeMode::Standard => decode_payload_function_expr(payload, &parameters),
+        PayloadExprDecodeMode::EmbeddedPostfixPreferred => {
+            decode_embedded_postfix_payload_function_expr(payload, &parameters)
+                .or_else(|_| decode_payload_function_expr(payload, &parameters))
+        }
+        PayloadExprDecodeMode::GroupedPreferred => {
+            decode_grouped_preferred_payload_function_expr(payload, &parameters)
+        }
+    }
+}
+
+fn group_function_payload<'a>(
+    file: &'a GspFile,
+    group: &ObjectGroup,
+) -> Result<&'a [u8], FunctionExprParseError> {
+    group
+        .records
+        .iter()
+        .find(|record| record.record_type == RECORD_FUNCTION_EXPR_PAYLOAD)
+        .map(|record| record.payload(&file.data))
+        .ok_or(FunctionExprParseError::NoExpressionFound { word_len: 0 })
 }
 
 fn decode_plot_component_expr_recursive(
@@ -206,28 +241,14 @@ fn decode_plot_component_expr_recursive(
     if !visiting.insert(group.ordinal) {
         return Err(FunctionExprParseError::NoExpressionFound { word_len: 0 });
     }
-    let expr = (|| {
-        let payload = group
-            .records
-            .iter()
-            .find(|record| record.record_type == RECORD_FUNCTION_EXPR_PAYLOAD)
-            .map(|record| record.payload(&file.data))
-            .ok_or(FunctionExprParseError::NoExpressionFound { word_len: 0 })?;
-        let parameters = collect_parameter_bindings(file, groups, group, visiting, false);
-
-        if let Some(expr) = try_decode_payload_function_application(
-            file,
-            groups,
-            group,
-            visiting,
-            payload,
-            &parameters,
-        ) {
-            return Ok(expr);
-        }
-
-        decode_payload_function_expr(payload, &parameters)
-    })();
+    let expr = decode_group_function_payload_expr(
+        file,
+        groups,
+        group,
+        visiting,
+        false,
+        PayloadExprDecodeMode::Standard,
+    );
     visiting.remove(&group.ordinal);
     expr
 }
@@ -246,28 +267,14 @@ fn decode_standalone_function_expr_recursive(
     if !visiting.insert(group.ordinal) {
         return Err(FunctionExprParseError::NoExpressionFound { word_len: 0 });
     }
-    let expr = (|| {
-        let payload = group
-            .records
-            .iter()
-            .find(|record| record.record_type == RECORD_FUNCTION_EXPR_PAYLOAD)
-            .map(|record| record.payload(&file.data))
-            .ok_or(FunctionExprParseError::NoExpressionFound { word_len: 0 })?;
-        let parameters = collect_parameter_bindings(file, groups, group, visiting, false);
-
-        if let Some(expr) = try_decode_payload_function_application(
-            file,
-            groups,
-            group,
-            visiting,
-            payload,
-            &parameters,
-        ) {
-            return Ok(expr);
-        }
-
-        decode_grouped_preferred_payload_function_expr(payload, &parameters)
-    })();
+    let expr = decode_group_function_payload_expr(
+        file,
+        groups,
+        group,
+        visiting,
+        false,
+        PayloadExprDecodeMode::GroupedPreferred,
+    );
     visiting.remove(&group.ordinal);
     expr
 }
@@ -978,34 +985,6 @@ fn try_decode_legacy_point_function_expr(payload: &[u8]) -> Option<FunctionExpr>
     }))
 }
 
-fn function_expr_to_ast(expr: FunctionExpr) -> FunctionAst {
-    match expr {
-        FunctionExpr::Constant(value) => FunctionAst::Constant(value),
-        FunctionExpr::Identity => FunctionAst::Variable,
-        FunctionExpr::SinIdentity => FunctionAst::Unary {
-            op: UnaryFunction::Sin,
-            expr: Box::new(FunctionAst::Variable),
-        },
-        FunctionExpr::CosIdentityPlus(offset) => FunctionAst::Binary {
-            lhs: Box::new(FunctionAst::Unary {
-                op: UnaryFunction::Cos,
-                expr: Box::new(FunctionAst::Variable),
-            }),
-            op: BinaryOp::Add,
-            rhs: Box::new(FunctionAst::Constant(offset)),
-        },
-        FunctionExpr::TanIdentityMinus(offset) => FunctionAst::Binary {
-            lhs: Box::new(FunctionAst::Unary {
-                op: UnaryFunction::Tan,
-                expr: Box::new(FunctionAst::Variable),
-            }),
-            op: BinaryOp::Sub,
-            rhs: Box::new(FunctionAst::Constant(offset)),
-        },
-        FunctionExpr::Parsed(ast) => ast,
-    }
-}
-
 fn substitute_variable(ast: FunctionAst, replacement: &FunctionAst) -> FunctionAst {
     match ast {
         FunctionAst::Variable => replacement.clone(),
@@ -1061,8 +1040,8 @@ fn try_decode_payload_function_application(
         .flat_map(|word| word.to_le_bytes())
         .collect::<Vec<_>>();
     let arg_expr = try_decode_inner_function_expr(&arg_payload, parameters).ok()?;
-    let helper_ast = function_expr_to_ast(helper_expr);
-    let arg_ast = function_expr_to_ast(arg_expr);
+    let helper_ast = function_expr_ast(helper_expr);
+    let arg_ast = function_expr_ast(arg_expr);
     Some(canonicalize_function_expr(substitute_variable(
         helper_ast, &arg_ast,
     )))
@@ -1083,11 +1062,7 @@ fn evaluate_function_group_recursive(
             return decode_runtime_parameter_binding(file, groups, group, overrides, visiting)
                 .map(|binding| binding.value);
         }
-        let payload = group
-            .records
-            .iter()
-            .find(|record| record.record_type == RECORD_FUNCTION_EXPR_PAYLOAD)
-            .map(|record| record.payload(&file.data))?;
+        let payload = group_function_payload(file, group).ok()?;
         let mut parameters = BTreeMap::new();
         if let Some(path) = find_indexed_path(file, group) {
             for (index, ordinal) in path.refs.iter().copied().enumerate() {
@@ -1103,30 +1078,7 @@ fn evaluate_function_group_recursive(
                 parameters.insert(index as u16, binding);
             }
         }
-        let expr = if let Some(text) = extract_inline_function_token(payload) {
-            if text.eq_ignore_ascii_case("x") {
-                FunctionExpr::Identity
-            } else if let Ok(value) = text.parse::<f64>() {
-                if value == 0.0 {
-                    match try_decode_inner_function_expr(payload, &parameters) {
-                        Ok(expr) => expr,
-                        Err(_) => FunctionExpr::Constant(value),
-                    }
-                } else {
-                    FunctionExpr::Constant(value)
-                }
-            } else {
-                match try_decode_inner_function_expr(payload, &parameters) {
-                    Ok(expr) => expr,
-                    Err(_) => return None,
-                }
-            }
-        } else {
-            match try_decode_inner_function_expr(payload, &parameters) {
-                Ok(expr) => expr,
-                Err(_) => return None,
-            }
-        };
+        let expr = decode_payload_function_expr(payload, &parameters).ok()?;
         evaluate_expr_with_parameters(&expr, 0.0, overrides)
     })();
     visiting.remove(&group.ordinal);
@@ -1274,7 +1226,7 @@ fn decode_parameter_binding_recursive(
         return Some(ParameterBinding::expression(
             name,
             value.unwrap_or(0.0),
-            function_expr_to_ast(expr),
+            function_expr_ast(expr),
         ));
     }
 

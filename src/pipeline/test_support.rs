@@ -30,6 +30,10 @@ pub(super) fn fixture_bytes(path: &str) -> Option<Vec<u8>> {
     fs::read(path).ok()
 }
 
+pub(super) fn standard_fixture_output(prefix: &str, path: &str) -> Option<StandardFixtureOutput> {
+    Some(FixtureArtifacts::from_fixture_path(prefix, path)?.compile_standard_with_outputs())
+}
+
 pub(super) fn collect_kind_literals(text: &str) -> BTreeSet<String> {
     let mut kinds = BTreeSet::new();
     let needle = "\"kind\": \"";
@@ -72,6 +76,12 @@ impl FixtureArtifacts {
             paths,
             gsp_path,
         }
+    }
+
+    pub(super) fn from_fixture_path(prefix: &str, path: &str) -> Option<Self> {
+        let data = fixture_bytes(path)?;
+        let file_name = Path::new(path).file_name()?.to_string_lossy();
+        Some(Self::new(prefix, &file_name, &data))
     }
 
     pub(super) fn compile_standard(&self) {

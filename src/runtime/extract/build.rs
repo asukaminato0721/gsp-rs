@@ -33,7 +33,7 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
     validate_scene_payloads(file, &groups)?;
     let point_map = collect_point_objects(file, &groups);
     let analysis = analyze_scene(file, &groups, &context, &point_map);
-    let mut shapes = collect_scene_shapes(file, &groups, &point_map, &analysis);
+    let mut shapes = collect_scene_shapes(file, &groups, &context, &point_map, &analysis);
     let (images, image_group_to_index) = collect_scene_images(file, &groups, &analysis.graph_ref);
     let (mut labels, label_group_to_index, pending_hotspots) =
         collect_scene_labels(file, &groups, &context, &analysis, &shapes);

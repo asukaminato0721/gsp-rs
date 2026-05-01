@@ -64,6 +64,34 @@ pub(crate) enum FunctionAst {
     },
 }
 
+pub(crate) fn function_expr_ast(expr: FunctionExpr) -> FunctionAst {
+    match expr {
+        FunctionExpr::Constant(value) => FunctionAst::Constant(value),
+        FunctionExpr::Identity => FunctionAst::Variable,
+        FunctionExpr::SinIdentity => FunctionAst::Unary {
+            op: UnaryFunction::Sin,
+            expr: Box::new(FunctionAst::Variable),
+        },
+        FunctionExpr::CosIdentityPlus(offset) => FunctionAst::Binary {
+            lhs: Box::new(FunctionAst::Unary {
+                op: UnaryFunction::Cos,
+                expr: Box::new(FunctionAst::Variable),
+            }),
+            op: BinaryOp::Add,
+            rhs: Box::new(FunctionAst::Constant(offset)),
+        },
+        FunctionExpr::TanIdentityMinus(offset) => FunctionAst::Binary {
+            lhs: Box::new(FunctionAst::Unary {
+                op: UnaryFunction::Tan,
+                expr: Box::new(FunctionAst::Variable),
+            }),
+            op: BinaryOp::Sub,
+            rhs: Box::new(FunctionAst::Constant(offset)),
+        },
+        FunctionExpr::Parsed(ast) => ast,
+    }
+}
+
 pub(crate) fn function_expr_label(expr: FunctionExpr) -> String {
     function_expr_label_with_variable(expr, "x")
 }

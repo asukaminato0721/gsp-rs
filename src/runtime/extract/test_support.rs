@@ -114,7 +114,7 @@ pub(super) fn fixture_buttons_without_validation(data: &[u8]) -> Vec<SceneButton
     let context = SceneContext::new(&file, &groups);
     let point_map = collect_point_objects(&file, &groups);
     let analysis = analyze_scene(&file, &groups, &context, &point_map);
-    let mut shapes = collect_scene_shapes(&file, &groups, &point_map, &analysis);
+    let mut shapes = collect_scene_shapes(&file, &groups, &context, &point_map, &analysis);
     let (_, image_group_to_index) =
         super::images::collect_scene_images(&file, &groups, &analysis.graph_ref);
     let (_, label_group_to_index, _) =
@@ -158,7 +158,7 @@ pub(super) fn fixture_labels_without_validation(
     let context = SceneContext::new(&file, &groups);
     let point_map = collect_point_objects(&file, &groups);
     let analysis = analyze_scene(&file, &groups, &context, &point_map);
-    let mut shapes = collect_scene_shapes(&file, &groups, &point_map, &analysis);
+    let mut shapes = collect_scene_shapes(&file, &groups, &context, &point_map, &analysis);
     let (_, image_group_to_index) =
         super::images::collect_scene_images(&file, &groups, &analysis.graph_ref);
     let (labels, label_group_to_index, _) =

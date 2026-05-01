@@ -370,6 +370,23 @@ type ViewerSceneModule = {
     point: Point,
     constraint: { kind: string; center?: Point; radius?: number } | null,
   ) => boolean;
+  _threePointArcGeometry?: (
+    start: Point,
+    mid: Point,
+    end: Point,
+  ) => Record<string, any> | null;
+  _circleArcControlPoints?: (
+    center: Point,
+    start: Point,
+    end: Point,
+    yUp?: boolean,
+  ) => { start: Point; mid: Point; end: Point } | null;
+  _pointOnThreePointArcComplement?: (
+    start: Point,
+    mid: Point,
+    end: Point,
+    t: number,
+  ) => Point | null;
   drawGrid: (env: ViewerEnv) => void;
 };
 

@@ -56,6 +56,25 @@ fn js_runtime_covers_exported_payload_kinds() {
 }
 
 #[test]
+fn circle_constraint_runtime_has_single_resolver_implementation() {
+    let scene_basic = include_str!("../../html/viewer_scene_basic.js");
+    let scene_circular = include_str!("../../html/viewer_scene_circular.js");
+    let resolver_definitions = [scene_basic, scene_circular]
+        .into_iter()
+        .map(|source| source.matches("function circleFromConstraint(").count())
+        .sum::<usize>();
+
+    assert_eq!(
+        resolver_definitions, 1,
+        "circle constraints should be resolved by one shared scene implementation",
+    );
+    assert!(
+        !scene_circular.contains("_circleFromConstraint"),
+        "circular scene addon should not replace the shared circle constraint resolver",
+    );
+}
+
+#[test]
 fn compiles_legacy_arc_measure_helper_fixtures() {
     let Some(clock) = fixture_bytes("tests/Samples/个人专栏/侯仰顺作品/时钟.gsp") else {
         return;

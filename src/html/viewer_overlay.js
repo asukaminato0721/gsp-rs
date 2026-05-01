@@ -287,6 +287,36 @@
         buttonsState.val = next;
       }
 
+      /**
+       * @param {VisibilityButtonAction} action
+       * @param {ViewerSceneData} scene
+       * @param {RuntimeButtonJson[]} buttons
+       * @param {(target: any | undefined) => void} callback
+       */
+      function forEachVisibilityTarget(action, scene, buttons, callback) {
+        (action.buttonIndices || []).forEach((/** @type {number} */ index) => {
+          callback(buttons[index]);
+        });
+        (action.labelIndices || []).forEach((/** @type {number} */ index) => {
+          callback(scene.labels[index]);
+        });
+        (action.imageIndices || []).forEach((/** @type {number} */ index) => {
+          callback(scene.images[index]);
+        });
+        (action.pointIndices || []).forEach((/** @type {number} */ index) => {
+          callback(scene.points[index]);
+        });
+        (action.lineIndices || []).forEach((/** @type {number} */ index) => {
+          callback(scene.lines[index]);
+        });
+        (action.circleIndices || []).forEach((/** @type {number} */ index) => {
+          callback(scene.circles[index]);
+        });
+        (action.polygonIndices || []).forEach((/** @type {number} */ index) => {
+          callback(scene.polygons[index]);
+        });
+      }
+
       function buttonPointerScale() {
         const rect = env.canvas.getBoundingClientRect();
         return {
@@ -300,31 +330,13 @@
        * @param {boolean} visible
        */
       function setTargetsVisibility(action, visible) {
-        updateButtons((buttons) => {
-          (action.buttonIndices || []).forEach((/** @type {number} */ index) => {
-            if (buttons[index]) buttons[index].visible = visible;
-          });
-        });
+        const nextButtons = buttonsState.val.slice();
         env.updateScene((scene) => {
-          (action.labelIndices || []).forEach((/** @type {number} */ index) => {
-            if (scene.labels[index]) scene.labels[index].visible = visible;
-          });
-          (action.imageIndices || []).forEach((/** @type {number} */ index) => {
-            if (scene.images[index]) scene.images[index].visible = visible;
-          });
-          (action.pointIndices || []).forEach((/** @type {number} */ index) => {
-            if (scene.points[index]) scene.points[index].visible = visible;
-          });
-          (action.lineIndices || []).forEach((/** @type {number} */ index) => {
-            if (scene.lines[index]) scene.lines[index].visible = visible;
-          });
-          (action.circleIndices || []).forEach((/** @type {number} */ index) => {
-            if (scene.circles[index]) scene.circles[index].visible = visible;
-          });
-          (action.polygonIndices || []).forEach((/** @type {number} */ index) => {
-            if (scene.polygons[index]) scene.polygons[index].visible = visible;
+          forEachVisibilityTarget(action, scene, nextButtons, (target) => {
+            if (target) target.visible = visible;
           });
         }, "none");
+        buttonsState.val = nextButtons;
       }
 
       /**
@@ -333,14 +345,11 @@
        */
       function visibilityTargetsMatch(action, visible) {
         const scene = env.currentScene();
-        const buttonsMatch = (action.buttonIndices || []).every((/** @type {number} */ index) => buttonsState.val[index]?.visible === visible);
-        const labelsMatch = (action.labelIndices || []).every((/** @type {number} */ index) => scene.labels[index]?.visible === visible);
-        const imagesMatch = (action.imageIndices || []).every((/** @type {number} */ index) => scene.images[index]?.visible === visible);
-        const pointsMatch = (action.pointIndices || []).every((/** @type {number} */ index) => scene.points[index]?.visible === visible);
-        const linesMatch = (action.lineIndices || []).every((/** @type {number} */ index) => scene.lines[index]?.visible === visible);
-        const circlesMatch = (action.circleIndices || []).every((/** @type {number} */ index) => scene.circles[index]?.visible === visible);
-        const polygonsMatch = (action.polygonIndices || []).every((/** @type {number} */ index) => scene.polygons[index]?.visible === visible);
-        return buttonsMatch && labelsMatch && imagesMatch && pointsMatch && linesMatch && circlesMatch && polygonsMatch;
+        let matched = true;
+        forEachVisibilityTarget(action, scene, buttonsState.val, (target) => {
+          matched = matched && target?.visible === visible;
+        });
+        return matched;
       }
 
       /**
@@ -432,14 +441,11 @@
       /** @param {VisibilityButtonAction} action */
       function toggleTargetsVisibility(action) {
         const scene = env.currentScene();
-        const hiddenPoint = (action.pointIndices || []).some((/** @type {number} */ index) => scene.points[index]?.visible === false);
-        const hiddenLine = (action.lineIndices || []).some((/** @type {number} */ index) => scene.lines[index]?.visible === false);
-        const hiddenCircle = (action.circleIndices || []).some((/** @type {number} */ index) => scene.circles[index]?.visible === false);
-        const hiddenPolygon = (action.polygonIndices || []).some((/** @type {number} */ index) => scene.polygons[index]?.visible === false);
-        const hiddenButton = (action.buttonIndices || []).some((/** @type {number} */ index) => buttonsState.val[index]?.visible === false);
-        const hiddenLabel = (action.labelIndices || []).some((/** @type {number} */ index) => scene.labels[index]?.visible === false);
-        const hiddenImage = (action.imageIndices || []).some((/** @type {number} */ index) => scene.images[index]?.visible === false);
-        setTargetsVisibility(action, hiddenButton || hiddenLabel || hiddenImage || hiddenPoint || hiddenLine || hiddenCircle || hiddenPolygon);
+        let hasHiddenTarget = false;
+        forEachVisibilityTarget(action, scene, buttonsState.val, (target) => {
+          hasHiddenTarget = hasHiddenTarget || target?.visible === false;
+        });
+        setTargetsVisibility(action, hasHiddenTarget);
       }
 
       /** @param {number} pointIndex */

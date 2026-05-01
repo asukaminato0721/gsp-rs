@@ -76,6 +76,7 @@ pub(super) use transforms::{
 pub(super) fn collect_scene_shapes(
     file: &GspFile,
     groups: &[ObjectGroup],
+    context: &SceneContext<'_>,
     point_map: &[Option<PointRecord>],
     analysis: &SceneAnalysis,
 ) -> CollectedShapes {
@@ -107,7 +108,8 @@ pub(super) fn collect_scene_shapes(
         crate::format::GroupKind::Ray,
         &suppressed_ray_groups,
     );
-    let translated_lines = collect_translated_line_shapes(file, groups, &analysis.raw_anchors);
+    let translated_lines =
+        collect_translated_line_shapes(file, groups, context, &analysis.raw_anchors);
     let segment_markers = collect_segment_marker_shapes(file, groups, &analysis.raw_anchors);
     let derived_segments = if analysis.large_non_graph {
         collect_derived_segments(
@@ -119,9 +121,10 @@ pub(super) fn collect_scene_shapes(
     } else {
         Vec::new()
     };
-    let rotated_lines = collect_rotated_line_shapes(file, groups, &analysis.raw_anchors);
-    let scaled_lines = collect_scaled_line_shapes(file, groups, &analysis.raw_anchors);
-    let reflected_lines = collect_reflected_line_shapes(file, groups, &analysis.raw_anchors);
+    let rotated_lines = collect_rotated_line_shapes(file, groups, context, &analysis.raw_anchors);
+    let scaled_lines = collect_scaled_line_shapes(file, groups, context, &analysis.raw_anchors);
+    let reflected_lines =
+        collect_reflected_line_shapes(file, groups, context, &analysis.raw_anchors);
     let carried_iteration_lines = collect_carried_iteration_lines(
         file,
         groups,
@@ -176,17 +179,22 @@ pub(super) fn collect_scene_shapes(
     .collect::<Vec<_>>();
     let circles = collect_circle_shapes(file, groups, &analysis.raw_anchors);
     let arcs = collect_three_point_arc_shapes(file, groups, &analysis.raw_anchors);
-    let translated_circles = collect_translated_circle_shapes(file, groups, &analysis.raw_anchors);
-    let rotated_circles = collect_rotated_circle_shapes(file, groups, &analysis.raw_anchors);
+    let translated_circles =
+        collect_translated_circle_shapes(file, groups, context, &analysis.raw_anchors);
+    let rotated_circles =
+        collect_rotated_circle_shapes(file, groups, context, &analysis.raw_anchors);
     let transformed_circles =
-        collect_transformed_circle_shapes(file, groups, &analysis.raw_anchors);
-    let reflected_circles = collect_reflected_circle_shapes(file, groups, &analysis.raw_anchors);
+        collect_transformed_circle_shapes(file, groups, context, &analysis.raw_anchors);
+    let reflected_circles =
+        collect_reflected_circle_shapes(file, groups, context, &analysis.raw_anchors);
     let translated_polygons =
-        collect_translated_polygon_shapes(file, groups, &analysis.raw_anchors);
-    let rotated_polygons = collect_rotated_polygon_shapes(file, groups, &analysis.raw_anchors);
+        collect_translated_polygon_shapes(file, groups, context, &analysis.raw_anchors);
+    let rotated_polygons =
+        collect_rotated_polygon_shapes(file, groups, context, &analysis.raw_anchors);
     let transformed_polygons =
-        collect_transformed_polygon_shapes(file, groups, &analysis.raw_anchors);
-    let reflected_polygons = collect_reflected_polygon_shapes(file, groups, &analysis.raw_anchors);
+        collect_transformed_polygon_shapes(file, groups, context, &analysis.raw_anchors);
+    let reflected_polygons =
+        collect_reflected_polygon_shapes(file, groups, context, &analysis.raw_anchors);
     let (iteration_lines, iteration_polygons) = collect_iteration_shapes(file, groups, &circles);
     let synthetic_axes = synthesize_axes_if_needed(analysis, &axes);
 
