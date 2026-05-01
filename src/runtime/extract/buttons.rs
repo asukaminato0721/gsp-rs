@@ -88,17 +88,6 @@ pub(super) fn collect_buttons(
     anchors: &[Option<PointRecord>],
     lookups: ButtonIndexLookups<'_>,
 ) -> (Vec<SceneButton>, BTreeMap<usize, usize>) {
-    let button_label_groups = groups
-        .iter()
-        .filter(|group| (group.header.kind()) == crate::format::GroupKind::ButtonLabel)
-        .filter_map(|group| {
-            let path = find_indexed_path(file, group)?;
-            let button_ordinal = *path.refs.first()?;
-            let anchor = decode::decode_label_anchor(file, group, anchors)?;
-            Some((button_ordinal, anchor))
-        })
-        .collect::<BTreeMap<usize, PointRecord>>();
-
     let mut raw_buttons = Vec::<RawButton>::new();
     for group in groups {
         let kind = group.header.kind();
@@ -208,12 +197,12 @@ pub(super) fn collect_buttons(
             continue;
         };
 
-        let anchor = decode::decode_button_screen_anchor(file, group)
-            .or_else(|| button_label_groups.get(&group.ordinal).cloned())
-            .unwrap_or(PointRecord { x: 24.0, y: 24.0 });
-        let text = decode::decode_label_name_raw(file, group)
-            .filter(|label| !label.trim().is_empty())
-            .unwrap_or_else(|| "按钮".to_string());
+        let Some(anchor) = decode::decode_action_button_anchor(file, groups, group, anchors) else {
+            continue;
+        };
+        let Some(text) = decode::decode_action_button_text(file, group) else {
+            continue;
+        };
 
         raw_buttons.push(RawButton {
             group_ordinal: group.ordinal,

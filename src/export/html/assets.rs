@@ -13,11 +13,8 @@ pub(super) const VIEWER_RENDER_TABLES_JS: &str = include_str!("../../html/viewer
 pub(super) const VIEWER_RENDER_HOTSPOTS_JS: &str =
     include_str!("../../html/viewer_render_hotspots.js");
 pub(super) const VIEWER_OVERLAY_JS: &str = include_str!("../../html/viewer_overlay.js");
-pub(super) const VIEWER_OVERLAY_STUB_JS: &str = include_str!("../../html/viewer_overlay_stub.js");
 pub(super) const VIEWER_DRAG_JS: &str = include_str!("../../html/viewer_drag.js");
-pub(super) const VIEWER_DRAG_PAN_JS: &str = include_str!("../../html/viewer_drag_pan.js");
 pub(super) const VIEWER_DYNAMICS_JS: &str = include_str!("../../html/viewer_dynamics.js");
-pub(super) const VIEWER_DYNAMICS_STUB_JS: &str = include_str!("../../html/viewer_dynamics_stub.js");
 pub(super) const VIEWER_JS: &str = include_str!("../../html/viewer.js");
 
 pub(super) fn van_runtime_to_global() -> String {

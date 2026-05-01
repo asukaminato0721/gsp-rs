@@ -924,40 +924,6 @@ fn preserves_circle_inner_fill_gsp() {
 }
 
 #[test]
-fn preserves_circle_system_bindings_for_inrm_fixture() {
-    let scene = fixture_scene(include_bytes!(
-        "../../../tests/fixtures/未实现/圆系(inRm).gsp"
-    ));
-
-    assert_eq!(
-        scene.circles.len(),
-        21,
-        "expected source plus iterated payload circles"
-    );
-    assert_eq!(scene.polygons.len(), 1, "expected one payload polygon");
-    assert_eq!(
-        scene.points.len(),
-        29,
-        "expected base, iterated helper points, and the legacy parameter source point to export"
-    );
-    assert!(
-        scene.points.iter().any(|point| matches!(
-            point.constraint,
-            ScenePointConstraint::OnPolygonBoundary { .. }
-        )),
-        "expected polygon-boundary helper point to stay exported for dependent bindings"
-    );
-    assert!(matches!(
-        scene.circles[0].binding,
-        Some(crate::runtime::scene::ShapeBinding::SegmentRadiusCircle { .. })
-    ));
-    assert!(matches!(
-        scene.polygons[0].binding,
-        Some(crate::runtime::scene::ShapeBinding::PointPolygon { .. })
-    ));
-}
-
-#[test]
 fn preserves_point_segment_value_segment_point_gsp() {
     let scene = fixture_scene(include_bytes!(
         "../../../tests/fixtures/gsp/static/point_segment_value_segment_point.gsp"

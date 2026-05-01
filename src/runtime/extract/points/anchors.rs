@@ -1428,7 +1428,7 @@ pub(crate) fn resolve_line_like_constraint_raw(
             distinct_pair(origin.clone(), end)
                 .map(|(start, end)| (start, end, LineLikeKind::Segment))
         }
-        crate::format::GroupKind::LineKind5 => {
+        crate::format::GroupKind::PerpendicularLine => {
             if path.refs.len() != 2 {
                 return None;
             }
@@ -1451,7 +1451,7 @@ pub(crate) fn resolve_line_like_constraint_raw(
             )
             .map(|(start, end)| (start, end, LineLikeKind::Line))
         }
-        crate::format::GroupKind::LineKind6 => {
+        crate::format::GroupKind::ParallelLine => {
             if path.refs.len() != 2 {
                 return None;
             }
@@ -1474,7 +1474,7 @@ pub(crate) fn resolve_line_like_constraint_raw(
             )
             .map(|(start, end)| (start, end, LineLikeKind::Line))
         }
-        crate::format::GroupKind::LineKind7 => {
+        crate::format::GroupKind::AngleBisectorRay => {
             if path.refs.len() != 3 {
                 return None;
             }

@@ -527,13 +527,13 @@ fn decode_point_on_line_like_constraint(
                 line_like_kind,
             }))
         }
-        crate::format::GroupKind::LineKind5
-        | crate::format::GroupKind::LineKind6
-        | crate::format::GroupKind::LineKind7 => Some(RawPointConstraint::ConstructedLine {
+        crate::format::GroupKind::PerpendicularLine
+        | crate::format::GroupKind::ParallelLine
+        | crate::format::GroupKind::AngleBisectorRay => Some(RawPointConstraint::ConstructedLine {
             host_group_index,
             t,
             line_like_kind: match host_group.header.kind() {
-                crate::format::GroupKind::LineKind7 => LineLikeKind::Ray,
+                crate::format::GroupKind::AngleBisectorRay => LineLikeKind::Ray,
                 _ => LineLikeKind::Line,
             },
         }),
@@ -1659,9 +1659,9 @@ pub(crate) fn try_decode_point_constraint(
                 || matches!(
                     kind,
                     GroupKind::MeasurementLine
-                        | GroupKind::LineKind5
-                        | GroupKind::LineKind6
-                        | GroupKind::LineKind7
+                        | GroupKind::PerpendicularLine
+                        | GroupKind::ParallelLine
+                        | GroupKind::AngleBisectorRay
                         | GroupKind::Rotation
                 ) =>
         {
@@ -1949,11 +1949,11 @@ fn decode_path_point_constraint(
                 line_like_kind,
             }))
         }
-        crate::format::GroupKind::LineKind5
-        | crate::format::GroupKind::LineKind6
-        | crate::format::GroupKind::LineKind7 => {
+        crate::format::GroupKind::PerpendicularLine
+        | crate::format::GroupKind::ParallelLine
+        | crate::format::GroupKind::AngleBisectorRay => {
             let line_like_kind = match host_group.header.kind() {
-                crate::format::GroupKind::LineKind7 => LineLikeKind::Ray,
+                crate::format::GroupKind::AngleBisectorRay => LineLikeKind::Ray,
                 _ => LineLikeKind::Line,
             };
             let t = match line_like_kind {

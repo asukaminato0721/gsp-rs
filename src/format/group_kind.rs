@@ -39,9 +39,9 @@ macro_rules! define_group_kinds {
                     Self::Segment
                         | Self::AngleMarker
                         | Self::LegacyAngleMarker
-                        | Self::LineKind5
-                        | Self::LineKind6
-                        | Self::LineKind7
+                        | Self::PerpendicularLine
+                        | Self::ParallelLine
+                        | Self::AngleBisectorRay
                 )
             }
 
@@ -108,9 +108,9 @@ define_group_kinds! {
     Segment = 2,
     Circle = 3,
     CircleCenterRadius = 4,
-    LineKind5 = 5,
-    LineKind6 = 6,
-    LineKind7 = 7,
+    PerpendicularLine = 5,
+    ParallelLine = 6,
+    AngleBisectorRay = 7,
     Polygon = 8,
     LinearIntersectionPoint = 9,
     CircleInterior = 10,
@@ -248,7 +248,7 @@ mod tests {
         assert!(!GroupKind::AngleMarker.is_line_like());
 
         assert!(GroupKind::AngleMarker.is_rendered_line_group());
-        assert!(GroupKind::LineKind6.is_rendered_line_group());
+        assert!(GroupKind::ParallelLine.is_rendered_line_group());
         assert!(!GroupKind::Line.is_rendered_line_group());
 
         assert!(GroupKind::CoordinateTrace.is_coordinate_object());

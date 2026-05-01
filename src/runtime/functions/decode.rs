@@ -19,6 +19,7 @@ use crate::runtime::payload_consts::{
     FUNCTION_EXPR_MARKER_A, FUNCTION_EXPR_MARKER_B, RECORD_FUNCTION_EXPR_PAYLOAD,
     RECORD_INDEXED_PATH_B, RECORD_LABEL_AUX,
 };
+use crate::util::hex_bytes;
 use thiserror::Error;
 
 use super::expr::{
@@ -283,16 +284,18 @@ fn decode_grouped_preferred_payload_function_expr(
     payload: &[u8],
     parameters: &BTreeMap<u16, ParameterBinding>,
 ) -> Result<FunctionExpr, FunctionExprParseError> {
-    let words = payload
-        .chunks_exact(2)
-        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
-        .collect::<Vec<_>>();
-    if let Some(ast) = try_decode_special_grouped_payload(&words, parameters) {
-        return Ok(canonicalize_function_expr(ast));
-    }
-    let parsed = parse_grouped_function_expr_from_words(&words, parameters)
-        .or_else(|_| parse_function_expr_from_words(&words, parameters))?;
-    Ok(canonicalize_function_expr(parsed))
+    with_function_payload_context(payload, || {
+        let words = payload
+            .chunks_exact(2)
+            .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+            .collect::<Vec<_>>();
+        if let Some(ast) = try_decode_special_grouped_payload(&words, parameters) {
+            return Ok(canonicalize_function_expr(ast));
+        }
+        let parsed = parse_grouped_function_expr_from_words(&words, parameters)
+            .or_else(|_| parse_function_expr_from_words(&words, parameters))?;
+        Ok(canonicalize_function_expr(parsed))
+    })
 }
 
 fn try_decode_numeric_helper_group(
@@ -897,27 +900,42 @@ fn decode_payload_function_expr(
     payload: &[u8],
     parameters: &BTreeMap<u16, ParameterBinding>,
 ) -> Result<FunctionExpr, FunctionExprParseError> {
-    if let Some(expr) = try_decode_legacy_point_function_expr(payload) {
-        return Ok(expr);
-    }
-    let text = extract_inline_function_token(payload).ok_or(
-        FunctionExprParseError::NoExpressionFound {
-            word_len: payload.len() / 2,
-        },
-    )?;
-    if text.eq_ignore_ascii_case("x") {
-        Ok(FunctionExpr::Identity)
-    } else if let Ok(value) = text.parse::<f64>() {
-        if value == 0.0 {
-            try_decode_embedded_static_function_expr(payload, parameters)
-                .or_else(|_| try_decode_inner_function_expr(payload, parameters))
-                .or(Ok(FunctionExpr::Constant(value)))
+    with_function_payload_context(payload, || {
+        let text = extract_inline_function_token(payload).ok_or(
+            FunctionExprParseError::NoExpressionFound {
+                word_len: payload.len() / 2,
+            },
+        )?;
+        if text.eq_ignore_ascii_case("x") {
+            Ok(FunctionExpr::Identity)
+        } else if let Ok(value) = text.parse::<f64>() {
+            if value == 0.0 {
+                match try_decode_embedded_static_function_expr(payload, parameters)
+                    .or_else(|_| try_decode_inner_function_expr(payload, parameters))
+                {
+                    Ok(expr) => Ok(expr),
+                    Err(error) if payload_has_function_expr_evidence(payload) => Err(error),
+                    Err(_) => Ok(FunctionExpr::Constant(value)),
+                }
+            } else {
+                Ok(FunctionExpr::Constant(value))
+            }
         } else {
-            Ok(FunctionExpr::Constant(value))
+            try_decode_inner_function_expr(payload, parameters)
         }
-    } else {
-        try_decode_inner_function_expr(payload, parameters)
-    }
+    })
+}
+
+fn payload_has_function_expr_evidence(payload: &[u8]) -> bool {
+    let words = payload
+        .chunks_exact(2)
+        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+        .collect::<Vec<_>>();
+    words
+        .windows(2)
+        .any(|pair| *pair == FUNCTION_EXPR_MARKER_A || *pair == FUNCTION_EXPR_MARKER_B)
+        || embedded_calculate_expr_start(&words).is_some()
+        || words.contains(&0x000b)
 }
 
 fn try_decode_embedded_static_function_expr(
@@ -940,49 +958,6 @@ fn try_decode_embedded_static_function_expr(
             word_len: words.len(),
         })
     }
-}
-
-fn try_decode_legacy_point_function_expr(payload: &[u8]) -> Option<FunctionExpr> {
-    const LEGACY_MUSIC_MIDDLE: [u16; 8] = [2311, 0, 76, 0, 48, 0, 8, 0];
-    const LEGACY_MARKER_B: [u16; 2] = [160, 1];
-    const LEGACY_MUL: u16 = 4098;
-    const LEGACY_SIN: u16 = 8192;
-    const LEGACY_VAR: u16 = 15;
-    const LEGACY_RPAREN: u16 = 12;
-
-    let words = payload
-        .chunks_exact(2)
-        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
-        .collect::<Vec<_>>();
-    let has_middle = words
-        .windows(LEGACY_MUSIC_MIDDLE.len())
-        .any(|window| window == LEGACY_MUSIC_MIDDLE);
-    let suffix = words.get(words.len().saturating_sub(10)..)?;
-    if !has_middle
-        || suffix[0..2] != LEGACY_MARKER_B
-        || suffix[3] != LEGACY_MUL
-        || suffix[4] != LEGACY_SIN
-        || suffix[7] != LEGACY_MUL
-        || suffix[8] != LEGACY_VAR
-        || suffix[9] != LEGACY_RPAREN
-    {
-        return None;
-    }
-    let amplitude = f64::from(suffix[2]);
-    let frequency = f64::from(suffix[5] * 10 + suffix[6]);
-
-    Some(FunctionExpr::Parsed(FunctionAst::Binary {
-        lhs: Box::new(FunctionAst::Constant(amplitude)),
-        op: BinaryOp::Mul,
-        rhs: Box::new(FunctionAst::Unary {
-            op: UnaryFunction::Sin,
-            expr: Box::new(FunctionAst::Binary {
-                lhs: Box::new(FunctionAst::Constant(frequency)),
-                op: BinaryOp::Mul,
-                rhs: Box::new(FunctionAst::Variable),
-            }),
-        }),
-    }))
 }
 
 fn substitute_variable(ast: FunctionAst, replacement: &FunctionAst) -> FunctionAst {
@@ -1533,6 +1508,36 @@ pub(crate) enum FunctionExprParseError {
     MissingParameterBinding { offset: usize, parameter_index: u16 },
     #[error("no parseable function expression found in {word_len} payload words")]
     NoExpressionFound { word_len: usize },
+    #[error(
+        "failed to parse function expression payload ({byte_len} bytes): {source}; payload={payload_hex}"
+    )]
+    PayloadParseFailed {
+        byte_len: usize,
+        payload_hex: String,
+        #[source]
+        source: Box<FunctionExprParseError>,
+    },
+}
+
+fn with_function_payload_context<T>(
+    payload: &[u8],
+    decode: impl FnOnce() -> Result<T, FunctionExprParseError>,
+) -> Result<T, FunctionExprParseError> {
+    decode().map_err(|error| function_payload_parse_error(payload, error))
+}
+
+fn function_payload_parse_error(
+    payload: &[u8],
+    error: FunctionExprParseError,
+) -> FunctionExprParseError {
+    match error {
+        FunctionExprParseError::PayloadParseFailed { .. } => error,
+        _ => FunctionExprParseError::PayloadParseFailed {
+            byte_len: payload.len(),
+            payload_hex: hex_bytes(payload),
+            source: Box::new(error),
+        },
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2121,29 +2126,31 @@ pub(crate) fn try_decode_inner_function_expr(
     payload: &[u8],
     parameters: &BTreeMap<u16, ParameterBinding>,
 ) -> Result<FunctionExpr, FunctionExprParseError> {
-    let words = payload
-        .chunks_exact(2)
-        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
-        .collect::<Vec<_>>();
-    if let Some(ast) = try_decode_special_grouped_payload(&words, parameters) {
-        return Ok(canonicalize_function_expr(ast));
-    }
-    if words.contains(&0x000b)
-        && let Ok(ast) = parse_grouped_function_expr_from_words(&words, parameters)
-    {
-        return Ok(canonicalize_function_expr(ast));
-    }
-    if let Ok(expr) = decode_embedded_postfix_payload_function_expr(payload, parameters) {
-        return Ok(expr);
-    }
-    let parsed = if words.contains(&0x000b) {
-        parse_grouped_function_expr_from_words(&words, parameters)
-            .or_else(|_| parse_function_expr_from_words(&words, parameters))
-    } else {
-        parse_function_expr_from_words(&words, parameters)
-            .or_else(|_| parse_grouped_function_expr_from_words(&words, parameters))
-    }?;
-    Ok(canonicalize_function_expr(parsed))
+    with_function_payload_context(payload, || {
+        let words = payload
+            .chunks_exact(2)
+            .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+            .collect::<Vec<_>>();
+        if let Some(ast) = try_decode_special_grouped_payload(&words, parameters) {
+            return Ok(canonicalize_function_expr(ast));
+        }
+        if words.contains(&0x000b)
+            && let Ok(ast) = parse_grouped_function_expr_from_words(&words, parameters)
+        {
+            return Ok(canonicalize_function_expr(ast));
+        }
+        if let Ok(expr) = decode_embedded_postfix_payload_function_expr(payload, parameters) {
+            return Ok(expr);
+        }
+        let parsed = if words.contains(&0x000b) {
+            parse_grouped_function_expr_from_words(&words, parameters)
+                .or_else(|_| parse_function_expr_from_words(&words, parameters))
+        } else {
+            parse_function_expr_from_words(&words, parameters)
+                .or_else(|_| parse_grouped_function_expr_from_words(&words, parameters))
+        }?;
+        Ok(canonicalize_function_expr(parsed))
+    })
 }
 
 fn try_decode_special_grouped_payload(
@@ -2356,18 +2363,20 @@ fn parse_function_expr_from_words(
     words: &[u16],
     parameters: &BTreeMap<u16, ParameterBinding>,
 ) -> Result<FunctionAst, FunctionExprParseError> {
-    let mut marker_error = None;
     let marker_index = words
         .windows(2)
         .position(|pair| *pair == FUNCTION_EXPR_MARKER_A || *pair == FUNCTION_EXPR_MARKER_B);
-    if let Some(marker_index) = marker_index {
-        match parse_function_expr_from(words, marker_index + 2, parameters) {
-            Ok((parsed, _)) => return Ok(parsed),
-            Err(error) => marker_error = Some(error),
-        }
+    let start = marker_index.map_or(0, |marker_index| marker_index + 2);
+    let (parsed, end) = parse_function_expr_from(words, start, parameters)?;
+    if marker_index.is_some()
+        || (parsed_contains_symbol(&parsed) && has_ignorable_expr_suffix(words, end))
+    {
+        Ok(parsed)
+    } else {
+        Err(FunctionExprParseError::NoExpressionFound {
+            word_len: words.len(),
+        })
     }
-    find_fallback_function_expr(words, parameters)
-        .map_err(|fallback_error| marker_error.unwrap_or(fallback_error))
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2681,175 +2690,36 @@ fn parse_grouped_function_expr_from_words(
     words: &[u16],
     parameters: &BTreeMap<u16, ParameterBinding>,
 ) -> Result<FunctionAst, FunctionExprParseError> {
-    if let Some(ast) = parse_grouped_function_expr_after_marker(words, parameters) {
-        return Ok(ast);
-    }
-    let normalized = normalize_grouped_words(words);
-    if let Some(ast) = parse_grouped_function_expr_after_marker(&normalized, parameters) {
-        return Ok(ast);
-    }
-    if let Some(ast) = best_grouped_parse_candidate(words, parameters) {
-        return Ok(ast);
-    }
-    if let Some(ast) = best_grouped_parse_candidate(&normalized, parameters) {
-        return Ok(ast);
-    }
-    let mut first_error = None;
-    for start in 0..normalized.len() {
-        let mut parser = GroupedFunctionParser::new(&normalized[start..], parameters, start)
-            .allowing_unclosed_unary_argument();
-        match parser.parse_expr(0) {
-            Ok(expr) if parsed_contains_symbol(&expr) => {
-                let remaining = &parser.words[parser.offset..];
-                if remaining.is_empty() || remaining.iter().all(|word| *word == 0x000c) {
-                    return Ok(expr);
-                }
-            }
-            Err(error) if first_error.is_none() => first_error = Some(error),
-            _ => {}
-        }
-    }
-    Err(
-        first_error.unwrap_or(FunctionExprParseError::NoExpressionFound {
-            word_len: normalized.len(),
-        }),
-    )
-}
-
-fn parse_grouped_function_expr_after_marker(
-    words: &[u16],
-    parameters: &BTreeMap<u16, ParameterBinding>,
-) -> Option<FunctionAst> {
-    words
+    if let Some(marker_index) = words
         .windows(2)
-        .enumerate()
-        .find_map(|(marker_index, pair)| {
-            if !(*pair == FUNCTION_EXPR_MARKER_A || *pair == FUNCTION_EXPR_MARKER_B) {
-                return None;
-            }
-            let start = marker_index + 2;
-            let mut parser = GroupedFunctionParser::new(&words[start..], parameters, start)
-                .allowing_unclosed_unary_argument();
-            let expr = parser.parse_expr(0).ok()?;
-            if !parsed_contains_symbol(&expr) {
-                return None;
-            }
-            let remaining = &parser.words[parser.offset..];
-            (remaining.is_empty() || remaining.iter().all(|word| *word == 0x000c)).then_some(expr)
-        })
+        .position(|pair| *pair == FUNCTION_EXPR_MARKER_A || *pair == FUNCTION_EXPR_MARKER_B)
+    {
+        return parse_grouped_function_expr_at(words, marker_index + 2, parameters);
+    }
+    parse_grouped_function_expr_at(words, 0, parameters)
 }
 
-fn best_grouped_parse_candidate(
+fn parse_grouped_function_expr_at(
     words: &[u16],
-    parameters: &BTreeMap<u16, ParameterBinding>,
-) -> Option<FunctionAst> {
-    let delimiter_positions = words
-        .iter()
-        .enumerate()
-        .filter_map(|(index, word)| (*word == 0x000c).then_some(index))
-        .collect::<Vec<_>>();
-
-    let mut best: Option<(usize, usize, FunctionAst)> = None;
-    for delete_count in 0..=3 {
-        let mut stack = Vec::new();
-        generate_deletion_sets(
-            &delimiter_positions,
-            delete_count,
-            0,
-            &mut stack,
-            &mut |deletions| {
-                let edited = words
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(index, word)| (!deletions.contains(&index)).then_some(*word))
-                    .collect::<Vec<_>>();
-                for start in 0..edited.len() {
-                    let mut parser =
-                        GroupedFunctionParser::new(&edited[start..], parameters, start)
-                            .allowing_unclosed_unary_argument();
-                    let Ok(expr) = parser.parse_expr(0) else {
-                        continue;
-                    };
-                    if !parsed_contains_symbol(&expr) {
-                        continue;
-                    }
-                    let remaining = &parser.words[parser.offset..];
-                    if !(remaining.is_empty() || remaining.iter().all(|word| *word == 0x000c)) {
-                        continue;
-                    }
-                    match &best {
-                        Some((best_start, best_delete_count, _))
-                            if start > *best_start
-                                || (start == *best_start && delete_count >= *best_delete_count) =>
-                        {
-                            continue;
-                        }
-                        _ => best = Some((start, delete_count, expr.clone())),
-                    }
-                }
-            },
-        );
-        if best.is_some() {
-            break;
-        }
-    }
-    best.map(|(_, _, expr)| expr)
-}
-
-fn generate_deletion_sets<F: FnMut(&[usize])>(
-    values: &[usize],
-    target_len: usize,
     start: usize,
-    current: &mut Vec<usize>,
-    f: &mut F,
-) {
-    if current.len() == target_len {
-        f(current);
-        return;
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Result<FunctionAst, FunctionExprParseError> {
+    let mut parser = GroupedFunctionParser::new(&words[start..], parameters, start)
+        .allowing_unclosed_unary_argument();
+    let expr = parser.parse_expr(0)?;
+    if !parsed_contains_symbol(&expr) {
+        return Err(FunctionExprParseError::NoExpressionFound {
+            word_len: words.len(),
+        });
     }
-    for index in start..values.len() {
-        current.push(values[index]);
-        generate_deletion_sets(values, target_len, index + 1, current, f);
-        current.pop();
+    let remaining = &parser.words[parser.offset..];
+    if remaining.is_empty() || remaining.iter().all(|word| *word == 0x000c) {
+        Ok(expr)
+    } else {
+        Err(FunctionExprParseError::NoExpressionFound {
+            word_len: words.len(),
+        })
     }
-}
-
-fn normalize_grouped_words(words: &[u16]) -> Vec<u16> {
-    let mut normalized = Vec::with_capacity(words.len());
-    let mut balance = 0isize;
-    for (index, &word) in words.iter().enumerate() {
-        match word {
-            0x000b => {
-                balance += 1;
-                normalized.push(word);
-            }
-            0x000c => {
-                let next_non_close = words
-                    .iter()
-                    .copied()
-                    .skip(index + 1)
-                    .find(|next| *next != 0x000c);
-                if balance > 1
-                    && !matches!(words.get(index + 1), Some(0x000c))
-                    && matches!(
-                        next_non_close,
-                        Some(EXPR_OP_ADD | EXPR_OP_SUB | EXPR_OP_MUL | EXPR_OP_DIV | EXPR_OP_POW)
-                    )
-                {
-                    continue;
-                }
-                if normalized.last().copied() == Some(0x000c) {
-                    continue;
-                }
-                if balance > 0 {
-                    balance -= 1;
-                    normalized.push(word);
-                }
-            }
-            _ => normalized.push(word),
-        }
-    }
-    normalized
 }
 
 fn parse_function_expr_from(
@@ -2860,38 +2730,6 @@ fn parse_function_expr_from(
     let mut parser = FunctionExprParser::new(&words[start..], parameters, start);
     let parsed = parser.parse_expr()?;
     Ok((parsed, start + parser.words_consumed()))
-}
-
-fn find_fallback_function_expr(
-    words: &[u16],
-    parameters: &BTreeMap<u16, ParameterBinding>,
-) -> Result<FunctionAst, FunctionExprParseError> {
-    if let Some(start) = embedded_calculate_expr_start(words)
-        && let Ok((parsed, end)) = parse_function_expr_from(words, start, parameters)
-        && parsed_contains_symbol(&parsed)
-        && has_ignorable_expr_suffix(words, end)
-    {
-        return Ok(parsed);
-    }
-
-    let mut first_error = None;
-    for start in 0..words.len() {
-        match parse_function_expr_from(words, start, parameters) {
-            Ok((parsed, end))
-                if parsed_contains_symbol(&parsed) && has_ignorable_expr_suffix(words, end) =>
-            {
-                return Ok(parsed);
-            }
-            Ok(_) => {}
-            Err(error) if first_error.is_none() => first_error = Some(error),
-            Err(_) => {}
-        }
-    }
-    Err(
-        first_error.unwrap_or(FunctionExprParseError::NoExpressionFound {
-            word_len: words.len(),
-        }),
-    )
 }
 
 fn embedded_calculate_expr_start(words: &[u16]) -> Option<usize> {
@@ -2940,8 +2778,9 @@ fn parsed_contains_symbol(parsed: &FunctionAst) -> bool {
 mod parse_tests {
     use super::{
         FunctionExprParseError, ParameterBinding, decode_payload_function_expr,
-        parse_function_expr, try_decode_function_expr, try_decode_inner_function_expr,
-        try_decode_plot_component_expr, try_decode_standalone_function_expr,
+        group_function_payload, parse_function_expr, try_decode_function_expr,
+        try_decode_inner_function_expr, try_decode_plot_component_expr,
+        try_decode_standalone_function_expr,
     };
     use crate::gsp::GspFile;
     use crate::runtime::extract::points::collect_point_objects;
@@ -2951,6 +2790,7 @@ mod parse_tests {
         function_expr_label,
     };
     use crate::runtime::payload_consts::RECORD_FUNCTION_EXPR_PAYLOAD;
+    use crate::util::hex_bytes;
     use std::collections::BTreeMap;
     use std::fs;
 
@@ -2959,6 +2799,18 @@ mod parse_tests {
             .iter()
             .flat_map(|word| word.to_le_bytes())
             .collect::<Vec<_>>()
+    }
+
+    fn assert_payload_parse_failed(error: FunctionExprParseError, payload: &[u8]) {
+        let message = error.to_string();
+        assert!(
+            message.contains("failed to parse function expression payload"),
+            "expected payload parse failure, got {message}"
+        );
+        assert!(
+            message.contains(&format!("payload={}", hex_bytes(payload))),
+            "expected failed payload bytes in error, got {message}"
+        );
     }
 
     fn function_expr_contains_unary(
@@ -3108,7 +2960,7 @@ mod parse_tests {
     }
 
     #[test]
-    fn decodes_chessboard_depth_expr_with_subexpression_in_numerator() {
+    fn rejects_unmarked_chessboard_depth_expr_without_family_decoder() {
         let payload = payload_from_words(&[
             2300, 0, 22, 0, 4, 0, 10, 274, 3, 12348, 62, 0, 6, 0, 2, 0, 2311, 0, 78, 0, 48, 0, 9,
             4, 63952, 3, 0, 0, 63964, 18, 65535, 65535, 4437, 87, 51443, 86, 274, 0, 61589, 0,
@@ -3122,22 +2974,9 @@ mod parse_tests {
                 expr: None,
             },
         )]);
-        assert_eq!(
-            try_decode_inner_function_expr(&payload, &parameters).ok(),
-            Some(FunctionExpr::Parsed(FunctionAst::Binary {
-                lhs: Box::new(FunctionAst::Binary {
-                    lhs: Box::new(FunctionAst::Binary {
-                        lhs: Box::new(FunctionAst::Parameter("trunc((m₁ + 2))".to_string(), 9.0,)),
-                        op: BinaryOp::Pow,
-                        rhs: Box::new(FunctionAst::Constant(2.0)),
-                    }),
-                    op: BinaryOp::Sub,
-                    rhs: Box::new(FunctionAst::Constant(1.0)),
-                }),
-                op: BinaryOp::Div,
-                rhs: Box::new(FunctionAst::Constant(2.0)),
-            }))
-        );
+        let error = try_decode_inner_function_expr(&payload, &parameters)
+            .expect_err("unmarked grouped payload must not be rescued by broad fallback");
+        assert_payload_parse_failed(error, &payload);
     }
 
     #[test]
@@ -3475,7 +3314,7 @@ mod parse_tests {
     }
 
     #[test]
-    fn decodes_function_definition_payload_from_sine_transform_sample() {
+    fn rejects_unmarked_function_definition_payload_from_sine_transform_sample() {
         let Ok(data) = fs::read("tests/Samples/个人专栏/向忠作品/正弦型函数图象变换.gsp")
         else {
             return;
@@ -3487,78 +3326,10 @@ mod parse_tests {
             .find(|group| group.ordinal == 306)
             .expect("expected function definition group");
 
-        let expr = try_decode_function_expr(&file, &groups, function_group)
-            .expect("expected sine transform function definition to decode");
-
-        assert!(
-            function_expr_contains_unary(&expr, crate::runtime::functions::UnaryFunction::Log10),
-            "expected decoded sine transform function to preserve the log10 domain guard, got {expr:?}"
-        );
-        assert_eq!(
-            evaluate_expr_with_parameters(
-                &expr,
-                10_000.0,
-                &BTreeMap::from([
-                    ("A".to_string(), 1.0),
-                    ("ω".to_string(), 1.0),
-                    ("φ".to_string(), 0.0),
-                ]),
-            ),
-            None,
-            "expected the decoded domain guard to reject samples outside its domain"
-        );
-    }
-
-    #[test]
-    fn decodes_prefixed_calculate_chain_in_icosahedron_sample() {
-        let Ok(data) = fs::read("tests/Samples/个人专栏/向忠作品/正二十面体.gsp")
-        else {
-            return;
-        };
-        let file = GspFile::parse(&data).expect("sample parses");
-        let groups = file.object_groups();
-        let view_distance = try_decode_function_expr(&file, &groups, &groups[11])
-            .expect("expected view-distance calculation #12 to decode");
-        let view_distance_value =
-            evaluate_expr_with_parameters(&view_distance, 0.0, &BTreeMap::new())
-                .expect("view-distance calculation should evaluate");
-        assert!(
-            (view_distance_value + 20.0).abs() < 1e-9,
-            "expected the expression body after the payload delimiter, got {view_distance:?} = {view_distance_value}"
-        );
-
-        let expr = try_decode_function_expr(&file, &groups, &groups[49])
-            .expect("expected x[s] calculation #50 to decode");
-
-        assert_ne!(
-            function_expr_label(expr.clone()),
-            "x[s]",
-            "expected the coordinate calculation to decode the payload expression, not fall back to its display name"
-        );
-        assert!(
-            matches!(
-                expr,
-                FunctionExpr::Parsed(FunctionAst::Binary {
-                    op: BinaryOp::Div,
-                    ..
-                })
-            ),
-            "expected x[s] to preserve the payload formula A*B/C, got {expr:?}"
-        );
-
-        let y_expr = try_decode_function_expr(&file, &groups, &groups[50])
-            .expect("expected y[s] calculation #51 to decode");
-        assert_ne!(
-            function_expr_label(y_expr.clone()),
-            "y[s]",
-            "expected the coordinate calculation to decode the payload expression, not fall back to its display name"
-        );
-        let value = evaluate_expr_with_parameters(&y_expr, 0.0, &BTreeMap::new())
-            .expect("decoded y[s] expression should evaluate from its referenced calculations");
-        assert!(
-            value.is_finite() && value.abs() > 0.01,
-            "expected a finite nonzero projected coordinate, got {value}"
-        );
+        let payload = group_function_payload(&file, function_group).expect("function payload");
+        let error = try_decode_function_expr(&file, &groups, function_group)
+            .expect_err("unmarked grouped payload must not be rescued by broad fallback");
+        assert_payload_parse_failed(error, payload);
     }
 
     #[test]
@@ -3643,97 +3414,14 @@ mod parse_tests {
     }
 
     #[test]
-    fn decodes_liyougui_function_iteration_payloads_from_saved_expression_words() {
+    fn rejects_liyougui_function_iteration_payload_without_family_decoder() {
         let data =
             include_bytes!("../../../tests/Samples/个人专栏/李有贵作品/函数图象迭代(liyougui).gsp");
         let file = GspFile::parse(data).expect("fixture parses");
         let groups = file.object_groups();
-        let x_expr = try_decode_function_expr(&file, &groups, &groups[14]).expect("#15 expr");
-        let helper_expr = try_decode_function_expr(&file, &groups, &groups[15]).expect("#16 expr");
-        let y_expr = try_decode_function_expr(&file, &groups, &groups[16]).expect("#17 expr");
-        let step_expr = try_decode_function_expr(&file, &groups, &groups[18]).expect("#19 expr");
-
-        assert_eq!(
-            x_expr,
-            FunctionExpr::Parsed(FunctionAst::Binary {
-                lhs: Box::new(FunctionAst::Constant(2.0)),
-                op: BinaryOp::Mul,
-                rhs: Box::new(FunctionAst::Binary {
-                    lhs: Box::new(FunctionAst::Parameter("C".to_string(), 0.36706751054852294,)),
-                    op: BinaryOp::Add,
-                    rhs: Box::new(FunctionAst::Parameter("m".to_string(), -4.0)),
-                }),
-            })
-        );
-        assert_eq!(
-            helper_expr,
-            FunctionExpr::Parsed(FunctionAst::Binary {
-                lhs: Box::new(FunctionAst::Binary {
-                    lhs: Box::new(FunctionAst::Binary {
-                        lhs: Box::new(FunctionAst::Variable),
-                        op: BinaryOp::Pow,
-                        rhs: Box::new(FunctionAst::Constant(2.0)),
-                    }),
-                    op: BinaryOp::Sub,
-                    rhs: Box::new(FunctionAst::Binary {
-                        lhs: Box::new(FunctionAst::Constant(2.0)),
-                        op: BinaryOp::Mul,
-                        rhs: Box::new(FunctionAst::Variable),
-                    }),
-                }),
-                op: BinaryOp::Mul,
-                rhs: Box::new(FunctionAst::Binary {
-                    lhs: Box::new(FunctionAst::Parameter("k".to_string(), -1.5)),
-                    op: BinaryOp::Pow,
-                    rhs: Box::new(FunctionAst::Parameter("m".to_string(), -4.0)),
-                }),
-            })
-        );
-        assert_eq!(
-            y_expr,
-            FunctionExpr::Parsed(FunctionAst::Binary {
-                lhs: Box::new(FunctionAst::Binary {
-                    lhs: Box::new(FunctionAst::Binary {
-                        lhs: Box::new(FunctionAst::Binary {
-                            lhs: Box::new(FunctionAst::Constant(2.0)),
-                            op: BinaryOp::Mul,
-                            rhs: Box::new(FunctionAst::Parameter(
-                                "C".to_string(),
-                                0.36706751054852294,
-                            )),
-                        }),
-                        op: BinaryOp::Pow,
-                        rhs: Box::new(FunctionAst::Constant(2.0)),
-                    }),
-                    op: BinaryOp::Sub,
-                    rhs: Box::new(FunctionAst::Binary {
-                        lhs: Box::new(FunctionAst::Constant(2.0)),
-                        op: BinaryOp::Mul,
-                        rhs: Box::new(FunctionAst::Binary {
-                            lhs: Box::new(FunctionAst::Constant(2.0)),
-                            op: BinaryOp::Mul,
-                            rhs: Box::new(FunctionAst::Parameter(
-                                "C".to_string(),
-                                0.36706751054852294,
-                            )),
-                        }),
-                    }),
-                }),
-                op: BinaryOp::Mul,
-                rhs: Box::new(FunctionAst::Binary {
-                    lhs: Box::new(FunctionAst::Parameter("k".to_string(), -1.5)),
-                    op: BinaryOp::Pow,
-                    rhs: Box::new(FunctionAst::Parameter("m".to_string(), -4.0)),
-                }),
-            })
-        );
-        assert_eq!(
-            step_expr,
-            FunctionExpr::Parsed(FunctionAst::Binary {
-                lhs: Box::new(FunctionAst::Parameter("m".to_string(), -4.0)),
-                op: BinaryOp::Add,
-                rhs: Box::new(FunctionAst::Constant(1.0)),
-            })
-        );
+        let payload = group_function_payload(&file, &groups[14]).expect("#15 payload");
+        let error = try_decode_function_expr(&file, &groups, &groups[14])
+            .expect_err("unmarked grouped payload must not be rescued by broad fallback");
+        assert_payload_parse_failed(error, payload);
     }
 }

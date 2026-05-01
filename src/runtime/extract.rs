@@ -38,12 +38,6 @@ mod tests_trace;
 mod trace;
 mod world;
 
-use self::analysis::{analyze_scene, count_polygon_payload_color_bindings};
-use self::assemble::{
-    SceneAssemblyArtifacts, assemble_scene, build_world_data, compute_scene_bounds,
-};
-use self::bindings::{apply_payload_color_bindings, remap_scene_bindings};
-use self::buttons::{ButtonIndexLookups, collect_buttons};
 use self::context::SceneContext;
 pub(crate) use self::decode::decode_measurement_value;
 use crate::format::{
@@ -64,49 +58,32 @@ use self::graph::{
     collect_document_canvas_bounds, collect_saved_viewport, detect_graph_transform,
     has_coordinate_transform_consumers, has_graph_classes,
 };
-use self::images::collect_scene_images;
-use self::labels::{
-    HotspotIndexLookups, bind_button_seed_expression_labels, bind_label_iteration_seed_anchors,
-    bind_point_label_anchors, circle_parameter, collect_iteration_tables, collect_label_iterations,
-    collect_scene_labels, polygon_boundary_parameter, resolve_label_hotspots,
-};
+use self::labels::{circle_parameter, polygon_boundary_parameter};
 pub(crate) use self::payload_report::render_payload_log;
-use self::payload_report::validate_scene_payloads;
-#[cfg(test)]
-use self::points::collect_visible_points_checked;
 use self::points::{
-    RawPointConstraint, TransformBindingKind, collect_non_graph_parameters,
-    collect_point_iteration_points, collect_point_objects, collect_standalone_parameter_points,
-    collect_visible_points_checked_with_context, decode_angle_rotation_anchor_raw,
-    decode_line_midpoint_anchor_raw, decode_offset_anchor_raw,
+    RawPointConstraint, TransformBindingKind, collect_point_objects,
+    decode_angle_rotation_anchor_raw, decode_line_midpoint_anchor_raw, decode_offset_anchor_raw,
     decode_parameter_controlled_anchor_raw, decode_parameter_rotation_anchor_raw,
     decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,
     decode_point_pair_translation_anchor_raw, decode_reflection_anchor_raw,
     decode_regular_polygon_vertex_anchor_raw, decode_translated_point_anchor_raw,
     decode_translated_point_constraint, regular_polygon_iteration_step, remap_circle_bindings,
-    remap_label_bindings, remap_line_bindings, remap_polygon_bindings,
-    translation_point_pair_group_indices, try_decode_parameter_controlled_point,
-    try_decode_parameter_rotation_binding, try_decode_point_constraint,
-    try_decode_transform_binding,
+    remap_line_bindings, remap_polygon_bindings, translation_point_pair_group_indices,
+    try_decode_parameter_controlled_point, try_decode_parameter_rotation_binding,
+    try_decode_point_constraint, try_decode_transform_binding,
 };
 use self::shapes::{
-    collect_carried_circle_iteration_families, collect_carried_line_iteration_families,
-    collect_carried_polygon_iteration_families, collect_raw_object_anchors,
-    collect_rotational_line_iteration_families, collect_scene_shapes,
-};
-use self::trace::{
-    bind_points_to_point_traces, collect_colorized_spectrum_lines, collect_point_traces,
-    collect_segment_traces,
+    collect_carried_line_iteration_families, collect_carried_polygon_iteration_families,
+    collect_raw_object_anchors, collect_rotational_line_iteration_families,
 };
 use super::functions::{
-    collect_function_plot_domain, collect_function_plots, collect_scene_functions,
-    collect_scene_parameters, collect_standalone_function_definitions, function_uses_pi_scale,
+    collect_function_plot_domain, collect_function_plots, function_uses_pi_scale,
     try_decode_function_expr, try_decode_function_plot_descriptor,
 };
-use super::geometry::{Bounds, GraphTransform, color_from_style, line_is_dashed, to_world};
+use super::geometry::{Bounds, GraphTransform, color_from_style, line_is_dashed};
 use super::scene::{
-    ColorBinding, LineBinding, LineIterationFamily, LineShape, PayloadDebugSource,
-    PointIterationFamily, PolygonIterationFamily, PolygonShape, Scene, ScenePoint, TextLabel,
+    ColorBinding, LineIterationFamily, LineShape, PointIterationFamily, PolygonIterationFamily,
+    PolygonShape, ScenePoint,
 };
 
 pub(crate) use self::build::build_scene_checked;

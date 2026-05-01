@@ -3,8 +3,8 @@ use crate::runtime::geometry::{include_line_bounds, to_world};
 use crate::runtime::scene::{
     CircleIterationFamily, CircularConstraint, LabelIterationFamily, LineConstraint,
     LineIterationFamily, LineShape, PointIterationFamily, PolygonIterationFamily, PolygonShape,
-    Scene, SceneArc, SceneCircle, SceneImage, ScenePoint, ScenePointConstraint, TextLabel,
-    TextLabelBinding,
+    Scene, SceneArc, SceneCircle, SceneImage, ScenePoint, ScenePointConstraint, ShapeBinding,
+    TextLabel, TextLabelBinding,
 };
 
 use super::analysis::{BoundsData, CollectedShapes, SceneAnalysis, WorldData};
@@ -470,40 +470,27 @@ pub(super) fn compute_scene_bounds(
     world_point_positions: &[PointRecord],
 ) -> BoundsData {
     let bounds_lines = shapes
-        .segments
+        .lines
         .iter()
-        .chain(shapes.lines.iter())
-        .chain(shapes.rays.iter())
-        .chain(shapes.translated_lines.iter())
-        .chain(shapes.segment_markers.iter())
-        .chain(shapes.rotated_lines.iter())
-        .chain(shapes.scaled_lines.iter())
-        .chain(shapes.reflected_lines.iter())
-        .chain(shapes.derived_segments.iter())
-        .chain(shapes.measurements.iter())
-        .chain(shapes.coordinate_traces.iter())
+        .chain(shapes.trace_lines.iter())
         .chain(shapes.axes.iter())
-        .chain(shapes.iteration_lines.iter())
-        .chain(shapes.carried_iteration_lines.iter())
+        .chain(shapes.post_function_lines.iter())
         .cloned()
         .collect::<Vec<_>>();
-    let bounds_polygons = shapes
-        .polygons
-        .iter()
-        .chain(shapes.translated_polygons.iter())
-        .chain(shapes.rotated_polygons.iter())
-        .chain(shapes.transformed_polygons.iter())
-        .chain(shapes.reflected_polygons.iter())
-        .chain(shapes.iteration_polygons.iter())
-        .chain(shapes.carried_iteration_polygons.iter())
-        .cloned()
-        .collect::<Vec<_>>();
+    let bounds_polygons = shapes.polygons.clone();
     let bounds_circles = shapes
         .circles
         .iter()
-        .chain(shapes.rotated_circles.iter())
-        .chain(shapes.transformed_circles.iter())
-        .chain(shapes.reflected_circles.iter())
+        .filter(|circle| {
+            !matches!(
+                circle.binding,
+                Some(ShapeBinding::DerivedTransform {
+                    transform: crate::runtime::scene::ShapeTransformBinding::TranslateDelta { .. }
+                        | crate::runtime::scene::ShapeTransformBinding::TranslateVector { .. },
+                    ..
+                })
+            ) && circle.debug.is_some()
+        })
         .cloned()
         .collect::<Vec<_>>();
     let bounds_arcs = shapes.arcs.clone();
@@ -522,7 +509,6 @@ pub(super) fn compute_scene_bounds(
         },
     );
     include_line_bounds(&mut bounds, &analysis.function_plots, &analysis.graph_ref);
-    include_line_bounds(&mut bounds, &shapes.synthetic_axes, &analysis.graph_ref);
     let use_saved_viewport = analysis.saved_viewport.is_some();
     if let Some(viewport) = analysis.saved_viewport.filter(|_| use_saved_viewport) {
         bounds = viewport;
@@ -553,65 +539,22 @@ pub(super) fn assemble_scene(
     artifacts: SceneAssemblyArtifacts,
 ) -> Scene {
     let CollectedShapes {
-        segments,
         lines,
-        rays,
-        translated_lines,
-        segment_markers,
-        derived_segments,
-        rotated_lines,
-        scaled_lines,
-        reflected_lines,
-        carried_iteration_lines,
-        carried_iteration_polygons,
-        carried_iteration_circles,
-        measurements,
-        coordinate_traces,
+        trace_lines,
         axes,
+        post_function_lines,
         polygons,
         circles,
         arcs,
-        translated_circles,
-        rotated_circles,
-        transformed_circles,
-        reflected_circles,
-        translated_polygons,
-        rotated_polygons,
-        transformed_polygons,
-        reflected_polygons,
-        iteration_lines,
-        iteration_polygons,
-        synthetic_axes,
     } = shapes;
 
-    let raw_polygons = polygons
-        .into_iter()
-        .chain(translated_polygons)
-        .chain(rotated_polygons)
-        .chain(transformed_polygons)
-        .chain(reflected_polygons)
-        .chain(iteration_polygons)
-        .chain(carried_iteration_polygons)
-        .collect::<Vec<_>>();
-
     let raw_lines = dedupe_line_shapes(
-        segments
+        lines
             .into_iter()
-            .chain(lines)
-            .chain(rays)
-            .chain(translated_lines)
-            .chain(segment_markers)
-            .chain(rotated_lines)
-            .chain(scaled_lines)
-            .chain(reflected_lines)
-            .chain(derived_segments)
-            .chain(measurements)
-            .chain(coordinate_traces)
+            .chain(trace_lines)
             .chain(axes)
             .chain(analysis.function_plots.iter().cloned())
-            .chain(synthetic_axes)
-            .chain(iteration_lines)
-            .chain(carried_iteration_lines)
+            .chain(post_function_lines)
             .collect(),
     );
     let functions =
@@ -651,38 +594,22 @@ pub(super) fn assemble_scene(
             .into_iter()
             .map(|line| world_line_shape(line, &analysis.graph_ref, &bounds_data.bounds))
             .collect(),
-        polygons: raw_polygons
+        polygons: polygons
             .into_iter()
-            .map(|polygon| {
-                let is_hidden_graph_panel = is_hidden_graph_panel_polygon(&analysis, &polygon);
-                PolygonShape {
-                    points: if is_hidden_graph_panel {
-                        bounds_corners(&bounds_data.bounds)
-                    } else {
-                        polygon
-                            .points
-                            .into_iter()
-                            .map(|point| to_world(&point, &analysis.graph_ref))
-                            .collect()
-                    },
-                    color: polygon.color,
-                    visible: polygon.visible,
-                    binding: if is_hidden_graph_panel {
-                        None
-                    } else {
-                        polygon.binding
-                    },
-                    debug: polygon.debug,
-                }
+            .map(|polygon| PolygonShape {
+                points: polygon
+                    .points
+                    .into_iter()
+                    .map(|point| to_world(&point, &analysis.graph_ref))
+                    .collect(),
+                color: polygon.color,
+                visible: polygon.visible,
+                binding: polygon.binding,
+                debug: polygon.debug,
             })
             .collect(),
         circles: circles
             .into_iter()
-            .chain(carried_iteration_circles)
-            .chain(translated_circles)
-            .chain(rotated_circles)
-            .chain(transformed_circles)
-            .chain(reflected_circles)
             .map(|circle| SceneCircle {
                 center: to_world(&circle.center, &analysis.graph_ref),
                 radius_point: to_world(&circle.radius_point, &analysis.graph_ref),
@@ -749,44 +676,6 @@ pub(super) fn assemble_scene(
         functions,
         function_definitions: artifacts.function_definitions,
     }
-}
-
-fn is_hidden_graph_panel_polygon(analysis: &SceneAnalysis, polygon: &PolygonShape) -> bool {
-    let world_points = polygon
-        .points
-        .iter()
-        .map(|point| to_world(point, &analysis.graph_ref))
-        .collect::<Vec<_>>();
-    !analysis.graph_mode
-        && analysis.graph_ref.is_some()
-        && polygon.visible
-        && polygon.color == [0, 0, 0, 255]
-        && world_points.len() == 4
-        && world_points.iter().all(|point| {
-            ((point.x - 0.0).abs() < 1e-9 || (point.x - 1.0).abs() < 1e-9)
-                && ((point.y - 0.0).abs() < 1e-9 || (point.y - 1.0).abs() < 1e-9)
-        })
-}
-
-fn bounds_corners(bounds: &crate::runtime::geometry::Bounds) -> Vec<PointRecord> {
-    vec![
-        PointRecord {
-            x: bounds.min_x,
-            y: bounds.min_y,
-        },
-        PointRecord {
-            x: bounds.max_x,
-            y: bounds.min_y,
-        },
-        PointRecord {
-            x: bounds.max_x,
-            y: bounds.max_y,
-        },
-        PointRecord {
-            x: bounds.min_x,
-            y: bounds.max_y,
-        },
-    ]
 }
 
 fn world_label_delta(

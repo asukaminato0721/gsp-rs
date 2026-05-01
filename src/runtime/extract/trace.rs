@@ -614,7 +614,7 @@ fn sampled_reflection_axis_driver(
     trace_point_group_index: usize,
 ) -> Option<(usize, usize)> {
     let axis_group = groups.get(axis_line_group_index)?;
-    if axis_group.header.kind() != GroupKind::LineKind5 {
+    if axis_group.header.kind() != GroupKind::PerpendicularLine {
         return None;
     }
     let axis_path = find_indexed_path(file, axis_group)?;
@@ -639,7 +639,7 @@ fn sampled_reflection_axis_driver(
     for ordinal in &intersection_path.refs {
         let index = ordinal.checked_sub(1)?;
         let group = groups.get(index)?;
-        if group.header.kind() == GroupKind::LineKind7 {
+        if group.header.kind() == GroupKind::AngleBisectorRay {
             bisector_group_index = Some(index);
         } else {
             directrix_line_group_index = Some(index);

@@ -2618,7 +2618,7 @@ fn resolve_line_constraint(
                 },
             })
         }
-        crate::format::GroupKind::LineKind5 | crate::format::GroupKind::LineKind6 => {
+        crate::format::GroupKind::PerpendicularLine | crate::format::GroupKind::ParallelLine => {
             if path.refs.len() != 2 {
                 return None;
             }
@@ -2632,12 +2632,12 @@ fn resolve_line_constraint(
                 (*group_to_point_index.get(host_path.refs[0].checked_sub(1)?)?)?;
             let line_end_index = (*group_to_point_index.get(host_path.refs[1].checked_sub(1)?)?)?;
             Some(match group.header.kind() {
-                crate::format::GroupKind::LineKind5 => LineConstraint::PerpendicularLine {
+                crate::format::GroupKind::PerpendicularLine => LineConstraint::PerpendicularLine {
                     through_index,
                     line_start_index,
                     line_end_index,
                 },
-                crate::format::GroupKind::LineKind6 => LineConstraint::ParallelLine {
+                crate::format::GroupKind::ParallelLine => LineConstraint::ParallelLine {
                     through_index,
                     line_start_index,
                     line_end_index,
@@ -2645,7 +2645,7 @@ fn resolve_line_constraint(
                 _ => unreachable!(),
             })
         }
-        crate::format::GroupKind::LineKind7 => {
+        crate::format::GroupKind::AngleBisectorRay => {
             if path.refs.len() != 3 {
                 return None;
             }

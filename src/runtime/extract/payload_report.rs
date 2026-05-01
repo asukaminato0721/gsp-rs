@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime::extract::points::resolve_line_like_points_raw;
 use crate::runtime::geometry;
 use anyhow::bail;
 use std::fmt::Write as _;
@@ -188,9 +189,9 @@ fn collect_htm_payload_groups<'a>(
             | GroupKind::CircleCenterRadius
             | GroupKind::CircleInterior
             | GroupKind::Line
-            | GroupKind::LineKind5
-            | GroupKind::LineKind6
-            | GroupKind::LineKind7
+            | GroupKind::PerpendicularLine
+            | GroupKind::ParallelLine
+            | GroupKind::AngleBisectorRay
             | GroupKind::MeasurementLine
             | GroupKind::AxisLine
             | GroupKind::GraphMeasurementSegment
@@ -474,9 +475,11 @@ fn htm_payload_signature(
             _ => ("Line", format_reversed_ref_args(refs, ordinal_map)),
         },
         GroupKind::AxisLine => ("CoordSysByAxes", format_ref_args(refs, ordinal_map)),
-        GroupKind::LineKind5 => ("Perpendicular", format_reversed_ref_args(refs, ordinal_map)),
-        GroupKind::LineKind6 => ("Parallel", format_reversed_ref_args(refs, ordinal_map)),
-        GroupKind::LineKind7 => ("Bisector", format_ref_args(refs, ordinal_map)),
+        GroupKind::PerpendicularLine => {
+            ("Perpendicular", format_reversed_ref_args(refs, ordinal_map))
+        }
+        GroupKind::ParallelLine => ("Parallel", format_reversed_ref_args(refs, ordinal_map)),
+        GroupKind::AngleBisectorRay => ("Bisector", format_ref_args(refs, ordinal_map)),
         GroupKind::Ray => ("Ray", format_reversed_ref_args(refs, ordinal_map)),
         GroupKind::Polygon => ("Polygon", format_ref_args(refs, ordinal_map)),
         GroupKind::CartesianOffsetPoint | GroupKind::PolarOffsetPoint => (
@@ -555,9 +558,9 @@ fn htm_payload_type_name(kind: GroupKind) -> &'static str {
         GroupKind::Line | GroupKind::GraphMeasurementSegment => "Line",
         GroupKind::MeasurementLine => "Axis",
         GroupKind::AxisLine => "CoordSysByAxes",
-        GroupKind::LineKind5 => "Perpendicular",
-        GroupKind::LineKind6 => "Parallel",
-        GroupKind::LineKind7 => "Bisector",
+        GroupKind::PerpendicularLine => "Perpendicular",
+        GroupKind::ParallelLine => "Parallel",
+        GroupKind::AngleBisectorRay => "Bisector",
         GroupKind::Ray => "Ray",
         GroupKind::Polygon => "Polygon",
         GroupKind::PointConstraint | GroupKind::PathPoint | GroupKind::ParameterControlledPoint => {
@@ -715,9 +718,9 @@ fn htm_payload_attributes(
         | GroupKind::Circle
         | GroupKind::CircleCenterRadius
         | GroupKind::Line
-        | GroupKind::LineKind5
-        | GroupKind::LineKind6
-        | GroupKind::LineKind7
+        | GroupKind::PerpendicularLine
+        | GroupKind::ParallelLine
+        | GroupKind::AngleBisectorRay
         | GroupKind::Ray
         | GroupKind::GraphMeasurementSegment => {
             attrs.push(htm_stroke_color_attr(color_from_style(
@@ -1495,9 +1498,9 @@ fn htm_transform_result_is_line(
     match source.header.kind() {
         GroupKind::Segment
         | GroupKind::Line
-        | GroupKind::LineKind5
-        | GroupKind::LineKind6
-        | GroupKind::LineKind7
+        | GroupKind::PerpendicularLine
+        | GroupKind::ParallelLine
+        | GroupKind::AngleBisectorRay
         | GroupKind::Ray
         | GroupKind::Circle
         | GroupKind::CircleCenterRadius => true,
@@ -1967,6 +1970,12 @@ fn describe_issue_in_chinese(summary: &str, group_ordinals: &[usize]) -> String 
     {
         return format!("{target} 暂时无法导出，因为按钮动作类型 ({action_kind}) 目前还不支持。");
     }
+    if summary.starts_with("unsupported payload: action button is missing screen anchor in ") {
+        return format!("{target} 暂时无法导出，因为按钮载荷没有提供明确的屏幕位置。");
+    }
+    if summary.starts_with("unsupported payload: action button is missing label text in ") {
+        return format!("{target} 暂时无法导出，因为按钮载荷没有提供明确的按钮文本。");
+    }
     if let Some(rest) = summary.strip_prefix("unsupported payload: malformed image payload in ")
         && let Some((_, sizes)) = rest.split_once(" (")
     {
@@ -2064,7 +2073,7 @@ fn describe_group_in_chinese(
                 describe_generic_group(group, &refs)
             }
         }
-        GroupKind::LineKind5 => {
+        GroupKind::PerpendicularLine => {
             if refs.len() == 2 {
                 format!(
                     "过 {} 且垂直于 {} 的直线",
@@ -2075,7 +2084,7 @@ fn describe_group_in_chinese(
                 describe_generic_group(group, &refs)
             }
         }
-        GroupKind::LineKind6 => {
+        GroupKind::ParallelLine => {
             if refs.len() == 2 {
                 format!(
                     "过 {} 且平行于 {} 的直线",
@@ -2086,7 +2095,7 @@ fn describe_group_in_chinese(
                 describe_generic_group(group, &refs)
             }
         }
-        GroupKind::LineKind7 => {
+        GroupKind::AngleBisectorRay => {
             if refs.len() == 3 {
                 format!(
                     "以 {} 为顶点、夹在 {} 和 {} 之间的角平分线",
@@ -2658,9 +2667,9 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::Segment => "线段",
         GroupKind::Circle => "圆",
         GroupKind::CircleCenterRadius => "定圆心定半径圆",
-        GroupKind::LineKind5 => "垂线",
-        GroupKind::LineKind6 => "平行线",
-        GroupKind::LineKind7 => "角平分线",
+        GroupKind::PerpendicularLine => "垂线",
+        GroupKind::ParallelLine => "平行线",
+        GroupKind::AngleBisectorRay => "角平分线",
         GroupKind::Polygon => "多边形",
         GroupKind::LinearIntersectionPoint => "交点",
         GroupKind::CircleInterior => "圆面",
@@ -2828,9 +2837,10 @@ fn group_kind_noun_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::Segment | GroupKind::DerivedSegment75 | GroupKind::GraphMeasurementSegment => {
             "线段"
         }
-        GroupKind::Line | GroupKind::LineKind5 | GroupKind::LineKind6 | GroupKind::LineKind7 => {
-            "直线"
-        }
+        GroupKind::Line
+        | GroupKind::PerpendicularLine
+        | GroupKind::ParallelLine
+        | GroupKind::AngleBisectorRay => "直线",
         GroupKind::Ray => "射线",
         GroupKind::Circle | GroupKind::CircleCenterRadius => "圆",
         GroupKind::Polygon => "多边形",
@@ -2903,17 +2913,24 @@ fn collect_unsupported_payload_issues(
     groups: &[ObjectGroup],
 ) -> Vec<UnsupportedPayloadIssue> {
     let mut issues = Vec::new();
+    let point_map = collect_point_objects(file, groups);
+    let anchors = collect_raw_object_anchors(file, groups, &point_map, None);
     for group in groups {
         collect_validation_issue(&mut issues, &[group.ordinal], validate_group_kind(group));
         collect_validation_issue(
             &mut issues,
             &[group.ordinal],
-            validate_action_button_payload(file, group),
+            validate_action_button_payload(file, groups, &anchors, group),
         );
         collect_validation_issue(
             &mut issues,
             &[group.ordinal],
             validate_image_payload(file, group),
+        );
+        collect_validation_issue(
+            &mut issues,
+            &[group.ordinal],
+            validate_constructed_line_payload(file, groups, group),
         );
         collect_validation_issue(
             &mut issues,
@@ -3018,7 +3035,129 @@ fn validate_group_kind(group: &ObjectGroup) -> Result<()> {
     Ok(())
 }
 
-fn validate_action_button_payload(file: &GspFile, group: &ObjectGroup) -> Result<()> {
+fn validate_constructed_line_payload(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Result<()> {
+    let kind = group.header.kind();
+    if !matches!(
+        kind,
+        GroupKind::PerpendicularLine | GroupKind::ParallelLine | GroupKind::AngleBisectorRay
+    ) {
+        return Ok(());
+    }
+
+    let expected_refs = if kind == GroupKind::AngleBisectorRay {
+        3
+    } else {
+        2
+    };
+    let path = try_find_indexed_path(file, group)
+        .map_err(anyhow::Error::msg)?
+        .with_context(|| {
+            format!(
+                "unsupported payload: constructed line is missing indexed path in {}",
+                describe_group(group)
+            )
+        })?;
+    if path.refs.len() != expected_refs {
+        bail!(
+            "unsupported payload: constructed line has {} refs, expected {expected_refs} in {}",
+            path.refs.len(),
+            describe_group(group)
+        );
+    }
+
+    let point_map = collect_point_objects(file, groups);
+    let anchors = collect_raw_object_anchors(file, groups, &point_map, None);
+    match kind {
+        GroupKind::PerpendicularLine | GroupKind::ParallelLine => {
+            let through_index = path.refs[0].checked_sub(1).with_context(|| {
+                format!(
+                    "unsupported payload: constructed line through-point ordinal underflow in {}",
+                    describe_group(group)
+                )
+            })?;
+            let host_index = path.refs[1].checked_sub(1).with_context(|| {
+                format!(
+                    "unsupported payload: constructed line host ordinal underflow in {}",
+                    describe_group(group)
+                )
+            })?;
+            anchor_at(&anchors, through_index).with_context(|| {
+                format!(
+                    "unsupported payload: constructed line references missing through point #{} in {}",
+                    path.refs[0],
+                    describe_group(group)
+                )
+            })?;
+            let host_group = groups.get(host_index).with_context(|| {
+                format!(
+                    "unsupported payload: constructed line references missing host #{} in {}",
+                    path.refs[1],
+                    describe_group(group)
+                )
+            })?;
+            resolve_line_like_points_raw(file, groups, &anchors, host_group).with_context(|| {
+                format!(
+                    "unsupported payload: constructed line host #{} is not a decodable line in {}",
+                    path.refs[1],
+                    describe_group(group)
+                )
+            })?;
+        }
+        GroupKind::AngleBisectorRay => {
+            let start = anchor_at(&anchors, path.refs[0].saturating_sub(1)).with_context(|| {
+                format!(
+                    "unsupported payload: angle bisector references missing start point #{} in {}",
+                    path.refs[0],
+                    describe_group(group)
+                )
+            })?;
+            let vertex = anchor_at(&anchors, path.refs[1].saturating_sub(1)).with_context(|| {
+                format!(
+                    "unsupported payload: angle bisector references missing vertex point #{} in {}",
+                    path.refs[1],
+                    describe_group(group)
+                )
+            })?;
+            let end = anchor_at(&anchors, path.refs[2].saturating_sub(1)).with_context(|| {
+                format!(
+                    "unsupported payload: angle bisector references missing end point #{} in {}",
+                    path.refs[2],
+                    describe_group(group)
+                )
+            })?;
+            if !line_points_are_distinct(&start, &vertex)
+                || !line_points_are_distinct(&end, &vertex)
+            {
+                bail!(
+                    "unsupported payload: angle bisector has degenerate input points in {}",
+                    describe_group(group)
+                );
+            }
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+fn anchor_at(anchors: &[Option<PointRecord>], index: usize) -> Option<PointRecord> {
+    anchors.get(index).cloned().flatten()
+}
+
+fn line_points_are_distinct(left: &PointRecord, right: &PointRecord) -> bool {
+    (left.x - right.x).hypot(left.y - right.y) > 1e-9
+}
+
+fn validate_action_button_payload(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group: &ObjectGroup,
+) -> Result<()> {
     if !decode::is_action_button_group(group) {
         return Ok(());
     }
@@ -3033,17 +3172,32 @@ fn validate_action_button_payload(file: &GspFile, group: &ObjectGroup) -> Result
     }
 
     let action_kind = (read_u16(payload, 12), read_u16(payload, 14));
-    match action_kind {
-        (2 | 8, 0) | (4, 0 | 1) | (7, _) | (3, 0..=3) | (0 | 1, 0..=7) => return Ok(()),
-        _ => {}
+    if !matches!(
+        action_kind,
+        (2 | 8, 0) | (4, 0 | 1) | (7, _) | (3, 0..=3) | (0 | 1, 0..=7)
+    ) {
+        bail!(
+            "unsupported payload: action button uses unsupported action kind ({}, {}) in {}",
+            action_kind.0,
+            action_kind.1,
+            describe_group(group)
+        );
     }
 
-    bail!(
-        "unsupported payload: action button uses unsupported action kind ({}, {}) in {}",
-        action_kind.0,
-        action_kind.1,
-        describe_group(group)
-    )
+    if decode::decode_action_button_anchor(file, groups, group, anchors).is_none() {
+        bail!(
+            "unsupported payload: action button is missing screen anchor in {}",
+            describe_group(group)
+        );
+    }
+    if decode::decode_action_button_text(file, group).is_none() {
+        bail!(
+            "unsupported payload: action button is missing label text in {}",
+            describe_group(group)
+        );
+    }
+
+    Ok(())
 }
 
 fn validate_image_payload(file: &GspFile, group: &ObjectGroup) -> Result<()> {
@@ -3520,9 +3674,9 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::Segment
             | GroupKind::Circle
             | GroupKind::CircleCenterRadius
-            | GroupKind::LineKind5
-            | GroupKind::LineKind6
-            | GroupKind::LineKind7
+            | GroupKind::PerpendicularLine
+            | GroupKind::ParallelLine
+            | GroupKind::AngleBisectorRay
             | GroupKind::Polygon
             | GroupKind::LinearIntersectionPoint
             | GroupKind::CircleInterior
@@ -3625,4 +3779,110 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::LegacyCircularConstraintHelper
             | GroupKind::SmoothCurvePlot
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime::payload_consts::{
+        RECORD_ACTION_BUTTON_PAYLOAD, RECORD_INDEXED_PATH_A, RECORD_INDEXED_PATH_B,
+        RECORD_LABEL_AUX,
+    };
+
+    #[test]
+    fn malformed_constructed_line_payload_is_reported() {
+        let file = GspFile::parse(include_bytes!(
+            "../../../tests/fixtures/gsp/static/perpendicular.gsp"
+        ))
+        .expect("fixture parses");
+        let mut groups = file.object_groups();
+        let line_group = groups
+            .iter_mut()
+            .find(|group| group.header.kind() == GroupKind::PerpendicularLine)
+            .expect("fixture should contain a perpendicular line");
+        let line_ordinal = line_group.ordinal;
+        line_group.records.retain(|record| {
+            !matches!(
+                record.record_type,
+                RECORD_INDEXED_PATH_A | RECORD_INDEXED_PATH_B
+            )
+        });
+
+        let issues = collect_unsupported_payload_issues(&file, &groups);
+        assert!(
+            issues.iter().any(|issue| {
+                issue
+                    .summary
+                    .contains("unsupported payload: constructed line is missing indexed path")
+                    && issue.group_ordinals == [line_ordinal]
+            }),
+            "expected malformed constructed line issue, got {issues:?}"
+        );
+    }
+
+    #[test]
+    fn action_button_without_label_text_is_reported() {
+        let file = GspFile::parse(include_bytes!(
+            "../../../tests/Samples/个人专栏/向忠作品/正弦波与音乐.gsp"
+        ))
+        .expect("fixture parses");
+        let mut groups = file.object_groups();
+        let button_group = groups
+            .iter_mut()
+            .find(|group| {
+                group.header.kind() == GroupKind::ActionButton
+                    && decode::decode_action_button_text(&file, group).as_deref() == Some("演奏&M")
+            })
+            .expect("fixture should contain the play-function action button");
+        let button_ordinal = button_group.ordinal;
+        button_group
+            .records
+            .retain(|record| record.record_type != RECORD_LABEL_AUX);
+
+        let issues = collect_unsupported_payload_issues(&file, &groups);
+        assert!(
+            issues.iter().any(|issue| {
+                issue
+                    .summary
+                    .contains("unsupported payload: action button is missing label text")
+                    && issue.group_ordinals == [button_ordinal]
+            }),
+            "expected missing action button label issue, got {issues:?}"
+        );
+    }
+
+    #[test]
+    fn action_button_without_screen_anchor_is_reported() {
+        let file = GspFile::parse(include_bytes!(
+            "../../../tests/Samples/个人专栏/向忠作品/正弦波与音乐.gsp"
+        ))
+        .expect("fixture parses");
+        let mut groups = file.object_groups();
+        let button_group = groups
+            .iter_mut()
+            .find(|group| {
+                group.header.kind() == GroupKind::ActionButton
+                    && decode::decode_action_button_text(&file, group).as_deref() == Some("演奏&M")
+            })
+            .expect("fixture should contain the play-function action button");
+        let button_ordinal = button_group.ordinal;
+        let action_record = button_group
+            .records
+            .iter_mut()
+            .find(|record| record.record_type == RECORD_ACTION_BUTTON_PAYLOAD)
+            .expect("action button should carry a 0x0906 payload");
+        action_record.length = 16;
+        action_record.payload_range.end = action_record.payload_range.start + 16;
+
+        let issues = collect_unsupported_payload_issues(&file, &groups);
+        assert!(
+            issues.iter().any(|issue| {
+                issue
+                    .summary
+                    .contains("unsupported payload: action button is missing screen anchor")
+                    && issue.group_ordinals == [button_ordinal]
+            }),
+            "expected missing action button anchor issue, got {issues:?}"
+        );
+    }
 }

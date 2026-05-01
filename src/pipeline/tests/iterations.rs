@@ -88,40 +88,26 @@ fn exports_standalone_parameter_controls_into_html() {
 }
 
 #[test]
-fn static_fixture_uses_stub_viewer_dynamics_runtime() {
+fn static_fixture_embeds_full_viewer_runtime() {
     let html = fixture_html(
         include_bytes!("../../../tests/fixtures/gsp/static/point.gsp"),
         "static point fixture should compile to html",
     );
 
-    assert!(html.contains(
-        "viewer-runtime: scene=basic; render=basic; overlay=stub; drag=full; dynamics=stub"
-    ));
-    assert!(
-        !html.contains("function sampleDynamicFunction("),
-        "static fixture should not embed the full dynamics runtime"
-    );
-    assert!(
-        !html.contains("function drawCircles(env)"),
-        "static point fixture should not embed the full render runtime"
-    );
-    assert!(
-        !html.contains("function circleArcControlPoints("),
-        "static point fixture should not embed the full scene runtime"
-    );
+    assert!(html.contains("viewer-runtime: full"));
+    assert!(html.contains("function sampleDynamicFunction("));
+    assert!(html.contains("function drawCircles(env)"));
+    assert!(html.contains("function circleArcControlPoints("));
 }
 
 #[test]
-fn parameter_fixture_uses_full_viewer_dynamics_runtime() {
+fn parameter_fixture_embeds_full_viewer_runtime() {
     let html = fixture_html(
         include_bytes!("../../../tests/fixtures/未实现的系统功能/parameter.gsp"),
         "parameter fixture should compile to html",
     );
 
-    assert!(
-        html.contains("viewer-runtime: ") && html.contains("dynamics=full"),
-        "parameter fixture should keep the full dynamics runtime profile"
-    );
+    assert!(html.contains("viewer-runtime: full"));
     assert!(
         html.contains("function sampleDynamicFunction("),
         "parameter fixture should keep the full dynamics runtime"
@@ -135,8 +121,7 @@ fn hot_text_fixture_uses_full_overlay_runtime() {
         "hot text fixture should compile to html",
     );
 
-    assert!(html.contains("viewer-runtime: scene="));
-    assert!(html.contains("overlay=full;"));
+    assert!(html.contains("viewer-runtime: full"));
     assert!(
         html.contains("function renderRichMarkupNodes("),
         "hot text fixture should keep the full overlay runtime"
@@ -150,7 +135,7 @@ fn circle_arc_fixture_uses_circular_scene_runtime() {
         "arc on circle fixture should compile to html",
     );
 
-    assert!(html.contains("viewer-runtime: scene=basic+circular; render=basic+circular;"));
+    assert!(html.contains("viewer-runtime: full"));
     assert!(
         html.contains("function circleArcControlPoints("),
         "arc-on-circle fixture should include the circular scene addon"
@@ -164,7 +149,7 @@ fn coordinate_trace_intersection_fixture_uses_trace_and_intersection_scene_runti
         "coordinate trace intersection fixture should compile to html",
     );
 
-    assert!(html.contains("trace+intersections"));
+    assert!(html.contains("viewer-runtime: full"));
     assert!(
         html.contains("function sampleCoordinateTracePoints("),
         "coordinate trace intersection fixture should include the trace scene addon"
@@ -210,7 +195,7 @@ fn coordinate_trace_intersection_fixture_has_three_level_artifacts() {
         "debug scene should preserve the line-trace intersection constraint"
     );
 
-    assert!(output.html.contains("trace+intersections"));
+    assert!(output.html.contains("viewer-runtime: full"));
     assert!(
         output
             .html

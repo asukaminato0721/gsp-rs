@@ -1,9 +1,12 @@
+use super::analysis::analyze_scene;
+use super::bindings::remap_scene_bindings;
+use super::build::build_scene_checked;
+use super::buttons::collect_buttons;
 use super::context::SceneContext;
-use super::{
-    analyze_scene, build_scene_checked, collect_buttons, collect_point_objects,
-    collect_scene_labels, collect_scene_shapes, collect_visible_points_checked,
-    remap_scene_bindings, render_payload_log,
-};
+use super::labels::collect_scene_labels;
+use super::payload_report::render_payload_log;
+use super::points::{collect_point_objects, collect_visible_points_checked};
+use super::shapes::collect_scene_shapes;
 use crate::format::GspFile;
 use crate::runtime::functions::{
     FunctionAst, FunctionExpr, UnaryFunction, evaluate_expr_with_parameters, function_expr_label,
@@ -113,8 +116,8 @@ pub(super) fn fixture_buttons_without_validation(data: &[u8]) -> Vec<SceneButton
     let groups = file.object_groups();
     let context = SceneContext::new(&file, &groups);
     let point_map = collect_point_objects(&file, &groups);
-    let analysis = analyze_scene(&file, &groups, &context, &point_map);
-    let mut shapes = collect_scene_shapes(&file, &groups, &context, &point_map, &analysis);
+    let analysis = analyze_scene(&file, &groups, &point_map);
+    let mut shapes = collect_scene_shapes(&file, &groups, &context, &analysis);
     let (_, image_group_to_index) =
         super::images::collect_scene_images(&file, &groups, &analysis.graph_ref);
     let (_, label_group_to_index, _) =
@@ -132,6 +135,7 @@ pub(super) fn fixture_buttons_without_validation(data: &[u8]) -> Vec<SceneButton
         &groups,
         &analysis.raw_anchors,
         &group_to_point_index,
+        analysis.function_plots.len(),
         &mut shapes,
     );
     let (buttons, _) = collect_buttons(
@@ -157,8 +161,8 @@ pub(super) fn fixture_labels_without_validation(
     let groups = file.object_groups();
     let context = SceneContext::new(&file, &groups);
     let point_map = collect_point_objects(&file, &groups);
-    let analysis = analyze_scene(&file, &groups, &context, &point_map);
-    let mut shapes = collect_scene_shapes(&file, &groups, &context, &point_map, &analysis);
+    let analysis = analyze_scene(&file, &groups, &point_map);
+    let mut shapes = collect_scene_shapes(&file, &groups, &context, &analysis);
     let (_, image_group_to_index) =
         super::images::collect_scene_images(&file, &groups, &analysis.graph_ref);
     let (labels, label_group_to_index, _) =
@@ -176,6 +180,7 @@ pub(super) fn fixture_labels_without_validation(
         &groups,
         &analysis.raw_anchors,
         &group_to_point_index,
+        analysis.function_plots.len(),
         &mut shapes,
     );
     let _ = collect_buttons(
@@ -199,9 +204,8 @@ pub(super) fn fixture_images_without_validation(
 ) -> Vec<crate::runtime::scene::SceneImage> {
     let file = GspFile::parse(data).expect("fixture parses");
     let groups = file.object_groups();
-    let context = SceneContext::new(&file, &groups);
     let point_map = collect_point_objects(&file, &groups);
-    let analysis = analyze_scene(&file, &groups, &context, &point_map);
+    let analysis = analyze_scene(&file, &groups, &point_map);
     super::images::collect_scene_images(&file, &groups, &analysis.graph_ref).0
 }
 

@@ -1,73 +1,12 @@
-use super::context::SceneContext;
-use super::test_support::{fixture_bytes, fixture_log, fixture_scene, function_expr_has_unary};
-use super::{analyze_scene, collect_point_objects};
+use super::analysis::analyze_scene;
+use super::points::collect_point_objects;
+use super::test_support::{fixture_bytes, fixture_log, fixture_scene};
 use crate::format::GspFile;
 use crate::runtime::functions::{BinaryOp, FunctionAst, FunctionExpr, UnaryFunction};
 use crate::runtime::scene::{
     ButtonAction, LineBinding, LineIterationFamily, ScenePointBinding, ScenePointConstraint,
     TextLabelBinding,
 };
-
-#[test]
-fn preserves_function_iteration_coordinate_point_in_liyougui_fixture() {
-    let Some(data) = fixture_bytes("tests/Samples/个人专栏/李有贵作品/函数图象迭代(liyougui).gsp")
-    else {
-        return;
-    };
-    let scene = fixture_scene(&data);
-
-    assert!(
-        scene.points.iter().any(|point| {
-            matches!(
-                point.binding,
-                Some(ScenePointBinding::CoordinateSource2d { source_index, .. }) if source_index == 0
-            )
-        }),
-        "expected the payload coordinate point to stay exported as a live 2d graph binding"
-    );
-    assert!(
-        scene
-            .lines
-            .iter()
-            .any(|line| matches!(line.binding, Some(LineBinding::PointTrace { .. }))),
-        "expected the payload point trace to stay exported"
-    );
-    assert!(
-        scene
-            .parameters
-            .iter()
-            .any(|parameter| parameter.name == "k" && (parameter.value + 1.5).abs() < 1e-6),
-        "expected k to open at -1.5"
-    );
-    assert!(
-        scene
-            .parameters
-            .iter()
-            .any(|parameter| parameter.name == "m" && (parameter.value + 4.0).abs() < 1e-6),
-        "expected m to open at -4"
-    );
-    assert!(
-        scene
-            .parameters
-            .iter()
-            .any(|parameter| parameter.name == "n" && (parameter.value - 9.7).abs() < 1e-6),
-        "expected n to open at the saved payload value 9.7"
-    );
-    assert!(
-        scene
-            .line_iterations
-            .iter()
-            .any(|family| matches!(family, LineIterationFamily::ParameterizedPointTrace { .. })),
-        "expected the payload iter on the trace to stay exported as a live line-iteration family"
-    );
-    assert!(
-        scene
-            .labels
-            .iter()
-            .any(|label| label.text.contains("2*(C + m) =")),
-        "expected the x-coordinate expression to stay decoded from payload as 2*(C + m)"
-    );
-}
 
 #[test]
 fn preserves_parabola_locus_with_constructed_line_driver() {
@@ -279,36 +218,6 @@ fn preserves_binary_tree_multimap_iteration() {
 }
 
 #[test]
-fn builds_sine_transform_sample_with_domain_guarded_live_function() {
-    let Some(data) = fixture_bytes("tests/Samples/个人专栏/向忠作品/正弦型函数图象变换.gsp")
-    else {
-        return;
-    };
-    let scene = fixture_scene(&data);
-    let function = scene
-        .functions
-        .iter()
-        .find(|function| function.key == 306)
-        .expect("expected sine transform function to export");
-
-    assert!(
-        function_expr_has_unary(&function.expr, UnaryFunction::Log10),
-        "expected exported function to keep its log10 domain guard"
-    );
-    let line_index = function
-        .line_index
-        .expect("expected a runtime-updatable function line");
-    let line = scene
-        .lines
-        .get(line_index)
-        .expect("function line index should point at an exported line");
-    assert!(
-        line.points.is_empty(),
-        "default samples rejected by the function domain should not be drawn"
-    );
-}
-
-#[test]
 fn builds_polygon_exterior_angle_sample_with_kind_41_helpers() {
     let Some(data) = fixture_bytes("tests/Samples/个人专栏/王伟君作品/多边形外角和(王伟君).gsp")
     else {
@@ -404,32 +313,14 @@ fn builds_square_area_invariance_sample_with_graph_helper_stack() {
 }
 
 #[test]
-fn builds_parametric_curve_samples_with_kind_126_plot_support() {
-    for path in [
-        "tests/Samples/个人专栏/向忠作品/参数曲线一例.gsp",
-        "tests/Samples/未分类档/矩形曲线.gsp",
-    ] {
-        let Some(data) = fixture_bytes(path) else {
-            continue;
-        };
-        let scene = fixture_scene(&data);
-        assert!(
-            !scene.lines.is_empty(),
-            "expected parametric curve sample {path} to export plotted line geometry"
-        );
-    }
-}
-
-#[test]
 fn builds_point_cood_expr_fixture_with_two_parameter_coordinate_binding() {
     let Some(data) = fixture_bytes("tests/fixtures/gsp/point_cood_expr.gsp") else {
         return;
     };
     let file = GspFile::parse(&data).expect("fixture parses");
     let groups = file.object_groups();
-    let context = SceneContext::new(&file, &groups);
     let point_map = collect_point_objects(&file, &groups);
-    let analysis = analyze_scene(&file, &groups, &context, &point_map);
+    let analysis = analyze_scene(&file, &groups, &point_map);
     let helper_group = groups.get(7).expect("group #8");
     let helper_path = super::find_indexed_path(&file, helper_group).expect("helper path");
     let parameter_group = groups

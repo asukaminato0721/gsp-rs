@@ -562,6 +562,11 @@ pub(crate) fn decode_label_name_raw(file: &GspFile, group: &ObjectGroup) -> Opti
     )
 }
 
+pub(crate) fn decode_action_button_text(file: &GspFile, group: &ObjectGroup) -> Option<String> {
+    let text = decode_label_name_raw(file, group)?.trim().to_string();
+    (!text.is_empty()).then_some(text)
+}
+
 pub(crate) fn try_decode_payload_anchor_point(
     file: &GspFile,
     group: &ObjectGroup,
@@ -980,6 +985,25 @@ pub(crate) fn decode_button_screen_anchor(
     (payload.len() >= 24).then(|| PointRecord {
         x: read_i16(payload, payload.len() - 4) as f64,
         y: read_i16(payload, payload.len() - 2) as f64,
+    })
+}
+
+pub(crate) fn decode_action_button_anchor(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    decode_button_screen_anchor(file, group).or_else(|| {
+        groups
+            .iter()
+            .filter(|candidate| candidate.header.kind() == GroupKind::ButtonLabel)
+            .find_map(|candidate| {
+                let path = find_indexed_path(file, candidate)?;
+                (path.refs.first().copied() == Some(group.ordinal))
+                    .then(|| decode_label_anchor(file, candidate, anchors))
+                    .flatten()
+            })
     })
 }
 

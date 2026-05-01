@@ -129,7 +129,6 @@ pub(crate) fn collect_line_shapes(
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
     kinds: &[crate::format::GroupKind],
-    fallback_generic: bool,
     suppressed_group_indices: &BTreeSet<usize>,
 ) -> Vec<LineShape> {
     groups
@@ -142,26 +141,17 @@ pub(crate) fn collect_line_shapes(
             }
             let kind = group.header.kind();
             kinds.contains(&kind)
-                || (fallback_generic
-                    && matches!(
-                        kind,
-                        crate::format::GroupKind::Segment
-                            | crate::format::GroupKind::LineKind5
-                            | crate::format::GroupKind::LineKind6
-                            | crate::format::GroupKind::LineKind7
-                    )
-                    && find_indexed_path(file, group).is_some())
         })
         .filter(|(_, group)| !is_auxiliary_segment_group(file, groups, group))
         .filter_map(|(_, group)| {
             match group.header.kind() {
-                crate::format::GroupKind::LineKind5 => {
+                crate::format::GroupKind::PerpendicularLine => {
                     return resolve_perpendicular_line_shape(file, groups, anchors, group);
                 }
-                crate::format::GroupKind::LineKind6 => {
+                crate::format::GroupKind::ParallelLine => {
                     return resolve_parallel_line_shape(file, groups, anchors, group);
                 }
-                crate::format::GroupKind::LineKind7 => {
+                crate::format::GroupKind::AngleBisectorRay => {
                     return resolve_angle_bisector_ray_shape(file, anchors, group);
                 }
                 crate::format::GroupKind::AngleMarker => {
@@ -221,17 +211,35 @@ pub(crate) fn collect_line_shapes(
                 && (has_distinct_points(&points) || (binding.is_some() && has_distinct_refs)))
                 .then_some(LineShape {
                     points,
-                    color: if fallback_generic && !kinds.contains(&(group.header.kind())) {
-                        [40, 40, 40, 255]
-                    } else {
-                        color_from_style(group.header.style_b)
-                    },
+                    color: color_from_style(group.header.style_b),
                     dashed: (group.header.kind()) == crate::format::GroupKind::MeasurementLine
                         || line_is_dashed(group.header.style_a),
                     visible: !group.header.is_hidden(),
                     binding,
                     debug: Some(payload_debug_source(group)),
                 })
+        })
+        .collect()
+}
+
+pub(crate) fn collect_constructed_line_shapes(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+) -> Vec<LineShape> {
+    groups
+        .iter()
+        .filter_map(|group| match group.header.kind() {
+            crate::format::GroupKind::PerpendicularLine => {
+                resolve_perpendicular_line_shape(file, groups, anchors, group)
+            }
+            crate::format::GroupKind::ParallelLine => {
+                resolve_parallel_line_shape(file, groups, anchors, group)
+            }
+            crate::format::GroupKind::AngleBisectorRay => {
+                resolve_angle_bisector_ray_shape(file, anchors, group)
+            }
+            _ => None,
         })
         .collect()
 }
@@ -1339,121 +1347,6 @@ fn resolve_arc_boundary_polygon_binding(
         }),
         _ => None,
     }
-}
-
-pub(crate) fn collect_derived_segments(
-    file: &GspFile,
-    groups: &[ObjectGroup],
-    point_map: &[Option<PointRecord>],
-    kinds: &[crate::format::GroupKind],
-) -> Vec<LineShape> {
-    let refs = groups
-        .iter()
-        .map(|group| {
-            find_indexed_path(file, group)
-                .map(|path| path.refs)
-                .unwrap_or_default()
-        })
-        .collect::<Vec<_>>();
-    let class_ids = groups
-        .iter()
-        .map(|group| group.header.kind())
-        .collect::<Vec<_>>();
-
-    fn descend_points(
-        ordinal: usize,
-        refs: &[Vec<usize>],
-        point_map: &[Option<PointRecord>],
-        memo: &mut Vec<Option<Vec<PointRecord>>>,
-        visiting: &mut BTreeSet<usize>,
-    ) -> Vec<PointRecord> {
-        if let Some(cached) = &memo[ordinal - 1] {
-            return cached.clone();
-        }
-        if !visiting.insert(ordinal) {
-            return Vec::new();
-        }
-
-        let mut points = Vec::new();
-        if let Some(point) = point_map.get(ordinal - 1).cloned().flatten() {
-            points.push(point);
-        } else {
-            for child in &refs[ordinal - 1] {
-                if *child > 0 && *child <= refs.len() {
-                    points.extend(descend_points(*child, refs, point_map, memo, visiting));
-                }
-            }
-        }
-
-        visiting.remove(&ordinal);
-        points.sort_by(|a, b| {
-            a.x.partial_cmp(&b.x)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| a.y.partial_cmp(&b.y).unwrap_or(std::cmp::Ordering::Equal))
-        });
-        points.dedup_by(|a, b| (a.x - b.x).abs() < 0.001 && (a.y - b.y).abs() < 0.001);
-        memo[ordinal - 1] = Some(points.clone());
-        points
-    }
-
-    let mut memo = vec![None; groups.len()];
-    let mut seen = BTreeSet::<((i32, i32), (i32, i32))>::new();
-    let mut segments = Vec::new();
-
-    for (index, class_id) in class_ids.iter().enumerate() {
-        if !kinds.contains(class_id) {
-            continue;
-        }
-        let points = descend_points(index + 1, &refs, point_map, &mut memo, &mut BTreeSet::new());
-        if points.len() < 2 || points.len() > 12 {
-            continue;
-        }
-
-        let mut best = None;
-        let mut best_dist = -1.0_f64;
-        for i in 0..points.len() {
-            for j in i + 1..points.len() {
-                let dx = points[i].x - points[j].x;
-                let dy = points[i].y - points[j].y;
-                let dist = dx * dx + dy * dy;
-                if dist > best_dist {
-                    best_dist = dist;
-                    best = Some((points[i].clone(), points[j].clone()));
-                }
-            }
-        }
-
-        let Some((a, b)) = best else { continue };
-        let a_key = (a.x.round() as i32, a.y.round() as i32);
-        let b_key = (b.x.round() as i32, b.y.round() as i32);
-        let key = if a_key <= b_key {
-            (a_key, b_key)
-        } else {
-            (b_key, a_key)
-        };
-        if !seen.insert(key) {
-            continue;
-        }
-
-        let color = match *class_id {
-            crate::format::GroupKind::DerivedSegment24 => [20, 20, 20, 255],
-            crate::format::GroupKind::FunctionExpr => [70, 70, 70, 255],
-            crate::format::GroupKind::DerivedSegment75 => [120, 120, 120, 255],
-            _ => [60, 60, 60, 255],
-        };
-        segments.push(LineShape {
-            points: vec![a, b],
-            color,
-            dashed: false,
-            visible: groups
-                .get(index)
-                .map(|group| !group.header.is_hidden())
-                .unwrap_or(true),
-            ..Default::default()
-        });
-    }
-
-    segments
 }
 
 pub(crate) fn collect_coordinate_traces(

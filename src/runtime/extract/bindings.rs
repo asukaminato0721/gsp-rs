@@ -8,14 +8,29 @@ pub(super) struct BindingMaps {
     pub(super) line_group_to_index: Vec<Option<usize>>,
 }
 
-fn group_shape_index_map<F>(groups: &[ObjectGroup], predicate: F) -> Vec<Option<usize>>
-where
-    F: Fn(usize, &ObjectGroup) -> bool,
-{
+fn circle_group_to_index_map(
+    groups: &[ObjectGroup],
+    shapes: &CollectedShapes,
+) -> Vec<Option<usize>> {
+    let mut mapping = vec![None; groups.len()];
+    for (shape_index, circle) in shapes.circles.iter().enumerate() {
+        let Some(group_ordinal) = circle.debug.as_ref().map(|debug| debug.group_ordinal) else {
+            continue;
+        };
+        if let Some(group_index) = group_ordinal.checked_sub(1)
+            && group_index < mapping.len()
+        {
+            mapping[group_index] = Some(shape_index);
+        }
+    }
+    mapping
+}
+
+fn polygon_group_to_index_map(groups: &[ObjectGroup]) -> Vec<Option<usize>> {
     groups
         .iter()
         .enumerate()
-        .filter(|(index, group)| predicate(*index, group))
+        .filter(|(_, group)| (group.header.kind()) == crate::format::GroupKind::Polygon)
         .enumerate()
         .fold(
             vec![None; groups.len()],
@@ -26,55 +41,35 @@ where
         )
 }
 
-fn circle_group_to_index_map(
+fn map_line_shape(mapping: &mut [Option<usize>], line: &LineShape, shape_index: usize) {
+    let Some(group_ordinal) = line.debug.as_ref().map(|debug| debug.group_ordinal) else {
+        return;
+    };
+    if let Some(group_index) = group_ordinal.checked_sub(1)
+        && group_index < mapping.len()
+    {
+        mapping[group_index] = Some(shape_index);
+    }
+}
+
+fn line_group_to_index_map(
     groups: &[ObjectGroup],
     shapes: &CollectedShapes,
+    function_plot_count: usize,
 ) -> Vec<Option<usize>> {
     let mut mapping = vec![None; groups.len()];
     let mut next_index = 0usize;
-    for circle in shapes
-        .circles
+    for line in shapes
+        .lines
         .iter()
-        .chain(shapes.carried_iteration_circles.iter())
-        .chain(shapes.translated_circles.iter())
-        .chain(shapes.rotated_circles.iter())
-        .chain(shapes.transformed_circles.iter())
-        .chain(shapes.reflected_circles.iter())
+        .chain(shapes.trace_lines.iter())
+        .chain(shapes.axes.iter())
     {
-        let Some(group_ordinal) = circle.debug.as_ref().map(|debug| debug.group_ordinal) else {
-            next_index += 1;
-            continue;
-        };
-        if let Some(group_index) = group_ordinal.checked_sub(1)
-            && group_index < mapping.len()
-        {
-            mapping[group_index] = Some(next_index);
-        }
+        map_line_shape(&mut mapping, line, next_index);
         next_index += 1;
     }
-    mapping
-}
-
-fn line_group_to_index_map(groups: &[ObjectGroup], shapes: &CollectedShapes) -> Vec<Option<usize>> {
-    let mut mapping = vec![None; groups.len()];
-    let mut next_index = 0usize;
-    for line in shapes
-        .segments
-        .iter()
-        .chain(shapes.lines.iter())
-        .chain(shapes.rays.iter())
-        .chain(shapes.translated_lines.iter())
-        .chain(shapes.segment_markers.iter())
-        .chain(shapes.rotated_lines.iter())
-        .chain(shapes.scaled_lines.iter())
-        .chain(shapes.reflected_lines.iter())
-        .chain(shapes.derived_segments.iter())
-        .chain(shapes.measurements.iter())
-        .chain(shapes.coordinate_traces.iter())
-        .chain(shapes.axes.iter())
-        .chain(shapes.iteration_lines.iter())
-        .chain(shapes.carried_iteration_lines.iter())
-    {
+    next_index += function_plot_count;
+    for line in &shapes.post_function_lines {
         let Some(group_ordinal) = line.debug.as_ref().map(|debug| debug.group_ordinal) else {
             next_index += 1;
             continue;
@@ -94,6 +89,7 @@ pub(super) fn remap_scene_bindings(
     groups: &[ObjectGroup],
     raw_anchors: &[Option<PointRecord>],
     group_to_point_index: &[Option<usize>],
+    function_plot_count: usize,
     shapes: &mut CollectedShapes,
 ) -> (
     BindingMaps,
@@ -102,7 +98,7 @@ pub(super) fn remap_scene_bindings(
 ) {
     let suppressed_carried_polygon_segments =
         collect_carried_polygon_edge_segment_groups(file, groups);
-    let line_group_to_index = line_group_to_index_map(groups, shapes);
+    let line_group_to_index = line_group_to_index_map(groups, shapes, function_plot_count);
     let circle_group_to_index = circle_group_to_index_map(groups, shapes);
     remap_circle_bindings(
         &mut shapes.circles,
@@ -110,66 +106,11 @@ pub(super) fn remap_scene_bindings(
         &circle_group_to_index,
         &line_group_to_index,
     );
-    let polygon_group_to_index = group_shape_index_map(groups, |_, group| {
-        (group.header.kind()) == crate::format::GroupKind::Polygon
-    });
+    let polygon_group_to_index = polygon_group_to_index_map(groups);
     remap_polygon_bindings(
         &mut shapes.polygons,
         group_to_point_index,
         &polygon_group_to_index,
-        &line_group_to_index,
-    );
-    remap_circle_bindings(
-        &mut shapes.translated_circles,
-        group_to_point_index,
-        &circle_group_to_index,
-        &line_group_to_index,
-    );
-    remap_circle_bindings(
-        &mut shapes.rotated_circles,
-        group_to_point_index,
-        &circle_group_to_index,
-        &line_group_to_index,
-    );
-    remap_circle_bindings(
-        &mut shapes.transformed_circles,
-        group_to_point_index,
-        &circle_group_to_index,
-        &line_group_to_index,
-    );
-    remap_circle_bindings(
-        &mut shapes.reflected_circles,
-        group_to_point_index,
-        &circle_group_to_index,
-        &line_group_to_index,
-    );
-    remap_polygon_bindings(
-        &mut shapes.translated_polygons,
-        group_to_point_index,
-        &polygon_group_to_index,
-        &line_group_to_index,
-    );
-    remap_polygon_bindings(
-        &mut shapes.rotated_polygons,
-        group_to_point_index,
-        &polygon_group_to_index,
-        &line_group_to_index,
-    );
-    remap_polygon_bindings(
-        &mut shapes.transformed_polygons,
-        group_to_point_index,
-        &polygon_group_to_index,
-        &line_group_to_index,
-    );
-    remap_polygon_bindings(
-        &mut shapes.reflected_polygons,
-        group_to_point_index,
-        &polygon_group_to_index,
-        &line_group_to_index,
-    );
-    remap_line_bindings(
-        &mut shapes.segments,
-        group_to_point_index,
         &line_group_to_index,
     );
     remap_line_bindings(
@@ -177,34 +118,14 @@ pub(super) fn remap_scene_bindings(
         group_to_point_index,
         &line_group_to_index,
     );
-    remap_line_bindings(&mut shapes.rays, group_to_point_index, &line_group_to_index);
     remap_line_bindings(
-        &mut shapes.translated_lines,
+        &mut shapes.trace_lines,
         group_to_point_index,
         &line_group_to_index,
     );
+    remap_line_bindings(&mut shapes.axes, group_to_point_index, &line_group_to_index);
     remap_line_bindings(
-        &mut shapes.segment_markers,
-        group_to_point_index,
-        &line_group_to_index,
-    );
-    remap_line_bindings(
-        &mut shapes.rotated_lines,
-        group_to_point_index,
-        &line_group_to_index,
-    );
-    remap_line_bindings(
-        &mut shapes.scaled_lines,
-        group_to_point_index,
-        &line_group_to_index,
-    );
-    remap_line_bindings(
-        &mut shapes.reflected_lines,
-        group_to_point_index,
-        &line_group_to_index,
-    );
-    remap_line_bindings(
-        &mut shapes.coordinate_traces,
+        &mut shapes.post_function_lines,
         group_to_point_index,
         &line_group_to_index,
     );
