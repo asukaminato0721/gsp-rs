@@ -2650,6 +2650,12 @@ fn hejixu_fold2_exports_marked_ratio_dilation_and_reflection() {
                 && label.visible
                 && label.anchor.x <= 20.0
                 && label.anchor.y <= 60.0
+                && label.rich_markup.as_deref().is_some_and(|markup| {
+                    markup.contains("</<H")
+                        && markup.contains("<TxBE>")
+                        && markup.contains("<TxBD>")
+                        && markup.contains("<Tx = 1>")
+                })
                 && matches!(
                     label.binding,
                     Some(TextLabelBinding::PointDistanceRatioValue {

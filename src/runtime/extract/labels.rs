@@ -1667,6 +1667,20 @@ fn build_expression_rich_markup(expr_label: &str, value_text: &str) -> Option<St
     ))
 }
 
+fn build_ratio_value_rich_markup(name: &str, value_text: &str) -> Option<String> {
+    let expr_label = strip_wrapping_parens(name);
+    let (numerator, denominator) = split_top_level(expr_label, "/")?;
+    if split_top_level(denominator, "/").is_some() {
+        return None;
+    }
+    Some(format!(
+        "<H</<H{}><H{}>><Tx = {}>>",
+        render_expression_rich_part(numerator),
+        render_expression_rich_part(denominator),
+        value_text,
+    ))
+}
+
 fn render_expression_rich_part(text: &str) -> String {
     let mut output = String::new();
     let mut rest = text;
@@ -1969,9 +1983,13 @@ pub(super) fn collect_coordinate_labels(
                 .unwrap_or_else(|| "ratio".to_string());
             let clamp_to_unit = true;
             let value = if clamp_to_unit { value.min(1.0) } else { value };
+            let value_text = format_number(value);
+            let text = format!("{name} = {value_text}");
+            let rich_markup = build_ratio_value_rich_markup(&name, &value_text);
             labels.push(TextLabel {
                 anchor,
-                text: format!("{name} = {}", format_number(value)),
+                text,
+                rich_markup,
                 color: [30, 30, 30, 255],
                 visible: ratio_value_label_visible(file, groups, group, helper_visible),
                 binding: Some(TextLabelBinding::PointDistanceRatioValue {

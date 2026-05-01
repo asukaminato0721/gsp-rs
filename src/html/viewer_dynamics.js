@@ -2018,6 +2018,30 @@
   }
 
   /**
+   * @param {string} name
+   * @param {string} valueText
+   */
+  function buildRatioValueRichMarkup(name, valueText) {
+    if (typeof name !== "string") {
+      return null;
+    }
+    const trimmed = name.trim();
+    const exprLabel = trimmed.startsWith("(") && trimmed.endsWith(")")
+      ? trimmed.slice(1, -1).trim()
+      : trimmed;
+    const parts = exprLabel.split("/");
+    if (parts.length !== 2) {
+      return null;
+    }
+    const numerator = parts[0].trim();
+    const denominator = parts[1].trim();
+    if (!numerator || !denominator) {
+      return null;
+    }
+    return buildExpressionRichMarkup(`${numerator} / ${denominator}`, valueText);
+  }
+
+  /**
    * @param {string} text
    * @returns {string | null}
    */
@@ -3554,8 +3578,10 @@
     "point-distance-ratio-value"(env, scene, label) {
       const value = pointDistanceRatioValue(scene, label.binding);
       if (value === null) return;
-      label.text = `${label.binding.name} = ${env.formatNumber(value)}`;
-      label.richMarkup = buildPlainTextRichMarkup(label.text);
+      const valueText = env.formatNumber(value);
+      label.text = `${label.binding.name} = ${valueText}`;
+      label.richMarkup = buildRatioValueRichMarkup(label.binding.name, valueText)
+        || buildPlainTextRichMarkup(label.text);
     },
     "point-axis-value"(env, scene, label) {
       const point = scene.points[label.binding.pointIndex];
