@@ -396,6 +396,16 @@ type ViewerGeometryModule = {
     bounds: { minX: number; maxX: number; minY: number; maxY: number },
   ) => Point[] | null;
   angleBisectorDirection: (start: Point, vertex: Point, end: Point) => Point | null;
+  measuredRotationRadians: (start: Point, vertex: Point, end: Point) => number | null;
+  scaleByThreePointRatio: (
+    source: Point,
+    center: Point,
+    ratioOrigin: Point,
+    ratioDenominator: Point,
+    ratioNumerator: Point,
+    signed?: boolean,
+    clampToUnit?: boolean,
+  ) => Point | null;
 };
 
 type ViewerRenderModule = {

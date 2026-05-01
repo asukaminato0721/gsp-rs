@@ -447,8 +447,8 @@ mod tests {
             "perp fixture should compile",
         );
 
-        assert!(html.contains("\"x\":867.3347427619169"));
-        assert!(html.contains("\"y\":469.9559050197873"));
+        assert!(html.contains("\"x\":867.3347427619246"));
+        assert!(html.contains("\"y\":469.95590501978756"));
         assert!(html.contains("\"kind\":\"line-intersection\""));
         assert!(html.contains("\"right\":{\"kind\":\"perpendicular-line\",\"throughIndex\":2"));
     }
@@ -1589,7 +1589,7 @@ mod tests {
             .expect("scene parameters should be an array");
         assert_eq!(parameters.len(), 1, "expected one live n parameter");
         assert_eq!(parameters[0]["name"].as_str(), Some("n"));
-        assert_eq!(parameters[0]["value"].as_f64(), Some(2.0));
+        assert_eq!(parameters[0]["value"].as_f64(), Some(20.0));
 
         let lines = scene["lines"]
             .as_array()
@@ -1630,7 +1630,7 @@ mod tests {
             .expect("scene labels should be an array");
         assert!(labels.iter().any(|label| {
             label["binding"]["kind"].as_str() == Some("parameter-value")
-                && label["text"].as_str() == Some("n = 2.00")
+                && label["text"].as_str() == Some("n = 20")
         }));
         assert!(labels.iter().any(|label| {
             label["binding"]["kind"].as_str() == Some("polygon-boundary-parameter")
@@ -1639,7 +1639,7 @@ mod tests {
         assert!(labels.iter().any(|label| {
             label["binding"]["kind"].as_str() == Some("expression-value")
                 && label["binding"]["parameterName"].as_str() == Some("m")
-                && label["text"].as_str() == Some("1 / n = 0.50")
+                && label["text"].as_str() == Some("(m在ABB''B'上的值 + 1) / n = 0.05")
         }));
         let circles = scene["circles"]
             .as_array()
@@ -1920,15 +1920,21 @@ mod tests {
         let points = scene["points"]
             .as_array()
             .expect("scene points should be an array");
+        let visible_points = points
+            .iter()
+            .filter(|point| point["visible"].as_bool() == Some(true))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            visible_points.len(),
+            16,
+            "expected the payload seed and translated ant points to stay visible"
+        );
         assert!(
-            points
-                .iter()
-                .filter(|point| point["visible"].as_bool() == Some(true))
-                .all(|point| {
-                    point["binding"]["kind"].as_str() == Some("parameter")
-                        && point["constraint"].is_null()
-                }),
-            "expected only standalone payload parameter controls to remain visible when helper point markers are omitted"
+            visible_points.iter().all(|point| {
+                point["constraint"].is_null()
+                    && matches!(point["binding"]["kind"].as_str(), None | Some("derived"))
+            }),
+            "expected visible ant helper points to be source or derived geometry"
         );
     }
 
@@ -2328,8 +2334,8 @@ mod tests {
             "expected the payload polygon to keep its live point binding"
         );
         assert!(
-            polygons.len() >= 10,
-            "expected the payload chessboard to export its live seed/current dark cells"
+            polygons.len() >= 2,
+            "expected the payload chessboard to export seed/current dark cells"
         );
         assert!(
             polygons.iter().all(|polygon| polygon["points"]

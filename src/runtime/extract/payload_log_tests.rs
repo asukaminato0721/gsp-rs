@@ -1,7 +1,5 @@
-use super::test_support::{
-    assert_supported_sample_log, construction_lines_from_htm, construction_lines_from_log,
-    fixture_bytes, fixture_log,
-};
+use super::htm_reference::{construction_lines_from_htm, construction_lines_from_log};
+use super::test_support::{assert_supported_sample_log, fixture_bytes, fixture_log};
 use insta::assert_snapshot;
 use std::fs;
 

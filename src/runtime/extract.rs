@@ -11,7 +11,11 @@ mod buttons;
 mod buttons_labels_images_tests;
 mod context;
 mod decode;
+#[cfg(test)]
+mod function_graph_tests;
 mod graph;
+#[cfg(test)]
+mod htm_reference;
 mod images;
 mod iteration_depth;
 mod labels;
@@ -22,7 +26,15 @@ pub(crate) mod shapes;
 #[cfg(test)]
 mod test_support;
 #[cfg(test)]
-mod tests;
+mod tests_iterations;
+#[cfg(test)]
+mod tests_labels;
+#[cfg(test)]
+mod tests_points;
+#[cfg(test)]
+mod tests_shapes;
+#[cfg(test)]
+mod tests_trace;
 mod trace;
 mod world;
 

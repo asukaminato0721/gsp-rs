@@ -12,6 +12,8 @@
     clipLineToBounds,
     clipRayToBounds,
     angleBisectorDirection,
+    measuredRotationRadians,
+    scaleByThreePointRatio,
   } = geometry;
   /** @typedef {{ minX: number; maxX: number; minY: number; maxY: number; spanX?: number; spanY?: number }} ViewBounds */
   /**
@@ -28,22 +30,6 @@
    */
   function hasLineIndexHandle(handle) {
     return !!handle && typeof handle === "object" && "lineIndex" in handle && typeof handle.lineIndex === "number";
-  }
-
-  /**
-   * @param {Point} start
-   * @param {Point} vertex
-   * @param {Point} end
-   */
-  function measuredRotationRadians(start, vertex, end) {
-    const firstX = start.x - vertex.x;
-    const firstY = vertex.y - start.y;
-    const secondX = end.x - vertex.x;
-    const secondY = vertex.y - end.y;
-    const firstLen = Math.hypot(firstX, firstY);
-    const secondLen = Math.hypot(secondX, secondY);
-    if (firstLen <= 1e-9 || secondLen <= 1e-9) return null;
-    return Math.atan2(firstX * secondY - firstY * secondX, firstX * secondX + firstY * secondY);
   }
 
   /**
@@ -1298,7 +1284,7 @@
 
   /**
    * @param {ViewerSceneData} scene
-   * @param {{ originIndex: number, denominatorIndex: number, numeratorIndex: number }} binding
+   * @param {{ originIndex: number, denominatorIndex: number, numeratorIndex: number, clampToUnit?: boolean }} binding
    */
   function pointDistanceRatioValue(scene, binding) {
     const origin = scene.points[binding.originIndex];
@@ -3123,45 +3109,6 @@
     if (!scaled) return;
     point.x = scaled.x;
     point.y = scaled.y;
-  }
-
-  /**
-   * @param {Point} source
-   * @param {Point} center
-   * @param {Point} ratioOrigin
-   * @param {Point} ratioDenominator
-   * @param {Point} ratioNumerator
-   * @param {boolean} signed
-   * @param {boolean} clampToUnit
-   * @returns {Point | null}
-   */
-  function scaleByThreePointRatio(
-    source,
-    center,
-    ratioOrigin,
-    ratioDenominator,
-    ratioNumerator,
-    signed = true,
-    clampToUnit = false,
-  ) {
-    const denominatorDx = ratioDenominator.x - ratioOrigin.x;
-    const denominatorDy = ratioDenominator.y - ratioOrigin.y;
-    const numeratorDx = ratioNumerator.x - ratioOrigin.x;
-    const numeratorDy = ratioNumerator.y - ratioOrigin.y;
-    const denominator = Math.hypot(
-      denominatorDx,
-      denominatorDy,
-    );
-    if (denominator <= 1e-9) return null;
-    const rawNumerator = Math.hypot(
-      numeratorDx,
-      numeratorDy,
-    );
-    const numerator = clampToUnit ? Math.min(rawNumerator, denominator) : rawNumerator;
-    const direction = signed && denominatorDx * numeratorDx + denominatorDy * numeratorDy < 0
-      ? -1
-      : 1;
-    return scaleAround(source, center, direction * numerator / denominator);
   }
 
   /**
