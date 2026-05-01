@@ -104,6 +104,116 @@ test('angle-referenced rotate points stay live in the browser runtime', async ({
   expect(result?.draggable).toBe(false);
 });
 
+test('hejixu fold2 marked-ratio dilation stays live when E reaches C', async ({ page }) => {
+  const file = compileFixtureToTempHtml('tests/Samples/个人专栏/贺基旭作品/翻折2(hjx4882).gsp');
+  await page.goto(`file://${file}`);
+
+  const dragPoints = await page.evaluate(() => {
+    const scene = () => window.gspDebug.runtime.scene;
+    const pointByGroup = (ordinal: number) =>
+      scene().points[scene().points.findIndex((point: any) => point.debug?.groupOrdinal === ordinal)];
+    const env = window.gspDebug.viewerEnv;
+    const beforeE = pointByGroup(7);
+    const pointC = pointByGroup(3);
+    const rect = env.canvas.getBoundingClientRect();
+    const clientPoint = (point: any) => {
+      const screen = env.toScreen(point);
+      return {
+        x: rect.left + screen.x * rect.width / env.sourceScene.width,
+        y: rect.top + screen.y * rect.height / env.sourceScene.height,
+      };
+    };
+
+    return {
+      start: clientPoint(beforeE),
+      end: clientPoint(pointC),
+    };
+  });
+
+  await page.mouse.move(dragPoints.start.x, dragPoints.start.y);
+  await page.mouse.down();
+  await page.mouse.move(dragPoints.end.x, dragPoints.end.y, { steps: 20 });
+  await page.mouse.up();
+
+  const result = await page.evaluate(() => {
+    const scene = () => window.gspDebug.runtime.scene;
+    const pointByGroup = (ordinal: number) =>
+      scene().points[scene().points.findIndex((point: any) => point.debug?.groupOrdinal === ordinal)];
+    const reflectAcrossLine = (source: any, lineStart: any, lineEnd: any) => {
+      const dx = lineEnd.x - lineStart.x;
+      const dy = lineEnd.y - lineStart.y;
+      const lenSq = dx * dx + dy * dy;
+      const t = ((source.x - lineStart.x) * dx + (source.y - lineStart.y) * dy) / lenSq;
+      const projection = {
+        x: lineStart.x + t * dx,
+        y: lineStart.y + t * dy,
+      };
+      return {
+        x: 2 * projection.x - source.x,
+        y: 2 * projection.y - source.y,
+      };
+    };
+
+    const pointA = pointByGroup(1);
+    const pointB = pointByGroup(2);
+    const pointD = pointByGroup(4);
+    const pointE = pointByGroup(7);
+    const pointF = pointByGroup(9);
+    const pointG = pointByGroup(11);
+    const pointH = pointByGroup(12);
+    const pointC = pointByGroup(3);
+    const denominator = Math.hypot(pointD.x - pointB.x, pointD.y - pointB.y);
+    const rawRatio = Math.hypot(pointE.x - pointB.x, pointE.y - pointB.y) / denominator;
+    const ratio = Math.min(rawRatio, 1);
+    const expectedF = {
+      x: pointB.x + (pointD.x - pointB.x) * ratio,
+      y: pointB.y + (pointD.y - pointB.y) * ratio,
+    };
+    const expectedG = reflectAcrossLine(pointB, pointA, pointE);
+    const expectedH = reflectAcrossLine(pointF, pointA, pointE);
+    const folded = scene().polygons.find((polygon: any) => polygon.debug?.groupOrdinal === 13);
+    const ratioLabel = scene().labels.find((label: any) => label.debug?.groupOrdinal === 8);
+    const dragState = window.gspDebug.viewerEnv.dragState.val;
+
+    return {
+      eAtC: Math.hypot(pointE.x - pointC.x, pointE.y - pointC.y),
+      rawRatio,
+      ratio,
+      fErr: Math.hypot(pointF.x - expectedF.x, pointF.y - expectedF.y),
+      fAtD: Math.hypot(pointF.x - pointD.x, pointF.y - pointD.y),
+      gErr: Math.hypot(pointG.x - expectedG.x, pointG.y - expectedG.y),
+      hErr: Math.hypot(pointH.x - expectedH.x, pointH.y - expectedH.y),
+      pointF,
+      pointG,
+      pointH,
+      foldedBinding: folded?.binding,
+      foldedPoints: folded?.points,
+      ratioLabel,
+      dragState,
+    };
+  });
+
+  expect(result.eAtC).toBeLessThan(1e-3);
+  expect(result.rawRatio).toBeGreaterThan(1);
+  expect(result.ratio).toBe(1);
+  expect(result.fErr).toBeLessThan(1);
+  expect(result.fAtD).toBeLessThan(1);
+  expect(result.gErr).toBeLessThan(1);
+  expect(result.hErr).toBeLessThan(1);
+  expect(result.foldedBinding?.kind).toBe('point-polygon');
+  expect(result.foldedBinding?.vertexIndices).toEqual([0, 6, 7, 4]);
+  expect(result.foldedPoints).toHaveLength(4);
+  expect(result.ratioLabel?.text).toBe('(BE/BD) = 1');
+  expect(result.ratioLabel?.richMarkup).toContain('</<H');
+  expect(result.ratioLabel?.richMarkup).toContain('<TxBE>');
+  expect(result.ratioLabel?.richMarkup).toContain('<TxBD>');
+  expect(result.ratioLabel?.richMarkup).toContain('<Tx = 1>');
+  expect(result.ratioLabel?.visible).toBe(true);
+  expect(result.ratioLabel?.anchor.x).toBeLessThanOrEqual(20);
+  expect(result.ratioLabel?.anchor.y).toBeLessThanOrEqual(60);
+  expect(result.dragState).toBeNull();
+});
+
 test('angle-marker class payload renders bug fixture without path explosion', async ({ page }) => {
   const file = compileFixtureToTempHtml('tests/fixtures/bug/测试10.gsp');
   await page.goto(`file://${file}`);
