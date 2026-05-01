@@ -675,15 +675,44 @@
    * @param {unknown} value
    * @param {Set<string>} knownParameters
    * @param {Map<string, Set<string>>} [derivedParameterDeps]
+   * @param {SceneData | ViewerSceneData | null} [sourceScene]
    */
-  function collectSceneDependencyIds(deps, value, knownParameters, derivedParameterDeps = new Map()) {
+  function collectSceneDependencyIds(deps, value, knownParameters, derivedParameterDeps = new Map(), sourceScene = null) {
     if (!value || typeof value !== "object") {
       return;
     }
     if (Array.isArray(value)) {
-      value.forEach((entry) => collectSceneDependencyIds(deps, entry, knownParameters, derivedParameterDeps));
+      value.forEach((entry) => collectSceneDependencyIds(deps, entry, knownParameters, derivedParameterDeps, sourceScene));
       return;
     }
+    const addPointRefDep = (/** @type {number} */ index) => {
+      deps.add(sourcePointRootId(index));
+      const point = sourceScene?.points?.[index];
+      if (point?.binding || point?.constraint) {
+        deps.add(`point:${index}`);
+      }
+    };
+    const addLineRefDep = (/** @type {number} */ index) => {
+      deps.add(sourceLineRootId(index));
+      const line = sourceScene?.lines?.[index];
+      if (line?.binding) {
+        deps.add(`line:${index}`);
+      }
+    };
+    const addCircleRefDep = (/** @type {number} */ index) => {
+      deps.add(sourceCircleRootId(index));
+      const circle = sourceScene?.circles?.[index];
+      if (circle?.binding || circle?.fillColorBinding) {
+        deps.add(`circle:${index}`);
+      }
+    };
+    const addPolygonRefDep = (/** @type {number} */ index) => {
+      deps.add(sourcePolygonRootId(index));
+      const polygon = sourceScene?.polygons?.[index];
+      if (polygon?.binding) {
+        deps.add(`polygon:${index}`);
+      }
+    };
     Object.entries(/** @type {Record<string, unknown>} */ (value)).forEach(([key, child]) => {
       if (key === "expr" && child && typeof child === "object") {
         addExprParameterDeps(
@@ -692,7 +721,7 @@
           knownParameters,
           derivedParameterDeps,
         );
-        collectSceneDependencyIds(deps, child, knownParameters, derivedParameterDeps);
+        collectSceneDependencyIds(deps, child, knownParameters, derivedParameterDeps, sourceScene);
         return;
       }
       if (typeof child === "number") {
@@ -738,7 +767,7 @@
           || key === "factorParameterEndIndex"
           || key === "reflectionFocusIndex"
         ) {
-          deps.add(sourcePointRootId(child));
+          addPointRefDep(child);
           return;
         }
         if (
@@ -747,15 +776,15 @@
           || key === "reflectionAxisLineIndex"
           || key === "reflectionDirectrixLineIndex"
         ) {
-          deps.add(sourceLineRootId(child));
+          addLineRefDep(child);
           return;
         }
         if (key === "circleIndex" || key === "sourceCircleIndex") {
-          deps.add(sourceCircleRootId(child));
+          addCircleRefDep(child);
           return;
         }
         if (key === "polygonIndex") {
-          deps.add(sourcePolygonRootId(child));
+          addPolygonRefDep(child);
         }
         return;
       }
@@ -763,7 +792,7 @@
         if (key === "vertexIndices") {
           child.forEach((entry) => {
             if (typeof entry === "number") {
-              deps.add(sourcePointRootId(entry));
+              addPointRefDep(entry);
             }
           });
         } else if (
@@ -772,29 +801,29 @@
         ) {
           child.forEach((entry) => {
             if (typeof entry === "number") {
-              deps.add(sourcePointRootId(entry));
+              addPointRefDep(entry);
             }
           });
         } else if (key === "lineIndices") {
           child.forEach((entry) => {
             if (typeof entry === "number") {
-              deps.add(sourceLineRootId(entry));
+              addLineRefDep(entry);
             }
           });
         } else if (key === "circleIndices") {
           child.forEach((entry) => {
             if (typeof entry === "number") {
-              deps.add(sourceCircleRootId(entry));
+              addCircleRefDep(entry);
             }
           });
         } else if (key === "polygonIndices") {
           child.forEach((entry) => {
             if (typeof entry === "number") {
-              deps.add(sourcePolygonRootId(entry));
+              addPolygonRefDep(entry);
             }
           });
         }
-        child.forEach((entry) => collectSceneDependencyIds(deps, entry, knownParameters, derivedParameterDeps));
+        child.forEach((entry) => collectSceneDependencyIds(deps, entry, knownParameters, derivedParameterDeps, sourceScene));
         return;
       }
       if (typeof child === "string") {
@@ -810,7 +839,7 @@
         }
         return;
       }
-      collectSceneDependencyIds(deps, child, knownParameters, derivedParameterDeps);
+      collectSceneDependencyIds(deps, child, knownParameters, derivedParameterDeps, sourceScene);
     });
   }
 
@@ -912,6 +941,9 @@
     const nodeMap = new Map();
     const knownParameters = new Set((env.currentDynamics().parameters || []).map((parameter) => parameter.name));
     const derivedParameterDeps = collectLabelDerivedParameterDeps(env.sourceScene, knownParameters);
+    const collectDeps = (/** @type {Set<string>} */ deps, /** @type {unknown} */ value) => {
+      collectSceneDependencyIds(deps, value, knownParameters, derivedParameterDeps, env.sourceScene);
+    };
 
     /** @param {DependencyNode} node */
     const addNode = (node) => {
@@ -953,8 +985,8 @@
     (env.sourceScene.points || []).forEach((point, index) => {
       if (!point.binding && !point.constraint) return;
       const deps = new Set();
-      collectSceneDependencyIds(deps, point.binding, knownParameters, derivedParameterDeps);
-      collectSceneDependencyIds(deps, point.constraint, knownParameters, derivedParameterDeps);
+      collectDeps(deps, point.binding);
+      collectDeps(deps, point.constraint);
       addNode({
         id: `point:${index}`,
         kind: "point",
@@ -966,12 +998,12 @@
     (env.sourceScene.lines || []).forEach((line, index) => {
       if (!line.binding) return;
       const deps = new Set();
-      collectSceneDependencyIds(deps, line.binding, knownParameters, derivedParameterDeps);
+      collectDeps(deps, line.binding);
       if (line.binding.kind === "point-trace") {
         [line.binding.pointIndex, line.binding.driverIndex].forEach((/** @type {number} */ pointIndex) => {
           const point = env.sourceScene.points?.[pointIndex];
-          collectSceneDependencyIds(deps, point?.binding, knownParameters, derivedParameterDeps);
-          collectSceneDependencyIds(deps, point?.constraint, knownParameters, derivedParameterDeps);
+          collectDeps(deps, point?.binding);
+          collectDeps(deps, point?.constraint);
         });
       }
       addNode({
@@ -985,8 +1017,8 @@
     (env.sourceScene.circles || []).forEach((circle, index) => {
       if (!circle.binding && !circle.fillColorBinding) return;
       const deps = new Set();
-      collectSceneDependencyIds(deps, circle.binding, knownParameters, derivedParameterDeps);
-      collectSceneDependencyIds(deps, circle.fillColorBinding, knownParameters, derivedParameterDeps);
+      collectDeps(deps, circle.binding);
+      collectDeps(deps, circle.fillColorBinding);
       addNode({
         id: `circle:${index}`,
         kind: "circle",
@@ -998,7 +1030,7 @@
     (env.sourceScene.polygons || []).forEach((polygon, index) => {
       if (!polygon.binding) return;
       const deps = new Set();
-      collectSceneDependencyIds(deps, polygon.binding, knownParameters, derivedParameterDeps);
+      collectDeps(deps, polygon.binding);
       addNode({
         id: `polygon:${index}`,
         kind: "polygon",
@@ -1010,7 +1042,7 @@
     (env.currentDynamics().functions || []).forEach((functionDef, index) => {
       const deps = new Set();
       addExprParameterDeps(deps, functionDef.expr, knownParameters, derivedParameterDeps);
-      collectSceneDependencyIds(deps, functionDef.constrainedPointIndices, knownParameters, derivedParameterDeps);
+      collectDeps(deps, functionDef.constrainedPointIndices);
       addNode({
         id: `function:${index}`,
         kind: "function",
@@ -1022,7 +1054,7 @@
     (env.sourceScene.labels || []).forEach((label, index) => {
       if (!label.binding) return;
       const deps = new Set();
-      collectSceneDependencyIds(deps, label.binding, knownParameters, derivedParameterDeps);
+      collectDeps(deps, label.binding);
       if ("expr" in label.binding) {
         addExprParameterDeps(deps, label.binding.expr, knownParameters, derivedParameterDeps);
       }
@@ -1036,7 +1068,7 @@
 
     (env.sourceScene.pointIterations || []).forEach((family, index) => {
       const deps = new Set();
-      collectSceneDependencyIds(deps, family, knownParameters, derivedParameterDeps);
+      collectDeps(deps, family);
       if (family.kind === "rotate") {
         addExprParameterDeps(deps, family.angleExpr, knownParameters, derivedParameterDeps);
       }
@@ -1049,7 +1081,7 @@
     });
     (env.sourceScene.circleIterations || []).forEach((family, index) => {
       const deps = new Set();
-      collectSceneDependencyIds(deps, family, knownParameters, derivedParameterDeps);
+      collectDeps(deps, family);
       addNode({
         id: `circle-iteration:${index}`,
         kind: "circle-iteration",
@@ -1059,7 +1091,7 @@
     });
     (env.sourceScene.lineIterations || []).forEach((family, index) => {
       const deps = new Set();
-      collectSceneDependencyIds(deps, family, knownParameters, derivedParameterDeps);
+      collectDeps(deps, family);
       if (family.kind === "rotate") {
         addExprParameterDeps(deps, family.angleExpr, knownParameters, derivedParameterDeps);
       }
@@ -1078,7 +1110,7 @@
     });
     (env.sourceScene.polygonIterations || []).forEach((family, index) => {
       const deps = new Set();
-      collectSceneDependencyIds(deps, family, knownParameters, derivedParameterDeps);
+      collectDeps(deps, family);
       if (family.kind === "coordinate-grid") {
         addExprParameterDeps(deps, family.stepExpr, knownParameters, derivedParameterDeps);
         addExprParameterDeps(deps, family.xExpr, knownParameters, derivedParameterDeps);
@@ -1094,7 +1126,7 @@
     });
     (env.sourceScene.labelIterations || []).forEach((family, index) => {
       const deps = new Set();
-      collectSceneDependencyIds(deps, family, knownParameters, derivedParameterDeps);
+      collectDeps(deps, family);
       addExprParameterDeps(deps, family.expr, knownParameters, derivedParameterDeps);
       if ("depthExpr" in family) {
         addExprParameterDeps(deps, family.depthExpr, knownParameters, derivedParameterDeps);
@@ -1108,7 +1140,7 @@
     });
     (env.sourceScene.iterationTables || []).forEach((table, index) => {
       const deps = new Set();
-      collectSceneDependencyIds(deps, table, knownParameters, derivedParameterDeps);
+      collectDeps(deps, table);
       addExprParameterDeps(deps, table.expr, knownParameters, derivedParameterDeps);
       addNode({
         id: `iteration-table:${index}`,
