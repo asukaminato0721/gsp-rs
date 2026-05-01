@@ -1,0 +1,136 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>抛豆实验估算圆周率</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(303,457)[hidden];
+{2} Translation(1,37.7953,0)[hidden];
+{3} Ray(2,1)[hidden];
+{4} Point on object(3,8.99991)[green,mediumPoint];
+{5} Rotation(4,1,1.5708)[hidden];
+{6} VectorTranslation(5,1,4)[hidden];
+{7} Dilation(6,1,0.5)[hidden];
+{8} Dilation(4,1,0.5)[hidden];
+{9} Circle(7,8)[hidden];
+{10} Segment(1,5)[red,hairline];
+{11} Segment(4,1)[red,hairline];
+{12} Segment(6,4)[red,hairline];
+{13} Segment(5,6)[red,hairline];
+{14} Parameter(0,963,206,'')[hidden];
+{15} Distance(8,7,963,226,'')[hidden];
+{16} Point on object(11,0.405698)[hidden];
+{17} Point on object(12,0.717322)[hidden];
+{18} VectorTranslation(17,4,1)[hidden];
+{19} Segment(17,18)[hidden];
+{20} VectorTranslation(16,1,5)[hidden];
+{21} Segment(16,20)[hidden];
+{22} Intersect(21,19)[hidden];
+{23} Distance(22,7,963,243,'')[hidden];
+{24} Calculate(963,260,'','A B - @sgn_ 1 + @sgn_ ')(15,23)[hidden];
+{25} Parameter(0,963,277,'')[hidden];
+{26} Calculate(963,300,'','A B + ')(25,24)[hidden];
+{27} Point(31,593)[hidden];
+{28} Translation(27,7.55906,0)[hidden];
+{29} Dilation/MarkedRatio(28,27,26)[hidden];
+{30} Parameter(0,963,359,'抛豆总数量 = ')[red,hidden];
+{31} Colorized_Spectrum(22,24,-0.2,1,2)[hidden];
+{32} Colorized_Spectrum(27,14,-0.2,1,2)[dot];
+{33} Colorized_Spectrum(28,14,-0.2,1,2)[dot];
+{34} Colorized_Spectrum(29,14,-0.2,1,2)[dot];
+{35} Circle interior(9)[cyan];
+{36} Polygon(5,1,4,6)[yellow];
+{37} Colorized_Spectrum(7,14,-0.2,1,2)[mediumPoint];
+{38} Colorized_Spectrum(17,14,-0.2,1,2)[mediumPoint];
+{39} Colorized_Spectrum(6,14,-0.2,1,2)[mediumPoint];
+{40} Colorized_Spectrum(5,14,-0.2,1,2)[mediumPoint];
+{41} Colorized_Spectrum(1,14,-0.2,1,2)[mediumPoint];
+{42} Colorized_Spectrum(16,14,-0.2,1,2)[mediumPoint];
+{43} Colorized_Spectrum(9,14,-0.2,1,2)[hairline];
+{44} MoveButton(960,457,0,'[初始]')(25,30)[color(255,128,0),hidden];
+{45} FixedText(4,44,'抛豆实验估算圆周率')[black];
+{46} FixedText(9,502,'操作提示: 1.拖动图案右下角绿色点可调整图案大小； 2.单击[开始抛豆]启动实验抛豆，再次单击时停止实验抛豆，此时双击右侧表格将实验数据导入表格； 3.每次实验结束后单击[初始]对实验进行初始化，重复实验多次后通过计算多次实验π的估值平均数来减小实验误差: 4.右键表格可删除表格中的记录数据.')[color(128,0,0)];
+{47} Colorized_Spectrum(8,14,-0.2,1,2)[mediumPoint];
+{48} Colorized_Spectrum(21,14,-0.2,1,2)[hairline];
+{49} Colorized_Spectrum(19,14,-0.2,1,2)[hairline];
+{50} Colorized_Spectrum(18,14,-0.2,1,2)[mediumPoint];
+{51} Colorized_Spectrum(20,14,-0.2,1,2)[mediumPoint];
+{52} FixedText(683,385,'感谢榕老师和mathszhang老师指点 ansir')[color(128,0,0)];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>抛豆实验估算圆周率</P></H4>
+</BODY>
+</HTML>

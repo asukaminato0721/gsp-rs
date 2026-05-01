@@ -1,0 +1,191 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>（撒豆）点的随机迭代</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=251>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(466,491)[label('A'),mediumPoint];
+{2} Point(827,491)[label('B'),mediumPoint];
+{3} Segment(2,1)[black,mediumLine];
+{4} Rotation(2,1,1.5708)[red,mediumPoint];
+{5} Rotation(1,4,1.5708)[label('A'''),red,mediumPoint];
+{6} Segment(4,5)[black,mediumLine];
+{7} Segment(1,4)[black,mediumLine];
+{8} Segment(2,5)[black,mediumLine];
+{9} Dilation(2,1,0.1)[hidden];
+{10} VectorTranslation(7,1,9)[black,hairline];
+{11} VectorTranslation(10,1,9)[black,hairline];
+{12} VectorTranslation(11,1,9)[black,hairline];
+{13} VectorTranslation(12,1,9)[black,hairline];
+{14} VectorTranslation(13,1,9)[black,hairline];
+{15} VectorTranslation(14,1,9)[black,hairline];
+{16} VectorTranslation(15,1,9)[black,hairline];
+{17} VectorTranslation(16,1,9)[black,hairline];
+{18} VectorTranslation(17,1,9)[black,hairline];
+{19} Dilation(4,1,0.1)[hidden];
+{20} VectorTranslation(3,1,19)[black,hairline];
+{21} VectorTranslation(20,1,19)[black,hairline];
+{22} VectorTranslation(21,1,19)[black,hairline];
+{23} VectorTranslation(22,1,19)[black,hairline];
+{24} VectorTranslation(23,1,19)[black,hairline];
+{25} VectorTranslation(24,1,19)[black,hairline];
+{26} VectorTranslation(25,1,19)[black,hairline];
+{27} VectorTranslation(26,1,19)[black,hairline];
+{28} VectorTranslation(27,1,19)[black,hairline];
+{29} Intersect(12,28)[hidden];
+{30} Intersect(20,12)[hidden];
+{31} Intersect(16,20)[hidden];
+{32} Intersect(28,16)[hidden];
+{33} Polygon(29,30,31,32)[color(82,82,82)];
+{34} Intersect(28,7)[hidden];
+{35} Intersect(10,28)[hidden];
+{36} Intersect(10,27)[hidden];
+{37} Intersect(11,27)[hidden];
+{38} Intersect(26,11)[hidden];
+{39} Intersect(12,26)[hidden];
+{40} Intersect(6,12)[hidden];
+{41} Polygon(4,34,35,36,37,38,39,40)[color(82,82,82)];
+{42} Intersect(10,20)[hidden];
+{43} Intersect(21,10)[hidden];
+{44} Intersect(11,21)[hidden];
+{45} Intersect(11,22)[hidden];
+{46} Intersect(12,22)[hidden];
+{47} Intersect(27,7)[hidden];
+{48} Intersect(21,7)[hidden];
+{49} Intersect(22,10)[hidden];
+{50} Intersect(23,11)[hidden];
+{51} Intersect(12,23)[hidden];
+{52} Intersect(12,25)[hidden];
+{53} Intersect(11,25)[hidden];
+{54} Intersect(26,10)[hidden];
+{55} Polygon(47,48,43,49,45,50,51,52,53,38,54,36)[color(82,82,82)];
+{56} Reflection(55,14)[color(82,82,82)];
+{57} Reflection(41,14)[color(82,82,82)];
+{58} Point on object(3,0.628809)[hidden];
+{59} Point on object(8,0.0720222)[hidden];
+{60} VectorTranslation(7,1,58)[hidden];
+{61} VectorTranslation(3,2,59)[hidden];
+{62} Intersect(60,61)[hidden];
+{63} Intersect(3,12)[hidden];
+{64} Polygon(1,19,42,43,44,45,46,63)[color(82,82,82)];
+{65} Reflection(64,14)[color(82,82,82)];
+{66} Ratio/Points(1,2,58,117,176,'')[hidden];
+{67} Ratio/Points(2,5,59,117,244,'')[hidden];
+{68} Calculate(117,297,'','A 10 * @trnc ')(66)[hidden];
+{69} Calculate(117,313,'','A 10 * @trnc ')(67)[hidden];
+{70} Parameter(0,984,80,'')[hidden];
+{71} Parameter(1,1055,80,'')[hidden];
+{72} Parameter(8,1055,120,'')[hidden];
+{73} Parameter(1,982,160,'')[hidden];
+{74} Parameter(2,1088,160,'')[hidden];
+{75} Parameter(7,1088,200,'')[hidden];
+{76} Parameter(2,979,238,'')[hidden];
+{77} Parameter(3,1056,240,'')[hidden];
+{78} Parameter(6,1056,280,'')[hidden];
+{79} Parameter(3,983,315,'')[hidden];
+{80} Parameter(0,1063,312,'')[hidden];
+{81} Parameter(9,1063,355,'')[hidden];
+{82} Parameter(4,979,394,'')[hidden];
+{83} Parameter(0,1063,395,'')[hidden];
+{84} Parameter(9,1063,435,'')[hidden];
+{85} Calculate(84,345,'','2 A @sgn_ - A 9 - @sgn_ @abs_ - 2 B 1 - @sgn_ @abs_ - B 8 - @sgn_ @abs_ - @sgn_ * ')(68,69)[hidden];
+{86} Calculate(84,365,'','2 A 1 - @sgn_ @abs_ - A 8 - @sgn_ @abs_ - 2 B 2 - @sgn_ @abs_ - B 7 - @sgn_ @abs_ - * ')(68,69)[hidden];
+{87} Calculate(84,385,'','2 A 2 - @sgn_ @abs_ - A 7 - @sgn_ @abs_ - 2 B 3 - @sgn_ @abs_ - B 6 - @sgn_ @abs_ - * ')(68,69)[hidden];
+{88} Calculate(84,405,'','2 A 3 - @sgn_ @abs_ - A 6 - @sgn_ @abs_ - 2 B @sgn_ @abs_ - B 9 - @sgn_ @abs_ - * ')(68,69)[hidden];
+{89} Calculate(84,425,'','2 A 4 - @sgn_ @abs_ - A 5 - @sgn_ @abs_ - 2 B @sgn_ @abs_ - B 9 - @sgn_ @abs_ - * ')(68,69)[hidden];
+{90} Calculate(83,469,'','A B + C + D + E + @sgn_ ')(85,86,87,88,89)[hidden];
+{91} Parameter(1,83,447,'')[hidden];
+{92} Point(76,702)[hidden];
+{93} Translation(92,4.62859e-016,7.55906)[hidden];
+{94} Calculate(83,485,'','A B + ')(91,90)[hidden];
+{95} Dilation/MarkedRatio(93,92,94)[hidden];
+{96} Point(693,542)[hidden];
+{97} Point(845,301)[hidden];
+{98} Point(987,543)[hidden];
+{99} Point(1243,543)[hidden];
+{100} Segment(99,98)[hidden];
+{101} Point on object(100,0.870467)[hidden];
+{102} Ratio/Points(98,99,101,1070,585,'')[hidden];
+{103} Calculate(1070,619,'','A B * ')(90,102)[hidden];
+{104} Colorized_Spectrum(62,103,-0.75,1,2)[hidden];
+{105} Parameter(46,575,90,'总投掷个数 = ')[blue];
+{106} Parameter(0,113,169,'')[hidden];
+{107} MoveButton(608,524,0,'初始化')(106,105)[color(255,128,0)];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>（撒豆）点的随机迭代</P></H4>
+</BODY>
+</HTML>

@@ -1,0 +1,131 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>蒲丰投针实验</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(228,590)[hidden];
+{2} UnitPoint(1,48.7953)[hidden];
+{3} HorizontalAxis(1,2)[hidden];
+{4} SquareUnitPoint(2)[label('a'),red];
+{5} VerticalAxis(1,4)[hidden];
+{6} CoordSysByAxes(3,5)[hidden];
+{7} Parameter(0,10,216,'')[hidden];
+{8} Parameter(298,7,464,'投掷次数 = ')[black];
+{9} FixedPoint(15,526);
+{10} Parameter(0,10,270,'')[hidden];
+{11} FixedText(203,37,'蒲丰投针实验求π的近似值')[red];
+{12} Parameter(12,10,298,'')[hidden];
+{13} Parallel(3,2)[blue];
+{14} VectorTranslation(13,1,4)[blue];
+{15} VectorTranslation(2,1,4)[hidden];
+{16} VectorTranslation(9,1,2)[hidden];
+{17} Segment(9,16)[hidden];
+{18} Point on object(17,0.532838)[label('L'),black];
+{19} CoordinateDistance(18,9,6,5,516,'针长 = ')[black];
+{20} Segment(9,18)[blue];
+{21} Point on object(13,2.90602)[hidden];
+{22} Segment(1,21)[hidden];
+{23} Point on object(22,0.367754)[hidden];
+{24} Perpendicular(3,23)[hidden];
+{25} Circle(1,21)[hidden];
+{26} Ray(1,21)[hidden];
+{27} Perpendicular(26,1)[hidden];
+{28} Perpendicular(26,21)[hidden];
+{29} Intersect2(27,25)[hidden];
+{30} Segment(29,1)[hidden];
+{31} Point on object(30,0.389124)[hidden];
+{32} Perpendicular(24,31)[hidden];
+{33} Intersect(24,32)[hidden];
+{34} Circle by radius(33,20)[hidden];
+{35} Point on object(34,-0.650612)[hidden];
+{36} Segment(35,33)[hidden];
+{37} Midpoint(36)[hidden];
+{38} Ordinate(37,6,10,324,'')[hidden];
+{39} Calculate(10,378,'','A A @trnc - @abs_ ')(38)[hidden];
+{40} Calculate(10,158,'','A 0.5 - @sgn_ ')(39)[hidden];
+{41} Calculate(10,184,'','1 A - ')(39)[hidden];
+{42} Calculate(10,53,'','A 1 B - * 2 / C 1 B + * 2 / + ')(39,40,41)[hidden];
+{43} Parallel(26,29)[hidden];
+{44} Intersect(28,43)[hidden];
+{45} Segment(44,29)[hidden];
+{46} Segment(21,44)[hidden];
+{47} FixedText(792,481,'π≈')[color(0,128,0),hidden];
+{48} FixedText(203,36,'蒲丰投针实验求π的近似值')[green];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>蒲丰投针实验</P></H4>
+</BODY>
+</HTML>
