@@ -7,6 +7,8 @@ use anyhow::{Context, Result, bail};
 
 mod assemble;
 mod buttons;
+#[cfg(test)]
+mod buttons_labels_images_tests;
 mod context;
 mod decode;
 mod graph;
