@@ -1,5 +1,6 @@
 ---
-source: src/pipeline.rs
+source: src/pipeline/tests/core.rs
+assertion_line: 159
 expression: scene_json
 ---
 {

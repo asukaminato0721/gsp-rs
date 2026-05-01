@@ -1,4 +1,4 @@
-use crate::runtime::extract::CircleShape;
+use crate::runtime::extract::shapes::CircleShape;
 use crate::runtime::scene::{
     AxisBinding, LineBinding, LineShape, LineTransformBinding, PolygonShape, ShapeBinding,
     ShapeTransformBinding, TextLabel, TextLabelBinding,

@@ -7,9 +7,9 @@ use crate::runtime::scene::{
     TextLabelBinding,
 };
 
+use super::analysis::{BoundsData, CollectedShapes, SceneAnalysis, WorldData};
 use super::graph::{BoundsInputs, collect_bounds, dedupe_line_shapes, expand_bounds};
 use super::world::{world_line_iteration_family, world_line_shape, world_polygon_iteration_family};
-use super::{BoundsData, CollectedShapes, SceneAnalysis, WorldData};
 
 pub(super) struct SceneAssemblyArtifacts {
     pub(super) circle_iterations: Vec<CircleIterationFamily>,

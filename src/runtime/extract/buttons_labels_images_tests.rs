@@ -304,8 +304,8 @@ fn collects_hjx4882_subtraction_text_visibility_targets() {
                 );
             }
             for label_index in label_indices {
-                assert_eq!(
-                    scene.labels[*label_index].visible, false,
+                assert!(
+                    !scene.labels[*label_index].visible,
                     "payload-hidden text group should stay hidden until the button is used"
                 );
             }

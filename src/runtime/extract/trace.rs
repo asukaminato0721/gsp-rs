@@ -1,18 +1,23 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord};
+use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
+use crate::runtime::extract::bindings::normalized_hsb;
 use crate::runtime::extract::decode::decode_label_name;
 use crate::runtime::functions::{evaluate_expr_with_parameters, try_decode_function_expr};
 use crate::runtime::geometry::{
     GraphTransform, lerp_point, point_on_circle_arc, point_on_three_point_arc, reflect_across_line,
     rotate_around, scale_around, to_raw_from_world,
 };
+use crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD;
 use crate::runtime::scene::{
     CircularConstraint, LineConstraint, LineLikeKind, LineShape, ScenePoint, ScenePointBinding,
     ScenePointConstraint,
 };
 
-use super::points::{custom_transform_expression_parameter_map, custom_transform_trace_parameter};
+use super::points::{
+    custom_transform_expression_parameter_map, custom_transform_trace_parameter,
+    editable_non_graph_parameter_name_for_group,
+};
 use super::{find_indexed_path, payload_debug_source};
 
 fn segment_projection_parameter(
@@ -308,6 +313,374 @@ pub(super) fn collect_segment_traces(
         })
         .flatten()
         .collect()
+}
+
+pub(super) fn bind_points_to_point_traces(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    visible_points: &mut Vec<ScenePoint>,
+    group_to_point_index: &mut [Option<usize>],
+    point_trace_lines: &[LineShape],
+) {
+    for group in groups.iter().filter(|group| {
+        matches!(
+            group.header.kind(),
+            GroupKind::PointConstraint | GroupKind::PathPoint | GroupKind::ParameterControlledPoint
+        )
+    }) {
+        let Some(path) = find_indexed_path(file, group) else {
+            continue;
+        };
+        let Some(host_ordinal) = path.refs.first().copied() else {
+            continue;
+        };
+        let Some(host_group) = groups.get(host_ordinal.saturating_sub(1)) else {
+            continue;
+        };
+        if host_group.header.kind() != GroupKind::PointTrace {
+            continue;
+        }
+        let Some(group_index) = group.ordinal.checked_sub(1) else {
+            continue;
+        };
+        let Some(slot) = group_to_point_index.get_mut(group_index) else {
+            continue;
+        };
+        let existing_point_index = *slot;
+        let Some(payload) = group
+            .records
+            .iter()
+            .find(|record| record.record_type == RECORD_BINDING_PAYLOAD)
+            .map(|record| record.payload(&file.data))
+        else {
+            continue;
+        };
+        if payload.len() < 12 {
+            continue;
+        }
+        let normalized_t = read_f64(payload, 4);
+        if !normalized_t.is_finite() {
+            continue;
+        }
+        let Some(trace_line) = point_trace_lines.iter().find(|line| {
+            line.debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == host_ordinal)
+                && matches!(
+                    line.binding,
+                    Some(crate::runtime::scene::LineBinding::PointTrace { .. })
+                )
+        }) else {
+            continue;
+        };
+        if trace_line.points.len() < 2 {
+            continue;
+        }
+        let wrapped_t = normalized_t.rem_euclid(1.0);
+        let scaled = wrapped_t * (trace_line.points.len() - 1) as f64;
+        let segment_index = (scaled.floor() as usize).min(trace_line.points.len() - 2);
+        let t = scaled.fract();
+        let start = &trace_line.points[segment_index];
+        let end = &trace_line.points[segment_index + 1];
+        let position = PointRecord {
+            x: start.x + (end.x - start.x) * t,
+            y: start.y + (end.y - start.y) * t,
+        };
+        let point_index = existing_point_index.unwrap_or_else(|| {
+            let next_index = visible_points.len();
+            *slot = Some(next_index);
+            visible_points.push(ScenePoint {
+                position: position.clone(),
+                color: crate::runtime::geometry::color_from_style(group.header.style_b),
+                visible: !group.header.is_hidden(),
+                draggable: true,
+                constraint: ScenePointConstraint::Free,
+                binding: None,
+                debug: Some(payload_debug_source(group)),
+            });
+            next_index
+        });
+        if let Some(point) = visible_points.get_mut(point_index) {
+            point.position = position;
+            point.constraint = ScenePointConstraint::OnPolyline {
+                function_key: host_ordinal,
+                points: trace_line.points.clone(),
+                segment_index,
+                t,
+            };
+            point.draggable = true;
+        }
+    }
+}
+
+pub(super) fn collect_colorized_spectrum_lines(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    visible_points: &[ScenePoint],
+    group_to_point_index: &[Option<usize>],
+    viewport_width: f64,
+) -> Vec<LineShape> {
+    let mut lines = Vec::new();
+    let mut seen = BTreeSet::new();
+    for binding_group in groups
+        .iter()
+        .filter(|group| group.header.kind() == GroupKind::IterationBinding)
+    {
+        let Some(binding_path) = find_indexed_path(file, binding_group) else {
+            continue;
+        };
+        let Some(source_ordinal) = binding_path.refs.first().copied() else {
+            continue;
+        };
+        let Some(iter_ordinal) = binding_path.refs.get(1).copied() else {
+            continue;
+        };
+        let Some(source_group) = groups.get(source_ordinal.saturating_sub(1)) else {
+            continue;
+        };
+        if source_group.header.kind() != GroupKind::DerivedSegment75 {
+            continue;
+        }
+        if !seen.insert(source_ordinal) {
+            continue;
+        }
+        let Some(source_path) = find_indexed_path(file, source_group) else {
+            continue;
+        };
+        let Some(host_ordinal) = source_path.refs.first().copied() else {
+            continue;
+        };
+        let Some(host_group) = groups.get(host_ordinal.saturating_sub(1)) else {
+            continue;
+        };
+        if !matches!(
+            host_group.header.kind(),
+            GroupKind::Segment | GroupKind::Ray
+        ) {
+            continue;
+        }
+        let Some(host_path) = find_indexed_path(file, host_group) else {
+            continue;
+        };
+        if host_path.refs.len() != 2 {
+            continue;
+        }
+        let Some((trace_point_ordinal, trace_endpoint_index, other_ordinal)) = host_path
+            .refs
+            .iter()
+            .copied()
+            .enumerate()
+            .find_map(|(endpoint_index, ordinal)| {
+                let point_index = group_to_point_index
+                    .get(ordinal.checked_sub(1)?)
+                    .copied()
+                    .flatten()?;
+                let point = visible_points.get(point_index)?;
+                matches!(point.constraint, ScenePointConstraint::OnPolyline { .. }).then_some((
+                    ordinal,
+                    endpoint_index,
+                    *host_path
+                        .refs
+                        .iter()
+                        .find(|candidate| **candidate != ordinal)?,
+                ))
+            })
+        else {
+            continue;
+        };
+        let Some(trace_point_group_index) = trace_point_ordinal.checked_sub(1) else {
+            continue;
+        };
+        let Some(trace_point_index) = group_to_point_index
+            .get(trace_point_group_index)
+            .copied()
+            .flatten()
+        else {
+            continue;
+        };
+        let Some(host_group_index) = host_ordinal.checked_sub(1) else {
+            continue;
+        };
+        let Some(trace_point) = visible_points.get(trace_point_index) else {
+            continue;
+        };
+        let ScenePointConstraint::OnPolyline {
+            function_key,
+            points,
+            segment_index,
+            t,
+            ..
+        } = &trace_point.constraint
+        else {
+            continue;
+        };
+        let Some(trace_line_group_index) = function_key.checked_sub(1) else {
+            continue;
+        };
+        if points.len() < 2 {
+            continue;
+        }
+        let Some(iter_group) = groups.get(iter_ordinal.saturating_sub(1)) else {
+            continue;
+        };
+        let depth = iter_group
+            .records
+            .iter()
+            .find(|record| record.record_type == 0x090a)
+            .map(|record| record.payload(&file.data))
+            .filter(|payload| payload.len() >= 20)
+            .map(|payload| read_u32(payload, 16) as usize)
+            .unwrap_or(0);
+        if depth == 0 {
+            continue;
+        }
+        let depth_parameter_name = iteration_depth_parameter_name(file, groups, iter_group);
+        let base = (*segment_index as f64 + *t) / (points.len() - 1) as f64;
+        let other_point = group_to_point_index
+            .get(other_ordinal.saturating_sub(1))
+            .copied()
+            .flatten()
+            .and_then(|point_index| visible_points.get(point_index))
+            .map(|point| point.position.clone());
+        let reflected_endpoint = groups
+            .get(other_ordinal.saturating_sub(1))
+            .filter(|group| group.header.kind() == GroupKind::Reflection)
+            .and_then(|group| find_indexed_path(file, group))
+            .and_then(|path| {
+                Some((
+                    path.refs.first()?.checked_sub(1)?,
+                    path.refs.get(1)?.checked_sub(1)?,
+                ))
+            });
+        let sampled_reflection_axis = reflected_endpoint.and_then(|(_, axis_line_group_index)| {
+            sampled_reflection_axis_driver(
+                file,
+                groups,
+                axis_line_group_index,
+                trace_point_group_index,
+            )
+        });
+        for step in 0..depth {
+            let normalized = (base + step as f64 / depth as f64).rem_euclid(1.0);
+            let Some(start) = interpolate_polyline(points, normalized) else {
+                continue;
+            };
+            let end = if host_group.header.kind() == GroupKind::Ray {
+                PointRecord {
+                    x: viewport_width,
+                    y: start.y,
+                }
+            } else {
+                let Some(other) = other_point.clone() else {
+                    continue;
+                };
+                other
+            };
+            let [red, green, blue] = normalized_hsb(step as f64 / depth as f64, 1.0, 1.0);
+            lines.push(LineShape {
+                points: vec![start, end],
+                color: [red, green, blue, 255],
+                dashed: false,
+                visible: !iter_group.header.is_hidden(),
+                binding: Some(crate::runtime::scene::LineBinding::ColorizedSpectrum {
+                    line_index: host_group_index,
+                    trace_line_index: trace_line_group_index,
+                    point_index: trace_point_group_index,
+                    trace_endpoint_index,
+                    reflection_source_index: reflected_endpoint
+                        .map(|(source_index, _)| source_index),
+                    reflection_axis_line_index: reflected_endpoint
+                        .map(|(_, line_index)| line_index),
+                    reflection_focus_index: sampled_reflection_axis
+                        .map(|(focus_group_index, _)| focus_group_index),
+                    reflection_directrix_line_index: sampled_reflection_axis
+                        .map(|(_, directrix_line_group_index)| directrix_line_group_index),
+                    step_index: step,
+                    depth,
+                    depth_parameter_name: depth_parameter_name.clone(),
+                    ray: host_group.header.kind() == GroupKind::Ray,
+                }),
+                debug: Some(payload_debug_source(source_group)),
+            });
+        }
+    }
+    lines
+}
+
+fn sampled_reflection_axis_driver(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    axis_line_group_index: usize,
+    trace_point_group_index: usize,
+) -> Option<(usize, usize)> {
+    let axis_group = groups.get(axis_line_group_index)?;
+    if axis_group.header.kind() != GroupKind::LineKind5 {
+        return None;
+    }
+    let axis_path = find_indexed_path(file, axis_group)?;
+    let [through_ordinal, host_line_ordinal] = axis_path.refs.as_slice() else {
+        return None;
+    };
+    if through_ordinal.checked_sub(1)? != trace_point_group_index {
+        return None;
+    }
+
+    let host_line_group = groups.get(host_line_ordinal.checked_sub(1)?)?;
+    let host_line_path = find_indexed_path(file, host_line_group)?;
+    let intersection_group_index = host_line_path.refs.iter().find_map(|ordinal| {
+        let index = ordinal.checked_sub(1)?;
+        (index != trace_point_group_index).then_some(index)
+    })?;
+
+    let intersection_group = groups.get(intersection_group_index)?;
+    let intersection_path = find_indexed_path(file, intersection_group)?;
+    let mut directrix_line_group_index = None;
+    let mut bisector_group_index = None;
+    for ordinal in &intersection_path.refs {
+        let index = ordinal.checked_sub(1)?;
+        let group = groups.get(index)?;
+        if group.header.kind() == GroupKind::LineKind7 {
+            bisector_group_index = Some(index);
+        } else {
+            directrix_line_group_index = Some(index);
+        }
+    }
+    let directrix_line_group_index = directrix_line_group_index?;
+    let bisector_group = groups.get(bisector_group_index?)?;
+    let bisector_path = find_indexed_path(file, bisector_group)?;
+    let [focus_ordinal, vertex_ordinal, _] = bisector_path.refs.as_slice() else {
+        return None;
+    };
+    if vertex_ordinal.checked_sub(1)? != trace_point_group_index {
+        return None;
+    }
+    Some((focus_ordinal.checked_sub(1)?, directrix_line_group_index))
+}
+
+fn iteration_depth_parameter_name(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    iter_group: &ObjectGroup,
+) -> Option<String> {
+    let iter_path = find_indexed_path(file, iter_group)?;
+    let parameter_group = groups.get(iter_path.refs.first()?.checked_sub(1)?)?;
+    decode_label_name(file, parameter_group)
+        .or_else(|| editable_non_graph_parameter_name_for_group(file, groups, parameter_group))
+}
+
+fn interpolate_polyline(points: &[PointRecord], normalized: f64) -> Option<PointRecord> {
+    if points.len() < 2 {
+        return None;
+    }
+    let scaled = normalized.rem_euclid(1.0) * (points.len() - 1) as f64;
+    let segment_index = (scaled.floor() as usize).min(points.len() - 2);
+    let t = scaled.fract();
+    let start = points.get(segment_index)?;
+    let end = points.get(segment_index + 1)?;
+    Some(PointRecord {
+        x: start.x + (end.x - start.x) * t,
+        y: start.y + (end.y - start.y) * t,
+    })
 }
 
 fn refresh_sampled_trace_polylines(

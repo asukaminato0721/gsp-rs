@@ -1,3 +1,4 @@
+use super::shapes::{ArcShape, CircleShape};
 use super::*;
 
 pub(super) struct SceneAnalysis {

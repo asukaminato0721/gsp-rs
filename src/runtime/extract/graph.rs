@@ -1,5 +1,5 @@
 use super::decode::{decode_label_name, decode_measurement_value, find_indexed_path};
-use super::{ArcShape, CircleShape};
+use super::shapes::{ArcShape, CircleShape};
 use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord, read_u16};
 use crate::runtime::functions::{evaluate_expr_with_parameters, try_decode_function_expr};
 use crate::runtime::geometry::{

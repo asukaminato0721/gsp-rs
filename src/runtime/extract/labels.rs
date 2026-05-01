@@ -21,9 +21,10 @@ use crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT;
 use crate::runtime::extract::context::SceneContext;
 use crate::runtime::extract::iteration_depth::decode_iteration_depth_expr;
 use crate::runtime::functions::{
-    FunctionExpr, evaluate_expr_with_parameters, function_expr_label, try_decode_function_expr,
+    FunctionExpr, evaluate_expr_with_parameters, function_expr_label, synthesize_function_labels,
+    synthesize_standalone_function_definition_labels, try_decode_function_expr,
 };
-use crate::runtime::geometry::{color_from_style, format_number};
+use crate::runtime::geometry::{color_from_style, distance_world, format_number};
 use crate::runtime::payload_consts::{
     EXPR_OP_ADD, EXPR_OP_DIV, EXPR_OP_MUL, EXPR_OP_POW, EXPR_OP_SUB, EXPR_PARAMETER_MASK,
     EXPR_PARAMETER_PREFIX, EXPR_PI_WORD, EXPR_VARIABLE_WORD, FUNCTION_EXPR_MARKER_A,
@@ -34,6 +35,9 @@ use crate::runtime::scene::{
     IterationTable, LabelIterationFamily, RichTextExpressionRef, ScenePoint, ScreenPoint,
     TextLabel, TextLabelBinding, TextLabelHotspot, TextLabelHotspotAction,
 };
+
+use super::analysis::{CollectedShapes, SceneAnalysis};
+use super::shapes::CircleShape;
 
 #[derive(Debug, Clone)]
 pub(super) struct PendingLabelHotspot {
@@ -57,6 +61,116 @@ struct ResolvedLabelText {
     text: String,
     rich_markup: Option<String>,
     hotspots: Vec<RichTextHotspotRef>,
+}
+
+pub(super) fn collect_scene_labels(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    context: &SceneContext<'_>,
+    analysis: &SceneAnalysis,
+    shapes: &CollectedShapes,
+) -> (
+    Vec<TextLabel>,
+    BTreeMap<usize, usize>,
+    Vec<PendingLabelHotspot>,
+) {
+    let (mut labels, label_group_to_index, mut pending_hotspots) = collect_labels(
+        file,
+        groups,
+        &analysis.raw_anchors,
+        analysis.graph_mode,
+        !analysis.has_function_plots && !analysis.has_coordinate_objects,
+    );
+    labels.extend(collect_coordinate_labels(
+        file,
+        groups,
+        context,
+        &analysis.raw_anchors,
+    ));
+    labels.extend(collect_polygon_parameter_labels(
+        file,
+        groups,
+        &analysis.raw_anchors,
+    ));
+    labels.extend(collect_segment_parameter_labels(
+        file,
+        groups,
+        &analysis.raw_anchors,
+    ));
+    labels.extend(collect_polyline_parameter_labels(
+        file,
+        groups,
+        &analysis.raw_anchors,
+    ));
+    labels.extend(collect_custom_transform_expression_labels(
+        file,
+        groups,
+        context,
+        &analysis.raw_anchors,
+    ));
+    labels.extend(collect_circle_parameter_labels(
+        file,
+        groups,
+        &analysis.raw_anchors,
+    ));
+    if analysis.graph_mode && analysis.has_function_plots {
+        labels.extend(synthesize_function_labels(
+            file,
+            groups,
+            &analysis.function_plots,
+            analysis.saved_viewport,
+            &analysis.graph_ref,
+        ));
+    }
+    labels.extend(synthesize_standalone_function_definition_labels(
+        file, groups, &labels,
+    ));
+    append_circle_perimeter_label(
+        &mut labels,
+        &mut pending_hotspots,
+        &shapes.circles,
+        analysis,
+    );
+    (labels, label_group_to_index, pending_hotspots)
+}
+
+fn append_circle_perimeter_label(
+    labels: &mut Vec<TextLabel>,
+    pending_hotspots: &mut [PendingLabelHotspot],
+    circles: &[CircleShape],
+    analysis: &SceneAnalysis,
+) {
+    if analysis.graph_mode
+        && let (Some(circle), Some(formula_index), Some(transform)) = (
+            circles.first(),
+            labels.iter().position(|label| label.text.contains("AB:")),
+            analysis.graph_ref.as_ref(),
+        )
+    {
+        let circumference = 2.0
+            * std::f64::consts::PI
+            * distance_world(&circle.center, &circle.radius_point, &analysis.graph_ref);
+        let anchor = PointRecord {
+            x: labels[formula_index].anchor.x,
+            y: labels[formula_index].anchor.y - 0.9 * transform.raw_per_unit,
+        };
+        for hotspot in pending_hotspots.iter_mut() {
+            if hotspot.label_index >= formula_index {
+                hotspot.label_index += 1;
+            }
+        }
+        labels.insert(
+            formula_index,
+            TextLabel {
+                anchor,
+                text: format!("AB perimeter = {:.2} cm", circumference),
+                color: [30, 30, 30, 255],
+                visible: true,
+                screen_space: false,
+                ..Default::default()
+            },
+        );
+    }
 }
 
 fn supports_payload_label(kind: crate::format::GroupKind) -> bool {

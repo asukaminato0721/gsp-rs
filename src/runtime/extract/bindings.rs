@@ -1,3 +1,5 @@
+use super::analysis::CollectedShapes;
+use super::shapes::collect_carried_polygon_edge_segment_groups;
 use super::*;
 
 pub(super) struct BindingMaps {
