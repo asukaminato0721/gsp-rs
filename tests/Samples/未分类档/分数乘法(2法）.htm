@@ -1,0 +1,189 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>分数乘法(2法）</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(253,337)[mediumPoint];
+{2} UnitPoint(1,331.795)[yellow,mediumPoint];
+{3} Segment(2,1)[color(0,0,128),mediumLine];
+{4} Translation(1,-0,0)[hidden];
+{5} Translation(4,-0,0)[red,mediumPoint];
+{6} Translation(4,0,0)[red,mediumPoint];
+{7} Translation(4,0,0)[red,mediumPoint];
+{8} Dilation(2,1,0.618)[hidden];
+{9} Rotation(8,1,1.5708)[yellow,mediumPoint];
+{10} VectorTranslation(9,1,4)[yellow,mediumPoint];
+{11} VectorTranslation(5,1,10)[hidden];
+{12} Segment(1,9)[color(0,0,128),mediumLine];
+{13} VectorTranslation(9,1,2)[hidden];
+{14} Dilation(13,9,0.5)[hidden];
+{15} UnitPoint(14,57.7953)[hidden];
+{16} RectangularUnitPoint(15,70.7953)[yellow,hidden,mediumPoint];
+{17} Segment(9,13)[color(0,0,128),mediumLine];
+{18} Segment(13,2)[color(0,0,128),mediumLine];
+{19} VectorTranslation(2,1,9)[hidden];
+{20} Dilation(2,19,0.5)[hidden];
+{21} UnitPoint(20,119.795)[hidden];
+{22} Translation(21,-7.91769e-014,-22.6772)[hidden];
+{23} Translation(22,-7.91769e-014,-22.6772)[hidden];
+{24} Translation(23,-7.91769e-014,-22.6772)[hidden];
+{25} Segment(24,21)[color(63,63,63),mediumLine];
+{26} UnitPoint(21,13.7953)[hidden];
+{27} VectorTranslation(24,21,26)[hidden];
+{28} UnitPoint(27,38.7953)[white,mediumPoint];
+{29} Translation(28,10.6901,10.6901)[white,hidden,mediumPoint];
+{30} Ratio/Points(24,27,28,14,25,'')[hidden];
+{31} Calculate(14,25,'n[4] = ','A @trnc ')(30)[black,hidden];
+{32} PeggedText(29,31)[black];
+{33} Calculate(14,124,'分母[2] = ','A ')(31)[black,hidden];
+{34} Calculate(14,124,'','1 A / ')(33)[hidden];
+{35} Dilation/MarkedRatio(1,9,34)[hidden];
+{36} Dilation/MarkedRatio(10,9,34)[yellow,mediumPoint];
+{37} Dilation/MarkedRatio(9,4,34)[hidden];
+{38} VectorTranslation(37,4,6)[hidden];
+{39} Calculate(14,124,'','A 2 - ')(33)[hidden];
+{40} Segment(28,24)[black];
+{41} VectorTranslation(23,21,26)[hidden];
+{42} UnitPoint(41,16.7953)[white,mediumPoint];
+{43} Translation(42,10.6901,10.6901)[white,hidden,mediumPoint];
+{44} Ratio/Points(23,41,42,14,124,'')[hidden];
+{45} Calculate(14,124,'n[3] = ','A @trnc ')(44)[black,hidden];
+{46} PeggedText(43,45)[black];
+{47} Calculate(14,124,'分子[2] = ','A ')(45)[black,hidden];
+{48} Dilation/MarkedRatio(35,9,47)[hidden];
+{49} Dilation/MarkedRatio(10,9,47)[magenta,mediumPoint];
+{50} Dilation/MarkedRatio(5,4,47)[red,mediumPoint];
+{51} Segment(42,23)[black];
+{52} VectorTranslation(22,21,26)[hidden];
+{53} UnitPoint(52,60.7953)[white,mediumPoint];
+{54} Translation(53,10.6901,10.6901)[white,hidden,mediumPoint];
+{55} Ratio/Points(22,52,53,14,124,'')[hidden];
+{56} Calculate(14,124,'n[2] = ','A @trnc ')(55)[black,hidden];
+{57} PeggedText(54,56)[black];
+{58} Calculate(14,124,'分母[1] = ','A ')(56)[black,hidden];
+{59} Calculate(14,124,'','1 A / ')(58)[hidden];
+{60} Dilation/MarkedRatio(2,1,59)[hidden];
+{61} VectorTranslation(60,1,4)[hidden];
+{62} VectorTranslation(10,4,61)[hidden];
+{63} VectorTranslation(5,1,60)[hidden];
+{64} Calculate(14,124,'','A 2 - ')(58)[hidden];
+{65} Segment(53,22)[black];
+{66} UnitPoint(26,28.7953)[white,mediumPoint];
+{67} Translation(66,10.6901,10.6901)[white,hidden,mediumPoint];
+{68} Segment(66,21)[black];
+{69} Ratio/Points(21,26,66,14,124,'')[hidden];
+{70} Calculate(14,124,'n[1] = ','A @trnc ')(69)[black,hidden];
+{71} PeggedText(67,70)[black];
+{72} Calculate(14,124,'分子[1] = ','A ')(70)[black,hidden];
+{73} Dilation/MarkedRatio(63,5,72)[hidden];
+{74} Polygon(11,5,73,5)[green];
+{75} Segment(73,11)[hidden];
+{76} VectorTranslation(11,5,73)[hidden];
+{77} Polygon(11,76,73,76)[color(192,133,74)];
+{78} Dilation/MarkedRatio(60,4,72)[hidden];
+{79} VectorTranslation(9,1,78)[hidden];
+{80} Segment(79,48)[hidden];
+{81} VectorTranslation(48,1,78)[hidden];
+{82} Polygon(9,48,81,79)[hidden];
+{83} VectorTranslation(78,4,6)[hidden];
+{84} VectorTranslation(38,6,83)[hidden];
+{85} Translation(78,0,0)[hidden];
+{86} VectorTranslation(85,4,37)[hidden];
+{87} VectorTranslation(85,78,2)[hidden];
+{88} VectorTranslation(86,85,87)[hidden];
+{89} ToggleVisibilityButton(10,106,'控点|控点')(1,2,9)[color(255,128,0),hidden];
+{90} Point(205,670)[mediumPoint];
+{91} UnitPoint(90,93.7953)[yellow,mediumPoint];
+{92} Line(91,90)[hidden];
+{93} Point on object(92,5)[label('P'),white,large];
+{94} Segment(91,90)[color(0,0,128)];
+{95} VectorTranslation(91,90,91)[yellow,mediumPoint];
+{96} VectorTranslation(95,90,91)[yellow,mediumPoint];
+{97} VectorTranslation(96,90,91)[yellow,mediumPoint];
+{98} VectorTranslation(97,90,91)[yellow,mediumPoint];
+{99} Segment(95,91)[black];
+{100} Segment(96,95)[black];
+{101} Segment(97,96)[black];
+{102} Segment(98,97)[black];
+{103} VectorTranslation(93,90,91)[hidden];
+{104} MoveButton(10,5,3,'演示')(103,93)[color(255,128,0),hidden];
+{105} MoveButton(10,5,0,'复原')(90,93)[color(255,128,0),hidden];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>分数乘法(2法）</P></H4>
+</BODY>
+</HTML>
