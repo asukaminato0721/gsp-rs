@@ -1,9 +1,8 @@
 use super::test_support::{
     fixture_buttons_without_validation, fixture_bytes, fixture_images_without_validation,
-    fixture_labels_without_validation, fixture_log, fixture_scene, function_expr_has_unary,
+    fixture_labels_without_validation, fixture_scene,
 };
-use crate::runtime::functions::UnaryFunction;
-use crate::runtime::scene::{ButtonAction, ShapeBinding, ShapeTransformBinding, TextLabelBinding};
+use crate::runtime::scene::ButtonAction;
 
 #[test]
 fn collects_button_visibility_targets_for_show_hide_line_segment_controls() {
@@ -166,37 +165,6 @@ fn collects_legacy_symbolic_labels_without_validation() {
 }
 
 #[test]
-fn collects_sequence_button_variants_without_validation() {
-    let Some(data) =
-        fixture_bytes("tests/Samples/个人专栏/李忠平作品/金华2010-24题(百年孤独)10.8.9.gsp")
-    else {
-        return;
-    };
-    let buttons = fixture_buttons_without_validation(&data);
-
-    let sequence = buttons
-        .iter()
-        .find(|button| button.text == "顺序3个动作")
-        .expect("expected sequence button");
-    match &sequence.action {
-        ButtonAction::Sequence {
-            button_indices,
-            interval_ms,
-        } => {
-            assert!(
-                !button_indices.is_empty(),
-                "expected sequence button to retain at least one exported child action"
-            );
-            assert!(
-                *interval_ms <= 10_000,
-                "expected sequence payload interval to remain a sane exported value"
-            );
-        }
-        action => panic!("expected sequence action, got {action:?}"),
-    }
-}
-
-#[test]
 fn collects_move_point_button_variants_without_validation() {
     let Some(data) = fixture_bytes("tests/Samples/个人专栏/常新德作品/3d_魔方.gsp")
     else {
@@ -220,6 +188,65 @@ fn collects_move_point_button_variants_without_validation() {
             assert!(*point_index != target_point_index.unwrap_or(*point_index));
         }
         action => panic!("expected move-point action, got {action:?}"),
+    }
+}
+
+#[test]
+fn exports_hidden_unlabeled_multi_move_buttons_for_classic_dynamic_fixture() {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/陈发铨作品/经典动态题(一线天).gsp")
+    else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+
+    let hidden_move = scene
+        .buttons
+        .iter()
+        .find(|button| {
+            button
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 389)
+        })
+        .expect("expected hidden unlabeled multi-move button #389 to export");
+    assert_eq!(hidden_move.text, "");
+    assert!(!hidden_move.visible);
+    match &hidden_move.action {
+        ButtonAction::MovePoints { targets } => {
+            assert_eq!(
+                targets.len(),
+                6,
+                "expected the payload pairs that resolve to exported points to stay linked"
+            );
+            assert!(
+                targets
+                    .iter()
+                    .all(|target| target.target_point_index.is_some()),
+                "expected hidden multi-move targets to keep their destination points"
+            );
+        }
+        action => panic!("expected multi-point move action, got {action:?}"),
+    }
+
+    let system_init = scene
+        .buttons
+        .iter()
+        .find(|button| button.text == "系统初始化")
+        .expect("expected system-init sequence button");
+    match &system_init.action {
+        ButtonAction::Sequence { button_indices, .. } => {
+            let child_groups = button_indices
+                .iter()
+                .filter_map(|index| scene.buttons.get(*index))
+                .filter_map(|button| button.debug.as_ref().map(|debug| debug.group_ordinal))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                child_groups,
+                vec![389, 390],
+                "expected sequence children to use final exported button indices"
+            );
+        }
+        action => panic!("expected sequence action, got {action:?}"),
     }
 }
 

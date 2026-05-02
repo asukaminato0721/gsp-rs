@@ -96,6 +96,9 @@ enum ButtonActionJson {
         #[serde(rename = "targetPointIndex")]
         target_point_index: Option<usize>,
     },
+    MovePoints {
+        targets: Vec<ButtonMoveTargetJson>,
+    },
     SetParameter {
         #[serde(rename = "parameterName")]
         parameter_name: String,
@@ -129,6 +132,13 @@ enum ButtonActionJson {
         #[serde(rename = "intervalMs")]
         interval_ms: u32,
     },
+}
+
+#[derive(Debug, Clone, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+struct ButtonMoveTargetJson {
+    point_index: usize,
+    target_point_index: Option<usize>,
 }
 
 impl ButtonActionJson {
@@ -194,6 +204,15 @@ impl ButtonActionJson {
             } => Self::MovePoint {
                 point_index: *point_index,
                 target_point_index: *target_point_index,
+            },
+            ButtonAction::MovePoints { targets } => Self::MovePoints {
+                targets: targets
+                    .iter()
+                    .map(|target| ButtonMoveTargetJson {
+                        point_index: target.point_index,
+                        target_point_index: target.target_point_index,
+                    })
+                    .collect(),
             },
             ButtonAction::SetParameter {
                 parameter_name,

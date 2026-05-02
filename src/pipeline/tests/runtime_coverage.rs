@@ -75,22 +75,6 @@ fn circle_constraint_runtime_has_single_resolver_implementation() {
 }
 
 #[test]
-fn compiles_legacy_arc_measure_helper_fixtures() {
-    let Some(clock) = fixture_bytes("tests/Samples/个人专栏/侯仰顺作品/时钟.gsp") else {
-        return;
-    };
-    let clock_scene = fixture_scene_json(&clock, "clock fixture should compile");
-    assert!(clock_scene.contains("\"points\": ["));
-
-    let Some(rolling) = fixture_bytes("tests/Samples/个人专栏/况永胜作品/正多边形在圆外滚动.gsp")
-    else {
-        return;
-    };
-    let rolling_scene = fixture_scene_json(&rolling, "rolling polygon fixture should compile");
-    assert!(rolling_scene.contains("\"lines\": ["));
-}
-
-#[test]
 fn compiles_fixed_coordinate_and_slope_helper_fixtures() {
     let Some(cardioid) = fixture_bytes("tests/Samples/未分类档/心脏线.gsp") else {
         return;

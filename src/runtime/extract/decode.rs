@@ -563,8 +563,18 @@ pub(crate) fn decode_label_name_raw(file: &GspFile, group: &ObjectGroup) -> Opti
 }
 
 pub(crate) fn decode_action_button_text(file: &GspFile, group: &ObjectGroup) -> Option<String> {
-    let text = decode_label_name_raw(file, group)?.trim().to_string();
-    (!text.is_empty()).then_some(text)
+    let text = decode_label_name_raw(file, group)
+        .map(|text| text.trim().to_string())
+        .unwrap_or_default();
+    if !text.is_empty() {
+        return Some(text);
+    }
+
+    if is_action_button_group(group) && group.header.is_hidden() {
+        return Some(String::new());
+    }
+
+    None
 }
 
 pub(crate) fn try_decode_payload_anchor_point(

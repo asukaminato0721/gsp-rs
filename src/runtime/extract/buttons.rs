@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_u16, read_u32};
 use crate::runtime::functions::evaluate_function_group_with_overrides;
-use crate::runtime::scene::{ButtonAction, SceneButton, ScreenPoint, ScreenRect};
+use crate::runtime::scene::{ButtonAction, MovePointTarget, SceneButton, ScreenPoint, ScreenRect};
 
 use super::points::editable_non_graph_parameter_name_for_group;
 use super::{
@@ -25,8 +25,7 @@ enum RawButtonAction {
         refs: Vec<usize>,
     },
     MovePoint {
-        point_group_ordinal: usize,
-        target_group_ordinal: Option<usize>,
+        targets: Vec<(usize, Option<usize>)>,
         animated: bool,
     },
     AnimatePoint {
@@ -173,13 +172,18 @@ pub(super) fn collect_buttons(
                     interval_ms: read_u32(action_payload, 16),
                 }),
                 (3, 0..=3) => {
-                    refs.first()
-                        .copied()
-                        .map(|point_group_ordinal| RawButtonAction::MovePoint {
-                            point_group_ordinal,
-                            target_group_ordinal: refs.get(1).copied(),
-                            animated: action_kind_hi == 0,
+                    let targets = refs
+                        .chunks(2)
+                        .filter_map(|pair| {
+                            pair.first()
+                                .copied()
+                                .map(|point| (point, pair.get(1).copied()))
                         })
+                        .collect::<Vec<_>>();
+                    (!targets.is_empty()).then_some(RawButtonAction::MovePoint {
+                        targets,
+                        animated: action_kind_hi == 0,
+                    })
                 }
                 (0, 7) => Some(RawButtonAction::ToggleVisibility { refs }),
                 (1, 7) => Some(RawButtonAction::ShowHideVisibility { refs }),
@@ -217,16 +221,22 @@ pub(super) fn collect_buttons(
         });
     }
 
-    let button_index_by_ordinal = raw_buttons
-        .iter()
-        .enumerate()
-        .map(|(button_index, button)| (button.group_ordinal, button_index))
-        .collect::<BTreeMap<usize, usize>>();
     let parameters_by_ordinal = collect_button_parameters(file, groups);
     let parameter_values = parameters_by_ordinal
         .values()
         .map(|parameter| (parameter.name.clone(), parameter.value))
         .collect::<BTreeMap<_, _>>();
+    let raw_buttons = raw_buttons
+        .into_iter()
+        .filter(|button| {
+            raw_button_action_is_exportable(&button.action, lookups, &parameters_by_ordinal)
+        })
+        .collect::<Vec<_>>();
+    let button_index_by_ordinal = raw_buttons
+        .iter()
+        .enumerate()
+        .map(|(button_index, button)| (button.group_ordinal, button_index))
+        .collect::<BTreeMap<usize, usize>>();
 
     let buttons = raw_buttons
         .into_iter()
@@ -294,30 +304,21 @@ pub(super) fn collect_buttons(
                         polygon_indices,
                     }
                 }
-                RawButtonAction::MovePoint {
-                    point_group_ordinal,
-                    target_group_ordinal,
-                    animated,
-                } => {
-                    if let Some(point_index) = lookups
-                        .group_to_point_index
-                        .get(point_group_ordinal.checked_sub(1)?)
-                        .copied()
-                        .flatten()
-                    {
+                RawButtonAction::MovePoint { targets, animated } => {
+                    let point_targets = resolve_move_point_targets(&targets, lookups);
+                    if point_targets.len() == 1 {
+                        let target = point_targets[0].clone();
                         ButtonAction::MovePoint {
-                            point_index,
-                            target_point_index: if let Some(ordinal) = target_group_ordinal {
-                                lookups
-                                    .group_to_point_index
-                                    .get(ordinal.checked_sub(1)?)
-                                    .copied()
-                                    .flatten()
-                            } else {
-                                None
-                            },
+                            point_index: target.point_index,
+                            target_point_index: target.target_point_index,
                         }
-                    } else if let Some(parameter) = parameters_by_ordinal.get(&point_group_ordinal)
+                    } else if !point_targets.is_empty() {
+                        ButtonAction::MovePoints {
+                            targets: point_targets,
+                        }
+                    } else if let Some((point_group_ordinal, target_group_ordinal)) =
+                        targets.first()
+                        && let Some(parameter) = parameters_by_ordinal.get(point_group_ordinal)
                     {
                         let target_value = target_group_ordinal
                             .and_then(|ordinal| {
@@ -417,6 +418,62 @@ fn collect_button_parameters(
             Some((group.ordinal, ButtonParameter { name, value }))
         })
         .collect()
+}
+
+fn raw_button_action_is_exportable(
+    action: &RawButtonAction,
+    lookups: ButtonIndexLookups<'_>,
+    parameters_by_ordinal: &BTreeMap<usize, ButtonParameter>,
+) -> bool {
+    match action {
+        RawButtonAction::Link { .. }
+        | RawButtonAction::ToggleVisibility { .. }
+        | RawButtonAction::SetVisibility { .. }
+        | RawButtonAction::ShowHideVisibility { .. }
+        | RawButtonAction::PlayFunction { .. }
+        | RawButtonAction::Sequence { .. } => true,
+        RawButtonAction::MovePoint { targets, .. } => {
+            !resolve_move_point_targets(targets, lookups).is_empty()
+                || targets
+                    .first()
+                    .is_some_and(|(ordinal, _)| parameters_by_ordinal.contains_key(ordinal))
+        }
+        RawButtonAction::AnimatePoint {
+            point_group_ordinal,
+        }
+        | RawButtonAction::ScrollPoint {
+            point_group_ordinal,
+        }
+        | RawButtonAction::FocusPoint {
+            point_group_ordinal,
+        } => resolve_point_index(*point_group_ordinal, lookups).is_some(),
+    }
+}
+
+fn resolve_move_point_targets(
+    targets: &[(usize, Option<usize>)],
+    lookups: ButtonIndexLookups<'_>,
+) -> Vec<MovePointTarget> {
+    targets
+        .iter()
+        .filter_map(|(point_group_ordinal, target_group_ordinal)| {
+            let point_index = resolve_point_index(*point_group_ordinal, lookups)?;
+            let target_point_index =
+                target_group_ordinal.and_then(|ordinal| resolve_point_index(ordinal, lookups));
+            Some(MovePointTarget {
+                point_index,
+                target_point_index,
+            })
+        })
+        .collect()
+}
+
+fn resolve_point_index(group_ordinal: usize, lookups: ButtonIndexLookups<'_>) -> Option<usize> {
+    lookups
+        .group_to_point_index
+        .get(group_ordinal.checked_sub(1)?)
+        .copied()
+        .flatten()
 }
 
 fn resolve_parameter_button_target_value(

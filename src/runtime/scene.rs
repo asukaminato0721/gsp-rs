@@ -95,6 +95,9 @@ pub(crate) enum ButtonAction {
         point_index: usize,
         target_point_index: Option<usize>,
     },
+    MovePoints {
+        targets: Vec<MovePointTarget>,
+    },
     SetParameter {
         parameter_name: String,
         value: f64,
@@ -119,6 +122,12 @@ pub(crate) enum ButtonAction {
         button_indices: Vec<usize>,
         interval_ms: u32,
     },
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct MovePointTarget {
+    pub(crate) point_index: usize,
+    pub(crate) target_point_index: Option<usize>,
 }
 
 #[derive(Debug, Clone)]

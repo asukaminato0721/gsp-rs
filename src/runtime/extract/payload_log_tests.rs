@@ -408,6 +408,11 @@ fn payload_log_accepts_legacy_sequence_button_kinds_in_ad_clip_fixture() {
 }
 
 #[test]
+fn payload_log_accepts_hidden_unlabeled_buttons_in_classic_dynamic_fixture() {
+    assert_supported_sample_log("tests/Samples/个人专栏/陈发铨作品/经典动态题(一线天).gsp");
+}
+
+#[test]
 fn payload_log_skips_legacy_label_and_image_helper_errors_in_throw_beans_fixture() {
     let Some(data) = fixture_bytes("tests/Samples/热研系列/概率问题/抛豆实验.gsp")
     else {
