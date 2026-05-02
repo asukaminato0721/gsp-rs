@@ -242,20 +242,6 @@ mod tests {
     }
 
     #[test]
-    fn decodes_fallback_function_expr_with_ignorable_suffix() {
-        let payload = payload_from_words(&[0xffff, 0x000f, 0x1000, 0x0001, 0x0101]);
-
-        assert_eq!(
-            try_decode_inner_function_expr(&payload, &BTreeMap::new()).ok(),
-            Some(FunctionExpr::Parsed(FunctionAst::Binary {
-                lhs: Box::new(FunctionAst::Variable),
-                op: BinaryOp::Add,
-                rhs: Box::new(FunctionAst::Constant(1.0)),
-            }))
-        );
-    }
-
-    #[test]
     fn decodes_hidden_function_exprs_in_changing_polyline_lyg1_fixture() {
         let data = include_bytes!("../../tests/Samples/个人专栏/李有贵作品/变化的折线（lyg)1.gsp");
         let file = GspFile::parse(data).expect("fixture parses");

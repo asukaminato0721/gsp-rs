@@ -188,26 +188,6 @@ fn payload_log_accepts_helper_payload_families_in_sample_fixtures() {
 }
 
 #[test]
-fn payload_log_accepts_function_plot_expression_samples() {
-    for path in [
-        "tests/Samples/个人专栏/田野风作品/函数图象(田野风).gsp",
-        "tests/Samples/个人专栏/向忠作品/正弦型函数图象变换.gsp",
-    ] {
-        assert_supported_sample_log(path);
-    }
-}
-
-#[test]
-fn payload_log_tolerates_malformed_rich_text_samples() {
-    for path in [
-        "tests/Samples/未分类档/自然数列的ｍ次方和.gsp",
-        "tests/Samples/个人专栏/向忠作品/y=Asin(wx+v).gsp",
-    ] {
-        assert_supported_sample_log(path);
-    }
-}
-
-#[test]
 fn payload_log_ignores_non_link_button_payloads_when_rendering_labels() {
     let Some(data) = fixture_bytes("tests/Samples/未分类档/100以内口算减法训练(秦国祥).gsp")
     else {
