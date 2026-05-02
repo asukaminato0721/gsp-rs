@@ -3,3 +3,5 @@ node_modules
 tests/**/*.html
 tests/**/*.log
 tests/**/*.debug.json
+*.c
+*.h
