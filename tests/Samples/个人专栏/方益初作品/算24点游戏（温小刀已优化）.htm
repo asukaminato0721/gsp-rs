@@ -1,0 +1,189 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>算24游戏（迭代4）</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Parameter(432,112,98,'')[hidden];
+{2} Function(19,525,'','6 x 6 / 0.5 - @rond * ')()[hidden];
+{3} Function(19,439,'','3 x 3 / 0.5 - @rond * ')()[hidden];
+{4} Function(17,176,'','x @sgn_ 1 + @sgn_ ')()[hidden];
+{5} Function(17,351,'','x 6 - @fA 6 x - @fA * ')(4)[hidden];
+{6} Function(17,326,'','x 5 - @fA 5 x - @fA * ')(4)[hidden];
+{7} Function(17,301,'','x 4 - @fA 4 x - @fA * ')(4)[hidden];
+{8} Function(17,276,'','x 3 - @fA 3 x - @fA * ')(4)[hidden];
+{9} Function(17,251,'','x 2 - @fA 2 x - @fA * ')(4)[hidden];
+{10} Function(17,226,'','x 1 - @fA 1 x - @fA * ')(4)[hidden];
+{11} Function(17,201,'','x @fA x ! @fA * ')(4)[hidden];
+{12} Function(19,403,'','x @fA 0.0001 * 1 x @fA - x * + ')(11)[hidden];
+{13} Parameter(24,17,110,'')[hidden];
+{14} Function(17,376,'','x B - @fA B x - @fA * ')(4,13)[hidden];
+{15} Parameter(8.7178,71,259,'')[hidden];
+{16} Parameter(7.5855,71,285,'')[hidden];
+{17} Parameter(4.09973,71,311,'')[hidden];
+{18} Parameter(7.7311,71,337,'')[hidden];
+{19} Calculate(193,243,'a = ','A @trnc ')(15)[blue];
+{20} Calculate(193,291,'b = ','A @trnc ')(16)[blue];
+{21} Calculate(193,339,'c = ','A @trnc ')(17)[blue];
+{22} Calculate(193,387,'d = ','A @trnc ')(18)[blue];
+{23} Function(342,225,'','A x @fB * C x @fD * + E x @fF * + G x @fH * + ')(19,10,20,9,21,8,22,7)[hidden];
+{24} Parameter(0,1011,100,'')[hidden];
+{25} Parameter(12,17,23,'')[hidden];
+{26} Point(622,215)[label('A')];
+{27} Function(19,568,'','A x A / 0.5 - @rond * ')(25)[hidden];
+{28} ToggleVisibilityButton(1155,68,'隐藏点 A|显示点 A')(26)[color(255,128,0),hidden];
+{29} ToggleVisibilityButton(53,182,'手工输入|手工输入')(15,16,17,18)[color(255,128,0)];
+{30} Point(231,411)[hidden];
+{31} Point(231,459)[hidden];
+{32} Segment(31,30)[hidden];
+{33} FixedText(612,303,'有解，仔细想一想吧')[color(0,128,0),hidden];
+{34} FixedText(614,332,'无解，请重新抽取数字')[color(0,128,0),hidden];
+{35} Function(203,492,'','x 24 - @fA 24 x - @fA * ')(4)[hidden];
+{36} Function(203,492,'','x @fA x ! @fA * ')(4)[hidden];
+{37} Function(203,492,'','x @fA 1e-008 * 1 x @fA - x * + ')(36)[hidden];
+{38} FixedText(64,77,'智力挑战游戏算24')[red];
+{39} FixedText(58,112,'')[hidden];
+{40} Function(19,482,'','4 x 4 / 0.5 - @rond * ')()[hidden];
+{41} Parameter(0,132,46,'')[hidden];
+{42} Calculate(235,44,'','B @fA 6 / ')(2,41)[hidden];
+{43} Calculate(235,68,'','B @fA 6 / ')(2,42)[hidden];
+{44} Calculate(333,70,'','A 1 + A @fB - ')(43,3)[hidden];
+{45} Calculate(235,92,'','B @fA 3 / ')(3,43)[hidden];
+{46} Calculate(333,45,'','A 1 + A @fB - ')(45,40)[hidden];
+{47} Calculate(342,665,'','B @fA ')(23,46)[color(192,192,192),hidden];
+{48} Calculate(333,95,'','A 2 + A 1 + @fB - ')(43,3)[hidden];
+{49} Calculate(333,120,'','A 1 + A @fB - ')(42,2)[color(192,192,192),hidden];
+{50} Calculate(333,145,'','A 1 + A @fB - ')(41,2)[color(192,192,192),hidden];
+{51} Calculate(132,73,'','A 1 + ')(41)[hidden];
+{52} Calculate(342,249,'','10 A - 3 / @rond ')(46)[hidden];
+{53} Calculate(342,273,'','10 A - B - 2 / @trnc 1 + A B * @fC + ')(46,52,5)[hidden];
+{54} Calculate(342,297,'','10 A - B - C - ')(46,52,53)[hidden];
+{55} Calculate(342,321,'','B @fA ')(23,52)[hidden];
+{56} Calculate(342,345,'','B @fA ')(23,53)[hidden];
+{57} Calculate(342,369,'','B @fA ')(23,54)[hidden];
+{58} Function(342,393,'','A x @fB * C x @fD * + E x @fF * + ')(55,10,56,9,57,8)[hidden];
+{59} Calculate(342,417,'','B @fA ')(58,44)[color(192,192,192),hidden];
+{60} Calculate(342,441,'','B @fA ')(58,48)[color(192,192,192),hidden];
+{61} Calculate(342,542,'','6 A - B - ')(44,48)[hidden];
+{62} Calculate(342,567,'','B @fA ')(58,61)[color(192,192,192),hidden];
+{63} Function(342,481,'','x @fA B C + * x @fD B C - * + x @fE C B - * + x @fF B * C * + x @fG B * C / + x @fH C * B / + ')(10,59,60,9,8,7,6,5)[hidden];
+{64} Calculate(342,517,'','B @fA ')(63,49)[color(192,192,192),hidden];
+{65} Function(342,606,'','x @fA B C + * x @fD B C - * + x @fE C B - * + x @fF B * C * + x @fG B * C @fH / + x @fI C * B @fH / + ')(10,64,62,9,8,7,6,12,5)[hidden];
+{66} Calculate(342,641,'','B @fA ')(65,50)[color(192,192,192),hidden];
+{67} Calculate(342,689,'','B C + @fA B C - @fA + C B - @fA + B C * @fA + B C / @fA + C B @fD / @fA + ')(14,66,47,12)[hidden];
+{68} Calculate(486,44,'','A @sgn_ ')(67)[hidden];
+{69} Parameter(54,112,118,'')[hidden];
+{70} Calculate(973,161,'','1 A / ')(68)[hidden];
+{71} Calculate(823,158,'','A ! 26.4567 * ')(68)[hidden];
+{72} Parameter(0,580,25,'')[hidden];
+{73} Calculate(235,140,'','B @fA 3 / ')(3,72)[hidden];
+{74} Calculate(415,94,'','A 1 + A @fB - ')(73,2)[color(192,192,192),hidden];
+{75} Calculate(415,169,'','A 1 + A @fB - 3 D 4 - @fC * + ')(72,3,4,74)[color(192,192,192),hidden];
+{76} Calculate(235,164,'','B @fA 6 / ')(2,73)[hidden];
+{77} Calculate(415,69,'','A 2 + A 1 + @fB - ')(76,3)[hidden];
+{78} Calculate(596,248,'','B @fA ')(23,77)[color(192,192,192),hidden];
+{79} Calculate(415,44,'','A 1 + A @fB - ')(76,3)[hidden];
+{80} Calculate(596,224,'','B @fA ')(23,79)[color(192,192,192),hidden];
+{81} Function(596,287,'','A B + x @fC * A B - x @fD * + B A - x @fE * + x @fF A * B * + x @fG A * B / + x @fH B * A / + ')(80,78,10,9,8,7,6,5)[hidden];
+{82} Calculate(596,322,'','B @fA ')(81,74)[color(192,192,192),hidden];
+{83} Calculate(415,119,'','10 A - B - 2 / @trnc 1 + A B * @fC + ')(79,77,5)[hidden];
+{84} Calculate(595,350,'','B @fA ')(23,83)[color(192,192,192),hidden];
+{85} Calculate(415,144,'','10 A - B - C - ')(79,77,83)[hidden];
+{86} Calculate(595,374,'','B @fA ')(23,85)[color(192,192,192),hidden];
+{87} Function(595,413,'','x @fA B C + * x @fD B C - * + x @fE C B - * + x @fF B * C * + x @fG B * C / + x @fH C * B / + ')(10,84,86,9,8,7,6,5)[hidden];
+{88} Calculate(595,448,'','B @fA ')(87,75)[color(192,192,192),hidden];
+{89} Calculate(580,52,'','A 1 + ')(72)[hidden];
+{90} Parameter(431,134,22,'')[hidden];
+{91} ToggleVisibilityButton(1155,89,'隐藏迭代次数n|显示迭代次数n')(90)[color(255,128,0),hidden];
+{92} FixedText(13,27,'')[hidden];
+{93} Parameter(0.7,17,52,'')[hidden];
+{94} Calculate(1011,76,'','A A @fB - ! C * 37.7953 * ')(24,27,93)[hidden];
+{95} Parameter(7,17,81,'')[hidden];
+{96} Calculate(1011,56,'','B @fA C / D * 37.7953 * ')(27,24,25,95)[hidden];
+{97} ToggleVisibilityButton(1155,110,'隐藏行列设置|显示行列设置')(13,25,93,95)[color(255,128,0),hidden];
+{98} Calculate(601,508,'','B C + @fA B C - @fA + C B - @fA + @sgn_ ')(14,82,88)[hidden];
+{99} Calculate(601,536,'','B C * @fA B C @fD / @fA + C B @fD / @fA + @sgn_ ')(14,82,88,12)[hidden];
+{100} Calculate(486,68,'','A C 4 - @fB * D 3 C - @fB * + 53 E - @fB * ')(98,4,74,99,72)[hidden];
+{101} Calculate(823,182,'','A ! 26.4567 * ')(100)[hidden];
+{102} Calculate(1041,161,'','1 A / ')(100)[hidden];
+{103} Calculate(1011,32,'','A B + ')(68,100)[hidden];
+{104} Calculate(1012,132,'','A B + ')(24,103)[hidden];
+{105} ToggleVisibilityButton(1155,152,'隐藏文本对象|显示文本对象')(23,58,63,65,86,84,78,80,81,82,87,88,54,55,56,57,59,60,62,64,61,53,52,47,66,67,98,99)[color(255,128,0),hidden];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>算24游戏（迭代4）</P></H4>
+</BODY>
+</HTML>

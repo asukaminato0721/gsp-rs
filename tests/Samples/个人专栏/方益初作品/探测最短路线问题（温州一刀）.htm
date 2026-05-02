@@ -1,0 +1,115 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>探测最短路线</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(335,454)[label('A')];
+{2} Point(640,454)[label('B')];
+{3} Segment(2,1)[color(0,0,128),mediumLine];
+{4} Line(2,1)[hidden];
+{5} Perpendicular(3,1)[hidden];
+{6} Point on object(5,-0.50952)[red,mediumPoint];
+{7} Perpendicular(5,6)[green,mediumLine];
+{8} Point(484,254)[label('C')];
+{9} Segment(1,8)[color(0,0,128),mediumLine];
+{10} Perpendicular(4,8)[hidden];
+{11} Intersect(10,4)[hidden];
+{12} Segment(11,8)[hidden];
+{13} Midpoint(12)[hidden];
+{14} Segment(2,13)[hidden];
+{15} Segment(13,1)[hidden];
+{16} Segment(13,8)[hidden];
+{17} Circle by radius(8,16)[hidden];
+{18} Intersect2(9,17)[hidden];
+{19} Circle by radius(2,16)[hidden];
+{20} Intersect1(3,19)[hidden];
+{21} Perpendicular(3,8)[hidden];
+{22} Segment(8,2)[color(0,0,128),mediumLine];
+{23} Intersect1(22,17)[hidden];
+{24} Intersect2(22,19)[hidden];
+{25} FixedText(15,269,'用圆布擦三角形桌子')[red,hidden];
+{26} Point(335,454)[traced,mediumPoint];
+{27} ToggleVisibilityButton(621,21,'隐藏生活例子|显示生活例子')(25)[color(255,128,0)];
+{28} MoveButton(58,328,0,'')(1,26)[hidden];
+{29} Point(-465,-317)[hidden];
+{30} Point(0,0)[hidden];
+{31} FixedText(33,28,'问题：一个士兵要探明一个正三角形区域的内部或边 界上是否埋有地雷，探测器的有效范围等于这个正三 角形高的一半，这个士兵从三角形的一个顶点开始探 测，问他应该选择怎样的探测路线才能使探遍整个区 域的路程最短？（奥林匹克试题）')[black];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>探测最短路线</P></H4>
+</BODY>
+</HTML>
