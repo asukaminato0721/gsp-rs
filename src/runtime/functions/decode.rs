@@ -1603,6 +1603,12 @@ impl<'a> FunctionTokenCursor<'a> {
                 && (index == 0 || remaining[index - 1] != EXPR_VARIABLE_WORD)
         })
     }
+
+    fn argument_terminator_offset(&self) -> Option<usize> {
+        self.words[self.offset..]
+            .iter()
+            .position(|word| *word == EXPR_VARIABLE_SUFFIX)
+    }
 }
 
 struct FunctionExprParser<'a> {
@@ -1707,27 +1713,7 @@ impl<'a> FunctionExprParser<'a> {
                 .unwrap_or(FunctionAst::Parameter(binding.name, binding.value))),
             FunctionToken::Constant(value) => Ok(FunctionAst::Constant(value)),
             FunctionToken::Unary(op) => {
-                let terminator_aware = self.tokens.has_standalone_terminator_ahead();
-                let expr = if terminator_aware {
-                    self.parse_expr_bp(0)
-                } else {
-                    self.parse_expr_bp(4)
-                }
-                .map_err(|_| FunctionExprParseError::InvalidUnaryOperand {
-                    offset,
-                    opcode: self.tokens.words[offset - self.tokens.base_offset],
-                })?;
-                if terminator_aware
-                    && matches!(
-                        self.tokens.peek()?,
-                        Some(LexedFunctionToken {
-                            kind: FunctionToken::Terminator,
-                            ..
-                        })
-                    )
-                {
-                    let _ = self.tokens.bump()?;
-                }
+                let expr = self.parse_unary_argument(offset, op)?;
                 Ok(unary_ast(op, expr))
             }
             FunctionToken::Add => self.parse_prefix(),
@@ -1746,6 +1732,51 @@ impl<'a> FunctionExprParser<'a> {
                 Err(FunctionExprParseError::UnexpectedToken { offset, found })
             }
         }
+    }
+
+    fn parse_unary_argument(
+        &mut self,
+        unary_offset: usize,
+        op: UnaryFunction,
+    ) -> Result<FunctionAst, FunctionExprParseError> {
+        if matches!(
+            op,
+            UnaryFunction::Sin | UnaryFunction::Cos | UnaryFunction::Tan
+        ) && let Some(argument_word_len) = self.tokens.argument_terminator_offset()
+            && argument_word_len > 0
+        {
+            let start = self.tokens.offset;
+            if let Ok(parsed) = parse_function_expr_from_words(
+                &self.tokens.words[start..start + argument_word_len],
+                self.tokens.parameters,
+            ) {
+                self.tokens.offset = start + argument_word_len + 1;
+                return Ok(parsed);
+            }
+        }
+
+        let terminator_aware = self.tokens.has_standalone_terminator_ahead();
+        let expr = if terminator_aware {
+            self.parse_expr_bp(0)
+        } else {
+            self.parse_expr_bp(4)
+        }
+        .map_err(|_| FunctionExprParseError::InvalidUnaryOperand {
+            offset: unary_offset,
+            opcode: self.tokens.words[unary_offset - self.tokens.base_offset],
+        })?;
+        if terminator_aware
+            && matches!(
+                self.tokens.peek()?,
+                Some(LexedFunctionToken {
+                    kind: FunctionToken::Terminator,
+                    ..
+                })
+            )
+        {
+            let _ = self.tokens.bump()?;
+        }
+        Ok(expr)
     }
 
     fn peek_infix(&mut self) -> Result<Option<(BinaryOp, u8, u8)>, FunctionExprParseError> {
@@ -2133,6 +2164,14 @@ pub(crate) fn try_decode_inner_function_expr(
             .collect::<Vec<_>>();
         if let Some(ast) = try_decode_special_grouped_payload(&words, parameters) {
             return Ok(canonicalize_function_expr(ast));
+        }
+        if embedded_calculate_expr_start(&words).is_some() {
+            if let Ok(expr) = try_decode_embedded_static_function_expr(payload, parameters) {
+                return Ok(expr);
+            }
+            if let Ok(expr) = decode_embedded_postfix_payload_function_expr(payload, parameters) {
+                return Ok(expr);
+            }
         }
         if words.contains(&0x000b)
             && let Ok(ast) = parse_grouped_function_expr_from_words(&words, parameters)
@@ -3005,6 +3044,30 @@ mod parse_tests {
                     lhs: Box::new(FunctionAst::Constant(2.0)),
                     op: BinaryOp::Mul,
                     rhs: Box::new(FunctionAst::Variable),
+                }),
+            }))
+        );
+    }
+
+    #[test]
+    fn decodes_music_fixture_function_from_embedded_postfix_payload() {
+        let data = include_bytes!("../../../tests/fixtures/gsp/music.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let groups = file.object_groups();
+        let group = groups.get(6).expect("music function payload object #7");
+
+        assert_eq!(
+            try_decode_function_expr(&file, &groups, group).ok(),
+            Some(FunctionExpr::Parsed(FunctionAst::Binary {
+                lhs: Box::new(FunctionAst::Constant(5.0)),
+                op: BinaryOp::Mul,
+                rhs: Box::new(FunctionAst::Unary {
+                    op: crate::runtime::functions::UnaryFunction::Sin,
+                    expr: Box::new(FunctionAst::Binary {
+                        lhs: Box::new(FunctionAst::Constant(25.0)),
+                        op: BinaryOp::Mul,
+                        rhs: Box::new(FunctionAst::Variable),
+                    }),
                 }),
             }))
         );

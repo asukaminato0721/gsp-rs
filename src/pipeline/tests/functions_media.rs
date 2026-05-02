@@ -89,6 +89,33 @@ fn exports_parameter_curve1_fixture_with_two_standalone_function_definitions() {
 }
 
 #[test]
+fn exports_music_fixture_function_with_payload_grouped_trig_argument() {
+    let scene = fixture_scene(
+        include_bytes!("../../../tests/fixtures/gsp/music.gsp"),
+        "music fixture should compile",
+    );
+
+    let functions = scene["functions"]
+        .as_array()
+        .expect("scene functions should be an array");
+    assert_eq!(functions.len(), 1);
+    assert_eq!(functions[0]["name"].as_str(), Some("f"));
+    assert_eq!(
+        functions[0]["expr"]["expr"]["rhs"]["expr"]["op"].as_str(),
+        Some("mul")
+    );
+
+    let labels = scene["labels"]
+        .as_array()
+        .expect("scene labels should be an array");
+    assert!(
+        labels
+            .iter()
+            .any(|label| label["text"].as_str() == Some("f(x) = 5*sin(25*x)"))
+    );
+}
+
+#[test]
 fn exports_insert_image_fixture() {
     let scene = fixture_scene(
         include_bytes!("../../../tests/fixtures/未实现的系统功能/插入图片.gsp"),
