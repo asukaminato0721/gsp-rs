@@ -306,6 +306,28 @@ fn three_circle_rolling_fixture_keeps_animate_buttons_and_measured_rotations_liv
         );
     }
 
+    let main_center = &scene.points[point_index_for_group(6)];
+    let inner_center = &scene.points[point_index_for_group(24)];
+    let outer_center = &scene.points[point_index_for_group(36)];
+    assert!(
+        inner_center.position.x < main_center.position.x
+            && inner_center.position.y < main_center.position.y,
+        "expected the inner rolling circle to start above-left of the main circle, got inner=({}, {}) main=({}, {})",
+        inner_center.position.x,
+        inner_center.position.y,
+        main_center.position.x,
+        main_center.position.y
+    );
+    assert!(
+        outer_center.position.x < main_center.position.x
+            && outer_center.position.y > main_center.position.y,
+        "expected the outer rolling circle to start below-left of the main circle, got outer=({}, {}) main=({}, {})",
+        outer_center.position.x,
+        outer_center.position.y,
+        main_center.position.x,
+        main_center.position.y
+    );
+
     let inner_spoke = line_for_group(26);
     assert!(inner_spoke.visible);
     assert!(matches!(

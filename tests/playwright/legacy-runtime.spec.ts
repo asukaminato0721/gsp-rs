@@ -122,13 +122,24 @@ test('three-circle rolling animate buttons update measured rolling geometry', as
       const found = lineByOrdinal(ordinal);
       return found ? { binding: found.binding, points: found.points.map((p: any) => ({ x: p.x, y: p.y })) } : null;
     };
+    const renderedCircle = (ordinal: number) => {
+      const found = document.querySelector(`[data-gsp-kind="circles"][data-gsp-group="${ordinal}"]`);
+      return found ? {
+        cx: Number(found.getAttribute('cx')),
+        cy: Number(found.getAttribute('cy')),
+        r: Number(found.getAttribute('r')),
+      } : null;
+    };
     return {
+      mainCenter: point(6),
       innerDriver: point(16),
       innerIntersection: point(24),
       innerSpoke: line(26),
+      innerRenderedCircle: renderedCircle(27),
       outerDriver: point(28),
       outerIntersection: point(36),
       outerSpoke: line(38),
+      outerRenderedCircle: renderedCircle(39),
       buttons: scene.buttons.map((button: any) => ({ text: button.text, action: button.action, group: button.debug?.groupOrdinal })),
     };
   });
@@ -138,6 +149,10 @@ test('three-circle rolling animate buttons update measured rolling geometry', as
     left: { points: { x: number, y: number }[] } | null,
     right: { points: { x: number, y: number }[] } | null,
   ) => Math.max(0, ...(left?.points ?? []).map((point, index) => moved(point, right?.points[index] ?? null)));
+  const renderedCircleMoved = (
+    left: { cx: number, cy: number } | null,
+    right: { cx: number, cy: number } | null,
+  ) => left && right ? Math.hypot(left.cx - right.cx, left.cy - right.cy) : 0;
 
   const before = await snapshot();
   expect(before.buttons).toEqual(expect.arrayContaining([
@@ -146,8 +161,14 @@ test('three-circle rolling animate buttons update measured rolling geometry', as
   ]));
   expect(before.innerIntersection?.constraint?.kind).toBe('line-circular-intersection');
   expect(before.outerIntersection?.constraint?.kind).toBe('line-circular-intersection');
+  expect(before.innerIntersection!.x).toBeLessThan(before.mainCenter!.x);
+  expect(before.innerIntersection!.y).toBeLessThan(before.mainCenter!.y);
+  expect(before.outerIntersection!.x).toBeLessThan(before.mainCenter!.x);
+  expect(before.outerIntersection!.y).toBeGreaterThan(before.mainCenter!.y);
   expect(before.innerSpoke?.binding?.kind).toBe('segment');
   expect(before.outerSpoke?.binding?.kind).toBe('segment');
+  expect(before.innerRenderedCircle).not.toBeNull();
+  expect(before.outerRenderedCircle).not.toBeNull();
 
   await page.getByRole('button', { name: '内圆' }).click();
   await page.waitForTimeout(350);
@@ -157,6 +178,7 @@ test('three-circle rolling animate buttons update measured rolling geometry', as
   expect(moved(before.innerDriver, afterInner.innerDriver)).toBeGreaterThan(1);
   expect(moved(before.innerIntersection, afterInner.innerIntersection)).toBeGreaterThan(1);
   expect(lineMoved(before.innerSpoke, afterInner.innerSpoke)).toBeGreaterThan(1);
+  expect(renderedCircleMoved(before.innerRenderedCircle, afterInner.innerRenderedCircle)).toBeGreaterThan(1);
 
   await page.getByRole('button', { name: '外圆' }).click();
   await page.waitForTimeout(350);
@@ -166,6 +188,7 @@ test('three-circle rolling animate buttons update measured rolling geometry', as
   expect(moved(afterInner.outerDriver, afterOuter.outerDriver)).toBeGreaterThan(1);
   expect(moved(afterInner.outerIntersection, afterOuter.outerIntersection)).toBeGreaterThan(1);
   expect(lineMoved(afterInner.outerSpoke, afterOuter.outerSpoke)).toBeGreaterThan(1);
+  expect(renderedCircleMoved(afterInner.outerRenderedCircle, afterOuter.outerRenderedCircle)).toBeGreaterThan(1);
 });
 
 test('triangle angle sum measured-angle rotation updates dependent geometry', async ({ page }) => {

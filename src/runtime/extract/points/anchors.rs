@@ -383,6 +383,17 @@ fn scale_function_expr(expr: FunctionExpr, factor: f64) -> FunctionExpr {
     }
 }
 
+fn scale_angle_expr_to_degrees(
+    file: &GspFile,
+    group: &ObjectGroup,
+    expr: FunctionExpr,
+) -> FunctionExpr {
+    if decode_label_name(file, group).is_some_and(|label| label.contains('°')) {
+        return expr;
+    }
+    scale_function_expr(expr, 180.0 / std::f64::consts::PI)
+}
+
 pub(crate) fn decode_expression_rotation_binding(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -404,13 +415,7 @@ pub(crate) fn decode_expression_rotation_binding(
     {
         let (angle_expr, parameters, parameter_name) =
             expression_runtime_context(file, groups, expr_group, anchors)?;
-        let angle_is_degrees =
-            decode_label_name(file, expr_group).is_some_and(|label| label.contains('°'));
-        let angle_expr = if angle_is_degrees {
-            angle_expr
-        } else {
-            scale_function_expr(angle_expr, 180.0 / std::f64::consts::PI)
-        };
+        let angle_expr = scale_angle_expr_to_degrees(file, expr_group, angle_expr);
         let angle_degrees = evaluate_expr_with_parameters(&angle_expr, 0.0, &parameters)?;
         (angle_expr, angle_degrees, parameter_name)
     } else if expr_group.header.kind() == GroupKind::Point {
@@ -1883,6 +1888,7 @@ pub(crate) fn decode_parameter_rotation_anchor_raw(
             GroupKind::FunctionExpr => {
                 let (angle_expr, parameters, parameter_name) =
                     expression_runtime_context(file, groups, angle_group, anchors)?;
+                let angle_expr = scale_angle_expr_to_degrees(file, angle_group, angle_expr);
                 (
                     evaluate_expr_with_parameters(&angle_expr, 0.0, &parameters)?,
                     parameter_name,

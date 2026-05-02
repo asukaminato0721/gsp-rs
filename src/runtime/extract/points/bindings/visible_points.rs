@@ -22,7 +22,8 @@ use crate::runtime::extract::decode::{
 use crate::runtime::extract::points::constraints::CoordinatePointSource;
 use crate::runtime::extract::{find_indexed_path, payload_debug_source};
 use crate::runtime::functions::{
-    evaluate_expr_with_parameters, try_decode_function_expr, try_decode_function_plot_descriptor,
+    BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters, function_expr_ast,
+    try_decode_function_expr, try_decode_function_plot_descriptor,
 };
 use crate::runtime::geometry::{
     GraphTransform, angle_degrees_from_points, color_from_style, rotate_around, scale_around,
@@ -53,6 +54,31 @@ fn transformed_position_from_anchors(
             Some(rotate_around(source, center, angle_degrees.to_radians()))
         }
         TransformBindingKind::Scale { factor } => Some(scale_around(source, center, *factor)),
+    }
+}
+
+fn scale_angle_expr_to_degrees(
+    file: &GspFile,
+    group: &ObjectGroup,
+    expr: FunctionExpr,
+) -> FunctionExpr {
+    if decode_label_name(file, group).is_some_and(|label| label.contains('°')) {
+        return expr;
+    }
+    scale_function_expr(expr, 180.0 / std::f64::consts::PI)
+}
+
+fn scale_function_expr(expr: FunctionExpr, factor: f64) -> FunctionExpr {
+    if (factor - 1.0).abs() <= 1e-9 {
+        return expr;
+    }
+    match expr {
+        FunctionExpr::Constant(value) => FunctionExpr::Constant(value * factor),
+        other => FunctionExpr::Parsed(FunctionAst::Binary {
+            lhs: Box::new(FunctionAst::Constant(factor)),
+            op: BinaryOp::Mul,
+            rhs: Box::new(function_expr_ast(other)),
+        }),
     }
 }
 
@@ -1202,14 +1228,13 @@ fn build_scene_point_for_group_checked(
                         mapped_point_index(group_to_point_index, binding.source_group_index)?;
                     let center_index =
                         mapped_point_index(group_to_point_index, binding.center_group_index)?;
-                    let position = raw_position.or_else(|| {
-                        transformed_position_from_anchors(
-                            anchors,
-                            binding.source_group_index,
-                            binding.center_group_index,
-                            &binding.kind,
-                        )
-                    })?;
+                    let position = transformed_position_from_anchors(
+                        anchors,
+                        binding.source_group_index,
+                        binding.center_group_index,
+                        &binding.kind,
+                    )
+                    .or(raw_position)?;
                     return Some(scene_point(
                         position,
                         group_color(group),
@@ -1286,11 +1311,12 @@ fn build_scene_point_for_group_checked(
                         + (angle_point.y - angle_start.y) * dy)
                         / len_sq)
                         .clamp(0.0, 1.0);
-                    let position = raw_position.or_else(|| {
+                    let position = (|| {
                         let source = anchors.get(source_group_index)?.as_ref()?;
                         let center = anchors.get(center_group_index)?.as_ref()?;
                         Some(scale_around(source, center, scale_factor))
-                    })?;
+                    })()
+                    .or(raw_position)?;
                     return Some(scene_point(
                         position,
                         group_color(group),
@@ -1329,11 +1355,12 @@ fn build_scene_point_for_group_checked(
                     let angle_end = anchors.get(angle_end_group_index)?.clone()?;
                     let angle_degrees =
                         angle_degrees_from_points(&angle_start, &angle_vertex, &angle_end)?;
-                    let position = raw_position.or_else(|| {
+                    let position = (|| {
                         let source = anchors.get(source_group_index)?.as_ref()?;
                         let center = anchors.get(center_group_index)?.as_ref()?;
                         Some(rotate_around(source, center, angle_degrees.to_radians()))
-                    })?;
+                    })()
+                    .or(raw_position)?;
                     return Some(scene_point(
                         position,
                         group_color(group),
@@ -1361,7 +1388,7 @@ fn build_scene_point_for_group_checked(
                 }
                 let source_index = mapped_point_index(group_to_point_index, source_group_index)?;
                 let center_index = mapped_point_index(group_to_point_index, center_group_index)?;
-                let (angle_expr, parameter_name, expression_parameters) =
+                let (angle_expr, parameter_name, expression_parameters, angle_expr_is_radians) =
                     if let Some((angle_expr, parameter_name, _)) =
                         regular_polygon_angle_expr_for_calc_group(file, groups, calc_group)
                     {
@@ -1369,11 +1396,12 @@ fn build_scene_point_for_group_checked(
                             angle_expr,
                             Some(parameter_name),
                             std::collections::BTreeMap::new(),
+                            false,
                         )
                     } else if let Some((angle_expr, parameters, parameter_name)) =
                         expression_runtime_context(file, groups, calc_group, anchors)
                     {
-                        (angle_expr, parameter_name, parameters)
+                        (angle_expr, parameter_name, parameters, true)
                     } else {
                         (
                             context.map_or_else(
@@ -1382,15 +1410,22 @@ fn build_scene_point_for_group_checked(
                             )?,
                             None,
                             std::collections::BTreeMap::new(),
+                            true,
                         )
                     };
+                let angle_expr = if angle_expr_is_radians {
+                    scale_angle_expr_to_degrees(file, calc_group, angle_expr)
+                } else {
+                    angle_expr
+                };
                 let angle_degrees =
                     evaluate_expr_with_parameters(&angle_expr, 0.0, &expression_parameters)?;
-                let position = raw_position.or_else(|| {
+                let position = (|| {
                     let source = anchors.get(source_group_index)?.as_ref()?;
                     let center = anchors.get(center_group_index)?.as_ref()?;
                     Some(rotate_around(source, center, angle_degrees.to_radians()))
-                })?;
+                })()
+                .or(raw_position)?;
                 Some(scene_point(
                     position,
                     group_color(group),
