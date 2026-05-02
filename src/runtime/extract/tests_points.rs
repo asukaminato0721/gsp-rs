@@ -3,7 +3,8 @@ use super::test_support::{fixture_bytes, fixture_log, fixture_scene, function_ex
 use crate::format::GspFile;
 use crate::runtime::functions::UnaryFunction;
 use crate::runtime::scene::{
-    ButtonAction, LineConstraint, ScenePointBinding, ScenePointConstraint, TextLabelBinding,
+    ButtonAction, CircularConstraint, LineBinding, LineConstraint, ScenePointBinding,
+    ScenePointConstraint, ShapeBinding, TextLabelBinding,
 };
 
 #[test]
@@ -39,6 +40,98 @@ fn builds_unnamed1_fixture_with_live_angle_rotation_points() {
             .count()
             >= 3,
         "expected the three type-28 helper points to export as live angle-rotation bindings"
+    );
+}
+
+#[test]
+fn triangle_angle_sum_fixture_keeps_measured_angle_rotation_live() {
+    let Some(data) = fixture_bytes("tests/Samples/未分类档/三角形内角和定理.gsp")
+    else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+    let log = fixture_log(&data, "tests/Samples/未分类档/三角形内角和定理.gsp");
+
+    assert!(log.contains("问题数量: 0"));
+    assert!(
+        log.contains("#31 = 参数旋转对象，按载荷顺序引用 #27、#21、#30"),
+        "expected the payload log to keep the measured-angle parameter rotation"
+    );
+
+    let point_index_for_group = |ordinal| {
+        scene
+            .points
+            .iter()
+            .position(|point| {
+                point
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .expect("expected point for payload group")
+    };
+    let arc_point_index = point_index_for_group(27);
+    let center_point_index = point_index_for_group(21);
+    let rotated_point_index = point_index_for_group(31);
+    let intersection_index = point_index_for_group(46);
+
+    assert!(
+        matches!(
+            scene.points[rotated_point_index].binding,
+            Some(ScenePointBinding::Rotate {
+                angle_start_index: Some(_),
+                angle_vertex_index: Some(_),
+                angle_end_index: Some(_),
+                ..
+            })
+        ),
+        "expected #31 to rotate from measured angle #30 instead of becoming static"
+    );
+    assert!(
+        matches!(
+            scene.points[intersection_index].constraint,
+            ScenePointConstraint::LineCircularIntersection {
+                circle: CircularConstraint::SegmentRadiusCircle {
+                    center_index: _,
+                    line_start_index: _,
+                    line_end_index: _,
+                },
+                ..
+            }
+        ),
+        "expected #46 to stay tied to circle #44, whose radius comes from measured BC"
+    );
+    assert!(
+        scene.lines.iter().any(|line| {
+            line.debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 38)
+                && matches!(
+                    line.binding,
+                    Some(LineBinding::AngleMarker {
+                        start_index,
+                        vertex_index,
+                        end_index,
+                        ..
+                    }) if start_index == arc_point_index
+                        && vertex_index == center_point_index
+                        && end_index == point_index_for_group(31)
+                )
+        }),
+        "expected #38 to bind to the measured-angle-rotated point"
+    );
+    assert!(
+        scene.circles.iter().any(|circle| {
+            circle
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 44)
+                && matches!(
+                    circle.binding,
+                    Some(ShapeBinding::SegmentRadiusCircle { .. })
+                )
+        }),
+        "expected #44 to export as a live segment-radius circle"
     );
 }
 

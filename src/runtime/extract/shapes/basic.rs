@@ -11,7 +11,7 @@ use crate::format::{GroupKind, read_f64, read_u16, read_u32};
 use crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT;
 use crate::runtime::extract::decode::{
     circle_center_radius_value, detect_perpendicular_segment_payload, is_circle_group_kind,
-    resolve_circle_points_raw,
+    measured_radius_segment_group_indices, resolve_circle_points_raw,
 };
 use crate::runtime::extract::points::resolve_line_like_points_raw;
 use crate::runtime::geometry::{
@@ -995,15 +995,13 @@ pub(crate) fn collect_circle_shapes(
                     let center_index = path.refs[0].checked_sub(1)?;
                     let radius_group_index = path.refs[1].checked_sub(1)?;
                     let radius_group = groups.get(radius_group_index)?;
-                    if radius_group.header.kind() == crate::format::GroupKind::Segment {
-                        let segment_path = find_indexed_path(file, radius_group)?;
-                        if segment_path.refs.len() != 2 {
-                            return None;
-                        }
+                    if let Some((line_start_index, line_end_index)) =
+                        measured_radius_segment_group_indices(file, groups, radius_group)
+                    {
                         Some(ShapeBinding::SegmentRadiusCircle {
                             center_index,
-                            line_start_index: segment_path.refs[0].checked_sub(1)?,
-                            line_end_index: segment_path.refs[1].checked_sub(1)?,
+                            line_start_index,
+                            line_end_index,
                         })
                     } else {
                         let parameter_name = decode_label_name(file, radius_group)?;

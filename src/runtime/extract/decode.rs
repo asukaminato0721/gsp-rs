@@ -276,18 +276,55 @@ pub(crate) fn circle_center_radius_value(
     anchors: &[Option<PointRecord>],
     radius_group: &ObjectGroup,
 ) -> Option<f64> {
-    if radius_group.header.kind() == GroupKind::Segment {
-        let segment_path = find_indexed_path(file, radius_group)?;
-        if segment_path.refs.len() != 2 {
-            return None;
-        }
-        let start = anchors.get(segment_path.refs[0].checked_sub(1)?)?.clone()?;
-        let end = anchors.get(segment_path.refs[1].checked_sub(1)?)?.clone()?;
+    if let Some((start_group_index, end_group_index)) =
+        measured_radius_segment_group_indices(file, groups, radius_group)
+    {
+        let start = anchors.get(start_group_index)?.clone()?;
+        let end = anchors.get(end_group_index)?.clone()?;
         return Some(((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt());
     }
     try_decode_parameter_control_value_for_group(file, groups, radius_group)
         .ok()
         .map(|value| value.abs() * DEFAULT_GRAPH_RAW_PER_UNIT)
+}
+
+pub(crate) fn measured_radius_segment_group_indices(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    radius_group: &ObjectGroup,
+) -> Option<(usize, usize)> {
+    if radius_group.header.kind() == GroupKind::Segment {
+        let segment_path = find_indexed_path(file, radius_group)?;
+        return Some((
+            segment_path.refs.first()?.checked_sub(1)?,
+            segment_path.refs.get(1)?.checked_sub(1)?,
+        ));
+    }
+
+    if radius_group.header.kind() == GroupKind::DistanceValue {
+        let distance_path = find_indexed_path(file, radius_group)?;
+        return Some((
+            distance_path.refs.first()?.checked_sub(1)?,
+            distance_path.refs.get(1)?.checked_sub(1)?,
+        ));
+    }
+
+    if !matches!(
+        radius_group.header.kind(),
+        GroupKind::MeasuredValue | GroupKind::BoundaryLengthValue
+    ) {
+        return None;
+    }
+    let measurement_path = find_indexed_path(file, radius_group)?;
+    let source_group = groups.get(measurement_path.refs.first()?.checked_sub(1)?)?;
+    if !source_group.header.kind().is_line_like() {
+        return None;
+    }
+    let source_path = find_indexed_path(file, source_group)?;
+    Some((
+        source_path.refs.first()?.checked_sub(1)?,
+        source_path.refs.get(1)?.checked_sub(1)?,
+    ))
 }
 
 #[derive(Debug, Clone, PartialEq, Error)]

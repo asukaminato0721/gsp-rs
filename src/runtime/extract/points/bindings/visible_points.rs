@@ -17,7 +17,7 @@ use crate::runtime::extract::context::SceneContext;
 use crate::runtime::extract::decode::{
     decode_bbox_anchor_raw, decode_label_name, decode_label_visible,
     detect_perpendicular_segment_payload, is_parameter_control_group,
-    try_decode_payload_anchor_point,
+    measured_radius_segment_group_indices, try_decode_payload_anchor_point,
 };
 use crate::runtime::extract::points::constraints::CoordinatePointSource;
 use crate::runtime::extract::{find_indexed_path, payload_debug_source};
@@ -1277,6 +1277,48 @@ fn build_scene_point_for_group_checked(
                             factor_parameter_point_index: Some(angle_parameter_point_index),
                             factor_parameter_start_index: Some(angle_parameter_start_index),
                             factor_parameter_end_index: Some(angle_parameter_end_index),
+                        }),
+                    ));
+                }
+                if (calc_group.header.kind()) == crate::format::GroupKind::AngleValue {
+                    let angle_path = indexed_path_for(file, context, calc_group)?;
+                    let angle_start_group_index = angle_path.refs.first()?.checked_sub(1)?;
+                    let angle_vertex_group_index = angle_path.refs.get(1)?.checked_sub(1)?;
+                    let angle_end_group_index = angle_path.refs.get(2)?.checked_sub(1)?;
+                    let source_index =
+                        mapped_point_index(group_to_point_index, source_group_index)?;
+                    let center_index =
+                        mapped_point_index(group_to_point_index, center_group_index)?;
+                    let angle_start_index =
+                        mapped_point_index(group_to_point_index, angle_start_group_index)?;
+                    let angle_vertex_index =
+                        mapped_point_index(group_to_point_index, angle_vertex_group_index)?;
+                    let angle_end_index =
+                        mapped_point_index(group_to_point_index, angle_end_group_index)?;
+                    let angle_start = anchors.get(angle_start_group_index)?.clone()?;
+                    let angle_vertex = anchors.get(angle_vertex_group_index)?.clone()?;
+                    let angle_end = anchors.get(angle_end_group_index)?.clone()?;
+                    let angle_degrees =
+                        angle_degrees_from_points(&angle_start, &angle_vertex, &angle_end)?;
+                    return Some(scene_point(
+                        position,
+                        group_color(group),
+                        visible,
+                        false,
+                        ScenePointConstraint::Free,
+                        Some(ScenePointBinding::Rotate {
+                            source_index,
+                            center_index,
+                            angle_degrees,
+                            parameter_name: None,
+                            angle_expr: None,
+                            angle_start_index: Some(angle_start_index),
+                            angle_vertex_index: Some(angle_vertex_index),
+                            angle_end_index: Some(angle_end_index),
+                            angle_parameter_point_index: None,
+                            angle_parameter_start_index: None,
+                            angle_parameter_end_index: None,
+                            angle_parameter_scale: None,
                         }),
                     ));
                 }
@@ -2825,17 +2867,13 @@ fn resolve_circular_constraint(
             }
             let center_index = (*group_to_point_index.get(path.refs[0].checked_sub(1)?)?)?;
             let radius_group = groups.get(path.refs[1].checked_sub(1)?)?;
-            if radius_group.header.kind() == crate::format::GroupKind::Segment {
-                let segment_path = find_indexed_path(file, radius_group)?;
-                if segment_path.refs.len() != 2 {
-                    return None;
-                }
+            if let Some((line_start_group_index, line_end_group_index)) =
+                measured_radius_segment_group_indices(file, groups, radius_group)
+            {
                 Some(CircularConstraint::SegmentRadiusCircle {
                     center_index,
-                    line_start_index: (*group_to_point_index
-                        .get(segment_path.refs[0].checked_sub(1)?)?)?,
-                    line_end_index: (*group_to_point_index
-                        .get(segment_path.refs[1].checked_sub(1)?)?)?,
+                    line_start_index: (*group_to_point_index.get(line_start_group_index)?)?,
+                    line_end_index: (*group_to_point_index.get(line_end_group_index)?)?,
                 })
             } else {
                 Some(CircularConstraint::ParameterRadiusCircle {

@@ -104,6 +104,76 @@ test('angle-referenced rotate points stay live in the browser runtime', async ({
   expect(result?.draggable).toBe(false);
 });
 
+test('triangle angle sum measured-angle rotation updates dependent geometry', async ({ page }) => {
+  const file = compileFixtureToTempHtml('tests/Samples/未分类档/三角形内角和定理.gsp');
+  await page.goto(`file://${file}`);
+
+  const result = await page.evaluate(() => {
+    const env = window.gspDebug.viewerEnv;
+    const dynamics = window.GspViewerModules.dynamics;
+    const scene = () => window.gspDebug.runtime.scene;
+    const pointIndex = (ordinal: number) =>
+      scene().points.findIndex((point: any) => point.debug?.groupOrdinal === ordinal);
+    const lineByOrdinal = (ordinal: number) =>
+      scene().lines.find((line: any) => line.debug?.groupOrdinal === ordinal);
+
+    const cIndex = pointIndex(18);
+    const rotatedIndex = pointIndex(31);
+    const intersectionIndex = pointIndex(46);
+    if (cIndex < 0 || rotatedIndex < 0 || intersectionIndex < 0) {
+      return null;
+    }
+    const before = {
+      rotated: { x: scene().points[rotatedIndex].x, y: scene().points[rotatedIndex].y },
+      intersection: { x: scene().points[intersectionIndex].x, y: scene().points[intersectionIndex].y },
+      marker: lineByOrdinal(38)?.points?.map((point: any) => ({ x: point.x, y: point.y })) ?? [],
+      rotatedBinding: scene().points[rotatedIndex].binding,
+      intersectionConstraint: scene().points[intersectionIndex].constraint,
+    };
+
+    env.markDependencyRootsDirty?.([dynamics.sourcePointRootId(cIndex)]);
+    env.updateScene((draft: any) => {
+      draft.points[cIndex].x += 40;
+      draft.points[cIndex].y -= 10;
+    }, 'graph');
+
+    const after = {
+      rotated: { x: scene().points[rotatedIndex].x, y: scene().points[rotatedIndex].y },
+      intersection: { x: scene().points[intersectionIndex].x, y: scene().points[intersectionIndex].y },
+      marker: lineByOrdinal(38)?.points?.map((point: any) => ({ x: point.x, y: point.y })) ?? [],
+    };
+    const moved = (left: { x: number, y: number }, right: { x: number, y: number }) =>
+      Math.hypot(left.x - right.x, left.y - right.y);
+    return {
+      hasMeasuredAngleRotate:
+        before.rotatedBinding?.kind === 'derived'
+        && before.rotatedBinding?.transform?.kind === 'rotate'
+        && typeof before.rotatedBinding.transform.angleStartIndex === 'number'
+        && typeof before.rotatedBinding.transform.angleVertexIndex === 'number'
+        && typeof before.rotatedBinding.transform.angleEndIndex === 'number',
+      hasMeasuredRadiusIntersection:
+        before.intersectionConstraint?.kind === 'line-circular-intersection'
+        && before.intersectionConstraint?.circle?.kind === 'segment-radius-circle',
+      rotatedDelta: moved(before.rotated, after.rotated),
+      intersectionDelta: moved(before.intersection, after.intersection),
+      markerDelta: Math.max(
+        0,
+        ...before.marker.map((point: { x: number, y: number }, index: number) => {
+          const afterPoint = after.marker[index];
+          return afterPoint ? moved(point, afterPoint) : 0;
+        }),
+      ),
+    };
+  });
+
+  expect(result).not.toBeNull();
+  expect(result?.hasMeasuredAngleRotate).toBe(true);
+  expect(result?.hasMeasuredRadiusIntersection).toBe(true);
+  expect(result?.rotatedDelta).toBeGreaterThan(1);
+  expect(result?.intersectionDelta).toBeGreaterThan(1);
+  expect(result?.markerDelta).toBeGreaterThan(1);
+});
+
 test('hejixu fold2 marked-ratio dilation stays live when E reaches C', async ({ page }) => {
   const file = compileFixtureToTempHtml('tests/Samples/个人专栏/贺基旭作品/翻折2(hjx4882).gsp');
   await page.goto(`file://${file}`);

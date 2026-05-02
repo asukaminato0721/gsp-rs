@@ -1485,7 +1485,13 @@ pub(crate) fn resolve_line_like_constraint_raw(
         | crate::format::GroupKind::ParameterRotation
         | crate::format::GroupKind::Scale => {
             let binding = if group.header.kind() == crate::format::GroupKind::ParameterRotation {
-                try_decode_parameter_rotation_binding(file, groups, group).ok()?
+                try_decode_parameter_rotation_binding(file, groups, group)
+                    .ok()
+                    .or_else(|| {
+                        decode_measured_angle_parameter_rotation_binding_raw(
+                            file, groups, group, anchors,
+                        )
+                    })?
             } else {
                 try_decode_transform_binding(file, group).ok()?
             };
@@ -1826,6 +1832,10 @@ pub(crate) fn decode_parameter_rotation_anchor_raw(
 ) -> Option<PointRecord> {
     let binding = if let Ok(binding) = try_decode_parameter_rotation_binding(file, groups, group) {
         binding
+    } else if let Some(binding) =
+        decode_measured_angle_parameter_rotation_binding_raw(file, groups, group, anchors)
+    {
+        binding
     } else {
         let path = find_indexed_path(file, group)?;
         let source_group_index = path.refs.first()?.checked_sub(1)?;
@@ -1864,6 +1874,43 @@ pub(crate) fn decode_parameter_rotation_anchor_raw(
         }
         TransformBindingKind::Scale { factor } => Some(scale_around(&source, &center, factor)),
     }
+}
+
+fn decode_measured_angle_parameter_rotation_binding_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<super::bindings::TransformBinding> {
+    if group.header.kind() != GroupKind::ParameterRotation {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    let source_group_index = path.refs.first()?.checked_sub(1)?;
+    let center_group_index = path.refs.get(1)?.checked_sub(1)?;
+    let angle_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
+    if angle_group.header.kind() != GroupKind::AngleValue {
+        return None;
+    }
+    let angle_path = find_indexed_path(file, angle_group)?;
+    let angle_start = anchors
+        .get(angle_path.refs.first()?.checked_sub(1)?)?
+        .clone()?;
+    let angle_vertex = anchors
+        .get(angle_path.refs.get(1)?.checked_sub(1)?)?
+        .clone()?;
+    let angle_end = anchors
+        .get(angle_path.refs.get(2)?.checked_sub(1)?)?
+        .clone()?;
+    let angle_degrees = angle_degrees_from_points(&angle_start, &angle_vertex, &angle_end)?;
+    Some(super::bindings::TransformBinding {
+        source_group_index,
+        center_group_index,
+        kind: TransformBindingKind::Rotate {
+            angle_degrees,
+            parameter_name: None,
+        },
+    })
 }
 
 pub(crate) fn decode_angle_rotation_anchor_raw(
