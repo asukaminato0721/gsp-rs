@@ -1737,7 +1737,7 @@ pub(crate) fn try_decode_point_constraint(
                 },
             );
         }
-        (_, GroupKind::Circle) => {
+        (_, GroupKind::Circle | GroupKind::CircleCenterRadius) => {
             return try_decode_circle_point_constraint(file, host_group, payload);
         }
         (
@@ -2044,18 +2044,26 @@ fn decode_path_point_constraint(
                 line_like_kind,
             })
         }
-        crate::format::GroupKind::Circle => {
+        crate::format::GroupKind::Circle | crate::format::GroupKind::CircleCenterRadius => {
             let host_path = find_indexed_path(file, host_group)?;
             if host_path.refs.len() != 2 {
                 return None;
             }
             let angle = std::f64::consts::TAU * wrap_unit_interval(normalized_t);
-            Some(RawPointConstraint::Circle(PointOnCircleConstraint {
-                center_group_index: host_path.refs[0].checked_sub(1)?,
-                radius_group_index: host_path.refs[1].checked_sub(1)?,
-                unit_x: angle.cos(),
-                unit_y: angle.sin(),
-            }))
+            if host_group.header.kind() == crate::format::GroupKind::Circle {
+                Some(RawPointConstraint::Circle(PointOnCircleConstraint {
+                    center_group_index: host_path.refs[0].checked_sub(1)?,
+                    radius_group_index: host_path.refs[1].checked_sub(1)?,
+                    unit_x: angle.cos(),
+                    unit_y: angle.sin(),
+                }))
+            } else {
+                Some(RawPointConstraint::Circular(PointOnCircularConstraint {
+                    circle_group_index: host_group.ordinal.checked_sub(1)?,
+                    unit_x: angle.cos(),
+                    unit_y: angle.sin(),
+                }))
+            }
         }
         crate::format::GroupKind::Reflection
         | crate::format::GroupKind::Scale

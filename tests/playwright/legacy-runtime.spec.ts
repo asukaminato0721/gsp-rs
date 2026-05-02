@@ -104,6 +104,70 @@ test('angle-referenced rotate points stay live in the browser runtime', async ({
   expect(result?.draggable).toBe(false);
 });
 
+test('three-circle rolling animate buttons update measured rolling geometry', async ({ page }) => {
+  const file = compileFixtureToTempHtml('tests/Samples/热研系列/滚动系列/三圆滚动.gsp');
+  await page.goto(`file://${file}`);
+
+  const snapshot = async () => page.evaluate(() => {
+    const scene = window.gspDebug.runtime.scene;
+    const pointByOrdinal = (ordinal: number) =>
+      scene.points.find((point: any) => point.debug?.groupOrdinal === ordinal);
+    const lineByOrdinal = (ordinal: number) =>
+      scene.lines.find((line: any) => line.debug?.groupOrdinal === ordinal);
+    const point = (ordinal: number) => {
+      const found = pointByOrdinal(ordinal);
+      return found ? { x: found.x, y: found.y, binding: found.binding, constraint: found.constraint } : null;
+    };
+    const line = (ordinal: number) => {
+      const found = lineByOrdinal(ordinal);
+      return found ? { binding: found.binding, points: found.points.map((p: any) => ({ x: p.x, y: p.y })) } : null;
+    };
+    return {
+      innerDriver: point(16),
+      innerIntersection: point(24),
+      innerSpoke: line(26),
+      outerDriver: point(28),
+      outerIntersection: point(36),
+      outerSpoke: line(38),
+      buttons: scene.buttons.map((button: any) => ({ text: button.text, action: button.action, group: button.debug?.groupOrdinal })),
+    };
+  });
+  const moved = (left: { x: number, y: number } | null, right: { x: number, y: number } | null) =>
+    left && right ? Math.hypot(left.x - right.x, left.y - right.y) : 0;
+  const lineMoved = (
+    left: { points: { x: number, y: number }[] } | null,
+    right: { points: { x: number, y: number }[] } | null,
+  ) => Math.max(0, ...(left?.points ?? []).map((point, index) => moved(point, right?.points[index] ?? null)));
+
+  const before = await snapshot();
+  expect(before.buttons).toEqual(expect.arrayContaining([
+    expect.objectContaining({ text: '内圆', group: 17, action: expect.objectContaining({ kind: 'animate-point' }) }),
+    expect.objectContaining({ text: '外圆', group: 29, action: expect.objectContaining({ kind: 'animate-point' }) }),
+  ]));
+  expect(before.innerIntersection?.constraint?.kind).toBe('line-circular-intersection');
+  expect(before.outerIntersection?.constraint?.kind).toBe('line-circular-intersection');
+  expect(before.innerSpoke?.binding?.kind).toBe('segment');
+  expect(before.outerSpoke?.binding?.kind).toBe('segment');
+
+  await page.getByRole('button', { name: '内圆' }).click();
+  await page.waitForTimeout(350);
+  const afterInner = await snapshot();
+  await page.getByRole('button', { name: '内圆' }).click();
+
+  expect(moved(before.innerDriver, afterInner.innerDriver)).toBeGreaterThan(1);
+  expect(moved(before.innerIntersection, afterInner.innerIntersection)).toBeGreaterThan(1);
+  expect(lineMoved(before.innerSpoke, afterInner.innerSpoke)).toBeGreaterThan(1);
+
+  await page.getByRole('button', { name: '外圆' }).click();
+  await page.waitForTimeout(350);
+  const afterOuter = await snapshot();
+  await page.getByRole('button', { name: '外圆' }).click();
+
+  expect(moved(afterInner.outerDriver, afterOuter.outerDriver)).toBeGreaterThan(1);
+  expect(moved(afterInner.outerIntersection, afterOuter.outerIntersection)).toBeGreaterThan(1);
+  expect(lineMoved(afterInner.outerSpoke, afterOuter.outerSpoke)).toBeGreaterThan(1);
+});
+
 test('triangle angle sum measured-angle rotation updates dependent geometry', async ({ page }) => {
   const file = compileFixtureToTempHtml('tests/Samples/未分类档/三角形内角和定理.gsp');
   await page.goto(`file://${file}`);

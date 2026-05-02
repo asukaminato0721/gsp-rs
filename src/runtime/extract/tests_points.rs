@@ -218,6 +218,116 @@ fn triangle_angle_sum_fixture_keeps_measured_angle_rotation_live() {
 }
 
 #[test]
+fn three_circle_rolling_fixture_keeps_animate_buttons_and_measured_rotations_live() {
+    let Some(data) = fixture_bytes("tests/Samples/热研系列/滚动系列/三圆滚动.gsp")
+    else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+    let log = fixture_log(&data, "tests/Samples/热研系列/滚动系列/三圆滚动.gsp");
+
+    assert!(log.contains("问题数量: 0"));
+    assert!(
+        log.contains("#17 = 按钮，关联 #16，动作类型是 (2, 0)，名称“内圆”")
+            && log.contains("#29 = 按钮，关联 #28，动作类型是 (2, 0)，名称“外圆”"),
+        "expected the payload log to keep both JavaSketchpad animate buttons"
+    );
+
+    let point_index_for_group = |ordinal| {
+        scene
+            .points
+            .iter()
+            .position(|point| {
+                point
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .expect("expected point for payload group")
+    };
+    let line_for_group = |ordinal| {
+        scene
+            .lines
+            .iter()
+            .find(|line| {
+                line.debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .expect("expected line for payload group")
+    };
+
+    let inner_driver = point_index_for_group(16);
+    let outer_driver = point_index_for_group(28);
+    let inner_button = scene
+        .buttons
+        .iter()
+        .find(|button| button.text == "内圆")
+        .expect("expected inner rolling animate button");
+    let outer_button = scene
+        .buttons
+        .iter()
+        .find(|button| button.text == "外圆")
+        .expect("expected outer rolling animate button");
+    assert!(matches!(
+        inner_button.action,
+        ButtonAction::AnimatePoint { point_index } if point_index == inner_driver
+    ));
+    assert!(matches!(
+        outer_button.action,
+        ButtonAction::AnimatePoint { point_index } if point_index == outer_driver
+    ));
+
+    for ordinal in [21, 25, 33, 37] {
+        let point = &scene.points[point_index_for_group(ordinal)];
+        assert!(
+            matches!(
+                point.binding,
+                Some(ScenePointBinding::Rotate {
+                    angle_expr: Some(_),
+                    ..
+                })
+            ),
+            "expected #{ordinal} to keep its calculated measured-rotation binding"
+        );
+    }
+
+    for ordinal in [24, 36] {
+        let point = &scene.points[point_index_for_group(ordinal)];
+        assert!(
+            matches!(
+                point.constraint,
+                ScenePointConstraint::LineCircularIntersection {
+                    circle: CircularConstraint::SegmentRadiusCircle { .. },
+                    ..
+                }
+            ),
+            "expected #{ordinal} to stay linked to the measured rolling-circle intersection"
+        );
+    }
+
+    let inner_spoke = line_for_group(26);
+    assert!(inner_spoke.visible);
+    assert!(matches!(
+        inner_spoke.binding,
+        Some(LineBinding::Segment {
+            start_index,
+            end_index,
+        }) if start_index == point_index_for_group(24) && end_index == point_index_for_group(25)
+    ));
+
+    let outer_spoke = line_for_group(38);
+    assert!(outer_spoke.visible);
+    assert!(matches!(
+        outer_spoke.binding,
+        Some(LineBinding::Segment {
+            start_index,
+            end_index,
+        }) if start_index == point_index_for_group(36) && end_index == point_index_for_group(37)
+    ));
+}
+
+#[test]
 fn preserves_points_defined_by_path_value_fixture() {
     let scene = fixture_scene(include_bytes!(
         "../../../tests/fixtures/未实现的系统功能/给定的数值在路径上绘制点.gsp"

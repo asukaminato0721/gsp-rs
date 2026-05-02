@@ -287,6 +287,13 @@ fn collect_expr_runtime_parameters(
                         parameters.insert(name, value);
                     }
                 }
+                GroupKind::DistanceValue => {
+                    if let Some((name, value)) =
+                        distance_value_runtime_value(file, groups, candidate, anchors)
+                    {
+                        parameters.insert(name, value);
+                    }
+                }
                 GroupKind::Point if is_parameter_control_group(candidate) => {
                     let Some(name) =
                         editable_non_graph_parameter_name_for_group(file, groups, candidate)
@@ -308,7 +315,38 @@ fn collect_expr_runtime_parameters(
     visiting.remove(&group.ordinal);
 }
 
-fn expression_runtime_context(
+fn distance_value_runtime_value(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<(String, f64)> {
+    if group.header.kind() != GroupKind::DistanceValue {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() < 2 {
+        return None;
+    }
+    let left_group_index = path.refs[0].checked_sub(1)?;
+    let right_group_index = path.refs[1].checked_sub(1)?;
+    let left = anchors.get(left_group_index)?.as_ref()?;
+    let right = anchors.get(right_group_index)?.as_ref()?;
+    let name = decode_label_name(file, group).unwrap_or_else(|| {
+        let left_name = groups
+            .get(left_group_index)
+            .and_then(|group| decode_label_name(file, group))
+            .unwrap_or_else(|| "P".to_string());
+        let right_name = groups
+            .get(right_group_index)
+            .and_then(|group| decode_label_name(file, group))
+            .unwrap_or_else(|| "Q".to_string());
+        format!("{left_name}{right_name}")
+    });
+    Some((name, (right.x - left.x).hypot(right.y - left.y)))
+}
+
+pub(crate) fn expression_runtime_context(
     file: &GspFile,
     groups: &[ObjectGroup],
     expr_group: &ObjectGroup,

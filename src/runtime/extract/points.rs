@@ -27,8 +27,8 @@ pub(crate) use anchors::{
     decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,
     decode_point_pair_translation_anchor_raw, decode_ratio_scale_anchor_raw,
     decode_reflection_anchor_raw, decode_regular_polygon_vertex_anchor_raw,
-    decode_translated_point_anchor_raw, resolve_circle_like_raw, resolve_line_like_points_raw,
-    translation_point_pair_group_indices,
+    decode_translated_point_anchor_raw, expression_runtime_context, resolve_circle_like_raw,
+    resolve_line_like_points_raw, translation_point_pair_group_indices,
 };
 #[allow(unused_imports)]
 pub(crate) use bindings::TransformBinding;

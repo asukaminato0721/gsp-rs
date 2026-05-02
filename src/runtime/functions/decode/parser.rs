@@ -1093,7 +1093,7 @@ pub(super) fn has_ignorable_expr_suffix(words: &[u16], end: usize) -> bool {
     let suffix = &words[end..];
     matches!(
         suffix,
-        [0x000c | 0x0201 | 0x0101] | [0x0000, 0x0101] | [0x0000, 0x0000, 0x0101]
+        [0x000c | 0x0201 | 0x0101 | 0x0100] | [0x0000, 0x0101] | [0x0000, 0x0000, 0x0101]
     )
 }
 

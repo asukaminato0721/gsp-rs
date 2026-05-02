@@ -282,6 +282,9 @@ fn is_auxiliary_segment_group(file: &GspFile, groups: &[ObjectGroup], group: &Ob
     }) {
         return false;
     }
+    if !group.header.is_hidden() {
+        return false;
+    }
     let Some(path) = find_indexed_path(file, group) else {
         return false;
     };

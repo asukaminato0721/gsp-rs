@@ -7,7 +7,7 @@ use super::{
     decode_expression_ratio_scale_binding, decode_expression_rotation_binding,
     decode_expression_scale_binding, decode_iteration_binding_point_alias_raw,
     decode_legacy_coordinate_construct_point, decode_reflection_anchor_raw,
-    decode_translated_point_constraint, reflection_line_group_indices,
+    decode_translated_point_constraint, expression_runtime_context, reflection_line_group_indices,
     regular_polygon_angle_expr_for_calc_group, translation_point_pair_group_indices,
     try_decode_angle_rotation_binding, try_decode_parameter_controlled_point,
     try_decode_parameter_rotation_binding, try_decode_point_constraint,
@@ -25,7 +25,8 @@ use crate::runtime::functions::{
     evaluate_expr_with_parameters, try_decode_function_expr, try_decode_function_plot_descriptor,
 };
 use crate::runtime::geometry::{
-    GraphTransform, angle_degrees_from_points, color_from_style, three_point_arc_geometry,
+    GraphTransform, angle_degrees_from_points, color_from_style, rotate_around, scale_around,
+    three_point_arc_geometry,
 };
 use crate::runtime::scene::{
     CircularConstraint, LineConstraint, ScenePoint, ScenePointBinding, ScenePointConstraint,
@@ -37,6 +38,22 @@ fn mapped_point_index(group_to_point_index: &[Option<usize>], group_index: usize
 
 fn group_color(group: &ObjectGroup) -> [u8; 4] {
     color_from_style(group.header.style_b)
+}
+
+fn transformed_position_from_anchors(
+    anchors: &[Option<PointRecord>],
+    source_group_index: usize,
+    center_group_index: usize,
+    kind: &TransformBindingKind,
+) -> Option<PointRecord> {
+    let source = anchors.get(source_group_index)?.as_ref()?;
+    let center = anchors.get(center_group_index)?.as_ref()?;
+    match kind {
+        TransformBindingKind::Rotate { angle_degrees, .. } => {
+            Some(rotate_around(source, center, angle_degrees.to_radians()))
+        }
+        TransformBindingKind::Scale { factor } => Some(scale_around(source, center, *factor)),
+    }
 }
 
 fn indexed_path_for(
@@ -1178,14 +1195,21 @@ fn build_scene_point_for_group_checked(
         }
         crate::format::GroupKind::ParameterRotation => {
             let visible = !group.header.is_hidden() && point_marker_visible(group);
-            let position = anchors.get(index).cloned().flatten();
+            let raw_position = anchors.get(index).cloned().flatten();
             Ok((|| {
-                let position = position?;
                 if let Ok(binding) = try_decode_parameter_rotation_binding(file, groups, group) {
                     let source_index =
                         mapped_point_index(group_to_point_index, binding.source_group_index)?;
                     let center_index =
                         mapped_point_index(group_to_point_index, binding.center_group_index)?;
+                    let position = raw_position.or_else(|| {
+                        transformed_position_from_anchors(
+                            anchors,
+                            binding.source_group_index,
+                            binding.center_group_index,
+                            &binding.kind,
+                        )
+                    })?;
                     return Some(scene_point(
                         position,
                         group_color(group),
@@ -1262,6 +1286,11 @@ fn build_scene_point_for_group_checked(
                         + (angle_point.y - angle_start.y) * dy)
                         / len_sq)
                         .clamp(0.0, 1.0);
+                    let position = raw_position.or_else(|| {
+                        let source = anchors.get(source_group_index)?.as_ref()?;
+                        let center = anchors.get(center_group_index)?.as_ref()?;
+                        Some(scale_around(source, center, scale_factor))
+                    })?;
                     return Some(scene_point(
                         position,
                         group_color(group),
@@ -1300,6 +1329,11 @@ fn build_scene_point_for_group_checked(
                     let angle_end = anchors.get(angle_end_group_index)?.clone()?;
                     let angle_degrees =
                         angle_degrees_from_points(&angle_start, &angle_vertex, &angle_end)?;
+                    let position = raw_position.or_else(|| {
+                        let source = anchors.get(source_group_index)?.as_ref()?;
+                        let center = anchors.get(center_group_index)?.as_ref()?;
+                        Some(rotate_around(source, center, angle_degrees.to_radians()))
+                    })?;
                     return Some(scene_point(
                         position,
                         group_color(group),
@@ -1327,24 +1361,36 @@ fn build_scene_point_for_group_checked(
                 }
                 let source_index = mapped_point_index(group_to_point_index, source_group_index)?;
                 let center_index = mapped_point_index(group_to_point_index, center_group_index)?;
-                let (angle_expr, parameter_name) = if let Some((angle_expr, parameter_name, _)) =
-                    regular_polygon_angle_expr_for_calc_group(file, groups, calc_group)
-                {
-                    (angle_expr, Some(parameter_name))
-                } else {
-                    (
-                        context.map_or_else(
-                            || try_decode_function_expr(file, groups, calc_group).ok(),
-                            |context| context.function_expr(calc_group).ok(),
-                        )?,
-                        None,
-                    )
-                };
-                let angle_degrees = evaluate_expr_with_parameters(
-                    &angle_expr,
-                    0.0,
-                    &std::collections::BTreeMap::new(),
-                )?;
+                let (angle_expr, parameter_name, expression_parameters) =
+                    if let Some((angle_expr, parameter_name, _)) =
+                        regular_polygon_angle_expr_for_calc_group(file, groups, calc_group)
+                    {
+                        (
+                            angle_expr,
+                            Some(parameter_name),
+                            std::collections::BTreeMap::new(),
+                        )
+                    } else if let Some((angle_expr, parameters, parameter_name)) =
+                        expression_runtime_context(file, groups, calc_group, anchors)
+                    {
+                        (angle_expr, parameter_name, parameters)
+                    } else {
+                        (
+                            context.map_or_else(
+                                || try_decode_function_expr(file, groups, calc_group).ok(),
+                                |context| context.function_expr(calc_group).ok(),
+                            )?,
+                            None,
+                            std::collections::BTreeMap::new(),
+                        )
+                    };
+                let angle_degrees =
+                    evaluate_expr_with_parameters(&angle_expr, 0.0, &expression_parameters)?;
+                let position = raw_position.or_else(|| {
+                    let source = anchors.get(source_group_index)?.as_ref()?;
+                    let center = anchors.get(center_group_index)?.as_ref()?;
+                    Some(rotate_around(source, center, angle_degrees.to_radians()))
+                })?;
                 Some(scene_point(
                     position,
                     group_color(group),
