@@ -1,0 +1,129 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>伞（更新）</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(509,331)[mediumPoint];
+{2} Point(516,305)[mediumPoint];
+{3} Ray(2,1)[hidden];
+{4} Point on object(3,5.64857)[cyan,large];
+{5} Parameter(0.01,1015,-4,'')[hidden];
+{6} Circle by radius(1,5)[color(0,128,0),mediumLine];
+{7} Dilation(1,4,0.166667)[hidden];
+{8} Intersect2(3,6)[cyan,mediumPoint];
+{9} Segment(7,8)[hidden];
+{10} Point on object(9,0.816481)[yellow,mediumPoint];
+{11} Dilation(4,10,0.5)[hidden];
+{12} Dilation(4,1,0.5)[hidden];
+{13} Circle(4,12)[hidden];
+{14} Dilation(1,4,1.83333)[hidden];
+{15} VectorTranslation(14,7,4)[hidden];
+{16} Segment(15,14)[color(128,0,128),thick];
+{17} Segment(15,4)[magenta,mediumLine];
+{18} Point(23,127)[hidden];
+{19} Point(136,124)[hidden];
+{20} Segment(19,18)[blue];
+{21} Point on object(20,0.839814)[cyan,mediumPoint];
+{22} Parameter(20,1015,65,'')[hidden];
+{23} Calculate(1015,109,'','6.28319 A / ')(22)[hidden];
+{24} Perpendicular(9,11)[hidden];
+{25} Intersect2(24,13)[hidden];
+{26} Dilation(25,4,3)[hidden];
+{27} Intersect1(24,13)[hidden];
+{28} Segment(25,27)[hidden];
+{29} Intersect(28,17)[hidden];
+{30} Circle(29,25)[hidden];
+{31} Dilation(27,4,3)[hidden];
+{32} Segment(26,31)[hidden];
+{33} Intersect(32,17)[hidden];
+{34} Circle(33,26)[hidden];
+{35} Point on object(34,2.04753)[hidden];
+{36} Rotation/MeasuredAngle(35,33,23)[hidden];
+{37} Perpendicular(32,35)[hidden];
+{38} Intersect(32,37)[hidden];
+{39} Segment(38,35)[hidden];
+{40} Line(25,27)[hidden];
+{41} AnimateButton(33,57,'动画点')(35,34)(3)(0)(1)[color(255,128,0)];
+{42} Dilation(4,1,1.05)[red,mediumPoint];
+{43} Dilation(42,1,1.05)[cyan,mediumPoint];
+{44} FixedText(14,394,'拖动 红点旋转； 黄点开合')[color(128,0,128)];
+{45} FixedText(671,580,'思乡制作')[color(128,0,128)];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>伞（更新）</P></H4>
+</BODY>
+</HTML>

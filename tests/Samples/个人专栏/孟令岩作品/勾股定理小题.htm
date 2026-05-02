@@ -1,0 +1,157 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>勾股定理小题</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Parameter(1,1007,90,'')[hidden];
+{2} Point(96,195);
+{3} Translation(2,37.7953,0)[hidden];
+{4} Ray(3,2)[hidden];
+{5} Translation/FixedAngle/MarkedDistance(2,1,0)[red];
+{6} Point on object(4,1.77271)[label('→'),red,mediumPoint];
+{7} Ratio/Points(2,5,6,1004,125,'')[hidden];
+{8} Calculate(1007,180,'trunc((A→/AA'')) = ','A @trnc ')(7)[color(128,0,128),hidden];
+{9} Calculate(1005,216,'','1 A / ')(8)[hidden];
+{10} Translation(2,-2.63923e-013,-75.5906)[red];
+{11} Translation(10,37.7953,0)[hidden];
+{12} Ray(11,10)[hidden];
+{13} Point on object(12,4.92125)[label('B'),red];
+{14} Dilation(13,10,0.5)[hidden];
+{15} Circle(14,13)[hidden];
+{16} Point on object(15,-0.918028)[hidden];
+{17} Perpendicular(12,16)[hidden];
+{18} Intersect(12,17)[hidden];
+{19} Segment(16,18)[hidden];
+{20} Point on object(19,0.351303)[hidden];
+{21} Locus(20,16,15,500)[color(0,0,128)];
+{22} Translation(14,-1.31961e-013,-37.7953)[hidden];
+{23} Ray(22,14)[hidden];
+{24} Point on object(23,7.47208)[red];
+{25} Dilation/MarkedRatio(24,14,9)[hidden];
+{26} Segment(24,14)[hidden];
+{27} Point on object(26,1)[red];
+{28} Ratio/Points(14,25,27,1007,292,'')[hidden];
+{29} Point on object(21,0.997)[hidden];
+{30} Segment(27,14)[hidden];
+{31} Segment(6,2)[color(0,0,128)];
+{32} VectorTranslation(10,14,27)[red];
+{33} VectorTranslation(29,14,27)[hidden];
+{34} Segment(10,32)[color(0,0,128)];
+{35} VectorTranslation(13,14,27)[label('A'),red];
+{36} Segment(13,35)[color(0,0,128)];
+{37} Line(35,32)[hidden];
+{38} Intersect(17,37)[hidden];
+{39} Ratio/Points(18,16,20,1007,400,'')[hidden];
+{40} FixedText(92,42,'四川凉山州  圆柱半径为2cm，高为9πcm，点A，B分别是两底面圆周上的点， 且点A，B在同一直线上，用一棉线从点A顺着圆柱侧面绕1圈到点B.求棉线 最短为           cm.  （拓展：若绕2圈、3圈---n圈时棉线最短长度分别是多少？）')[color(128,0,128)];
+{41} FixedText(1106,99,'15π')[color(128,0,128),hidden];
+{42} Point(3,5);
+{43} Translation(42,37.7953,0)[hidden];
+{44} Translation(42,-1.31961e-013,-37.7953)[hidden];
+{45} Ray(44,42)[hidden];
+{46} Ray(43,42)[hidden];
+{47} Point on object(46,26.6091)[cyan,dot];
+{48} Point on object(45,17.0019)[cyan,dot];
+{49} VectorTranslation(48,42,47)[cyan,dot];
+{50} Translation(42,8.01759,-8.01759)[cyan,dot];
+{51} Translation(48,8.01759,8.01759)[cyan,dot];
+{52} Translation(47,-8.01759,-8.01759)[cyan,dot];
+{53} Translation(49,-8.01759,8.01759)[cyan,dot];
+{54} Polygon(42,47,49,48,51,53,52,50,51,48)[color(128,0,128)];
+{55} Distance(35,27,1012,458,'')[hidden];
+{56} Calculate(1012,478,'','2 3.14159 * A * ')(55)[hidden];
+{57} Calculate(1014,505,'','A 1 - ')(8)[hidden];
+{58} Translation/FixedAngle/MarkedDistance(13,56,0)[hidden];
+{59} VectorTranslation(58,13,35)[hidden];
+{60} Segment(58,13)[hidden];
+{61} Segment(59,58)[hidden];
+{62} Segment(59,35)[hidden];
+{63} Point on object(62,1)[label('→'),cyan];
+{64} VectorTranslation(63,35,13)[label('→'''),cyan];
+{65} Dilation/MarkedRatio(35,13,9)[label('A'''),cyan];
+{66} Dilation/MarkedRatio(63,64,9)[cyan];
+{67} Segment(66,65)[blue];
+{68} Segment(63,64)[blue];
+{69} Segment(64,13)[blue];
+{70} Segment(63,35)[blue];
+{71} Segment(64,65)[red,dashed];
+{72} Translation(6,-6.59807e-014,18.8976)[red,hidden,mediumPoint];
+{73} Polygon(50,51,53,52)[blue];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>勾股定理小题</P></H4>
+</BODY>
+</HTML>

@@ -1,0 +1,246 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>点值修正简单示例</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(149,110)[label('C')];
+{2} Point(251,197)[label('D')];
+{3} Point(25,197)[label('A')];
+{4} Segment(1,3)[black];
+{5} Parallel(4,2)[hidden];
+{6} Segment(2,3)[black,dashed];
+{7} Parallel(6,1)[hidden];
+{8} Intersect(5,7)[label('E'),white];
+{9} Polygon(3,2,8,2)[color(128,128,128)];
+{10} Point on object(9,0.363696)[label('F'),red,mediumPoint];
+{11} Polygon(1,10,8)[hidden];
+{12} Area(11,495,439,'△CFE的面积 = ')[black];
+{13} Segment(8,1)[color(0,0,128)];
+{14} FixedText(469,60,'※点值跳跃的原因：四边形ADED合并后点F的位置出现两条路径即     A-D-E和E-D-F，当点F运动时，系统会随机选择一条.换言之点F的    位置在0-0.5和0.5-1分别对应一个值，故出现点F的值跳跃的现象.如果    利用该点值在另一条路径上绘制动点，该动点会不稳定，绘制图像时    就会出现零散现象  ※点值跳跃修正方法：    1.在四边形ADED上构造点F并度量其点值F在ADEED=    2.计算修正值0.5-|F在ADED-0.5|=    3.用修正值在CE上绘制点G并度量其点值G在CE上=    4.用点G的值返回到四边形ADED上绘制点1.    5.选定点G、点1单击变换菜单下的创建自定义变换-确定-生成“变换1”    6.连接CG并在选定状态下单击“变换”下的“变换1”生成A到1的一条       自定义变换路径（用于后面函数图像的生成） ')[black];
+{15} Point(903,518)[hidden];
+{16} Translation(15,1.05569e-013,-30.2362)[hidden];
+{17} Translation(16,2.63923e-014,-7.55906)[hidden];
+{18} Translation(17,11.3386,0)[hidden];
+{19} VectorTranslation(17,18,17)[hidden];
+{20} Translation(18,11.3386,0)[hidden];
+{21} Ray(20,18)[hidden];
+{22} Point on object(21,0)[hidden];
+{23} Segment(22,18)[red];
+{24} Distance(22,17,649,291,'')[hidden];
+{25} Translation(22,5.66929,-9.8195)[hidden];
+{26} Translation(22,-5.66929,-9.8195)[hidden];
+{27} Translation(16,7.55906,0)[hidden];
+{28} VectorTranslation(16,27,16)[hidden];
+{29} Translation(27,11.3386,0)[hidden];
+{30} Ray(29,27)[hidden];
+{31} Point on object(30,2.55764)[hidden];
+{32} Segment(31,27)[hidden];
+{33} Translation(31,-5.66929,9.8195)[hidden];
+{34} Distance(27,31,649,291,'')[hidden];
+{35} Calculate(649,291,'','A 5 B ^ * @trnc 1 + ')(24,34)[hidden];
+{36} Calculate(649,291,'','1 A / ')(35)[hidden];
+{37} Translation(31,5.66929,9.8195)[hidden];
+{38} Translation(15,9.44882,0)[hidden];
+{39} VectorTranslation(15,38,15)[hidden];
+{40} Translation(15,47.2441,0)[hidden];
+{41} Dilation(40,38,0.5)[hidden];
+{42} Translation(41,2.64567,0)[hidden];
+{43} VectorTranslation(15,40,15)[hidden];
+{44} Dilation(39,43,0.5)[hidden];
+{45} Translation(44,-2.64567,-0)[hidden];
+{46} Segment(38,39)[hidden];
+{47} Point on object(46,0.5)[red,hidden];
+{48} Translation(47,-2.63923e-014,7.55906)[hidden];
+{49} Translation(47,3.77953,6.54633)[hidden];
+{50} Rotation(49,47,1.0472)[hidden];
+{51} Translation(50,-2.63923e-014,7.55906)[hidden];
+{52} Translation(51,7.55906,0)[hidden];
+{53} Distance(39,47,649,291,'')[hidden];
+{54} Polygon(50,51,52,49)[hidden];
+{55} Segment(47,48)[color(0,0,128),hidden];
+{56} Segment(40,38)[hidden];
+{57} Point on object(56,0.57)[hidden];
+{58} Translation(57,3.87802,-10.6548)[hidden];
+{59} Translation(57,-3.87802,-10.6548)[hidden];
+{60} Dilation(57,41,5)[hidden];
+{61} Rotation(60,41,-1.5708)[hidden];
+{62} Polygon(59,58,57)[hidden];
+{63} Segment(40,15)[red,hidden];
+{64} Segment(39,43)[hidden];
+{65} Point on object(64,0.43)[hidden];
+{66} Dilation(65,44,5)[hidden];
+{67} Translation(65,3.87802,-10.6548)[hidden];
+{68} Translation(65,-3.87802,-10.6548)[hidden];
+{69} Polygon(68,67,65)[hidden];
+{70} Segment(43,15)[color(0,0,128),hidden];
+{71} Segment(27,28)[hidden];
+{72} Segment(18,19)[hidden];
+{73} Segment(16,15)[red,hidden];
+{74} Reflection(30,73)[hidden];
+{75} Point on object(74,2.38125)[hidden];
+{76} Segment(75,28)[hidden];
+{77} Translation(75,-5.66929,9.8195)[hidden];
+{78} Translation(75,5.66929,9.8195)[hidden];
+{79} Distance(28,75,649,291,'')[hidden];
+{80} Reflection(21,73)[hidden];
+{81} Point on object(80,0)[hidden];
+{82} Segment(81,19)[red];
+{83} Translation(81,5.66929,-9.8195)[hidden];
+{84} Translation(81,-5.66929,-9.8195)[hidden];
+{85} Distance(17,81,649,291,'')[hidden];
+{86} Calculate(649,291,'','A 5 B ^ * @trnc 1 + ')(85,79)[hidden];
+{87} Calculate(649,291,'','1 A / ')(86)[hidden];
+{88} Polygon(19,18,27,28)[hidden];
+{89} Segment(19,28)[hidden];
+{90} Segment(18,27)[hidden];
+{91} Point(81,576);
+{92} VectorTranslation(91,41,61)[green,hidden];
+{93} Translation(91,-22.6772,-0)[hidden];
+{94} Translation(93,-22.6772,-0)[hidden];
+{95} Ray(94,93)[hidden];
+{96} Translation(91,22.6772,0)[hidden];
+{97} Translation(96,22.6772,0)[hidden];
+{98} Ray(97,96)[hidden];
+{99} Rotation(98,91,1.5708)[hidden];
+{100} Translation(91,3.77953,0)[hidden];
+{101} Translation(100,37.7953,0)[hidden];
+{102} Ray(101,100)[hidden];
+{103} Rotation(102,91,1.5708)[hidden];
+{104} Translation(91,37.7953,0)[hidden];
+{105} Rotation(104,91,1.5708)[green,hidden];
+{106} Translation(91,173.858,0)[hidden];
+{107} Rotation(106,91,1.5708)[green,hidden];
+{108} Rotation(107,91,1.5708)[hidden];
+{109} Rotation(108,91,1.5708)[green,hidden];
+{110} VectorTranslation(91,44,66)[green,hidden];
+{111} Point on object(103,1.03229)[green];
+{112} Rotation(111,91,1.5708)[hidden];
+{113} Rotation(112,91,1.5708)[hidden];
+{114} Segment(113,111)[hidden];
+{115} Dilation/MarkedRatio(111,91,87)[hidden];
+{116} Segment(115,91)[hidden];
+{117} Point on object(102,0.9)[green];
+{118} VectorTranslation(91,117,91)[hidden];
+{119} Dilation/MarkedRatio(117,91,36)[hidden];
+{120} Segment(119,91)[hidden];
+{121} Rotation(117,91,1.5708)[green,hidden];
+{122} MoveButton(-42,135,0,'等单位长')(121,111)[color(255,128,0),hidden];
+{123} Segment(117,112)[hidden];
+{124} Point on object(98,9.18021)[yellow];
+{125} Translation(124,15.1181,0)[hidden];
+{126} Circle(124,125)[hidden];
+{127} Ratio/Points(91,117,124,649,291,'')[hidden];
+{128} Point on object(99,13.3694)[yellow];
+{129} Translation(128,15.1181,0)[hidden];
+{130} Circle(128,129)[hidden];
+{131} Ratio/Points(91,111,128,649,291,'')[hidden];
+{132} Point on object(95,0)[yellow];
+{133} Ratio/Points(91,118,132,649,291,'')[hidden];
+{134} Intersect(123,114)[label('O'),black,dot];
+{135} Calculate(649,291,'','A 0.4 - @trnc ')(127)[hidden];
+{136} Dilation/MarkedRatio(117,91,135)[hidden];
+{137} Segment(124,136)[color(0,0,128)];
+{138} Intersect1(137,126)[hidden];
+{139} Dilation(138,124,0.666667)[hidden];
+{140} Rotation(138,124,-0.244346)[hidden];
+{141} Reflection(140,137)[hidden];
+{142} Polygon(140,124,141,139)[black];
+{143} Segment(136,91)[color(128,128,128),hidden];
+{144} Calculate(649,291,'','A 0.4 - @trnc ')(131)[hidden];
+{145} Dilation/MarkedRatio(111,91,144)[hidden];
+{146} Segment(128,145)[color(0,0,128)];
+{147} Intersect1(146,130)[hidden];
+{148} Dilation(147,128,0.666667)[hidden];
+{149} Rotation(147,128,-0.244346)[hidden];
+{150} Reflection(149,146)[hidden];
+{151} Polygon(149,128,150,148)[black];
+{152} Segment(145,91)[color(128,128,128),hidden];
+{153} Calculate(649,291,'','A 0.4 - @trnc ')(133)[hidden];
+{154} Dilation/MarkedRatio(118,91,153)[hidden];
+{155} Segment(132,154)[black];
+{156} Segment(136,154)[black];
+{157} Segment(154,91)[color(128,128,128),hidden];
+{158} Intersect(73,71)[red,hidden];
+{159} FixedText(471,41,'点值修正专题')[black];
+{160} Segment(8,2)[color(0,0,128),dashed];
+{161} FixedText(671,563,'石岩整理')[black];
+{162} ToggleVisibilityButton(701,353,'隐藏点 F|显示点 F')(10)[color(255,128,0)];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>点值修正简单示例</P></H4>
+</BODY>
+</HTML>

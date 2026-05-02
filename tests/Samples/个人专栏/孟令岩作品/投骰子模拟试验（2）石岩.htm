@@ -1,0 +1,167 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>模拟试验（完美版）</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(159,528)[hidden,mediumPoint];
+{2} UnitPoint(1,37.7953)[hidden];
+{3} HorizontalAxis(1,2)[color(96,96,96),hidden];
+{4} SquareUnitPoint(2)[hidden];
+{5} VerticalAxis(1,4)[color(96,96,96),hidden];
+{6} CoordSysByAxes(3,5)[hidden];
+{7} PlotFixedXY(6,6,0)[hidden];
+{8} Rotation(7,1,1.5708)[red,hidden,mediumPoint];
+{9} VectorTranslation(8,1,7)[hidden];
+{10} Segment(8,1)[color(0,0,128),hidden];
+{11} Segment(9,8)[color(0,0,128),hidden];
+{12} Segment(7,9)[hidden];
+{13} Segment(7,1)[hidden];
+{14} Point on object(10,0.779296)[red,hidden,mediumPoint];
+{15} Point on object(13,0.372416)[hidden];
+{16} VectorTranslation(14,1,7)[hidden];
+{17} Segment(16,14)[hidden];
+{18} Point on object(17,0.552422)[hidden];
+{19} Abscissa(15,6,1026,45,'')[hidden];
+{20} Calculate(1024,75,'','1 1 A - @sgn_ + @sgn_ ')(19)[hidden];
+{21} Calculate(1014,146,'','2 ! A 1 - @sgn_ 2 A - @sgn_ + / ')(19)[hidden];
+{22} Calculate(1014,92,'','1 ! A 0 - @sgn_ 1 A - @sgn_ + @sgn_ / ')(19)[hidden];
+{23} Calculate(1014,200,'','2 ! A 2 - @sgn_ 3 A - @sgn_ + / ')(19)[hidden];
+{24} Calculate(1014,254,'','2 ! A 3 - @sgn_ 4 A - @sgn_ + / ')(19)[hidden];
+{25} Calculate(1014,308,'','2 ! A 4 - @sgn_ 5 A - @sgn_ + / ')(19)[hidden];
+{26} Calculate(1014,362,'','1 ! A 5 - @sgn_ 6 A - @sgn_ + @sgn_ / ')(19)[hidden];
+{27} Parameter(0.0377941,812,288,'投掷次数 = ')[color(128,0,128)];
+{28} Parameter(0,1029,423,'')[hidden];
+{29} Calculate(1029,452,'','A B + ')(28,20)[hidden];
+{30} Point(79,487)[hidden,mediumPoint];
+{31} Parameter(3,812,256,'骰子大小 = ')[color(128,0,128)];
+{32} Translation/FixedAngle/MarkedDistance(18,31,2.35619)[hidden];
+{33} Dilation/MarkedRatio(32,18,22)[hidden];
+{34} Dilation/MarkedRatio(32,18,21)[hidden];
+{35} Dilation/MarkedRatio(32,18,23)[hidden];
+{36} Dilation/MarkedRatio(32,18,24)[hidden];
+{37} Dilation/MarkedRatio(32,18,25)[hidden];
+{38} Dilation/MarkedRatio(32,18,26)[hidden];
+{39} Parameter(0.166667,555,199,'概率 = ')[color(128,0,128)];
+{40} Point(485,449)[label('0')];
+{41} Translation(40,37.7953,0)[hidden];
+{42} Ray(41,40)[hidden];
+{43} Point on object(42,6.00604)[hidden];
+{44} Dilation(43,40,0.333333)[hidden];
+{45} Dilation(43,40,0.666667)[hidden];
+{46} Rotation(43,40,1.5708)[label('1'),red];
+{47} VectorTranslation(43,40,46)[hidden];
+{48} VectorTranslation(44,40,46)[hidden];
+{49} VectorTranslation(45,40,46)[hidden];
+{50} Polygon(44,45,49,48)[color(192,192,192)];
+{51} Segment(47,43)[color(0,0,128),hairline];
+{52} Segment(46,47)[color(0,0,128),hairline];
+{53} Segment(40,46)[color(0,0,128),hairline];
+{54} Segment(43,40)[color(0,0,128),hairline];
+{55} Dilation(46,40,0.166667)[label('0.167'),red];
+{56} VectorTranslation(55,40,43)[hidden];
+{57} Segment(55,56)[red,hairline,dashed];
+{58} FixedText(532,49,'石岩制作2012.8.5')[color(128,0,128)];
+{59} Point(7,643);
+{60} Translation(59,37.7953,0)[hidden];
+{61} Ray(60,59)[hidden];
+{62} Rotation(61,59,1.5708)[hidden];
+{63} Point on object(61,25.9292)[red];
+{64} Point on object(62,16.87)[red];
+{65} VectorTranslation(64,59,63)[red];
+{66} Translation(59,-5.27846e-014,15.1181)[hidden];
+{67} Rotation(66,59,-1.5708)[hidden];
+{68} Translation(64,-5.27846e-014,-15.1181)[hidden];
+{69} Rotation(68,64,1.5708)[hidden];
+{70} Translation(65,-5.27846e-014,-15.1181)[hidden];
+{71} Rotation(70,65,-1.5708)[hidden];
+{72} Translation(63,-5.27846e-014,15.1181)[hidden];
+{73} Rotation(72,63,1.5708)[hidden];
+{74} Segment(66,68)[red];
+{75} Segment(73,67)[red];
+{76} Segment(70,72)[red];
+{77} Segment(69,71)[red];
+{78} Dilation(63,64,0.5)[hidden];
+{79} Dilation(77,78,0.989474)[color(0,0,128),dashed];
+{80} Dilation(74,78,0.989474)[color(0,0,128),dashed];
+{81} Dilation(75,78,0.989474)[color(0,0,128),dashed];
+{82} Dilation(76,78,0.989474)[color(0,0,128),dashed];
+{83} FixedText(242,53,'投骰子模拟试验')[color(128,0,128)];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>模拟试验（完美版）</P></H4>
+</BODY>
+</HTML>

@@ -1,0 +1,122 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>撒豆模拟试验</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(56,491);
+{2} Point(383,491);
+{3} Segment(2,1)[blue,mediumLine];
+{4} Rotation(2,1,1.5708)[cyan];
+{5} Rotation(3,1,1.5708)[blue,mediumLine];
+{6} Rotation(5,4,1.5708)[blue,mediumLine];
+{7} Rotation(1,4,1.5708)[cyan];
+{8} Segment(2,7)[blue,mediumLine];
+{9} Dilation(7,1,0.5)[label('O'),cyan,hidden,mediumPoint];
+{10} Midpoint(6)[red,hidden,mediumPoint];
+{11} Circle(9,10)[color(0,128,0),mediumLine];
+{12} Point on object(5,0.137902)[label('B'),red,hidden,mediumPoint];
+{13} Point on object(3,0.899853)[hidden];
+{14} Perpendicular(5,12)[color(0,0,128),hidden,hairline];
+{15} Perpendicular(3,13)[hidden];
+{16} Intersect(14,15)[hidden];
+{17} Distance(10,9,1024,172,'r = ')[black];
+{18} Distance(9,16,1024,193,'d = ')[black];
+{19} Calculate(1024,214,'t = ','1 A B - @sgn_ + @sgn_ A B - @abs_ @sgn_ * ')(17,18)[black];
+{20} Parameter(-1,1028,322,'x = ')[black];
+{21} Point(993,642);
+{22} UnitPoint(21,22.1)[red];
+{23} HorizontalAxis(21,22)[color(96,96,96)];
+{24} SquareUnitPoint(22)[hidden];
+{25} VerticalAxis(21,24)[color(96,96,96)];
+{26} CoordSysByAxes(23,25)[hidden];
+{27} FixedText(32,35,'  在正方形中随机撒豆子. （1）用模拟试验估计豆子落在正方形内切圆内的概率: （2）由此估计圆周率π的近似值.')[color(128,0,128)];
+{28} FixedText(486,580,'石岩制作2012.8.30')[red];
+{29} FixedText(1005,421,'【回顾】： 1.参数随机迭代 2.利用迭代终点    计算圆内豆子数 【关键】： 利用sgn判断点 与圆的位置关系： sgn（x）=1在圆内； sgn（x）=0在圆外. ')[red];
+{30} ToggleVisibilityButton(1024,38,'作图痕迹|作图痕迹')(13,12,16,14,15,10,9)[color(255,128,0)];
+{31} Point(0,0)[mediumPoint];
+{32} FixedText(486,454,'提示：可增大n的值9000以上看效果')[red];
+{33} Parameter(0.0927549,481,248,'撒豆总数 = ')[color(128,0,128)];
+{34} Parameter(0,1026,238,'s = ')[color(128,0,128)];
+{35} Calculate(1026,262,'s + t = ','A B + ')(34,19)[color(128,0,128)];
+{36} PlotXY(35,26,20)[label('P'),red,mediumPoint];
+{37} Colorized_Spectrum(16,19,0,1,2)[hidden];
+{38} Circle interior(11)[color(0,0,128)];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>撒豆模拟试验</P></H4>
+</BODY>
+</HTML>

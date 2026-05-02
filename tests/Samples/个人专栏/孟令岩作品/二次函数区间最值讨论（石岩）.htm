@@ -1,0 +1,124 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>二次函数区间最值讨论（石岩）</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(397,496);
+{2} UnitPoint(1,40.7953)[red];
+{3} HorizontalAxis(1,2)[color(96,96,96)];
+{4} SquareUnitPoint(2)[hidden];
+{5} VerticalAxis(1,4)[color(96,96,96)];
+{6} CoordSysByAxes(3,5)[hidden];
+{7} Point on object(3,0.345)[label('→'),red,mediumPoint];
+{8} Parameter(6,575,107,'t[1] = ')[black];
+{9} Translation/FixedAngle/MarkedDistance(7,8,0)[red,mediumPoint];
+{10} Segment(9,7)[hidden];
+{11} Point on object(10,1)[red,mediumPoint];
+{12} Abscissa(11,6,987,37,'')[hidden];
+{13} Segment(11,7)[hidden];
+{14} Abscissa(9,6,987,113,'x[→''] = ')[black,hidden];
+{15} Abscissa(7,6,987,137,'x[→] = ')[black,hidden];
+{16} FixedText(17,579,'石岩制作')[color(128,0,128)];
+{17} Parameter(0.2,572,164,'a = ')[black];
+{18} Parameter(3,572,190,'h = ')[black];
+{19} Calculate(987,85,'','0.4 1 A B - @sgn_ + @sgn_ * ')(12,18)[hidden];
+{20} Parameter(3,572,216,'k = ')[black];
+{21} Function(572,141,'f(x) = a*((x - h)^2) + k','A x B - 2 ^ * C + ')(17,18,20)[black];
+{22} Calculate(987,202,'','B @fA ')(21,15)[hidden];
+{23} PlotXY(22,6,15)[red,mediumPoint];
+{24} Segment(23,7)[color(0,0,128),dashed];
+{25} Calculate(987,178,'','B @fA ')(21,14)[hidden];
+{26} PlotXY(25,6,14)[red,mediumPoint];
+{27} Segment(26,9)[color(0,0,128),dashed];
+{28} Calculate(987,61,'','B @fA ')(21,12)[hidden];
+{29} PlotXY(28,6,12)[hidden];
+{30} Colorized_Spectrum(29,19,0,1,2)[mediumPoint];
+{31} Locus(30,11,13,500)[color(0,0,128),thick];
+{32} FunctionPlot(21,6,750,-12.7265,19.1823,0)[black];
+{33} ToggleVisibilityButton(26,72,'隐藏度量值|显示度量值')(12,14,15,19,22,25,28)[color(255,128,0)];
+{34} FixedText(180,78,'二次函数区间最值讨论')[color(128,0,128)];
+{35} PlotXY(20,6,18)[red,mediumPoint];
+{36} Parallel(5,35)[color(0,0,128),dashed];
+{37} Translation(7,-7.91769e-014,-22.6772)[red,hidden,mediumPoint];
+{38} Translation(9,-7.91769e-014,-22.6772)[red,hidden,mediumPoint];
+{39} PeggedText(37,15)[black];
+{40} PeggedText(38,14)[black];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>二次函数区间最值讨论（石岩）</P></H4>
+</BODY>
+</HTML>

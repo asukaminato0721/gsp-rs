@@ -1,0 +1,433 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>万花筒（学方老师）</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(455,326)[hidden];
+{2} Point(671.229,323.641)[hidden];
+{3} Segment(2,1)[hidden];
+{4} Rotation(2,1,1.0472)[hidden];
+{5} Rotation(3,1,1.0472)[hidden];
+{6} Rotation(3,2,-1.0472)[hidden];
+{7} Midpoint(3)[hidden];
+{8} Midpoint(5)[hidden];
+{9} Segment(8,7)[hidden];
+{10} Point on object(9,0.327067)[hidden];
+{11} Segment(10,1)[hidden];
+{12} Point on object(9,0.00900296)[hidden];
+{13} Segment(12,1)[hidden];
+{14} Point on object(9,0.218604)[hidden];
+{15} Segment(14,1)[hidden];
+{16} Point on object(11,0.465987)[hidden];
+{17} Point on object(13,0.31193)[hidden];
+{18} Point on object(15,0.418012)[hidden];
+{19} Point on object(9,0.949705)[hidden];
+{20} Segment(19,1)[hidden];
+{21} Point on object(9,0.237861)[hidden];
+{22} Segment(21,1)[hidden];
+{23} Point on object(9,0.912107)[hidden];
+{24} Segment(23,1)[hidden];
+{25} Point on object(20,0.755119)[hidden];
+{26} Point on object(22,0.637532)[hidden];
+{27} Point on object(24,0.333964)[hidden];
+{28} Polygon(25,26,27)[color(128,0,0)];
+{29} Polygon(16,17,18)[color(128,128,128)];
+{30} Point on object(22,0.635945)[hidden];
+{31} Point on object(24,0.143437)[hidden];
+{32} Point on object(13,0.849483)[hidden];
+{33} Polygon(32,30,31)[green];
+{34} Point on object(24,0.905759)[hidden];
+{35} Point on object(13,0.162725)[hidden];
+{36} Point on object(15,0.572222)[hidden];
+{37} Polygon(36,34,35)[red];
+{38} Point on object(11,0.466628)[hidden];
+{39} Point on object(20,0.33726)[hidden];
+{40} Point on object(22,0.361156)[hidden];
+{41} Polygon(40,39,38)[cyan];
+{42} Segment(7,1)[hidden];
+{43} Segment(8,1)[hidden];
+{44} Point on object(42,0.0164495)[hidden];
+{45} Point on object(13,0.489517)[hidden];
+{46} Point on object(15,0.206122)[hidden];
+{47} Polygon(46,45,44)[blue];
+{48} Point on object(20,0.329447)[hidden];
+{49} Point on object(11,0.310862)[hidden];
+{50} Point on object(43,0.68508)[hidden];
+{51} Polygon(50,49,48)[color(255,128,0)];
+{52} AnimateButton(63,543,'动画点')(10,9,19,9,21,9,23,9,14,9,46,15,36,15,44,42,12,9,45,13,35,13,34,24,27,24,40,22,26,22,38,11,49,11,39,20,25,20,48,20,50,43,16,11,30,22,31,24,32,13,18,15,17,13)(5,3,5,3,5,3,5,3,5,3,5,3,5,3,3,3,5,3,5,3,5,3,5,3,5,3,5)(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)(1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1)[color(255,128,0)];
+{53} Rotation(5,1,1.0472)[hidden];
+{54} Reflection(29,53)[color(128,128,128)];
+{55} Reflection(33,53)[green];
+{56} Reflection(37,53)[red];
+{57} Reflection(41,53)[cyan];
+{58} Reflection(47,53)[blue];
+{59} Reflection(51,53)[color(255,128,0)];
+{60} Reflection(28,53)[magenta];
+{61} Reflection(54,5)[color(128,128,128)];
+{62} Reflection(55,5)[green];
+{63} Reflection(56,5)[red];
+{64} Reflection(57,5)[cyan];
+{65} Reflection(58,5)[blue];
+{66} Reflection(59,5)[color(255,128,0)];
+{67} Reflection(60,5)[magenta];
+{68} Reflection(29,3)[color(128,128,128)];
+{69} Reflection(33,3)[green];
+{70} Reflection(37,3)[red];
+{71} Reflection(41,3)[cyan];
+{72} Reflection(47,3)[blue];
+{73} Reflection(51,3)[color(255,128,0)];
+{74} Reflection(28,3)[magenta];
+{75} Reflection(54,3)[color(128,128,128)];
+{76} Reflection(55,3)[green];
+{77} Reflection(56,3)[red];
+{78} Reflection(57,3)[cyan];
+{79} Reflection(58,3)[blue];
+{80} Reflection(59,3)[color(255,128,0)];
+{81} Reflection(60,3)[magenta];
+{82} Reflection(62,3)[green];
+{83} Reflection(63,3)[red];
+{84} Reflection(64,3)[cyan];
+{85} Reflection(65,3)[blue];
+{86} Reflection(67,3)[magenta];
+{87} Reflection(66,3)[color(255,128,0)];
+{88} Perpendicular(5,2)[hidden];
+{89} Reflection(28,88)[color(128,0,0)];
+{90} Reflection(29,88)[color(128,128,128)];
+{91} Reflection(33,88)[green];
+{92} Reflection(37,88)[red];
+{93} Reflection(41,88)[cyan];
+{94} Reflection(47,88)[blue];
+{95} Reflection(51,88)[color(255,128,0)];
+{96} Reflection(54,88)[color(128,128,128)];
+{97} Reflection(55,88)[green];
+{98} Reflection(56,88)[red];
+{99} Reflection(57,88)[cyan];
+{100} Reflection(58,88)[blue];
+{101} Reflection(59,88)[color(255,128,0)];
+{102} Reflection(60,88)[magenta];
+{103} Reflection(61,88)[color(128,128,128)];
+{104} Reflection(62,88)[green];
+{105} Reflection(63,88)[red];
+{106} Reflection(64,88)[cyan];
+{107} Reflection(65,88)[blue];
+{108} Reflection(66,88)[color(255,128,0)];
+{109} Reflection(67,88)[magenta];
+{110} Reflection(68,88)[color(128,128,128)];
+{111} Reflection(69,88)[green];
+{112} Reflection(70,88)[red];
+{113} Reflection(71,88)[cyan];
+{114} Reflection(72,88)[blue];
+{115} Reflection(73,88)[color(255,128,0)];
+{116} Reflection(74,88)[magenta];
+{117} Reflection(75,88)[color(128,128,128)];
+{118} Reflection(76,88)[green];
+{119} Reflection(77,88)[red];
+{120} Reflection(78,88)[cyan];
+{121} Reflection(79,88)[blue];
+{122} Reflection(80,88)[color(255,128,0)];
+{123} Reflection(81,88)[magenta];
+{124} Reflection(82,88)[green];
+{125} Reflection(83,88)[red];
+{126} Reflection(84,88)[cyan];
+{127} Reflection(85,88)[blue];
+{128} Reflection(86,88)[magenta];
+{129} Reflection(87,88)[color(255,128,0)];
+{130} Perpendicular(6,1)[hidden];
+{131} Reflection(89,130)[color(128,0,0)];
+{132} Reflection(90,130)[color(128,128,128)];
+{133} Reflection(91,130)[green];
+{134} Reflection(92,130)[red];
+{135} Reflection(93,130)[cyan];
+{136} Reflection(94,130)[blue];
+{137} Reflection(95,130)[color(255,128,0)];
+{138} Reflection(96,130)[color(128,128,128)];
+{139} Reflection(97,130)[green];
+{140} Reflection(98,130)[red];
+{141} Reflection(99,130)[cyan];
+{142} Reflection(100,130)[blue];
+{143} Reflection(101,130)[color(255,128,0)];
+{144} Reflection(102,130)[magenta];
+{145} Reflection(103,130)[color(128,128,128)];
+{146} Reflection(104,130)[green];
+{147} Reflection(105,130)[red];
+{148} Reflection(106,130)[cyan];
+{149} Reflection(107,130)[blue];
+{150} Reflection(108,130)[color(255,128,0)];
+{151} Reflection(109,130)[magenta];
+{152} Reflection(110,130)[color(128,128,128)];
+{153} Reflection(111,130)[green];
+{154} Reflection(112,130)[red];
+{155} Reflection(113,130)[cyan];
+{156} Reflection(114,130)[blue];
+{157} Reflection(115,130)[color(255,128,0)];
+{158} Reflection(116,130)[magenta];
+{159} Reflection(117,130)[color(128,128,128)];
+{160} Reflection(118,130)[green];
+{161} Reflection(119,130)[red];
+{162} Reflection(120,130)[cyan];
+{163} Reflection(121,130)[blue];
+{164} Reflection(122,130)[color(255,128,0)];
+{165} Reflection(123,130)[magenta];
+{166} Reflection(124,130)[green];
+{167} Reflection(125,130)[red];
+{168} Reflection(126,130)[cyan];
+{169} Reflection(127,130)[blue];
+{170} Reflection(128,130)[magenta];
+{171} Reflection(129,130)[color(255,128,0)];
+{172} Reflection(2,5)[hidden];
+{173} Reflection(131,5)[color(128,0,0)];
+{174} Reflection(132,5)[color(128,128,128)];
+{175} Reflection(133,5)[green];
+{176} Reflection(134,5)[red];
+{177} Reflection(135,5)[cyan];
+{178} Reflection(136,5)[blue];
+{179} Reflection(137,5)[color(255,128,0)];
+{180} Reflection(138,5)[color(128,128,128)];
+{181} Reflection(139,5)[green];
+{182} Reflection(140,5)[red];
+{183} Reflection(141,5)[cyan];
+{184} Reflection(142,5)[blue];
+{185} Reflection(143,5)[color(255,128,0)];
+{186} Reflection(144,5)[magenta];
+{187} Reflection(145,5)[color(128,128,128)];
+{188} Reflection(146,5)[green];
+{189} Reflection(147,5)[red];
+{190} Reflection(148,5)[cyan];
+{191} Reflection(149,5)[blue];
+{192} Reflection(150,5)[color(255,128,0)];
+{193} Reflection(151,5)[magenta];
+{194} Reflection(152,5)[color(128,128,128)];
+{195} Reflection(153,5)[green];
+{196} Reflection(154,5)[red];
+{197} Reflection(155,5)[cyan];
+{198} Reflection(156,5)[blue];
+{199} Reflection(157,5)[color(255,128,0)];
+{200} Reflection(158,5)[magenta];
+{201} Reflection(159,5)[color(128,128,128)];
+{202} Reflection(160,5)[green];
+{203} Reflection(161,5)[red];
+{204} Reflection(162,5)[cyan];
+{205} Reflection(163,5)[blue];
+{206} Reflection(164,5)[color(255,128,0)];
+{207} Reflection(165,5)[magenta];
+{208} Reflection(166,5)[green];
+{209} Reflection(167,5)[red];
+{210} Reflection(168,5)[cyan];
+{211} Reflection(169,5)[blue];
+{212} Reflection(170,5)[magenta];
+{213} Reflection(171,5)[color(255,128,0)];
+{214} Reflection(89,3)[magenta];
+{215} Reflection(90,3)[color(128,128,128)];
+{216} Reflection(91,3)[green];
+{217} Reflection(92,3)[red];
+{218} Reflection(93,3)[cyan];
+{219} Reflection(94,3)[blue];
+{220} Reflection(95,3)[color(255,128,0)];
+{221} Reflection(96,3)[color(128,128,128)];
+{222} Reflection(97,3)[green];
+{223} Reflection(98,3)[red];
+{224} Reflection(99,3)[cyan];
+{225} Reflection(100,3)[blue];
+{226} Reflection(101,3)[color(255,128,0)];
+{227} Reflection(102,3)[magenta];
+{228} Reflection(103,3)[color(128,128,128)];
+{229} Reflection(104,3)[green];
+{230} Reflection(105,3)[red];
+{231} Reflection(106,3)[cyan];
+{232} Reflection(107,3)[blue];
+{233} Reflection(108,3)[color(255,128,0)];
+{234} Reflection(109,3)[magenta];
+{235} Reflection(110,3)[color(128,128,128)];
+{236} Reflection(111,3)[green];
+{237} Reflection(112,3)[red];
+{238} Reflection(113,3)[cyan];
+{239} Reflection(114,3)[blue];
+{240} Reflection(115,3)[color(255,128,0)];
+{241} Reflection(116,3)[magenta];
+{242} Reflection(117,3)[color(128,128,128)];
+{243} Reflection(118,3)[green];
+{244} Reflection(119,3)[red];
+{245} Reflection(120,3)[cyan];
+{246} Reflection(121,3)[blue];
+{247} Reflection(122,3)[color(255,128,0)];
+{248} Reflection(123,3)[magenta];
+{249} Reflection(124,3)[green];
+{250} Reflection(125,3)[red];
+{251} Reflection(126,3)[cyan];
+{252} Reflection(127,3)[blue];
+{253} Reflection(128,3)[magenta];
+{254} Reflection(129,3)[color(255,128,0)];
+{255} Reflection(2,53)[hidden];
+{256} Reflection(131,53)[magenta];
+{257} Reflection(132,53)[color(128,128,128)];
+{258} Reflection(133,53)[green];
+{259} Reflection(134,53)[red];
+{260} Reflection(135,53)[cyan];
+{261} Reflection(136,53)[blue];
+{262} Reflection(137,53)[color(255,128,0)];
+{263} Reflection(138,53)[color(128,128,128)];
+{264} Reflection(139,53)[green];
+{265} Reflection(140,53)[red];
+{266} Reflection(141,53)[cyan];
+{267} Reflection(142,53)[blue];
+{268} Reflection(143,53)[color(255,128,0)];
+{269} Reflection(144,53)[magenta];
+{270} Reflection(145,53)[color(128,128,128)];
+{271} Reflection(146,53)[green];
+{272} Reflection(147,53)[red];
+{273} Reflection(148,53)[cyan];
+{274} Reflection(149,53)[blue];
+{275} Reflection(150,53)[color(255,128,0)];
+{276} Reflection(151,53)[magenta];
+{277} Reflection(152,53)[color(128,128,128)];
+{278} Reflection(153,53)[green];
+{279} Reflection(154,53)[red];
+{280} Reflection(155,53)[cyan];
+{281} Reflection(156,53)[blue];
+{282} Reflection(157,53)[color(255,128,0)];
+{283} Reflection(158,53)[magenta];
+{284} Reflection(159,53)[color(128,128,128)];
+{285} Reflection(160,53)[green];
+{286} Reflection(161,53)[red];
+{287} Reflection(162,53)[cyan];
+{288} Reflection(163,53)[blue];
+{289} Reflection(164,53)[color(255,128,0)];
+{290} Reflection(165,53)[magenta];
+{291} Reflection(166,53)[green];
+{292} Reflection(167,53)[red];
+{293} Reflection(168,53)[cyan];
+{294} Reflection(169,53)[blue];
+{295} Reflection(170,53)[magenta];
+{296} Reflection(171,53)[color(255,128,0)];
+{297} Reflection(89,53)[magenta];
+{298} Reflection(90,53)[color(128,128,128)];
+{299} Reflection(91,53)[green];
+{300} Reflection(92,53)[red];
+{301} Reflection(93,53)[cyan];
+{302} Reflection(94,53)[blue];
+{303} Reflection(95,53)[color(255,128,0)];
+{304} Reflection(96,53)[color(128,128,128)];
+{305} Reflection(97,53)[green];
+{306} Reflection(98,53)[red];
+{307} Reflection(99,53)[cyan];
+{308} Reflection(100,53)[blue];
+{309} Reflection(101,53)[color(255,128,0)];
+{310} Reflection(102,53)[magenta];
+{311} Reflection(103,53)[color(128,128,128)];
+{312} Reflection(104,53)[green];
+{313} Reflection(105,53)[red];
+{314} Reflection(106,53)[cyan];
+{315} Reflection(107,53)[blue];
+{316} Reflection(108,53)[color(255,128,0)];
+{317} Reflection(109,53)[magenta];
+{318} Reflection(110,53)[color(128,128,128)];
+{319} Reflection(111,53)[green];
+{320} Reflection(112,53)[red];
+{321} Reflection(113,53)[cyan];
+{322} Reflection(114,53)[blue];
+{323} Reflection(115,53)[color(255,128,0)];
+{324} Reflection(116,53)[magenta];
+{325} Reflection(117,53)[color(128,128,128)];
+{326} Reflection(118,53)[green];
+{327} Reflection(119,53)[red];
+{328} Reflection(120,53)[cyan];
+{329} Reflection(121,53)[blue];
+{330} Reflection(122,53)[color(255,128,0)];
+{331} Reflection(123,53)[magenta];
+{332} Reflection(124,53)[green];
+{333} Reflection(125,53)[red];
+{334} Reflection(126,53)[cyan];
+{335} Reflection(127,53)[blue];
+{336} Reflection(128,53)[magenta];
+{337} Reflection(129,53)[color(255,128,0)];
+{338} ToggleVisibilityButton(63,519,'隐藏控点|显示控点')(2,255)[color(255,128,0)];
+{339} Reflection(29,5)[color(128,128,128)];
+{340} Reflection(132,3)[color(128,128,128)];
+{341} Reflection(174,53)[color(128,128,128)];
+{342} Reflection(90,5)[color(128,128,128)];
+{343} Reflection(128,5)[magenta];
+{344} Reflection(158,6)[magenta];
+{345} Reflection(212,53)[magenta];
+{346} Reflection(86,5)[magenta];
+{347} Reflection(341,130)[color(128,128,128)];
+{348} Reflection(340,53)[color(128,128,128)];
+{349} Reflection(342,53)[color(128,128,128)];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>万花筒（学方老师）</P></H4>
+</BODY>
+</HTML>

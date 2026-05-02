@@ -1,0 +1,164 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>终板</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(264,453)[hidden];
+{2} Point(449,453)[hidden];
+{3} Point(237,295)[hidden];
+{4} Parameter(0,1134,251,'')[hidden];
+{5} Point(82,619)[hidden,mediumPoint];
+{6} FixedText(1137,434,'正面')[color(128,0,128),hidden];
+{7} FixedText(1137,459,'反面')[color(128,0,128),hidden];
+{8} FixedText(303,568,'当试验次数足够多的情况下正面朝上的频率逐渐稳定在0.5上下， 可用此时的频率近似的估计正面朝上的概率.')[color(128,0,128),hidden];
+{9} FixedText(241,58,'用试验频率估计理论概率-投硬币')[color(128,0,128)];
+{10} FixedText(822,605,'石岩制作2012.9.5')[color(128,0,128)];
+{11} Point(4,648);
+{12} Point(577,451)[label('0')];
+{13} Parameter(564.667,834,253,'投掷次数 = ')[color(128,0,128)];
+{14} Parameter(3,834,224,'硬币大小 = ')[color(128,0,128)];
+{15} Segment(2,1)[hidden];
+{16} Rotation(2,1,1.5708)[hidden];
+{17} Rotation(15,1,1.5708)[hidden];
+{18} Point on object(17,0.553245)[hidden];
+{19} Point on object(15,0.840458)[hidden];
+{20} VectorTranslation(19,1,16)[hidden];
+{21} UnitPoint(5,37.7953)[hidden];
+{22} HorizontalAxis(5,21)[color(96,96,96),hidden];
+{23} SquareUnitPoint(21)[hidden];
+{24} VerticalAxis(5,23)[color(96,96,96),hidden];
+{25} CoordSysByAxes(22,24)[hidden];
+{26} Segment(20,19)[hidden];
+{27} Point on object(26,0.293255)[hidden];
+{28} Translation/FixedAngle/MarkedDistance(27,14,2.35619)[hidden];
+{29} Translation(12,37.7953,0)[hidden];
+{30} Ray(29,12)[hidden];
+{31} Point on object(30,6.11187)[hidden];
+{32} Dilation(31,12,0.2)[hidden];
+{33} VectorTranslation(32,12,32)[hidden];
+{34} VectorTranslation(33,12,32)[hidden];
+{35} VectorTranslation(34,12,32)[hidden];
+{36} Rotation(31,12,1.5708)[label('1'),red];
+{37} VectorTranslation(32,12,36)[hidden];
+{38} VectorTranslation(33,12,36)[hidden];
+{39} VectorTranslation(34,12,36)[hidden];
+{40} VectorTranslation(35,12,36)[hidden];
+{41} VectorTranslation(31,12,36)[hidden];
+{42} Polygon(32,33,38,37)[color(192,192,192)];
+{43} Polygon(39,40,35,34)[color(192,192,192)];
+{44} Dilation(36,12,0.5)[label('0.5'),red];
+{45} Dilation(41,31,0.5)[hidden];
+{46} Segment(45,44)[red,dashed];
+{47} Segment(36,12)[color(128,0,128)];
+{48} Segment(41,36)[color(128,0,128)];
+{49} Segment(31,41)[color(128,0,128)];
+{50} Segment(12,31)[color(128,0,128)];
+{51} Dilation(33,32,0.5)[hidden];
+{52} Dilation(35,34,0.5)[hidden];
+{53} Translation(51,-6.59807e-014,-18.8976)[red,hidden];
+{54} Translation(52,-6.59807e-014,-18.8976)[red,hidden];
+{55} PeggedText(53,6)[color(128,0,128)];
+{56} PeggedText(54,7)[color(128,0,128)];
+{57} Translation(11,37.7953,0)[hidden];
+{58} Ray(57,11)[hidden];
+{59} Rotation(58,11,1.5708)[hidden];
+{60} Point on object(58,26.3853)[red];
+{61} Point on object(59,16.93)[red];
+{62} VectorTranslation(61,11,60)[red];
+{63} Translation(11,-5.27846e-014,15.1181)[hidden];
+{64} Rotation(63,11,-1.5708)[hidden];
+{65} Translation(61,-5.27846e-014,-15.1181)[hidden];
+{66} Rotation(65,61,1.5708)[hidden];
+{67} Translation(62,-5.27846e-014,-15.1181)[hidden];
+{68} Rotation(67,62,-1.5708)[hidden];
+{69} Translation(60,-5.27846e-014,15.1181)[hidden];
+{70} Rotation(69,60,1.5708)[hidden];
+{71} Segment(63,65)[red];
+{72} Segment(70,64)[red];
+{73} Segment(67,69)[red];
+{74} Segment(66,68)[red];
+{75} Dilation(60,61,0.5)[hidden];
+{76} Dilation(74,75,0.989474)[color(0,0,128),dashed];
+{77} Dilation(71,75,0.989474)[color(0,0,128),dashed];
+{78} Dilation(72,75,0.989474)[color(0,0,128),dashed];
+{79} Dilation(73,75,0.989474)[color(0,0,128),dashed];
+{80} ToggleVisibilityButton(835,377,'试验结论|试验结论')(8)[color(255,128,0)];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>终板</P></H4>
+</BODY>
+</HTML>

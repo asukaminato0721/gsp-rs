@@ -1,0 +1,100 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>试题</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} FixedText(28,64,'一透明的敞口正方体容器ABCD -A′B′C′D′ 装有一些 液体，棱AB始终在水平桌面上，容器底部的倾斜角为α  （∠CBE = α，如图17-1所示）．探究 如图17-1，液面刚好过棱CD，并与棱BB′ 交于 点Q，此时液体的形状 为直三棱柱，其三视图及尺寸如 图17-2所示．解决问题： （1）CQ与BE的位置关系是___________，BQ的长是____________dm；  （2）求液体的体积；（参考算法：直棱柱体积V液 = 底面积SBCQ×高AB）  （3）求α的度数.(注：sin49°＝cos41°＝(3/4)，tan37°＝(3/4)) 拓展  在图17-1的基础上，以棱AB为轴将容器向左或向右旋转，但不能使液体溢出，图17-3或图17-4是其正面示 意图.若液面与棱C′C或CB交于点P，设PC = x，BQ =y.分别就图17-3和图17-4求y与x的函数关系式，并写出 相应的α的范围. 延伸  在图17-4的基础上，于容器底部正中间位置，嵌入一平行于侧面的长方形隔板（厚度忽略不计），得到图17-5， 隔板高NM = 1 dm，BM = CM，NM⊥BC.继续向右缓慢旋转，当α = 60°时，通过计算，判断溢出容器的液体能 否达到4 dm3.')[black];
+{2} FixedText(30,46,'2013年河北省中考数学压轴')[black];
+{3} FixedText(984,62,'答案： （1）CQ∥BE .3 （2）24dm³ （3）37° 拓展 当0°≤α≤37°时y=－x+3 当37°≤α≤53°时y=(12/4－x) 延伸 V[溢出]=24-4(8-(11√(3)/6))            =(22√(3)/3)-8≈4.702＞4 故溢出的体积可以达到4dm³')[black,hidden];
+{4} ToggleVisibilityButton(1005,10,'答案|答案')(3)[color(255,128,0)];
+{5} Point(7,5)[large];
+{6} Translation(5,37.7953,0)[hidden];
+{7} Rotation(6,5,-1.5708)[hidden];
+{8} Ray(6,5)[hidden];
+{9} Ray(7,5)[hidden];
+{10} Point on object(8,25.4528)[cyan,large];
+{11} Point on object(9,17.1154)[cyan,large];
+{12} VectorTranslation(11,5,10)[cyan,large];
+{13} Segment(11,12)[color(192,192,192),thick];
+{14} Segment(5,11)[color(192,192,192),thick];
+{15} Segment(10,5)[color(192,192,192),thick];
+{16} Segment(12,10)[color(192,192,192),thick];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>试题</P></H4>
+</BODY>
+</HTML>

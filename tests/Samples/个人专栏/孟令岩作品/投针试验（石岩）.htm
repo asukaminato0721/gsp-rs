@@ -1,0 +1,142 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>投针试验（石岩）</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(99,507);
+{2} UnitPoint(1,29.7953)[red,dot];
+{3} HorizontalAxis(1,2)[hidden];
+{4} SquareUnitPoint(2)[hidden];
+{5} VerticalAxis(1,4)[hidden];
+{6} CoordSysByAxes(3,5)[hidden];
+{7} Ray(2,1)[hidden];
+{8} Point on object(7,15.1423)[red,dot];
+{9} Ray(4,1)[hidden];
+{10} Point on object(9,9.23658)[red,dot];
+{11} Dilation(10,1,0.1)[hidden];
+{12} VectorTranslation(11,1,8)[hidden];
+{13} VectorTranslation(10,1,8)[hidden];
+{14} Segment(13,10)[black,hairline];
+{15} Segment(12,11)[black,hairline];
+{16} Segment(13,8)[hidden];
+{17} Segment(10,1)[hidden];
+{18} Point on object(17,0.645771)[hidden];
+{19} Point on object(14,0.532615)[hidden];
+{20} Segment(11,1)[hidden];
+{21} Point on object(20,0.814412)[green,dot];
+{22} Distance(21,1,990,52,'')[hidden];
+{23} Distance(11,1,994,83,'')[hidden];
+{24} Perpendicular(9,18)[hidden];
+{25} Perpendicular(14,19)[hidden];
+{26} Intersect(24,25)[hidden];
+{27} Calculate(994,107,'','0.5 A * ')(22)[hidden];
+{28} Circle by radius(26,27)[hidden];
+{29} Point on object(28,-0.946807)[green];
+{30} Rotation(29,26,-3.14159)[hidden];
+{31} Segment(29,30)[color(128,0,128)];
+{32} Ordinate(1,6,994,167,'')[hidden];
+{33} Ordinate(11,6,994,187,'')[hidden];
+{34} Ordinate(10,6,992,363,'')[hidden];
+{35} Ordinate(30,6,994,146,'')[hidden];
+{36} Ordinate(29,6,994,125,'')[hidden];
+{37} Calculate(1068,130,'','A B - C B - * ')(36,32,35)[hidden];
+{38} Calculate(1068,150,'','A B - C B - * ')(36,33,35)[hidden];
+{39} Calculate(1067,343,'','A B - C B - * ')(36,34,35)[hidden];
+{40} Parameter(0,994,438,'')[hidden];
+{41} Parameter(-1,1071,414,'')[hidden];
+{42} Parameter(0.851558,745,271,'投针次数 = ')[black];
+{43} Calculate(998,567,'','2 A * 3.14159 B * / ')(22,23)[hidden];
+{44} Segment(8,1)[black,hairline];
+{45} Point(7,7);
+{46} Translation(45,37.7953,0)[hidden];
+{47} Translation(45,-1.31961e-013,-37.7953)[hidden];
+{48} Ray(47,45)[hidden];
+{49} Ray(46,45)[hidden];
+{50} Point on object(49,25.3246)[cyan,dot];
+{51} Point on object(48,17.0014)[cyan,dot];
+{52} VectorTranslation(51,45,50)[cyan,dot];
+{53} Translation(45,8.01759,-8.01759)[cyan,dot];
+{54} Translation(51,8.01759,8.01759)[cyan,dot];
+{55} Translation(50,-8.01759,-8.01759)[cyan,dot];
+{56} Translation(52,-8.01759,8.01759)[cyan,dot];
+{57} Polygon(45,50,52,51,54,56,55,53,54,51)[color(0,128,0)];
+{58} FixedText(108,63,'投针试验-石岩制作2012.9.10')[color(128,0,128)];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>投针试验（石岩）</P></H4>
+</BODY>
+</HTML>

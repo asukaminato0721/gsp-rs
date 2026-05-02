@@ -1,0 +1,116 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>摩天轮</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(471,243)[large];
+{2} Point(470,420);
+{3} Circle(1,2)[color(128,0,128),mediumLine];
+{4} Point on object(3,0.00204424)[hidden];
+{5} Point(28,590)[hidden];
+{6} Translation(5,37.7953,0)[hidden];
+{7} Ray(6,5)[blue,hairline];
+{8} Point on object(7,3.88937)[cyan,mediumPoint];
+{9} Parameter(0.6,46,159,'t[1] = ')[color(128,0,128)];
+{10} Circle by radius(4,9)[hidden];
+{11} Point on object(10,0.780901)[hidden];
+{12} Segment(11,4)[hidden];
+{13} Translation/FixedAngle/MarkedDistance(4,9,0)[hidden];
+{14} Line(13,4)[hidden];
+{15} Perpendicular(14,4)[hidden];
+{16} Reflection(11,15)[hidden];
+{17} Reflection(12,15)[hidden];
+{18} Segment(4,1)[hidden];
+{19} Translation/FixedAngle/MarkedDistance(16,9,-1.5708)[hidden];
+{20} Translation/FixedAngle/MarkedDistance(11,9,-1.5708)[hidden];
+{21} Segment(19,16)[hidden];
+{22} Segment(20,19)[hidden];
+{23} Segment(11,20)[hidden];
+{24} Angle(2,1,4,46,237,'∠EDC = ')[color(128,0,128)];
+{25} Colorized_Spectrum(18,24,0,1,2);
+{26} Colorized_Spectrum(17,24,0,1,2);
+{27} Colorized_Spectrum(21,24,0,1,2)[hairline];
+{28} Colorized_Spectrum(22,24,0,1,2)[hairline];
+{29} Colorized_Spectrum(23,24,0,1,2)[hairline];
+{30} Colorized_Spectrum(12,24,0,1,2);
+{31} AnimateButton(45,295,'动画点')(4,3)(3)(0)(1)[color(255,128,0)];
+{32} Segment(16,11)[blue,hairline];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>摩天轮</P></H4>
+</BODY>
+</HTML>

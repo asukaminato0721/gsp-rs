@@ -1,0 +1,134 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>时钟</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(486,288)[large];
+{2} Translation(1,-1.31961e-013,37.7953)[hidden];
+{3} Ray(2,1)[hidden];
+{4} Point on object(3,6.32354)[cyan,mediumPoint];
+{5} Parameter(13,817,383,'')[hidden];
+{6} Calculate(817,415,'t[1] - 1 = ','A 1 - ')(5)[black,hidden];
+{7} Segment(4,1)[hidden];
+{8} Point on object(7,0.847783)[red];
+{9} Segment(4,8)[color(0,0,128)];
+{10} Point on object(7,0.751174)[red,hidden,mediumPoint];
+{11} PeggedText(10,6)[blue];
+{12} Rotation(4,1,0.523599)[hidden];
+{13} Rotation(4,1,0.10472)[hidden];
+{14} Point on object(7,0.868615)[red];
+{15} Circle(1,8)[color(0,128,0)];
+{16} Circle(1,4)[color(128,128,128),thick];
+{17} Midpoint(9)[hidden];
+{18} Circle(17,14)[color(0,128,0)];
+{19} Circle interior(18)[color(138,102,217)];
+{20} Point on object(7,0.465566)[hidden];
+{21} Point on object(7,0.673368)[hidden];
+{22} Parameter(259098,813,454,'')[hidden];
+{23} Parameter(18,34,107,'预定秒 = ')[black];
+{24} Parameter(52,34,75,'预定分 = ')[black];
+{25} Parameter(8,34,43,'预定时 = ')[black];
+{26} Calculate(804,169,'','A 0.10472 ! * ')(23)[hidden];
+{27} Calculate(804,196,'','A 0.10472 ! * B 60 / + ')(24,26)[hidden];
+{28} Calculate(804,223,'','A 0.523599 ! * B 12 / + ')(25,27)[hidden];
+{29} Calculate(806,269,'','A @trnc ')(22)[hidden];
+{30} Calculate(806,296,'','A 60 / ')(29)[hidden];
+{31} Calculate(806,323,'','A 12 / ')(30)[hidden];
+{32} Rotation/MeasuredAngle(21,1,26)[hidden];
+{33} Rotation/MeasuredAngle(32,1,29)[cyan];
+{34} Rotation/MeasuredAngle(20,1,28)[hidden];
+{35} Rotation/MeasuredAngle(34,1,31)[cyan];
+{36} Dilation(33,1,-0.142857)[cyan];
+{37} Dilation(35,1,-0.142857)[cyan];
+{38} Segment(37,35)[black,thick];
+{39} Segment(36,33)[red];
+{40} Circle interior(15)[blue];
+{41} FixedText(27,470,'1预定时分秒 2开始')[blue,hidden];
+{42} ToggleVisibilityButton(34,215,'说明|说明')(41)[color(255,128,0)];
+{43} Point on object(7,0.596407)[hidden];
+{44} Rotation/MeasuredAngle(43,1,27)[hidden];
+{45} Rotation/MeasuredAngle(44,1,30)[cyan];
+{46} Dilation(45,1,-0.14286)[cyan];
+{47} Segment(45,46)[black,mediumLine];
+{48} ToggleVisibilityButton(34,167,'控点|控点')(14,8,4)[color(255,128,0)];
+{49} Parameter(0,817,500,'')[hidden];
+{50} MoveButton(39,257,0,'')(49,22)[hidden];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>时钟</P></H4>
+</BODY>
+</HTML>
