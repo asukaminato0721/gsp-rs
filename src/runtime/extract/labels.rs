@@ -32,8 +32,9 @@ use crate::runtime::payload_consts::{
     RECORD_POINT_F64_PAIR,
 };
 use crate::runtime::scene::{
-    IterationTable, LabelIterationFamily, RichTextExpressionRef, ScenePoint, ScreenPoint,
-    TextLabel, TextLabelBinding, TextLabelHotspot, TextLabelHotspotAction,
+    IterationTable, IterationTableColumn, LabelIterationFamily, RichTextExpressionRef,
+    RichTextExpressionValue, ScenePoint, ScreenPoint, TextLabel, TextLabelBinding,
+    TextLabelHotspot, TextLabelHotspotAction,
 };
 
 use super::analysis::{CollectedShapes, SceneAnalysis};
@@ -304,16 +305,14 @@ fn rich_text_expression_binding(
             }
             let source_group_ordinal = path.refs.get(hotspot.path_slot.checked_sub(1)?)?;
             let source_group = groups.get(source_group_ordinal.checked_sub(1)?)?;
-            if source_group.header.kind() != crate::format::GroupKind::FunctionExpr {
-                return None;
-            }
+            let value = rich_text_value_ref_for_group(file, groups, source_group)?;
             Some(RichTextExpressionRef {
                 source_group_ordinal: *source_group_ordinal,
                 slot: hotspot.path_slot,
                 line: hotspot.line,
                 start: hotspot.start,
                 end: hotspot.end,
-                expr: try_decode_function_expr(file, groups, source_group).ok()?,
+                value,
             })
         })
         .collect::<Vec<_>>();
@@ -321,6 +320,118 @@ fn rich_text_expression_binding(
         template_text: text.to_string(),
         template_rich_markup: rich_markup.clone(),
         refs,
+    })
+}
+
+fn rich_text_value_ref_for_group(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    source_group: &ObjectGroup,
+) -> Option<RichTextExpressionValue> {
+    if source_group.header.kind() == crate::format::GroupKind::FunctionExpr {
+        return Some(RichTextExpressionValue::Expr {
+            expr: try_decode_function_expr(file, groups, source_group).ok()?,
+        });
+    }
+    if let Some(name) = editable_non_graph_parameter_name_for_group(file, groups, source_group)
+        .or_else(|| decode_label_name(file, source_group))
+        .or_else(|| decode_label_name_raw(file, source_group))
+    {
+        return Some(RichTextExpressionValue::Parameter { name });
+    }
+    rich_text_iteration_coordinate_value_ref(file, groups, source_group)
+}
+
+fn rich_text_iteration_coordinate_value_ref(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    coordinate_group: &ObjectGroup,
+) -> Option<RichTextExpressionValue> {
+    let axis = match coordinate_group.header.kind() {
+        crate::format::GroupKind::CoordinateXValue => {
+            crate::runtime::scene::CoordinateAxis::Horizontal
+        }
+        crate::format::GroupKind::CoordinateYValue => {
+            crate::runtime::scene::CoordinateAxis::Vertical
+        }
+        _ => return None,
+    };
+    let coordinate_path = find_indexed_path(file, coordinate_group)?;
+    let alias_group = groups.get(coordinate_path.refs.first()?.checked_sub(1)?)?;
+    if alias_group.header.kind() != crate::format::GroupKind::IterationPointAlias {
+        return None;
+    }
+    let alias_path = find_indexed_path(file, alias_group)?;
+    let binding_group = groups.get(alias_path.refs.first()?.checked_sub(1)?)?;
+    if binding_group.header.kind() != crate::format::GroupKind::IterationBinding {
+        return None;
+    }
+    let binding_path = find_indexed_path(file, binding_group)?;
+    let source_group = groups.get(binding_path.refs.first()?.checked_sub(1)?)?;
+    let iter_group = groups.get(binding_path.refs.get(1)?.checked_sub(1)?)?;
+    if !source_group.header.kind().is_coordinate_object()
+        || iter_group.header.kind() != crate::format::GroupKind::RegularPolygonIteration
+    {
+        return None;
+    }
+    let source_path = find_indexed_path(file, source_group)?;
+    let target_parameter_group_ordinal = match axis {
+        crate::runtime::scene::CoordinateAxis::Horizontal => source_path.refs.get(0)?,
+        crate::runtime::scene::CoordinateAxis::Vertical => source_path.refs.get(1)?,
+    };
+    let target_group = groups.get(target_parameter_group_ordinal.checked_sub(1)?)?;
+    let target_parameter_name =
+        editable_non_graph_parameter_name_for_group(file, groups, target_group)
+            .or_else(|| decode_label_name(file, target_group))
+            .or_else(|| decode_label_name_raw(file, target_group))?;
+    let iter_path = find_indexed_path(file, iter_group)?;
+    let mut seen_names = BTreeSet::new();
+    let mut state_parameter_names = Vec::new();
+    let mut state_exprs = Vec::new();
+    for ordinal in iter_path.refs.iter().skip(1) {
+        let expr_group = groups.get(ordinal.checked_sub(1)?)?;
+        if expr_group.header.kind() != crate::format::GroupKind::FunctionExpr {
+            continue;
+        }
+        let parameter_name = direct_function_expr_parameter_name(file, groups, expr_group)
+            .or_else(|| {
+                resolve_function_expr_parameter(file, groups, expr_group, &[], &mut BTreeSet::new())
+                    .map(|(name, _)| name)
+            })?;
+        if !seen_names.insert(parameter_name.clone()) {
+            continue;
+        }
+        state_parameter_names.push(parameter_name);
+        state_exprs.push(try_decode_function_expr(file, groups, expr_group).ok()?);
+    }
+    if state_parameter_names.is_empty()
+        || state_parameter_names.len() != state_exprs.len()
+        || !state_parameter_names
+            .iter()
+            .any(|name| name == &target_parameter_name)
+    {
+        return None;
+    }
+    let depth = iter_group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x090a)
+        .map(|record| record.payload(&file.data))
+        .filter(|payload| payload.len() >= 20)
+        .map(|payload| read_u32(payload, 16) as usize)
+        .unwrap_or(3);
+    let depth_expr = iter_path
+        .refs
+        .first()
+        .and_then(|ordinal| groups.get(ordinal.checked_sub(1)?))
+        .filter(|group| group.header.kind() == crate::format::GroupKind::FunctionExpr)
+        .and_then(|group| try_decode_function_expr(file, groups, group).ok());
+    Some(RichTextExpressionValue::IterationState {
+        state_parameter_names,
+        state_exprs,
+        target_parameter_name,
+        depth,
+        depth_expr,
     })
 }
 
@@ -1029,14 +1140,14 @@ fn postfix_display_label_from_words(
             }
             _ if (word & EXPR_PARAMETER_MASK) == EXPR_PARAMETER_PREFIX => {
                 let parameter_index = usize::from(word & 0x000f);
-                stack.push(DisplayExprLabel::atom(display_parameter_label(
+                stack.push(display_parameter_expr_label(
                     file,
                     groups,
                     anchors,
                     group,
                     parameter_index,
                     visiting,
-                )?));
+                )?);
                 index += 1;
             }
             _ if display_unary_function(word).is_some() => {
@@ -1110,14 +1221,14 @@ fn display_operand_label(
     visiting: &mut BTreeSet<usize>,
 ) -> Option<DisplayExprLabel> {
     if (word & EXPR_PARAMETER_MASK) == EXPR_PARAMETER_PREFIX {
-        return Some(DisplayExprLabel::atom(display_parameter_label(
+        return display_parameter_expr_label(
             file,
             groups,
             anchors,
             group,
             usize::from(word & 0x000f),
             visiting,
-        )?));
+        );
     }
     match word {
         EXPR_VARIABLE_WORD => Some(DisplayExprLabel::atom("x".to_string())),
@@ -1139,6 +1250,33 @@ fn display_unary_function(word: u16) -> Option<&'static str> {
         0x200b => Some("round"),
         0x200c => Some("trunc"),
         _ => None,
+    }
+}
+
+fn display_parameter_expr_label(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group: &ObjectGroup,
+    parameter_index: usize,
+    visiting: &mut BTreeSet<usize>,
+) -> Option<DisplayExprLabel> {
+    let text = display_parameter_label(file, groups, anchors, group, parameter_index, visiting)?;
+    Some(DisplayExprLabel {
+        precedence: display_label_precedence(&text),
+        text,
+    })
+}
+
+fn display_label_precedence(text: &str) -> u8 {
+    if text.contains(" + ") || text.contains(" - ") {
+        1
+    } else if text.contains('*') || text.contains(" / ") {
+        2
+    } else if text.contains('^') {
+        3
+    } else {
+        4
     }
 }
 
@@ -3679,30 +3817,45 @@ pub(super) fn collect_iteration_tables(
                 return None;
             }
             let iter_group = context.group_by_ordinal(path.refs[0])?;
-            let expr_group = context.group_by_ordinal(path.refs[1])?;
-            if expr_group.header.kind() != crate::format::GroupKind::FunctionExpr {
-                return None;
-            }
-            let expr = context.function_expr(expr_group).ok()?;
-            let parameter_name = direct_function_expr_parameter_name(file, groups, expr_group)
-                .or_else(|| {
-                    resolve_function_expr_parameter(
+            let columns = path
+                .refs
+                .iter()
+                .skip(1)
+                .filter_map(|ordinal| {
+                    let expr_group = context.group_by_ordinal(*ordinal)?;
+                    if expr_group.header.kind() != crate::format::GroupKind::FunctionExpr {
+                        return None;
+                    }
+                    let expr = context.function_expr(expr_group).ok()?;
+                    let parameter_name = direct_function_expr_parameter_name(
+                        file, groups, expr_group,
+                    )
+                    .or_else(|| {
+                        resolve_function_expr_parameter(
+                            file,
+                            groups,
+                            expr_group,
+                            anchors,
+                            &mut BTreeSet::new(),
+                        )
+                        .map(|(name, _)| name)
+                    })?;
+                    let expr_label = payload_function_expr_label(
                         file,
                         groups,
-                        expr_group,
                         anchors,
+                        expr_group,
+                        &function_expr_label(expr.clone()),
                         &mut BTreeSet::new(),
-                    )
-                    .map(|(name, _)| name)
-                })?;
-            let expr_label = payload_function_expr_label(
-                file,
-                groups,
-                anchors,
-                expr_group,
-                &function_expr_label(expr.clone()),
-                &mut BTreeSet::new(),
-            );
+                    );
+                    Some(IterationTableColumn {
+                        expr_label,
+                        parameter_name,
+                        expr,
+                    })
+                })
+                .collect::<Vec<_>>();
+            let first_column = columns.first()?;
             let depth = iter_group
                 .records
                 .iter()
@@ -3712,12 +3865,20 @@ pub(super) fn collect_iteration_tables(
                 .map(|payload| read_u32(payload, 16) as usize)
                 .unwrap_or(3);
             let depth_parameter_name = iteration_depth_driver_name(file, groups, iter_group);
+            let depth_expr = context
+                .indexed_path(iter_group)
+                .and_then(|iter_path| iter_path.refs.first())
+                .and_then(|ordinal| context.group_by_ordinal(*ordinal))
+                .filter(|group| group.header.kind() == crate::format::GroupKind::FunctionExpr)
+                .and_then(|group| context.function_expr(group).ok());
             Some(IterationTable {
                 anchor: decode_iteration_table_anchor(file, group)?,
-                expr_label,
-                parameter_name,
-                expr,
+                expr_label: first_column.expr_label.clone(),
+                parameter_name: first_column.parameter_name.clone(),
+                expr: first_column.expr.clone(),
+                columns,
                 depth,
+                depth_expr,
                 depth_parameter_name,
                 visible: true,
                 debug: Some(payload_debug_source(group)),

@@ -1,7 +1,8 @@
 use super::function_expr_json::FunctionExprJson;
 use super::scene_json::{DebugSourceJson, PointJson};
 use crate::runtime::scene::{
-    ButtonAction, RichTextExpressionRef, SceneButton, TextLabelBinding, TextLabelHotspotAction,
+    ButtonAction, RichTextExpressionRef, RichTextExpressionValue, SceneButton, TextLabelBinding,
+    TextLabelHotspotAction,
 };
 use serde::Serialize;
 use ts_rs::TS;
@@ -615,7 +616,29 @@ struct RichTextExpressionRefJson {
     line: usize,
     start: usize,
     end: usize,
-    expr: FunctionExprJson,
+    #[serde(flatten)]
+    value: RichTextExpressionValueJson,
+}
+
+#[derive(Serialize, TS)]
+#[serde(tag = "kind")]
+enum RichTextExpressionValueJson {
+    #[serde(rename = "expression")]
+    Expr { expr: FunctionExprJson },
+    #[serde(rename = "parameter")]
+    Parameter { name: String },
+    #[serde(rename = "iteration-state")]
+    IterationState {
+        #[serde(rename = "stateParameterNames")]
+        state_parameter_names: Vec<String>,
+        #[serde(rename = "stateExprs")]
+        state_exprs: Vec<FunctionExprJson>,
+        #[serde(rename = "targetParameterName")]
+        target_parameter_name: String,
+        depth: usize,
+        #[serde(rename = "depthExpr")]
+        depth_expr: Option<FunctionExprJson>,
+    },
 }
 
 impl RichTextExpressionRefJson {
@@ -626,7 +649,34 @@ impl RichTextExpressionRefJson {
             line: reference.line,
             start: reference.start,
             end: reference.end,
-            expr: FunctionExprJson::from_expr(&reference.expr),
+            value: RichTextExpressionValueJson::from_value(&reference.value),
+        }
+    }
+}
+
+impl RichTextExpressionValueJson {
+    fn from_value(value: &RichTextExpressionValue) -> Self {
+        match value {
+            RichTextExpressionValue::Expr { expr } => Self::Expr {
+                expr: FunctionExprJson::from_expr(expr),
+            },
+            RichTextExpressionValue::Parameter { name } => Self::Parameter { name: name.clone() },
+            RichTextExpressionValue::IterationState {
+                state_parameter_names,
+                state_exprs,
+                target_parameter_name,
+                depth,
+                depth_expr,
+            } => Self::IterationState {
+                state_parameter_names: state_parameter_names.clone(),
+                state_exprs: state_exprs
+                    .iter()
+                    .map(FunctionExprJson::from_expr)
+                    .collect(),
+                target_parameter_name: target_parameter_name.clone(),
+                depth: *depth,
+                depth_expr: depth_expr.as_ref().map(FunctionExprJson::from_expr),
+            },
         }
     }
 }

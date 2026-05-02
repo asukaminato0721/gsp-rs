@@ -13,21 +13,26 @@
     if (table.visible === false || !Array.isArray(table.rows) || table.rows.length === 0) {
       return null;
     }
-    const header = ["n", table.exprLabel];
-    const body = table.rows.map((/** @type {{ index: number; value: number }} */ row) => [String(row.index), env.formatNumber(row.value)]);
+    const columns = Array.isArray(table.columns) && table.columns.length > 0
+      ? table.columns
+      : [{ exprLabel: table.exprLabel }];
+    const header = ["n", ...columns.map((/** @type {{ exprLabel: string }} */ column) => column.exprLabel)];
+    const body = table.rows.map((/** @type {{ index: number; value?: number; values?: number[] }} */ row) => {
+      const values = Array.isArray(row.values) ? row.values : [row.value ?? Number.NaN];
+      return [String(row.index), ...values.map((value) => env.formatNumber(value))];
+    });
     const rows = [header, ...body];
-    /** @type {[number, number]} */
-    const colWidths = [0, 0];
+    /** @type {number[]} */
+    const colWidths = Array.from({ length: header.length }, () => 0);
     rows.forEach((/** @type {string[]} */ row) => {
       row.forEach((/** @type {string} */ cell, /** @type {number} */ index) => {
-        if (index > 1) return;
         const width = colWidths[index];
         if (typeof width !== "number") return;
         colWidths[index] = Math.max(width, env.measureText(cell, 18) + 18);
       });
     });
     const rowHeight = 28;
-    const width = colWidths[0] + colWidths[1];
+    const width = colWidths.reduce((sum, colWidth) => sum + colWidth, 0);
     const height = rowHeight * rows.length;
     return {
       left: table.x,
@@ -87,14 +92,18 @@
         stroke: env.rgba([32, 32, 32, 255]),
         "stroke-width": 1,
       }));
-      group.append(env.createSvgElement("line", {
-        x1: colWidths[0],
-        y1: 0,
-        x2: colWidths[0],
-        y2: height,
-        stroke: env.rgba([32, 32, 32, 255]),
-        "stroke-width": 1,
-      }));
+      let columnX = 0;
+      for (let columnIndex = 0; columnIndex < colWidths.length - 1; columnIndex += 1) {
+        columnX += colWidths[columnIndex];
+        group.append(env.createSvgElement("line", {
+          x1: columnX,
+          y1: 0,
+          x2: columnX,
+          y2: height,
+          stroke: env.rgba([32, 32, 32, 255]),
+          "stroke-width": 1,
+        }));
+      }
       for (let index = 1; index < rows.length; index += 1) {
         const y = rowHeight * index;
         group.append(env.createSvgElement("line", {

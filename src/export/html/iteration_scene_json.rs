@@ -1,8 +1,8 @@
 use super::function_expr_json::FunctionExprJson;
 use super::scene_json::DebugSourceJson;
 use crate::runtime::scene::{
-    CircleIterationFamily, IterationPointHandle, IterationTable, LabelIterationFamily,
-    LineIterationFamily, PointIterationFamily, PolygonIterationFamily,
+    CircleIterationFamily, IterationPointHandle, IterationTable, IterationTableColumn,
+    LabelIterationFamily, LineIterationFamily, PointIterationFamily, PolygonIterationFamily,
 };
 use serde::Serialize;
 use ts_rs::TS;
@@ -586,11 +586,21 @@ pub(super) struct IterationTableJson {
     expr_label: String,
     parameter_name: String,
     expr: FunctionExprJson,
+    columns: Vec<IterationTableColumnJson>,
     depth: usize,
+    depth_expr: Option<FunctionExprJson>,
     depth_parameter_name: Option<String>,
     visible: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     debug: Option<DebugSourceJson>,
+}
+
+#[derive(Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+struct IterationTableColumnJson {
+    expr_label: String,
+    parameter_name: String,
+    expr: FunctionExprJson,
 }
 
 impl IterationTableJson {
@@ -601,10 +611,26 @@ impl IterationTableJson {
             expr_label: table.expr_label.clone(),
             parameter_name: table.parameter_name.clone(),
             expr: FunctionExprJson::from_expr(&table.expr),
+            columns: table
+                .columns
+                .iter()
+                .map(IterationTableColumnJson::from_column)
+                .collect(),
             depth: table.depth,
+            depth_expr: table.depth_expr.as_ref().map(FunctionExprJson::from_expr),
             depth_parameter_name: table.depth_parameter_name.clone(),
             visible: table.visible,
             debug: table.debug.as_ref().map(DebugSourceJson::from_source),
+        }
+    }
+}
+
+impl IterationTableColumnJson {
+    fn from_column(column: &IterationTableColumn) -> Self {
+        Self {
+            expr_label: column.expr_label.clone(),
+            parameter_name: column.parameter_name.clone(),
+            expr: FunctionExprJson::from_expr(&column.expr),
         }
     }
 }

@@ -1943,6 +1943,53 @@
   }
 
   /**
+   * @param {ViewerSceneData} scene
+   * @param {any} ref
+   * @param {Map<string, number>} parameters
+   * @returns {number | null}
+   */
+  function evaluateRichTextValueRef(scene, ref, parameters) {
+    if (ref.kind === "parameter" && typeof ref.name === "string") {
+      const value = parameters.get(ref.name);
+      return typeof value === "number" && Number.isFinite(value) ? value : null;
+    }
+    if ((ref.kind === "expression" || !ref.kind) && ref.expr) {
+      return evaluateExpr(ref.expr, 0, parameters);
+    }
+    if (ref.kind !== "iteration-state") {
+      return null;
+    }
+    const stateNames = Array.isArray(ref.stateParameterNames) ? ref.stateParameterNames : [];
+    const stateExprs = Array.isArray(ref.stateExprs) ? ref.stateExprs : [];
+    if (stateNames.length === 0 || stateNames.length !== stateExprs.length) {
+      return null;
+    }
+    const rawDepth = ref.depthExpr
+      ? evaluateExpr(ref.depthExpr, 0, parameters)
+      : ref.depth;
+    const depth = discreteIterationDepth(Number.isFinite(rawDepth) ? rawDepth : ref.depth);
+    const state = new Map(parameters);
+    for (let step = 0; step < depth; step += 1) {
+      const derived = deriveExpressionLabelParameters(scene, state);
+      /** @type {[string, number][]} */
+      const updates = [];
+      stateExprs.forEach((/** @type {FunctionExprJson} */ expr, /** @type {number} */ index) => {
+        const name = stateNames[index];
+        const value = evaluateExpr(expr, 0, derived);
+        if (typeof name === "string" && Number.isFinite(value)) {
+          updates.push([name, /** @type {number} */ (value)]);
+        }
+      });
+      if (updates.length === 0) {
+        break;
+      }
+      updates.forEach(([name, value]) => state.set(name, value));
+    }
+    const value = state.get(ref.targetParameterName);
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
+  }
+
+  /**
    * @param {string} exprLabel
    * @param {string} valueText
    */
@@ -3003,25 +3050,30 @@
     const currentTables = scene.iterationTables || [];
     scene.iterationTables = sourceTables.map((table, index) => {
       const current = currentTables[index];
-      const depth = table.depthParameterName
+      const depth = table.depthExpr
+        ? discreteIterationDepth(evaluateExpr(table.depthExpr, 0, parameters) ?? table.depth)
+        : table.depthParameterName
         ? discreteIterationDepth(parameters.get(table.depthParameterName) ?? table.depth)
         : discreteIterationDepth(table.depth);
-      let currentValue = parameters.get(table.parameterName);
+      const columns = Array.isArray(table.columns) && table.columns.length > 0
+        ? table.columns
+        : [{ exprLabel: table.exprLabel, parameterName: table.parameterName, expr: table.expr }];
+      const state = new Map(parameters);
       /** @type {RuntimeIterationRow[]} */
       const rows = [];
-      if (isFiniteNumber(currentValue)) {
+      if (columns.every((/** @type {any} */ column) => isFiniteNumber(state.get(column.parameterName)))) {
         for (let index = 0; index <= depth; index += 1) {
-          const value = evaluateRecursiveExpression(
-            table.expr,
-            table.parameterName,
-            currentValue,
-            parameters,
+          const derived = deriveExpressionLabelParameters(scene, state);
+          const values = columns.map((/** @type {any} */ column) =>
+            evaluateExpr(column.expr, 0, derived),
           );
-          if (!isFiniteNumber(value)) {
+          if (!values.every(isFiniteNumber)) {
             break;
           }
-          rows.push({ index, value });
-          currentValue = value;
+          rows.push({ index, value: values[0], values });
+          columns.forEach((/** @type {any} */ column, /** @type {number} */ columnIndex) => {
+            state.set(column.parameterName, values[columnIndex]);
+          });
         }
       }
       return {
@@ -3509,13 +3561,13 @@
         label.richMarkup = buildPlainTextRichMarkup(label.text);
       }
     },
-    "rich-text-expression-values"(_env, _scene, label, parameters) {
+    "rich-text-expression-values"(_env, scene, label, parameters) {
       /** @type {Map<number, string>} */
       const valuesBySlot = new Map();
       /** @type {{ line: number, start: number, end: number, valueText: string }[]} */
       const replacements = [];
       (label.binding.refs || []).forEach((/** @type {any} */ ref) => {
-        const value = evaluateExpr(ref.expr, 0, parameters);
+        const value = evaluateRichTextValueRef(scene, ref, parameters);
         const valueText = value !== null ? formatSequenceValue(value) : "未定义";
         valuesBySlot.set(ref.slot, valueText);
         replacements.push({

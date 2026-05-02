@@ -333,10 +333,19 @@ pub(crate) struct IterationTable {
     pub(crate) expr_label: String,
     pub(crate) parameter_name: String,
     pub(crate) expr: FunctionExpr,
+    pub(crate) columns: Vec<IterationTableColumn>,
     pub(crate) depth: usize,
+    pub(crate) depth_expr: Option<FunctionExpr>,
     pub(crate) depth_parameter_name: Option<String>,
     pub(crate) visible: bool,
     pub(crate) debug: Option<PayloadDebugSource>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct IterationTableColumn {
+    pub(crate) expr_label: String,
+    pub(crate) parameter_name: String,
+    pub(crate) expr: FunctionExpr,
 }
 
 #[derive(Debug, Clone)]
@@ -985,7 +994,24 @@ pub(crate) struct RichTextExpressionRef {
     pub(crate) line: usize,
     pub(crate) start: usize,
     pub(crate) end: usize,
-    pub(crate) expr: FunctionExpr,
+    pub(crate) value: RichTextExpressionValue,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum RichTextExpressionValue {
+    Expr {
+        expr: FunctionExpr,
+    },
+    Parameter {
+        name: String,
+    },
+    IterationState {
+        state_parameter_names: Vec<String>,
+        state_exprs: Vec<FunctionExpr>,
+        target_parameter_name: String,
+        depth: usize,
+        depth_expr: Option<FunctionExpr>,
+    },
 }
 
 #[derive(Debug, Clone)]

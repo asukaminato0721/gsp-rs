@@ -68,6 +68,7 @@ type TextLabel = RuntimeLabelJson;
 type RuntimeIterationRow = {
   index: number;
   value: number;
+  values: number[];
 };
 
 type RuntimeIterationTableJson = IterationTableJson & {

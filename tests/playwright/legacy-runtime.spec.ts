@@ -696,3 +696,36 @@ test('Lizhangbo solid-geometry trace label buttons drive hidden parameters', asy
   expect(animated.t7).toBeGreaterThan(0);
   expect(animated.pointCount).toBeGreaterThan(reset.pointCount);
 });
+
+test('factorial rich label follows the N iteration depth control', async ({ page }) => {
+  const file = compileFixtureToTempHtml('tests/Samples/未分类档/N!.gsp');
+  await page.goto(`file://${file}`);
+
+  const before = await page.evaluate(() =>
+    ({
+      label: window.gspDebug.runtime.scene.labels.find((label: any) => label.text.includes('!='))?.text,
+      columns: window.gspDebug.runtime.scene.iterationTables[0]?.columns.map((column: any) => column.exprLabel),
+      firstRow: window.gspDebug.runtime.scene.iterationTables[0]?.rows[0]?.values,
+      lastRow: window.gspDebug.runtime.scene.iterationTables[0]?.rows.at(-1)?.values,
+    }),
+  );
+  expect(before.label).toBe('6!=720');
+  expect(before.columns).toEqual(['t₁ + 1', 's*(t₁ + 1)']);
+  expect(before.firstRow).toEqual([2, 2]);
+  expect(before.lastRow).toEqual([7, 5040]);
+  const renderedTableText = await page.locator('#scene-layer text').allTextContents();
+  expect(renderedTableText).toEqual(expect.arrayContaining(['n', 't₁ + 1', 's*(t₁ + 1)', '5040']));
+
+  await page.locator('input[type=number]').nth(2).fill('4');
+  await expect.poll(async () =>
+    page.evaluate(() =>
+      window.gspDebug.runtime.scene.labels.find((label: any) => label.text.includes('!='))?.text,
+    ),
+  ).toBe('4!=24');
+  const tableAfter = await page.evaluate(() => window.gspDebug.runtime.scene.iterationTables[0]);
+  expect(tableAfter.rows).toHaveLength(4);
+  expect(tableAfter.rows.at(-1).values).toEqual([5, 120]);
+
+  const dependencyRun = await page.evaluate(() => window.gspDebug.dependencyRun);
+  expect(dependencyRun.executedRecipes).toContain('refresh-dynamic-labels');
+});

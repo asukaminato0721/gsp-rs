@@ -4,7 +4,8 @@ use super::test_support::{
 use crate::runtime::functions::evaluate_expr_with_parameters;
 use crate::runtime::scene::{
     ButtonAction, LabelIterationFamily, LineBinding, LineIterationFamily, PointIterationFamily,
-    PolygonIterationFamily, ScenePointBinding, ScenePointConstraint, TextLabelBinding,
+    PolygonIterationFamily, RichTextExpressionValue, ScenePointBinding, ScenePointConstraint,
+    TextLabelBinding,
 };
 use std::collections::BTreeMap;
 
@@ -38,6 +39,60 @@ fn builds_golden_curve_iteration_fixture_without_polygon_helper_errors() {
     let log = fixture_log(&data, "tests/Samples/热研系列/迭代系列/黄金曲线迭代.gsp");
 
     assert!(log.contains("问题数量: 0"));
+}
+
+#[test]
+fn exports_factorial_rich_label_as_live_iteration_state() {
+    let Some(data) = fixture_bytes("tests/Samples/未分类档/N!.gsp") else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+    let label = scene
+        .labels
+        .iter()
+        .find(|label| label.text == "6!=720")
+        .expect("expected factorial result label");
+    let Some(TextLabelBinding::RichTextExpressionValues { refs, .. }) = label.binding.as_ref()
+    else {
+        panic!("expected factorial label to carry rich-text value refs");
+    };
+    assert!(
+        refs.iter().any(|reference| matches!(
+            &reference.value,
+            RichTextExpressionValue::Parameter { name } if name == "n"
+        )),
+        "expected the first rich-text slot to stay linked to parameter n"
+    );
+    assert!(
+        refs.iter().any(|reference| matches!(
+            &reference.value,
+            RichTextExpressionValue::IterationState {
+                state_parameter_names,
+                target_parameter_name,
+                depth_expr: Some(_),
+                ..
+            } if state_parameter_names == &vec!["t₁".to_string(), "s".to_string()]
+                && target_parameter_name == "s"
+        )),
+        "expected the second rich-text slot to read the iterated y-state"
+    );
+    let table = scene
+        .iteration_tables
+        .first()
+        .expect("expected iteration expression helper table");
+    assert_eq!(
+        table
+            .columns
+            .iter()
+            .map(|column| column.expr_label.as_str())
+            .collect::<Vec<_>>(),
+        vec!["t₁ + 1", "s*(t₁ + 1)"],
+        "expected the payload helper table to preserve both expression columns"
+    );
+    assert!(
+        table.depth_expr.is_some(),
+        "expected the payload helper table depth to use n - 1 rather than raw n"
+    );
 }
 
 #[test]
