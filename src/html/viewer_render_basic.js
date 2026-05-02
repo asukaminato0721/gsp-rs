@@ -1,19 +1,13 @@
 // @ts-check
 
 (function() {
-  const modules = window.GspViewerModules || (window.GspViewerModules = {});
-
-  /**
-   * @param {PointHandle} handle
-   * @returns {handle is Extract<PointHandle, { pointIndex: number }>}
-   */
-  function hasPointIndexHandle(handle) {
-    return !!handle && typeof handle === "object" && "pointIndex" in handle && typeof handle.pointIndex === "number";
-  }
+  const modules = /** @type {Partial<ViewerModules> & { render: ViewerRenderModule }} */ (
+    window.GspViewerModules || (window.GspViewerModules = {})
+  );
 
   /**
    * @param {LineBindingJson} binding
-   * @returns {binding is Extract<LineBindingJson, { lineStartIndex: number | null; lineEndIndex: number | null }>}
+   * @returns {binding is Extract<LineBindingJson, { lineStartIndex: number | null; lineEndIndex: number | null }> & { lineStartIndex: number; lineEndIndex: number }}
    */
   function hasExplicitHostLine(binding) {
     return !!binding
@@ -161,7 +155,9 @@
     }
     if (hits.length < 2) return null;
     hits.sort((a, b) => a.t - b.t);
-    return [hits[0].point, hits[hits.length - 1].point];
+    const firstHit = hits[0];
+    const lastHit = hits[hits.length - 1];
+    return firstHit && lastHit ? [firstHit.point, lastHit.point] : null;
   }
 
   /**
@@ -405,14 +401,24 @@
         continue;
       }
       let screenPoints = null;
-      const resolveHostLinePoints = (/** @type {LineBindingJson} */ binding) => {
+      /**
+       * @param {LineBindingJson} binding
+       * @returns {[Point, Point] | null}
+       */
+      const resolveHostLinePoints = (binding) => {
         if (hasExplicitHostLine(binding)) {
-          return [env.resolveScenePoint(binding.lineStartIndex), env.resolveScenePoint(binding.lineEndIndex)];
+          const lineStart = env.resolveScenePoint(binding.lineStartIndex);
+          const lineEnd = env.resolveScenePoint(binding.lineEndIndex);
+          return lineStart && lineEnd ? [lineStart, lineEnd] : null;
         }
         if (hasHostLineIndex(binding)) {
           const indexedBinding = /** @type {{ lineIndex?: number }} */ (binding);
           if (typeof indexedBinding.lineIndex === "number") {
-            return env.resolveLinePoints(indexedBinding.lineIndex);
+            const points = env.resolveLinePoints(indexedBinding.lineIndex);
+            if (!points || points.length < 2) return null;
+            const start = points[0];
+            const end = points[points.length - 1];
+            return start && end ? [start, end] : null;
           }
         }
         return null;

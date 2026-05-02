@@ -1,7 +1,9 @@
 // @ts-check
 
 (function() {
-  const modules = window.GspViewerModules || (window.GspViewerModules = {});
+  const modules = /** @type {Partial<ViewerModules> & { geometry: ViewerGeometryModule; scene: ViewerSceneModule }} */ (
+    window.GspViewerModules || (window.GspViewerModules = {})
+  );
   const geometry = modules.geometry;
   const {
     lerpPoint,
@@ -16,6 +18,13 @@
     scaleByThreePointRatio,
   } = geometry;
   /** @typedef {{ minX: number; maxX: number; minY: number; maxY: number; spanX?: number; spanY?: number }} ViewBounds */
+  /**
+   * @param {unknown} value
+   * @returns {value is number}
+   */
+  function isFiniteNumber(value) {
+    return typeof value === "number" && Number.isFinite(value);
+  }
   /**
    * @param {PointHandle} handle
    * @returns {handle is Extract<PointHandle, { pointIndex: number }>}
@@ -130,13 +139,12 @@
   /**
    * @param {Point} vertex
    * @param {Point} first
-   * @param {Point} second
    * @param {number} shortestLen
    * @param {number} cross
    * @param {number} dot
    * @param {number} markerClass
    */
-  function resolveArcAngleMarkerPoints(vertex, first, second, shortestLen, cross, dot, markerClass) {
+  function resolveArcAngleMarkerPoints(vertex, first, shortestLen, cross, dot, markerClass) {
     const classScale = 1 + 0.18 * Math.max(0, (markerClass || 1) - 1);
     const radius = Math.min(Math.max(shortestLen * 0.12, 10), 28) * classScale;
     const clampedRadius = Math.min(radius, shortestLen * 0.42);
@@ -177,7 +185,7 @@
     if (Math.abs(dot) <= 0.12) {
       return resolveRightAngleMarkerPoints(vertex, first, second, shortestLen);
     }
-    return resolveArcAngleMarkerPoints(vertex, first, second, shortestLen, cross, dot, markerClass);
+    return resolveArcAngleMarkerPoints(vertex, first, shortestLen, cross, dot, markerClass);
   }
 
   /**
@@ -213,46 +221,6 @@
     if (expr.kind === "identity") return x;
     if (expr.kind !== "parsed") return null;
     return evaluateExprAst(expr.expr, x, parameters);
-  }
-
-  /**
-   * Clone an expression tree while replacing embedded parameter defaults with
-   * the current live values so debug/selection output reflects the active scene.
-   *
-   * @param {FunctionExprJson | FunctionAstJson} expr
-   * @param {Map<string, number>} parameters
-   * @returns {FunctionExprJson | FunctionAstJson}
-   */
-  function syncExprParameterValues(expr, parameters) {
-    if (!expr || typeof expr !== "object") {
-      return expr;
-    }
-    if (expr.kind === "parsed") {
-      return {
-        ...expr,
-        expr: /** @type {FunctionAstJson} */ (syncExprParameterValues(expr.expr, parameters)),
-      };
-    }
-    if (expr.kind === "parameter") {
-      const nextValue = parameters.get(expr.name);
-      return Number.isFinite(nextValue)
-        ? { ...expr, value: nextValue }
-        : { ...expr };
-    }
-    if (expr.kind === "unary") {
-      return {
-        ...expr,
-        expr: /** @type {FunctionAstJson} */ (syncExprParameterValues(expr.expr, parameters)),
-      };
-    }
-    if (expr.kind === "binary") {
-      return {
-        ...expr,
-        lhs: /** @type {FunctionAstJson} */ (syncExprParameterValues(expr.lhs, parameters)),
-        rhs: /** @type {FunctionAstJson} */ (syncExprParameterValues(expr.rhs, parameters)),
-      };
-    }
-    return { ...expr };
   }
 
   /**
@@ -325,7 +293,7 @@
   }
 
   /**
-   * @param {FunctionExprJson | FunctionAstJson} expr
+   * @param {FunctionExprJson | FunctionAstJson | null | undefined} expr
    * @param {(value: number) => string} formatAxisNumber
    * @param {string} [variableLabel]
    * @param {number} [parentPrec]
@@ -428,7 +396,7 @@
           const nextValue = isDiscreteIterationParameterName(scene, binding.pointName)
             ? discreteIterationDepth(value)
             : value;
-          if (Number.isFinite(nextValue) && parameters.get(binding.pointName) !== nextValue) {
+          if (typeof nextValue === "number" && Number.isFinite(nextValue) && parameters.get(binding.pointName) !== nextValue) {
             parameters.set(binding.pointName, nextValue);
             changed = true;
           }
@@ -439,7 +407,7 @@
           && typeof binding.name === "string"
         ) {
           const value = pointDistanceValue(scene, binding);
-          if (Number.isFinite(value) && parameters.get(binding.name) !== value) {
+          if (typeof value === "number" && Number.isFinite(value) && parameters.get(binding.name) !== value) {
             parameters.set(binding.name, value);
             changed = true;
           }
@@ -450,7 +418,7 @@
           && typeof binding.name === "string"
         ) {
           const value = pointAngleValue(scene, binding);
-          if (Number.isFinite(value) && parameters.get(binding.name) !== value) {
+          if (typeof value === "number" && Number.isFinite(value) && parameters.get(binding.name) !== value) {
             parameters.set(binding.name, value);
             changed = true;
           }
@@ -461,7 +429,7 @@
           && typeof binding.name === "string"
         ) {
           const value = polygonAreaValue(scene, binding);
-          if (Number.isFinite(value) && parameters.get(binding.name) !== value) {
+          if (typeof value === "number" && Number.isFinite(value) && parameters.get(binding.name) !== value) {
             parameters.set(binding.name, value);
             changed = true;
           }
@@ -472,7 +440,7 @@
           && typeof binding.name === "string"
         ) {
           const value = pointDistanceRatioValue(scene, binding);
-          if (Number.isFinite(value) && parameters.get(binding.name) !== value) {
+          if (typeof value === "number" && Number.isFinite(value) && parameters.get(binding.name) !== value) {
             parameters.set(binding.name, value);
             changed = true;
           }
@@ -506,7 +474,7 @@
             resultNames.add(binding.exprLabel);
           }
           resultNames.add(formatExpr(binding.expr, formatSequenceValue));
-          if (Number.isFinite(value)) {
+          if (typeof value === "number" && Number.isFinite(value)) {
             resultNames.forEach((/** @type {string} */ resultName) => {
               if (resultName && parameters.get(resultName) !== value) {
                 parameters.set(resultName, value);
@@ -554,7 +522,7 @@
           return;
         }
         const value = evaluateExpr(binding.expr, 0, derived);
-        if (Number.isFinite(value)) {
+        if (typeof value === "number" && Number.isFinite(value)) {
           updates.push([binding.parameterName, value]);
         }
       });
@@ -1201,7 +1169,7 @@
     const graph = ensureDependencyGraph(env);
     return graph.topoOrder
       .map((id) => graph.nodeMap.get(id))
-      .filter(Boolean)
+      .filter((/** @type {DependencyNode | undefined} */ node) => !!node)
       .map((node) => ({
         id: node.id,
         kind: node.kind,
@@ -1211,7 +1179,7 @@
   }
 
   /**
-   * @param {FunctionExprJson | FunctionAstJson} expr
+   * @param {FunctionExprJson | FunctionAstJson | null | undefined} expr
    * @param {Set<string>} names
    */
   function collectExprParameterNames(expr, names) {
@@ -1677,9 +1645,9 @@
     return null;
   }
 
-  /** @param {number | null} value */
+  /** @param {number | null | undefined} value */
   function clampNormalizedValue(value) {
-    return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : null;
+    return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : null;
   }
 
   /**
@@ -1748,9 +1716,10 @@
   /**
    * @param {RuntimeScenePointJson} point
    * @param {ViewerSceneData} scene
-   * @param {number} value
+   * @param {number | null | undefined} value
    */
   function applyNormalizedParameterToPoint(point, scene, value) {
+    if (typeof value !== "number") return;
     if (!point.constraint) return;
     const applyParameter = POINT_CONSTRAINT_PARAMETER_APPLIERS[point.constraint.kind];
     if (applyParameter) {
@@ -1761,11 +1730,12 @@
   /**
    * @param {RuntimeScenePointJson} point
    * @param {ViewerSceneData} scene
-   * @param {number} value
+   * @param {number | null | undefined} value
    * @param {number} xMin
    * @param {number} xMax
    */
   function applyTraceValueToPoint(point, scene, value, xMin, xMax) {
+    if (typeof value !== "number") return;
     if (!point?.constraint) return;
     if (point.constraint.kind === "circle" || point.constraint.kind === "circular-constraint") {
       point.constraint.unitX = Math.cos(value);
@@ -1803,7 +1773,7 @@
         ? parameters.get(family.parameterName)
         : family.depth;
     const fallback = Number.isFinite(family.depth) ? family.depth : 0;
-    const depth = Number.isFinite(rawValue) ? rawValue : fallback;
+    const depth = typeof rawValue === "number" && Number.isFinite(rawValue) ? rawValue : fallback;
     return discreteIterationDepth(depth);
   }
 
@@ -1811,10 +1781,10 @@
    * Iteration counts are discrete payload values. Avoid rounding up early while a
    * live control is between integer steps.
    *
-   * @param {number} value
+   * @param {number | null | undefined} value
    */
   function discreteIterationDepth(value) {
-    if (!Number.isFinite(value)) {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
       return 0;
     }
     return Math.max(0, Math.floor(value + 1e-9));
@@ -2252,7 +2222,7 @@
           return;
         }
         const angleDegrees = evaluateExpr(family.angleExpr, 0, parameters);
-        if (!Number.isFinite(angleDegrees)) {
+        if (typeof angleDegrees !== "number" || !Number.isFinite(angleDegrees)) {
           return;
         }
         for (let step = 1; step <= depth; step += 1) {
@@ -2278,19 +2248,20 @@
 
       if (family.kind === "parameterized") {
         let currentValue = parameters.get(family.traceParameterName);
-        if (!Number.isFinite(currentValue)) {
+        if (!isFiniteNumber(currentValue)) {
           return;
         }
         for (let step = 1; step <= depth; step += 1) {
-          currentValue = evaluateRecursiveExpression(
+          const nextValue = evaluateRecursiveExpression(
             family.stepExpr,
             family.traceParameterName,
             currentValue,
             parameters,
           );
-          if (!Number.isFinite(currentValue)) {
+          if (!isFiniteNumber(nextValue)) {
             break;
           }
+          currentValue = nextValue;
           const traceParameters = deriveLabelParameters(
             scene,
             new Map(parameters).set(family.traceParameterName, currentValue),
@@ -2356,7 +2327,7 @@
         if (!point.constraint) {
           return;
         }
-        const resolved = window.GspViewerModules.scene.resolveConstrainedPoint(
+        const resolved = modules.scene.resolveConstrainedPoint(
           {
             sourceScene: env.sourceScene,
             currentScene: () => draft,
@@ -2376,7 +2347,7 @@
     draft.points.forEach((/** @type {RuntimeScenePointJson} */ point) => {
       if (point.binding?.kind === "parameter" && point.constraint) {
         const value = parameters.get(point.binding.name);
-        if (Number.isFinite(value)) {
+        if (isFiniteNumber(value)) {
           applyNormalizedParameterToPoint(point, draft, value);
         }
         return;
@@ -2467,28 +2438,33 @@
         return /** @type {Point} */ (handle);
       };
       if (family.kind === "parameterized-point-trace") {
+        const depthParameterName = family.depthParameterName;
+        const depthParameterValue = typeof depthParameterName === "string"
+          ? parameters.get(depthParameterName)
+          : undefined;
         const depth = Math.max(
           0,
           Math.round(
-            Number.isFinite(parameters.get(family.depthParameterName))
-              ? parameters.get(family.depthParameterName)
+            isFiniteNumber(depthParameterValue)
+              ? depthParameterValue
               : family.depth || 0,
           ),
         );
         let currentValue = parameters.get(family.traceParameterName);
-        if (!Number.isFinite(currentValue)) {
+        if (!isFiniteNumber(currentValue)) {
           return;
         }
         for (let step = 1; step <= depth; step += 1) {
-          currentValue = evaluateRecursiveExpression(
+          const nextValue = evaluateRecursiveExpression(
             family.stepExpr,
             family.traceParameterName,
             currentValue,
             parameters,
           );
-          if (!Number.isFinite(currentValue)) {
+          if (!isFiniteNumber(nextValue)) {
             break;
           }
+          currentValue = nextValue;
           const traceParameters = deriveLabelParameters(
             scene,
             new Map(parameters).set(family.traceParameterName, currentValue),
@@ -2535,15 +2511,18 @@
           return;
         }
         const coeffs = targetSegments
-          .map((segment) => {
-            const startCoeffs = segmentPointCoefficients(start, end, segment[0]);
-            const endCoeffs = segmentPointCoefficients(start, end, segment[1]);
-            if (!startCoeffs || !endCoeffs) {
-              return null;
+          .flatMap((segment) => {
+            const [targetStart, targetEnd] = segment;
+            if (!targetStart || !targetEnd) {
+              return [];
             }
-            return { startCoeffs, endCoeffs };
-          })
-          .filter(Boolean);
+            const startCoeffs = segmentPointCoefficients(start, end, targetStart);
+            const endCoeffs = segmentPointCoefficients(start, end, targetEnd);
+            if (!startCoeffs || !endCoeffs) {
+              return [];
+            }
+            return [{ startCoeffs, endCoeffs }];
+          });
         if (coeffs.length === 0) {
           return;
         }
@@ -2580,7 +2559,10 @@
         if (sourceTriangle.some((point) => !point) || targetTriangle.some((point) => !point)) {
           return;
         }
-        const mapPoint = affineMapFromTriangles(sourceTriangle, targetTriangle);
+        const mapPoint = affineMapFromTriangles(
+          /** @type {Point[]} */ (sourceTriangle),
+          /** @type {Point[]} */ (targetTriangle),
+        );
         if (!mapPoint) {
           return;
         }
@@ -2605,7 +2587,7 @@
           return;
         }
         const angleDegrees = evaluateExpr(family.angleExpr, 0, parameters);
-        if (!Number.isFinite(angleDegrees)) {
+        if (typeof angleDegrees !== "number" || !Number.isFinite(angleDegrees)) {
           return;
         }
         for (let step = 1; step <= depth; step += 1) {
@@ -2636,7 +2618,7 @@
       }
       let primaryDx = family.dx;
       let primaryDy = family.dy;
-      if (Number.isFinite(family.vectorStartIndex) && Number.isFinite(family.vectorEndIndex)) {
+      if (typeof family.vectorStartIndex === "number" && typeof family.vectorEndIndex === "number") {
         const vectorStart = env.resolveScenePoint(family.vectorStartIndex);
         const vectorEnd = env.resolveScenePoint(family.vectorEndIndex);
         if (vectorStart && vectorEnd) {
@@ -2646,10 +2628,10 @@
       }
       /**
        * @param {Point} point
-       * @param {number | null} controlIndex
+       * @param {number | null | undefined} controlIndex
        */
       const controlledEndpoint = (point, controlIndex) => {
-        if (!Number.isFinite(controlIndex)) return point;
+        if (typeof controlIndex !== "number" || !Number.isFinite(controlIndex)) return point;
         const control = env.resolveScenePoint(controlIndex);
         if (!control) return point;
         return { x: point.x, y: control.y };
@@ -2684,7 +2666,9 @@
           emittedControlledTickSeeds.add(seedKey);
         }
       }
-      const hasSecondary = Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy);
+      const secondaryDx = isFiniteNumber(family.secondaryDx) ? family.secondaryDx : null;
+      const secondaryDy = isFiniteNumber(family.secondaryDy) ? family.secondaryDy : null;
+      const hasSecondary = secondaryDx !== null && secondaryDy !== null;
       const deltas = [];
       if (family.bidirectional && hasSecondary) {
         for (let primary = -depth; primary <= depth; primary += 1) {
@@ -2696,8 +2680,8 @@
               continue;
             }
             deltas.push({
-              dx: primaryDx * primary + family.secondaryDx * secondary,
-              dy: primaryDy * primary + family.secondaryDy * secondary,
+              dx: primaryDx * primary + secondaryDx * secondary,
+              dy: primaryDy * primary + secondaryDy * secondary,
             });
           }
         }
@@ -2715,8 +2699,8 @@
               continue;
             }
             deltas.push({
-              dx: primaryDx * primary + family.secondaryDx * secondary,
-              dy: primaryDy * primary + family.secondaryDy * secondary,
+              dx: primaryDx * primary + secondaryDx * secondary,
+              dy: primaryDy * primary + secondaryDy * secondary,
             });
           }
         }
@@ -2780,36 +2764,38 @@
       if (seedVertices.some((point) => !point)) {
         return;
       }
+      const seedPoints = /** @type {Point[]} */ (seedVertices);
       if (family.kind === "coordinate-grid") {
         const depthValue = family.depthExpr
           ? evaluateExpr(family.depthExpr, 0, parameters)
           : family.depth;
-        const depth = Math.max(0, Math.floor(Number.isFinite(depthValue) ? depthValue : family.depth || 0));
+        const depth = Math.max(0, Math.floor(isFiniteNumber(depthValue) ? depthValue : family.depth || 0));
         let currentValue = parameters.get(family.parameterName);
-        if (!Number.isFinite(currentValue)) {
+        if (!isFiniteNumber(currentValue)) {
           return;
         }
         for (let step = 1; step <= depth; step += 1) {
-          currentValue = evaluateRecursiveExpression(
+          const nextValue = evaluateRecursiveExpression(
             family.stepExpr,
             family.parameterName,
             currentValue,
             parameters,
           );
-          if (!Number.isFinite(currentValue)) {
+          if (!isFiniteNumber(nextValue)) {
             break;
           }
+          currentValue = nextValue;
           const exprParameters = deriveLabelParameters(
             scene,
             new Map(parameters).set(family.parameterName, currentValue),
           );
           const dx = evaluateExpr(family.xExpr, 0, exprParameters);
           const dy = evaluateExpr(family.yExpr, 0, exprParameters);
-          if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
+          if (!isFiniteNumber(dx) || !isFiniteNumber(dy)) {
             continue;
           }
           scene.polygons.push({
-            points: seedVertices.map((point) => ({
+            points: seedPoints.map((point) => ({
               x: point.x + dx * family.xRawScale,
               y: point.y - dy * family.yRawScale,
             })),
@@ -2824,7 +2810,9 @@
       if (family.kind !== "translate") {
         return;
       }
-      const hasSecondary = Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy);
+      const secondaryDx = isFiniteNumber(family.secondaryDx) ? family.secondaryDx : null;
+      const secondaryDy = isFiniteNumber(family.secondaryDy) ? family.secondaryDy : null;
+      const hasSecondary = secondaryDx !== null && secondaryDy !== null;
       const deltas = [];
       if (family.bidirectional && hasSecondary) {
         for (let primary = -depth; primary <= depth; primary += 1) {
@@ -2833,8 +2821,8 @@
               continue;
             }
             deltas.push({
-              dx: family.dx * primary + family.secondaryDx * secondary,
-              dy: family.dy * primary + family.secondaryDy * secondary,
+              dx: family.dx * primary + secondaryDx * secondary,
+              dy: family.dy * primary + secondaryDy * secondary,
             });
           }
         }
@@ -2850,8 +2838,8 @@
         for (let primary = 0; primary <= depth; primary += 1) {
           for (let secondary = 0; secondary <= depth - primary; secondary += 1) {
             deltas.push({
-              dx: family.dx * primary + family.secondaryDx * secondary,
-              dy: family.dy * primary + family.secondaryDy * secondary,
+              dx: family.dx * primary + secondaryDx * secondary,
+              dy: family.dy * primary + secondaryDy * secondary,
             });
           }
         }
@@ -2865,7 +2853,7 @@
       }
       deltas.forEach(({ dx, dy }) => {
         scene.polygons.push({
-          points: seedVertices.map((point) => ({ x: point.x + dx, y: point.y + dy })),
+          points: seedPoints.map((point) => ({ x: point.x + dx, y: point.y + dy })),
           color: family.color,
           outlineColor: darken(family.color, 80),
           binding: null,
@@ -2898,7 +2886,7 @@
         if (!seedLabel || !vectorStart || !vectorEnd) {
           return;
         }
-        if (Number.isFinite(family.firstOutputLabelIndex) && Number.isFinite(family.outputLabelCount)) {
+        if (isFiniteNumber(family.firstOutputLabelIndex) && isFiniteNumber(family.outputLabelCount)) {
           for (let index = 0; index < family.outputLabelCount; index += 1) {
             const label = scene.labels[family.firstOutputLabelIndex + index];
             if (label) {
@@ -2913,7 +2901,7 @@
         }, parameters);
         const seedAnchor = seedLabel.anchor;
         let currentValue = parameters.get(family.parameterName);
-        if (!seedAnchor || !Number.isFinite(currentValue)) {
+        if (!seedAnchor || !isFiniteNumber(currentValue)) {
           return;
         }
         const seedAnchorPoint = env.resolvePoint(seedAnchor);
@@ -2928,7 +2916,7 @@
           currentValue,
           parameters,
         );
-        if (!Number.isFinite(seedValue)) {
+        if (!isFiniteNumber(seedValue)) {
           return;
         }
         currentValue = seedValue;
@@ -2939,7 +2927,7 @@
             currentValue,
             parameters,
           );
-          if (!Number.isFinite(value)) {
+          if (!isFiniteNumber(value)) {
             break;
           }
           currentValue = value;
@@ -2970,7 +2958,7 @@
         parameterName: family.depthParameterName,
       }, parameters);
       let currentValue = parameters.get(family.parameterName);
-      if (!Number.isFinite(currentValue)) {
+      if (!isFiniteNumber(currentValue)) {
         return;
       }
       for (let step = 0; step <= depth; step += 1) {
@@ -2980,7 +2968,7 @@
           currentValue,
           parameters,
         );
-        if (!Number.isFinite(value)) {
+        if (!isFiniteNumber(value)) {
           break;
         }
         const pointIndex = family.pointSeedIndex + step;
@@ -3019,8 +3007,9 @@
         ? discreteIterationDepth(parameters.get(table.depthParameterName) ?? table.depth)
         : discreteIterationDepth(table.depth);
       let currentValue = parameters.get(table.parameterName);
+      /** @type {RuntimeIterationRow[]} */
       const rows = [];
-      if (Number.isFinite(currentValue)) {
+      if (isFiniteNumber(currentValue)) {
         for (let index = 0; index <= depth; index += 1) {
           const value = evaluateRecursiveExpression(
             table.expr,
@@ -3028,7 +3017,7 @@
             currentValue,
             parameters,
           );
-          if (!Number.isFinite(value)) {
+          if (!isFiniteNumber(value)) {
             break;
           }
           rows.push({ index, value });
@@ -3051,8 +3040,10 @@
    */
   function updateCoordinateSourcePoint(point, source, parameters) {
     if (!source) return;
+    const parameterValue = parameters.get(point.binding.name);
+    if (!isFiniteNumber(parameterValue)) return;
     const exprParameters = new Map(parameters);
-    exprParameters.set(point.binding.name, parameters.get(point.binding.name));
+    exprParameters.set(point.binding.name, parameterValue);
     const offset = evaluateExpr(point.binding.expr, 0, exprParameters);
     if (offset === null) return;
     if (point.binding.axis === "horizontal") {
@@ -3071,9 +3062,12 @@
    */
   function updateCoordinateSource2dPoint(point, source, parameters) {
     if (!source) return;
+    const xParameterValue = parameters.get(point.binding.xName);
+    const yParameterValue = parameters.get(point.binding.yName);
+    if (!isFiniteNumber(xParameterValue) || !isFiniteNumber(yParameterValue)) return;
     const exprParameters = new Map(parameters);
-    exprParameters.set(point.binding.xName, parameters.get(point.binding.xName));
-    exprParameters.set(point.binding.yName, parameters.get(point.binding.yName));
+    exprParameters.set(point.binding.xName, xParameterValue);
+    exprParameters.set(point.binding.yName, yParameterValue);
     const dx = evaluateExpr(point.binding.xExpr, 0, exprParameters);
     const dy = evaluateExpr(point.binding.yExpr, 0, exprParameters);
     if (dx !== null && dy !== null) {
@@ -3100,7 +3094,7 @@
    */
   function updateCustomTransformPoint(point, parameters, resolvePointAt, parameterSourceScene) {
     const value = parameterValueFromPoint(parameterSourceScene, point.binding.sourceIndex);
-    if (!Number.isFinite(value)) return;
+    if (!isFiniteNumber(value)) return;
     const exprParameters = new Map(parameters);
     const names = new Set();
     collectExprParameterNames(point.binding.distanceExpr, names);
@@ -3323,7 +3317,7 @@
 
   /** @type {Record<string, PointBindingRefresher>} */
   const DERIVED_POINT_BINDING_REFRESHERS = {
-    "derived-parameter"(env, scene, point) {
+    "derived-parameter"(_env, scene, point) {
       const value = parameterValueFromPoint(scene, point.binding.sourceIndex);
       if (value !== null) {
         applyNormalizedParameterToPoint(point, scene, value);
@@ -3331,11 +3325,13 @@
     },
     "constraint-parameter-expr"(_env, scene, point, parameters) {
       const value = evaluateExpr(point.binding.expr, 0, parameters);
-      updateConstraintParameterizedPoint(point, scene, value);
+      if (isFiniteNumber(value)) {
+        updateConstraintParameterizedPoint(point, scene, value);
+      }
     },
     "constraint-parameter-from-point-expr"(_env, scene, point, parameters) {
       const sourceValue = parameterValueFromPoint(scene, point.binding.sourceIndex);
-      if (!Number.isFinite(sourceValue)) return;
+      if (!isFiniteNumber(sourceValue)) return;
       const exprParameters = new Map(parameters);
       if (point.binding.parameterName) {
         exprParameters.set(point.binding.parameterName, sourceValue);
@@ -3398,7 +3394,7 @@
           parameters,
           (index) => resolveScenePointInScene(env, scene, index),
         );
-        if (!Number.isFinite(angleDegrees)) return;
+        if (!isFiniteNumber(angleDegrees)) return;
         const rotated = rotateAround(source, center, angleDegrees * Math.PI / 180);
         point.x = rotated.x;
         point.y = rotated.y;
@@ -3412,7 +3408,7 @@
           parameters,
           (index) => resolveScenePointInScene(env, scene, index),
         );
-        if (!Number.isFinite(factor)) return;
+        if (!isFiniteNumber(factor)) return;
         const scaled = scaleAround(source, center, factor);
         point.x = scaled.x;
         point.y = scaled.y;
@@ -3462,7 +3458,7 @@
     },
     "point-expression-value"(_env, scene, label, parameters) {
       const currentValue = parameters.get(label.binding.parameterName);
-      if (!Number.isFinite(currentValue)) return;
+      if (!isFiniteNumber(currentValue)) return;
       DYNAMIC_LABEL_REFRESHERS["point-anchor"](_env, scene, label, parameters);
       const value = evaluateRecursiveExpression(
         label.binding.expr,
@@ -3477,26 +3473,28 @@
     },
     "sequence-expression-value"(_env, _scene, label, parameters) {
       const stateValue = parameters.get(label.binding.parameterName);
-      if (Number.isFinite(stateValue)) {
+      if (isFiniteNumber(stateValue)) {
         label.text = formatSequenceValue(stateValue);
         label.richMarkup = buildPlainTextRichMarkup(label.text);
         return;
       }
       let currentValue = parameters.get(label.binding.parameterName);
-      if (!Number.isFinite(currentValue)) return;
+      if (!isFiniteNumber(currentValue)) return;
       const depth = pointIterationDepth({
         depth: label.binding.depth,
         parameterName: label.binding.depthParameterName,
       }, parameters);
+      /** @type {number | null} */
       let value = null;
       for (let step = 0; step <= depth; step += 1) {
-        value = evaluateRecursiveExpression(
+        const nextValue = evaluateRecursiveExpression(
           label.binding.expr,
           label.binding.parameterName,
           currentValue,
           parameters,
         );
-        if (!Number.isFinite(value)) return;
+        if (!isFiniteNumber(nextValue)) return;
+        value = nextValue;
         currentValue = value;
       }
       if (value !== null) {
@@ -3504,7 +3502,7 @@
         label.richMarkup = buildPlainTextRichMarkup(label.text);
       }
     },
-    "rich-text-expression-values"(env, _scene, label, parameters) {
+    "rich-text-expression-values"(_env, _scene, label, parameters) {
       /** @type {Map<number, string>} */
       const valuesBySlot = new Map();
       /** @type {{ line: number, start: number, end: number, valueText: string }[]} */
@@ -3542,7 +3540,7 @@
       label.text = `${label.binding.name} = ${env.formatNumber(value)}${label.binding.valueSuffix || ""}`;
       label.richMarkup = buildPlainTextRichMarkup(label.text);
     },
-    "point-angle-value"(env, scene, label) {
+    "point-angle-value"(_env, scene, label) {
       const value = pointAngleValue(scene, label.binding);
       if (value === null) return;
       label.text = `${label.binding.name} = ${value.toFixed(2)}${label.binding.valueSuffix || ""}`;
@@ -3677,7 +3675,7 @@
     },
     "custom-transform-value"(env, scene, label, parameters) {
       const value = parameterValueFromPoint(scene, label.binding.pointIndex);
-      if (!Number.isFinite(value)) return;
+      if (!isFiniteNumber(value)) return;
       const exprParameters = new Map(parameters);
       const names = new Set();
       collectExprParameterNames(label.binding.expr, names);
@@ -3692,9 +3690,9 @@
 
   /** @type {Record<string, PointBindingRefresher>} */
   const SYNC_DYNAMIC_POINT_BINDING_UPDATERS = {
-    coordinate(_env, draft, point, parameters) {
+    coordinate(_env, _draft, point, parameters) {
       const value = parameters.get(point.binding.name);
-      if (!Number.isFinite(value)) return;
+      if (!isFiniteNumber(value)) return;
       point.x = value;
       const y = evaluateExpr(point.binding.expr, 0, parameters);
       if (y !== null) {
@@ -3725,11 +3723,13 @@
     },
     "constraint-parameter-expr"(_env, draft, point, parameters) {
       const value = evaluateExpr(point.binding.expr, 0, parameters);
-      updateConstraintParameterizedPoint(point, draft, value);
+      if (isFiniteNumber(value)) {
+        updateConstraintParameterizedPoint(point, draft, value);
+      }
     },
     "constraint-parameter-from-point-expr"(_env, draft, point, parameters) {
       const sourceValue = parameterValueFromPoint(draft, point.binding.sourceIndex);
-      if (!Number.isFinite(sourceValue)) return;
+      if (!isFiniteNumber(sourceValue)) return;
       const exprParameters = new Map(parameters);
       if (point.binding.parameterName) {
         exprParameters.set(point.binding.parameterName, sourceValue);
@@ -3780,7 +3780,7 @@
     const origin = scene.points[binding.originIndex];
     const axisEnd = scene.points[binding.axisEndIndex];
     const traceMax = parameterValueFromPoint(scene, binding.sourceIndex);
-    if (!origin || !axisEnd || !Number.isFinite(traceMax)) return null;
+    if (!origin || !axisEnd || !isFiniteNumber(traceMax)) return null;
     const sampled = [];
     const last = Math.max(1, line.binding.sampleCount - 1);
     const maxValue = Math.max(line.binding.xMin, Math.min(line.binding.xMax, traceMax));
@@ -3946,7 +3946,7 @@
             baseParameters,
             (pointIndex) => resolveTracePoint(points, pointIndex, visiting),
           );
-          if (source && center && Number.isFinite(angleDegrees)) {
+          if (source && center && isFiniteNumber(angleDegrees)) {
             resolved = rotateAround(source, center, angleDegrees * Math.PI / 180);
           }
         } else if (transform.kind === "scale") {
@@ -3956,7 +3956,7 @@
             baseParameters,
             (pointIndex) => resolveTracePoint(points, pointIndex, visiting),
           );
-          if (source && center && Number.isFinite(factor)) {
+          if (source && center && isFiniteNumber(factor)) {
             resolved = scaleAround(source, center, factor);
           }
         }
@@ -3997,7 +3997,7 @@
         }
         const x = exprParameters.get(point.binding.name);
         const y = evaluateExpr(point.binding.expr, 0, exprParameters);
-        if (Number.isFinite(x) && y !== null) {
+        if (isFiniteNumber(x) && y !== null) {
           resolved = { x, y };
         }
       } else if (point.binding?.kind === "coordinate-source") {
@@ -4030,7 +4030,7 @@
           const derived = cloneTracePoint(point);
           updateConstraintParameterizedPoint(derived, sampleScene, value);
           sampleScene.points[index] = derived;
-          resolved = window.GspViewerModules.scene.resolveConstrainedPoint(
+          resolved = modules.scene.resolveConstrainedPoint(
             {
               sourceScene: scene,
               currentScene: () => sampleScene,
@@ -4043,7 +4043,7 @@
         }
       } else if (point.binding?.kind === "constraint-parameter-from-point-expr") {
         const sourceValue = parameterValueFromPoint(sampleScene, point.binding.sourceIndex);
-        if (Number.isFinite(sourceValue)) {
+        if (isFiniteNumber(sourceValue)) {
           const exprParameters = new Map(baseParameters);
           if (point.binding.parameterName) {
             exprParameters.set(point.binding.parameterName, sourceValue);
@@ -4057,7 +4057,7 @@
               point.binding.absoluteValue === true ? exprValue : sourceValue + exprValue,
             );
             sampleScene.points[index] = derived;
-            resolved = window.GspViewerModules.scene.resolveConstrainedPoint(
+            resolved = modules.scene.resolveConstrainedPoint(
               {
                 sourceScene: scene,
                 currentScene: () => sampleScene,
@@ -4079,7 +4079,7 @@
 
       if (!resolved && point.constraint) {
         sampleScene.points = points;
-        resolved = window.GspViewerModules.scene.resolveConstrainedPoint(
+        resolved = modules.scene.resolveConstrainedPoint(
           {
             sourceScene: scene,
             currentScene: () => sampleScene,
@@ -4115,7 +4115,7 @@
       );
       const driverPoint = points[line.binding.driverIndex];
       const resolvedDriver = driverPoint?.constraint
-        ? window.GspViewerModules.scene.resolveConstrainedPoint(
+        ? modules.scene.resolveConstrainedPoint(
           {
             sourceScene: scene,
             currentScene: () => sampleScene,
@@ -4131,7 +4131,7 @@
         driverPoint.y = resolvedDriver.y;
       }
       baseParameters = deriveLabelParameters(sampleScene, new Map(parameters));
-      driverValue = parameterValueFromPoint(sampleScene, line.binding.driverIndex);
+      driverValue = parameterValueFromPoint(sampleScene, line.binding.driverIndex) ?? Number.NaN;
       resolvedCache = new Map();
       const point = resolveTracePoint(points, line.binding.pointIndex);
       if (point) {
@@ -4171,7 +4171,7 @@
       const angleDegrees = transform.parameterName
         ? parameters.get(transform.parameterName)
         : transform.angleDegrees;
-      if (!Number.isFinite(angleDegrees)) return null;
+      if (!isFiniteNumber(angleDegrees)) return null;
       return { kind: "rotate", center, radians: angleDegrees * Math.PI / 180 };
     }
     if (transform.kind === "scale") {
@@ -4182,7 +4182,7 @@
         parameters,
         (pointIndex) => scene.points[pointIndex] || null,
       );
-      if (!Number.isFinite(factor)) return null;
+      if (!isFiniteNumber(factor)) return null;
       return { kind: "scale", center, factor };
     }
     if (transform.kind === "reflect") {
@@ -4234,13 +4234,13 @@
     const hostLine = context.scene.lines[binding.lineIndex];
     const traceLine = context.scene.lines[binding.traceLineIndex];
     const baseParameter = polylineParameterFromPoint(context.scene, binding.pointIndex);
-    if (!traceLine?.points || traceLine.points.length < 2 || !Number.isFinite(baseParameter)) {
+    if (!traceLine?.points || traceLine.points.length < 2 || !isFiniteNumber(baseParameter)) {
       return;
     }
     const rawDepth = binding.depthParameterName
       ? context.parameters.get(binding.depthParameterName)
       : binding.depth;
-    const depth = discreteIterationDepth(Number.isFinite(rawDepth) ? rawDepth : binding.depth);
+    const depth = discreteIterationDepth(isFiniteNumber(rawDepth) ? rawDepth : binding.depth);
     line.visible = binding.stepIndex < depth;
     if (depth <= 0 || binding.stepIndex >= depth) {
       return;
@@ -4260,8 +4260,8 @@
     let rayStart = hostStart;
     let rayEnd = hostEnd;
     if (
-      Number.isFinite(binding.reflectionSourceIndex)
-      && Number.isFinite(binding.reflectionAxisLineIndex)
+      isFiniteNumber(binding.reflectionSourceIndex)
+      && isFiniteNumber(binding.reflectionAxisLineIndex)
     ) {
       const source = context.scene.points[binding.reflectionSourceIndex];
       const sampledAxis = sampledReflectionAxis(context.scene, binding, sample);
@@ -4306,8 +4306,8 @@
    */
   function sampledReflectionAxis(scene, binding, sample) {
     if (
-      !Number.isFinite(binding.reflectionFocusIndex)
-      || !Number.isFinite(binding.reflectionDirectrixLineIndex)
+      !isFiniteNumber(binding.reflectionFocusIndex)
+      || !isFiniteNumber(binding.reflectionDirectrixLineIndex)
     ) {
       return null;
     }
@@ -4466,7 +4466,7 @@
       if (clipped) line.points = clipped;
     },
     "arc-boundary"({ env }, line) {
-      const sampled = window.GspViewerModules.scene.sampleArcBoundaryPoints(env, line.binding);
+      const sampled = modules.scene.sampleArcBoundaryPoints(env, line.binding);
       if (sampled) {
         line.points = sampled;
       }
@@ -4479,7 +4479,7 @@
       }
     },
     "coordinate-trace"({ env }, line) {
-      const sampled = window.GspViewerModules.scene.sampleCoordinateTracePoints(env, line.binding);
+      const sampled = modules.scene.sampleCoordinateTracePoints(env, line.binding);
       if (sampled && sampled.length >= 2) {
         line.points = sampled;
       }
@@ -4512,7 +4512,7 @@
     if (!point.constraint) return point;
     if (visiting.has(index)) return null;
     visiting.add(index);
-    const resolved = window.GspViewerModules.scene.resolveConstrainedPoint(
+    const resolved = modules.scene.resolveConstrainedPoint(
       env,
       point.constraint,
       (pointIndex) => resolveScenePointInScene(env, scene, pointIndex, visiting),
@@ -4554,7 +4554,7 @@
       }
     },
     "arc-boundary-polygon"({ env }, polygon) {
-      const sampled = window.GspViewerModules.scene.sampleArcBoundaryPoints(env, polygon.binding);
+      const sampled = modules.scene.sampleArcBoundaryPoints(env, polygon.binding);
       if (sampled) {
         polygon.points = sampled;
       }
@@ -4626,12 +4626,15 @@
           polygonBoundaryParameterFromPoint(scene, family.sourceCenterIndex);
         const liveNextParameter =
           polygonBoundaryParameterFromPoint(scene, family.sourceNextCenterIndex);
-        const seedParameter = Number.isFinite(liveSeedParameter)
+        const seedParameter = isFiniteNumber(liveSeedParameter)
           ? liveSeedParameter
           : family.seedParameter;
-        const stepParameter = Number.isFinite(liveSeedParameter) && Number.isFinite(liveNextParameter)
+        const stepParameter = isFiniteNumber(liveSeedParameter) && isFiniteNumber(liveNextParameter)
           ? ((liveNextParameter - liveSeedParameter) % 1 + 1) % 1
           : family.stepParameter;
+        if (!isFiniteNumber(seedParameter) || !isFiniteNumber(stepParameter)) {
+          return;
+        }
         const depth = pointIterationDepth({
           depth: family.depth,
           parameterName: family.depthParameterName,
@@ -4728,21 +4731,24 @@
 
   /**
    * @param {ViewerSceneData} scene
-   * @param {{ lineStartIndex?: number, lineEndIndex?: number, lineIndex?: number }} binding
+   * @param {{ lineStartIndex?: number | null, lineEndIndex?: number | null, lineIndex?: number | null }} binding
    * @returns {[Point | null, Point | null]}
    */
   function reflectionAxisPoints(scene, binding) {
-    if (Number.isInteger(binding.lineIndex)) {
-      const axis = scene.lines[binding.lineIndex];
+    const lineIndex = binding.lineIndex;
+    if (typeof lineIndex === "number" && Number.isInteger(lineIndex)) {
+      const axis = scene.lines[lineIndex];
       if (axis?.points?.length >= 2) {
         return [axis.points[0], axis.points[axis.points.length - 1]];
       }
     }
-    const lineStart = Number.isInteger(binding.lineStartIndex)
-      ? scene.points[binding.lineStartIndex]
+    const lineStartIndex = binding.lineStartIndex;
+    const lineEndIndex = binding.lineEndIndex;
+    const lineStart = typeof lineStartIndex === "number" && Number.isInteger(lineStartIndex)
+      ? scene.points[lineStartIndex]
       : null;
-    const lineEnd = Number.isInteger(binding.lineEndIndex)
-      ? scene.points[binding.lineEndIndex]
+    const lineEnd = typeof lineEndIndex === "number" && Number.isInteger(lineEndIndex)
+      ? scene.points[lineEndIndex]
       : null;
     return [lineStart || null, lineEnd || null];
   }
@@ -4845,9 +4851,12 @@
         }
       });
     }
+    /** @type {DependencyNode[]} */
     const orderedNodes = graph.topoOrder
-      .map((id) => graph.nodeMap.get(id))
-      .filter((node) => !!node && affected.has(node.id));
+      .flatMap((id) => {
+        const node = graph.nodeMap.get(id);
+        return node && affected.has(node.id) ? [node] : [];
+      });
     /** @type {string[]} */
     const executedRecipes = [];
     const seenRecipes = new Set();
@@ -4886,7 +4895,7 @@
     const names = Array.isArray(dirtyParameterNames) && dirtyParameterNames.length > 0
       ? dirtyParameterNames
       : env.currentDynamics().parameters.map((parameter) => parameter.name);
-    env.markDependencyRootsDirty(
+    env.markDependencyRootsDirty?.(
       names.map((name) => parameterRootId(name)),
     );
     env.updateScene(() => {}, "graph");
@@ -4919,22 +4928,26 @@
 
   /** @param {ViewerEnv} env */
   function buildParameterControls(env) {
-    env.parameterControls.replaceChildren();
+    const parameterControls = env.parameterControls;
+    if (!parameterControls) {
+      return;
+    }
+    parameterControls.replaceChildren();
     const controls = env.currentDynamics().parameters
       .map((parameter, index) => ({ parameter, index }))
       .filter(({ parameter }) => parameter.visible !== false)
-      .map(({ parameter, index }) => env.labelTag(
-        `${parameter.name} =`,
-        env.inputTag({
+      .map(({ parameter, index }) => {
+        const isDiscrete = isDiscreteIterationParameterName(env.sourceScene, parameter.name);
+        /** @type {{ type: string; step: string; min?: string; value: string; oninput: (event: Event) => void }} */
+        const inputAttrs = {
           type: "number",
-          step: isDiscreteIterationParameterName(env.sourceScene, parameter.name) ? "1" : "0.1",
-          min: isDiscreteIterationParameterName(env.sourceScene, parameter.name) ? "0" : undefined,
+          step: isDiscrete ? "1" : "0.1",
           value: env.formatNumber(parameter.value),
           oninput: (event) => {
             const target = /** @type {HTMLInputElement} */ (event.target);
             let value = Number.parseFloat(target.value);
             if (Number.isFinite(value)) {
-              if (isDiscreteIterationParameterName(env.sourceScene, parameter.name)) {
+              if (isDiscrete) {
                 value = discreteIterationDepth(value);
               }
               env.updateDynamics((draft) => {
@@ -4943,11 +4956,18 @@
               syncDynamicScene(env, [parameter.name]);
             }
           },
-        }),
-        parameterValueSuffix(parameter),
-      ));
+        };
+        if (isDiscrete) {
+          inputAttrs.min = "0";
+        }
+        return env.labelTag(
+          `${parameter.name} =`,
+          env.inputTag(/** @type {Parameters<ViewerEnv["inputTag"]>[0]} */ (inputAttrs)),
+          parameterValueSuffix(parameter),
+        );
+      });
     if (controls.length > 0) {
-      env.van.add(env.parameterControls, ...controls);
+      env.van.add(parameterControls, ...controls);
     }
   }
 

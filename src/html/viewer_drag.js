@@ -1,7 +1,9 @@
 // @ts-check
 
 (function() {
-  const modules = window.GspViewerModules || (window.GspViewerModules = {});
+  const modules = /** @type {Partial<ViewerModules> & { scene: ViewerSceneModule; dynamics: ViewerDynamicsModule; geometry: ViewerGeometryModule }} */ (
+    window.GspViewerModules || (window.GspViewerModules = {})
+  );
   /** @type {Set<string>} */
   const PAN_ONLY_POINT_BINDINGS = new Set([
     "midpoint",
@@ -28,7 +30,7 @@
     if (!point) {
       return [];
     }
-    const rootId = window.GspViewerModules.dynamics?.sourcePointRootId;
+    const rootId = modules.dynamics.sourcePointRootId;
     if (typeof rootId !== "function") {
       return [];
     }
@@ -57,7 +59,7 @@
     if (!polygon) {
       return [];
     }
-    const rootId = window.GspViewerModules.dynamics?.sourcePointRootId;
+    const rootId = modules.dynamics.sourcePointRootId;
     if (typeof rootId !== "function") {
       return [];
     }
@@ -76,14 +78,6 @@
    */
   function isOffsetConstraint(constraint) {
     return !!constraint && constraint.kind === "offset";
-  }
-
-  /**
-   * @param {RuntimeScenePointJson["constraint"]} constraint
-   * @returns {constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "segment" }>}
-   */
-  function isSegmentConstraint(constraint) {
-    return !!constraint && constraint.kind === "segment";
   }
 
   /**
@@ -177,6 +171,7 @@
         return;
       }
       const origin = env.resolveScenePoint(constraint.originIndex);
+      if (!origin) return;
       constraint.dx = world.x - origin.x;
       constraint.dy = world.y - origin.y;
     },
@@ -184,7 +179,7 @@
       const constraint = point.constraint;
       if (!isLineLikeConstraint(constraint)) return;
       const line = "line" in constraint
-        ? window.GspViewerModules.dynamics.resolveLineConstraintParameterPoints(
+        ? modules.dynamics.resolveLineConstraintParameterPoints(
             (index) => env.resolveScenePoint(index),
             constraint.line,
           )
@@ -194,7 +189,7 @@
           ];
       const [start, end] = line || [];
       if (!start || !end) return;
-      const projection = window.GspViewerModules.scene.projectToLineLike(
+      const projection = modules.scene.projectToLineLike(
         world,
         start,
         end,
@@ -226,7 +221,7 @@
       const constraint = point.constraint;
       if (!isPolylineConstraint(constraint)) return;
       const points = typeof constraint.functionKey === "number"
-        ? window.GspViewerModules.scene.resolveLinePoints(
+        ? modules.scene.resolveLinePoints(
             env,
             env.currentScene().lines.find((/** @type {SceneLineJson} */ line) =>
               line?.binding?.kind === "arc-boundary" && line.binding.hostKey === constraint.functionKey
@@ -244,12 +239,12 @@
       let bestT = constraint.t;
       let bestDistanceSquared = Number.POSITIVE_INFINITY;
       for (let segmentIndex = 0; segmentIndex < count - 1; segmentIndex += 1) {
-        const start = window.GspViewerModules.scene.resolvePoint(env, points[segmentIndex]);
-        const end = window.GspViewerModules.scene.resolvePoint(env, points[segmentIndex + 1]);
+        const start = modules.scene.resolvePoint(env, points[segmentIndex]);
+        const end = modules.scene.resolvePoint(env, points[segmentIndex + 1]);
         if (!start || !end) {
           continue;
         }
-        const projection = window.GspViewerModules.scene.projectToSegment(world, start, end);
+        const projection = modules.scene.projectToSegment(world, start, end);
         if (!projection) {
           continue;
         }
@@ -272,7 +267,10 @@
       for (let edgeIndex = 0; edgeIndex < count; edgeIndex += 1) {
         const start = env.resolveScenePoint(constraint.vertexIndices[edgeIndex]);
         const end = env.resolveScenePoint(constraint.vertexIndices[(edgeIndex + 1) % count]);
-        const projection = window.GspViewerModules.scene.projectToSegment(world, start, end);
+        if (!start || !end) {
+          continue;
+        }
+        const projection = modules.scene.projectToSegment(world, start, end);
         if (!projection) {
           continue;
         }
@@ -290,7 +288,7 @@
       if (!isCircleConstraint(constraint)) return;
       const center = constraint.kind === "circle"
         ? env.resolveScenePoint(constraint.centerIndex)
-        : window.GspViewerModules.scene._circleFromConstraint?.(
+        : modules.scene._circleFromConstraint?.(
             env,
             constraint.circle,
             (index) => env.resolveScenePoint(index),
@@ -313,7 +311,8 @@
       const center = env.resolveScenePoint(constraint.centerIndex);
       const start = env.resolveScenePoint(constraint.startIndex);
       const end = env.resolveScenePoint(constraint.endIndex);
-      const projection = window.GspViewerModules.scene.projectToCircleArc(
+      if (!center || !start || !end) return;
+      const projection = modules.scene.projectToCircleArc(
         world,
         center,
         start,
@@ -330,7 +329,8 @@
       const start = env.resolveScenePoint(constraint.startIndex);
       const mid = env.resolveScenePoint(constraint.midIndex);
       const end = env.resolveScenePoint(constraint.endIndex);
-      const projection = window.GspViewerModules.scene.projectToThreePointArc(
+      if (!start || !mid || !end) return;
+      const projection = modules.scene.projectToThreePointArc(
         world,
         start,
         mid,
@@ -377,7 +377,7 @@
       return false;
     }
     const center = env.resolveScenePoint(transform.centerIndex);
-    const rotateAround = window.GspViewerModules.geometry?.rotateAround;
+    const rotateAround = modules.geometry.rotateAround;
     if (!center || typeof rotateAround !== "function") {
       return false;
     }
@@ -449,14 +449,18 @@
    * @param {Point} world
    */
   function updateDraggedPoint(env, world) {
-    env.markDependencyRootsDirty?.(dependencyRootsForDraggedPoint(env, env.dragState.val.pointIndex));
+    const drag = env.dragState.val;
+    if (!drag || drag.pointIndex === null) return;
+    const pointIndex = drag.pointIndex;
+    env.markDependencyRootsDirty?.(dependencyRootsForDraggedPoint(env, pointIndex));
     env.updateScene((/** @type {ViewerSceneData} */ draft) => {
-      const point = draft.points[env.dragState.val.pointIndex];
+      const point = draft.points[pointIndex];
+      if (!point) return;
       if (!updateDerivedPointSourceToWorld(env, draft, point, world)) {
-        updatePointToWorld(env, draft, env.dragState.val.pointIndex, world);
+        updatePointToWorld(env, draft, pointIndex, world);
       }
     }, "graph");
-    env.hoverPointIndex.val = env.dragState.val.pointIndex;
+    env.hoverPointIndex.val = pointIndex;
   }
 
   /**
@@ -464,14 +468,19 @@
    * @param {Point} position
    */
   function updateDraggedLabel(env, position) {
+    const drag = env.dragState.val;
+    if (!drag || drag.labelIndex === null) return;
+    const labelIndex = drag.labelIndex;
     env.updateScene((/** @type {ViewerSceneData} */ draft) => {
-      const label = draft.labels[env.dragState.val.labelIndex];
+      const label = draft.labels[labelIndex];
+      if (!label) return;
       const anchor = label.anchor;
       if (label.screenSpace) {
         anchor.x = position.x;
         anchor.y = position.y;
       } else if (isBoundAnchor(anchor)) {
         const base = env.resolveAnchorBase(anchor);
+        if (!base) return;
         const world = env.toWorld(position.x, position.y);
         anchor.dx = world.x - base.x;
         anchor.dy = world.y - base.y;
@@ -488,15 +497,18 @@
    * @param {Point} world
    */
   function updateDraggedPolygon(env, world) {
-    const previous = env.toWorld(env.dragState.val.lastX, env.dragState.val.lastY);
+    const drag = env.dragState.val;
+    if (!drag || drag.polygonIndex === null) return;
+    const polygonIndex = drag.polygonIndex;
+    const previous = env.toWorld(drag.lastX, drag.lastY);
     const dx = world.x - previous.x;
     const dy = world.y - previous.y;
     if (Math.abs(dx) <= 1e-9 && Math.abs(dy) <= 1e-9) return;
     env.markDependencyRootsDirty?.(
-      dependencyRootsForDraggedPolygon(env, env.dragState.val.polygonIndex),
+      dependencyRootsForDraggedPolygon(env, polygonIndex),
     );
     env.updateScene((/** @type {ViewerSceneData} */ draft) => {
-      const polygon = draft.polygons[env.dragState.val.polygonIndex];
+      const polygon = draft.polygons[polygonIndex];
       if (!polygon) return;
       polygon.points.forEach((/** @type {PointHandle} */ handle) => {
         if (!hasPointIndexHandle(handle)) return;
@@ -513,8 +525,11 @@
    * @param {Point} position
    */
   function updateDraggedIterationTable(env, position) {
+    const drag = env.dragState.val;
+    if (!drag || drag.iterationTableIndex === null) return;
+    const iterationTableIndex = drag.iterationTableIndex;
     env.updateScene((/** @type {ViewerSceneData} */ draft) => {
-      const table = draft.iterationTables?.[env.dragState.val.iterationTableIndex];
+      const table = draft.iterationTables?.[iterationTableIndex];
       if (!table) return;
       table.x = position.x;
       table.y = position.y;
@@ -526,11 +541,14 @@
    * @param {Point} position
    */
   function updateDraggedImage(env, position) {
+    const drag = env.dragState.val;
+    if (!drag || drag.imageIndex === null) return;
+    const imageIndex = drag.imageIndex;
     env.updateScene((draft) => {
-      const image = draft.images?.[env.dragState.val.imageIndex];
+      const image = draft.images?.[imageIndex];
       if (!image) return;
-      const dxScreen = position.x - env.dragState.val.lastX;
-      const dyScreen = position.y - env.dragState.val.lastY;
+      const dxScreen = position.x - drag.lastX;
+      const dyScreen = position.y - drag.lastY;
       if (Math.abs(dxScreen) <= 1e-9 && Math.abs(dyScreen) <= 1e-9) return;
       if (image.screenSpace) {
         image.topLeft.x += dxScreen;
@@ -540,7 +558,7 @@
         return;
       }
       const worldNow = env.toWorld(position.x, position.y);
-      const worldLast = env.toWorld(env.dragState.val.lastX, env.dragState.val.lastY);
+      const worldLast = env.toWorld(drag.lastX, drag.lastY);
       const dx = worldNow.x - worldLast.x;
       const dy = worldNow.y - worldLast.y;
       image.topLeft.x += dx;
@@ -555,8 +573,10 @@
    * @param {Point} position
    */
   function panFromPointerDelta(env, position) {
+    const drag = env.dragState.val;
+    if (!drag) return;
     const worldNow = env.toWorld(position.x, position.y);
-    const worldLast = env.toWorld(env.dragState.val.lastX, env.dragState.val.lastY);
+    const worldLast = env.toWorld(drag.lastX, drag.lastY);
     env.view.centerX -= worldNow.x - worldLast.x;
     env.view.centerY -= worldNow.y - worldLast.y;
   }

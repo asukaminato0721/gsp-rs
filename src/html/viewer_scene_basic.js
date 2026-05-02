@@ -1,27 +1,26 @@
 // @ts-check
 
 (function() {
-  const modules = window.GspViewerModules || (window.GspViewerModules = {});
+  const modules = /** @type {Partial<ViewerModules> & { geometry: ViewerGeometryModule }} */ (
+    window.GspViewerModules || (window.GspViewerModules = {})
+  );
   const geometry = modules.geometry;
   const {
     normalizeAngleDelta,
     lerpPoint,
-    rotateAround,
     scaleAround: scalePointAround,
     reflectAcrossLine: reflectPointAcrossLine,
     clipParametricLineToBounds,
-    clipLineToBounds,
-    clipRayToBounds,
     angleBisectorDirection,
   } = geometry;
-  /** @type {Record<string, (env: ViewerEnv | null, constraint: RuntimePointConstraintJson, resolveFn: (index: number) => Point | null, reference?: RuntimeScenePointJson | Point | null) => Point | null>} */
+  /** @type {Record<string, (env: ViewerSceneResolverEnv | null, constraint: RuntimePointConstraintJson, resolveFn: (index: number) => Point | null, reference?: RuntimeScenePointJson | Point | null) => Point | null>} */
   const extraPointConstraintResolvers = {};
   /** @type {Record<string, (env: ViewerEnv, line: RuntimeLineJson) => Point[] | null>} */
   const extraLineBindingResolvers = {};
 
   /**
    * @param {string} kind
-   * @param {(env: ViewerEnv | null, constraint: RuntimePointConstraintJson, resolveFn: (index: number) => Point | null, reference?: RuntimeScenePointJson | Point | null) => Point | null} resolver
+   * @param {(env: ViewerSceneResolverEnv | null, constraint: RuntimePointConstraintJson, resolveFn: (index: number) => Point | null, reference?: RuntimeScenePointJson | Point | null) => Point | null} resolver
    */
   function registerPointConstraintResolver(kind, resolver) {
     extraPointConstraintResolvers[kind] = resolver;
@@ -259,8 +258,8 @@
   }
 
   /**
-   * @param {ViewerEnv | null} env
-   * @param {{ lineStartIndex?: number, lineEndIndex?: number, lineIndex?: number }} constraint
+   * @param {ViewerSceneResolverEnv | null} env
+   * @param {{ lineStartIndex?: number | null, lineEndIndex?: number | null, lineIndex?: number | null }} constraint
    * @param {(index: number) => Point | null} resolveFn
    * @returns {[Point | null, Point | null]}
    */
@@ -334,7 +333,7 @@
   }
 
   /**
-   * @param {ViewerEnv | null} env
+   * @param {ViewerSceneResolverEnv | null} env
    * @param {CircularConstraintJson | null} constraint
    * @param {(index: number) => Point | null} resolveFn
    * @returns {any | null}
@@ -452,7 +451,7 @@
   }
 
   /**
-   * @param {ViewerEnv | null} env
+   * @param {ViewerSceneResolverEnv | null} env
    * @param {RuntimePointConstraintJson | CircularConstraintJson | LineConstraintJson | null} constraint
    * @param {(index: number) => Point | null} resolveFn
    * @param {RuntimeScenePointJson | Point | null | undefined} reference
@@ -478,7 +477,7 @@
       const scene = typeof env?.currentScene === "function"
         ? env.currentScene()
         : env?.sourceScene || null;
-      const line = scene
+      const line = scene && window.GspViewerModules.dynamics
         ? window.GspViewerModules.dynamics.resolveLineConstraintParameterPoints(
             resolveFn,
             constraint.line,
@@ -626,13 +625,12 @@
   /**
    * @param {Point} vertex
    * @param {Point} first
-   * @param {Point} second
    * @param {number} shortestLen
    * @param {number} cross
    * @param {number} dot
    * @param {number} markerClass
    */
-  function resolveArcAngleMarkerPoints(vertex, first, second, shortestLen, cross, dot, markerClass) {
+  function resolveArcAngleMarkerPoints(vertex, first, shortestLen, cross, dot, markerClass) {
     const classScale = 1 + 0.18 * Math.max(0, (markerClass || 1) - 1);
     const radius = Math.min(Math.max(shortestLen * 0.12, 10), 28) * classScale;
     const clampedRadius = Math.min(radius, shortestLen * 0.42);
@@ -673,7 +671,7 @@
     if (Math.abs(dot) <= 0.12) {
       return resolveRightAngleMarkerPoints(vertex, first, second, shortestLen);
     }
-    return resolveArcAngleMarkerPoints(vertex, first, second, shortestLen, cross, dot, markerClass);
+    return resolveArcAngleMarkerPoints(vertex, first, shortestLen, cross, dot, markerClass);
   }
 
   /**
@@ -996,8 +994,11 @@
       }
     }
 
-    if (env.currentScene().origin) {
-      const origin = toScreen(env, resolvePoint(env, env.currentScene().origin));
+    const originHandle = env.currentScene().origin;
+    if (originHandle) {
+      const resolvedOrigin = resolvePoint(env, originHandle);
+      if (!resolvedOrigin) return;
+      const origin = toScreen(env, resolvedOrigin);
       appendGridElement(env, gridLayer, {
         tag: "circle",
         cx: origin.x,

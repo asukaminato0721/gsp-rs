@@ -41,8 +41,10 @@
    * @param {Point} position
    */
   function panFromPointerDelta(env, position) {
+    const drag = env.dragState.val;
+    if (!drag) return;
     const worldNow = env.toWorld(position.x, position.y);
-    const worldLast = env.toWorld(env.dragState.val.lastX, env.dragState.val.lastY);
+    const worldLast = env.toWorld(drag.lastX, drag.lastY);
     env.view.centerX -= worldNow.x - worldLast.x;
     env.view.centerY -= worldNow.y - worldLast.y;
   }

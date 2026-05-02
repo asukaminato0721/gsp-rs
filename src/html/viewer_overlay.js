@@ -1,12 +1,22 @@
 // @ts-check
 
 (function() {
-  const modules = window.GspViewerModules || (window.GspViewerModules = {});
+  const modules = /** @type {Partial<ViewerModules> & { dynamics: ViewerDynamicsModule; render: ViewerRenderModule }} */ (
+    window.GspViewerModules || (window.GspViewerModules = {})
+  );
   /** @typedef {{ name: string; children: RichMarkupNode[] }} RichMarkupNode */
   /** @typedef {{ kind: "text"; text: string } | { kind: "fraction"; numerator: RichMarkupItem[]; denominator: RichMarkupItem[] } | { kind: "radical" | "overline" | "ray" | "arc"; children: RichMarkupItem[] }} RichMarkupItem */
   /** @typedef {{ buttonIndex: number; pointerId: number; startClientX: number; startClientY: number; originX: number; originY: number; scaleX: number; scaleY: number; dragged: boolean }} ButtonPointerState */
   /** @typedef {Extract<ButtonActionJson, { kind: "toggle-visibility" }> | Extract<ButtonActionJson, { kind: "set-visibility" }> | Extract<ButtonActionJson, { kind: "show-hide-visibility" }>} VisibilityButtonAction */
   /** @typedef {HTMLButtonElement & { __gspButtonIndex?: number, __gspHotspotAction?: LabelHotspotActionJson | null }} OverlayButtonElement */
+
+  /**
+   * @param {unknown} value
+   * @returns {value is number}
+   */
+  function isFiniteNumber(value) {
+    return typeof value === "number" && Number.isFinite(value);
+  }
 
   /**
    * @param {ButtonActionJson} action
@@ -94,8 +104,17 @@
       target.push(...lines);
       return;
     }
-    const [first, ...rest] = lines;
-    target[target.length - 1].push(...first);
+    const first = lines[0];
+    if (!first) {
+      return;
+    }
+    const rest = lines.slice(1);
+    const lastTargetLine = target[target.length - 1];
+    if (!lastTargetLine) {
+      target.push(...lines);
+      return;
+    }
+    lastTargetLine.push(...first);
     target.push(...rest);
   }
 
@@ -623,7 +642,7 @@
        */
       function playbackFrequencyHz(functionDef, parameters) {
         const named = parameters.get(functionDef.name);
-        if (Number.isFinite(named) && named >= 20 && named <= 2000) {
+        if (isFiniteNumber(named) && named >= 20 && named <= 2000) {
           return named;
         }
         return 440;
@@ -673,14 +692,15 @@
           const t = sampleCount <= 1 ? 0 : index / sampleCount;
           const x = xMin + span * t;
           const y = evaluateExpr(functionDef.expr, x, parameters);
-          const sample = Number.isFinite(y) ? y : 0;
+          const sample = isFiniteNumber(y) ? y : 0;
           samples[index] = sample;
           sum += sample;
         }
         const mean = sum / sampleCount;
         for (let index = 0; index < sampleCount; index += 1) {
-          samples[index] -= mean;
-          maxAbs = Math.max(maxAbs, Math.abs(samples[index]));
+          const centered = (samples[index] ?? 0) - mean;
+          samples[index] = centered;
+          maxAbs = Math.max(maxAbs, Math.abs(centered));
         }
         if (!(maxAbs > 1e-6)) {
           for (let index = 0; index < sampleCount; index += 1) {
@@ -691,7 +711,7 @@
         }
         const scale = 0.2 / maxAbs;
         for (let index = 0; index < sampleCount; index += 1) {
-          samples[index] *= scale;
+          samples[index] = (samples[index] ?? 0) * scale;
         }
         return {
           samples,
@@ -1023,24 +1043,25 @@
 
       /** @param {PointerEvent} event */
       function handleButtonPointerMove(event) {
-        if (!buttonPointerState || event.pointerId !== buttonPointerState.pointerId) {
+        const pointerState = buttonPointerState;
+        if (!pointerState || event.pointerId !== pointerState.pointerId) {
           return;
         }
-        const dx = (event.clientX - buttonPointerState.startClientX) * buttonPointerState.scaleX;
-        const dy = (event.clientY - buttonPointerState.startClientY) * buttonPointerState.scaleY;
-        if (!buttonPointerState.dragged && Math.hypot(dx, dy) >= 4) {
-          buttonPointerState.dragged = true;
+        const dx = (event.clientX - pointerState.startClientX) * pointerState.scaleX;
+        const dy = (event.clientY - pointerState.startClientY) * pointerState.scaleY;
+        if (!pointerState.dragged && Math.hypot(dx, dy) >= 4) {
+          pointerState.dragged = true;
         }
-        if (!buttonPointerState.dragged) {
+        if (!pointerState.dragged) {
           return;
         }
         updateButtons((buttons) => {
-          const button = buttons[buttonPointerState.buttonIndex];
+          const button = buttons[pointerState.buttonIndex];
           if (!button) {
             return;
           }
-          button.x = buttonPointerState.originX + dx;
-          button.y = buttonPointerState.originY + dy;
+          button.x = pointerState.originX + dx;
+          button.y = pointerState.originY + dy;
         });
       }
 

@@ -104,6 +104,12 @@ type RuntimePolygonIterationFamily = PolygonIterationJson;
 type RuntimeLabelIterationFamily = LabelIterationJson;
 type RuntimeCircleIterationFamily = CircleIterationJson;
 
+type ViewerSceneResolverEnv = {
+  sourceScene: SceneData | ViewerSceneData;
+  currentScene?: () => ViewerSceneData;
+  resolveScenePoint?: (index: number) => Point | null;
+} | ViewerEnv;
+
 type ViewerSceneData = Omit<
   SceneData,
   | "origin"
@@ -219,10 +225,10 @@ type PolygonBindingRefresher = (
 ) => void;
 
 type ViewerEnv = {
-  canvas: SVGSVGElement | null;
-  svg: SVGSVGElement | null;
-  gridLayer: SVGGElement | null;
-  sceneLayer: SVGGElement | null;
+  canvas: SVGSVGElement;
+  svg: SVGSVGElement;
+  gridLayer: SVGGElement;
+  sceneLayer: SVGGElement;
   sourceScene: SceneData;
   margin: number;
   trigMode: boolean;
@@ -276,7 +282,7 @@ type ViewerSceneModule = {
   registerPointConstraintResolver: (
     kind: string,
     resolver: (
-      env: ViewerEnv | null,
+      env: ViewerSceneResolverEnv | null,
       constraint: RuntimePointConstraintJson,
       resolveFn: (index: number) => Point | null,
       reference?: RuntimeScenePointJson | Point | null,
@@ -287,7 +293,7 @@ type ViewerSceneModule = {
     resolver: (env: ViewerEnv, line: RuntimeLineJson) => Point[] | null,
   ) => void;
   resolveConstrainedPoint: (
-    env: { sourceScene: SceneData | ViewerSceneData } | ViewerEnv | null,
+    env: ViewerSceneResolverEnv | null,
     constraint: RuntimePointConstraintJson | null,
     resolveFn: (index: number) => Point | null,
     reference?: RuntimeScenePointJson | Point | null,
@@ -313,13 +319,13 @@ type ViewerSceneModule = {
     end: Point,
     kind: "segment" | "line" | "ray",
   ) => { t: number; projected: Point; distanceSquared: number } | null;
-  pointOnCircleArc: (center: Point, start: Point, end: Point, t: number, yUp?: boolean) => Point | null;
+  pointOnCircleArc: (center: Point, start: Point, end: Point, t: number, yUp: boolean) => Point | null;
   projectToCircleArc: (
     point: Point,
     center: Point,
     start: Point,
     end: Point,
-    yUp?: boolean,
+    yUp: boolean,
   ) => { t: number; projected: Point; distanceSquared: number } | null;
   pointOnThreePointArc: (start: Point, mid: Point, end: Point, t: number) => Point | null;
   projectToThreePointArc: (
@@ -379,7 +385,7 @@ type ViewerSceneModule = {
     center: Point,
     start: Point,
     end: Point,
-    yUp?: boolean,
+    yUp: boolean,
   ) => { start: Point; mid: Point; end: Point } | null;
   _pointOnThreePointArcComplement?: (
     start: Point,
@@ -540,9 +546,9 @@ type ViewerDragModule = {
 
 type ViewerDynamicsModule = {
   buildParameterControls: (env: ViewerEnv) => void;
-  evaluateExpr: (expr: FunctionExprJson, x: number, parameters: Map<string, number>) => number | null;
-  formatExpr: (expr: FunctionExprJson, formatAxisNumber: (value: number) => string, variableLabel?: string) => string;
-  parameterValueFromPoint: (scene: ViewerSceneData, pointIndex: number) => number | null;
+  evaluateExpr: ((expr: FunctionExprJson, x: number, parameters: Map<string, number>) => number | null) | null;
+  formatExpr: ((expr: FunctionExprJson, formatAxisNumber: (value: number) => string, variableLabel?: string) => string) | null;
+  parameterValueFromPoint: ((scene: ViewerSceneData, pointIndex: number) => number | null) | null;
   applyNormalizedParameterToPoint: (
     point: RuntimeScenePointJson,
     scene: ViewerSceneData,

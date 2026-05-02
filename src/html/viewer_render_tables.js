@@ -1,7 +1,9 @@
 // @ts-check
 
 (function() {
-  const modules = window.GspViewerModules || (window.GspViewerModules = {});
+  const modules = /** @type {Partial<ViewerModules> & { render: ViewerRenderModule }} */ (
+    window.GspViewerModules || (window.GspViewerModules = {})
+  );
 
   /**
    * @param {ViewerEnv} env
@@ -14,10 +16,14 @@
     const header = ["n", table.exprLabel];
     const body = table.rows.map((/** @type {{ index: number; value: number }} */ row) => [String(row.index), env.formatNumber(row.value)]);
     const rows = [header, ...body];
+    /** @type {[number, number]} */
     const colWidths = [0, 0];
     rows.forEach((/** @type {string[]} */ row) => {
       row.forEach((/** @type {string} */ cell, /** @type {number} */ index) => {
-        colWidths[index] = Math.max(colWidths[index], env.measureText(cell, 18) + 18);
+        if (index > 1) return;
+        const width = colWidths[index];
+        if (typeof width !== "number") return;
+        colWidths[index] = Math.max(width, env.measureText(cell, 18) + 18);
       });
     });
     const rowHeight = 28;
@@ -40,8 +46,10 @@
    * @param {number} screenY
    */
   modules.render.findHitIterationTable = function findHitIterationTable(env, screenX, screenY) {
-    for (let index = (env.currentScene().iterationTables || []).length - 1; index >= 0; index -= 1) {
-      const table = env.currentScene().iterationTables[index];
+    const tables = env.currentScene().iterationTables || [];
+    for (let index = tables.length - 1; index >= 0; index -= 1) {
+      const table = tables[index];
+      if (!table) continue;
       const bounds = modules.render.iterationTableBounds(env, table);
       if (!bounds) continue;
       if (
@@ -103,6 +111,7 @@
         let x = 0;
         row.forEach((/** @type {string} */ cell, /** @type {number} */ colIndex) => {
           const cellWidth = colWidths[colIndex];
+          if (typeof cellWidth !== "number") return;
           const text = env.createSvgElement("text", {
             x: x + cellWidth / 2,
             y: rowHeight * rowIndex + rowHeight / 2,

@@ -1,7 +1,9 @@
 // @ts-check
 
 (function() {
-  const modules = window.GspViewerModules || (window.GspViewerModules = {});
+  const modules = /** @type {Partial<ViewerModules> & { render: ViewerRenderModule }} */ (
+    window.GspViewerModules || (window.GspViewerModules = {})
+  );
 
   /**
    * @param {PointHandle} handle
@@ -18,10 +20,13 @@
   function pointInPolygon(point, polygon) {
     let inside = false;
     for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
-      const xi = polygon[i].x;
-      const yi = polygon[i].y;
-      const xj = polygon[j].x;
-      const yj = polygon[j].y;
+      const current = polygon[i];
+      const previous = polygon[j];
+      if (!current || !previous) continue;
+      const xi = current.x;
+      const yi = current.y;
+      const xj = previous.x;
+      const yj = previous.y;
       const intersects = ((yi > point.y) !== (yj > point.y))
         && (point.x < ((xj - xi) * (point.y - yi)) / ((yj - yi) || 1e-9) + xi);
       if (intersects) inside = !inside;

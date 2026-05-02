@@ -9,12 +9,16 @@
     overlay: overlayModule,
     drag: dragModule,
     dynamics: dynamicsModule,
-  } = window.GspViewerModules;
+  } = /** @type {ViewerModules} */ (window.GspViewerModules);
   const SVG_NS = "http://www.w3.org/2000/svg";
   const XLINK_NS = "http://www.w3.org/1999/xlink";
   /** @typedef {{ index: number; title: string; scene: SceneData }} DocumentScenePage */
   /** @typedef {{ kind: "gsp-document"; pages: DocumentScenePage[] }} DocumentSceneData */
-  const rawSceneData = JSON.parse(document.getElementById("scene-data").textContent);
+  const sceneDataElement = document.getElementById("scene-data");
+  if (!sceneDataElement?.textContent) {
+    throw new Error("missing scene-data payload");
+  }
+  const rawSceneData = JSON.parse(sceneDataElement.textContent);
   /**
    * @param {unknown} data
    * @returns {data is DocumentSceneData}
@@ -107,6 +111,7 @@
   const pointMatchTolerance = 1e-3;
   const autoOpenDebug = new URLSearchParams(window.location.search).get("debug") === "1";
   const defaultZoom = sourceScene.graphMode ? 1 : 0.9;
+  /** @type {{ val: (Point & { scale?: number }) | null }} */
   const pointerWorldState = van.state(null);
   /** @type {{ val: "selection" | "scene" | "json" }} */
   const debugViewState = van?.state ? van.state("selection") : { val: "selection" };
@@ -314,7 +319,7 @@
    * @returns {PointHandle}
    */
   function attachPointRef(point) {
-    const pointIndex = sourceScene.points.findIndex((candidate, index) => samePoint(resolveSourcePoint(index), point));
+    const pointIndex = sourceScene.points.findIndex((_candidate, index) => samePoint(resolveSourcePoint(index), point));
     if (pointIndex >= 0) {
       return { pointIndex };
     }
@@ -459,7 +464,7 @@
   function attachLabelAnchor(point, hydratedLines) {
     let bestPointIndex = null;
     let bestPointDistanceSquared = Number.POSITIVE_INFINITY;
-    sourceScene.points.forEach((candidate, index) => {
+    sourceScene.points.forEach((_candidate, index) => {
       const resolved = resolveSourcePoint(index);
       const distSq = distanceSquared(resolved, point);
       if (distSq < bestPointDistanceSquared) {
@@ -555,7 +560,7 @@
     return {
       ...scene,
       graphMode: scene.graphMode,
-      bounds: scene.bounds ? { ...scene.bounds } : null,
+      bounds: { ...scene.bounds },
       images: (scene.images || []).map((image) => ({
         topLeft: { ...image.topLeft },
         bottomRight: { ...image.bottomRight },
@@ -788,19 +793,17 @@
     ) {
       cloned.value = parameters.get(cloned.name);
     }
-    if (
-      typeof cloned.depth === "number"
-      && typeof cloned.parameterName === "string"
-      && Number.isFinite(parameters.get(cloned.parameterName))
-    ) {
-      cloned.depth = Math.max(0, Math.floor(parameters.get(cloned.parameterName) + 1e-9));
+    if (typeof cloned.depth === "number" && typeof cloned.parameterName === "string") {
+      const depth = parameters.get(cloned.parameterName);
+      if (typeof depth === "number" && Number.isFinite(depth)) {
+        cloned.depth = Math.max(0, Math.floor(depth + 1e-9));
+      }
     }
-    if (
-      typeof cloned.depth === "number"
-      && typeof cloned.depthParameterName === "string"
-      && Number.isFinite(parameters.get(cloned.depthParameterName))
-    ) {
-      cloned.depth = Math.max(0, Math.floor(parameters.get(cloned.depthParameterName) + 1e-9));
+    if (typeof cloned.depth === "number" && typeof cloned.depthParameterName === "string") {
+      const depth = parameters.get(cloned.depthParameterName);
+      if (typeof depth === "number" && Number.isFinite(depth)) {
+        cloned.depth = Math.max(0, Math.floor(depth + 1e-9));
+      }
     }
     return cloned;
   }
@@ -1111,9 +1114,11 @@
           return;
         }
         if (Array.isArray(child)) {
-          const directRefs = child
-            .map((/** @type {unknown} */ item) => (typeof item === "number" ? formatReference(key, item) : null))
-            .filter(Boolean);
+          const directRefs = child.flatMap((/** @type {unknown} */ item) => {
+            if (typeof item !== "number") return [];
+            const ref = formatReference(key, item);
+            return ref ? [ref] : [];
+          });
           refs.push(...directRefs);
           child.forEach(visit);
           return;
@@ -1659,9 +1664,11 @@
 
   /** @param {Point} position */
   function panFromPointerDelta(position) {
+    const drag = dragState.val;
+    if (!drag) return;
     const currentView = viewState.val;
     const worldNow = toWorldForView(currentView, position.x, position.y);
-    const worldLast = toWorldForView(currentView, dragState.val.lastX, dragState.val.lastY);
+    const worldLast = toWorldForView(currentView, drag.lastX, drag.lastY);
     updateViewState((draft) => {
       draft.centerX -= worldNow.x - worldLast.x;
       draft.centerY -= worldNow.y - worldLast.y;
@@ -1755,7 +1762,8 @@
       return cloneForDebug(lastDependencyRun);
     },
     get selection() {
-      return debugEntityWithLiveParameters(lookupDebugEntity(selectedDebugTargetState.val));
+      const target = selectedDebugTargetState.val;
+      return debugEntityWithLiveParameters(target ? lookupDebugEntity(target) : null);
     },
     json() {
       return buildDebugJson();

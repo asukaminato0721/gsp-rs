@@ -3,7 +3,7 @@
   "compilerOptions": {
     "noImplicitAny": true
   },
-  "include": [
+  "files": [
     "src/html/viewer.js",
     "src/html/viewer_drag.js",
     "src/html/viewer_render_basic.js",
@@ -13,9 +13,10 @@
     "src/html/viewer_render_labels.js",
     "src/html/viewer_render_tables.js",
     "src/html/viewer_render_hotspots.js",
-    "src/html/viewer_scene.js",
-    "src/html/generated/**/*.ts",
     "src/html/viewer_types.d.ts",
     "src/html/vendor/van-1.6.0.d.ts"
+  ],
+  "include": [
+    "src/html/generated/**/*.ts"
   ]
 }

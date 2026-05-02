@@ -1,7 +1,9 @@
 // @ts-check
 
 (function() {
-  const modules = window.GspViewerModules || (window.GspViewerModules = {});
+  const modules = /** @type {Partial<ViewerModules> & { render: ViewerRenderModule }} */ (
+    window.GspViewerModules || (window.GspViewerModules = {})
+  );
 
   /**
    * @param {Point} start

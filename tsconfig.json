@@ -6,11 +6,12 @@
     "allowJs": true,
     "checkJs": true,
     "noEmit": true,
-    "strict": false,
+    "strict": true,
+    "strictNullChecks": false,
     "noImplicitAny": true,
     "skipLibCheck": true
   },
-  "include": [
+  "files": [
     "src/html/viewer.js",
     "src/html/viewer_drag.js",
     "src/html/viewer_drag_pan.js",
@@ -29,9 +30,10 @@
     "src/html/viewer_scene_circular.js",
     "src/html/viewer_scene_trace.js",
     "src/html/viewer_scene_intersections.js",
-    "src/html/viewer_scene.js",
-    "src/html/generated/**/*.ts",
     "src/html/viewer_types.d.ts",
     "src/html/vendor/van-1.6.0.d.ts"
+  ],
+  "include": [
+    "src/html/generated/**/*.ts"
   ]
 }
