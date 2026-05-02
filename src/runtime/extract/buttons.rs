@@ -31,6 +31,9 @@ enum RawButtonAction {
     AnimatePoint {
         point_group_ordinal: usize,
     },
+    AnimatePoints {
+        point_group_ordinals: Vec<usize>,
+    },
     ScrollPoint {
         point_group_ordinal: usize,
     },
@@ -140,11 +143,16 @@ pub(super) fn collect_buttons(
         let action =
             match (action_kind_lo, action_kind_hi) {
                 (2, 0) => {
-                    refs.first()
-                        .copied()
-                        .map(|point_group_ordinal| RawButtonAction::AnimatePoint {
-                            point_group_ordinal,
-                        })
+                    let point_group_ordinals = animate_point_refs(&refs);
+                    match point_group_ordinals.as_slice() {
+                        [] => None,
+                        [point_group_ordinal] => Some(RawButtonAction::AnimatePoint {
+                            point_group_ordinal: *point_group_ordinal,
+                        }),
+                        _ => Some(RawButtonAction::AnimatePoints {
+                            point_group_ordinals,
+                        }),
+                    }
                 }
                 (4, 0) => {
                     refs.first()
@@ -355,6 +363,24 @@ pub(super) fn collect_buttons(
                         .copied()
                         .flatten()?,
                 },
+                RawButtonAction::AnimatePoints {
+                    point_group_ordinals,
+                } => {
+                    let point_indices = point_group_ordinals
+                        .into_iter()
+                        .filter_map(|ordinal| {
+                            lookups
+                                .group_to_point_index
+                                .get(ordinal.checked_sub(1)?)
+                                .copied()
+                                .flatten()
+                        })
+                        .collect::<Vec<_>>();
+                    if point_indices.is_empty() {
+                        return None;
+                    }
+                    ButtonAction::AnimatePoints { point_indices }
+                }
                 RawButtonAction::ScrollPoint {
                     point_group_ordinal,
                 } => ButtonAction::ScrollPoint {
@@ -440,14 +466,23 @@ fn raw_button_action_is_exportable(
         }
         RawButtonAction::AnimatePoint {
             point_group_ordinal,
-        }
-        | RawButtonAction::ScrollPoint {
+        } => resolve_point_index(*point_group_ordinal, lookups).is_some(),
+        RawButtonAction::AnimatePoints {
+            point_group_ordinals,
+        } => point_group_ordinals
+            .iter()
+            .any(|ordinal| resolve_point_index(*ordinal, lookups).is_some()),
+        RawButtonAction::ScrollPoint {
             point_group_ordinal,
         }
         | RawButtonAction::FocusPoint {
             point_group_ordinal,
         } => resolve_point_index(*point_group_ordinal, lookups).is_some(),
     }
+}
+
+fn animate_point_refs(refs: &[usize]) -> Vec<usize> {
+    refs.to_vec()
 }
 
 fn resolve_move_point_targets(

@@ -921,6 +921,86 @@
 
       /**
        * @param {number} buttonIndex
+       * @param {Array<number>} pointIndices
+       */
+      function toggleAnimatedPoints(buttonIndex, pointIndices) {
+        if (buttonsState.val[buttonIndex]?.active) {
+          stopButtonAnimation(buttonIndex);
+          return;
+        }
+        const scene = env.currentScene();
+        const points = pointIndices
+          .map((pointIndex) => {
+            const point = scene.points[pointIndex];
+            if (!point) {
+              return null;
+            }
+            let direction = 1;
+            if (point.constraint?.kind === "segment") {
+              direction = point.constraint.t < 0.5 ? 1 : -1;
+            }
+            return { pointIndex, direction };
+          })
+          .filter((point) => !!point);
+        if (points.length === 0) {
+          return;
+        }
+        const state = { stop: false, rafId: 0 };
+        buttonAnimations.set(buttonIndex, state);
+        updateButtons((buttons) => {
+          if (buttons[buttonIndex]) {
+            buttons[buttonIndex].active = true;
+          }
+        });
+        /** @type {number | null} */
+        let lastTime = null;
+        /** @param {number} timestamp */
+        const step = (timestamp) => {
+          if (state.stop) {
+            return;
+          }
+          if (lastTime === null) {
+            lastTime = timestamp;
+          }
+          const dt = Math.min(64, timestamp - lastTime);
+          lastTime = timestamp;
+          const sourcePointRootId = modules.dynamics?.sourcePointRootId;
+          if (typeof sourcePointRootId === "function") {
+            points.forEach((point) => {
+              env.markDependencyRootsDirty?.(sourcePointRootId(point.pointIndex));
+            });
+          }
+          env.updateScene((draft) => {
+            const delta = dt / 12000;
+            points.forEach((point) => {
+              const draftPoint = draft.points[point.pointIndex];
+              if (!draftPoint?.constraint) {
+                return;
+              }
+              const parameterized = modules.dynamics.parameterValueFromPoint
+                ? modules.dynamics.parameterValueFromPoint(draft, point.pointIndex)
+                : null;
+              if (parameterized === null) {
+                return;
+              }
+              let next = parameterized + delta * point.direction;
+              if (next >= 1) {
+                next = 1;
+                point.direction = -1;
+              } else if (next <= 0) {
+                next = 0;
+                point.direction = 1;
+              }
+              modules.dynamics.applyNormalizedParameterToPoint(draftPoint, draft, next);
+            });
+          }, "graph");
+          state.rafId = window.requestAnimationFrame(step);
+        };
+        state.rafId = window.requestAnimationFrame(step);
+      }
+
+      /**
+       * @param {number} buttonIndex
        * @param {Array<{ pointIndex: number, targetPointIndex: number | null }>} targets
        */
       function toggleMovedPoints(buttonIndex, targets) {
@@ -1049,6 +1129,11 @@
           case "animate-point":
             if (typeof action.pointIndex === "number") {
               toggleAnimatedPoint(buttonIndex, action.pointIndex, "animate");
+            }
+            break;
+          case "animate-points":
+            if (Array.isArray(action.pointIndices)) {
+              toggleAnimatedPoints(buttonIndex, action.pointIndices);
             }
             break;
           case "scroll-point":

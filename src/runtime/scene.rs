@@ -109,6 +109,9 @@ pub(crate) enum ButtonAction {
     AnimatePoint {
         point_index: usize,
     },
+    AnimatePoints {
+        point_indices: Vec<usize>,
+    },
     ScrollPoint {
         point_index: usize,
     },

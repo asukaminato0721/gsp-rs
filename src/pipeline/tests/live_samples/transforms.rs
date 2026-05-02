@@ -152,6 +152,39 @@ fn exports_kaleidoscope_nested_reflected_polygons() {
             "expected rotated axis segment #{ordinal} to export for reflection axes"
         );
     }
+
+    let buttons = scene["buttons"]
+        .as_array()
+        .expect("scene buttons should be an array");
+    let button = buttons
+        .iter()
+        .find(|button| button["debug"]["groupOrdinal"].as_u64() == Some(52))
+        .expect("expected AnimateButton #52 to export");
+    assert_eq!(button["text"].as_str(), Some("动画点"));
+    assert_eq!(
+        button["action"]["kind"].as_str(),
+        Some("animate-points"),
+        "expected the .htm AnimateButton to keep all animated point refs"
+    );
+    let animated_ordinals = button["action"]["pointIndices"]
+        .as_array()
+        .expect("animate-points should carry point indices")
+        .iter()
+        .map(|index| {
+            let index = index.as_u64().expect("point index should be numeric") as usize;
+            scene["points"][index]["debug"]["groupOrdinal"]
+                .as_u64()
+                .expect("animated point should keep its payload ordinal")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        animated_ordinals,
+        vec![
+            10, 19, 21, 23, 14, 46, 36, 44, 12, 45, 35, 34, 27, 40, 26, 38, 49, 39, 25, 48, 50, 16,
+            30, 31, 32, 18, 17
+        ],
+        "expected all point refs from AnimateButton #52 to match the .htm order"
+    );
 }
 
 #[test]

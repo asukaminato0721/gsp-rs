@@ -114,6 +114,10 @@ enum ButtonActionJson {
         #[serde(rename = "pointIndex")]
         point_index: usize,
     },
+    AnimatePoints {
+        #[serde(rename = "pointIndices")]
+        point_indices: Vec<usize>,
+    },
     ScrollPoint {
         #[serde(rename = "pointIndex")]
         point_index: usize,
@@ -230,6 +234,9 @@ impl ButtonActionJson {
             },
             ButtonAction::AnimatePoint { point_index } => Self::AnimatePoint {
                 point_index: *point_index,
+            },
+            ButtonAction::AnimatePoints { point_indices } => Self::AnimatePoints {
+                point_indices: point_indices.clone(),
             },
             ButtonAction::ScrollPoint { point_index } => Self::ScrollPoint {
                 point_index: *point_index,

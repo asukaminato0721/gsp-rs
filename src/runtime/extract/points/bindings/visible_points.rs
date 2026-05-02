@@ -2309,17 +2309,22 @@ fn scene_point_from_midpoint(
     let group = groups.get(index)?;
     let path = find_indexed_path(file, group)?;
     let host_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-    if !matches!(
-        host_group.header.kind(),
-        crate::format::GroupKind::Segment
-            | crate::format::GroupKind::Line
-            | crate::format::GroupKind::Ray
-    ) {
-        return None;
-    }
-    let host_path = find_indexed_path(file, host_group)?;
-    let start_index = (*group_to_point_index.get(host_path.refs.first()?.checked_sub(1)?)?)?;
-    let end_index = (*group_to_point_index.get(host_path.refs.get(1)?.checked_sub(1)?)?)?;
+    let line = resolve_line_constraint(file, groups, host_group, group_to_point_index)?;
+    let (start_index, end_index) = match line {
+        LineConstraint::Segment {
+            start_index,
+            end_index,
+        }
+        | LineConstraint::Line {
+            start_index,
+            end_index,
+        }
+        | LineConstraint::Ray {
+            start_index,
+            end_index,
+        } => (start_index, end_index),
+        _ => return None,
+    };
     let position = anchors.get(index).cloned().flatten()?;
     Some(scene_point(
         position,
