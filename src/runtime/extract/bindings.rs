@@ -26,19 +26,22 @@ fn circle_group_to_index_map(
     mapping
 }
 
-fn polygon_group_to_index_map(groups: &[ObjectGroup]) -> Vec<Option<usize>> {
-    groups
-        .iter()
-        .enumerate()
-        .filter(|(_, group)| (group.header.kind()) == crate::format::GroupKind::Polygon)
-        .enumerate()
-        .fold(
-            vec![None; groups.len()],
-            |mut acc, (shape_index, (group_index, _))| {
-                acc[group_index] = Some(shape_index);
-                acc
-            },
-        )
+fn polygon_group_to_index_map(
+    groups: &[ObjectGroup],
+    shapes: &CollectedShapes,
+) -> Vec<Option<usize>> {
+    let mut mapping = vec![None; groups.len()];
+    for (shape_index, polygon) in shapes.polygons.iter().enumerate() {
+        let Some(group_ordinal) = polygon.debug.as_ref().map(|debug| debug.group_ordinal) else {
+            continue;
+        };
+        if let Some(group_index) = group_ordinal.checked_sub(1)
+            && group_index < mapping.len()
+        {
+            mapping[group_index] = Some(shape_index);
+        }
+    }
+    mapping
 }
 
 fn map_line_shape(mapping: &mut [Option<usize>], line: &LineShape, shape_index: usize) {
@@ -106,7 +109,7 @@ pub(super) fn remap_scene_bindings(
         &circle_group_to_index,
         &line_group_to_index,
     );
-    let polygon_group_to_index = polygon_group_to_index_map(groups);
+    let polygon_group_to_index = polygon_group_to_index_map(groups, shapes);
     remap_polygon_bindings(
         &mut shapes.polygons,
         group_to_point_index,

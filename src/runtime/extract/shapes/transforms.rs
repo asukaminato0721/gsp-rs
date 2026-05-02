@@ -20,18 +20,25 @@ pub(crate) fn collect_rotated_line_shapes(
 ) -> Vec<LineShape> {
     groups
         .iter()
-        .filter(|group| (group.header.kind()) == crate::format::GroupKind::ParameterRotation)
+        .filter(|group| {
+            matches!(
+                group.header.kind(),
+                crate::format::GroupKind::Rotation | crate::format::GroupKind::ParameterRotation
+            )
+        })
         .filter_map(|group| {
-            let binding = try_decode_parameter_rotation_binding(file, groups, group).ok()?;
+            let binding = if group.header.kind() == crate::format::GroupKind::ParameterRotation {
+                try_decode_parameter_rotation_binding(file, groups, group).ok()?
+            } else {
+                try_decode_transform_binding(file, group).ok()?
+            };
             let path = context.indexed_path(group)?;
             let source_group_index = context.path_ref_group_index(path, 0)?;
             let source_group = context.path_ref_group(path, 0)?;
-            if (source_group.header.kind()) != crate::format::GroupKind::Segment {
-                return None;
-            }
             let center = anchors.get(binding.center_group_index)?.clone()?;
             let radians = binding_angle_radians(&binding.kind)?;
-            let points = source_path_points(context, anchors, source_group)?
+            let (start, end) = resolve_line_like_points_raw(file, groups, anchors, source_group)?;
+            let points = [start, end]
                 .into_iter()
                 .map(|point| rotate_around(&point, &center, radians))
                 .collect::<Vec<_>>();
@@ -302,12 +309,9 @@ pub(crate) fn collect_translated_polygon_shapes(
             let path = context.indexed_path(group)?;
             let source_group_index = context.path_ref_group_index(path, 0)?;
             let source_group = context.path_ref_group(path, 0)?;
-            if (source_group.header.kind()) != crate::format::GroupKind::Polygon {
-                return None;
-            }
             let (dx, dy, vector_start_index, vector_end_index) =
                 translation_delta(file, group, anchors)?;
-            let points = source_path_points(context, anchors, source_group)?
+            let points = polygon_points_raw(file, groups, context, anchors, source_group)?
                 .into_iter()
                 .map(|point| PointRecord {
                     x: point.x + dx,
@@ -375,18 +379,24 @@ pub(crate) fn collect_rotated_polygon_shapes(
 ) -> Vec<PolygonShape> {
     groups
         .iter()
-        .filter(|group| (group.header.kind()) == crate::format::GroupKind::ParameterRotation)
+        .filter(|group| {
+            matches!(
+                group.header.kind(),
+                crate::format::GroupKind::Rotation | crate::format::GroupKind::ParameterRotation
+            )
+        })
         .filter_map(|group| {
-            let binding = try_decode_parameter_rotation_binding(file, groups, group).ok()?;
+            let binding = if group.header.kind() == crate::format::GroupKind::ParameterRotation {
+                try_decode_parameter_rotation_binding(file, groups, group).ok()?
+            } else {
+                try_decode_transform_binding(file, group).ok()?
+            };
             let path = context.indexed_path(group)?;
             let source_group_index = context.path_ref_group_index(path, 0)?;
             let source_group = context.path_ref_group(path, 0)?;
-            if (source_group.header.kind()) != crate::format::GroupKind::Polygon {
-                return None;
-            }
             let center = anchors.get(binding.center_group_index)?.clone()?;
             let radians = binding_angle_radians(&binding.kind)?;
-            let points = source_path_points(context, anchors, source_group)?
+            let points = polygon_points_raw(file, groups, context, anchors, source_group)?
                 .into_iter()
                 .map(|point| rotate_around(&point, &center, radians))
                 .collect::<Vec<_>>();
@@ -422,11 +432,8 @@ pub(crate) fn collect_transformed_polygon_shapes(
             let path = context.indexed_path(group)?;
             let source_group_index = context.path_ref_group_index(path, 0)?;
             let source_group = context.path_ref_group(path, 0)?;
-            if (source_group.header.kind()) != crate::format::GroupKind::Polygon {
-                return None;
-            }
             let scale_center = anchors.get(binding.center_group_index)?.clone()?;
-            let points = source_path_points(context, anchors, source_group)?
+            let points = polygon_points_raw(file, groups, context, anchors, source_group)?
                 .into_iter()
                 .map(|point| scale_around(&point, &scale_center, factor))
                 .collect::<Vec<_>>();
@@ -498,14 +505,11 @@ pub(crate) fn collect_reflected_polygon_shapes(
             let path = context.indexed_path(group)?;
             let source_group_index = context.path_ref_group_index(path, 0)?;
             let source_group = context.path_ref_group(path, 0)?;
-            if (source_group.header.kind()) != crate::format::GroupKind::Polygon {
-                return None;
-            }
             let line_group_index = context.path_ref_group_index(path, 1)?;
             let line_group = context.path_ref_group(path, 1)?;
             let (line_start, line_end) =
                 resolve_line_like_points_raw(file, groups, anchors, line_group)?;
-            let points = source_path_points(context, anchors, source_group)?
+            let points = polygon_points_raw(file, groups, context, anchors, source_group)?
                 .into_iter()
                 .filter_map(|point| reflect_across_line(&point, &line_start, &line_end))
                 .collect::<Vec<_>>();
@@ -537,6 +541,94 @@ fn source_path_points(
             .filter_map(|object_ref| anchors.get(object_ref.saturating_sub(1)).cloned().flatten())
             .collect(),
     )
+}
+
+fn polygon_points_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    context: &SceneContext<'_>,
+    anchors: &[Option<PointRecord>],
+    group: &ObjectGroup,
+) -> Option<Vec<PointRecord>> {
+    polygon_points_raw_inner(file, groups, context, anchors, group, &mut Vec::new())
+}
+
+fn polygon_points_raw_inner(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    context: &SceneContext<'_>,
+    anchors: &[Option<PointRecord>],
+    group: &ObjectGroup,
+    stack: &mut Vec<usize>,
+) -> Option<Vec<PointRecord>> {
+    let group_index = group.ordinal.checked_sub(1)?;
+    if stack.contains(&group_index) {
+        return None;
+    }
+    stack.push(group_index);
+    let result = match group.header.kind() {
+        crate::format::GroupKind::Polygon => source_path_points(context, anchors, group),
+        crate::format::GroupKind::Translation => {
+            let path = context.indexed_path(group)?;
+            let source_group = context.path_ref_group(path, 0)?;
+            let (dx, dy, _, _) = translation_delta(file, group, anchors)?;
+            Some(
+                polygon_points_raw_inner(file, groups, context, anchors, source_group, stack)?
+                    .into_iter()
+                    .map(|point| PointRecord {
+                        x: point.x + dx,
+                        y: point.y + dy,
+                    })
+                    .collect(),
+            )
+        }
+        crate::format::GroupKind::Rotation | crate::format::GroupKind::ParameterRotation => {
+            let binding = if group.header.kind() == crate::format::GroupKind::ParameterRotation {
+                try_decode_parameter_rotation_binding(file, groups, group).ok()?
+            } else {
+                try_decode_transform_binding(file, group).ok()?
+            };
+            let source_group = groups.get(binding.source_group_index)?;
+            let center = anchors.get(binding.center_group_index)?.clone()?;
+            let radians = binding_angle_radians(&binding.kind)?;
+            Some(
+                polygon_points_raw_inner(file, groups, context, anchors, source_group, stack)?
+                    .into_iter()
+                    .map(|point| rotate_around(&point, &center, radians))
+                    .collect(),
+            )
+        }
+        crate::format::GroupKind::Scale => {
+            let binding = try_decode_transform_binding(file, group).ok()?;
+            let TransformBindingKind::Scale { factor } = binding.kind else {
+                return None;
+            };
+            let source_group = groups.get(binding.source_group_index)?;
+            let center = anchors.get(binding.center_group_index)?.clone()?;
+            Some(
+                polygon_points_raw_inner(file, groups, context, anchors, source_group, stack)?
+                    .into_iter()
+                    .map(|point| scale_around(&point, &center, factor))
+                    .collect(),
+            )
+        }
+        crate::format::GroupKind::Reflection => {
+            let path = context.indexed_path(group)?;
+            let source_group = context.path_ref_group(path, 0)?;
+            let line_group = context.path_ref_group(path, 1)?;
+            let (line_start, line_end) =
+                resolve_line_like_points_raw(file, groups, anchors, line_group)?;
+            Some(
+                polygon_points_raw_inner(file, groups, context, anchors, source_group, stack)?
+                    .into_iter()
+                    .filter_map(|point| reflect_across_line(&point, &line_start, &line_end))
+                    .collect(),
+            )
+        }
+        _ => None,
+    };
+    stack.pop();
+    result.filter(|points| points.len() >= 3)
 }
 
 fn derived_line_shape(

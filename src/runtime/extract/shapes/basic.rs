@@ -8,11 +8,12 @@ use super::{
     try_decode_function_expr, try_decode_function_plot_descriptor,
 };
 use crate::format::{GroupKind, read_f64, read_u16, read_u32};
+use crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT;
 use crate::runtime::extract::decode::{
     circle_center_radius_value, detect_perpendicular_segment_payload, is_circle_group_kind,
     resolve_circle_points_raw,
 };
-use crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT;
+use crate::runtime::extract::points::resolve_line_like_points_raw;
 use crate::runtime::geometry::{
     arc_on_circle_control_points, sample_three_point_arc, sample_three_point_arc_complement,
 };
@@ -747,8 +748,8 @@ fn resolve_perpendicular_line_shape(
         visible: !group.header.is_hidden(),
         binding: Some(LineBinding::PerpendicularLine {
             through_index,
-            line_start_index: Some(line_start_index),
-            line_end_index: Some(line_end_index),
+            line_start_index,
+            line_end_index,
             line_index: Some(host_index),
         }),
         debug: Some(payload_debug_source(group)),
@@ -792,8 +793,8 @@ fn resolve_parallel_line_shape(
         visible: !group.header.is_hidden(),
         binding: Some(LineBinding::ParallelLine {
             through_index,
-            line_start_index: Some(line_start_index),
-            line_end_index: Some(line_end_index),
+            line_start_index,
+            line_end_index,
             line_index: Some(host_index),
         }),
         debug: Some(payload_debug_source(group)),
@@ -830,17 +831,13 @@ fn resolve_host_line_points(
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
     group_index: usize,
-) -> Option<(usize, usize, PointRecord, PointRecord)> {
+) -> Option<(Option<usize>, Option<usize>, PointRecord, PointRecord)> {
     let group = groups.get(group_index)?;
     let path = find_indexed_path(file, group)?;
-    if path.refs.len() != 2 {
-        return None;
-    }
 
-    let start_index = path.refs[0].checked_sub(1)?;
-    let end_index = path.refs[1].checked_sub(1)?;
-    let start = anchors.get(start_index)?.clone()?;
-    let end = anchors.get(end_index)?.clone()?;
+    let start_index = path.refs.first().and_then(|ordinal| ordinal.checked_sub(1));
+    let end_index = path.refs.get(1).and_then(|ordinal| ordinal.checked_sub(1));
+    let (start, end) = resolve_line_like_points_raw(file, groups, anchors, group)?;
     has_distinct_points(&[start.clone(), end.clone()]).then_some((
         start_index,
         end_index,

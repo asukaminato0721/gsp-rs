@@ -109,6 +109,52 @@ fn exports_nested_scaled_reflected_circle_fixture_with_live_constraints() {
 }
 
 #[test]
+fn exports_kaleidoscope_nested_reflected_polygons() {
+    let Some(data) = fixture_bytes("tests/Samples/未分类档/万花筒.gsp") else {
+        return;
+    };
+    let scene = fixture_scene(&data, "kaleidoscope fixture should compile");
+    let polygons = scene["polygons"]
+        .as_array()
+        .expect("scene polygons should be an array");
+    assert_eq!(
+        polygons.len(),
+        287,
+        "expected seven seed polygons plus every polygon Reflection() from the .htm construction"
+    );
+    for ordinal in [54, 61, 89, 131, 337] {
+        let polygon = polygons
+            .iter()
+            .find(|polygon| polygon["debug"]["groupOrdinal"].as_u64() == Some(ordinal))
+            .unwrap_or_else(|| panic!("expected reflected polygon #{ordinal} to export"));
+        assert_eq!(
+            polygon["binding"]["kind"].as_str(),
+            Some("derived"),
+            "expected reflected polygon #{ordinal} to keep a live transform binding"
+        );
+        assert_eq!(
+            polygon["binding"]["transform"]["kind"].as_str(),
+            Some("reflect"),
+            "expected reflected polygon #{ordinal} to stay reflection-bound"
+        );
+    }
+
+    let lines = scene["lines"]
+        .as_array()
+        .expect("scene lines should be an array");
+    for ordinal in [5, 6, 53] {
+        assert!(
+            lines.iter().any(|line| {
+                line["debug"]["groupOrdinal"].as_u64() == Some(ordinal)
+                    && line["binding"]["kind"].as_str() == Some("derived")
+                    && line["binding"]["transform"]["kind"].as_str() == Some("rotate")
+            }),
+            "expected rotated axis segment #{ordinal} to export for reflection axes"
+        );
+    }
+}
+
+#[test]
 fn exports_translation_fixture_with_live_circle_and_intersection() {
     let Some(data) = fixture_bytes("tests/fixtures/gsp/static/translation.gsp") else {
         return;

@@ -1481,6 +1481,30 @@ pub(crate) fn resolve_line_like_constraint_raw(
             )
             .map(|(start, end)| (start, end, kind))
         }
+        crate::format::GroupKind::Rotation
+        | crate::format::GroupKind::ParameterRotation
+        | crate::format::GroupKind::Scale => {
+            let binding = if group.header.kind() == crate::format::GroupKind::ParameterRotation {
+                try_decode_parameter_rotation_binding(file, groups, group).ok()?
+            } else {
+                try_decode_transform_binding(file, group).ok()?
+            };
+            let source_group = groups.get(binding.source_group_index)?;
+            let (start, end, kind) =
+                resolve_line_like_constraint_raw(file, groups, anchors, source_group)?;
+            let center = anchors.get(binding.center_group_index)?.clone()?;
+            let (start, end) = match binding.kind {
+                TransformBindingKind::Rotate { angle_degrees, .. } => (
+                    rotate_around(&start, &center, angle_degrees.to_radians()),
+                    rotate_around(&end, &center, angle_degrees.to_radians()),
+                ),
+                TransformBindingKind::Scale { factor } => (
+                    scale_around(&start, &center, factor),
+                    scale_around(&end, &center, factor),
+                ),
+            };
+            distinct_pair(start, end).map(|(start, end)| (start, end, kind))
+        }
         _ => None,
     }
 }
