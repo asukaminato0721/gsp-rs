@@ -174,6 +174,77 @@ test('triangle angle sum measured-angle rotation updates dependent geometry', as
   expect(result?.markerDelta).toBeGreaterThan(1);
 });
 
+test('triangle angle sum translated H handle drags source H and drives animation', async ({ page }) => {
+  const file = compileFixtureToTempHtml('tests/Samples/未分类档/三角形内角和定理.gsp');
+  await page.goto(`file://${file}`);
+
+  const result = await page.evaluate(() => {
+    const env = window.gspDebug.viewerEnv;
+    const drag = window.GspViewerModules.drag;
+    const scene = () => window.gspDebug.runtime.scene;
+    const pointIndex = (ordinal: number) =>
+      scene().points.findIndex((point: any) => point.debug?.groupOrdinal === ordinal);
+
+    const hIndex = pointIndex(11);
+    const translatedHIndex = pointIndex(40);
+    const lIndex = pointIndex(21);
+    const pIndex = pointIndex(28);
+    const rotatedIndex = pointIndex(31);
+    if ([hIndex, translatedHIndex, lIndex, pIndex, rotatedIndex].some((index) => index < 0)) {
+      return null;
+    }
+
+    const before = {
+      h: { x: scene().points[hIndex].x, y: scene().points[hIndex].y },
+      translatedH: { x: scene().points[translatedHIndex].x, y: scene().points[translatedHIndex].y },
+      l: { x: scene().points[lIndex].x, y: scene().points[lIndex].y },
+      p: { x: scene().points[pIndex].x, y: scene().points[pIndex].y },
+      rotated: { x: scene().points[rotatedIndex].x, y: scene().points[rotatedIndex].y },
+      offset: { ...scene().points[translatedHIndex].constraint },
+      dragMode: drag.dragModeFor(env, translatedHIndex, null, null, null, null),
+    };
+
+    drag.beginDrag(env, 13, env.toScreen(scene().points[translatedHIndex]), translatedHIndex, null, null, null, null);
+    drag.updateDraggedPoint(env, {
+      x: before.translatedH.x + 100,
+      y: before.translatedH.y,
+    });
+    env.dragState.val = null;
+
+    const after = {
+      h: { x: scene().points[hIndex].x, y: scene().points[hIndex].y },
+      translatedH: { x: scene().points[translatedHIndex].x, y: scene().points[translatedHIndex].y },
+      l: { x: scene().points[lIndex].x, y: scene().points[lIndex].y },
+      p: { x: scene().points[pIndex].x, y: scene().points[pIndex].y },
+      rotated: { x: scene().points[rotatedIndex].x, y: scene().points[rotatedIndex].y },
+      offset: { ...scene().points[translatedHIndex].constraint },
+    };
+    const moved = (left: { x: number, y: number }, right: { x: number, y: number }) =>
+      Math.hypot(left.x - right.x, left.y - right.y);
+
+    return {
+      dragMode: before.dragMode,
+      hDelta: moved(before.h, after.h),
+      translatedHDelta: moved(before.translatedH, after.translatedH),
+      lDelta: moved(before.l, after.l),
+      pDelta: moved(before.p, after.p),
+      rotatedDelta: moved(before.rotated, after.rotated),
+      offsetDxDelta: Math.abs((after.offset as any).dx - (before.offset as any).dx),
+      offsetDyDelta: Math.abs((after.offset as any).dy - (before.offset as any).dy),
+    };
+  });
+
+  expect(result).not.toBeNull();
+  expect(result?.dragMode).toBe('point');
+  expect(result?.hDelta).toBeGreaterThan(90);
+  expect(result?.translatedHDelta).toBeGreaterThan(90);
+  expect(result?.lDelta).toBeGreaterThan(10);
+  expect(result?.pDelta).toBeGreaterThan(10);
+  expect(result?.rotatedDelta).toBeGreaterThan(10);
+  expect(result?.offsetDxDelta).toBeLessThan(1e-6);
+  expect(result?.offsetDyDelta).toBeLessThan(1e-6);
+});
+
 test('hejixu fold2 marked-ratio dilation stays live when E reaches C', async ({ page }) => {
   const file = compileFixtureToTempHtml('tests/Samples/个人专栏/贺基旭作品/翻折2(hjx4882).gsp');
   await page.goto(`file://${file}`);

@@ -165,9 +165,17 @@
         return;
       }
       const originPoint = draft.points[constraint.originIndex];
-      if (originPoint && !originPoint.constraint) {
-        originPoint.x = world.x - constraint.dx;
-        originPoint.y = world.y - constraint.dy;
+      if (originPoint) {
+        const originWorld = {
+          x: world.x - constraint.dx,
+          y: world.y - constraint.dy,
+        };
+        if (!originPoint.constraint) {
+          originPoint.x = originWorld.x;
+          originPoint.y = originWorld.y;
+          return;
+        }
+        updatePointToWorld(env, draft, constraint.originIndex, originWorld);
         return;
       }
       const origin = env.resolveScenePoint(constraint.originIndex);
