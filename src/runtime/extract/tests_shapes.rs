@@ -891,6 +891,44 @@ fn preserves_circle_center_radius_gsp() {
 }
 
 #[test]
+fn chen_faquan_taiji_trace_exports_parameter_radius_circle() {
+    let Some(data) =
+        fixture_bytes("tests/Samples/个人专栏/陈发铨作品/太极图整体轨迹(一线天).gsp")
+    else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+
+    let circle = scene
+        .circles
+        .iter()
+        .find(|circle| {
+            circle
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 16)
+        })
+        .expect("expected payload #16 Circle by radius to export");
+    assert!(circle.visible, "expected the .htm-visible radius circle to render");
+    assert!(matches!(
+        &circle.binding,
+        Some(ShapeBinding::ParameterRadiusCircle {
+            center_index: 4,
+            parameter_name,
+            raw_per_unit,
+        }) if parameter_name == "R"
+            && (*raw_per_unit - crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT).abs() < 1e-9
+    ));
+    let radius = ((circle.radius_point.x - circle.center.x).powi(2)
+        + (circle.radius_point.y - circle.center.y).powi(2))
+    .sqrt();
+    assert!(
+        (radius - 4.0 * crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT).abs() < 1e-6,
+        "expected radius to come from the R parameter value"
+    );
+}
+
+#[test]
 fn preserves_circle_inner_fill_gsp() {
     let Some(data) = fixture_bytes("tests/fixtures/gsp/static/circle_inner.gsp") else {
         return;

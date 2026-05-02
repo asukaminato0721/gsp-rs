@@ -4540,6 +4540,14 @@
       circle.center = { x: center.x, y: center.y };
       circle.radiusPoint = { x: center.x + radius, y: center.y };
     },
+    "parameter-radius-circle"({ env, parameters }, circle) {
+      const center = env.resolveScenePoint(circle.binding.centerIndex);
+      const value = parameters.get(circle.binding.parameterName);
+      if (!center || !isFiniteNumber(value)) return;
+      const radius = Math.abs(value) * circle.binding.rawPerUnit;
+      circle.center = { x: center.x, y: center.y };
+      circle.radiusPoint = { x: center.x + radius, y: center.y };
+    },
     derived: refreshDerivedCircle,
   };
 

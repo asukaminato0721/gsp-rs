@@ -353,6 +353,17 @@ fn clone_circular_constraint(constraint: &CircularConstraint) -> CircularConstra
             line_start_index: *line_start_index,
             line_end_index: *line_end_index,
         },
+        CircularConstraint::ParameterRadiusCircle {
+            center_index,
+            parameter_name,
+            parameter_value,
+            raw_per_unit,
+        } => CircularConstraint::ParameterRadiusCircle {
+            center_index: *center_index,
+            parameter_name: parameter_name.clone(),
+            parameter_value: *parameter_value,
+            raw_per_unit: *raw_per_unit,
+        },
         CircularConstraint::TranslateCircle { source, dx, dy } => {
             CircularConstraint::TranslateCircle {
                 source: Box::new(clone_circular_constraint(source)),

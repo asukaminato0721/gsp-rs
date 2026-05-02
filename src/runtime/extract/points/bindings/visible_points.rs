@@ -2818,18 +2818,37 @@ fn resolve_circular_constraint(
             if path.refs.len() != 2 {
                 return None;
             }
-            let segment_group = groups.get(path.refs[1].checked_sub(1)?)?;
-            let segment_path = find_indexed_path(file, segment_group)?;
-            if segment_path.refs.len() != 2 {
-                return None;
+            let center_index = (*group_to_point_index.get(path.refs[0].checked_sub(1)?)?)?;
+            let radius_group = groups.get(path.refs[1].checked_sub(1)?)?;
+            if radius_group.header.kind() == crate::format::GroupKind::Segment {
+                let segment_path = find_indexed_path(file, radius_group)?;
+                if segment_path.refs.len() != 2 {
+                    return None;
+                }
+                Some(CircularConstraint::SegmentRadiusCircle {
+                    center_index,
+                    line_start_index: (*group_to_point_index
+                        .get(segment_path.refs[0].checked_sub(1)?)?)?,
+                    line_end_index: (*group_to_point_index
+                        .get(segment_path.refs[1].checked_sub(1)?)?)?,
+                })
+            } else {
+                Some(CircularConstraint::ParameterRadiusCircle {
+                    center_index,
+                    parameter_name: crate::runtime::extract::decode::decode_label_name(
+                        file,
+                        radius_group,
+                    )?,
+                    parameter_value:
+                        crate::runtime::extract::try_decode_parameter_control_value_for_group(
+                            file,
+                            groups,
+                            radius_group,
+                        )
+                        .ok()?,
+                    raw_per_unit: crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT,
+                })
             }
-            Some(CircularConstraint::SegmentRadiusCircle {
-                center_index: (*group_to_point_index.get(path.refs[0].checked_sub(1)?)?)?,
-                line_start_index: (*group_to_point_index
-                    .get(segment_path.refs[0].checked_sub(1)?)?)?,
-                line_end_index: (*group_to_point_index
-                    .get(segment_path.refs[1].checked_sub(1)?)?)?,
-            })
         }
         crate::format::GroupKind::CartesianOffsetPoint
         | crate::format::GroupKind::PolarOffsetPoint => {

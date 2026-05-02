@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::super::decode::{
-    decode_label_name, find_indexed_path, is_parameter_control_group,
+    circle_center_radius_value, decode_label_name, find_indexed_path, is_parameter_control_group,
     try_decode_parameter_control_value_for_group, try_decode_payload_anchor_point,
 };
 use super::constraints::{
@@ -1153,14 +1153,8 @@ pub(crate) fn resolve_circle_like_raw(
                 return None;
             }
             let center = anchors.get(path.refs[0].checked_sub(1)?)?.clone()?;
-            let segment_group = groups.get(path.refs[1].checked_sub(1)?)?;
-            let segment_path = find_indexed_path(file, segment_group)?;
-            if segment_path.refs.len() != 2 {
-                return None;
-            }
-            let start = anchors.get(segment_path.refs[0].checked_sub(1)?)?.clone()?;
-            let end = anchors.get(segment_path.refs[1].checked_sub(1)?)?.clone()?;
-            let radius = ((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt();
+            let radius_group = groups.get(path.refs[1].checked_sub(1)?)?;
+            let radius = circle_center_radius_value(file, groups, anchors, radius_group)?;
             (radius > 1e-9).then_some(CircularConstraintRaw::Circle { center, radius })
         }
         crate::format::GroupKind::CartesianOffsetPoint

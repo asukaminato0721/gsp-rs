@@ -361,6 +361,20 @@
         radius: Math.hypot(lineEnd.x - lineStart.x, lineEnd.y - lineStart.y),
       };
     }
+    if (constraint.kind === "parameter-radius-circle") {
+      const center = resolveFn(constraint.centerIndex);
+      const value = env && "currentDynamics" in env
+        ? env.currentDynamics().parameters
+          .find((/** @type {ParameterJson} */ parameter) => parameter.name === constraint.parameterName)
+          ?.value ?? constraint.parameterValue
+        : constraint.parameterValue;
+      if (!center || !Number.isFinite(value)) return null;
+      return {
+        kind: "circle",
+        center,
+        radius: Math.abs(value) * constraint.rawPerUnit,
+      };
+    }
     if (constraint.kind === "derived" && constraint.transform.kind === "translate-delta") {
       const source = circleFromConstraint(env, constraint.source, resolveFn);
       if (!source || source.kind !== "circle") return null;

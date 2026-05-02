@@ -2065,6 +2065,16 @@ fn resolve_trace_circular_constraint(
                 ((line_end.x - line_start.x).powi(2) + (line_end.y - line_start.y).powi(2)).sqrt();
             (radius > 1e-9).then_some(TraceCircularConstraint::Circle { center, radius })
         }
+        CircularConstraint::ParameterRadiusCircle {
+            center_index,
+            parameter_value,
+            raw_per_unit,
+            ..
+        } => {
+            let center = resolve_trace_point(points, *center_index, visiting)?;
+            let radius = parameter_value.abs() * raw_per_unit;
+            (radius > 1e-9).then_some(TraceCircularConstraint::Circle { center, radius })
+        }
         CircularConstraint::TranslateCircle { source, dx, dy } => {
             let source = resolve_trace_circular_constraint(points, source, visiting)?;
             match source {

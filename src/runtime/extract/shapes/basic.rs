@@ -9,8 +9,10 @@ use super::{
 };
 use crate::format::{GroupKind, read_f64, read_u16, read_u32};
 use crate::runtime::extract::decode::{
-    detect_perpendicular_segment_payload, is_circle_group_kind, resolve_circle_points_raw,
+    circle_center_radius_value, detect_perpendicular_segment_payload, is_circle_group_kind,
+    resolve_circle_points_raw,
 };
+use crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT;
 use crate::runtime::geometry::{
     arc_on_circle_control_points, sample_three_point_arc, sample_three_point_arc_complement,
 };
@@ -994,16 +996,27 @@ pub(crate) fn collect_circle_shapes(
                         return None;
                     }
                     let center_index = path.refs[0].checked_sub(1)?;
-                    let segment_group = groups.get(path.refs[1].checked_sub(1)?)?;
-                    let segment_path = find_indexed_path(file, segment_group)?;
-                    if segment_path.refs.len() != 2 {
-                        return None;
+                    let radius_group_index = path.refs[1].checked_sub(1)?;
+                    let radius_group = groups.get(radius_group_index)?;
+                    if radius_group.header.kind() == crate::format::GroupKind::Segment {
+                        let segment_path = find_indexed_path(file, radius_group)?;
+                        if segment_path.refs.len() != 2 {
+                            return None;
+                        }
+                        Some(ShapeBinding::SegmentRadiusCircle {
+                            center_index,
+                            line_start_index: segment_path.refs[0].checked_sub(1)?,
+                            line_end_index: segment_path.refs[1].checked_sub(1)?,
+                        })
+                    } else {
+                        let parameter_name = decode_label_name(file, radius_group)?;
+                        circle_center_radius_value(file, groups, anchors, radius_group)?;
+                        Some(ShapeBinding::ParameterRadiusCircle {
+                            center_index,
+                            parameter_name,
+                            raw_per_unit: DEFAULT_GRAPH_RAW_PER_UNIT,
+                        })
                     }
-                    Some(ShapeBinding::SegmentRadiusCircle {
-                        center_index,
-                        line_start_index: segment_path.refs[0].checked_sub(1)?,
-                        line_end_index: segment_path.refs[1].checked_sub(1)?,
-                    })
                 }
                 _ => None,
             };

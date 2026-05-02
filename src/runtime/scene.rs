@@ -460,6 +460,12 @@ pub(crate) enum CircularConstraint {
         line_start_index: usize,
         line_end_index: usize,
     },
+    ParameterRadiusCircle {
+        center_index: usize,
+        parameter_name: String,
+        parameter_value: f64,
+        raw_per_unit: f64,
+    },
     TranslateCircle {
         source: Box<CircularConstraint>,
         dx: f64,
@@ -905,6 +911,11 @@ pub(crate) enum ShapeBinding {
         center_index: usize,
         line_start_index: usize,
         line_end_index: usize,
+    },
+    ParameterRadiusCircle {
+        center_index: usize,
+        parameter_name: String,
+        raw_per_unit: f64,
     },
     DerivedTransform {
         source_index: usize,

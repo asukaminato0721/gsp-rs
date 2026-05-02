@@ -802,6 +802,16 @@ enum CircularConstraintJson {
         #[serde(rename = "lineEndIndex")]
         line_end_index: usize,
     },
+    ParameterRadiusCircle {
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "parameterName")]
+        parameter_name: String,
+        #[serde(rename = "parameterValue")]
+        parameter_value: f64,
+        #[serde(rename = "rawPerUnit")]
+        raw_per_unit: f64,
+    },
     Derived {
         source: Box<CircularConstraintJson>,
         transform: TransformJson,
@@ -842,6 +852,17 @@ impl CircularConstraintJson {
                 center_index: *center_index,
                 line_start_index: *line_start_index,
                 line_end_index: *line_end_index,
+            },
+            CircularConstraint::ParameterRadiusCircle {
+                center_index,
+                parameter_name,
+                parameter_value,
+                raw_per_unit,
+            } => Self::ParameterRadiusCircle {
+                center_index: *center_index,
+                parameter_name: parameter_name.clone(),
+                parameter_value: *parameter_value,
+                raw_per_unit: *raw_per_unit,
             },
             CircularConstraint::TranslateCircle { source, dx, dy } => Self::Derived {
                 source: Box::new(Self::from_constraint(source)),

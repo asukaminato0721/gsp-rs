@@ -614,6 +614,15 @@ enum ShapeBindingJson {
         #[serde(rename = "lineEndIndex")]
         line_end_index: usize,
     },
+    #[serde(rename = "parameter-radius-circle")]
+    ParameterRadiusCircle {
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "parameterName")]
+        parameter_name: String,
+        #[serde(rename = "rawPerUnit")]
+        raw_per_unit: f64,
+    },
     #[serde(rename = "derived")]
     Derived {
         #[serde(rename = "sourceIndex")]
@@ -654,9 +663,9 @@ impl ShapeBindingJson {
                 source_index: *source_index,
                 transform: TransformJson::from_shape_transform(transform),
             }),
-            ShapeBinding::PointRadiusCircle { .. } | ShapeBinding::SegmentRadiusCircle { .. } => {
-                None
-            }
+            ShapeBinding::PointRadiusCircle { .. }
+            | ShapeBinding::SegmentRadiusCircle { .. }
+            | ShapeBinding::ParameterRadiusCircle { .. } => None,
         }
     }
 
@@ -677,6 +686,15 @@ impl ShapeBindingJson {
                 center_index: *center_index,
                 line_start_index: *line_start_index,
                 line_end_index: *line_end_index,
+            }),
+            ShapeBinding::ParameterRadiusCircle {
+                center_index,
+                parameter_name,
+                raw_per_unit,
+            } => Some(Self::ParameterRadiusCircle {
+                center_index: *center_index,
+                parameter_name: parameter_name.clone(),
+                raw_per_unit: *raw_per_unit,
             }),
             ShapeBinding::DerivedTransform {
                 source_index,

@@ -10,6 +10,7 @@ use crate::runtime::payload_consts::{
     RECORD_INDEXED_PATH_B, RECORD_LABEL_AUX, RECORD_LABEL_VISIBILITY, RECORD_POINT_F64_PAIR,
     RECORD_RICH_TEXT, RECORD_RICH_TEXT_MAGIC,
 };
+use crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT;
 use thiserror::Error;
 
 pub(crate) fn is_circle_group_kind(kind: GroupKind) -> bool {
@@ -195,14 +196,8 @@ pub(crate) fn resolve_circle_points_raw(
                 return None;
             }
             let center = anchors.get(path.refs[0].checked_sub(1)?)?.clone()?;
-            let segment_group = groups.get(path.refs[1].checked_sub(1)?)?;
-            let segment_path = find_indexed_path(file, segment_group)?;
-            if segment_path.refs.len() != 2 {
-                return None;
-            }
-            let start = anchors.get(segment_path.refs[0].checked_sub(1)?)?.clone()?;
-            let end = anchors.get(segment_path.refs[1].checked_sub(1)?)?.clone()?;
-            let radius = ((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt();
+            let radius_group = groups.get(path.refs[1].checked_sub(1)?)?;
+            let radius = circle_center_radius_value(file, groups, anchors, radius_group)?;
             radius.is_finite().then(|| {
                 (
                     center.clone(),
@@ -273,6 +268,26 @@ pub(crate) fn resolve_circle_points_raw(
         }
         _ => None,
     }
+}
+
+pub(crate) fn circle_center_radius_value(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    radius_group: &ObjectGroup,
+) -> Option<f64> {
+    if radius_group.header.kind() == GroupKind::Segment {
+        let segment_path = find_indexed_path(file, radius_group)?;
+        if segment_path.refs.len() != 2 {
+            return None;
+        }
+        let start = anchors.get(segment_path.refs[0].checked_sub(1)?)?.clone()?;
+        let end = anchors.get(segment_path.refs[1].checked_sub(1)?)?.clone()?;
+        return Some(((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt());
+    }
+    try_decode_parameter_control_value_for_group(file, groups, radius_group)
+        .ok()
+        .map(|value| value.abs() * DEFAULT_GRAPH_RAW_PER_UNIT)
 }
 
 #[derive(Debug, Clone, PartialEq, Error)]

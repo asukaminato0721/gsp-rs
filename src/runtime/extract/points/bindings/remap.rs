@@ -416,6 +416,15 @@ pub(crate) fn remap_circle_bindings(
                 *line_end_index = mapped_line_end_index;
                 continue;
             }
+            ShapeBinding::ParameterRadiusCircle { center_index, .. } => {
+                let Some(mapped_center_index) = mapped_index(group_to_point_index, *center_index)
+                else {
+                    circle.binding = None;
+                    continue;
+                };
+                *center_index = mapped_center_index;
+                continue;
+            }
             ShapeBinding::DerivedTransform {
                 source_index,
                 transform,
