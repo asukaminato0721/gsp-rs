@@ -12,8 +12,7 @@ use super::{
 };
 use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
 use crate::runtime::functions::{
-    BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters,
-    payload_has_sliding_equilateral_square_expr, try_decode_function_expr,
+    BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters, try_decode_function_expr,
     try_decode_function_expr_with_inlined_refs, try_decode_function_plot_descriptor,
 };
 use crate::runtime::geometry::{
@@ -663,11 +662,8 @@ pub(crate) fn try_decode_parameter_controlled_point(
             }
             let mut value = evaluate_expr_with_parameters(&expr, 0.0, &parameters)
                 .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
-            let source_expr_absolute_parameter =
-                payload_has_sliding_equilateral_square_expr(file, source_group);
-            if !source_expr_absolute_parameter
-                && let (Some(_), Some(anchor_value)) =
-                    (anchor_parameter_name.as_ref(), anchor_parameter_value)
+            if let (Some(_), Some(anchor_value)) =
+                (anchor_parameter_name.as_ref(), anchor_parameter_value)
             {
                 value += anchor_value;
             }
@@ -676,7 +672,7 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 wrap_unit_interval(value),
                 source_point_group_index,
                 Some(expr),
-                source_expr_absolute_parameter,
+                false,
             )
         } else {
             return Err(ParameterControlledPointDecodeError::InvalidSource);

@@ -289,9 +289,6 @@ fn decode_grouped_preferred_payload_function_expr(
             .chunks_exact(2)
             .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
             .collect::<Vec<_>>();
-        if let Some(ast) = try_decode_special_grouped_payload(&words, parameters) {
-            return Ok(canonicalize_function_expr(ast));
-        }
         let parsed = parse_grouped_function_expr_from_words(&words, parameters)
             .or_else(|_| parse_function_expr_from_words(&words, parameters))?;
         Ok(canonicalize_function_expr(parsed))
@@ -330,14 +327,12 @@ fn try_decode_numeric_helper_group(
     let helper_point_map = point_map.get(..max_ref_ordinal)?;
     let anchors_without_graph =
         collect_raw_object_anchors(file, helper_groups, helper_point_map, None);
-    let graph_transform = detect_graph_context(file, helper_groups, &anchors_without_graph)
-        .map(|(origin_raw, raw_per_unit)| GraphTransform {
+    let graph_transform = detect_graph_context(file, helper_groups, &anchors_without_graph).map(
+        |(origin_raw, raw_per_unit)| GraphTransform {
             origin_raw,
             raw_per_unit,
-        })
-        .or_else(|| {
-            infer_default_helper_graph_transform(file, helper_groups, &anchors_without_graph)
-        });
+        },
+    );
     let anchors = if let Some(transform) = graph_transform.as_ref() {
         collect_raw_object_anchors(file, helper_groups, helper_point_map, Some(transform))
     } else {
@@ -529,27 +524,21 @@ fn explicit_axis_context_for_coordinate_value(
         .and_then(|unit_expr| evaluate_expr_with_parameters(&unit_expr, 0.0, &BTreeMap::new()))
         .map(f64::abs)
         .filter(|value| *value > 1e-9)
-        .unwrap_or(DEFAULT_GRAPH_RAW_PER_UNIT);
+        .or_else(|| {
+            unit_expr_group
+                .records
+                .iter()
+                .find(|record| record.record_type == 0x07d3 && record.length == 12)
+                .and_then(|record| decode_measurement_value(record.payload(&file.data)))
+        })
+        .or_else(|| {
+            let unit_raw = anchors
+                .get(measurement_path.refs.get(1)?.checked_sub(1)?)?
+                .clone()?;
+            let distance = (unit_raw.x - origin_raw.x).hypot(unit_raw.y - origin_raw.y);
+            (distance > 1e-9).then_some(distance)
+        })?;
     (raw_per_unit > 1e-9).then_some((origin_raw, raw_per_unit))
-}
-
-fn infer_default_helper_graph_transform(
-    file: &GspFile,
-    groups: &[ObjectGroup],
-    anchors: &[Option<crate::format::PointRecord>],
-) -> Option<GraphTransform> {
-    let calibration_group = groups
-        .iter()
-        .find(|group| group.header.kind().is_graph_calibration())?;
-    let path = find_indexed_path(file, calibration_group)?;
-    let origin_raw = anchors
-        .get(path.refs.first()?.checked_sub(1)?)
-        .cloned()
-        .flatten()?;
-    Some(GraphTransform {
-        origin_raw,
-        raw_per_unit: DEFAULT_GRAPH_RAW_PER_UNIT,
-    })
 }
 
 fn decode_ratio_helper_group(
@@ -613,25 +602,6 @@ fn resolve_helper_group_anchor(
     crate::runtime::extract::points::decode_graph_calibration_anchor_raw(
         file, groups, group, anchors, graph,
     )
-    .or_else(|| {
-        let path = find_indexed_path(file, group)?;
-        let base = anchors
-            .get(path.refs.first()?.checked_sub(1)?)
-            .cloned()
-            .flatten()?;
-        match group.header.kind() {
-            crate::format::GroupKind::GraphCalibrationX => Some(crate::format::PointRecord {
-                x: base.x + DEFAULT_GRAPH_RAW_PER_UNIT,
-                y: base.y,
-            }),
-            crate::format::GroupKind::GraphCalibrationY
-            | crate::format::GroupKind::GraphCalibrationYAlt => Some(crate::format::PointRecord {
-                x: base.x,
-                y: base.y - DEFAULT_GRAPH_RAW_PER_UNIT,
-            }),
-            _ => None,
-        }
-    })
     .or_else(|| anchors.get(ordinal.checked_sub(1)?).cloned().flatten())
     .or_else(|| {
         let path = find_indexed_path(file, group)?;
@@ -1107,7 +1077,6 @@ fn collect_parameter_bindings(
     let Some(path) = find_indexed_path(file, group) else {
         return bindings;
     };
-    let allow_constraint_anchor_bindings = payload_has_sliding_equilateral_square_expr(file, group);
     let inline_function_refs =
         inline_function_refs || group.header.kind() == crate::format::GroupKind::FunctionDefinition;
     for (index, ordinal) in path.refs.iter().copied().enumerate() {
@@ -1123,7 +1092,7 @@ fn collect_parameter_bindings(
             parameter_group,
             visiting,
             inline_function_refs,
-            allow_constraint_anchor_bindings,
+            false,
         ) {
             bindings.insert(index as u16, binding);
         }
@@ -1999,6 +1968,11 @@ fn parse_embedded_postfix_function_expr(
         embedded_calculate_expr_start(words).ok_or(FunctionExprParseError::NoExpressionFound {
             word_len: words.len(),
         })?;
+    if words[start..].contains(&0x000b) {
+        return Err(FunctionExprParseError::NoExpressionFound {
+            word_len: words.len(),
+        });
+    }
     parse_postfix_function_expr_from_words(words, start, parameters)
 }
 
@@ -2162,9 +2136,6 @@ pub(crate) fn try_decode_inner_function_expr(
             .chunks_exact(2)
             .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
             .collect::<Vec<_>>();
-        if let Some(ast) = try_decode_special_grouped_payload(&words, parameters) {
-            return Ok(canonicalize_function_expr(ast));
-        }
         if embedded_calculate_expr_start(&words).is_some() {
             if let Ok(expr) = try_decode_embedded_static_function_expr(payload, parameters) {
                 return Ok(expr);
@@ -2189,200 +2160,6 @@ pub(crate) fn try_decode_inner_function_expr(
                 .or_else(|_| parse_grouped_function_expr_from_words(&words, parameters))
         }?;
         Ok(canonicalize_function_expr(parsed))
-    })
-}
-
-fn try_decode_special_grouped_payload(
-    words: &[u16],
-    parameters: &BTreeMap<u16, ParameterBinding>,
-) -> Option<FunctionAst> {
-    if let Some(ast) = try_decode_sliding_equilateral_square_expr(words, parameters) {
-        return Some(ast);
-    }
-
-    const CHESSBOARD_X_PATTERN: &[u16] = &[
-        0x000b, 0x000b, 0x6000, 0x1001, 0x200c, 0x6000, 0x1003, 0x6001, 0x000c, 0x1002, 0x6001,
-        0x000c, 0x000c, 0x1003, 0x6001, 0x1000, 0x000b, 0x000b, 0x0001, 0x1000, 0x000b, 0x1001,
-        0x0001, 0x000c, 0x1004, 0x000b, 0x200c, 0x6000, 0x1003, 0x6001, 0x000c, 0x1000, 0x0001,
-        0x000c, 0x000c, 0x1003, 0x000b, 0x0002, 0x1002, 0x6001, 0x000c, 0x1002, 0x000b, 0x0001,
-        0x1000, 0x000b, 0x1001, 0x0001, 0x000c, 0x1004, 0x6001, 0x000c, 0x1003, 0x0002, 0x000c,
-    ];
-    let start = words
-        .windows(CHESSBOARD_X_PATTERN.len())
-        .position(|window| window == CHESSBOARD_X_PATTERN)?;
-    let relevant = &words[start..start + CHESSBOARD_X_PATTERN.len()];
-    let _ = relevant;
-
-    let t = parameters.get(&0)?.clone();
-    let n = parameters.get(&1)?.clone();
-
-    let trunc_t_over_n = FunctionAst::Unary {
-        op: UnaryFunction::Trunc,
-        expr: Box::new(FunctionAst::Binary {
-            lhs: Box::new(FunctionAst::Parameter(t.name.clone(), t.value)),
-            op: BinaryOp::Div,
-            rhs: Box::new(FunctionAst::Parameter(n.name.clone(), n.value)),
-        }),
-    };
-
-    let first_term = FunctionAst::Binary {
-        lhs: Box::new(FunctionAst::Binary {
-            lhs: Box::new(FunctionAst::Parameter(t.name.clone(), t.value)),
-            op: BinaryOp::Sub,
-            rhs: Box::new(FunctionAst::Binary {
-                lhs: Box::new(trunc_t_over_n.clone()),
-                op: BinaryOp::Mul,
-                rhs: Box::new(FunctionAst::Parameter(n.name.clone(), n.value)),
-            }),
-        }),
-        op: BinaryOp::Div,
-        rhs: Box::new(FunctionAst::Parameter(n.name.clone(), n.value)),
-    };
-
-    let minus_one = FunctionAst::Binary {
-        lhs: Box::new(FunctionAst::Constant(0.0)),
-        op: BinaryOp::Sub,
-        rhs: Box::new(FunctionAst::Constant(1.0)),
-    };
-
-    let second_term = FunctionAst::Binary {
-        lhs: Box::new(FunctionAst::Binary {
-            lhs: Box::new(FunctionAst::Binary {
-                lhs: Box::new(FunctionAst::Constant(1.0)),
-                op: BinaryOp::Add,
-                rhs: Box::new(FunctionAst::Binary {
-                    lhs: Box::new(minus_one.clone()),
-                    op: BinaryOp::Pow,
-                    rhs: Box::new(FunctionAst::Binary {
-                        lhs: Box::new(trunc_t_over_n),
-                        op: BinaryOp::Add,
-                        rhs: Box::new(FunctionAst::Constant(1.0)),
-                    }),
-                }),
-            }),
-            op: BinaryOp::Div,
-            rhs: Box::new(FunctionAst::Binary {
-                lhs: Box::new(FunctionAst::Constant(2.0)),
-                op: BinaryOp::Mul,
-                rhs: Box::new(FunctionAst::Parameter(n.name.clone(), n.value)),
-            }),
-        }),
-        op: BinaryOp::Mul,
-        rhs: Box::new(FunctionAst::Binary {
-            lhs: Box::new(FunctionAst::Binary {
-                lhs: Box::new(FunctionAst::Constant(1.0)),
-                op: BinaryOp::Add,
-                rhs: Box::new(FunctionAst::Binary {
-                    lhs: Box::new(minus_one),
-                    op: BinaryOp::Pow,
-                    rhs: Box::new(FunctionAst::Parameter(n.name.clone(), n.value)),
-                }),
-            }),
-            op: BinaryOp::Div,
-            rhs: Box::new(FunctionAst::Constant(2.0)),
-        }),
-    };
-
-    Some(FunctionAst::Binary {
-        lhs: Box::new(first_term),
-        op: BinaryOp::Add,
-        rhs: Box::new(second_term),
-    })
-}
-
-fn try_decode_sliding_equilateral_square_expr(
-    words: &[u16],
-    parameters: &BTreeMap<u16, ParameterBinding>,
-) -> Option<FunctionAst> {
-    let window = find_sliding_equilateral_square_window(words)?;
-    let parameter_index = window[4] & 0x000f;
-    let parameter = parameters.get(&parameter_index)?.clone();
-    let parameter_ast = FunctionAst::Parameter(parameter.name, parameter.value);
-    let four_times_parameter = FunctionAst::Binary {
-        lhs: Box::new(FunctionAst::Constant(4.0)),
-        op: BinaryOp::Mul,
-        rhs: Box::new(parameter_ast.clone()),
-    };
-    let parameter_times_four = FunctionAst::Binary {
-        lhs: Box::new(parameter_ast),
-        op: BinaryOp::Mul,
-        rhs: Box::new(FunctionAst::Constant(4.0)),
-    };
-    let truncated = FunctionAst::Unary {
-        op: UnaryFunction::Trunc,
-        expr: Box::new(four_times_parameter.clone()),
-    };
-    let truncated_offset = FunctionAst::Unary {
-        op: UnaryFunction::Trunc,
-        expr: Box::new(parameter_times_four),
-    };
-    let offset_on_side = FunctionAst::Binary {
-        lhs: Box::new(four_times_parameter),
-        op: BinaryOp::Sub,
-        rhs: Box::new(truncated_offset),
-    };
-    let square_term = FunctionAst::Binary {
-        lhs: Box::new(offset_on_side),
-        op: BinaryOp::Pow,
-        rhs: Box::new(FunctionAst::Constant(2.0)),
-    };
-    let radical = FunctionAst::Binary {
-        lhs: Box::new(FunctionAst::Constant(1.0)),
-        op: BinaryOp::Sub,
-        rhs: Box::new(square_term),
-    };
-    let root = FunctionAst::Unary {
-        op: UnaryFunction::Sqrt,
-        expr: Box::new(radical),
-    };
-    let numerator = FunctionAst::Binary {
-        lhs: Box::new(truncated),
-        op: BinaryOp::Sub,
-        rhs: Box::new(root),
-    };
-    Some(FunctionAst::Binary {
-        lhs: Box::new(numerator),
-        op: BinaryOp::Div,
-        rhs: Box::new(FunctionAst::Constant(4.0)),
-    })
-}
-
-pub(crate) fn payload_has_sliding_equilateral_square_expr(
-    file: &GspFile,
-    group: &ObjectGroup,
-) -> bool {
-    group
-        .records
-        .iter()
-        .find(|record| record.record_type == RECORD_FUNCTION_EXPR_PAYLOAD)
-        .map(|record| {
-            let words = record
-                .payload(&file.data)
-                .chunks_exact(2)
-                .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
-                .collect::<Vec<_>>();
-            find_sliding_equilateral_square_window(&words).is_some()
-        })
-        .unwrap_or(false)
-}
-
-fn find_sliding_equilateral_square_window(words: &[u16]) -> Option<&[u16]> {
-    const PARAM: u16 = 0xffff;
-    const PATTERN: &[u16] = &[
-        0x000b, 0x200c, 0x0004, 0x1002, PARAM, 0x000c, 0x1001, 0x2007, 0x0001, 0x1001, 0x000b,
-        0x0004, 0x1002, PARAM, 0x1001, 0x200c, PARAM, 0x1002, 0x0004, 0x000c, 0x000c, 0x1004,
-        0x0002, 0x000c, 0x000c, 0x1003, 0x0004,
-    ];
-
-    words.windows(PATTERN.len()).find(|window| {
-        window.iter().zip(PATTERN).all(|(word, expected)| {
-            if *expected == PARAM {
-                (*word & EXPR_PARAMETER_MASK) == EXPR_PARAMETER_PREFIX
-            } else {
-                *word == *expected
-            }
-        }) && window[4] == window[13]
-            && window[4] == window[16]
     })
 }
 
@@ -2735,6 +2512,11 @@ fn parse_grouped_function_expr_from_words(
     {
         return parse_grouped_function_expr_at(words, marker_index + 2, parameters);
     }
+    if words.first().copied() != Some(0x000b) {
+        return Err(FunctionExprParseError::NoExpressionFound {
+            word_len: words.len(),
+        });
+    }
     parse_grouped_function_expr_at(words, 0, parameters)
 }
 
@@ -2828,7 +2610,6 @@ mod parse_tests {
         BinaryOp, FunctionAst, FunctionExpr, UnaryFunction, evaluate_expr_with_parameters,
         function_expr_label,
     };
-    use crate::runtime::payload_consts::RECORD_FUNCTION_EXPR_PAYLOAD;
     use crate::util::hex_bytes;
     use std::collections::BTreeMap;
     use std::fs;
@@ -2850,39 +2631,6 @@ mod parse_tests {
             message.contains(&format!("payload={}", hex_bytes(payload))),
             "expected failed payload bytes in error, got {message}"
         );
-    }
-
-    fn function_expr_contains_unary(
-        expr: &FunctionExpr,
-        op: crate::runtime::functions::UnaryFunction,
-    ) -> bool {
-        match expr {
-            FunctionExpr::Parsed(ast) => function_ast_contains_unary(ast, op),
-            FunctionExpr::SinIdentity => op == crate::runtime::functions::UnaryFunction::Sin,
-            FunctionExpr::CosIdentityPlus(_) => op == crate::runtime::functions::UnaryFunction::Cos,
-            FunctionExpr::TanIdentityMinus(_) => {
-                op == crate::runtime::functions::UnaryFunction::Tan
-            }
-            FunctionExpr::Constant(_) | FunctionExpr::Identity => false,
-        }
-    }
-
-    fn function_ast_contains_unary(
-        ast: &FunctionAst,
-        op: crate::runtime::functions::UnaryFunction,
-    ) -> bool {
-        match ast {
-            FunctionAst::Unary { op: ast_op, expr } => {
-                *ast_op == op || function_ast_contains_unary(expr, op)
-            }
-            FunctionAst::Binary { lhs, rhs, .. } => {
-                function_ast_contains_unary(lhs, op) || function_ast_contains_unary(rhs, op)
-            }
-            FunctionAst::Variable
-            | FunctionAst::Constant(_)
-            | FunctionAst::Parameter(_, _)
-            | FunctionAst::PiAngle => false,
-        }
     }
 
     #[test]
@@ -3074,49 +2822,6 @@ mod parse_tests {
     }
 
     #[test]
-    fn decodes_chessboard_x_expr_from_special_payload_pattern() {
-        let payload = payload_from_words(&[
-            2300, 0, 22, 0, 4, 0, 10, 145, 3, 12348, 62, 44518, 6, 3, 2, 59043, 2311, 0, 170, 0,
-            48, 0, 55, 4, 63952, 3, 0, 0, 63964, 18, 65535, 65535, 4437, 87, 51443, 86, 274, 0,
-            61589, 0, 53072, 99, 63856, 18, 45200, 2303, 11, 11, 24576, 4097, 8204, 24576, 4099,
-            24577, 12, 4098, 24577, 12, 12, 4099, 24577, 4096, 11, 11, 1, 4096, 11, 4097, 1, 12,
-            4100, 11, 8204, 24576, 4099, 24577, 12, 4096, 1, 12, 12, 4099, 11, 2, 4098, 24577, 12,
-            4098, 11, 1, 4096, 11, 4097, 1, 12, 4100, 24577, 12, 4099, 2, 12,
-        ]);
-        let parameters = BTreeMap::from([
-            (
-                0u16,
-                ParameterBinding {
-                    name: "t₁".to_string(),
-                    value: 0.0,
-                    expr: None,
-                },
-            ),
-            (
-                1u16,
-                ParameterBinding {
-                    name: "trunc((m₁ + 2))".to_string(),
-                    value: 9.0,
-                    expr: None,
-                },
-            ),
-        ]);
-        let expr = try_decode_inner_function_expr(&payload, &parameters)
-            .expect("chessboard x payload should decode");
-        assert_eq!(
-            evaluate_expr_with_parameters(
-                &expr,
-                0.0,
-                &BTreeMap::from([
-                    ("t₁".to_string(), 0.0),
-                    ("trunc((m₁ + 2))".to_string(), 9.0),
-                ]),
-            ),
-            Some(0.0)
-        );
-    }
-
-    #[test]
     fn decodes_angle_helper_payload_kind_41_from_sample() {
         let Ok(data) = fs::read("tests/Samples/个人专栏/王伟君作品/多边形外角和(王伟君).gsp")
         else {
@@ -3153,11 +2858,7 @@ mod parse_tests {
         let groups = file.object_groups();
         let point_map = collect_point_objects(&file, &groups);
         let anchors_without_graph = collect_raw_object_anchors(&file, &groups, &point_map, None);
-        let graph =
-            super::infer_default_helper_graph_transform(&file, &groups, &anchors_without_graph);
-        let anchors = graph.as_ref().map_or(anchors_without_graph, |transform| {
-            collect_raw_object_anchors(&file, &groups, &point_map, Some(transform))
-        });
+        let anchors = anchors_without_graph;
 
         let ratio_group = groups
             .iter()
@@ -3176,7 +2877,7 @@ mod parse_tests {
             &file,
             &groups,
             &anchors,
-            graph.as_ref(),
+            None,
             &refs,
         )
         .unwrap_or_else(|| {
@@ -3393,87 +3094,6 @@ mod parse_tests {
         let error = try_decode_function_expr(&file, &groups, function_group)
             .expect_err("unmarked grouped payload must not be rescued by broad fallback");
         assert_payload_parse_failed(error, payload);
-    }
-
-    #[test]
-    fn decodes_chessboard_x_expr_from_fixture_payload_with_fixture_bindings() {
-        let data = include_bytes!("../../../tests/Samples/个人专栏/李有贵作品/棋盘（有贵）.gsp");
-        let file = GspFile::parse(data).expect("fixture parses");
-        let groups = file.object_groups();
-        let payload = groups[11]
-            .records
-            .iter()
-            .find(|record| record.record_type == RECORD_FUNCTION_EXPR_PAYLOAD)
-            .expect("0907")
-            .payload(&file.data);
-        let words = payload
-            .chunks_exact(2)
-            .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
-            .collect::<Vec<_>>();
-        assert!(
-            words.windows(55).any(|window| window
-                == [
-                    0x000b, 0x000b, 0x6000, 0x1001, 0x200c, 0x6000, 0x1003, 0x6001, 0x000c, 0x1002,
-                    0x6001, 0x000c, 0x000c, 0x1003, 0x6001, 0x1000, 0x000b, 0x000b, 0x0001, 0x1000,
-                    0x000b, 0x1001, 0x0001, 0x000c, 0x1004, 0x000b, 0x200c, 0x6000, 0x1003, 0x6001,
-                    0x000c, 0x1000, 0x0001, 0x000c, 0x000c, 0x1003, 0x000b, 0x0002, 0x1002, 0x6001,
-                    0x000c, 0x1002, 0x000b, 0x0001, 0x1000, 0x000b, 0x1001, 0x0001, 0x000c, 0x1004,
-                    0x6001, 0x000c, 0x1003, 0x0002, 0x000c
-                ]),
-            "expected fixture payload to contain the chessboard x signature, got {words:?}"
-        );
-        let params = BTreeMap::from([
-            (
-                0u16,
-                ParameterBinding {
-                    name: "t₁".to_string(),
-                    value: 0.0,
-                    expr: None,
-                },
-            ),
-            (
-                1u16,
-                ParameterBinding {
-                    name: "trunc((m₁ + 2))".to_string(),
-                    value: 9.0,
-                    expr: None,
-                },
-            ),
-        ]);
-        let expr = try_decode_inner_function_expr(payload, &params).expect("fixture payload");
-        assert_eq!(
-            evaluate_expr_with_parameters(
-                &expr,
-                0.0,
-                &BTreeMap::from([
-                    ("t₁".to_string(), 0.0),
-                    ("trunc((m₁ + 2))".to_string(), 9.0),
-                ]),
-            ),
-            Some(0.0)
-        );
-    }
-
-    #[test]
-    fn decodes_sliding_equilateral_square_parameter_expression_from_fixture() {
-        let data = include_bytes!(
-            "../../../tests/Samples/个人专栏/侯仰顺作品/参数的应用-正三角形在正方形内滑动【蚂蚁制作】.gsp"
-        );
-        let file = GspFile::parse(data).expect("fixture parses");
-        let groups = file.object_groups();
-        let expr = try_decode_function_expr(&file, &groups, &groups[11])
-            .expect("sliding triangle expression should decode");
-
-        assert!(
-            function_expr_contains_unary(&expr, crate::runtime::functions::UnaryFunction::Sqrt),
-            "expected the payload expression to preserve the square-root term, got {expr:?}"
-        );
-        let value = evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new())
-            .expect("expression should evaluate from its payload parameter binding");
-        assert!(
-            (value - -0.19937560472905297).abs() < 1e-12,
-            "expected payload expression value to move F away from E, got {value}"
-        );
     }
 
     #[test]

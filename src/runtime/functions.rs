@@ -5,8 +5,7 @@ mod plot;
 mod scene;
 
 pub(crate) use decode::{
-    FunctionExprParseError, evaluate_function_group_with_overrides,
-    payload_has_sliding_equilateral_square_expr, try_decode_function_expr,
+    FunctionExprParseError, evaluate_function_group_with_overrides, try_decode_function_expr,
     try_decode_function_expr_with_inlined_refs, try_decode_function_plot_descriptor,
     try_decode_standalone_function_expr,
 };
@@ -285,27 +284,6 @@ mod tests {
                     }),
                 }),
             })
-        );
-    }
-
-    #[test]
-    fn decodes_chessboard_yougui_x_expr_from_fixture() {
-        let data = include_bytes!("../../tests/Samples/个人专栏/李有贵作品/棋盘（有贵）.gsp");
-        let file = GspFile::parse(data).expect("fixture parses");
-        let groups = file.object_groups();
-
-        let expr = try_decode_function_expr(&file, &groups, &groups[11]).expect("expression #12");
-        assert_eq!(
-            evaluate_expr_with_parameters(
-                &expr,
-                0.0,
-                &BTreeMap::from([
-                    ("t₁".to_string(), 0.0),
-                    ("trunc((m₁ + 2))".to_string(), 9.0),
-                    ("n".to_string(), 9.0),
-                ]),
-            ),
-            Some(0.0)
         );
     }
 }

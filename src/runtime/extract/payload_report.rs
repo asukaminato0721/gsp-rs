@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime::extract::decode::decode_bbox_anchor_raw;
 use crate::runtime::extract::points::resolve_line_like_points_raw;
 use crate::runtime::geometry;
 use anyhow::bail;
@@ -919,23 +920,10 @@ fn htm_fixed_text_args(file: &GspFile, group: &ObjectGroup) -> String {
         .map(|content| content.text.clone())
         .or_else(|| try_decode_group_label_text(file, group))
         .unwrap_or_default();
-    try_decode_bbox_rect_raw(file, group)
+    try_decode_payload_anchor_point(file, group)
         .ok()
         .flatten()
-        .map(|(left, top, _width, height)| {
-            let y_offset = htm_fixed_text_bbox_y_offset(
-                rich_text
-                    .as_ref()
-                    .and_then(|content| content.markup.as_deref()),
-                &text,
-                height,
-            );
-            PointRecord {
-                x: left,
-                y: top + y_offset,
-            }
-        })
-        .or_else(|| try_decode_payload_anchor_point(file, group).ok().flatten())
+        .or_else(|| decode_bbox_anchor_raw(file, group))
         .map(|anchor| {
             format!(
                 "{},{},'{}'",
@@ -945,28 +933,6 @@ fn htm_fixed_text_args(file: &GspFile, group: &ObjectGroup) -> String {
             )
         })
         .unwrap_or_default()
-}
-
-fn htm_fixed_text_bbox_y_offset(markup: Option<&str>, text: &str, height: f64) -> f64 {
-    let Some(markup) = markup else {
-        return 48.0;
-    };
-    if markup.starts_with("<H") {
-        return 36.0;
-    }
-    if markup.starts_with("<VL<H") && height < 70.0 {
-        return 48.0;
-    }
-    if text.contains('\n') {
-        return 40.0;
-    }
-    if height >= 70.0 {
-        return 32.0;
-    }
-    if height >= 50.0 {
-        return 36.0;
-    }
-    24.0
 }
 
 fn htm_payload_position(file: &GspFile, group: &ObjectGroup, dx: f64, dy: f64) -> (f64, f64) {

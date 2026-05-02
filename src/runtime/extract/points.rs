@@ -465,19 +465,6 @@ pub(super) fn decode_angle_parameter_value_for_group(
     if max.abs() > std::f64::consts::TAU * 2.0 {
         return None;
     }
-    let step = (payload.len() >= 84)
-        .then(|| read_f64(payload, 76))
-        .filter(|value| value.is_finite() && *value > 0.0)?;
-
-    // Legacy copies of some angle sliders keep range metadata but lose the current
-    // snapped value. Recover the intended quarter-turn from the preserved tick step.
-    if payload.len() >= 98
-        && (max - std::f64::consts::TAU).abs() < 1e-6
-        && (step - std::f64::consts::FRAC_PI_4).abs() < 1e-6
-        && current < step * 0.5
-    {
-        return Some((step * 2.0).to_degrees());
-    }
 
     Some(current.to_degrees())
 }
