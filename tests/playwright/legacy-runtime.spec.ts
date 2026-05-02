@@ -184,6 +184,18 @@ test('triangle angle sum translated H handle drags source H and drives animation
     const scene = () => window.gspDebug.runtime.scene;
     const pointIndex = (ordinal: number) =>
       scene().points.findIndex((point: any) => point.debug?.groupOrdinal === ordinal);
+    const labelByOrdinal = (ordinal: number) =>
+      scene().labels.find((label: any) => label.debug?.groupOrdinal === ordinal);
+    const segmentProjection = (binding: any) => {
+      const point = scene().points[binding.pointIndex];
+      const start = scene().points[binding.startIndex];
+      const end = scene().points[binding.endIndex];
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const lenSq = dx * dx + dy * dy;
+      const value = ((point.x - start.x) * dx + (point.y - start.y) * dy) / lenSq;
+      return Math.max(0, Math.min(1, value));
+    };
 
     const hIndex = pointIndex(11);
     const translatedHIndex = pointIndex(40);
@@ -202,11 +214,16 @@ test('triangle angle sum translated H handle drags source H and drives animation
       rotated: { x: scene().points[rotatedIndex].x, y: scene().points[rotatedIndex].y },
       offset: { ...scene().points[translatedHIndex].constraint },
       dragMode: drag.dragModeFor(env, translatedHIndex, null, null, null, null),
+      values: {
+        s12: segmentProjection(labelByOrdinal(12).binding),
+        s23: segmentProjection(labelByOrdinal(13).binding),
+        s01: segmentProjection(labelByOrdinal(14).binding),
+      },
     };
 
     drag.beginDrag(env, 13, env.toScreen(scene().points[translatedHIndex]), translatedHIndex, null, null, null, null);
     drag.updateDraggedPoint(env, {
-      x: before.translatedH.x + 100,
+      x: before.translatedH.x + 400,
       y: before.translatedH.y,
     });
     env.dragState.val = null;
@@ -218,6 +235,11 @@ test('triangle angle sum translated H handle drags source H and drives animation
       p: { x: scene().points[pIndex].x, y: scene().points[pIndex].y },
       rotated: { x: scene().points[rotatedIndex].x, y: scene().points[rotatedIndex].y },
       offset: { ...scene().points[translatedHIndex].constraint },
+      values: {
+        s12: segmentProjection(labelByOrdinal(12).binding),
+        s23: segmentProjection(labelByOrdinal(13).binding),
+        s01: segmentProjection(labelByOrdinal(14).binding),
+      },
     };
     const moved = (left: { x: number, y: number }, right: { x: number, y: number }) =>
       Math.hypot(left.x - right.x, left.y - right.y);
@@ -231,6 +253,8 @@ test('triangle angle sum translated H handle drags source H and drives animation
       rotatedDelta: moved(before.rotated, after.rotated),
       offsetDxDelta: Math.abs((after.offset as any).dx - (before.offset as any).dx),
       offsetDyDelta: Math.abs((after.offset as any).dy - (before.offset as any).dy),
+      beforeValues: before.values,
+      afterValues: after.values,
     };
   });
 
@@ -241,6 +265,11 @@ test('triangle angle sum translated H handle drags source H and drives animation
   expect(result?.lDelta).toBeGreaterThan(10);
   expect(result?.pDelta).toBeGreaterThan(10);
   expect(result?.rotatedDelta).toBeGreaterThan(10);
+  expect(result?.beforeValues).toEqual({ s12: 0, s23: 0, s01: 0 });
+  expect(result?.afterValues.s01).toBeCloseTo(1, 6);
+  expect(result?.afterValues.s12).toBeCloseTo(1, 6);
+  expect(result?.afterValues.s23).toBeGreaterThan(0);
+  expect(result?.afterValues.s23).toBeLessThan(1);
   expect(result?.offsetDxDelta).toBeLessThan(1e-6);
   expect(result?.offsetDyDelta).toBeLessThan(1e-6);
 });
