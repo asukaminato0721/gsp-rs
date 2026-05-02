@@ -892,8 +892,7 @@ fn preserves_circle_center_radius_gsp() {
 
 #[test]
 fn chen_faquan_taiji_trace_exports_parameter_radius_circle() {
-    let Some(data) =
-        fixture_bytes("tests/Samples/个人专栏/陈发铨作品/太极图整体轨迹(一线天).gsp")
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/陈发铨作品/太极图整体轨迹(一线天).gsp")
     else {
         return;
     };
@@ -909,7 +908,10 @@ fn chen_faquan_taiji_trace_exports_parameter_radius_circle() {
                 .is_some_and(|debug| debug.group_ordinal == 16)
         })
         .expect("expected payload #16 Circle by radius to export");
-    assert!(circle.visible, "expected the .htm-visible radius circle to render");
+    assert!(
+        circle.visible,
+        "expected the .htm-visible radius circle to render"
+    );
     assert!(matches!(
         &circle.binding,
         Some(ShapeBinding::ParameterRadiusCircle {
