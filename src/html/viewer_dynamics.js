@@ -4605,6 +4605,24 @@
 
     refreshConstrainedPointPositions(env, scene);
 
+    /** @type {RuntimeLineJson[]} */
+    const preservedLines = [];
+    const lineContext = { env, scene, bounds, parameters };
+    scene.lines.forEach((/** @type {RuntimeLineJson} */ line) => {
+      const bindingKind = line.binding?.kind;
+      if (!bindingKind) {
+        preservedLines.push(line);
+        return;
+      }
+      const refreshLine = LINE_BINDING_REFRESHERS[bindingKind];
+      if (refreshLine) {
+        refreshLine(lineContext, line);
+      }
+      preservedLines.push(line);
+    });
+    scene.lines = preservedLines;
+    refreshTraceConstrainedPointPositions(env, scene);
+
     const shapeContext = { env, scene, parameters, resolveHandle };
     scene.circles.forEach((/** @type {RuntimeCircleJson} */ circle) => {
       const refreshCircle = circle.binding ? CIRCLE_BINDING_REFRESHERS[circle.binding.kind] : null;
@@ -4681,24 +4699,6 @@
         refreshPolygon(shapeContext, polygon);
       }
     });
-
-    /** @type {RuntimeLineJson[]} */
-    const preservedLines = [];
-    const lineContext = { env, scene, bounds, parameters };
-    scene.lines.forEach((/** @type {RuntimeLineJson} */ line) => {
-      const bindingKind = line.binding?.kind;
-      if (!bindingKind) {
-        preservedLines.push(line);
-        return;
-      }
-      const refreshLine = LINE_BINDING_REFRESHERS[bindingKind];
-      if (refreshLine) {
-        refreshLine(lineContext, line);
-      }
-      preservedLines.push(line);
-    });
-    scene.lines = preservedLines;
-    refreshTraceConstrainedPointPositions(env, scene);
   }
 
   /**
