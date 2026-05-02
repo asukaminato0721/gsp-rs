@@ -171,6 +171,7 @@ pub(super) fn collect_point_traces(
                 GroupKind::CustomTransformTrace => {
                     Some(crate::runtime::scene::LineBinding::CustomTransformTrace {
                         point_index: target_group_index,
+                        driver_index: driver_group_index,
                         x_min: descriptor.x_min,
                         x_max: descriptor.x_max,
                         sample_count: descriptor.sample_count,
@@ -1402,6 +1403,26 @@ fn resolve_trace_point(
             let start = resolve_trace_point(points, *start_index, visiting)?;
             let end = resolve_trace_point(points, *end_index, visiting)?;
             Some(lerp_point(&start, &end, 0.5))
+        }
+        Some(ScenePointBinding::DerivedParameter {
+            source_index,
+            parameter_start_index,
+            parameter_end_index,
+        }) => {
+            let value = match (parameter_start_index, parameter_end_index) {
+                (Some(start_index), Some(end_index)) => {
+                    let source = resolve_trace_point(points, *source_index, visiting)?;
+                    let start = resolve_trace_point(points, *start_index, visiting)?;
+                    let end = resolve_trace_point(points, *end_index, visiting)?;
+                    segment_projection_parameter(&source, &start, &end)?
+                }
+                _ => {
+                    let source = points.get(*source_index)?;
+                    custom_transform_trace_parameter(source)?
+                }
+            };
+            let mut derived = point.clone();
+            resolve_trace_point_at_constraint_parameter(points, &mut derived, value, visiting)
         }
         Some(ScenePointBinding::CustomTransform {
             source_index,

@@ -752,8 +752,25 @@ pub(crate) fn remap_line_bindings(
                 *start_index = mapped_start_index;
                 *end_index = mapped_end_index;
             }
-            LineBinding::CustomTransformTrace { point_index, .. }
-            | LineBinding::CoordinateTrace { point_index, .. } => {
+            LineBinding::CustomTransformTrace {
+                point_index,
+                driver_index,
+                ..
+            } => {
+                let Some(mapped_point_index) = mapped_index(group_to_point_index, *point_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                let Some(mapped_driver_index) = mapped_index(group_to_point_index, *driver_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                *point_index = mapped_point_index;
+                *driver_index = mapped_driver_index;
+            }
+            LineBinding::CoordinateTrace { point_index, .. } => {
                 let Some(mapped_point_index) = mapped_index(group_to_point_index, *point_index)
                 else {
                     line.binding = None;

@@ -3835,6 +3835,9 @@
   function sampleCustomTransformTraceLine(scene, line, parameters) {
     const point = scene.points[line.binding.pointIndex];
     const binding = point?.binding;
+    if (binding?.kind !== "custom-transform" && Number.isInteger(line.binding.driverIndex)) {
+      return samplePointTraceLine(scene, line, parameters);
+    }
     if (binding?.kind !== "custom-transform") return null;
     const origin = scene.points[binding.originIndex];
     const axisEnd = scene.points[binding.axisEndIndex];
@@ -4042,6 +4045,36 @@
         if (start && end) {
           resolved = lerpPoint(start, end, 0.5);
         }
+      } else if (point.binding?.kind === "derived-parameter") {
+        let value = null;
+        if (
+          typeof point.binding.parameterStartIndex === "number"
+          && typeof point.binding.parameterEndIndex === "number"
+        ) {
+          const source = resolveTracePoint(points, point.binding.sourceIndex, visiting);
+          const start = resolveTracePoint(points, point.binding.parameterStartIndex, visiting);
+          const end = resolveTracePoint(points, point.binding.parameterEndIndex, visiting);
+          value = source && start && end
+            ? segmentProjectionParameterFromPoints(source, start, end)
+            : null;
+        } else {
+          value = parameterValueFromPoint(sampleScene, point.binding.sourceIndex);
+        }
+        if (isFiniteNumber(value)) {
+          const derived = cloneTracePoint(point);
+          updateConstraintParameterizedPoint(derived, sampleScene, value);
+          sampleScene.points[index] = derived;
+          resolved = modules.scene.resolveConstrainedPoint(
+            {
+              sourceScene: scene,
+              currentScene: () => sampleScene,
+              resolveScenePoint: (pointIndex) => resolveTracePoint(points, pointIndex, visiting),
+            },
+            derived.constraint,
+            (pointIndex) => resolveTracePoint(points, pointIndex, visiting),
+            derived,
+          );
+        }
       } else if (point.binding?.kind === "circumcenter") {
         const start = resolveTracePoint(points, point.binding.startIndex, visiting);
         const mid = resolveTracePoint(points, point.binding.midIndex, visiting);
@@ -4157,12 +4190,18 @@
     };
 
     const sampled = [];
+    const rawTraceMax = line.binding.kind === "custom-transform-trace"
+      ? parameterValueFromPoint(scene, line.binding.driverIndex)
+      : null;
+    const sampleXMax = isFiniteNumber(rawTraceMax)
+      ? Math.max(line.binding.xMin, Math.min(line.binding.xMax, rawTraceMax))
+      : line.binding.xMax;
     const last = Math.max(1, line.binding.sampleCount - 1);
     for (let index = 0; index < line.binding.sampleCount; index += 1) {
       const value = line.binding.useMidpoints
         ? line.binding.xMin
-          + (line.binding.xMax - line.binding.xMin) * ((index + 0.5) / Math.max(1, line.binding.sampleCount))
-        : line.binding.xMin + (line.binding.xMax - line.binding.xMin) * (index / last);
+          + (sampleXMax - line.binding.xMin) * ((index + 0.5) / Math.max(1, line.binding.sampleCount))
+        : line.binding.xMin + (sampleXMax - line.binding.xMin) * (index / last);
       const points = scene.points.map(cloneTracePoint);
       sampleScene.points = points;
       applyTraceValueToPoint(

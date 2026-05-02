@@ -1,4 +1,4 @@
-use super::test_support::fixture_scene;
+use super::test_support::{fixture_bytes, fixture_scene};
 use crate::runtime::scene::{LineBinding, ScenePointBinding, ScenePointConstraint};
 
 #[test]
@@ -31,6 +31,74 @@ fn preserves_coordinate_trace_in_cood_trace_gsp() {
                     .is_some_and(|point| (point.y - 2.0).abs() < 0.001)
         }),
         "expected sampled coordinate trace line"
+    );
+}
+
+#[test]
+fn dynamic_pentagram_custom_transform_trace_resamples_derived_parameter_point() {
+    let Some(data) = fixture_bytes("tests/Samples/未分类档/动态五角星.gsp") else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+    let point_index_for_group = |ordinal| {
+        scene
+            .points
+            .iter()
+            .position(|point| {
+                point
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .expect("expected point for payload group")
+    };
+    let trace = scene
+        .lines
+        .iter()
+        .find(|line| {
+            line.debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 14)
+        })
+        .expect("expected custom transform trace #14");
+    let (point_index, driver_index, sample_count) = match trace.binding {
+        Some(LineBinding::CustomTransformTrace {
+            point_index,
+            driver_index,
+            sample_count,
+            ..
+        }) => (point_index, driver_index, sample_count),
+        ref other => panic!("expected custom transform trace binding, got {other:?}"),
+    };
+    assert_eq!(point_index, point_index_for_group(13));
+    assert_eq!(driver_index, point_index_for_group(10));
+    assert_eq!(sample_count, 500);
+    assert_eq!(trace.points.len(), 500);
+
+    let (min_x, max_x) = trace
+        .points
+        .iter()
+        .map(|point| point.x)
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), x| {
+            (min.min(x), max.max(x))
+        });
+    let (min_y, max_y) = trace
+        .points
+        .iter()
+        .map(|point| point.y)
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), y| {
+            (min.min(y), max.max(y))
+        });
+    assert!(
+        max_x - min_x > 200.0 && max_y - min_y > 100.0,
+        "expected the custom transform trace to span the pentagon, got x={min_x}..{max_x}, y={min_y}..{max_y}"
+    );
+    assert!(
+        trace
+            .points
+            .first()
+            .is_some_and(|point| (point.x - 288.0).abs() < 1e-6 && (point.y - 139.0).abs() < 1e-6),
+        "expected the segment transform trace to start at pentagon vertex A"
     );
 }
 

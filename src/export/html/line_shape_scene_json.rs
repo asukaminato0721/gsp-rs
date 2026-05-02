@@ -123,6 +123,8 @@ enum LineBindingJson {
     CustomTransformTrace {
         #[serde(rename = "pointIndex")]
         point_index: usize,
+        #[serde(rename = "driverIndex")]
+        driver_index: usize,
         #[serde(rename = "xMin")]
         x_min: f64,
         #[serde(rename = "xMax")]
@@ -316,11 +318,13 @@ impl LineBindingJson {
             },
             LineBinding::CustomTransformTrace {
                 point_index,
+                driver_index,
                 x_min,
                 x_max,
                 sample_count,
             } => Self::CustomTransformTrace {
                 point_index: *point_index,
+                driver_index: *driver_index,
                 x_min: *x_min,
                 x_max: *x_max,
                 sample_count: *sample_count,

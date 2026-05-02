@@ -661,6 +661,7 @@ pub(crate) enum LineBinding {
     },
     CustomTransformTrace {
         point_index: usize,
+        driver_index: usize,
         x_min: f64,
         x_max: f64,
         sample_count: usize,

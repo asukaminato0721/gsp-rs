@@ -294,6 +294,63 @@ test('triangle angle sum translated H handle drags source H and drives animation
   expect(result?.offsetDyDelta).toBeLessThan(1e-6);
 });
 
+test('dynamic pentagram custom transform trace follows the segment driver', async ({ page }) => {
+  const file = compileFixtureToTempHtml('tests/Samples/未分类档/动态五角星.gsp');
+  await page.goto(`file://${file}`);
+
+  const result = await page.evaluate(() => {
+    const env = window.gspDebug.viewerEnv;
+    const drag = window.GspViewerModules.drag;
+    const dynamics = window.GspViewerModules.dynamics;
+    const scene = () => env.currentScene();
+    const pointIndexForGroup = (ordinal: number) =>
+      scene().points.findIndex((point: any) => point.debug?.groupOrdinal === ordinal);
+    const traceForGroup = (ordinal: number) =>
+      scene().lines.find((line: any) => line.debug?.groupOrdinal === ordinal);
+    const bounds = (points: Array<{ x: number; y: number }>) => ({
+      minX: Math.min(...points.map((point) => point.x)),
+      maxX: Math.max(...points.map((point) => point.x)),
+      minY: Math.min(...points.map((point) => point.y)),
+      maxY: Math.max(...points.map((point) => point.y)),
+      first: points[0],
+      last: points[points.length - 1],
+    });
+
+    const driverIndex = pointIndexForGroup(10);
+    const targetIndex = pointIndexForGroup(13);
+    const beforeTrace = traceForGroup(14);
+    const before = bounds(beforeTrace.points);
+    const dragMode = drag.dragModeFor(env, driverIndex, null, null, null, null);
+    env.markDependencyRootsDirty?.([dynamics.sourcePointRootId(driverIndex)]);
+    env.updateScene((draft: any) => {
+      dynamics.applyNormalizedParameterToPoint(draft.points[driverIndex], draft, 0.8);
+    }, 'graph');
+    const afterTrace = traceForGroup(14);
+    const after = bounds(afterTrace.points);
+
+    return {
+      driverIndex,
+      targetIndex,
+      dragMode,
+      binding: beforeTrace.binding,
+      before,
+      after,
+      renderedLineCount: document.querySelectorAll('#scene-layer path').length,
+    };
+  });
+
+  expect(result.driverIndex).toBeGreaterThanOrEqual(0);
+  expect(result.targetIndex).toBeGreaterThanOrEqual(0);
+  expect(result.binding.kind).toBe('custom-transform-trace');
+  expect(result.binding.driverIndex).toBe(result.driverIndex);
+  expect(result.binding.pointIndex).toBe(result.targetIndex);
+  expect(result.dragMode).toBe('point');
+  expect(result.before.maxX - result.before.minX).toBeGreaterThan(200);
+  expect(result.before.maxY - result.before.minY).toBeGreaterThan(100);
+  expect(result.renderedLineCount).toBeGreaterThan(0);
+  expect(Math.hypot(result.after.last.x - result.before.last.x, result.after.last.y - result.before.last.y)).toBeGreaterThan(20);
+});
+
 test('hejixu fold2 marked-ratio dilation stays live when E reaches C', async ({ page }) => {
   const file = compileFixtureToTempHtml('tests/Samples/个人专栏/贺基旭作品/翻折2(hjx4882).gsp');
   await page.goto(`file://${file}`);
