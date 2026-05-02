@@ -2,6 +2,7 @@ use super::test_support::{
     fixture_buttons_without_validation, fixture_bytes, fixture_images_without_validation,
     fixture_labels_without_validation, fixture_scene,
 };
+use crate::format::{GspFile, read_u16};
 use crate::runtime::scene::ButtonAction;
 
 #[test]
@@ -84,6 +85,47 @@ fn preserves_show_image_button_in_wuxi_fixture() {
             );
         }
         action => panic!("expected set-visibility action, got {action:?}"),
+    }
+}
+
+#[test]
+fn exports_kaleidoscope_exjh_link_button() {
+    let Some(data) = fixture_bytes("tests/Samples/未分类档/万花筒.gsp") else {
+        return;
+    };
+    let file = GspFile::parse(&data).expect("fixture parses");
+    let groups = file.object_groups();
+    let link_group = groups
+        .iter()
+        .find(|group| group.ordinal == 338)
+        .expect("expected exjh link group");
+    let action_payload = link_group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x0906)
+        .expect("expected link action payload")
+        .payload(&file.data);
+    assert_eq!(
+        read_u16(action_payload, 12),
+        6,
+        "expected #338 to carry the link action kind"
+    );
+
+    let scene = fixture_scene(&data);
+    let link_button = scene
+        .buttons
+        .iter()
+        .find(|button| {
+            button
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 338)
+        })
+        .expect("expected #338 to export as a link button");
+    assert_eq!(link_button.text, "http://exjh.com");
+    match &link_button.action {
+        ButtonAction::Link { href } => assert_eq!(href, "http://exjh.com"),
+        action => panic!("expected link action, got {action:?}"),
     }
 }
 

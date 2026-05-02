@@ -3,6 +3,7 @@ use crate::format::{
     GroupKind, GspFile, IndexedPathRecord, ObjectGroup, PointRecord, collect_strings,
     decode_indexed_path, read_f64, read_i16, read_u16, read_u32,
 };
+use crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT;
 use crate::runtime::geometry::{reflect_across_line, rotate_around, scale_around};
 use crate::runtime::payload_consts::{EXPR_OP_ADD, EXPR_OP_SUB};
 use crate::runtime::payload_consts::{
@@ -10,7 +11,6 @@ use crate::runtime::payload_consts::{
     RECORD_INDEXED_PATH_B, RECORD_LABEL_AUX, RECORD_LABEL_VISIBILITY, RECORD_POINT_F64_PAIR,
     RECORD_RICH_TEXT, RECORD_RICH_TEXT_MAGIC,
 };
-use crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT;
 use thiserror::Error;
 
 pub(crate) fn is_circle_group_kind(kind: GroupKind) -> bool {
@@ -538,7 +538,7 @@ pub(crate) fn try_decode_link_button_url(
             byte_len: payload.len(),
         });
     }
-    let action_kind = read_u32(payload, 12);
+    let action_kind = read_u16(payload, 12);
     if action_kind != 6 {
         return Ok(None);
     }
