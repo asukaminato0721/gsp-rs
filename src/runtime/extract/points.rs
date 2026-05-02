@@ -31,6 +31,8 @@ pub(crate) use anchors::{
     translation_point_pair_group_indices,
 };
 #[allow(unused_imports)]
+pub(crate) use bindings::TransformBinding;
+#[allow(unused_imports)]
 pub(super) use bindings::{
     RawPointIterationFamily, TransformBindingKind, collect_point_iteration_points,
     collect_standalone_parameter_points, collect_visible_points_checked,

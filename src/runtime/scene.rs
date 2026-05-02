@@ -562,6 +562,9 @@ pub(crate) struct RotationBinding {
     pub(crate) center_index: usize,
     pub(crate) angle_degrees: f64,
     pub(crate) parameter_name: Option<String>,
+    pub(crate) angle_start_index: Option<usize>,
+    pub(crate) angle_vertex_index: Option<usize>,
+    pub(crate) angle_end_index: Option<usize>,
 }
 
 #[derive(Debug, Clone)]

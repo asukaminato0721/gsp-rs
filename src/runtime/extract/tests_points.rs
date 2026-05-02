@@ -3,8 +3,8 @@ use super::test_support::{fixture_bytes, fixture_log, fixture_scene, function_ex
 use crate::format::GspFile;
 use crate::runtime::functions::UnaryFunction;
 use crate::runtime::scene::{
-    ButtonAction, CircularConstraint, LineBinding, LineConstraint, ScenePointBinding,
-    ScenePointConstraint, ShapeBinding, TextLabelBinding,
+    ButtonAction, CircularConstraint, LineBinding, LineConstraint, LineTransformBinding,
+    ScenePointBinding, ScenePointConstraint, ShapeBinding, TextLabelBinding,
 };
 
 #[test]
@@ -135,6 +135,38 @@ fn triangle_angle_sum_fixture_keeps_measured_angle_rotation_live() {
                 )
         }),
         "expected #38 to bind to the measured-angle-rotated point"
+    );
+    let rotated_bc_line_index = scene
+        .lines
+        .iter()
+        .position(|line| {
+            line.debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 32)
+        })
+        .expect("expected #32 rotated pink BC segment");
+    let source_bl_line_index = scene
+        .lines
+        .iter()
+        .position(|line| {
+            line.debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 29)
+        })
+        .expect("expected #29 source segment");
+    assert!(
+        matches!(
+            &scene.lines[rotated_bc_line_index].binding,
+            Some(LineBinding::DerivedTransform {
+                source_index,
+                transform: LineTransformBinding::Rotate(binding),
+            }) if *source_index == source_bl_line_index
+                && binding.center_index == center_point_index
+                && binding.angle_start_index == Some(point_index_for_group(16))
+                && binding.angle_vertex_index == Some(point_index_for_group(15))
+                && binding.angle_end_index == Some(point_index_for_group(18))
+        ),
+        "expected #32 to rotate #29 from measured angle #30"
     );
     for (label_ordinal, (start_index, end_index)) in
         [(12, segment12), (13, segment23), (14, segment01)]

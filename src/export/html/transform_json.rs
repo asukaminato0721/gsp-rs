@@ -22,6 +22,12 @@ pub(super) enum TransformJson {
         angle_degrees: f64,
         #[serde(rename = "parameterName")]
         parameter_name: Option<String>,
+        #[serde(rename = "angleStartIndex", skip_serializing_if = "Option::is_none")]
+        angle_start_index: Option<usize>,
+        #[serde(rename = "angleVertexIndex", skip_serializing_if = "Option::is_none")]
+        angle_vertex_index: Option<usize>,
+        #[serde(rename = "angleEndIndex", skip_serializing_if = "Option::is_none")]
+        angle_end_index: Option<usize>,
     },
     #[serde(rename = "scale")]
     Scale {
@@ -54,6 +60,9 @@ impl TransformJson {
                 center_index: binding.center_index,
                 angle_degrees: binding.angle_degrees,
                 parameter_name: binding.parameter_name.clone(),
+                angle_start_index: binding.angle_start_index,
+                angle_vertex_index: binding.angle_vertex_index,
+                angle_end_index: binding.angle_end_index,
             },
             LineTransformBinding::Scale(binding) => Self::Scale {
                 center_index: binding.center_index,
@@ -79,6 +88,9 @@ impl TransformJson {
                 center_index: binding.center_index,
                 angle_degrees: binding.angle_degrees,
                 parameter_name: binding.parameter_name.clone(),
+                angle_start_index: binding.angle_start_index,
+                angle_vertex_index: binding.angle_vertex_index,
+                angle_end_index: binding.angle_end_index,
             },
             ShapeTransformBinding::Scale(binding) => Self::Scale {
                 center_index: binding.center_index,

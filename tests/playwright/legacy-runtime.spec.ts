@@ -127,6 +127,9 @@ test('triangle angle sum measured-angle rotation updates dependent geometry', as
       rotated: { x: scene().points[rotatedIndex].x, y: scene().points[rotatedIndex].y },
       intersection: { x: scene().points[intersectionIndex].x, y: scene().points[intersectionIndex].y },
       marker: lineByOrdinal(38)?.points?.map((point: any) => ({ x: point.x, y: point.y })) ?? [],
+      rotatedBc: lineByOrdinal(32)?.points?.map((point: any) => ({ x: point.x, y: point.y })) ?? [],
+      rotatedBcBinding: lineByOrdinal(32)?.binding,
+      rotatedBcVisible: lineByOrdinal(32)?.visible,
       rotatedBinding: scene().points[rotatedIndex].binding,
       intersectionConstraint: scene().points[intersectionIndex].constraint,
     };
@@ -141,6 +144,7 @@ test('triangle angle sum measured-angle rotation updates dependent geometry', as
       rotated: { x: scene().points[rotatedIndex].x, y: scene().points[rotatedIndex].y },
       intersection: { x: scene().points[intersectionIndex].x, y: scene().points[intersectionIndex].y },
       marker: lineByOrdinal(38)?.points?.map((point: any) => ({ x: point.x, y: point.y })) ?? [],
+      rotatedBc: lineByOrdinal(32)?.points?.map((point: any) => ({ x: point.x, y: point.y })) ?? [],
     };
     const moved = (left: { x: number, y: number }, right: { x: number, y: number }) =>
       Math.hypot(left.x - right.x, left.y - right.y);
@@ -154,6 +158,13 @@ test('triangle angle sum measured-angle rotation updates dependent geometry', as
       hasMeasuredRadiusIntersection:
         before.intersectionConstraint?.kind === 'line-circular-intersection'
         && before.intersectionConstraint?.circle?.kind === 'segment-radius-circle',
+      hasMeasuredAngleRotatedBc:
+        before.rotatedBcVisible === true
+        && before.rotatedBcBinding?.kind === 'derived'
+        && before.rotatedBcBinding?.transform?.kind === 'rotate'
+        && typeof before.rotatedBcBinding.transform.angleStartIndex === 'number'
+        && typeof before.rotatedBcBinding.transform.angleVertexIndex === 'number'
+        && typeof before.rotatedBcBinding.transform.angleEndIndex === 'number',
       rotatedDelta: moved(before.rotated, after.rotated),
       intersectionDelta: moved(before.intersection, after.intersection),
       markerDelta: Math.max(
@@ -163,15 +174,24 @@ test('triangle angle sum measured-angle rotation updates dependent geometry', as
           return afterPoint ? moved(point, afterPoint) : 0;
         }),
       ),
+      rotatedBcDelta: Math.max(
+        0,
+        ...before.rotatedBc.map((point: { x: number, y: number }, index: number) => {
+          const afterPoint = after.rotatedBc[index];
+          return afterPoint ? moved(point, afterPoint) : 0;
+        }),
+      ),
     };
   });
 
   expect(result).not.toBeNull();
   expect(result?.hasMeasuredAngleRotate).toBe(true);
   expect(result?.hasMeasuredRadiusIntersection).toBe(true);
+  expect(result?.hasMeasuredAngleRotatedBc).toBe(true);
   expect(result?.rotatedDelta).toBeGreaterThan(1);
   expect(result?.intersectionDelta).toBeGreaterThan(1);
   expect(result?.markerDelta).toBeGreaterThan(1);
+  expect(result?.rotatedBcDelta).toBeGreaterThan(1);
 });
 
 test('triangle angle sum translated H handle drags source H and drives animation', async ({ page }) => {

@@ -67,7 +67,26 @@ fn remap_line_transform(
             else {
                 return false;
             };
+            let mapped_angle_start_index =
+                mapped_optional_index(group_to_point_index, binding.angle_start_index)
+                    .unwrap_or(None);
+            let mapped_angle_vertex_index =
+                mapped_optional_index(group_to_point_index, binding.angle_vertex_index)
+                    .unwrap_or(None);
+            let mapped_angle_end_index =
+                mapped_optional_index(group_to_point_index, binding.angle_end_index)
+                    .unwrap_or(None);
+            if binding.angle_start_index.is_some()
+                && (mapped_angle_start_index.is_none()
+                    || mapped_angle_vertex_index.is_none()
+                    || mapped_angle_end_index.is_none())
+            {
+                return false;
+            }
             binding.center_index = mapped_center_index;
+            binding.angle_start_index = mapped_angle_start_index;
+            binding.angle_vertex_index = mapped_angle_vertex_index;
+            binding.angle_end_index = mapped_angle_end_index;
             true
         }
         LineTransformBinding::Scale(binding) => {
@@ -116,7 +135,26 @@ fn remap_shape_transform(
             else {
                 return false;
             };
+            let mapped_angle_start_index =
+                mapped_optional_index(group_to_point_index, binding.angle_start_index)
+                    .unwrap_or(None);
+            let mapped_angle_vertex_index =
+                mapped_optional_index(group_to_point_index, binding.angle_vertex_index)
+                    .unwrap_or(None);
+            let mapped_angle_end_index =
+                mapped_optional_index(group_to_point_index, binding.angle_end_index)
+                    .unwrap_or(None);
+            if binding.angle_start_index.is_some()
+                && (mapped_angle_start_index.is_none()
+                    || mapped_angle_vertex_index.is_none()
+                    || mapped_angle_end_index.is_none())
+            {
+                return false;
+            }
             binding.center_index = mapped_center_index;
+            binding.angle_start_index = mapped_angle_start_index;
+            binding.angle_vertex_index = mapped_angle_vertex_index;
+            binding.angle_end_index = mapped_angle_end_index;
             true
         }
         ShapeTransformBinding::Scale(binding) => {

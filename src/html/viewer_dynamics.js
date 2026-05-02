@@ -42,7 +42,7 @@
   }
 
   /**
-   * @param {Extract<PointTransformJson, { kind: "rotate" }>} transform
+   * @param {{ angleDegrees: number; parameterName?: string | null; angleExpr?: FunctionExprJson | null; angleStartIndex?: number | null; angleVertexIndex?: number | null; angleEndIndex?: number | null; angleParameterPointIndex?: number | null; angleParameterStartIndex?: number | null; angleParameterEndIndex?: number | null; angleParameterScale?: number | null }} transform
    * @param {Map<string, number>} parameters
    * @param {(index: number) => Point | null | undefined} resolvePoint
    * @returns {number | null}
@@ -4175,9 +4175,11 @@
     if (transform.kind === "rotate") {
       const center = scene.points[transform.centerIndex];
       if (!center) return null;
-      const angleDegrees = transform.parameterName
-        ? parameters.get(transform.parameterName)
-        : transform.angleDegrees;
+      const angleDegrees = resolveRotateTransformAngleDegrees(
+        transform,
+        parameters,
+        (index) => scene.points[index] || null,
+      );
       if (!isFiniteNumber(angleDegrees)) return null;
       return { kind: "rotate", center, radians: angleDegrees * Math.PI / 180 };
     }

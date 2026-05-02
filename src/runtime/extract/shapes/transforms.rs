@@ -1,16 +1,88 @@
 use super::{
     CircleShape, GspFile, LineBinding, LineShape, ObjectGroup, PointRecord, PolygonShape,
     SceneContext, ShapeBinding, TransformBindingKind, collect_circle_fill_colors, color_from_style,
-    fill_color_from_styles, has_distinct_points, is_circle_group_kind, line_is_dashed,
-    payload_debug_source, reflect_across_line, rotate_around, scale_around,
+    fill_color_from_styles, find_indexed_path, has_distinct_points, is_circle_group_kind,
+    line_is_dashed, payload_debug_source, reflect_across_line, rotate_around, scale_around,
     translation_point_pair_group_indices, try_decode_parameter_rotation_binding,
     try_decode_transform_binding,
 };
 use crate::runtime::extract::decode::resolve_circle_points_raw;
-use crate::runtime::extract::points::resolve_line_like_points_raw;
+use crate::runtime::extract::points::{TransformBinding, resolve_line_like_points_raw};
+use crate::runtime::geometry::angle_degrees_from_points;
 use crate::runtime::scene::{
     AxisBinding, LineTransformBinding, RotationBinding, ScaleBinding, ShapeTransformBinding,
 };
+
+struct RotationTransform {
+    binding: TransformBinding,
+    angle_group_indices: Option<(usize, usize, usize)>,
+}
+
+fn rotation_transform_for_group(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<RotationTransform> {
+    if group.header.kind() == crate::format::GroupKind::ParameterRotation {
+        if let Ok(binding) = try_decode_parameter_rotation_binding(file, groups, group) {
+            return Some(RotationTransform {
+                binding,
+                angle_group_indices: None,
+            });
+        }
+        let path = find_indexed_path(file, group)?;
+        let source_group_index = path.refs.first()?.checked_sub(1)?;
+        let center_group_index = path.refs.get(1)?.checked_sub(1)?;
+        let angle_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
+        if angle_group.header.kind() != crate::format::GroupKind::AngleValue {
+            return None;
+        }
+        let angle_path = find_indexed_path(file, angle_group)?;
+        let angle_start_group_index = angle_path.refs.first()?.checked_sub(1)?;
+        let angle_vertex_group_index = angle_path.refs.get(1)?.checked_sub(1)?;
+        let angle_end_group_index = angle_path.refs.get(2)?.checked_sub(1)?;
+        let angle_start = anchors.get(angle_start_group_index)?.clone()?;
+        let angle_vertex = anchors.get(angle_vertex_group_index)?.clone()?;
+        let angle_end = anchors.get(angle_end_group_index)?.clone()?;
+        let angle_degrees = angle_degrees_from_points(&angle_start, &angle_vertex, &angle_end)?;
+        return Some(RotationTransform {
+            binding: TransformBinding {
+                source_group_index,
+                center_group_index,
+                kind: TransformBindingKind::Rotate {
+                    angle_degrees,
+                    parameter_name: None,
+                },
+            },
+            angle_group_indices: Some((
+                angle_start_group_index,
+                angle_vertex_group_index,
+                angle_end_group_index,
+            )),
+        });
+    }
+
+    Some(RotationTransform {
+        binding: try_decode_transform_binding(file, group).ok()?,
+        angle_group_indices: None,
+    })
+}
+
+fn rotation_binding(
+    binding: &TransformBindingKind,
+    center_index: usize,
+    angle_group_indices: Option<(usize, usize, usize)>,
+) -> Option<RotationBinding> {
+    Some(RotationBinding {
+        center_index,
+        angle_degrees: binding_angle_degrees(binding)?,
+        parameter_name: binding_parameter_name(binding),
+        angle_start_index: angle_group_indices.map(|indices| indices.0),
+        angle_vertex_index: angle_group_indices.map(|indices| indices.1),
+        angle_end_index: angle_group_indices.map(|indices| indices.2),
+    })
+}
 
 pub(crate) fn collect_rotated_line_shapes(
     file: &GspFile,
@@ -27,11 +99,8 @@ pub(crate) fn collect_rotated_line_shapes(
             )
         })
         .filter_map(|group| {
-            let binding = if group.header.kind() == crate::format::GroupKind::ParameterRotation {
-                try_decode_parameter_rotation_binding(file, groups, group).ok()?
-            } else {
-                try_decode_transform_binding(file, group).ok()?
-            };
+            let transform = rotation_transform_for_group(file, groups, group, anchors)?;
+            let binding = transform.binding;
             let path = context.indexed_path(group)?;
             let source_group_index = context.path_ref_group_index(path, 0)?;
             let source_group = context.path_ref_group(path, 0)?;
@@ -47,11 +116,11 @@ pub(crate) fn collect_rotated_line_shapes(
                 source_group_index,
                 source_group,
                 points,
-                LineTransformBinding::Rotate(RotationBinding {
-                    center_index: binding.center_group_index,
-                    angle_degrees: binding_angle_degrees(&binding.kind)?,
-                    parameter_name: binding_parameter_name(&binding.kind),
-                }),
+                LineTransformBinding::Rotate(rotation_binding(
+                    &binding.kind,
+                    binding.center_group_index,
+                    transform.angle_group_indices,
+                )?),
             )
         })
         .collect()
@@ -190,7 +259,8 @@ pub(crate) fn collect_rotated_circle_shapes(
         .iter()
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::ParameterRotation)
         .filter_map(|group| {
-            let binding = try_decode_parameter_rotation_binding(file, groups, group).ok()?;
+            let transform = rotation_transform_for_group(file, groups, group, anchors)?;
+            let binding = transform.binding;
             let path = context.indexed_path(group)?;
             let source_group_index = context.path_ref_group_index(path, 0)?;
             let source_group = context.path_ref_group(path, 0)?;
@@ -207,11 +277,11 @@ pub(crate) fn collect_rotated_circle_shapes(
                 rotate_around(&source_center, &center, radians),
                 rotate_around(&source_radius, &center, radians),
                 source_fill,
-                ShapeTransformBinding::Rotate(RotationBinding {
-                    center_index: binding.center_group_index,
-                    angle_degrees: binding_angle_degrees(&binding.kind)?,
-                    parameter_name: binding_parameter_name(&binding.kind),
-                }),
+                ShapeTransformBinding::Rotate(rotation_binding(
+                    &binding.kind,
+                    binding.center_group_index,
+                    transform.angle_group_indices,
+                )?),
             ))
         })
         .collect()
@@ -386,11 +456,8 @@ pub(crate) fn collect_rotated_polygon_shapes(
             )
         })
         .filter_map(|group| {
-            let binding = if group.header.kind() == crate::format::GroupKind::ParameterRotation {
-                try_decode_parameter_rotation_binding(file, groups, group).ok()?
-            } else {
-                try_decode_transform_binding(file, group).ok()?
-            };
+            let transform = rotation_transform_for_group(file, groups, group, anchors)?;
+            let binding = transform.binding;
             let path = context.indexed_path(group)?;
             let source_group_index = context.path_ref_group_index(path, 0)?;
             let source_group = context.path_ref_group(path, 0)?;
@@ -405,11 +472,11 @@ pub(crate) fn collect_rotated_polygon_shapes(
                 source_group_index,
                 source_group,
                 points,
-                ShapeTransformBinding::Rotate(RotationBinding {
-                    center_index: binding.center_group_index,
-                    angle_degrees: binding_angle_degrees(&binding.kind)?,
-                    parameter_name: binding_parameter_name(&binding.kind),
-                }),
+                ShapeTransformBinding::Rotate(rotation_binding(
+                    &binding.kind,
+                    binding.center_group_index,
+                    transform.angle_group_indices,
+                )?),
             )
         })
         .collect()
