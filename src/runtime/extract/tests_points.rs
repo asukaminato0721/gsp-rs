@@ -70,10 +70,26 @@ fn triangle_angle_sum_fixture_keeps_measured_angle_rotation_live() {
             })
             .expect("expected point for payload group")
     };
+    let label_for_group = |ordinal| {
+        scene
+            .labels
+            .iter()
+            .find(|label| {
+                label
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .expect("expected label for payload group")
+    };
     let arc_point_index = point_index_for_group(27);
     let center_point_index = point_index_for_group(21);
     let rotated_point_index = point_index_for_group(31);
     let intersection_index = point_index_for_group(46);
+    let h_index = point_index_for_group(11);
+    let segment01 = (point_index_for_group(1), point_index_for_group(6));
+    let segment12 = (point_index_for_group(6), point_index_for_group(7));
+    let segment23 = (point_index_for_group(7), point_index_for_group(4));
 
     assert!(
         matches!(
@@ -120,6 +136,40 @@ fn triangle_angle_sum_fixture_keeps_measured_angle_rotation_live() {
         }),
         "expected #38 to bind to the measured-angle-rotated point"
     );
+    for (label_ordinal, (start_index, end_index)) in
+        [(12, segment12), (13, segment23), (14, segment01)]
+    {
+        assert!(
+            matches!(
+                &label_for_group(label_ordinal).binding,
+                Some(TextLabelBinding::SegmentProjectionParameter {
+                    point_index,
+                    start_index: actual_start_index,
+                    end_index: actual_end_index,
+                    ..
+                }) if (*point_index, *actual_start_index, *actual_end_index)
+                    == (h_index, start_index, end_index)
+            ),
+            "expected #{label_ordinal} to project H onto its referenced segment"
+        );
+    }
+    for (point_ordinal, (start_index, end_index)) in
+        [(21, segment23), (27, segment12), (28, segment01)]
+    {
+        let point_index = point_index_for_group(point_ordinal);
+        assert!(
+            matches!(
+                &scene.points[point_index].binding,
+                Some(ScenePointBinding::DerivedParameter {
+                    source_index,
+                    parameter_start_index: Some(actual_start_index),
+                    parameter_end_index: Some(actual_end_index),
+                }) if (*source_index, *actual_start_index, *actual_end_index)
+                    == (h_index, start_index, end_index)
+            ),
+            "expected #{point_ordinal} to follow H projected onto its referenced segment"
+        );
+    }
     assert!(
         scene.circles.iter().any(|circle| {
             circle

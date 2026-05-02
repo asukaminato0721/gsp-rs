@@ -292,7 +292,6 @@ pub(crate) fn remap_label_bindings(
                 continue;
             }
             TextLabelBinding::PolygonBoundaryParameter { point_index, .. } => point_index,
-            TextLabelBinding::SegmentParameter { point_index, .. } => point_index,
             TextLabelBinding::SegmentProjectionParameter {
                 point_index,
                 start_index,

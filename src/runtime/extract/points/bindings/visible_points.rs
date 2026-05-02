@@ -2246,7 +2246,22 @@ fn parameter_point_binding(
     }
     if let Some(source_group_index) = parameter_point.source_point_group_index {
         let source_index = mapped_point_index(group_to_point_index, source_group_index)?;
-        Some(Some(ScenePointBinding::DerivedParameter { source_index }))
+        let (parameter_start_index, parameter_end_index) =
+            if let Some((start_group_index, end_group_index)) =
+                parameter_point.source_parameter_segment_group_indices
+            {
+                (
+                    Some(mapped_point_index(group_to_point_index, start_group_index)?),
+                    Some(mapped_point_index(group_to_point_index, end_group_index)?),
+                )
+            } else {
+                (None, None)
+            };
+        Some(Some(ScenePointBinding::DerivedParameter {
+            source_index,
+            parameter_start_index,
+            parameter_end_index,
+        }))
     } else {
         Some(
             (!parameter_point.parameter_name.is_empty()).then(|| ScenePointBinding::Parameter {

@@ -1524,7 +1524,7 @@
   /** @type {Record<string, PointConstraintParameterApplier>} */
   const POINT_CONSTRAINT_PARAMETER_APPLIERS = {
     segment(point, _scene, value) {
-      point.constraint.t = wrapUnitInterval(value);
+      point.constraint.t = Math.max(0, Math.min(1, value));
     },
     line(point, _scene, value) {
       point.constraint.t = value;
@@ -1584,10 +1584,10 @@
       point.constraint.unitY = -Math.sin(angle);
     },
     "circle-arc"(point, _scene, value) {
-      point.constraint.t = wrapUnitInterval(value);
+      point.constraint.t = Math.max(0, Math.min(1, value));
     },
     arc(point, _scene, value) {
-      point.constraint.t = wrapUnitInterval(value);
+      point.constraint.t = Math.max(0, Math.min(1, value));
     },
   };
 
@@ -3318,7 +3318,14 @@
   /** @type {Record<string, PointBindingRefresher>} */
   const DERIVED_POINT_BINDING_REFRESHERS = {
     "derived-parameter"(_env, scene, point) {
-      const value = parameterValueFromPoint(scene, point.binding.sourceIndex);
+      const value = typeof point.binding.parameterStartIndex === "number"
+        && typeof point.binding.parameterEndIndex === "number"
+        ? segmentProjectionParameterFromBinding(scene, {
+            pointIndex: point.binding.sourceIndex,
+            startIndex: point.binding.parameterStartIndex,
+            endIndex: point.binding.parameterEndIndex,
+          })
+        : parameterValueFromPoint(scene, point.binding.sourceIndex);
       if (value !== null) {
         applyNormalizedParameterToPoint(point, scene, value);
       }
@@ -3627,7 +3634,7 @@
       const value = segmentProjectionParameterFromBinding(scene, label.binding);
       if (value !== null) {
         label.text = usesVerboseParameterLabel(label)
-          ? `${label.binding.pointName}在${label.binding.segmentName}上的值 = ${env.formatNumber(value)}`
+          ? `${label.binding.pointName}在${label.binding.segmentName}上的t值 = ${env.formatNumber(value)}`
           : `${label.binding.pointName} = ${env.formatNumber(value)}`;
         label.richMarkup = buildPlainTextRichMarkup(label.text);
       }

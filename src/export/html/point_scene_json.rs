@@ -46,6 +46,13 @@ enum PointBindingJson {
     DerivedParameter {
         #[serde(rename = "sourceIndex")]
         source_index: usize,
+        #[serde(
+            rename = "parameterStartIndex",
+            skip_serializing_if = "Option::is_none"
+        )]
+        parameter_start_index: Option<usize>,
+        #[serde(rename = "parameterEndIndex", skip_serializing_if = "Option::is_none")]
+        parameter_end_index: Option<usize>,
     },
     #[serde(rename = "constraint-parameter-expr")]
     ConstraintParameterExpr { expr: FunctionExprJson },
@@ -246,8 +253,14 @@ impl PointBindingJson {
         match binding {
             ScenePointBinding::GraphCalibration => Self::GraphCalibration,
             ScenePointBinding::Parameter { name } => Self::Parameter { name: name.clone() },
-            ScenePointBinding::DerivedParameter { source_index } => Self::DerivedParameter {
+            ScenePointBinding::DerivedParameter {
+                source_index,
+                parameter_start_index,
+                parameter_end_index,
+            } => Self::DerivedParameter {
                 source_index: *source_index,
+                parameter_start_index: *parameter_start_index,
+                parameter_end_index: *parameter_end_index,
             },
             ScenePointBinding::ConstraintParameterExpr { expr } => Self::ConstraintParameterExpr {
                 expr: FunctionExprJson::from_expr(expr),

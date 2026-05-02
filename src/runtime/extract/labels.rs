@@ -527,6 +527,22 @@ fn parameter_anchor_value(
     let path = find_indexed_path(file, group)?;
     let point_group_index = path.refs.first()?.checked_sub(1)?;
     let point_group = groups.get(point_group_index)?;
+    if let Some(segment_group) = path
+        .refs
+        .get(1)
+        .and_then(|ordinal| groups.get(ordinal.checked_sub(1)?))
+        .filter(|group| group.header.kind().is_line_like())
+    {
+        let segment_path = find_indexed_path(file, segment_group)?;
+        let point = anchors.get(point_group_index)?.as_ref()?;
+        let start = anchors
+            .get(segment_path.refs.first()?.checked_sub(1)?)?
+            .as_ref()?;
+        let end = anchors
+            .get(segment_path.refs.get(1)?.checked_sub(1)?)?
+            .as_ref()?;
+        return segment_projection_parameter(point, start, end);
+    }
     match try_decode_point_constraint(file, groups, point_group, None, &None).ok()? {
         RawPointConstraint::Segment(constraint) => Some(constraint.t),
         RawPointConstraint::ConstructedLine { t, .. } => Some(t),
@@ -2843,48 +2859,28 @@ pub(super) fn collect_segment_parameter_labels(
                 .iter()
                 .find(|record| record.record_type == 0x0903)?;
             let anchor = decode_text_anchor(anchor_record.payload(&file.data))?;
-            let constrained_segment_t = if point_group.header.kind().is_point_constraint() {
-                match try_decode_point_constraint(file, groups, point_group, None, &None).ok()? {
-                    RawPointConstraint::Segment(constraint) => Some(constraint.t),
-                    _ => None,
-                }
-            } else {
-                None
-            };
-            let projected_t = constrained_segment_t.or_else(|| {
-                let point = anchors.get(path.refs[0].checked_sub(1)?)?.as_ref()?;
-                let start = anchors.get(start_group_index)?.as_ref()?;
-                let end = anchors.get(end_group_index)?.as_ref()?;
-                segment_projection_parameter(point, start, end)
-            })?;
+            let point = anchors.get(path.refs[0].checked_sub(1)?)?.as_ref()?;
+            let start = anchors.get(start_group_index)?.as_ref()?;
+            let end = anchors.get(end_group_index)?.as_ref()?;
+            let projected_t = segment_projection_parameter(point, start, end)?;
 
             Some(TextLabel {
                 anchor,
                 text: if decode_label_name(file, group).is_some() {
                     format!("{point_name} = {:.2}", projected_t)
-                } else if constrained_segment_t.is_some() {
-                    format!("{point_name}在{segment_name}上的t值 = {:.2}", projected_t)
                 } else {
-                    format!("{point_name}在{segment_name}上的值 = {:.2}", projected_t)
+                    format!("{point_name}在{segment_name}上的t值 = {:.2}", projected_t)
                 },
                 color: [30, 30, 30, 255],
                 visible: decode_label_name(file, group).is_some()
                     || label_visible_for_group(file, group),
-                binding: if constrained_segment_t.is_some() {
-                    Some(TextLabelBinding::SegmentParameter {
-                        point_index: path.refs[0].checked_sub(1)?,
-                        point_name,
-                        segment_name,
-                    })
-                } else {
-                    Some(TextLabelBinding::SegmentProjectionParameter {
-                        point_index: path.refs[0].checked_sub(1)?,
-                        start_index: start_group_index,
-                        end_index: end_group_index,
-                        point_name,
-                        segment_name,
-                    })
-                },
+                binding: Some(TextLabelBinding::SegmentProjectionParameter {
+                    point_index: path.refs[0].checked_sub(1)?,
+                    start_index: start_group_index,
+                    end_index: end_group_index,
+                    point_name,
+                    segment_name,
+                }),
                 screen_space: false,
                 debug: Some(payload_debug_source(group)),
                 ..Default::default()

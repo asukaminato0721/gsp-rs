@@ -731,6 +731,8 @@ pub(crate) enum ScenePointBinding {
     },
     DerivedParameter {
         source_index: usize,
+        parameter_start_index: Option<usize>,
+        parameter_end_index: Option<usize>,
     },
     ConstraintParameterExpr {
         expr: FunctionExpr,
@@ -1080,11 +1082,6 @@ pub(crate) enum TextLabelBinding {
         point_index: usize,
         point_name: String,
         polygon_name: String,
-    },
-    SegmentParameter {
-        point_index: usize,
-        point_name: String,
-        segment_name: String,
     },
     SegmentProjectionParameter {
         point_index: usize,
