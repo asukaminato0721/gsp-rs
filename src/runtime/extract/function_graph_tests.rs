@@ -3,6 +3,7 @@ use super::points::collect_point_objects;
 use super::test_support::{fixture_bytes, fixture_log, fixture_scene};
 use crate::format::GspFile;
 use crate::runtime::functions::{FunctionAst, FunctionExpr};
+use crate::runtime::geometry::rotate_around;
 use crate::runtime::scene::{
     ButtonAction, LineBinding, LineIterationFamily, ScenePointBinding, ScenePointConstraint,
     TextLabelBinding,
@@ -448,6 +449,36 @@ fn builds_moving_pulley_with_payload_function_plot_branch_and_arc_length() {
             .into_iter()
             .all(|name| w_parameters.contains(name)),
         "expected W to depend on the function intersection and endpoint coordinates, got {w_parameters:?}"
+    );
+    let contact = scene
+        .points
+        .iter()
+        .find(|point| {
+            point
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 36)
+        })
+        .expect("expected left pulley contact point #36");
+    let Some(ScenePointBinding::Rotate {
+        source_index,
+        center_index,
+        angle_degrees,
+        angle_expr: Some(_),
+        ..
+    }) = contact.binding.as_ref()
+    else {
+        panic!("expected #36 to keep a live expression rotation binding");
+    };
+    let rotated = rotate_around(
+        &scene.points[*source_index].position,
+        &scene.points[*center_index].position,
+        angle_degrees.to_radians(),
+    );
+    assert!(
+        (rotated.x - contact.position.x).abs() < 1e-6
+            && (rotated.y - contact.position.y).abs() < 1e-6,
+        "expected #36 rotation expression direction to match the payload anchor"
     );
 
     let arc = scene

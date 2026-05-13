@@ -4700,7 +4700,9 @@
    */
   function refreshDerivedPoints(env, scene) {
     const bounds = env.getViewBounds ? env.getViewBounds() : (scene.bounds || env.sourceScene.bounds);
-    const parameters = parameterMapForScene(env, scene);
+    let parameters = parameterMapForScene(env, scene);
+    refreshConstrainedPointPositions(env, scene);
+    parameters = parameterMapForScene(env, scene);
     const resolveHandle = (/** @type {PointHandle} */ handle) => {
       if (hasPointIndexHandle(handle)) {
         return env.resolveScenePoint(handle.pointIndex);
@@ -4728,6 +4730,7 @@
     });
 
     refreshConstrainedPointPositions(env, scene);
+    parameters = parameterMapForScene(env, scene);
 
     /** @type {RuntimeLineJson[]} */
     const preservedLines = [];

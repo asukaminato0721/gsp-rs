@@ -1,10 +1,11 @@
 use crate::format::PointRecord;
-use crate::runtime::geometry::{include_line_bounds, to_world};
+use crate::runtime::functions::{BinaryOp, FunctionAst, FunctionExpr, function_expr_ast};
+use crate::runtime::geometry::{include_line_bounds, rotate_around, to_world};
 use crate::runtime::scene::{
     CircleIterationFamily, CircularConstraint, LabelIterationFamily, LineConstraint,
     LineIterationFamily, LineShape, PointIterationFamily, PolygonIterationFamily, PolygonShape,
-    Scene, SceneArc, SceneCircle, SceneImage, ScenePoint, ScenePointConstraint, ShapeBinding,
-    TextLabel, TextLabelBinding,
+    Scene, SceneArc, SceneCircle, SceneImage, ScenePoint, ScenePointBinding, ScenePointConstraint,
+    ShapeBinding, TextLabel, TextLabelBinding,
 };
 
 use super::analysis::{BoundsData, CollectedShapes, SceneAnalysis, WorldData};
@@ -31,7 +32,7 @@ pub(super) fn build_world_data(
     standalone_parameter_points: &[ScenePoint],
     raw_point_iterations: Vec<super::points::RawPointIterationFamily>,
 ) -> WorldData {
-    let world_points = visible_points
+    let mut world_points = visible_points
         .iter()
         .chain(derived_iteration_points.iter())
         .chain(standalone_parameter_points.iter())
@@ -275,6 +276,7 @@ pub(super) fn build_world_data(
             debug: point.debug.clone(),
         })
         .collect::<Vec<_>>();
+    orient_rotation_bindings_to_world_positions(&mut world_points);
 
     let world_point_positions = visible_points
         .iter()
@@ -349,6 +351,65 @@ pub(super) fn build_world_data(
         world_points,
         world_point_positions,
         point_iterations,
+    }
+}
+
+fn scale_function_expr(expr: FunctionExpr, factor: f64) -> FunctionExpr {
+    if (factor - 1.0).abs() <= 1e-9 {
+        return expr;
+    }
+    match expr {
+        FunctionExpr::Constant(value) => FunctionExpr::Constant(value * factor),
+        other => FunctionExpr::Parsed(FunctionAst::Binary {
+            lhs: Box::new(FunctionAst::Constant(factor)),
+            op: BinaryOp::Mul,
+            rhs: Box::new(function_expr_ast(other)),
+        }),
+    }
+}
+
+fn squared_distance(left: &PointRecord, right: &PointRecord) -> f64 {
+    (left.x - right.x).powi(2) + (left.y - right.y).powi(2)
+}
+
+fn orient_rotation_bindings_to_world_positions(points: &mut [ScenePoint]) {
+    for index in 0..points.len() {
+        let Some((source_index, center_index, angle_degrees)) =
+            points[index].binding.as_ref().and_then(|binding| match binding {
+                ScenePointBinding::Rotate {
+                    source_index,
+                    center_index,
+                    angle_degrees,
+                    angle_expr: Some(_),
+                    ..
+                } => Some((*source_index, *center_index, *angle_degrees)),
+                _ => None,
+            })
+        else {
+            continue;
+        };
+        let Some(source) = points.get(source_index).map(|point| &point.position) else {
+            continue;
+        };
+        let Some(center) = points.get(center_index).map(|point| &point.position) else {
+            continue;
+        };
+        let forward = rotate_around(source, center, angle_degrees.to_radians());
+        let reverse = rotate_around(source, center, (-angle_degrees).to_radians());
+        if squared_distance(&reverse, &points[index].position) + 1e-6
+            >= squared_distance(&forward, &points[index].position)
+        {
+            continue;
+        }
+        if let Some(ScenePointBinding::Rotate {
+            angle_degrees,
+            angle_expr: Some(angle_expr),
+            ..
+        }) = points[index].binding.as_mut()
+        {
+            *angle_degrees = -*angle_degrees;
+            *angle_expr = scale_function_expr(angle_expr.clone(), -1.0);
+        }
     }
 }
 
