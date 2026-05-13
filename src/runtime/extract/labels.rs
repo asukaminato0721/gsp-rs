@@ -2372,18 +2372,19 @@ pub(super) fn collect_coordinate_labels(
                 0.0,
                 &BTreeMap::from([(parameter_name.clone(), parameter_value)]),
             );
-            let expr_label = if semantic_kind == Some("regular-polygon-angle") {
-                format!("360° / {parameter_name}")
-            } else {
-                payload_function_expr_label(
-                    file,
-                    groups,
-                    anchors,
-                    group,
-                    &function_expr_label(expr.clone()),
-                    &mut BTreeSet::new(),
-                )
-            };
+            let mut expr_label = payload_function_expr_label(
+                file,
+                groups,
+                anchors,
+                group,
+                &function_expr_label(expr.clone()),
+                &mut BTreeSet::new(),
+            );
+            if semantic_kind == Some("regular-polygon-angle")
+                && expr_label == format!("360 / {parameter_name}")
+            {
+                expr_label = format!("360° / {parameter_name}");
+            }
             let binding = if semantic_kind == Some("numeric-helper") {
                 numeric_helper_axis_binding(file, groups, group, &expr_label)
             } else {

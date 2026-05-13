@@ -347,12 +347,15 @@ pub(crate) fn regular_polygon_iteration_step(
     let parameter_name =
         editable_non_graph_parameter_name_for_group(file, groups, parameter_group)?;
     let n = decode_non_graph_parameter_value_for_group(file, parameter_group)?;
-    (n.abs() >= 1.0).then_some((
-        center_group_index,
-        regular_polygon_angle_expr(&parameter_name, n),
-        parameter_name,
-        n,
-    ))
+    let decoded_angle_expr = try_decode_function_expr(file, groups, calc_group).ok();
+    let fallback_angle_expr = regular_polygon_angle_expr(&parameter_name, n);
+    let angle_expr = decoded_angle_expr
+        .filter(|expr| {
+            evaluate_expr_with_parameters(expr, 0.0, &BTreeMap::from([(parameter_name.clone(), n)]))
+                .is_some_and(|value| (value - (360.0 / n)).abs() < 1e-6)
+        })
+        .unwrap_or(fallback_angle_expr);
+    (n.abs() >= 1.0).then_some((center_group_index, angle_expr, parameter_name, n))
 }
 
 pub(crate) fn regular_polygon_angle_expr_for_calc_group(
@@ -387,10 +390,7 @@ pub(crate) fn regular_polygon_angle_expr_for_calc_group(
     Some((angle_expr, parameter_name, n))
 }
 
-pub(crate) fn regular_polygon_angle_expr(
-    parameter_name: &str,
-    parameter_value: f64,
-) -> FunctionExpr {
+fn regular_polygon_angle_expr(parameter_name: &str, parameter_value: f64) -> FunctionExpr {
     FunctionExpr::Parsed(FunctionAst::Binary {
         lhs: Box::new(FunctionAst::Constant(360.0)),
         op: BinaryOp::Div,

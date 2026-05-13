@@ -36,6 +36,9 @@ test('circle formation fixture keeps rebuilt polygon edges and non-draggable ite
 
   const table = runtime.scene.iterationTables[0];
   expect(table.rows.map((row: any) => row.values[0])).toEqual([6, 7, 8, 9, 10]);
+  const angleLabel = runtime.scene.labels.find((label: any) => label.debug?.groupOrdinal === 8);
+  expect(angleLabel?.text).toBe('2*180 / t₂ = 72.00°');
+  expect(angleLabel?.binding?.exprLabel).toBe('2*180 / t₂');
 
   await page.locator('input[type=number]').first().fill('6');
   await expect.poll(async () =>

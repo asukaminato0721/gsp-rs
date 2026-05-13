@@ -47,6 +47,20 @@ fn exports_circle_formation_fixture_with_rotation_iteration() {
         }),
         "expected the regular-polygon segment iteration family to serialize the payload source edge and depth driver"
     );
+    let labels = scene["labels"]
+        .as_array()
+        .expect("scene labels should be an array");
+    assert!(
+        labels.iter().any(|label| {
+            label["text"].as_str() == Some("2*180 / t₂ = 72.00°")
+                && label["binding"]["kind"].as_str() == Some("expression-value")
+                && label["binding"]["parameterName"].as_str() == Some("t₂")
+                && label["binding"]["exprLabel"].as_str() == Some("2*180 / t₂")
+                && label["binding"]["expr"]["expr"]["lhs"]["rhs"]["kind"].as_str()
+                    == Some("pi-angle")
+        }),
+        "expected the circle-formation angle label to preserve the payload calculation"
+    );
     let iteration_tables = scene["iterationTables"]
         .as_array()
         .expect("scene iteration tables should be an array");

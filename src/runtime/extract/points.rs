@@ -42,9 +42,8 @@ pub(super) use bindings::{
 };
 pub(super) use constraints::{
     LegacyCoordinateConstructPoint, RawPointConstraint, decode_translated_point_constraint,
-    regular_polygon_angle_expr, regular_polygon_angle_expr_for_calc_group,
-    regular_polygon_iteration_step, try_decode_parameter_controlled_point,
-    try_decode_point_constraint,
+    regular_polygon_angle_expr_for_calc_group, regular_polygon_iteration_step,
+    try_decode_parameter_controlled_point, try_decode_point_constraint,
 };
 pub(crate) use constraints::{decode_coordinate_point, decode_legacy_coordinate_construct_point};
 

@@ -265,11 +265,12 @@
   }
 
   /**
-   * @param {FunctionAstJson | null | undefined} expr
+   * @param {FunctionExprJson | FunctionAstJson | null | undefined} expr
    * @returns {boolean}
    */
   function exprContainsPiAngle(expr) {
     if (!expr || typeof expr !== "object") return false;
+    if (expr.kind === "parsed") return exprContainsPiAngle(expr.expr);
     if (expr.kind === "pi-angle") return true;
     if (expr.kind === "unary") return exprContainsPiAngle(expr.expr);
     if (expr.kind === "binary") {
@@ -1915,6 +1916,20 @@
     return Math.abs(value - Math.round(value)) < 0.005
       ? String(Math.round(value))
       : value.toFixed(2);
+  }
+
+  /**
+   * @param {RuntimeLabelJson} label
+   * @param {number | null} value
+   * @param {ViewerEnv} env
+   */
+  function formatExpressionLabelValue(label, value, env) {
+    if (value === null) {
+      return "未定义";
+    }
+    return label.binding.exprLabel.includes("°") || exprContainsPiAngle(label.binding.expr)
+      ? `${value.toFixed(2)}°`
+      : env.formatNumber(value);
   }
 
   /**
@@ -3649,9 +3664,7 @@
     },
     "expression-value"(env, _scene, label, parameters) {
       const value = evaluateExpr(label.binding.expr, 0, parameters);
-      const valueText = value !== null
-        ? (label.binding.exprLabel.includes("°") ? `${value.toFixed(2)}°` : env.formatNumber(value))
-        : "未定义";
+      const valueText = formatExpressionLabelValue(label, value, env);
       label.richMarkup = buildExpressionRichMarkup(
         label.binding.exprLabel,
         valueText,
@@ -3664,9 +3677,7 @@
     },
     "point-bound-expression-value"(env, _scene, label, parameters) {
       const value = evaluateExpr(label.binding.expr, 0, parameters);
-      const valueText = value !== null
-        ? (label.binding.exprLabel.includes("°") ? `${value.toFixed(2)}°` : env.formatNumber(value))
-        : "未定义";
+      const valueText = formatExpressionLabelValue(label, value, env);
       label.richMarkup = buildExpressionRichMarkup(
         label.binding.exprLabel,
         valueText,

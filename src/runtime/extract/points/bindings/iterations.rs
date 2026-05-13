@@ -9,7 +9,6 @@ use crate::runtime::extract::decode::decode_label_name;
 use crate::runtime::extract::find_indexed_path;
 use crate::runtime::extract::points::{
     editable_non_graph_parameter_name_for_group, is_editable_non_graph_parameter_name,
-    regular_polygon_angle_expr,
 };
 use crate::runtime::functions::try_decode_function_expr;
 use crate::runtime::geometry::color_from_style;
@@ -242,7 +241,7 @@ pub(crate) fn collect_point_iteration_points(
                         parameter_name: is_editable_non_graph_parameter_name(&parameter_name)
                             .then_some(parameter_name),
                     });
-                } else if let Some((center_group_index, _angle_expr, parameter_name, n)) =
+                } else if let Some((center_group_index, angle_expr, parameter_name, n)) =
                     regular_polygon_iteration_step(file, groups, iter_group)
                 {
                     let Some(center_index) =
@@ -292,7 +291,6 @@ pub(crate) fn collect_point_iteration_points(
                             debug: None,
                         });
                     }
-                    let angle_expr = regular_polygon_angle_expr(&parameter_name, n);
                     families.push(RawPointIterationFamily::Rotate {
                         source_index: seed_index,
                         center_index,
