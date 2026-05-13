@@ -413,6 +413,11 @@ fn payload_log_accepts_hidden_unlabeled_buttons_in_classic_dynamic_fixture() {
 }
 
 #[test]
+fn payload_log_accepts_moving_pulley_nested_function_plot() {
+    assert_supported_sample_log("tests/Samples/未分类档/动滑轮2.gsp");
+}
+
+#[test]
 fn payload_log_skips_legacy_label_and_image_helper_errors_in_throw_beans_fixture() {
     let Some(data) = fixture_bytes("tests/Samples/热研系列/概率问题/抛豆实验.gsp")
     else {

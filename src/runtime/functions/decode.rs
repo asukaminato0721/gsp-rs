@@ -14,15 +14,17 @@ use crate::runtime::functions::{evaluate_expr_with_parameters, function_expr_lab
 use crate::runtime::geometry::GraphTransform;
 use crate::runtime::geometry::angle_degrees_from_points;
 use crate::runtime::payload_consts::{
-    FUNCTION_EXPR_MARKER_A, FUNCTION_EXPR_MARKER_B, RECORD_FUNCTION_EXPR_PAYLOAD,
-    RECORD_INDEXED_PATH_B, RECORD_LABEL_AUX,
+    EXPR_OP_ADD, EXPR_OP_DIV, EXPR_OP_MUL, EXPR_OP_POW, EXPR_OP_SUB, EXPR_PARAMETER_MASK,
+    EXPR_PARAMETER_PREFIX, EXPR_PI_WORD, EXPR_VARIABLE_WORD, FUNCTION_EXPR_MARKER_A,
+    FUNCTION_EXPR_MARKER_B, RECORD_FUNCTION_EXPR_PAYLOAD, RECORD_INDEXED_PATH_B, RECORD_LABEL_AUX,
 };
 use crate::util::hex_bytes;
 use thiserror::Error;
 
 use super::expr::{
-    FunctionAst, FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode, UnaryFunction,
-    canonicalize_function_expr, function_expr_ast, function_expr_contains_variable,
+    BinaryOp, FunctionAst, FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode, UnaryFunction,
+    canonicalize_function_expr, decode_unary_function, function_expr_ast,
+    function_expr_contains_variable,
 };
 
 mod parser;
@@ -207,9 +209,29 @@ fn decode_group_function_payload_expr(
     let parameters =
         collect_parameter_bindings(file, groups, group, visiting, inline_function_refs);
 
-    if let Some(expr) =
-        try_decode_payload_function_application(file, groups, group, visiting, payload, &parameters)
-    {
+    let function_ref_expr = if group.header.kind() == crate::format::GroupKind::FunctionDefinition {
+        try_decode_single_payload_function_application(
+            file,
+            groups,
+            group,
+            visiting,
+            payload,
+            &parameters,
+        )
+        .or_else(|| {
+            try_decode_payload_function_refs(file, groups, group, visiting, payload, &parameters)
+        })
+    } else {
+        try_decode_single_payload_function_application(
+            file,
+            groups,
+            group,
+            visiting,
+            payload,
+            &parameters,
+        )
+    };
+    if let Some(expr) = function_ref_expr {
         return Ok(expr);
     }
 
@@ -958,7 +980,168 @@ fn substitute_variable(ast: FunctionAst, replacement: &FunctionAst) -> FunctionA
 const EXPR_FUNCTION_REF_MASK: u16 = 0xfff0;
 const EXPR_FUNCTION_REF_PREFIX: u16 = 0x7000;
 
-fn try_decode_payload_function_application(
+struct FunctionRefParser<'a> {
+    words: &'a [u16],
+    parameters: &'a BTreeMap<u16, ParameterBinding>,
+    helpers: BTreeMap<u16, FunctionAst>,
+    offset: usize,
+}
+
+impl<'a> FunctionRefParser<'a> {
+    fn new(
+        words: &'a [u16],
+        parameters: &'a BTreeMap<u16, ParameterBinding>,
+        helpers: BTreeMap<u16, FunctionAst>,
+    ) -> Self {
+        Self {
+            words,
+            parameters,
+            helpers,
+            offset: 0,
+        }
+    }
+
+    fn parse_expr(&mut self, min_bp: u8) -> Result<FunctionAst, FunctionExprParseError> {
+        let mut lhs = self.parse_prefix()?;
+        while let Some((op, left_bp, right_bp)) = self.peek_infix() {
+            if left_bp < min_bp {
+                break;
+            }
+            self.offset += 1;
+            let rhs = self.parse_expr(right_bp)?;
+            lhs = FunctionAst::Binary {
+                lhs: Box::new(lhs),
+                op,
+                rhs: Box::new(rhs),
+            };
+        }
+        Ok(lhs)
+    }
+
+    fn parse_prefix(&mut self) -> Result<FunctionAst, FunctionExprParseError> {
+        let offset = self.offset;
+        let word = *self
+            .words
+            .get(self.offset)
+            .ok_or(FunctionExprParseError::UnexpectedEnd { offset })?;
+        self.offset += 1;
+        match word {
+            EXPR_VARIABLE_WORD => Ok(FunctionAst::Variable),
+            EXPR_PI_WORD => Ok(FunctionAst::PiAngle),
+            EXPR_OP_ADD => self.parse_prefix(),
+            EXPR_OP_SUB => {
+                let expr = self.parse_prefix()?;
+                Ok(FunctionAst::Binary {
+                    lhs: Box::new(FunctionAst::Constant(0.0)),
+                    op: BinaryOp::Sub,
+                    rhs: Box::new(expr),
+                })
+            }
+            0x000b => {
+                let expr = self.parse_expr(0)?;
+                match self.words.get(self.offset).copied() {
+                    Some(0x000c) => {
+                        self.offset += 1;
+                        Ok(expr)
+                    }
+                    Some(found) => Err(FunctionExprParseError::UnexpectedToken {
+                        offset: self.offset,
+                        found: function_ref_token_for_word(found, self.parameters)
+                            .unwrap_or(FunctionToken::Constant(f64::from(found))),
+                    }),
+                    None => Err(FunctionExprParseError::UnexpectedEnd {
+                        offset: self.offset,
+                    }),
+                }
+            }
+            found @ (EXPR_OP_MUL | EXPR_OP_DIV | EXPR_OP_POW | 0x000c) => {
+                Err(FunctionExprParseError::UnexpectedToken {
+                    offset,
+                    found: function_ref_token_for_word(found, self.parameters)
+                        .unwrap_or(FunctionToken::Constant(f64::from(found))),
+                })
+            }
+            _ if (word & EXPR_FUNCTION_REF_MASK) == EXPR_FUNCTION_REF_PREFIX => {
+                let helper_index = word & 0x000f;
+                let helper_ast = self.helpers.get(&helper_index).cloned().ok_or(
+                    FunctionExprParseError::MissingParameterBinding {
+                        offset,
+                        parameter_index: helper_index,
+                    },
+                )?;
+                let argument = self.parse_expr(0)?;
+                if self.words.get(self.offset).copied() == Some(0x000c) {
+                    self.offset += 1;
+                }
+                Ok(substitute_variable(helper_ast, &argument))
+            }
+            _ if (word & EXPR_PARAMETER_MASK) == EXPR_PARAMETER_PREFIX => {
+                let parameter_index = word & 0x000f;
+                let binding = self.parameters.get(&parameter_index).cloned().ok_or(
+                    FunctionExprParseError::MissingParameterBinding {
+                        offset,
+                        parameter_index,
+                    },
+                )?;
+                Ok(binding
+                    .expr
+                    .unwrap_or(FunctionAst::Parameter(binding.name, binding.value)))
+            }
+            _ if let Some(op) = decode_unary_function(word) => {
+                let expr = self.parse_expr(0)?;
+                if self.words.get(self.offset).copied() == Some(0x000c) {
+                    self.offset += 1;
+                }
+                Ok(FunctionAst::Unary {
+                    op,
+                    expr: Box::new(expr),
+                })
+            }
+            _ => Ok(FunctionAst::Constant(f64::from(word))),
+        }
+    }
+
+    fn peek_infix(&self) -> Option<(BinaryOp, u8, u8)> {
+        match self.words.get(self.offset).copied()? {
+            EXPR_OP_ADD => Some((BinaryOp::Add, 1, 2)),
+            EXPR_OP_SUB => Some((BinaryOp::Sub, 1, 2)),
+            EXPR_OP_MUL => Some((BinaryOp::Mul, 3, 4)),
+            EXPR_OP_DIV => Some((BinaryOp::Div, 3, 4)),
+            EXPR_OP_POW => Some((BinaryOp::Pow, 5, 5)),
+            _ => None,
+        }
+    }
+
+    fn remaining_is_ignorable(&self) -> bool {
+        self.words[self.offset..].iter().all(|word| *word == 0x000c)
+    }
+}
+
+fn function_ref_token_for_word(
+    word: u16,
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Option<FunctionToken> {
+    Some(match word {
+        EXPR_OP_ADD => FunctionToken::Add,
+        EXPR_OP_SUB => FunctionToken::Sub,
+        EXPR_OP_MUL => FunctionToken::Mul,
+        EXPR_OP_DIV => FunctionToken::Div,
+        EXPR_OP_POW => FunctionToken::Pow,
+        0x000c => FunctionToken::Terminator,
+        EXPR_VARIABLE_WORD => FunctionToken::Variable,
+        EXPR_PI_WORD => FunctionToken::PiAngle,
+        _ if (word & EXPR_PARAMETER_MASK) == EXPR_PARAMETER_PREFIX => {
+            let parameter_index = word & 0x000f;
+            FunctionToken::Parameter(parameters.get(&parameter_index)?.clone())
+        }
+        _ if decode_unary_function(word).is_some() => {
+            FunctionToken::Unary(decode_unary_function(word).unwrap())
+        }
+        _ => return None,
+    })
+}
+
+fn try_decode_single_payload_function_application(
     file: &GspFile,
     groups: &[ObjectGroup],
     group: &ObjectGroup,
@@ -999,6 +1182,90 @@ fn try_decode_payload_function_application(
     Some(canonicalize_function_expr(substitute_variable(
         helper_ast, &arg_ast,
     )))
+}
+
+fn try_decode_payload_function_refs(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    visiting: &mut BTreeSet<usize>,
+    payload: &[u8],
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Option<FunctionExpr> {
+    let words = payload
+        .chunks_exact(2)
+        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+        .collect::<Vec<_>>();
+    let expression_start = words
+        .windows(2)
+        .position(|pair| *pair == FUNCTION_EXPR_MARKER_A || *pair == FUNCTION_EXPR_MARKER_B)
+        .map(|marker_index| marker_index + 2)
+        .or_else(|| embedded_calculate_expr_start(&words))
+        .unwrap_or(0);
+    let helper_indices = words
+        .iter()
+        .copied()
+        .enumerate()
+        .skip(expression_start)
+        .filter_map(|(_, word)| {
+            ((word & EXPR_FUNCTION_REF_MASK) == EXPR_FUNCTION_REF_PREFIX).then_some(word & 0x000f)
+        })
+        .collect::<BTreeSet<_>>();
+    if helper_indices.is_empty() {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    let mut helpers = BTreeMap::new();
+    for helper_index in helper_indices {
+        let helper_group = groups.get(path.refs.get(usize::from(helper_index))?.checked_sub(1)?)?;
+        if !is_function_like_group(helper_group) {
+            return None;
+        }
+        let helper_expr = decode_function_expr_recursive(file, groups, helper_group, visiting)
+            .or_else(|_| {
+                decode_embedded_grouped_function_expr(file, groups, helper_group, visiting)
+            })
+            .ok()?;
+        helpers.insert(helper_index, function_expr_ast(helper_expr));
+    }
+    let mut parser = FunctionRefParser::new(&words[expression_start..], parameters, helpers);
+    let parsed = parser.parse_expr(0).ok()?;
+    parser
+        .remaining_is_ignorable()
+        .then(|| canonicalize_function_expr(parsed))
+}
+
+fn decode_embedded_grouped_function_expr(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    visiting: &mut BTreeSet<usize>,
+) -> Result<FunctionExpr, FunctionExprParseError> {
+    if group.header.kind() != crate::format::GroupKind::FunctionDefinition {
+        return Err(FunctionExprParseError::NoExpressionFound { word_len: 0 });
+    }
+    let payload = group_function_payload(file, group)?;
+    let parameters = collect_parameter_bindings(file, groups, group, visiting, true);
+    with_function_payload_context(payload, || {
+        let words = payload
+            .chunks_exact(2)
+            .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+            .collect::<Vec<_>>();
+        let start = embedded_calculate_expr_start(&words).ok_or(
+            FunctionExprParseError::NoExpressionFound {
+                word_len: words.len(),
+            },
+        )?;
+        let mut parser = FunctionRefParser::new(&words[start..], &parameters, BTreeMap::new());
+        let parsed = parser.parse_expr(0)?;
+        if parser.remaining_is_ignorable() {
+            Ok(canonicalize_function_expr(parsed))
+        } else {
+            Err(FunctionExprParseError::NoExpressionFound {
+                word_len: words.len(),
+            })
+        }
+    })
 }
 
 fn evaluate_function_group_recursive(
@@ -1741,6 +2008,22 @@ mod parse_tests {
                     }),
                 }),
             }))
+        );
+    }
+
+    #[test]
+    fn decodes_moving_pulley_function_refs_from_grouped_payload() {
+        let data = include_bytes!("../../../tests/Samples/未分类档/动滑轮2.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let groups = file.object_groups();
+        let expr =
+            try_decode_function_expr(&file, &groups, &groups[19]).expect("function h decodes");
+
+        let label = function_expr_label(expr.clone());
+        assert!(label.contains("√"), "expected square roots in {label}");
+        assert!(
+            label.contains("tan(x)"),
+            "expected tangent helper in {label}"
         );
     }
 

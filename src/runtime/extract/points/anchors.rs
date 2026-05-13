@@ -388,10 +388,63 @@ fn scale_angle_expr_to_degrees(
     group: &ObjectGroup,
     expr: FunctionExpr,
 ) -> FunctionExpr {
-    if decode_label_name(file, group).is_some_and(|label| label.contains('°')) {
+    if decode_label_name(file, group).is_some_and(|label| label.contains('°'))
+        || function_expr_contains_pi_angle(&expr)
+        || function_expr_has_degree_multiplier(&expr)
+    {
         return expr;
     }
     scale_function_expr(expr, 180.0 / std::f64::consts::PI)
+}
+
+fn function_expr_contains_pi_angle(expr: &FunctionExpr) -> bool {
+    match expr {
+        FunctionExpr::Parsed(ast) => function_ast_contains_pi_angle(ast),
+        FunctionExpr::Constant(_)
+        | FunctionExpr::Identity
+        | FunctionExpr::SinIdentity
+        | FunctionExpr::CosIdentityPlus(_)
+        | FunctionExpr::TanIdentityMinus(_) => false,
+    }
+}
+
+fn function_ast_contains_pi_angle(expr: &FunctionAst) -> bool {
+    match expr {
+        FunctionAst::PiAngle => true,
+        FunctionAst::Unary { expr, .. } => function_ast_contains_pi_angle(expr),
+        FunctionAst::Binary { lhs, rhs, .. } => {
+            function_ast_contains_pi_angle(lhs) || function_ast_contains_pi_angle(rhs)
+        }
+        FunctionAst::Variable | FunctionAst::Constant(_) | FunctionAst::Parameter(_, _) => false,
+    }
+}
+
+fn function_expr_has_degree_multiplier(expr: &FunctionExpr) -> bool {
+    match expr {
+        FunctionExpr::Parsed(ast) => function_ast_has_degree_multiplier(ast),
+        FunctionExpr::Constant(value) => is_degree_multiplier_constant(*value),
+        FunctionExpr::Identity
+        | FunctionExpr::SinIdentity
+        | FunctionExpr::CosIdentityPlus(_)
+        | FunctionExpr::TanIdentityMinus(_) => false,
+    }
+}
+
+fn function_ast_has_degree_multiplier(expr: &FunctionAst) -> bool {
+    match expr {
+        FunctionAst::Constant(value) => is_degree_multiplier_constant(*value),
+        FunctionAst::Unary { expr, .. } => function_ast_has_degree_multiplier(expr),
+        FunctionAst::Binary { lhs, rhs, .. } => {
+            function_ast_has_degree_multiplier(lhs) || function_ast_has_degree_multiplier(rhs)
+        }
+        FunctionAst::Variable | FunctionAst::PiAngle | FunctionAst::Parameter(_, _) => false,
+    }
+}
+
+fn is_degree_multiplier_constant(value: f64) -> bool {
+    [180.0, 360.0]
+        .into_iter()
+        .any(|degree| (value.abs() - degree).abs() < 1e-9)
 }
 
 pub(crate) fn decode_expression_rotation_binding(
