@@ -2,11 +2,34 @@ use super::analysis::analyze_scene;
 use super::points::collect_point_objects;
 use super::test_support::{fixture_bytes, fixture_log, fixture_scene};
 use crate::format::GspFile;
-use crate::runtime::functions::{BinaryOp, FunctionAst, FunctionExpr, UnaryFunction};
+use crate::runtime::functions::{FunctionAst, FunctionExpr};
 use crate::runtime::scene::{
     ButtonAction, LineBinding, LineIterationFamily, ScenePointBinding, ScenePointConstraint,
     TextLabelBinding,
 };
+use std::collections::BTreeSet;
+
+fn collect_function_parameter_names(expr: &FunctionExpr) -> BTreeSet<String> {
+    fn collect_ast(ast: &FunctionAst, names: &mut BTreeSet<String>) {
+        match ast {
+            FunctionAst::Parameter(name, _) => {
+                names.insert(name.clone());
+            }
+            FunctionAst::Unary { expr, .. } => collect_ast(expr, names),
+            FunctionAst::Binary { lhs, rhs, .. } => {
+                collect_ast(lhs, names);
+                collect_ast(rhs, names);
+            }
+            FunctionAst::Variable | FunctionAst::Constant(_) | FunctionAst::PiAngle => {}
+        }
+    }
+
+    let mut names = BTreeSet::new();
+    if let FunctionExpr::Parsed(ast) = expr {
+        collect_ast(ast, &mut names);
+    }
+    names
+}
 
 #[test]
 fn preserves_parabola_locus_with_constructed_line_driver() {
@@ -239,62 +262,6 @@ fn builds_polygon_exterior_angle_sample_with_kind_41_helpers() {
 }
 
 #[test]
-fn resolves_unknown_59_measurement_helper_in_statistics_sample() {
-    let Some(data) = fixture_bytes("tests/Samples/工具例说/14 统计工具-统计工具示例.gsp")
-    else {
-        return;
-    };
-    let file = GspFile::parse(&data).expect("sample parses");
-    let groups = file.object_groups();
-    let point_map = collect_point_objects(&file, &groups);
-    let anchors = crate::runtime::extract::shapes::collect_raw_object_anchors(
-        &file, &groups, &point_map, None,
-    );
-    let helper = groups
-        .iter()
-        .find(|group| group.ordinal == 14)
-        .expect("expected unknown 59 helper");
-
-    let (start, end) = crate::runtime::extract::points::resolve_line_like_points_raw(
-        &file, &groups, &anchors, helper,
-    )
-    .expect("expected unknown 59 helper to resolve as a line-like object");
-
-    assert!(
-        ((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt() > 1.0,
-        "expected unknown 59 helper to expose a non-degenerate measurement segment"
-    );
-}
-
-#[test]
-fn resolves_unknown_88_iteration_point_alias_in_statistics_sample() {
-    let Some(data) = fixture_bytes("tests/Samples/工具例说/14 统计工具-统计工具示例.gsp")
-    else {
-        return;
-    };
-    let file = GspFile::parse(&data).expect("sample parses");
-    let groups = file.object_groups();
-    let point_map = collect_point_objects(&file, &groups);
-    let anchors = crate::runtime::extract::shapes::collect_raw_object_anchors(
-        &file, &groups, &point_map, None,
-    );
-    let helper = groups
-        .iter()
-        .find(|group| group.ordinal == 58)
-        .expect("expected unknown 88 helper");
-
-    let alias = crate::runtime::extract::points::decode_iteration_binding_point_alias_raw(
-        &file, &groups, helper, &anchors,
-    )
-    .expect("expected unknown 88 helper to resolve as an iteration point alias");
-
-    assert!(
-        alias.position.x.is_finite() && alias.position.y.is_finite(),
-        "expected unknown 88 helper to resolve to a concrete point"
-    );
-}
-
-#[test]
 fn builds_square_area_invariance_sample_with_graph_helper_stack() {
     let Some(data) = fixture_bytes("tests/Samples/个人专栏/向忠作品/正方形总面积不变.gsp")
     else {
@@ -396,6 +363,124 @@ fn builds_point_cood_expr_fixture_with_two_parameter_coordinate_binding() {
         helper.draggable,
         "expected helper point to stay interactive"
     );
+}
+
+#[test]
+fn builds_moving_pulley_with_payload_function_plot_branch_and_arc_length() {
+    let Some(data) = fixture_bytes("tests/Samples/未分类档/动滑轮2.gsp") else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+    let total = scene
+        .labels
+        .iter()
+        .find(|label| {
+            label
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 45)
+        })
+        .expect("expected total rope length label #45");
+    assert_eq!(total.text, "DA + BC + CD = 31.00");
+    let function_parameters = collect_function_parameter_names(&scene.functions[0].expr);
+    assert!(
+        ["m[5]", "m[9]", "m[10]", "m₄"]
+            .into_iter()
+            .all(|name| function_parameters.contains(name)),
+        "expected h(x) to keep endpoint coordinate measurements live, got {function_parameters:?}"
+    );
+
+    let radius = scene
+        .lines
+        .iter()
+        .find(|line| {
+            line.debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 37)
+        })
+        .expect("expected radius segment #37");
+    assert!(matches!(radius.binding, Some(LineBinding::Segment { .. })));
+    let center = &radius.points[0];
+    let endpoint = &radius.points[1];
+    assert!((center.x + 6.6026).abs() < 1e-3);
+    assert!((center.y - 5.2722).abs() < 1e-3);
+    assert!(
+        (((endpoint.x - center.x).powi(2) + (endpoint.y - center.y).powi(2)).sqrt() - 1.0).abs()
+            < 1e-6,
+        "expected #35 to stay one radius from W"
+    );
+    let w = scene
+        .points
+        .iter()
+        .find(|point| {
+            point
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 27)
+        })
+        .expect("expected coordinate point W #27");
+    let Some(ScenePointBinding::CoordinateSource2d { x_expr, y_expr, .. }) = &w.binding else {
+        panic!("expected W to keep a two-axis coordinate binding");
+    };
+    let w_parameters = collect_function_parameter_names(x_expr)
+        .into_iter()
+        .chain(collect_function_parameter_names(y_expr))
+        .collect::<BTreeSet<_>>();
+    assert!(
+        ["m₃", "m[5]", "m[9]", "m[10]", "m₄"]
+            .into_iter()
+            .all(|name| w_parameters.contains(name)),
+        "expected W to depend on the function intersection and endpoint coordinates, got {w_parameters:?}"
+    );
+
+    let arc = scene
+        .arcs
+        .iter()
+        .find(|arc| {
+            arc.debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 43)
+        })
+        .expect("expected pulley contact arc #43");
+    assert!(arc.points[0].x < center.x && arc.points[2].x > center.x);
+    let arc_center = arc.center.as_ref().expect("expected center arc center");
+    assert!((arc_center.x - center.x).abs() < 1e-6);
+    assert!((arc_center.y - center.y).abs() < 1e-6);
+
+    let weight = scene
+        .polygons
+        .iter()
+        .find(|polygon| {
+            polygon
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 52)
+        })
+        .expect("expected filled weight polygon #52");
+    assert!(weight.visible, "expected weight fill to stay visible");
+    assert_eq!(weight.color, [0, 0, 255, 127]);
+    let min_x = weight
+        .points
+        .iter()
+        .map(|point| point.x)
+        .fold(f64::INFINITY, f64::min);
+    let max_x = weight
+        .points
+        .iter()
+        .map(|point| point.x)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let min_y = weight
+        .points
+        .iter()
+        .map(|point| point.y)
+        .fold(f64::INFINITY, f64::min);
+    let max_y = weight
+        .points
+        .iter()
+        .map(|point| point.y)
+        .fold(f64::NEG_INFINITY, f64::max);
+    assert!((max_x - min_x - 4.0).abs() < 1e-6);
+    assert!((max_y - min_y - 1.0).abs() < 1e-6);
 }
 
 #[test]

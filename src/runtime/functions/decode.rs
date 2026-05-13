@@ -209,28 +209,17 @@ fn decode_group_function_payload_expr(
     let parameters =
         collect_parameter_bindings(file, groups, group, visiting, inline_function_refs);
 
-    let function_ref_expr = if group.header.kind() == crate::format::GroupKind::FunctionDefinition {
-        try_decode_single_payload_function_application(
-            file,
-            groups,
-            group,
-            visiting,
-            payload,
-            &parameters,
-        )
-        .or_else(|| {
-            try_decode_payload_function_refs(file, groups, group, visiting, payload, &parameters)
-        })
-    } else {
-        try_decode_single_payload_function_application(
-            file,
-            groups,
-            group,
-            visiting,
-            payload,
-            &parameters,
-        )
-    };
+    let function_ref_expr = try_decode_single_payload_function_application(
+        file,
+        groups,
+        group,
+        visiting,
+        payload,
+        &parameters,
+    )
+    .or_else(|| {
+        try_decode_payload_function_refs(file, groups, group, visiting, payload, &parameters)
+    });
     if let Some(expr) = function_ref_expr {
         return Ok(expr);
     }
@@ -1440,7 +1429,10 @@ fn decode_parameter_binding_recursive(
         let name =
             group_name(file, groups, group).unwrap_or_else(|| function_expr_label(expr.clone()));
         let value = evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new());
-        if !inline_function_refs || function_expr_contains_variable(&expr) {
+        if !inline_function_refs
+            || function_expr_contains_variable(&expr)
+            || group.header.kind() != crate::format::GroupKind::FunctionDefinition
+        {
             return value.map(|value| ParameterBinding::value(name, value));
         }
         return Some(ParameterBinding::expression(
@@ -1615,8 +1607,7 @@ fn decode_measured_value_binding(
         if flag.replace(true) {
             return None;
         }
-        let point_map = collect_point_objects(file, groups);
-        let anchors = collect_raw_object_anchors(file, groups, &point_map, None);
+        let anchors = collect_measured_value_anchors(file, groups);
         flag.set(false);
         Some(anchors)
     })?;
@@ -1633,6 +1624,47 @@ fn decode_measured_value_binding(
     Some(ParameterBinding::value(name, value))
 }
 
+fn collect_measured_value_anchors(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+) -> Vec<Option<PointRecord>> {
+    let point_map = collect_point_objects(file, groups);
+    let raw_anchors = collect_raw_object_anchors(file, groups, &point_map, None);
+    let Some(graph) = detect_function_graph_transform(file, groups, &raw_anchors) else {
+        return raw_anchors;
+    };
+    collect_raw_object_anchors(file, groups, &point_map, Some(&graph))
+}
+
+fn detect_function_graph_transform(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+) -> Option<GraphTransform> {
+    let raw_per_unit = groups
+        .iter()
+        .filter(|group| group.header.kind().is_graph_calibration())
+        .find_map(|group| {
+            let record = group.records.iter().find(|record| {
+                record.record_type == RECORD_INDEXED_PATH_B && record.length == 12
+            })?;
+            decode_measurement_value(record.payload(&file.data))
+        })?;
+    let origin_raw = groups.iter().find_map(|group| {
+        if !group.header.kind().is_graph_calibration() {
+            return None;
+        }
+        let path = find_indexed_path(file, group)?;
+        path.refs
+            .iter()
+            .find_map(|object_ref| anchors.get(object_ref.saturating_sub(1)).cloned().flatten())
+    })?;
+    Some(GraphTransform {
+        origin_raw,
+        raw_per_unit,
+    })
+}
+
 fn group_name(file: &GspFile, groups: &[ObjectGroup], group: &ObjectGroup) -> Option<String> {
     group
         .records
@@ -1647,6 +1679,9 @@ fn numeric_helper_group_name(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> Option<String> {
+    if group.header.kind() == crate::format::GroupKind::BoundaryCurveLengthValue {
+        return boundary_curve_length_group_name(file, groups, group);
+    }
     if group.header.kind() != crate::format::GroupKind::DistanceValue {
         return None;
     }
@@ -1671,6 +1706,39 @@ fn numeric_helper_group_name(
         .and_then(|group| group_name(file, groups, group))
         .unwrap_or_else(|| "Q".to_string());
     Some(format!("{left}{right}"))
+}
+
+fn boundary_curve_length_group_name(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<String> {
+    let path = find_indexed_path(file, group)?;
+    let host_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+    let host_path = find_indexed_path(file, host_group)?;
+    let (start_ordinal, end_ordinal) = match host_group.header.kind() {
+        crate::format::GroupKind::CenterArc => (*host_path.refs.get(1)?, *host_path.refs.get(2)?),
+        crate::format::GroupKind::ArcOnCircle => (*host_path.refs.get(1)?, *host_path.refs.get(2)?),
+        crate::format::GroupKind::SectorBoundary
+        | crate::format::GroupKind::CircularSegmentBoundary => {
+            let arc_group = groups.get(host_path.refs.first()?.checked_sub(1)?)?;
+            let arc_path = find_indexed_path(file, arc_group)?;
+            match arc_group.header.kind() {
+                crate::format::GroupKind::CenterArc | crate::format::GroupKind::ArcOnCircle => {
+                    (*arc_path.refs.get(1)?, *arc_path.refs.get(2)?)
+                }
+                _ => return None,
+            }
+        }
+        _ => return None,
+    };
+    let start = groups
+        .get(start_ordinal.checked_sub(1)?)
+        .and_then(|group| group_name(file, groups, group))?;
+    let end = groups
+        .get(end_ordinal.checked_sub(1)?)
+        .and_then(|group| group_name(file, groups, group))?;
+    Some(format!("{start}{end}"))
 }
 
 fn segment_name(

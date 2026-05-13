@@ -454,15 +454,19 @@ pub(crate) fn decode_translated_point_constraint(
                 return None;
             }
 
-            let angle_degrees = read_f64(payload, 20);
+            let angle_radians = read_f64(payload, 20);
             let units_to_raw = read_f64(payload, 32);
             let distance = read_f64(payload, 40);
-            if !angle_degrees.is_finite() || !units_to_raw.is_finite() || !distance.is_finite() {
+            if !angle_radians.is_finite() || !units_to_raw.is_finite() || !distance.is_finite() {
                 return None;
             }
 
-            let angle_radians = angle_degrees.to_radians();
-            let step = units_to_raw * distance;
+            let angle_radians = if angle_radians.abs() > std::f64::consts::TAU {
+                angle_radians.to_radians()
+            } else {
+                angle_radians
+            };
+            let step = units_to_raw.abs() * distance;
             Some(TranslatedPointConstraint {
                 origin_group_index,
                 dx: step * angle_radians.cos(),

@@ -11,10 +11,11 @@ use crate::runtime::extract::decode::is_parameter_control_group;
 use crate::runtime::extract::points::decode_legacy_angle_rotation_anchor_raw;
 use crate::runtime::extract::points::{
     decode_coordinate_expression_anchor_raw, decode_coordinate_point,
-    decode_custom_transform_anchor_raw, decode_expression_offset_anchor_raw,
-    decode_expression_rotation_anchor_raw, decode_graph_calibration_anchor_raw,
-    decode_intersection_anchor_raw, decode_iteration_binding_point_alias_raw,
-    decode_legacy_coordinate_construct_point, decode_ratio_scale_anchor_raw,
+    decode_custom_transform_anchor_raw, decode_derived_polar_endpoint_anchor_raw,
+    decode_expression_offset_anchor_raw, decode_expression_rotation_anchor_raw,
+    decode_graph_calibration_anchor_raw, decode_intersection_anchor_raw,
+    decode_iteration_binding_point_alias_raw, decode_legacy_coordinate_construct_point,
+    decode_ratio_scale_anchor_raw,
 };
 
 pub(crate) fn collect_raw_object_anchors(
@@ -39,8 +40,13 @@ pub(crate) fn collect_raw_object_anchors(
             Some(anchor)
         } else if matches!(
             group.header.kind(),
-            crate::format::GroupKind::GraphFunctionPoint
+            crate::format::GroupKind::CoordinatePoint
+                | crate::format::GroupKind::CoordinateExpressionPoint
+                | crate::format::GroupKind::CoordinateExpressionPointAlt
+                | crate::format::GroupKind::CoordinateExpressionPointPair
+                | crate::format::GroupKind::GraphFunctionPoint
                 | crate::format::GroupKind::GraphValuePoint
+                | crate::format::GroupKind::LegacyCoordinateParameterHelper
                 | crate::format::GroupKind::FixedCoordinatePoint
         ) {
             decode_coordinate_point(file, groups, group, &anchors, &graph.cloned())
@@ -65,6 +71,10 @@ pub(crate) fn collect_raw_object_anchors(
             Some(anchor)
         } else if let Some(anchor) =
             decode_parameter_rotation_anchor_raw(file, groups, group, &anchors)
+        {
+            Some(anchor)
+        } else if let Some(anchor) =
+            decode_derived_polar_endpoint_anchor_raw(file, groups, group, &anchors, graph)
         {
             Some(anchor)
         } else if let Some(anchor) = decode_angle_rotation_anchor_raw(file, group, &anchors) {

@@ -96,6 +96,15 @@ pub(crate) struct ExpressionOffsetBindingDef {
 }
 
 #[derive(Clone)]
+pub(crate) struct DerivedPolarEndpointBindingDef {
+    pub(crate) center_group_index: usize,
+    pub(crate) parameter_name: String,
+    pub(crate) parameter_value: f64,
+    pub(crate) radius_scale: f64,
+    pub(crate) angle_radians: f64,
+}
+
+#[derive(Clone)]
 pub(crate) enum IterationBindingPointAliasKind {
     Offset {
         dx: f64,
@@ -1008,18 +1017,31 @@ pub(crate) fn decode_intersection_anchor_raw(
     let right_group = groups.get(path.refs[1].checked_sub(1)?)?;
 
     if kind == crate::format::GroupKind::CoordinateTraceIntersectionPoint {
+        let sample_hint = coordinate_trace_intersection_sample_hint(file, group);
         if let (Some((line_start, line_end, line_kind)), Some(trace_points)) = (
             resolve_line_like_constraint_raw(file, groups, anchors, left_group),
             sample_coordinate_trace_points_raw(file, groups, right_group, anchors, graph),
         ) {
-            return line_polyline_intersection(line_start, line_end, line_kind, &trace_points);
+            return line_polyline_intersection_with_hint(
+                line_start,
+                line_end,
+                line_kind,
+                &trace_points,
+                sample_hint,
+            );
         }
 
         if let (Some(trace_points), Some((line_start, line_end, line_kind))) = (
             sample_coordinate_trace_points_raw(file, groups, left_group, anchors, graph),
             resolve_line_like_constraint_raw(file, groups, anchors, right_group),
         ) {
-            return line_polyline_intersection(line_start, line_end, line_kind, &trace_points);
+            return line_polyline_intersection_with_hint(
+                line_start,
+                line_end,
+                line_kind,
+                &trace_points,
+                sample_hint,
+            );
         }
     }
 
@@ -1101,6 +1123,46 @@ pub(crate) fn decode_intersection_anchor_raw(
     )
 }
 
+fn coordinate_trace_intersection_sample_hint(file: &GspFile, group: &ObjectGroup) -> Option<usize> {
+    group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x07d3)
+        .map(|record| record.payload(&file.data))
+        .filter(|payload| payload.len() >= 4)
+        .map(|payload| read_u32(payload, 0) as usize)
+}
+
+fn line_polyline_intersection_with_hint(
+    line_start: PointRecord,
+    line_end: PointRecord,
+    line_kind: LineLikeKind,
+    polyline: &[PointRecord],
+    sample_hint: Option<usize>,
+) -> Option<PointRecord> {
+    if let Some(hint) = sample_hint {
+        return polyline
+            .windows(2)
+            .enumerate()
+            .filter_map(|(index, segment)| {
+                let start = segment.first()?;
+                let end = segment.get(1)?;
+                let point = line_line_intersection(
+                    &line_start,
+                    &line_end,
+                    line_kind,
+                    start,
+                    end,
+                    LineLikeKind::Segment,
+                )?;
+                Some((index.abs_diff(hint), point))
+            })
+            .min_by_key(|(distance, _)| *distance)
+            .map(|(_, point)| point);
+    }
+    line_polyline_intersection(line_start, line_end, line_kind, polyline)
+}
+
 fn sample_coordinate_trace_points_raw(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -1108,6 +1170,12 @@ fn sample_coordinate_trace_points_raw(
     anchors: &[Option<PointRecord>],
     graph: Option<&GraphTransform>,
 ) -> Option<Vec<PointRecord>> {
+    if matches!(
+        group.header.kind(),
+        crate::format::GroupKind::FunctionPlot | crate::format::GroupKind::ParametricFunctionPlot
+    ) {
+        return sample_function_plot_points_raw(file, groups, group, graph);
+    }
     if (group.header.kind()) != crate::format::GroupKind::CoordinateTrace {
         return None;
     }
@@ -1215,6 +1283,46 @@ fn sample_coordinate_trace_points_raw(
                     x: offset * x.cos(),
                     y: offset * x.sin(),
                 },
+            },
+        };
+        points.push(if let Some(transform) = graph {
+            to_raw_from_world(&world, transform)
+        } else {
+            world
+        });
+    }
+    (points.len() >= 2).then_some(points)
+}
+
+fn sample_function_plot_points_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    graph: Option<&GraphTransform>,
+) -> Option<Vec<PointRecord>> {
+    if group.header.kind() != crate::format::GroupKind::FunctionPlot {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    let expr_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x0902)
+        .map(|record| record.payload(&file.data))?;
+    let descriptor = try_decode_function_plot_descriptor(payload).ok()?;
+    let expr = try_decode_function_expr(file, groups, expr_group).ok()?;
+    let mut points = Vec::with_capacity(descriptor.sample_count);
+    let last = descriptor.sample_count.saturating_sub(1).max(1) as f64;
+    for index in 0..descriptor.sample_count {
+        let t = index as f64 / last;
+        let x = descriptor.x_min + (descriptor.x_max - descriptor.x_min) * t;
+        let y = evaluate_expr_with_parameters(&expr, x, &BTreeMap::new()).unwrap_or(f64::NAN);
+        let world = match descriptor.mode {
+            crate::runtime::functions::FunctionPlotMode::Cartesian => PointRecord { x, y },
+            crate::runtime::functions::FunctionPlotMode::Polar => PointRecord {
+                x: y * x.cos(),
+                y: y * x.sin(),
             },
         };
         points.push(if let Some(transform) = graph {
@@ -1971,6 +2079,71 @@ pub(crate) fn decode_parameter_rotation_anchor_raw(
         }
         TransformBindingKind::Scale { factor } => Some(scale_around(&source, &center, factor)),
     }
+}
+
+pub(crate) fn decode_derived_polar_endpoint_binding(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<DerivedPolarEndpointBindingDef> {
+    if !matches!(
+        group.header.kind(),
+        GroupKind::DerivedSegment24 | GroupKind::DerivedSegment75
+    ) {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() != 2 {
+        return None;
+    }
+    let center_group_index = path.refs[0].checked_sub(1)?;
+    let radius_group_index = path.refs[1].checked_sub(1)?;
+    let radius_group = groups.get(radius_group_index)?;
+    let parameter_name = decode_label_name(file, radius_group)?;
+    let parameter_value = try_decode_parameter_control_value_for_group(file, groups, radius_group)
+        .ok()?
+        .abs();
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x07d3)
+        .map(|record| record.payload(&file.data))?;
+    if payload.len() < 28 || read_u32(payload, 0) != u32::from(group.header.kind().raw()) {
+        return None;
+    }
+    let radius_scale = read_f64(payload, 4);
+    let angle_radians = read_f64(payload, 20);
+    if !radius_scale.is_finite() || !angle_radians.is_finite() {
+        return None;
+    }
+    Some(DerivedPolarEndpointBindingDef {
+        center_group_index,
+        parameter_name,
+        parameter_value: parameter_value * radius_scale.abs(),
+        radius_scale: radius_scale.abs(),
+        angle_radians,
+    })
+}
+
+pub(crate) fn decode_derived_polar_endpoint_anchor_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+    graph: Option<&GraphTransform>,
+) -> Option<PointRecord> {
+    let binding = decode_derived_polar_endpoint_binding(file, groups, group)?;
+    let center = anchors.get(binding.center_group_index)?.clone()?;
+    let center_world = to_world(&center, &graph.cloned());
+    let world = PointRecord {
+        x: center_world.x + binding.parameter_value * binding.angle_radians.cos(),
+        y: center_world.y + binding.parameter_value * binding.angle_radians.sin(),
+    };
+    Some(if let Some(transform) = graph {
+        to_raw_from_world(&world, transform)
+    } else {
+        world
+    })
 }
 
 fn decode_measured_angle_parameter_rotation_binding_raw(

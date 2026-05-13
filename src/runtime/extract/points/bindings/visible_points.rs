@@ -3,7 +3,8 @@ use anyhow::{Context, Result};
 use super::{
     CoordinatePoint, GspFile, LegacyCoordinateConstructPoint, ObjectGroup,
     ParameterControlledPoint, PointRecord, RawPointConstraint, TransformBindingKind,
-    decode_coordinate_point, decode_custom_transform_binding, decode_expression_offset_binding,
+    decode_coordinate_point, decode_custom_transform_binding,
+    decode_derived_polar_endpoint_binding, decode_expression_offset_binding,
     decode_expression_ratio_scale_binding, decode_expression_rotation_binding,
     decode_expression_scale_binding, decode_iteration_binding_point_alias_raw,
     decode_legacy_coordinate_construct_point, decode_reflection_anchor_raw,
@@ -133,6 +134,17 @@ fn scale_function_expr(expr: FunctionExpr, factor: f64) -> FunctionExpr {
             rhs: Box::new(function_expr_ast(other)),
         }),
     }
+}
+
+fn scaled_parameter_expr(name: &str, value: f64, factor: f64) -> FunctionExpr {
+    if factor.abs() < 1e-12 {
+        return FunctionExpr::Constant(0.0);
+    }
+    FunctionExpr::Parsed(FunctionAst::Binary {
+        lhs: Box::new(FunctionAst::Constant(factor)),
+        op: BinaryOp::Mul,
+        rhs: Box::new(FunctionAst::Parameter(name.to_string(), value)),
+    })
 }
 
 fn indexed_path_for(
@@ -609,6 +621,38 @@ fn build_scene_point_for_group(
                 visible,
             )
         })(),
+        crate::format::GroupKind::DerivedSegment24 | crate::format::GroupKind::DerivedSegment75 => {
+            (|| {
+                let binding = decode_derived_polar_endpoint_binding(file, groups, group)?;
+                let position = anchors.get(index).cloned().flatten()?;
+                let source_index =
+                    mapped_point_index(group_to_point_index, binding.center_group_index)?;
+                let dx_factor = binding.radius_scale * binding.angle_radians.cos();
+                let dy_factor = binding.radius_scale * binding.angle_radians.sin();
+                Some(scene_point(
+                    position,
+                    group_color(group),
+                    visible,
+                    false,
+                    ScenePointConstraint::Free,
+                    Some(ScenePointBinding::CoordinateSource2d {
+                        source_index,
+                        x_name: binding.parameter_name.clone(),
+                        x_expr: scaled_parameter_expr(
+                            &binding.parameter_name,
+                            binding.parameter_value,
+                            dx_factor,
+                        ),
+                        y_name: binding.parameter_name.clone(),
+                        y_expr: scaled_parameter_expr(
+                            &binding.parameter_name,
+                            binding.parameter_value,
+                            dy_factor,
+                        ),
+                    }),
+                ))
+            })()
+        }
         crate::format::GroupKind::CoordinatePoint
         | crate::format::GroupKind::CoordinateExpressionPoint
         | crate::format::GroupKind::CoordinateExpressionPointAlt

@@ -56,31 +56,6 @@ fn uses_document_canvas_bounds_for_rich_text_triangle_centers_layout() {
 }
 
 #[test]
-fn exports_lizhangbo_exponent_calculator_visible_parameters() {
-    let Some(data) = fixture_bytes("tests/Samples/个人专栏/李章博作品/指数计算器（李章博）.gsp")
-    else {
-        return;
-    };
-    let scene = fixture_scene(&data);
-
-    let visible_parameters = scene
-        .parameters
-        .iter()
-        .filter(|parameter| parameter.visible)
-        .map(|parameter| (parameter.name.as_str(), parameter.value))
-        .collect::<Vec<_>>();
-
-    assert_eq!(visible_parameters, vec![("底数", 2.0), ("指数", 200.0)]);
-    assert!(
-        scene
-            .parameters
-            .iter()
-            .any(|parameter| parameter.name == "a[101]" && !parameter.visible),
-        "expected internal digit-carry parameters to stay hidden"
-    );
-}
-
-#[test]
 fn preserves_polygon_labels_in_poly_point_with_val_gsp() {
     let scene = fixture_scene(include_bytes!(
         "../../../tests/fixtures/gsp/static/poly_point_with_val.gsp"

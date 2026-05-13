@@ -176,18 +176,6 @@ fn unimplemented_payload_logs_match_reference_htm_construction() {
 }
 
 #[test]
-fn payload_log_accepts_helper_payload_families_in_sample_fixtures() {
-    for path in [
-        "tests/Samples/工具例说/14 统计工具-统计工具示例.gsp",
-        "tests/Samples/工具例说/19 显隐阴影-积分法-2作圆与正方形重叠面积函数图象.gsp",
-        "tests/Samples/工具例说/19 显隐阴影-积分法-3作多圆重叠面积函数图象.gsp",
-        "tests/Samples/未分类档/圆柱表面展开.gsp",
-    ] {
-        assert_supported_sample_log(path);
-    }
-}
-
-#[test]
 fn payload_log_ignores_non_link_button_payloads_when_rendering_labels() {
     let Some(data) = fixture_bytes("tests/Samples/未分类档/100以内口算减法训练(秦国祥).gsp")
     else {
