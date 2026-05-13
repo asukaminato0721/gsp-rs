@@ -202,6 +202,23 @@ pub(super) fn build_world_data(
                     x_max: *x_max,
                     sample_count: *sample_count,
                 },
+                ScenePointConstraint::LineFunctionIntersection {
+                    line,
+                    expr,
+                    x_min,
+                    x_max,
+                    sample_count,
+                    polar,
+                    sample_hint,
+                } => ScenePointConstraint::LineFunctionIntersection {
+                    line: clone_line_constraint(line),
+                    expr: expr.clone(),
+                    x_min: *x_min,
+                    x_max: *x_max,
+                    sample_count: *sample_count,
+                    polar: *polar,
+                    sample_hint: *sample_hint,
+                },
                 ScenePointConstraint::PointCircularTangent {
                     point_index,
                     circle,
@@ -630,7 +647,7 @@ pub(super) fn assemble_scene(
                 fill_color_binding: circle.fill_color_binding,
                 dashed: circle.dashed,
                 visible: circle.visible,
-                binding: circle.binding,
+                binding: world_shape_binding(circle.binding, &analysis.graph_ref),
                 debug: circle.debug,
             })
             .collect(),
@@ -698,6 +715,26 @@ fn world_label_delta(
         (dx / transform.raw_per_unit, -dy / transform.raw_per_unit)
     } else {
         (dx, dy)
+    }
+}
+
+fn world_shape_binding(
+    binding: Option<ShapeBinding>,
+    graph_ref: &Option<crate::runtime::geometry::GraphTransform>,
+) -> Option<ShapeBinding> {
+    match binding {
+        Some(ShapeBinding::ParameterRadiusCircle {
+            center_index,
+            parameter_name,
+            raw_per_unit,
+        }) => Some(ShapeBinding::ParameterRadiusCircle {
+            center_index,
+            parameter_name,
+            raw_per_unit: graph_ref
+                .as_ref()
+                .map_or(raw_per_unit, |transform| raw_per_unit / transform.raw_per_unit),
+        }),
+        other => other,
     }
 }
 

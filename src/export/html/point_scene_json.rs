@@ -1,6 +1,7 @@
 use super::function_expr_json::FunctionExprJson;
 use super::scene_json::{DebugSourceJson, PointJson};
 use super::transform_json::TransformJson;
+use crate::runtime::functions::FunctionPlotMode;
 use crate::runtime::scene::{
     AxisBinding, CircularConstraint, LineConstraint, ScenePointBinding, ScenePointConstraint,
 };
@@ -559,6 +560,21 @@ enum PointConstraintJson {
         #[serde(rename = "sampleCount")]
         sample_count: usize,
     },
+    #[serde(rename = "line-function-intersection")]
+    LineFunctionIntersection {
+        line: LineConstraintJson,
+        expr: FunctionExprJson,
+        #[serde(rename = "xMin")]
+        x_min: f64,
+        #[serde(rename = "xMax")]
+        x_max: f64,
+        #[serde(rename = "sampleCount")]
+        sample_count: usize,
+        #[serde(rename = "plotMode")]
+        plot_mode: PlotModeConstraintJson,
+        #[serde(rename = "sampleHint", skip_serializing_if = "Option::is_none")]
+        sample_hint: Option<usize>,
+    },
     #[serde(rename = "point-circular-tangent")]
     PointCircularTangent {
         #[serde(rename = "pointIndex")]
@@ -743,6 +759,23 @@ impl PointConstraintJson {
                 x_max: *x_max,
                 sample_count: *sample_count,
             }),
+            ScenePointConstraint::LineFunctionIntersection {
+                line,
+                expr,
+                x_min,
+                x_max,
+                sample_count,
+                polar,
+                sample_hint,
+            } => Some(Self::LineFunctionIntersection {
+                line: LineConstraintJson::from_constraint(line),
+                expr: FunctionExprJson::from_expr(expr),
+                x_min: *x_min,
+                x_max: *x_max,
+                sample_count: *sample_count,
+                plot_mode: PlotModeConstraintJson::from_polar(*polar),
+                sample_hint: *sample_hint,
+            }),
             ScenePointConstraint::PointCircularTangent {
                 point_index,
                 circle,
@@ -794,6 +827,29 @@ impl PointConstraintJson {
                 right: CircularConstraintJson::from_constraint(right),
                 variant: *variant,
             }),
+        }
+    }
+}
+
+#[derive(Serialize, TS)]
+#[serde(rename_all = "kebab-case")]
+enum PlotModeConstraintJson {
+    Cartesian,
+    Polar,
+}
+
+impl PlotModeConstraintJson {
+    fn from_polar(polar: bool) -> Self {
+        match polar {
+            true => Self::from_mode(FunctionPlotMode::Polar),
+            false => Self::from_mode(FunctionPlotMode::Cartesian),
+        }
+    }
+
+    fn from_mode(mode: FunctionPlotMode) -> Self {
+        match mode {
+            FunctionPlotMode::Cartesian => Self::Cartesian,
+            FunctionPlotMode::Polar => Self::Polar,
         }
     }
 }

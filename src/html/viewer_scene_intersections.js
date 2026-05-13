@@ -62,9 +62,27 @@
    * @param {Point} lineEnd
    * @param {string} lineKind
    * @param {Point[] | null} points
+   * @param {number | null | undefined} [sampleHint]
    */
-  function linePolylineIntersection(lineStart, lineEnd, lineKind, points) {
+  function linePolylineIntersection(lineStart, lineEnd, lineKind, points, sampleHint) {
     if (!Array.isArray(points) || points.length < 2) return null;
+    if (Number.isFinite(sampleHint)) {
+      let best = null;
+      let bestDistance = Infinity;
+      for (let index = 0; index < points.length - 1; index += 1) {
+        const start = points[index];
+        const end = points[index + 1];
+        if (!start || !end) continue;
+        const hit = lineLineIntersection(lineStart, lineEnd, lineKind, start, end, "segment");
+        if (!hit) continue;
+        const distance = Math.abs(index - sampleHint);
+        if (distance < bestDistance) {
+          best = hit;
+          bestDistance = distance;
+        }
+      }
+      if (best) return best;
+    }
     for (let index = 0; index < points.length - 1; index += 1) {
       const start = points[index];
       const end = points[index + 1];
@@ -73,6 +91,40 @@
       if (hit) return hit;
     }
     return null;
+  }
+
+  /**
+   * @param {ViewerEnv | null} env
+   * @param {any} constraint
+   * @returns {Point[] | null}
+   */
+  function sampleFunctionIntersectionPoints(env, constraint) {
+    const evaluateExpr = modules.dynamics?.evaluateExpr;
+    if (typeof evaluateExpr !== "function") return null;
+    const currentScene = typeof env?.currentScene === "function" ? env.currentScene() : env?.sourceScene;
+    const parameters = typeof modules.dynamics?.parameterMapForScene === "function"
+      && typeof env?.currentDynamics === "function"
+      && env
+      && currentScene
+      ? modules.dynamics.parameterMapForScene(env, currentScene)
+      : typeof env?.currentDynamics === "function"
+        ? new Map(env.currentDynamics().parameters.map((parameter) => [parameter.name, parameter.value]))
+        : new Map();
+    const points = [];
+    const sampleCount = Math.max(2, constraint.sampleCount || 0);
+    const last = Math.max(1, sampleCount - 1);
+    for (let index = 0; index < sampleCount; index += 1) {
+      const t = index / last;
+      const x = constraint.xMin + (constraint.xMax - constraint.xMin) * t;
+      const y = evaluateExpr(constraint.expr, x, parameters);
+      if (y === null) continue;
+      if (constraint.plotMode === "polar") {
+        points.push({ x: y * Math.cos(x), y: y * Math.sin(x) });
+      } else {
+        points.push({ x, y });
+      }
+    }
+    return points.length >= 2 ? points : null;
   }
 
   /**
@@ -285,6 +337,13 @@
       ? scene.sampleCoordinateTracePoints(env, constraint)
       : null;
     return line && tracePoints ? linePolylineIntersection(line.start, line.end, line.kind, tracePoints) : null;
+  }));
+  scene.registerPointConstraintResolver("line-function-intersection", /** @type {any} */((env, constraint, resolveFn) => {
+    const line = resolveLineConstraint(env, constraint.line, resolveFn);
+    const tracePoints = sampleFunctionIntersectionPoints(env, constraint);
+    return line && tracePoints
+      ? linePolylineIntersection(line.start, line.end, line.kind, tracePoints, constraint.sampleHint)
+      : null;
   }));
   scene.registerPointConstraintResolver("point-circular-tangent", /** @type {any} */((env, constraint, resolveFn, reference) => {
     const point = resolveFn(constraint.pointIndex);

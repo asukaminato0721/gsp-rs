@@ -2650,6 +2650,50 @@ fn scene_point_from_intersection(
         ));
     }
 
+    if let (Some(line), Some((expr, descriptor))) = (
+        resolve_intersection_line_constraint(file, groups, left_group, group_to_point_index),
+        decode_function_plot_constraint(file, groups, right_group),
+    ) {
+        return Some(scene_point(
+            position,
+            group_color(group),
+            visible,
+            true,
+            ScenePointConstraint::LineFunctionIntersection {
+                line,
+                expr,
+                x_min: descriptor.x_min,
+                x_max: descriptor.x_max,
+                sample_count: descriptor.sample_count,
+                polar: descriptor.mode == crate::runtime::functions::FunctionPlotMode::Polar,
+                sample_hint: intersection_sample_hint(file, group),
+            },
+            None,
+        ));
+    }
+
+    if let (Some((expr, descriptor)), Some(line)) = (
+        decode_function_plot_constraint(file, groups, left_group),
+        resolve_intersection_line_constraint(file, groups, right_group, group_to_point_index),
+    ) {
+        return Some(scene_point(
+            position,
+            group_color(group),
+            visible,
+            true,
+            ScenePointConstraint::LineFunctionIntersection {
+                line,
+                expr,
+                x_min: descriptor.x_min,
+                x_max: descriptor.x_max,
+                sample_count: descriptor.sample_count,
+                polar: descriptor.mode == crate::runtime::functions::FunctionPlotMode::Polar,
+                sample_hint: intersection_sample_hint(file, group),
+            },
+            None,
+        ));
+    }
+
     let variant = intersection_variant(group.header.kind());
     let left_circular = resolve_circular_constraint(file, groups, left_group, group_to_point_index);
     let right_circular =
@@ -3015,6 +3059,41 @@ fn decode_coordinate_trace_constraint(
         descriptor.x_max,
         descriptor.sample_count,
     ))
+}
+
+fn intersection_sample_hint(file: &GspFile, group: &ObjectGroup) -> Option<usize> {
+    group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x07d3)
+        .map(|record| record.payload(&file.data))
+        .filter(|payload| payload.len() >= 4)
+        .map(|payload| crate::format::read_u32(payload, 0) as usize)
+}
+
+fn decode_function_plot_constraint(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<(
+    FunctionExpr,
+    crate::runtime::functions::FunctionPlotDescriptor,
+)> {
+    if group.header.kind() != crate::format::GroupKind::FunctionPlot {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    let expr_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+    let descriptor_payload = group
+        .records
+        .iter()
+        .find(|record| {
+            record.record_type == crate::runtime::payload_consts::RECORD_FUNCTION_PLOT_DESCRIPTOR
+        })
+        .map(|record| record.payload(&file.data))?;
+    let descriptor = try_decode_function_plot_descriptor(descriptor_payload).ok()?;
+    let expr = try_decode_function_expr(file, groups, expr_group).ok()?;
+    Some((expr, descriptor))
 }
 
 fn resolve_circle_point_indices(

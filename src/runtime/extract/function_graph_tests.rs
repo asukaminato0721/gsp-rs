@@ -389,6 +389,23 @@ fn builds_moving_pulley_with_payload_function_plot_branch_and_arc_length() {
             .all(|name| function_parameters.contains(name)),
         "expected h(x) to keep endpoint coordinate measurements live, got {function_parameters:?}"
     );
+    let root = scene
+        .points
+        .iter()
+        .find(|point| {
+            point
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 22)
+        })
+        .expect("expected function/x-axis intersection #22");
+    assert!(
+        matches!(
+            root.constraint,
+            ScenePointConstraint::LineFunctionIntersection { .. }
+        ),
+        "expected #22 to stay a live function/axis intersection"
+    );
 
     let radius = scene
         .lines

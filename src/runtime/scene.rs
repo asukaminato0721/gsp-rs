@@ -431,6 +431,15 @@ pub(crate) enum ScenePointConstraint {
         x_max: f64,
         sample_count: usize,
     },
+    LineFunctionIntersection {
+        line: LineConstraint,
+        expr: FunctionExpr,
+        x_min: f64,
+        x_max: f64,
+        sample_count: usize,
+        polar: bool,
+        sample_hint: Option<usize>,
+    },
     PointCircularTangent {
         point_index: usize,
         circle: CircularConstraint,

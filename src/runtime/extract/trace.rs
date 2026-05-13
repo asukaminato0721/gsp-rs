@@ -1659,7 +1659,8 @@ fn resolve_trace_point(
                     right_kind,
                 )
             }
-            ScenePointConstraint::LineTraceIntersection { .. } => None,
+            ScenePointConstraint::LineTraceIntersection { .. }
+            | ScenePointConstraint::LineFunctionIntersection { .. } => None,
             ScenePointConstraint::PointCircularTangent {
                 point_index,
                 circle,
