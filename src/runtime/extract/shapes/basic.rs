@@ -13,7 +13,7 @@ use crate::runtime::extract::decode::{
     circle_center_radius_value, detect_perpendicular_segment_payload, is_circle_group_kind,
     measured_radius_segment_group_indices, resolve_circle_points_raw,
 };
-use crate::runtime::extract::points::resolve_line_like_points_raw;
+use crate::runtime::extract::points::{is_non_graph_parameter_group, resolve_line_like_points_raw};
 use crate::runtime::geometry::{
     arc_on_circle_control_points, sample_three_point_arc, sample_three_point_arc_complement,
 };
@@ -254,6 +254,9 @@ fn is_auxiliary_segment_group(file: &GspFile, groups: &[ObjectGroup], group: &Ob
     if is_perpendicular_segment_helper_group(file, groups, group) {
         return true;
     }
+    if segment_references_non_graph_parameter(file, groups, group) {
+        return true;
+    }
     if groups.iter().any(|candidate| {
         if (candidate.header.kind()) != crate::format::GroupKind::IterationBinding {
             return false;
@@ -310,6 +313,27 @@ fn is_auxiliary_segment_group(file: &GspFile, groups: &[ObjectGroup], group: &Ob
             }
             _ => false,
         }
+    })
+}
+
+fn segment_references_non_graph_parameter(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> bool {
+    let Some(path) = find_indexed_path(file, group) else {
+        return false;
+    };
+    if path.refs.len() != 2 {
+        return false;
+    }
+    path.refs.iter().any(|ordinal| {
+        let Some(index) = ordinal.checked_sub(1) else {
+            return false;
+        };
+        groups
+            .get(index)
+            .is_some_and(|referenced| is_non_graph_parameter_group(file, groups, referenced))
     })
 }
 

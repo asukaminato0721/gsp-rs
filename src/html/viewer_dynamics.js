@@ -3059,11 +3059,24 @@
         ? table.columns
         : [{ exprLabel: table.exprLabel, parameterName: table.parameterName, expr: table.expr }];
       const state = new Map(parameters);
+      const initialDerived = deriveExpressionLabelParameters(scene, state);
+      columns.forEach((/** @type {any} */ column) => {
+        const value = initialDerived.get(column.parameterName);
+        if (isFiniteNumber(value)) {
+          state.set(column.parameterName, value);
+        }
+      });
       /** @type {RuntimeIterationRow[]} */
       const rows = [];
       if (columns.every((/** @type {any} */ column) => isFiniteNumber(state.get(column.parameterName)))) {
         for (let index = 0; index <= depth; index += 1) {
           const derived = deriveExpressionLabelParameters(scene, state);
+          columns.forEach((/** @type {any} */ column) => {
+            const value = state.get(column.parameterName);
+            if (isFiniteNumber(value)) {
+              derived.set(column.parameterName, value);
+            }
+          });
           const values = columns.map((/** @type {any} */ column) =>
             evaluateExpr(column.expr, 0, derived),
           );

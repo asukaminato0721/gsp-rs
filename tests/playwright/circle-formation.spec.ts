@@ -23,6 +23,7 @@ test('circle formation fixture keeps rebuilt polygon edges and non-draggable ite
 
   const runtime = await page.evaluate(() => JSON.parse(window.gspDebug.json()));
   expect(runtime.scene.lines).toHaveLength(5);
+  expect(runtime.scene.lines.map((line: any) => line.debug?.groupOrdinal).filter(Boolean)).not.toContain(26);
 
   const renderedBlueSegments = page.locator('#scene-layer path[stroke=\"rgba(0, 0, 128, 1.000)\"]');
   await expect(renderedBlueSegments).toHaveCount(5);
@@ -32,4 +33,12 @@ test('circle formation fixture keeps rebuilt polygon edges and non-draggable ite
   );
   expect(rotatePoints.length).toBeGreaterThan(0);
   expect(rotatePoints.every((point: { draggable?: boolean }) => point.draggable === false)).toBe(true);
+
+  const table = runtime.scene.iterationTables[0];
+  expect(table.rows.map((row: any) => row.values[0])).toEqual([6, 7, 8, 9, 10]);
+
+  await page.locator('input[type=number]').first().fill('6');
+  await expect.poll(async () =>
+    page.evaluate(() => window.gspDebug.runtime.scene.iterationTables[0]?.rows.map((row: any) => row.values[0])),
+  ).toEqual([7, 8, 9, 10, 11, 12]);
 });
