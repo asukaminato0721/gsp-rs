@@ -1,15 +1,10 @@
-// @ts-check
-
 (function() {
-  const modules = /** @type {Partial<ViewerModules> & { render: ViewerRenderModule }} */ (
+  const modules =  (
     window.GspViewerModules || (window.GspViewerModules = {})
   );
 
-  /**
-   * @param {LineBindingJson} binding
-   * @returns {binding is Extract<LineBindingJson, { lineStartIndex: number | null; lineEndIndex: number | null }> & { lineStartIndex: number; lineEndIndex: number }}
-   */
-  function hasExplicitHostLine(binding) {
+  
+  function hasExplicitHostLine(binding: LineBindingJson) {
     return !!binding
       && typeof binding === "object"
       && "lineStartIndex" in binding
@@ -18,38 +13,26 @@
       && typeof binding.lineEndIndex === "number";
   }
 
-  /**
-   * @param {LineBindingJson} binding
-   * @returns {boolean}
-   */
-  function hasHostLineIndex(binding) {
+  
+  function hasHostLineIndex(binding: LineBindingJson) {
     return !!binding
       && typeof binding === "object"
       && "lineIndex" in binding
       && typeof binding.lineIndex === "number";
   }
 
-  /**
-   * @param {Point[]} points
-   * @param {boolean} [close]
-   */
-  function pathFromPoints(points, close = false) {
+  
+  function pathFromPoints(points: Point[], close: boolean = false) {
     if (!points || points.length === 0) return "";
-    const commands = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`);
+    const commands = points.map((point, index: number) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`);
     if (close) {
       commands.push("Z");
     }
     return commands.join(" ");
   }
 
-  /**
-   * @param {Point} center
-   * @param {number} radius
-   * @param {number} startAngle
-   * @param {number} endAngle
-   * @param {boolean} counterClockwise
-   */
-  function arcPath(center, radius, startAngle, endAngle, counterClockwise) {
+  
+  function arcPath(center: Point, radius: number, startAngle: number, endAngle: number, counterClockwise: boolean) {
     if (!Number.isFinite(radius) || radius <= 1e-9) return "";
     const tau = Math.PI * 2;
     const start = {
@@ -67,14 +50,8 @@
     return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArc} ${sweep} ${end.x} ${end.y}`;
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {string} tag
-   * @param {Record<string, string | number | boolean | null | undefined>} attrs
-   * @param {string | null} [text]
-   * @param {DebugTarget | null} [debugTarget]
-   */
-  function appendSceneElement(env, tag, attrs, text = null, debugTarget = null) {
+  
+  function appendSceneElement(env: ViewerEnv, tag: string, attrs: Record<string, string | number | boolean | null | undefined>, text: string | null = null, debugTarget: DebugTarget | null = null) {
     const element = env.createSvgElement(tag, attrs);
     if (text !== null) {
       element.textContent = text;
@@ -84,12 +61,8 @@
     return element;
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {Point[]} points
-   * @param {{ stroke: string, strokeWidth?: number, fill?: string, dashed?: boolean, close?: boolean, lineCap?: string, lineJoin?: string, debugTarget?: DebugTarget | null }} options
-   */
-  function appendPointPath(env, points, options) {
+  
+  function appendPointPath(env: ViewerEnv, points: Point[], options: { stroke: string, strokeWidth?: number, fill?: string, dashed?: boolean, close?: boolean, lineCap?: string, lineJoin?: string, debugTarget?: DebugTarget | null }) {
     if (!points || points.length < 2) return null;
     return appendSceneElement(env, "path", {
       d: pathFromPoints(points, !!options.close),
@@ -102,24 +75,15 @@
     }, null, options.debugTarget ?? null);
   }
 
-  /**
-   * @param {Point} start
-   * @param {Point} end
-   * @param {number} width
-   * @param {number} height
-   * @param {boolean} rayOnly
-   */
-  function clipParametricLineToRect(start, end, width, height, rayOnly) {
+  
+  function clipParametricLineToRect(start: Point, end: Point, width: number, height: number, rayOnly: boolean) {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
     if (Math.abs(dx) <= 1e-9 && Math.abs(dy) <= 1e-9) return null;
 
-    /** @type {Array<{ t: number; point: Point }>} */
+    
     const hits = [];
-    /**
-     * @param {number} t
-     * @param {Point} point
-     */
+    
     const pushHit = (t, point) => {
       if (!Number.isFinite(t)) return;
       if (rayOnly && t < -1e-9) return;
@@ -160,52 +124,31 @@
     return firstHit && lastHit ? [firstHit.point, lastHit.point] : null;
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {string} _text
-   * @returns {{ lines: string[]; width: number; height: number }}
-   */
-  function labelMetrics(env, _text) {
+  
+  function labelMetrics(env: ViewerEnv, _text: string) {
     return { lines: [], width: 0, height: env ? 0 : 0 };
   }
 
-  /**
-   * @param {ViewerEnv} _env
-   * @param {RuntimeLabelJson} _label
-   * @returns {null}
-   */
-  function labelBounds(_env, _label) {
+  
+  function labelBounds(_env: ViewerEnv, _label: RuntimeLabelJson) {
     return null;
   }
 
-  /**
-   * @param {ViewerEnv} _env
-   * @param {RuntimeIterationTableJson} _table
-   * @returns {null}
-   */
-  function iterationTableBounds(_env, _table) {
+  
+  function iterationTableBounds(_env: ViewerEnv, _table: RuntimeIterationTableJson) {
     return null;
   }
 
-  /**
-   * @param {ViewerEnv} _env
-   * @param {RuntimeLabelJson} _label
-   * @returns {Array<never>}
-   */
-  function labelHotspotRects(_env, _label) {
+  
+  function labelHotspotRects(_env: ViewerEnv, _label: RuntimeLabelJson) {
     return [];
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {number} screenX
-   * @param {number} screenY
-   * @returns {number | null}
-   */
-  function findHitPoint(env, screenX, screenY) {
+  
+  function findHitPoint(env: ViewerEnv, screenX: number, screenY: number) {
     let bestIndex = null;
     let bestDistanceSquared = env.pointHitRadius * env.pointHitRadius;
-    env.currentScene().points.forEach((point, index) => {
+    env.currentScene().points.forEach((point, index: number) => {
       if (point.visible === false || point.draggable === false) {
         return;
       }
@@ -223,37 +166,37 @@
     return bestIndex;
   }
 
-  /** @returns {null} */
+  
   function findHitLabel() {
     return null;
   }
 
-  /** @returns {null} */
+  
   function findHitIterationTable() {
     return null;
   }
 
-  /** @returns {null} */
+  
   function findHitPolygon() {
     return null;
   }
 
-  /** @param {ViewerEnv} _env */
-  function drawImages(_env) {}
+  
+  function drawImages(_env: ViewerEnv) {}
 
-  /** @param {ViewerEnv} _env */
-  function drawPolygons(_env) {}
+  
+  function drawPolygons(_env: ViewerEnv) {}
 
-  /** @param {ViewerEnv} env */
-  function drawLines(env) {
+  
+  function drawLines(env: ViewerEnv) {
     const drawPolyline = (
-      /** @type {Point[]} */ worldPoints,
-      /** @type {[number, number, number, number]} */ color,
-      /** @type {boolean} */ dashed,
-      /** @type {boolean} */ close = false,
-      /** @type {DebugTarget | null} */ debugTarget = null,
+       worldPoints,
+       color,
+       dashed,
+       close= false,
+       debugTarget= null,
     ) => {
-      const screenPoints = worldPoints.map((/** @type {Point} */ point) => env.toScreen(point));
+      const screenPoints = worldPoints.map(( point) => env.toScreen(point));
       if (screenPoints.length < 2) return;
       appendPointPath(env, screenPoints, {
         stroke: env.rgba(color),
@@ -262,7 +205,7 @@
         debugTarget,
       });
     };
-    const drawAngleMarker = (/** @type {RuntimeLineJson} */ line, /** @type {number} */ lineIndex) => {
+    const drawAngleMarker = ( line,  lineIndex: number) => {
       const start = env.resolveScenePoint(line.binding.startIndex);
       const vertex = env.resolveScenePoint(line.binding.vertexIndex);
       const end = env.resolveScenePoint(line.binding.endIndex);
@@ -304,7 +247,7 @@
         if (Math.abs(delta) <= 1e-6) continue;
         const startAngle = Math.atan2(first.y, first.x);
         const samples = 9;
-        const polyline = Array.from({ length: samples }, (_, index) => {
+        const polyline = Array.from({ length: samples }, (_, index: number) => {
           const t = index / (samples - 1);
           const angle = startAngle + delta * t;
           return {
@@ -315,7 +258,7 @@
         drawPolyline(polyline, line.color, line.dashed, false, { category: "lines", index: lineIndex });
       }
     };
-    const drawSegmentMarker = (/** @type {RuntimeLineJson} */ line, /** @type {number} */ lineIndex) => {
+    const drawSegmentMarker = ( line,  lineIndex: number) => {
       const start = env.resolveScenePoint(line.binding.startIndex);
       const end = env.resolveScenePoint(line.binding.endIndex);
       if (!start || !end) return;
@@ -343,9 +286,9 @@
         ], line.color, line.dashed, false, { category: "lines", index: lineIndex });
       }
     };
-    const pointsEqual = (/** @type {Point} */ left, /** @type {Point} */ right) =>
+    const pointsEqual = ( left,  right) =>
       Math.abs(left.x - right.x) < 1e-6 && Math.abs(left.y - right.y) < 1e-6;
-    const extendedRayStart = (/** @type {Point} */ startPoint, /** @type {Point} */ endPoint) => {
+    const extendedRayStart = ( startPoint,  endPoint) => {
       const dx = endPoint.x - startPoint.x;
       const dy = endPoint.y - startPoint.y;
       const lenSq = dx * dx + dy * dy;
@@ -372,14 +315,14 @@
       return bestPoint;
     };
     const extendedRayEnd = (
-      /** @type {Point} */ originalStart,
-      /** @type {Point} */ originalEnd,
-      /** @type {Point} */ shiftedStart,
+       originalStart,
+       originalEnd,
+       shiftedStart,
     ) => ({
       x: shiftedStart.x + (originalEnd.x - originalStart.x),
       y: shiftedStart.y + (originalEnd.y - originalStart.y),
     });
-    const linePriority = (/** @type {RuntimeLineJson} */ line) => (
+    const linePriority = ( line) => (
       line.binding?.kind === "line"
         || line.binding?.kind === "ray"
         || line.binding?.kind === "angle-bisector-ray"
@@ -387,7 +330,7 @@
         || line.binding?.kind === "parallel-line"
     ) ? 0 : 1;
     const orderedLines = env.currentScene().lines
-      .map((line, index) => ({ line, index }))
+      .map((line, index: number) => ({ line, index }))
       .sort((left, right) => linePriority(left.line) - linePriority(right.line) || left.index - right.index)
     for (const { line, index } of orderedLines) {
       if (line.visible === false) continue;
@@ -401,10 +344,7 @@
         continue;
       }
       let screenPoints = null;
-      /**
-       * @param {LineBindingJson} binding
-       * @returns {[Point, Point] | null}
-       */
+      
       const resolveHostLinePoints = (binding) => {
         if (hasExplicitHostLine(binding)) {
           const lineStart = env.resolveScenePoint(binding.lineStartIndex);
@@ -412,7 +352,7 @@
           return lineStart && lineEnd ? [lineStart, lineEnd] : null;
         }
         if (hasHostLineIndex(binding)) {
-          const indexedBinding = /** @type {{ lineIndex?: number }} */ (binding);
+          const indexedBinding =  (binding);
           if (typeof indexedBinding.lineIndex === "number") {
             const points = env.resolveLinePoints(indexedBinding.lineIndex);
             if (!points || points.length < 2) return null;
@@ -521,7 +461,7 @@
         if (segments) {
           for (const segment of segments) {
             if (!segment || segment.length < 2) continue;
-            appendPointPath(env, segment.map((/** @type {Point} */ point) => env.toScreen(point)), {
+            appendPointPath(env, segment.map(( point) => env.toScreen(point)), {
               stroke: env.rgba(line.color),
               dashed: !!line.dashed,
               debugTarget: { category: "lines", index },
@@ -531,9 +471,9 @@
         } else {
           const points = env.resolveLinePoints
             ? env.resolveLinePoints(line)
-            : line.points.map((/** @type {PointHandle} */ handle) => env.resolvePoint(handle));
+            : line.points.map(( handle) => env.resolvePoint(handle));
           if (points && points.length >= 2) {
-            screenPoints = points.map((/** @type {Point} */ point) => env.toScreen(point));
+            screenPoints = points.map(( point) => env.toScreen(point));
           }
         }
       }
@@ -546,15 +486,15 @@
     }
   }
 
-  /** @param {ViewerEnv} _env */
-  function drawCircles(_env) {}
+  
+  function drawCircles(_env: ViewerEnv) {}
 
-  /** @param {ViewerEnv} _env */
-  function drawArcs(_env) {}
+  
+  function drawArcs(_env: ViewerEnv) {}
 
-  /** @param {ViewerEnv} env */
-  function drawPoints(env) {
-    env.currentScene().points.forEach((point, index) => {
+  
+  function drawPoints(env: ViewerEnv) {
+    env.currentScene().points.forEach((point, index: number) => {
       if (point.visible === false) {
         return;
       }
@@ -574,17 +514,17 @@
     });
   }
 
-  /** @param {ViewerEnv} _env */
-  function drawLabels(_env) {}
+  
+  function drawLabels(_env: ViewerEnv) {}
 
-  /** @param {ViewerEnv} _env */
-  function drawIterationTables(_env) {}
+  
+  function drawIterationTables(_env: ViewerEnv) {}
 
-  /** @param {ViewerEnv} _env */
-  function drawHotspotFlashes(_env) {}
+  
+  function drawHotspotFlashes(_env: ViewerEnv) {}
 
-  /** @param {ViewerEnv} env */
-  function draw(env) {
+  
+  function draw(env: ViewerEnv) {
     env.clearSvgChildren(env.sceneLayer);
     env.drawGrid();
     modules.render.drawImages(env);

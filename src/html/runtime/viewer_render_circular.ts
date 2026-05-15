@@ -1,16 +1,10 @@
-// @ts-check
-
 (function() {
-  const modules = /** @type {Partial<ViewerModules> & { render: ViewerRenderModule }} */ (
+  const modules =  (
     window.GspViewerModules || (window.GspViewerModules = {})
   );
 
-  /**
-   * @param {Point} start
-   * @param {Point} mid
-   * @param {Point} end
-   */
-  function arcGeometryFromPoints(start, mid, end) {
+  
+  function arcGeometryFromPoints(start: Point, mid: Point, end: Point) {
     const determinant = 2 * (
       start.x * (mid.y - end.y)
       + mid.x * (end.y - start.y)
@@ -51,14 +45,8 @@
     };
   }
 
-  /**
-   * @param {Point} start
-   * @param {Point} end
-   * @param {Point} center
-   * @param {boolean} counterclockwise
-   * @param {boolean} yUp
-   */
-  function midpointOnCircleWorld(start, end, center, counterclockwise, yUp) {
+  
+  function midpointOnCircleWorld(start: Point, end: Point, center: Point, counterclockwise: boolean, yUp: boolean) {
     const ySign = yUp ? 1 : -1;
     const startAngle = Math.atan2((start.y - center.y) * ySign, start.x - center.x);
     const endAngle = Math.atan2((end.y - center.y) * ySign, end.x - center.x);
@@ -74,9 +62,9 @@
     };
   }
 
-  /** @param {ViewerEnv} env */
-  modules.render.drawCircles = function drawCircles(env) {
-    env.currentScene().circles.forEach((circle, index) => {
+  
+  modules.render.drawCircles = function drawCircles(env: ViewerEnv) {
+    env.currentScene().circles.forEach((circle, index: number) => {
       const fillVisible = circle.fillColor && circle.fillVisible !== false;
       const strokeVisible = circle.visible !== false;
       if (!fillVisible && !strokeVisible) return;
@@ -101,9 +89,9 @@
     });
   };
 
-  /** @param {ViewerEnv} env */
-  modules.render.drawArcs = function drawArcs(env) {
-    (env.currentScene().arcs || []).forEach((arc, index) => {
+  
+  modules.render.drawArcs = function drawArcs(env: ViewerEnv) {
+    (env.currentScene().arcs || []).forEach((arc, index: number) => {
       if (arc.visible === false || !Array.isArray(arc.points) || arc.points.length !== 3) return;
       let screenPoints;
       if (arc.center) {
@@ -125,9 +113,9 @@
           env.toScreen(endWorld),
         ];
       } else {
-        const worldPoints = arc.points.map((/** @type {PointHandle} */ handle) => env.resolvePoint(handle));
-        if (worldPoints.some((/** @type {Point | null} */ point) => !point)) return;
-        screenPoints = worldPoints.map((/** @type {Point} */ point) => env.toScreen(point));
+        const worldPoints = arc.points.map(( handle) => env.resolvePoint(handle));
+        if (worldPoints.some(( point) => !point)) return;
+        screenPoints = worldPoints.map(( point) => env.toScreen(point));
       }
       const geometry = arcGeometryFromPoints(screenPoints[0], screenPoints[1], screenPoints[2]);
       if (!geometry) return;

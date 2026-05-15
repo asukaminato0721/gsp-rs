@@ -1,20 +1,18 @@
-// @ts-check
-
 (function() {
-  const modules = /** @type {Partial<ViewerModules> & { render: ViewerRenderModule }} */ (
+  const modules =  (
     window.GspViewerModules || (window.GspViewerModules = {})
   );
 
-  /** @param {ViewerEnv} env */
-  modules.render.drawHotspotFlashes = function drawHotspotFlashes(env) {
+  
+  modules.render.drawHotspotFlashes = function drawHotspotFlashes(env: ViewerEnv) {
     const flashes = env.currentHotspotFlashes ? env.currentHotspotFlashes() : [];
     if (!flashes?.length) {
       return;
     }
 
-    const strokePolyline = (/** @type {Point[]} */ points, /** @type {boolean} */ close = false) => {
+    const strokePolyline = ( points,  close= false) => {
       if (!points || points.length < 2) return;
-      const screenPoints = points.map((/** @type {Point} */ point) => env.toScreen(point));
+      const screenPoints = points.map(( point) => env.toScreen(point));
       modules.render.appendPointPath(env, screenPoints, {
         stroke: "rgba(255, 176, 32, 0.95)",
         strokeWidth: 5,
@@ -81,9 +79,9 @@
         case "polygon": {
           const polygon = env.currentScene().polygons[action.polygonIndex];
           if (!polygon || polygon.points.length < 3) break;
-          const points = polygon.points.map((/** @type {PointHandle} */ handle) => env.resolvePoint(handle));
-          if (points.some((/** @type {Point | null} */ point) => !point)) break;
-          strokePolyline(/** @type {Point[]} */ (points), true);
+          const points = polygon.points.map(( handle) => env.resolvePoint(handle));
+          if (points.some(( point) => !point)) break;
+          strokePolyline( (points), true);
           break;
         }
         default:

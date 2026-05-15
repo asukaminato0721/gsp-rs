@@ -1,31 +1,26 @@
-// @ts-check
-
 (function() {
-  const modules = /** @type {Partial<ViewerModules> & { render: ViewerRenderModule }} */ (
+  const modules =  (
     window.GspViewerModules || (window.GspViewerModules = {})
   );
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {SceneIterationTableJson} table
-   */
-  modules.render.iterationTableBounds = function iterationTableBounds(env, table) {
+  
+  modules.render.iterationTableBounds = function iterationTableBounds(env: ViewerEnv, table: RuntimeIterationTableJson) {
     if (table.visible === false || !Array.isArray(table.rows) || table.rows.length === 0) {
       return null;
     }
     const columns = Array.isArray(table.columns) && table.columns.length > 0
       ? table.columns
       : [{ exprLabel: table.exprLabel }];
-    const header = ["n", ...columns.map((/** @type {{ exprLabel: string }} */ column) => column.exprLabel)];
-    const body = table.rows.map((/** @type {{ index: number; value?: number; values?: number[] }} */ row) => {
+    const header = ["n", ...columns.map(( column) => column.exprLabel)];
+    const body = table.rows.map(( row) => {
       const values = Array.isArray(row.values) ? row.values : [row.value ?? Number.NaN];
       return [String(row.index), ...values.map((value) => env.formatNumber(value))];
     });
     const rows = [header, ...body];
-    /** @type {number[]} */
+    
     const colWidths = Array.from({ length: header.length }, () => 0);
-    rows.forEach((/** @type {string[]} */ row) => {
-      row.forEach((/** @type {string} */ cell, /** @type {number} */ index) => {
+    rows.forEach(( row) => {
+      row.forEach(( cell,  index: number) => {
         const width = colWidths[index];
         if (typeof width !== "number") return;
         colWidths[index] = Math.max(width, env.measureText(cell, 18) + 18);
@@ -45,12 +40,8 @@
     };
   };
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {number} screenX
-   * @param {number} screenY
-   */
-  modules.render.findHitIterationTable = function findHitIterationTable(env, screenX, screenY) {
+  
+  modules.render.findHitIterationTable = function findHitIterationTable(env: ViewerEnv, screenX: number, screenY: number) {
     const tables = env.currentScene().iterationTables || [];
     for (let index = tables.length - 1; index >= 0; index -= 1) {
       const table = tables[index];
@@ -69,12 +60,12 @@
     return null;
   };
 
-  /** @param {ViewerEnv} env */
-  modules.render.drawIterationTables = function drawIterationTables(env) {
+  
+  modules.render.drawIterationTables = function drawIterationTables(env: ViewerEnv) {
     const tables = env.currentScene().iterationTables || [];
     if (!tables.length) return;
 
-    tables.forEach((table, index) => {
+    tables.forEach((table, index: number) => {
       if (table.visible === false || !Array.isArray(table.rows) || table.rows.length === 0) return;
       const bounds = modules.render.iterationTableBounds(env, table);
       if (!bounds) return;
@@ -118,7 +109,7 @@
 
       rows.forEach((row, rowIndex) => {
         let x = 0;
-        row.forEach((/** @type {string} */ cell, /** @type {number} */ colIndex) => {
+        row.forEach(( cell,  colIndex) => {
           const cellWidth = colWidths[colIndex];
           if (typeof cellWidth !== "number") return;
           const text = env.createSvgElement("text", {

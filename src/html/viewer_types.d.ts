@@ -1,12 +1,23 @@
 declare const van: typeof import("./vendor/van-1.6.0").default;
 
-type Point = import("./generated/PointJson").PointJson;
+type PointJson = import("./generated/PointJson").PointJson;
+type Point = {
+  x?: number;
+  y?: number;
+  pointIndex?: number;
+  lineIndex?: number;
+  segmentIndex?: number;
+  t?: number;
+  dx?: number;
+  dy?: number;
+};
 type BoundsJson = import("./generated/BoundsJson").BoundsJson;
 type SceneData = import("./generated/SceneData").SceneData;
 type ScenePointJson = import("./generated/ScenePointJson").ScenePointJson;
 type PointConstraintJson = import("./generated/PointConstraintJson").PointConstraintJson;
 type PointBindingJson = import("./generated/PointBindingJson").PointBindingJson;
 type PointTransformJson = import("./generated/PointTransformJson").PointTransformJson;
+type TransformJson = import("./generated/TransformJson").TransformJson;
 type LineJson = import("./generated/LineJson").LineJson;
 type LineBindingJson = import("./generated/LineBindingJson").LineBindingJson;
 type PolygonJson = import("./generated/PolygonJson").PolygonJson;
@@ -33,6 +44,281 @@ type LineConstraintJson = import("./generated/LineConstraintJson").LineConstrain
 type CircularConstraintJson = import("./generated/CircularConstraintJson").CircularConstraintJson;
 type ArcBoundaryKind = import("./generated/ArcBoundaryKindJson").ArcBoundaryKindJson;
 type CoordinateAxisJson = import("./generated/CoordinateAxisJson").CoordinateAxisJson;
+type ShapeBindingJson = import("./generated/ShapeBindingJson").ShapeBindingJson;
+type RichTextExpressionRefJson = import("./generated/RichTextExpressionRefJson").RichTextExpressionRefJson;
+type DomainJson = import("./generated/DomainJson").DomainJson;
+type DebugSourceJson = import("./generated/DebugSourceJson").DebugSourceJson;
+
+type RuntimeJsonPrimitive = string | number | boolean | null;
+type RuntimeJsonValue =
+  | RuntimeJsonPrimitive
+  | RuntimeJsonValue[]
+  | { [key: string]: RuntimeJsonValue };
+type HostLineBinding = {
+  lineStartIndex?: number | null;
+  lineEndIndex?: number | null;
+  lineIndex?: number | null;
+};
+type VisibilityTarget =
+  | RuntimeButtonJson
+  | RuntimeLabelJson
+  | ImageJson
+  | RuntimeScenePointJson
+  | RuntimeLineJson
+  | RuntimeCircleJson
+  | RuntimePolygonJson;
+type RuntimePayload = Object & {
+  [Symbol.iterator]?: () => IterableIterator<RuntimePayload>;
+  addEventListener?: Element["addEventListener"];
+  classList?: Element["classList"];
+  dataset?: DOMStringMap;
+  preventDefault?: Event["preventDefault"];
+  setAttribute?: Element["setAttribute"];
+  stopPropagation?: Event["stopPropagation"];
+  target?: EventTarget | null;
+  active?: boolean;
+  absoluteValue?: boolean;
+  centeredOnAnchor?: boolean;
+  clampToUnit?: boolean;
+  complement?: boolean;
+  counterclockwise?: boolean;
+  dashed?: boolean;
+  derivative?: boolean;
+  draggable?: boolean;
+  fillVisible?: boolean;
+  graphMode?: boolean;
+  ray?: boolean;
+  reversed?: boolean;
+  screenSpace?: boolean;
+  signed?: boolean;
+  visible?: boolean;
+  anchorDx?: number;
+  anchorDy?: number;
+  anchorYDy?: number | null;
+  angleDegrees?: number;
+  angleDegreesScale?: number;
+  alpha?: number;
+  brightnessPointIndex?: number;
+  bottom?: number;
+  button?: number;
+  centerIndex?: number;
+  circleIndex?: number;
+  clientX?: number;
+  clientY?: number;
+  centerX?: number;
+  centerY?: number;
+  columnIndex?: number;
+  decimals?: number;
+  defaultDepth?: number;
+  deltaY?: number;
+  depth?: number;
+  distanceRawScale?: number;
+  dx?: number;
+  dy?: number;
+  edgeCount?: number;
+  edgeIndex?: number;
+  end?: number;
+  endIndex?: number;
+  factor?: number;
+  functionKey?: number;
+  greenPointIndex?: number;
+  groupOrdinal?: number;
+  height?: number;
+  hostKey?: number;
+  huePointIndex?: number;
+  index?: number;
+  labelIndex?: number;
+  kind?: string;
+  length?: number;
+  left?: number | LineConstraintJson | CircularConstraintJson | RuntimePayload;
+  lineEndIndex?: number | null;
+  lineIndex?: number | null;
+  lineStartIndex?: number | null;
+  markerClass?: number;
+  midIndex?: number | null;
+  originIndex?: number | null;
+  parameterEndIndex?: number | null;
+  parameterStartIndex?: number | null;
+  parameterValue?: number;
+  pointIndex?: number;
+  pointerId?: number;
+  polygonIndex?: number;
+  radius?: number;
+  radiusIndex?: number;
+  redPointIndex?: number;
+  leftCenterIndex?: number;
+  leftRadiusIndex?: number;
+  rawPerUnit?: number;
+  rawValue?: number;
+  reflectionAxisLineIndex?: number | null;
+  reflectionDirectrixLineIndex?: number | null;
+  reflectionFocusIndex?: number | null;
+  reflectionSourceIndex?: number | null;
+  right?: number | LineConstraintJson | CircularConstraintJson | RuntimePayload;
+  rightCenterIndex?: number;
+  rightRadiusIndex?: number;
+  sampleCount?: number;
+  sampleHint?: number | null;
+  saturationPointIndex?: number;
+  segmentIndex?: number;
+  slot?: number | string;
+  sourceIndex?: number;
+  spanX?: number;
+  spanY?: number;
+  start?: number;
+  startIndex?: number;
+  stepIndex?: number;
+  t?: number;
+  top?: number;
+  traceEndpointIndex?: number;
+  traceLineIndex?: number;
+  throughIndex?: number;
+  unitX?: number;
+  unitY?: number;
+  value?: number | string | boolean;
+  valueScale?: number;
+  variant?: number;
+  vectorEndIndex?: number;
+  vectorStartIndex?: number;
+  vertexIndex?: number;
+  ccwMid?: number;
+  ccwSpan?: number;
+  endAngle?: number;
+  startAngle?: number;
+  width?: number;
+  x?: number;
+  xMax?: number;
+  xMin?: number;
+  y?: number;
+  yMax?: number;
+  yMin?: number;
+  action?: RuntimePayload | LabelHotspotActionJson | ButtonActionJson | null;
+  angleExpr?: FunctionExprJson;
+  axis?: RuntimePayload | string;
+  binding?: RuntimePayload | PointBindingJson | LineBindingJson | LabelBindingJson | ShapeBindingJson | null;
+  bottomRight?: RuntimePayload | Point;
+  bounds?: RuntimePayload;
+  center?: RuntimePayload | Point | null;
+  circle?: RuntimePayload;
+  color?: [number, number, number, number] | number[];
+  constraint?: RuntimePayload | PointConstraintJson | null;
+  debug?: RuntimePayload | DebugSourceJson | null;
+  domain?: RuntimePayload | DomainJson | null;
+  expr?: FunctionExprJson | FunctionAstJson | null;
+  fillColor?: [number, number, number, number] | number[] | null;
+  fillColorBinding?: RuntimePayload | null;
+  leftCenter?: RuntimePayload | Point;
+  line?: RuntimePayload | LineConstraintJson | number;
+  outlineColor?: [number, number, number, number] | number[];
+  plotMode?: RuntimePayload | string;
+  projected?: RuntimePayload | Point;
+  radiusPoint?: RuntimePayload | Point;
+  rightCenter?: RuntimePayload | Point;
+  source?: RuntimePayload;
+  sourceScene?: SceneData | ViewerSceneData;
+  depthExpr?: RuntimePayload | null;
+  targetTriangle?: RuntimePayload[];
+  topLeft?: RuntimePayload | Point;
+  transform?: RuntimePayload;
+  xExpr?: FunctionExprJson | FunctionAstJson;
+  yExpr?: FunctionExprJson | FunctionAstJson;
+  anchor?: RuntimePayload | Point;
+  arcs?: RuntimePayload[];
+  buttons?: RuntimePayload[];
+  children?: RuntimePayload[] | HTMLCollection;
+  circleIterations?: RuntimePayload[];
+  circles?: RuntimePayload[];
+  columns?: RuntimePayload[];
+  constrainedPointIndices?: number[];
+  dependsOn?: string[];
+  directDeps?: string[];
+  exprNames?: string[];
+  functions?: RuntimePayload[] | FunctionJson[];
+  hotspots?: RuntimePayload[];
+  images?: RuntimePayload[];
+  iterationTables?: RuntimePayload[];
+  labelIterations?: RuntimePayload[];
+  labels?: RuntimePayload[] | NodeListOf<HTMLLabelElement>;
+  lineIterations?: RuntimePayload[];
+  lines?: RuntimePayload[];
+  names?: string[];
+  pages?: SceneData[] | RuntimePayload[];
+  parameters?: RuntimePayload[];
+  pointIndices?: number[];
+  pointIterations?: RuntimePayload[];
+  points?: RuntimePayload[];
+  polygonIterations?: RuntimePayload[];
+  polygons?: RuntimePayload[];
+  refs?: RuntimePayload[] | RichTextExpressionRefJson[];
+  replacementRanges?: RuntimePayload[];
+  recordNames?: string[];
+  recordTypes?: number[];
+  rows?: RuntimePayload[];
+  sourceTriangleIndices?: number[];
+  stateExprs?: FunctionExprJson[];
+  stateParameterNames?: string[];
+  stepExpr?: RuntimePayload;
+  targetSegments?: RuntimePayload[][];
+  targetParameterName?: string;
+  values?: number[] | RuntimePayload[]["values"] | Array<string | number | boolean>["values"];
+  vertexIndices?: number[];
+  axisEndIndex?: number;
+  axisName?: string;
+  category?: string;
+  code?: string;
+  depthParameterName?: string | null;
+  exprLabel?: string;
+  id?: string;
+  label?: string | null;
+  name?: string;
+  numerator?: string;
+  denominator?: string;
+  objectName?: string;
+  parameterName?: string;
+  pointName?: string;
+  polygonName?: string;
+  resultName?: string | null;
+  richMarkup?: string | null;
+  segmentName?: string;
+  src?: string;
+  templateRichMarkup?: string | null;
+  templateText?: string;
+  text?: string;
+  type?: string;
+  valueSuffix?: string;
+  variableName?: string;
+  xName?: string;
+  yName?: string;
+  key?: string | number;
+  scene?: RuntimePayload;
+  origin?: RuntimePayload;
+  recipe?: RuntimePayload;
+  shiftKey?: boolean;
+  view?: RuntimePayload;
+  currentDynamics?: () => RuntimeDynamicsState;
+  currentScene?: () => ViewerSceneData;
+  dynamics?: RuntimeDynamicsState;
+  every?: RuntimePayload[]["every"];
+  filter?: RuntimePayload[]["filter"];
+  find?: RuntimePayload[]["find"];
+  flatMap?: RuntimePayload[]["flatMap"];
+  forEach?: RuntimePayload[]["forEach"] | Set<string>["forEach"];
+  get?: Map<string, RuntimePayload>["get"];
+  has?: Set<string>["has"];
+  join?: RuntimePayload[]["join"];
+  map?: RuntimePayload[]["map"];
+  nodeMap?: Map<string, RuntimePayload>;
+  push?: RuntimePayload[]["push"];
+  reduce?: RuntimePayload[]["reduce"];
+  resolvePoint?: (handle: PointHandle) => Point | null;
+  resolveScenePoint?: (index: number) => Point | null;
+  reverseEdges?: Map<string, string[]>;
+  set?: Map<string, RuntimePayload>["set"];
+  some?: RuntimePayload[]["some"];
+  sort?: RuntimePayload[]["sort"];
+  updateDynamics?: (updater: (draft: RuntimeDynamicsState) => void) => void;
+  updateScene?: (updater: (draft: ViewerSceneData) => void, mode?: string) => void;
+};
 
 type RuntimePointRef =
   | Point
@@ -40,9 +326,12 @@ type RuntimePointRef =
       pointIndex: number;
       dx?: number;
       dy?: number;
+      x?: number;
+      y?: number;
     }
   | {
       lineIndex: number;
+      pointIndex?: number;
       segmentIndex?: number;
       t?: number;
       dx?: number;
@@ -53,16 +342,213 @@ type RuntimePointRef =
 
 type PointHandle = RuntimePointRef;
 
-type RuntimePointConstraintJson = any;
-type RuntimeScenePointJson = any;
-type RuntimeLineJson = any;
-type RuntimePolygonJson = any;
-type RuntimeCircleJson = any;
-type RuntimeArcJson = any;
-type RuntimeLabelHotspotJson = Omit<LabelHotspotJson, "action"> & {
-  action: LabelHotspotActionJson | null;
+type RuntimePointBindingJson = (PointBindingJson | {
+  kind: "rotate";
+  sourceIndex: number;
+  centerIndex: number;
+  angleDegrees: number;
+}) & {
+  angleExpr?: FunctionExprJson;
+  angleDegreesScale?: number;
+  absoluteValue?: boolean;
+  axis?: CoordinateAxisJson;
+  axisEndIndex?: number;
+  clampToUnit?: boolean;
+  centerIndex?: number;
+  distanceRawScale?: number;
+  distanceExpr?: FunctionExprJson;
+  expr?: FunctionExprJson;
+  name?: string;
+  originIndex?: number;
+  parameterEndIndex?: number | null;
+  parameterName?: string;
+  parameterStartIndex?: number | null;
+  ratioDenominatorIndex?: number;
+  ratioNumeratorIndex?: number;
+  ratioOriginIndex?: number;
+  signed?: boolean;
+  sourceIndex?: number;
+  startIndex?: number;
+  midIndex?: number | null;
+  endIndex?: number;
+  transform?: PointTransformJson;
+  xExpr?: FunctionExprJson;
+  xName?: string;
+  yExpr?: FunctionExprJson;
+  yName?: string;
 };
-type RuntimeLabelJson = any;
+
+type RuntimeLabelBindingJson = LabelBindingJson & {
+  depth?: number;
+  depthParameterName?: string | null;
+  expr?: FunctionExprJson;
+  exprLabel?: string;
+  name?: string;
+  parameterName?: string;
+  pointIndex?: number;
+  pointName?: string;
+  resultName?: string | null;
+  anchorDx?: number;
+  anchorDy?: number;
+  anchorYDy?: number | null;
+  anchorYPointIndex?: number | null;
+  axis?: CoordinateAxisJson;
+  circleName?: string;
+  clampToUnit?: boolean;
+  decimals?: number;
+  denominatorIndex?: number;
+  endIndex?: number;
+  leftIndex?: number;
+  numeratorIndex?: number;
+  objectName?: string;
+  originIndex?: number | null;
+  pointIndices?: number[];
+  polygonName?: string;
+  refs?: RichTextExpressionRefJson[];
+  rightIndex?: number;
+  segmentName?: string;
+  startIndex?: number;
+  templateRichMarkup?: string | null;
+  templateText?: string;
+  valueScale?: number;
+  valueSuffix?: string;
+  vertexIndex?: number;
+  xUnitIndex?: number | null;
+  yUnitIndex?: number | null;
+};
+
+type RuntimeLineBindingJson = LineBindingJson & {
+  boundaryKind?: ArcBoundaryKind;
+  complement?: boolean;
+  centerIndex?: number | null;
+  depth?: number;
+  depthParameterName?: string | null;
+  driverIndex?: number;
+  endIndex?: number;
+  hostKey?: number;
+  lineEndIndex?: number | null;
+  lineIndex?: number | null;
+  lineStartIndex?: number | null;
+  markerClass?: number;
+  midIndex?: number | null;
+  parameterName?: string;
+  pointIndex?: number;
+  ray?: boolean;
+  reflectionAxisLineIndex?: number | null;
+  reflectionDirectrixLineIndex?: number | null;
+  reflectionFocusIndex?: number | null;
+  reflectionSourceIndex?: number | null;
+  reversed?: boolean;
+  sampleCount?: number;
+  sourceIndex?: number;
+  startIndex?: number;
+  stepIndex?: number;
+  throughIndex?: number;
+  traceEndpointIndex?: number;
+  traceLineIndex?: number;
+  transform?: TransformJson;
+  useMidpoints?: boolean;
+  vertexIndex?: number;
+  xExpr?: FunctionExprJson;
+  xMax?: number;
+  xMin?: number;
+  yExpr?: FunctionExprJson;
+};
+
+type RuntimeShapeBindingJson = ShapeBindingJson & {
+  boundaryKind?: ArcBoundaryKind;
+  complement?: boolean;
+  centerIndex?: number | null;
+  endIndex?: number;
+  hostKey?: number;
+  lineEndIndex?: number;
+  lineStartIndex?: number;
+  midIndex?: number | null;
+  parameterName?: string;
+  radiusIndex?: number;
+  rawPerUnit?: number;
+  reversed?: boolean;
+  startIndex?: number;
+  vertexIndices?: number[];
+  sourceIndex?: number;
+  transform?: TransformJson;
+};
+
+type RuntimePolylineConstraintJson = Omit<
+  Extract<PointConstraintJson, { kind: "polyline" }>,
+  "points"
+> & {
+  points: PointHandle[];
+};
+type RuntimePointConstraintJson = (
+  | Exclude<PointConstraintJson, { kind: "polyline" }>
+  | RuntimePolylineConstraintJson
+) & {
+  t?: number;
+  points?: PointHandle[];
+  line?: LineConstraintJson;
+  circle?: CircularConstraintJson;
+  left?: LineConstraintJson | CircularConstraintJson;
+  right?: LineConstraintJson | CircularConstraintJson;
+  vertexIndices?: number[];
+  edgeIndex?: number;
+  unitX?: number;
+  unitY?: number;
+  functionKey?: number;
+  pointIndex?: number;
+  sampleCount?: number;
+  startIndex?: number;
+  endIndex?: number;
+  midIndex?: number | null;
+  centerIndex?: number | null;
+  boundaryKind?: ArcBoundaryKind;
+  reversed?: boolean;
+  complement?: boolean;
+  xMin?: number;
+  xMax?: number;
+};
+type RuntimeScenePointJson = Omit<ScenePointJson, "constraint" | "binding" | "debug"> & {
+  constraint?: RuntimePointConstraintJson | null;
+  binding?: RuntimePointBindingJson | null;
+  debug?: DebugSourceJson | RuntimePayload | null;
+};
+type RuntimeLineJson = Partial<Omit<LineJson, "points" | "binding" | "debug" | "color">> & {
+  points: PointHandle[];
+  color?: [number, number, number, number] | number[];
+  binding?: RuntimeLineBindingJson | null;
+  segments?: Point[][];
+  debug?: DebugSourceJson | RuntimePayload | null;
+};
+type RuntimePolygonJson = Partial<Omit<PolygonJson, "points" | "binding" | "debug" | "color" | "outlineColor">> & {
+  points: PointHandle[];
+  color?: [number, number, number, number] | number[];
+  outlineColor?: [number, number, number, number] | number[];
+  binding?: RuntimeShapeBindingJson | null;
+  debug?: DebugSourceJson | RuntimePayload | null;
+};
+type RuntimeCircleJson = Partial<Omit<CircleJson, "center" | "radiusPoint" | "binding" | "debug" | "color" | "fillColor">> & {
+  center?: PointHandle;
+  radiusPoint?: PointHandle;
+  color?: [number, number, number, number] | number[];
+  fillColor?: [number, number, number, number] | number[] | null;
+  binding?: RuntimeShapeBindingJson | null;
+  debug?: DebugSourceJson | RuntimePayload | null;
+};
+type RuntimeArcJson = Partial<Omit<ArcJson, "points" | "center" | "debug">> & {
+  points: PointHandle[];
+  center?: PointHandle | null;
+  debug?: DebugSourceJson | RuntimePayload | null;
+};
+type RuntimeLabelHotspotJson = Omit<LabelHotspotJson, "action"> & {
+  action: LabelHotspotActionJson;
+};
+type RuntimeLabelJson = Partial<Omit<LabelJson, "anchor" | "binding" | "hotspots" | "debug">> & {
+  anchor?: PointHandle;
+  binding?: RuntimeLabelBindingJson | null;
+  centeredOnAnchor?: boolean;
+  hotspots?: RuntimeLabelHotspotJson[];
+  debug?: DebugSourceJson | RuntimePayload | null;
+};
 type TextLabel = RuntimeLabelJson;
 
 type RuntimeIterationRow = {
@@ -71,13 +557,13 @@ type RuntimeIterationRow = {
   values: number[];
 };
 
-type RuntimeIterationTableJson = IterationTableJson & {
-  rows: RuntimeIterationRow[];
+type RuntimeIterationTableJson = Partial<IterationTableJson> & {
+  rows?: RuntimeIterationRow[];
 };
-type RuntimeButtonJson = ButtonJson & {
-  baseText: string;
-  visible: boolean;
-  active: boolean;
+type RuntimeButtonJson = Partial<ButtonJson> & {
+  baseText?: string;
+  visible?: boolean;
+  active?: boolean;
 };
 
 type DebugTarget = {
@@ -250,7 +736,7 @@ type ViewerEnv = {
   toScreen: (point: Point) => Point & { scale: number };
   toWorld: (x: number, y: number) => Point & { scale: number };
   getViewBounds: () => BoundsJson & { spanX: number; spanY: number };
-  rgba: (color: [number, number, number, number]) => string;
+  rgba: (color: [number, number, number, number] | number[] | null | undefined) => string;
   updateScene: (mutator: (draft: ViewerSceneData) => void, mode?: "graph" | "none") => void;
   updateDynamics: (mutator: (draft: RuntimeDynamicsState) => void) => void;
   updateViewState: (mutator: (draft: ViewState) => void) => void;
@@ -280,18 +766,18 @@ type ViewerEnv = {
 };
 
 type ViewerSceneModule = {
-  registerPointConstraintResolver: (
-    kind: string,
+  registerPointConstraintResolver: <K extends RuntimePointConstraintJson["kind"]>(
+    kind: K,
     resolver: (
       env: ViewerSceneResolverEnv | null,
-      constraint: RuntimePointConstraintJson,
+      constraint: Extract<RuntimePointConstraintJson, { kind: K }>,
       resolveFn: (index: number) => Point | null,
       reference?: RuntimeScenePointJson | Point | null,
     ) => Point | null,
   ) => void;
-  registerLineBindingResolver: (
-    kind: string,
-    resolver: (env: ViewerEnv, line: RuntimeLineJson) => Point[] | null,
+  registerLineBindingResolver: <K extends LineBindingJson["kind"]>(
+    kind: K,
+    resolver: (env: ViewerEnv, line: RuntimeLineJson & { binding: Extract<LineBindingJson, { kind: K }> }) => Point[] | null,
   ) => void;
   resolveConstrainedPoint: (
     env: ViewerSceneResolverEnv | null,
@@ -337,11 +823,11 @@ type ViewerSceneModule = {
   ) => { t: number; projected: Point; distanceSquared: number } | null;
   sampleArcBoundaryPoints: (
     env: ViewerEnv,
-    binding: Extract<LineBindingJson, { kind: "arc-boundary" }>,
+    binding: RuntimeLineBindingJson | RuntimeShapeBindingJson,
   ) => Point[] | null;
   sampleCoordinateTracePoints: (
     env: ViewerEnv | null,
-    binding: Extract<LineBindingJson, { kind: "coordinate-trace" }> | Extract<RuntimePointConstraintJson, { kind: "line-trace-intersection" }>,
+    binding: RuntimeLineBindingJson | RuntimePointConstraintJson,
   ) => Point[] | null;
   lineLineIntersection: (
     leftStart: Point,
@@ -381,7 +867,7 @@ type ViewerSceneModule = {
     start: Point,
     mid: Point,
     end: Point,
-  ) => Record<string, any> | null;
+  ) => Record<string, unknown> | null;
   _circleArcControlPoints?: (
     center: Point,
     start: Point,

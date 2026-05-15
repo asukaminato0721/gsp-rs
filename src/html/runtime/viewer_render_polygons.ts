@@ -1,23 +1,15 @@
-// @ts-check
-
 (function() {
-  const modules = /** @type {Partial<ViewerModules> & { render: ViewerRenderModule }} */ (
+  const modules =  (
     window.GspViewerModules || (window.GspViewerModules = {})
   );
 
-  /**
-   * @param {PointHandle} handle
-   * @returns {handle is Extract<PointHandle, { pointIndex: number }>}
-   */
-  function hasPointIndexHandle(handle) {
+  
+  function hasPointIndexHandle(handle: PointHandle): handle is Extract<PointHandle, { pointIndex: number }> {
     return !!handle && typeof handle === "object" && "pointIndex" in handle && typeof handle.pointIndex === "number";
   }
 
-  /**
-   * @param {Point} point
-   * @param {Point[]} polygon
-   */
-  function pointInPolygon(point, polygon) {
+  
+  function pointInPolygon(point: Point, polygon: Point[]) {
     let inside = false;
     for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
       const current = polygon[i];
@@ -34,32 +26,26 @@
     return inside;
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {ScenePolygonJson} polygon
-   */
-  function isFreePolygon(env, polygon) {
+  
+  function isFreePolygon(env: ViewerEnv, polygon: ScenePolygonJson) {
     if (polygon.binding) return false;
     if (polygon.points.length < 3) return false;
-    return polygon.points.every((/** @type {PointHandle} */ handle) => {
+    return polygon.points.every(( handle) => {
       if (!hasPointIndexHandle(handle)) return false;
       const point = env.currentScene().points[handle.pointIndex];
       return point && !point.constraint && !point.binding;
     });
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {number} screenX
-   * @param {number} screenY
-   */
-  modules.render.findHitPolygon = function findHitPolygon(env, screenX, screenY) {
+  
+  modules.render.findHitPolygon = function findHitPolygon(env: ViewerEnv, screenX: number, screenY: number) {
     for (let index = env.currentScene().polygons.length - 1; index >= 0; index -= 1) {
       const polygon = env.currentScene().polygons[index];
       if (polygon.visible === false || !isFreePolygon(env, polygon)) continue;
-      const worldPoints = polygon.points.map((/** @type {PointHandle} */ handle) => env.resolvePoint(handle));
-      if (worldPoints.some((/** @type {Point | null} */ point) => !point)) continue;
-      const screenPoints = worldPoints.map((/** @type {Point} */ point) => env.toScreen(point));
+      const worldPoints = polygon.points.map(( handle) => env.resolvePoint(handle));
+      if (worldPoints.some(( point) => !point)) continue;
+      const resolvedPoints = worldPoints as Point[];
+      const screenPoints = resolvedPoints.map(( point) => env.toScreen(point));
       if (screenPoints.length < 3) continue;
       if (pointInPolygon({ x: screenX, y: screenY }, screenPoints)) {
         return index;
@@ -68,14 +54,15 @@
     return null;
   };
 
-  /** @param {ViewerEnv} env */
-  modules.render.drawPolygons = function drawPolygons(env) {
-    env.currentScene().polygons.forEach((polygon, index) => {
+  
+  modules.render.drawPolygons = function drawPolygons(env: ViewerEnv) {
+    env.currentScene().polygons.forEach((polygon, index: number) => {
       if (polygon.visible === false) return;
       if (polygon.points.length < 3) return;
-      const worldPoints = polygon.points.map((/** @type {PointHandle} */ handle) => env.resolvePoint(handle));
-      if (worldPoints.some((/** @type {Point | null} */ point) => !point)) return;
-      const screenPoints = worldPoints.map((/** @type {Point} */ point) => env.toScreen(point));
+      const worldPoints = polygon.points.map(( handle) => env.resolvePoint(handle));
+      if (worldPoints.some(( point) => !point)) return;
+      const resolvedPoints = worldPoints as Point[];
+      const screenPoints = resolvedPoints.map(( point) => env.toScreen(point));
       modules.render.appendPointPath(env, screenPoints, {
         stroke: env.rgba(polygon.outlineColor),
         strokeWidth: 1.5,

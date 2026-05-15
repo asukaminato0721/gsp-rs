@@ -1,5 +1,3 @@
-// @ts-check
-
 (() => {
   const van = window.van;
   const { label, input } = van.tags;
@@ -9,32 +7,26 @@
     overlay: overlayModule,
     drag: dragModule,
     dynamics: dynamicsModule,
-  } = /** @type {ViewerModules} */ (window.GspViewerModules);
+  } = window.GspViewerModules as ViewerModules;
   const SVG_NS = "http://www.w3.org/2000/svg";
   const XLINK_NS = "http://www.w3.org/1999/xlink";
-  /** @typedef {{ index: number; title: string; scene: SceneData }} DocumentScenePage */
-  /** @typedef {{ kind: "gsp-document"; pages: DocumentScenePage[] }} DocumentSceneData */
+  type DocumentScenePage = { index: number; title: string; scene: SceneData };
+  type DocumentSceneData = { kind: "gsp-document"; pages: DocumentScenePage[] };
   const sceneDataElement = document.getElementById("scene-data");
   if (!sceneDataElement?.textContent) {
     throw new Error("missing scene-data payload");
   }
-  const rawSceneData = JSON.parse(sceneDataElement.textContent);
-  /**
-   * @param {unknown} data
-   * @returns {data is DocumentSceneData}
-   */
-  function isDocumentSceneData(data) {
+  const rawSceneData: unknown = JSON.parse(sceneDataElement.textContent);
+  
+  function isDocumentSceneData(data: unknown): data is DocumentSceneData {
     return !!data
       && typeof data === "object"
-      && /** @type {{ kind?: unknown; pages?: unknown }} */ (data).kind === "gsp-document"
-      && Array.isArray(/** @type {{ pages?: unknown }} */ (data).pages);
+      && (data as { kind?: string }).kind === "gsp-document"
+      && Array.isArray((data as { pages?: unknown }).pages);
   }
 
-  /**
-   * @param {DocumentScenePage[]} pages
-   * @returns {number}
-   */
-  function activeDocumentPageIndex(pages) {
+  
+  function activeDocumentPageIndex(pages: DocumentScenePage[]) {
     const match = /^#page-(\d+)$/.exec(window.location.hash);
     const index = match ? Number(match[1]) - 1 : 0;
     return Math.min(Math.max(Number.isFinite(index) ? index : 0, 0), pages.length - 1);
@@ -42,52 +34,52 @@
 
   const documentPages = isDocumentSceneData(rawSceneData) ? rawSceneData.pages : null;
   const activePageIndex = documentPages ? activeDocumentPageIndex(documentPages) : 0;
-  /** @type {SceneData} */
-  const sourceScene = documentPages ? documentPages[activePageIndex].scene : rawSceneData;
-  /** @type {SVGSVGElement} */
-  const canvas = /** @type {SVGSVGElement} */ (/** @type {unknown} */ (document.getElementById("view")));
+  
+  const sourceScene: SceneData = documentPages ? documentPages[activePageIndex].scene : rawSceneData as SceneData;
+  
+  const canvas = document.getElementById("view") as unknown as SVGSVGElement;
   document.documentElement.style.setProperty("--scene-width", String(sourceScene.width));
   document.documentElement.style.setProperty("--scene-height", String(sourceScene.height));
   canvas.setAttribute("viewBox", `0 0 ${sourceScene.width} ${sourceScene.height}`);
   canvas.setAttribute("width", String(sourceScene.width));
   canvas.setAttribute("height", String(sourceScene.height));
-  /** @type {SVGGElement} */
-  const gridLayer = /** @type {SVGGElement} */ (/** @type {unknown} */ (document.getElementById("grid-layer")));
-  /** @type {SVGGElement} */
-  const sceneLayer = /** @type {SVGGElement} */ (/** @type {unknown} */ (document.getElementById("scene-layer")));
-  /** @type {SVGTextElement} */
-  const measureTextNode = /** @type {SVGTextElement} */ (/** @type {unknown} */ (document.getElementById("measure-text")));
-  /** @type {HTMLElement} */
-  const viewerShell = /** @type {HTMLElement} */ (document.getElementById("viewer-shell"));
-  /** @type {HTMLButtonElement} */
-  const resetButton = /** @type {HTMLButtonElement} */ (document.getElementById("reset-view"));
-  /** @type {HTMLButtonElement} */
-  const fullscreenToggleButton = /** @type {HTMLButtonElement} */ (document.getElementById("toggle-fullscreen"));
-  /** @type {HTMLButtonElement} */
-  const debugToggleButton = /** @type {HTMLButtonElement} */ (document.getElementById("toggle-debug"));
-  /** @type {HTMLElement} */
-  const parameterControls = /** @type {HTMLElement} */ (document.getElementById("parameter-controls"));
-  /** @type {HTMLElement} */
-  const buttonOverlays = /** @type {HTMLElement} */ (document.getElementById("button-overlays"));
-  /** @type {HTMLElement} */
-  const debugPanel = /** @type {HTMLElement} */ (document.getElementById("debug-panel"));
-  /** @type {HTMLElement} */
-  const debugOutput = /** @type {HTMLElement} */ (document.getElementById("debug-output"));
-  /** @type {HTMLButtonElement} */
-  const debugDumpConsoleButton = /** @type {HTMLButtonElement} */ (document.getElementById("debug-dump-console"));
-  /** @type {HTMLButtonElement[]} */
-  const debugTabButtons = /** @type {HTMLButtonElement[]} */ (Array.from(
-    document.querySelectorAll("[data-debug-tab]"),
-  ));
-  /** @type {HTMLButtonElement[]} */
-  const pageTabButtons = /** @type {HTMLButtonElement[]} */ (Array.from(
-    document.querySelectorAll("[data-page-index]"),
-  ));
-  /** @type {HTMLElement} */
-  const coordReadout = /** @type {HTMLElement} */ (document.getElementById("coord-readout"));
-  /** @type {HTMLElement} */
-  const zoomReadout = /** @type {HTMLElement} */ (document.getElementById("zoom-readout"));
-  /** @typedef {{ category: string; index: number; hotspotIndex?: number | null; label?: string | null }} DebugTarget */
+  
+  const gridLayer = document.getElementById("grid-layer") as unknown as SVGGElement;
+  
+  const sceneLayer = document.getElementById("scene-layer") as unknown as SVGGElement;
+  
+  const measureTextNode = document.getElementById("measure-text") as unknown as SVGTextElement;
+  
+  const viewerShell = document.getElementById("viewer-shell");
+  
+  const resetButton = document.getElementById("reset-view");
+  
+  const fullscreenToggleButton = document.getElementById("toggle-fullscreen");
+  
+  const debugToggleButton = document.getElementById("toggle-debug");
+  
+  const parameterControls = document.getElementById("parameter-controls");
+  
+  const buttonOverlays = document.getElementById("button-overlays");
+  
+  const debugPanel = document.getElementById("debug-panel");
+  
+  const debugOutput = document.getElementById("debug-output");
+  
+  const debugDumpConsoleButton = document.getElementById("debug-dump-console");
+  
+  const debugTabButtons = Array.from(
+    document.querySelectorAll<HTMLButtonElement>("[data-debug-tab]"),
+  );
+  
+  const pageTabButtons = Array.from(
+    document.querySelectorAll<HTMLButtonElement>("[data-page-index]"),
+  );
+  
+  const coordReadout = document.getElementById("coord-readout");
+  
+  const zoomReadout = document.getElementById("zoom-readout");
+  type DebugTarget = { category: string; index: number; hotspotIndex?: number | null; label?: string | null };
   const margin = 32;
   const trigMode = !!sourceScene.piMode;
   const savedViewportMode = !!sourceScene.savedViewport;
@@ -111,18 +103,18 @@
   const pointMatchTolerance = 1e-3;
   const autoOpenDebug = new URLSearchParams(window.location.search).get("debug") === "1";
   const defaultZoom = sourceScene.graphMode ? 1 : 0.9;
-  /** @type {{ val: (Point & { scale?: number }) | null }} */
+  
   const pointerWorldState = van.state(null);
-  /** @type {{ val: "selection" | "scene" | "json" }} */
+  
   const debugViewState = van?.state ? van.state("selection") : { val: "selection" };
-  /** @type {{ val: DebugTarget | null }} */
+  
   const selectedDebugTargetState = van?.state ? van.state(null) : { val: null };
-  /** @type {Map<string, { element: Element, target: DebugTarget }>} */
+  
   const debugElementRegistry = new Map();
   let nextDebugElementId = 1;
 
   function syncPageTabs() {
-    pageTabButtons.forEach((button) => {
+    pageTabButtons.forEach((button: HTMLButtonElement) => {
       const index = Number(button.dataset.pageIndex);
       const selected = index === activePageIndex;
       button.setAttribute("aria-selected", selected ? "true" : "false");
@@ -130,8 +122,8 @@
     });
   }
 
-  /** @param {number} index */
-  function activateDocumentPage(index) {
+  
+  function activateDocumentPage(index: number) {
     if (!documentPages || index === activePageIndex || index < 0 || index >= documentPages.length) {
       return;
     }
@@ -139,7 +131,7 @@
     window.location.reload();
   }
 
-  pageTabButtons.forEach((button) => {
+  pageTabButtons.forEach((button: HTMLButtonElement) => {
     button.addEventListener("click", () => activateDocumentPage(Number(button.dataset.pageIndex)));
   });
   window.addEventListener("hashchange", () => {
@@ -159,28 +151,20 @@
     zoom: defaultZoom,
   } };
 
-  /** @param {ViewState} next */
-  function setViewState(next) {
+  
+  function setViewState(next: ViewState) {
     viewState.val = next;
   }
 
-  /** @param {(draft: ViewState) => void} mutator */
-  function updateViewState(mutator) {
+  
+  function updateViewState(mutator: (draft: ViewState) => void) {
     const next = { ...viewState.val };
     mutator(next);
     setViewState(next);
   }
 
-  /**
-   * Resolve screen coordinates against an arbitrary view snapshot so zoom/pan
-   * updates can be committed once without intermediate redraws.
-   *
-   * @param {ViewState} viewSnapshot
-   * @param {number} screenX
-   * @param {number} screenY
-   * @returns {Point & { scale: number }}
-   */
-  function toWorldForView(viewSnapshot, screenX, screenY) {
+  
+  function toWorldForView(viewSnapshot: ViewState, screenX: number, screenY: number) {
     const spanX = baseSpanX / viewSnapshot.zoom;
     const spanY = baseSpanY / viewSnapshot.zoom;
     const minX = viewSnapshot.centerX - spanX / 2;
@@ -195,22 +179,22 @@
     };
   }
 
-  /** @type {ViewState} */
-  const view = new Proxy(/** @type {ViewState} */ ({}), {
-    get: (_, key) => viewState.val[/** @type {keyof ViewState} */ (key)],
-    set: (_, key, value) => {
-      updateViewState((draft) => {
-        draft[/** @type {keyof ViewState} */ (key)] = /** @type {ViewState[keyof ViewState]} */ (value);
+  
+  const view: ViewState = new Proxy({} as ViewState, {
+    get: (_target: ViewState, key: string | symbol) => viewState.val[key as keyof ViewState],
+    set: (_target: ViewState, key: string | symbol, value: number) => {
+      updateViewState((draft: ViewState) => {
+        draft[key as keyof ViewState] = value;
       });
       return true;
     },
   });
-  /** @type {{ val: DragState }} */
+  
   const dragState = van?.state ? van.state(null) : { val: null };
-  /** @type {{ val: number | null }} */
+  
   const hoverPointIndex = van?.state ? van.state(null) : { val: null };
   const labelAttachDistance = 40;
-  /** @type {ViewerOverlayRuntime} */
+  
   let overlayRuntime = {
     currentButtons() {
       return [];
@@ -231,22 +215,16 @@
   van.add(coordReadout, coordText);
   van.add(zoomReadout, zoomText);
 
-  /**
-   * @param {string} name
-   * @param {Record<string, string | number | boolean | null | undefined>} [attrs]
-   */
-  function createSvgElement(name, attrs = {}) {
+  
+  function createSvgElement(name: string, attrs: Record<string, string | number | boolean | null | undefined> = {}) {
     const element = document.createElementNS(SVG_NS, name);
     setSvgAttributes(element, attrs);
     return element;
   }
 
-  /**
-   * @param {Element} element
-   * @param {Record<string, string | number | boolean | null | undefined>} attrs
-   */
-  function setSvgAttributes(element, attrs) {
-    Object.entries(attrs).forEach(([key, value]) => {
+  
+  function setSvgAttributes(element: Element, attrs: Record<string, string | number | boolean | null | undefined>) {
+    Object.entries(attrs).forEach(([key, value]: [string, string | number | boolean | null | undefined]) => {
       if (value === null || value === undefined || value === false) {
         element.removeAttribute(key);
         return;
@@ -264,17 +242,13 @@
     });
   }
 
-  /** @param {Element} element */
-  function clearSvgChildren(element) {
+  
+  function clearSvgChildren(element: Element) {
     element.replaceChildren();
   }
 
-  /**
-   * @param {string} text
-   * @param {number} [fontSize]
-   * @param {number | string} [fontWeight]
-   */
-  function measureText(text, fontSize = 18, fontWeight = 400) {
+  
+  function measureText(text: string, fontSize: number = 18, fontWeight: number | string = 400) {
     const normalized = text || "";
     measureTextNode.setAttribute("font-size", String(fontSize));
     measureTextNode.setAttribute("font-weight", String(fontWeight));
@@ -285,20 +259,14 @@
     return normalized ? width : 0;
   }
 
-  /**
-   * @param {Point} left
-   * @param {Point} right
-   */
-  function samePoint(left, right) {
+  
+  function samePoint(left: Point, right: Point) {
     return Math.abs(left.x - right.x) < pointMatchTolerance
       && Math.abs(left.y - right.y) < pointMatchTolerance;
   }
 
-  /**
-   * @param {number} index
-   * @returns {Point}
-   */
-  function resolveSourcePoint(index) {
+  
+  function resolveSourcePoint(index: number) {
     const point = sourceScene.points[index];
     if (!point) {
       return { x: 0, y: 0 };
@@ -314,45 +282,32 @@
     return { x: point.x, y: point.y };
   }
 
-  /**
-   * @param {Point} point
-   * @returns {PointHandle}
-   */
-  function attachPointRef(point) {
-    const pointIndex = sourceScene.points.findIndex((_candidate, index) => samePoint(resolveSourcePoint(index), point));
+  
+  function attachPointRef(point: Point) {
+    const pointIndex = sourceScene.points.findIndex((_candidate: ScenePointJson, index: number) => samePoint(resolveSourcePoint(index), point));
     if (pointIndex >= 0) {
       return { pointIndex };
     }
     return { x: point.x, y: point.y };
   }
 
-  /**
-   * @param {PointHandle} handle
-   * @returns {Point}
-   */
-  function resolveSourceHandle(handle) {
+  
+  function resolveSourceHandle(handle: PointHandle) {
     if (hasPointIndexHandle(handle)) {
       return resolveSourcePoint(handle.pointIndex);
     }
-    return /** @type {Point} */ (handle);
+    return  (handle);
   }
 
-  /**
-   * @param {Point} left
-   * @param {Point} right
-   */
-  function distanceSquared(left, right) {
+  
+  function distanceSquared(left: Point, right: Point) {
     const dx = left.x - right.x;
     const dy = left.y - right.y;
     return dx * dx + dy * dy;
   }
 
-  /**
-   * @param {Point} point
-   * @param {Point} start
-   * @param {Point} end
-   */
-  function distanceToSegmentSquared(point, start, end) {
+  
+  function distanceToSegmentSquared(point: Point, start: Point, end: Point) {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
     const lengthSquared = dx * dx + dy * dy;
@@ -366,11 +321,8 @@
     });
   }
 
-  /**
-   * @param {Point} point
-   * @param {Point[]} polyline
-   */
-  function distanceToPolylineSquared(point, polyline) {
+  
+  function distanceToPolylineSquared(point: Point, polyline: Point[]) {
     let best = Number.POSITIVE_INFINITY;
     for (let index = 0; index + 1 < polyline.length; index += 1) {
       best = Math.min(best, distanceToSegmentSquared(point, polyline[index], polyline[index + 1]));
@@ -378,12 +330,8 @@
     return best;
   }
 
-  /**
-   * @param {Point} start
-   * @param {Point} mid
-   * @param {Point} end
-   */
-  function arcGeometryFromPoints(start, mid, end) {
+  
+  function arcGeometryFromPoints(start: Point, mid: Point, end: Point) {
     const determinant = 2 * (
       start.x * (mid.y - end.y)
       + mid.x * (end.y - start.y)
@@ -424,14 +372,8 @@
     };
   }
 
-  /**
-   * @param {Point} start
-   * @param {Point} end
-   * @param {Point} center
-   * @param {boolean} counterclockwise
-   * @param {boolean} yUp
-   */
-  function midpointOnCircleWorld(start, end, center, counterclockwise, yUp) {
+  
+  function midpointOnCircleWorld(start: Point, end: Point, center: Point, counterclockwise: boolean, yUp: boolean) {
     const ySign = yUp ? 1 : -1;
     const startAngle = Math.atan2((start.y - center.y) * ySign, start.x - center.x);
     const endAngle = Math.atan2((end.y - center.y) * ySign, end.x - center.x);
@@ -447,8 +389,8 @@
     };
   }
 
-  /** @param {any} debug */
-  function clonePayloadDebug(debug) {
+  
+  function clonePayloadDebug(debug: DebugSourceJson | null) {
     return debug ? {
       ...debug,
       recordTypes: [...(debug.recordTypes || [])],
@@ -456,15 +398,11 @@
     } : null;
   }
 
-  /**
-   * @param {Point} point
-   * @param {Array<{ points: PointHandle[] }>} hydratedLines
-   * @returns {PointHandle}
-   */
-  function attachLabelAnchor(point, hydratedLines) {
+  
+  function attachLabelAnchor(point: Point, hydratedLines: Array<{ points: PointHandle[] }>) {
     let bestPointIndex = null;
     let bestPointDistanceSquared = Number.POSITIVE_INFINITY;
-    sourceScene.points.forEach((_candidate, index) => {
+    sourceScene.points.forEach((_candidate: ScenePointJson, index: number) => {
       const resolved = resolveSourcePoint(index);
       const distSq = distanceSquared(resolved, point);
       if (distSq < bestPointDistanceSquared) {
@@ -483,7 +421,7 @@
 
     let bestLineAnchor = null;
     let bestLineDistanceSquared = Number.POSITIVE_INFINITY;
-    hydratedLines.forEach((/** @type {{ points: PointHandle[] }} */ line, /** @type {number} */ lineIndex) => {
+    hydratedLines.forEach((line: { points: PointHandle[] }, lineIndex: number) => {
       for (let segmentIndex = 0; segmentIndex < line.points.length - 1; segmentIndex += 1) {
         const start = resolveSourceHandle(line.points[segmentIndex]);
         const end = resolveSourceHandle(line.points[segmentIndex + 1]);
@@ -511,11 +449,8 @@
     return { x: point.x, y: point.y };
   }
 
-  /**
-   * @param {{ binding?: { kind?: string; pointIndex?: number; anchorDx?: number; anchorDy?: number } | null; anchor: Point }} label
-   * @param {Array<{ points: PointHandle[] }>} hydratedLines
-   */
-  function attachPointCenteredLabelAnchor(label, hydratedLines) {
+  
+  function attachPointCenteredLabelAnchor(label: { binding?: { kind?: string; pointIndex?: number; anchorDx?: number; anchorDy?: number } | null; anchor: Point }, hydratedLines: Array<{ points: PointHandle[] }>) {
     if (typeof label.binding?.pointIndex === "number") {
       return {
         pointIndex: label.binding.pointIndex,
@@ -526,30 +461,21 @@
     return attachLabelAnchor(label.anchor, hydratedLines);
   }
 
-  /**
-   * @param {{ binding?: { kind?: string } | null }} label
-   * @returns {boolean}
-   */
-  function usesFixedLabelAnchor(label) {
+  
+  function usesFixedLabelAnchor(label: { binding?: { kind?: string } | null }) {
     return label.binding?.kind === "point-coordinate-value"
       || label.binding?.kind === "point-axis-value"
       || label.binding?.kind === "point-distance-value";
   }
 
-  /**
-   * @param {PointHandle} handle
-   * @returns {handle is Extract<PointHandle, { pointIndex: number }>}
-   */
-  function hasPointIndexHandle(handle) {
+  
+  function hasPointIndexHandle(handle: PointHandle): handle is Extract<PointHandle, { pointIndex: number }> {
     return !!handle && typeof handle === "object" && "pointIndex" in handle && typeof handle.pointIndex === "number";
   }
 
-  /**
-   * @param {SceneData} scene
-   * @returns {ViewerSceneData}
-   */
-  function hydrateScene(scene) {
-    const hydratedLines = scene.lines.map((line) => ({
+  
+  function hydrateScene(scene: SceneData): ViewerSceneData {
+    const hydratedLines = scene.lines.map((line: LineJson): RuntimeLineJson => ({
       color: line.color,
       dashed: line.dashed,
       visible: line.visible !== false,
@@ -561,7 +487,7 @@
       ...scene,
       graphMode: scene.graphMode,
       bounds: { ...scene.bounds },
-      images: (scene.images || []).map((image) => ({
+      images: (scene.images || []).map((image: ImageJson) => ({
         topLeft: { ...image.topLeft },
         bottomRight: { ...image.bottomRight },
         src: image.src,
@@ -569,7 +495,7 @@
         screenSpace: !!image.screenSpace,
         debug: clonePayloadDebug(image.debug),
       })),
-      points: scene.points.map((point) => ({
+      points: scene.points.map((point: ScenePointJson): RuntimeScenePointJson => ({
         x: point.x,
         y: point.y,
         color: point.color,
@@ -588,7 +514,7 @@
       })),
       origin: scene.origin ? attachPointRef(scene.origin) : null,
       lines: hydratedLines,
-      polygons: scene.polygons.map((polygon) => ({
+      polygons: scene.polygons.map((polygon: PolygonJson): RuntimePolygonJson => ({
         color: polygon.color,
         outlineColor: polygon.outlineColor,
         visible: polygon.visible !== false,
@@ -596,7 +522,7 @@
         binding: polygon.binding ? { ...polygon.binding } : null,
         debug: clonePayloadDebug(polygon.debug),
       })),
-      circles: scene.circles.map((circle) => ({
+      circles: scene.circles.map((circle: CircleJson): RuntimeCircleJson => ({
         color: circle.color,
         fillColor: circle.fillColor || null,
         fillVisible: circle.fillVisible !== false,
@@ -608,7 +534,7 @@
         binding: circle.binding ? { ...circle.binding } : null,
         debug: clonePayloadDebug(circle.debug),
       })),
-      arcs: (scene.arcs || []).map((arc) => ({
+      arcs: (scene.arcs || []).map((arc: ArcJson): RuntimeArcJson => ({
         color: arc.color,
         visible: arc.visible !== false,
         points: arc.points.map(attachPointRef),
@@ -616,7 +542,7 @@
         counterclockwise: !!arc.counterclockwise,
         debug: clonePayloadDebug(arc.debug),
       })),
-      labels: scene.labels.map((label) => ({
+      labels: scene.labels.map((label: LabelJson): RuntimeLabelJson => ({
         text: label.text,
         richMarkup: label.richMarkup || null,
         color: label.color,
@@ -637,19 +563,19 @@
         binding: label.binding ? { ...label.binding } : null,
         screenSpace: !!label.screenSpace,
         centeredOnAnchor: false,
-        hotspots: (label.hotspots || []).map((hotspot) => ({
+        hotspots: (label.hotspots || []).map((hotspot: LabelHotspotJson): RuntimeLabelHotspotJson => ({
           ...hotspot,
           action: hotspot.action ? { ...hotspot.action } : null,
         })),
         debug: clonePayloadDebug(label.debug),
       })),
-      iterationTables: (scene.iterationTables || []).map((table) => ({
+      iterationTables: (scene.iterationTables || []).map((table: IterationTableJson): RuntimeIterationTableJson => ({
         ...table,
         debug: clonePayloadDebug(table.debug),
-        /** @type {RuntimeIterationRow[]} */
+        
         rows: [],
       })),
-      buttons: (scene.buttons || []).map((button) => ({
+      buttons: (scene.buttons || []).map((button: ButtonJson): RuntimeButtonJson => ({
         ...button,
         debug: clonePayloadDebug(button.debug),
         baseText: button.text,
@@ -661,16 +587,16 @@
 
   const sceneState = van?.state ? van.state(hydrateScene(sourceScene)) : { val: hydrateScene(sourceScene) };
   const dynamicsState = van?.state ? van.state({
-    parameters: (sourceScene.parameters || []).map((parameter) => ({ ...parameter })),
-    functions: (sourceScene.functions || []).map((functionDef) => ({
+    parameters: (sourceScene.parameters || []).map((parameter: ParameterJson) => ({ ...parameter })),
+    functions: (sourceScene.functions || []).map((functionDef: FunctionJson) => ({
       ...functionDef,
       expr: functionDef.expr,
       domain: functionDef.domain,
       constrainedPointIndices: [...functionDef.constrainedPointIndices],
     })),
   }) : { val: {
-    parameters: (sourceScene.parameters || []).map((parameter) => ({ ...parameter })),
-    functions: (sourceScene.functions || []).map((functionDef) => ({
+    parameters: (sourceScene.parameters || []).map((parameter: ParameterJson) => ({ ...parameter })),
+    functions: (sourceScene.functions || []).map((functionDef: FunctionJson) => ({
       ...functionDef,
       expr: functionDef.expr,
       domain: functionDef.domain,
@@ -679,28 +605,23 @@
   } };
   const currentScene = () => sceneState.val;
   const currentDynamics = () => dynamicsState.val;
-  /** @type {Set<string>} */
-  const pendingDependencyRootIds = new Set();
-  /** @type {any} */
+  
+  const pendingDependencyRootIds = new Set<string>();
+  
   let lastDependencyRun = null;
 
-  /**
-   * @param {string | string[]} rootIds
-   */
-  function markDependencyRootsDirty(rootIds) {
+  
+  function markDependencyRootsDirty(rootIds: string | string[]) {
     const values = Array.isArray(rootIds) ? rootIds : [rootIds];
-    values.forEach((rootId) => {
+    values.forEach((rootId: string) => {
       if (typeof rootId === "string" && rootId.length > 0) {
         pendingDependencyRootIds.add(rootId);
       }
     });
   }
 
-  /**
-   * @param {(draft: ViewerSceneData) => void} mutator
-   * @param {"graph" | "none"} [mode]
-   */
-  function updateScene(mutator, mode = "none") {
+  
+  function updateScene(mutator: (draft: ViewerSceneData) => void, mode: "graph" | "none" = "none") {
     const next = sceneState.val;
     mutator(next);
     if (mode === "graph" && dynamicsModule.runDependencyGraph) {
@@ -716,36 +637,36 @@
     sceneState.val = { ...next };
   }
 
-  /** @param {(draft: RuntimeDynamicsState) => void} mutator */
-  function updateDynamics(mutator) {
+  
+  function updateDynamics(mutator: (draft: RuntimeDynamicsState) => void) {
     const next = dynamicsState.val;
     mutator(next);
     dynamicsState.val = { ...next };
   }
 
-  /** @param {[number, number, number, number]} color */
-  function rgba(color) {
+  
+  function rgba(color: [number, number, number, number]) {
     return `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${(color[3] / 255).toFixed(3)})`;
   }
 
-  /** @param {number} value */
-  function formatNumber(value) {
+  
+  function formatNumber(value: number) {
     if (!Number.isFinite(value)) return "-";
     return Math.abs(value - Math.round(value)) < 0.005
       ? String(Math.round(value))
       : value.toFixed(2);
   }
 
-  /** @param {number} value */
-  function formatAxisNumber(value) {
+  
+  function formatAxisNumber(value: number) {
     if (Math.abs(value - Math.round(value)) < 1e-6) {
       return String(Math.round(value));
     }
     return value.toFixed(1);
   }
 
-  /** @param {number} stepIndex */
-  function formatPiLabel(stepIndex) {
+  
+  function formatPiLabel(stepIndex: number) {
     if (stepIndex === 0) return "";
     const sign = stepIndex < 0 ? "-" : "";
     const absIndex = Math.abs(stepIndex);
@@ -756,23 +677,16 @@
     return absIndex === 1 ? `${sign}\u03c0/2` : `${sign}${absIndex}\u03c0/2`;
   }
 
-  /** @param {unknown} value */
-  function cloneForDebug(value) {
+  
+  function cloneForDebug(value: unknown) {
     if (typeof structuredClone === "function") {
       return structuredClone(value);
     }
     return JSON.parse(JSON.stringify(value));
   }
 
-  /**
-   * Replace embedded payload-time parameter defaults with the current runtime
-   * parameter values for debug/inspection output.
-   *
-   * @param {unknown} value
-   * @param {Map<string, number>} parameters
-   * @returns {unknown}
-   */
-  function cloneWithLiveParameterValues(value, parameters) {
+  
+  function cloneWithLiveParameterValues(value: unknown, parameters: Map<string, number>) {
     if (!value || typeof value !== "object") {
       return value;
     }
@@ -780,7 +694,7 @@
       return value.map((item) => cloneWithLiveParameterValues(item, parameters));
     }
     const cloned = Object.fromEntries(
-      Object.entries(/** @type {Record<string, unknown>} */ (value)).map(([key, child]) => [
+      Object.entries(value).map(([key, child]: [string, unknown]) => [
         key,
         cloneWithLiveParameterValues(child, parameters),
       ]),
@@ -808,11 +722,8 @@
     return cloned;
   }
 
-  /**
-   * @param {unknown} entity
-   * @returns {unknown}
-   */
-  function debugEntityWithLiveParameters(entity) {
+  
+  function debugEntityWithLiveParameters(entity: unknown) {
     const parameters = dynamicsModule.parameterMapForScene
       ? dynamicsModule.parameterMapForScene(viewerEnv, currentScene())
       : new Map();
@@ -827,11 +738,8 @@
     }
   }
 
-  /**
-   * @param {DebugTarget | null} target
-   * @returns {string}
-   */
-  function debugTargetKey(target) {
+  
+  function debugTargetKey(target: DebugTarget | null) {
     if (!target) return "";
     return `${target.category}:${target.index}:${target.hotspotIndex ?? ""}`;
   }
@@ -847,11 +755,8 @@
     }
   }
 
-  /**
-   * @param {Element} element
-   * @param {DebugTarget | null | undefined} target
-   */
-  function registerDebugElement(element, target) {
+  
+  function registerDebugElement(element: Element, target: DebugTarget | null | undefined) {
     if (!element || !target) {
       return;
     }
@@ -877,18 +782,16 @@
     syncDebugSelectionHighlight();
   }
 
-  /**
-   * @param {DebugTarget} target
-   */
-  function selectDebugTarget(target) {
+  
+  function selectDebugTarget(target: DebugTarget) {
     selectedDebugTargetState.val = target;
     debugViewState.val = "selection";
     syncDebugSelectionHighlight();
     renderDebugOutput();
   }
 
-  /** @param {Element | null} element */
-  function selectDebugTargetFromElement(element) {
+  
+  function selectDebugTargetFromElement(element: Element | null) {
     const carrier = element?.closest?.("[data-gsp-debug-id]");
     if (!carrier) {
       return false;
@@ -902,12 +805,8 @@
     return true;
   }
 
-  /**
-   * @param {number} screenX
-   * @param {number} screenY
-   * @returns {DebugTarget | null}
-   */
-  function findDebugTargetAtScreen(screenX, screenY) {
+  
+  function findDebugTargetAtScreen(screenX: number, screenY: number) {
     const pointIndex = findHitPoint(screenX, screenY);
     if (pointIndex !== null) {
       return { category: "points", index: pointIndex };
@@ -943,8 +842,8 @@
     return null;
   }
 
-  /** @param {DebugTarget} target */
-  function lookupDebugEntity(target) {
+  
+  function lookupDebugEntity(target: DebugTarget) {
     const scene = currentScene();
     switch (target.category) {
       case "images":
@@ -977,16 +876,16 @@
     }
   }
 
-  /** @param {DebugTarget} target */
-  function describeDebugTarget(target) {
+  
+  function describeDebugTarget(target: DebugTarget) {
     const suffix = target.hotspotIndex !== undefined && target.hotspotIndex !== null
       ? `[${target.hotspotIndex}]`
       : "";
     return `${target.category}[${target.index}]${suffix}`;
   }
 
-  /** @param {Record<string, unknown> | null | undefined} debug */
-  function formatPayloadDebug(debug) {
+  
+  function formatPayloadDebug(debug: Record<string, unknown> | null | undefined) {
     if (!debug) {
       return ["payload: derived or unavailable"];
     }
@@ -1015,7 +914,7 @@
       ].join("\n");
     }
     const entity = debugEntityWithLiveParameters(lookupDebugEntity(target));
-    const entityRecord = /** @type {Record<string, unknown> | null} */ (
+    const entityRecord =  (
       entity && typeof entity === "object" ? entity : null
     );
     const lines = [
@@ -1024,7 +923,7 @@
       `  summary: ${summarizeDebugEntity(entity) || "(no summary)"}`,
     ];
     formatPayloadDebug(entityRecord?.debug && typeof entityRecord.debug === "object"
-      ? /** @type {Record<string, unknown>} */ (entityRecord.debug)
+      ?  (entityRecord.debug)
       : null).forEach((line) => {
       lines.push(`  ${line}`);
     });
@@ -1041,11 +940,8 @@
     return JSON.stringify(buildRuntimeSnapshot(), null, 2);
   }
 
-  /**
-   * @param {string} key
-   * @param {number} value
-   */
-  function formatReference(key, value) {
+  
+  function formatReference(key: string, value: number) {
     if (!Number.isInteger(value)) {
       return null;
     }
@@ -1092,12 +988,12 @@
     }
   }
 
-  /** @param {unknown} value */
-  function collectReferenceTokens(value) {
-    /** @type {string[]} */
+  
+  function collectReferenceTokens(value: unknown) {
+    
     const refs = [];
-    /** @param {unknown} node */
-    function visit(node) {
+    
+    function visit(node: unknown) {
       if (!node || typeof node !== "object") {
         return;
       }
@@ -1105,7 +1001,7 @@
         node.forEach(visit);
         return;
       }
-      Object.entries(node).forEach(([key, child]) => {
+      Object.entries(node).forEach(([key, child]: [string, unknown]) => {
         if (typeof child === "number") {
           const ref = formatReference(key, child);
           if (ref) {
@@ -1114,7 +1010,7 @@
           return;
         }
         if (Array.isArray(child)) {
-          const directRefs = child.flatMap((/** @type {unknown} */ item) => {
+          const directRefs = child.flatMap(( item) => {
             if (typeof item !== "number") return [];
             const ref = formatReference(key, item);
             return ref ? [ref] : [];
@@ -1130,9 +1026,9 @@
     return [...new Set(refs)];
   }
 
-  /** @param {unknown} entity */
-  function summarizeDebugEntity(entity) {
-    const item = /** @type {Record<string, unknown> & { anchor?: Record<string, unknown> }} */ (entity ?? {});
+  
+  function summarizeDebugEntity(entity: unknown) {
+    const item = (entity ?? {}) as RuntimePayload;
     const parts = [];
     if (typeof item.text === "string") {
       parts.push(JSON.stringify(item.text));
@@ -1169,15 +1065,10 @@
     return parts.join(" ");
   }
 
-  /**
-   * @param {string[]} lines
-   * @param {string} title
-   * @param {string} itemLabel
-   * @param {unknown[]} items
-   */
-  function appendGraphSection(lines, title, itemLabel, items) {
+  
+  function appendGraphSection(lines: string[], title: string, itemLabel: string, items: unknown[]) {
     lines.push(`${title} (${items.length})`);
-    items.forEach((/** @type {unknown} */ item, /** @type {number} */ index) => {
+    items.forEach(( item,  index: number) => {
       const summary = summarizeDebugEntity(item);
       const refs = collectReferenceTokens(item);
       lines.push(`  ${itemLabel}[${index}]${summary ? ` ${summary}` : ""}`);
@@ -1187,14 +1078,14 @@
     });
   }
 
-  /** @param {ViewerSceneData} scene */
-  function collectDebugLineIterations(scene) {
+  
+  function collectDebugLineIterations(scene: ViewerSceneData) {
     const iterations = Array.isArray(scene.lineIterations) ? [...scene.lineIterations] : [];
     return iterations;
   }
 
-  /** @param {ViewerSceneData} scene */
-  function buildDebugGraph(scene) {
+  
+  function buildDebugGraph(scene: ViewerSceneData) {
     const lines = [
       "Scene",
       `  size ${scene.width}x${scene.height}`,
@@ -1221,7 +1112,7 @@
   }
 
   function buildRuntimeSnapshot() {
-    return /** @type {{ view: ViewState; scene: ViewerSceneData; dynamics: RuntimeDynamicsState; buttons: RuntimeButtonJson[] }} */ (debugEntityWithLiveParameters({
+    return  (debugEntityWithLiveParameters({
       view: { ...viewState.val },
       scene: currentScene(),
       dynamics: currentDynamics(),
@@ -1275,8 +1166,8 @@
     await viewerShell.requestFullscreen?.();
   }
 
-  /** @param {boolean} open */
-  function setDebugPanelOpen(open) {
+  
+  function setDebugPanelOpen(open: boolean) {
     if (!debugPanel || !debugToggleButton) {
       return;
     }
@@ -1300,11 +1191,8 @@
     console.groupEnd();
   }
 
-  /**
-   * @param {number | null} [screenX]
-   * @param {number | null} [screenY]
-   */
-  function updateReadout(screenX = null, screenY = null) {
+  
+  function updateReadout(screenX: number | null = null, screenY: number | null = null) {
     if (screenX === null || screenY === null) {
       pointerWorldState.val = null;
       return;
@@ -1321,49 +1209,34 @@
     updateReadout();
   }
 
-  /**
-   * @param {number} screenX
-   * @param {number} screenY
-   */
-  function findHitPoint(screenX, screenY) {
+  
+  function findHitPoint(screenX: number, screenY: number) {
     return renderModule.findHitPoint(viewerEnv, screenX, screenY);
   }
 
-  /** @param {number} index */
-  function isOriginPointIndex(index) {
+  
+  function isOriginPointIndex(index: number) {
     const origin = currentScene().origin;
     return !!origin && "pointIndex" in origin && typeof origin.pointIndex === "number" && origin.pointIndex === index;
   }
 
-  /**
-   * @param {number} screenX
-   * @param {number} screenY
-   */
-  function findHitLabel(screenX, screenY) {
+  
+  function findHitLabel(screenX: number, screenY: number) {
     return renderModule.findHitLabel(viewerEnv, screenX, screenY);
   }
 
-  /**
-   * @param {number} screenX
-   * @param {number} screenY
-   */
-  function findHitIterationTable(screenX, screenY) {
+  
+  function findHitIterationTable(screenX: number, screenY: number) {
     return renderModule.findHitIterationTable(viewerEnv, screenX, screenY);
   }
 
-  /**
-   * @param {number} screenX
-   * @param {number} screenY
-   */
-  function findHitPolygon(screenX, screenY) {
+  
+  function findHitPolygon(screenX: number, screenY: number) {
     return renderModule.findHitPolygon ? renderModule.findHitPolygon(viewerEnv, screenX, screenY) : null;
   }
 
-  /**
-   * @param {RuntimeLineJson} line
-   * @returns {Point[] | null}
-   */
-  function resolveLineScreenPoints(line) {
+  
+  function resolveLineScreenPoints(line: RuntimeLineJson) {
     if (!line || line.visible === false || line.binding?.kind === "graph-helper-line") {
       return null;
     }
@@ -1374,7 +1247,7 @@
       || line.binding?.kind === "perpendicular-line"
       || line.binding?.kind === "parallel-line"
     ) {
-      /** @param {LineBindingJson} binding */
+      
       const resolveHostLinePoints = (binding) => {
         if (
           binding
@@ -1474,18 +1347,15 @@
     }
     const points = viewerEnv.resolveLinePoints
       ? viewerEnv.resolveLinePoints(line)
-      : line.points.map((/** @type {PointHandle} */ handle) => viewerEnv.resolvePoint(handle));
-    if (!points || points.length < 2 || points.some((/** @type {Point | null} */ point) => !point)) {
+      : line.points.map(( handle) => viewerEnv.resolvePoint(handle));
+    if (!points || points.length < 2 || points.some(( point) => !point)) {
       return null;
     }
-    return points.map((/** @type {Point} */ point) => viewerEnv.toScreen(point));
+    return points.map(( point) => viewerEnv.toScreen(point));
   }
 
-  /**
-   * @param {number} screenX
-   * @param {number} screenY
-   */
-  function findHitLine(screenX, screenY) {
+  
+  function findHitLine(screenX: number, screenY: number) {
     const lines = currentScene().lines || [];
     const point = { x: screenX, y: screenY };
     const toleranceSquared = 10 * 10;
@@ -1501,11 +1371,8 @@
     return null;
   }
 
-  /**
-   * @param {number} screenX
-   * @param {number} screenY
-   */
-  function findHitCircle(screenX, screenY) {
+  
+  function findHitCircle(screenX: number, screenY: number) {
     const circles = currentScene().circles || [];
     const strokeTolerance = 10;
     for (let index = circles.length - 1; index >= 0; index -= 1) {
@@ -1536,15 +1403,12 @@
     return null;
   }
 
-  /**
-   * @param {RuntimeArcJson} arc
-   * @returns {Point[] | null}
-   */
-  function resolveArcScreenPolyline(arc) {
+  
+  function resolveArcScreenPolyline(arc: RuntimeArcJson) {
     if (arc.visible === false || !Array.isArray(arc.points) || arc.points.length !== 3) {
       return null;
     }
-    /** @type {Point[]} */
+    
     let screenPoints;
     if (arc.center) {
       const startWorld = viewerEnv.resolvePoint(arc.points[0]);
@@ -1569,11 +1433,11 @@
         viewerEnv.toScreen(endWorld),
       ];
     } else {
-      const worldPoints = arc.points.map((/** @type {PointHandle} */ handle) => viewerEnv.resolvePoint(handle));
-      if (worldPoints.some((/** @type {Point | null} */ point) => !point)) {
+      const worldPoints = arc.points.map(( handle) => viewerEnv.resolvePoint(handle));
+      if (worldPoints.some(( point) => !point)) {
         return null;
       }
-      screenPoints = worldPoints.map((/** @type {Point} */ point) => viewerEnv.toScreen(point));
+      screenPoints = worldPoints.map(( point) => viewerEnv.toScreen(point));
     }
     const geometry = arcGeometryFromPoints(screenPoints[0], screenPoints[1], screenPoints[2]);
     if (!geometry) {
@@ -1585,7 +1449,7 @@
     const useCounterClockwise = !!geometry.counterClockwise;
     const sweep = useCounterClockwise ? ccwSpan : -clockwiseSpan;
     const samples = 24;
-    return Array.from({ length: samples + 1 }, (_, index) => {
+    return Array.from({ length: samples + 1 }, (_, index: number) => {
       const t = index / samples;
       const angle = geometry.startAngle + sweep * t;
       return {
@@ -1595,11 +1459,8 @@
     });
   }
 
-  /**
-   * @param {number} screenX
-   * @param {number} screenY
-   */
-  function findHitArc(screenX, screenY) {
+  
+  function findHitArc(screenX: number, screenY: number) {
     const arcs = currentScene().arcs || [];
     const point = { x: screenX, y: screenY };
     const toleranceSquared = 10 * 10;
@@ -1615,16 +1476,8 @@
     return null;
   }
 
-  /**
-   * @param {number} pointerId
-   * @param {Point} position
-   * @param {number | null} pointIndex
-   * @param {number | null} labelIndex
-   * @param {number | null} polygonIndex
-   * @param {number | null} iterationTableIndex
-   * @param {number | null} imageIndex
-   */
-  function beginDrag(pointerId, position, pointIndex, labelIndex, polygonIndex, iterationTableIndex, imageIndex) {
+  
+  function beginDrag(pointerId: number, position: Point, pointIndex: number | null, labelIndex: number | null, polygonIndex: number | null, iterationTableIndex: number | null, imageIndex: number | null) {
     dragModule.beginDrag(
       viewerEnv,
       pointerId,
@@ -1637,39 +1490,39 @@
     );
   }
 
-  /** @param {Point} world */
-  function updateDraggedPoint(world) {
+  
+  function updateDraggedPoint(world: Point) {
     dragModule.updateDraggedPoint(viewerEnv, world);
   }
 
-  /** @param {Point} world */
-  function updateDraggedLabel(world) {
+  
+  function updateDraggedLabel(world: Point) {
     dragModule.updateDraggedLabel(viewerEnv, world);
   }
 
-  /** @param {Point} position */
-  function updateDraggedImage(position) {
+  
+  function updateDraggedImage(position: Point) {
     dragModule.updateDraggedImage(viewerEnv, position);
   }
 
-  /** @param {Point} position */
-  function updateDraggedIterationTable(position) {
+  
+  function updateDraggedIterationTable(position: Point) {
     dragModule.updateDraggedIterationTable(viewerEnv, position);
   }
 
-  /** @param {Point} world */
-  function updateDraggedPolygon(world) {
+  
+  function updateDraggedPolygon(world: Point) {
     dragModule.updateDraggedPolygon(viewerEnv, world);
   }
 
-  /** @param {Point} position */
-  function panFromPointerDelta(position) {
+  
+  function panFromPointerDelta(position: Point) {
     const drag = dragState.val;
     if (!drag) return;
     const currentView = viewState.val;
     const worldNow = toWorldForView(currentView, position.x, position.y);
     const worldLast = toWorldForView(currentView, drag.lastX, drag.lastY);
-    updateViewState((draft) => {
+    updateViewState((draft: ViewState) => {
       draft.centerX -= worldNow.x - worldLast.x;
       draft.centerY -= worldNow.y - worldLast.y;
     });
@@ -1679,8 +1532,8 @@
     renderModule.draw(viewerEnv);
   }
 
-  /** @type {ViewerEnv} */
-  const viewerEnv = {
+  
+  const viewerEnv: ViewerEnv = {
     canvas,
     svg: canvas,
     gridLayer,
@@ -1698,12 +1551,12 @@
     currentScene,
     currentDynamics,
     currentHotspotFlashes: () => overlayRuntime.currentHotspotFlashes(),
-    resolveScenePoint: (index) => sceneModule.resolveScenePoint(viewerEnv, index),
-    resolvePoint: (handle) => sceneModule.resolvePoint(viewerEnv, handle),
-    resolveAnchorBase: (handle) => sceneModule.resolveAnchorBase(viewerEnv, handle),
-    resolveLinePoints: (lineOrIndex) => sceneModule.resolveLinePoints(viewerEnv, lineOrIndex),
-    toScreen: (point) => sceneModule.toScreen(viewerEnv, point),
-    toWorld: (x, y) => sceneModule.toWorld(viewerEnv, x, y),
+    resolveScenePoint: (index: number) => sceneModule.resolveScenePoint(viewerEnv, index),
+    resolvePoint: (handle: PointHandle) => sceneModule.resolvePoint(viewerEnv, handle),
+    resolveAnchorBase: (handle: PointHandle) => sceneModule.resolveAnchorBase(viewerEnv, handle),
+    resolveLinePoints: (lineOrIndex: number | RuntimeLineJson) => sceneModule.resolveLinePoints(viewerEnv, lineOrIndex),
+    toScreen: (point: Point) => sceneModule.toScreen(viewerEnv, point),
+    toWorld: (x: number, y: number) => sceneModule.toWorld(viewerEnv, x, y),
     getViewBounds: () => sceneModule.getViewBounds(viewerEnv),
     rgba,
     updateScene,
@@ -1728,8 +1581,8 @@
     drawGrid: () => sceneModule.drawGrid(viewerEnv),
   };
   overlayRuntime = overlayModule?.init ? overlayModule.init(viewerEnv, buttonOverlays) : overlayRuntime;
-  canvas?.addEventListener("click", (event) => {
-    const targetElement = /** @type {Element | null} */ (event.target);
+  canvas?.addEventListener("click", (event: MouseEvent) => {
+    const targetElement = event.target instanceof Element ? event.target : null;
     if (selectDebugTargetFromElement(targetElement)) {
       return;
     }
@@ -1743,8 +1596,8 @@
       selectDebugTarget(debugTarget);
     }
   });
-  buttonOverlays?.addEventListener("click", (event) => {
-    const targetElement = /** @type {Element | null} */ (event.target);
+  buttonOverlays?.addEventListener("click", (event: MouseEvent) => {
+    const targetElement = event.target instanceof Element ? event.target : null;
     if (selectDebugTargetFromElement(targetElement)) {
       return;
     }
@@ -1777,8 +1630,8 @@
     inspectSelection() {
       return buildSelectionDebugOutput();
     },
-    /** @param {Element} element */
-    inspectElement(element) {
+    
+    inspectElement(element: Element) {
       const carrier = element?.closest?.("[data-gsp-debug-id]");
       if (!carrier) {
         return null;
@@ -1823,14 +1676,14 @@
     setDebugPanelOpen(debugPanel?.hidden !== false);
   });
   fullscreenToggleButton?.addEventListener("click", () => {
-    toggleFullscreen().catch((error) => {
+    toggleFullscreen().catch((error: unknown) => {
       console.warn("failed to toggle fullscreen", error);
     });
   });
   debugDumpConsoleButton?.addEventListener("click", () => {
     dumpDebugToConsole();
   });
-  debugTabButtons.forEach((button) => {
+  debugTabButtons.forEach((button: HTMLButtonElement) => {
     button.addEventListener("click", () => {
       const tab = button.dataset.debugTab;
       debugViewState.val = tab === "json" || tab === "scene" ? tab : "selection";
@@ -1849,7 +1702,7 @@
     return 0;
   });
 
-  canvas.addEventListener("pointerdown", (event) => {
+  canvas.addEventListener("pointerdown", (event: PointerEvent) => {
     const position = sceneModule.getCanvasCoords(viewerEnv, event);
     const pointIndex = findHitPoint(position.x, position.y);
     const imageIndex = pointIndex === null
@@ -1869,7 +1722,7 @@
     canvas.setPointerCapture(event.pointerId);
   });
 
-  canvas.addEventListener("pointermove", (event) => {
+  canvas.addEventListener("pointermove", (event: PointerEvent) => {
     const position = sceneModule.getCanvasCoords(viewerEnv, event);
     updateReadout(position.x, position.y);
     hoverPointIndex.val = findHitPoint(position.x, position.y);
@@ -1892,16 +1745,16 @@
     dragState.val = { ...dragState.val, lastX: position.x, lastY: position.y };
   });
 
-  /** @param {number} pointerId */
-  function endDrag(pointerId) {
+  
+  function endDrag(pointerId: number) {
     if (dragState.val && dragState.val.pointerId === pointerId) {
       dragState.val = null;
       canvas.classList.remove("is-dragging");
     }
   }
 
-  canvas.addEventListener("pointerup", (event) => endDrag(event.pointerId));
-  canvas.addEventListener("pointercancel", (event) => endDrag(event.pointerId));
+  canvas.addEventListener("pointerup", (event: PointerEvent) => endDrag(event.pointerId));
+  canvas.addEventListener("pointercancel", (event: PointerEvent) => endDrag(event.pointerId));
   canvas.addEventListener("pointerleave", () => {
     hoverPointIndex.val = null;
     if (!dragState.val) {
@@ -1909,7 +1762,7 @@
     }
   });
 
-  canvas.addEventListener("wheel", (event) => {
+  canvas.addEventListener("wheel", (event: WheelEvent) => {
     event.preventDefault();
     const position = sceneModule.getCanvasCoords(viewerEnv, event);
     const currentView = viewState.val;
@@ -1934,7 +1787,7 @@
     resetView();
   });
 
-  window.addEventListener("keydown", (event) => {
+  window.addEventListener("keydown", (event: KeyboardEvent) => {
     if (event.key === "0") {
       resetView();
       return;

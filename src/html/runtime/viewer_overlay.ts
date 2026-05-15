@@ -1,43 +1,35 @@
-// @ts-check
-
 (function() {
-  const modules = /** @type {Partial<ViewerModules> & { dynamics: ViewerDynamicsModule; render: ViewerRenderModule }} */ (
+  const modules = (
     window.GspViewerModules || (window.GspViewerModules = {})
-  );
-  /** @typedef {{ name: string; children: RichMarkupNode[] }} RichMarkupNode */
-  /** @typedef {{ kind: "text"; text: string } | { kind: "fraction"; numerator: RichMarkupItem[]; denominator: RichMarkupItem[] } | { kind: "radical" | "overline" | "ray" | "arc"; children: RichMarkupItem[] }} RichMarkupItem */
-  /** @typedef {{ buttonIndex: number; pointerId: number; startClientX: number; startClientY: number; originX: number; originY: number; scaleX: number; scaleY: number; dragged: boolean }} ButtonPointerState */
-  /** @typedef {Extract<ButtonActionJson, { kind: "toggle-visibility" }> | Extract<ButtonActionJson, { kind: "set-visibility" }> | Extract<ButtonActionJson, { kind: "show-hide-visibility" }>} VisibilityButtonAction */
-  /** @typedef {HTMLButtonElement & { __gspButtonIndex?: number, __gspHotspotAction?: LabelHotspotActionJson | null }} OverlayButtonElement */
+  ) as Partial<ViewerModules>;
+  type RichMarkupNode = { name: string; children: RichMarkupNode[] };
+  type RichMarkupItem = { kind: "text"; text: string } | { kind: "fraction"; numerator: RichMarkupItem[]; denominator: RichMarkupItem[] } | { kind: "radical" | "overline" | "ray" | "arc"; children: RichMarkupItem[] };
+  type ButtonPointerState = { buttonIndex: number; pointerId: number; startClientX: number; startClientY: number; originX: number; originY: number; scaleX: number; scaleY: number; dragged: boolean };
+  type VisibilityButtonAction = Extract<ButtonActionJson, { kind: "toggle-visibility" }> | Extract<ButtonActionJson, { kind: "set-visibility" }> | Extract<ButtonActionJson, { kind: "show-hide-visibility" }>;
+  type OverlayButtonElement = HTMLButtonElement & { __gspButtonIndex?: number, __gspHotspotAction?: LabelHotspotActionJson | null };
 
-  /**
-   * @param {unknown} value
-   * @returns {value is number}
-   */
-  function isFiniteNumber(value) {
+  
+  function isFiniteNumber(value: unknown) {
     return typeof value === "number" && Number.isFinite(value);
   }
 
-  /**
-   * @param {ButtonActionJson} action
-   * @returns {action is VisibilityButtonAction}
-   */
-  function isVisibilityButtonAction(action) {
+  
+  function isVisibilityButtonAction(action: ButtonActionJson) {
     return action.kind === "toggle-visibility"
       || action.kind === "set-visibility"
       || action.kind === "show-hide-visibility";
   }
 
-  /** @param {string} text */
-  function cleanRichText(text) {
+  
+  function cleanRichText(text: string) {
     return text
       .split("\u2013").join("-")
       .split("\u2014").join("-")
       .split("厘米").join("cm");
   }
 
-  /** @param {string} token */
-  function decodeRichMarkupText(token) {
+  
+  function decodeRichMarkupText(token: string) {
     if (!token.startsWith("T")) {
       return null;
     }
@@ -48,20 +40,12 @@
     return cleanRichText(token.slice(xIndex + 1));
   }
 
-  /**
-   * @param {string} markup
-   * @returns {RichMarkupNode[]}
-   */
-  function parseRichMarkupNodes(markup) {
-    /**
-     * @param {string} source
-     * @param {number} start
-     * @param {boolean} stopOnGt
-     * @returns {[RichMarkupNode[], number]}
-     */
-    function parseSeq(source, start, stopOnGt) {
-      /** @type {RichMarkupNode[]} */
-      const nodes = [];
+  
+  function parseRichMarkupNodes(markup: string) {
+    
+    function parseSeq(source: string, start: number, stopOnGt: boolean): [RichMarkupNode[], number] {
+      
+      const nodes: RichMarkupNode[] = [];
       let index = start;
       while (index < source.length) {
         if (stopOnGt && source[index] === ">") {
@@ -77,8 +61,8 @@
           index += 1;
         }
         const name = source.slice(nameStart, index);
-        /** @type {RichMarkupNode[]} */
-        let children = [];
+        
+        let children: RichMarkupNode[] = [];
         if (index < source.length && source[index] === "<") {
           [children, index] = parseSeq(source, index, true);
         } else if (index < source.length && source[index] === ">") {
@@ -92,11 +76,8 @@
     return parseSeq(markup, 0, false)[0];
   }
 
-  /**
-   * @param {RichMarkupItem[][]} target
-   * @param {RichMarkupItem[][]} lines
-   */
-  function appendRichMarkupLines(target, lines) {
+  
+  function appendRichMarkupLines(target: RichMarkupItem[][], lines: RichMarkupItem[][]) {
     if (!lines.length) {
       return;
     }
@@ -118,20 +99,14 @@
     target.push(...rest);
   }
 
-  /**
-   * @param {RichMarkupNode[]} nodes
-   * @returns {RichMarkupItem[]}
-   */
-  function renderRichMarkupInline(nodes) {
+  
+  function renderRichMarkupInline(nodes: RichMarkupNode[]) {
     return renderRichMarkupNodes(nodes)
-      .flatMap((line, index) => (index === 0 ? line : [{ kind: "text", text: " " }, ...line]));
+      .flatMap((line, index: number) => (index === 0 ? line : [{ kind: "text", text: " " }, ...line]));
   }
 
-  /**
-   * @param {RichMarkupNode} node
-   * @returns {RichMarkupItem[][]}
-   */
-  function renderRichMarkupNode(node) {
+  
+  function renderRichMarkupNode(node: RichMarkupNode) {
     const text = decodeRichMarkupText(node.name);
     if (text !== null) {
       return text ? [[{ kind: "text", text }]] : [[]];
@@ -140,7 +115,7 @@
       return renderRichMarkupNodes(node.children);
     }
     if (node.name === "VL") {
-      return node.children.flatMap((/** @type {RichMarkupNode} */ child) => renderRichMarkupNode(child)).filter((/** @type {RichMarkupItem[]} */ line) => line.length);
+      return node.children.flatMap(( child) => renderRichMarkupNode(child)).filter(( line) => line.length);
     }
     if (node.name === "H") {
       return [renderRichMarkupInline(node.children)];
@@ -183,34 +158,25 @@
     return renderRichMarkupNodes(node.children);
   }
 
-  /**
-   * @param {RichMarkupNode[]} nodes
-   * @returns {RichMarkupItem[][]}
-   */
-  function renderRichMarkupNodes(nodes) {
-    /** @type {RichMarkupItem[][]} */
+  
+  function renderRichMarkupNodes(nodes: RichMarkupNode[]) {
+    
     const lines = [[]];
-    nodes.forEach((/** @type {RichMarkupNode} */ node) => {
+    nodes.forEach(( node) => {
       appendRichMarkupLines(lines, renderRichMarkupNode(node));
     });
     return lines.filter((line) => line.length);
   }
 
-  /**
-   * @param {HTMLElement} parent
-   * @param {RichMarkupItem[]} items
-   */
-  function appendRichMarkupItems(parent, items) {
-    items.forEach((/** @type {RichMarkupItem} */ item) => {
+  
+  function appendRichMarkupItems(parent: HTMLElement, items: RichMarkupItem[]) {
+    items.forEach(( item) => {
       parent.append(renderRichMarkupItem(item));
     });
   }
 
-  /**
-   * @param {RichMarkupItem} item
-   * @returns {HTMLElement}
-   */
-  function renderRichMarkupItem(item) {
+  
+  function renderRichMarkupItem(item: RichMarkupItem) {
     if (item.kind === "text") {
       const span = document.createElement("span");
       span.textContent = item.text;
@@ -247,8 +213,8 @@
     return span;
   }
 
-  /** @param {{ richMarkup?: string | null }} label */
-  function renderRichLabel(label) {
+  
+  function renderRichLabel(label: RuntimeLabelJson) {
     if (!label.richMarkup) {
       return null;
     }
@@ -258,7 +224,7 @@
     }
     const root = document.createElement("div");
     root.className = "scene-rich-label";
-    lines.forEach((/** @type {RichMarkupItem[]} */ items) => {
+    lines.forEach(( items) => {
       const line = document.createElement("div");
       line.className = "scene-rich-line";
       appendRichMarkupItems(line, items);
@@ -268,11 +234,8 @@
   }
 
   modules.overlay = {
-    /**
-     * @param {ViewerEnv} env
-     * @param {HTMLElement | null} buttonOverlays
-     */
-    init(env, buttonOverlays) {
+    
+    init(env: ViewerEnv, buttonOverlays: HTMLElement | null) {
       const sourceScene = env.sourceScene;
       const buttonsState = env.van?.state
         ? env.van.state((sourceScene.buttons || []).map((button) => ({
@@ -290,48 +253,43 @@
       const buttonTimers = new Map();
       const buttonAnimations = new Map();
       const buttonAudio = new Map();
-      /** @type {AudioContext | null} */
+      
       let sharedAudioContext = null;
-      /** @type {Map<string, HTMLElement>} */
+      
       const overlayNodeCache = new Map();
-      /** @type {{ val: HotspotFlash[] }} */
+      
       const hotspotFlashesState = env.van?.state ? env.van.state([]) : { val: [] };
-      /** @type {ButtonPointerState | null} */
+      
       let buttonPointerState = null;
 
-      /** @param {(buttons: RuntimeButtonJson[]) => void} mutator */
-      function updateButtons(mutator) {
+      
+      function updateButtons(mutator: (buttons: RuntimeButtonJson[]) => void) {
         const next = buttonsState.val.slice();
         mutator(next);
         buttonsState.val = next;
       }
 
-      /**
-       * @param {VisibilityButtonAction} action
-       * @param {ViewerSceneData} scene
-       * @param {RuntimeButtonJson[]} buttons
-       * @param {(target: any | undefined) => void} callback
-       */
-      function forEachVisibilityTarget(action, scene, buttons, callback) {
-        (action.buttonIndices || []).forEach((/** @type {number} */ index) => {
+      
+      function forEachVisibilityTarget(action: VisibilityButtonAction, scene: ViewerSceneData, buttons: RuntimeButtonJson[], callback: (target: VisibilityTarget | undefined) => void) {
+        (action.buttonIndices || []).forEach(( index: number) => {
           callback(buttons[index]);
         });
-        (action.labelIndices || []).forEach((/** @type {number} */ index) => {
+        (action.labelIndices || []).forEach(( index: number) => {
           callback(scene.labels[index]);
         });
-        (action.imageIndices || []).forEach((/** @type {number} */ index) => {
+        (action.imageIndices || []).forEach(( index: number) => {
           callback(scene.images[index]);
         });
-        (action.pointIndices || []).forEach((/** @type {number} */ index) => {
+        (action.pointIndices || []).forEach(( index: number) => {
           callback(scene.points[index]);
         });
-        (action.lineIndices || []).forEach((/** @type {number} */ index) => {
+        (action.lineIndices || []).forEach(( index: number) => {
           callback(scene.lines[index]);
         });
-        (action.circleIndices || []).forEach((/** @type {number} */ index) => {
+        (action.circleIndices || []).forEach(( index: number) => {
           callback(scene.circles[index]);
         });
-        (action.polygonIndices || []).forEach((/** @type {number} */ index) => {
+        (action.polygonIndices || []).forEach(( index: number) => {
           callback(scene.polygons[index]);
         });
       }
@@ -344,13 +302,10 @@
         };
       }
 
-      /**
-       * @param {VisibilityButtonAction} action
-       * @param {boolean} visible
-       */
-      function setTargetsVisibility(action, visible) {
+      
+      function setTargetsVisibility(action: VisibilityButtonAction, visible: boolean) {
         const nextButtons = buttonsState.val.slice();
-        env.updateScene((scene) => {
+        env.updateScene((scene: ViewerSceneData) => {
           forEachVisibilityTarget(action, scene, nextButtons, (target) => {
             if (target) target.visible = visible;
           });
@@ -358,11 +313,8 @@
         buttonsState.val = nextButtons;
       }
 
-      /**
-       * @param {VisibilityButtonAction} action
-       * @param {boolean} visible
-       */
-      function visibilityTargetsMatch(action, visible) {
+      
+      function visibilityTargetsMatch(action: VisibilityButtonAction, visible: boolean) {
         const scene = env.currentScene();
         let matched = true;
         forEachVisibilityTarget(action, scene, buttonsState.val, (target) => {
@@ -371,11 +323,8 @@
         return matched;
       }
 
-      /**
-       * @param {string} baseText
-       * @param {boolean} targetsVisible
-       */
-      function toggledVisibilityText(baseText, targetsVisible) {
+      
+      function toggledVisibilityText(baseText: string, targetsVisible: boolean) {
         if (typeof baseText !== "string" || !baseText) {
           return baseText;
         }
@@ -389,24 +338,21 @@
         return baseText;
       }
 
-      /**
-       * @param {number} buttonIndex
-       * @param {string} nextText
-       */
-      function updateLinkedButtonLabels(buttonIndex, nextText) {
-        env.updateScene((scene) => {
+      
+      function updateLinkedButtonLabels(buttonIndex: number, nextText: string) {
+        env.updateScene((scene: ViewerSceneData) => {
           scene.labels.forEach((label) => {
             if (!label.hotspots?.length) {
               return;
             }
-            const lines = label.text.split("\n").map((/** @type {string} */ line) => Array.from(line));
+            const lines = label.text.split("\n").map(( line) => Array.from(line));
             let changed = false;
             const relevantHotspots = label.hotspots
-              .filter((/** @type {RuntimeLabelHotspotJson} */ hotspot) =>
+              .filter(( hotspot) =>
                 hotspot.action?.kind === "button" && hotspot.action.buttonIndex === buttonIndex
               )
-              .sort((/** @type {RuntimeLabelHotspotJson} */ left, /** @type {RuntimeLabelHotspotJson} */ right) => right.line - left.line || right.start - left.start);
-            relevantHotspots.forEach((/** @type {RuntimeLabelHotspotJson} */ hotspot) => {
+              .sort(( left,  right) => right.line - left.line || right.start - left.start);
+            relevantHotspots.forEach(( hotspot) => {
               const line = lines[hotspot.line];
               if (!line) {
                 return;
@@ -417,17 +363,14 @@
               changed = true;
             });
             if (changed) {
-              label.text = lines.map((/** @type {string[]} */ line) => line.join("")).join("\n");
+              label.text = lines.map(( line) => line.join("")).join("\n");
             }
           });
         }, "none");
       }
 
-      /**
-       * @param {number} buttonIndex
-       * @param {VisibilityButtonAction} action
-       */
-      function syncVisibilityButtonState(buttonIndex, action) {
+      
+      function syncVisibilityButtonState(buttonIndex: number, action: VisibilityButtonAction) {
         let active = false;
         if (action.kind === "toggle-visibility") {
           active = visibilityTargetsMatch(action, true);
@@ -457,8 +400,8 @@
         }
       }
 
-      /** @param {VisibilityButtonAction} action */
-      function toggleTargetsVisibility(action) {
+      
+      function toggleTargetsVisibility(action: VisibilityButtonAction) {
         const scene = env.currentScene();
         let hasHiddenTarget = false;
         forEachVisibilityTarget(action, scene, buttonsState.val, (target) => {
@@ -467,28 +410,28 @@
         setTargetsVisibility(action, hasHiddenTarget);
       }
 
-      /** @param {number} pointIndex */
-      function focusPoint(pointIndex) {
+      
+      function focusPoint(pointIndex: number) {
         const point = env.currentScene().points[pointIndex];
         if (!point) {
           return;
         }
-        /** @param {ViewState} view */
+        
         env.updateViewState?.((view) => {
           view.centerX = point.x;
           view.centerY = point.y;
         });
       }
 
-      /** @param {(flashes: HotspotFlash[]) => void} mutator */
-      function updateHotspotFlashes(mutator) {
+      
+      function updateHotspotFlashes(mutator: (flashes: HotspotFlash[]) => void) {
         const next = hotspotFlashesState.val.slice();
         mutator(next);
         hotspotFlashesState.val = next;
       }
 
-      /** @param {LabelHotspotActionJson} action */
-      function hotspotFlashKey(action) {
+      
+      function hotspotFlashKey(action: LabelHotspotActionJson) {
         switch (action.kind) {
           case "button":
             return `button:${action.buttonIndex}`;
@@ -507,8 +450,8 @@
         }
       }
 
-      /** @param {LabelHotspotActionJson} action */
-      function flashHotspotAction(action) {
+      
+      function flashHotspotAction(action: LabelHotspotActionJson) {
         const key = hotspotFlashKey(action);
         updateHotspotFlashes((flashes) => {
           const existingIndex = flashes.findIndex((flash) => flash.key === key);
@@ -527,8 +470,8 @@
         }, 180);
       }
 
-      /** @param {number} buttonIndex */
-      function stopButtonAnimation(buttonIndex) {
+      
+      function stopButtonAnimation(buttonIndex: number) {
         const handle = buttonAnimations.get(buttonIndex);
         if (handle?.rafId) {
           window.cancelAnimationFrame(handle.rafId);
@@ -544,16 +487,13 @@
         });
       }
 
-      /**
-       * @param {string} parameterName
-       * @param {number} value
-       */
-      function setParameterValue(parameterName, value) {
+      
+      function setParameterValue(parameterName: string, value: number) {
         if (typeof parameterName !== "string" || !Number.isFinite(value)) {
           return;
         }
         let updated = false;
-        env.updateDynamics((draft) => {
+        env.updateDynamics((draft: ViewerSceneData) => {
           const parameter = draft.parameters.find((candidate) => candidate.name === parameterName);
           if (!parameter) {
             return;
@@ -568,12 +508,8 @@
         modules.dynamics?.buildParameterControls?.(env);
       }
 
-      /**
-       * @param {number} buttonIndex
-       * @param {string} parameterName
-       * @param {number} targetValue
-       */
-      function toggleAnimatedParameter(buttonIndex, parameterName, targetValue) {
+      
+      function toggleAnimatedParameter(buttonIndex: number, parameterName: string, targetValue: number) {
         if (buttonsState.val[buttonIndex]?.active) {
           stopButtonAnimation(buttonIndex);
           return;
@@ -596,9 +532,9 @@
             buttons[buttonIndex].active = true;
           }
         });
-        /** @type {number | null} */
+        
         let lastTime = null;
-        /** @param {number} timestamp */
+        
         const step = (timestamp) => {
           if (state.stop) {
             return;
@@ -623,7 +559,7 @@
 
       async function ensureAudioContext() {
         const AudioContextCtor = window.AudioContext
-          || /** @type {typeof AudioContext | undefined} */ ((/** @type {any} */ (window)).webkitAudioContext);
+          || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
         if (!AudioContextCtor) {
           return null;
         }
@@ -636,11 +572,8 @@
         return sharedAudioContext;
       }
 
-      /**
-       * @param {RuntimeFunctionJson} functionDef
-       * @param {Map<string, number>} parameters
-       */
-      function playbackFrequencyHz(functionDef, parameters) {
+      
+      function playbackFrequencyHz(functionDef: RuntimeFunctionJson, parameters: Map<string, number>) {
         const named = parameters.get(functionDef.name);
         if (isFiniteNumber(named) && named >= 20 && named <= 2000) {
           return named;
@@ -648,8 +581,8 @@
         return 440;
       }
 
-      /** @param {number} buttonIndex */
-      function stopButtonPlayback(buttonIndex) {
+      
+      function stopButtonPlayback(buttonIndex: number) {
         const handle = buttonAudio.get(buttonIndex);
         if (!handle) {
           return;
@@ -666,11 +599,8 @@
         });
       }
 
-      /**
-       * @param {RuntimeFunctionJson} functionDef
-       * @returns {{ samples: Float32Array, frequencyHz: number } | null}
-       */
-      function buildFunctionAudioSamples(functionDef) {
+      
+      function buildFunctionAudioSamples(functionDef: RuntimeFunctionJson) {
         const evaluateExpr = modules.dynamics?.evaluateExpr;
         const parameterMapForScene = modules.dynamics?.parameterMapForScene;
         if (typeof evaluateExpr !== "function" || typeof parameterMapForScene !== "function") {
@@ -719,11 +649,8 @@
         };
       }
 
-      /**
-       * @param {number} buttonIndex
-       * @param {number} functionKey
-       */
-      async function toggleFunctionPlayback(buttonIndex, functionKey) {
+      
+      async function toggleFunctionPlayback(buttonIndex: number, functionKey: number) {
         if (buttonsState.val[buttonIndex]?.active) {
           stopButtonPlayback(buttonIndex);
           return;
@@ -772,13 +699,8 @@
         source.start();
       }
 
-      /**
-       * @param {number} buttonIndex
-       * @param {number} pointIndex
-       * @param {"move" | "animate" | "scroll"} mode
-       * @param {number | null} [targetPointIndex]
-       */
-      function toggleAnimatedPoint(buttonIndex, pointIndex, mode, targetPointIndex = null) {
+      
+      function toggleAnimatedPoint(buttonIndex: number, pointIndex: number, mode: "move" | "animate" | "scroll", targetPointIndex: number | null = null) {
         if (buttonsState.val[buttonIndex]?.active) {
           stopButtonAnimation(buttonIndex);
           return;
@@ -815,9 +737,9 @@
             buttons[buttonIndex].active = true;
           }
         });
-        /** @type {number | null} */
+        
         let lastTime = null;
-        /** @param {number} timestamp */
+        
         const step = (timestamp) => {
           if (state.stop) {
             return;
@@ -831,7 +753,7 @@
           if (typeof sourcePointRootId === "function") {
             env.markDependencyRootsDirty?.(sourcePointRootId(pointIndex));
           }
-          env.updateScene((draft) => {
+          env.updateScene((draft: ViewerSceneData) => {
             const draftPoint = draft.points[pointIndex];
             if (!draftPoint) {
               return;
@@ -919,18 +841,15 @@
         state.rafId = window.requestAnimationFrame(step);
       }
 
-      /**
-       * @param {number} buttonIndex
-       * @param {Array<number>} pointIndices
-       */
-      function toggleAnimatedPoints(buttonIndex, pointIndices) {
+      
+      function toggleAnimatedPoints(buttonIndex: number, pointIndices: Array<number>) {
         if (buttonsState.val[buttonIndex]?.active) {
           stopButtonAnimation(buttonIndex);
           return;
         }
         const scene = env.currentScene();
         const points = pointIndices
-          .map((pointIndex) => {
+          .map((pointIndex: number) => {
             const point = scene.points[pointIndex];
             if (!point) {
               return null;
@@ -952,9 +871,9 @@
             buttons[buttonIndex].active = true;
           }
         });
-        /** @type {number | null} */
+        
         let lastTime = null;
-        /** @param {number} timestamp */
+        
         const step = (timestamp) => {
           if (state.stop) {
             return;
@@ -970,7 +889,7 @@
               env.markDependencyRootsDirty?.(sourcePointRootId(point.pointIndex));
             });
           }
-          env.updateScene((draft) => {
+          env.updateScene((draft: ViewerSceneData) => {
             const delta = dt / 12000;
             points.forEach((point) => {
               const draftPoint = draft.points[point.pointIndex];
@@ -999,11 +918,8 @@
         state.rafId = window.requestAnimationFrame(step);
       }
 
-      /**
-       * @param {number} buttonIndex
-       * @param {Array<{ pointIndex: number, targetPointIndex: number | null }>} targets
-       */
-      function toggleMovedPoints(buttonIndex, targets) {
+      
+      function toggleMovedPoints(buttonIndex: number, targets: Array<{ pointIndex: number, targetPointIndex: number | null }>) {
         if (buttonsState.val[buttonIndex]?.active) {
           stopButtonAnimation(buttonIndex);
           return;
@@ -1035,9 +951,9 @@
             buttons[buttonIndex].active = true;
           }
         });
-        /** @type {number | null} */
+        
         let lastTime = null;
-        /** @param {number} timestamp */
+        
         const step = (timestamp) => {
           if (state.stop) {
             return;
@@ -1051,7 +967,7 @@
           if (typeof sourcePointRootId === "function") {
             moves.forEach((move) => env.markDependencyRootsDirty?.(sourcePointRootId(move.pointIndex)));
           }
-          env.updateScene((draft) => {
+          env.updateScene((draft: ViewerSceneData) => {
             state.t = Math.min(1, state.t + dt / 700);
             moves.forEach((move) => {
               const draftPoint = draft.points[move.pointIndex];
@@ -1077,13 +993,13 @@
         state.rafId = window.requestAnimationFrame(step);
       }
 
-      /** @param {number} buttonIndex */
-      function runButtonAction(buttonIndex) {
+      
+      function runButtonAction(buttonIndex: number) {
         const button = buttonsState.val[buttonIndex];
         if (!button) {
           return;
         }
-        /** @type {ButtonActionJson} */
+        
         const action = button.action;
         switch (action.kind) {
           case "link":
@@ -1153,7 +1069,7 @@
             break;
           case "sequence": {
             const intervalMs = Math.max(0, action.intervalMs || 0);
-            (action.buttonIndices || []).forEach((/** @type {number} */ childButtonIndex, /** @type {number} */ offset) => {
+            (action.buttonIndices || []).forEach(( childButtonIndex,  offset) => {
               const timer = window.setTimeout(() => {
                 runButtonAction(childButtonIndex);
                 buttonTimers.delete(timer);
@@ -1170,8 +1086,8 @@
         }
       }
 
-      /** @param {LabelHotspotActionJson | null} action */
-      function runHotspotAction(action) {
+      
+      function runHotspotAction(action: LabelHotspotActionJson | null) {
         if (!action) {
           return;
         }
@@ -1182,11 +1098,8 @@
         flashHotspotAction(action);
       }
 
-      /**
-       * @param {number} buttonIndex
-       * @param {PointerEvent} event
-       */
-      function beginButtonPointer(buttonIndex, event) {
+      
+      function beginButtonPointer(buttonIndex: number, event: PointerEvent) {
         const button = buttonsState.val[buttonIndex];
         if (!button) {
           return;
@@ -1209,8 +1122,8 @@
         event.preventDefault();
       }
 
-      /** @param {PointerEvent} event */
-      function handleButtonPointerMove(event) {
+      
+      function handleButtonPointerMove(event: PointerEvent) {
         const pointerState = buttonPointerState;
         if (!pointerState || event.pointerId !== pointerState.pointerId) {
           return;
@@ -1240,12 +1153,8 @@
         buttonPointerState = null;
       }
 
-      /**
-       * @param {string} key
-       * @param {() => HTMLElement} factory
-       * @returns {HTMLElement}
-       */
-      function getOverlayNode(key, factory) {
+      
+      function getOverlayNode(key: string, factory: () => HTMLElement) {
         const existing = overlayNodeCache.get(key);
         if (existing) {
           return existing;
@@ -1255,11 +1164,8 @@
         return created;
       }
 
-      /**
-       * @param {HTMLElement} node
-       * @param {number} index
-       */
-      function appendOverlayNodeAt(node, index) {
+      
+      function appendOverlayNodeAt(node: HTMLElement, index: number) {
         if (!buttonOverlays) {
           return;
         }
@@ -1269,8 +1175,8 @@
         }
       }
 
-      /** @param {Set<string>} activeKeys */
-      function pruneOverlayNodes(activeKeys) {
+      
+      function pruneOverlayNodes(activeKeys: Set<string>) {
         for (const [key, node] of overlayNodeCache.entries()) {
           if (activeKeys.has(key)) {
             continue;
@@ -1280,13 +1186,10 @@
         }
       }
 
-      /**
-       * @param {number} buttonIndex
-       * @returns {OverlayButtonElement}
-       */
-      function getButtonNode(buttonIndex) {
-        return /** @type {OverlayButtonElement} */ (getOverlayNode(`button:${buttonIndex}`, () => {
-          const anchor = /** @type {OverlayButtonElement} */ (document.createElement("button"));
+      
+      function getButtonNode(buttonIndex: number) {
+        return getOverlayNode(`button:${buttonIndex}`, () => {
+          const anchor = document.createElement("button") as OverlayButtonElement;
           anchor.className = "scene-link-button";
           anchor.type = "button";
           anchor.addEventListener("pointerdown", (event) => {
@@ -1297,17 +1200,13 @@
             beginButtonPointer(currentButtonIndex, event);
           });
           return anchor;
-        }));
+        }) as OverlayButtonElement;
       }
 
-      /**
-       * @param {number} labelIndex
-       * @param {number} hotspotIndex
-       * @returns {OverlayButtonElement}
-       */
-      function getHotspotNode(labelIndex, hotspotIndex) {
-        return /** @type {OverlayButtonElement} */ (getOverlayNode(`hotspot:${labelIndex}:${hotspotIndex}`, () => {
-          const hotspot = /** @type {OverlayButtonElement} */ (document.createElement("button"));
+      
+      function getHotspotNode(labelIndex: number, hotspotIndex: number) {
+        return getOverlayNode(`hotspot:${labelIndex}:${hotspotIndex}`, () => {
+          const hotspot = document.createElement("button") as OverlayButtonElement;
           hotspot.className = "scene-hotspot";
           hotspot.type = "button";
           hotspot.addEventListener("click", (event) => {
@@ -1315,23 +1214,20 @@
             runHotspotAction(hotspot.__gspHotspotAction ?? null);
           });
           return hotspot;
-        }));
+        }) as OverlayButtonElement;
       }
 
-      /**
-       * @param {number} labelIndex
-       * @returns {HTMLDivElement}
-       */
-      function getRichLabelNode(labelIndex) {
-        return /** @type {HTMLDivElement} */ (getOverlayNode(`rich-label:${labelIndex}`, () => {
+      
+      function getRichLabelNode(labelIndex: number) {
+        return  (getOverlayNode(`rich-label:${labelIndex}`, () => {
           const richLabel = document.createElement("div");
           richLabel.className = "scene-rich-label";
           return richLabel;
         }));
       }
 
-      /** @param {PointerEvent} event */
-      function handleButtonPointerUp(event) {
+      
+      function handleButtonPointerUp(event: PointerEvent) {
         if (!buttonPointerState || event.pointerId !== buttonPointerState.pointerId) {
           return;
         }
@@ -1346,11 +1242,11 @@
         if (!buttonOverlays) {
           return;
         }
-        /** @type {Set<string>} */
-        const activeKeys = new Set();
+        
+        const activeKeys = new Set<string>();
         const stackedOffsets = new Map();
         let overlayIndex = 0;
-        buttonsState.val.forEach((/** @type {RuntimeButtonJson} */ buttonDef, /** @type {number} */ buttonIndex) => {
+        buttonsState.val.forEach(( buttonDef,  buttonIndex) => {
           if (buttonDef.visible === false) {
             return;
           }
@@ -1377,7 +1273,7 @@
           overlayIndex += 1;
         });
 
-        env.currentScene().labels.forEach((/** @type {RuntimeLabelJson} */ label, /** @type {number} */ labelIndex) => {
+        env.currentScene().labels.forEach(( label,  labelIndex: number) => {
           if (label.visible === false) {
             return;
           }

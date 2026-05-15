@@ -1,7 +1,5 @@
-// @ts-check
-
 (function() {
-  const modules = /** @type {Partial<ViewerModules> & { geometry: ViewerGeometryModule }} */ (
+  const modules =  (
     window.GspViewerModules || (window.GspViewerModules = {})
   );
   const geometry = modules.geometry;
@@ -13,59 +11,62 @@
     clipParametricLineToBounds,
     angleBisectorDirection,
   } = geometry;
-  /** @type {Record<string, (env: ViewerSceneResolverEnv | null, constraint: RuntimePointConstraintJson, resolveFn: (index: number) => Point | null, reference?: RuntimeScenePointJson | Point | null) => Point | null>} */
-  const extraPointConstraintResolvers = {};
-  /** @type {Record<string, (env: ViewerEnv, line: RuntimeLineJson) => Point[] | null>} */
-  const extraLineBindingResolvers = {};
+  
+  const extraPointConstraintResolvers: Partial<Record<RuntimePointConstraintJson["kind"], (
+    env: ViewerSceneResolverEnv | null,
+    constraint: RuntimePointConstraintJson,
+    resolveFn: (index: number) => Point | null,
+    reference?: RuntimeScenePointJson | Point | null,
+  ) => Point | null>> = {};
+  
+  const extraLineBindingResolvers: Partial<Record<RuntimeLineBindingJson["kind"], (
+    env: ViewerEnv,
+    line: RuntimeLineJson,
+  ) => Point[] | null>> = {};
 
-  /**
-   * @param {string} kind
-   * @param {(env: ViewerSceneResolverEnv | null, constraint: RuntimePointConstraintJson, resolveFn: (index: number) => Point | null, reference?: RuntimeScenePointJson | Point | null) => Point | null} resolver
-   */
-  function registerPointConstraintResolver(kind, resolver) {
-    extraPointConstraintResolvers[kind] = resolver;
+  
+  function registerPointConstraintResolver<K extends RuntimePointConstraintJson["kind"]>(
+    kind: K,
+    resolver: (
+      env: ViewerSceneResolverEnv | null,
+      constraint: Extract<RuntimePointConstraintJson, { kind: K }>,
+      resolveFn: (index: number) => Point | null,
+      reference?: RuntimeScenePointJson | Point | null,
+    ) => Point | null,
+  ) {
+    extraPointConstraintResolvers[kind] = resolver as (
+      env: ViewerSceneResolverEnv | null,
+      constraint: RuntimePointConstraintJson,
+      resolveFn: (index: number) => Point | null,
+      reference?: RuntimeScenePointJson | Point | null,
+    ) => Point | null;
   }
 
-  /**
-   * @param {string} kind
-   * @param {(env: ViewerEnv, line: RuntimeLineJson) => Point[] | null} resolver
-   */
-  function registerLineBindingResolver(kind, resolver) {
-    extraLineBindingResolvers[kind] = resolver;
+  
+  function registerLineBindingResolver<K extends RuntimeLineBindingJson["kind"]>(
+    kind: K,
+    resolver: (env: ViewerEnv, line: RuntimeLineJson & { binding: Extract<RuntimeLineBindingJson, { kind: K }> }) => Point[] | null,
+  ) {
+    extraLineBindingResolvers[kind] = resolver as (env: ViewerEnv, line: RuntimeLineJson) => Point[] | null;
   }
 
-  /**
-   * @param {PointHandle} handle
-   * @returns {handle is Extract<PointHandle, { pointIndex: number }>}
-   */
-  function hasPointIndexHandle(handle) {
+  
+  function hasPointIndexHandle(handle: PointHandle): handle is Extract<PointHandle, { pointIndex: number }> {
     return !!handle && typeof handle === "object" && "pointIndex" in handle && typeof handle.pointIndex === "number";
   }
 
-  /**
-   * @param {PointHandle} handle
-   * @returns {handle is Extract<PointHandle, { lineIndex: number }>}
-   */
-  function hasLineIndexHandle(handle) {
+  
+  function hasLineIndexHandle(handle: PointHandle): handle is Extract<PointHandle, { lineIndex: number }> {
     return !!handle && typeof handle === "object" && "lineIndex" in handle && typeof handle.lineIndex === "number";
   }
 
-  /**
-   * @param {Point} point
-   * @param {Point} start
-   * @param {Point} end
-   */
-  function projectToSegment(point, start, end) {
+  
+  function projectToSegment(point: Point, start: Point, end: Point) {
     return projectToLineLike(point, start, end, "segment");
   }
 
-  /**
-   * @param {Point} point
-   * @param {Point} start
-   * @param {Point} end
-   * @param {"segment" | "line" | "ray"} kind
-   */
-  function projectToLineLike(point, start, end, kind) {
+  
+  function projectToLineLike(point: Point, start: Point, end: Point, kind: "segment" | "line" | "ray") {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
     const lengthSquared = dx * dx + dy * dy;
@@ -86,12 +87,8 @@
     };
   }
 
-  /**
-   * @param {Point} start
-   * @param {Point} mid
-   * @param {Point} end
-   */
-  function threePointArcGeometry(start, mid, end) {
+  
+  function threePointArcGeometry(start: Point, mid: Point, end: Point) {
     const determinant = 2 * (
       start.x * (mid.y - end.y)
       + mid.x * (end.y - start.y)
@@ -134,13 +131,8 @@
     };
   }
 
-  /**
-   * @param {Point} center
-   * @param {Point} start
-   * @param {Point} end
-   * @param {boolean} yUp
-   */
-  function circleArcControlPoints(center, start, end, yUp) {
+  
+  function circleArcControlPoints(center: Point, start: Point, end: Point, yUp: boolean) {
     const startDx = start.x - center.x;
     const startDy = start.y - center.y;
     const endDx = end.x - center.x;
@@ -165,12 +157,8 @@
     };
   }
 
-  /**
-   * @param {{ center: Point; radius: number; startAngle: number; endAngle: number; ccwSpan: number; ccwMid: number }} geometry
-   * @param {number} t
-   * @param {boolean} complement
-   */
-  function pointOnThreePointArcWithGeometry(geometry, t, complement) {
+  
+  function pointOnThreePointArcWithGeometry(geometry: { center: Point; radius: number; startAngle: number; endAngle: number; ccwSpan: number; ccwMid: number }, t: number, complement: boolean) {
     const clampedT = Math.max(0, Math.min(1, t));
     const useCcw = complement
       ? geometry.ccwMid > geometry.ccwSpan + 1e-9
@@ -184,52 +172,29 @@
     };
   }
 
-  /**
-   * @param {Point} start
-   * @param {Point} mid
-   * @param {Point} end
-   * @param {number} t
-   * @returns {Point | null}
-   */
-  function pointOnThreePointArc(start, mid, end, t) {
+  
+  function pointOnThreePointArc(start: Point, mid: Point, end: Point, t: number) {
     const geometry = threePointArcGeometry(start, mid, end);
     if (!geometry) return null;
     return pointOnThreePointArcWithGeometry(geometry, t, false);
   }
 
-  /**
-   * @param {Point} start
-   * @param {Point} mid
-   * @param {Point} end
-   * @param {number} t
-   * @returns {Point | null}
-   */
-  function pointOnThreePointArcComplement(start, mid, end, t) {
+  
+  function pointOnThreePointArcComplement(start: Point, mid: Point, end: Point, t: number) {
     const geometry = threePointArcGeometry(start, mid, end);
     if (!geometry) return null;
     return pointOnThreePointArcWithGeometry(geometry, t, true);
   }
 
-  /**
-   * @param {Point} center
-   * @param {Point} start
-   * @param {Point} end
-   * @param {number} t
-   * @param {boolean} yUp
-   */
-  function pointOnCircleArc(center, start, end, t, yUp) {
+  
+  function pointOnCircleArc(center: Point, start: Point, end: Point, t: number, yUp: boolean) {
     const controls = circleArcControlPoints(center, start, end, yUp);
     if (!controls) return null;
     return pointOnThreePointArc(controls.start, controls.mid, controls.end, t);
   }
 
-  /**
-   * @param {Point} point
-   * @param {Point} start
-   * @param {Point} mid
-   * @param {Point} end
-   */
-  function projectToThreePointArc(point, start, mid, end) {
+  
+  function projectToThreePointArc(point: Point, start: Point, mid: Point, end: Point) {
     let best = null;
     const steps = 256;
     for (let step = 0; step <= steps; step += 1) {
@@ -244,30 +209,19 @@
     return best;
   }
 
-  /**
-   * @param {Point} point
-   * @param {Point} center
-   * @param {Point} start
-   * @param {Point} end
-   * @param {boolean} yUp
-   */
-  function projectToCircleArc(point, center, start, end, yUp) {
+  
+  function projectToCircleArc(point: Point, center: Point, start: Point, end: Point, yUp: boolean) {
     const controls = circleArcControlPoints(center, start, end, yUp);
     if (!controls) return null;
     return projectToThreePointArc(point, controls.start, controls.mid, controls.end);
   }
 
-  /**
-   * @param {ViewerSceneResolverEnv | null} env
-   * @param {{ lineStartIndex?: number | null, lineEndIndex?: number | null, lineIndex?: number | null }} constraint
-   * @param {(index: number) => Point | null} resolveFn
-   * @returns {[Point | null, Point | null]}
-   */
-  function reflectionAxisPoints(env, constraint, resolveFn) {
+  
+  function reflectionAxisPoints(env: ViewerSceneResolverEnv | null, constraint: { lineStartIndex?: number | null, lineEndIndex?: number | null, lineIndex?: number | null }, resolveFn: (index: number) => Point | null) {
     const scene = typeof env?.currentScene === "function"
       ? env.currentScene()
       : env?.sourceScene || null;
-    /** @type {(binding: any) => [Point, Point] | null} */
+    
     const resolveFromBinding = (binding) => {
       if (!binding) return null;
       if (typeof binding.lineStartIndex === "number" && typeof binding.lineEndIndex === "number") {
@@ -281,7 +235,7 @@
       }
       return null;
     };
-    /** @type {(line: any) => [Point, Point] | null} */
+    
     const resolveFromLine = (line) => {
       if (!line) return null;
       if (line.points?.length >= 2 && !line.binding) {
@@ -332,13 +286,8 @@
     return [lineStart, lineEnd];
   }
 
-  /**
-   * @param {ViewerSceneResolverEnv | null} env
-   * @param {CircularConstraintJson | null} constraint
-   * @param {(index: number) => Point | null} resolveFn
-   * @returns {any | null}
-   */
-  function circleFromConstraint(env, constraint, resolveFn) {
+  
+  function circleFromConstraint(env: ViewerSceneResolverEnv | null, constraint: CircularConstraintJson | null, resolveFn: (index: number) => Point | null) {
     if (!constraint) return null;
     if (constraint.kind === "circle") {
       const center = resolveFn(constraint.centerIndex);
@@ -365,7 +314,7 @@
       const center = resolveFn(constraint.centerIndex);
       const value = env && "currentDynamics" in env
         ? env.currentDynamics().parameters
-          .find((/** @type {ParameterJson} */ parameter) => parameter.name === constraint.parameterName)
+          .find(( parameter) => parameter.name === constraint.parameterName)
           ?.value ?? constraint.parameterValue
         : constraint.parameterValue;
       if (!center || !Number.isFinite(value)) return null;
@@ -430,11 +379,8 @@
     return null;
   }
 
-  /**
-   * @param {Point} point
-   * @param {any} constraint
-   */
-  function pointLiesOnCircularConstraint(point, constraint) {
+  
+  function pointLiesOnCircularConstraint(point: Point, constraint: { kind: string; center?: Point; radius?: number; ccwMid?: number; ccwSpan?: number; startAngle?: number; endAngle?: number } | null) {
     if (!constraint) return false;
     if (constraint.kind === "circle") return true;
     if (constraint.kind === "three-point-arc") {
@@ -450,8 +396,8 @@
     return false;
   }
 
-  /** @param {ViewerEnv} env */
-  function getViewBounds(env) {
+  
+  function getViewBounds(env: ViewerEnv) {
     const spanX = env.baseSpanX / env.view.zoom;
     const spanY = env.baseSpanY / env.view.zoom;
     return {
@@ -464,14 +410,8 @@
     };
   }
 
-  /**
-   * @param {ViewerSceneResolverEnv | null} env
-   * @param {RuntimePointConstraintJson | CircularConstraintJson | LineConstraintJson | null} constraint
-   * @param {(index: number) => Point | null} resolveFn
-   * @param {RuntimeScenePointJson | Point | null | undefined} reference
-   * @returns {Point | null}
-   */
-  function resolveConstrainedPoint(env, constraint, resolveFn, reference) {
+  
+  function resolveConstrainedPoint(env: ViewerSceneResolverEnv | null, constraint: RuntimePointConstraintJson | null, resolveFn: (index: number) => Point | null, reference: RuntimeScenePointJson | Point | null | undefined) {
     if (!constraint) return null;
     if (constraint.kind === "offset") {
       const origin = resolveFn(constraint.originIndex);
@@ -532,12 +472,8 @@
     return extra ? extra(env, constraint, resolveFn, reference) : null;
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {number} index
-   * @returns {Point | null}
-   */
-  function resolveScenePoint(env, index) {
+  
+  function resolveScenePoint(env: ViewerEnv, index: number) {
     const point = env.currentScene().points[index];
     if (!point) return null;
     if (!point.constraint) return point;
@@ -546,12 +482,8 @@
     return null;
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {PointHandle} handle
-   * @returns {Point | null}
-   */
-  function resolvePoint(env, handle) {
+  
+  function resolvePoint(env: ViewerEnv, handle: PointHandle) {
     if (hasPointIndexHandle(handle)) {
       const point = resolveScenePoint(env, handle.pointIndex);
       if (!point) return null;
@@ -574,15 +506,11 @@
         y: lerpPoint(start, end, t).y + (handle.dy || 0),
       };
     }
-    return /** @type {Point} */ (handle);
+    return  (handle);
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {PointHandle} handle
-   * @returns {Point | null}
-   */
-  function resolveAnchorBase(env, handle) {
+  
+  function resolveAnchorBase(env: ViewerEnv, handle: PointHandle) {
     if (hasPointIndexHandle(handle)) {
       return resolveScenePoint(env, handle.pointIndex);
     }
@@ -595,16 +523,12 @@
       const t = typeof handle.t === "number" ? handle.t : 0.5;
       return lerpPoint(points[segmentIndex], points[segmentIndex + 1], t);
     }
-    return /** @type {Point} */ (handle);
+    return  (handle);
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {LineBindingJson} binding
-   * @returns {Point[] | null}
-   */
-  function resolveHostLinePoints(env, binding) {
-    const hostBinding = /** @type {{ lineStartIndex?: number; lineEndIndex?: number; lineIndex?: number }} */ (binding);
+  
+  function resolveHostLinePoints(env: ViewerEnv, binding: HostLineBinding) {
+    const hostBinding = binding;
     if (
       typeof hostBinding.lineStartIndex === "number"
       && typeof hostBinding.lineEndIndex === "number"
@@ -620,13 +544,8 @@
     return null;
   }
 
-  /**
-   * @param {Point} vertex
-   * @param {Point} first
-   * @param {Point} second
-   * @param {number} shortestLen
-   */
-  function resolveRightAngleMarkerPoints(vertex, first, second, shortestLen) {
+  
+  function resolveRightAngleMarkerPoints(vertex: Point, first: Point, second: Point, shortestLen: number) {
     const side = Math.min(Math.max(shortestLen * 0.125, 10), 28, shortestLen * 0.5);
     if (side <= 1e-9) return null;
     return [
@@ -636,15 +555,8 @@
     ];
   }
 
-  /**
-   * @param {Point} vertex
-   * @param {Point} first
-   * @param {number} shortestLen
-   * @param {number} cross
-   * @param {number} dot
-   * @param {number} markerClass
-   */
-  function resolveArcAngleMarkerPoints(vertex, first, shortestLen, cross, dot, markerClass) {
+  
+  function resolveArcAngleMarkerPoints(vertex: Point, first: Point, shortestLen: number, cross: number, dot: number, markerClass: number) {
     const classScale = 1 + 0.18 * Math.max(0, (markerClass || 1) - 1);
     const radius = Math.min(Math.max(shortestLen * 0.12, 10), 28) * classScale;
     const clampedRadius = Math.min(radius, shortestLen * 0.42);
@@ -653,7 +565,7 @@
     if (Math.abs(delta) <= 1e-6) return null;
     const startAngle = Math.atan2(first.y, first.x);
     const samples = 9;
-    return Array.from({ length: samples }, (_, index) => {
+    return Array.from({ length: samples }, (_, index: number) => {
       const t = index / (samples - 1);
       const angle = startAngle + delta * t;
       return {
@@ -663,13 +575,8 @@
     });
   }
 
-  /**
-   * @param {Point} start
-   * @param {Point} vertex
-   * @param {Point} end
-   * @param {number} markerClass
-   */
-  function resolveAngleMarkerPoints(start, vertex, end, markerClass) {
+  
+  function resolveAngleMarkerPoints(start: Point, vertex: Point, end: Point, markerClass: number) {
     const firstDx = start.x - vertex.x;
     const firstDy = start.y - vertex.y;
     const secondDx = end.x - vertex.x;
@@ -688,12 +595,8 @@
     return resolveArcAngleMarkerPoints(vertex, first, shortestLen, cross, dot, markerClass);
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {SceneLineJson | number | null | undefined} lineOrIndex
-   * @returns {Point[] | null}
-   */
-  function resolveLinePoints(env, lineOrIndex) {
+  
+  function resolveLinePoints(env: ViewerEnv, lineOrIndex: SceneLineJson | number | null | undefined) {
     const line = typeof lineOrIndex === "number" ? env.currentScene().lines[lineOrIndex] : lineOrIndex;
     if (!line) return null;
     if (line.binding?.kind === "segment") {
@@ -778,15 +681,12 @@
         }
       }
     }
-    const points = line.points.map((/** @type {PointHandle} */ handle) => resolvePoint(env, handle));
+    const points = line.points.map(( handle) => resolvePoint(env, handle));
     return points.every(Boolean) ? points : null;
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {Point} point
-   */
-  function toScreen(env, point) {
+  
+  function toScreen(env: ViewerEnv, point: Point) {
     const usableWidth = Math.max(1, env.sourceScene.width - env.margin * 2);
     const usableHeight = Math.max(1, env.sourceScene.height - env.margin * 2);
     const bounds = getViewBounds(env);
@@ -800,12 +700,8 @@
     };
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {number} screenX
-   * @param {number} screenY
-   */
-  function toWorld(env, screenX, screenY) {
+  
+  function toWorld(env: ViewerEnv, screenX: number, screenY: number) {
     const usableWidth = Math.max(1, env.sourceScene.width - env.margin * 2);
     const usableHeight = Math.max(1, env.sourceScene.height - env.margin * 2);
     const bounds = getViewBounds(env);
@@ -819,11 +715,8 @@
     };
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {MouseEvent | PointerEvent | WheelEvent} event
-   */
-  function getCanvasCoords(env, event) {
+  
+  function getCanvasCoords(env: ViewerEnv, event: MouseEvent | PointerEvent | WheelEvent) {
     const rect = env.canvas.getBoundingClientRect();
     return {
       x: (event.clientX - rect.left) * (env.sourceScene.width / rect.width),
@@ -831,13 +724,9 @@
     };
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {Element} parent
-   * @param {Record<string, string | number | boolean | null | undefined>} attrs
-   */
-  function appendGridElement(env, parent, attrs) {
-    const tag = /** @type {string} */ (attrs.tag);
+  
+  function appendGridElement(env: ViewerEnv, parent: Element, attrs: Record<string, string | number | boolean | null | undefined>) {
+    const tag = String(attrs.tag);
     const nextAttrs = { ...attrs };
     delete nextAttrs.tag;
     const element = env.createSvgElement(tag, nextAttrs);
@@ -845,16 +734,8 @@
     return element;
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {Element} parent
-   * @param {number} x1
-   * @param {number} y1
-   * @param {number} x2
-   * @param {number} y2
-   * @param {string} color
-   */
-  function appendGridLine(env, parent, x1, y1, x2, y2, color) {
+  
+  function appendGridLine(env: ViewerEnv, parent: Element, x1: number, y1: number, x2: number, y2: number, color: string) {
     appendGridElement(env, parent, {
       tag: "line",
       x1,
@@ -867,15 +748,8 @@
     });
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {Element} parent
-   * @param {number} x
-   * @param {number} y
-   * @param {string} text
-   * @param {"start" | "middle" | "end"} anchor
-   */
-  function appendGridText(env, parent, x, y, text, anchor) {
+  
+  function appendGridText(env: ViewerEnv, parent: Element, x: number, y: number, text: string, anchor: "start" | "middle" | "end") {
     const label = appendGridElement(env, parent, {
       tag: "text",
       x,
@@ -889,11 +763,8 @@
     label.textContent = text;
   }
 
-  /**
-   * @param {number} span
-   * @param {number} targetLines
-   */
-  function chooseGridStep(span, targetLines) {
+  
+  function chooseGridStep(span: number, targetLines: number) {
     const rough = Math.max(1e-6, span / Math.max(1, targetLines));
     const magnitude = 10 ** Math.floor(Math.log10(rough));
     const normalized = rough / magnitude;
@@ -903,12 +774,12 @@
     return magnitude * 10;
   }
 
-  /** @param {ViewerEnv} env */
-  function drawGrid(env) {
+  
+  function drawGrid(env: ViewerEnv) {
     env.clearSvgChildren(env.gridLayer);
     if (!env.currentScene().graphMode) return;
     const gridLayer = env.gridLayer;
-    const snapStroke = (/** @type {number} */ value) => Math.round(value) + 0.5;
+    const snapStroke = ( value) => Math.round(value) + 0.5;
     const bounds = getViewBounds(env);
     const spanX = bounds.maxX - bounds.minX;
     const spanY = bounds.maxY - bounds.minY;
@@ -1023,27 +894,27 @@
     }
   }
 
-  /** @returns {null} */
+  
   function sampleArcBoundaryPoints() {
     return null;
   }
 
-  /** @returns {null} */
+  
   function sampleCoordinateTracePoints() {
     return null;
   }
 
-  /** @returns {null} */
+  
   function lineLineIntersection() {
     return null;
   }
 
-  /** @returns {null} */
+  
   function lineCircleIntersection() {
     return null;
   }
 
-  /** @returns {null} */
+  
   function circleCircleIntersection() {
     return null;
   }

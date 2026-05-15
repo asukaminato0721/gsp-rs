@@ -1,15 +1,9 @@
-// @ts-nocheck
-
 (function() {
   const modules = window.GspViewerModules || (window.GspViewerModules = {});
-  const scene = /** @type {any} */ (modules.scene);
+  const scene =  (modules.scene);
 
-  /**
-   * @param {ViewerEnv | null} env
-   * @param {Extract<LineBindingJson, { kind: "coordinate-trace" }> | Extract<RuntimePointConstraintJson, { kind: "line-trace-intersection" }>} binding
-   * @returns {Point[] | null}
-   */
-  function sampleCoordinateTracePoints(env, binding) {
+  
+  function sampleCoordinateTracePoints(env: ViewerEnv | null, binding: RuntimeLineBindingJson | RuntimePointConstraintJson) {
     if (!binding) return null;
     const evaluateExpr = modules.dynamics?.evaluateExpr;
     if (typeof evaluateExpr !== "function") return null;
@@ -26,7 +20,7 @@
     const parameters = env?.currentDynamics
       ? new Map(env.currentDynamics().parameters.map((parameter) => [parameter.name, parameter.value]))
       : new Map();
-    /** @type {Point[]} */
+    
     const points = [];
     const last = Math.max(1, (binding.sampleCount || 0) - 1);
     for (let index = 0; index < (binding.sampleCount || 0); index += 1) {
@@ -60,17 +54,12 @@
     return points.length >= 2 ? points : null;
   }
 
-  /**
-   * @param {ViewerEnv | null} env
-   * @param {RuntimePointConstraintJson} constraint
-   * @param {(index: number) => Point | null} resolveFn
-   * @returns {Point[] | null}
-   */
-  function resolvePolylineConstraintPoints(env, constraint, resolveFn) {
+  
+  function resolvePolylineConstraintPoints(env: ViewerEnv | null, constraint: RuntimePointConstraintJson, resolveFn: (index: number) => Point | null) {
     const hasRuntimeScene = typeof env?.currentScene === "function";
     const currentScene = hasRuntimeScene ? env.currentScene() : env?.sourceScene;
     if (typeof constraint.functionKey === "number") {
-      const hostLine = currentScene?.lines?.find((/** @type {RuntimeLineJson} */ line) =>
+      const hostLine = currentScene?.lines?.find(( line) =>
         line?.binding?.kind === "arc-boundary" && line.binding.hostKey === constraint.functionKey
         || line?.debug?.groupOrdinal === constraint.functionKey
           && (
@@ -83,11 +72,11 @@
         if (hasRuntimeScene && typeof scene.sampleArcBoundaryPoints === "function") {
           return scene.sampleArcBoundaryPoints(env, hostLine.binding);
         }
-        return hostLine.points.map((/** @type {PointHandle} */ handle) => {
+        return hostLine.points.map(( handle) => {
           if (handle && typeof handle === "object" && "pointIndex" in handle && typeof handle.pointIndex === "number") {
             return resolveFn(handle.pointIndex);
           }
-          return /** @type {Point} */ (handle);
+          return  (handle);
         });
       }
       if (
@@ -98,15 +87,15 @@
         return scene.resolveLinePoints(env, hostLine) || hostLine.points;
       }
     }
-    return constraint.points.map((/** @type {PointHandle} */ handle) => {
+    return constraint.points.map(( handle) => {
       if (handle && typeof handle === "object" && "pointIndex" in handle && typeof handle.pointIndex === "number") {
         return resolveFn(handle.pointIndex);
       }
-      return /** @type {Point} */ (handle);
+      return  (handle);
     });
   }
 
-  scene.registerPointConstraintResolver("polyline", /** @type {any} */((env, constraint, resolveFn) => {
+  scene.registerPointConstraintResolver("polyline", ((env: ViewerEnv, constraint, resolveFn) => {
     const points = resolvePolylineConstraintPoints(env, constraint, resolveFn);
     if (!points || points.length < 2) return null;
     const segmentIndex = Math.max(0, Math.min(points.length - 2, constraint.segmentIndex));
@@ -114,6 +103,6 @@
     const end = points[segmentIndex + 1];
     return start && end ? scene.lerpPoint(start, end, constraint.t) : null;
   }));
-  scene.registerLineBindingResolver("coordinate-trace", /** @type {any} */((env, line) => sampleCoordinateTracePoints(env, line.binding)));
+  scene.registerLineBindingResolver("coordinate-trace", ((env: ViewerEnv, line) => sampleCoordinateTracePoints(env, line.binding)));
   scene.sampleCoordinateTracePoints = sampleCoordinateTracePoints;
 })();

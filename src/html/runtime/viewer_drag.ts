@@ -1,10 +1,8 @@
-// @ts-check
-
 (function() {
-  const modules = /** @type {Partial<ViewerModules> & { scene: ViewerSceneModule; dynamics: ViewerDynamicsModule; geometry: ViewerGeometryModule }} */ (
+  const modules =  (
     window.GspViewerModules || (window.GspViewerModules = {})
   );
-  /** @type {Set<string>} */
+  
   const PAN_ONLY_POINT_BINDINGS = new Set([
     "midpoint",
     "coordinate",
@@ -12,20 +10,13 @@
     "coordinate-source-2d",
   ]);
 
-  /**
-   * @param {PointHandle} handle
-   * @returns {handle is Extract<PointHandle, { pointIndex: number }>}
-   */
-  function hasPointIndexHandle(handle) {
+  
+  function hasPointIndexHandle(handle: PointHandle): handle is Extract<PointHandle, { pointIndex: number }> {
     return !!handle && typeof handle === "object" && "pointIndex" in handle && typeof handle.pointIndex === "number";
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {number} pointIndex
-   * @returns {string[]}
-   */
-  function dependencyRootsForDraggedPoint(env, pointIndex) {
+  
+  function dependencyRootsForDraggedPoint(env: ViewerEnv, pointIndex: number) {
     const point = env.currentScene().points?.[pointIndex];
     if (!point) {
       return [];
@@ -34,8 +25,8 @@
     if (typeof rootId !== "function") {
       return [];
     }
-    const roots = new Set();
-    const addPointRoots = (/** @type {number} */ index) => {
+    const roots = new Set<string>();
+    const addPointRoots = (index: number) => {
       roots.add(rootId(index));
       const constraint = env.currentScene().points?.[index]?.constraint;
       if (isOffsetConstraint(constraint)) {
@@ -49,12 +40,8 @@
     return Array.from(roots);
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {number} polygonIndex
-   * @returns {string[]}
-   */
-  function dependencyRootsForDraggedPolygon(env, polygonIndex) {
+  
+  function dependencyRootsForDraggedPolygon(env: ViewerEnv, polygonIndex: number) {
     const polygon = env.currentScene().polygons?.[polygonIndex];
     if (!polygon) {
       return [];
@@ -63,8 +50,8 @@
     if (typeof rootId !== "function") {
       return [];
     }
-    const roots = new Set();
-    polygon.points.forEach((/** @type {PointHandle} */ handle) => {
+    const roots = new Set<string>();
+    polygon.points.forEach((handle: PointHandle) => {
       if (hasPointIndexHandle(handle)) {
         roots.add(rootId(handle.pointIndex));
       }
@@ -72,19 +59,17 @@
     return Array.from(roots);
   }
 
-  /**
-   * @param {RuntimeScenePointJson["constraint"]} constraint
-   * @returns {constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "offset" }>}
-   */
-  function isOffsetConstraint(constraint) {
+  
+  function isOffsetConstraint(
+    constraint: RuntimeScenePointJson["constraint"],
+  ): constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "offset" }> {
     return !!constraint && constraint.kind === "offset";
   }
 
-  /**
-   * @param {RuntimeScenePointJson["constraint"]} constraint
-   * @returns {constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "segment" | "line" | "line-constraint" | "ray" | "ray-constraint" }>}
-   */
-  function isLineLikeConstraint(constraint) {
+  
+  function isLineLikeConstraint(
+    constraint: RuntimeScenePointJson["constraint"],
+  ): constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "segment" | "line" | "line-constraint" | "ray" | "ray-constraint" }> {
     return !!constraint
       && (
         constraint.kind === "segment"
@@ -95,61 +80,60 @@
       );
   }
 
-  /**
-   * @param {RuntimeScenePointJson["constraint"]} constraint
-   * @returns {constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "polyline" }>}
-   */
-  function isPolylineConstraint(constraint) {
+  
+  function isPolylineConstraint(
+    constraint: RuntimeScenePointJson["constraint"],
+  ): constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "polyline" }> {
     return !!constraint && constraint.kind === "polyline";
   }
 
-  /**
-   * @param {RuntimeScenePointJson["constraint"]} constraint
-   * @returns {constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "polygon-boundary" }>}
-   */
-  function isPolygonBoundaryConstraint(constraint) {
+  
+  function isPolygonBoundaryConstraint(
+    constraint: RuntimeScenePointJson["constraint"],
+  ): constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "polygon-boundary" }> {
     return !!constraint && constraint.kind === "polygon-boundary";
   }
 
-  /**
-   * @param {RuntimeScenePointJson["constraint"]} constraint
-   * @returns {constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "circle" }>}
-   */
-  function isCircleConstraint(constraint) {
+  
+  function isCircleConstraint(
+    constraint: RuntimeScenePointJson["constraint"],
+  ): constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "circle" | "circular-constraint" }> {
     return !!constraint && (constraint.kind === "circle" || constraint.kind === "circular-constraint");
   }
 
-  /**
-   * @param {RuntimeScenePointJson["constraint"]} constraint
-   * @returns {constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "circle-arc" }>}
-   */
-  function isCircleArcConstraint(constraint) {
+  
+  function isCircleArcConstraint(
+    constraint: RuntimeScenePointJson["constraint"],
+  ): constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "circle-arc" }> {
     return !!constraint && constraint.kind === "circle-arc";
   }
 
-  /**
-   * @param {RuntimeScenePointJson["constraint"]} constraint
-   * @returns {constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "arc" }>}
-   */
-  function isArcConstraint(constraint) {
+  
+  function isArcConstraint(
+    constraint: RuntimeScenePointJson["constraint"],
+  ): constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "arc" }> {
     return !!constraint && constraint.kind === "arc";
   }
 
-  /**
-   * @param {RuntimePointRef} anchor
-   * @returns {anchor is Extract<RuntimePointRef, { pointIndex: number } | { lineIndex: number }>}
-   */
-  function isBoundAnchor(anchor) {
+  
+  function isBoundAnchor(
+    anchor: RuntimePointRef,
+  ): anchor is Extract<RuntimePointRef, { pointIndex: number }> | Extract<RuntimePointRef, { lineIndex: number }> {
     return !!anchor && typeof anchor === "object" && (
       ("pointIndex" in anchor && typeof anchor.pointIndex === "number")
       || ("lineIndex" in anchor && typeof anchor.lineIndex === "number")
     );
   }
 
-  /** @typedef {(env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) => void} DraggedPointConstraintUpdater */
-  /** @type {Record<string, DraggedPointConstraintUpdater>} */
+  
+  function isCoordinateAnchor(anchor: RuntimePointRef): anchor is Point {
+    return !!anchor && typeof anchor === "object" && "x" in anchor && "y" in anchor;
+  }
+
+  type DraggedPointConstraintUpdater = (env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) => void;
+  
   const DRAGGED_POINT_CONSTRAINT_UPDATERS = {
-    offset(env, draft, point, world) {
+    offset(env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
       const constraint = point.constraint;
       if (!isOffsetConstraint(constraint)) return;
       if (point.binding?.kind === "graph-calibration") {
@@ -183,12 +167,12 @@
       constraint.dx = world.x - origin.x;
       constraint.dy = world.y - origin.y;
     },
-    segment(env, _draft, point, world) {
+    segment(env: ViewerEnv, _draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
       const constraint = point.constraint;
       if (!isLineLikeConstraint(constraint)) return;
       const line = "line" in constraint
         ? modules.dynamics.resolveLineConstraintParameterPoints(
-            (index) => env.resolveScenePoint(index),
+            (index: number) => env.resolveScenePoint(index),
             constraint.line,
           )
         : [
@@ -213,25 +197,25 @@
         point.y = projection.projected.y;
       }
     },
-    line(env, draft, point, world) {
+    line(env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
       DRAGGED_POINT_CONSTRAINT_UPDATERS.segment(env, draft, point, world);
     },
-    "line-constraint"(env, draft, point, world) {
+    "line-constraint"(env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
       DRAGGED_POINT_CONSTRAINT_UPDATERS.segment(env, draft, point, world);
     },
-    ray(env, draft, point, world) {
+    ray(env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
       DRAGGED_POINT_CONSTRAINT_UPDATERS.segment(env, draft, point, world);
     },
-    "ray-constraint"(env, draft, point, world) {
+    "ray-constraint"(env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
       DRAGGED_POINT_CONSTRAINT_UPDATERS.segment(env, draft, point, world);
     },
-    polyline(env, _draft, point, world) {
+    polyline(env: ViewerEnv, _draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
       const constraint = point.constraint;
       if (!isPolylineConstraint(constraint)) return;
       const points = typeof constraint.functionKey === "number"
         ? modules.scene.resolveLinePoints(
             env,
-            env.currentScene().lines.find((/** @type {SceneLineJson} */ line) =>
+            env.currentScene().lines.find((line: RuntimeLineJson) =>
               line?.binding?.kind === "arc-boundary" && line.binding.hostKey === constraint.functionKey
               || line?.debug?.groupOrdinal === constraint.functionKey
                 && (
@@ -265,7 +249,7 @@
       constraint.segmentIndex = bestSegmentIndex;
       constraint.t = bestT;
     },
-    "polygon-boundary"(env, _draft, point, world) {
+    "polygon-boundary"(env: ViewerEnv, _draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
       const constraint = point.constraint;
       if (!isPolygonBoundaryConstraint(constraint)) return;
       const count = constraint.vertexIndices.length;
@@ -291,7 +275,7 @@
       constraint.edgeIndex = bestEdgeIndex;
       constraint.t = bestT;
     },
-    circle(env, _draft, point, world) {
+    circle(env: ViewerEnv, _draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
       const constraint = point.constraint;
       if (!isCircleConstraint(constraint)) return;
       const center = constraint.kind === "circle"
@@ -299,7 +283,7 @@
         : modules.scene._circleFromConstraint?.(
             env,
             constraint.circle,
-            (index) => env.resolveScenePoint(index),
+            (index: number) => env.resolveScenePoint(index),
           )?.center;
       if (!center) return;
       const dx = world.x - center.x;
@@ -310,10 +294,10 @@
         constraint.unitY = dy / length;
       }
     },
-    "circular-constraint"(env, draft, point, world) {
+    "circular-constraint"(env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
       DRAGGED_POINT_CONSTRAINT_UPDATERS.circle(env, draft, point, world);
     },
-    "circle-arc"(env, _draft, point, world) {
+    "circle-arc"(env: ViewerEnv, _draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
       const constraint = point.constraint;
       if (!isCircleArcConstraint(constraint)) return;
       const center = env.resolveScenePoint(constraint.centerIndex);
@@ -331,7 +315,7 @@
         constraint.t = projection.t;
       }
     },
-    arc(env, _draft, point, world) {
+    arc(env: ViewerEnv, _draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
       const constraint = point.constraint;
       if (!isArcConstraint(constraint)) return;
       const start = env.resolveScenePoint(constraint.startIndex);
@@ -350,13 +334,8 @@
     },
   };
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {ViewerSceneData} draft
-   * @param {number} pointIndex
-   * @param {Point} world
-   */
-  function updatePointToWorld(env, draft, pointIndex, world) {
+  
+  function updatePointToWorld(env: ViewerEnv, draft: ViewerSceneData, pointIndex: number, world: Point) {
     const point = draft.points[pointIndex];
     if (!point) return;
     const constraintKind = point.constraint?.kind;
@@ -371,14 +350,8 @@
     }
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {ViewerSceneData} draft
-   * @param {RuntimeScenePointJson} point
-   * @param {Point} world
-   * @returns {boolean}
-   */
-  function updateDerivedPointSourceToWorld(env, draft, point, world) {
+  
+  function updateDerivedPointSourceToWorld(env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
     if (point.binding?.kind !== "derived") return false;
     const transform = point.binding.transform;
     if (transform?.kind !== "rotate" || typeof transform.angleDegrees !== "number") {
@@ -394,15 +367,8 @@
     return true;
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {number | null} pointIndex
-   * @param {number | null} labelIndex
-   * @param {number | null} polygonIndex
-   * @param {number | null} iterationTableIndex
-   * @param {number | null} imageIndex
-   */
-  function dragModeFor(env, pointIndex, labelIndex, polygonIndex, iterationTableIndex, imageIndex) {
+  
+  function dragModeFor(env: ViewerEnv, pointIndex: number | null, labelIndex: number | null, polygonIndex: number | null, iterationTableIndex: number | null, imageIndex: number | null) {
     if (pointIndex !== null) {
       const point = env.currentScene().points[pointIndex];
       const constraintKind = point?.constraint?.kind;
@@ -426,17 +392,8 @@
     return labelIndex !== null ? "label" : "pan";
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {number} pointerId
-   * @param {Point} position
-   * @param {number | null} pointIndex
-   * @param {number | null} labelIndex
-   * @param {number | null} polygonIndex
-   * @param {number | null} iterationTableIndex
-   * @param {number | null} imageIndex
-   */
-  function beginDrag(env, pointerId, position, pointIndex, labelIndex, polygonIndex, iterationTableIndex, imageIndex) {
+  
+  function beginDrag(env: ViewerEnv, pointerId: number, position: Point, pointIndex: number | null, labelIndex: number | null, polygonIndex: number | null, iterationTableIndex: number | null, imageIndex: number | null) {
     env.dragState.val = {
       pointerId,
       mode: dragModeFor(env, pointIndex, labelIndex, polygonIndex, iterationTableIndex, imageIndex),
@@ -452,16 +409,13 @@
     env.canvas.classList.add("is-dragging");
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {Point} world
-   */
-  function updateDraggedPoint(env, world) {
+  
+  function updateDraggedPoint(env: ViewerEnv, world: Point) {
     const drag = env.dragState.val;
     if (!drag || drag.pointIndex === null) return;
     const pointIndex = drag.pointIndex;
     env.markDependencyRootsDirty?.(dependencyRootsForDraggedPoint(env, pointIndex));
-    env.updateScene((/** @type {ViewerSceneData} */ draft) => {
+    env.updateScene((draft: ViewerSceneData) => {
       const point = draft.points[pointIndex];
       if (!point) return;
       if (!updateDerivedPointSourceToWorld(env, draft, point, world)) {
@@ -471,19 +425,17 @@
     env.hoverPointIndex.val = pointIndex;
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {Point} position
-   */
-  function updateDraggedLabel(env, position) {
+  
+  function updateDraggedLabel(env: ViewerEnv, position: Point) {
     const drag = env.dragState.val;
     if (!drag || drag.labelIndex === null) return;
     const labelIndex = drag.labelIndex;
-    env.updateScene((/** @type {ViewerSceneData} */ draft) => {
+    env.updateScene((draft: ViewerSceneData) => {
       const label = draft.labels[labelIndex];
       if (!label) return;
       const anchor = label.anchor;
-      if (label.screenSpace) {
+      if (!anchor) return;
+      if (label.screenSpace && isCoordinateAnchor(anchor)) {
         anchor.x = position.x;
         anchor.y = position.y;
       } else if (isBoundAnchor(anchor)) {
@@ -492,7 +444,7 @@
         const world = env.toWorld(position.x, position.y);
         anchor.dx = world.x - base.x;
         anchor.dy = world.y - base.y;
-      } else {
+      } else if (isCoordinateAnchor(anchor)) {
         const world = env.toWorld(position.x, position.y);
         anchor.x = world.x;
         anchor.y = world.y;
@@ -500,11 +452,8 @@
     }, "none");
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {Point} world
-   */
-  function updateDraggedPolygon(env, world) {
+  
+  function updateDraggedPolygon(env: ViewerEnv, world: Point) {
     const drag = env.dragState.val;
     if (!drag || drag.polygonIndex === null) return;
     const polygonIndex = drag.polygonIndex;
@@ -515,10 +464,10 @@
     env.markDependencyRootsDirty?.(
       dependencyRootsForDraggedPolygon(env, polygonIndex),
     );
-    env.updateScene((/** @type {ViewerSceneData} */ draft) => {
+    env.updateScene(( draft: ViewerSceneData) => {
       const polygon = draft.polygons[polygonIndex];
       if (!polygon) return;
-      polygon.points.forEach((/** @type {PointHandle} */ handle) => {
+      polygon.points.forEach(( handle) => {
         if (!hasPointIndexHandle(handle)) return;
         const point = draft.points[handle.pointIndex];
         if (!point || point.constraint || point.binding) return;
@@ -528,15 +477,12 @@
     }, "graph");
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {Point} position
-   */
-  function updateDraggedIterationTable(env, position) {
+  
+  function updateDraggedIterationTable(env: ViewerEnv, position: Point) {
     const drag = env.dragState.val;
     if (!drag || drag.iterationTableIndex === null) return;
     const iterationTableIndex = drag.iterationTableIndex;
-    env.updateScene((/** @type {ViewerSceneData} */ draft) => {
+    env.updateScene(( draft: ViewerSceneData) => {
       const table = draft.iterationTables?.[iterationTableIndex];
       if (!table) return;
       table.x = position.x;
@@ -544,15 +490,12 @@
     }, "none");
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {Point} position
-   */
-  function updateDraggedImage(env, position) {
+  
+  function updateDraggedImage(env: ViewerEnv, position: Point) {
     const drag = env.dragState.val;
     if (!drag || drag.imageIndex === null) return;
     const imageIndex = drag.imageIndex;
-    env.updateScene((draft) => {
+    env.updateScene((draft: ViewerSceneData) => {
       const image = draft.images?.[imageIndex];
       if (!image) return;
       const dxScreen = position.x - drag.lastX;
@@ -576,11 +519,8 @@
     }, "none");
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {Point} position
-   */
-  function panFromPointerDelta(env, position) {
+  
+  function panFromPointerDelta(env: ViewerEnv, position: Point) {
     const drag = env.dragState.val;
     if (!drag) return;
     const worldNow = env.toWorld(position.x, position.y);

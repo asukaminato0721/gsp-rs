@@ -1,9 +1,7 @@
-// @ts-check
-
 (function() {
-  const modules = /** @type {Partial<ViewerModules> & { geometry: ViewerGeometryModule; scene: ViewerSceneModule }} */ (
+  const modules = (
     window.GspViewerModules || (window.GspViewerModules = {})
-  );
+  ) as Partial<ViewerModules> & { geometry: ViewerGeometryModule };
   const geometry = modules.geometry;
   const {
     lerpPoint,
@@ -17,37 +15,23 @@
     measuredRotationRadians,
     scaleByThreePointRatio,
   } = geometry;
-  /** @typedef {{ minX: number; maxX: number; minY: number; maxY: number; spanX?: number; spanY?: number }} ViewBounds */
-  /**
-   * @param {unknown} value
-   * @returns {value is number}
-   */
-  function isFiniteNumber(value) {
+  type ViewBounds = { minX: number; maxX: number; minY: number; maxY: number; spanX?: number; spanY?: number };
+  
+  function isFiniteNumber(value: unknown) {
     return typeof value === "number" && Number.isFinite(value);
   }
-  /**
-   * @param {PointHandle} handle
-   * @returns {handle is Extract<PointHandle, { pointIndex: number }>}
-   */
-  function hasPointIndexHandle(handle) {
+  
+  function hasPointIndexHandle(handle: PointHandle): handle is Extract<PointHandle, { pointIndex: number }> {
     return !!handle && typeof handle === "object" && "pointIndex" in handle && typeof handle.pointIndex === "number";
   }
 
-  /**
-   * @param {PointHandle} handle
-   * @returns {handle is Extract<PointHandle, { lineIndex: number }>}
-   */
-  function hasLineIndexHandle(handle) {
+  
+  function hasLineIndexHandle(handle: PointHandle): handle is Extract<PointHandle, { lineIndex: number }> {
     return !!handle && typeof handle === "object" && "lineIndex" in handle && typeof handle.lineIndex === "number";
   }
 
-  /**
-   * @param {{ angleDegrees: number; parameterName?: string | null; angleExpr?: FunctionExprJson | null; angleStartIndex?: number | null; angleVertexIndex?: number | null; angleEndIndex?: number | null; angleParameterPointIndex?: number | null; angleParameterStartIndex?: number | null; angleParameterEndIndex?: number | null; angleParameterScale?: number | null }} transform
-   * @param {Map<string, number>} parameters
-   * @param {(index: number) => Point | null | undefined} resolvePoint
-   * @returns {number | null}
-   */
-  function resolveRotateTransformAngleDegrees(transform, parameters, resolvePoint) {
+  
+  function resolveRotateTransformAngleDegrees(transform: { angleDegrees?: number; parameterName?: string | null; angleExpr?: FunctionExprJson | null; angleStartIndex?: number | null; angleVertexIndex?: number | null; angleEndIndex?: number | null; angleParameterPointIndex?: number | null; angleParameterStartIndex?: number | null; angleParameterEndIndex?: number | null; angleParameterScale?: number | null }, parameters: Map<string, number>, resolvePoint: (index: number) => Point | null | undefined) {
     if (
       typeof transform.angleParameterPointIndex === "number"
       && typeof transform.angleParameterStartIndex === "number"
@@ -85,13 +69,8 @@
     return transform.angleDegrees;
   }
 
-  /**
-   * @param {{ centerIndex: number; factor: number; parameterName?: string | null; factorExpr?: FunctionExprJson | null; factorParameterPointIndex?: number | null; factorParameterStartIndex?: number | null; factorParameterEndIndex?: number | null }} transform
-   * @param {Map<string, number>} parameters
-   * @param {((index: number) => Point | null | undefined) | null} [resolvePointAt]
-   * @returns {number | null}
-   */
-  function resolveScaleTransformFactor(transform, parameters, resolvePointAt = null) {
+  
+  function resolveScaleTransformFactor(transform: { centerIndex?: number; factor?: number; parameterName?: string | null; factorExpr?: FunctionExprJson | null; factorParameterPointIndex?: number | null; factorParameterStartIndex?: number | null; factorParameterEndIndex?: number | null }, parameters: Map<string, number>, resolvePointAt: ((index: number) => Point | null | undefined) | null = null) {
     if (
       typeof transform.factorParameterPointIndex === "number"
       && typeof transform.factorParameterStartIndex === "number"
@@ -113,20 +92,13 @@
     return transform.factor;
   }
 
-  /**
-   * @param {RuntimeLabelJson} label
-   */
-  function usesVerboseParameterLabel(label) {
+  
+  function usesVerboseParameterLabel(label: RuntimeLabelJson) {
     return typeof label.text === "string" && label.text.includes("在");
   }
 
-  /**
-   * @param {Point} vertex
-   * @param {Point} first
-   * @param {Point} second
-   * @param {number} shortestLen
-   */
-  function resolveRightAngleMarkerPoints(vertex, first, second, shortestLen) {
+  
+  function resolveRightAngleMarkerPoints(vertex: Point, first: Point, second: Point, shortestLen: number) {
     const side = Math.min(Math.max(shortestLen * 0.125, 10), 28, shortestLen * 0.5);
     if (side <= 1e-9) return null;
     return [
@@ -136,15 +108,8 @@
     ];
   }
 
-  /**
-   * @param {Point} vertex
-   * @param {Point} first
-   * @param {number} shortestLen
-   * @param {number} cross
-   * @param {number} dot
-   * @param {number} markerClass
-   */
-  function resolveArcAngleMarkerPoints(vertex, first, shortestLen, cross, dot, markerClass) {
+  
+  function resolveArcAngleMarkerPoints(vertex: Point, first: Point, shortestLen: number, cross: number, dot: number, markerClass: number) {
     const classScale = 1 + 0.18 * Math.max(0, (markerClass || 1) - 1);
     const radius = Math.min(Math.max(shortestLen * 0.12, 10), 28) * classScale;
     const clampedRadius = Math.min(radius, shortestLen * 0.42);
@@ -153,7 +118,7 @@
     if (Math.abs(delta) <= 1e-6) return null;
     const startAngle = Math.atan2(first.y, first.x);
     const samples = 9;
-    return Array.from({ length: samples }, (_, index) => {
+    return Array.from({ length: samples }, (_, index: number) => {
       const t = index / (samples - 1);
       const angle = startAngle + delta * t;
       return {
@@ -163,13 +128,8 @@
     });
   }
 
-  /**
-   * @param {Point} start
-   * @param {Point} vertex
-   * @param {Point} end
-   * @param {number} markerClass
-   */
-  function resolveAngleMarkerPoints(start, vertex, end, markerClass) {
+  
+  function resolveAngleMarkerPoints(start: Point, vertex: Point, end: Point, markerClass: number) {
     const firstDx = start.x - vertex.x;
     const firstDy = start.y - vertex.y;
     const secondDx = end.x - vertex.x;
@@ -188,12 +148,8 @@
     return resolveArcAngleMarkerPoints(vertex, first, shortestLen, cross, dot, markerClass);
   }
 
-  /**
-   * @param {string} op
-   * @param {number} x
-   * @returns {number | null}
-   */
-  function evaluateUnary(op, x, degrees = false) {
+  
+  function evaluateUnary(op: string, x: number, degrees: boolean = false) {
     const value = degrees ? x * Math.PI / 180 : x;
     switch (op) {
       case "sin": return Math.sin(value);
@@ -210,26 +166,16 @@
     }
   }
 
-  /**
-   * @param {FunctionExprJson | FunctionAstJson} expr
-   * @param {number} x
-   * @param {Map<string, number>} parameters
-   * @returns {number | null}
-   */
-  function evaluateExpr(expr, x, parameters) {
+  
+  function evaluateExpr(expr: FunctionExprJson | FunctionAstJson, x: number, parameters: Map<string, number>) {
     if (expr.kind === "constant") return expr.value;
     if (expr.kind === "identity") return x;
     if (expr.kind !== "parsed") return null;
     return evaluateExprAst(expr.expr, x, parameters);
   }
 
-  /**
-   * @param {FunctionExprJson | FunctionAstJson} expr
-   * @param {number} x
-   * @param {Map<string, number>} parameters
-   * @returns {number | null}
-   */
-  function evaluateExprAst(expr, x, parameters) {
+  
+  function evaluateExprAst(expr: FunctionExprJson | FunctionAstJson, x: number, parameters: Map<string, number>) {
     if (!expr || typeof expr !== "object") return null;
     switch (expr.kind) {
       case "variable":
@@ -264,11 +210,8 @@
     }
   }
 
-  /**
-   * @param {FunctionExprJson | FunctionAstJson | null | undefined} expr
-   * @returns {boolean}
-   */
-  function exprContainsPiAngle(expr) {
+  
+  function exprContainsPiAngle(expr: FunctionExprJson | FunctionAstJson | null | undefined) {
     if (!expr || typeof expr !== "object") return false;
     if (expr.kind === "parsed") return exprContainsPiAngle(expr.expr);
     if (expr.kind === "pi-angle") return true;
@@ -279,12 +222,8 @@
     return false;
   }
 
-  /**
-   * @param {FunctionExprJson | FunctionAstJson} expr
-   * @param {(value: number) => string} formatAxisNumber
-   * @param {string} [variableLabel]
-   */
-  function formatExpr(expr, formatAxisNumber, variableLabel = "x") {
+  
+  function formatExpr(expr: FunctionExprJson | FunctionAstJson, formatAxisNumber: (value: number) => string, variableLabel: string = "x") {
     if (expr.kind === "constant") return formatAxisNumber(expr.value);
     if (expr.kind === "identity") return variableLabel;
     if (expr.kind === "parsed") {
@@ -293,14 +232,8 @@
     return "?";
   }
 
-  /**
-   * @param {FunctionExprJson | FunctionAstJson | null | undefined} expr
-   * @param {(value: number) => string} formatAxisNumber
-   * @param {string} [variableLabel]
-   * @param {number} [parentPrec]
-   * @returns {string}
-   */
-  function formatExprAst(expr, formatAxisNumber, variableLabel = "x", parentPrec = 0) {
+  
+  function formatExprAst(expr: FunctionExprJson | FunctionAstJson | null | undefined, formatAxisNumber: (value: number) => string, variableLabel: string = "x", parentPrec: number = 0) {
     if (!expr || typeof expr !== "object") return "?";
     switch (expr.kind) {
       case "variable":
@@ -312,7 +245,7 @@
       case "pi-angle":
         return "180";
       case "unary": {
-        /** @type {string} */
+        
         const inner = formatExprAst(expr.expr, formatAxisNumber, variableLabel, 0);
         if (expr.op === "abs") return `|${inner}|`;
         if (expr.op === "sqrt") {
@@ -322,16 +255,16 @@
       }
       case "binary": {
         const { prec, rightAssoc } = binaryPrecedence(expr.op);
-        /** @type {string} */
+        
         const left = formatExprAst(expr.lhs, formatAxisNumber, variableLabel, prec);
-        /** @type {string} */
+        
         const right = formatExprAst(
           expr.rhs,
           formatAxisNumber,
           variableLabel,
           prec + (rightAssoc ? 0 : 1),
         );
-        /** @type {string} */
+        
         const text = `${left}${binaryOpText(expr.op)}${right}`;
         return prec < parentPrec ? `(${text})` : text;
       }
@@ -340,8 +273,8 @@
     }
   }
 
-  /** @param {string} op */
-  function binaryPrecedence(op) {
+  
+  function binaryPrecedence(op: string) {
     switch (op) {
       case "add":
       case "sub":
@@ -356,8 +289,8 @@
     }
   }
 
-  /** @param {string} op */
-  function binaryOpText(op) {
+  
+  function binaryOpText(op: string) {
     switch (op) {
       case "add": return " + ";
       case "sub": return " - ";
@@ -368,11 +301,8 @@
     }
   }
 
-  /**
-   * @param {ViewerSceneData | null | undefined} scene
-   * @param {Map<string, number>} seedParameters
-   */
-  function deriveExpressionLabelParameters(scene, seedParameters) {
+  
+  function deriveExpressionLabelParameters(scene: ViewerSceneData | null | undefined, seedParameters: Map<string, number>) {
     const parameters = new Map(seedParameters);
     if (!scene?.labels?.length) {
       return parameters;
@@ -380,14 +310,13 @@
     const maxPasses = Math.max(16, scene.labels.length + 1);
     for (let pass = 0; pass < maxPasses; pass += 1) {
       let changed = false;
-      scene.labels.forEach((/** @type {RuntimeLabelJson} */ label) => {
+      scene.labels.forEach(( label) => {
         const binding = label.binding;
         if (!binding) {
           return;
         }
         if (
-          (binding.kind === "segment-parameter"
-            || binding.kind === "segment-projection-parameter"
+          (binding.kind === "segment-projection-parameter"
             || binding.kind === "polyline-parameter"
             || binding.kind === "polygon-boundary-parameter"
             || binding.kind === "circle-parameter")
@@ -467,7 +396,7 @@
           && (typeof binding.resultName === "string" || typeof binding.exprLabel === "string")
         ) {
           const value = evaluateExpr(binding.expr, 0, parameters);
-          const resultNames = new Set();
+          const resultNames = new Set<string>();
           if (typeof binding.resultName === "string") {
             resultNames.add(binding.resultName);
           }
@@ -476,7 +405,7 @@
           }
           resultNames.add(formatExpr(binding.expr, formatSequenceValue));
           if (typeof value === "number" && Number.isFinite(value)) {
-            resultNames.forEach((/** @type {string} */ resultName) => {
+            resultNames.forEach(( resultName: string) => {
               if (resultName && parameters.get(resultName) !== value) {
                 parameters.set(resultName, value);
                 changed = true;
@@ -492,28 +421,25 @@
     return parameters;
   }
 
-  /**
-   * @param {ViewerSceneData | null | undefined} scene
-   * @param {Map<string, number>} seedParameters
-   */
-  function deriveSequenceLabelParameters(scene, seedParameters) {
+  
+  function deriveSequenceLabelParameters(scene: ViewerSceneData | null | undefined, seedParameters: Map<string, number>) {
     const sequenceLabels = (scene?.labels || [])
-      .filter((/** @type {RuntimeLabelJson} */ label) => label.binding?.kind === "sequence-expression-value");
+      .filter(( label) => label.binding?.kind === "sequence-expression-value");
     if (sequenceLabels.length === 0) {
       return seedParameters;
     }
     const parameters = new Map(seedParameters);
     const maxDepth = Math.max(
-      ...sequenceLabels.map((/** @type {RuntimeLabelJson} */ label) => pointIterationDepth({
+      ...sequenceLabels.map(( label) => pointIterationDepth({
         depth: label.binding.depth,
         parameterName: label.binding.depthParameterName,
       }, parameters)),
     );
     for (let step = 0; step <= maxDepth; step += 1) {
       const derived = deriveExpressionLabelParameters(scene, parameters);
-      /** @type {[string, number][]} */
+      
       const updates = [];
-      sequenceLabels.forEach((/** @type {RuntimeLabelJson} */ label) => {
+      sequenceLabels.forEach(( label) => {
         const binding = label.binding;
         const depth = pointIterationDepth({
           depth: binding.depth,
@@ -535,118 +461,92 @@
     return deriveExpressionLabelParameters(scene, parameters);
   }
 
-  /**
-   * @param {ViewerSceneData | null | undefined} scene
-   * @param {Map<string, number>} seedParameters
-   */
-  function deriveLabelParameters(scene, seedParameters) {
+  
+  function deriveLabelParameters(scene: ViewerSceneData | null | undefined, seedParameters: Map<string, number>) {
     return deriveSequenceLabelParameters(
       scene,
       deriveExpressionLabelParameters(scene, seedParameters),
     );
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {ViewerSceneData} scene
-   */
-  function parameterMapForScene(env, scene) {
+  
+  function parameterMapForScene(env: ViewerEnv, scene: ViewerSceneData) {
     return deriveLabelParameters(
       scene,
       new Map(env.currentDynamics().parameters.map((parameter) => [parameter.name, parameter.value])),
     );
   }
 
-  /** @typedef {{ id: string; kind: string; dependsOn: string[]; recipe: string | null }} DependencyNode */
-  /** @type {{ nodes: DependencyNode[]; nodeMap: Map<string, DependencyNode>; topoOrder: string[]; reverseEdges: Map<string, string[]> } | null} */
+  type DependencyNode = { id: string; kind: string; dependsOn: string[]; recipe: string | null };
+  
   let dependencyGraphCache = null;
 
-  /** @param {string} name */
-  function parameterRootId(name) {
+  
+  function parameterRootId(name: string) {
     return `param:${name}`;
   }
 
-  /** @param {number} index */
-  function sourcePointRootId(index) {
+  
+  function sourcePointRootId(index: number) {
     return `source-point:${index}`;
   }
 
-  /** @param {number} index */
-  function sourceLineRootId(index) {
+  
+  function sourceLineRootId(index: number) {
     return `source-line:${index}`;
   }
 
-  /** @param {number} index */
-  function sourceCircleRootId(index) {
+  
+  function sourceCircleRootId(index: number) {
     return `source-circle:${index}`;
   }
 
-  /** @param {number} index */
-  function sourcePolygonRootId(index) {
+  
+  function sourcePolygonRootId(index: number) {
     return `source-polygon:${index}`;
   }
 
-  /** @type {Record<string, (env: ViewerEnv, scene: ViewerSceneData) => void>} */
+  
   const GRAPH_RECIPES = {
-    "sync-base-dynamics"(env, scene) {
+    "sync-base-dynamics"(env: ViewerEnv, scene: ViewerSceneData) {
       applyBaseDynamicUpdates(env, scene, parameterMapForScene(env, scene));
     },
-    "refresh-derived-points"(env, scene) {
+    "refresh-derived-points"(env: ViewerEnv, scene: ViewerSceneData) {
       refreshDerivedPoints(env, scene);
     },
-    "rebuild-iteration-geometry"(env, scene) {
+    "rebuild-iteration-geometry"(env: ViewerEnv, scene: ViewerSceneData) {
       refreshIterationGeometry(env, scene, parameterMapForScene(env, scene));
     },
-    "refresh-dynamic-labels"(env, scene) {
+    "refresh-dynamic-labels"(env: ViewerEnv, scene: ViewerSceneData) {
       refreshDynamicLabels(env, scene);
     },
   };
 
-  /**
-   * @param {Set<string>} deps
-   * @param {string | null | undefined} name
-   * @param {Set<string>} knownParameters
-   */
-  function addKnownParameterDep(deps, name, knownParameters) {
+  
+  function addKnownParameterDep(deps: Set<string>, name: string | null | undefined, knownParameters: Set<string>) {
     if (typeof name === "string" && knownParameters.has(name)) {
       deps.add(parameterRootId(name));
     }
   }
 
-  /**
-   * @param {Set<string>} deps
-   * @param {string | null | undefined} name
-   * @param {Set<string>} knownParameters
-   * @param {Map<string, Set<string>>} derivedParameterDeps
-   */
-  function addParameterDep(deps, name, knownParameters, derivedParameterDeps) {
+  
+  function addParameterDep(deps: Set<string>, name: string | null | undefined, knownParameters: Set<string>, derivedParameterDeps: Map<string, Set<string>>) {
     addKnownParameterDep(deps, name, knownParameters);
     if (typeof name !== "string") return;
     const derivedDeps = derivedParameterDeps.get(name);
     if (!derivedDeps) return;
-    derivedDeps.forEach((dep) => deps.add(dep));
+    derivedDeps.forEach((dep: string) => deps.add(dep));
   }
 
-  /**
-   * @param {Set<string>} deps
-   * @param {FunctionExprJson | FunctionAstJson | null | undefined} expr
-   * @param {Set<string>} knownParameters
-   * @param {Map<string, Set<string>>} [derivedParameterDeps]
-   */
-  function addExprParameterDeps(deps, expr, knownParameters, derivedParameterDeps = new Map()) {
-    const names = new Set();
+  
+  function addExprParameterDeps(deps: Set<string>, expr: FunctionExprJson | FunctionAstJson | null | undefined, knownParameters: Set<string>, derivedParameterDeps: Map<string, Set<string>> = new Map()) {
+    const names = new Set<string>();
     collectExprParameterNames(expr, names);
-    names.forEach((name) => addParameterDep(deps, name, knownParameters, derivedParameterDeps));
+    names.forEach((name: string) => addParameterDep(deps, name, knownParameters, derivedParameterDeps));
   }
 
-  /**
-   * @param {Set<string>} deps
-   * @param {unknown} value
-   * @param {Set<string>} knownParameters
-   * @param {Map<string, Set<string>>} [derivedParameterDeps]
-   * @param {SceneData | ViewerSceneData | null} [sourceScene]
-   */
-  function collectSceneDependencyIds(deps, value, knownParameters, derivedParameterDeps = new Map(), sourceScene = null) {
+  
+  function collectSceneDependencyIds(deps: Set<string>, value: unknown, knownParameters: Set<string>, derivedParameterDeps: Map<string, Set<string>> = new Map(), sourceScene: SceneData | ViewerSceneData | null = null) {
     if (!value || typeof value !== "object") {
       return;
     }
@@ -654,39 +554,39 @@
       value.forEach((entry) => collectSceneDependencyIds(deps, entry, knownParameters, derivedParameterDeps, sourceScene));
       return;
     }
-    const addPointRefDep = (/** @type {number} */ index) => {
+    const addPointRefDep = ( index: number) => {
       deps.add(sourcePointRootId(index));
       const point = sourceScene?.points?.[index];
       if (point?.binding || point?.constraint) {
         deps.add(`point:${index}`);
       }
     };
-    const addLineRefDep = (/** @type {number} */ index) => {
+    const addLineRefDep = ( index: number) => {
       deps.add(sourceLineRootId(index));
       const line = sourceScene?.lines?.[index];
       if (line?.binding) {
         deps.add(`line:${index}`);
       }
     };
-    const addCircleRefDep = (/** @type {number} */ index) => {
+    const addCircleRefDep = ( index: number) => {
       deps.add(sourceCircleRootId(index));
       const circle = sourceScene?.circles?.[index];
       if (circle?.binding || circle?.fillColorBinding) {
         deps.add(`circle:${index}`);
       }
     };
-    const addPolygonRefDep = (/** @type {number} */ index) => {
+    const addPolygonRefDep = ( index: number) => {
       deps.add(sourcePolygonRootId(index));
       const polygon = sourceScene?.polygons?.[index];
       if (polygon?.binding) {
         deps.add(`polygon:${index}`);
       }
     };
-    Object.entries(/** @type {Record<string, unknown>} */ (value)).forEach(([key, child]) => {
+    Object.entries( (value)).forEach(([key, child]) => {
       if (key === "expr" && child && typeof child === "object") {
         addExprParameterDeps(
           deps,
-          /** @type {FunctionExprJson | FunctionAstJson} */ (child),
+           (child),
           knownParameters,
           derivedParameterDeps,
         );
@@ -812,11 +712,8 @@
     });
   }
 
-  /**
-   * @param {RuntimeLabelJson} label
-   * @returns {string | null}
-   */
-  function labelDerivedParameterName(label) {
+  
+  function labelDerivedParameterName(label: RuntimeLabelJson) {
     const binding = label.binding;
     if (!binding) return null;
     if (
@@ -831,8 +728,7 @@
       return binding.name;
     }
     if (
-      (binding.kind === "segment-parameter"
-        || binding.kind === "segment-projection-parameter"
+      (binding.kind === "segment-projection-parameter"
         || binding.kind === "polyline-parameter"
         || binding.kind === "polygon-boundary-parameter"
         || binding.kind === "circle-parameter")
@@ -849,41 +745,37 @@
     return null;
   }
 
-  /**
-   * @param {{ labels?: RuntimeLabelJson[] }} scene
-   * @param {Set<string>} knownParameters
-   * @returns {Map<string, Set<string>>}
-   */
-  function collectLabelDerivedParameterDeps(scene, knownParameters) {
-    /** @type {{ name: string, directDeps: Set<string>, exprNames: Set<string> }[]} */
+  
+  function collectLabelDerivedParameterDeps(scene: { labels?: RuntimeLabelJson[] }, knownParameters: Set<string>) {
+    
     const defs = [];
-    (scene.labels || []).forEach((/** @type {RuntimeLabelJson} */ label) => {
+    (scene.labels || []).forEach(( label) => {
       const name = labelDerivedParameterName(label);
       if (!name || !label.binding) return;
-      /** @type {Set<string>} */
-      const directDeps = new Set();
+      
+      const directDeps = new Set<string>();
       collectSceneDependencyIds(directDeps, label.binding, knownParameters);
-      /** @type {Set<string>} */
-      const exprNames = new Set();
+      
+      const exprNames = new Set<string>();
       if ("expr" in label.binding) {
         collectExprParameterNames(label.binding.expr, exprNames);
       }
       defs.push({ name, directDeps, exprNames });
     });
 
-    /** @type {Map<string, Set<string>>} */
+    
     const depsByName = new Map();
-    defs.forEach((def) => depsByName.set(def.name, new Set(def.directDeps)));
+    defs.forEach((def) => depsByName.set(def.name, new Set<string>(def.directDeps)));
     for (let pass = 0; pass < 4; pass += 1) {
       let changed = false;
       defs.forEach((def) => {
-        /** @type {Set<string>} */
-        const deps = new Set(def.directDeps);
-        def.exprNames.forEach((name) => {
+        
+        const deps = new Set<string>(def.directDeps);
+        def.exprNames.forEach((name: string) => {
           addParameterDep(deps, name, knownParameters, depsByName);
         });
-        const current = depsByName.get(def.name) || new Set();
-        deps.forEach((dep) => {
+        const current = depsByName.get(def.name) || new Set<string>();
+        deps.forEach((dep: string) => {
           if (!current.has(dep)) {
             current.add(dep);
             changed = true;
@@ -896,29 +788,26 @@
     return depsByName;
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @returns {{ nodes: DependencyNode[]; nodeMap: Map<string, DependencyNode>; topoOrder: string[]; reverseEdges: Map<string, string[]> }}
-   */
-  function ensureDependencyGraph(env) {
+  
+  function ensureDependencyGraph(env: ViewerEnv) {
     if (dependencyGraphCache) {
       return dependencyGraphCache;
     }
-    /** @type {DependencyNode[]} */
+    
     const nodes = [];
-    /** @type {Map<string, DependencyNode>} */
+    
     const nodeMap = new Map();
-    const knownParameters = new Set((env.currentDynamics().parameters || []).map((parameter) => parameter.name));
+    const knownParameters = new Set<string>((env.currentDynamics().parameters || []).map((parameter) => parameter.name));
     const derivedParameterDeps = collectLabelDerivedParameterDeps(env.sourceScene, knownParameters);
-    const collectDeps = (/** @type {Set<string>} */ deps, /** @type {unknown} */ value) => {
+    const collectDeps = ( deps,  value) => {
       collectSceneDependencyIds(deps, value, knownParameters, derivedParameterDeps, env.sourceScene);
     };
 
-    /** @param {DependencyNode} node */
+    
     const addNode = (node) => {
       const normalized = {
         ...node,
-        dependsOn: [...new Set((node.dependsOn || []).filter((dep) => dep !== node.id))],
+        dependsOn: [...new Set<string>((node.dependsOn || []).filter((dep: string) => dep !== node.id))],
       };
       nodes.push(normalized);
       nodeMap.set(normalized.id, normalized);
@@ -938,22 +827,22 @@
         recipe: "sync-base-dynamics",
       });
     });
-    (env.sourceScene.points || []).forEach((_, index) => {
+    (env.sourceScene.points || []).forEach((_, index: number) => {
       addNode({ id: sourcePointRootId(index), kind: "source-point", dependsOn: [], recipe: null });
     });
-    (env.sourceScene.lines || []).forEach((_, index) => {
+    (env.sourceScene.lines || []).forEach((_, index: number) => {
       addNode({ id: sourceLineRootId(index), kind: "source-line", dependsOn: [], recipe: null });
     });
-    (env.sourceScene.circles || []).forEach((_, index) => {
+    (env.sourceScene.circles || []).forEach((_, index: number) => {
       addNode({ id: sourceCircleRootId(index), kind: "source-circle", dependsOn: [], recipe: null });
     });
-    (env.sourceScene.polygons || []).forEach((_, index) => {
+    (env.sourceScene.polygons || []).forEach((_, index: number) => {
       addNode({ id: sourcePolygonRootId(index), kind: "source-polygon", dependsOn: [], recipe: null });
     });
 
-    (env.sourceScene.points || []).forEach((point, index) => {
+    (env.sourceScene.points || []).forEach((point, index: number) => {
       if (!point.binding && !point.constraint) return;
-      const deps = new Set();
+      const deps = new Set<string>();
       collectDeps(deps, point.binding);
       collectDeps(deps, point.constraint);
       addNode({
@@ -964,12 +853,12 @@
       });
     });
 
-    (env.sourceScene.lines || []).forEach((line, index) => {
+    (env.sourceScene.lines || []).forEach((line, index: number) => {
       if (!line.binding) return;
-      const deps = new Set();
+      const deps = new Set<string>();
       collectDeps(deps, line.binding);
       if (line.binding.kind === "point-trace") {
-        [line.binding.pointIndex, line.binding.driverIndex].forEach((/** @type {number} */ pointIndex) => {
+        [line.binding.pointIndex, line.binding.driverIndex].forEach(( pointIndex: number) => {
           const point = env.sourceScene.points?.[pointIndex];
           collectDeps(deps, point?.binding);
           collectDeps(deps, point?.constraint);
@@ -983,9 +872,9 @@
       });
     });
 
-    (env.sourceScene.circles || []).forEach((circle, index) => {
+    (env.sourceScene.circles || []).forEach((circle, index: number) => {
       if (!circle.binding && !circle.fillColorBinding) return;
-      const deps = new Set();
+      const deps = new Set<string>();
       collectDeps(deps, circle.binding);
       collectDeps(deps, circle.fillColorBinding);
       addNode({
@@ -996,9 +885,9 @@
       });
     });
 
-    (env.sourceScene.polygons || []).forEach((polygon, index) => {
+    (env.sourceScene.polygons || []).forEach((polygon, index: number) => {
       if (!polygon.binding) return;
-      const deps = new Set();
+      const deps = new Set<string>();
       collectDeps(deps, polygon.binding);
       addNode({
         id: `polygon:${index}`,
@@ -1008,8 +897,8 @@
       });
     });
 
-    (env.currentDynamics().functions || []).forEach((functionDef, index) => {
-      const deps = new Set();
+    (env.currentDynamics().functions || []).forEach((functionDef, index: number) => {
+      const deps = new Set<string>();
       addExprParameterDeps(deps, functionDef.expr, knownParameters, derivedParameterDeps);
       collectDeps(deps, functionDef.constrainedPointIndices);
       addNode({
@@ -1020,9 +909,9 @@
       });
     });
 
-    (env.sourceScene.labels || []).forEach((label, index) => {
+    (env.sourceScene.labels || []).forEach((label, index: number) => {
       if (!label.binding) return;
-      const deps = new Set();
+      const deps = new Set<string>();
       collectDeps(deps, label.binding);
       if ("expr" in label.binding) {
         addExprParameterDeps(deps, label.binding.expr, knownParameters, derivedParameterDeps);
@@ -1035,8 +924,8 @@
       });
     });
 
-    (env.sourceScene.pointIterations || []).forEach((family, index) => {
-      const deps = new Set();
+    (env.sourceScene.pointIterations || []).forEach((family, index: number) => {
+      const deps = new Set<string>();
       collectDeps(deps, family);
       if (family.kind === "rotate") {
         addExprParameterDeps(deps, family.angleExpr, knownParameters, derivedParameterDeps);
@@ -1048,8 +937,8 @@
         recipe: "rebuild-iteration-geometry",
       });
     });
-    (env.sourceScene.circleIterations || []).forEach((family, index) => {
-      const deps = new Set();
+    (env.sourceScene.circleIterations || []).forEach((family, index: number) => {
+      const deps = new Set<string>();
       collectDeps(deps, family);
       addNode({
         id: `circle-iteration:${index}`,
@@ -1058,8 +947,8 @@
         recipe: "rebuild-iteration-geometry",
       });
     });
-    (env.sourceScene.lineIterations || []).forEach((family, index) => {
-      const deps = new Set();
+    (env.sourceScene.lineIterations || []).forEach((family, index: number) => {
+      const deps = new Set<string>();
       collectDeps(deps, family);
       if (family.kind === "rotate") {
         addExprParameterDeps(deps, family.angleExpr, knownParameters, derivedParameterDeps);
@@ -1077,8 +966,8 @@
         recipe: "rebuild-iteration-geometry",
       });
     });
-    (env.sourceScene.polygonIterations || []).forEach((family, index) => {
-      const deps = new Set();
+    (env.sourceScene.polygonIterations || []).forEach((family, index: number) => {
+      const deps = new Set<string>();
       collectDeps(deps, family);
       if (family.kind === "coordinate-grid") {
         addExprParameterDeps(deps, family.stepExpr, knownParameters, derivedParameterDeps);
@@ -1093,8 +982,8 @@
         recipe: "rebuild-iteration-geometry",
       });
     });
-    (env.sourceScene.labelIterations || []).forEach((family, index) => {
-      const deps = new Set();
+    (env.sourceScene.labelIterations || []).forEach((family, index: number) => {
+      const deps = new Set<string>();
       collectDeps(deps, family);
       addExprParameterDeps(deps, family.expr, knownParameters, derivedParameterDeps);
       if ("depthExpr" in family) {
@@ -1107,8 +996,8 @@
         recipe: "rebuild-iteration-geometry",
       });
     });
-    (env.sourceScene.iterationTables || []).forEach((table, index) => {
-      const deps = new Set();
+    (env.sourceScene.iterationTables || []).forEach((table, index: number) => {
+      const deps = new Set<string>();
       collectDeps(deps, table);
       addExprParameterDeps(deps, table.expr, knownParameters, derivedParameterDeps);
       addNode({
@@ -1119,15 +1008,15 @@
       });
     });
 
-    /** @type {Map<string, number>} */
+    
     const indegree = new Map();
-    /** @type {Map<string, string[]>} */
+    
     const reverseEdges = new Map();
     nodes.forEach((node) => {
       indegree.set(node.id, 0);
     });
     nodes.forEach((node) => {
-      node.dependsOn.forEach((dep) => {
+      node.dependsOn.forEach((dep: string) => {
         if (!nodeMap.has(dep)) {
           return;
         }
@@ -1140,12 +1029,12 @@
     const queue = nodes
       .filter((node) => (indegree.get(node.id) || 0) === 0)
       .map((node) => node.id);
-    /** @type {string[]} */
+    
     const topoOrder = [];
     while (queue.length > 0) {
-      const id = /** @type {string} */ (queue.shift());
+      const id =  (queue.shift());
       topoOrder.push(id);
-      (reverseEdges.get(id) || []).forEach((dependentId) => {
+      (reverseEdges.get(id) || []).forEach((dependentId: number) => {
         const nextDegree = (indegree.get(dependentId) || 0) - 1;
         indegree.set(dependentId, nextDegree);
         if (nextDegree === 0) {
@@ -1163,14 +1052,12 @@
     return dependencyGraphCache;
   }
 
-  /**
-   * @param {ViewerEnv} env
-   */
-  function describeDependencyGraph(env) {
+  
+  function describeDependencyGraph(env: ViewerEnv) {
     const graph = ensureDependencyGraph(env);
     return graph.topoOrder
-      .map((id) => graph.nodeMap.get(id))
-      .filter((/** @type {DependencyNode | undefined} */ node) => !!node)
+      .map((id: string) => graph.nodeMap.get(id))
+      .filter(( node) => !!node)
       .map((node) => ({
         id: node.id,
         kind: node.kind,
@@ -1179,22 +1066,16 @@
       }));
   }
 
-  /**
-   * @param {FunctionExprJson | FunctionAstJson | null | undefined} expr
-   * @param {Set<string>} names
-   */
-  function collectExprParameterNames(expr, names) {
+  
+  function collectExprParameterNames(expr: FunctionExprJson | FunctionAstJson | null | undefined, names: Set<string>) {
     if (!expr || typeof expr !== "object") return;
     if (expr.kind === "parsed") {
       collectExprAstParameterNames(expr.expr, names);
     }
   }
 
-  /**
-   * @param {FunctionExprJson | FunctionAstJson} expr
-   * @param {Set<string>} names
-   */
-  function collectExprAstParameterNames(expr, names) {
+  
+  function collectExprAstParameterNames(expr: FunctionExprJson | FunctionAstJson, names: Set<string>) {
     if (!expr || typeof expr !== "object") return;
     if (expr.kind === "parameter" && typeof expr.name === "string") {
       names.add(expr.name);
@@ -1210,11 +1091,8 @@
     }
   }
 
-  /**
-   * @param {FunctionJson} functionDef
-   * @param {Map<string, number>} parameters
-   */
-  function sampleDynamicFunction(functionDef, parameters) {
+  
+  function sampleDynamicFunction(functionDef: FunctionJson, parameters: Map<string, number>) {
     const segments = [];
     let points = [];
     const last = Math.max(1, functionDef.domain.sampleCount - 1);
@@ -1244,12 +1122,8 @@
     return segments;
   }
 
-  /**
-   * @param {{ xExpr: FunctionExprJson, yExpr: FunctionExprJson, xMin: number, xMax: number, sampleCount: number }} binding
-   * @param {Map<string, number>} parameters
-   * @returns {Point[]}
-   */
-  function sampleParametricCurve(binding, parameters) {
+  
+  function sampleParametricCurve(binding: RuntimeLineBindingJson, parameters: Map<string, number>) {
     const points = [];
     const last = Math.max(1, binding.sampleCount - 1);
     for (let index = 0; index < binding.sampleCount; index += 1) {
@@ -1263,16 +1137,13 @@
     return points;
   }
 
-  /** @param {number} value */
-  function wrapUnitInterval(value) {
+  
+  function wrapUnitInterval(value: number) {
     return ((value % 1) + 1) % 1;
   }
 
-  /**
-   * @param {ViewerSceneData} scene
-   * @param {number} pointIndex
-   */
-  function circleParameterFromPoint(scene, pointIndex) {
+  
+  function circleParameterFromPoint(scene: ViewerSceneData, pointIndex: number) {
     const point = scene.points[pointIndex];
     const constraint = point?.constraint;
     if (constraint?.kind !== "circle" && constraint?.kind !== "circular-constraint") {
@@ -1283,11 +1154,8 @@
     return ((pointAngle % tau) + tau) % tau / tau;
   }
 
-  /**
-   * @param {ViewerSceneData} scene
-   * @param {{ originIndex: number, denominatorIndex: number, numeratorIndex: number, clampToUnit?: boolean }} binding
-   */
-  function pointDistanceRatioValue(scene, binding) {
+  
+  function pointDistanceRatioValue(scene: ViewerSceneData, binding: RuntimeLabelBindingJson) {
     const origin = scene.points[binding.originIndex];
     const denominator = scene.points[binding.denominatorIndex];
     const numerator = scene.points[binding.numeratorIndex];
@@ -1298,22 +1166,16 @@
     return binding.clampToUnit === true ? Math.min(ratio, 1) : ratio;
   }
 
-  /**
-   * @param {ViewerSceneData} scene
-   * @param {{ leftIndex: number, rightIndex: number, valueScale?: number | null }} binding
-   */
-  function pointDistanceValue(scene, binding) {
+  
+  function pointDistanceValue(scene: ViewerSceneData, binding: RuntimeLabelBindingJson) {
     const left = scene.points[binding.leftIndex];
     const right = scene.points[binding.rightIndex];
     if (!left || !right) return null;
     return Math.hypot(right.x - left.x, right.y - left.y) * (binding.valueScale ?? 1);
   }
 
-  /**
-   * @param {ViewerSceneData} scene
-   * @param {{ startIndex: number, vertexIndex: number, endIndex: number }} binding
-   */
-  function pointAngleValue(scene, binding) {
+  
+  function pointAngleValue(scene: ViewerSceneData, binding: RuntimeLabelBindingJson) {
     const start = scene.points[binding.startIndex];
     const vertex = scene.points[binding.vertexIndex];
     const end = scene.points[binding.endIndex];
@@ -1330,12 +1192,9 @@
     return Math.abs(Math.atan2(cross, dot)) * 180 / Math.PI;
   }
 
-  /**
-   * @param {ViewerSceneData} scene
-   * @param {{ pointIndices: number[], valueScale?: number | null }} binding
-   */
-  function polygonAreaValue(scene, binding) {
-    const points = binding.pointIndices.map((index) => scene.points[index]);
+  
+  function polygonAreaValue(scene: ViewerSceneData, binding: RuntimeLabelBindingJson) {
+    const points = binding.pointIndices.map((index: number) => scene.points[index]);
     if (points.length < 3 || points.some((point) => !point)) return null;
     let twiceArea = 0;
     for (let index = 0; index < points.length; index += 1) {
@@ -1346,13 +1205,8 @@
     return Math.abs(twiceArea) * 0.5 * (binding.valueScale ?? 1);
   }
 
-  /**
-   * @param {Point | null | undefined} point
-   * @param {Point | null | undefined} origin
-   * @param {Point | null | undefined} xUnit
-   * @param {Point | null | undefined} yUnit
-   */
-  function pointCoordinatesInBasis(point, origin, xUnit, yUnit) {
+  
+  function pointCoordinatesInBasis(point: Point | null | undefined, origin: Point | null | undefined, xUnit: Point | null | undefined, yUnit: Point | null | undefined) {
     if (!point || !origin || !xUnit || !yUnit) return null;
     const xAxisX = xUnit.x - origin.x;
     const xAxisY = xUnit.y - origin.y;
@@ -1368,23 +1222,16 @@
     };
   }
 
-  /**
-   * @param {ViewerSceneData} scene
-   * @param {{ pointIndex: number, startIndex: number, endIndex: number }} binding
-   */
-  function segmentProjectionParameterFromBinding(scene, binding) {
+  
+  function segmentProjectionParameterFromBinding(scene: ViewerSceneData, binding: { pointIndex?: number; startIndex?: number; endIndex?: number }) {
     const point = scene.points[binding.pointIndex];
     const start = scene.points[binding.startIndex];
     const end = scene.points[binding.endIndex];
     return segmentProjectionParameterFromPoints(point, start, end);
   }
 
-  /**
-   * @param {Point | null | undefined} point
-   * @param {Point | null | undefined} start
-   * @param {Point | null | undefined} end
-   */
-  function segmentProjectionParameterFromPoints(point, start, end) {
+  
+  function segmentProjectionParameterFromPoints(point: Point | null | undefined, start: Point | null | undefined, end: Point | null | undefined) {
     if (!point || !start || !end) return null;
     const dx = end.x - start.x;
     const dy = end.y - start.y;
@@ -1394,11 +1241,8 @@
     return Math.max(0, Math.min(1, t));
   }
 
-  /**
-   * @param {ViewerSceneData} scene
-   * @param {number} pointIndex
-   */
-  function polygonBoundaryParameterFromPoint(scene, pointIndex) {
+  
+  function polygonBoundaryParameterFromPoint(scene: ViewerSceneData, pointIndex: number) {
     const point = scene.points[pointIndex];
     const constraint = point?.constraint;
     if (
@@ -1430,11 +1274,8 @@
     return perimeter > 1e-9 ? traveled / perimeter : null;
   }
 
-  /**
-   * @param {ViewerSceneData} scene
-   * @param {number} pointIndex
-   */
-  function polylineParameterFromPoint(scene, pointIndex) {
+  
+  function polylineParameterFromPoint(scene: ViewerSceneData, pointIndex: number) {
     const point = scene.points[pointIndex];
     const constraint = point?.constraint;
     if (constraint?.kind !== "polyline" || !Array.isArray(constraint.points) || constraint.points.length < 2) {
@@ -1445,12 +1286,8 @@
     return (segmentIndex + t) / (constraint.points.length - 1);
   }
 
-  /**
-   * @param {Point[]} points
-   * @param {number} normalized
-   * @returns {Point | null}
-   */
-  function pointOnPolylineByIndex(points, normalized) {
+  
+  function pointOnPolylineByIndex(points: Point[], normalized: number) {
     if (!Array.isArray(points) || points.length < 2 || !Number.isFinite(normalized)) {
       return null;
     }
@@ -1467,12 +1304,8 @@
     };
   }
 
-  /**
-   * @param {Point[]} vertices
-   * @param {number} parameter
-   * @returns {Point | null}
-   */
-  function pointOnPolygonBoundary(vertices, parameter) {
+  
+  function pointOnPolygonBoundary(vertices: Point[], parameter: number) {
     if (!vertices || vertices.length < 2) {
       return null;
     }
@@ -1507,42 +1340,42 @@
     return null;
   }
 
-  /** @type {Record<string, PointConstraintParameterReader>} */
+  
   const POINT_CONSTRAINT_PARAMETER_READERS = {
-    segment: (scene, pointIndex) => scene.points[pointIndex]?.constraint?.t ?? null,
-    line: (scene, pointIndex) => scene.points[pointIndex]?.constraint?.t ?? null,
-    "line-constraint": (scene, pointIndex) => scene.points[pointIndex]?.constraint?.t ?? null,
-    ray: (scene, pointIndex) => scene.points[pointIndex]?.constraint?.t ?? null,
-    "ray-constraint": (scene, pointIndex) => scene.points[pointIndex]?.constraint?.t ?? null,
-    polyline: (scene, pointIndex) => scene.points[pointIndex]?.constraint?.t ?? null,
+    segment: (scene: ViewerSceneData, pointIndex: number) => scene.points[pointIndex]?.constraint?.t ?? null,
+    line: (scene: ViewerSceneData, pointIndex: number) => scene.points[pointIndex]?.constraint?.t ?? null,
+    "line-constraint": (scene: ViewerSceneData, pointIndex: number) => scene.points[pointIndex]?.constraint?.t ?? null,
+    ray: (scene: ViewerSceneData, pointIndex: number) => scene.points[pointIndex]?.constraint?.t ?? null,
+    "ray-constraint": (scene: ViewerSceneData, pointIndex: number) => scene.points[pointIndex]?.constraint?.t ?? null,
+    polyline: (scene: ViewerSceneData, pointIndex: number) => scene.points[pointIndex]?.constraint?.t ?? null,
     "polygon-boundary": polygonBoundaryParameterFromPoint,
     "translated-polygon-boundary": polygonBoundaryParameterFromPoint,
     circle: circleParameterFromPoint,
-    "circle-arc": (scene, pointIndex) => scene.points[pointIndex]?.constraint?.t ?? null,
-    arc: (scene, pointIndex) => scene.points[pointIndex]?.constraint?.t ?? null,
+    "circle-arc": (scene: ViewerSceneData, pointIndex: number) => scene.points[pointIndex]?.constraint?.t ?? null,
+    arc: (scene: ViewerSceneData, pointIndex: number) => scene.points[pointIndex]?.constraint?.t ?? null,
   };
 
-  /** @type {Record<string, PointConstraintParameterApplier>} */
+  
   const POINT_CONSTRAINT_PARAMETER_APPLIERS = {
-    segment(point, _scene, value) {
+    segment(point: RuntimeScenePointJson, _scene: ViewerSceneData, value: number) {
       point.constraint.t = Math.max(0, Math.min(1, value));
     },
-    line(point, _scene, value) {
+    line(point: RuntimeScenePointJson, _scene: ViewerSceneData, value: number) {
       point.constraint.t = value;
     },
-    "line-constraint"(point, _scene, value) {
+    "line-constraint"(point: RuntimeScenePointJson, _scene: ViewerSceneData, value: number) {
       point.constraint.t = value;
     },
-    ray(point, _scene, value) {
+    ray(point: RuntimeScenePointJson, _scene: ViewerSceneData, value: number) {
       point.constraint.t = Math.max(0, value);
     },
-    "ray-constraint"(point, _scene, value) {
+    "ray-constraint"(point: RuntimeScenePointJson, _scene: ViewerSceneData, value: number) {
       point.constraint.t = Math.max(0, value);
     },
-    polyline(point, _scene, value) {
+    polyline(point: RuntimeScenePointJson, _scene: ViewerSceneData, value: number) {
       point.constraint.t = wrapUnitInterval(value);
     },
-    "polygon-boundary"(point, scene, value) {
+    "polygon-boundary"(point: RuntimeScenePointJson, scene: ViewerSceneData, value: number) {
       const wrapped = wrapUnitInterval(value);
       const count = point.constraint.vertexIndices.length;
       if (count < 2) return;
@@ -1569,34 +1402,31 @@
         traveled += length;
       }
     },
-    "translated-polygon-boundary"(point, scene, value) {
+    "translated-polygon-boundary"(point: RuntimeScenePointJson, scene: ViewerSceneData, value: number) {
       POINT_CONSTRAINT_PARAMETER_APPLIERS["polygon-boundary"](point, scene, value);
     },
-    circle(point, _scene, value) {
+    circle(point: RuntimeScenePointJson, _scene: ViewerSceneData, value: number) {
       const wrapped = wrapUnitInterval(value);
       const angle = Math.PI * 2 * wrapped;
       point.constraint.unitX = Math.cos(angle);
       point.constraint.unitY = -Math.sin(angle);
     },
-    "circular-constraint"(point, _scene, value) {
+    "circular-constraint"(point: RuntimeScenePointJson, _scene: ViewerSceneData, value: number) {
       const wrapped = wrapUnitInterval(value);
       const angle = Math.PI * 2 * wrapped;
       point.constraint.unitX = Math.cos(angle);
       point.constraint.unitY = -Math.sin(angle);
     },
-    "circle-arc"(point, _scene, value) {
+    "circle-arc"(point: RuntimeScenePointJson, _scene: ViewerSceneData, value: number) {
       point.constraint.t = Math.max(0, Math.min(1, value));
     },
-    arc(point, _scene, value) {
+    arc(point: RuntimeScenePointJson, _scene: ViewerSceneData, value: number) {
       point.constraint.t = Math.max(0, Math.min(1, value));
     },
   };
 
-  /**
-   * @param {ViewerSceneData} scene
-   * @param {number} pointIndex
-   */
-  function parameterValueFromPoint(scene, pointIndex) {
+  
+  function parameterValueFromPoint(scene: ViewerSceneData, pointIndex: number) {
     const point = scene.points[pointIndex];
     const constraint = point?.constraint;
     if (!constraint) return null;
@@ -1604,11 +1434,8 @@
     return readParameter ? readParameter(scene, pointIndex) : null;
   }
 
-  /**
-   * @param {ViewerSceneData} scene
-   * @param {LabelBindingJson} binding
-   */
-  function labelParameterValueFromBinding(scene, binding) {
+  
+  function labelParameterValueFromBinding(scene: ViewerSceneData, binding: LabelBindingJson) {
     if (binding.kind === "segment-projection-parameter") {
       return segmentProjectionParameterFromBinding(scene, binding);
     }
@@ -1623,20 +1450,15 @@
       : null;
   }
 
-  /**
-   * @param {ViewerSceneData} scene
-   * @param {number} pointIndex
-   * @returns {string | null}
-   */
-  function parameterNameFromPoint(scene, pointIndex) {
+  
+  function parameterNameFromPoint(scene: ViewerSceneData, pointIndex: number) {
     for (const label of scene.labels || []) {
       const binding = label?.binding;
       if (!binding || binding.pointIndex !== pointIndex || typeof binding.pointName !== "string") {
         continue;
       }
       if (
-        binding.kind === "segment-parameter"
-        || binding.kind === "polyline-parameter"
+        binding.kind === "polyline-parameter"
         || binding.kind === "polygon-boundary-parameter"
         || binding.kind === "circle-parameter"
       ) {
@@ -1646,19 +1468,13 @@
     return null;
   }
 
-  /** @param {number | null | undefined} value */
-  function clampNormalizedValue(value) {
+  
+  function clampNormalizedValue(value: number | null | undefined) {
     return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : null;
   }
 
-  /**
-   * @param {number} hue
-   * @param {number} saturation
-   * @param {number} brightness
-   * @param {number} alpha
-   * @returns {[number, number, number, number]}
-   */
-  function hsbToRgba(hue, saturation, brightness, alpha) {
+  
+  function hsbToRgba(hue: number, saturation: number, brightness: number, alpha: number) {
     const wrappedHue = wrapUnitInterval(hue);
     const s = Math.max(0, Math.min(1, saturation));
     const v = Math.max(0, Math.min(1, brightness));
@@ -1685,11 +1501,8 @@
     return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255), alpha];
   }
 
-  /**
-   * @param {ViewerSceneData} scene
-   * @param {RuntimeCircleJson} circle
-   */
-  function refreshCircleFillColorBinding(scene, circle) {
+  
+  function refreshCircleFillColorBinding(scene: ViewerSceneData, circle: RuntimeCircleJson) {
     const binding = circle.fillColorBinding;
     if (!binding) return;
     if (binding.kind === "rgb") {
@@ -1714,12 +1527,8 @@
     }
   }
 
-  /**
-   * @param {RuntimeScenePointJson} point
-   * @param {ViewerSceneData} scene
-   * @param {number | null | undefined} value
-   */
-  function applyNormalizedParameterToPoint(point, scene, value) {
+  
+  function applyNormalizedParameterToPoint(point: RuntimeScenePointJson, scene: ViewerSceneData, value: number | null | undefined) {
     if (typeof value !== "number") return;
     if (!point.constraint) return;
     const applyParameter = POINT_CONSTRAINT_PARAMETER_APPLIERS[point.constraint.kind];
@@ -1728,14 +1537,8 @@
     }
   }
 
-  /**
-   * @param {RuntimeScenePointJson} point
-   * @param {ViewerSceneData} scene
-   * @param {number | null | undefined} value
-   * @param {number} xMin
-   * @param {number} xMax
-   */
-  function applyTraceValueToPoint(point, scene, value, xMin, xMax) {
+  
+  function applyTraceValueToPoint(point: RuntimeScenePointJson, scene: ViewerSceneData, value: number | null | undefined, xMin: number, xMax: number) {
     if (typeof value !== "number") return;
     if (!point?.constraint) return;
     if (point.constraint.kind === "circle" || point.constraint.kind === "circular-constraint") {
@@ -1758,11 +1561,8 @@
     applyNormalizedParameterToPoint(point, scene, normalized);
   }
 
-  /**
-   * @param {{ depth: number; parameterName?: string | null; depthParameterName?: string | null; depthExpr?: FunctionExprJson | null }} family
-   * @param {Map<string, number>} parameters
-   */
-  function pointIterationDepth(family, parameters) {
+  
+  function pointIterationDepth(family: { depth: number; parameterName?: string | null; depthParameterName?: string | null; depthExpr?: FunctionExprJson | null }, parameters: Map<string, number>) {
     const rawValue = family.depthParameterName
       ? parameters.get(family.depthParameterName)
       : family.depthExpr
@@ -1778,26 +1578,18 @@
     return discreteIterationDepth(depth);
   }
 
-  /**
-   * Iteration counts are discrete payload values. Avoid rounding up early while a
-   * live control is between integer steps.
-   *
-   * @param {number | null | undefined} value
-   */
-  function discreteIterationDepth(value) {
+  
+  function discreteIterationDepth(value: number | null | undefined) {
     if (typeof value !== "number" || !Number.isFinite(value)) {
       return 0;
     }
     return Math.max(0, Math.floor(value + 1e-9));
   }
 
-  /**
-   * @param {ViewerSceneData | SceneData | null | undefined} scene
-   * @returns {Set<string>}
-   */
-  function collectDiscreteIterationParameterNames(scene) {
-    const names = new Set();
-    const add = (/** @type {string | null | undefined} */ name) => {
+  
+  function collectDiscreteIterationParameterNames(scene: ViewerSceneData | SceneData | null | undefined) {
+    const names = new Set<string>();
+    const add = ( name: string) => {
       if (typeof name === "string" && name.length > 0) {
         names.add(name);
       }
@@ -1827,20 +1619,13 @@
     return names;
   }
 
-  /**
-   * @param {ViewerSceneData | SceneData | null | undefined} scene
-   * @param {string} name
-   * @returns {boolean}
-   */
-  function isDiscreteIterationParameterName(scene, name) {
+  
+  function isDiscreteIterationParameterName(scene: ViewerSceneData | SceneData | null | undefined, name: string) {
     return collectDiscreteIterationParameterNames(scene).has(name);
   }
 
-  /**
-   * @param {Point[]} sourceTriangle
-   * @param {Point[]} targetTriangle
-   */
-  function affineMapFromTriangles(sourceTriangle, targetTriangle) {
+  
+  function affineMapFromTriangles(sourceTriangle: Point[], targetTriangle: Point[]) {
     const sourceOrigin = sourceTriangle[0];
     const su = {
       x: sourceTriangle[1].x - sourceOrigin.x,
@@ -1863,7 +1648,7 @@
       x: targetTriangle[2].x - targetOrigin.x,
       y: targetTriangle[2].y - targetOrigin.y,
     };
-    return (/** @type {Point} */ point) => {
+    return ( point) => {
       const relative = { x: point.x - sourceOrigin.x, y: point.y - sourceOrigin.y };
       const u = (relative.x * sv.y - relative.y * sv.x) / det;
       const v = (su.x * relative.y - su.y * relative.x) / det;
@@ -1874,12 +1659,8 @@
     };
   }
 
-  /**
-   * @param {Point} sourceStart
-   * @param {Point} sourceEnd
-   * @param {Point} point
-   */
-  function segmentPointCoefficients(sourceStart, sourceEnd, point) {
+  
+  function segmentPointCoefficients(sourceStart: Point, sourceEnd: Point, point: Point) {
     const dx = sourceEnd.x - sourceStart.x;
     const dy = sourceEnd.y - sourceStart.y;
     const lenSq = dx * dx + dy * dy;
@@ -1894,12 +1675,8 @@
     };
   }
 
-  /**
-   * @param {Point} segmentStart
-   * @param {Point} segmentEnd
-   * @param {{ alpha: number; beta: number }} coeffs
-   */
-  function applySegmentCoefficients(segmentStart, segmentEnd, coeffs) {
+  
+  function applySegmentCoefficients(segmentStart: Point, segmentEnd: Point, coeffs: { alpha: number; beta: number }) {
     const dx = segmentEnd.x - segmentStart.x;
     const dy = segmentEnd.y - segmentStart.y;
     return {
@@ -1908,8 +1685,8 @@
     };
   }
 
-  /** @param {number} value */
-  function formatSequenceValue(value) {
+  
+  function formatSequenceValue(value: number) {
     if (!Number.isFinite(value)) {
       return "-";
     }
@@ -1918,12 +1695,8 @@
       : value.toFixed(2);
   }
 
-  /**
-   * @param {RuntimeLabelJson} label
-   * @param {number | null} value
-   * @param {ViewerEnv} env
-   */
-  function formatExpressionLabelValue(label, value, env) {
+  
+  function formatExpressionLabelValue(label: RuntimeLabelJson, value: number | null, env: ViewerEnv) {
     if (value === null) {
       return "未定义";
     }
@@ -1932,11 +1705,8 @@
       : env.formatNumber(value);
   }
 
-  /**
-   * @param {[number, number, number, number]} color
-   * @param {number} amount
-   */
-  function darken(color, amount) {
+  
+  function darken(color: [number, number, number, number], amount: number) {
     return [
       Math.max(0, color[0] - amount),
       Math.max(0, color[1] - amount),
@@ -1945,30 +1715,20 @@
     ];
   }
 
-  /**
-   * @param {FunctionExprJson | FunctionAstJson} expr
-   * @param {string} parameterName
-   * @param {number} currentValue
-   * @param {Map<string, number>} parameters
-   */
-  function evaluateRecursiveExpression(expr, parameterName, currentValue, parameters) {
-    const nextParameters = new Map(parameters);
+  
+  function evaluateRecursiveExpression(expr: FunctionExprJson | FunctionAstJson, parameterName: string, currentValue: number, parameters: Map<string, number>) {
+    const nextParameters = new Map<string, number>(parameters);
     nextParameters.set(parameterName, currentValue);
     return evaluateExpr(expr, 0, nextParameters);
   }
 
-  /**
-   * @param {ViewerSceneData} scene
-   * @param {any} ref
-   * @param {Map<string, number>} parameters
-   * @returns {number | null}
-   */
-  function evaluateRichTextValueRef(scene, ref, parameters) {
+  
+  function evaluateRichTextValueRef(scene: ViewerSceneData, ref: RichTextExpressionRefJson, parameters: Map<string, number>) {
     if (ref.kind === "parameter" && typeof ref.name === "string") {
       const value = parameters.get(ref.name);
       return typeof value === "number" && Number.isFinite(value) ? value : null;
     }
-    if ((ref.kind === "expression" || !ref.kind) && ref.expr) {
+    if (ref.kind === "expression") {
       return evaluateExpr(ref.expr, 0, parameters);
     }
     if (ref.kind !== "iteration-state") {
@@ -1983,16 +1743,16 @@
       ? evaluateExpr(ref.depthExpr, 0, parameters)
       : ref.depth;
     const depth = discreteIterationDepth(Number.isFinite(rawDepth) ? rawDepth : ref.depth);
-    const state = new Map(parameters);
+    const state = new Map<string, number>(parameters);
     for (let step = 0; step < depth; step += 1) {
       const derived = deriveExpressionLabelParameters(scene, state);
-      /** @type {[string, number][]} */
+      
       const updates = [];
-      stateExprs.forEach((/** @type {FunctionExprJson} */ expr, /** @type {number} */ index) => {
+      stateExprs.forEach(( expr,  index: number) => {
         const name = stateNames[index];
         const value = evaluateExpr(expr, 0, derived);
         if (typeof name === "string" && Number.isFinite(value)) {
-          updates.push([name, /** @type {number} */ (value)]);
+          updates.push([name,  (value)]);
         }
       });
       if (updates.length === 0) {
@@ -2004,18 +1764,15 @@
     return typeof value === "number" && Number.isFinite(value) ? value : null;
   }
 
-  /**
-   * @param {string} exprLabel
-   * @param {string} valueText
-   */
-  function buildExpressionRichMarkup(exprLabel, valueText) {
+  
+  function buildExpressionRichMarkup(exprLabel: string, valueText: string) {
     if (typeof exprLabel !== "string") {
       return null;
     }
-    const richTextNode = (/** @type {string} */ text) => text
+    const richTextNode = ( text) => text
       ? `<Tx${text.split("&").join("＆").split("<").join("＜").split(">").join("＞").split("*").join("\u00b7")}>`
       : "";
-    const matchingCloseParen = (/** @type {string} */ text, /** @type {number} */ openIndex) => {
+    const matchingCloseParen = ( text,  openIndex) => {
       let depth = 0;
       for (let index = openIndex; index < text.length; index += 1) {
         if (text[index] === "(") {
@@ -2028,14 +1785,14 @@
       }
       return -1;
     };
-    const stripWrappingParens = (/** @type {string} */ text) => {
+    const stripWrappingParens = ( text) => {
       const trimmed = text.trim();
       if (!trimmed.startsWith("(") || !trimmed.endsWith(")")) return trimmed;
       return matchingCloseParen(trimmed, 0) === trimmed.length - 1
         ? trimmed.slice(1, -1)
         : trimmed;
     };
-    const renderExpressionPart = (/** @type {string} */ text) => {
+    const renderExpressionPart = ( text) => {
       let output = "";
       let rest = text;
       while (true) {
@@ -2067,11 +1824,8 @@
     return `<H${renderExpressionPart(exprLabel)}<Tx = ${valueText}>>`;
   }
 
-  /**
-   * @param {string} name
-   * @param {string} valueText
-   */
-  function buildRatioValueRichMarkup(name, valueText) {
+  
+  function buildRatioValueRichMarkup(name: string, valueText: string) {
     if (typeof name !== "string") {
       return null;
     }
@@ -2091,11 +1845,8 @@
     return buildExpressionRichMarkup(`${numerator} / ${denominator}`, valueText);
   }
 
-  /**
-   * @param {string} text
-   * @returns {string | null}
-   */
-  function buildPlainTextRichMarkup(text) {
+  
+  function buildPlainTextRichMarkup(text: string) {
     if (typeof text !== "string" || text.length === 0) {
       return null;
     }
@@ -2106,8 +1857,8 @@
       .split("*").join("\u00b7")}>>`;
   }
 
-  /** @param {string} text */
-  function escapeRichText(text) {
+  
+  function escapeRichText(text: string) {
     return String(text)
       .split("&").join("＆")
       .split("<").join("＜")
@@ -2115,11 +1866,8 @@
       .split("*").join("\u00b7");
   }
 
-  /**
-   * @param {string | null | undefined} markup
-   * @param {Map<number, string>} valuesBySlot
-   */
-  function replaceRichMarkupPathValues(markup, valuesBySlot) {
+  
+  function replaceRichMarkupPathValues(markup: string | null | undefined, valuesBySlot: Map<number, string>) {
     if (typeof markup !== "string" || valuesBySlot.size === 0) {
       return markup || null;
     }
@@ -2170,11 +1918,11 @@
     return output;
   }
 
-  /**
-   * @param {string} templateText
-   * @param {{ line: number; start: number; end: number; valueText: string }[]} replacements
-   */
-  function replaceTemplateTextRanges(templateText, replacements) {
+  
+  function replaceTemplateTextRanges(
+    templateText: string,
+    replacements: Array<{ line: number; start: number; end: number; valueText: string }>,
+  ) {
     const lines = String(templateText).split("\n").map((line) => Array.from(line));
     [...replacements]
       .sort((left, right) => right.line - left.line || right.start - left.start)
@@ -2188,12 +1936,8 @@
     return lines.map((line) => line.join("")).join("\n");
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {ViewerSceneData} scene
-   * @param {Map<string, number>} parameters
-   */
-  function rebuildIterationPoints(env, scene, parameters) {
+  
+  function rebuildIterationPoints(env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) {
     const families = env.sourceScene.pointIterations || [];
     if (families.length === 0) {
       return;
@@ -2204,7 +1948,7 @@
       }
       return sum + (family.depth || 0);
     }, 0);
-    const standaloneParameterPoints = env.sourceScene.points.filter((/** @type {RuntimeScenePointJson} */ point) =>
+    const standaloneParameterPoints = env.sourceScene.points.filter(( point) =>
       point?.binding?.kind === "parameter" && !point.constraint
     );
     const baseCount = Math.max(
@@ -2326,7 +2070,7 @@
           currentValue = nextValue;
           const traceParameters = deriveLabelParameters(
             scene,
-            new Map(parameters).set(family.traceParameterName, currentValue),
+            new Map<string, number>(parameters).set(family.traceParameterName, currentValue),
           );
           const points = resolvePointsWithParameters(env, scene, traceParameters);
           const source = points[family.pointIndex];
@@ -2347,7 +2091,7 @@
       }
     });
 
-    standaloneParameterPoints.forEach((/** @type {RuntimeScenePointJson} */ point) => {
+    standaloneParameterPoints.forEach(( point) => {
       scene.points.push({
         ...point,
         constraint: point.constraint ? { ...point.constraint } : null,
@@ -2356,13 +2100,8 @@
     });
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {ViewerSceneData} scene
-   * @param {Map<string, number>} parameters
-   * @returns {RuntimeScenePointJson[]}
-   */
-  function resolvePointsWithParameters(env, scene, parameters) {
+  
+  function resolvePointsWithParameters(env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) {
     const draft = {
       ...scene,
       lines: scene.lines,
@@ -2372,11 +2111,11 @@
     const draftEnv = {
       ...env,
       currentScene: () => draft,
-      resolveScenePoint: (/** @type {number} */ index) => draft.points[index],
+      resolveScenePoint: ( index: number) => draft.points[index],
     };
 
     const refreshDerivedPoints = () => {
-      draft.points.forEach((/** @type {RuntimeScenePointJson} */ point) => {
+      draft.points.forEach(( point) => {
         const refreshBinding = point.binding ? DERIVED_POINT_BINDING_REFRESHERS[point.binding.kind] : null;
         if (refreshBinding) {
           refreshBinding(draftEnv, draft, point, parameters);
@@ -2385,7 +2124,7 @@
     };
 
     const resolveConstrainedPoints = () => {
-      draft.points.forEach((/** @type {RuntimeScenePointJson} */ point, /** @type {number} */ pointIndex) => {
+      draft.points.forEach(( point,  pointIndex: number) => {
         if (!point.constraint) {
           return;
         }
@@ -2393,10 +2132,10 @@
           {
             sourceScene: env.sourceScene,
             currentScene: () => draft,
-            resolveScenePoint: (/** @type {number} */ index) => draft.points[index],
+            resolveScenePoint: ( index: number) => draft.points[index],
           },
           point.constraint,
-          (/** @type {number} */ index) => draft.points[index],
+          ( index: number) => draft.points[index],
           point,
         );
         if (resolved) {
@@ -2406,7 +2145,7 @@
       });
     };
 
-    draft.points.forEach((/** @type {RuntimeScenePointJson} */ point) => {
+    draft.points.forEach(( point) => {
       if (point.binding?.kind === "parameter" && point.constraint) {
         const value = parameters.get(point.binding.name);
         if (isFiniteNumber(value)) {
@@ -2427,12 +2166,8 @@
     return draft.points;
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {ViewerSceneData} scene
-   * @param {Map<string, number>} parameters
-   */
-  function rebuildIteratedLines(env, scene, parameters) {
+  
+  function rebuildIteratedLines(env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) {
     const families = env.sourceScene.lineIterations || [];
     if (families.length === 0) {
       return;
@@ -2471,17 +2206,17 @@
     }, 0);
     const baseCount = Math.max(0, env.sourceScene.lines.length - exportedDepth);
     scene.lines = scene.lines.slice(0, baseCount);
-    /** @type {Set<string>} */
-    const resetControlledTickColors = new Set();
-    /** @type {Set<string>} */
-    const emittedControlledTickSeeds = new Set();
+    
+    const resetControlledTickColors = new Set<string>();
+    
+    const emittedControlledTickSeeds = new Set<string>();
 
     families.forEach((family) => {
       const depth = pointIterationDepth(family, parameters);
       if (depth <= 0) {
         return;
       }
-      const resolveHandle = (/** @type {PointHandle} */ handle) => {
+      const resolveHandle = ( handle) => {
         if (hasPointIndexHandle(handle)) {
           return env.resolveScenePoint(handle.pointIndex);
         }
@@ -2497,7 +2232,7 @@
             y: p0.y + (p1.y - p0.y) * t,
           };
         }
-        return /** @type {Point} */ (handle);
+        return  (handle);
       };
       if (family.kind === "parameterized-point-trace") {
         const depthParameterName = family.depthParameterName;
@@ -2529,10 +2264,10 @@
           currentValue = nextValue;
           const traceParameters = deriveLabelParameters(
             scene,
-            new Map(parameters).set(family.traceParameterName, currentValue),
+            new Map<string, number>(parameters).set(family.traceParameterName, currentValue),
           );
-          const line = {
-            /** @type {PointHandle[]} */
+          const line: RuntimeLineJson = {
+            
             points: [],
             color: family.color,
             dashed: !!family.dashed,
@@ -2588,10 +2323,10 @@
         if (coeffs.length === 0) {
           return;
         }
-        /** @type {{ start: Point; end: Point }[]} */
+        
         let frontier = [{ start: { ...start }, end: { ...end } }];
         for (let step = 0; step < depth; step += 1) {
-          /** @type {{ start: Point; end: Point }[]} */
+          
           const next = [];
           frontier.forEach((segment) => {
             coeffs.forEach((coeff) => {
@@ -2616,14 +2351,14 @@
         if (!start || !end) {
           return;
         }
-        const sourceTriangle = family.sourceTriangleIndices.map((index) => env.resolveScenePoint(index));
+        const sourceTriangle = family.sourceTriangleIndices.map((index: number) => env.resolveScenePoint(index));
         const targetTriangle = family.targetTriangle.map((handle) => resolveHandle(handle));
         if (sourceTriangle.some((point) => !point) || targetTriangle.some((point) => !point)) {
           return;
         }
         const mapPoint = affineMapFromTriangles(
-          /** @type {Point[]} */ (sourceTriangle),
-          /** @type {Point[]} */ (targetTriangle),
+           (sourceTriangle),
+           (targetTriangle),
         );
         if (!mapPoint) {
           return;
@@ -2655,7 +2390,7 @@
         for (let step = 1; step <= depth; step += 1) {
           const radians = (angleDegrees * step) * Math.PI / 180;
           scene.lines.push({
-            points: source.points.map((/** @type {Point} */ point) => rotateAround(point, center, radians)),
+            points: source.points.map(( point) => rotateAround(point, center, radians)),
             color: family.color,
             dashed: !!family.dashed,
             binding: {
@@ -2666,6 +2401,9 @@
                 centerIndex: family.centerIndex,
                 angleDegrees: angleDegrees * step,
                 parameterName: null,
+                angleStartIndex: null,
+                angleVertexIndex: null,
+                angleEndIndex: null,
               },
             },
           });
@@ -2688,11 +2426,8 @@
           primaryDy = vectorEnd.y - vectorStart.y;
         }
       }
-      /**
-       * @param {Point} point
-       * @param {number | null | undefined} controlIndex
-       */
-      const controlledEndpoint = (point, controlIndex) => {
+      
+      const controlledEndpoint = (point, controlIndex: number) => {
         if (typeof controlIndex !== "number" || !Number.isFinite(controlIndex)) return point;
         const control = env.resolveScenePoint(controlIndex);
         if (!control) return point;
@@ -2788,12 +2523,8 @@
     });
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {ViewerSceneData} scene
-   * @param {Map<string, number>} parameters
-   */
-  function rebuildIteratedPolygons(env, scene, parameters) {
+  
+  function rebuildIteratedPolygons(env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) {
     const families = env.sourceScene.polygonIterations || [];
     if (families.length === 0) {
       return;
@@ -2822,11 +2553,11 @@
         return;
       }
       const seedVertices = family.vertexIndices
-        .map((index) => env.resolveScenePoint(index));
+        .map((index: number) => env.resolveScenePoint(index));
       if (seedVertices.some((point) => !point)) {
         return;
       }
-      const seedPoints = /** @type {Point[]} */ (seedVertices);
+      const seedPoints =  (seedVertices);
       if (family.kind === "coordinate-grid") {
         const depthValue = family.depthExpr
           ? evaluateExpr(family.depthExpr, 0, parameters)
@@ -2849,7 +2580,7 @@
           currentValue = nextValue;
           const exprParameters = deriveLabelParameters(
             scene,
-            new Map(parameters).set(family.parameterName, currentValue),
+            new Map<string, number>(parameters).set(family.parameterName, currentValue),
           );
           const dx = evaluateExpr(family.xExpr, 0, exprParameters);
           const dy = evaluateExpr(family.yExpr, 0, exprParameters);
@@ -2924,12 +2655,8 @@
     });
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {ViewerSceneData} scene
-   * @param {Map<string, number>} parameters
-   */
-  function rebuildIteratedLabels(env, scene, parameters) {
+  
+  function rebuildIteratedLabels(env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) {
     const families = env.sourceScene.labelIterations || [];
     if (families.length === 0) {
       return;
@@ -3055,15 +2782,11 @@
     });
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {ViewerSceneData} scene
-   * @param {Map<string, number>} parameters
-   */
-  function rebuildIterationTables(env, scene, parameters) {
+  
+  function rebuildIterationTables(env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) {
     const sourceTables = env.sourceScene.iterationTables || [];
     const currentTables = scene.iterationTables || [];
-    scene.iterationTables = sourceTables.map((table, index) => {
+    scene.iterationTables = sourceTables.map((table, index: number) => {
       const current = currentTables[index];
       const depth = table.depthExpr
         ? discreteIterationDepth(evaluateExpr(table.depthExpr, 0, parameters) ?? table.depth)
@@ -3073,33 +2796,33 @@
       const columns = Array.isArray(table.columns) && table.columns.length > 0
         ? table.columns
         : [{ exprLabel: table.exprLabel, parameterName: table.parameterName, expr: table.expr }];
-      const state = new Map(parameters);
+      const state = new Map<string, number>(parameters);
       const initialDerived = deriveExpressionLabelParameters(scene, state);
-      columns.forEach((/** @type {any} */ column) => {
+      columns.forEach(( column) => {
         const value = initialDerived.get(column.parameterName);
         if (isFiniteNumber(value)) {
           state.set(column.parameterName, value);
         }
       });
-      /** @type {RuntimeIterationRow[]} */
+      
       const rows = [];
-      if (columns.every((/** @type {any} */ column) => isFiniteNumber(state.get(column.parameterName)))) {
+      if (columns.every(( column) => isFiniteNumber(state.get(column.parameterName)))) {
         for (let index = 0; index <= depth; index += 1) {
           const derived = deriveExpressionLabelParameters(scene, state);
-          columns.forEach((/** @type {any} */ column) => {
+          columns.forEach(( column) => {
             const value = state.get(column.parameterName);
             if (isFiniteNumber(value)) {
               derived.set(column.parameterName, value);
             }
           });
-          const values = columns.map((/** @type {any} */ column) =>
+          const values = columns.map(( column) =>
             evaluateExpr(column.expr, 0, derived),
           );
           if (!values.every(isFiniteNumber)) {
             break;
           }
           rows.push({ index, value: values[0], values });
-          columns.forEach((/** @type {any} */ column, /** @type {number} */ columnIndex) => {
+          columns.forEach(( column,  columnIndex: number) => {
             state.set(column.parameterName, values[columnIndex]);
           });
         }
@@ -3113,16 +2836,12 @@
     });
   }
 
-  /**
-   * @param {RuntimeScenePointJson} point
-   * @param {Point | null} source
-   * @param {Map<string, number>} parameters
-   */
-  function updateCoordinateSourcePoint(point, source, parameters) {
+  
+  function updateCoordinateSourcePoint(point: RuntimeScenePointJson, source: Point | null, parameters: Map<string, number>) {
     if (!source) return;
     const parameterValue = parameters.get(point.binding.name);
     if (!isFiniteNumber(parameterValue)) return;
-    const exprParameters = new Map(parameters);
+    const exprParameters = new Map<string, number>(parameters);
     exprParameters.set(point.binding.name, parameterValue);
     const offset = evaluateExpr(point.binding.expr, 0, exprParameters);
     if (offset === null) return;
@@ -3135,17 +2854,13 @@
     point.y = source.y + offset;
   }
 
-  /**
-   * @param {RuntimeScenePointJson} point
-   * @param {Point | null} source
-   * @param {Map<string, number>} parameters
-   */
-  function updateCoordinateSource2dPoint(point, source, parameters) {
+  
+  function updateCoordinateSource2dPoint(point: RuntimeScenePointJson, source: Point | null, parameters: Map<string, number>) {
     if (!source) return;
     const xParameterValue = parameters.get(point.binding.xName);
     const yParameterValue = parameters.get(point.binding.yName);
     if (!isFiniteNumber(xParameterValue) || !isFiniteNumber(yParameterValue)) return;
-    const exprParameters = new Map(parameters);
+    const exprParameters = new Map<string, number>(parameters);
     exprParameters.set(point.binding.xName, xParameterValue);
     exprParameters.set(point.binding.yName, yParameterValue);
     const dx = evaluateExpr(point.binding.xExpr, 0, exprParameters);
@@ -3156,30 +2871,21 @@
     }
   }
 
-  /**
-   * @param {RuntimeScenePointJson} point
-   * @param {ViewerSceneData} scene
-   * @param {number} value
-   */
-  function updateConstraintParameterizedPoint(point, scene, value) {
+  
+  function updateConstraintParameterizedPoint(point: RuntimeScenePointJson, scene: ViewerSceneData, value: number) {
     if (!Number.isFinite(value)) return;
     applyNormalizedParameterToPoint(point, scene, value);
   }
 
-  /**
-   * @param {RuntimeScenePointJson} point
-   * @param {Map<string, number>} parameters
-   * @param {(pointIndex: number) => Point | null} resolvePointAt
-   * @param {ViewerSceneData} parameterSourceScene
-   */
-  function updateCustomTransformPoint(point, parameters, resolvePointAt, parameterSourceScene) {
+  
+  function updateCustomTransformPoint(point: RuntimeScenePointJson, parameters: Map<string, number>, resolvePointAt: (pointIndex: number) => Point | null, parameterSourceScene: ViewerSceneData) {
     const value = parameterValueFromPoint(parameterSourceScene, point.binding.sourceIndex);
     if (!isFiniteNumber(value)) return;
-    const exprParameters = new Map(parameters);
-    const names = new Set();
+    const exprParameters = new Map<string, number>(parameters);
+    const names = new Set<string>();
     collectExprParameterNames(point.binding.distanceExpr, names);
     collectExprParameterNames(point.binding.angleExpr, names);
-    names.forEach((name) => exprParameters.set(name, value));
+    names.forEach((name: string) => exprParameters.set(name, value));
     const distanceValue = evaluateExpr(point.binding.distanceExpr, value, exprParameters);
     const angleValue = evaluateExpr(point.binding.angleExpr, value, exprParameters);
     const origin = resolvePointAt(point.binding.originIndex);
@@ -3192,11 +2898,8 @@
     point.y = origin.y - distance * Math.sin(radians);
   }
 
-  /**
-   * @param {RuntimeScenePointJson} point
-   * @param {(pointIndex: number) => Point | null} resolvePointAt
-   */
-  function updateScaleByRatioPoint(point, resolvePointAt) {
+  
+  function updateScaleByRatioPoint(point: RuntimeScenePointJson, resolvePointAt: (pointIndex: number) => Point | null) {
     const source = resolvePointAt(point.binding.sourceIndex);
     const center = resolvePointAt(point.binding.centerIndex);
     const ratioOrigin = resolvePointAt(point.binding.ratioOriginIndex);
@@ -3217,13 +2920,8 @@
     point.y = scaled.y;
   }
 
-  /**
-   * @param {Point} start
-   * @param {Point} mid
-   * @param {Point} end
-   * @returns {Point | null}
-   */
-  function circumcenter(start, mid, end) {
+  
+  function circumcenter(start: Point, mid: Point, end: Point) {
     const determinant = 2 * (
       start.x * (mid.y - end.y)
       + mid.x * (end.y - start.y)
@@ -3247,13 +2945,8 @@
     };
   }
 
-  /**
-   * @param {(pointIndex: number) => Point | null} resolvePointAt
-   * @param {ViewBounds} bounds
-   * @param {LineConstraintJson} constraint
-   * @returns {Point[] | null}
-   */
-  function resolveLineConstraintPoints(resolvePointAt, bounds, constraint) {
+  
+  function resolveLineConstraintPoints(resolvePointAt: (pointIndex: number) => Point | null, bounds: ViewBounds, constraint: LineConstraintJson) {
     if (!constraint) return null;
     if (constraint.kind === "segment") {
       const start = resolvePointAt(constraint.startIndex);
@@ -3317,24 +3010,20 @@
       );
     }
     if (constraint.kind === "translated") {
-      /** @type {Point[] | null} */
+      
       const source = resolveLineConstraintPoints(resolvePointAt, bounds, constraint.line);
       const vectorStart = resolvePointAt(constraint.vectorStartIndex);
       const vectorEnd = resolvePointAt(constraint.vectorEndIndex);
       if (!source || !vectorStart || !vectorEnd) return null;
       const dx = vectorEnd.x - vectorStart.x;
       const dy = vectorEnd.y - vectorStart.y;
-      return source.map((/** @type {Point} */ point) => ({ x: point.x + dx, y: point.y + dy }));
+      return source.map(( point) => ({ x: point.x + dx, y: point.y + dy }));
     }
     return null;
   }
 
-  /**
-   * @param {(pointIndex: number) => Point | null} resolvePointAt
-   * @param {LineConstraintJson} constraint
-   * @returns {Point[] | null}
-   */
-  function resolveLineConstraintParameterPoints(resolvePointAt, constraint) {
+  
+  function resolveLineConstraintParameterPoints(resolvePointAt: (pointIndex: number) => Point | null, constraint: LineConstraintJson) {
     if (!constraint) return null;
     if (
       constraint.kind === "segment"
@@ -3390,14 +3079,14 @@
       if (!source || !vectorStart || !vectorEnd) return null;
       const dx = vectorEnd.x - vectorStart.x;
       const dy = vectorEnd.y - vectorStart.y;
-      return source.map((/** @type {Point} */ point) => ({ x: point.x + dx, y: point.y + dy }));
+      return source.map(( point) => ({ x: point.x + dx, y: point.y + dy }));
     }
     return null;
   }
 
-  /** @type {Record<string, PointBindingRefresher>} */
+  
   const DERIVED_POINT_BINDING_REFRESHERS = {
-    "derived-parameter"(_env, scene, point) {
+    "derived-parameter"(_env: ViewerEnv, scene: ViewerSceneData, point: RuntimeScenePointJson) {
       const value = typeof point.binding.parameterStartIndex === "number"
         && typeof point.binding.parameterEndIndex === "number"
         ? segmentProjectionParameterFromBinding(scene, {
@@ -3410,16 +3099,16 @@
         applyNormalizedParameterToPoint(point, scene, value);
       }
     },
-    "constraint-parameter-expr"(_env, scene, point, parameters) {
+    "constraint-parameter-expr"(_env: ViewerEnv, scene: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
       const value = evaluateExpr(point.binding.expr, 0, parameters);
       if (isFiniteNumber(value)) {
         updateConstraintParameterizedPoint(point, scene, value);
       }
     },
-    "constraint-parameter-from-point-expr"(_env, scene, point, parameters) {
+    "constraint-parameter-from-point-expr"(_env: ViewerEnv, scene: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
       const sourceValue = parameterValueFromPoint(scene, point.binding.sourceIndex);
       if (!isFiniteNumber(sourceValue)) return;
-      const exprParameters = new Map(parameters);
+      const exprParameters = new Map<string, number>(parameters);
       if (point.binding.parameterName) {
         exprParameters.set(point.binding.parameterName, sourceValue);
       }
@@ -3432,13 +3121,13 @@
         );
       }
     },
-    "coordinate-source"(env, _scene, point, parameters) {
+    "coordinate-source"(env: ViewerEnv, _scene: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
       updateCoordinateSourcePoint(point, env.resolveScenePoint(point.binding.sourceIndex), parameters);
     },
-    "coordinate-source-2d"(env, _scene, point, parameters) {
+    "coordinate-source-2d"(env: ViewerEnv, _scene: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
       updateCoordinateSource2dPoint(point, env.resolveScenePoint(point.binding.sourceIndex), parameters);
     },
-    derived(env, scene, point, parameters) {
+    derived(env: ViewerEnv, scene: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
       const source = resolveScenePointInScene(env, scene, point.binding.sourceIndex);
       if (!source) return;
       const transform = point.binding.transform;
@@ -3462,7 +3151,7 @@
       }
       if (transform.kind === "reflect-constraint") {
         const line = resolveLineConstraintPoints(
-          (/** @type {number} */ index) => resolveScenePointInScene(env, scene, index),
+          ( index: number) => resolveScenePointInScene(env, scene, index),
           env.getViewBounds ? env.getViewBounds() : env.sourceScene.bounds,
           transform.line,
         );
@@ -3479,7 +3168,7 @@
         const angleDegrees = resolveRotateTransformAngleDegrees(
           transform,
           parameters,
-          (index) => resolveScenePointInScene(env, scene, index),
+          (index: number) => resolveScenePointInScene(env, scene, index),
         );
         if (!isFiniteNumber(angleDegrees)) return;
         const rotated = rotateAround(source, center, angleDegrees * Math.PI / 180);
@@ -3493,7 +3182,7 @@
         const factor = resolveScaleTransformFactor(
           transform,
           parameters,
-          (index) => resolveScenePointInScene(env, scene, index),
+          (index: number) => resolveScenePointInScene(env, scene, index),
         );
         if (!isFiniteNumber(factor)) return;
         const scaled = scaleAround(source, center, factor);
@@ -3501,10 +3190,10 @@
         point.y = scaled.y;
       }
     },
-    "scale-by-ratio"(env, _scene, point) {
-      updateScaleByRatioPoint(point, (/** @type {number} */ index) => env.resolveScenePoint(index));
+    "scale-by-ratio"(env: ViewerEnv, _scene: ViewerSceneData, point: RuntimeScenePointJson) {
+      updateScaleByRatioPoint(point, ( index: number) => env.resolveScenePoint(index));
     },
-    circumcenter(env, scene, point) {
+    circumcenter(env: ViewerEnv, scene: ViewerSceneData, point: RuntimeScenePointJson) {
       const start = resolveScenePointInScene(env, scene, point.binding.startIndex);
       const mid = resolveScenePointInScene(env, scene, point.binding.midIndex);
       const end = resolveScenePointInScene(env, scene, point.binding.endIndex);
@@ -3514,14 +3203,14 @@
       point.x = center.x;
       point.y = center.y;
     },
-    "custom-transform"(_env, scene, point, parameters) {
-      updateCustomTransformPoint(point, parameters, (/** @type {number} */ index) => scene.points[index], scene);
+    "custom-transform"(_env: ViewerEnv, scene: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
+      updateCustomTransformPoint(point, parameters, ( index: number) => scene.points[index], scene);
     },
   };
 
-  /** @type {Record<string, DynamicLabelRefresher>} */
-  const DYNAMIC_LABEL_REFRESHERS = {
-    "point-anchor"(_env, scene, label) {
+  
+  const DYNAMIC_LABEL_REFRESHERS: Record<string, DynamicLabelRefresher> = {
+    "point-anchor"(_env: ViewerEnv, scene: ViewerSceneData, label: RuntimeLabelJson) {
       const point = scene.points[label.binding.pointIndex];
       if (!point) return;
       const anchor = {
@@ -3536,14 +3225,14 @@
       }
       label.anchor = anchor;
     },
-    "parameter-value"(env, _scene, label, parameters) {
+    "parameter-value"(env: ViewerEnv, _scene: ViewerSceneData, label: RuntimeLabelJson, parameters: Map<string, number>) {
       const value = parameters.get(label.binding.name);
       if (value !== null && value !== undefined) {
         label.text = `${label.binding.name} = ${env.formatNumber(value)}`;
         label.richMarkup = buildPlainTextRichMarkup(label.text);
       }
     },
-    "point-expression-value"(_env, scene, label, parameters) {
+    "point-expression-value"(_env: ViewerEnv, scene: ViewerSceneData, label: RuntimeLabelJson, parameters: Map<string, number>) {
       const currentValue = parameters.get(label.binding.parameterName);
       if (!isFiniteNumber(currentValue)) return;
       DYNAMIC_LABEL_REFRESHERS["point-anchor"](_env, scene, label, parameters);
@@ -3558,7 +3247,7 @@
         label.richMarkup = buildPlainTextRichMarkup(label.text);
       }
     },
-    "sequence-expression-value"(_env, _scene, label, parameters) {
+    "sequence-expression-value"(_env: ViewerEnv, _scene: ViewerSceneData, label: RuntimeLabelJson, parameters: Map<string, number>) {
       const stateValue = parameters.get(label.binding.parameterName);
       if (isFiniteNumber(stateValue)) {
         label.text = formatSequenceValue(stateValue);
@@ -3571,7 +3260,7 @@
         depth: label.binding.depth,
         parameterName: label.binding.depthParameterName,
       }, parameters);
-      /** @type {number | null} */
+      
       let value = null;
       for (let step = 0; step <= depth; step += 1) {
         const nextValue = evaluateRecursiveExpression(
@@ -3589,12 +3278,12 @@
         label.richMarkup = buildPlainTextRichMarkup(label.text);
       }
     },
-    "rich-text-expression-values"(_env, scene, label, parameters) {
-      /** @type {Map<number, string>} */
-      const valuesBySlot = new Map();
-      /** @type {{ line: number, start: number, end: number, valueText: string }[]} */
-      const replacements = [];
-      (label.binding.refs || []).forEach((/** @type {any} */ ref) => {
+    "rich-text-expression-values"(_env: ViewerEnv, scene: ViewerSceneData, label: RuntimeLabelJson, parameters: Map<string, number>) {
+      
+      const valuesBySlot = new Map<number, string>();
+      
+      const replacements: Array<{ line: number; start: number; end: number; valueText: string }> = [];
+      (label.binding.refs || []).forEach(( ref) => {
         const value = evaluateRichTextValueRef(scene, ref, parameters);
         const valueText = value !== null ? formatSequenceValue(value) : "未定义";
         valuesBySlot.set(ref.slot, valueText);
@@ -3609,7 +3298,7 @@
       label.richMarkup = replaceRichMarkupPathValues(label.binding.templateRichMarkup, valuesBySlot)
         || buildPlainTextRichMarkup(label.text);
     },
-    "point-coordinate-value"(env, scene, label) {
+    "point-coordinate-value"(env: ViewerEnv, scene: ViewerSceneData, label: RuntimeLabelJson) {
       const point = scene.points[label.binding.pointIndex];
       if (!point) return;
       const coordinates = pointCoordinatesInBasis(
@@ -3621,25 +3310,25 @@
       label.text = `${label.binding.pointName}: (${env.formatNumber(coordinates.x)}, ${env.formatNumber(coordinates.y)})`;
       label.richMarkup = buildPlainTextRichMarkup(label.text);
     },
-    "point-distance-value"(env, scene, label) {
+    "point-distance-value"(env: ViewerEnv, scene: ViewerSceneData, label: RuntimeLabelJson) {
       const value = pointDistanceValue(scene, label.binding);
       if (value === null) return;
       label.text = `${label.binding.name} = ${env.formatNumber(value)}${label.binding.valueSuffix || ""}`;
       label.richMarkup = buildPlainTextRichMarkup(label.text);
     },
-    "point-angle-value"(_env, scene, label) {
+    "point-angle-value"(_env: ViewerEnv, scene: ViewerSceneData, label: RuntimeLabelJson) {
       const value = pointAngleValue(scene, label.binding);
       if (value === null) return;
       label.text = `${label.binding.name} = ${value.toFixed(2)}${label.binding.valueSuffix || ""}`;
       label.richMarkup = buildPlainTextRichMarkup(label.text);
     },
-    "polygon-area-value"(env, scene, label) {
+    "polygon-area-value"(env: ViewerEnv, scene: ViewerSceneData, label: RuntimeLabelJson) {
       const value = polygonAreaValue(scene, label.binding);
       if (value === null) return;
       label.text = `${label.binding.name} = ${env.formatNumber(value)}${label.binding.valueSuffix || ""}`;
       label.richMarkup = buildPlainTextRichMarkup(label.text);
     },
-    "point-distance-ratio-value"(env, scene, label) {
+    "point-distance-ratio-value"(env: ViewerEnv, scene: ViewerSceneData, label: RuntimeLabelJson) {
       const value = pointDistanceRatioValue(scene, label.binding);
       if (value === null) return;
       const valueText = env.formatNumber(value);
@@ -3647,7 +3336,7 @@
       label.richMarkup = buildRatioValueRichMarkup(label.binding.name, valueText)
         || buildPlainTextRichMarkup(label.text);
     },
-    "point-axis-value"(env, scene, label) {
+    "point-axis-value"(env: ViewerEnv, scene: ViewerSceneData, label: RuntimeLabelJson) {
       const point = scene.points[label.binding.pointIndex];
       if (!point) return;
       const coordinates = pointCoordinatesInBasis(
@@ -3662,7 +3351,7 @@
       label.text = `${label.binding.name} = ${env.formatAxisNumber(value)}`;
       label.richMarkup = buildPlainTextRichMarkup(label.text);
     },
-    "expression-value"(env, _scene, label, parameters) {
+    "expression-value"(env: ViewerEnv, _scene: ViewerSceneData, label: RuntimeLabelJson, parameters: Map<string, number>) {
       const value = evaluateExpr(label.binding.expr, 0, parameters);
       const valueText = formatExpressionLabelValue(label, value, env);
       label.richMarkup = buildExpressionRichMarkup(
@@ -3675,7 +3364,7 @@
         label.text = `${label.binding.exprLabel} = 未定义`;
       }
     },
-    "point-bound-expression-value"(env, _scene, label, parameters) {
+    "point-bound-expression-value"(env: ViewerEnv, _scene: ViewerSceneData, label: RuntimeLabelJson, parameters: Map<string, number>) {
       const value = evaluateExpr(label.binding.expr, 0, parameters);
       const valueText = formatExpressionLabelValue(label, value, env);
       label.richMarkup = buildExpressionRichMarkup(
@@ -3688,7 +3377,7 @@
         label.text = `${label.binding.exprLabel} = 未定义`;
       }
     },
-    "polygon-boundary-parameter"(env, scene, label) {
+    "polygon-boundary-parameter"(env: ViewerEnv, scene: ViewerSceneData, label: RuntimeLabelJson) {
       const value = polygonBoundaryParameterFromPoint(scene, label.binding.pointIndex);
       if (value !== null) {
         label.text = label.binding.polygonName
@@ -3697,16 +3386,7 @@
         label.richMarkup = buildPlainTextRichMarkup(label.text);
       }
     },
-    "segment-parameter"(env, scene, label) {
-      const value = parameterValueFromPoint(scene, label.binding.pointIndex);
-      if (value !== null) {
-        label.text = usesVerboseParameterLabel(label)
-          ? `${label.binding.pointName}在${label.binding.segmentName}上的t值 = ${env.formatNumber(value)}`
-          : `${label.binding.pointName} = ${env.formatNumber(value)}`;
-        label.richMarkup = buildPlainTextRichMarkup(label.text);
-      }
-    },
-    "segment-projection-parameter"(env, scene, label) {
+    "segment-projection-parameter"(env: ViewerEnv, scene: ViewerSceneData, label: RuntimeLabelJson) {
       const value = segmentProjectionParameterFromBinding(scene, label.binding);
       if (value !== null) {
         label.text = usesVerboseParameterLabel(label)
@@ -3715,7 +3395,7 @@
         label.richMarkup = buildPlainTextRichMarkup(label.text);
       }
     },
-    "polyline-parameter"(env, scene, label) {
+    "polyline-parameter"(env: ViewerEnv, scene: ViewerSceneData, label: RuntimeLabelJson) {
       const value = polylineParameterFromPoint(scene, label.binding.pointIndex);
       if (value !== null) {
         label.text = usesVerboseParameterLabel(label)
@@ -3724,7 +3404,7 @@
         label.richMarkup = buildPlainTextRichMarkup(label.text);
       }
     },
-    "circle-parameter"(env, scene, label) {
+    "circle-parameter"(env: ViewerEnv, scene: ViewerSceneData, label: RuntimeLabelJson) {
       const point = scene.points[label.binding.pointIndex];
       const constraint = point?.constraint;
       if (constraint?.kind !== "circle") return;
@@ -3736,7 +3416,7 @@
         : `${label.binding.pointName} = ${env.formatNumber(value)}`;
       label.richMarkup = buildPlainTextRichMarkup(label.text);
     },
-    "angle-marker-value"(_env, scene, label) {
+    "angle-marker-value"(_env: ViewerEnv, scene: ViewerSceneData, label: RuntimeLabelJson) {
       const start = scene.points[label.binding.startIndex];
       const vertex = scene.points[label.binding.vertexIndex];
       const end = scene.points[label.binding.endIndex];
@@ -3756,13 +3436,13 @@
         label.richMarkup = buildPlainTextRichMarkup(label.text);
       }
     },
-    "custom-transform-value"(env, scene, label, parameters) {
+    "custom-transform-value"(env: ViewerEnv, scene: ViewerSceneData, label: RuntimeLabelJson, parameters: Map<string, number>) {
       const value = parameterValueFromPoint(scene, label.binding.pointIndex);
       if (!isFiniteNumber(value)) return;
-      const exprParameters = new Map(parameters);
-      const names = new Set();
+      const exprParameters = new Map<string, number>(parameters);
+      const names = new Set<string>();
       collectExprParameterNames(label.binding.expr, names);
-      names.forEach((name) => exprParameters.set(name, value));
+      names.forEach((name: string) => exprParameters.set(name, value));
       const evaluated = evaluateExpr(label.binding.expr, value, exprParameters);
       if (evaluated !== null) {
         label.text = `${label.binding.exprLabel} = ${env.formatNumber(evaluated * label.binding.valueScale)}${label.binding.valueSuffix}`;
@@ -3771,9 +3451,9 @@
     },
   };
 
-  /** @type {Record<string, PointBindingRefresher>} */
+  
   const SYNC_DYNAMIC_POINT_BINDING_UPDATERS = {
-    coordinate(_env, _draft, point, parameters) {
+    coordinate(_env: ViewerEnv, _draft: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
       const value = parameters.get(point.binding.name);
       if (!isFiniteNumber(value)) return;
       point.x = value;
@@ -3782,19 +3462,19 @@
         point.y = y;
       }
     },
-    "coordinate-source"(_env, draft, point, parameters) {
+    "coordinate-source"(_env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
       updateCoordinateSourcePoint(point, draft.points[point.binding.sourceIndex], parameters);
     },
-    "coordinate-source-2d"(_env, draft, point, parameters) {
+    "coordinate-source-2d"(_env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
       updateCoordinateSource2dPoint(point, draft.points[point.binding.sourceIndex], parameters);
     },
-    "custom-transform"(_env, draft, point, parameters) {
-      updateCustomTransformPoint(point, parameters, (index) => draft.points[index], draft);
+    "custom-transform"(_env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
+      updateCustomTransformPoint(point, parameters, (index: number) => draft.points[index], draft);
     },
-    "scale-by-ratio"(_env, draft, point) {
-      updateScaleByRatioPoint(point, (index) => draft.points[index]);
+    "scale-by-ratio"(_env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson) {
+      updateScaleByRatioPoint(point, (index: number) => draft.points[index]);
     },
-    circumcenter(_env, draft, point) {
+    circumcenter(_env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson) {
       const start = draft.points[point.binding.startIndex];
       const mid = draft.points[point.binding.midIndex];
       const end = draft.points[point.binding.endIndex];
@@ -3804,16 +3484,16 @@
       point.x = center.x;
       point.y = center.y;
     },
-    "constraint-parameter-expr"(_env, draft, point, parameters) {
+    "constraint-parameter-expr"(_env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
       const value = evaluateExpr(point.binding.expr, 0, parameters);
       if (isFiniteNumber(value)) {
         updateConstraintParameterizedPoint(point, draft, value);
       }
     },
-    "constraint-parameter-from-point-expr"(_env, draft, point, parameters) {
+    "constraint-parameter-from-point-expr"(_env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
       const sourceValue = parameterValueFromPoint(draft, point.binding.sourceIndex);
       if (!isFiniteNumber(sourceValue)) return;
-      const exprParameters = new Map(parameters);
+      const exprParameters = new Map<string, number>(parameters);
       if (point.binding.parameterName) {
         exprParameters.set(point.binding.parameterName, sourceValue);
       }
@@ -3828,13 +3508,9 @@
     },
   };
 
-  /**
-   * @param {ViewerSceneData} scene
-   * @param {LineBindingJson} binding
-   * @returns {Point[] | null}
-   */
-  function resolveHostLinePoints(scene, binding) {
-    const hostBinding = /** @type {{ lineStartIndex?: number | null; lineEndIndex?: number | null; lineIndex?: number | null }} */ (binding);
+  
+  function resolveHostLinePoints(scene: ViewerSceneData, binding: HostLineBinding) {
+    const hostBinding = binding;
     if (
       typeof hostBinding?.lineStartIndex === "number"
       && typeof hostBinding?.lineEndIndex === "number"
@@ -3850,13 +3526,8 @@
     return null;
   }
 
-  /**
-   * @param {ViewerSceneData} scene
-   * @param {RuntimeLineJson} line
-   * @param {Map<string, number>} parameters
-   * @returns {Point[] | null}
-   */
-  function sampleCustomTransformTraceLine(scene, line, parameters) {
+  
+  function sampleCustomTransformTraceLine(scene: ViewerSceneData, line: RuntimeLineJson, parameters: Map<string, number>) {
     const point = scene.points[line.binding.pointIndex];
     const binding = point?.binding;
     if (binding?.kind !== "custom-transform" && Number.isInteger(line.binding.driverIndex)) {
@@ -3872,11 +3543,11 @@
     const maxValue = Math.max(line.binding.xMin, Math.min(line.binding.xMax, traceMax));
     for (let index = 0; index < line.binding.sampleCount; index += 1) {
       const value = line.binding.xMin + (maxValue - line.binding.xMin) * (index / last);
-      const exprParameters = new Map(parameters);
-      const names = new Set();
+      const exprParameters = new Map<string, number>(parameters);
+      const names = new Set<string>();
       collectExprParameterNames(binding.distanceExpr, names);
       collectExprParameterNames(binding.angleExpr, names);
-      names.forEach((name) => exprParameters.set(name, value));
+      names.forEach((name: string) => exprParameters.set(name, value));
       const distanceValue = evaluateExpr(binding.distanceExpr, value, exprParameters);
       const angleValue = evaluateExpr(binding.angleExpr, value, exprParameters);
       if (distanceValue === null || angleValue === null) continue;
@@ -3891,21 +3562,16 @@
     return sampled.length >= 2 ? sampled : null;
   }
 
-  /** @param {Point} point */
-  function cloneTracePoint(point) {
+  
+  function cloneTracePoint(point: Point) {
     if (typeof structuredClone === "function") {
       return structuredClone(point);
     }
     return JSON.parse(JSON.stringify(point));
   }
 
-  /**
-   * @param {ViewerSceneData} scene
-   * @param {RuntimeLineJson} line
-   * @param {Map<string, number>} parameters
-   * @returns {Point[] | null}
-   */
-  function samplePointTraceLine(scene, line, parameters) {
+  
+  function samplePointTraceLine(scene: ViewerSceneData, line: RuntimeLineJson, parameters: Map<string, number>) {
     const driver = scene.points[line.binding.driverIndex];
     if (!driver?.constraint) return null;
     const tracedPoint = scene.points[line.binding.pointIndex];
@@ -3914,10 +3580,10 @@
       ? scene.points[sourceBinding.sourceIndex]
       : null;
     if (sourceBinding?.kind === "coordinate-source-2d" && sourcePoint) {
-      const baseParameters = deriveLabelParameters(scene, new Map(parameters));
+      const baseParameters = deriveLabelParameters(scene, new Map<string, number>(parameters));
       const driverParameterName = parameterNameFromPoint(scene, line.binding.driverIndex);
-      const xNames = new Set();
-      const yNames = new Set();
+      const xNames = new Set<string>();
+      const yNames = new Set<string>();
       collectExprParameterNames(sourceBinding.xExpr, xNames);
       collectExprParameterNames(sourceBinding.yExpr, yNames);
       const sampled = [];
@@ -3932,12 +3598,12 @@
         if (driverParameterName) {
           exprParameters.set(driverParameterName, value);
         }
-        xNames.forEach((name) => {
+        xNames.forEach((name: string) => {
           if (!exprParameters.has(name)) {
             exprParameters.set(name, value);
           }
         });
-        yNames.forEach((name) => {
+        yNames.forEach((name: string) => {
           if (!exprParameters.has(name)) {
             exprParameters.set(name, value);
           }
@@ -3958,22 +3624,17 @@
       ...scene,
       lines: scene.lines,
       circles: scene.circles,
-      /** @type {RuntimeScenePointJson[]} */
+      
       points: [],
     };
-    /** @type {Map<string, number>} */
-    let baseParameters = new Map(parameters);
+    
+    let baseParameters = new Map<string, number>(parameters);
     let driverValue = Number.NaN;
-    /** @type {Map<number, Point | null>} */
+    
     let resolvedCache = new Map();
 
-    /**
-     * @param {RuntimeScenePointJson[]} points
-     * @param {number} index
-     * @param {Set<number>} [visiting]
-     * @returns {Point | null}
-     */
-    const resolveTracePoint = (points, index, visiting = new Set()) => {
+    
+    const resolveTracePoint = (points, index: number, visiting= new Set<number>()) => {
       if (resolvedCache.has(index)) {
         return resolvedCache.get(index) ?? null;
       }
@@ -3981,15 +3642,12 @@
       const point = points[index];
       if (!point) return null;
       visiting.add(index);
-      /**
-       * @param {Map<string, number>} exprParameters
-       * @param {...FunctionExprJson} exprs
-       */
-      const applyDriverParameterGuesses = (exprParameters, ...exprs) => {
+      
+      const applyDriverParameterGuesses = (exprParameters, ...exprs: FunctionExprJson[]) => {
         if (!Number.isFinite(driverValue)) return exprParameters;
-        const names = new Set();
+        const names = new Set<string>();
         exprs.forEach((expr) => collectExprParameterNames(expr, names));
-        names.forEach((name) => {
+        names.forEach((name: string) => {
           if (!exprParameters.has(name)) {
             exprParameters.set(name, driverValue);
           }
@@ -4018,7 +3676,7 @@
           }
         } else if (transform.kind === "reflect-constraint") {
           const line = resolveLineConstraintPoints(
-            (pointIndex) => resolveTracePoint(points, pointIndex, visiting),
+            (pointIndex: number) => resolveTracePoint(points, pointIndex, visiting),
             scene.bounds,
             transform.line,
           );
@@ -4030,7 +3688,7 @@
           const angleDegrees = resolveRotateTransformAngleDegrees(
             transform,
             baseParameters,
-            (pointIndex) => resolveTracePoint(points, pointIndex, visiting),
+            (pointIndex: number) => resolveTracePoint(points, pointIndex, visiting),
           );
           if (source && center && isFiniteNumber(angleDegrees)) {
             resolved = rotateAround(source, center, angleDegrees * Math.PI / 180);
@@ -4040,7 +3698,7 @@
           const factor = resolveScaleTransformFactor(
             transform,
             baseParameters,
-            (pointIndex) => resolveTracePoint(points, pointIndex, visiting),
+            (pointIndex: number) => resolveTracePoint(points, pointIndex, visiting),
           );
           if (source && center && isFiniteNumber(factor)) {
             resolved = scaleAround(source, center, factor);
@@ -4092,10 +3750,10 @@
             {
               sourceScene: scene,
               currentScene: () => sampleScene,
-              resolveScenePoint: (pointIndex) => resolveTracePoint(points, pointIndex, visiting),
+              resolveScenePoint: (pointIndex: number) => resolveTracePoint(points, pointIndex, visiting),
             },
             derived.constraint,
-            (pointIndex) => resolveTracePoint(points, pointIndex, visiting),
+            (pointIndex: number) => resolveTracePoint(points, pointIndex, visiting),
             derived,
           );
         }
@@ -4150,10 +3808,10 @@
             {
               sourceScene: scene,
               currentScene: () => sampleScene,
-              resolveScenePoint: (pointIndex) => resolveTracePoint(points, pointIndex, visiting),
+              resolveScenePoint: (pointIndex: number) => resolveTracePoint(points, pointIndex, visiting),
             },
             derived.constraint,
-            (pointIndex) => resolveTracePoint(points, pointIndex, visiting),
+            (pointIndex: number) => resolveTracePoint(points, pointIndex, visiting),
             derived,
           );
         }
@@ -4177,17 +3835,17 @@
               {
                 sourceScene: scene,
                 currentScene: () => sampleScene,
-                resolveScenePoint: (pointIndex) => resolveTracePoint(points, pointIndex, visiting),
+                resolveScenePoint: (pointIndex: number) => resolveTracePoint(points, pointIndex, visiting),
               },
               derived.constraint,
-              (pointIndex) => resolveTracePoint(points, pointIndex, visiting),
+              (pointIndex: number) => resolveTracePoint(points, pointIndex, visiting),
               derived,
             );
           }
         }
       } else if (point.binding?.kind === "custom-transform") {
         const derived = { ...point };
-        updateCustomTransformPoint(derived, baseParameters, (pointIndex) => resolveTracePoint(points, pointIndex, visiting), sampleScene);
+        updateCustomTransformPoint(derived, baseParameters, (pointIndex: number) => resolveTracePoint(points, pointIndex, visiting), sampleScene);
         if (Number.isFinite(derived.x) && Number.isFinite(derived.y)) {
           resolved = { x: derived.x, y: derived.y };
         }
@@ -4199,10 +3857,10 @@
           {
             sourceScene: scene,
             currentScene: () => sampleScene,
-            resolveScenePoint: (pointIndex) => resolveTracePoint(points, pointIndex, visiting),
+            resolveScenePoint: (pointIndex: number) => resolveTracePoint(points, pointIndex, visiting),
           },
           point.constraint,
-          (pointIndex) => resolveTracePoint(points, pointIndex, visiting),
+          (pointIndex: number) => resolveTracePoint(points, pointIndex, visiting),
           point,
         );
       }
@@ -4241,10 +3899,10 @@
           {
             sourceScene: scene,
             currentScene: () => sampleScene,
-            resolveScenePoint: (pointIndex) => points[pointIndex],
+            resolveScenePoint: (pointIndex: number) => points[pointIndex],
           },
           driverPoint.constraint,
-          (pointIndex) => points[pointIndex],
+          (pointIndex: number) => points[pointIndex],
           driverPoint,
         )
         : null;
@@ -4252,7 +3910,7 @@
         driverPoint.x = resolvedDriver.x;
         driverPoint.y = resolvedDriver.y;
       }
-      baseParameters = deriveLabelParameters(sampleScene, new Map(parameters));
+      baseParameters = deriveLabelParameters(sampleScene, new Map<string, number>(parameters));
       driverValue = parameterValueFromPoint(sampleScene, line.binding.driverIndex) ?? Number.NaN;
       resolvedCache = new Map();
       const point = resolveTracePoint(points, line.binding.pointIndex);
@@ -4263,17 +3921,15 @@
     return sampled.length >= 2 ? sampled : null;
   }
 
-  /**
-   * @typedef {{ kind: "translate"; dx: number; dy: number } | { kind: "rotate"; center: Point; radians: number } | { kind: "scale"; center: Point; factor: number } | { kind: "reflect"; lineStart: Point; lineEnd: Point }} DerivedTransform
-   */
+  type DerivedTransform =
+    | { kind: "translate"; dx: number; dy: number }
+    | { kind: "rotate"; center: Point; radians: number }
+    | { kind: "scale"; center: Point; factor: number }
+    | { kind: "reflect"; lineStart: Point; lineEnd: Point };
 
-  /**
-   * @param {import("./generated/TransformJson").TransformJson} transform
-   * @param {ViewerSceneData} scene
-   * @param {Map<string, number>} parameters
-   * @returns {DerivedTransform | null}
-   */
-  function resolveDerivedTransform(transform, scene, parameters) {
+  
+  function resolveDerivedTransform(transform: TransformJson | null | undefined, scene: ViewerSceneData, parameters: Map<string, number>): DerivedTransform | null {
+    if (!transform) return null;
     if (transform.kind === "translate") {
       const vectorStart = scene.points[transform.vectorStartIndex];
       const vectorEnd = scene.points[transform.vectorEndIndex];
@@ -4293,7 +3949,7 @@
       const angleDegrees = resolveRotateTransformAngleDegrees(
         transform,
         parameters,
-        (index) => scene.points[index] || null,
+        (index: number) => scene.points[index] || null,
       );
       if (!isFiniteNumber(angleDegrees)) return null;
       return { kind: "rotate", center, radians: angleDegrees * Math.PI / 180 };
@@ -4304,7 +3960,7 @@
       const factor = resolveScaleTransformFactor(
         transform,
         parameters,
-        (pointIndex) => scene.points[pointIndex] || null,
+        (pointIndex: number) => scene.points[pointIndex] || null,
       );
       if (!isFiniteNumber(factor)) return null;
       return { kind: "scale", center, factor };
@@ -4317,12 +3973,8 @@
     return null;
   }
 
-  /**
-   * @param {Point} point
-   * @param {DerivedTransform} transform
-   * @returns {Point | null}
-   */
-  function applyDerivedTransform(point, transform) {
+  
+  function applyDerivedTransform(point: Point, transform: DerivedTransform) {
     if (transform.kind === "translate") {
       return { x: point.x + transform.dx, y: point.y + transform.dy };
     }
@@ -4335,25 +3987,19 @@
     return reflectAcrossLine(point, transform.lineStart, transform.lineEnd);
   }
 
-  /**
-   * @param {{ scene: ViewerSceneData, parameters: Map<string, number> }} env
-   * @param {RuntimeLineJson} line
-   */
-  function refreshDerivedLine(env, line) {
+  
+  function refreshDerivedLine(env: { scene: ViewerSceneData, parameters: Map<string, number> }, line: RuntimeLineJson) {
     const source = env.scene.lines[line.binding.sourceIndex];
     const transform = resolveDerivedTransform(line.binding.transform, env.scene, env.parameters);
     if (!source || !transform) return;
     const nextPoints = source.points
-      .map((/** @type {Point} */ point) => applyDerivedTransform(point, transform));
-    if (nextPoints.some((/** @type {Point | null} */ point) => !point)) return;
-    line.points = /** @type {Point[]} */ (nextPoints);
+      .map(( point) => applyDerivedTransform(point, transform));
+    if (nextPoints.some(( point) => !point)) return;
+    line.points =  (nextPoints);
   }
 
-  /**
-   * @param {{ scene: ViewerSceneData, bounds: BoundsJson, parameters: Map<string, number> }} context
-   * @param {RuntimeLineJson} line
-   */
-  function refreshColorizedSpectrumLine(context, line) {
+  
+  function refreshColorizedSpectrumLine(context: { scene: ViewerSceneData, bounds: BoundsJson, parameters: Map<string, number> }, line: RuntimeLineJson) {
     const binding = line.binding;
     const hostLine = context.scene.lines[binding.lineIndex];
     const traceLine = context.scene.lines[binding.traceLineIndex];
@@ -4422,13 +4068,8 @@
     line.points = [sample, { x: hostEnd.x, y: hostEnd.y }];
   }
 
-  /**
-   * @param {ViewerSceneData} scene
-   * @param {LineBindingJson & { kind: "colorized-spectrum" }} binding
-   * @param {Point} sample
-   * @returns {[Point, Point] | null}
-   */
-  function sampledReflectionAxis(scene, binding, sample) {
+  
+  function sampledReflectionAxis(scene: ViewerSceneData, binding: RuntimeLineBindingJson, sample: Point) {
     if (
       !isFiniteNumber(binding.reflectionFocusIndex)
       || !isFiniteNumber(binding.reflectionDirectrixLineIndex)
@@ -4451,13 +4092,8 @@
     ];
   }
 
-  /**
-   * @param {Point} point
-   * @param {Point} lineStart
-   * @param {Point} lineEnd
-   * @returns {Point | null}
-   */
-  function projectPointToLine(point, lineStart, lineEnd) {
+  
+  function projectPointToLine(point: Point, lineStart: Point, lineEnd: Point) {
     const dx = lineEnd.x - lineStart.x;
     const dy = lineEnd.y - lineStart.y;
     const lenSq = dx * dx + dy * dy;
@@ -4469,27 +4105,21 @@
     };
   }
 
-  /**
-   * @param {{ scene: ViewerSceneData, parameters: Map<string, number>, resolveHandle: (handle: PointHandle) => Point | null }} env
-   * @param {RuntimePolygonJson} polygon
-   */
-  function refreshDerivedPolygon(env, polygon) {
+  
+  function refreshDerivedPolygon(env: { scene: ViewerSceneData, parameters: Map<string, number>, resolveHandle: (handle: PointHandle) => Point | null }, polygon: RuntimePolygonJson) {
     const source = env.scene.polygons[polygon.binding.sourceIndex];
     const transform = resolveDerivedTransform(polygon.binding.transform, env.scene, env.parameters);
     if (!source || !transform) return;
     const nextPoints = source.points
-      .map((/** @type {PointHandle} */ handle) => env.resolveHandle(handle))
+      .map(( handle) => env.resolveHandle(handle))
       .filter(Boolean)
-      .map((/** @type {Point} */ point) => applyDerivedTransform(point, transform));
-    if (nextPoints.some((/** @type {Point | null} */ point) => !point)) return;
-    polygon.points = /** @type {Point[]} */ (nextPoints);
+      .map(( point) => applyDerivedTransform(point, transform));
+    if (nextPoints.some(( point) => !point)) return;
+    polygon.points =  (nextPoints);
   }
 
-  /**
-   * @param {{ scene: ViewerSceneData, parameters: Map<string, number>, resolveHandle: (handle: PointHandle) => Point | null }} env
-   * @param {RuntimeCircleJson} circle
-   */
-  function refreshDerivedCircle(env, circle) {
+  
+  function refreshDerivedCircle(env: { scene: ViewerSceneData, parameters: Map<string, number>, resolveHandle: (handle: PointHandle) => Point | null }, circle: RuntimeCircleJson) {
     const source = env.scene.circles[circle.binding.sourceIndex];
     const transform = resolveDerivedTransform(circle.binding.transform, env.scene, env.parameters);
     if (!source || !transform) return;
@@ -4503,16 +4133,16 @@
     circle.radiusPoint = nextRadius;
   }
 
-  /** @type {Record<string, LineBindingRefresher>} */
+  
   const LINE_BINDING_REFRESHERS = {
-    segment({ scene }, line) {
+    segment({ scene }: LineBindingRefreshContext, line: RuntimeLineJson) {
       const start = scene.points[line.binding.startIndex];
       const end = scene.points[line.binding.endIndex];
       if (start && end) {
         line.points = [{ x: start.x, y: start.y }, { x: end.x, y: end.y }];
       }
     },
-    "angle-marker"({ scene }, line) {
+    "angle-marker"({ scene }: LineBindingRefreshContext, line: RuntimeLineJson) {
       const start = scene.points[line.binding.startIndex];
       const vertex = scene.points[line.binding.vertexIndex];
       const end = scene.points[line.binding.endIndex];
@@ -4523,7 +4153,7 @@
         line.points = points;
       }
     },
-    "angle-bisector-ray"({ scene, bounds }, line) {
+    "angle-bisector-ray"({ scene, bounds }: LineBindingRefreshContext, line: RuntimeLineJson) {
       const start = scene.points[line.binding.startIndex];
       const vertex = scene.points[line.binding.vertexIndex];
       const end = scene.points[line.binding.endIndex];
@@ -4539,7 +4169,7 @@
         if (clipped) line.points = clipped;
       }
     },
-    "perpendicular-line"({ scene, bounds }, line) {
+    "perpendicular-line"({ scene, bounds }: LineBindingRefreshContext, line: RuntimeLineJson) {
       const through = scene.points[line.binding.throughIndex];
       const hostLine = resolveHostLinePoints(scene, line.binding);
       const lineStart = hostLine?.[0];
@@ -4558,7 +4188,7 @@
         if (clipped) line.points = clipped;
       }
     },
-    "parallel-line"({ scene, bounds }, line) {
+    "parallel-line"({ scene, bounds }: LineBindingRefreshContext, line: RuntimeLineJson) {
       const through = scene.points[line.binding.throughIndex];
       const hostLine = resolveHostLinePoints(scene, line.binding);
       const lineStart = hostLine?.[0];
@@ -4577,45 +4207,45 @@
         if (clipped) line.points = clipped;
       }
     },
-    line({ scene, bounds }, line) {
+    line({ scene, bounds }: LineBindingRefreshContext, line: RuntimeLineJson) {
       const start = scene.points[line.binding.startIndex];
       const end = scene.points[line.binding.endIndex];
       const clipped = start && end ? clipLineToBounds(start, end, bounds) : null;
       if (clipped) line.points = clipped;
     },
-    ray({ scene, bounds }, line) {
+    ray({ scene, bounds }: LineBindingRefreshContext, line: RuntimeLineJson) {
       const start = scene.points[line.binding.startIndex];
       const end = scene.points[line.binding.endIndex];
       const clipped = start && end ? clipRayToBounds(start, end, bounds) : null;
       if (clipped) line.points = clipped;
     },
-    "arc-boundary"({ env }, line) {
+    "arc-boundary"({ env }: LineBindingRefreshContext, line: RuntimeLineJson) {
       const sampled = modules.scene.sampleArcBoundaryPoints(env, line.binding);
       if (sampled) {
         line.points = sampled;
       }
     },
     derived: refreshDerivedLine,
-    "custom-transform-trace"({ scene, parameters }, line) {
+    "custom-transform-trace"({ scene, parameters }: LineBindingRefreshContext, line: RuntimeLineJson) {
       const sampled = sampleCustomTransformTraceLine(scene, line, parameters);
       if (sampled) {
         line.points = sampled;
       }
     },
-    "coordinate-trace"({ env }, line) {
+    "coordinate-trace"({ env }: LineBindingRefreshContext, line: RuntimeLineJson) {
       const sampled = modules.scene.sampleCoordinateTracePoints(env, line.binding);
       if (sampled && sampled.length >= 2) {
         line.points = sampled;
       }
     },
-    "point-trace"({ scene, parameters }, line) {
+    "point-trace"({ scene, parameters }: LineBindingRefreshContext, line: RuntimeLineJson) {
       const sampled = samplePointTraceLine(scene, line, parameters);
       if (sampled) {
         line.points = sampled;
       }
     },
     "colorized-spectrum": refreshColorizedSpectrumLine,
-    "parametric-curve"({ parameters }, line) {
+    "parametric-curve"({ parameters }: LineBindingRefreshContext, line: RuntimeLineJson) {
       const sampled = sampleParametricCurve(line.binding, parameters);
       if (sampled.length >= 2) {
         line.points = sampled;
@@ -4623,14 +4253,8 @@
     },
   };
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {ViewerSceneData} scene
-   * @param {number} index
-   * @param {Set<number>} [visiting]
-   * @returns {Point | null}
-   */
-  function resolveScenePointInScene(env, scene, index, visiting = new Set()) {
+  
+  function resolveScenePointInScene(env: ViewerEnv, scene: ViewerSceneData, index: number, visiting: Set<number> = new Set<number>()) {
     const point = scene.points[index];
     if (!point) return null;
     if (!point.constraint) return point;
@@ -4639,23 +4263,23 @@
     const resolved = modules.scene.resolveConstrainedPoint(
       env,
       point.constraint,
-      (pointIndex) => resolveScenePointInScene(env, scene, pointIndex, visiting),
+      (pointIndex: number) => resolveScenePointInScene(env, scene, pointIndex, visiting),
       point,
     );
     visiting.delete(index);
     return resolved;
   }
 
-  /** @type {Record<string, CircleBindingRefresher>} */
+  
   const CIRCLE_BINDING_REFRESHERS = {
-    "point-radius-circle"({ env }, circle) {
+    "point-radius-circle"({ env }: CircleBindingRefreshContext, circle: RuntimeCircleJson) {
       const center = env.resolveScenePoint(circle.binding.centerIndex);
       const radiusPoint = env.resolveScenePoint(circle.binding.radiusIndex);
       if (!center || !radiusPoint) return;
       circle.center = { x: center.x, y: center.y };
       circle.radiusPoint = { x: radiusPoint.x, y: radiusPoint.y };
     },
-    "segment-radius-circle"({ env }, circle) {
+    "segment-radius-circle"({ env }: CircleBindingRefreshContext, circle: RuntimeCircleJson) {
       const center = env.resolveScenePoint(circle.binding.centerIndex);
       const lineStart = env.resolveScenePoint(circle.binding.lineStartIndex);
       const lineEnd = env.resolveScenePoint(circle.binding.lineEndIndex);
@@ -4664,7 +4288,7 @@
       circle.center = { x: center.x, y: center.y };
       circle.radiusPoint = { x: center.x + radius, y: center.y };
     },
-    "parameter-radius-circle"({ env, parameters }, circle) {
+    "parameter-radius-circle"({ env, parameters }: CircleBindingRefreshContext, circle: RuntimeCircleJson) {
       const center = env.resolveScenePoint(circle.binding.centerIndex);
       const value = parameters.get(circle.binding.parameterName);
       if (!center || !isFiniteNumber(value)) return;
@@ -4675,17 +4299,17 @@
     derived: refreshDerivedCircle,
   };
 
-  /** @type {Record<string, PolygonBindingRefresher>} */
+  
   const POLYGON_BINDING_REFRESHERS = {
-    "point-polygon"({ scene }, polygon) {
+    "point-polygon"({ scene }: PolygonBindingRefreshContext, polygon: RuntimePolygonJson) {
       const points = polygon.binding.vertexIndices
-        .map((/** @type {number} */ index) => scene.points[index])
+        .map(( index: number) => scene.points[index])
         .filter(Boolean);
       if (points.length === polygon.binding.vertexIndices.length) {
-        polygon.points = points.map((/** @type {Point} */ point) => ({ x: point.x, y: point.y }));
+        polygon.points = points.map(( point) => ({ x: point.x, y: point.y }));
       }
     },
-    "arc-boundary-polygon"({ env }, polygon) {
+    "arc-boundary-polygon"({ env }: PolygonBindingRefreshContext, polygon: RuntimePolygonJson) {
       const sampled = modules.scene.sampleArcBoundaryPoints(env, polygon.binding);
       if (sampled) {
         polygon.points = sampled;
@@ -4694,16 +4318,13 @@
     derived: refreshDerivedPolygon,
   };
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {ViewerSceneData} scene
-   */
-  function refreshDerivedPoints(env, scene) {
+  
+  function refreshDerivedPoints(env: ViewerEnv, scene: ViewerSceneData) {
     const bounds = env.getViewBounds ? env.getViewBounds() : (scene.bounds || env.sourceScene.bounds);
     let parameters = parameterMapForScene(env, scene);
     refreshConstrainedPointPositions(env, scene);
     parameters = parameterMapForScene(env, scene);
-    const resolveHandle = (/** @type {PointHandle} */ handle) => {
+    const resolveHandle = ( handle) => {
       if (hasPointIndexHandle(handle)) {
         return env.resolveScenePoint(handle.pointIndex);
       }
@@ -4719,10 +4340,10 @@
           y: p0.y + (p1.y - p0.y) * t,
         };
       }
-      return /** @type {Point} */ (handle);
+      return  (handle);
     };
 
-    scene.points.forEach((/** @type {RuntimeScenePointJson} */ point) => {
+    scene.points.forEach(( point) => {
       const refreshBinding = point.binding ? DERIVED_POINT_BINDING_REFRESHERS[point.binding.kind] : null;
       if (refreshBinding) {
         refreshBinding(env, scene, point, parameters);
@@ -4732,10 +4353,10 @@
     refreshConstrainedPointPositions(env, scene);
     parameters = parameterMapForScene(env, scene);
 
-    /** @type {RuntimeLineJson[]} */
+    
     const preservedLines = [];
     const lineContext = { env, scene, bounds, parameters };
-    scene.lines.forEach((/** @type {RuntimeLineJson} */ line) => {
+    scene.lines.forEach(( line) => {
       const bindingKind = line.binding?.kind;
       if (!bindingKind) {
         preservedLines.push(line);
@@ -4751,7 +4372,7 @@
     refreshTraceConstrainedPointPositions(env, scene);
 
     const shapeContext = { env, scene, parameters, resolveHandle };
-    scene.circles.forEach((/** @type {RuntimeCircleJson} */ circle) => {
+    scene.circles.forEach(( circle) => {
       const refreshCircle = circle.binding ? CIRCLE_BINDING_REFRESHERS[circle.binding.kind] : null;
       if (refreshCircle) {
         refreshCircle(shapeContext, circle);
@@ -4764,13 +4385,13 @@
       const generatedCount = sourceCircleIterations.reduce((sum, family) => sum + family.depth, 0);
       const baseCount = Math.max(0, env.sourceScene.circles.length - generatedCount);
       scene.circles = scene.circles.slice(0, baseCount);
-      sourceCircleIterations.forEach((/** @type {RuntimeCircleIterationFamily} */ family) => {
+      sourceCircleIterations.forEach(( family) => {
         const source = scene.circles[family.sourceCircleIndex];
         if (!source) {
           return;
         }
         const vertices = family.vertexIndices
-          .map((/** @type {number} */ index) => scene.points[index])
+          .map(( index: number) => scene.points[index])
           .filter(Boolean);
         if (vertices.length !== family.vertexIndices.length) {
           return;
@@ -4820,7 +4441,7 @@
       });
     }
 
-    scene.polygons.forEach((/** @type {RuntimePolygonJson} */ polygon) => {
+    scene.polygons.forEach(( polygon) => {
       const refreshPolygon = polygon.binding ? POLYGON_BINDING_REFRESHERS[polygon.binding.kind] : null;
       if (refreshPolygon) {
         refreshPolygon(shapeContext, polygon);
@@ -4828,12 +4449,9 @@
     });
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {ViewerSceneData} scene
-   */
-  function refreshConstrainedPointPositions(env, scene) {
-    scene.points.forEach((/** @type {RuntimeScenePointJson} */ point, /** @type {number} */ pointIndex) => {
+  
+  function refreshConstrainedPointPositions(env: ViewerEnv, scene: ViewerSceneData) {
+    scene.points.forEach(( point,  pointIndex: number) => {
       if (!point.constraint) {
         return;
       }
@@ -4846,12 +4464,9 @@
     });
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {ViewerSceneData} scene
-   */
-  function refreshTraceConstrainedPointPositions(env, scene) {
-    scene.points.forEach((/** @type {RuntimeScenePointJson} */ point, /** @type {number} */ pointIndex) => {
+  
+  function refreshTraceConstrainedPointPositions(env: ViewerEnv, scene: ViewerSceneData) {
+    scene.points.forEach(( point,  pointIndex: number) => {
       if (point.constraint?.kind !== "polyline" || typeof point.constraint.functionKey !== "number") {
         return;
       }
@@ -4864,12 +4479,8 @@
     });
   }
 
-  /**
-   * @param {ViewerSceneData} scene
-   * @param {{ lineStartIndex?: number | null, lineEndIndex?: number | null, lineIndex?: number | null }} binding
-   * @returns {[Point | null, Point | null]}
-   */
-  function reflectionAxisPoints(scene, binding) {
+  
+  function reflectionAxisPoints(scene: ViewerSceneData, binding: { lineStartIndex?: number | null, lineEndIndex?: number | null, lineIndex?: number | null }) {
     const lineIndex = binding.lineIndex;
     if (typeof lineIndex === "number" && Number.isInteger(lineIndex)) {
       const axis = scene.lines[lineIndex];
@@ -4888,13 +4499,10 @@
     return [lineStart || null, lineEnd || null];
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {ViewerSceneData} scene
-   */
-  function refreshDynamicLabels(env, scene) {
+  
+  function refreshDynamicLabels(env: ViewerEnv, scene: ViewerSceneData) {
     const parameters = parameterMapForScene(env, scene);
-    scene.labels.forEach((/** @type {RuntimeLabelJson} */ label) => {
+    scene.labels.forEach(( label) => {
       if (!label.binding) return;
       const refreshLabel = DYNAMIC_LABEL_REFRESHERS[label.binding.kind];
       if (refreshLabel) {
@@ -4903,19 +4511,15 @@
     });
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {ViewerSceneData} draft
-   * @param {Map<string, number>} parameters
-   */
-  function applyBaseDynamicUpdates(env, draft, parameters) {
-    env.currentDynamics().parameters.forEach((/** @type {ParameterJson} */ parameter) => {
+  
+  function applyBaseDynamicUpdates(env: ViewerEnv, draft: ViewerSceneData, parameters: Map<string, number>) {
+    env.currentDynamics().parameters.forEach(( parameter) => {
       if (typeof parameter.labelIndex === "number" && draft.labels[parameter.labelIndex]) {
         draft.labels[parameter.labelIndex].text =
           `${parameter.name} = ${env.formatNumber(parameter.value)}${parameterValueSuffix(parameter)}`;
       }
     });
-    draft.points.forEach((/** @type {RuntimeScenePointJson} */ point) => {
+    draft.points.forEach(( point) => {
       if (point.binding?.kind !== "parameter" || !point.constraint) {
         const updatePoint = point.binding ? SYNC_DYNAMIC_POINT_BINDING_UPDATERS[point.binding.kind] : null;
         if (updatePoint) {
@@ -4927,7 +4531,7 @@
       if (!Number.isFinite(value)) return;
       applyNormalizedParameterToPoint(point, draft, value);
     });
-    env.currentDynamics().functions.forEach((/** @type {FunctionJson} */ functionDef) => {
+    env.currentDynamics().functions.forEach(( functionDef) => {
       if (typeof functionDef.labelIndex === "number" && draft.labels[functionDef.labelIndex]) {
         const variableLabel = functionDef.domain.plotMode === "polar" ? "θ" : "x";
         const head = functionDef.domain.plotMode === "polar"
@@ -4944,7 +4548,7 @@
         draft.lines[functionDef.lineIndex].segments = sampledSegments
           .map((segment) => segment.map((point) => ({ ...point })));
       }
-      functionDef.constrainedPointIndices.forEach((/** @type {number} */ pointIndex) => {
+      functionDef.constrainedPointIndices.forEach(( pointIndex: number) => {
         const constraint = draft.points[pointIndex]?.constraint;
         if (constraint && constraint.kind === "polyline") {
           constraint.points = sampled.map((point) => ({ ...point }));
@@ -4954,15 +4558,11 @@
     });
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {ViewerSceneData} scene
-   * @param {string[]} dirtyRootIds
-   */
-  function runDependencyGraph(env, scene, dirtyRootIds) {
+  
+  function runDependencyGraph(env: ViewerEnv, scene: ViewerSceneData, dirtyRootIds: string[]) {
     const graph = ensureDependencyGraph(env);
     const rootSet = new Set(
-      (dirtyRootIds || []).filter((rootId) => typeof rootId === "string" && graph.nodeMap.has(rootId)),
+      (dirtyRootIds || []).filter((rootId: string) => typeof rootId === "string" && graph.nodeMap.has(rootId)),
     );
     if (rootSet.size === 0) {
       env.currentDynamics().parameters.forEach((parameter) => {
@@ -4970,31 +4570,31 @@
       });
     }
     if (rootSet.size === 0) {
-      (env.sourceScene.points || []).forEach((_, index) => rootSet.add(sourcePointRootId(index)));
-      (env.sourceScene.lines || []).forEach((_, index) => rootSet.add(sourceLineRootId(index)));
-      (env.sourceScene.circles || []).forEach((_, index) => rootSet.add(sourceCircleRootId(index)));
-      (env.sourceScene.polygons || []).forEach((_, index) => rootSet.add(sourcePolygonRootId(index)));
+      (env.sourceScene.points || []).forEach((_, index: number) => rootSet.add(sourcePointRootId(index)));
+      (env.sourceScene.lines || []).forEach((_, index: number) => rootSet.add(sourceLineRootId(index)));
+      (env.sourceScene.circles || []).forEach((_, index: number) => rootSet.add(sourceCircleRootId(index)));
+      (env.sourceScene.polygons || []).forEach((_, index: number) => rootSet.add(sourcePolygonRootId(index)));
     }
-    const affected = new Set(rootSet);
+    const affected = new Set<string>(rootSet);
     const queue = Array.from(rootSet);
     while (queue.length > 0) {
-      const currentId = /** @type {string} */ (queue.shift());
-      (graph.reverseEdges.get(currentId) || []).forEach((dependentId) => {
+      const currentId =  (queue.shift());
+      (graph.reverseEdges.get(currentId) || []).forEach((dependentId: string) => {
         if (!affected.has(dependentId)) {
           affected.add(dependentId);
           queue.push(dependentId);
         }
       });
     }
-    /** @type {DependencyNode[]} */
+    
     const orderedNodes = graph.topoOrder
-      .flatMap((id) => {
+      .flatMap((id: string) => {
         const node = graph.nodeMap.get(id);
         return node && affected.has(node.id) ? [node] : [];
       });
-    /** @type {string[]} */
+    
     const executedRecipes = [];
-    const seenRecipes = new Set();
+    const seenRecipes = new Set<string>();
     orderedNodes.forEach((node) => {
       if (!node.recipe || seenRecipes.has(node.recipe)) {
         return;
@@ -5022,26 +4622,19 @@
     };
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {string[]} [dirtyParameterNames]
-   */
-  function syncDynamicScene(env, dirtyParameterNames) {
+  
+  function syncDynamicScene(env: ViewerEnv, dirtyParameterNames: string[]) {
     const names = Array.isArray(dirtyParameterNames) && dirtyParameterNames.length > 0
       ? dirtyParameterNames
       : env.currentDynamics().parameters.map((parameter) => parameter.name);
     env.markDependencyRootsDirty?.(
-      names.map((name) => parameterRootId(name)),
+      names.map((name: string) => parameterRootId(name)),
     );
     env.updateScene(() => {}, "graph");
   }
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {ViewerSceneData} scene
-   * @param {Map<string, number>} parameters
-   */
-  function refreshIterationGeometry(env, scene, parameters) {
+  
+  function refreshIterationGeometry(env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) {
     rebuildIterationPoints(env, scene, parameters);
     rebuildIteratedLines(env, scene, parameters);
     rebuildIteratedPolygons(env, scene, parameters);
@@ -5049,8 +4642,8 @@
     rebuildIterationTables(env, scene, parameters);
   }
 
-  /** @param {ParameterJson} parameter */
-  function parameterValueSuffix(parameter) {
+  
+  function parameterValueSuffix(parameter: ParameterJson) {
     switch (parameter.unit) {
       case "degree":
         return "\u00B0";
@@ -5061,31 +4654,37 @@
     }
   }
 
-  /** @param {ViewerEnv} env */
-  function buildParameterControls(env) {
+  
+  function buildParameterControls(env: ViewerEnv) {
     const parameterControls = env.parameterControls;
     if (!parameterControls) {
       return;
     }
     parameterControls.replaceChildren();
     const controls = env.currentDynamics().parameters
-      .map((parameter, index) => ({ parameter, index }))
+      .map((parameter, index: number) => ({ parameter, index }))
       .filter(({ parameter }) => parameter.visible !== false)
       .map(({ parameter, index }) => {
         const isDiscrete = isDiscreteIterationParameterName(env.sourceScene, parameter.name);
-        /** @type {{ type: string; step: string; min?: string; value: string; oninput: (event: Event) => void }} */
-        const inputAttrs = {
+        
+        const inputAttrs: {
+          type: string;
+          step: string;
+          min?: string;
+          value: string;
+          oninput: (event: Event) => void;
+        } = {
           type: "number",
           step: isDiscrete ? "1" : "0.1",
           value: env.formatNumber(parameter.value),
           oninput: (event) => {
-            const target = /** @type {HTMLInputElement} */ (event.target);
+            const target = event.target as HTMLInputElement;
             let value = Number.parseFloat(target.value);
             if (Number.isFinite(value)) {
               if (isDiscrete) {
                 value = discreteIterationDepth(value);
               }
-              env.updateDynamics((draft) => {
+              env.updateDynamics((draft: ViewerSceneData) => {
                 draft.parameters[index].value = value;
               });
               syncDynamicScene(env, [parameter.name]);
@@ -5097,7 +4696,7 @@
         }
         return env.labelTag(
           `${parameter.name} =`,
-          env.inputTag(/** @type {Parameters<ViewerEnv["inputTag"]>[0]} */ (inputAttrs)),
+          env.inputTag( (inputAttrs)),
           parameterValueSuffix(parameter),
         );
       });

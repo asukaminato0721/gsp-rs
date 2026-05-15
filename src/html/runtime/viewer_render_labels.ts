@@ -1,15 +1,15 @@
-// @ts-check
-
 (function() {
-  const modules = /** @type {Partial<ViewerModules> & { render: ViewerRenderModule }} */ (
+  const modules =  (
     window.GspViewerModules || (window.GspViewerModules = {})
   );
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {string} text
-   */
-  modules.render.labelMetrics = function labelMetrics(env, text) {
+  
+  function isCoordinateAnchor(anchor: RuntimePointRef | null | undefined): anchor is Point {
+    return !!anchor && typeof anchor === "object" && "x" in anchor && "y" in anchor;
+  }
+
+  
+  modules.render.labelMetrics = function labelMetrics(env: ViewerEnv, text: string) {
     const lines = text.split("\n");
     const width = lines.reduce((best, line) => Math.max(best, env.measureText(line, 18)), 0);
     return {
@@ -19,13 +19,10 @@
     };
   };
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {SceneLabelJson} label
-   */
-  modules.render.labelBounds = function labelBounds(env, label) {
+  
+  modules.render.labelBounds = function labelBounds(env: ViewerEnv, label: RuntimeLabelJson) {
     const worldAnchor = label.screenSpace
-      ? { x: /** @type {Point} */ (label.anchor).x, y: /** @type {Point} */ (label.anchor).y }
+      ? (isCoordinateAnchor(label.anchor) ? { x: label.anchor.x, y: label.anchor.y } : null)
       : label.binding?.kind === "point-bound-expression-value"
         ? (() => {
             const point = env.resolveScenePoint(label.binding.pointIndex);
@@ -39,7 +36,7 @@
         : env.resolvePoint(label.anchor);
     if (!worldAnchor) return null;
     const screen = label.screenSpace ? worldAnchor : env.toScreen(worldAnchor);
-    const metrics = modules.render.labelMetrics(env, label.text);
+    const metrics = modules.render.labelMetrics(env, label.text ?? "");
     if (label.centeredOnAnchor) {
       return {
         screen,
@@ -60,11 +57,8 @@
     };
   };
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {SceneLabelJson} label
-   */
-  modules.render.labelHotspotRects = function labelHotspotRects(env, label) {
+  
+  modules.render.labelHotspotRects = function labelHotspotRects(env: ViewerEnv, label: RuntimeLabelJson) {
     if (!label.hotspots?.length) {
       return [];
     }
@@ -73,7 +67,7 @@
       return [];
     }
     const rects = label.hotspots
-      .map((/** @type {RuntimeLabelHotspotJson} */ hotspot, /** @type {number} */ hotspotIndex) => {
+      .map(( hotspot,  hotspotIndex) => {
         const line = bounds.lines[hotspot.line];
         if (typeof line !== "string") return null;
         const glyphs = Array.from(line);
@@ -99,12 +93,8 @@
     return rects;
   };
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {number} screenX
-   * @param {number} screenY
-   */
-  modules.render.findHitLabel = function findHitLabel(env, screenX, screenY) {
+  
+  modules.render.findHitLabel = function findHitLabel(env: ViewerEnv, screenX: number, screenY: number) {
     for (let index = env.currentScene().labels.length - 1; index >= 0; index -= 1) {
       const label = env.currentScene().labels[index];
       if (label.visible === false) continue;
@@ -122,9 +112,9 @@
     return null;
   };
 
-  /** @param {ViewerEnv} env */
-  modules.render.drawLabels = function drawLabels(env) {
-    env.currentScene().labels.forEach((label, index) => {
+  
+  modules.render.drawLabels = function drawLabels(env: ViewerEnv) {
+    env.currentScene().labels.forEach((label, index: number) => {
       if (label.visible === false || (label.richMarkup && !label.hotspots?.length)) return;
       const bounds = modules.render.labelBounds(env, label);
       if (!bounds) return;
@@ -135,7 +125,7 @@
       }, null, { category: "labels", index });
       if (label.centeredOnAnchor) {
         const midOffset = (bounds.lines.length - 1) / 2;
-        bounds.lines.forEach((line, index) => {
+        bounds.lines.forEach((line, index: number) => {
           const text = env.createSvgElement("text", {
             x: bounds.screen.x,
             y: bounds.screen.y + (index - midOffset) * 22,
@@ -146,7 +136,7 @@
           group.append(text);
         });
       } else {
-        bounds.lines.forEach((line, index) => {
+        bounds.lines.forEach((line, index: number) => {
           const text = env.createSvgElement("text", {
             x: bounds.left + 4,
             y: bounds.top + index * 22,

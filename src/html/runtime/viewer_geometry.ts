@@ -1,36 +1,22 @@
-// @ts-check
-
 (function() {
   const modules = window.GspViewerModules || (window.GspViewerModules = {});
 
-  /**
-   * @param {number} from
-   * @param {number} to
-   */
-  function normalizeAngleDelta(from, to) {
+  
+  function normalizeAngleDelta(from: number, to: number) {
     const tau = Math.PI * 2;
     return ((to - from) % tau + tau) % tau;
   }
 
-  /**
-   * @param {Point} start
-   * @param {Point} end
-   * @param {number} t
-   */
-  function lerpPoint(start, end, t) {
+  
+  function lerpPoint(start: Point, end: Point, t: number) {
     return {
       x: start.x + (end.x - start.x) * t,
       y: start.y + (end.y - start.y) * t,
     };
   }
 
-  /**
-   * @param {Point} point
-   * @param {Point} center
-   * @param {number} radians
-   * @returns {Point}
-   */
-  function rotateAround(point, center, radians) {
+  
+  function rotateAround(point: Point, center: Point, radians: number) {
     const cos = Math.cos(radians);
     const sin = Math.sin(radians);
     const dx = point.x - center.x;
@@ -41,26 +27,16 @@
     };
   }
 
-  /**
-   * @param {Point} point
-   * @param {Point} center
-   * @param {number} factor
-   * @returns {Point}
-   */
-  function scaleAround(point, center, factor) {
+  
+  function scaleAround(point: Point, center: Point, factor: number) {
     return {
       x: center.x + (point.x - center.x) * factor,
       y: center.y + (point.y - center.y) * factor,
     };
   }
 
-  /**
-   * @param {Point} point
-   * @param {Point} lineStart
-   * @param {Point} lineEnd
-   * @returns {Point | null}
-   */
-  function reflectAcrossLine(point, lineStart, lineEnd) {
+  
+  function reflectAcrossLine(point: Point, lineStart: Point, lineEnd: Point) {
     const dx = lineEnd.x - lineStart.x;
     const dy = lineEnd.y - lineStart.y;
     const lenSq = dx * dx + dy * dy;
@@ -76,24 +52,15 @@
     };
   }
 
-  /**
-   * @param {Point} start
-   * @param {Point} end
-   * @param {{ minX: number; maxX: number; minY: number; maxY: number }} bounds
-   * @param {boolean} rayOnly
-   * @returns {Point[] | null}
-   */
-  function clipParametricLineToBounds(start, end, bounds, rayOnly) {
+  
+  function clipParametricLineToBounds(start: Point, end: Point, bounds: { minX: number; maxX: number; minY: number; maxY: number }, rayOnly: boolean) {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
     if (Math.abs(dx) <= 1e-9 && Math.abs(dy) <= 1e-9) return null;
 
-    /** @type {Array<{ t: number; point: Point }>} */
+    
     const hits = [];
-    /**
-     * @param {number} t
-     * @param {Point} point
-     */
+    
     const pushHit = (t, point) => {
       if (!Number.isFinite(t)) return;
       if (rayOnly && t < -1e-9) return;
@@ -132,31 +99,18 @@
     return [hits[0].point, hits[hits.length - 1].point];
   }
 
-  /**
-   * @param {Point} start
-   * @param {Point} end
-   * @param {{ minX: number; maxX: number; minY: number; maxY: number }} bounds
-   */
-  function clipLineToBounds(start, end, bounds) {
+  
+  function clipLineToBounds(start: Point, end: Point, bounds: { minX: number; maxX: number; minY: number; maxY: number }) {
     return clipParametricLineToBounds(start, end, bounds, false);
   }
 
-  /**
-   * @param {Point} start
-   * @param {Point} end
-   * @param {{ minX: number; maxX: number; minY: number; maxY: number }} bounds
-   */
-  function clipRayToBounds(start, end, bounds) {
+  
+  function clipRayToBounds(start: Point, end: Point, bounds: { minX: number; maxX: number; minY: number; maxY: number }) {
     return clipParametricLineToBounds(start, end, bounds, true);
   }
 
-  /**
-   * @param {Point} start
-   * @param {Point} vertex
-   * @param {Point} end
-   * @returns {Point | null}
-   */
-  function angleBisectorDirection(start, vertex, end) {
+  
+  function angleBisectorDirection(start: Point, vertex: Point, end: Point) {
     const startDx = start.x - vertex.x;
     const startDy = start.y - vertex.y;
     const startLen = Math.hypot(startDx, startDy);
@@ -174,12 +128,8 @@
     return { x: -startDy / startLen, y: startDx / startLen };
   }
 
-  /**
-   * @param {Point} start
-   * @param {Point} vertex
-   * @param {Point} end
-   */
-  function measuredRotationRadians(start, vertex, end) {
+  
+  function measuredRotationRadians(start: Point, vertex: Point, end: Point) {
     const firstX = start.x - vertex.x;
     const firstY = vertex.y - start.y;
     const secondX = end.x - vertex.x;
@@ -190,24 +140,15 @@
     return Math.atan2(firstX * secondY - firstY * secondX, firstX * secondX + firstY * secondY);
   }
 
-  /**
-   * @param {Point} source
-   * @param {Point} center
-   * @param {Point} ratioOrigin
-   * @param {Point} ratioDenominator
-   * @param {Point} ratioNumerator
-   * @param {boolean} signed
-   * @param {boolean} clampToUnit
-   * @returns {Point | null}
-   */
+  
   function scaleByThreePointRatio(
-    source,
-    center,
-    ratioOrigin,
-    ratioDenominator,
-    ratioNumerator,
-    signed = true,
-    clampToUnit = false,
+    source: Point,
+    center: Point,
+    ratioOrigin: Point,
+    ratioDenominator: Point,
+    ratioNumerator: Point,
+    signed: boolean = true,
+    clampToUnit: boolean = false,
   ) {
     const denominatorDx = ratioDenominator.x - ratioOrigin.x;
     const denominatorDy = ratioDenominator.y - ratioOrigin.y;

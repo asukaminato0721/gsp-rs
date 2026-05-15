@@ -1,17 +1,12 @@
-// @ts-check
-
 (function() {
-  const modules = /** @type {Partial<ViewerModules> & { render: ViewerRenderModule }} */ (
+  const modules =  (
     window.GspViewerModules || (window.GspViewerModules = {})
   );
-  /** @type {Map<string, { img: HTMLImageElement; loaded: boolean }>} */
+  
   const imageCache = new Map();
 
-  /**
-   * @param {string} src
-   * @param {ViewerEnv | null | undefined} env
-   */
-  function loadImage(src, env) {
+  
+  function loadImage(src: string, env: ViewerEnv | null | undefined) {
     let entry = imageCache.get(src);
     if (entry) return entry;
     const img = new Image();
@@ -27,9 +22,9 @@
     return entry;
   }
 
-  /** @param {ViewerEnv} env */
-  modules.render.drawImages = function drawImages(env) {
-    (env.currentScene().images || []).forEach((image, index) => {
+  
+  modules.render.drawImages = function drawImages(env: ViewerEnv) {
+    (env.currentScene().images || []).forEach((image, index: number) => {
       if (image.visible === false) return;
       const entry = loadImage(image.src, env);
       if (!entry.loaded) return;
@@ -55,13 +50,8 @@
     });
   };
 
-  /**
-   * @param {ViewerEnv} env
-   * @param {number} screenX
-   * @param {number} screenY
-   * @returns {number | null}
-   */
-  modules.render.findHitImage = function findHitImage(env, screenX, screenY) {
+  
+  modules.render.findHitImage = function findHitImage(env: ViewerEnv, screenX: number, screenY: number) {
     const images = env.currentScene().images || [];
     for (let index = images.length - 1; index >= 0; index -= 1) {
       const image = images[index];
