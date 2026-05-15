@@ -1,2 +1,5 @@
+[alias]
+xtask = "run -p xtask --"
+
 [env]
 TS_RS_EXPORT_DIR = { value = "src/html/generated", relative = true }

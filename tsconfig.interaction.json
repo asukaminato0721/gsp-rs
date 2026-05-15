@@ -1,18 +1,10 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "noImplicitAny": true
+    "noImplicitAny": false
   },
   "files": [
-    "src/html/viewer.js",
-    "src/html/viewer_drag.js",
-    "src/html/viewer_render_basic.js",
-    "src/html/viewer_render_images.js",
-    "src/html/viewer_render_polygons.js",
-    "src/html/viewer_render_circular.js",
-    "src/html/viewer_render_labels.js",
-    "src/html/viewer_render_tables.js",
-    "src/html/viewer_render_hotspots.js",
+    "src/html/generated/viewer-runtime.js",
     "src/html/viewer_types.d.ts",
     "src/html/vendor/van-1.6.0.d.ts"
   ],

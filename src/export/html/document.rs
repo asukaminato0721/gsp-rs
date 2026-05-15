@@ -1,9 +1,5 @@
 use super::assets::{
-    VIEWER_CSS, VIEWER_DRAG_JS, VIEWER_DYNAMICS_JS, VIEWER_GEOMETRY_JS, VIEWER_JS,
-    VIEWER_OVERLAY_JS, VIEWER_RENDER_BASIC_JS, VIEWER_RENDER_CIRCULAR_JS,
-    VIEWER_RENDER_HOTSPOTS_JS, VIEWER_RENDER_IMAGES_JS, VIEWER_RENDER_LABELS_JS,
-    VIEWER_RENDER_POLYGONS_JS, VIEWER_RENDER_TABLES_JS, VIEWER_SCENE_BASIC_JS, indent_asset,
-    minify_css_asset, van_runtime_to_global,
+    VIEWER_CSS, VIEWER_RUNTIME_JS, indent_asset, minify_css_asset, van_runtime_to_global,
 };
 use super::render_scene_json;
 use crate::runtime::scene::Scene;
@@ -27,7 +23,6 @@ pub(super) fn render_standalone_html_pages(pages: &[StandaloneHtmlPage<'_>]) -> 
     let mut html = String::new();
     let scene_json = render_document_scene_json(pages);
     let van_js = van_runtime_to_global();
-    let viewer_modules_js = full_viewer_modules_js();
     let canvas_shell_class = if document_layout {
         "canvas-shell is-document-layout"
     } else {
@@ -117,10 +112,7 @@ pub(super) fn render_standalone_html_pages(pages: &[StandaloneHtmlPage<'_>]) -> 
 {embedded_van_js}
   </script>
   <script>
-{embedded_viewer_modules_js}
-  </script>
-  <script>
-{embedded_js}
+{embedded_viewer_runtime_js}
   </script>
 </body>
 </html>
@@ -135,8 +127,7 @@ pub(super) fn render_standalone_html_pages(pages: &[StandaloneHtmlPage<'_>]) -> 
         scene_json = scene_json,
         embedded_css = minify_css_asset(VIEWER_CSS),
         embedded_van_js = indent_asset(&van_js, 4),
-        embedded_viewer_modules_js = indent_asset(&viewer_modules_js, 4),
-        embedded_js = indent_asset(VIEWER_JS, 4),
+        embedded_viewer_runtime_js = indent_asset(VIEWER_RUNTIME_JS, 4),
     );
     html
 }
@@ -197,27 +188,6 @@ fn shape_count(scene: &Scene) -> usize {
         + scene.circles.len()
         + scene.arcs.len()
         + scene.labels.len()
-}
-
-fn full_viewer_modules_js() -> String {
-    [
-        VIEWER_GEOMETRY_JS,
-        VIEWER_SCENE_BASIC_JS,
-        include_str!("../../html/viewer_scene_circular.js"),
-        include_str!("../../html/viewer_scene_trace.js"),
-        include_str!("../../html/viewer_scene_intersections.js"),
-        VIEWER_RENDER_BASIC_JS,
-        VIEWER_RENDER_IMAGES_JS,
-        VIEWER_RENDER_POLYGONS_JS,
-        VIEWER_RENDER_CIRCULAR_JS,
-        VIEWER_RENDER_LABELS_JS,
-        VIEWER_RENDER_TABLES_JS,
-        VIEWER_RENDER_HOTSPOTS_JS,
-        VIEWER_OVERLAY_JS,
-        VIEWER_DRAG_JS,
-        VIEWER_DYNAMICS_JS,
-    ]
-    .join("\n")
 }
 
 #[cfg(test)]
