@@ -2,13 +2,5 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noImplicitAny": false
-  },
-  "files": [
-    "src/html/generated/viewer-runtime.js",
-    "src/html/viewer_types.d.ts",
-    "src/html/vendor/van-1.6.0.d.ts"
-  ],
-  "include": [
-    "src/html/generated/**/*.ts"
-  ]
+  }
 }
