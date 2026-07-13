@@ -27,7 +27,13 @@ const RUNTIME_SOURCES: &[&str] = &[
     "viewer_render_hotspots",
     "viewer_overlay",
     "viewer_drag",
+    "viewer_dynamics_expression",
+    "viewer_dynamics_rich_text",
+    "viewer_dynamics_iterations",
+    "viewer_dynamics_dependency_graph",
     "viewer_dynamics",
+    "viewer_app_document",
+    "viewer_app_debug_graph",
     "viewer",
 ];
 

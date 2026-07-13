@@ -1061,6 +1061,76 @@ type ViewerDynamicsModule = {
   syncDynamicScene: (env: ViewerEnv, dirtyParameterNames?: string[]) => void;
 };
 
+type ViewerDynamicsExpressionModule = {
+  evaluateExpr: (expr: FunctionExprJson | FunctionAstJson, x: number, parameters: Map<string, number>) => number | null;
+  exprContainsPiAngle: (expr: FunctionExprJson | FunctionAstJson | null | undefined) => boolean;
+  formatExpr: (
+    expr: FunctionExprJson | FunctionAstJson,
+    formatAxisNumber: (value: number) => string,
+    variableLabel?: string,
+  ) => string;
+};
+
+type ViewerDynamicsRichTextModule = {
+  buildExpressionRichMarkup: (exprLabel: string, valueText: string) => string | null;
+  buildRatioValueRichMarkup: (name: string, valueText: string) => string | null;
+  buildPlainTextRichMarkup: (text: string) => string | null;
+  replaceRichMarkupPathValues: (markup: string | null | undefined, valuesBySlot: Map<number, string>) => string | null;
+  replaceTemplateTextRanges: (
+    templateText: string,
+    replacements: Array<{ line: number; start: number; end: number; valueText: string }>,
+  ) => string;
+};
+
+type ViewerDynamicsIterationsModule = {
+  createDynamicsIterations: (dependencies: Record<string, Function>) => {
+    rebuildIterationPoints: (env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) => void;
+    rebuildIteratedLines: (env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) => void;
+    rebuildIteratedPolygons: (env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) => void;
+    rebuildIteratedLabels: (env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) => void;
+    rebuildIterationTables: (env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) => void;
+  };
+};
+
+type ViewerDynamicsDependencyGraphModule = {
+  createDependencyGraphRuntime: (dependencies: Record<string, Function>) => {
+    parameterRootId: (name: string) => string;
+    sourcePointRootId: (index: number) => string;
+    collectExprParameterNames: (
+      expr: FunctionExprJson | FunctionAstJson | null | undefined,
+      names: Set<string>,
+    ) => void;
+    describeDependencyGraph: (env: ViewerEnv) => unknown[];
+    runDependencyGraph: (env: ViewerEnv, scene: ViewerSceneData, dirtyRootIds: string[]) => unknown;
+  };
+};
+
+type DocumentScenePage = { index: number; title: string; scene: SceneData };
+type DocumentSceneData = { kind: "gsp-document"; pages: DocumentScenePage[] };
+type ViewerAppDocumentModule = {
+  readSceneData: (element: HTMLElement | null) => {
+    raw: unknown;
+    pages: DocumentScenePage[] | null;
+    activePageIndex: number;
+    sourceScene: SceneData;
+  };
+  installPageNavigation: (
+    pages: DocumentScenePage[] | null,
+    activePageIndex: number,
+    buttons: HTMLButtonElement[],
+  ) => void;
+};
+
+type ViewerAppDebugGraphModule = {
+  createDebugGraphRuntime: (dependencies: {
+    formatNumber: (value: number) => string;
+  }) => {
+    collectReferenceTokens: (value: unknown) => string[];
+    summarizeDebugEntity: (entity: unknown) => string;
+    buildDebugGraph: (scene: ViewerSceneData) => string;
+  };
+};
+
 type ViewerOverlayRuntime = {
   currentButtons: () => RuntimeButtonJson[];
   currentHotspotFlashes: () => HotspotFlash[];
@@ -1077,6 +1147,12 @@ type ViewerModules = {
   render: ViewerRenderModule;
   overlay: ViewerOverlayModule;
   drag: ViewerDragModule;
+  dynamicsExpression: ViewerDynamicsExpressionModule;
+  dynamicsRichText: ViewerDynamicsRichTextModule;
+  dynamicsIterations: ViewerDynamicsIterationsModule;
+  dynamicsDependencyGraph: ViewerDynamicsDependencyGraphModule;
+  appDocument: ViewerAppDocumentModule;
+  appDebugGraph: ViewerAppDebugGraphModule;
   dynamics: ViewerDynamicsModule;
 };
 

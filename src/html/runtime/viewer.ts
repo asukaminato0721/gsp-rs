@@ -10,74 +10,55 @@
   } = window.GspViewerModules as ViewerModules;
   const SVG_NS = "http://www.w3.org/2000/svg";
   const XLINK_NS = "http://www.w3.org/1999/xlink";
-  type DocumentScenePage = { index: number; title: string; scene: SceneData };
-  type DocumentSceneData = { kind: "gsp-document"; pages: DocumentScenePage[] };
   const sceneDataElement = document.getElementById("scene-data");
-  if (!sceneDataElement?.textContent) {
-    throw new Error("missing scene-data payload");
-  }
-  const rawSceneData: unknown = JSON.parse(sceneDataElement.textContent);
-  
-  function isDocumentSceneData(data: unknown): data is DocumentSceneData {
-    return !!data
-      && typeof data === "object"
-      && (data as { kind?: string }).kind === "gsp-document"
-      && Array.isArray((data as { pages?: unknown }).pages);
-  }
+  const {
+    raw: rawSceneData,
+    pages: documentPages,
+    activePageIndex,
+    sourceScene,
+  } = window.GspViewerModules.appDocument.readSceneData(sceneDataElement);
 
-  
-  function activeDocumentPageIndex(pages: DocumentScenePage[]) {
-    const match = /^#page-(\d+)$/.exec(window.location.hash);
-    const index = match ? Number(match[1]) - 1 : 0;
-    return Math.min(Math.max(Number.isFinite(index) ? index : 0, 0), pages.length - 1);
-  }
-
-  const documentPages = isDocumentSceneData(rawSceneData) ? rawSceneData.pages : null;
-  const activePageIndex = documentPages ? activeDocumentPageIndex(documentPages) : 0;
-  
-  const sourceScene: SceneData = documentPages ? documentPages[activePageIndex].scene : rawSceneData as SceneData;
-  
   const canvas = document.getElementById("view") as unknown as SVGSVGElement;
   document.documentElement.style.setProperty("--scene-width", String(sourceScene.width));
   document.documentElement.style.setProperty("--scene-height", String(sourceScene.height));
   canvas.setAttribute("viewBox", `0 0 ${sourceScene.width} ${sourceScene.height}`);
   canvas.setAttribute("width", String(sourceScene.width));
   canvas.setAttribute("height", String(sourceScene.height));
-  
+
   const gridLayer = document.getElementById("grid-layer") as unknown as SVGGElement;
-  
+
   const sceneLayer = document.getElementById("scene-layer") as unknown as SVGGElement;
-  
+
   const measureTextNode = document.getElementById("measure-text") as unknown as SVGTextElement;
-  
+
   const viewerShell = document.getElementById("viewer-shell");
-  
+
   const resetButton = document.getElementById("reset-view");
-  
+
   const fullscreenToggleButton = document.getElementById("toggle-fullscreen");
-  
+
   const debugToggleButton = document.getElementById("toggle-debug");
-  
+
   const parameterControls = document.getElementById("parameter-controls");
-  
+
   const buttonOverlays = document.getElementById("button-overlays");
-  
+
   const debugPanel = document.getElementById("debug-panel");
-  
+
   const debugOutput = document.getElementById("debug-output");
-  
+
   const debugDumpConsoleButton = document.getElementById("debug-dump-console");
-  
+
   const debugTabButtons = Array.from(
     document.querySelectorAll<HTMLButtonElement>("[data-debug-tab]"),
   );
-  
+
   const pageTabButtons = Array.from(
     document.querySelectorAll<HTMLButtonElement>("[data-page-index]"),
   );
-  
+
   const coordReadout = document.getElementById("coord-readout");
-  
+
   const zoomReadout = document.getElementById("zoom-readout");
   type DebugTarget = { category: string; index: number; hotspotIndex?: number | null; label?: string | null };
   const margin = 32;
@@ -103,43 +84,21 @@
   const pointMatchTolerance = 1e-3;
   const autoOpenDebug = new URLSearchParams(window.location.search).get("debug") === "1";
   const defaultZoom = sourceScene.graphMode ? 1 : 0.9;
-  
+
   const pointerWorldState = van.state(null);
-  
+
   const debugViewState = van?.state ? van.state("selection") : { val: "selection" };
-  
+
   const selectedDebugTargetState = van?.state ? van.state(null) : { val: null };
-  
+
   const debugElementRegistry = new Map();
   let nextDebugElementId = 1;
 
-  function syncPageTabs() {
-    pageTabButtons.forEach((button: HTMLButtonElement) => {
-      const index = Number(button.dataset.pageIndex);
-      const selected = index === activePageIndex;
-      button.setAttribute("aria-selected", selected ? "true" : "false");
-      button.classList.toggle("is-active", selected);
-    });
-  }
-
-  
-  function activateDocumentPage(index: number) {
-    if (!documentPages || index === activePageIndex || index < 0 || index >= documentPages.length) {
-      return;
-    }
-    window.location.hash = `page-${index + 1}`;
-    window.location.reload();
-  }
-
-  pageTabButtons.forEach((button: HTMLButtonElement) => {
-    button.addEventListener("click", () => activateDocumentPage(Number(button.dataset.pageIndex)));
-  });
-  window.addEventListener("hashchange", () => {
-    if (documentPages) {
-      window.location.reload();
-    }
-  });
-  syncPageTabs();
+  window.GspViewerModules.appDocument.installPageNavigation(
+    documentPages,
+    activePageIndex,
+    pageTabButtons,
+  );
 
   const viewState = van?.state ? van.state({
     centerX: baseCenterX,
@@ -151,19 +110,19 @@
     zoom: defaultZoom,
   } };
 
-  
+
   function setViewState(next: ViewState) {
     viewState.val = next;
   }
 
-  
+
   function updateViewState(mutator: (draft: ViewState) => void) {
     const next = { ...viewState.val };
     mutator(next);
     setViewState(next);
   }
 
-  
+
   function toWorldForView(viewSnapshot: ViewState, screenX: number, screenY: number) {
     const spanX = baseSpanX / viewSnapshot.zoom;
     const spanY = baseSpanY / viewSnapshot.zoom;
@@ -179,7 +138,7 @@
     };
   }
 
-  
+
   const view: ViewState = new Proxy({} as ViewState, {
     get: (_target: ViewState, key: string | symbol) => viewState.val[key as keyof ViewState],
     set: (_target: ViewState, key: string | symbol, value: number) => {
@@ -189,12 +148,12 @@
       return true;
     },
   });
-  
+
   const dragState = van?.state ? van.state(null) : { val: null };
-  
+
   const hoverPointIndex = van?.state ? van.state(null) : { val: null };
   const labelAttachDistance = 40;
-  
+
   let overlayRuntime = {
     currentButtons() {
       return [];
@@ -215,14 +174,14 @@
   van.add(coordReadout, coordText);
   van.add(zoomReadout, zoomText);
 
-  
+
   function createSvgElement(name: string, attrs: Record<string, string | number | boolean | null | undefined> = {}) {
     const element = document.createElementNS(SVG_NS, name);
     setSvgAttributes(element, attrs);
     return element;
   }
 
-  
+
   function setSvgAttributes(element: Element, attrs: Record<string, string | number | boolean | null | undefined>) {
     Object.entries(attrs).forEach(([key, value]: [string, string | number | boolean | null | undefined]) => {
       if (value === null || value === undefined || value === false) {
@@ -242,12 +201,12 @@
     });
   }
 
-  
+
   function clearSvgChildren(element: Element) {
     element.replaceChildren();
   }
 
-  
+
   function measureText(text: string, fontSize: number = 18, fontWeight: number | string = 400) {
     const normalized = text || "";
     measureTextNode.setAttribute("font-size", String(fontSize));
@@ -259,13 +218,13 @@
     return normalized ? width : 0;
   }
 
-  
+
   function samePoint(left: Point, right: Point) {
     return Math.abs(left.x - right.x) < pointMatchTolerance
       && Math.abs(left.y - right.y) < pointMatchTolerance;
   }
 
-  
+
   function resolveSourcePoint(index: number) {
     const point = sourceScene.points[index];
     if (!point) {
@@ -282,7 +241,7 @@
     return { x: point.x, y: point.y };
   }
 
-  
+
   function attachPointRef(point: Point) {
     const pointIndex = sourceScene.points.findIndex((_candidate: ScenePointJson, index: number) => samePoint(resolveSourcePoint(index), point));
     if (pointIndex >= 0) {
@@ -291,7 +250,7 @@
     return { x: point.x, y: point.y };
   }
 
-  
+
   function resolveSourceHandle(handle: PointHandle) {
     if (hasPointIndexHandle(handle)) {
       return resolveSourcePoint(handle.pointIndex);
@@ -299,14 +258,14 @@
     return  (handle);
   }
 
-  
+
   function distanceSquared(left: Point, right: Point) {
     const dx = left.x - right.x;
     const dy = left.y - right.y;
     return dx * dx + dy * dy;
   }
 
-  
+
   function distanceToSegmentSquared(point: Point, start: Point, end: Point) {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
@@ -321,7 +280,7 @@
     });
   }
 
-  
+
   function distanceToPolylineSquared(point: Point, polyline: Point[]) {
     let best = Number.POSITIVE_INFINITY;
     for (let index = 0; index + 1 < polyline.length; index += 1) {
@@ -330,7 +289,7 @@
     return best;
   }
 
-  
+
   function arcGeometryFromPoints(start: Point, mid: Point, end: Point) {
     const determinant = 2 * (
       start.x * (mid.y - end.y)
@@ -372,7 +331,7 @@
     };
   }
 
-  
+
   function midpointOnCircleWorld(start: Point, end: Point, center: Point, counterclockwise: boolean, yUp: boolean) {
     const ySign = yUp ? 1 : -1;
     const startAngle = Math.atan2((start.y - center.y) * ySign, start.x - center.x);
@@ -389,7 +348,7 @@
     };
   }
 
-  
+
   function clonePayloadDebug(debug: DebugSourceJson | null) {
     return debug ? {
       ...debug,
@@ -398,7 +357,7 @@
     } : null;
   }
 
-  
+
   function attachLabelAnchor(point: Point, hydratedLines: Array<{ points: PointHandle[] }>) {
     let bestPointIndex = null;
     let bestPointDistanceSquared = Number.POSITIVE_INFINITY;
@@ -449,7 +408,7 @@
     return { x: point.x, y: point.y };
   }
 
-  
+
   function attachPointCenteredLabelAnchor(label: { binding?: { kind?: string; pointIndex?: number; anchorDx?: number; anchorDy?: number } | null; anchor: Point }, hydratedLines: Array<{ points: PointHandle[] }>) {
     if (typeof label.binding?.pointIndex === "number") {
       return {
@@ -461,19 +420,19 @@
     return attachLabelAnchor(label.anchor, hydratedLines);
   }
 
-  
+
   function usesFixedLabelAnchor(label: { binding?: { kind?: string } | null }) {
     return label.binding?.kind === "point-coordinate-value"
       || label.binding?.kind === "point-axis-value"
       || label.binding?.kind === "point-distance-value";
   }
 
-  
+
   function hasPointIndexHandle(handle: PointHandle): handle is Extract<PointHandle, { pointIndex: number }> {
     return !!handle && typeof handle === "object" && "pointIndex" in handle && typeof handle.pointIndex === "number";
   }
 
-  
+
   function hydrateScene(scene: SceneData): ViewerSceneData {
     const hydratedLines = scene.lines.map((line: LineJson): RuntimeLineJson => ({
       color: line.color,
@@ -572,7 +531,7 @@
       iterationTables: (scene.iterationTables || []).map((table: IterationTableJson): RuntimeIterationTableJson => ({
         ...table,
         debug: clonePayloadDebug(table.debug),
-        
+
         rows: [],
       })),
       buttons: (scene.buttons || []).map((button: ButtonJson): RuntimeButtonJson => ({
@@ -605,12 +564,12 @@
   } };
   const currentScene = () => sceneState.val;
   const currentDynamics = () => dynamicsState.val;
-  
+
   const pendingDependencyRootIds = new Set<string>();
-  
+
   let lastDependencyRun = null;
 
-  
+
   function markDependencyRootsDirty(rootIds: string | string[]) {
     const values = Array.isArray(rootIds) ? rootIds : [rootIds];
     values.forEach((rootId: string) => {
@@ -620,7 +579,7 @@
     });
   }
 
-  
+
   function updateScene(mutator: (draft: ViewerSceneData) => void, mode: "graph" | "none" = "none") {
     const next = sceneState.val;
     mutator(next);
@@ -637,19 +596,19 @@
     sceneState.val = { ...next };
   }
 
-  
+
   function updateDynamics(mutator: (draft: RuntimeDynamicsState) => void) {
     const next = dynamicsState.val;
     mutator(next);
     dynamicsState.val = { ...next };
   }
 
-  
+
   function rgba(color: [number, number, number, number]) {
     return `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${(color[3] / 255).toFixed(3)})`;
   }
 
-  
+
   function formatNumber(value: number) {
     if (!Number.isFinite(value)) return "-";
     return Math.abs(value - Math.round(value)) < 0.005
@@ -657,7 +616,11 @@
       : value.toFixed(2);
   }
 
-  
+  const debugGraphRuntime = window.GspViewerModules.appDebugGraph.createDebugGraphRuntime({
+    formatNumber,
+  });
+
+
   function formatAxisNumber(value: number) {
     if (Math.abs(value - Math.round(value)) < 1e-6) {
       return String(Math.round(value));
@@ -665,7 +628,7 @@
     return value.toFixed(1);
   }
 
-  
+
   function formatPiLabel(stepIndex: number) {
     if (stepIndex === 0) return "";
     const sign = stepIndex < 0 ? "-" : "";
@@ -677,7 +640,7 @@
     return absIndex === 1 ? `${sign}\u03c0/2` : `${sign}${absIndex}\u03c0/2`;
   }
 
-  
+
   function cloneForDebug(value: unknown) {
     if (typeof structuredClone === "function") {
       return structuredClone(value);
@@ -685,7 +648,7 @@
     return JSON.parse(JSON.stringify(value));
   }
 
-  
+
   function cloneWithLiveParameterValues(value: unknown, parameters: Map<string, number>) {
     if (!value || typeof value !== "object") {
       return value;
@@ -722,7 +685,7 @@
     return cloned;
   }
 
-  
+
   function debugEntityWithLiveParameters(entity: unknown) {
     const parameters = dynamicsModule.parameterMapForScene
       ? dynamicsModule.parameterMapForScene(viewerEnv, currentScene())
@@ -738,7 +701,7 @@
     }
   }
 
-  
+
   function debugTargetKey(target: DebugTarget | null) {
     if (!target) return "";
     return `${target.category}:${target.index}:${target.hotspotIndex ?? ""}`;
@@ -755,7 +718,7 @@
     }
   }
 
-  
+
   function registerDebugElement(element: Element, target: DebugTarget | null | undefined) {
     if (!element || !target) {
       return;
@@ -782,7 +745,7 @@
     syncDebugSelectionHighlight();
   }
 
-  
+
   function selectDebugTarget(target: DebugTarget) {
     selectedDebugTargetState.val = target;
     debugViewState.val = "selection";
@@ -790,7 +753,7 @@
     renderDebugOutput();
   }
 
-  
+
   function selectDebugTargetFromElement(element: Element | null) {
     const carrier = element?.closest?.("[data-gsp-debug-id]");
     if (!carrier) {
@@ -805,7 +768,7 @@
     return true;
   }
 
-  
+
   function findDebugTargetAtScreen(screenX: number, screenY: number) {
     const pointIndex = findHitPoint(screenX, screenY);
     if (pointIndex !== null) {
@@ -842,7 +805,7 @@
     return null;
   }
 
-  
+
   function lookupDebugEntity(target: DebugTarget) {
     const scene = currentScene();
     switch (target.category) {
@@ -876,7 +839,7 @@
     }
   }
 
-  
+
   function describeDebugTarget(target: DebugTarget) {
     const suffix = target.hotspotIndex !== undefined && target.hotspotIndex !== null
       ? `[${target.hotspotIndex}]`
@@ -884,7 +847,7 @@
     return `${target.category}[${target.index}]${suffix}`;
   }
 
-  
+
   function formatPayloadDebug(debug: Record<string, unknown> | null | undefined) {
     if (!debug) {
       return ["payload: derived or unavailable"];
@@ -920,14 +883,14 @@
     const lines = [
       "Selection",
       `  target: ${describeDebugTarget(target)}`,
-      `  summary: ${summarizeDebugEntity(entity) || "(no summary)"}`,
+      `  summary: ${debugGraphRuntime.summarizeDebugEntity(entity) || "(no summary)"}`,
     ];
     formatPayloadDebug(entityRecord?.debug && typeof entityRecord.debug === "object"
       ?  (entityRecord.debug)
       : null).forEach((line) => {
       lines.push(`  ${line}`);
     });
-    const refs = collectReferenceTokens(entity);
+    const refs = debugGraphRuntime.collectReferenceTokens(entity);
     if (refs.length) {
       lines.push(`  refs: ${refs.join(", ")}`);
     }
@@ -940,176 +903,6 @@
     return JSON.stringify(buildRuntimeSnapshot(), null, 2);
   }
 
-  
-  function formatReference(key: string, value: number) {
-    if (!Number.isInteger(value)) {
-      return null;
-    }
-    switch (key) {
-      case "buttonIndices":
-        return `buttons[${value}]`;
-      case "circleIndices":
-      case "circleIndex":
-        return `circles[${value}]`;
-      case "lineIndices":
-      case "lineIndex":
-        return `lines[${value}]`;
-      case "polygonIndices":
-      case "polygonIndex":
-        return `polygons[${value}]`;
-      case "seedLabelIndex":
-      case "labelIndex":
-        return `labels[${value}]`;
-      case "functionKey":
-        return `functions[${value}]`;
-      case "segmentIndex":
-        return null;
-      default:
-        if (
-          key === "pointIndex"
-          || key === "targetPointIndex"
-          || key === "pointSeedIndex"
-          || key === "seedIndex"
-          || key === "sourceIndex"
-          || key === "centerIndex"
-          || key === "originIndex"
-          || key === "radiusIndex"
-          || key === "startIndex"
-          || key === "endIndex"
-          || key === "midIndex"
-          || key === "throughIndex"
-          || key === "vertexIndex"
-          || key === "lineStartIndex"
-          || key === "lineEndIndex"
-        ) {
-          return `points[${value}]`;
-        }
-        return null;
-    }
-  }
-
-  
-  function collectReferenceTokens(value: unknown) {
-    
-    const refs = [];
-    
-    function visit(node: unknown) {
-      if (!node || typeof node !== "object") {
-        return;
-      }
-      if (Array.isArray(node)) {
-        node.forEach(visit);
-        return;
-      }
-      Object.entries(node).forEach(([key, child]: [string, unknown]) => {
-        if (typeof child === "number") {
-          const ref = formatReference(key, child);
-          if (ref) {
-            refs.push(ref);
-          }
-          return;
-        }
-        if (Array.isArray(child)) {
-          const directRefs = child.flatMap(( item) => {
-            if (typeof item !== "number") return [];
-            const ref = formatReference(key, item);
-            return ref ? [ref] : [];
-          });
-          refs.push(...directRefs);
-          child.forEach(visit);
-          return;
-        }
-        visit(child);
-      });
-    }
-    visit(value);
-    return [...new Set(refs)];
-  }
-
-  
-  function summarizeDebugEntity(entity: unknown) {
-    const item = (entity ?? {}) as RuntimePayload;
-    const parts = [];
-    if (typeof item.text === "string") {
-      parts.push(JSON.stringify(item.text));
-    }
-    if (typeof item.name === "string") {
-      parts.push(`name=${item.name}`);
-    }
-    if (typeof item.kind === "string") {
-      parts.push(`kind=${item.kind}`);
-    }
-    if (typeof item.visible === "boolean") {
-      parts.push(item.visible ? "visible" : "hidden");
-    }
-    if (typeof item.depth === "number") {
-      parts.push(`depth=${item.depth}`);
-    }
-    if (typeof item.edgeCount === "number") {
-      parts.push(`edges=${item.edgeCount}`);
-    }
-    if (typeof item.parameterName === "string" && item.parameterName.length > 0) {
-      parts.push(`param=${item.parameterName}`);
-    }
-    if (item.anchor && typeof item.anchor === "object") {
-      if (typeof item.anchor.x === "number" && typeof item.anchor.y === "number") {
-        parts.push(`anchor @ (${formatNumber(item.anchor.x)}, ${formatNumber(item.anchor.y)})`);
-      }
-      if (item.screenSpace === true) {
-        parts.push("screenSpace");
-      }
-    }
-    if (typeof item.x === "number" && typeof item.y === "number" && !item.kind) {
-      parts.push(`@ (${formatNumber(item.x)}, ${formatNumber(item.y)})`);
-    }
-    return parts.join(" ");
-  }
-
-  
-  function appendGraphSection(lines: string[], title: string, itemLabel: string, items: unknown[]) {
-    lines.push(`${title} (${items.length})`);
-    items.forEach(( item,  index: number) => {
-      const summary = summarizeDebugEntity(item);
-      const refs = collectReferenceTokens(item);
-      lines.push(`  ${itemLabel}[${index}]${summary ? ` ${summary}` : ""}`);
-      if (refs.length > 0) {
-        lines.push(`    -> ${refs.join(", ")}`);
-      }
-    });
-  }
-
-  
-  function collectDebugLineIterations(scene: ViewerSceneData) {
-    const iterations = Array.isArray(scene.lineIterations) ? [...scene.lineIterations] : [];
-    return iterations;
-  }
-
-  
-  function buildDebugGraph(scene: ViewerSceneData) {
-    const lines = [
-      "Scene",
-      `  size ${scene.width}x${scene.height}`,
-      `  modes graph=${!!scene.graphMode} pi=${!!scene.piMode} savedViewport=${!!scene.savedViewport} yUp=${!!scene.yUp}`,
-      `  bounds [${formatNumber(scene.bounds.minX)}, ${formatNumber(scene.bounds.minY)}] -> [${formatNumber(scene.bounds.maxX)}, ${formatNumber(scene.bounds.maxY)}]`,
-    ];
-    if (scene.origin) {
-      lines.push(`  origin -> ${collectReferenceTokens({ origin: scene.origin }).join(", ") || "raw point"}`);
-    }
-    appendGraphSection(lines, "Points", "point", scene.points || []);
-    appendGraphSection(lines, "Lines", "line", scene.lines || []);
-    appendGraphSection(lines, "Polygons", "polygon", scene.polygons || []);
-    appendGraphSection(lines, "Circles", "circle", scene.circles || []);
-    appendGraphSection(lines, "Arcs", "arc", scene.arcs || []);
-    appendGraphSection(lines, "Labels", "label", scene.labels || []);
-    appendGraphSection(lines, "Point Iterations", "pointIteration", scene.pointIterations || []);
-    appendGraphSection(lines, "Line Iterations", "lineIteration", collectDebugLineIterations(scene));
-    appendGraphSection(lines, "Polygon Iterations", "polygonIteration", scene.polygonIterations || []);
-    appendGraphSection(lines, "Label Iterations", "labelIteration", scene.labelIterations || []);
-    appendGraphSection(lines, "Buttons", "button", scene.buttons || []);
-    appendGraphSection(lines, "Parameters", "parameter", scene.parameters || []);
-    appendGraphSection(lines, "Functions", "function", scene.functions || []);
-    return lines.join("\n");
-  }
 
   function buildRuntimeSnapshot() {
     return  (debugEntityWithLiveParameters({
@@ -1132,7 +925,7 @@
     debugOutput.textContent = activeTab === "json"
       ? buildDebugJson()
       : activeTab === "scene"
-        ? buildDebugGraph(currentScene())
+        ? debugGraphRuntime.buildDebugGraph(currentScene())
         : buildSelectionDebugOutput();
     debugTabButtons.forEach((button) => {
       const isActive = button.dataset.debugTab === activeTab;
@@ -1166,7 +959,7 @@
     await viewerShell.requestFullscreen?.();
   }
 
-  
+
   function setDebugPanelOpen(open: boolean) {
     if (!debugPanel || !debugToggleButton) {
       return;
@@ -1181,7 +974,7 @@
 
   function dumpDebugToConsole() {
     const selection = buildSelectionDebugOutput();
-    const graph = buildDebugGraph(currentScene());
+    const graph = debugGraphRuntime.buildDebugGraph(currentScene());
     const runtime = buildRuntimeSnapshot();
     console.groupCollapsed("gspDebug");
     console.log(selection);
@@ -1191,7 +984,7 @@
     console.groupEnd();
   }
 
-  
+
   function updateReadout(screenX: number | null = null, screenY: number | null = null) {
     if (screenX === null || screenY === null) {
       pointerWorldState.val = null;
@@ -1209,33 +1002,33 @@
     updateReadout();
   }
 
-  
+
   function findHitPoint(screenX: number, screenY: number) {
     return renderModule.findHitPoint(viewerEnv, screenX, screenY);
   }
 
-  
+
   function isOriginPointIndex(index: number) {
     const origin = currentScene().origin;
     return !!origin && "pointIndex" in origin && typeof origin.pointIndex === "number" && origin.pointIndex === index;
   }
 
-  
+
   function findHitLabel(screenX: number, screenY: number) {
     return renderModule.findHitLabel(viewerEnv, screenX, screenY);
   }
 
-  
+
   function findHitIterationTable(screenX: number, screenY: number) {
     return renderModule.findHitIterationTable(viewerEnv, screenX, screenY);
   }
 
-  
+
   function findHitPolygon(screenX: number, screenY: number) {
     return renderModule.findHitPolygon ? renderModule.findHitPolygon(viewerEnv, screenX, screenY) : null;
   }
 
-  
+
   function resolveLineScreenPoints(line: RuntimeLineJson) {
     if (!line || line.visible === false || line.binding?.kind === "graph-helper-line") {
       return null;
@@ -1247,7 +1040,7 @@
       || line.binding?.kind === "perpendicular-line"
       || line.binding?.kind === "parallel-line"
     ) {
-      
+
       const resolveHostLinePoints = (binding) => {
         if (
           binding
@@ -1354,7 +1147,7 @@
     return points.map(( point) => viewerEnv.toScreen(point));
   }
 
-  
+
   function findHitLine(screenX: number, screenY: number) {
     const lines = currentScene().lines || [];
     const point = { x: screenX, y: screenY };
@@ -1371,7 +1164,7 @@
     return null;
   }
 
-  
+
   function findHitCircle(screenX: number, screenY: number) {
     const circles = currentScene().circles || [];
     const strokeTolerance = 10;
@@ -1403,12 +1196,12 @@
     return null;
   }
 
-  
+
   function resolveArcScreenPolyline(arc: RuntimeArcJson) {
     if (arc.visible === false || !Array.isArray(arc.points) || arc.points.length !== 3) {
       return null;
     }
-    
+
     let screenPoints;
     if (arc.center) {
       const startWorld = viewerEnv.resolvePoint(arc.points[0]);
@@ -1459,7 +1252,7 @@
     });
   }
 
-  
+
   function findHitArc(screenX: number, screenY: number) {
     const arcs = currentScene().arcs || [];
     const point = { x: screenX, y: screenY };
@@ -1476,7 +1269,7 @@
     return null;
   }
 
-  
+
   function beginDrag(pointerId: number, position: Point, pointIndex: number | null, labelIndex: number | null, polygonIndex: number | null, iterationTableIndex: number | null, imageIndex: number | null) {
     dragModule.beginDrag(
       viewerEnv,
@@ -1490,32 +1283,32 @@
     );
   }
 
-  
+
   function updateDraggedPoint(world: Point) {
     dragModule.updateDraggedPoint(viewerEnv, world);
   }
 
-  
+
   function updateDraggedLabel(world: Point) {
     dragModule.updateDraggedLabel(viewerEnv, world);
   }
 
-  
+
   function updateDraggedImage(position: Point) {
     dragModule.updateDraggedImage(viewerEnv, position);
   }
 
-  
+
   function updateDraggedIterationTable(position: Point) {
     dragModule.updateDraggedIterationTable(viewerEnv, position);
   }
 
-  
+
   function updateDraggedPolygon(world: Point) {
     dragModule.updateDraggedPolygon(viewerEnv, world);
   }
 
-  
+
   function panFromPointerDelta(position: Point) {
     const drag = dragState.val;
     if (!drag) return;
@@ -1532,7 +1325,7 @@
     renderModule.draw(viewerEnv);
   }
 
-  
+
   const viewerEnv: ViewerEnv = {
     canvas,
     svg: canvas,
@@ -1622,15 +1415,15 @@
       return buildDebugJson();
     },
     scene() {
-      return buildDebugGraph(currentScene());
+      return debugGraphRuntime.buildDebugGraph(currentScene());
     },
     graph() {
-      return buildDebugGraph(currentScene());
+      return debugGraphRuntime.buildDebugGraph(currentScene());
     },
     inspectSelection() {
       return buildSelectionDebugOutput();
     },
-    
+
     inspectElement(element: Element) {
       const carrier = element?.closest?.("[data-gsp-debug-id]");
       if (!carrier) {
@@ -1648,7 +1441,7 @@
       console.log(buildDebugJson());
     },
     dumpScene() {
-      console.log(buildDebugGraph(currentScene()));
+      console.log(debugGraphRuntime.buildDebugGraph(currentScene()));
     },
     dumpSelection() {
       console.log(buildSelectionDebugOutput());
@@ -1745,7 +1538,7 @@
     dragState.val = { ...dragState.val, lastX: position.x, lastY: position.y };
   });
 
-  
+
   function endDrag(pointerId: number) {
     if (dragState.val && dragState.val.pointerId === pointerId) {
       dragState.val = null;

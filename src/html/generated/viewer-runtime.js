@@ -4170,6 +4170,1732 @@
   };
 })();
 
+// ---- viewer_dynamics_expression.ts ----
+(function() {
+  const modules = window.GspViewerModules || (window.GspViewerModules = {});
+  function evaluateUnary(op, x, degrees = false) {
+    const value = degrees ? x * Math.PI / 180 : x;
+    switch (op) {
+      case "sin": return Math.sin(value);
+      case "cos": return Math.cos(value);
+      case "tan": return Math.tan(value);
+      case "abs": return Math.abs(x);
+      case "sqrt": return x >= 0 ? Math.sqrt(x) : null;
+      case "ln": return x > 0 ? Math.log(x) : null;
+      case "log10": return x > 0 ? Math.log10(x) : null;
+      case "sign": return x > 0 ? 1 : x < 0 ? -1 : 0;
+      case "round": return Math.round(x);
+      case "trunc": return Math.trunc(x);
+      default: return null;
+    }
+  }
+  function evaluateExpr(expr, x, parameters) {
+    if (expr.kind === "constant") return expr.value;
+    if (expr.kind === "identity") return x;
+    if (expr.kind !== "parsed") return null;
+    return evaluateExprAst(expr.expr, x, parameters);
+  }
+  function evaluateExprAst(expr, x, parameters) {
+    if (!expr || typeof expr !== "object") return null;
+    switch (expr.kind) {
+      case "variable": return x;
+      case "constant": return expr.value;
+      case "parameter": return parameters.get(expr.name) ?? expr.value;
+      case "pi-angle": return 180;
+      case "unary": {
+        const inner = evaluateExprAst(expr.expr, x, parameters);
+        return inner === null ? null : evaluateUnary(expr.op, inner, exprContainsPiAngle(expr.expr));
+      }
+      case "binary": {
+        const lhs = evaluateExprAst(expr.lhs, x, parameters);
+        const rhs = evaluateExprAst(expr.rhs, x, parameters);
+        if (lhs === null || rhs === null) return null;
+        const value = expr.op === "add" ? lhs + rhs : expr.op === "sub" ? lhs - rhs : expr.op === "mul" ? lhs * rhs : expr.op === "div" ? Math.abs(rhs) >= 1e-9 ? lhs / rhs : null : Math.pow(lhs, rhs);
+        return value === null || !Number.isFinite(value) ? null : value;
+      }
+      default: return null;
+    }
+  }
+  function exprContainsPiAngle(expr) {
+    if (!expr || typeof expr !== "object") return false;
+    if (expr.kind === "parsed") return exprContainsPiAngle(expr.expr);
+    if (expr.kind === "pi-angle") return true;
+    if (expr.kind === "unary") return exprContainsPiAngle(expr.expr);
+    if (expr.kind === "binary") {
+      return exprContainsPiAngle(expr.lhs) || exprContainsPiAngle(expr.rhs);
+    }
+    return false;
+  }
+  function formatExpr(expr, formatAxisNumber, variableLabel = "x") {
+    if (expr.kind === "constant") return formatAxisNumber(expr.value);
+    if (expr.kind === "identity") return variableLabel;
+    if (expr.kind === "parsed") {
+      return formatExprAst(expr.expr, formatAxisNumber, variableLabel, 0);
+    }
+    return "?";
+  }
+  function formatExprAst(expr, formatAxisNumber, variableLabel = "x", parentPrec = 0) {
+    if (!expr || typeof expr !== "object") return "?";
+    switch (expr.kind) {
+      case "variable": return variableLabel;
+      case "constant": return formatAxisNumber(expr.value);
+      case "parameter": return expr.name;
+      case "pi-angle": return "180";
+      case "unary": {
+        const inner = formatExprAst(expr.expr, formatAxisNumber, variableLabel, 0);
+        if (expr.op === "abs") return `|${inner}|`;
+        if (expr.op === "sqrt") {
+          return expr.expr?.kind === "binary" ? `√(${inner})` : `√${inner}`;
+        }
+        return `${expr.op}(${inner})`;
+      }
+      case "binary": {
+        const { prec, rightAssoc } = binaryPrecedence(expr.op);
+        const left = formatExprAst(expr.lhs, formatAxisNumber, variableLabel, prec);
+        const right = formatExprAst(expr.rhs, formatAxisNumber, variableLabel, prec + (rightAssoc ? 0 : 1));
+        const text = `${left}${binaryOpText(expr.op)}${right}`;
+        return prec < parentPrec ? `(${text})` : text;
+      }
+      default: return "?";
+    }
+  }
+  function binaryPrecedence(op) {
+    switch (op) {
+      case "add":
+      case "sub": return {
+        prec: 1,
+        rightAssoc: false
+      };
+      case "mul":
+      case "div": return {
+        prec: 2,
+        rightAssoc: false
+      };
+      case "pow": return {
+        prec: 3,
+        rightAssoc: true
+      };
+      default: return {
+        prec: 0,
+        rightAssoc: false
+      };
+    }
+  }
+  function binaryOpText(op) {
+    switch (op) {
+      case "add": return " + ";
+      case "sub": return " - ";
+      case "mul": return "*";
+      case "div": return " / ";
+      case "pow": return "^";
+      default: return " ? ";
+    }
+  }
+  modules.dynamicsExpression = {
+    evaluateExpr,
+    formatExpr,
+    exprContainsPiAngle
+  };
+})();
+
+// ---- viewer_dynamics_rich_text.ts ----
+(function() {
+  const modules = window.GspViewerModules || (window.GspViewerModules = {});
+  function buildExpressionRichMarkup(exprLabel, valueText) {
+    if (typeof exprLabel !== "string") {
+      return null;
+    }
+    const richTextNode = (text) => text ? `<Tx${text.split("&").join("＆").split("<").join("＜").split(">").join("＞").split("*").join("·")}>` : "";
+    const matchingCloseParen = (text, openIndex) => {
+      let depth = 0;
+      for (let index = openIndex; index < text.length; index += 1) {
+        if (text[index] === "(") {
+          depth += 1;
+        } else if (text[index] === ")") {
+          depth -= 1;
+          if (depth === 0) return index;
+          if (depth < 0) return -1;
+        }
+      }
+      return -1;
+    };
+    const stripWrappingParens = (text) => {
+      const trimmed = text.trim();
+      if (!trimmed.startsWith("(") || !trimmed.endsWith(")")) return trimmed;
+      return matchingCloseParen(trimmed, 0) === trimmed.length - 1 ? trimmed.slice(1, -1) : trimmed;
+    };
+    const renderExpressionPart = (text) => {
+      let output = "";
+      let rest = text;
+      while (true) {
+        const index = rest.indexOf("√(");
+        if (index < 0) {
+          output += richTextNode(rest);
+          return output;
+        }
+        output += richTextNode(rest.slice(0, index));
+        const openIndex = index + 1;
+        const closeIndex = matchingCloseParen(rest, openIndex);
+        if (closeIndex < 0) {
+          output += richTextNode(rest.slice(index));
+          return output;
+        }
+        output += `<R${renderExpressionPart(stripWrappingParens(rest.slice(openIndex + 1, closeIndex)))}>`;
+        rest = rest.slice(closeIndex + 1);
+      }
+    };
+    const additiveFraction = exprLabel.match(/^(.*)\s\+\s(.*)\s\/\s(.*)$/);
+    if (additiveFraction) {
+      const [, prefix, numerator, denominator] = additiveFraction;
+      return `<H${renderExpressionPart(`${prefix} + `)}</<H${renderExpressionPart(numerator)}><H${renderExpressionPart(denominator)}>><Tx = ${valueText}>>`;
+    }
+    const parts = exprLabel.split(" / ");
+    if (parts.length === 2) {
+      return `<H</<H${renderExpressionPart(stripWrappingParens(parts[0]))}><H${renderExpressionPart(parts[1])}>><Tx = ${valueText}>>`;
+    }
+    return `<H${renderExpressionPart(exprLabel)}<Tx = ${valueText}>>`;
+  }
+  function buildRatioValueRichMarkup(name, valueText) {
+    if (typeof name !== "string") {
+      return null;
+    }
+    const trimmed = name.trim();
+    const exprLabel = trimmed.startsWith("(") && trimmed.endsWith(")") ? trimmed.slice(1, -1).trim() : trimmed;
+    const parts = exprLabel.split("/");
+    if (parts.length !== 2) {
+      return null;
+    }
+    const numerator = parts[0].trim();
+    const denominator = parts[1].trim();
+    if (!numerator || !denominator) {
+      return null;
+    }
+    return buildExpressionRichMarkup(`${numerator} / ${denominator}`, valueText);
+  }
+  function buildPlainTextRichMarkup(text) {
+    if (typeof text !== "string" || text.length === 0) {
+      return null;
+    }
+    return `<H<Tx${text.split("&").join("＆").split("<").join("＜").split(">").join("＞").split("*").join("·")}>>`;
+  }
+  function escapeRichText(text) {
+    return String(text).split("&").join("＆").split("<").join("＜").split(">").join("＞").split("*").join("·");
+  }
+  function replaceRichMarkupPathValues(markup, valuesBySlot) {
+    if (typeof markup !== "string" || valuesBySlot.size === 0) {
+      return markup || null;
+    }
+    let output = "";
+    let index = 0;
+    while (index < markup.length) {
+      if (!markup.startsWith("<?1x", index)) {
+        output += markup[index];
+        index += 1;
+        continue;
+      }
+      const nodeStart = index;
+      let nameEnd = index + 4;
+      while (nameEnd < markup.length && markup[nameEnd] !== "<" && markup[nameEnd] !== ">") {
+        nameEnd += 1;
+      }
+      const slotText = markup.slice(index + 4, nameEnd);
+      const slot = /^\d+$/.test(slotText) ? Number(slotText) : /^B\d+$/.test(slotText) ? Number(slotText.slice(1)) : NaN;
+      const replacement = valuesBySlot.get(slot);
+      if (replacement === undefined || markup[nameEnd] !== "<") {
+        output += markup.slice(nodeStart, nameEnd);
+        index = nameEnd;
+        continue;
+      }
+      let depth = 1;
+      let end = nameEnd;
+      while (end < markup.length) {
+        if (markup[end] === "<") {
+          depth += 1;
+        } else if (markup[end] === ">") {
+          depth -= 1;
+          if (depth === 0) {
+            end += 1;
+            break;
+          }
+        }
+        end += 1;
+      }
+      if (depth !== 0) {
+        output += markup.slice(nodeStart);
+        return output;
+      }
+      output += `<?1x${slotText}<H<T1x${escapeRichText(replacement)}>>>`;
+      index = end;
+    }
+    return output;
+  }
+  function replaceTemplateTextRanges(templateText, replacements) {
+    const lines = String(templateText).split("\n").map((line) => Array.from(line));
+    [...replacements].sort((left, right) => right.line - left.line || right.start - left.start).forEach((replacement) => {
+      const line = lines[replacement.line];
+      if (!line) return;
+      const start = Math.max(0, Math.min(line.length, replacement.start));
+      const end = Math.max(start, Math.min(line.length, replacement.end));
+      line.splice(start, end - start, ...Array.from(replacement.valueText));
+    });
+    return lines.map((line) => line.join("")).join("\n");
+  }
+  modules.dynamicsRichText = {
+    buildExpressionRichMarkup,
+    buildRatioValueRichMarkup,
+    buildPlainTextRichMarkup,
+    replaceRichMarkupPathValues,
+    replaceTemplateTextRanges
+  };
+})();
+
+// ---- viewer_dynamics_iterations.ts ----
+(function() {
+  const modules = window.GspViewerModules || (window.GspViewerModules = {});
+  function createDynamicsIterations(dependencies) {
+    const { affineMapFromTriangles, applyNormalizedParameterToPoint, applySegmentCoefficients, buildPlainTextRichMarkup, darken, deriveExpressionLabelParameters, deriveLabelParameters, discreteIterationDepth, evaluateExpr, evaluateRecursiveExpression, formatSequenceValue, hasLineIndexHandle, hasPointIndexHandle, isFiniteNumber, pointIterationDepth, refreshDerivedPoints, rotateAround, samplePointTraceLine, segmentPointCoefficients } = dependencies;
+    function rebuildIterationPoints(env, scene, parameters) {
+      const families = env.sourceScene.pointIterations || [];
+      if (families.length === 0) {
+        return;
+      }
+      const exportedDepth = families.reduce((sum, family) => {
+        if (family.kind === "parameterized") {
+          return sum;
+        }
+        return sum + (family.depth || 0);
+      }, 0);
+      const standaloneParameterPoints = env.sourceScene.points.filter((point) => point?.binding?.kind === "parameter" && !point.constraint);
+      const baseCount = Math.max(0, env.sourceScene.points.length - exportedDepth - standaloneParameterPoints.length);
+      scene.points = scene.points.slice(0, baseCount);
+      families.forEach((family) => {
+        const depth = pointIterationDepth(family, parameters);
+        if (depth <= 0) {
+          return;
+        }
+        if (family.kind === "offset") {
+          let previousIndex = family.seedIndex;
+          for (let step = 0; step < depth; step += 1) {
+            const origin = scene.points[previousIndex];
+            if (!origin) {
+              break;
+            }
+            scene.points.push({
+              x: origin.x + family.dx,
+              y: origin.y + family.dy,
+              color: origin.color || [
+                255,
+                60,
+                40,
+                255
+              ],
+              visible: true,
+              draggable: false,
+              constraint: {
+                kind: "offset",
+                originIndex: previousIndex,
+                dx: family.dx,
+                dy: family.dy
+              },
+              binding: null,
+              debug: null
+            });
+            previousIndex = scene.points.length - 1;
+          }
+          return;
+        }
+        if (family.kind === "rotate-chain") {
+          const center = scene.points[family.centerIndex];
+          let previousIndex = family.seedIndex;
+          if (!center) {
+            return;
+          }
+          for (let step = 0; step < depth; step += 1) {
+            const source = scene.points[previousIndex];
+            if (!source) {
+              break;
+            }
+            const rotated = rotateAround(source, center, family.angleDegrees * Math.PI / 180);
+            scene.points.push({
+              x: rotated.x,
+              y: rotated.y,
+              color: source.color || [
+                255,
+                60,
+                40,
+                255
+              ],
+              visible: true,
+              draggable: false,
+              constraint: null,
+              binding: {
+                kind: "rotate",
+                sourceIndex: previousIndex,
+                centerIndex: family.centerIndex,
+                angleDegrees: family.angleDegrees
+              },
+              debug: null
+            });
+            previousIndex = scene.points.length - 1;
+          }
+          return;
+        }
+        if (family.kind === "rotate") {
+          const source = scene.points[family.sourceIndex];
+          const center = scene.points[family.centerIndex];
+          if (!source || !center) {
+            return;
+          }
+          const angleDegrees = evaluateExpr(family.angleExpr, 0, parameters);
+          if (typeof angleDegrees !== "number" || !Number.isFinite(angleDegrees)) {
+            return;
+          }
+          for (let step = 1; step <= depth; step += 1) {
+            const rotated = rotateAround(source, center, angleDegrees * step * Math.PI / 180);
+            scene.points.push({
+              x: rotated.x,
+              y: rotated.y,
+              color: source.color || [
+                255,
+                60,
+                40,
+                255
+              ],
+              visible: true,
+              draggable: false,
+              constraint: null,
+              binding: {
+                kind: "rotate",
+                sourceIndex: family.sourceIndex,
+                centerIndex: family.centerIndex,
+                angleDegrees: angleDegrees * step
+              },
+              debug: null
+            });
+          }
+          return;
+        }
+        if (family.kind === "parameterized") {
+          let currentValue = parameters.get(family.traceParameterName);
+          if (!isFiniteNumber(currentValue)) {
+            return;
+          }
+          for (let step = 1; step <= depth; step += 1) {
+            const nextValue = evaluateRecursiveExpression(family.stepExpr, family.traceParameterName, currentValue, parameters);
+            if (!isFiniteNumber(nextValue)) {
+              break;
+            }
+            currentValue = nextValue;
+            const traceParameters = deriveLabelParameters(scene, new Map(parameters).set(family.traceParameterName, currentValue));
+            const points = resolvePointsWithParameters(env, scene, traceParameters);
+            const source = points[family.pointIndex];
+            if (!source) {
+              continue;
+            }
+            scene.points.push({
+              x: source.x,
+              y: source.y,
+              color: source.color || [
+                255,
+                60,
+                40,
+                255
+              ],
+              visible: true,
+              draggable: false,
+              constraint: null,
+              binding: null,
+              debug: null
+            });
+          }
+        }
+      });
+      standaloneParameterPoints.forEach((point) => {
+        scene.points.push({
+          ...point,
+          constraint: point.constraint ? { ...point.constraint } : null,
+          binding: point.binding ? { ...point.binding } : null
+        });
+      });
+    }
+    function resolvePointsWithParameters(env, scene, parameters) {
+      const draft = {
+        ...scene,
+        lines: scene.lines,
+        circles: scene.circles,
+        points: scene.points.map(cloneTracePoint)
+      };
+      const draftEnv = {
+        ...env,
+        currentScene: () => draft,
+        resolveScenePoint: (index) => draft.points[index]
+      };
+      const refreshDerivedPoints = () => {
+        draft.points.forEach((point) => {
+          const refreshBinding = point.binding ? DERIVED_POINT_BINDING_REFRESHERS[point.binding.kind] : null;
+          if (refreshBinding) {
+            refreshBinding(draftEnv, draft, point, parameters);
+          }
+        });
+      };
+      const resolveConstrainedPoints = () => {
+        draft.points.forEach((point, pointIndex) => {
+          if (!point.constraint) {
+            return;
+          }
+          const resolved = modules.scene.resolveConstrainedPoint({
+            sourceScene: env.sourceScene,
+            currentScene: () => draft,
+            resolveScenePoint: (index) => draft.points[index]
+          }, point.constraint, (index) => draft.points[index], point);
+          if (resolved) {
+            draft.points[pointIndex].x = resolved.x;
+            draft.points[pointIndex].y = resolved.y;
+          }
+        });
+      };
+      draft.points.forEach((point) => {
+        if (point.binding?.kind === "parameter" && point.constraint) {
+          const value = parameters.get(point.binding.name);
+          if (isFiniteNumber(value)) {
+            applyNormalizedParameterToPoint(point, draft, value);
+          }
+          return;
+        }
+        const updatePoint = point.binding ? SYNC_DYNAMIC_POINT_BINDING_UPDATERS[point.binding.kind] : null;
+        if (updatePoint) {
+          updatePoint(draftEnv, draft, point, parameters);
+        }
+      });
+      for (let pass = 0; pass < 3; pass += 1) {
+        refreshDerivedPoints();
+        resolveConstrainedPoints();
+      }
+      refreshDerivedPoints();
+      return draft.points;
+    }
+    function rebuildIteratedLines(env, scene, parameters) {
+      const families = env.sourceScene.lineIterations || [];
+      if (families.length === 0) {
+        return;
+      }
+      const exportedDepth = families.reduce((sum, family) => {
+        const depth = family.depth || 0;
+        if (family.kind === "parameterized-point-trace") {
+          return sum;
+        }
+        if (family.kind === "rotate") {
+          return sum;
+        }
+        if (family.kind === "branching") {
+          const branchCount = Array.isArray(family.targetSegments) ? family.targetSegments.length : 0;
+          let total = 0;
+          let width = branchCount;
+          for (let step = 0; step < depth; step += 1) {
+            total += width;
+            width *= branchCount;
+          }
+          return sum + total;
+        }
+        if (family.kind === "affine") {
+          return sum + depth;
+        }
+        if (family.bidirectional) {
+          if (Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy)) {
+            return sum + 2 * depth * (depth + 1);
+          }
+          return sum + 2 * depth;
+        }
+        if (Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy)) {
+          return sum + ((depth + 1) * (depth + 2) / 2 - 1);
+        }
+        return sum + depth;
+      }, 0);
+      const baseCount = Math.max(0, env.sourceScene.lines.length - exportedDepth);
+      scene.lines = scene.lines.slice(0, baseCount);
+      const resetControlledTickColors = new Set();
+      const emittedControlledTickSeeds = new Set();
+      families.forEach((family) => {
+        const depth = pointIterationDepth(family, parameters);
+        if (depth <= 0) {
+          return;
+        }
+        const resolveHandle = (handle) => {
+          if (hasPointIndexHandle(handle)) {
+            return env.resolveScenePoint(handle.pointIndex);
+          }
+          if (hasLineIndexHandle(handle)) {
+            const line = scene.lines[handle.lineIndex];
+            if (!line?.points || line.points.length < 2) return null;
+            const segmentIndex = Math.max(0, Math.min(line.points.length - 2, handle.segmentIndex || 0));
+            const t = typeof handle.t === "number" ? handle.t : .5;
+            const p0 = line.points[segmentIndex];
+            const p1 = line.points[segmentIndex + 1];
+            return {
+              x: p0.x + (p1.x - p0.x) * t,
+              y: p0.y + (p1.y - p0.y) * t
+            };
+          }
+          return handle;
+        };
+        if (family.kind === "parameterized-point-trace") {
+          const depthParameterName = family.depthParameterName;
+          const depthParameterValue = typeof depthParameterName === "string" ? parameters.get(depthParameterName) : undefined;
+          const depth = Math.max(0, Math.round(isFiniteNumber(depthParameterValue) ? depthParameterValue : family.depth || 0));
+          let currentValue = parameters.get(family.traceParameterName);
+          if (!isFiniteNumber(currentValue)) {
+            return;
+          }
+          for (let step = 1; step <= depth; step += 1) {
+            const nextValue = evaluateRecursiveExpression(family.stepExpr, family.traceParameterName, currentValue, parameters);
+            if (!isFiniteNumber(nextValue)) {
+              break;
+            }
+            currentValue = nextValue;
+            const traceParameters = deriveLabelParameters(scene, new Map(parameters).set(family.traceParameterName, currentValue));
+            const line = {
+              points: [],
+              color: family.color,
+              dashed: !!family.dashed,
+              binding: {
+                kind: "point-trace",
+                pointIndex: family.pointIndex,
+                driverIndex: family.driverIndex,
+                xMin: family.xMin,
+                xMax: family.xMax,
+                sampleCount: family.sampleCount,
+                useMidpoints: true
+              }
+            };
+            const sampled = samplePointTraceLine(scene, line, traceParameters);
+            if (!sampled) {
+              continue;
+            }
+            scene.lines.push({
+              points: sampled,
+              color: family.color,
+              dashed: !!family.dashed,
+              binding: null
+            });
+          }
+          return;
+        }
+        if (family.kind === "branching") {
+          const start = env.resolveScenePoint(family.startIndex);
+          const end = env.resolveScenePoint(family.endIndex);
+          if (!start || !end) {
+            return;
+          }
+          const targetSegments = (family.targetSegments || []).map((segment) => [resolveHandle(segment[0]), resolveHandle(segment[1])]);
+          if (targetSegments.some((segment) => segment.some((point) => !point))) {
+            return;
+          }
+          const coeffs = targetSegments.flatMap((segment) => {
+            const [targetStart, targetEnd] = segment;
+            if (!targetStart || !targetEnd) {
+              return [];
+            }
+            const startCoeffs = segmentPointCoefficients(start, end, targetStart);
+            const endCoeffs = segmentPointCoefficients(start, end, targetEnd);
+            if (!startCoeffs || !endCoeffs) {
+              return [];
+            }
+            return [{
+              startCoeffs,
+              endCoeffs
+            }];
+          });
+          if (coeffs.length === 0) {
+            return;
+          }
+          let frontier = [{
+            start: { ...start },
+            end: { ...end }
+          }];
+          for (let step = 0; step < depth; step += 1) {
+            const next = [];
+            frontier.forEach((segment) => {
+              coeffs.forEach((coeff) => {
+                const childStart = applySegmentCoefficients(segment.start, segment.end, coeff.startCoeffs);
+                const childEnd = applySegmentCoefficients(segment.start, segment.end, coeff.endCoeffs);
+                scene.lines.push({
+                  points: [{ ...childStart }, { ...childEnd }],
+                  color: family.color,
+                  dashed: !!family.dashed,
+                  binding: null
+                });
+                next.push({
+                  start: childStart,
+                  end: childEnd
+                });
+              });
+            });
+            frontier = next;
+          }
+          return;
+        }
+        if (family.kind === "affine") {
+          const start = env.resolveScenePoint(family.startIndex);
+          const end = env.resolveScenePoint(family.endIndex);
+          if (!start || !end) {
+            return;
+          }
+          const sourceTriangle = family.sourceTriangleIndices.map((index) => env.resolveScenePoint(index));
+          const targetTriangle = family.targetTriangle.map((handle) => resolveHandle(handle));
+          if (sourceTriangle.some((point) => !point) || targetTriangle.some((point) => !point)) {
+            return;
+          }
+          const mapPoint = affineMapFromTriangles(sourceTriangle, targetTriangle);
+          if (!mapPoint) {
+            return;
+          }
+          let currentStart = { ...start };
+          let currentEnd = { ...end };
+          for (let step = 0; step < depth; step += 1) {
+            currentStart = mapPoint(currentStart);
+            currentEnd = mapPoint(currentEnd);
+            scene.lines.push({
+              points: [{ ...currentStart }, { ...currentEnd }],
+              color: family.color,
+              dashed: !!family.dashed,
+              binding: null
+            });
+          }
+          return;
+        }
+        if (family.kind === "rotate") {
+          const source = scene.lines[family.sourceIndex];
+          const center = scene.points[family.centerIndex];
+          if (!source || !center) {
+            return;
+          }
+          const angleDegrees = evaluateExpr(family.angleExpr, 0, parameters);
+          if (typeof angleDegrees !== "number" || !Number.isFinite(angleDegrees)) {
+            return;
+          }
+          for (let step = 1; step <= depth; step += 1) {
+            const radians = angleDegrees * step * Math.PI / 180;
+            scene.lines.push({
+              points: source.points.map((point) => rotateAround(point, center, radians)),
+              color: family.color,
+              dashed: !!family.dashed,
+              binding: {
+                kind: "derived",
+                sourceIndex: family.sourceIndex,
+                transform: {
+                  kind: "rotate",
+                  centerIndex: family.centerIndex,
+                  angleDegrees: angleDegrees * step,
+                  parameterName: null,
+                  angleStartIndex: null,
+                  angleVertexIndex: null,
+                  angleEndIndex: null
+                }
+              }
+            });
+          }
+          return;
+        }
+        if (family.kind !== "translate") return;
+        const start = env.resolveScenePoint(family.startIndex);
+        const end = env.resolveScenePoint(family.endIndex);
+        if (!start || !end) {
+          return;
+        }
+        let primaryDx = family.dx;
+        let primaryDy = family.dy;
+        if (typeof family.vectorStartIndex === "number" && typeof family.vectorEndIndex === "number") {
+          const vectorStart = env.resolveScenePoint(family.vectorStartIndex);
+          const vectorEnd = env.resolveScenePoint(family.vectorEndIndex);
+          if (vectorStart && vectorEnd) {
+            primaryDx = vectorEnd.x - vectorStart.x;
+            primaryDy = vectorEnd.y - vectorStart.y;
+          }
+        }
+        const controlledEndpoint = (point, controlIndex) => {
+          if (typeof controlIndex !== "number" || !Number.isFinite(controlIndex)) return point;
+          const control = env.resolveScenePoint(controlIndex);
+          if (!control) return point;
+          return {
+            x: point.x,
+            y: control.y
+          };
+        };
+        const liveStart = controlledEndpoint(start, family.startControlIndex);
+        const liveEnd = controlledEndpoint(end, family.endControlIndex);
+        if (Number.isFinite(family.startControlIndex) || Number.isFinite(family.endControlIndex)) {
+          const colorKey = JSON.stringify(family.color || null);
+          if (!resetControlledTickColors.has(colorKey)) {
+            scene.lines = scene.lines.filter((line) => {
+              if (line.binding || !Array.isArray(line.points) || line.points.length !== 2) return true;
+              const lineStart = resolveHandle(line.points[0]);
+              const lineEnd = resolveHandle(line.points[1]);
+              if (!lineStart || !lineEnd) return true;
+              const sameColor = JSON.stringify(line.color || null) === colorKey;
+              const vertical = Math.abs(lineStart.x - lineEnd.x) < 1e-6;
+              return !(sameColor && vertical);
+            });
+            resetControlledTickColors.add(colorKey);
+          }
+          const seedKey = `${colorKey}:${family.startIndex}:${family.endIndex}`;
+          if (!emittedControlledTickSeeds.has(seedKey)) {
+            scene.lines.push({
+              points: [{
+                x: liveStart.x,
+                y: liveStart.y
+              }, {
+                x: liveEnd.x,
+                y: liveEnd.y
+              }],
+              color: family.color,
+              dashed: !!family.dashed,
+              binding: null
+            });
+            emittedControlledTickSeeds.add(seedKey);
+          }
+        }
+        const secondaryDx = isFiniteNumber(family.secondaryDx) ? family.secondaryDx : null;
+        const secondaryDy = isFiniteNumber(family.secondaryDy) ? family.secondaryDy : null;
+        const hasSecondary = secondaryDx !== null && secondaryDy !== null;
+        const deltas = [];
+        if (family.bidirectional && hasSecondary) {
+          for (let primary = -depth; primary <= depth; primary += 1) {
+            for (let secondary = -depth; secondary <= depth; secondary += 1) {
+              if (primary === 0 && secondary === 0) {
+                continue;
+              }
+              if (Math.abs(primary) + Math.abs(secondary) > depth) {
+                continue;
+              }
+              deltas.push({
+                dx: primaryDx * primary + secondaryDx * secondary,
+                dy: primaryDy * primary + secondaryDy * secondary
+              });
+            }
+          }
+        } else if (family.bidirectional) {
+          for (let step = 1; step <= depth; step += 1) {
+            deltas.push({
+              dx: primaryDx * step,
+              dy: primaryDy * step
+            }, {
+              dx: -primaryDx * step,
+              dy: -primaryDy * step
+            });
+          }
+        } else if (hasSecondary) {
+          for (let primary = 0; primary <= depth; primary += 1) {
+            for (let secondary = 0; secondary <= depth - primary; secondary += 1) {
+              if (primary === 0 && secondary === 0) {
+                continue;
+              }
+              deltas.push({
+                dx: primaryDx * primary + secondaryDx * secondary,
+                dy: primaryDy * primary + secondaryDy * secondary
+              });
+            }
+          }
+        } else {
+          for (let step = 1; step <= depth; step += 1) {
+            deltas.push({
+              dx: primaryDx * step,
+              dy: primaryDy * step
+            });
+          }
+        }
+        deltas.forEach(({ dx, dy }) => {
+          scene.lines.push({
+            points: [{
+              x: liveStart.x + dx,
+              y: liveStart.y + dy
+            }, {
+              x: liveEnd.x + dx,
+              y: liveEnd.y + dy
+            }],
+            color: family.color,
+            dashed: !!family.dashed,
+            binding: null
+          });
+        });
+      });
+    }
+    function rebuildIteratedPolygons(env, scene, parameters) {
+      const families = env.sourceScene.polygonIterations || [];
+      if (families.length === 0) {
+        return;
+      }
+      const exportedDepth = families.reduce((sum, family) => {
+        if (family.kind === "coordinate-grid") {
+          return sum + Math.max(0, Math.round(family.depth || 0));
+        }
+        const depth = family.depth || 0;
+        if (family.bidirectional) {
+          if (Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy)) {
+            return sum + (1 + 2 * depth * (depth + 1));
+          }
+          return sum + (1 + 2 * depth);
+        }
+        if (Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy)) {
+          return sum + (depth + 1) * (depth + 2) / 2;
+        }
+        return sum + (depth + 1);
+      }, 0);
+      const baseCount = Math.max(0, env.sourceScene.polygons.length - exportedDepth);
+      scene.polygons = scene.polygons.slice(0, baseCount);
+      families.forEach((family) => {
+        if (family.vertexIndices.length < 3) {
+          return;
+        }
+        const seedVertices = family.vertexIndices.map((index) => env.resolveScenePoint(index));
+        if (seedVertices.some((point) => !point)) {
+          return;
+        }
+        const seedPoints = seedVertices;
+        if (family.kind === "coordinate-grid") {
+          const depthValue = family.depthExpr ? evaluateExpr(family.depthExpr, 0, parameters) : family.depth;
+          const depth = Math.max(0, Math.floor(isFiniteNumber(depthValue) ? depthValue : family.depth || 0));
+          let currentValue = parameters.get(family.parameterName);
+          if (!isFiniteNumber(currentValue)) {
+            return;
+          }
+          for (let step = 1; step <= depth; step += 1) {
+            const nextValue = evaluateRecursiveExpression(family.stepExpr, family.parameterName, currentValue, parameters);
+            if (!isFiniteNumber(nextValue)) {
+              break;
+            }
+            currentValue = nextValue;
+            const exprParameters = deriveLabelParameters(scene, new Map(parameters).set(family.parameterName, currentValue));
+            const dx = evaluateExpr(family.xExpr, 0, exprParameters);
+            const dy = evaluateExpr(family.yExpr, 0, exprParameters);
+            if (!isFiniteNumber(dx) || !isFiniteNumber(dy)) {
+              continue;
+            }
+            scene.polygons.push({
+              points: seedPoints.map((point) => ({
+                x: point.x + dx * family.xRawScale,
+                y: point.y - dy * family.yRawScale
+              })),
+              color: family.color,
+              outlineColor: darken(family.color, 80),
+              binding: null
+            });
+          }
+          return;
+        }
+        const depth = pointIterationDepth(family, parameters);
+        if (family.kind !== "translate") {
+          return;
+        }
+        const secondaryDx = isFiniteNumber(family.secondaryDx) ? family.secondaryDx : null;
+        const secondaryDy = isFiniteNumber(family.secondaryDy) ? family.secondaryDy : null;
+        const hasSecondary = secondaryDx !== null && secondaryDy !== null;
+        const deltas = [];
+        if (family.bidirectional && hasSecondary) {
+          for (let primary = -depth; primary <= depth; primary += 1) {
+            for (let secondary = -depth; secondary <= depth; secondary += 1) {
+              if (Math.abs(primary) + Math.abs(secondary) > depth) {
+                continue;
+              }
+              deltas.push({
+                dx: family.dx * primary + secondaryDx * secondary,
+                dy: family.dy * primary + secondaryDy * secondary
+              });
+            }
+          }
+        } else if (family.bidirectional) {
+          deltas.push({
+            dx: 0,
+            dy: 0
+          });
+          for (let step = 1; step <= depth; step += 1) {
+            deltas.push({
+              dx: family.dx * step,
+              dy: family.dy * step
+            }, {
+              dx: -family.dx * step,
+              dy: -family.dy * step
+            });
+          }
+        } else if (hasSecondary) {
+          for (let primary = 0; primary <= depth; primary += 1) {
+            for (let secondary = 0; secondary <= depth - primary; secondary += 1) {
+              deltas.push({
+                dx: family.dx * primary + secondaryDx * secondary,
+                dy: family.dy * primary + secondaryDy * secondary
+              });
+            }
+          }
+        } else {
+          for (let step = 0; step <= depth; step += 1) {
+            deltas.push({
+              dx: family.dx * step,
+              dy: family.dy * step
+            });
+          }
+        }
+        deltas.forEach(({ dx, dy }) => {
+          scene.polygons.push({
+            points: seedPoints.map((point) => ({
+              x: point.x + dx,
+              y: point.y + dy
+            })),
+            color: family.color,
+            outlineColor: darken(family.color, 80),
+            binding: null
+          });
+        });
+      });
+    }
+    function rebuildIteratedLabels(env, scene, parameters) {
+      const families = env.sourceScene.labelIterations || [];
+      if (families.length === 0) {
+        return;
+      }
+      const baseCount = env.sourceScene.labels.length;
+      scene.labels = scene.labels.slice(0, baseCount);
+      families.forEach((family) => {
+        if (family.kind !== "point-expression") {
+          if (family.kind !== "translate-expression") {
+            return;
+          }
+          const seedLabel = scene.labels[family.seedLabelIndex];
+          const vectorStart = scene.points[family.vectorStartIndex];
+          const vectorEnd = scene.points[family.vectorEndIndex];
+          if (!seedLabel || !vectorStart || !vectorEnd) {
+            return;
+          }
+          if (isFiniteNumber(family.firstOutputLabelIndex) && isFiniteNumber(family.outputLabelCount)) {
+            for (let index = 0; index < family.outputLabelCount; index += 1) {
+              const label = scene.labels[family.firstOutputLabelIndex + index];
+              if (label) {
+                label.visible = false;
+              }
+            }
+          }
+          const depth = pointIterationDepth({
+            depth: family.depth,
+            depthExpr: family.depthExpr,
+            depthParameterName: family.depthParameterName
+          }, parameters);
+          const seedAnchor = seedLabel.anchor;
+          let currentValue = parameters.get(family.parameterName);
+          if (!seedAnchor || !isFiniteNumber(currentValue)) {
+            return;
+          }
+          const seedAnchorPoint = env.resolvePoint(seedAnchor);
+          if (!seedAnchorPoint) {
+            return;
+          }
+          const dx = vectorEnd.x - vectorStart.x;
+          const dy = vectorEnd.y - vectorStart.y;
+          const seedValue = evaluateRecursiveExpression(family.expr, family.parameterName, currentValue, parameters);
+          if (!isFiniteNumber(seedValue)) {
+            return;
+          }
+          currentValue = seedValue;
+          for (let step = 1; step <= depth; step += 1) {
+            const value = evaluateRecursiveExpression(family.expr, family.parameterName, currentValue, parameters);
+            if (!isFiniteNumber(value)) {
+              break;
+            }
+            currentValue = value;
+            const text = formatSequenceValue(value);
+            scene.labels.push({
+              ...seedLabel,
+              text,
+              richMarkup: buildPlainTextRichMarkup(text),
+              binding: null,
+              anchor: {
+                x: seedAnchorPoint.x + dx * step,
+                y: seedAnchorPoint.y + dy * step
+              }
+            });
+          }
+          return;
+        }
+        const seedLabel = scene.labels[family.seedLabelIndex];
+        const seedAnchor = seedLabel?.anchor;
+        const seedPointIndex = typeof seedAnchor?.pointIndex === "number" ? seedAnchor.pointIndex : seedLabel?.binding?.kind === "point-expression-value" && typeof seedLabel.binding.pointIndex === "number" ? seedLabel.binding.pointIndex : null;
+        if (!seedLabel || seedPointIndex === null) {
+          return;
+        }
+        const depth = pointIterationDepth({
+          depth: family.depth,
+          parameterName: family.depthParameterName
+        }, parameters);
+        let currentValue = parameters.get(family.parameterName);
+        if (!isFiniteNumber(currentValue)) {
+          return;
+        }
+        for (let step = 0; step <= depth; step += 1) {
+          const value = evaluateRecursiveExpression(family.expr, family.parameterName, currentValue, parameters);
+          if (!isFiniteNumber(value)) {
+            break;
+          }
+          const pointIndex = family.pointSeedIndex + step;
+          if (!scene.points[pointIndex]) {
+            break;
+          }
+          if (step === 0) {
+            seedLabel.text = formatSequenceValue(value);
+            seedLabel.richMarkup = buildPlainTextRichMarkup(seedLabel.text);
+            seedLabel.anchor = {
+              ...seedAnchor,
+              pointIndex: seedPointIndex
+            };
+          } else {
+            scene.labels.push({
+              ...seedLabel,
+              text: formatSequenceValue(value),
+              richMarkup: buildPlainTextRichMarkup(formatSequenceValue(value)),
+              binding: null,
+              anchor: {
+                ...seedAnchor,
+                pointIndex
+              }
+            });
+          }
+          currentValue = value;
+        }
+      });
+    }
+    function rebuildIterationTables(env, scene, parameters) {
+      const sourceTables = env.sourceScene.iterationTables || [];
+      const currentTables = scene.iterationTables || [];
+      scene.iterationTables = sourceTables.map((table, index) => {
+        const current = currentTables[index];
+        const depth = table.depthExpr ? discreteIterationDepth(evaluateExpr(table.depthExpr, 0, parameters) ?? table.depth) : table.depthParameterName ? discreteIterationDepth(parameters.get(table.depthParameterName) ?? table.depth) : discreteIterationDepth(table.depth);
+        const columns = Array.isArray(table.columns) && table.columns.length > 0 ? table.columns : [{
+          exprLabel: table.exprLabel,
+          parameterName: table.parameterName,
+          expr: table.expr
+        }];
+        const state = new Map(parameters);
+        const initialDerived = deriveExpressionLabelParameters(scene, state);
+        columns.forEach((column) => {
+          const value = initialDerived.get(column.parameterName);
+          if (isFiniteNumber(value)) {
+            state.set(column.parameterName, value);
+          }
+        });
+        const rows = [];
+        if (columns.every((column) => isFiniteNumber(state.get(column.parameterName)))) {
+          for (let index = 0; index <= depth; index += 1) {
+            const derived = deriveExpressionLabelParameters(scene, state);
+            columns.forEach((column) => {
+              const value = state.get(column.parameterName);
+              if (isFiniteNumber(value)) {
+                derived.set(column.parameterName, value);
+              }
+            });
+            const values = columns.map((column) => evaluateExpr(column.expr, 0, derived));
+            if (!values.every(isFiniteNumber)) {
+              break;
+            }
+            rows.push({
+              index,
+              value: values[0],
+              values
+            });
+            columns.forEach((column, columnIndex) => {
+              state.set(column.parameterName, values[columnIndex]);
+            });
+          }
+        }
+        return {
+          ...table,
+          x: Number.isFinite(current?.x) ? current.x : table.x,
+          y: Number.isFinite(current?.y) ? current.y : table.y,
+          rows
+        };
+      });
+    }
+    return {
+      rebuildIterationPoints,
+      rebuildIteratedLines,
+      rebuildIteratedPolygons,
+      rebuildIteratedLabels,
+      rebuildIterationTables
+    };
+  }
+  modules.dynamicsIterations = { createDynamicsIterations };
+})();
+
+// ---- viewer_dynamics_dependency_graph.ts ----
+(function() {
+  const modules = window.GspViewerModules || (window.GspViewerModules = {});
+  function createDependencyGraphRuntime(dependencies) {
+    const { applyBaseDynamicUpdates, parameterMapForScene, refreshDerivedPoints, refreshDynamicLabels, refreshIterationGeometry } = dependencies;
+    let dependencyGraphCache = null;
+    function parameterRootId(name) {
+      return `param:${name}`;
+    }
+    function sourcePointRootId(index) {
+      return `source-point:${index}`;
+    }
+    function sourceLineRootId(index) {
+      return `source-line:${index}`;
+    }
+    function sourceCircleRootId(index) {
+      return `source-circle:${index}`;
+    }
+    function sourcePolygonRootId(index) {
+      return `source-polygon:${index}`;
+    }
+    const GRAPH_RECIPES = {
+      "sync-base-dynamics"(env, scene) {
+        applyBaseDynamicUpdates(env, scene, parameterMapForScene(env, scene));
+      },
+      "refresh-derived-points"(env, scene) {
+        refreshDerivedPoints(env, scene);
+      },
+      "rebuild-iteration-geometry"(env, scene) {
+        refreshIterationGeometry(env, scene, parameterMapForScene(env, scene));
+      },
+      "refresh-dynamic-labels"(env, scene) {
+        refreshDynamicLabels(env, scene);
+      }
+    };
+    function addKnownParameterDep(deps, name, knownParameters) {
+      if (typeof name === "string" && knownParameters.has(name)) {
+        deps.add(parameterRootId(name));
+      }
+    }
+    function addParameterDep(deps, name, knownParameters, derivedParameterDeps) {
+      addKnownParameterDep(deps, name, knownParameters);
+      if (typeof name !== "string") return;
+      const derivedDeps = derivedParameterDeps.get(name);
+      if (!derivedDeps) return;
+      derivedDeps.forEach((dep) => deps.add(dep));
+    }
+    function addExprParameterDeps(deps, expr, knownParameters, derivedParameterDeps = new Map()) {
+      const names = new Set();
+      collectExprParameterNames(expr, names);
+      names.forEach((name) => addParameterDep(deps, name, knownParameters, derivedParameterDeps));
+    }
+    function collectSceneDependencyIds(deps, value, knownParameters, derivedParameterDeps = new Map(), sourceScene = null) {
+      if (!value || typeof value !== "object") {
+        return;
+      }
+      if (Array.isArray(value)) {
+        value.forEach((entry) => collectSceneDependencyIds(deps, entry, knownParameters, derivedParameterDeps, sourceScene));
+        return;
+      }
+      const addPointRefDep = (index) => {
+        deps.add(sourcePointRootId(index));
+        const point = sourceScene?.points?.[index];
+        if (point?.binding || point?.constraint) {
+          deps.add(`point:${index}`);
+        }
+      };
+      const addLineRefDep = (index) => {
+        deps.add(sourceLineRootId(index));
+        const line = sourceScene?.lines?.[index];
+        if (line?.binding) {
+          deps.add(`line:${index}`);
+        }
+      };
+      const addCircleRefDep = (index) => {
+        deps.add(sourceCircleRootId(index));
+        const circle = sourceScene?.circles?.[index];
+        if (circle?.binding || circle?.fillColorBinding) {
+          deps.add(`circle:${index}`);
+        }
+      };
+      const addPolygonRefDep = (index) => {
+        deps.add(sourcePolygonRootId(index));
+        const polygon = sourceScene?.polygons?.[index];
+        if (polygon?.binding) {
+          deps.add(`polygon:${index}`);
+        }
+      };
+      Object.entries(value).forEach(([key, child]) => {
+        if (key === "expr" && child && typeof child === "object") {
+          addExprParameterDeps(deps, child, knownParameters, derivedParameterDeps);
+          collectSceneDependencyIds(deps, child, knownParameters, derivedParameterDeps, sourceScene);
+          return;
+        }
+        if (typeof child === "number") {
+          if (key === "pointIndex" || key === "targetPointIndex" || key === "sourceIndex" || key === "centerIndex" || key === "originIndex" || key === "xUnitIndex" || key === "yUnitIndex" || key === "denominatorIndex" || key === "numeratorIndex" || key === "ratioOriginIndex" || key === "ratioDenominatorIndex" || key === "ratioNumeratorIndex" || key === "radiusIndex" || key === "startIndex" || key === "endIndex" || key === "leftIndex" || key === "rightIndex" || key === "midIndex" || key === "throughIndex" || key === "vertexIndex" || key === "lineStartIndex" || key === "lineEndIndex" || key === "sourceCenterIndex" || key === "sourceNextCenterIndex" || key === "reflectionSourceIndex" || key === "vectorStartIndex" || key === "vectorEndIndex" || key === "startControlIndex" || key === "endControlIndex" || key === "anchorYPointIndex" || key === "driverIndex" || key === "seedIndex" || key === "pointSeedIndex" || key === "angleParameterPointIndex" || key === "angleParameterStartIndex" || key === "angleParameterEndIndex" || key === "factorParameterPointIndex" || key === "factorParameterStartIndex" || key === "factorParameterEndIndex" || key === "reflectionFocusIndex") {
+            addPointRefDep(child);
+            return;
+          }
+          if (key === "lineIndex" || key === "traceLineIndex" || key === "reflectionAxisLineIndex" || key === "reflectionDirectrixLineIndex") {
+            addLineRefDep(child);
+            return;
+          }
+          if (key === "circleIndex" || key === "sourceCircleIndex") {
+            addCircleRefDep(child);
+            return;
+          }
+          if (key === "polygonIndex") {
+            addPolygonRefDep(child);
+          }
+          return;
+        }
+        if (Array.isArray(child)) {
+          if (key === "vertexIndices") {
+            child.forEach((entry) => {
+              if (typeof entry === "number") {
+                addPointRefDep(entry);
+              }
+            });
+          } else if (key === "pointIndices" || key === "constrainedPointIndices") {
+            child.forEach((entry) => {
+              if (typeof entry === "number") {
+                addPointRefDep(entry);
+              }
+            });
+          } else if (key === "lineIndices") {
+            child.forEach((entry) => {
+              if (typeof entry === "number") {
+                addLineRefDep(entry);
+              }
+            });
+          } else if (key === "circleIndices") {
+            child.forEach((entry) => {
+              if (typeof entry === "number") {
+                addCircleRefDep(entry);
+              }
+            });
+          } else if (key === "polygonIndices") {
+            child.forEach((entry) => {
+              if (typeof entry === "number") {
+                addPolygonRefDep(entry);
+              }
+            });
+          }
+          child.forEach((entry) => collectSceneDependencyIds(deps, entry, knownParameters, derivedParameterDeps, sourceScene));
+          return;
+        }
+        if (typeof child === "string") {
+          if (key === "parameterName" || key === "depthParameterName" || key === "traceParameterName" || key === "pointName" || key === "name" || key === "resultName") {
+            addParameterDep(deps, child, knownParameters, derivedParameterDeps);
+          }
+          return;
+        }
+        collectSceneDependencyIds(deps, child, knownParameters, derivedParameterDeps, sourceScene);
+      });
+    }
+    function labelDerivedParameterName(label) {
+      const binding = label.binding;
+      if (!binding) return null;
+      if ((binding.kind === "point-distance-ratio-value" || binding.kind === "point-distance-value" || binding.kind === "point-angle-value" || binding.kind === "polygon-area-value" || binding.kind === "parameter-value" || binding.kind === "point-axis-value") && typeof binding.name === "string") {
+        return binding.name;
+      }
+      if ((binding.kind === "segment-projection-parameter" || binding.kind === "polyline-parameter" || binding.kind === "polygon-boundary-parameter" || binding.kind === "circle-parameter") && typeof binding.pointName === "string") {
+        return binding.pointName;
+      }
+      if ((binding.kind === "expression-value" || binding.kind === "point-bound-expression-value") && typeof binding.resultName === "string") {
+        return binding.resultName;
+      }
+      return null;
+    }
+    function collectLabelDerivedParameterDeps(scene, knownParameters) {
+      const defs = [];
+      (scene.labels || []).forEach((label) => {
+        const name = labelDerivedParameterName(label);
+        if (!name || !label.binding) return;
+        const directDeps = new Set();
+        collectSceneDependencyIds(directDeps, label.binding, knownParameters);
+        const exprNames = new Set();
+        if ("expr" in label.binding) {
+          collectExprParameterNames(label.binding.expr, exprNames);
+        }
+        defs.push({
+          name,
+          directDeps,
+          exprNames
+        });
+      });
+      const depsByName = new Map();
+      defs.forEach((def) => depsByName.set(def.name, new Set(def.directDeps)));
+      for (let pass = 0; pass < 4; pass += 1) {
+        let changed = false;
+        defs.forEach((def) => {
+          const deps = new Set(def.directDeps);
+          def.exprNames.forEach((name) => {
+            addParameterDep(deps, name, knownParameters, depsByName);
+          });
+          const current = depsByName.get(def.name) || new Set();
+          deps.forEach((dep) => {
+            if (!current.has(dep)) {
+              current.add(dep);
+              changed = true;
+            }
+          });
+          depsByName.set(def.name, current);
+        });
+        if (!changed) break;
+      }
+      return depsByName;
+    }
+    function ensureDependencyGraph(env) {
+      if (dependencyGraphCache) {
+        return dependencyGraphCache;
+      }
+      const nodes = [];
+      const nodeMap = new Map();
+      const knownParameters = new Set((env.currentDynamics().parameters || []).map((parameter) => parameter.name));
+      const derivedParameterDeps = collectLabelDerivedParameterDeps(env.sourceScene, knownParameters);
+      const collectDeps = (deps, value) => {
+        collectSceneDependencyIds(deps, value, knownParameters, derivedParameterDeps, env.sourceScene);
+      };
+      const addNode = (node) => {
+        const normalized = {
+          ...node,
+          dependsOn: [...new Set((node.dependsOn || []).filter((dep) => dep !== node.id))]
+        };
+        nodes.push(normalized);
+        nodeMap.set(normalized.id, normalized);
+      };
+      (env.currentDynamics().parameters || []).forEach((parameter) => {
+        addNode({
+          id: parameterRootId(parameter.name),
+          kind: "parameter-root",
+          dependsOn: [],
+          recipe: null
+        });
+        addNode({
+          id: `parameter-sync:${parameter.name}`,
+          kind: "parameter-sync",
+          dependsOn: [parameterRootId(parameter.name)],
+          recipe: "sync-base-dynamics"
+        });
+      });
+      (env.sourceScene.points || []).forEach((_, index) => {
+        addNode({
+          id: sourcePointRootId(index),
+          kind: "source-point",
+          dependsOn: [],
+          recipe: null
+        });
+      });
+      (env.sourceScene.lines || []).forEach((_, index) => {
+        addNode({
+          id: sourceLineRootId(index),
+          kind: "source-line",
+          dependsOn: [],
+          recipe: null
+        });
+      });
+      (env.sourceScene.circles || []).forEach((_, index) => {
+        addNode({
+          id: sourceCircleRootId(index),
+          kind: "source-circle",
+          dependsOn: [],
+          recipe: null
+        });
+      });
+      (env.sourceScene.polygons || []).forEach((_, index) => {
+        addNode({
+          id: sourcePolygonRootId(index),
+          kind: "source-polygon",
+          dependsOn: [],
+          recipe: null
+        });
+      });
+      (env.sourceScene.points || []).forEach((point, index) => {
+        if (!point.binding && !point.constraint) return;
+        const deps = new Set();
+        collectDeps(deps, point.binding);
+        collectDeps(deps, point.constraint);
+        addNode({
+          id: `point:${index}`,
+          kind: "point",
+          dependsOn: [...deps],
+          recipe: "refresh-derived-points"
+        });
+      });
+      (env.sourceScene.lines || []).forEach((line, index) => {
+        if (!line.binding) return;
+        const deps = new Set();
+        collectDeps(deps, line.binding);
+        if (line.binding.kind === "point-trace") {
+          [line.binding.pointIndex, line.binding.driverIndex].forEach((pointIndex) => {
+            const point = env.sourceScene.points?.[pointIndex];
+            collectDeps(deps, point?.binding);
+            collectDeps(deps, point?.constraint);
+          });
+        }
+        addNode({
+          id: `line:${index}`,
+          kind: "line",
+          dependsOn: [...deps],
+          recipe: "refresh-derived-points"
+        });
+      });
+      (env.sourceScene.circles || []).forEach((circle, index) => {
+        if (!circle.binding && !circle.fillColorBinding) return;
+        const deps = new Set();
+        collectDeps(deps, circle.binding);
+        collectDeps(deps, circle.fillColorBinding);
+        addNode({
+          id: `circle:${index}`,
+          kind: "circle",
+          dependsOn: [...deps],
+          recipe: "refresh-derived-points"
+        });
+      });
+      (env.sourceScene.polygons || []).forEach((polygon, index) => {
+        if (!polygon.binding) return;
+        const deps = new Set();
+        collectDeps(deps, polygon.binding);
+        addNode({
+          id: `polygon:${index}`,
+          kind: "polygon",
+          dependsOn: [...deps],
+          recipe: "refresh-derived-points"
+        });
+      });
+      (env.currentDynamics().functions || []).forEach((functionDef, index) => {
+        const deps = new Set();
+        addExprParameterDeps(deps, functionDef.expr, knownParameters, derivedParameterDeps);
+        collectDeps(deps, functionDef.constrainedPointIndices);
+        addNode({
+          id: `function:${index}`,
+          kind: "function",
+          dependsOn: [...deps],
+          recipe: "sync-base-dynamics"
+        });
+      });
+      (env.sourceScene.labels || []).forEach((label, index) => {
+        if (!label.binding) return;
+        const deps = new Set();
+        collectDeps(deps, label.binding);
+        if ("expr" in label.binding) {
+          addExprParameterDeps(deps, label.binding.expr, knownParameters, derivedParameterDeps);
+        }
+        addNode({
+          id: `label:${index}`,
+          kind: "label",
+          dependsOn: [...deps],
+          recipe: "refresh-dynamic-labels"
+        });
+      });
+      (env.sourceScene.pointIterations || []).forEach((family, index) => {
+        const deps = new Set();
+        collectDeps(deps, family);
+        if (family.kind === "rotate") {
+          addExprParameterDeps(deps, family.angleExpr, knownParameters, derivedParameterDeps);
+        }
+        addNode({
+          id: `point-iteration:${index}`,
+          kind: "point-iteration",
+          dependsOn: [...deps],
+          recipe: "rebuild-iteration-geometry"
+        });
+      });
+      (env.sourceScene.circleIterations || []).forEach((family, index) => {
+        const deps = new Set();
+        collectDeps(deps, family);
+        addNode({
+          id: `circle-iteration:${index}`,
+          kind: "circle-iteration",
+          dependsOn: [...deps],
+          recipe: "rebuild-iteration-geometry"
+        });
+      });
+      (env.sourceScene.lineIterations || []).forEach((family, index) => {
+        const deps = new Set();
+        collectDeps(deps, family);
+        if (family.kind === "rotate") {
+          addExprParameterDeps(deps, family.angleExpr, knownParameters, derivedParameterDeps);
+        }
+        if ("depthExpr" in family) {
+          addExprParameterDeps(deps, family.depthExpr, knownParameters, derivedParameterDeps);
+        }
+        if (family.kind === "parameterized-point-trace") {
+          addExprParameterDeps(deps, family.stepExpr, knownParameters, derivedParameterDeps);
+        }
+        addNode({
+          id: `line-iteration:${index}`,
+          kind: "line-iteration",
+          dependsOn: [...deps],
+          recipe: "rebuild-iteration-geometry"
+        });
+      });
+      (env.sourceScene.polygonIterations || []).forEach((family, index) => {
+        const deps = new Set();
+        collectDeps(deps, family);
+        if (family.kind === "coordinate-grid") {
+          addExprParameterDeps(deps, family.stepExpr, knownParameters, derivedParameterDeps);
+          addExprParameterDeps(deps, family.xExpr, knownParameters, derivedParameterDeps);
+          addExprParameterDeps(deps, family.yExpr, knownParameters, derivedParameterDeps);
+          addExprParameterDeps(deps, family.depthExpr, knownParameters, derivedParameterDeps);
+        }
+        addNode({
+          id: `polygon-iteration:${index}`,
+          kind: "polygon-iteration",
+          dependsOn: [...deps],
+          recipe: "rebuild-iteration-geometry"
+        });
+      });
+      (env.sourceScene.labelIterations || []).forEach((family, index) => {
+        const deps = new Set();
+        collectDeps(deps, family);
+        addExprParameterDeps(deps, family.expr, knownParameters, derivedParameterDeps);
+        if ("depthExpr" in family) {
+          addExprParameterDeps(deps, family.depthExpr, knownParameters, derivedParameterDeps);
+        }
+        addNode({
+          id: `label-iteration:${index}`,
+          kind: "label-iteration",
+          dependsOn: [...deps],
+          recipe: "rebuild-iteration-geometry"
+        });
+      });
+      (env.sourceScene.iterationTables || []).forEach((table, index) => {
+        const deps = new Set();
+        collectDeps(deps, table);
+        addExprParameterDeps(deps, table.expr, knownParameters, derivedParameterDeps);
+        addNode({
+          id: `iteration-table:${index}`,
+          kind: "iteration-table",
+          dependsOn: [...deps],
+          recipe: "rebuild-iteration-geometry"
+        });
+      });
+      const indegree = new Map();
+      const reverseEdges = new Map();
+      nodes.forEach((node) => {
+        indegree.set(node.id, 0);
+      });
+      nodes.forEach((node) => {
+        node.dependsOn.forEach((dep) => {
+          if (!nodeMap.has(dep)) {
+            return;
+          }
+          indegree.set(node.id, (indegree.get(node.id) || 0) + 1);
+          const dependents = reverseEdges.get(dep) || [];
+          dependents.push(node.id);
+          reverseEdges.set(dep, dependents);
+        });
+      });
+      const queue = nodes.filter((node) => (indegree.get(node.id) || 0) === 0).map((node) => node.id);
+      const topoOrder = [];
+      while (queue.length > 0) {
+        const id = queue.shift();
+        topoOrder.push(id);
+        (reverseEdges.get(id) || []).forEach((dependentId) => {
+          const nextDegree = (indegree.get(dependentId) || 0) - 1;
+          indegree.set(dependentId, nextDegree);
+          if (nextDegree === 0) {
+            queue.push(dependentId);
+          }
+        });
+      }
+      nodes.forEach((node) => {
+        if (!topoOrder.includes(node.id)) {
+          topoOrder.push(node.id);
+        }
+      });
+      dependencyGraphCache = {
+        nodes,
+        nodeMap,
+        topoOrder,
+        reverseEdges
+      };
+      return dependencyGraphCache;
+    }
+    function describeDependencyGraph(env) {
+      const graph = ensureDependencyGraph(env);
+      return graph.topoOrder.map((id) => graph.nodeMap.get(id)).filter((node) => !!node).map((node) => ({
+        id: node.id,
+        kind: node.kind,
+        dependsOn: [...node.dependsOn],
+        recipe: node.recipe
+      }));
+    }
+    function collectExprParameterNames(expr, names) {
+      if (!expr || typeof expr !== "object") return;
+      if (expr.kind === "parsed") {
+        collectExprAstParameterNames(expr.expr, names);
+      }
+    }
+    function collectExprAstParameterNames(expr, names) {
+      if (!expr || typeof expr !== "object") return;
+      if (expr.kind === "parameter" && typeof expr.name === "string") {
+        names.add(expr.name);
+        return;
+      }
+      if (expr.kind === "unary") {
+        collectExprAstParameterNames(expr.expr, names);
+        return;
+      }
+      if (expr.kind === "binary") {
+        collectExprAstParameterNames(expr.lhs, names);
+        collectExprAstParameterNames(expr.rhs, names);
+      }
+    }
+    function runDependencyGraph(env, scene, dirtyRootIds) {
+      const graph = ensureDependencyGraph(env);
+      const rootSet = new Set((dirtyRootIds || []).filter((rootId) => typeof rootId === "string" && graph.nodeMap.has(rootId)));
+      if (rootSet.size === 0) {
+        env.currentDynamics().parameters.forEach((parameter) => {
+          rootSet.add(parameterRootId(parameter.name));
+        });
+      }
+      if (rootSet.size === 0) {
+        (env.sourceScene.points || []).forEach((_, index) => rootSet.add(sourcePointRootId(index)));
+        (env.sourceScene.lines || []).forEach((_, index) => rootSet.add(sourceLineRootId(index)));
+        (env.sourceScene.circles || []).forEach((_, index) => rootSet.add(sourceCircleRootId(index)));
+        (env.sourceScene.polygons || []).forEach((_, index) => rootSet.add(sourcePolygonRootId(index)));
+      }
+      const affected = new Set(rootSet);
+      const queue = Array.from(rootSet);
+      while (queue.length > 0) {
+        const currentId = queue.shift();
+        (graph.reverseEdges.get(currentId) || []).forEach((dependentId) => {
+          if (!affected.has(dependentId)) {
+            affected.add(dependentId);
+            queue.push(dependentId);
+          }
+        });
+      }
+      const orderedNodes = graph.topoOrder.flatMap((id) => {
+        const node = graph.nodeMap.get(id);
+        return node && affected.has(node.id) ? [node] : [];
+      });
+      const executedRecipes = [];
+      const seenRecipes = new Set();
+      orderedNodes.forEach((node) => {
+        if (!node.recipe || seenRecipes.has(node.recipe)) {
+          return;
+        }
+        seenRecipes.add(node.recipe);
+        executedRecipes.push(node.recipe);
+        const runRecipe = GRAPH_RECIPES[node.recipe];
+        if (runRecipe) {
+          runRecipe(env, scene);
+        }
+      });
+      if (seenRecipes.has("refresh-dynamic-labels") && (env.sourceScene.labelIterations || []).length > 0) {
+        refreshIterationGeometry(env, scene, parameterMapForScene(env, scene));
+        executedRecipes.push("rebuild-label-iteration-anchors");
+      }
+      return {
+        dirtyRoots: Array.from(rootSet),
+        affectedNodes: orderedNodes.map((node) => ({
+          id: node.id,
+          kind: node.kind,
+          dependsOn: [...node.dependsOn],
+          recipe: node.recipe
+        })),
+        executedRecipes
+      };
+    }
+    return {
+      parameterRootId,
+      sourcePointRootId,
+      collectExprParameterNames,
+      describeDependencyGraph,
+      runDependencyGraph
+    };
+  }
+  modules.dynamicsDependencyGraph = { createDependencyGraphRuntime };
+})();
+
 // ---- viewer_dynamics.ts ----
 (function() {
   const modules = window.GspViewerModules || (window.GspViewerModules = {});
@@ -4292,124 +6018,7 @@
     }
     return resolveArcAngleMarkerPoints(vertex, first, shortestLen, cross, dot, markerClass);
   }
-  function evaluateUnary(op, x, degrees = false) {
-    const value = degrees ? x * Math.PI / 180 : x;
-    switch (op) {
-      case "sin": return Math.sin(value);
-      case "cos": return Math.cos(value);
-      case "tan": return Math.tan(value);
-      case "abs": return Math.abs(x);
-      case "sqrt": return x >= 0 ? Math.sqrt(x) : null;
-      case "ln": return x > 0 ? Math.log(x) : null;
-      case "log10": return x > 0 ? Math.log10(x) : null;
-      case "sign": return x > 0 ? 1 : x < 0 ? -1 : 0;
-      case "round": return Math.round(x);
-      case "trunc": return Math.trunc(x);
-      default: return null;
-    }
-  }
-  function evaluateExpr(expr, x, parameters) {
-    if (expr.kind === "constant") return expr.value;
-    if (expr.kind === "identity") return x;
-    if (expr.kind !== "parsed") return null;
-    return evaluateExprAst(expr.expr, x, parameters);
-  }
-  function evaluateExprAst(expr, x, parameters) {
-    if (!expr || typeof expr !== "object") return null;
-    switch (expr.kind) {
-      case "variable": return x;
-      case "constant": return expr.value;
-      case "parameter": return parameters.get(expr.name) ?? expr.value;
-      case "pi-angle": return 180;
-      case "unary": {
-        const inner = evaluateExprAst(expr.expr, x, parameters);
-        return inner === null ? null : evaluateUnary(expr.op, inner, exprContainsPiAngle(expr.expr));
-      }
-      case "binary": {
-        const lhs = evaluateExprAst(expr.lhs, x, parameters);
-        const rhs = evaluateExprAst(expr.rhs, x, parameters);
-        if (lhs === null || rhs === null) return null;
-        const value = expr.op === "add" ? lhs + rhs : expr.op === "sub" ? lhs - rhs : expr.op === "mul" ? lhs * rhs : expr.op === "div" ? Math.abs(rhs) >= 1e-9 ? lhs / rhs : null : Math.pow(lhs, rhs);
-        return value === null || !Number.isFinite(value) ? null : value;
-      }
-      default: return null;
-    }
-  }
-  function exprContainsPiAngle(expr) {
-    if (!expr || typeof expr !== "object") return false;
-    if (expr.kind === "parsed") return exprContainsPiAngle(expr.expr);
-    if (expr.kind === "pi-angle") return true;
-    if (expr.kind === "unary") return exprContainsPiAngle(expr.expr);
-    if (expr.kind === "binary") {
-      return exprContainsPiAngle(expr.lhs) || exprContainsPiAngle(expr.rhs);
-    }
-    return false;
-  }
-  function formatExpr(expr, formatAxisNumber, variableLabel = "x") {
-    if (expr.kind === "constant") return formatAxisNumber(expr.value);
-    if (expr.kind === "identity") return variableLabel;
-    if (expr.kind === "parsed") {
-      return formatExprAst(expr.expr, formatAxisNumber, variableLabel, 0);
-    }
-    return "?";
-  }
-  function formatExprAst(expr, formatAxisNumber, variableLabel = "x", parentPrec = 0) {
-    if (!expr || typeof expr !== "object") return "?";
-    switch (expr.kind) {
-      case "variable": return variableLabel;
-      case "constant": return formatAxisNumber(expr.value);
-      case "parameter": return expr.name;
-      case "pi-angle": return "180";
-      case "unary": {
-        const inner = formatExprAst(expr.expr, formatAxisNumber, variableLabel, 0);
-        if (expr.op === "abs") return `|${inner}|`;
-        if (expr.op === "sqrt") {
-          return expr.expr?.kind === "binary" ? `√(${inner})` : `√${inner}`;
-        }
-        return `${expr.op}(${inner})`;
-      }
-      case "binary": {
-        const { prec, rightAssoc } = binaryPrecedence(expr.op);
-        const left = formatExprAst(expr.lhs, formatAxisNumber, variableLabel, prec);
-        const right = formatExprAst(expr.rhs, formatAxisNumber, variableLabel, prec + (rightAssoc ? 0 : 1));
-        const text = `${left}${binaryOpText(expr.op)}${right}`;
-        return prec < parentPrec ? `(${text})` : text;
-      }
-      default: return "?";
-    }
-  }
-  function binaryPrecedence(op) {
-    switch (op) {
-      case "add":
-      case "sub": return {
-        prec: 1,
-        rightAssoc: false
-      };
-      case "mul":
-      case "div": return {
-        prec: 2,
-        rightAssoc: false
-      };
-      case "pow": return {
-        prec: 3,
-        rightAssoc: true
-      };
-      default: return {
-        prec: 0,
-        rightAssoc: false
-      };
-    }
-  }
-  function binaryOpText(op) {
-    switch (op) {
-      case "add": return " + ";
-      case "sub": return " - ";
-      case "mul": return "*";
-      case "div": return " / ";
-      case "pow": return "^";
-      default: return " ? ";
-    }
-  }
+  const { evaluateExpr, formatExpr, exprContainsPiAngle } = modules.dynamicsExpression;
   function deriveExpressionLabelParameters(scene, seedParameters) {
     const parameters = new Map(seedParameters);
     if (!scene?.labels?.length) {
@@ -4542,508 +6151,13 @@
   function parameterMapForScene(env, scene) {
     return deriveLabelParameters(scene, new Map(env.currentDynamics().parameters.map((parameter) => [parameter.name, parameter.value])));
   }
-  let dependencyGraphCache = null;
-  function parameterRootId(name) {
-    return `param:${name}`;
-  }
-  function sourcePointRootId(index) {
-    return `source-point:${index}`;
-  }
-  function sourceLineRootId(index) {
-    return `source-line:${index}`;
-  }
-  function sourceCircleRootId(index) {
-    return `source-circle:${index}`;
-  }
-  function sourcePolygonRootId(index) {
-    return `source-polygon:${index}`;
-  }
-  const GRAPH_RECIPES = {
-    "sync-base-dynamics"(env, scene) {
-      applyBaseDynamicUpdates(env, scene, parameterMapForScene(env, scene));
-    },
-    "refresh-derived-points"(env, scene) {
-      refreshDerivedPoints(env, scene);
-    },
-    "rebuild-iteration-geometry"(env, scene) {
-      refreshIterationGeometry(env, scene, parameterMapForScene(env, scene));
-    },
-    "refresh-dynamic-labels"(env, scene) {
-      refreshDynamicLabels(env, scene);
-    }
-  };
-  function addKnownParameterDep(deps, name, knownParameters) {
-    if (typeof name === "string" && knownParameters.has(name)) {
-      deps.add(parameterRootId(name));
-    }
-  }
-  function addParameterDep(deps, name, knownParameters, derivedParameterDeps) {
-    addKnownParameterDep(deps, name, knownParameters);
-    if (typeof name !== "string") return;
-    const derivedDeps = derivedParameterDeps.get(name);
-    if (!derivedDeps) return;
-    derivedDeps.forEach((dep) => deps.add(dep));
-  }
-  function addExprParameterDeps(deps, expr, knownParameters, derivedParameterDeps = new Map()) {
-    const names = new Set();
-    collectExprParameterNames(expr, names);
-    names.forEach((name) => addParameterDep(deps, name, knownParameters, derivedParameterDeps));
-  }
-  function collectSceneDependencyIds(deps, value, knownParameters, derivedParameterDeps = new Map(), sourceScene = null) {
-    if (!value || typeof value !== "object") {
-      return;
-    }
-    if (Array.isArray(value)) {
-      value.forEach((entry) => collectSceneDependencyIds(deps, entry, knownParameters, derivedParameterDeps, sourceScene));
-      return;
-    }
-    const addPointRefDep = (index) => {
-      deps.add(sourcePointRootId(index));
-      const point = sourceScene?.points?.[index];
-      if (point?.binding || point?.constraint) {
-        deps.add(`point:${index}`);
-      }
-    };
-    const addLineRefDep = (index) => {
-      deps.add(sourceLineRootId(index));
-      const line = sourceScene?.lines?.[index];
-      if (line?.binding) {
-        deps.add(`line:${index}`);
-      }
-    };
-    const addCircleRefDep = (index) => {
-      deps.add(sourceCircleRootId(index));
-      const circle = sourceScene?.circles?.[index];
-      if (circle?.binding || circle?.fillColorBinding) {
-        deps.add(`circle:${index}`);
-      }
-    };
-    const addPolygonRefDep = (index) => {
-      deps.add(sourcePolygonRootId(index));
-      const polygon = sourceScene?.polygons?.[index];
-      if (polygon?.binding) {
-        deps.add(`polygon:${index}`);
-      }
-    };
-    Object.entries(value).forEach(([key, child]) => {
-      if (key === "expr" && child && typeof child === "object") {
-        addExprParameterDeps(deps, child, knownParameters, derivedParameterDeps);
-        collectSceneDependencyIds(deps, child, knownParameters, derivedParameterDeps, sourceScene);
-        return;
-      }
-      if (typeof child === "number") {
-        if (key === "pointIndex" || key === "targetPointIndex" || key === "sourceIndex" || key === "centerIndex" || key === "originIndex" || key === "xUnitIndex" || key === "yUnitIndex" || key === "denominatorIndex" || key === "numeratorIndex" || key === "ratioOriginIndex" || key === "ratioDenominatorIndex" || key === "ratioNumeratorIndex" || key === "radiusIndex" || key === "startIndex" || key === "endIndex" || key === "leftIndex" || key === "rightIndex" || key === "midIndex" || key === "throughIndex" || key === "vertexIndex" || key === "lineStartIndex" || key === "lineEndIndex" || key === "sourceCenterIndex" || key === "sourceNextCenterIndex" || key === "reflectionSourceIndex" || key === "vectorStartIndex" || key === "vectorEndIndex" || key === "startControlIndex" || key === "endControlIndex" || key === "anchorYPointIndex" || key === "driverIndex" || key === "seedIndex" || key === "pointSeedIndex" || key === "angleParameterPointIndex" || key === "angleParameterStartIndex" || key === "angleParameterEndIndex" || key === "factorParameterPointIndex" || key === "factorParameterStartIndex" || key === "factorParameterEndIndex" || key === "reflectionFocusIndex") {
-          addPointRefDep(child);
-          return;
-        }
-        if (key === "lineIndex" || key === "traceLineIndex" || key === "reflectionAxisLineIndex" || key === "reflectionDirectrixLineIndex") {
-          addLineRefDep(child);
-          return;
-        }
-        if (key === "circleIndex" || key === "sourceCircleIndex") {
-          addCircleRefDep(child);
-          return;
-        }
-        if (key === "polygonIndex") {
-          addPolygonRefDep(child);
-        }
-        return;
-      }
-      if (Array.isArray(child)) {
-        if (key === "vertexIndices") {
-          child.forEach((entry) => {
-            if (typeof entry === "number") {
-              addPointRefDep(entry);
-            }
-          });
-        } else if (key === "pointIndices" || key === "constrainedPointIndices") {
-          child.forEach((entry) => {
-            if (typeof entry === "number") {
-              addPointRefDep(entry);
-            }
-          });
-        } else if (key === "lineIndices") {
-          child.forEach((entry) => {
-            if (typeof entry === "number") {
-              addLineRefDep(entry);
-            }
-          });
-        } else if (key === "circleIndices") {
-          child.forEach((entry) => {
-            if (typeof entry === "number") {
-              addCircleRefDep(entry);
-            }
-          });
-        } else if (key === "polygonIndices") {
-          child.forEach((entry) => {
-            if (typeof entry === "number") {
-              addPolygonRefDep(entry);
-            }
-          });
-        }
-        child.forEach((entry) => collectSceneDependencyIds(deps, entry, knownParameters, derivedParameterDeps, sourceScene));
-        return;
-      }
-      if (typeof child === "string") {
-        if (key === "parameterName" || key === "depthParameterName" || key === "traceParameterName" || key === "pointName" || key === "name" || key === "resultName") {
-          addParameterDep(deps, child, knownParameters, derivedParameterDeps);
-        }
-        return;
-      }
-      collectSceneDependencyIds(deps, child, knownParameters, derivedParameterDeps, sourceScene);
-    });
-  }
-  function labelDerivedParameterName(label) {
-    const binding = label.binding;
-    if (!binding) return null;
-    if ((binding.kind === "point-distance-ratio-value" || binding.kind === "point-distance-value" || binding.kind === "point-angle-value" || binding.kind === "polygon-area-value" || binding.kind === "parameter-value" || binding.kind === "point-axis-value") && typeof binding.name === "string") {
-      return binding.name;
-    }
-    if ((binding.kind === "segment-projection-parameter" || binding.kind === "polyline-parameter" || binding.kind === "polygon-boundary-parameter" || binding.kind === "circle-parameter") && typeof binding.pointName === "string") {
-      return binding.pointName;
-    }
-    if ((binding.kind === "expression-value" || binding.kind === "point-bound-expression-value") && typeof binding.resultName === "string") {
-      return binding.resultName;
-    }
-    return null;
-  }
-  function collectLabelDerivedParameterDeps(scene, knownParameters) {
-    const defs = [];
-    (scene.labels || []).forEach((label) => {
-      const name = labelDerivedParameterName(label);
-      if (!name || !label.binding) return;
-      const directDeps = new Set();
-      collectSceneDependencyIds(directDeps, label.binding, knownParameters);
-      const exprNames = new Set();
-      if ("expr" in label.binding) {
-        collectExprParameterNames(label.binding.expr, exprNames);
-      }
-      defs.push({
-        name,
-        directDeps,
-        exprNames
-      });
-    });
-    const depsByName = new Map();
-    defs.forEach((def) => depsByName.set(def.name, new Set(def.directDeps)));
-    for (let pass = 0; pass < 4; pass += 1) {
-      let changed = false;
-      defs.forEach((def) => {
-        const deps = new Set(def.directDeps);
-        def.exprNames.forEach((name) => {
-          addParameterDep(deps, name, knownParameters, depsByName);
-        });
-        const current = depsByName.get(def.name) || new Set();
-        deps.forEach((dep) => {
-          if (!current.has(dep)) {
-            current.add(dep);
-            changed = true;
-          }
-        });
-        depsByName.set(def.name, current);
-      });
-      if (!changed) break;
-    }
-    return depsByName;
-  }
-  function ensureDependencyGraph(env) {
-    if (dependencyGraphCache) {
-      return dependencyGraphCache;
-    }
-    const nodes = [];
-    const nodeMap = new Map();
-    const knownParameters = new Set((env.currentDynamics().parameters || []).map((parameter) => parameter.name));
-    const derivedParameterDeps = collectLabelDerivedParameterDeps(env.sourceScene, knownParameters);
-    const collectDeps = (deps, value) => {
-      collectSceneDependencyIds(deps, value, knownParameters, derivedParameterDeps, env.sourceScene);
-    };
-    const addNode = (node) => {
-      const normalized = {
-        ...node,
-        dependsOn: [...new Set((node.dependsOn || []).filter((dep) => dep !== node.id))]
-      };
-      nodes.push(normalized);
-      nodeMap.set(normalized.id, normalized);
-    };
-    (env.currentDynamics().parameters || []).forEach((parameter) => {
-      addNode({
-        id: parameterRootId(parameter.name),
-        kind: "parameter-root",
-        dependsOn: [],
-        recipe: null
-      });
-      addNode({
-        id: `parameter-sync:${parameter.name}`,
-        kind: "parameter-sync",
-        dependsOn: [parameterRootId(parameter.name)],
-        recipe: "sync-base-dynamics"
-      });
-    });
-    (env.sourceScene.points || []).forEach((_, index) => {
-      addNode({
-        id: sourcePointRootId(index),
-        kind: "source-point",
-        dependsOn: [],
-        recipe: null
-      });
-    });
-    (env.sourceScene.lines || []).forEach((_, index) => {
-      addNode({
-        id: sourceLineRootId(index),
-        kind: "source-line",
-        dependsOn: [],
-        recipe: null
-      });
-    });
-    (env.sourceScene.circles || []).forEach((_, index) => {
-      addNode({
-        id: sourceCircleRootId(index),
-        kind: "source-circle",
-        dependsOn: [],
-        recipe: null
-      });
-    });
-    (env.sourceScene.polygons || []).forEach((_, index) => {
-      addNode({
-        id: sourcePolygonRootId(index),
-        kind: "source-polygon",
-        dependsOn: [],
-        recipe: null
-      });
-    });
-    (env.sourceScene.points || []).forEach((point, index) => {
-      if (!point.binding && !point.constraint) return;
-      const deps = new Set();
-      collectDeps(deps, point.binding);
-      collectDeps(deps, point.constraint);
-      addNode({
-        id: `point:${index}`,
-        kind: "point",
-        dependsOn: [...deps],
-        recipe: "refresh-derived-points"
-      });
-    });
-    (env.sourceScene.lines || []).forEach((line, index) => {
-      if (!line.binding) return;
-      const deps = new Set();
-      collectDeps(deps, line.binding);
-      if (line.binding.kind === "point-trace") {
-        [line.binding.pointIndex, line.binding.driverIndex].forEach((pointIndex) => {
-          const point = env.sourceScene.points?.[pointIndex];
-          collectDeps(deps, point?.binding);
-          collectDeps(deps, point?.constraint);
-        });
-      }
-      addNode({
-        id: `line:${index}`,
-        kind: "line",
-        dependsOn: [...deps],
-        recipe: "refresh-derived-points"
-      });
-    });
-    (env.sourceScene.circles || []).forEach((circle, index) => {
-      if (!circle.binding && !circle.fillColorBinding) return;
-      const deps = new Set();
-      collectDeps(deps, circle.binding);
-      collectDeps(deps, circle.fillColorBinding);
-      addNode({
-        id: `circle:${index}`,
-        kind: "circle",
-        dependsOn: [...deps],
-        recipe: "refresh-derived-points"
-      });
-    });
-    (env.sourceScene.polygons || []).forEach((polygon, index) => {
-      if (!polygon.binding) return;
-      const deps = new Set();
-      collectDeps(deps, polygon.binding);
-      addNode({
-        id: `polygon:${index}`,
-        kind: "polygon",
-        dependsOn: [...deps],
-        recipe: "refresh-derived-points"
-      });
-    });
-    (env.currentDynamics().functions || []).forEach((functionDef, index) => {
-      const deps = new Set();
-      addExprParameterDeps(deps, functionDef.expr, knownParameters, derivedParameterDeps);
-      collectDeps(deps, functionDef.constrainedPointIndices);
-      addNode({
-        id: `function:${index}`,
-        kind: "function",
-        dependsOn: [...deps],
-        recipe: "sync-base-dynamics"
-      });
-    });
-    (env.sourceScene.labels || []).forEach((label, index) => {
-      if (!label.binding) return;
-      const deps = new Set();
-      collectDeps(deps, label.binding);
-      if ("expr" in label.binding) {
-        addExprParameterDeps(deps, label.binding.expr, knownParameters, derivedParameterDeps);
-      }
-      addNode({
-        id: `label:${index}`,
-        kind: "label",
-        dependsOn: [...deps],
-        recipe: "refresh-dynamic-labels"
-      });
-    });
-    (env.sourceScene.pointIterations || []).forEach((family, index) => {
-      const deps = new Set();
-      collectDeps(deps, family);
-      if (family.kind === "rotate") {
-        addExprParameterDeps(deps, family.angleExpr, knownParameters, derivedParameterDeps);
-      }
-      addNode({
-        id: `point-iteration:${index}`,
-        kind: "point-iteration",
-        dependsOn: [...deps],
-        recipe: "rebuild-iteration-geometry"
-      });
-    });
-    (env.sourceScene.circleIterations || []).forEach((family, index) => {
-      const deps = new Set();
-      collectDeps(deps, family);
-      addNode({
-        id: `circle-iteration:${index}`,
-        kind: "circle-iteration",
-        dependsOn: [...deps],
-        recipe: "rebuild-iteration-geometry"
-      });
-    });
-    (env.sourceScene.lineIterations || []).forEach((family, index) => {
-      const deps = new Set();
-      collectDeps(deps, family);
-      if (family.kind === "rotate") {
-        addExprParameterDeps(deps, family.angleExpr, knownParameters, derivedParameterDeps);
-      }
-      if ("depthExpr" in family) {
-        addExprParameterDeps(deps, family.depthExpr, knownParameters, derivedParameterDeps);
-      }
-      if (family.kind === "parameterized-point-trace") {
-        addExprParameterDeps(deps, family.stepExpr, knownParameters, derivedParameterDeps);
-      }
-      addNode({
-        id: `line-iteration:${index}`,
-        kind: "line-iteration",
-        dependsOn: [...deps],
-        recipe: "rebuild-iteration-geometry"
-      });
-    });
-    (env.sourceScene.polygonIterations || []).forEach((family, index) => {
-      const deps = new Set();
-      collectDeps(deps, family);
-      if (family.kind === "coordinate-grid") {
-        addExprParameterDeps(deps, family.stepExpr, knownParameters, derivedParameterDeps);
-        addExprParameterDeps(deps, family.xExpr, knownParameters, derivedParameterDeps);
-        addExprParameterDeps(deps, family.yExpr, knownParameters, derivedParameterDeps);
-        addExprParameterDeps(deps, family.depthExpr, knownParameters, derivedParameterDeps);
-      }
-      addNode({
-        id: `polygon-iteration:${index}`,
-        kind: "polygon-iteration",
-        dependsOn: [...deps],
-        recipe: "rebuild-iteration-geometry"
-      });
-    });
-    (env.sourceScene.labelIterations || []).forEach((family, index) => {
-      const deps = new Set();
-      collectDeps(deps, family);
-      addExprParameterDeps(deps, family.expr, knownParameters, derivedParameterDeps);
-      if ("depthExpr" in family) {
-        addExprParameterDeps(deps, family.depthExpr, knownParameters, derivedParameterDeps);
-      }
-      addNode({
-        id: `label-iteration:${index}`,
-        kind: "label-iteration",
-        dependsOn: [...deps],
-        recipe: "rebuild-iteration-geometry"
-      });
-    });
-    (env.sourceScene.iterationTables || []).forEach((table, index) => {
-      const deps = new Set();
-      collectDeps(deps, table);
-      addExprParameterDeps(deps, table.expr, knownParameters, derivedParameterDeps);
-      addNode({
-        id: `iteration-table:${index}`,
-        kind: "iteration-table",
-        dependsOn: [...deps],
-        recipe: "rebuild-iteration-geometry"
-      });
-    });
-    const indegree = new Map();
-    const reverseEdges = new Map();
-    nodes.forEach((node) => {
-      indegree.set(node.id, 0);
-    });
-    nodes.forEach((node) => {
-      node.dependsOn.forEach((dep) => {
-        if (!nodeMap.has(dep)) {
-          return;
-        }
-        indegree.set(node.id, (indegree.get(node.id) || 0) + 1);
-        const dependents = reverseEdges.get(dep) || [];
-        dependents.push(node.id);
-        reverseEdges.set(dep, dependents);
-      });
-    });
-    const queue = nodes.filter((node) => (indegree.get(node.id) || 0) === 0).map((node) => node.id);
-    const topoOrder = [];
-    while (queue.length > 0) {
-      const id = queue.shift();
-      topoOrder.push(id);
-      (reverseEdges.get(id) || []).forEach((dependentId) => {
-        const nextDegree = (indegree.get(dependentId) || 0) - 1;
-        indegree.set(dependentId, nextDegree);
-        if (nextDegree === 0) {
-          queue.push(dependentId);
-        }
-      });
-    }
-    nodes.forEach((node) => {
-      if (!topoOrder.includes(node.id)) {
-        topoOrder.push(node.id);
-      }
-    });
-    dependencyGraphCache = {
-      nodes,
-      nodeMap,
-      topoOrder,
-      reverseEdges
-    };
-    return dependencyGraphCache;
-  }
-  function describeDependencyGraph(env) {
-    const graph = ensureDependencyGraph(env);
-    return graph.topoOrder.map((id) => graph.nodeMap.get(id)).filter((node) => !!node).map((node) => ({
-      id: node.id,
-      kind: node.kind,
-      dependsOn: [...node.dependsOn],
-      recipe: node.recipe
-    }));
-  }
-  function collectExprParameterNames(expr, names) {
-    if (!expr || typeof expr !== "object") return;
-    if (expr.kind === "parsed") {
-      collectExprAstParameterNames(expr.expr, names);
-    }
-  }
-  function collectExprAstParameterNames(expr, names) {
-    if (!expr || typeof expr !== "object") return;
-    if (expr.kind === "parameter" && typeof expr.name === "string") {
-      names.add(expr.name);
-      return;
-    }
-    if (expr.kind === "unary") {
-      collectExprAstParameterNames(expr.expr, names);
-      return;
-    }
-    if (expr.kind === "binary") {
-      collectExprAstParameterNames(expr.lhs, names);
-      collectExprAstParameterNames(expr.rhs, names);
-    }
-  }
+  const { parameterRootId, sourcePointRootId, collectExprParameterNames, describeDependencyGraph, runDependencyGraph } = modules.dynamicsDependencyGraph.createDependencyGraphRuntime({
+    applyBaseDynamicUpdates,
+    parameterMapForScene,
+    refreshDerivedPoints,
+    refreshDynamicLabels,
+    refreshIterationGeometry
+  });
   function sampleDynamicFunction(functionDef, parameters) {
     const segments = [];
     let points = [];
@@ -5655,1001 +6769,28 @@
     const value = state.get(ref.targetParameterName);
     return typeof value === "number" && Number.isFinite(value) ? value : null;
   }
-  function buildExpressionRichMarkup(exprLabel, valueText) {
-    if (typeof exprLabel !== "string") {
-      return null;
-    }
-    const richTextNode = (text) => text ? `<Tx${text.split("&").join("＆").split("<").join("＜").split(">").join("＞").split("*").join("·")}>` : "";
-    const matchingCloseParen = (text, openIndex) => {
-      let depth = 0;
-      for (let index = openIndex; index < text.length; index += 1) {
-        if (text[index] === "(") {
-          depth += 1;
-        } else if (text[index] === ")") {
-          depth -= 1;
-          if (depth === 0) return index;
-          if (depth < 0) return -1;
-        }
-      }
-      return -1;
-    };
-    const stripWrappingParens = (text) => {
-      const trimmed = text.trim();
-      if (!trimmed.startsWith("(") || !trimmed.endsWith(")")) return trimmed;
-      return matchingCloseParen(trimmed, 0) === trimmed.length - 1 ? trimmed.slice(1, -1) : trimmed;
-    };
-    const renderExpressionPart = (text) => {
-      let output = "";
-      let rest = text;
-      while (true) {
-        const index = rest.indexOf("√(");
-        if (index < 0) {
-          output += richTextNode(rest);
-          return output;
-        }
-        output += richTextNode(rest.slice(0, index));
-        const openIndex = index + 1;
-        const closeIndex = matchingCloseParen(rest, openIndex);
-        if (closeIndex < 0) {
-          output += richTextNode(rest.slice(index));
-          return output;
-        }
-        output += `<R${renderExpressionPart(stripWrappingParens(rest.slice(openIndex + 1, closeIndex)))}>`;
-        rest = rest.slice(closeIndex + 1);
-      }
-    };
-    const additiveFraction = exprLabel.match(/^(.*)\s\+\s(.*)\s\/\s(.*)$/);
-    if (additiveFraction) {
-      const [, prefix, numerator, denominator] = additiveFraction;
-      return `<H${renderExpressionPart(`${prefix} + `)}</<H${renderExpressionPart(numerator)}><H${renderExpressionPart(denominator)}>><Tx = ${valueText}>>`;
-    }
-    const parts = exprLabel.split(" / ");
-    if (parts.length === 2) {
-      return `<H</<H${renderExpressionPart(stripWrappingParens(parts[0]))}><H${renderExpressionPart(parts[1])}>><Tx = ${valueText}>>`;
-    }
-    return `<H${renderExpressionPart(exprLabel)}<Tx = ${valueText}>>`;
-  }
-  function buildRatioValueRichMarkup(name, valueText) {
-    if (typeof name !== "string") {
-      return null;
-    }
-    const trimmed = name.trim();
-    const exprLabel = trimmed.startsWith("(") && trimmed.endsWith(")") ? trimmed.slice(1, -1).trim() : trimmed;
-    const parts = exprLabel.split("/");
-    if (parts.length !== 2) {
-      return null;
-    }
-    const numerator = parts[0].trim();
-    const denominator = parts[1].trim();
-    if (!numerator || !denominator) {
-      return null;
-    }
-    return buildExpressionRichMarkup(`${numerator} / ${denominator}`, valueText);
-  }
-  function buildPlainTextRichMarkup(text) {
-    if (typeof text !== "string" || text.length === 0) {
-      return null;
-    }
-    return `<H<Tx${text.split("&").join("＆").split("<").join("＜").split(">").join("＞").split("*").join("·")}>>`;
-  }
-  function escapeRichText(text) {
-    return String(text).split("&").join("＆").split("<").join("＜").split(">").join("＞").split("*").join("·");
-  }
-  function replaceRichMarkupPathValues(markup, valuesBySlot) {
-    if (typeof markup !== "string" || valuesBySlot.size === 0) {
-      return markup || null;
-    }
-    let output = "";
-    let index = 0;
-    while (index < markup.length) {
-      if (!markup.startsWith("<?1x", index)) {
-        output += markup[index];
-        index += 1;
-        continue;
-      }
-      const nodeStart = index;
-      let nameEnd = index + 4;
-      while (nameEnd < markup.length && markup[nameEnd] !== "<" && markup[nameEnd] !== ">") {
-        nameEnd += 1;
-      }
-      const slotText = markup.slice(index + 4, nameEnd);
-      const slot = /^\d+$/.test(slotText) ? Number(slotText) : /^B\d+$/.test(slotText) ? Number(slotText.slice(1)) : NaN;
-      const replacement = valuesBySlot.get(slot);
-      if (replacement === undefined || markup[nameEnd] !== "<") {
-        output += markup.slice(nodeStart, nameEnd);
-        index = nameEnd;
-        continue;
-      }
-      let depth = 1;
-      let end = nameEnd;
-      while (end < markup.length) {
-        if (markup[end] === "<") {
-          depth += 1;
-        } else if (markup[end] === ">") {
-          depth -= 1;
-          if (depth === 0) {
-            end += 1;
-            break;
-          }
-        }
-        end += 1;
-      }
-      if (depth !== 0) {
-        output += markup.slice(nodeStart);
-        return output;
-      }
-      output += `<?1x${slotText}<H<T1x${escapeRichText(replacement)}>>>`;
-      index = end;
-    }
-    return output;
-  }
-  function replaceTemplateTextRanges(templateText, replacements) {
-    const lines = String(templateText).split("\n").map((line) => Array.from(line));
-    [...replacements].sort((left, right) => right.line - left.line || right.start - left.start).forEach((replacement) => {
-      const line = lines[replacement.line];
-      if (!line) return;
-      const start = Math.max(0, Math.min(line.length, replacement.start));
-      const end = Math.max(start, Math.min(line.length, replacement.end));
-      line.splice(start, end - start, ...Array.from(replacement.valueText));
-    });
-    return lines.map((line) => line.join("")).join("\n");
-  }
-  function rebuildIterationPoints(env, scene, parameters) {
-    const families = env.sourceScene.pointIterations || [];
-    if (families.length === 0) {
-      return;
-    }
-    const exportedDepth = families.reduce((sum, family) => {
-      if (family.kind === "parameterized") {
-        return sum;
-      }
-      return sum + (family.depth || 0);
-    }, 0);
-    const standaloneParameterPoints = env.sourceScene.points.filter((point) => point?.binding?.kind === "parameter" && !point.constraint);
-    const baseCount = Math.max(0, env.sourceScene.points.length - exportedDepth - standaloneParameterPoints.length);
-    scene.points = scene.points.slice(0, baseCount);
-    families.forEach((family) => {
-      const depth = pointIterationDepth(family, parameters);
-      if (depth <= 0) {
-        return;
-      }
-      if (family.kind === "offset") {
-        let previousIndex = family.seedIndex;
-        for (let step = 0; step < depth; step += 1) {
-          const origin = scene.points[previousIndex];
-          if (!origin) {
-            break;
-          }
-          scene.points.push({
-            x: origin.x + family.dx,
-            y: origin.y + family.dy,
-            color: origin.color || [
-              255,
-              60,
-              40,
-              255
-            ],
-            visible: true,
-            draggable: false,
-            constraint: {
-              kind: "offset",
-              originIndex: previousIndex,
-              dx: family.dx,
-              dy: family.dy
-            },
-            binding: null,
-            debug: null
-          });
-          previousIndex = scene.points.length - 1;
-        }
-        return;
-      }
-      if (family.kind === "rotate-chain") {
-        const center = scene.points[family.centerIndex];
-        let previousIndex = family.seedIndex;
-        if (!center) {
-          return;
-        }
-        for (let step = 0; step < depth; step += 1) {
-          const source = scene.points[previousIndex];
-          if (!source) {
-            break;
-          }
-          const rotated = rotateAround(source, center, family.angleDegrees * Math.PI / 180);
-          scene.points.push({
-            x: rotated.x,
-            y: rotated.y,
-            color: source.color || [
-              255,
-              60,
-              40,
-              255
-            ],
-            visible: true,
-            draggable: false,
-            constraint: null,
-            binding: {
-              kind: "rotate",
-              sourceIndex: previousIndex,
-              centerIndex: family.centerIndex,
-              angleDegrees: family.angleDegrees
-            },
-            debug: null
-          });
-          previousIndex = scene.points.length - 1;
-        }
-        return;
-      }
-      if (family.kind === "rotate") {
-        const source = scene.points[family.sourceIndex];
-        const center = scene.points[family.centerIndex];
-        if (!source || !center) {
-          return;
-        }
-        const angleDegrees = evaluateExpr(family.angleExpr, 0, parameters);
-        if (typeof angleDegrees !== "number" || !Number.isFinite(angleDegrees)) {
-          return;
-        }
-        for (let step = 1; step <= depth; step += 1) {
-          const rotated = rotateAround(source, center, angleDegrees * step * Math.PI / 180);
-          scene.points.push({
-            x: rotated.x,
-            y: rotated.y,
-            color: source.color || [
-              255,
-              60,
-              40,
-              255
-            ],
-            visible: true,
-            draggable: false,
-            constraint: null,
-            binding: {
-              kind: "rotate",
-              sourceIndex: family.sourceIndex,
-              centerIndex: family.centerIndex,
-              angleDegrees: angleDegrees * step
-            },
-            debug: null
-          });
-        }
-        return;
-      }
-      if (family.kind === "parameterized") {
-        let currentValue = parameters.get(family.traceParameterName);
-        if (!isFiniteNumber(currentValue)) {
-          return;
-        }
-        for (let step = 1; step <= depth; step += 1) {
-          const nextValue = evaluateRecursiveExpression(family.stepExpr, family.traceParameterName, currentValue, parameters);
-          if (!isFiniteNumber(nextValue)) {
-            break;
-          }
-          currentValue = nextValue;
-          const traceParameters = deriveLabelParameters(scene, new Map(parameters).set(family.traceParameterName, currentValue));
-          const points = resolvePointsWithParameters(env, scene, traceParameters);
-          const source = points[family.pointIndex];
-          if (!source) {
-            continue;
-          }
-          scene.points.push({
-            x: source.x,
-            y: source.y,
-            color: source.color || [
-              255,
-              60,
-              40,
-              255
-            ],
-            visible: true,
-            draggable: false,
-            constraint: null,
-            binding: null,
-            debug: null
-          });
-        }
-      }
-    });
-    standaloneParameterPoints.forEach((point) => {
-      scene.points.push({
-        ...point,
-        constraint: point.constraint ? { ...point.constraint } : null,
-        binding: point.binding ? { ...point.binding } : null
-      });
-    });
-  }
-  function resolvePointsWithParameters(env, scene, parameters) {
-    const draft = {
-      ...scene,
-      lines: scene.lines,
-      circles: scene.circles,
-      points: scene.points.map(cloneTracePoint)
-    };
-    const draftEnv = {
-      ...env,
-      currentScene: () => draft,
-      resolveScenePoint: (index) => draft.points[index]
-    };
-    const refreshDerivedPoints = () => {
-      draft.points.forEach((point) => {
-        const refreshBinding = point.binding ? DERIVED_POINT_BINDING_REFRESHERS[point.binding.kind] : null;
-        if (refreshBinding) {
-          refreshBinding(draftEnv, draft, point, parameters);
-        }
-      });
-    };
-    const resolveConstrainedPoints = () => {
-      draft.points.forEach((point, pointIndex) => {
-        if (!point.constraint) {
-          return;
-        }
-        const resolved = modules.scene.resolveConstrainedPoint({
-          sourceScene: env.sourceScene,
-          currentScene: () => draft,
-          resolveScenePoint: (index) => draft.points[index]
-        }, point.constraint, (index) => draft.points[index], point);
-        if (resolved) {
-          draft.points[pointIndex].x = resolved.x;
-          draft.points[pointIndex].y = resolved.y;
-        }
-      });
-    };
-    draft.points.forEach((point) => {
-      if (point.binding?.kind === "parameter" && point.constraint) {
-        const value = parameters.get(point.binding.name);
-        if (isFiniteNumber(value)) {
-          applyNormalizedParameterToPoint(point, draft, value);
-        }
-        return;
-      }
-      const updatePoint = point.binding ? SYNC_DYNAMIC_POINT_BINDING_UPDATERS[point.binding.kind] : null;
-      if (updatePoint) {
-        updatePoint(draftEnv, draft, point, parameters);
-      }
-    });
-    for (let pass = 0; pass < 3; pass += 1) {
-      refreshDerivedPoints();
-      resolveConstrainedPoints();
-    }
-    refreshDerivedPoints();
-    return draft.points;
-  }
-  function rebuildIteratedLines(env, scene, parameters) {
-    const families = env.sourceScene.lineIterations || [];
-    if (families.length === 0) {
-      return;
-    }
-    const exportedDepth = families.reduce((sum, family) => {
-      const depth = family.depth || 0;
-      if (family.kind === "parameterized-point-trace") {
-        return sum;
-      }
-      if (family.kind === "rotate") {
-        return sum;
-      }
-      if (family.kind === "branching") {
-        const branchCount = Array.isArray(family.targetSegments) ? family.targetSegments.length : 0;
-        let total = 0;
-        let width = branchCount;
-        for (let step = 0; step < depth; step += 1) {
-          total += width;
-          width *= branchCount;
-        }
-        return sum + total;
-      }
-      if (family.kind === "affine") {
-        return sum + depth;
-      }
-      if (family.bidirectional) {
-        if (Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy)) {
-          return sum + 2 * depth * (depth + 1);
-        }
-        return sum + 2 * depth;
-      }
-      if (Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy)) {
-        return sum + ((depth + 1) * (depth + 2) / 2 - 1);
-      }
-      return sum + depth;
-    }, 0);
-    const baseCount = Math.max(0, env.sourceScene.lines.length - exportedDepth);
-    scene.lines = scene.lines.slice(0, baseCount);
-    const resetControlledTickColors = new Set();
-    const emittedControlledTickSeeds = new Set();
-    families.forEach((family) => {
-      const depth = pointIterationDepth(family, parameters);
-      if (depth <= 0) {
-        return;
-      }
-      const resolveHandle = (handle) => {
-        if (hasPointIndexHandle(handle)) {
-          return env.resolveScenePoint(handle.pointIndex);
-        }
-        if (hasLineIndexHandle(handle)) {
-          const line = scene.lines[handle.lineIndex];
-          if (!line?.points || line.points.length < 2) return null;
-          const segmentIndex = Math.max(0, Math.min(line.points.length - 2, handle.segmentIndex || 0));
-          const t = typeof handle.t === "number" ? handle.t : .5;
-          const p0 = line.points[segmentIndex];
-          const p1 = line.points[segmentIndex + 1];
-          return {
-            x: p0.x + (p1.x - p0.x) * t,
-            y: p0.y + (p1.y - p0.y) * t
-          };
-        }
-        return handle;
-      };
-      if (family.kind === "parameterized-point-trace") {
-        const depthParameterName = family.depthParameterName;
-        const depthParameterValue = typeof depthParameterName === "string" ? parameters.get(depthParameterName) : undefined;
-        const depth = Math.max(0, Math.round(isFiniteNumber(depthParameterValue) ? depthParameterValue : family.depth || 0));
-        let currentValue = parameters.get(family.traceParameterName);
-        if (!isFiniteNumber(currentValue)) {
-          return;
-        }
-        for (let step = 1; step <= depth; step += 1) {
-          const nextValue = evaluateRecursiveExpression(family.stepExpr, family.traceParameterName, currentValue, parameters);
-          if (!isFiniteNumber(nextValue)) {
-            break;
-          }
-          currentValue = nextValue;
-          const traceParameters = deriveLabelParameters(scene, new Map(parameters).set(family.traceParameterName, currentValue));
-          const line = {
-            points: [],
-            color: family.color,
-            dashed: !!family.dashed,
-            binding: {
-              kind: "point-trace",
-              pointIndex: family.pointIndex,
-              driverIndex: family.driverIndex,
-              xMin: family.xMin,
-              xMax: family.xMax,
-              sampleCount: family.sampleCount,
-              useMidpoints: true
-            }
-          };
-          const sampled = samplePointTraceLine(scene, line, traceParameters);
-          if (!sampled) {
-            continue;
-          }
-          scene.lines.push({
-            points: sampled,
-            color: family.color,
-            dashed: !!family.dashed,
-            binding: null
-          });
-        }
-        return;
-      }
-      if (family.kind === "branching") {
-        const start = env.resolveScenePoint(family.startIndex);
-        const end = env.resolveScenePoint(family.endIndex);
-        if (!start || !end) {
-          return;
-        }
-        const targetSegments = (family.targetSegments || []).map((segment) => [resolveHandle(segment[0]), resolveHandle(segment[1])]);
-        if (targetSegments.some((segment) => segment.some((point) => !point))) {
-          return;
-        }
-        const coeffs = targetSegments.flatMap((segment) => {
-          const [targetStart, targetEnd] = segment;
-          if (!targetStart || !targetEnd) {
-            return [];
-          }
-          const startCoeffs = segmentPointCoefficients(start, end, targetStart);
-          const endCoeffs = segmentPointCoefficients(start, end, targetEnd);
-          if (!startCoeffs || !endCoeffs) {
-            return [];
-          }
-          return [{
-            startCoeffs,
-            endCoeffs
-          }];
-        });
-        if (coeffs.length === 0) {
-          return;
-        }
-        let frontier = [{
-          start: { ...start },
-          end: { ...end }
-        }];
-        for (let step = 0; step < depth; step += 1) {
-          const next = [];
-          frontier.forEach((segment) => {
-            coeffs.forEach((coeff) => {
-              const childStart = applySegmentCoefficients(segment.start, segment.end, coeff.startCoeffs);
-              const childEnd = applySegmentCoefficients(segment.start, segment.end, coeff.endCoeffs);
-              scene.lines.push({
-                points: [{ ...childStart }, { ...childEnd }],
-                color: family.color,
-                dashed: !!family.dashed,
-                binding: null
-              });
-              next.push({
-                start: childStart,
-                end: childEnd
-              });
-            });
-          });
-          frontier = next;
-        }
-        return;
-      }
-      if (family.kind === "affine") {
-        const start = env.resolveScenePoint(family.startIndex);
-        const end = env.resolveScenePoint(family.endIndex);
-        if (!start || !end) {
-          return;
-        }
-        const sourceTriangle = family.sourceTriangleIndices.map((index) => env.resolveScenePoint(index));
-        const targetTriangle = family.targetTriangle.map((handle) => resolveHandle(handle));
-        if (sourceTriangle.some((point) => !point) || targetTriangle.some((point) => !point)) {
-          return;
-        }
-        const mapPoint = affineMapFromTriangles(sourceTriangle, targetTriangle);
-        if (!mapPoint) {
-          return;
-        }
-        let currentStart = { ...start };
-        let currentEnd = { ...end };
-        for (let step = 0; step < depth; step += 1) {
-          currentStart = mapPoint(currentStart);
-          currentEnd = mapPoint(currentEnd);
-          scene.lines.push({
-            points: [{ ...currentStart }, { ...currentEnd }],
-            color: family.color,
-            dashed: !!family.dashed,
-            binding: null
-          });
-        }
-        return;
-      }
-      if (family.kind === "rotate") {
-        const source = scene.lines[family.sourceIndex];
-        const center = scene.points[family.centerIndex];
-        if (!source || !center) {
-          return;
-        }
-        const angleDegrees = evaluateExpr(family.angleExpr, 0, parameters);
-        if (typeof angleDegrees !== "number" || !Number.isFinite(angleDegrees)) {
-          return;
-        }
-        for (let step = 1; step <= depth; step += 1) {
-          const radians = angleDegrees * step * Math.PI / 180;
-          scene.lines.push({
-            points: source.points.map((point) => rotateAround(point, center, radians)),
-            color: family.color,
-            dashed: !!family.dashed,
-            binding: {
-              kind: "derived",
-              sourceIndex: family.sourceIndex,
-              transform: {
-                kind: "rotate",
-                centerIndex: family.centerIndex,
-                angleDegrees: angleDegrees * step,
-                parameterName: null,
-                angleStartIndex: null,
-                angleVertexIndex: null,
-                angleEndIndex: null
-              }
-            }
-          });
-        }
-        return;
-      }
-      if (family.kind !== "translate") return;
-      const start = env.resolveScenePoint(family.startIndex);
-      const end = env.resolveScenePoint(family.endIndex);
-      if (!start || !end) {
-        return;
-      }
-      let primaryDx = family.dx;
-      let primaryDy = family.dy;
-      if (typeof family.vectorStartIndex === "number" && typeof family.vectorEndIndex === "number") {
-        const vectorStart = env.resolveScenePoint(family.vectorStartIndex);
-        const vectorEnd = env.resolveScenePoint(family.vectorEndIndex);
-        if (vectorStart && vectorEnd) {
-          primaryDx = vectorEnd.x - vectorStart.x;
-          primaryDy = vectorEnd.y - vectorStart.y;
-        }
-      }
-      const controlledEndpoint = (point, controlIndex) => {
-        if (typeof controlIndex !== "number" || !Number.isFinite(controlIndex)) return point;
-        const control = env.resolveScenePoint(controlIndex);
-        if (!control) return point;
-        return {
-          x: point.x,
-          y: control.y
-        };
-      };
-      const liveStart = controlledEndpoint(start, family.startControlIndex);
-      const liveEnd = controlledEndpoint(end, family.endControlIndex);
-      if (Number.isFinite(family.startControlIndex) || Number.isFinite(family.endControlIndex)) {
-        const colorKey = JSON.stringify(family.color || null);
-        if (!resetControlledTickColors.has(colorKey)) {
-          scene.lines = scene.lines.filter((line) => {
-            if (line.binding || !Array.isArray(line.points) || line.points.length !== 2) return true;
-            const lineStart = resolveHandle(line.points[0]);
-            const lineEnd = resolveHandle(line.points[1]);
-            if (!lineStart || !lineEnd) return true;
-            const sameColor = JSON.stringify(line.color || null) === colorKey;
-            const vertical = Math.abs(lineStart.x - lineEnd.x) < 1e-6;
-            return !(sameColor && vertical);
-          });
-          resetControlledTickColors.add(colorKey);
-        }
-        const seedKey = `${colorKey}:${family.startIndex}:${family.endIndex}`;
-        if (!emittedControlledTickSeeds.has(seedKey)) {
-          scene.lines.push({
-            points: [{
-              x: liveStart.x,
-              y: liveStart.y
-            }, {
-              x: liveEnd.x,
-              y: liveEnd.y
-            }],
-            color: family.color,
-            dashed: !!family.dashed,
-            binding: null
-          });
-          emittedControlledTickSeeds.add(seedKey);
-        }
-      }
-      const secondaryDx = isFiniteNumber(family.secondaryDx) ? family.secondaryDx : null;
-      const secondaryDy = isFiniteNumber(family.secondaryDy) ? family.secondaryDy : null;
-      const hasSecondary = secondaryDx !== null && secondaryDy !== null;
-      const deltas = [];
-      if (family.bidirectional && hasSecondary) {
-        for (let primary = -depth; primary <= depth; primary += 1) {
-          for (let secondary = -depth; secondary <= depth; secondary += 1) {
-            if (primary === 0 && secondary === 0) {
-              continue;
-            }
-            if (Math.abs(primary) + Math.abs(secondary) > depth) {
-              continue;
-            }
-            deltas.push({
-              dx: primaryDx * primary + secondaryDx * secondary,
-              dy: primaryDy * primary + secondaryDy * secondary
-            });
-          }
-        }
-      } else if (family.bidirectional) {
-        for (let step = 1; step <= depth; step += 1) {
-          deltas.push({
-            dx: primaryDx * step,
-            dy: primaryDy * step
-          }, {
-            dx: -primaryDx * step,
-            dy: -primaryDy * step
-          });
-        }
-      } else if (hasSecondary) {
-        for (let primary = 0; primary <= depth; primary += 1) {
-          for (let secondary = 0; secondary <= depth - primary; secondary += 1) {
-            if (primary === 0 && secondary === 0) {
-              continue;
-            }
-            deltas.push({
-              dx: primaryDx * primary + secondaryDx * secondary,
-              dy: primaryDy * primary + secondaryDy * secondary
-            });
-          }
-        }
-      } else {
-        for (let step = 1; step <= depth; step += 1) {
-          deltas.push({
-            dx: primaryDx * step,
-            dy: primaryDy * step
-          });
-        }
-      }
-      deltas.forEach(({ dx, dy }) => {
-        scene.lines.push({
-          points: [{
-            x: liveStart.x + dx,
-            y: liveStart.y + dy
-          }, {
-            x: liveEnd.x + dx,
-            y: liveEnd.y + dy
-          }],
-          color: family.color,
-          dashed: !!family.dashed,
-          binding: null
-        });
-      });
-    });
-  }
-  function rebuildIteratedPolygons(env, scene, parameters) {
-    const families = env.sourceScene.polygonIterations || [];
-    if (families.length === 0) {
-      return;
-    }
-    const exportedDepth = families.reduce((sum, family) => {
-      if (family.kind === "coordinate-grid") {
-        return sum + Math.max(0, Math.round(family.depth || 0));
-      }
-      const depth = family.depth || 0;
-      if (family.bidirectional) {
-        if (Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy)) {
-          return sum + (1 + 2 * depth * (depth + 1));
-        }
-        return sum + (1 + 2 * depth);
-      }
-      if (Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy)) {
-        return sum + (depth + 1) * (depth + 2) / 2;
-      }
-      return sum + (depth + 1);
-    }, 0);
-    const baseCount = Math.max(0, env.sourceScene.polygons.length - exportedDepth);
-    scene.polygons = scene.polygons.slice(0, baseCount);
-    families.forEach((family) => {
-      if (family.vertexIndices.length < 3) {
-        return;
-      }
-      const seedVertices = family.vertexIndices.map((index) => env.resolveScenePoint(index));
-      if (seedVertices.some((point) => !point)) {
-        return;
-      }
-      const seedPoints = seedVertices;
-      if (family.kind === "coordinate-grid") {
-        const depthValue = family.depthExpr ? evaluateExpr(family.depthExpr, 0, parameters) : family.depth;
-        const depth = Math.max(0, Math.floor(isFiniteNumber(depthValue) ? depthValue : family.depth || 0));
-        let currentValue = parameters.get(family.parameterName);
-        if (!isFiniteNumber(currentValue)) {
-          return;
-        }
-        for (let step = 1; step <= depth; step += 1) {
-          const nextValue = evaluateRecursiveExpression(family.stepExpr, family.parameterName, currentValue, parameters);
-          if (!isFiniteNumber(nextValue)) {
-            break;
-          }
-          currentValue = nextValue;
-          const exprParameters = deriveLabelParameters(scene, new Map(parameters).set(family.parameterName, currentValue));
-          const dx = evaluateExpr(family.xExpr, 0, exprParameters);
-          const dy = evaluateExpr(family.yExpr, 0, exprParameters);
-          if (!isFiniteNumber(dx) || !isFiniteNumber(dy)) {
-            continue;
-          }
-          scene.polygons.push({
-            points: seedPoints.map((point) => ({
-              x: point.x + dx * family.xRawScale,
-              y: point.y - dy * family.yRawScale
-            })),
-            color: family.color,
-            outlineColor: darken(family.color, 80),
-            binding: null
-          });
-        }
-        return;
-      }
-      const depth = pointIterationDepth(family, parameters);
-      if (family.kind !== "translate") {
-        return;
-      }
-      const secondaryDx = isFiniteNumber(family.secondaryDx) ? family.secondaryDx : null;
-      const secondaryDy = isFiniteNumber(family.secondaryDy) ? family.secondaryDy : null;
-      const hasSecondary = secondaryDx !== null && secondaryDy !== null;
-      const deltas = [];
-      if (family.bidirectional && hasSecondary) {
-        for (let primary = -depth; primary <= depth; primary += 1) {
-          for (let secondary = -depth; secondary <= depth; secondary += 1) {
-            if (Math.abs(primary) + Math.abs(secondary) > depth) {
-              continue;
-            }
-            deltas.push({
-              dx: family.dx * primary + secondaryDx * secondary,
-              dy: family.dy * primary + secondaryDy * secondary
-            });
-          }
-        }
-      } else if (family.bidirectional) {
-        deltas.push({
-          dx: 0,
-          dy: 0
-        });
-        for (let step = 1; step <= depth; step += 1) {
-          deltas.push({
-            dx: family.dx * step,
-            dy: family.dy * step
-          }, {
-            dx: -family.dx * step,
-            dy: -family.dy * step
-          });
-        }
-      } else if (hasSecondary) {
-        for (let primary = 0; primary <= depth; primary += 1) {
-          for (let secondary = 0; secondary <= depth - primary; secondary += 1) {
-            deltas.push({
-              dx: family.dx * primary + secondaryDx * secondary,
-              dy: family.dy * primary + secondaryDy * secondary
-            });
-          }
-        }
-      } else {
-        for (let step = 0; step <= depth; step += 1) {
-          deltas.push({
-            dx: family.dx * step,
-            dy: family.dy * step
-          });
-        }
-      }
-      deltas.forEach(({ dx, dy }) => {
-        scene.polygons.push({
-          points: seedPoints.map((point) => ({
-            x: point.x + dx,
-            y: point.y + dy
-          })),
-          color: family.color,
-          outlineColor: darken(family.color, 80),
-          binding: null
-        });
-      });
-    });
-  }
-  function rebuildIteratedLabels(env, scene, parameters) {
-    const families = env.sourceScene.labelIterations || [];
-    if (families.length === 0) {
-      return;
-    }
-    const baseCount = env.sourceScene.labels.length;
-    scene.labels = scene.labels.slice(0, baseCount);
-    families.forEach((family) => {
-      if (family.kind !== "point-expression") {
-        if (family.kind !== "translate-expression") {
-          return;
-        }
-        const seedLabel = scene.labels[family.seedLabelIndex];
-        const vectorStart = scene.points[family.vectorStartIndex];
-        const vectorEnd = scene.points[family.vectorEndIndex];
-        if (!seedLabel || !vectorStart || !vectorEnd) {
-          return;
-        }
-        if (isFiniteNumber(family.firstOutputLabelIndex) && isFiniteNumber(family.outputLabelCount)) {
-          for (let index = 0; index < family.outputLabelCount; index += 1) {
-            const label = scene.labels[family.firstOutputLabelIndex + index];
-            if (label) {
-              label.visible = false;
-            }
-          }
-        }
-        const depth = pointIterationDepth({
-          depth: family.depth,
-          depthExpr: family.depthExpr,
-          depthParameterName: family.depthParameterName
-        }, parameters);
-        const seedAnchor = seedLabel.anchor;
-        let currentValue = parameters.get(family.parameterName);
-        if (!seedAnchor || !isFiniteNumber(currentValue)) {
-          return;
-        }
-        const seedAnchorPoint = env.resolvePoint(seedAnchor);
-        if (!seedAnchorPoint) {
-          return;
-        }
-        const dx = vectorEnd.x - vectorStart.x;
-        const dy = vectorEnd.y - vectorStart.y;
-        const seedValue = evaluateRecursiveExpression(family.expr, family.parameterName, currentValue, parameters);
-        if (!isFiniteNumber(seedValue)) {
-          return;
-        }
-        currentValue = seedValue;
-        for (let step = 1; step <= depth; step += 1) {
-          const value = evaluateRecursiveExpression(family.expr, family.parameterName, currentValue, parameters);
-          if (!isFiniteNumber(value)) {
-            break;
-          }
-          currentValue = value;
-          const text = formatSequenceValue(value);
-          scene.labels.push({
-            ...seedLabel,
-            text,
-            richMarkup: buildPlainTextRichMarkup(text),
-            binding: null,
-            anchor: {
-              x: seedAnchorPoint.x + dx * step,
-              y: seedAnchorPoint.y + dy * step
-            }
-          });
-        }
-        return;
-      }
-      const seedLabel = scene.labels[family.seedLabelIndex];
-      const seedAnchor = seedLabel?.anchor;
-      const seedPointIndex = typeof seedAnchor?.pointIndex === "number" ? seedAnchor.pointIndex : seedLabel?.binding?.kind === "point-expression-value" && typeof seedLabel.binding.pointIndex === "number" ? seedLabel.binding.pointIndex : null;
-      if (!seedLabel || seedPointIndex === null) {
-        return;
-      }
-      const depth = pointIterationDepth({
-        depth: family.depth,
-        parameterName: family.depthParameterName
-      }, parameters);
-      let currentValue = parameters.get(family.parameterName);
-      if (!isFiniteNumber(currentValue)) {
-        return;
-      }
-      for (let step = 0; step <= depth; step += 1) {
-        const value = evaluateRecursiveExpression(family.expr, family.parameterName, currentValue, parameters);
-        if (!isFiniteNumber(value)) {
-          break;
-        }
-        const pointIndex = family.pointSeedIndex + step;
-        if (!scene.points[pointIndex]) {
-          break;
-        }
-        if (step === 0) {
-          seedLabel.text = formatSequenceValue(value);
-          seedLabel.richMarkup = buildPlainTextRichMarkup(seedLabel.text);
-          seedLabel.anchor = {
-            ...seedAnchor,
-            pointIndex: seedPointIndex
-          };
-        } else {
-          scene.labels.push({
-            ...seedLabel,
-            text: formatSequenceValue(value),
-            richMarkup: buildPlainTextRichMarkup(formatSequenceValue(value)),
-            binding: null,
-            anchor: {
-              ...seedAnchor,
-              pointIndex
-            }
-          });
-        }
-        currentValue = value;
-      }
-    });
-  }
-  function rebuildIterationTables(env, scene, parameters) {
-    const sourceTables = env.sourceScene.iterationTables || [];
-    const currentTables = scene.iterationTables || [];
-    scene.iterationTables = sourceTables.map((table, index) => {
-      const current = currentTables[index];
-      const depth = table.depthExpr ? discreteIterationDepth(evaluateExpr(table.depthExpr, 0, parameters) ?? table.depth) : table.depthParameterName ? discreteIterationDepth(parameters.get(table.depthParameterName) ?? table.depth) : discreteIterationDepth(table.depth);
-      const columns = Array.isArray(table.columns) && table.columns.length > 0 ? table.columns : [{
-        exprLabel: table.exprLabel,
-        parameterName: table.parameterName,
-        expr: table.expr
-      }];
-      const state = new Map(parameters);
-      const initialDerived = deriveExpressionLabelParameters(scene, state);
-      columns.forEach((column) => {
-        const value = initialDerived.get(column.parameterName);
-        if (isFiniteNumber(value)) {
-          state.set(column.parameterName, value);
-        }
-      });
-      const rows = [];
-      if (columns.every((column) => isFiniteNumber(state.get(column.parameterName)))) {
-        for (let index = 0; index <= depth; index += 1) {
-          const derived = deriveExpressionLabelParameters(scene, state);
-          columns.forEach((column) => {
-            const value = state.get(column.parameterName);
-            if (isFiniteNumber(value)) {
-              derived.set(column.parameterName, value);
-            }
-          });
-          const values = columns.map((column) => evaluateExpr(column.expr, 0, derived));
-          if (!values.every(isFiniteNumber)) {
-            break;
-          }
-          rows.push({
-            index,
-            value: values[0],
-            values
-          });
-          columns.forEach((column, columnIndex) => {
-            state.set(column.parameterName, values[columnIndex]);
-          });
-        }
-      }
-      return {
-        ...table,
-        x: Number.isFinite(current?.x) ? current.x : table.x,
-        y: Number.isFinite(current?.y) ? current.y : table.y,
-        rows
-      };
-    });
-  }
+  const { buildExpressionRichMarkup, buildRatioValueRichMarkup, buildPlainTextRichMarkup, replaceRichMarkupPathValues, replaceTemplateTextRanges } = modules.dynamicsRichText;
+  const { rebuildIterationPoints, rebuildIteratedLines, rebuildIteratedPolygons, rebuildIteratedLabels, rebuildIterationTables } = modules.dynamicsIterations.createDynamicsIterations({
+    affineMapFromTriangles,
+    applyNormalizedParameterToPoint,
+    applySegmentCoefficients,
+    buildPlainTextRichMarkup,
+    darken,
+    deriveExpressionLabelParameters,
+    deriveLabelParameters,
+    discreteIterationDepth,
+    evaluateExpr,
+    evaluateRecursiveExpression,
+    formatSequenceValue,
+    hasLineIndexHandle,
+    hasPointIndexHandle,
+    isFiniteNumber,
+    pointIterationDepth,
+    refreshDerivedPoints,
+    rotateAround,
+    samplePointTraceLine,
+    segmentPointCoefficients
+  });
   function updateCoordinateSourcePoint(point, source, parameters) {
     if (!source) return;
     const parameterValue = parameters.get(point.binding.name);
@@ -8131,63 +8272,6 @@
       });
     });
   }
-  function runDependencyGraph(env, scene, dirtyRootIds) {
-    const graph = ensureDependencyGraph(env);
-    const rootSet = new Set((dirtyRootIds || []).filter((rootId) => typeof rootId === "string" && graph.nodeMap.has(rootId)));
-    if (rootSet.size === 0) {
-      env.currentDynamics().parameters.forEach((parameter) => {
-        rootSet.add(parameterRootId(parameter.name));
-      });
-    }
-    if (rootSet.size === 0) {
-      (env.sourceScene.points || []).forEach((_, index) => rootSet.add(sourcePointRootId(index)));
-      (env.sourceScene.lines || []).forEach((_, index) => rootSet.add(sourceLineRootId(index)));
-      (env.sourceScene.circles || []).forEach((_, index) => rootSet.add(sourceCircleRootId(index)));
-      (env.sourceScene.polygons || []).forEach((_, index) => rootSet.add(sourcePolygonRootId(index)));
-    }
-    const affected = new Set(rootSet);
-    const queue = Array.from(rootSet);
-    while (queue.length > 0) {
-      const currentId = queue.shift();
-      (graph.reverseEdges.get(currentId) || []).forEach((dependentId) => {
-        if (!affected.has(dependentId)) {
-          affected.add(dependentId);
-          queue.push(dependentId);
-        }
-      });
-    }
-    const orderedNodes = graph.topoOrder.flatMap((id) => {
-      const node = graph.nodeMap.get(id);
-      return node && affected.has(node.id) ? [node] : [];
-    });
-    const executedRecipes = [];
-    const seenRecipes = new Set();
-    orderedNodes.forEach((node) => {
-      if (!node.recipe || seenRecipes.has(node.recipe)) {
-        return;
-      }
-      seenRecipes.add(node.recipe);
-      executedRecipes.push(node.recipe);
-      const runRecipe = GRAPH_RECIPES[node.recipe];
-      if (runRecipe) {
-        runRecipe(env, scene);
-      }
-    });
-    if (seenRecipes.has("refresh-dynamic-labels") && (env.sourceScene.labelIterations || []).length > 0) {
-      refreshIterationGeometry(env, scene, parameterMapForScene(env, scene));
-      executedRecipes.push("rebuild-label-iteration-anchors");
-    }
-    return {
-      dirtyRoots: Array.from(rootSet),
-      affectedNodes: orderedNodes.map((node) => ({
-        id: node.id,
-        kind: node.kind,
-        dependsOn: [...node.dependsOn],
-        recipe: node.recipe
-      })),
-      executedRecipes
-    };
-  }
   function syncDynamicScene(env, dirtyParameterNames) {
     const names = Array.isArray(dirtyParameterNames) && dirtyParameterNames.length > 0 ? dirtyParameterNames : env.currentDynamics().parameters.map((parameter) => parameter.name);
     env.markDependencyRootsDirty?.(names.map((name) => parameterRootId(name)));
@@ -8265,18 +8349,9 @@
   };
 })();
 
-// ---- viewer.ts ----
-(() => {
-  const van = window.van;
-  const { label, input } = van.tags;
-  const { scene: sceneModule, render: renderModule, overlay: overlayModule, drag: dragModule, dynamics: dynamicsModule } = window.GspViewerModules;
-  const SVG_NS = "http://www.w3.org/2000/svg";
-  const XLINK_NS = "http://www.w3.org/1999/xlink";
-  const sceneDataElement = document.getElementById("scene-data");
-  if (!sceneDataElement?.textContent) {
-    throw new Error("missing scene-data payload");
-  }
-  const rawSceneData = JSON.parse(sceneDataElement.textContent);
+// ---- viewer_app_document.ts ----
+(function() {
+  const modules = window.GspViewerModules || (window.GspViewerModules = {});
   function isDocumentSceneData(data) {
     return !!data && typeof data === "object" && data.kind === "gsp-document" && Array.isArray(data.pages);
   }
@@ -8285,9 +8360,184 @@
     const index = match ? Number(match[1]) - 1 : 0;
     return Math.min(Math.max(Number.isFinite(index) ? index : 0, 0), pages.length - 1);
   }
-  const documentPages = isDocumentSceneData(rawSceneData) ? rawSceneData.pages : null;
-  const activePageIndex = documentPages ? activeDocumentPageIndex(documentPages) : 0;
-  const sourceScene = documentPages ? documentPages[activePageIndex].scene : rawSceneData;
+  function readSceneData(element) {
+    if (!element?.textContent) {
+      throw new Error("missing scene-data payload");
+    }
+    const raw = JSON.parse(element.textContent);
+    const pages = isDocumentSceneData(raw) ? raw.pages : null;
+    const activePageIndex = pages ? activeDocumentPageIndex(pages) : 0;
+    const sourceScene = pages ? pages[activePageIndex].scene : raw;
+    return {
+      raw,
+      pages,
+      activePageIndex,
+      sourceScene
+    };
+  }
+  function installPageNavigation(pages, activePageIndex, buttons) {
+    const activate = (index) => {
+      if (!pages || index === activePageIndex || index < 0 || index >= pages.length) return;
+      window.location.hash = `page-${index + 1}`;
+      window.location.reload();
+    };
+    buttons.forEach((button) => {
+      const index = Number(button.dataset.pageIndex);
+      const selected = index === activePageIndex;
+      button.setAttribute("aria-selected", selected ? "true" : "false");
+      button.classList.toggle("is-active", selected);
+      button.addEventListener("click", () => activate(index));
+    });
+    window.addEventListener("hashchange", () => {
+      if (pages) window.location.reload();
+    });
+  }
+  modules.appDocument = {
+    readSceneData,
+    installPageNavigation
+  };
+})();
+
+// ---- viewer_app_debug_graph.ts ----
+(function() {
+  const modules = window.GspViewerModules || (window.GspViewerModules = {});
+  function createDebugGraphRuntime({ formatNumber }) {
+    function formatReference(key, value) {
+      if (!Number.isInteger(value)) return null;
+      switch (key) {
+        case "buttonIndices": return `buttons[${value}]`;
+        case "circleIndices":
+        case "circleIndex": return `circles[${value}]`;
+        case "lineIndices":
+        case "lineIndex": return `lines[${value}]`;
+        case "polygonIndices":
+        case "polygonIndex": return `polygons[${value}]`;
+        case "seedLabelIndex":
+        case "labelIndex": return `labels[${value}]`;
+        case "functionKey": return `functions[${value}]`;
+        case "segmentIndex": return null;
+        default: return new Set([
+          "pointIndex",
+          "targetPointIndex",
+          "pointSeedIndex",
+          "seedIndex",
+          "sourceIndex",
+          "centerIndex",
+          "originIndex",
+          "radiusIndex",
+          "startIndex",
+          "endIndex",
+          "midIndex",
+          "throughIndex",
+          "vertexIndex",
+          "lineStartIndex",
+          "lineEndIndex"
+        ]).has(key) ? `points[${value}]` : null;
+      }
+    }
+    function collectReferenceTokens(value) {
+      const refs = [];
+      function visit(node) {
+        if (!node || typeof node !== "object") return;
+        if (Array.isArray(node)) {
+          node.forEach(visit);
+          return;
+        }
+        Object.entries(node).forEach(([key, child]) => {
+          if (typeof child === "number") {
+            const ref = formatReference(key, child);
+            if (ref) refs.push(ref);
+            return;
+          }
+          if (Array.isArray(child)) {
+            child.forEach((item) => {
+              if (typeof item === "number") {
+                const ref = formatReference(key, item);
+                if (ref) refs.push(ref);
+              }
+            });
+          }
+          visit(child);
+        });
+      }
+      visit(value);
+      return [...new Set(refs)];
+    }
+    function summarizeDebugEntity(entity) {
+      const item = entity ?? {};
+      const parts = [];
+      if (typeof item.text === "string") parts.push(JSON.stringify(item.text));
+      if (typeof item.name === "string") parts.push(`name=${item.name}`);
+      if (typeof item.kind === "string") parts.push(`kind=${item.kind}`);
+      if (typeof item.visible === "boolean") parts.push(item.visible ? "visible" : "hidden");
+      if (typeof item.depth === "number") parts.push(`depth=${item.depth}`);
+      if (typeof item.edgeCount === "number") parts.push(`edges=${item.edgeCount}`);
+      if (typeof item.parameterName === "string" && item.parameterName.length > 0) {
+        parts.push(`param=${item.parameterName}`);
+      }
+      if (item.anchor && typeof item.anchor === "object") {
+        if (typeof item.anchor.x === "number" && typeof item.anchor.y === "number") {
+          parts.push(`anchor @ (${formatNumber(item.anchor.x)}, ${formatNumber(item.anchor.y)})`);
+        }
+        if (item.screenSpace === true) parts.push("screenSpace");
+      }
+      if (typeof item.x === "number" && typeof item.y === "number" && !item.kind) {
+        parts.push(`@ (${formatNumber(item.x)}, ${formatNumber(item.y)})`);
+      }
+      return parts.join(" ");
+    }
+    function appendGraphSection(lines, title, itemLabel, items) {
+      lines.push(`${title} (${items.length})`);
+      items.forEach((item, index) => {
+        const summary = summarizeDebugEntity(item);
+        const refs = collectReferenceTokens(item);
+        lines.push(`  ${itemLabel}[${index}]${summary ? ` ${summary}` : ""}`);
+        if (refs.length > 0) lines.push(`    -> ${refs.join(", ")}`);
+      });
+    }
+    function buildDebugGraph(scene) {
+      const lines = [
+        "Scene",
+        `  size ${scene.width}x${scene.height}`,
+        `  modes graph=${!!scene.graphMode} pi=${!!scene.piMode} savedViewport=${!!scene.savedViewport} yUp=${!!scene.yUp}`,
+        `  bounds [${formatNumber(scene.bounds.minX)}, ${formatNumber(scene.bounds.minY)}] -> [${formatNumber(scene.bounds.maxX)}, ${formatNumber(scene.bounds.maxY)}]`
+      ];
+      if (scene.origin) {
+        lines.push(`  origin -> ${collectReferenceTokens({ origin: scene.origin }).join(", ") || "raw point"}`);
+      }
+      appendGraphSection(lines, "Points", "point", scene.points || []);
+      appendGraphSection(lines, "Lines", "line", scene.lines || []);
+      appendGraphSection(lines, "Polygons", "polygon", scene.polygons || []);
+      appendGraphSection(lines, "Circles", "circle", scene.circles || []);
+      appendGraphSection(lines, "Arcs", "arc", scene.arcs || []);
+      appendGraphSection(lines, "Labels", "label", scene.labels || []);
+      appendGraphSection(lines, "Point Iterations", "pointIteration", scene.pointIterations || []);
+      appendGraphSection(lines, "Line Iterations", "lineIteration", scene.lineIterations || []);
+      appendGraphSection(lines, "Polygon Iterations", "polygonIteration", scene.polygonIterations || []);
+      appendGraphSection(lines, "Label Iterations", "labelIteration", scene.labelIterations || []);
+      appendGraphSection(lines, "Buttons", "button", scene.buttons || []);
+      appendGraphSection(lines, "Parameters", "parameter", scene.parameters || []);
+      appendGraphSection(lines, "Functions", "function", scene.functions || []);
+      return lines.join("\n");
+    }
+    return {
+      collectReferenceTokens,
+      summarizeDebugEntity,
+      buildDebugGraph
+    };
+  }
+  modules.appDebugGraph = { createDebugGraphRuntime };
+})();
+
+// ---- viewer.ts ----
+(() => {
+  const van = window.van;
+  const { label, input } = van.tags;
+  const { scene: sceneModule, render: renderModule, overlay: overlayModule, drag: dragModule, dynamics: dynamicsModule } = window.GspViewerModules;
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  const XLINK_NS = "http://www.w3.org/1999/xlink";
+  const sceneDataElement = document.getElementById("scene-data");
+  const { raw: rawSceneData, pages: documentPages, activePageIndex, sourceScene } = window.GspViewerModules.appDocument.readSceneData(sceneDataElement);
   const canvas = document.getElementById("view");
   document.documentElement.style.setProperty("--scene-width", String(sourceScene.width));
   document.documentElement.style.setProperty("--scene-height", String(sourceScene.height));
@@ -8334,30 +8584,7 @@
   const selectedDebugTargetState = van?.state ? van.state(null) : { val: null };
   const debugElementRegistry = new Map();
   let nextDebugElementId = 1;
-  function syncPageTabs() {
-    pageTabButtons.forEach((button) => {
-      const index = Number(button.dataset.pageIndex);
-      const selected = index === activePageIndex;
-      button.setAttribute("aria-selected", selected ? "true" : "false");
-      button.classList.toggle("is-active", selected);
-    });
-  }
-  function activateDocumentPage(index) {
-    if (!documentPages || index === activePageIndex || index < 0 || index >= documentPages.length) {
-      return;
-    }
-    window.location.hash = `page-${index + 1}`;
-    window.location.reload();
-  }
-  pageTabButtons.forEach((button) => {
-    button.addEventListener("click", () => activateDocumentPage(Number(button.dataset.pageIndex)));
-  });
-  window.addEventListener("hashchange", () => {
-    if (documentPages) {
-      window.location.reload();
-    }
-  });
-  syncPageTabs();
+  window.GspViewerModules.appDocument.installPageNavigation(documentPages, activePageIndex, pageTabButtons);
   const viewState = van?.state ? van.state({
     centerX: baseCenterX,
     centerY: baseCenterY,
@@ -8775,6 +9002,7 @@
     if (!Number.isFinite(value)) return "-";
     return Math.abs(value - Math.round(value)) < .005 ? String(Math.round(value)) : value.toFixed(2);
   }
+  const debugGraphRuntime = window.GspViewerModules.appDebugGraph.createDebugGraphRuntime({ formatNumber });
   function formatAxisNumber(value) {
     if (Math.abs(value - Math.round(value)) < 1e-6) {
       return String(Math.round(value));
@@ -9008,12 +9236,12 @@
     const lines = [
       "Selection",
       `  target: ${describeDebugTarget(target)}`,
-      `  summary: ${summarizeDebugEntity(entity) || "(no summary)"}`
+      `  summary: ${debugGraphRuntime.summarizeDebugEntity(entity) || "(no summary)"}`
     ];
     formatPayloadDebug(entityRecord?.debug && typeof entityRecord.debug === "object" ? entityRecord.debug : null).forEach((line) => {
       lines.push(`  ${line}`);
     });
-    const refs = collectReferenceTokens(entity);
+    const refs = debugGraphRuntime.collectReferenceTokens(entity);
     if (refs.length) {
       lines.push(`  refs: ${refs.join(", ")}`);
     }
@@ -9023,140 +9251,6 @@
   }
   function buildDebugJson() {
     return JSON.stringify(buildRuntimeSnapshot(), null, 2);
-  }
-  function formatReference(key, value) {
-    if (!Number.isInteger(value)) {
-      return null;
-    }
-    switch (key) {
-      case "buttonIndices": return `buttons[${value}]`;
-      case "circleIndices":
-      case "circleIndex": return `circles[${value}]`;
-      case "lineIndices":
-      case "lineIndex": return `lines[${value}]`;
-      case "polygonIndices":
-      case "polygonIndex": return `polygons[${value}]`;
-      case "seedLabelIndex":
-      case "labelIndex": return `labels[${value}]`;
-      case "functionKey": return `functions[${value}]`;
-      case "segmentIndex": return null;
-      default:
-        if (key === "pointIndex" || key === "targetPointIndex" || key === "pointSeedIndex" || key === "seedIndex" || key === "sourceIndex" || key === "centerIndex" || key === "originIndex" || key === "radiusIndex" || key === "startIndex" || key === "endIndex" || key === "midIndex" || key === "throughIndex" || key === "vertexIndex" || key === "lineStartIndex" || key === "lineEndIndex") {
-          return `points[${value}]`;
-        }
-        return null;
-    }
-  }
-  function collectReferenceTokens(value) {
-    const refs = [];
-    function visit(node) {
-      if (!node || typeof node !== "object") {
-        return;
-      }
-      if (Array.isArray(node)) {
-        node.forEach(visit);
-        return;
-      }
-      Object.entries(node).forEach(([key, child]) => {
-        if (typeof child === "number") {
-          const ref = formatReference(key, child);
-          if (ref) {
-            refs.push(ref);
-          }
-          return;
-        }
-        if (Array.isArray(child)) {
-          const directRefs = child.flatMap((item) => {
-            if (typeof item !== "number") return [];
-            const ref = formatReference(key, item);
-            return ref ? [ref] : [];
-          });
-          refs.push(...directRefs);
-          child.forEach(visit);
-          return;
-        }
-        visit(child);
-      });
-    }
-    visit(value);
-    return [...new Set(refs)];
-  }
-  function summarizeDebugEntity(entity) {
-    const item = entity ?? {};
-    const parts = [];
-    if (typeof item.text === "string") {
-      parts.push(JSON.stringify(item.text));
-    }
-    if (typeof item.name === "string") {
-      parts.push(`name=${item.name}`);
-    }
-    if (typeof item.kind === "string") {
-      parts.push(`kind=${item.kind}`);
-    }
-    if (typeof item.visible === "boolean") {
-      parts.push(item.visible ? "visible" : "hidden");
-    }
-    if (typeof item.depth === "number") {
-      parts.push(`depth=${item.depth}`);
-    }
-    if (typeof item.edgeCount === "number") {
-      parts.push(`edges=${item.edgeCount}`);
-    }
-    if (typeof item.parameterName === "string" && item.parameterName.length > 0) {
-      parts.push(`param=${item.parameterName}`);
-    }
-    if (item.anchor && typeof item.anchor === "object") {
-      if (typeof item.anchor.x === "number" && typeof item.anchor.y === "number") {
-        parts.push(`anchor @ (${formatNumber(item.anchor.x)}, ${formatNumber(item.anchor.y)})`);
-      }
-      if (item.screenSpace === true) {
-        parts.push("screenSpace");
-      }
-    }
-    if (typeof item.x === "number" && typeof item.y === "number" && !item.kind) {
-      parts.push(`@ (${formatNumber(item.x)}, ${formatNumber(item.y)})`);
-    }
-    return parts.join(" ");
-  }
-  function appendGraphSection(lines, title, itemLabel, items) {
-    lines.push(`${title} (${items.length})`);
-    items.forEach((item, index) => {
-      const summary = summarizeDebugEntity(item);
-      const refs = collectReferenceTokens(item);
-      lines.push(`  ${itemLabel}[${index}]${summary ? ` ${summary}` : ""}`);
-      if (refs.length > 0) {
-        lines.push(`    -> ${refs.join(", ")}`);
-      }
-    });
-  }
-  function collectDebugLineIterations(scene) {
-    const iterations = Array.isArray(scene.lineIterations) ? [...scene.lineIterations] : [];
-    return iterations;
-  }
-  function buildDebugGraph(scene) {
-    const lines = [
-      "Scene",
-      `  size ${scene.width}x${scene.height}`,
-      `  modes graph=${!!scene.graphMode} pi=${!!scene.piMode} savedViewport=${!!scene.savedViewport} yUp=${!!scene.yUp}`,
-      `  bounds [${formatNumber(scene.bounds.minX)}, ${formatNumber(scene.bounds.minY)}] -> [${formatNumber(scene.bounds.maxX)}, ${formatNumber(scene.bounds.maxY)}]`
-    ];
-    if (scene.origin) {
-      lines.push(`  origin -> ${collectReferenceTokens({ origin: scene.origin }).join(", ") || "raw point"}`);
-    }
-    appendGraphSection(lines, "Points", "point", scene.points || []);
-    appendGraphSection(lines, "Lines", "line", scene.lines || []);
-    appendGraphSection(lines, "Polygons", "polygon", scene.polygons || []);
-    appendGraphSection(lines, "Circles", "circle", scene.circles || []);
-    appendGraphSection(lines, "Arcs", "arc", scene.arcs || []);
-    appendGraphSection(lines, "Labels", "label", scene.labels || []);
-    appendGraphSection(lines, "Point Iterations", "pointIteration", scene.pointIterations || []);
-    appendGraphSection(lines, "Line Iterations", "lineIteration", collectDebugLineIterations(scene));
-    appendGraphSection(lines, "Polygon Iterations", "polygonIteration", scene.polygonIterations || []);
-    appendGraphSection(lines, "Label Iterations", "labelIteration", scene.labelIterations || []);
-    appendGraphSection(lines, "Buttons", "button", scene.buttons || []);
-    appendGraphSection(lines, "Parameters", "parameter", scene.parameters || []);
-    appendGraphSection(lines, "Functions", "function", scene.functions || []);
-    return lines.join("\n");
   }
   function buildRuntimeSnapshot() {
     return debugEntityWithLiveParameters({
@@ -9171,7 +9265,7 @@
       return;
     }
     const activeTab = debugViewState.val === "json" ? "json" : debugViewState.val === "scene" ? "scene" : "selection";
-    debugOutput.textContent = activeTab === "json" ? buildDebugJson() : activeTab === "scene" ? buildDebugGraph(currentScene()) : buildSelectionDebugOutput();
+    debugOutput.textContent = activeTab === "json" ? buildDebugJson() : activeTab === "scene" ? debugGraphRuntime.buildDebugGraph(currentScene()) : buildSelectionDebugOutput();
     debugTabButtons.forEach((button) => {
       const isActive = button.dataset.debugTab === activeTab;
       button.setAttribute("aria-pressed", isActive ? "true" : "false");
@@ -9213,7 +9307,7 @@
   }
   function dumpDebugToConsole() {
     const selection = buildSelectionDebugOutput();
-    const graph = buildDebugGraph(currentScene());
+    const graph = debugGraphRuntime.buildDebugGraph(currentScene());
     const runtime = buildRuntimeSnapshot();
     console.groupCollapsed("gspDebug");
     console.log(selection);
@@ -9579,10 +9673,10 @@
       return buildDebugJson();
     },
     scene() {
-      return buildDebugGraph(currentScene());
+      return debugGraphRuntime.buildDebugGraph(currentScene());
     },
     graph() {
-      return buildDebugGraph(currentScene());
+      return debugGraphRuntime.buildDebugGraph(currentScene());
     },
     inspectSelection() {
       return buildSelectionDebugOutput();
@@ -9604,7 +9698,7 @@
       console.log(buildDebugJson());
     },
     dumpScene() {
-      console.log(buildDebugGraph(currentScene()));
+      console.log(debugGraphRuntime.buildDebugGraph(currentScene()));
     },
     dumpSelection() {
       console.log(buildSelectionDebugOutput());
