@@ -44,6 +44,7 @@ pub(super) fn world_line_shape(
         points: world_points,
         color: line.color,
         dashed: line.dashed,
+        stroke_width: line.stroke_width,
         visible: line.visible,
         binding: line.binding,
         debug: line.debug,
@@ -84,6 +85,7 @@ pub(super) fn world_line_iteration_family(
             bidirectional,
             color,
             dashed,
+            stroke_width,
         } => {
             let delta = world_delta(&PointRecord { x: dx, y: dy }, graph_ref);
             LineIterationFamily::Translate {
@@ -115,6 +117,7 @@ pub(super) fn world_line_iteration_family(
                 bidirectional,
                 color,
                 dashed,
+                stroke_width,
             }
         }
         LineIterationFamily::Rotate { .. }

@@ -5,8 +5,8 @@ use crate::runtime::extract::bindings::normalized_hsb;
 use crate::runtime::extract::decode::decode_label_name;
 use crate::runtime::functions::{evaluate_expr_with_parameters, try_decode_function_expr};
 use crate::runtime::geometry::{
-    GraphTransform, lerp_point, point_on_circle_arc, point_on_three_point_arc, reflect_across_line,
-    rotate_around, scale_around, to_raw_from_world,
+    GraphTransform, lerp_point, line_stroke_width_from_style, point_on_circle_arc,
+    point_on_three_point_arc, reflect_across_line, rotate_around, scale_around, to_raw_from_world,
 };
 use crate::runtime::payload_consts::{RECORD_BINDING_PAYLOAD, RECORD_ITERATION_DEFINITION};
 use crate::runtime::scene::{
@@ -117,6 +117,7 @@ pub(super) fn collect_point_traces(
                     points,
                     color: crate::runtime::geometry::color_from_style(group.header.style_b),
                     dashed: false,
+                    stroke_width: Some(line_stroke_width_from_style(group.header.style_a)),
                     visible: !group.header.is_hidden(),
                     binding: Some(crate::runtime::scene::LineBinding::PointTrace {
                         point_index: target_group_index,
@@ -191,6 +192,7 @@ pub(super) fn collect_point_traces(
                 points,
                 color: crate::runtime::geometry::color_from_style(group.header.style_b),
                 dashed: false,
+                stroke_width: Some(line_stroke_width_from_style(group.header.style_a)),
                 visible: !group.header.is_hidden(),
                 binding,
                 debug: Some(payload_debug_source(group)),
@@ -304,6 +306,7 @@ pub(super) fn collect_segment_traces(
                         points: vec![start, end],
                         color: crate::runtime::geometry::color_from_style(group.header.style_b),
                         dashed: false,
+                        stroke_width: Some(line_stroke_width_from_style(group.header.style_a)),
                         visible: !group.header.is_hidden(),
                         binding: None,
                         debug: Some(payload_debug_source(group)),
@@ -582,6 +585,7 @@ pub(super) fn collect_colorized_spectrum_lines(
                 points: vec![start, end],
                 color: [red, green, blue, 255],
                 dashed: false,
+                stroke_width: Some(line_stroke_width_from_style(host_group.header.style_a)),
                 visible: !iter_group.header.is_hidden(),
                 binding: Some(crate::runtime::scene::LineBinding::ColorizedSpectrum {
                     line_index: host_group_index,

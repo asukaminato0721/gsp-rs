@@ -205,6 +205,7 @@ pub(crate) enum LineIterationFamily {
         bidirectional: bool,
         color: [u8; 4],
         dashed: bool,
+        stroke_width: f64,
     },
     Rotate {
         binding_group_ordinal: usize,
@@ -217,6 +218,7 @@ pub(crate) enum LineIterationFamily {
         depth_parameter_name: Option<String>,
         color: [u8; 4],
         dashed: bool,
+        stroke_width: f64,
     },
     Affine {
         binding_group_ordinal: usize,
@@ -228,6 +230,7 @@ pub(crate) enum LineIterationFamily {
         depth: usize,
         color: [u8; 4],
         dashed: bool,
+        stroke_width: f64,
     },
     Branching {
         binding_group_ordinal: usize,
@@ -239,6 +242,7 @@ pub(crate) enum LineIterationFamily {
         parameter_name: Option<String>,
         color: [u8; 4],
         dashed: bool,
+        stroke_width: f64,
     },
     ParameterizedPointTrace {
         binding_group_ordinal: usize,
@@ -254,6 +258,7 @@ pub(crate) enum LineIterationFamily {
         sample_count: usize,
         color: [u8; 4],
         dashed: bool,
+        stroke_width: f64,
     },
 }
 
@@ -618,6 +623,7 @@ pub(crate) struct LineShape {
     pub(crate) points: Vec<PointRecord>,
     pub(crate) color: [u8; 4],
     pub(crate) dashed: bool,
+    pub(crate) stroke_width: Option<f64>,
     pub(crate) visible: bool,
     pub(crate) binding: Option<LineBinding>,
     pub(crate) debug: Option<PayloadDebugSource>,

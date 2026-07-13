@@ -3,4 +3,4 @@ import type { DebugSourceJson } from "./DebugSourceJson";
 import type { LineBindingJson } from "./LineBindingJson";
 import type { PointJson } from "./PointJson";
 
-export type LineJson = { points: Array<PointJson>, color: [number, number, number, number], dashed: boolean, visible: boolean, binding: LineBindingJson | null, debug: DebugSourceJson | null, };
+export type LineJson = { points: Array<PointJson>, color: [number, number, number, number], dashed: boolean, strokeWidth: number, visible: boolean, binding: LineBindingJson | null, debug: DebugSourceJson | null, };

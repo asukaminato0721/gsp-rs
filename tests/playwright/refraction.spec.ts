@@ -17,6 +17,9 @@ test('refraction sample preserves payload background and rich-text styling witho
       document.querySelectorAll<SVGTextElement>('[data-gsp-group="83"] text'),
       (node) => node.textContent,
     );
+    const lineWidth = (groupOrdinal: number) => runtime.scene.lines.find(
+      (line: { debug?: { groupOrdinal?: number } }) => line.debug?.groupOrdinal === groupOrdinal,
+    )?.strokeWidth;
     return {
       background: runtime.scene.backgroundColor,
       canvasBackground: getComputedStyle(document.querySelector('#view') as Element).backgroundColor,
@@ -33,6 +36,11 @@ test('refraction sample preserves payload background and rich-text styling witho
       inlineTitleColor: styledTitle ? getComputedStyle(styledTitle).color : null,
       inlineTitleFontSize: styledTitle ? getComputedStyle(styledTitle).fontSize : null,
       upperMediumPolygonStroke: upperMediumPolygon?.getAttribute('stroke'),
+      arrowStrokeWidth: lineWidth(52),
+      mediumStrokeWidth: lineWidth(119),
+      iterationStrokeWidths: runtime.scene.lineIterations.map(
+        (family: { strokeWidth: number }) => family.strokeWidth,
+      ),
       tableText,
     };
   });
@@ -47,6 +55,9 @@ test('refraction sample preserves payload background and rich-text styling witho
   expect(result.inlineTitleColor).toBe('rgb(0, 128, 0)');
   expect(result.inlineTitleFontSize).toBe('48px');
   expect(result.upperMediumPolygonStroke).toBe('none');
+  expect(result.arrowStrokeWidth).toBe(1);
+  expect(result.mediumStrokeWidth).toBe(2);
+  expect(result.iterationStrokeWidths).toEqual([1, 1, 1]);
   expect(result.tableText).toEqual([
     '入射角θ₁', '折射角θ₂', 'sinθ₁/sinθ₂', '43.11°', '24.62°', '1.64',
   ]);

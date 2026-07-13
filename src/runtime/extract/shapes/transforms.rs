@@ -2,9 +2,9 @@ use super::{
     CircleShape, GspFile, LineBinding, LineShape, ObjectGroup, PointRecord, PolygonShape,
     SceneContext, ShapeBinding, TransformBindingKind, collect_circle_fill_colors, color_from_style,
     fill_color_from_styles, find_indexed_path, has_distinct_points, is_circle_group_kind,
-    line_is_dashed, payload_debug_source, reflect_across_line, rotate_around, scale_around,
-    translation_point_pair_group_indices, try_decode_parameter_rotation_binding,
-    try_decode_transform_binding,
+    line_is_dashed, line_stroke_width_from_style, payload_debug_source, reflect_across_line,
+    rotate_around, scale_around, translation_point_pair_group_indices,
+    try_decode_parameter_rotation_binding, try_decode_transform_binding,
 };
 use crate::runtime::extract::decode::resolve_circle_points_raw;
 use crate::runtime::extract::points::{TransformBinding, resolve_line_like_points_raw};
@@ -709,6 +709,7 @@ fn derived_line_shape(
         points,
         color: color_from_style(source_group.header.style_b),
         dashed: line_is_dashed(source_group.header.style_a),
+        stroke_width: Some(line_stroke_width_from_style(source_group.header.style_a)),
         visible: !group.header.is_hidden(),
         binding: Some(LineBinding::DerivedTransform {
             source_index: source_group_index,

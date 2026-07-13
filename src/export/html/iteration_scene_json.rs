@@ -158,6 +158,8 @@ pub(super) enum LineIterationJson {
         depth_parameter_name: Option<String>,
         color: [u8; 4],
         dashed: bool,
+        #[serde(rename = "strokeWidth")]
+        stroke_width: f64,
     },
     Translate {
         visible: bool,
@@ -187,6 +189,8 @@ pub(super) enum LineIterationJson {
         bidirectional: bool,
         color: [u8; 4],
         dashed: bool,
+        #[serde(rename = "strokeWidth")]
+        stroke_width: f64,
     },
     Affine {
         visible: bool,
@@ -201,6 +205,8 @@ pub(super) enum LineIterationJson {
         depth: usize,
         color: [u8; 4],
         dashed: bool,
+        #[serde(rename = "strokeWidth")]
+        stroke_width: f64,
     },
     Branching {
         visible: bool,
@@ -215,6 +221,8 @@ pub(super) enum LineIterationJson {
         parameter_name: Option<String>,
         color: [u8; 4],
         dashed: bool,
+        #[serde(rename = "strokeWidth")]
+        stroke_width: f64,
     },
     ParameterizedPointTrace {
         visible: bool,
@@ -237,6 +245,8 @@ pub(super) enum LineIterationJson {
         sample_count: usize,
         color: [u8; 4],
         dashed: bool,
+        #[serde(rename = "strokeWidth")]
+        stroke_width: f64,
     },
 }
 
@@ -254,6 +264,7 @@ impl LineIterationJson {
                 depth_parameter_name,
                 color,
                 dashed,
+                stroke_width,
             } => Self::Rotate {
                 visible: *visible,
                 source_index: *source_index,
@@ -264,6 +275,7 @@ impl LineIterationJson {
                 depth_parameter_name: depth_parameter_name.clone(),
                 color: *color,
                 dashed: *dashed,
+                stroke_width: *stroke_width,
             },
             LineIterationFamily::ParameterizedPointTrace {
                 binding_group_ordinal: _,
@@ -279,6 +291,7 @@ impl LineIterationJson {
                 sample_count,
                 color,
                 dashed,
+                stroke_width,
             } => Self::ParameterizedPointTrace {
                 visible: *visible,
                 point_index: *point_index,
@@ -292,6 +305,7 @@ impl LineIterationJson {
                 sample_count: *sample_count,
                 color: *color,
                 dashed: *dashed,
+                stroke_width: *stroke_width,
             },
             LineIterationFamily::Branching {
                 binding_group_ordinal: _,
@@ -303,6 +317,7 @@ impl LineIterationJson {
                 parameter_name,
                 color,
                 dashed,
+                stroke_width,
             } => Self::Branching {
                 visible: *visible,
                 start_index: *start_index,
@@ -318,6 +333,7 @@ impl LineIterationJson {
                 parameter_name: parameter_name.clone(),
                 color: *color,
                 dashed: *dashed,
+                stroke_width: *stroke_width,
             },
             LineIterationFamily::Affine {
                 binding_group_ordinal: _,
@@ -329,6 +345,7 @@ impl LineIterationJson {
                 depth,
                 color,
                 dashed,
+                stroke_width,
             } => Self::Affine {
                 visible: *visible,
                 start_index: *start_index,
@@ -340,6 +357,7 @@ impl LineIterationJson {
                 depth: *depth,
                 color: *color,
                 dashed: *dashed,
+                stroke_width: *stroke_width,
             },
             LineIterationFamily::Translate {
                 binding_group_ordinal: _,
@@ -360,6 +378,7 @@ impl LineIterationJson {
                 bidirectional,
                 color,
                 dashed,
+                stroke_width,
             } => Self::Translate {
                 visible: *visible,
                 start_index: *start_index,
@@ -378,6 +397,7 @@ impl LineIterationJson {
                 bidirectional: *bidirectional,
                 color: *color,
                 dashed: *dashed,
+                stroke_width: *stroke_width,
             },
         }
     }

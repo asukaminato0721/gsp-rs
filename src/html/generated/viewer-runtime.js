@@ -1495,7 +1495,7 @@
       d: pathFromPoints(points, !!options.close),
       fill: options.fill ?? "none",
       stroke: options.stroke,
-      "stroke-width": options.strokeWidth ?? 2,
+      "stroke-width": options.strokeWidth ?? 1,
       "stroke-dasharray": options.dashed ? "8 8" : null,
       "stroke-linecap": options.lineCap ?? "round",
       "stroke-linejoin": options.lineJoin ?? "round"
@@ -1591,11 +1591,12 @@
   function drawImages(_env) {}
   function drawPolygons(_env) {}
   function drawLines(env) {
-    const drawPolyline = (worldPoints, color, dashed, close = false, debugTarget = null) => {
+    const drawPolyline = (worldPoints, color, dashed, strokeWidth, close = false, debugTarget = null) => {
       const screenPoints = worldPoints.map((point) => env.toScreen(point));
       if (screenPoints.length < 2) return;
       appendPointPath(env, screenPoints, {
         stroke: env.rgba(color),
+        strokeWidth,
         dashed,
         close,
         debugTarget
@@ -1646,7 +1647,7 @@
           ];
         })() : null;
         if (points?.length) {
-          drawPolyline(points, line.color, line.dashed, false, {
+          drawPolyline(points, line.color, line.dashed, line.strokeWidth, false, {
             category: "lines",
             index: lineIndex
           });
@@ -1667,7 +1668,7 @@
             y: vertex.y + clampedRadius * Math.sin(angle)
           };
         });
-        drawPolyline(polyline, line.color, line.dashed, false, {
+        drawPolyline(polyline, line.color, line.dashed, line.strokeWidth, false, {
           category: "lines",
           index: lineIndex
         });
@@ -1710,7 +1711,7 @@
         }, {
           x: slashCenter.x + normal.x * halfLen,
           y: slashCenter.y + normal.y * halfLen
-        }], line.color, line.dashed, false, {
+        }], line.color, line.dashed, line.strokeWidth, false, {
           category: "lines",
           index: lineIndex
         });
@@ -1873,6 +1874,7 @@
             if (!segment || segment.length < 2) continue;
             appendPointPath(env, segment.map((point) => env.toScreen(point)), {
               stroke: env.rgba(line.color),
+              strokeWidth: line.strokeWidth,
               dashed: !!line.dashed,
               debugTarget: {
                 category: "lines",
@@ -1891,6 +1893,7 @@
       if (!screenPoints || screenPoints.length < 2) continue;
       appendPointPath(env, screenPoints, {
         stroke: env.rgba(line.color),
+        strokeWidth: line.strokeWidth,
         dashed: !!line.dashed,
         debugTarget: {
           category: "lines",
@@ -4783,6 +4786,7 @@
               points: [],
               color: family.color,
               dashed: !!family.dashed,
+              strokeWidth: family.strokeWidth,
               visible: family.visible !== false,
               binding: {
                 kind: "point-trace",
@@ -4802,6 +4806,7 @@
               points: sampled,
               color: family.color,
               dashed: !!family.dashed,
+              strokeWidth: family.strokeWidth,
               visible: family.visible !== false,
               binding: null
             });
@@ -4850,6 +4855,7 @@
                   points: [{ ...childStart }, { ...childEnd }],
                   color: family.color,
                   dashed: !!family.dashed,
+                  strokeWidth: family.strokeWidth,
                   visible: family.visible !== false,
                   binding: null
                 });
@@ -4887,6 +4893,7 @@
               points: [{ ...currentStart }, { ...currentEnd }],
               color: family.color,
               dashed: !!family.dashed,
+              strokeWidth: family.strokeWidth,
               visible: family.visible !== false,
               binding: null
             });
@@ -4909,6 +4916,7 @@
               points: source.points.map((point) => rotateAround(point, center, radians)),
               color: family.color,
               dashed: !!family.dashed,
+              strokeWidth: family.strokeWidth,
               visible: family.visible !== false,
               binding: {
                 kind: "derived",
@@ -4980,6 +4988,7 @@
               }],
               color: family.color,
               dashed: !!family.dashed,
+              strokeWidth: family.strokeWidth,
               visible: family.visible !== false,
               binding: null
             });
@@ -5046,6 +5055,7 @@
             }],
             color: family.color,
             dashed: !!family.dashed,
+            strokeWidth: family.strokeWidth,
             visible: family.visible !== false,
             binding: null
           });
@@ -8941,6 +8951,7 @@
     const hydratedLines = scene.lines.map((line) => ({
       color: line.color,
       dashed: line.dashed,
+      strokeWidth: line.strokeWidth,
       visible: line.visible !== false,
       points: line.points.map(attachPointRef),
       binding: line.binding ? { ...line.binding } : null,

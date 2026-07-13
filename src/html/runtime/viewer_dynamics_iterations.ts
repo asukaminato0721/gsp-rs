@@ -360,6 +360,7 @@
             points: [],
             color: family.color,
             dashed: !!family.dashed,
+            strokeWidth: family.strokeWidth,
             visible: family.visible !== false,
             binding: {
               kind: "point-trace",
@@ -379,6 +380,7 @@
             points: sampled,
             color: family.color,
             dashed: !!family.dashed,
+            strokeWidth: family.strokeWidth,
             visible: family.visible !== false,
             binding: null,
           });
@@ -427,6 +429,7 @@
                 points: [{ ...childStart }, { ...childEnd }],
                 color: family.color,
                 dashed: !!family.dashed,
+                strokeWidth: family.strokeWidth,
                 visible: family.visible !== false,
                 binding: null,
               });
@@ -464,6 +467,7 @@
             points: [{ ...currentStart }, { ...currentEnd }],
             color: family.color,
             dashed: !!family.dashed,
+            strokeWidth: family.strokeWidth,
             visible: family.visible !== false,
             binding: null,
           });
@@ -486,6 +490,7 @@
             points: source.points.map(( point) => rotateAround(point, center, radians)),
             color: family.color,
             dashed: !!family.dashed,
+            strokeWidth: family.strokeWidth,
             visible: family.visible !== false,
             binding: {
               kind: "derived",
@@ -552,6 +557,7 @@
             ],
             color: family.color,
             dashed: !!family.dashed,
+            strokeWidth: family.strokeWidth,
             visible: family.visible !== false,
             binding: null,
           });
@@ -612,6 +618,7 @@
           ],
           color: family.color,
           dashed: !!family.dashed,
+          strokeWidth: family.strokeWidth,
           visible: family.visible !== false,
           binding: null,
         });

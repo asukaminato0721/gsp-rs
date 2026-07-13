@@ -4,8 +4,8 @@ use super::{
     CircleShape, GspFile, LineIterationFamily, LineShape, ObjectGroup, PointRecord,
     PolygonIterationFamily, PolygonShape, color_from_style, decode_label_name,
     decode_translated_point_constraint, fill_color_from_styles, find_indexed_path, line_is_dashed,
-    regular_polygon_iteration_step, try_decode_parameter_controlled_point,
-    try_decode_point_constraint,
+    line_stroke_width_from_style, regular_polygon_iteration_step,
+    try_decode_parameter_controlled_point, try_decode_point_constraint,
 };
 use crate::runtime::extract::decode::resolve_circle_points_raw;
 use crate::runtime::extract::iteration_depth::decode_iteration_depth_expr;
@@ -129,6 +129,7 @@ pub(crate) fn collect_rotational_line_iteration_families(
                 depth_parameter_name,
                 color: color_from_style(source_group.header.style_b),
                 dashed: line_is_dashed(source_group.header.style_a),
+                stroke_width: line_stroke_width_from_style(source_group.header.style_a),
             })
         })() else {
             continue;
@@ -208,6 +209,9 @@ pub(crate) fn collect_carried_iteration_lines(
                                 points: vec![start.clone() + delta.clone(), end.clone() + delta],
                                 color,
                                 dashed: line_is_dashed(source_group.header.style_a),
+                                stroke_width: Some(line_stroke_width_from_style(
+                                    source_group.header.style_a,
+                                )),
                                 visible: !iter_group.header.is_hidden(),
                                 ..Default::default()
                             }
@@ -234,6 +238,7 @@ pub(crate) fn collect_carried_iteration_lines(
                     branching.depth,
                     color_from_style(source_group.header.style_b),
                     line_is_dashed(source_group.header.style_a),
+                    line_stroke_width_from_style(source_group.header.style_a),
                     !iter_group.header.is_hidden(),
                 ));
             }
@@ -250,6 +255,9 @@ pub(crate) fn collect_carried_iteration_lines(
                         points: vec![current_start.clone(), current_end.clone()],
                         color,
                         dashed: line_is_dashed(source_group.header.style_a),
+                        stroke_width: Some(line_stroke_width_from_style(
+                            source_group.header.style_a,
+                        )),
                         visible: !iter_group.header.is_hidden(),
                         ..Default::default()
                     });
@@ -266,6 +274,9 @@ pub(crate) fn collect_carried_iteration_lines(
                         points: vec![start.clone() + delta.clone(), end.clone() + delta],
                         color,
                         dashed: line_is_dashed(source_group.header.style_a),
+                        stroke_width: Some(line_stroke_width_from_style(
+                            source_group.header.style_a,
+                        )),
                         visible: !iter_group.header.is_hidden(),
                         ..Default::default()
                     })
@@ -371,6 +382,7 @@ pub(crate) fn collect_carried_line_iteration_families(
                     sample_count: descriptor.sample_count,
                     color: color_from_style(source_group.header.style_b),
                     dashed: line_is_dashed(source_group.header.style_a),
+                    stroke_width: line_stroke_width_from_style(source_group.header.style_a),
                 });
             }
             if (source_group.header.kind()) != crate::format::GroupKind::Segment {
@@ -467,6 +479,7 @@ pub(crate) fn collect_carried_line_iteration_families(
                     bidirectional: false,
                     color: color_from_style(source_group.header.style_b),
                     dashed: line_is_dashed(source_group.header.style_a),
+                    stroke_width: line_stroke_width_from_style(source_group.header.style_a),
                 });
             }
 
@@ -505,6 +518,7 @@ pub(crate) fn collect_carried_line_iteration_families(
                     parameter_name: branching.parameter_name,
                     color: color_from_style(source_group.header.style_b),
                     dashed: line_is_dashed(source_group.header.style_a),
+                    stroke_width: line_stroke_width_from_style(source_group.header.style_a),
                 });
             }
 
@@ -526,6 +540,7 @@ pub(crate) fn collect_carried_line_iteration_families(
                     depth,
                     color: color_from_style(source_group.header.style_b),
                     dashed: line_is_dashed(source_group.header.style_a),
+                    stroke_width: line_stroke_width_from_style(source_group.header.style_a),
                 });
             }
 
@@ -550,6 +565,7 @@ pub(crate) fn collect_carried_line_iteration_families(
                 bidirectional,
                 color: color_from_style(source_group.header.style_b),
                 dashed: line_is_dashed(source_group.header.style_a),
+                stroke_width: line_stroke_width_from_style(source_group.header.style_a),
             })
         })
         .collect()
@@ -661,6 +677,7 @@ fn branching_lines(
     depth: usize,
     color: [u8; 4],
     dashed: bool,
+    stroke_width: f64,
     visible: bool,
 ) -> Vec<LineShape> {
     let mut frontier = vec![(seed_start.clone(), seed_end.clone())];
@@ -685,6 +702,7 @@ fn branching_lines(
                     points: vec![child_start.clone(), child_end.clone()],
                     color,
                     dashed,
+                    stroke_width: Some(stroke_width),
                     visible,
                     ..Default::default()
                 });

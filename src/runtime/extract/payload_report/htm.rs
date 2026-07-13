@@ -702,7 +702,7 @@ fn htm_stroke_color_attr(color: [u8; 4]) -> String {
 }
 
 fn htm_line_has_medium_width(style_a: u32) -> bool {
-    matches!((style_a >> 16) & 0xff, 0x12 | 0x22)
+    geometry::line_stroke_width_from_style(style_a) > 1.0
 }
 
 fn htm_point_has_medium_size(style_a: u32) -> bool {

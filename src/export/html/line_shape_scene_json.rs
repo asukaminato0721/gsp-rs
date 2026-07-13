@@ -10,6 +10,8 @@ pub(super) struct LineJson {
     points: Vec<PointJson>,
     color: [u8; 4],
     dashed: bool,
+    #[serde(rename = "strokeWidth")]
+    stroke_width: f64,
     visible: bool,
     binding: Option<LineBindingJson>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -22,6 +24,7 @@ impl LineJson {
             points: PointJson::collect(&line.points),
             color: line.color,
             dashed: line.dashed,
+            stroke_width: line.stroke_width.unwrap_or(1.0),
             visible: line.visible,
             binding: line.binding.as_ref().map(LineBindingJson::from_binding),
             debug: line.debug.as_ref().map(DebugSourceJson::from_source),

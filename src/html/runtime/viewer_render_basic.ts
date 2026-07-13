@@ -68,7 +68,7 @@
       d: pathFromPoints(points, !!options.close),
       fill: options.fill ?? "none",
       stroke: options.stroke,
-      "stroke-width": options.strokeWidth ?? 2,
+      "stroke-width": options.strokeWidth ?? 1,
       "stroke-dasharray": options.dashed ? "8 8" : null,
       "stroke-linecap": options.lineCap ?? "round",
       "stroke-linejoin": options.lineJoin ?? "round",
@@ -193,6 +193,7 @@
        worldPoints,
        color,
        dashed,
+       strokeWidth,
        close= false,
        debugTarget= null,
     ) => {
@@ -200,6 +201,7 @@
       if (screenPoints.length < 2) return;
       appendPointPath(env, screenPoints, {
         stroke: env.rgba(color),
+        strokeWidth,
         dashed,
         close,
         debugTarget,
@@ -237,7 +239,7 @@
             })()
           : null;
         if (points?.length) {
-          drawPolyline(points, line.color, line.dashed, false, { category: "lines", index: lineIndex });
+          drawPolyline(points, line.color, line.dashed, line.strokeWidth, false, { category: "lines", index: lineIndex });
           continue;
         }
         const radius = Math.min(Math.max(shortestLen * 0.12, 10), 28) + layerIndex * 5;
@@ -255,7 +257,7 @@
             y: vertex.y + clampedRadius * Math.sin(angle),
           };
         });
-        drawPolyline(polyline, line.color, line.dashed, false, { category: "lines", index: lineIndex });
+        drawPolyline(polyline, line.color, line.dashed, line.strokeWidth, false, { category: "lines", index: lineIndex });
       }
     };
     const drawSegmentMarker = ( line,  lineIndex: number) => {
@@ -283,7 +285,7 @@
         drawPolyline([
           { x: slashCenter.x - normal.x * halfLen, y: slashCenter.y - normal.y * halfLen },
           { x: slashCenter.x + normal.x * halfLen, y: slashCenter.y + normal.y * halfLen },
-        ], line.color, line.dashed, false, { category: "lines", index: lineIndex });
+        ], line.color, line.dashed, line.strokeWidth, false, { category: "lines", index: lineIndex });
       }
     };
     const pointsEqual = ( left,  right) =>
@@ -463,6 +465,7 @@
             if (!segment || segment.length < 2) continue;
             appendPointPath(env, segment.map(( point) => env.toScreen(point)), {
               stroke: env.rgba(line.color),
+              strokeWidth: line.strokeWidth,
               dashed: !!line.dashed,
               debugTarget: { category: "lines", index },
             });
@@ -480,6 +483,7 @@
       if (!screenPoints || screenPoints.length < 2) continue;
       appendPointPath(env, screenPoints, {
         stroke: env.rgba(line.color),
+        strokeWidth: line.strokeWidth,
         dashed: !!line.dashed,
         debugTarget: { category: "lines", index },
       });

@@ -252,6 +252,14 @@ pub(super) fn line_is_dashed(style: u32) -> bool {
     matches!(((style >> 16) & 0xff) as u8, 0x11 | 0x12)
 }
 
+pub(super) fn line_stroke_width_from_style(style: u32) -> f64 {
+    if matches!((style >> 16) & 0xff, 0x12 | 0x22) {
+        2.0
+    } else {
+        1.0
+    }
+}
+
 pub(super) fn fill_color_from_styles(style_b: u32, style_c: u32) -> [u8; 4] {
     let mut color = color_from_style(style_b);
     let alpha = ((style_c >> 8) & 0xff) as u8;
@@ -512,7 +520,7 @@ fn mid_angle(center: &PointRecord, point: &PointRecord) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::line_is_dashed;
+    use super::{line_is_dashed, line_stroke_width_from_style};
 
     #[test]
     fn detects_dashed_line_like_styles() {
@@ -524,5 +532,13 @@ mod tests {
         );
         assert!(!line_is_dashed(0x0122_000c), "expected solid line style");
         assert!(!line_is_dashed(0x0122_000d), "expected solid ray style");
+    }
+
+    #[test]
+    fn decodes_line_width_from_style_byte() {
+        assert_eq!(line_stroke_width_from_style(0x0121_000c), 1.0);
+        assert_eq!(line_stroke_width_from_style(0x0122_000c), 2.0);
+        assert_eq!(line_stroke_width_from_style(0x0111_000c), 1.0);
+        assert_eq!(line_stroke_width_from_style(0x0112_000c), 2.0);
     }
 }

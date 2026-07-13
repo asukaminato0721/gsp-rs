@@ -440,6 +440,7 @@
     const hydratedLines = scene.lines.map((line: LineJson): RuntimeLineJson => ({
       color: line.color,
       dashed: line.dashed,
+      strokeWidth: line.strokeWidth,
       visible: line.visible !== false,
       points: line.points.map(attachPointRef),
       binding: line.binding ? { ...line.binding } : null,

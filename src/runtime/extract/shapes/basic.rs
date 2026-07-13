@@ -4,8 +4,8 @@ use super::{
     ArcShape, CircleShape, GraphTransform, GspFile, LineBinding, LineShape, ObjectGroup,
     PointRecord, PolygonShape, ShapeBinding, color_from_style, decode_label_name,
     evaluate_expr_with_parameters, fill_color_from_styles, find_indexed_path, has_distinct_points,
-    line_is_dashed, payload_debug_source, three_point_arc_geometry, to_raw_from_world,
-    try_decode_function_expr, try_decode_function_plot_descriptor,
+    line_is_dashed, line_stroke_width_from_style, payload_debug_source, three_point_arc_geometry,
+    to_raw_from_world, try_decode_function_expr, try_decode_function_plot_descriptor,
 };
 use crate::format::{GroupKind, read_f64, read_u16, read_u32};
 use crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT;
@@ -133,6 +133,7 @@ pub(crate) fn collect_line_shapes(
                     color: color_from_style(group.header.style_b),
                     dashed: (group.header.kind()) == crate::format::GroupKind::MeasurementLine
                         || line_is_dashed(group.header.style_a),
+                    stroke_width: Some(line_stroke_width_from_style(group.header.style_a)),
                     visible: !group.header.is_hidden(),
                     binding,
                     debug: Some(payload_debug_source(group)),
@@ -299,6 +300,7 @@ pub(crate) fn collect_segment_marker_shapes(
                 points,
                 color: color_from_style(group.header.style_b),
                 dashed: line_is_dashed(group.header.style_a),
+                stroke_width: Some(line_stroke_width_from_style(group.header.style_a)),
                 visible: !group.header.is_hidden(),
                 binding: Some(LineBinding::SegmentMarker {
                     start_index: start_group_index,
@@ -334,6 +336,7 @@ pub(crate) fn collect_arc_boundary_shapes(
                 points,
                 color: color_from_style(group.header.style_b),
                 dashed: line_is_dashed(group.header.style_a),
+                stroke_width: Some(line_stroke_width_from_style(group.header.style_a)),
                 visible: !group.header.is_hidden(),
                 binding: Some(binding),
                 debug: Some(payload_debug_source(group)),
@@ -403,6 +406,7 @@ fn resolve_angle_marker_shape(
         points,
         color: color_from_style(group.header.style_b),
         dashed: line_is_dashed(group.header.style_a),
+        stroke_width: Some(line_stroke_width_from_style(group.header.style_a)),
         visible: !group.header.is_hidden(),
         binding: Some(LineBinding::AngleMarker {
             start_index: path.refs[0].checked_sub(1)?,
@@ -643,6 +647,7 @@ fn resolve_angle_bisector_ray_shape(
         points: vec![vertex.clone(), bisector_end],
         color: color_from_style(group.header.style_b),
         dashed: line_is_dashed(group.header.style_a),
+        stroke_width: Some(line_stroke_width_from_style(group.header.style_a)),
         visible: !group.header.is_hidden(),
         binding: Some(LineBinding::AngleBisectorRay {
             start_index,
@@ -689,6 +694,7 @@ fn resolve_perpendicular_line_shape(
         points: vec![start, end],
         color: color_from_style(group.header.style_b),
         dashed: line_is_dashed(group.header.style_a),
+        stroke_width: Some(line_stroke_width_from_style(group.header.style_a)),
         visible: !group.header.is_hidden(),
         binding: Some(LineBinding::PerpendicularLine {
             through_index,
@@ -734,6 +740,7 @@ fn resolve_parallel_line_shape(
         points: vec![start, end],
         color: color_from_style(group.header.style_b),
         dashed: line_is_dashed(group.header.style_a),
+        stroke_width: Some(line_stroke_width_from_style(group.header.style_a)),
         visible: !group.header.is_hidden(),
         binding: Some(LineBinding::ParallelLine {
             through_index,
@@ -817,6 +824,7 @@ pub(crate) fn collect_bound_line_shapes(
                 points: vec![start, end],
                 color: color_from_style(group.header.style_b),
                 dashed: line_is_dashed(group.header.style_a),
+                stroke_width: Some(line_stroke_width_from_style(group.header.style_a)),
                 visible: !group.header.is_hidden(),
                 binding: Some(match kind {
                     crate::format::GroupKind::Line => LineBinding::Line {
@@ -1417,6 +1425,7 @@ pub(crate) fn collect_coordinate_traces(
                 points,
                 color: color_from_style(group.header.style_b),
                 dashed: line_is_dashed(group.header.style_a),
+                stroke_width: Some(line_stroke_width_from_style(group.header.style_a)),
                 visible: !group.header.is_hidden(),
                 binding: Some(LineBinding::CoordinateTrace {
                     point_index: path.refs[0].checked_sub(1)?,
