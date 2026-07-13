@@ -1,5 +1,6 @@
 a (web) render for https://sketchpad.keycurriculum.com/
 
+rustup target add wasm32-unknown-unknown
 cargo run ./path/to/your.gsp
 cargo run ./path/to/one.gsp ./path/to/two.gsp
 cargo run -- --html ./path/to/your.gsp
