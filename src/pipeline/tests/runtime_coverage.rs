@@ -56,6 +56,78 @@ fn circle_constraint_runtime_has_single_resolver_implementation() {
 }
 
 #[test]
+fn viewer_does_not_infer_payload_links_from_geometry() {
+    let viewer = include_str!("../../html/runtime/viewer.ts");
+
+    assert!(!viewer.contains("attachPointRef"));
+    assert!(!viewer.contains("attachLabelAnchor"));
+    assert!(!viewer.contains("pointMatchTolerance"));
+    assert!(!viewer.contains("labelAttachDistance"));
+    assert!(viewer.contains("function explicitLabelAnchor("));
+}
+
+#[test]
+fn runtime_has_no_synthetic_animation_or_empty_module_fallbacks() {
+    let overlay = include_str!("../../html/runtime/viewer_overlay.ts");
+    let render = include_str!("../../html/runtime/viewer_render_basic.ts");
+    let scene = include_str!("../../html/runtime/viewer_scene_basic.ts");
+    let dynamics = include_str!("../../html/runtime/viewer_dynamics.ts");
+
+    assert!(!overlay.contains("Math.random"));
+    assert!(!overlay.contains("Math.sin(state.t)"));
+    assert!(!overlay.contains("const durationMs"));
+    assert!(!overlay.contains("dt / 700"));
+    assert!(overlay.contains("point.animation.speed"));
+    assert!(!render.contains("function drawImages(_env"));
+    assert!(!render.contains("function findHitLabel()"));
+    assert!(!scene.contains("function lineLineIntersection()"));
+    assert_eq!(
+        scene.matches("function resolveAngleMarkerPoints(").count()
+            + dynamics
+                .matches("function resolveAngleMarkerPoints(")
+                .count(),
+        1,
+    );
+}
+
+#[test]
+fn runtime_validates_json_and_uses_strict_runtime_shapes() {
+    let document = include_str!("../../html/runtime/viewer_app_document.ts");
+    let types = include_str!("../../html/viewer_types.d.ts");
+
+    assert!(document.contains("function assertSceneData("));
+    assert!(!document.contains("raw as SceneData"));
+    assert!(!types.contains("type RuntimeLineJson = Partial<"));
+    assert!(!types.contains("type RuntimePolygonJson = Partial<"));
+    assert!(!types.contains("type RuntimeCircleJson = Partial<"));
+}
+
+#[test]
+fn compiler_has_no_fixed_spectrum_viewport_or_color_guessing() {
+    let build = include_str!("../../runtime/extract/build.rs");
+    let trace = include_str!("../../runtime/extract/trace.rs");
+    let bindings = include_str!("../../runtime/extract/bindings.rs");
+
+    assert!(!build.contains("800.0"));
+    assert!(!trace.contains("viewport_width"));
+    assert!(!bindings.contains("color_distance"));
+    assert!(bindings.contains("COLORIZED_RGB_OPCODE => Some(PayloadColorModel::Rgb)"));
+    assert!(bindings.contains("COLORIZED_HSV_OPCODE => Some(PayloadColorModel::Hsv)"));
+}
+
+#[test]
+fn compiler_does_not_synthesize_function_axes_or_plot_labels() {
+    let shapes = include_str!("../../runtime/extract/shapes.rs");
+    let labels = include_str!("../../runtime/extract/labels.rs");
+    let functions = include_str!("../../runtime/functions.rs");
+
+    assert!(!shapes.contains("synthesize_function_axes"));
+    assert!(!labels.contains("synthesize_function_labels"));
+    assert!(!functions.contains("synthesize_function_axes"));
+    assert!(!functions.contains("synthesize_function_labels"));
+}
+
+#[test]
 fn compiles_fixed_coordinate_and_slope_helper_fixtures() {
     let Some(cardioid) = fixture_bytes("tests/Samples/未分类档/心脏线.gsp") else {
         return;

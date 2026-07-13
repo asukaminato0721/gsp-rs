@@ -1648,7 +1648,7 @@ fn htm_animate_button_args(
     let text = decode::decode_label_name_raw(file, group).unwrap_or_else(|| "动画点".to_string());
     let target_refs = htm_animate_button_target_refs(file, groups, refs);
     format!(
-        "{},{},'{}')({})(1)(0)(1",
+        "{},{},'{}')({}",
         format_number(anchor.x),
         format_number(anchor.y),
         htm_quote_text(&text),

@@ -79,7 +79,13 @@ impl<'a> FileCompileJob<'a> {
 
     fn scene_json(&self) -> Result<String> {
         let data = self.read_source()?;
-        document::compile_bytes_to_scene_json(&data, self.width, self.height)
+        let reference_htm = self.read_reference_definitions();
+        document::compile_bytes_to_scene_json_with_reference(
+            &data,
+            self.width,
+            self.height,
+            reference_htm.as_deref(),
+        )
     }
 
     fn read_source(&self) -> Result<Vec<u8>> {
@@ -87,6 +93,24 @@ impl<'a> FileCompileJob<'a> {
     }
 
     fn write_html(&self, data: &[u8]) -> Result<()> {
-        compile_bytes_to_html_file(data, &self.paths.html_path, self.width, self.height)
+        let reference_htm = self.read_reference_definitions();
+        let html = document::compile_bytes_to_html_document_with_reference(
+            data,
+            self.width,
+            self.height,
+            reference_htm.as_deref(),
+        )?;
+        artifacts::write_html(&self.paths.html_path, &html)
+    }
+
+    fn read_reference_definitions(&self) -> Option<String> {
+        let htm = std::fs::read_to_string(self.gsp_path.with_extension("htm")).ok();
+        let log = std::fs::read_to_string(self.gsp_path.with_extension("log")).ok();
+        match (htm, log) {
+            (Some(htm), Some(log)) => Some(format!("{htm}\n{log}")),
+            (Some(htm), None) => Some(htm),
+            (None, Some(log)) => Some(log),
+            (None, None) => None,
+        }
     }
 }

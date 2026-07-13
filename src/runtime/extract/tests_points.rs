@@ -606,11 +606,11 @@ fn three_circle_rolling_fixture_keeps_animate_buttons_and_measured_rotations_liv
         .expect("expected outer rolling animate button");
     assert!(matches!(
         inner_button.action,
-        ButtonAction::AnimatePoint { point_index } if point_index == inner_driver
+        ButtonAction::AnimatePoint { point_index, .. } if point_index == inner_driver
     ));
     assert!(matches!(
         outer_button.action,
-        ButtonAction::AnimatePoint { point_index } if point_index == outer_driver
+        ButtonAction::AnimatePoint { point_index, .. } if point_index == outer_driver
     ));
 
     for ordinal in [21, 25, 33, 37] {

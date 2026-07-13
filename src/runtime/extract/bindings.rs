@@ -298,14 +298,12 @@ pub(super) fn apply_payload_color_bindings(
             .get(circle_index)
             .and_then(|circle| circle.fill_color.map(|color| color[3]))
             .unwrap_or(255);
-        let expected = {
-            let color = crate::runtime::geometry::color_from_style(group.header.style_b);
-            [color[0], color[1], color[2]]
+        let Some(color_model) = decode_color_model(file, group) else {
+            continue;
         };
-        let rgb_candidate = normalized_rgb(first_value, second_value, third_value);
-        let hsb_candidate = normalized_hsb(first_value, second_value, third_value);
-        let (binding, resolved_fill) =
-            if color_distance(expected, rgb_candidate) <= color_distance(expected, hsb_candidate) {
+        let (binding, resolved_fill) = match color_model {
+            PayloadColorModel::Rgb => {
+                let color = normalized_rgb(first_value, second_value, third_value);
                 (
                     ColorBinding::Rgb {
                         red_point_index: first_point_index,
@@ -313,9 +311,11 @@ pub(super) fn apply_payload_color_bindings(
                         blue_point_index: third_point_index,
                         alpha,
                     },
-                    [rgb_candidate[0], rgb_candidate[1], rgb_candidate[2], alpha],
+                    [color[0], color[1], color[2], alpha],
                 )
-            } else {
+            }
+            PayloadColorModel::Hsv => {
+                let color = normalized_hsb(first_value, second_value, third_value);
                 (
                     ColorBinding::Hsb {
                         hue_point_index: first_point_index,
@@ -323,9 +323,10 @@ pub(super) fn apply_payload_color_bindings(
                         brightness_point_index: third_point_index,
                         alpha,
                     },
-                    [hsb_candidate[0], hsb_candidate[1], hsb_candidate[2], alpha],
+                    [color[0], color[1], color[2], alpha],
                 )
-            };
+            }
+        };
 
         if let Some(circle) = shapes.circles.get_mut(circle_index) {
             circle.fill_color = Some(resolved_fill);
@@ -407,10 +408,29 @@ fn resolve_payload_color_parameter_value(
     }
 }
 
-fn color_distance(expected: [u8; 3], candidate: [u8; 3]) -> u32 {
-    u32::from(expected[0].abs_diff(candidate[0]))
-        + u32::from(expected[1].abs_diff(candidate[1]))
-        + u32::from(expected[2].abs_diff(candidate[2]))
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PayloadColorModel {
+    Rgb,
+    Hsv,
+}
+
+const COLORIZED_RGB_OPCODE: u32 = 0x32;
+const COLORIZED_HSV_OPCODE: u32 = 0x42;
+
+fn decode_color_model(file: &GspFile, group: &ObjectGroup) -> Option<PayloadColorModel> {
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == RECORD_BINDING_PAYLOAD)?
+        .payload(&file.data);
+    if payload.len() < 8 || read_u32(payload, 0) != u32::from(GroupKind::DerivedSegment75.raw()) {
+        return None;
+    }
+    match read_u32(payload, 4) {
+        COLORIZED_RGB_OPCODE => Some(PayloadColorModel::Rgb),
+        COLORIZED_HSV_OPCODE => Some(PayloadColorModel::Hsv),
+        _ => None,
+    }
 }
 
 fn normalized_channel(value: f64) -> u8 {
@@ -452,4 +472,35 @@ pub(super) fn normalized_hsb(hue: f64, saturation: f64, brightness: f64) -> [u8;
         normalized_channel(green),
         normalized_channel(blue),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn color_model(path: &str, ordinal: usize) -> PayloadColorModel {
+        let data = std::fs::read(path).expect("color fixture");
+        let file = GspFile::parse(&data).expect("valid gsp fixture");
+        let group = file
+            .object_groups()
+            .into_iter()
+            .find(|group| group.ordinal == ordinal)
+            .expect("color binding group");
+        decode_color_model(&file, &group).expect("explicit color model opcode")
+    }
+
+    #[test]
+    fn decodes_rgb_and_hsv_from_payload_opcodes() {
+        assert_eq!(
+            color_model(
+                "tests/Samples/热研系列/迭代系列/m×n网络交错填充砌墙.gsp",
+                41,
+            ),
+            PayloadColorModel::Rgb,
+        );
+        assert_eq!(
+            color_model("tests/Samples/个人专栏/向忠作品/正二十面体.gsp", 333),
+            PayloadColorModel::Hsv,
+        );
+    }
 }

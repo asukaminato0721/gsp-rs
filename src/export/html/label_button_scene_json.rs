@@ -85,10 +85,10 @@ enum ButtonActionJson {
     AnimatePoint {
         #[serde(rename = "pointIndex")]
         point_index: usize,
+        animation: Option<PointAnimationJson>,
     },
     AnimatePoints {
-        #[serde(rename = "pointIndices")]
-        point_indices: Vec<usize>,
+        targets: Vec<AnimatedPointTargetJson>,
     },
     ScrollPoint {
         #[serde(rename = "pointIndex")]
@@ -115,6 +115,21 @@ enum ButtonActionJson {
 struct ButtonMoveTargetJson {
     point_index: usize,
     target_point_index: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+struct PointAnimationJson {
+    speed: u32,
+    direction: i32,
+    repeat: bool,
+}
+
+#[derive(Debug, Clone, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+struct AnimatedPointTargetJson {
+    point_index: usize,
+    animation: Option<PointAnimationJson>,
 }
 
 impl ButtonActionJson {
@@ -172,11 +187,32 @@ impl ButtonActionJson {
                 parameter_name: parameter_name.clone(),
                 target_value: *target_value,
             },
-            ButtonAction::AnimatePoint { point_index } => Self::AnimatePoint {
+            ButtonAction::AnimatePoint {
+                point_index,
+                animation,
+            } => Self::AnimatePoint {
                 point_index: *point_index,
+                animation: animation.as_ref().map(|animation| PointAnimationJson {
+                    speed: animation.speed,
+                    direction: animation.direction,
+                    repeat: animation.repeat,
+                }),
             },
-            ButtonAction::AnimatePoints { point_indices } => Self::AnimatePoints {
-                point_indices: point_indices.clone(),
+            ButtonAction::AnimatePoints { targets } => Self::AnimatePoints {
+                targets: targets
+                    .iter()
+                    .map(|target| AnimatedPointTargetJson {
+                        point_index: target.point_index,
+                        animation: target
+                            .animation
+                            .as_ref()
+                            .map(|animation| PointAnimationJson {
+                                speed: animation.speed,
+                                direction: animation.direction,
+                                repeat: animation.repeat,
+                            }),
+                    })
+                    .collect(),
             },
             ButtonAction::ScrollPoint { point_index } => Self::ScrollPoint {
                 point_index: *point_index,
@@ -340,12 +376,6 @@ impl LabelHotspotActionJson {
 enum LabelBindingJson {
     #[serde(rename = "parameter-value")]
     ParameterValue { name: String },
-    #[serde(rename = "function-label")]
-    FunctionLabel {
-        #[serde(rename = "functionKey")]
-        function_key: usize,
-        derivative: bool,
-    },
     #[serde(rename = "expression-value")]
     ExpressionValue {
         #[serde(rename = "parameterName")]
@@ -636,13 +666,6 @@ impl LabelBindingJson {
             TextLabelBinding::ParameterValue { name } => {
                 Self::ParameterValue { name: name.clone() }
             }
-            TextLabelBinding::FunctionLabel {
-                function_key,
-                derivative,
-            } => Self::FunctionLabel {
-                function_key: *function_key,
-                derivative: *derivative,
-            },
             TextLabelBinding::ExpressionValue {
                 parameter_name,
                 result_name,

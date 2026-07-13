@@ -125,26 +125,6 @@
   }
 
   
-  function labelMetrics(env: ViewerEnv, _text: string) {
-    return { lines: [], width: 0, height: env ? 0 : 0 };
-  }
-
-  
-  function labelBounds(_env: ViewerEnv, _label: RuntimeLabelJson) {
-    return null;
-  }
-
-  
-  function iterationTableBounds(_env: ViewerEnv, _table: RuntimeIterationTableJson) {
-    return null;
-  }
-
-  
-  function labelHotspotRects(_env: ViewerEnv, _label: RuntimeLabelJson) {
-    return [];
-  }
-
-  
   function findHitPoint(env: ViewerEnv, screenX: number, screenY: number) {
     let bestIndex = null;
     let bestDistanceSquared = env.pointHitRadius * env.pointHitRadius;
@@ -165,27 +145,6 @@
     });
     return bestIndex;
   }
-
-  
-  function findHitLabel() {
-    return null;
-  }
-
-  
-  function findHitIterationTable() {
-    return null;
-  }
-
-  
-  function findHitPolygon() {
-    return null;
-  }
-
-  
-  function drawImages(_env: ViewerEnv) {}
-
-  
-  function drawPolygons(_env: ViewerEnv) {}
 
   
   function drawLines(env: ViewerEnv) {
@@ -491,12 +450,6 @@
   }
 
   
-  function drawCircles(_env: ViewerEnv) {}
-
-  
-  function drawArcs(_env: ViewerEnv) {}
-
-  
   function drawPoints(env: ViewerEnv) {
     env.currentScene().points.forEach((point, index: number) => {
       if (point.visible === false) {
@@ -519,15 +472,6 @@
   }
 
   
-  function drawLabels(_env: ViewerEnv) {}
-
-  
-  function drawIterationTables(_env: ViewerEnv) {}
-
-  
-  function drawHotspotFlashes(_env: ViewerEnv) {}
-
-  
   function draw(env: ViewerEnv) {
     env.clearSvgChildren(env.sceneLayer);
     env.drawGrid();
@@ -543,27 +487,13 @@
   }
 
   modules.render = {
-    labelMetrics,
-    labelBounds,
-    iterationTableBounds,
-    labelHotspotRects,
     findHitPoint,
-    findHitLabel,
-    findHitIterationTable,
-    findHitPolygon,
-    drawImages,
-    drawPolygons,
     drawLines,
-    drawCircles,
-    drawArcs,
     drawPoints,
-    drawLabels,
-    drawIterationTables,
-    drawHotspotFlashes,
     draw,
     pathFromPoints,
     arcPath,
     appendSceneElement,
     appendPointPath,
-  };
+  } as ViewerRenderModule;
 })();

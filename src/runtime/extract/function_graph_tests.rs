@@ -146,7 +146,7 @@ fn preserves_parabola_locus_with_constructed_line_driver() {
         .count();
     assert!(
         spectrum_line_count >= 56,
-        "expected both Colorized_Spectrum derived segments to expand across N steps"
+        "expected both Colorized_Spectrum derived segments to expand across N steps; got {spectrum_line_count}"
     );
     assert!(
         scene.lines.iter().any(|line| {
@@ -558,13 +558,10 @@ fn yx2_axis_symmetry_honors_function_definition_visibility() {
     assert!(
         !scene.labels.iter().any(|label| {
             label.visible
-                && matches!(
-                    label.binding,
-                    Some(TextLabelBinding::FunctionLabel {
-                        function_key: 8,
-                        derivative: false
-                    })
-                )
+                && label
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == 8)
         }),
         "hidden plotted helper function #8 must not get a synthesized visible label"
     );

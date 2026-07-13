@@ -475,9 +475,9 @@ pub(super) fn bind_points_to_point_traces(
 pub(super) fn collect_colorized_spectrum_lines(
     file: &GspFile,
     groups: &[ObjectGroup],
+    raw_anchors: &[Option<PointRecord>],
     visible_points: &[ScenePoint],
     group_to_point_index: &[Option<usize>],
-    viewport_width: f64,
 ) -> Vec<LineShape> {
     let mut lines = Vec::new();
     let mut seen = BTreeSet::new();
@@ -600,7 +600,12 @@ pub(super) fn collect_colorized_spectrum_lines(
             .copied()
             .flatten()
             .and_then(|point_index| visible_points.get(point_index))
-            .map(|point| point.position.clone());
+            .map(|point| point.position.clone())
+            .or_else(|| {
+                raw_anchors
+                    .get(other_ordinal.saturating_sub(1))
+                    .and_then(Clone::clone)
+            });
         let reflected_endpoint = groups
             .get(other_ordinal.saturating_sub(1))
             .filter(|group| group.header.kind() == GroupKind::Reflection)
@@ -624,16 +629,8 @@ pub(super) fn collect_colorized_spectrum_lines(
             let Some(start) = interpolate_polyline(points, normalized) else {
                 continue;
             };
-            let end = if host_group.header.kind() == GroupKind::Ray {
-                PointRecord {
-                    x: viewport_width,
-                    y: start.y,
-                }
-            } else {
-                let Some(other) = other_point.clone() else {
-                    continue;
-                };
-                other
+            let Some(end) = other_point.clone() else {
+                continue;
             };
             let [red, green, blue] = normalized_hsb(step as f64 / depth as f64, 1.0, 1.0);
             lines.push(LineShape {

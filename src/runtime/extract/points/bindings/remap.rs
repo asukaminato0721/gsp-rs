@@ -236,7 +236,6 @@ pub(crate) fn remap_label_bindings(
         }
         let point_index = match binding {
             TextLabelBinding::ParameterValue { .. }
-            | TextLabelBinding::FunctionLabel { .. }
             | TextLabelBinding::ExpressionValue { .. }
             | TextLabelBinding::SequenceExpressionValue { .. }
             | TextLabelBinding::RichTextExpressionValues { .. } => continue,

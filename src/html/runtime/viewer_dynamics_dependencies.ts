@@ -444,8 +444,6 @@
         case "parameter-value":
           parameter(deps, value.name);
           break;
-        case "function-label":
-          break;
         case "expression-value":
           parameter(deps, value.parameterName);
           expr(deps, value.expr);

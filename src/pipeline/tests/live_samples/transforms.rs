@@ -166,12 +166,14 @@ fn exports_kaleidoscope_nested_reflected_polygons() {
         Some("animate-points"),
         "expected the .htm AnimateButton to keep all animated point refs"
     );
-    let animated_ordinals = button["action"]["pointIndices"]
+    let animated_ordinals = button["action"]["targets"]
         .as_array()
-        .expect("animate-points should carry point indices")
+        .expect("animate-points should carry target definitions")
         .iter()
-        .map(|index| {
-            let index = index.as_u64().expect("point index should be numeric") as usize;
+        .map(|target| {
+            let index = target["pointIndex"]
+                .as_u64()
+                .expect("point index should be numeric") as usize;
             scene["points"][index]["debug"]["groupOrdinal"]
                 .as_u64()
                 .expect("animated point should keep its payload ordinal")

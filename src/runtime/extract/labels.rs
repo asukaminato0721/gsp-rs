@@ -21,7 +21,7 @@ use crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT;
 use crate::runtime::extract::context::SceneContext;
 use crate::runtime::extract::iteration_depth::decode_iteration_depth_expr;
 use crate::runtime::functions::{
-    FunctionExpr, evaluate_expr_with_parameters, function_expr_label, synthesize_function_labels,
+    FunctionExpr, evaluate_expr_with_parameters, function_expr_label,
     synthesize_standalone_function_definition_labels, try_decode_function_expr,
 };
 use crate::runtime::geometry::{
@@ -117,15 +117,6 @@ pub(super) fn collect_scene_labels(
         groups,
         &analysis.raw_anchors,
     ));
-    if analysis.graph_mode && analysis.has_function_plots {
-        labels.extend(synthesize_function_labels(
-            file,
-            groups,
-            &analysis.function_plots,
-            analysis.saved_viewport,
-            &analysis.graph_ref,
-        ));
-    }
     labels.extend(synthesize_standalone_function_definition_labels(
         file, groups, &labels,
     ));

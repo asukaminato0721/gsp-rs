@@ -7,8 +7,7 @@ use super::decode::{
 use super::*;
 use crate::runtime::extract::points::decode_translated_point_constraint;
 use crate::runtime::functions::{
-    evaluate_expr_with_parameters, synthesize_function_axes, try_decode_function_expr,
-    try_decode_function_plot_descriptor,
+    evaluate_expr_with_parameters, try_decode_function_expr, try_decode_function_plot_descriptor,
 };
 use crate::runtime::geometry::{
     color_from_style, fill_color_from_styles, has_distinct_points, line_is_dashed,
@@ -191,7 +190,6 @@ pub(super) fn collect_scene_shapes(
     let arcs = collect_three_point_arc_shapes(file, groups, &analysis.raw_anchors);
     let iteration_lines = Vec::new();
     let iteration_polygons = Vec::new();
-    let synthetic_axes = synthesize_axes_if_needed(analysis, &axes);
     let carried_iteration_lines = collect_carried_iteration_lines(
         file,
         groups,
@@ -200,9 +198,8 @@ pub(super) fn collect_scene_shapes(
     );
 
     lines.shrink_to_fit();
-    let post_function_lines = synthetic_axes
+    let post_function_lines = iteration_lines
         .into_iter()
-        .chain(iteration_lines)
         .chain(carried_iteration_lines)
         .collect::<Vec<_>>();
     let polygons = base_polygons
@@ -279,18 +276,5 @@ pub(super) fn collect_scene_shapes(
         circles,
         arcs,
         post_function_lines,
-    }
-}
-
-fn synthesize_axes_if_needed(analysis: &SceneAnalysis, axes: &[LineShape]) -> Vec<LineShape> {
-    if analysis.graph_mode && analysis.has_function_plots && axes.is_empty() {
-        synthesize_function_axes(
-            &analysis.function_plots,
-            analysis.function_plot_domain,
-            analysis.saved_viewport,
-            &analysis.graph_ref,
-        )
-    } else {
-        Vec::new()
     }
 }

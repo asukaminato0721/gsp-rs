@@ -65,7 +65,7 @@ pub(crate) fn collect_scene_parameters(
             acc
         })
         .into_iter()
-        .filter_map(|(name, value)| {
+        .map(|(name, value)| {
             let label_index = labels.iter().position(|label| {
                 matches!(
                     label.binding.as_ref(),
@@ -73,14 +73,14 @@ pub(crate) fn collect_scene_parameters(
                         name: label_name,
                     }) if label_name == &name
                 )
-            })?;
-            Some(SceneParameter {
+            });
+            SceneParameter {
                 name,
                 value,
                 unit: None,
-                label_index: Some(label_index),
+                label_index,
                 visible: true,
-            })
+            }
         })
         .collect()
 }
@@ -124,13 +124,10 @@ pub(crate) fn collect_scene_functions(
                     source_name.clone()
                 };
                 let label_index = labels.iter().position(|label| {
-                    matches!(
-                        label.binding.as_ref(),
-                        Some(crate::runtime::scene::TextLabelBinding::FunctionLabel {
-                            function_key,
-                            derivative,
-                        }) if *function_key == *definition_ordinal && !derivative
-                    )
+                    label
+                        .debug
+                        .as_ref()
+                        .is_some_and(|debug| debug.group_ordinal == *definition_ordinal)
                 });
                 let constrained_point_indices = points
                     .iter()
@@ -181,13 +178,10 @@ pub(crate) fn collect_scene_functions(
                 );
                 let expr = try_decode_function_expr(file, groups, group).ok()?;
                 let label_index = labels.iter().position(|label| {
-                    matches!(
-                        label.binding.as_ref(),
-                        Some(crate::runtime::scene::TextLabelBinding::FunctionLabel {
-                            function_key,
-                            derivative,
-                        }) if *function_key == base_definition_ordinal && *derivative
-                    )
+                    label
+                        .debug
+                        .as_ref()
+                        .is_some_and(|debug| debug.group_ordinal == group.ordinal)
                 });
                 Some(SceneFunction {
                     key: base_definition_ordinal,

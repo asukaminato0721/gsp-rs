@@ -177,13 +177,6 @@ fn binary_precedence(op: BinaryOp) -> (u8, bool) {
     }
 }
 
-pub(crate) fn function_variable_symbol(mode: FunctionPlotMode) -> &'static str {
-    match mode {
-        FunctionPlotMode::Cartesian => "x",
-        FunctionPlotMode::Polar => "θ",
-    }
-}
-
 pub(super) fn function_expr_uses_trig(expr: FunctionExpr) -> bool {
     match expr {
         FunctionExpr::SinIdentity

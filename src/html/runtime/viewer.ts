@@ -1,13 +1,38 @@
 (() => {
   const van = window.van;
   const { label, input } = van.tags;
+  const viewerModules = window.GspViewerModules;
+  function requireModuleFunctions(moduleName: keyof ViewerModules, functionNames: string[]) {
+    const moduleValue = viewerModules?.[moduleName] as unknown as Record<string, unknown> | undefined;
+    if (!moduleValue) {
+      throw new Error(`viewer runtime module is missing: ${moduleName}`);
+    }
+    const missing = functionNames.filter((name) => typeof moduleValue[name] !== "function");
+    if (missing.length > 0) {
+      throw new Error(`viewer runtime module ${moduleName} is incomplete: ${missing.join(", ")}`);
+    }
+  }
+  requireModuleFunctions("scene", [
+    "resolveScenePoint", "resolvePoint", "resolveLinePoints", "drawGrid",
+    "sampleArcBoundaryPoints", "sampleCoordinateTracePoints",
+    "lineLineIntersection", "lineCircleIntersection", "circleCircleIntersection",
+  ]);
+  requireModuleFunctions("render", [
+    "draw", "drawImages", "drawPolygons", "drawCircles", "drawArcs", "drawLabels",
+    "drawIterationTables", "drawHotspotFlashes", "findHitLabel",
+    "findHitIterationTable", "findHitPolygon", "labelHotspotRects",
+  ]);
+  requireModuleFunctions("overlay", ["init"]);
+  requireModuleFunctions("drag", ["beginDrag"]);
+  requireModuleFunctions("dynamics", ["syncDynamicScene"]);
+  requireModuleFunctions("appDocument", ["readSceneData", "installPageNavigation"]);
   const {
     scene: sceneModule,
     render: renderModule,
     overlay: overlayModule,
     drag: dragModule,
     dynamics: dynamicsModule,
-  } = window.GspViewerModules as ViewerModules;
+  } = viewerModules as ViewerModules;
   const SVG_NS = "http://www.w3.org/2000/svg";
   const XLINK_NS = "http://www.w3.org/1999/xlink";
   const sceneDataElement = document.getElementById("scene-data");
@@ -83,7 +108,6 @@
     : rawBaseSpanY;
   const minZoom = 0.05;
   const pointHitRadius = 10;
-  const pointMatchTolerance = 1e-3;
   const autoOpenDebug = new URLSearchParams(window.location.search).get("debug") === "1";
   const defaultZoom = sourceScene.graphMode ? 1 : 0.9;
 
@@ -154,7 +178,6 @@
   const dragState = van?.state ? van.state(null) : { val: null };
 
   const hoverPointIndex = van?.state ? van.state(null) : { val: null };
-  const labelAttachDistance = 40;
 
   let overlayRuntime = {
     currentButtons() {
@@ -221,46 +244,6 @@
   }
 
 
-  function samePoint(left: Point, right: Point) {
-    return Math.abs(left.x - right.x) < pointMatchTolerance
-      && Math.abs(left.y - right.y) < pointMatchTolerance;
-  }
-
-
-  function resolveSourcePoint(index: number) {
-    const point = sourceScene.points[index];
-    if (!point) {
-      return { x: 0, y: 0 };
-    }
-    const resolved = sceneModule.resolveConstrainedPoint(
-      { sourceScene },
-      point.constraint,
-      resolveSourcePoint,
-    );
-    if (resolved) {
-      return resolved;
-    }
-    return { x: point.x, y: point.y };
-  }
-
-
-  function attachPointRef(point: Point) {
-    const pointIndex = sourceScene.points.findIndex((_candidate: ScenePointJson, index: number) => samePoint(resolveSourcePoint(index), point));
-    if (pointIndex >= 0) {
-      return { pointIndex };
-    }
-    return { x: point.x, y: point.y };
-  }
-
-
-  function resolveSourceHandle(handle: PointHandle) {
-    if (hasPointIndexHandle(handle)) {
-      return resolveSourcePoint(handle.pointIndex);
-    }
-    return  (handle);
-  }
-
-
   function distanceSquared(left: Point, right: Point) {
     const dx = left.x - right.x;
     const dy = left.y - right.y;
@@ -313,78 +296,29 @@
   }
 
 
-  function attachLabelAnchor(point: Point, hydratedLines: Array<{ points: PointHandle[] }>) {
-    let bestPointIndex = null;
-    let bestPointDistanceSquared = Number.POSITIVE_INFINITY;
-    sourceScene.points.forEach((_candidate: ScenePointJson, index: number) => {
-      const resolved = resolveSourcePoint(index);
-      const distSq = distanceSquared(resolved, point);
-      if (distSq < bestPointDistanceSquared) {
-        bestPointDistanceSquared = distSq;
-        bestPointIndex = index;
-      }
-    });
-    if (bestPointIndex !== null && bestPointDistanceSquared <= labelAttachDistance ** 2) {
-      const base = resolveSourcePoint(bestPointIndex);
-      return {
-        pointIndex: bestPointIndex,
-        dx: point.x - base.x,
-        dy: point.y - base.y,
-      };
-    }
-
-    let bestLineAnchor = null;
-    let bestLineDistanceSquared = Number.POSITIVE_INFINITY;
-    hydratedLines.forEach((line: { points: PointHandle[] }, lineIndex: number) => {
-      for (let segmentIndex = 0; segmentIndex < line.points.length - 1; segmentIndex += 1) {
-        const start = resolveSourceHandle(line.points[segmentIndex]);
-        const end = resolveSourceHandle(line.points[segmentIndex + 1]);
-        const midpoint = {
-          x: (start.x + end.x) / 2,
-          y: (start.y + end.y) / 2,
-        };
-        const distSq = distanceSquared(midpoint, point);
-        if (distSq < bestLineDistanceSquared) {
-          bestLineDistanceSquared = distSq;
-          bestLineAnchor = {
-            lineIndex,
-            segmentIndex,
-            t: 0.5,
-            dx: point.x - midpoint.x,
-            dy: point.y - midpoint.y,
-          };
-        }
-      }
-    });
-    if (bestLineAnchor && bestLineDistanceSquared <= labelAttachDistance ** 2) {
-      return bestLineAnchor;
-    }
-
-    return { x: point.x, y: point.y };
-  }
-
-
-  function attachPointCenteredLabelAnchor(label: { binding?: { kind?: string; pointIndex?: number; anchorDx?: number; anchorDy?: number } | null; anchor: Point }, hydratedLines: Array<{ points: PointHandle[] }>) {
-    if (typeof label.binding?.pointIndex === "number") {
+  function explicitLabelAnchor(label: LabelJson): RuntimePointRef {
+    if (
+      (label.binding?.kind === "point-anchor" || label.binding?.kind === "point-expression-value")
+      && typeof label.binding.pointIndex === "number"
+    ) {
       return {
         pointIndex: label.binding.pointIndex,
-        dx: label.binding.anchorDx || 0,
-        dy: label.binding.anchorDy || 0,
+        dx: label.binding.anchorDx,
+        dy: label.binding.anchorDy,
       };
     }
-    return attachLabelAnchor(label.anchor, hydratedLines);
+    return { ...label.anchor };
   }
 
 
-  function usesFixedLabelAnchor(label: { binding?: { kind?: string } | null }) {
-    return label.binding?.kind === "point-coordinate-value"
-      || label.binding?.kind === "point-axis-value"
-      || label.binding?.kind === "point-distance-value";
-  }
-
-
-  function hasPointIndexHandle(handle: PointHandle): handle is Extract<PointHandle, { pointIndex: number }> {
-    return !!handle && typeof handle === "object" && "pointIndex" in handle && typeof handle.pointIndex === "number";
+  function clonePointConstraint(constraint: PointConstraintJson): RuntimePointConstraintJson {
+    if (constraint.kind === "polyline") {
+      return {
+        ...constraint,
+        points: constraint.points.map((point: PointJson) => ({ ...point })),
+      };
+    }
+    return { ...constraint };
   }
 
 
@@ -394,7 +328,9 @@
       dashed: line.dashed,
       strokeWidth: line.strokeWidth,
       visible: line.visible !== false,
-      points: line.points.map(attachPointRef),
+      points: line.points.map((point: PointJson) => ({ ...point })),
+      segments: line.segments?.map((segment: PointJson[]) =>
+        segment.map((point: PointJson) => ({ ...point }))) ?? null,
       binding: line.binding ? { ...line.binding } : null,
       debug: clonePayloadDebug(line.debug),
     }));
@@ -416,23 +352,16 @@
         color: point.color,
         visible: point.visible !== false,
         draggable: point.draggable !== false,
-        constraint: point.constraint
-          ? {
-              ...point.constraint,
-              ...(point.constraint.kind === "polyline"
-                ? { points: point.constraint.points.map(attachPointRef) }
-                : null),
-            }
-          : null,
+        constraint: point.constraint ? clonePointConstraint(point.constraint) : null,
         binding: point.binding ? { ...point.binding } : null,
         debug: clonePayloadDebug(point.debug),
       })),
-      origin: scene.origin ? attachPointRef(scene.origin) : null,
+      origin: scene.origin ? { ...scene.origin } : null,
       lines: hydratedLines,
       polygons: scene.polygons.map((polygon: PolygonJson): RuntimePolygonJson => ({
         color: polygon.color,
         visible: polygon.visible !== false,
-        points: polygon.points.map(attachPointRef),
+        points: polygon.points.map((point: PointJson) => ({ ...point })),
         colorBinding: polygon.colorBinding ? { ...polygon.colorBinding } : null,
         binding: polygon.binding ? { ...polygon.binding } : null,
         debug: clonePayloadDebug(polygon.debug),
@@ -444,16 +373,16 @@
         fillColorBinding: circle.fillColorBinding ? { ...circle.fillColorBinding } : null,
         dashed: !!circle.dashed,
         visible: circle.visible !== false,
-        center: attachPointRef(circle.center),
-        radiusPoint: attachPointRef(circle.radiusPoint),
+        center: { ...circle.center },
+        radiusPoint: { ...circle.radiusPoint },
         binding: circle.binding ? { ...circle.binding } : null,
         debug: clonePayloadDebug(circle.debug),
       })),
       arcs: (scene.arcs || []).map((arc: ArcJson): RuntimeArcJson => ({
         color: arc.color,
         visible: arc.visible !== false,
-        points: arc.points.map(attachPointRef),
-        center: arc.center ? attachPointRef(arc.center) : null,
+        points: arc.points.map((point: PointJson) => ({ ...point })),
+        center: arc.center ? { ...arc.center } : null,
         counterclockwise: !!arc.counterclockwise,
         debug: clonePayloadDebug(arc.debug),
       })),
@@ -464,19 +393,7 @@
         fontSize: label.fontSize || null,
         fontFamily: label.fontFamily || null,
         visible: label.visible !== false,
-        anchor: label.screenSpace
-          ? { ...label.anchor }
-          : usesFixedLabelAnchor(label)
-            ? { ...label.anchor }
-          : label.binding?.kind === "point-anchor"
-            ? {
-                pointIndex: label.binding.pointIndex,
-                dx: label.binding.anchorDx,
-                dy: label.binding.anchorDy,
-              }
-          : label.binding?.kind === "point-expression-value"
-            ? attachPointCenteredLabelAnchor(label, hydratedLines)
-            : attachLabelAnchor(label.anchor, hydratedLines),
+        anchor: explicitLabelAnchor(label),
         binding: label.binding ? { ...label.binding } : null,
         screenSpace: !!label.screenSpace,
         centeredOnAnchor: false,

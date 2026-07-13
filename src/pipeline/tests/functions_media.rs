@@ -105,14 +105,7 @@ fn exports_music_fixture_function_with_payload_grouped_trig_argument() {
         Some("mul")
     );
 
-    let labels = scene["labels"]
-        .as_array()
-        .expect("scene labels should be an array");
-    assert!(
-        labels
-            .iter()
-            .any(|label| label["text"].as_str() == Some("f(x) = 5*sin(25*x)"))
-    );
+    assert_eq!(functions[0]["labelIndex"], serde_json::Value::Null);
 }
 
 #[test]

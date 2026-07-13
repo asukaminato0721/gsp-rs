@@ -338,12 +338,13 @@
             new Map<string, number>(parameters).set(family.traceParameterName, value),
           );
           const line: RuntimeLineJson = {
-
             points: [],
+            segments: null,
             color: family.color,
             dashed: !!family.dashed,
             strokeWidth: family.strokeWidth,
             visible: family.visible !== false,
+            debug: null,
             binding: {
               kind: "point-trace",
               pointIndex: family.pointIndex,
@@ -360,11 +361,13 @@
           }
           scene.lines.push({
             points: sampled,
+            segments: null,
             color: family.color,
             dashed: !!family.dashed,
             strokeWidth: family.strokeWidth,
             visible: family.visible !== false,
             binding: null,
+            debug: null,
           });
         });
         return;
@@ -393,11 +396,13 @@
         }
         segments.forEach(([childStart, childEnd]) => scene.lines.push({
           points: [childStart, childEnd],
+          segments: null,
           color: family.color,
           dashed: !!family.dashed,
           strokeWidth: family.strokeWidth,
           visible: family.visible !== false,
           binding: null,
+          debug: null,
         }));
         return;
       }
@@ -425,11 +430,13 @@
         segments.forEach(([currentStart, currentEnd]) => {
           scene.lines.push({
             points: [currentStart, currentEnd],
+            segments: null,
             color: family.color,
             dashed: !!family.dashed,
             strokeWidth: family.strokeWidth,
             visible: family.visible !== false,
             binding: null,
+            debug: null,
           });
         });
         return;
@@ -456,10 +463,12 @@
           const step = stepIndex + 1;
           scene.lines.push({
             points,
+            segments: null,
             color: family.color,
             dashed: !!family.dashed,
             strokeWidth: family.strokeWidth,
             visible: family.visible !== false,
+            debug: null,
             binding: {
               kind: "derived",
               sourceIndex: family.sourceIndex,
@@ -523,11 +532,13 @@
               { x: liveStart.x, y: liveStart.y },
               { x: liveEnd.x, y: liveEnd.y },
             ],
+            segments: null,
             color: family.color,
             dashed: !!family.dashed,
             strokeWidth: family.strokeWidth,
             visible: family.visible !== false,
             binding: null,
+            debug: null,
           });
           emittedControlledTickSeeds.add(seedKey);
         }
@@ -548,11 +559,13 @@
             { x: liveStart.x + dx, y: liveStart.y + dy },
             { x: liveEnd.x + dx, y: liveEnd.y + dy },
           ],
+          segments: null,
           color: family.color,
           dashed: !!family.dashed,
           strokeWidth: family.strokeWidth,
           visible: family.visible !== false,
           binding: null,
+          debug: null,
         });
       });
     });
@@ -631,8 +644,10 @@
               y: point.y - dy * family.yRawScale,
             })),
             color: familyColor,
+            colorBinding: null,
             visible: family.visible !== false,
             binding: null,
+            debug: null,
           });
         });
         return;
@@ -663,8 +678,10 @@
         scene.polygons.push({
           points: seedPoints.map((point) => ({ x: point.x + dx, y: point.y + dy })),
           color: familyColor,
+          colorBinding: null,
           visible: family.visible !== false,
           binding: null,
+          debug: null,
         });
       });
     });

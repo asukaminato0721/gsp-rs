@@ -94,57 +94,6 @@
   }
 
 
-  function resolveRightAngleMarkerPoints(vertex: Point, first: Point, second: Point, shortestLen: number) {
-    const side = Math.min(Math.max(shortestLen * 0.125, 10), 28, shortestLen * 0.5);
-    if (side <= 1e-9) return null;
-    return [
-      { x: vertex.x + first.x * side, y: vertex.y + first.y * side },
-      { x: vertex.x + (first.x + second.x) * side, y: vertex.y + (first.y + second.y) * side },
-      { x: vertex.x + second.x * side, y: vertex.y + second.y * side },
-    ];
-  }
-
-
-  function resolveArcAngleMarkerPoints(vertex: Point, first: Point, shortestLen: number, cross: number, dot: number, markerClass: number) {
-    const classScale = 1 + 0.18 * Math.max(0, (markerClass || 1) - 1);
-    const radius = Math.min(Math.max(shortestLen * 0.12, 10), 28) * classScale;
-    const clampedRadius = Math.min(radius, shortestLen * 0.42);
-    if (clampedRadius <= 1e-9) return null;
-    const delta = Math.atan2(cross, dot);
-    if (Math.abs(delta) <= 1e-6) return null;
-    const startAngle = Math.atan2(first.y, first.x);
-    const samples = 9;
-    return Array.from({ length: samples }, (_, index: number) => {
-      const t = index / (samples - 1);
-      const angle = startAngle + delta * t;
-      return {
-        x: vertex.x + clampedRadius * Math.cos(angle),
-        y: vertex.y + clampedRadius * Math.sin(angle),
-      };
-    });
-  }
-
-
-  function resolveAngleMarkerPoints(start: Point, vertex: Point, end: Point, markerClass: number) {
-    const firstDx = start.x - vertex.x;
-    const firstDy = start.y - vertex.y;
-    const secondDx = end.x - vertex.x;
-    const secondDy = end.y - vertex.y;
-    const firstLen = Math.hypot(firstDx, firstDy);
-    const secondLen = Math.hypot(secondDx, secondDy);
-    const shortestLen = Math.min(firstLen, secondLen);
-    if (firstLen <= 1e-9 || secondLen <= 1e-9 || shortestLen <= 1e-9) return null;
-    const first = { x: firstDx / firstLen, y: firstDy / firstLen };
-    const second = { x: secondDx / secondLen, y: secondDy / secondLen };
-    const dot = Math.max(-1, Math.min(1, first.x * second.x + first.y * second.y));
-    const cross = first.x * second.y - first.y * second.x;
-    if (Math.abs(dot) <= 0.12) {
-      return resolveRightAngleMarkerPoints(vertex, first, second, shortestLen);
-    }
-    return resolveArcAngleMarkerPoints(vertex, first, shortestLen, cross, dot, markerClass);
-  }
-
-
   const { evaluateExpr, formatExpr, exprContainsPiAngle } = modules.dynamicsExpression;
   const {
     deriveExpressionLabelParameters,
@@ -1526,7 +1475,7 @@
       const vertex = scene.points[line.binding.vertexIndex];
       const end = scene.points[line.binding.endIndex];
       const points = start && vertex && end
-        ? resolveAngleMarkerPoints(start, vertex, end, line.binding.markerClass)
+        ? modules.scene.resolveAngleMarkerPoints(start, vertex, end, line.binding.markerClass)
         : null;
       if (points) {
         line.points = points;
@@ -1599,6 +1548,7 @@
       if (clipped) line.points = clipped;
     },
     "arc-boundary"({ env }: LineBindingRefreshContext, line: RuntimeLineJson) {
+      if (line.binding?.kind !== "arc-boundary") return;
       const sampled = modules.scene.sampleArcBoundaryPoints(env, line.binding);
       if (sampled) {
         line.points = sampled;
@@ -1712,6 +1662,7 @@
       }
     },
     "arc-boundary-polygon"({ env }: PolygonBindingRefreshContext, polygon: RuntimePolygonJson) {
+      if (polygon.binding?.kind !== "arc-boundary-polygon") return;
       const sampled = modules.scene.sampleArcBoundaryPoints(env, polygon.binding);
       if (sampled) {
         polygon.points = sampled;
@@ -1848,6 +1799,7 @@
             dashed: source.dashed,
             visible: family.visible !== false,
             binding: null,
+            debug: null,
           });
         }
       });

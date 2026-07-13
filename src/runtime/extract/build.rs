@@ -386,9 +386,9 @@ fn collect_visible_points_and_traces(
     shapes.trace_lines.extend(collect_colorized_spectrum_lines(
         file,
         groups,
+        &analysis.raw_anchors,
         &visible_points,
         &group_to_point_index,
-        800.0,
     ));
     Ok((visible_points, group_to_point_index))
 }

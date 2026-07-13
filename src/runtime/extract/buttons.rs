@@ -2,7 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_u16, read_u32};
 use crate::runtime::functions::evaluate_function_group_with_overrides;
-use crate::runtime::scene::{ButtonAction, MovePointTarget, SceneButton, ScreenPoint, ScreenRect};
+use crate::runtime::scene::{
+    AnimatedPointTarget, ButtonAction, MovePointTarget, SceneButton, ScreenPoint, ScreenRect,
+};
 
 use super::points::editable_non_graph_parameter_name_for_group;
 use super::{
@@ -318,6 +320,7 @@ pub(super) fn collect_buttons(
                         .get(point_group_ordinal.checked_sub(1)?)
                         .copied()
                         .flatten()?,
+                    animation: None,
                 },
                 RawButtonAction::AnimatePoints {
                     point_group_ordinals,
@@ -335,7 +338,15 @@ pub(super) fn collect_buttons(
                     if point_indices.is_empty() {
                         return None;
                     }
-                    ButtonAction::AnimatePoints { point_indices }
+                    ButtonAction::AnimatePoints {
+                        targets: point_indices
+                            .into_iter()
+                            .map(|point_index| AnimatedPointTarget {
+                                point_index,
+                                animation: None,
+                            })
+                            .collect(),
+                    }
                 }
                 RawButtonAction::ScrollPoint {
                     point_group_ordinal,

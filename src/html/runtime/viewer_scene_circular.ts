@@ -5,7 +5,12 @@
   const scene = modules.scene;
 
   
-  function sampleArcBoundaryPoints(env: ViewerEnv, binding: RuntimeLineBindingJson | RuntimeShapeBindingJson | RuntimePointConstraintJson) {
+  function sampleArcBoundaryPoints(
+    env: ViewerEnv,
+    binding:
+      | Extract<RuntimeLineBindingJson, { kind: "arc-boundary" }>
+      | Extract<RuntimeShapeBindingJson, { kind: "arc-boundary-polygon" }>,
+  ) {
     const steps = 48;
     if (typeof binding.startIndex !== "number" || typeof binding.endIndex !== "number") return null;
     const start = scene.resolveScenePoint(env, binding.startIndex);

@@ -8,8 +8,8 @@ fn exports_polar_function_fixture_into_html() {
     );
 
     assert!(html.contains("\"plotMode\":\"polar\""));
-    assert!(html.contains("\"text\":\"r = 1 + cos(θ)\""));
     assert!(html.contains("\"name\":\"g\""));
+    assert!(!html.contains("\"text\":\"r = 1 + cos(θ)\""));
     assert!(html.contains("\"x\":-0.24999414519673077"));
 }
 
@@ -36,8 +36,7 @@ fn exports_parameterized_function_fixture_with_unique_parameters() {
     assert!(
         parameters
             .iter()
-            .all(|parameter| parameter["labelIndex"].as_u64().is_some()),
-        "graph parameters should keep label bindings for interactive updates"
+            .all(|parameter| parameter["labelIndex"].is_null())
     );
 
     let functions = scene["functions"]
@@ -46,10 +45,7 @@ fn exports_parameterized_function_fixture_with_unique_parameters() {
     assert_eq!(functions.len(), 1);
     assert_eq!(functions[0]["name"].as_str(), Some("f"));
     assert_eq!(functions[0]["lineIndex"].as_u64(), Some(3));
-    assert_eq!(
-        scene["labels"][3]["text"].as_str(),
-        Some("f(x) = a*x^2 + b*x + c")
-    );
+    assert!(scene["labels"].as_array().is_some_and(Vec::is_empty));
     assert_eq!(
         functions[0]["expr"]["expr"]["kind"].as_str(),
         Some("binary")

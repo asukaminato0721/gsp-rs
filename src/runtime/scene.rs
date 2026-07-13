@@ -92,9 +92,10 @@ pub(crate) enum ButtonAction {
     },
     AnimatePoint {
         point_index: usize,
+        animation: Option<PointAnimation>,
     },
     AnimatePoints {
-        point_indices: Vec<usize>,
+        targets: Vec<AnimatedPointTarget>,
     },
     ScrollPoint {
         point_index: usize,
@@ -109,6 +110,19 @@ pub(crate) enum ButtonAction {
         button_indices: Vec<usize>,
         interval_ms: u32,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PointAnimation {
+    pub(crate) speed: u32,
+    pub(crate) direction: i32,
+    pub(crate) repeat: bool,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct AnimatedPointTarget {
+    pub(crate) point_index: usize,
+    pub(crate) animation: Option<PointAnimation>,
 }
 
 #[derive(Debug, Clone)]
@@ -1122,10 +1136,6 @@ pub(crate) enum RichTextExpressionValue {
 pub(crate) enum TextLabelBinding {
     ParameterValue {
         name: String,
-    },
-    FunctionLabel {
-        function_key: usize,
-        derivative: bool,
     },
     ExpressionValue {
         parameter_name: String,

@@ -87,7 +87,7 @@
   
   function isPolylineConstraint(
     constraint: RuntimeScenePointJson["constraint"],
-  ): constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "polyline" }> {
+  ): constraint is StrictUnion<RuntimePolylineConstraintJson> {
     return !!constraint && constraint.kind === "polyline";
   }
 
@@ -231,20 +231,18 @@
     polyline(env: ViewerEnv, _draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
       const constraint = point.constraint;
       if (!isPolylineConstraint(constraint)) return;
-      const points = typeof constraint.functionKey === "number"
-        ? modules.scene.resolveLinePoints(
-            env,
-            env.currentScene().lines.find((line: RuntimeLineJson) =>
-              line?.binding?.kind === "arc-boundary" && line.binding.hostKey === constraint.functionKey
-              || line?.debug?.groupOrdinal === constraint.functionKey
-                && (
-                  line?.binding?.kind === "point-trace"
-                  || line?.binding?.kind === "coordinate-trace"
-                  || line?.binding?.kind === "custom-transform-trace"
-                )
-            ),
-          ) || constraint.points
-        : constraint.points;
+      const points = modules.scene.resolveLinePoints(
+        env,
+        env.currentScene().lines.find((line: RuntimeLineJson) =>
+          line?.binding?.kind === "arc-boundary" && line.binding.hostKey === constraint.functionKey
+          || line?.debug?.groupOrdinal === constraint.functionKey
+            && (
+              line?.binding?.kind === "point-trace"
+              || line?.binding?.kind === "coordinate-trace"
+              || line?.binding?.kind === "custom-transform-trace"
+            )
+        ),
+      ) || constraint.points;
       const count = points.length;
       let bestSegmentIndex = constraint.segmentIndex;
       let bestT = constraint.t;

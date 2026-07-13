@@ -35,6 +35,8 @@ type LabelHotspotJson = import("./generated/LabelHotspotJson").LabelHotspotJson;
 type LabelHotspotActionJson = import("./generated/LabelHotspotActionJson").LabelHotspotActionJson;
 type ButtonJson = import("./generated/ButtonJson").ButtonJson;
 type ButtonActionJson = import("./generated/ButtonActionJson").ButtonActionJson;
+type PointAnimationJson = import("./generated/PointAnimationJson").PointAnimationJson;
+type AnimatedPointTargetJson = import("./generated/AnimatedPointTargetJson").AnimatedPointTargetJson;
 type ImageJson = import("./generated/ImageJson").ImageJson;
 type IterationTableJson = import("./generated/IterationTableJson").IterationTableJson;
 type ParameterJson = import("./generated/ParameterJson").ParameterJson;
@@ -68,13 +70,7 @@ type HostLineBinding = {
   lineIndex?: number | null;
 };
 type VisibilityTarget =
-  | RuntimeButtonJson
-  | RuntimeLabelJson
-  | ImageJson
-  | RuntimeScenePointJson
-  | RuntimeLineJson
-  | RuntimeCircleJson
-  | RuntimePolygonJson;
+  { visible: boolean };
 
 type RuntimePointRef =
   | Point
@@ -98,140 +94,26 @@ type RuntimePointRef =
 
 type PointHandle = RuntimePointRef;
 
-type RuntimePointBindingJson = (PointBindingJson | {
+type UnionKeys<T> = T extends unknown ? keyof T : never;
+type StrictUnion<T, All = T> = T extends unknown
+  ? T & Partial<Record<Exclude<UnionKeys<All>, keyof T>, never>>
+  : never;
+
+type RuntimePointBindingJson = StrictUnion<PointBindingJson | {
   kind: "rotate";
   sourceIndex: number;
   centerIndex: number;
   angleDegrees: number;
-}) & {
-  angleExpr?: FunctionExprJson;
-  angleDegreesScale?: number;
-  absoluteValue?: boolean;
-  axis?: CoordinateAxisJson;
-  axisEndIndex?: number;
-  clampToUnit?: boolean;
-  centerIndex?: number;
-  distanceRawScale?: number;
-  distanceExpr?: FunctionExprJson;
-  expr?: FunctionExprJson;
-  name?: string;
-  originIndex?: number;
-  parameterEndIndex?: number | null;
-  parameterName?: string;
-  parameterStartIndex?: number | null;
-  ratioDenominatorIndex?: number;
-  ratioNumeratorIndex?: number;
-  ratioOriginIndex?: number;
-  signed?: boolean;
-  sourceIndex?: number;
-  startIndex?: number;
-  midIndex?: number | null;
-  endIndex?: number;
-  transform?: PointTransformJson;
-  xExpr?: FunctionExprJson;
-  xName?: string;
-  xScale?: number;
-  yExpr?: FunctionExprJson;
-  yName?: string;
-  yScale?: number;
-};
+}>;
 
-type RuntimeLabelBindingJson = LabelBindingJson & {
-  depth?: number;
-  depthParameterName?: string | null;
-  expr?: FunctionExprJson;
-  exprLabel?: string;
-  name?: string;
-  parameterName?: string;
-  pointIndex?: number;
-  pointName?: string;
-  resultName?: string | null;
-  anchorDx?: number;
-  anchorDy?: number;
-  anchorYDy?: number | null;
-  anchorYPointIndex?: number | null;
-  axis?: CoordinateAxisJson;
-  circleName?: string;
-  clampToUnit?: boolean;
-  decimals?: number;
-  denominatorIndex?: number;
-  endIndex?: number;
-  leftIndex?: number;
-  numeratorIndex?: number;
-  objectName?: string;
-  originIndex?: number | null;
-  pointIndices?: number[];
-  polygonName?: string;
-  refs?: RichTextExpressionRefJson[];
-  rightIndex?: number;
-  segmentName?: string;
-  startIndex?: number;
-  templateRichMarkup?: string | null;
-  templateText?: string;
-  valueScale?: number;
-  valueSuffix?: string;
-  vertexIndex?: number;
-  xUnitIndex?: number | null;
-  yUnitIndex?: number | null;
-};
+type RuntimeLabelBindingJson = StrictUnion<LabelBindingJson>;
 
-type RuntimeLineBindingJson = LineBindingJson & {
-  boundaryKind?: ArcBoundaryKind;
-  complement?: boolean;
-  centerIndex?: number | null;
-  depth?: number;
-  depthParameterName?: string | null;
-  driverIndex?: number;
-  endIndex?: number;
-  hostKey?: number;
-  lineEndIndex?: number | null;
-  lineIndex?: number | null;
-  lineStartIndex?: number | null;
-  markerClass?: number;
-  midIndex?: number | null;
-  parameterName?: string;
-  pointIndex?: number;
-  ray?: boolean;
-  reflectionAxisLineIndex?: number | null;
-  reflectionDirectrixLineIndex?: number | null;
-  reflectionFocusIndex?: number | null;
-  reflectionSourceIndex?: number | null;
-  reversed?: boolean;
-  sampleCount?: number;
-  sourceIndex?: number;
-  startIndex?: number;
-  stepIndex?: number;
-  throughIndex?: number;
-  traceEndpointIndex?: number;
-  traceLineIndex?: number;
-  transform?: TransformJson;
-  useMidpoints?: boolean;
-  vertexIndex?: number;
-  xExpr?: FunctionExprJson;
-  xMax?: number;
-  xMin?: number;
-  yExpr?: FunctionExprJson;
-};
+type RuntimeLineBindingJson = StrictUnion<
+  | Exclude<LineBindingJson, { kind: "point-trace" }>
+  | (Extract<LineBindingJson, { kind: "point-trace" }> & { useMidpoints?: boolean })
+>;
 
-type RuntimeShapeBindingJson = ShapeBindingJson & {
-  boundaryKind?: ArcBoundaryKind;
-  complement?: boolean;
-  centerIndex?: number | null;
-  endIndex?: number;
-  expr?: FunctionExprJson;
-  hostKey?: number;
-  lineEndIndex?: number;
-  lineStartIndex?: number;
-  midIndex?: number | null;
-  parameterName?: string;
-  radiusIndex?: number;
-  rawPerUnit?: number;
-  reversed?: boolean;
-  startIndex?: number;
-  vertexIndices?: number[];
-  sourceIndex?: number;
-  transform?: TransformJson;
-};
+type RuntimeShapeBindingJson = StrictUnion<ShapeBindingJson>;
 
 type RuntimePolylineConstraintJson = Omit<
   Extract<PointConstraintJson, { kind: "polyline" }>,
@@ -239,73 +121,40 @@ type RuntimePolylineConstraintJson = Omit<
 > & {
   points: PointHandle[];
 };
-type RuntimePointConstraintJson = (
+type RuntimePointConstraintJson = StrictUnion<
   | Exclude<PointConstraintJson, { kind: "polyline" }>
   | RuntimePolylineConstraintJson
-) & {
-  t?: number;
-  points?: PointHandle[];
-  line?: LineConstraintJson;
-  circle?: CircularConstraintJson;
-  left?: LineConstraintJson | CircularConstraintJson;
-  right?: LineConstraintJson | CircularConstraintJson;
-  vertexIndices?: number[];
-  edgeIndex?: number;
-  unitX?: number;
-  unitY?: number;
-  functionKey?: number;
-  pointIndex?: number;
-  sampleCount?: number;
-  startIndex?: number;
-  endIndex?: number;
-  midIndex?: number | null;
-  centerIndex?: number | null;
-  boundaryKind?: ArcBoundaryKind;
-  reversed?: boolean;
-  complement?: boolean;
-  xMin?: number;
-  xMax?: number;
+>;
+type RuntimeScenePointJson = Omit<ScenePointJson, "constraint" | "binding"> & {
+  constraint: RuntimePointConstraintJson | null;
+  binding: RuntimePointBindingJson | null;
 };
-type RuntimeScenePointJson = Omit<ScenePointJson, "constraint" | "binding" | "debug"> & {
-  constraint?: RuntimePointConstraintJson | null;
-  binding?: RuntimePointBindingJson | null;
-  debug?: DebugSourceJson | null;
-};
-type RuntimeLineJson = Partial<Omit<LineJson, "points" | "binding" | "debug" | "color">> & {
+type RuntimeLineJson = Omit<LineJson, "points" | "segments" | "binding"> & {
   points: PointHandle[];
-  color?: [number, number, number, number] | number[];
-  binding?: RuntimeLineBindingJson | null;
-  segments?: Point[][];
-  debug?: DebugSourceJson | null;
+  segments: Point[][] | null;
+  binding: RuntimeLineBindingJson | null;
 };
-type RuntimePolygonJson = Partial<Omit<PolygonJson, "points" | "binding" | "debug" | "color">> & {
+type RuntimePolygonJson = Omit<PolygonJson, "points" | "binding"> & {
   points: PointHandle[];
-  color?: [number, number, number, number] | number[];
-  binding?: RuntimeShapeBindingJson | null;
-  debug?: DebugSourceJson | null;
+  binding: RuntimeShapeBindingJson | null;
 };
-type RuntimeCircleJson = Partial<Omit<CircleJson, "center" | "radiusPoint" | "binding" | "debug" | "color" | "fillColor">> & {
-  center?: PointHandle;
-  radiusPoint?: PointHandle;
-  color?: [number, number, number, number] | number[];
-  fillColor?: [number, number, number, number] | number[] | null;
-  binding?: RuntimeShapeBindingJson | null;
-  debug?: DebugSourceJson | null;
+type RuntimeCircleJson = Omit<CircleJson, "center" | "radiusPoint" | "binding"> & {
+  center: PointHandle;
+  radiusPoint: PointHandle;
+  binding: RuntimeShapeBindingJson | null;
 };
-type RuntimeArcJson = Partial<Omit<ArcJson, "points" | "center" | "debug">> & {
+type RuntimeArcJson = Omit<ArcJson, "points" | "center"> & {
   points: PointHandle[];
-  center?: PointHandle | null;
-  debug?: DebugSourceJson | null;
+  center: PointHandle | null;
 };
 type RuntimeLabelHotspotJson = Omit<LabelHotspotJson, "action"> & {
   action: LabelHotspotActionJson;
 };
-type RuntimeLabelJson = Partial<Omit<LabelJson, "anchor" | "binding" | "hotspots" | "debug">> & {
-  anchor?: PointHandle;
-  binding?: RuntimeLabelBindingJson | null;
-  centeredOnAnchor?: boolean;
-  hotspots?: RuntimeLabelHotspotJson[];
-  debug?: DebugSourceJson | null;
+type RuntimeLabelJson = Omit<LabelJson, "anchor" | "binding" | "hotspots"> & {
+  anchor: PointHandle;
+  binding: RuntimeLabelBindingJson | null;
+  centeredOnAnchor: boolean;
+  hotspots: RuntimeLabelHotspotJson[];
 };
 type TextLabel = RuntimeLabelJson;
 
@@ -315,13 +164,12 @@ type RuntimeIterationRow = {
   values: number[];
 };
 
-type RuntimeIterationTableJson = Partial<IterationTableJson> & {
-  rows?: RuntimeIterationRow[];
+type RuntimeIterationTableJson = IterationTableJson & {
+  rows: RuntimeIterationRow[];
 };
-type RuntimeButtonJson = Partial<ButtonJson> & {
-  baseText?: string;
-  visible?: boolean;
-  active?: boolean;
+type RuntimeButtonJson = ButtonJson & {
+  baseText: string;
+  active: boolean;
 };
 
 type DebugTarget = {
@@ -524,6 +372,12 @@ type ViewerEnv = {
 };
 
 type ViewerSceneModule = {
+  resolveAngleMarkerPoints: (
+    start: Point,
+    vertex: Point,
+    end: Point,
+    markerClass: number,
+  ) => Point[] | null;
   registerPointConstraintResolver: <K extends RuntimePointConstraintJson["kind"]>(
     kind: K,
     resolver: (
@@ -581,7 +435,9 @@ type ViewerSceneModule = {
   ) => { t: number; projected: Point; distanceSquared: number } | null;
   sampleArcBoundaryPoints: (
     env: ViewerEnv,
-    binding: RuntimeLineBindingJson | RuntimeShapeBindingJson,
+    binding:
+      | Extract<RuntimeLineBindingJson, { kind: "arc-boundary" }>
+      | Extract<RuntimeShapeBindingJson, { kind: "arc-boundary-polygon" }>,
   ) => Point[] | null;
   sampleCoordinateTracePoints: (
     env: ViewerEnv | null,

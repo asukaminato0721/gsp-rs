@@ -16,10 +16,7 @@ pub(crate) use expr::{
     function_expr_ast, function_expr_contains_variable, function_expr_label,
     function_expr_label_with_variable,
 };
-pub(crate) use plot::{
-    collect_function_plot_domain, collect_function_plots, sample_plot_segments,
-    synthesize_function_axes, synthesize_function_labels,
-};
+pub(crate) use plot::{collect_function_plot_domain, collect_function_plots, sample_plot_segments};
 pub(crate) use scene::{
     collect_scene_functions, collect_scene_parameters, collect_standalone_function_definitions,
     function_uses_pi_scale, synthesize_standalone_function_definition_labels,

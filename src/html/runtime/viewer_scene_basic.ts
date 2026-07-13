@@ -799,30 +799,6 @@
   }
 
   
-  function sampleArcBoundaryPoints() {
-    return null;
-  }
-
-  
-  function sampleCoordinateTracePoints() {
-    return null;
-  }
-
-  
-  function lineLineIntersection() {
-    return null;
-  }
-
-  
-  function lineCircleIntersection() {
-    return null;
-  }
-
-  
-  function circleCircleIntersection() {
-    return null;
-  }
-
   modules.scene = {
     registerPointConstraintResolver,
     registerLineBindingResolver,
@@ -848,11 +824,7 @@
     projectToCircleArc,
     pointOnThreePointArc,
     projectToThreePointArc,
-    sampleArcBoundaryPoints,
-    sampleCoordinateTracePoints,
-    lineLineIntersection,
-    lineCircleIntersection,
-    circleCircleIntersection,
+    resolveAngleMarkerPoints,
     drawGrid,
-  };
+  } as unknown as ViewerSceneModule;
 })();

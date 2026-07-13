@@ -284,7 +284,7 @@
       
       let buttonPointerState = null;
 
-      
+
       function updateButtons(mutator: (buttons: RuntimeButtonJson[]) => void) {
         const next = buttonsState.val.slice();
         mutator(next);
@@ -718,7 +718,12 @@
       }
 
       
-      function toggleAnimatedPoint(buttonIndex: number, pointIndex: number, mode: "move" | "animate" | "scroll", targetPointIndex: number | null = null) {
+      function toggleAnimatedPoint(
+        buttonIndex: number,
+        pointIndex: number,
+        mode: "animate" | "scroll",
+        animation: PointAnimationJson | null = null,
+      ) {
         if (buttonsState.val[buttonIndex]?.active) {
           stopButtonAnimation(buttonIndex);
           return;
@@ -728,25 +733,19 @@
         if (!point) {
           return;
         }
-        const base = { x: point.x, y: point.y };
+        if (mode === "animate" && !animation) {
+          return;
+        }
         let initialDirection = 1;
         if (point.constraint?.kind === "segment") {
-          if (targetPointIndex === point.constraint.startIndex) {
-            initialDirection = -1;
-          } else if (targetPointIndex === point.constraint.endIndex) {
-            initialDirection = 1;
-          } else {
-            initialDirection = point.constraint.t < 0.5 ? 1 : -1;
-          }
+          initialDirection = point.constraint.t < 0.5 ? 1 : -1;
+        }
+        if (animation?.direction === 1) {
+          initialDirection *= -1;
         }
         const state = {
           stop: false,
           direction: initialDirection,
-          t: 0,
-          vx: (Math.random() - 0.5) * 0.003,
-          vy: (Math.random() - 0.5) * 0.003,
-          nextTurnAt: 500 + Math.random() * 700,
-          elapsedMs: 0,
           rafId: 0,
         };
         buttonAnimations.set(buttonIndex, state);
@@ -780,8 +779,8 @@
               ? modules.dynamics.parameterValueFromPoint(draft, pointIndex)
               : null;
             if (parameterized !== null && draftPoint.constraint) {
-              const durationMs = mode === "scroll" ? 16000 : 12000;
-              const delta = dt / durationMs;
+              const speed = mode === "scroll" ? 0.75 : animation!.speed;
+              const delta = dt * speed / 12000;
               if (mode === "scroll") {
                 modules.dynamics.applyNormalizedParameterToPoint(
                   draftPoint,
@@ -792,62 +791,23 @@
                 let next = parameterized + delta * state.direction;
                 if (next >= 1) {
                   next = 1;
-                  state.direction = -1;
+                  if (animation!.repeat) {
+                    state.direction = -1;
+                  } else {
+                    state.stop = true;
+                  }
                 } else if (next <= 0) {
                   next = 0;
-                  state.direction = 1;
+                  if (animation!.repeat) {
+                    state.direction = 1;
+                  } else {
+                    state.stop = true;
+                  }
                 }
                 modules.dynamics.applyNormalizedParameterToPoint(draftPoint, draft, next);
               }
-            } else if (mode === "move" && typeof targetPointIndex === "number") {
-              const target = draft.points[targetPointIndex];
-              if (!target) {
-                state.stop = true;
-                return;
-              }
-              const durationMs = 700;
-              state.t = Math.min(1, state.t + dt / durationMs);
-              draftPoint.x = base.x + (target.x - base.x) * state.t;
-              draftPoint.y = base.y + (target.y - base.y) * state.t;
-              if (state.t >= 1) {
-                state.stop = true;
-              }
-            } else if (mode === "scroll") {
-              state.t += dt * 0.004;
-              draftPoint.x = base.x + Math.sin(state.t) * 36;
             } else {
-              state.elapsedMs += dt;
-              if (state.elapsedMs >= state.nextTurnAt) {
-                state.elapsedMs = 0;
-                state.nextTurnAt = 500 + Math.random() * 700;
-                state.vx += (Math.random() - 0.5) * 0.0016;
-                state.vy += (Math.random() - 0.5) * 0.0016;
-              }
-              state.vx += (base.x - draftPoint.x) * 0.00008;
-              state.vy += (base.y - draftPoint.y) * 0.00008;
-              const speed = Math.hypot(state.vx, state.vy);
-              if (speed > 0.005) {
-                state.vx = (state.vx / speed) * 0.005;
-                state.vy = (state.vy / speed) * 0.005;
-              } else if (speed < 0.0008) {
-                const angle = Math.random() * Math.PI * 2;
-                state.vx = Math.cos(angle) * 0.0015;
-                state.vy = Math.sin(angle) * 0.0015;
-              }
-
-              draftPoint.x += state.vx * dt;
-              draftPoint.y += state.vy * dt;
-
-              const maxDx = 0.8;
-              const maxDy = 0.6;
-              if (draftPoint.x < base.x - maxDx || draftPoint.x > base.x + maxDx) {
-                state.vx *= -0.7;
-                draftPoint.x = Math.max(base.x - maxDx, Math.min(base.x + maxDx, draftPoint.x));
-              }
-              if (draftPoint.y < base.y - maxDy || draftPoint.y > base.y + maxDy) {
-                state.vy *= -0.7;
-                draftPoint.y = Math.max(base.y - maxDy, Math.min(base.y + maxDy, draftPoint.y));
-              }
+              state.stop = true;
             }
           }, "graph");
           if (state.stop) {
@@ -860,23 +820,31 @@
       }
 
       
-      function toggleAnimatedPoints(buttonIndex: number, pointIndices: Array<number>) {
+      function toggleAnimatedPoints(buttonIndex: number, targets: AnimatedPointTargetJson[]) {
         if (buttonsState.val[buttonIndex]?.active) {
           stopButtonAnimation(buttonIndex);
           return;
         }
         const scene = env.currentScene();
-        const points = pointIndices
-          .map((pointIndex: number) => {
-            const point = scene.points[pointIndex];
-            if (!point) {
+        const points = targets
+          .map((target) => {
+            const point = scene.points[target.pointIndex];
+            if (!point || !target.animation) {
               return null;
             }
             let direction = 1;
             if (point.constraint?.kind === "segment") {
               direction = point.constraint.t < 0.5 ? 1 : -1;
             }
-            return { pointIndex, direction };
+            if (target.animation.direction === 1) {
+              direction *= -1;
+            }
+            return {
+              pointIndex: target.pointIndex,
+              direction,
+              animation: target.animation,
+              finished: false,
+            };
           })
           .filter((point) => !!point);
         if (points.length === 0) {
@@ -908,99 +876,34 @@
             });
           }
           env.updateScene((draft: ViewerSceneData) => {
-            const delta = dt / 12000;
             points.forEach((point) => {
+              if (point.finished) return;
               const draftPoint = draft.points[point.pointIndex];
               if (!draftPoint?.constraint) {
+                point.finished = true;
                 return;
               }
               const parameterized = modules.dynamics.parameterValueFromPoint
                 ? modules.dynamics.parameterValueFromPoint(draft, point.pointIndex)
                 : null;
               if (parameterized === null) {
+                point.finished = true;
                 return;
               }
+              const delta = dt * point.animation.speed / 12000;
               let next = parameterized + delta * point.direction;
               if (next >= 1) {
                 next = 1;
-                point.direction = -1;
+                if (point.animation.repeat) point.direction = -1;
+                else point.finished = true;
               } else if (next <= 0) {
                 next = 0;
-                point.direction = 1;
+                if (point.animation.repeat) point.direction = 1;
+                else point.finished = true;
               }
               modules.dynamics.applyNormalizedParameterToPoint(draftPoint, draft, next);
             });
-          }, "graph");
-          state.rafId = window.requestAnimationFrame(step);
-        };
-        state.rafId = window.requestAnimationFrame(step);
-      }
-
-      
-      function toggleMovedPoints(buttonIndex: number, targets: Array<{ pointIndex: number, targetPointIndex: number | null }>) {
-        if (buttonsState.val[buttonIndex]?.active) {
-          stopButtonAnimation(buttonIndex);
-          return;
-        }
-        const scene = env.currentScene();
-        const moves = targets
-          .map((target) => {
-            const point = scene.points[target.pointIndex];
-            const targetPoint = typeof target.targetPointIndex === "number"
-              ? scene.points[target.targetPointIndex]
-              : null;
-            if (!point || !targetPoint) {
-              return null;
-            }
-            return {
-              pointIndex: target.pointIndex,
-              targetPointIndex: target.targetPointIndex,
-              base: { x: point.x, y: point.y },
-            };
-          })
-          .filter((move) => !!move);
-        if (moves.length === 0) {
-          return;
-        }
-        const state = { stop: false, t: 0, rafId: 0 };
-        buttonAnimations.set(buttonIndex, state);
-        updateButtons((buttons) => {
-          if (buttons[buttonIndex]) {
-            buttons[buttonIndex].active = true;
-          }
-        });
-        
-        let lastTime = null;
-        
-        const step = (timestamp) => {
-          if (state.stop) {
-            return;
-          }
-          if (lastTime === null) {
-            lastTime = timestamp;
-          }
-          const dt = Math.min(64, timestamp - lastTime);
-          lastTime = timestamp;
-          const sourcePointRootId = modules.dynamics?.sourcePointRootId;
-          if (typeof sourcePointRootId === "function") {
-            moves.forEach((move) => env.markDependencyRootsDirty?.(sourcePointRootId(move.pointIndex)));
-          }
-          env.updateScene((draft: ViewerSceneData) => {
-            state.t = Math.min(1, state.t + dt / 700);
-            moves.forEach((move) => {
-              const draftPoint = draft.points[move.pointIndex];
-              const targetPoint = typeof move.targetPointIndex === "number"
-                ? draft.points[move.targetPointIndex]
-                : null;
-              if (!draftPoint || !targetPoint) {
-                return;
-              }
-              draftPoint.x = move.base.x + (targetPoint.x - move.base.x) * state.t;
-              draftPoint.y = move.base.y + (targetPoint.y - move.base.y) * state.t;
-            });
-            if (state.t >= 1) {
-              state.stop = true;
-            }
+            state.stop = points.every((point) => point.finished);
           }, "graph");
           if (state.stop) {
             stopButtonAnimation(buttonIndex);
@@ -1012,6 +915,21 @@
       }
 
       
+      function movePointsToPayloadTargets(targets: Array<{ pointIndex: number, targetPointIndex: number | null }>) {
+        env.updateScene((draft: ViewerSceneData) => {
+          targets.forEach((move) => {
+            const draftPoint = draft.points[move.pointIndex];
+            const targetPoint = typeof move.targetPointIndex === "number"
+              ? draft.points[move.targetPointIndex]
+              : null;
+            if (!draftPoint || !targetPoint) return;
+            draftPoint.x = targetPoint.x;
+            draftPoint.y = targetPoint.y;
+          });
+        }, "graph");
+      }
+
+
       function runButtonAction(buttonIndex: number) {
         const button = buttonsState.val[buttonIndex];
         if (!button) {
@@ -1033,17 +951,12 @@
           }
           case "move-point":
             if (typeof action.pointIndex === "number") {
-              toggleAnimatedPoint(
-                buttonIndex,
-                action.pointIndex,
-                "move",
-                action.targetPointIndex ?? null,
-              );
+              movePointsToPayloadTargets([action]);
             }
             break;
           case "move-points":
             if (Array.isArray(action.targets)) {
-              toggleMovedPoints(buttonIndex, action.targets);
+              movePointsToPayloadTargets(action.targets);
             }
             break;
           case "set-parameter":
@@ -1054,12 +967,12 @@
             break;
           case "animate-point":
             if (typeof action.pointIndex === "number") {
-              toggleAnimatedPoint(buttonIndex, action.pointIndex, "animate");
+              toggleAnimatedPoint(buttonIndex, action.pointIndex, "animate", action.animation);
             }
             break;
           case "animate-points":
-            if (Array.isArray(action.pointIndices)) {
-              toggleAnimatedPoints(buttonIndex, action.pointIndices);
+            if (Array.isArray(action.targets)) {
+              toggleAnimatedPoints(buttonIndex, action.targets);
             }
             break;
           case "scroll-point":
