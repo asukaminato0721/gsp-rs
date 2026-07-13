@@ -3,10 +3,11 @@
   const scene =  (modules.scene);
 
   
-  function sampleCoordinateTracePoints(env: ViewerEnv | null, binding: RuntimeLineBindingJson | RuntimePointConstraintJson) {
+  function sampleCoordinateTracePoints(
+    env: ViewerEnv | null,
+    binding: RuntimeLineBindingJson | RuntimePointConstraintJson,
+  ): Point[] | null {
     if (!binding) return null;
-    const evaluateExpr = modules.dynamics?.evaluateExpr;
-    if (typeof evaluateExpr !== "function") return null;
     const currentScene = env?.currentScene?.();
     const sampledPointTrace = currentScene?.lines?.find((line) =>
       line.binding?.kind === "point-trace"
@@ -15,7 +16,9 @@
       && line.points.length >= 2
     );
     if (sampledPointTrace) {
-      return sampledPointTrace.points;
+      const points = sampledPointTrace.points.filter((point): point is Point =>
+        typeof point.x === "number" && typeof point.y === "number");
+      if (points.length === sampledPointTrace.points.length) return points;
     }
     const point = currentScene?.points?.[binding.pointIndex];
     const pointBinding = point?.binding;
@@ -30,37 +33,33 @@
     const parameters = env?.currentDynamics
       ? new Map(env.currentDynamics().parameters.map((parameter) => [parameter.name, parameter.value]))
       : new Map();
-    
-    const points = [];
-    const last = Math.max(1, (binding.sampleCount || 0) - 1);
-    for (let index = 0; index < (binding.sampleCount || 0); index += 1) {
-      const t = index / last;
-      const value = binding.xMin + (binding.xMax - binding.xMin) * t;
-      const exprParameters = new Map(parameters);
-      if (pointBinding.kind === "coordinate-source-2d") {
-        if (typeof pointBinding.xName === "string" && pointBinding.xName.length > 0) {
-          exprParameters.set(pointBinding.xName, value);
-        }
-        if (typeof pointBinding.yName === "string" && pointBinding.yName.length > 0) {
-          exprParameters.set(pointBinding.yName, value);
-        }
-        const dx = evaluateExpr(pointBinding.xExpr, 0, exprParameters);
-        const dy = evaluateExpr(pointBinding.yExpr, 0, exprParameters);
-        if (dx === null || dy === null) continue;
-        points.push({ x: source.x + dx, y: source.y + dy });
-      } else {
-        if (typeof pointBinding.name === "string" && pointBinding.name.length > 0) {
-          exprParameters.set(pointBinding.name, value);
-        }
-        const offset = evaluateExpr(pointBinding.expr, 0, exprParameters);
-        if (offset === null) continue;
-        points.push(
-          pointBinding.axis === "horizontal"
-            ? { x: source.x + offset, y: source.y }
-            : { x: source.x, y: source.y + offset }
+    const points = pointBinding.kind === "coordinate-source-2d"
+      ? window.GspRuntimeCore.sampleCoordinateTrace(
+          pointBinding.xExpr,
+          pointBinding.yExpr,
+          parameters,
+          pointBinding.xName || null,
+          pointBinding.yName || null,
+          source,
+          binding.xMin,
+          binding.xMax,
+          binding.sampleCount || 0,
+          false,
+          "two-dimensional",
+        )
+      : window.GspRuntimeCore.sampleCoordinateTrace(
+          pointBinding.expr,
+          null,
+          parameters,
+          pointBinding.name || null,
+          null,
+          source,
+          binding.xMin,
+          binding.xMax,
+          binding.sampleCount || 0,
+          false,
+          pointBinding.axis,
         );
-      }
-    }
     return points.length >= 2 ? points : null;
   }
 

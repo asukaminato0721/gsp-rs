@@ -686,5 +686,29 @@
     };
   }
 
-  modules.dynamicsDependencies = { createSceneDependencyCollector };
+  function createPointDependencyOrder(
+    sourceScene: SceneData | ViewerSceneData,
+    knownParameters: Set<string>,
+  ) {
+    const collect = createSceneDependencyCollector({
+      sourceScene,
+      knownParameters,
+      collectExprParameterNames(expr, names) {
+        if (!expr) return;
+        window.GspRuntimeCore.expressionParameterNames(expr).forEach((name) => names.add(name));
+      },
+    });
+    const nodes = (sourceScene.points || []).map((point, pointIndex) => {
+      const deps = new Set<string>();
+      collect.pointBinding(deps, point.binding);
+      collect.pointConstraint(deps, point.constraint);
+      return {
+        id: `point:${pointIndex}`,
+        dependsOn: [...deps].filter((dependency) => dependency.startsWith("point:")),
+      };
+    });
+    return window.GspRuntimeCore.createDependencyPlan(nodes).topoOrder;
+  }
+
+  modules.dynamicsDependencies = { createSceneDependencyCollector, createPointDependencyOrder };
 })();

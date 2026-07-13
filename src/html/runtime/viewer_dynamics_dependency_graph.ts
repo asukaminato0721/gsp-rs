@@ -16,7 +16,9 @@
     nodes: DependencyNode[];
     nodeMap: Map<string, DependencyNode>;
     topoOrder: string[];
-    reverseEdges: Map<string, string[]>;
+    plan: {
+      affected: (dirtyRootIds: string[]) => number[];
+    };
   };
 
   function createDependencyGraphRuntime(dependencies: Record<string, Function>) {
@@ -74,22 +76,8 @@
       expr: FunctionExprJson | FunctionAstJson | null | undefined,
       names: Set<string>,
     ) {
-      if (!expr || typeof expr !== "object") return;
-      if (expr.kind === "parsed") collectExprAstParameterNames(expr.expr, names);
-      else if (expr.kind === "parameter" || expr.kind === "unary" || expr.kind === "binary") {
-        collectExprAstParameterNames(expr, names);
-      }
-    }
-
-    function collectExprAstParameterNames(expr: FunctionAstJson, names: Set<string>) {
-      if (expr.kind === "parameter") {
-        names.add(expr.name);
-      } else if (expr.kind === "unary") {
-        collectExprAstParameterNames(expr.expr, names);
-      } else if (expr.kind === "binary") {
-        collectExprAstParameterNames(expr.lhs, names);
-        collectExprAstParameterNames(expr.rhs, names);
-      }
+      if (!expr) return;
+      window.GspRuntimeCore.expressionParameterNames(expr).forEach((name) => names.add(name));
     }
 
     function labelDerivedParameterName(label: RuntimeLabelJson) {
@@ -288,37 +276,9 @@
         addNode({ id: `iteration-table:${index}`, kind: "iteration-table", dependsOn: [...deps], recipe: "rebuild-iteration-geometry" });
       });
 
-      const indegree = new Map(nodes.map((node) => [node.id, 0]));
-      const reverseEdges = new Map<string, string[]>();
-      nodes.forEach((node) => {
-        node.dependsOn.forEach((dep) => {
-          if (!nodeMap.has(dep)) return;
-          indegree.set(node.id, (indegree.get(node.id) || 0) + 1);
-          const dependents = reverseEdges.get(dep) || [];
-          dependents.push(node.id);
-          reverseEdges.set(dep, dependents);
-        });
-      });
-      const queue = nodes.filter((node) => indegree.get(node.id) === 0).map((node) => node.id);
-      const topoOrder: string[] = [];
-      while (queue.length > 0) {
-        const id = queue.shift();
-        if (!id) break;
-        topoOrder.push(id);
-        (reverseEdges.get(id) || []).forEach((dependentId) => {
-          const nextDegree = (indegree.get(dependentId) || 0) - 1;
-          indegree.set(dependentId, nextDegree);
-          if (nextDegree === 0) queue.push(dependentId);
-        });
-      }
-      if (topoOrder.length !== nodes.length) {
-        const cyclicNodes = nodes
-          .filter((node) => (indegree.get(node.id) || 0) > 0)
-          .map((node) => node.id);
-        throw new Error(`cyclic scene dependency graph: ${cyclicNodes.join(", ")}`);
-      }
-
-      dependencyGraphCache = { nodes, nodeMap, topoOrder, reverseEdges };
+      const plan = window.GspRuntimeCore.createDependencyPlan(nodes);
+      const topoOrder = plan.topoOrder.map((index) => nodes[index].id);
+      dependencyGraphCache = { nodes, nodeMap, topoOrder, plan };
       return dependencyGraphCache;
     }
 
@@ -344,21 +304,10 @@
         env.sourceScene.circles.forEach((_, index) => rootSet.add(sourceCircleRootId(index)));
         env.sourceScene.polygons.forEach((_, index) => rootSet.add(sourcePolygonRootId(index)));
       }
-      const affected = new Set(rootSet);
-      const queue = [...rootSet];
-      while (queue.length > 0) {
-        const currentId = queue.shift();
-        if (!currentId) break;
-        (graph.reverseEdges.get(currentId) || []).forEach((dependentId) => {
-          if (affected.has(dependentId)) return;
-          affected.add(dependentId);
-          queue.push(dependentId);
-        });
-      }
-      const orderedNodes = graph.topoOrder.flatMap((id) => {
-        const node = graph.nodeMap.get(id);
-        return node && affected.has(id) ? [node] : [];
-      });
+      const orderedNodes = graph.plan
+        .affected([...rootSet])
+        .map((index) => graph.nodes[index])
+        .filter((node): node is DependencyNode => !!node);
       const executedRecipes: string[] = [];
       const seenRecipes = new Set<DependencyRecipe>();
       orderedNodes.forEach((node) => {

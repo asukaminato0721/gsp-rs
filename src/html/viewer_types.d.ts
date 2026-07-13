@@ -1059,6 +1059,10 @@ type RuntimeSceneDependencyCollector = {
 };
 
 type ViewerDynamicsDependenciesModule = {
+  createPointDependencyOrder: (
+    sourceScene: SceneData | ViewerSceneData,
+    knownParameters: Set<string>,
+  ) => number[];
   createSceneDependencyCollector: (options: {
     sourceScene: SceneData | ViewerSceneData;
     knownParameters: Set<string>;
@@ -1126,6 +1130,10 @@ type ViewerModules = {
 
 interface Window {
   GspRuntimeCore: {
+    createDependencyPlan: (nodes: Array<{ id: string; dependsOn: string[] }>) => {
+      topoOrder: number[];
+      affected: (dirtyRootIds: string[]) => number[];
+    };
     normalizeAngleDelta: (from: number, to: number) => number;
     lerpPoint: (start: Point, end: Point, t: number) => Point;
     rotateAround: (point: Point, center: Point, radians: number) => Point;
@@ -1173,11 +1181,114 @@ interface Window {
       rightRadius: number,
     ) => Point[];
     pointCircleTangents: (point: Point, center: Point, radius: number) => Point[];
+    sampleFunction: (
+      expr: FunctionExprJson | FunctionAstJson,
+      parameters: Map<string, number>,
+      xMin: number,
+      xMax: number,
+      sampleCount: number,
+      plotMode: "cartesian" | "polar",
+    ) => Point[][];
+    sampleParametricCurve: (
+      xExpr: FunctionExprJson | FunctionAstJson,
+      yExpr: FunctionExprJson | FunctionAstJson,
+      parameters: Map<string, number>,
+      valueMin: number,
+      valueMax: number,
+      sampleCount: number,
+    ) => Point[];
+    sampleCoordinateTrace: (
+      xExpr: FunctionExprJson | FunctionAstJson,
+      yExpr: FunctionExprJson | FunctionAstJson | null,
+      parameters: Map<string, number>,
+      xParameterName: string | null,
+      yParameterName: string | null,
+      source: Point,
+      valueMin: number,
+      valueMax: number,
+      sampleCount: number,
+      useMidpoints: boolean,
+      mode: "horizontal" | "vertical" | "two-dimensional",
+    ) => Point[];
+    sampleCustomTransformTrace: (
+      distanceExpr: FunctionExprJson | FunctionAstJson,
+      angleExpr: FunctionExprJson | FunctionAstJson,
+      parameters: Map<string, number>,
+      origin: Point,
+      axisEnd: Point,
+      valueMin: number,
+      valueMax: number,
+      traceMax: number,
+      sampleCount: number,
+      distanceScale: number,
+      angleDegreesScale: number,
+    ) => Point[];
+    sampleCircleArc: (center: Point, start: Point, end: Point, steps: number, yUp: boolean) => Point[] | null;
+    sampleThreePointArc: (start: Point, mid: Point, end: Point, steps: number, complement: boolean) => Point[] | null;
+    translationIterationDeltas: (
+      depth: number,
+      primary: Point,
+      secondary: Point | null,
+      bidirectional: boolean,
+      includeOrigin: boolean,
+    ) => Point[];
+    rotateIterationPoints: (
+      points: Point[],
+      center: Point,
+      angleRadians: number,
+      depth: number,
+    ) => Point[][];
+    affineIterationSegments: (
+      start: Point,
+      end: Point,
+      sourceTriangle: [Point, Point, Point],
+      targetTriangle: [Point, Point, Point],
+      depth: number,
+    ) => [Point, Point][] | null;
+    branchingIterationSegments: (
+      start: Point,
+      end: Point,
+      targetSegments: [Point, Point][],
+      depth: number,
+    ) => [Point, Point][] | null;
+    linePolylineIntersection: (
+      lineStart: Point,
+      lineEnd: Point,
+      lineKind: RuntimeLineKind,
+      points: Point[],
+      sampleHint: number | null,
+      variant: number,
+    ) => Point | null;
+    choosePointCandidate: (
+      candidates: Point[],
+      reference: Point | null,
+      variant: number,
+    ) => Point | null;
+    lineCircleIntersectionCandidate: (
+      start: Point,
+      end: Point,
+      lineKind: RuntimeLineKind,
+      center: Point,
+      radius: number,
+      variant: number,
+    ) => Point | null;
+    pointDistance: (left: Point, right: Point, valueScale: number) => number | null;
+    pointDistanceRatio: (origin: Point, denominator: Point, numerator: Point, clampToUnit: boolean) => number | null;
+    pointAngleDegrees: (start: Point, vertex: Point, end: Point) => number | null;
+    polygonArea: (points: Point[], valueScale: number) => number | null;
     evaluateExpr: (
       expr: FunctionExprJson | FunctionAstJson,
       x: number,
       parameters: Map<string, number>,
     ) => number | null;
+    expressionParameterNames: (expr: FunctionExprJson | FunctionAstJson) => string[];
+    iterateExpression: (
+      expr: FunctionExprJson | FunctionAstJson,
+      parameterName: string,
+      initialValue: number,
+      parameters: Map<string, number>,
+      count: number,
+    ) => number[];
   };
   gspDebug?: {
     sourceScene: SceneData;

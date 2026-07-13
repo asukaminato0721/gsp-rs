@@ -3,9 +3,7 @@
 
   function createDynamicsIterations(dependencies: Record<string, any>) {
     const {
-      affineMapFromTriangles,
       applyNormalizedParameterToPoint,
-      applySegmentCoefficients,
       buildPlainTextRichMarkup,
       cloneTracePoint,
       deriveExpressionLabelParameters,
@@ -13,7 +11,6 @@
       discreteIterationDepth,
       DERIVED_POINT_BINDING_REFRESHERS,
       evaluateExpr,
-      evaluateRecursiveExpression,
       formatSequenceValue,
       hasLineIndexHandle,
       hasPointIndexHandle,
@@ -22,7 +19,6 @@
       pointIterationDepth,
       rotateAround,
       samplePointTraceLine,
-      segmentPointCoefficients,
       SYNC_DYNAMIC_POINT_BINDING_UPDATERS,
     } = dependencies;
   function rebuildIterationPoints(env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) {
@@ -141,29 +137,26 @@
       }
 
       if (family.kind === "parameterized") {
-        let currentValue = parameters.get(family.traceParameterName);
+        const currentValue = parameters.get(family.traceParameterName);
         if (!isFiniteNumber(currentValue)) {
           return;
         }
-        for (let step = 1; step <= depth; step += 1) {
-          const nextValue = evaluateRecursiveExpression(
-            family.stepExpr,
-            family.traceParameterName,
-            currentValue,
-            parameters,
-          );
-          if (!isFiniteNumber(nextValue)) {
-            break;
-          }
-          currentValue = nextValue;
+        const values = window.GspRuntimeCore.iterateExpression(
+          family.stepExpr,
+          family.traceParameterName,
+          currentValue,
+          parameters,
+          depth,
+        );
+        values.forEach((value) => {
           const traceParameters = deriveLabelParameters(
             scene,
-            new Map<string, number>(parameters).set(family.traceParameterName, currentValue),
+            new Map<string, number>(parameters).set(family.traceParameterName, value),
           );
           const points = resolvePointsWithParameters(env, scene, traceParameters);
           const source = points[family.pointIndex];
           if (!source) {
-            continue;
+            return;
           }
           scene.points.push({
             x: source.x,
@@ -175,7 +168,7 @@
             binding: null,
             debug: null,
           });
-        }
+        });
       }
     });
 
@@ -202,55 +195,48 @@
       resolveScenePoint: ( index: number) => draft.points[index],
     };
 
-    const refreshDerivedPoints = () => {
-      draft.points.forEach(( point) => {
-        const refreshBinding = point.binding ? DERIVED_POINT_BINDING_REFRESHERS[point.binding.kind] : null;
-        if (refreshBinding) {
-          refreshBinding(draftEnv, draft, point, parameters);
-        }
-      });
-    };
+    const dependencyCollectorModule = modules.dynamicsDependencies;
+    if (!dependencyCollectorModule) {
+      throw new Error("viewer dynamics dependency collector is unavailable");
+    }
+    const pointOrder = dependencyCollectorModule.createPointDependencyOrder(
+      draft,
+      new Set(parameters.keys()),
+    );
 
-    const resolveConstrainedPoints = () => {
-      draft.points.forEach(( point,  pointIndex: number) => {
-        if (!point.constraint) {
-          return;
-        }
-        const resolved = modules.scene.resolveConstrainedPoint(
-          {
-            sourceScene: env.sourceScene,
-            currentScene: () => draft,
-            resolveScenePoint: ( index: number) => draft.points[index],
-          },
-          point.constraint,
-          ( index: number) => draft.points[index],
-          point,
-        );
-        if (resolved) {
-          draft.points[pointIndex].x = resolved.x;
-          draft.points[pointIndex].y = resolved.y;
-        }
-      });
-    };
-
-    draft.points.forEach(( point) => {
+    pointOrder.forEach((pointIndex) => {
+      const point = draft.points[pointIndex];
       if (point.binding?.kind === "parameter" && point.constraint) {
         const value = parameters.get(point.binding.name);
         if (isFiniteNumber(value)) {
           applyNormalizedParameterToPoint(point, draft, value);
         }
-        return;
+      } else {
+        const updatePoint = point.binding ? SYNC_DYNAMIC_POINT_BINDING_UPDATERS[point.binding.kind] : null;
+        if (updatePoint) {
+          updatePoint(draftEnv, draft, point, parameters);
+        }
       }
-      const updatePoint = point.binding ? SYNC_DYNAMIC_POINT_BINDING_UPDATERS[point.binding.kind] : null;
-      if (updatePoint) {
-        updatePoint(draftEnv, draft, point, parameters);
+      const refreshBinding = point.binding ? DERIVED_POINT_BINDING_REFRESHERS[point.binding.kind] : null;
+      if (refreshBinding) {
+        refreshBinding(draftEnv, draft, point, parameters);
+      }
+      if (!point.constraint) return;
+      const resolved = modules.scene.resolveConstrainedPoint(
+        {
+          sourceScene: env.sourceScene,
+          currentScene: () => draft,
+          resolveScenePoint: (index: number) => draft.points[index],
+        },
+        point.constraint,
+        (index: number) => draft.points[index],
+        point,
+      );
+      if (resolved) {
+        point.x = resolved.x;
+        point.y = resolved.y;
       }
     });
-    for (let pass = 0; pass < 3; pass += 1) {
-      refreshDerivedPoints();
-      resolveConstrainedPoints();
-    }
-    refreshDerivedPoints();
     return draft.points;
   }
 
@@ -335,24 +321,21 @@
               : family.depth || 0,
           ),
         );
-        let currentValue = parameters.get(family.traceParameterName);
+        const currentValue = parameters.get(family.traceParameterName);
         if (!isFiniteNumber(currentValue)) {
           return;
         }
-        for (let step = 1; step <= depth; step += 1) {
-          const nextValue = evaluateRecursiveExpression(
-            family.stepExpr,
-            family.traceParameterName,
-            currentValue,
-            parameters,
-          );
-          if (!isFiniteNumber(nextValue)) {
-            break;
-          }
-          currentValue = nextValue;
+        const values = window.GspRuntimeCore.iterateExpression(
+          family.stepExpr,
+          family.traceParameterName,
+          currentValue,
+          parameters,
+          depth,
+        );
+        values.forEach((value) => {
           const traceParameters = deriveLabelParameters(
             scene,
-            new Map<string, number>(parameters).set(family.traceParameterName, currentValue),
+            new Map<string, number>(parameters).set(family.traceParameterName, value),
           );
           const line: RuntimeLineJson = {
 
@@ -373,7 +356,7 @@
           };
           const sampled = samplePointTraceLine(scene, line, traceParameters);
           if (!sampled) {
-            continue;
+            return;
           }
           scene.lines.push({
             points: sampled,
@@ -383,7 +366,7 @@
             visible: family.visible !== false,
             binding: null,
           });
-        }
+        });
         return;
       }
       if (family.kind === "branching") {
@@ -399,44 +382,23 @@
         if (targetSegments.some((segment) => segment.some((point) => !point))) {
           return;
         }
-        const coeffs = targetSegments
-          .flatMap((segment) => {
-            const [targetStart, targetEnd] = segment;
-            if (!targetStart || !targetEnd) {
-              return [];
-            }
-            const startCoeffs = segmentPointCoefficients(start, end, targetStart);
-            const endCoeffs = segmentPointCoefficients(start, end, targetEnd);
-            if (!startCoeffs || !endCoeffs) {
-              return [];
-            }
-            return [{ startCoeffs, endCoeffs }];
-          });
-        if (coeffs.length === 0) {
+        const segments = window.GspRuntimeCore.branchingIterationSegments(
+          start,
+          end,
+          targetSegments as [Point, Point][],
+          depth,
+        );
+        if (!segments) {
           return;
         }
-
-        let frontier = [{ start: { ...start }, end: { ...end } }];
-        for (let step = 0; step < depth; step += 1) {
-
-          const next = [];
-          frontier.forEach((segment) => {
-            coeffs.forEach((coeff) => {
-              const childStart = applySegmentCoefficients(segment.start, segment.end, coeff.startCoeffs);
-              const childEnd = applySegmentCoefficients(segment.start, segment.end, coeff.endCoeffs);
-              scene.lines.push({
-                points: [{ ...childStart }, { ...childEnd }],
-                color: family.color,
-                dashed: !!family.dashed,
-                strokeWidth: family.strokeWidth,
-                visible: family.visible !== false,
-                binding: null,
-              });
-              next.push({ start: childStart, end: childEnd });
-            });
-          });
-          frontier = next;
-        }
+        segments.forEach(([childStart, childEnd]) => scene.lines.push({
+          points: [childStart, childEnd],
+          color: family.color,
+          dashed: !!family.dashed,
+          strokeWidth: family.strokeWidth,
+          visible: family.visible !== false,
+          binding: null,
+        }));
         return;
       }
       if (family.kind === "affine") {
@@ -450,27 +412,26 @@
         if (sourceTriangle.some((point) => !point) || targetTriangle.some((point) => !point)) {
           return;
         }
-        const mapPoint = affineMapFromTriangles(
-           (sourceTriangle),
-           (targetTriangle),
+        const segments = window.GspRuntimeCore.affineIterationSegments(
+          start,
+          end,
+          sourceTriangle as [Point, Point, Point],
+          targetTriangle as [Point, Point, Point],
+          depth,
         );
-        if (!mapPoint) {
+        if (!segments) {
           return;
         }
-        let currentStart = { ...start };
-        let currentEnd = { ...end };
-        for (let step = 0; step < depth; step += 1) {
-          currentStart = mapPoint(currentStart);
-          currentEnd = mapPoint(currentEnd);
+        segments.forEach(([currentStart, currentEnd]) => {
           scene.lines.push({
-            points: [{ ...currentStart }, { ...currentEnd }],
+            points: [currentStart, currentEnd],
             color: family.color,
             dashed: !!family.dashed,
             strokeWidth: family.strokeWidth,
             visible: family.visible !== false,
             binding: null,
           });
-        }
+        });
         return;
       }
       if (family.kind === "rotate") {
@@ -483,10 +444,18 @@
         if (typeof angleDegrees !== "number" || !Number.isFinite(angleDegrees)) {
           return;
         }
-        for (let step = 1; step <= depth; step += 1) {
-          const radians = (angleDegrees * step) * Math.PI / 180;
+        const sourcePoints = source.points.map((point) => resolveHandle(point));
+        if (sourcePoints.some((point) => !point)) return;
+        const rotatedSteps = window.GspRuntimeCore.rotateIterationPoints(
+          sourcePoints as Point[],
+          center,
+          angleDegrees * Math.PI / 180,
+          depth,
+        );
+        rotatedSteps.forEach((points, stepIndex) => {
+          const step = stepIndex + 1;
           scene.lines.push({
-            points: source.points.map(( point) => rotateAround(point, center, radians)),
+            points,
             color: family.color,
             dashed: !!family.dashed,
             strokeWidth: family.strokeWidth,
@@ -505,7 +474,7 @@
               },
             },
           });
-        }
+        });
         return;
       }
       if (family.kind !== "translate") return;
@@ -566,50 +535,14 @@
       const secondaryDx = isFiniteNumber(family.secondaryDx) ? family.secondaryDx : null;
       const secondaryDy = isFiniteNumber(family.secondaryDy) ? family.secondaryDy : null;
       const hasSecondary = secondaryDx !== null && secondaryDy !== null;
-      const deltas = [];
-      if (family.bidirectional && hasSecondary) {
-        for (let primary = -depth; primary <= depth; primary += 1) {
-          for (let secondary = -depth; secondary <= depth; secondary += 1) {
-            if (primary === 0 && secondary === 0) {
-              continue;
-            }
-            if (Math.abs(primary) + Math.abs(secondary) > depth) {
-              continue;
-            }
-            deltas.push({
-              dx: primaryDx * primary + secondaryDx * secondary,
-              dy: primaryDy * primary + secondaryDy * secondary,
-            });
-          }
-        }
-      } else if (family.bidirectional) {
-        for (let step = 1; step <= depth; step += 1) {
-          deltas.push(
-            { dx: primaryDx * step, dy: primaryDy * step },
-            { dx: -primaryDx * step, dy: -primaryDy * step },
-          );
-        }
-      } else if (hasSecondary) {
-        for (let primary = 0; primary <= depth; primary += 1) {
-          for (let secondary = 0; secondary <= depth - primary; secondary += 1) {
-            if (primary === 0 && secondary === 0) {
-              continue;
-            }
-            deltas.push({
-              dx: primaryDx * primary + secondaryDx * secondary,
-              dy: primaryDy * primary + secondaryDy * secondary,
-            });
-          }
-        }
-      } else {
-        for (let step = 1; step <= depth; step += 1) {
-          deltas.push({
-            dx: primaryDx * step,
-            dy: primaryDy * step,
-          });
-        }
-      }
-      deltas.forEach(({ dx, dy }) => {
+      const deltas = window.GspRuntimeCore.translationIterationDeltas(
+        depth,
+        { x: primaryDx, y: primaryDy },
+        hasSecondary ? { x: secondaryDx, y: secondaryDy } : null,
+        family.bidirectional === true,
+        false,
+      );
+      deltas.forEach(({ x: dx, y: dy }) => {
         scene.lines.push({
           points: [
             { x: liveStart.x + dx, y: liveStart.y + dy },
@@ -671,29 +604,26 @@
           ? evaluateExpr(family.depthExpr, 0, parameters)
           : family.depth;
         const depth = Math.max(0, Math.floor(isFiniteNumber(depthValue) ? depthValue : family.depth || 0));
-        let currentValue = parameters.get(family.parameterName);
+        const currentValue = parameters.get(family.parameterName);
         if (!isFiniteNumber(currentValue)) {
           return;
         }
-        for (let step = 1; step <= depth; step += 1) {
-          const nextValue = evaluateRecursiveExpression(
-            family.stepExpr,
-            family.parameterName,
-            currentValue,
-            parameters,
-          );
-          if (!isFiniteNumber(nextValue)) {
-            break;
-          }
-          currentValue = nextValue;
+        const values = window.GspRuntimeCore.iterateExpression(
+          family.stepExpr,
+          family.parameterName,
+          currentValue,
+          parameters,
+          depth,
+        );
+        values.forEach((value) => {
           const exprParameters = deriveLabelParameters(
             scene,
-            new Map<string, number>(parameters).set(family.parameterName, currentValue),
+            new Map<string, number>(parameters).set(family.parameterName, value),
           );
           const dx = evaluateExpr(family.xExpr, 0, exprParameters);
           const dy = evaluateExpr(family.yExpr, 0, exprParameters);
           if (!isFiniteNumber(dx) || !isFiniteNumber(dy)) {
-            continue;
+            return;
           }
           scene.polygons.push({
             points: seedPoints.map((point) => ({
@@ -704,7 +634,7 @@
             visible: family.visible !== false,
             binding: null,
           });
-        }
+        });
         return;
       }
       const depth = pointIterationDepth(family, parameters);
@@ -722,45 +652,14 @@
         : null;
       const primaryDx = vectorStart && vectorEnd ? vectorEnd.x - vectorStart.x : family.dx;
       const primaryDy = vectorStart && vectorEnd ? vectorEnd.y - vectorStart.y : family.dy;
-      const deltas = [];
-      if (family.bidirectional && hasSecondary) {
-        for (let primary = -depth; primary <= depth; primary += 1) {
-          for (let secondary = -depth; secondary <= depth; secondary += 1) {
-            if (Math.abs(primary) + Math.abs(secondary) > depth) {
-              continue;
-            }
-            deltas.push({
-              dx: primaryDx * primary + secondaryDx * secondary,
-              dy: primaryDy * primary + secondaryDy * secondary,
-            });
-          }
-        }
-      } else if (family.bidirectional) {
-        deltas.push({ dx: 0, dy: 0 });
-        for (let step = 1; step <= depth; step += 1) {
-          deltas.push(
-            { dx: primaryDx * step, dy: primaryDy * step },
-            { dx: -primaryDx * step, dy: -primaryDy * step },
-          );
-        }
-      } else if (hasSecondary) {
-        for (let primary = 0; primary <= depth; primary += 1) {
-          for (let secondary = 0; secondary <= depth - primary; secondary += 1) {
-            deltas.push({
-              dx: primaryDx * primary + secondaryDx * secondary,
-              dy: primaryDy * primary + secondaryDy * secondary,
-            });
-          }
-        }
-      } else {
-        for (let step = 0; step <= depth; step += 1) {
-          deltas.push({
-            dx: primaryDx * step,
-            dy: primaryDy * step,
-          });
-        }
-      }
-      deltas.forEach(({ dx, dy }) => {
+      const deltas = window.GspRuntimeCore.translationIterationDeltas(
+        depth,
+        { x: primaryDx, y: primaryDy },
+        hasSecondary ? { x: secondaryDx, y: secondaryDy } : null,
+        family.bidirectional === true,
+        true,
+      );
+      deltas.forEach(({ x: dx, y: dy }) => {
         scene.polygons.push({
           points: seedPoints.map((point) => ({ x: point.x + dx, y: point.y + dy })),
           color: familyColor,
@@ -805,7 +704,7 @@
           depthParameterName: family.depthParameterName,
         }, parameters);
         const seedAnchor = seedLabel.anchor;
-        let currentValue = parameters.get(family.parameterName);
+        const currentValue = parameters.get(family.parameterName);
         if (!seedAnchor || !isFiniteNumber(currentValue)) {
           return;
         }
@@ -815,27 +714,15 @@
         }
         const dx = vectorEnd.x - vectorStart.x;
         const dy = vectorEnd.y - vectorStart.y;
-        const seedValue = evaluateRecursiveExpression(
+        const values = window.GspRuntimeCore.iterateExpression(
           family.expr,
           family.parameterName,
           currentValue,
           parameters,
+          depth + 1,
         );
-        if (!isFiniteNumber(seedValue)) {
-          return;
-        }
-        currentValue = seedValue;
-        for (let step = 1; step <= depth; step += 1) {
-          const value = evaluateRecursiveExpression(
-            family.expr,
-            family.parameterName,
-            currentValue,
-            parameters,
-          );
-          if (!isFiniteNumber(value)) {
-            break;
-          }
-          currentValue = value;
+        values.slice(1).forEach((value, valueIndex) => {
+          const step = valueIndex + 1;
           const text = formatSequenceValue(value);
           scene.labels.push({
             ...seedLabel,
@@ -844,7 +731,7 @@
             binding: null,
             anchor: { x: seedAnchorPoint.x + dx * step, y: seedAnchorPoint.y + dy * step },
           });
-        }
+        });
         return;
       }
       const seedLabel = scene.labels[family.seedLabelIndex];
@@ -862,20 +749,19 @@
         depth: family.depth,
         parameterName: family.depthParameterName,
       }, parameters);
-      let currentValue = parameters.get(family.parameterName);
+      const currentValue = parameters.get(family.parameterName);
       if (!isFiniteNumber(currentValue)) {
         return;
       }
-      for (let step = 0; step <= depth; step += 1) {
-        const value = evaluateRecursiveExpression(
-          family.expr,
-          family.parameterName,
-          currentValue,
-          parameters,
-        );
-        if (!isFiniteNumber(value)) {
-          break;
-        }
+      const values = window.GspRuntimeCore.iterateExpression(
+        family.expr,
+        family.parameterName,
+        currentValue,
+        parameters,
+        depth + 1,
+      );
+      for (let step = 0; step < values.length; step += 1) {
+        const value = values[step];
         const pointIndex = family.pointSeedIndex + step;
         if (!scene.points[pointIndex]) {
           break;
@@ -893,7 +779,6 @@
             anchor: { ...seedAnchor, pointIndex },
           });
         }
-        currentValue = value;
       }
     });
   }

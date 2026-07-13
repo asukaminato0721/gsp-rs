@@ -1,6 +1,10 @@
 //! Canonical mathematical semantics shared by the native parser and browser runtime.
 
+mod dependency;
 mod geometry;
+mod scene_math;
+
+pub use dependency::{DependencyNodeInput, DependencyPlan, DependencyPlanError};
 
 pub use geometry::{
     Bounds, LineKind, Point, Projection, ThreePointArcGeometry, angle_bisector_direction,
@@ -10,6 +14,14 @@ pub use geometry::{
     point_on_three_point_arc, point_on_three_point_arc_complement, project_to_circle_arc,
     project_to_line_like, project_to_three_point_arc, reflect_across_line, rotate_around,
     scale_around, scale_by_three_point_ratio, three_point_arc_geometry,
+};
+pub use scene_math::{
+    CoordinateTraceMode, PlotMode, affine_iteration_segment, branching_iteration_segments,
+    choose_point_candidate, line_circle_intersection_candidate, line_polyline_intersection,
+    point_angle_degrees, point_distance, point_distance_ratio, polygon_area,
+    rotate_iteration_points, sample_circle_arc, sample_coordinate_trace,
+    sample_custom_transform_trace, sample_expression, sample_parametric_curve,
+    sample_three_point_arc, translation_iteration_deltas,
 };
 
 use std::collections::BTreeMap;
@@ -251,14 +263,20 @@ mod wasm_abi {
     };
 
     use super::{
-        Bounds, FunctionAst, FunctionExpr, LineKind, Point, Projection, angle_bisector_direction,
+        Bounds, CoordinateTraceMode, DependencyNodeInput, DependencyPlan, FunctionAst,
+        FunctionExpr, LineKind, PlotMode, Point, Projection, affine_iteration_segment,
+        angle_bisector_direction, branching_iteration_segments, choose_point_candidate,
         circle_arc_control_points, circle_circle_intersections, clip_line_to_bounds,
-        clip_ray_to_bounds, evaluate_expr, lerp_point, line_circle_intersections,
-        line_line_intersection, measured_rotation_radians, normalize_angle_delta,
-        parse_expression_json, point_circle_tangents, point_on_circle_arc,
-        point_on_three_point_arc, point_on_three_point_arc_complement, project_to_circle_arc,
-        project_to_line_like, project_to_three_point_arc, reflect_across_line, rotate_around,
-        scale_around, scale_by_three_point_ratio, three_point_arc_geometry,
+        clip_ray_to_bounds, evaluate_expr, lerp_point, line_circle_intersection_candidate,
+        line_circle_intersections, line_line_intersection, line_polyline_intersection,
+        measured_rotation_radians, normalize_angle_delta, parse_expression_json,
+        point_angle_degrees, point_circle_tangents, point_distance, point_distance_ratio,
+        point_on_circle_arc, point_on_three_point_arc, point_on_three_point_arc_complement,
+        polygon_area, project_to_circle_arc, project_to_line_like, project_to_three_point_arc,
+        reflect_across_line, rotate_around, rotate_iteration_points, sample_circle_arc,
+        sample_coordinate_trace, sample_custom_transform_trace, sample_expression,
+        sample_parametric_curve, sample_three_point_arc, scale_around, scale_by_three_point_ratio,
+        three_point_arc_geometry, translation_iteration_deltas,
     };
 
     struct CompiledExpression {
@@ -272,11 +290,14 @@ mod wasm_abi {
         static EXPRESSIONS: RefCell<Vec<CompiledExpression>> = const { RefCell::new(Vec::new()) };
         static GEOMETRY_RESULTS: RefCell<Vec<Point>> = const { RefCell::new(Vec::new()) };
         static GEOMETRY_SCALARS: RefCell<Vec<f64>> = const { RefCell::new(Vec::new()) };
+        static BATCH_RESULTS: RefCell<Vec<f64>> = const { RefCell::new(Vec::new()) };
+        static DEPENDENCY_PLANS: RefCell<Vec<DependencyPlan>> = const { RefCell::new(Vec::new()) };
+        static LAST_ERROR: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
     }
 
     #[unsafe(no_mangle)]
     pub extern "C" fn gsp_runtime_abi_version() -> u32 {
-        3
+        4
     }
 
     #[unsafe(no_mangle)]
@@ -818,6 +839,588 @@ mod wasm_abi {
     }
 
     #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn gsp_compile_dependency_plan(ptr: u32, len: u32) -> u32 {
+        if ptr == 0 || len == 0 {
+            set_last_error("dependency plan input is empty");
+            return 0;
+        }
+        // SAFETY: the caller owns an allocation of at least `len` bytes in this module's memory.
+        let bytes = unsafe { std::slice::from_raw_parts(ptr as usize as *const u8, len as usize) };
+        let nodes = match serde_json::from_slice::<Vec<DependencyNodeInput>>(bytes) {
+            Ok(nodes) => nodes,
+            Err(error) => {
+                set_last_error(&format!("invalid dependency plan: {error}"));
+                return 0;
+            }
+        };
+        let plan = match DependencyPlan::build(&nodes) {
+            Ok(plan) => plan,
+            Err(error) => {
+                set_last_error(&error.to_string());
+                return 0;
+            }
+        };
+        clear_last_error();
+        DEPENDENCY_PLANS.with_borrow_mut(|plans| {
+            plans.push(plan);
+            plans.len() as u32
+        })
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn gsp_dependency_topo_order(handle: u32) -> u32 {
+        let order =
+            with_dependency_plan(handle, |plan| plan.topo_order().to_vec()).unwrap_or_default();
+        write_batch_scalars(order.into_iter().map(|index| index as f64))
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn gsp_dependency_affected(
+        handle: u32,
+        roots_ptr: u32,
+        roots_len: u32,
+    ) -> u32 {
+        if roots_ptr == 0 || roots_len == 0 {
+            return write_batch_scalars(std::iter::empty());
+        }
+        // SAFETY: the caller owns an allocation of at least `roots_len` bytes in this module's memory.
+        let bytes = unsafe {
+            std::slice::from_raw_parts(roots_ptr as usize as *const u8, roots_len as usize)
+        };
+        let Ok(roots) = serde_json::from_slice::<Vec<String>>(bytes) else {
+            return write_batch_scalars(std::iter::empty());
+        };
+        let affected =
+            with_dependency_plan(handle, |plan| plan.affected(&roots)).unwrap_or_default();
+        write_batch_scalars(affected.into_iter().map(|index| index as f64))
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn gsp_last_error_ptr() -> u32 {
+        LAST_ERROR.with_borrow(|error| error.as_ptr() as usize as u32)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn gsp_last_error_len() -> u32 {
+        LAST_ERROR.with_borrow(|error| error.len() as u32)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn gsp_sample_expression(
+        handle: u32,
+        x_min: f64,
+        x_max: f64,
+        sample_count: u32,
+        plot_mode: u32,
+    ) -> u32 {
+        let plot_mode = match plot_mode {
+            0 => PlotMode::Cartesian,
+            1 => PlotMode::Polar,
+            _ => return write_batch_scalars(std::iter::empty()),
+        };
+        let sampled = with_expression(handle, |compiled| {
+            sample_expression(
+                &compiled.expr,
+                &compiled.parameters,
+                x_min,
+                x_max,
+                sample_count as usize,
+                plot_mode,
+            )
+        })
+        .unwrap_or_default();
+        write_optional_batch_points(sampled)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn gsp_sample_parametric_curve(
+        x_handle: u32,
+        y_handle: u32,
+        value_min: f64,
+        value_max: f64,
+        sample_count: u32,
+    ) -> u32 {
+        let sampled = EXPRESSIONS.with_borrow(|expressions| {
+            let x_compiled = expressions.get(x_handle.saturating_sub(1) as usize)?;
+            let y_compiled = expressions.get(y_handle.saturating_sub(1) as usize)?;
+            Some(sample_parametric_curve(
+                &x_compiled.expr,
+                &y_compiled.expr,
+                &x_compiled.parameters,
+                &y_compiled.parameters,
+                value_min,
+                value_max,
+                sample_count as usize,
+            ))
+        });
+        write_batch_points(sampled.unwrap_or_default())
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn gsp_sample_coordinate_trace(
+        x_handle: u32,
+        y_handle: u32,
+        x_parameter_index: u32,
+        y_parameter_index: u32,
+        source_x: f64,
+        source_y: f64,
+        value_min: f64,
+        value_max: f64,
+        sample_count: u32,
+        use_midpoints: u32,
+        mode: u32,
+    ) -> u32 {
+        let mode = match mode {
+            0 => CoordinateTraceMode::Horizontal,
+            1 => CoordinateTraceMode::Vertical,
+            2 => CoordinateTraceMode::TwoDimensional,
+            _ => return write_batch_scalars(std::iter::empty()),
+        };
+        let input = EXPRESSIONS.with_borrow(|expressions| {
+            let x_compiled = expressions.get(x_handle.saturating_sub(1) as usize)?;
+            let y_compiled = (y_handle != 0)
+                .then(|| expressions.get(y_handle.saturating_sub(1) as usize))
+                .flatten();
+            Some((
+                x_compiled.expr.clone(),
+                y_compiled.map(|compiled| compiled.expr.clone()),
+                x_compiled.parameters.clone(),
+                y_compiled.map(|compiled| compiled.parameters.clone()),
+                x_compiled
+                    .parameter_names
+                    .get(x_parameter_index as usize)
+                    .cloned(),
+                y_compiled.and_then(|compiled| {
+                    compiled
+                        .parameter_names
+                        .get(y_parameter_index as usize)
+                        .cloned()
+                }),
+            ))
+        });
+        let Some((x_expr, y_expr, x_parameters, y_parameters, x_name, y_name)) = input else {
+            return write_batch_scalars(std::iter::empty());
+        };
+        write_batch_points(sample_coordinate_trace(
+            &x_expr,
+            y_expr.as_ref(),
+            &x_parameters,
+            y_parameters.as_ref(),
+            x_name.as_deref(),
+            y_name.as_deref(),
+            Point {
+                x: source_x,
+                y: source_y,
+            },
+            value_min,
+            value_max,
+            sample_count as usize,
+            use_midpoints != 0,
+            mode,
+        ))
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn gsp_sample_custom_transform_trace(
+        distance_handle: u32,
+        angle_handle: u32,
+        origin_x: f64,
+        origin_y: f64,
+        axis_end_x: f64,
+        axis_end_y: f64,
+        value_min: f64,
+        value_max: f64,
+        trace_max: f64,
+        sample_count: u32,
+        distance_scale: f64,
+        angle_degrees_scale: f64,
+    ) -> u32 {
+        let input = EXPRESSIONS.with_borrow(|expressions| {
+            let distance = expressions.get(distance_handle.saturating_sub(1) as usize)?;
+            let angle = expressions.get(angle_handle.saturating_sub(1) as usize)?;
+            Some((
+                distance.expr.clone(),
+                angle.expr.clone(),
+                distance.parameters.clone(),
+                angle.parameters.clone(),
+                distance.parameter_names.clone(),
+                angle.parameter_names.clone(),
+            ))
+        });
+        let Some((
+            distance_expr,
+            angle_expr,
+            distance_parameters,
+            angle_parameters,
+            distance_names,
+            angle_names,
+        )) = input
+        else {
+            return write_batch_scalars(std::iter::empty());
+        };
+        write_batch_points(sample_custom_transform_trace(
+            &distance_expr,
+            &angle_expr,
+            &distance_parameters,
+            &angle_parameters,
+            &distance_names,
+            &angle_names,
+            Point {
+                x: origin_x,
+                y: origin_y,
+            },
+            Point {
+                x: axis_end_x,
+                y: axis_end_y,
+            },
+            value_min,
+            value_max,
+            trace_max,
+            sample_count as usize,
+            distance_scale,
+            angle_degrees_scale,
+        ))
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn gsp_sample_circle_arc(
+        center_x: f64,
+        center_y: f64,
+        start_x: f64,
+        start_y: f64,
+        end_x: f64,
+        end_y: f64,
+        steps: u32,
+        y_up: u32,
+    ) -> u32 {
+        write_batch_points(
+            sample_circle_arc(
+                Point {
+                    x: center_x,
+                    y: center_y,
+                },
+                Point {
+                    x: start_x,
+                    y: start_y,
+                },
+                Point { x: end_x, y: end_y },
+                steps as usize,
+                y_up != 0,
+            )
+            .unwrap_or_default(),
+        )
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn gsp_sample_three_point_arc(
+        start_x: f64,
+        start_y: f64,
+        mid_x: f64,
+        mid_y: f64,
+        end_x: f64,
+        end_y: f64,
+        steps: u32,
+        complement: u32,
+    ) -> u32 {
+        write_batch_points(
+            sample_three_point_arc(
+                Point {
+                    x: start_x,
+                    y: start_y,
+                },
+                Point { x: mid_x, y: mid_y },
+                Point { x: end_x, y: end_y },
+                steps as usize,
+                complement != 0,
+            )
+            .unwrap_or_default(),
+        )
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn gsp_translation_iteration_deltas(
+        depth: u32,
+        primary_dx: f64,
+        primary_dy: f64,
+        secondary_dx: f64,
+        secondary_dy: f64,
+        has_secondary: u32,
+        bidirectional: u32,
+        include_origin: u32,
+    ) -> u32 {
+        write_batch_points(translation_iteration_deltas(
+            depth as usize,
+            Point {
+                x: primary_dx,
+                y: primary_dy,
+            },
+            (has_secondary != 0).then_some(Point {
+                x: secondary_dx,
+                y: secondary_dy,
+            }),
+            bidirectional != 0,
+            include_origin != 0,
+        ))
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn gsp_rotate_iteration_points(
+        points_ptr: u32,
+        point_count: u32,
+        center_x: f64,
+        center_y: f64,
+        angle_radians: f64,
+        depth: u32,
+    ) -> u32 {
+        // SAFETY: the caller owns an allocation containing `point_count` little-endian point pairs.
+        let Some(points) = (unsafe { read_input_points(points_ptr, point_count) }) else {
+            return write_batch_scalars(std::iter::empty());
+        };
+        write_batch_points(rotate_iteration_points(
+            &points,
+            Point {
+                x: center_x,
+                y: center_y,
+            },
+            angle_radians,
+            depth as usize,
+        ))
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn gsp_affine_iteration_segment(
+        points_ptr: u32,
+        point_count: u32,
+        depth: u32,
+    ) -> u32 {
+        // SAFETY: the caller owns an allocation containing eight little-endian point pairs.
+        let Some(points) = (unsafe { read_input_points(points_ptr, point_count) }) else {
+            return write_batch_scalars(std::iter::empty());
+        };
+        if points.len() != 8 {
+            return write_batch_scalars(std::iter::empty());
+        }
+        write_batch_points(
+            affine_iteration_segment(
+                points[0],
+                points[1],
+                [points[2], points[3], points[4]],
+                [points[5], points[6], points[7]],
+                depth as usize,
+            )
+            .unwrap_or_default(),
+        )
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn gsp_branching_iteration_segments(
+        points_ptr: u32,
+        point_count: u32,
+        depth: u32,
+    ) -> u32 {
+        // SAFETY: the caller owns an allocation containing seed and target point pairs.
+        let Some(points) = (unsafe { read_input_points(points_ptr, point_count) }) else {
+            return write_batch_scalars(std::iter::empty());
+        };
+        if points.len() < 4 || !(points.len() - 2).is_multiple_of(2) {
+            return write_batch_scalars(std::iter::empty());
+        }
+        let target_segments = points[2..]
+            .chunks_exact(2)
+            .map(|segment| [segment[0], segment[1]])
+            .collect::<Vec<_>>();
+        write_batch_points(
+            branching_iteration_segments(points[0], points[1], &target_segments, depth as usize)
+                .unwrap_or_default(),
+        )
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn gsp_line_polyline_intersection(
+        line_start_x: f64,
+        line_start_y: f64,
+        line_end_x: f64,
+        line_end_y: f64,
+        line_kind: u32,
+        points_ptr: u32,
+        point_count: u32,
+        sample_hint: f64,
+        variant: u32,
+    ) -> u32 {
+        let Some(line_kind) = line_kind_from_abi(line_kind) else {
+            return write_geometry_results(std::iter::empty());
+        };
+        // SAFETY: the caller owns an allocation containing `point_count` little-endian point pairs.
+        let Some(points) = (unsafe { read_input_points(points_ptr, point_count) }) else {
+            return write_geometry_results(std::iter::empty());
+        };
+        write_geometry_results(line_polyline_intersection(
+            Point {
+                x: line_start_x,
+                y: line_start_y,
+            },
+            Point {
+                x: line_end_x,
+                y: line_end_y,
+            },
+            line_kind,
+            &points,
+            sample_hint.is_finite().then_some(sample_hint),
+            variant as usize,
+        ))
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn gsp_choose_point_candidate(
+        points_ptr: u32,
+        point_count: u32,
+        reference_x: f64,
+        reference_y: f64,
+        has_reference: u32,
+        variant: u32,
+    ) -> u32 {
+        // SAFETY: the caller owns an allocation containing `point_count` little-endian point pairs.
+        let Some(points) = (unsafe { read_input_points(points_ptr, point_count) }) else {
+            return write_geometry_results(std::iter::empty());
+        };
+        write_geometry_results(choose_point_candidate(
+            &points,
+            (has_reference != 0).then_some(Point {
+                x: reference_x,
+                y: reference_y,
+            }),
+            variant as usize,
+        ))
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn gsp_line_circle_intersection_candidate(
+        start_x: f64,
+        start_y: f64,
+        end_x: f64,
+        end_y: f64,
+        line_kind: u32,
+        center_x: f64,
+        center_y: f64,
+        radius: f64,
+        variant: u32,
+    ) -> u32 {
+        let Some(line_kind) = line_kind_from_abi(line_kind) else {
+            return write_geometry_results(std::iter::empty());
+        };
+        write_geometry_results(line_circle_intersection_candidate(
+            Point {
+                x: start_x,
+                y: start_y,
+            },
+            Point { x: end_x, y: end_y },
+            line_kind,
+            Point {
+                x: center_x,
+                y: center_y,
+            },
+            radius,
+            variant as usize,
+        ))
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn gsp_point_distance(
+        left_x: f64,
+        left_y: f64,
+        right_x: f64,
+        right_y: f64,
+        value_scale: f64,
+    ) -> f64 {
+        point_distance(
+            Point {
+                x: left_x,
+                y: left_y,
+            },
+            Point {
+                x: right_x,
+                y: right_y,
+            },
+            value_scale,
+        )
+        .unwrap_or(f64::NAN)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn gsp_point_distance_ratio(
+        origin_x: f64,
+        origin_y: f64,
+        denominator_x: f64,
+        denominator_y: f64,
+        numerator_x: f64,
+        numerator_y: f64,
+        clamp_to_unit: u32,
+    ) -> f64 {
+        point_distance_ratio(
+            Point {
+                x: origin_x,
+                y: origin_y,
+            },
+            Point {
+                x: denominator_x,
+                y: denominator_y,
+            },
+            Point {
+                x: numerator_x,
+                y: numerator_y,
+            },
+            clamp_to_unit != 0,
+        )
+        .unwrap_or(f64::NAN)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn gsp_point_angle_degrees(
+        start_x: f64,
+        start_y: f64,
+        vertex_x: f64,
+        vertex_y: f64,
+        end_x: f64,
+        end_y: f64,
+    ) -> f64 {
+        point_angle_degrees(
+            Point {
+                x: start_x,
+                y: start_y,
+            },
+            Point {
+                x: vertex_x,
+                y: vertex_y,
+            },
+            Point { x: end_x, y: end_y },
+        )
+        .unwrap_or(f64::NAN)
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn gsp_polygon_area(
+        points_ptr: u32,
+        point_count: u32,
+        value_scale: f64,
+    ) -> f64 {
+        // SAFETY: the caller owns an allocation containing `point_count` little-endian point pairs.
+        let Some(points) = (unsafe { read_input_points(points_ptr, point_count) }) else {
+            return f64::NAN;
+        };
+        polygon_area(&points, value_scale).unwrap_or(f64::NAN)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn gsp_batch_result_ptr() -> u32 {
+        BATCH_RESULTS.with_borrow(|results| results.as_ptr() as usize as u32)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn gsp_batch_result_len() -> u32 {
+        BATCH_RESULTS.with_borrow(|results| results.len() as u32)
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn gsp_geometry_result_x(index: u32) -> f64 {
         geometry_result(index).map_or(f64::NAN, |point| point.x)
     }
@@ -942,11 +1545,62 @@ mod wasm_abi {
         .unwrap_or(f64::NAN)
     }
 
+    #[unsafe(no_mangle)]
+    pub extern "C" fn gsp_iterate_expression(
+        handle: u32,
+        parameter_index: u32,
+        initial_value: f64,
+        count: u32,
+        x: f64,
+    ) -> u32 {
+        let values = EXPRESSIONS.with_borrow_mut(|expressions| {
+            let Some(compiled) = expressions.get_mut(handle.saturating_sub(1) as usize) else {
+                return Vec::new();
+            };
+            let parameter_name = compiled
+                .parameter_names
+                .get(parameter_index as usize)
+                .cloned();
+            let mut current = initial_value;
+            let mut values = Vec::with_capacity(count as usize);
+            for _ in 0..count {
+                if let Some(name) = &parameter_name {
+                    compiled.parameters.insert(name.clone(), current);
+                }
+                let Some(value) = evaluate_expr(&compiled.expr, x, &compiled.parameters) else {
+                    break;
+                };
+                values.push(value);
+                current = value;
+            }
+            values
+        });
+        write_batch_scalars(values)
+    }
+
     fn with_expression<T>(handle: u32, f: impl FnOnce(&CompiledExpression) -> T) -> Option<T> {
         if handle == 0 {
             return None;
         }
         EXPRESSIONS.with_borrow(|expressions| expressions.get((handle - 1) as usize).map(f))
+    }
+
+    fn with_dependency_plan<T>(handle: u32, f: impl FnOnce(&DependencyPlan) -> T) -> Option<T> {
+        if handle == 0 {
+            return None;
+        }
+        DEPENDENCY_PLANS.with_borrow(|plans| plans.get((handle - 1) as usize).map(f))
+    }
+
+    fn set_last_error(message: &str) {
+        LAST_ERROR.with_borrow_mut(|error| {
+            error.clear();
+            error.extend_from_slice(message.as_bytes());
+        });
+    }
+
+    fn clear_last_error() {
+        LAST_ERROR.with_borrow_mut(Vec::clear);
     }
 
     fn line_kind_from_abi(value: u32) -> Option<LineKind> {
@@ -984,6 +1638,43 @@ mod wasm_abi {
         };
         write_geometry_scalars([projection.t, projection.distance_squared]);
         write_geometry_results_preserving_scalars([projection.projected])
+    }
+
+    fn write_batch_points(points: impl IntoIterator<Item = Point>) -> u32 {
+        write_batch_scalars(points.into_iter().flat_map(|point| [point.x, point.y]))
+    }
+
+    fn write_optional_batch_points(points: impl IntoIterator<Item = Option<Point>>) -> u32 {
+        write_batch_scalars(points.into_iter().flat_map(|point| match point {
+            Some(point) => [point.x, point.y],
+            None => [f64::NAN, f64::NAN],
+        }))
+    }
+
+    fn write_batch_scalars(values: impl IntoIterator<Item = f64>) -> u32 {
+        BATCH_RESULTS.with_borrow_mut(|results| {
+            results.clear();
+            results.extend(values);
+            results.len() as u32
+        })
+    }
+
+    unsafe fn read_input_points(ptr: u32, point_count: u32) -> Option<Vec<Point>> {
+        if ptr == 0 || point_count == 0 {
+            return None;
+        }
+        let byte_len = (point_count as usize).checked_mul(16)?;
+        // SAFETY: upheld by the caller; bytes are decoded without relying on alignment.
+        let bytes = unsafe { std::slice::from_raw_parts(ptr as usize as *const u8, byte_len) };
+        Some(
+            bytes
+                .chunks_exact(16)
+                .map(|chunk| Point {
+                    x: f64::from_le_bytes(chunk[0..8].try_into().expect("point x is eight bytes")),
+                    y: f64::from_le_bytes(chunk[8..16].try_into().expect("point y is eight bytes")),
+                })
+                .collect(),
+        )
     }
 
     fn geometry_result(index: u32) -> Option<Point> {

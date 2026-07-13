@@ -178,48 +178,26 @@
   });
 
   function sampleDynamicFunction(functionDef: FunctionJson, parameters: Map<string, number>) {
-    const segments = [];
-    let points = [];
-    const last = Math.max(1, functionDef.domain.sampleCount - 1);
-    for (let index = 0; index < functionDef.domain.sampleCount; index += 1) {
-      const t = index / last;
-      const x = functionDef.domain.xMin + (functionDef.domain.xMax - functionDef.domain.xMin) * t;
-      const y = evaluateExpr(functionDef.expr, x, parameters);
-      if (y === null) {
-        if (points.length >= 2) {
-          segments.push(points);
-        }
-        points = [];
-        continue;
-      }
-      if (functionDef.domain.plotMode === "polar") {
-        points.push({
-          x: y * Math.cos(x),
-          y: y * Math.sin(x),
-        });
-      } else {
-        points.push({ x, y });
-      }
-    }
-    if (points.length >= 2) {
-      segments.push(points);
-    }
-    return segments;
+    return window.GspRuntimeCore.sampleFunction(
+      functionDef.expr,
+      parameters,
+      functionDef.domain.xMin,
+      functionDef.domain.xMax,
+      functionDef.domain.sampleCount,
+      functionDef.domain.plotMode,
+    );
   }
 
 
   function sampleParametricCurve(binding: RuntimeLineBindingJson, parameters: Map<string, number>) {
-    const points = [];
-    const last = Math.max(1, binding.sampleCount - 1);
-    for (let index = 0; index < binding.sampleCount; index += 1) {
-      const t = index / last;
-      const value = binding.xMin + (binding.xMax - binding.xMin) * t;
-      const x = evaluateExpr(binding.xExpr, value, parameters);
-      const y = evaluateExpr(binding.yExpr, value, parameters);
-      if (x === null || y === null) continue;
-      points.push({ x, y });
-    }
-    return points;
+    return window.GspRuntimeCore.sampleParametricCurve(
+      binding.xExpr,
+      binding.yExpr,
+      parameters,
+      binding.xMin,
+      binding.xMax,
+      binding.sampleCount,
+    );
   }
 
 
@@ -245,10 +223,12 @@
     const denominator = scene.points[binding.denominatorIndex];
     const numerator = scene.points[binding.numeratorIndex];
     if (!origin || !denominator || !numerator) return null;
-    const denominatorLength = Math.hypot(denominator.x - origin.x, denominator.y - origin.y);
-    if (denominatorLength <= 1e-9) return null;
-    const ratio = Math.hypot(numerator.x - origin.x, numerator.y - origin.y) / denominatorLength;
-    return binding.clampToUnit === true ? Math.min(ratio, 1) : ratio;
+    return window.GspRuntimeCore.pointDistanceRatio(
+      origin,
+      denominator,
+      numerator,
+      binding.clampToUnit === true,
+    );
   }
 
 
@@ -256,7 +236,7 @@
     const left = scene.points[binding.leftIndex];
     const right = scene.points[binding.rightIndex];
     if (!left || !right) return null;
-    return Math.hypot(right.x - left.x, right.y - left.y) * (binding.valueScale ?? 1);
+    return window.GspRuntimeCore.pointDistance(left, right, binding.valueScale ?? 1);
   }
 
 
@@ -265,29 +245,14 @@
     const vertex = scene.points[binding.vertexIndex];
     const end = scene.points[binding.endIndex];
     if (!start || !vertex || !end) return null;
-    const first = { x: start.x - vertex.x, y: start.y - vertex.y };
-    const second = { x: end.x - vertex.x, y: end.y - vertex.y };
-    const firstLen = Math.hypot(first.x, first.y);
-    const secondLen = Math.hypot(second.x, second.y);
-    if (firstLen <= 1e-9 || secondLen <= 1e-9) return null;
-    const cross = (first.x / firstLen) * (second.y / secondLen)
-      - (first.y / firstLen) * (second.x / secondLen);
-    const dot = (first.x / firstLen) * (second.x / secondLen)
-      + (first.y / firstLen) * (second.y / secondLen);
-    return Math.abs(Math.atan2(cross, dot)) * 180 / Math.PI;
+    return window.GspRuntimeCore.pointAngleDegrees(start, vertex, end);
   }
 
 
   function polygonAreaValue(scene: ViewerSceneData, binding: RuntimeLabelBindingJson) {
     const points = binding.pointIndices.map((index: number) => scene.points[index]);
     if (points.length < 3 || points.some((point) => !point)) return null;
-    let twiceArea = 0;
-    for (let index = 0; index < points.length; index += 1) {
-      const left = points[index];
-      const right = points[(index + 1) % points.length];
-      twiceArea += left.x * right.y - right.x * left.y;
-    }
-    return Math.abs(twiceArea) * 0.5 * (binding.valueScale ?? 1);
+    return window.GspRuntimeCore.polygonArea(points, binding.valueScale ?? 1);
   }
 
 
@@ -771,67 +736,6 @@
 
   function isDiscreteIterationParameterName(scene: ViewerSceneData | SceneData | null | undefined, name: string) {
     return collectDiscreteIterationParameterNames(scene).has(name);
-  }
-
-
-  function affineMapFromTriangles(sourceTriangle: Point[], targetTriangle: Point[]) {
-    const sourceOrigin = sourceTriangle[0];
-    const su = {
-      x: sourceTriangle[1].x - sourceOrigin.x,
-      y: sourceTriangle[1].y - sourceOrigin.y,
-    };
-    const sv = {
-      x: sourceTriangle[2].x - sourceOrigin.x,
-      y: sourceTriangle[2].y - sourceOrigin.y,
-    };
-    const det = su.x * sv.y - su.y * sv.x;
-    if (Math.abs(det) <= 1e-9) {
-      return null;
-    }
-    const targetOrigin = targetTriangle[0];
-    const tu = {
-      x: targetTriangle[1].x - targetOrigin.x,
-      y: targetTriangle[1].y - targetOrigin.y,
-    };
-    const tv = {
-      x: targetTriangle[2].x - targetOrigin.x,
-      y: targetTriangle[2].y - targetOrigin.y,
-    };
-    return ( point) => {
-      const relative = { x: point.x - sourceOrigin.x, y: point.y - sourceOrigin.y };
-      const u = (relative.x * sv.y - relative.y * sv.x) / det;
-      const v = (su.x * relative.y - su.y * relative.x) / det;
-      return {
-        x: targetOrigin.x + tu.x * u + tv.x * v,
-        y: targetOrigin.y + tu.y * u + tv.y * v,
-      };
-    };
-  }
-
-
-  function segmentPointCoefficients(sourceStart: Point, sourceEnd: Point, point: Point) {
-    const dx = sourceEnd.x - sourceStart.x;
-    const dy = sourceEnd.y - sourceStart.y;
-    const lenSq = dx * dx + dy * dy;
-    if (lenSq <= 1e-9) {
-      return null;
-    }
-    const relativeX = point.x - sourceStart.x;
-    const relativeY = point.y - sourceStart.y;
-    return {
-      alpha: (relativeX * dx + relativeY * dy) / lenSq,
-      beta: (relativeX * -dy + relativeY * dx) / lenSq,
-    };
-  }
-
-
-  function applySegmentCoefficients(segmentStart: Point, segmentEnd: Point, coeffs: { alpha: number; beta: number }) {
-    const dx = segmentEnd.x - segmentStart.x;
-    const dy = segmentEnd.y - segmentStart.y;
-    return {
-      x: segmentStart.x + coeffs.alpha * dx - coeffs.beta * dy,
-      y: segmentStart.y + coeffs.alpha * dy + coeffs.beta * dx,
-    };
   }
 
 
@@ -1320,29 +1224,23 @@
         label.richMarkup = buildPlainTextRichMarkup(label.text);
         return;
       }
-      let currentValue = parameters.get(label.binding.parameterName);
+      const currentValue = parameters.get(label.binding.parameterName);
       if (!isFiniteNumber(currentValue)) return;
       const depth = pointIterationDepth({
         depth: label.binding.depth,
         parameterName: label.binding.depthParameterName,
       }, parameters);
 
-      let value = null;
-      for (let step = 0; step <= depth; step += 1) {
-        const nextValue = evaluateRecursiveExpression(
-          label.binding.expr,
-          label.binding.parameterName,
-          currentValue,
-          parameters,
-        );
-        if (!isFiniteNumber(nextValue)) return;
-        value = nextValue;
-        currentValue = value;
-      }
-      if (value !== null) {
-        label.text = formatSequenceValue(value);
-        label.richMarkup = buildPlainTextRichMarkup(label.text);
-      }
+      const values = window.GspRuntimeCore.iterateExpression(
+        label.binding.expr,
+        label.binding.parameterName,
+        currentValue,
+        parameters,
+        depth + 1,
+      );
+      if (values.length !== depth + 1) return;
+      label.text = formatSequenceValue(values[values.length - 1]);
+      label.richMarkup = buildPlainTextRichMarkup(label.text);
     },
     "rich-text-expression-values"(_env: ViewerEnv, scene: ViewerSceneData, label: RuntimeLabelJson, parameters: Map<string, number>) {
 
@@ -1826,7 +1724,11 @@
   function refreshDerivedPoints(env: ViewerEnv, scene: ViewerSceneData) {
     const bounds = env.getViewBounds ? env.getViewBounds() : (scene.bounds || env.sourceScene.bounds);
     let parameters = parameterMapForScene(env, scene);
-    refreshConstrainedPointPositions(env, scene);
+    const pointOrder = modules.dynamicsDependencies.createPointDependencyOrder(
+      scene,
+      new Set(parameters.keys()),
+    );
+    refreshConstrainedPointPositions(env, scene, pointOrder);
     parameters = parameterMapForScene(env, scene);
     const resolveHandle = ( handle) => {
       if (hasPointIndexHandle(handle)) {
@@ -1847,14 +1749,20 @@
       return  (handle);
     };
 
-    scene.points.forEach(( point) => {
+    pointOrder.forEach((pointIndex) => {
+      const point = scene.points[pointIndex];
       const refreshBinding = point.binding ? DERIVED_POINT_BINDING_REFRESHERS[point.binding.kind] : null;
       if (refreshBinding) {
         refreshBinding(env, scene, point, parameters);
       }
+      if (!point.constraint) return;
+      const resolved = resolveScenePointInScene(env, scene, pointIndex);
+      if (resolved) {
+        point.x = resolved.x;
+        point.y = resolved.y;
+      }
     });
 
-    refreshConstrainedPointPositions(env, scene);
     parameters = parameterMapForScene(env, scene);
 
 
@@ -1955,8 +1863,13 @@
   }
 
 
-  function refreshConstrainedPointPositions(env: ViewerEnv, scene: ViewerSceneData) {
-    scene.points.forEach(( point,  pointIndex: number) => {
+  function refreshConstrainedPointPositions(
+    env: ViewerEnv,
+    scene: ViewerSceneData,
+    pointOrder = scene.points.map((_, index) => index),
+  ) {
+    pointOrder.forEach((pointIndex) => {
+      const point = scene.points[pointIndex];
       if (!point.constraint) {
         return;
       }
@@ -2083,9 +1996,7 @@
     rebuildIteratedLabels,
     rebuildIterationTables,
   } = modules.dynamicsIterations.createDynamicsIterations({
-    affineMapFromTriangles,
     applyNormalizedParameterToPoint,
-    applySegmentCoefficients,
     buildPlainTextRichMarkup,
     cloneTracePoint,
     deriveExpressionLabelParameters,
@@ -2093,7 +2004,6 @@
     discreteIterationDepth,
     DERIVED_POINT_BINDING_REFRESHERS,
     evaluateExpr,
-    evaluateRecursiveExpression,
     formatSequenceValue,
     hasLineIndexHandle,
     hasPointIndexHandle,
@@ -2103,7 +2013,6 @@
     refreshDerivedPoints,
     rotateAround,
     samplePointTraceLine,
-    segmentPointCoefficients,
     SYNC_DYNAMIC_POINT_BINDING_UPDATERS,
   });
 

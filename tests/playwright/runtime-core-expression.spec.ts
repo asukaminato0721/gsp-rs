@@ -43,6 +43,83 @@ test('standalone file HTML evaluates expressions in the embedded Rust runtime co
       divisionByZero: evaluate(parsed({ kind: 'binary', lhs: constant(1), op: 'div', rhs: constant(0) }) as any, 0, empty),
       invalidSqrt: evaluate(parsed({ kind: 'unary', op: 'sqrt', expr: constant(-1) }) as any, 0, empty),
       rustRounding: evaluate(parsed({ kind: 'unary', op: 'round', expr: constant(-1.5) }) as any, 0, empty),
+      sampledFunction: window.GspRuntimeCore.sampleFunction(
+        parsed({
+          kind: 'binary',
+          lhs: constant(1),
+          op: 'div',
+          rhs: { kind: 'variable' },
+        }) as any,
+        empty,
+        -2,
+        2,
+        5,
+        'cartesian',
+      ),
+      sampledParametric: window.GspRuntimeCore.sampleParametricCurve(
+        { kind: 'identity' } as any,
+        parsed({
+          kind: 'binary',
+          lhs: { kind: 'variable' },
+          op: 'pow',
+          rhs: constant(2),
+        }) as any,
+        empty,
+        -1,
+        1,
+        3,
+      ),
+      polylineHit: window.GspRuntimeCore.linePolylineIntersection(
+        { x: -3, y: 0 },
+        { x: 3, y: 0 },
+        'line',
+        [
+          { x: -2, y: -1 },
+          { x: -1, y: 1 },
+          { x: 1, y: -1 },
+          { x: 2, y: 1 },
+        ],
+        null,
+        1,
+      ),
+      distance: window.GspRuntimeCore.pointDistance({ x: 0, y: 0 }, { x: 3, y: 4 }, 2),
+      ratio: window.GspRuntimeCore.pointDistanceRatio(
+        { x: 0, y: 0 },
+        { x: 2, y: 0 },
+        { x: 3, y: 0 },
+        true,
+      ),
+      angle: window.GspRuntimeCore.pointAngleDegrees(
+        { x: 1, y: 0 },
+        { x: 0, y: 0 },
+        { x: 0, y: 1 },
+      ),
+      area: window.GspRuntimeCore.polygonArea(
+        [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 0, y: 3 }],
+        1,
+      ),
+      sampledArc: window.GspRuntimeCore.sampleCircleArc(
+        { x: 0, y: 0 },
+        { x: 1, y: 0 },
+        { x: 0, y: 1 },
+        1,
+        false,
+      )?.map((point) => ({
+        x: Math.abs(point.x) < 1e-12 ? 0 : point.x,
+        y: Math.abs(point.y) < 1e-12 ? 0 : point.y,
+      })),
+      iteration: window.GspRuntimeCore.iterateExpression(
+        parsed({
+          kind: 'binary',
+          lhs: parameter('n', 0),
+          op: 'add',
+          rhs: constant(1),
+        }) as any,
+        'n',
+        0,
+        empty,
+        4,
+      ),
     };
   });
 
@@ -58,5 +135,24 @@ test('standalone file HTML evaluates expressions in the embedded Rust runtime co
     divisionByZero: null,
     invalidSqrt: null,
     rustRounding: -2,
+    sampledFunction: [
+      [{ x: -2, y: -0.5 }, { x: -1, y: -1 }],
+      [{ x: 1, y: 1 }, { x: 2, y: 0.5 }],
+    ],
+    sampledParametric: [
+      { x: -1, y: 1 },
+      { x: 0, y: 0 },
+      { x: 1, y: 1 },
+    ],
+    polylineHit: { x: 0, y: 0 },
+    distance: 10,
+    ratio: 1,
+    angle: 90,
+    area: 6,
+    sampledArc: [
+      { x: 1, y: 0 },
+      { x: 0, y: 1 },
+    ],
+    iteration: [1, 2, 3, 4],
   });
 });

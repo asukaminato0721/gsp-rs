@@ -18,11 +18,9 @@
     if (typeof binding.centerIndex === "number") {
       const center = scene.resolveScenePoint(env, binding.centerIndex);
       if (!center) return null;
-      for (let step = 0; step <= steps; step += 1) {
-        const point = window.GspRuntimeCore.pointOnCircleArc(center, start, end, step / steps, !!env.sourceScene.yUp);
-        if (!point) return null;
-        sampledArc.push(point);
-      }
+      const points = window.GspRuntimeCore.sampleCircleArc(center, start, end, steps, !!env.sourceScene.yUp);
+      if (!points) return null;
+      sampledArc.push(...points);
       if (binding.boundaryKind === "sector") {
         return reversed
           ? [end, center, start, ...sampledArc.slice(1)]
@@ -36,17 +34,15 @@
     if (typeof binding.midIndex !== "number") return null;
     const mid = scene.resolveScenePoint(env, binding.midIndex);
     if (!mid) return null;
-    for (let step = 0; step <= steps; step += 1) {
-      const point = window.GspRuntimeCore.pointOnThreePointArc(
-        start,
-        mid,
-        end,
-        step / steps,
-        binding.complement === true,
-      );
-      if (!point) return null;
-      sampledArc.push(point);
-    }
+    const points = window.GspRuntimeCore.sampleThreePointArc(
+      start,
+      mid,
+      end,
+      steps,
+      binding.complement === true,
+    );
+    if (!points) return null;
+    sampledArc.push(...points);
     if (binding.boundaryKind === "sector") {
       return reversed ? [end, mid, start, ...sampledArc.slice(1)] : [start, ...sampledArc.slice(1)];
     }

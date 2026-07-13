@@ -23,6 +23,30 @@
     gsp_line_circle_intersections: (startX: number, startY: number, endX: number, endY: number, lineKind: number, centerX: number, centerY: number, radius: number) => number;
     gsp_circle_circle_intersections: (leftX: number, leftY: number, leftRadius: number, rightX: number, rightY: number, rightRadius: number) => number;
     gsp_point_circle_tangents: (pointX: number, pointY: number, centerX: number, centerY: number, radius: number) => number;
+    gsp_compile_dependency_plan: (pointer: number, length: number) => number;
+    gsp_dependency_topo_order: (handle: number) => number;
+    gsp_dependency_affected: (handle: number, rootsPointer: number, rootsLength: number) => number;
+    gsp_last_error_ptr: () => number;
+    gsp_last_error_len: () => number;
+    gsp_sample_expression: (handle: number, xMin: number, xMax: number, sampleCount: number, plotMode: number) => number;
+    gsp_sample_parametric_curve: (xHandle: number, yHandle: number, valueMin: number, valueMax: number, sampleCount: number) => number;
+    gsp_sample_coordinate_trace: (xHandle: number, yHandle: number, xParameterIndex: number, yParameterIndex: number, sourceX: number, sourceY: number, valueMin: number, valueMax: number, sampleCount: number, useMidpoints: number, mode: number) => number;
+    gsp_sample_custom_transform_trace: (distanceHandle: number, angleHandle: number, originX: number, originY: number, axisEndX: number, axisEndY: number, valueMin: number, valueMax: number, traceMax: number, sampleCount: number, distanceScale: number, angleDegreesScale: number) => number;
+    gsp_sample_circle_arc: (centerX: number, centerY: number, startX: number, startY: number, endX: number, endY: number, steps: number, yUp: number) => number;
+    gsp_sample_three_point_arc: (startX: number, startY: number, midX: number, midY: number, endX: number, endY: number, steps: number, complement: number) => number;
+    gsp_translation_iteration_deltas: (depth: number, primaryDx: number, primaryDy: number, secondaryDx: number, secondaryDy: number, hasSecondary: number, bidirectional: number, includeOrigin: number) => number;
+    gsp_rotate_iteration_points: (pointsPointer: number, pointCount: number, centerX: number, centerY: number, angleRadians: number, depth: number) => number;
+    gsp_affine_iteration_segment: (pointsPointer: number, pointCount: number, depth: number) => number;
+    gsp_branching_iteration_segments: (pointsPointer: number, pointCount: number, depth: number) => number;
+    gsp_line_polyline_intersection: (lineStartX: number, lineStartY: number, lineEndX: number, lineEndY: number, lineKind: number, pointsPointer: number, pointCount: number, sampleHint: number, variant: number) => number;
+    gsp_choose_point_candidate: (pointsPointer: number, pointCount: number, referenceX: number, referenceY: number, hasReference: number, variant: number) => number;
+    gsp_line_circle_intersection_candidate: (startX: number, startY: number, endX: number, endY: number, lineKind: number, centerX: number, centerY: number, radius: number, variant: number) => number;
+    gsp_point_distance: (leftX: number, leftY: number, rightX: number, rightY: number, valueScale: number) => number;
+    gsp_point_distance_ratio: (originX: number, originY: number, denominatorX: number, denominatorY: number, numeratorX: number, numeratorY: number, clampToUnit: number) => number;
+    gsp_point_angle_degrees: (startX: number, startY: number, vertexX: number, vertexY: number, endX: number, endY: number) => number;
+    gsp_polygon_area: (pointsPointer: number, pointCount: number, valueScale: number) => number;
+    gsp_batch_result_ptr: () => number;
+    gsp_batch_result_len: () => number;
     gsp_geometry_result_x: (index: number) => number;
     gsp_geometry_result_y: (index: number) => number;
     gsp_geometry_result_scalar: (index: number) => number;
@@ -34,11 +58,22 @@
     gsp_expression_parameter_name_len: (handle: number, index: number) => number;
     gsp_expression_set_parameter: (handle: number, index: number, value: number) => number;
     gsp_evaluate_expression: (handle: number, x: number) => number;
+    gsp_iterate_expression: (handle: number, parameterIndex: number, initialValue: number, count: number, x: number) => number;
   };
 
   type CompiledExpression = {
     handle: number;
     parameterNames: string[];
+  };
+
+  type RuntimeDependencyNodeInput = {
+    id: string;
+    dependsOn: string[];
+  };
+
+  type RuntimeDependencyPlan = {
+    topoOrder: number[];
+    affected: (dirtyRootIds: string[]) => number[];
   };
 
   const wasmElement = document.getElementById("gsp-runtime-core-wasm");
@@ -59,7 +94,7 @@
   const module = new WebAssembly.Module(bytes);
   const instance = new WebAssembly.Instance(module, {});
   const wasm = instance.exports as unknown as RuntimeCoreWasmExports;
-  if (wasm.gsp_runtime_abi_version() !== 3) {
+  if (wasm.gsp_runtime_abi_version() !== 4) {
     throw new Error("Unsupported gsp-rs runtime core ABI");
   }
 
@@ -279,6 +314,407 @@
     ));
   }
 
+  function withInputBytes<T>(bytes: Uint8Array, callback: (pointer: number) => T): T {
+    const pointer = wasm.gsp_alloc_bytes(bytes.length);
+    if (!pointer) throw new Error("Unable to allocate gsp-rs runtime core input");
+    try {
+      new Uint8Array(wasm.memory.buffer, pointer, bytes.length).set(bytes);
+      return callback(pointer);
+    } finally {
+      wasm.gsp_free_bytes(pointer, bytes.length);
+    }
+  }
+
+  function batchScalars(expectedLength: number): number[] {
+    const length = wasm.gsp_batch_result_len();
+    if (length !== expectedLength || length === 0) return [];
+    const pointer = wasm.gsp_batch_result_ptr();
+    if (!pointer) return [];
+    return Array.from(new Float64Array(wasm.memory.buffer, pointer, length));
+  }
+
+  function batchPoints(expectedLength: number): Point[] {
+    const values = batchScalars(expectedLength);
+    const points: Point[] = [];
+    for (let index = 0; index + 1 < values.length; index += 2) {
+      const x = values[index];
+      const y = values[index + 1];
+      if (Number.isFinite(x) && Number.isFinite(y)) points.push({ x, y });
+    }
+    return points;
+  }
+
+  function batchIndices(expectedLength: number): number[] {
+    return batchScalars(expectedLength).filter((value) => Number.isInteger(value) && value >= 0);
+  }
+
+  function lastRuntimeError(): string {
+    const length = wasm.gsp_last_error_len();
+    const pointer = wasm.gsp_last_error_ptr();
+    return pointer && length
+      ? decoder.decode(new Uint8Array(wasm.memory.buffer, pointer, length))
+      : "Unable to compile gsp-rs dependency plan";
+  }
+
+  function createDependencyPlan(nodes: RuntimeDependencyNodeInput[]): RuntimeDependencyPlan {
+    const encoded = encoder.encode(JSON.stringify(
+      nodes.map((node) => ({ id: node.id, dependsOn: node.dependsOn })),
+    ));
+    const handle = withInputBytes(encoded, (pointer) =>
+      wasm.gsp_compile_dependency_plan(pointer, encoded.length));
+    if (!handle) throw new Error(lastRuntimeError());
+    const topoOrder = batchIndices(wasm.gsp_dependency_topo_order(handle));
+    if (topoOrder.length !== nodes.length) {
+      throw new Error("Incomplete gsp-rs dependency plan");
+    }
+    return {
+      topoOrder,
+      affected(dirtyRootIds: string[]) {
+        const roots = encoder.encode(JSON.stringify(dirtyRootIds));
+        return withInputBytes(roots, (pointer) =>
+          batchIndices(wasm.gsp_dependency_affected(handle, pointer, roots.length)));
+      },
+    };
+  }
+
+  function setExpressionParameters(compiled: CompiledExpression, parameters: Map<string, number>) {
+    for (let index = 0; index < compiled.parameterNames.length; index += 1) {
+      const value = parameters.get(compiled.parameterNames[index]);
+      wasm.gsp_expression_set_parameter(compiled.handle, index, value ?? Number.NaN);
+    }
+  }
+
+  function sampleFunction(
+    expr: FunctionExprJson | FunctionAstJson,
+    parameters: Map<string, number>,
+    xMin: number,
+    xMax: number,
+    sampleCount: number,
+    plotMode: "cartesian" | "polar",
+  ): Point[][] {
+    const compiled = compileExpression(expr);
+    setExpressionParameters(compiled, parameters);
+    const length = wasm.gsp_sample_expression(
+      compiled.handle,
+      xMin,
+      xMax,
+      sampleCount,
+      plotMode === "polar" ? 1 : 0,
+    );
+    const values = batchScalars(length);
+    const segments: Point[][] = [];
+    let segment: Point[] = [];
+    for (let index = 0; index + 1 < values.length; index += 2) {
+      const x = values[index];
+      const y = values[index + 1];
+      if (Number.isFinite(x) && Number.isFinite(y)) {
+        segment.push({ x, y });
+      } else {
+        if (segment.length >= 2) segments.push(segment);
+        segment = [];
+      }
+    }
+    if (segment.length >= 2) segments.push(segment);
+    return segments;
+  }
+
+  function sampleParametricCurve(
+    xExpr: FunctionExprJson | FunctionAstJson,
+    yExpr: FunctionExprJson | FunctionAstJson,
+    parameters: Map<string, number>,
+    valueMin: number,
+    valueMax: number,
+    sampleCount: number,
+  ): Point[] {
+    const compiledX = compileExpression(xExpr);
+    const compiledY = compileExpression(yExpr);
+    setExpressionParameters(compiledX, parameters);
+    setExpressionParameters(compiledY, parameters);
+    const length = wasm.gsp_sample_parametric_curve(
+      compiledX.handle,
+      compiledY.handle,
+      valueMin,
+      valueMax,
+      sampleCount,
+    );
+    return batchPoints(length);
+  }
+
+  function sampleCoordinateTrace(
+    xExpr: FunctionExprJson | FunctionAstJson,
+    yExpr: FunctionExprJson | FunctionAstJson | null,
+    parameters: Map<string, number>,
+    xParameterName: string | null,
+    yParameterName: string | null,
+    source: Point,
+    valueMin: number,
+    valueMax: number,
+    sampleCount: number,
+    useMidpoints: boolean,
+    mode: "horizontal" | "vertical" | "two-dimensional",
+  ): Point[] {
+    const compiledX = compileExpression(xExpr);
+    const compiledY = yExpr ? compileExpression(yExpr) : null;
+    setExpressionParameters(compiledX, parameters);
+    if (compiledY) setExpressionParameters(compiledY, parameters);
+    const xParameterIndex = xParameterName
+      ? compiledX.parameterNames.indexOf(xParameterName)
+      : -1;
+    const yParameterIndex = yParameterName && compiledY
+      ? compiledY.parameterNames.indexOf(yParameterName)
+      : -1;
+    const modeCode = mode === "horizontal" ? 0 : mode === "vertical" ? 1 : 2;
+    const length = wasm.gsp_sample_coordinate_trace(
+      compiledX.handle,
+      compiledY?.handle ?? 0,
+      xParameterIndex >= 0 ? xParameterIndex : 0xffffffff,
+      yParameterIndex >= 0 ? yParameterIndex : 0xffffffff,
+      source.x,
+      source.y,
+      valueMin,
+      valueMax,
+      sampleCount,
+      useMidpoints ? 1 : 0,
+      modeCode,
+    );
+    return batchPoints(length);
+  }
+
+  function sampleCustomTransformTrace(
+    distanceExpr: FunctionExprJson | FunctionAstJson,
+    angleExpr: FunctionExprJson | FunctionAstJson,
+    parameters: Map<string, number>,
+    origin: Point,
+    axisEnd: Point,
+    valueMin: number,
+    valueMax: number,
+    traceMax: number,
+    sampleCount: number,
+    distanceScale: number,
+    angleDegreesScale: number,
+  ): Point[] {
+    const distance = compileExpression(distanceExpr);
+    const angle = compileExpression(angleExpr);
+    setExpressionParameters(distance, parameters);
+    setExpressionParameters(angle, parameters);
+    const length = wasm.gsp_sample_custom_transform_trace(
+      distance.handle,
+      angle.handle,
+      origin.x,
+      origin.y,
+      axisEnd.x,
+      axisEnd.y,
+      valueMin,
+      valueMax,
+      traceMax,
+      sampleCount,
+      distanceScale,
+      angleDegreesScale,
+    );
+    return batchPoints(length);
+  }
+
+  function sampleCircleArc(center: Point, start: Point, end: Point, steps: number, yUp: boolean): Point[] | null {
+    const length = wasm.gsp_sample_circle_arc(
+      center.x, center.y, start.x, start.y, end.x, end.y, steps, yUp ? 1 : 0,
+    );
+    const points = batchPoints(length);
+    return points.length === steps + 1 ? points : null;
+  }
+
+  function sampleThreePointArc(start: Point, mid: Point, end: Point, steps: number, complement: boolean): Point[] | null {
+    const length = wasm.gsp_sample_three_point_arc(
+      start.x, start.y, mid.x, mid.y, end.x, end.y, steps, complement ? 1 : 0,
+    );
+    const points = batchPoints(length);
+    return points.length === steps + 1 ? points : null;
+  }
+
+  function translationIterationDeltas(
+    depth: number,
+    primary: Point,
+    secondary: Point | null,
+    bidirectional: boolean,
+    includeOrigin: boolean,
+  ): Point[] {
+    const length = wasm.gsp_translation_iteration_deltas(
+      depth,
+      primary.x,
+      primary.y,
+      secondary?.x ?? 0,
+      secondary?.y ?? 0,
+      secondary ? 1 : 0,
+      bidirectional ? 1 : 0,
+      includeOrigin ? 1 : 0,
+    );
+    return batchPoints(length);
+  }
+
+  function rotateIterationPoints(
+    points: Point[],
+    center: Point,
+    angleRadians: number,
+    depth: number,
+  ): Point[][] {
+    if (points.length === 0 || depth <= 0) return [];
+    return withInputPoints(points, (pointer) => {
+      const length = wasm.gsp_rotate_iteration_points(
+        pointer,
+        points.length,
+        center.x,
+        center.y,
+        angleRadians,
+        depth,
+      );
+      const output = batchPoints(length);
+      return Array.from({ length: depth }, (_, index) =>
+        output.slice(index * points.length, (index + 1) * points.length));
+    });
+  }
+
+  function pointsAsSegments(points: Point[]): [Point, Point][] {
+    const segments: [Point, Point][] = [];
+    for (let index = 0; index + 1 < points.length; index += 2) {
+      segments.push([points[index], points[index + 1]]);
+    }
+    return segments;
+  }
+
+  function affineIterationSegments(
+    start: Point,
+    end: Point,
+    sourceTriangle: [Point, Point, Point],
+    targetTriangle: [Point, Point, Point],
+    depth: number,
+  ): [Point, Point][] | null {
+    return withInputPoints(
+      [start, end, ...sourceTriangle, ...targetTriangle],
+      (pointer) => {
+        const length = wasm.gsp_affine_iteration_segment(pointer, 8, depth);
+        const points = batchPoints(length);
+        return points.length === depth * 2 ? pointsAsSegments(points) : null;
+      },
+    );
+  }
+
+  function branchingIterationSegments(
+    start: Point,
+    end: Point,
+    targetSegments: [Point, Point][],
+    depth: number,
+  ): [Point, Point][] | null {
+    if (targetSegments.length === 0) return null;
+    const input = [start, end, ...targetSegments.flat()];
+    return withInputPoints(input, (pointer) => {
+      const length = wasm.gsp_branching_iteration_segments(pointer, input.length, depth);
+      const points = batchPoints(length);
+      return points.length > 0 || depth === 0 ? pointsAsSegments(points) : null;
+    });
+  }
+
+  function withInputPoints<T>(points: Point[], callback: (pointer: number) => T): T {
+    const byteLength = points.length * 16;
+    const pointer = wasm.gsp_alloc_bytes(byteLength);
+    if (!pointer) throw new Error("Unable to allocate gsp-rs runtime core point input");
+    try {
+      const view = new DataView(wasm.memory.buffer, pointer, byteLength);
+      points.forEach((point, index) => {
+        view.setFloat64(index * 16, point.x, true);
+        view.setFloat64(index * 16 + 8, point.y, true);
+      });
+      return callback(pointer);
+    } finally {
+      wasm.gsp_free_bytes(pointer, byteLength);
+    }
+  }
+
+  function linePolylineIntersection(
+    lineStart: Point,
+    lineEnd: Point,
+    lineKind: RuntimeLineKind,
+    points: Point[],
+    sampleHint: number | null,
+    variant: number,
+  ): Point | null {
+    if (points.length < 2 || !Number.isInteger(variant) || variant < 0) return null;
+    return withInputPoints(points, (pointer) => geometryResult(wasm.gsp_line_polyline_intersection(
+      lineStart.x,
+      lineStart.y,
+      lineEnd.x,
+      lineEnd.y,
+      lineKindCode(lineKind),
+      pointer,
+      points.length,
+      typeof sampleHint === "number" && Number.isFinite(sampleHint) ? sampleHint : Number.NaN,
+      variant,
+    )));
+  }
+
+  function choosePointCandidate(
+    candidates: Point[],
+    reference: Point | null,
+    variant: number,
+  ): Point | null {
+    if (candidates.length === 0 || !Number.isInteger(variant) || variant < 0) return null;
+    const hasReference = !!reference && Number.isFinite(reference.x) && Number.isFinite(reference.y);
+    return withInputPoints(candidates, (pointer) => geometryResult(wasm.gsp_choose_point_candidate(
+      pointer,
+      candidates.length,
+      hasReference ? reference.x : 0,
+      hasReference ? reference.y : 0,
+      hasReference ? 1 : 0,
+      variant,
+    )));
+  }
+
+  function lineCircleIntersectionCandidate(
+    start: Point,
+    end: Point,
+    lineKind: RuntimeLineKind,
+    center: Point,
+    radius: number,
+    variant: number,
+  ): Point | null {
+    if (!Number.isInteger(variant) || variant < 0) return null;
+    return geometryResult(wasm.gsp_line_circle_intersection_candidate(
+      start.x,
+      start.y,
+      end.x,
+      end.y,
+      lineKindCode(lineKind),
+      center.x,
+      center.y,
+      radius,
+      variant,
+    ));
+  }
+
+  function pointDistance(left: Point, right: Point, valueScale: number): number | null {
+    const value = wasm.gsp_point_distance(left.x, left.y, right.x, right.y, valueScale);
+    return Number.isFinite(value) ? value : null;
+  }
+
+  function pointDistanceRatio(origin: Point, denominator: Point, numerator: Point, clampToUnit: boolean): number | null {
+    const value = wasm.gsp_point_distance_ratio(
+      origin.x, origin.y, denominator.x, denominator.y, numerator.x, numerator.y,
+      clampToUnit ? 1 : 0,
+    );
+    return Number.isFinite(value) ? value : null;
+  }
+
+  function pointAngleDegrees(start: Point, vertex: Point, end: Point): number | null {
+    const value = wasm.gsp_point_angle_degrees(start.x, start.y, vertex.x, vertex.y, end.x, end.y);
+    return Number.isFinite(value) ? value : null;
+  }
+
+  function polygonArea(points: Point[], valueScale: number): number | null {
+    if (points.length < 3) return null;
+    return withInputPoints(points, (pointer) => {
+      const value = wasm.gsp_polygon_area(pointer, points.length, valueScale);
+      return Number.isFinite(value) ? value : null;
+    });
+  }
+
   function compileExpression(expr: FunctionExprJson | FunctionAstJson): CompiledExpression {
     const cached = expressionCache.get(expr);
     if (cached) return cached;
@@ -314,12 +750,33 @@
     parameters: Map<string, number>,
   ): number | null {
     const compiled = compileExpression(expr);
-    for (let index = 0; index < compiled.parameterNames.length; index += 1) {
-      const value = parameters.get(compiled.parameterNames[index]);
-      wasm.gsp_expression_set_parameter(compiled.handle, index, value ?? Number.NaN);
-    }
+    setExpressionParameters(compiled, parameters);
     const value = wasm.gsp_evaluate_expression(compiled.handle, x);
     return Number.isFinite(value) ? value : null;
+  }
+
+  function expressionParameterNames(expr: FunctionExprJson | FunctionAstJson): string[] {
+    return [...compileExpression(expr).parameterNames];
+  }
+
+  function iterateExpression(
+    expr: FunctionExprJson | FunctionAstJson,
+    parameterName: string,
+    initialValue: number,
+    parameters: Map<string, number>,
+    count: number,
+  ): number[] {
+    const compiled = compileExpression(expr);
+    setExpressionParameters(compiled, parameters);
+    const parameterIndex = compiled.parameterNames.indexOf(parameterName);
+    const length = wasm.gsp_iterate_expression(
+      compiled.handle,
+      parameterIndex >= 0 ? parameterIndex : 0xffffffff,
+      initialValue,
+      count,
+      0,
+    );
+    return batchScalars(length);
   }
 
   window.GspRuntimeCore = {
@@ -344,6 +801,26 @@
     lineCircleIntersections,
     circleCircleIntersections,
     pointCircleTangents,
+    createDependencyPlan,
+    sampleFunction,
+    sampleParametricCurve,
+    sampleCoordinateTrace,
+    sampleCustomTransformTrace,
+    sampleCircleArc,
+    sampleThreePointArc,
+    translationIterationDeltas,
+    rotateIterationPoints,
+    affineIterationSegments,
+    branchingIterationSegments,
+    linePolylineIntersection,
+    choosePointCandidate,
+    lineCircleIntersectionCandidate,
+    pointDistance,
+    pointDistanceRatio,
+    pointAngleDegrees,
+    polygonArea,
     evaluateExpr,
+    expressionParameterNames,
+    iterateExpression,
   };
 })();

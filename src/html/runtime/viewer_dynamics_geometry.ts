@@ -59,27 +59,19 @@
     const axisEnd = scene.points[binding.axisEndIndex];
     const traceMax = parameterValueFromPoint(scene, binding.sourceIndex);
     if (!origin || !axisEnd || !isFiniteNumber(traceMax)) return null;
-    const sampled = [];
-    const last = Math.max(1, line.binding.sampleCount - 1);
-    const maxValue = Math.max(line.binding.xMin, Math.min(line.binding.xMax, traceMax));
-    for (let index = 0; index < line.binding.sampleCount; index += 1) {
-      const value = line.binding.xMin + (maxValue - line.binding.xMin) * (index / last);
-      const exprParameters = new Map<string, number>(parameters);
-      const names = new Set<string>();
-      collectExprParameterNames(binding.distanceExpr, names);
-      collectExprParameterNames(binding.angleExpr, names);
-      names.forEach((name: string) => exprParameters.set(name, value));
-      const distanceValue = evaluateExpr(binding.distanceExpr, value, exprParameters);
-      const angleValue = evaluateExpr(binding.angleExpr, value, exprParameters);
-      if (distanceValue === null || angleValue === null) continue;
-      const baseAngle = Math.atan2(-(axisEnd.y - origin.y), axisEnd.x - origin.x) * 180 / Math.PI;
-      const radians = (baseAngle + angleValue * binding.angleDegreesScale) * Math.PI / 180;
-      const distance = distanceValue * binding.distanceRawScale;
-      sampled.push({
-        x: origin.x + distance * Math.cos(radians),
-        y: origin.y - distance * Math.sin(radians),
-      });
-    }
+    const sampled = window.GspRuntimeCore.sampleCustomTransformTrace(
+      binding.distanceExpr,
+      binding.angleExpr,
+      parameters,
+      origin,
+      axisEnd,
+      line.binding.xMin,
+      line.binding.xMax,
+      traceMax,
+      line.binding.sampleCount,
+      binding.distanceRawScale,
+      binding.angleDegreesScale,
+    );
     return sampled.length >= 2 ? sampled : null;
   }
   
