@@ -1,0 +1,144 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>12T</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(191,491)[hidden];
+{2} UnitPoint(1,445.795)[hidden];
+{3} Point(232,410)[large];
+{4} Parameter(2,14,28,'U = ')[black];
+{5} Parameter(2,14,60,'ρ = ')[black];
+{6} Parameter(1.73205,14,186,'√3 = ')[black];
+{7} Calculate(14,211,'-√3 = ','A ! ')(6)[black];
+{8} Calculate(14,159,'','0 A * ')(4)[hidden];
+{9} Rotation(2,1,1.5708)[hidden];
+{10} Rotation(1,9,1.5708)[hidden];
+{11} Line(2,1)[hidden];
+{12} Dilation(2,9,0.5)[label('O'),yellow,mediumPoint];
+{13} Line(9,1)[hidden];
+{14} Parameter(-1,14,124,'-1 = ')[black];
+{15} Parameter(0,14,156,'0 = ')[black];
+{16} Parameter(1,14,92,'1 = ')[black];
+{17} Calculate(14,236,'','A ')(5)[hidden];
+{18} Calculate(14,236,'','A 0.05 + ')(17)[hidden];
+{19} Calculate(14,236,'','A ')(17)[hidden];
+{20} Calculate(14,236,'','A B @sin_ * C @cos_ * ')(5,19,17)[hidden];
+{21} Calculate(14,236,'','A B @sin_ * C @sin_ * ')(5,19,17)[hidden];
+{22} Calculate(14,236,'','A B @cos_ * ')(5,19)[hidden];
+{23} Calculate(14,236,'','A B @sin_ * C @cos_ * ')(5,19,18)[hidden];
+{24} Calculate(14,236,'','A B @sin_ * C @sin_ * ')(5,19,18)[hidden];
+{25} Calculate(14,236,'','A 0.05 - ')(19)[hidden];
+{26} Calculate(14,236,'','A B @sin_ * C @sin_ * ')(5,25,17)[hidden];
+{27} Calculate(14,236,'','A B @cos_ * ')(5,25)[hidden];
+{28} Calculate(14,236,'','A B @sin_ * C @cos_ * ')(5,25,17)[hidden];
+{29} Parameter(1,14,239,'r = ')[black];
+{30} Calculate(14,261,'','A ')(29)[hidden];
+{31} Calculate(14,261,'','A 2 ^ B 2 ^ + ! ')(15,16)[hidden];
+{32} Calculate(14,261,'','A A A + A 2 ^ B 2 ^ + @sgn_ * - ')(15,16)[hidden];
+{33} Calculate(14,261,'','A 2 ^ B 2 ^ + @sqrt ')(16,32)[hidden];
+{34} Calculate(14,261,'','A B / ')(16,33)[hidden];
+{35} Calculate(14,261,'','A B / ')(32,33)[hidden];
+{36} Calculate(14,261,'','1 A A * 1 - A 2 ^ B 2 ^ + @sgn_ * + ')(15,16)[hidden];
+{37} Calculate(14,261,'','A B * ')(16,15)[hidden];
+{38} Calculate(14,261,'','A 2 ^ B 2 ^ + C 2 ^ + @sqrt ')(36,37,31)[hidden];
+{39} Calculate(14,261,'','A B / ')(36,38)[hidden];
+{40} Calculate(14,261,'','A B / ')(37,38)[hidden];
+{41} Calculate(14,261,'','A B / ')(31,38)[hidden];
+{42} Calculate(14,261,'','A B C D @cos_ * E D @sin_ * + * + ')(15,29,34,30,39)[hidden];
+{43} Calculate(14,261,'','A B C D @cos_ * E D @sin_ * + * + ')(7,29,35,30,40)[hidden];
+{44} Calculate(14,261,'','A B C * D @sin_ * + ')(15,29,41,30)[hidden];
+{45} Calculate(14,267,'','A B * ')(4,5)[hidden];
+{46} Circle by radius(12,45)[white,mediumLine];
+{47} Polygon(1,2,10,9)[black];
+{48} Parameter(2,14,267,'')[hidden];
+{49} Parameter(0,14,298,'')[hidden];
+{50} Calculate(14,292,'','A A A + A 2 ^ B 2 ^ + @sgn_ * - ')(15,16)[hidden];
+{51} Calculate(14,292,'','A 2 ^ B 2 ^ + @sqrt ')(16,50)[hidden];
+{52} Calculate(14,292,'','A B / ')(16,51)[hidden];
+{53} Calculate(14,292,'','A B / ')(50,51)[hidden];
+{54} Calculate(14,292,'','1 A A * 1 - A 2 ^ B 2 ^ + @sgn_ * + ')(15,16)[hidden];
+{55} Calculate(14,292,'','A 2 ^ B 2 ^ + C 2 ^ + @sqrt ')(54,37,31)[hidden];
+{56} Calculate(14,292,'','A B / ')(54,55)[hidden];
+{57} Calculate(14,292,'','A B / ')(37,55)[hidden];
+{58} Calculate(14,292,'','A B / ')(31,55)[hidden];
+{59} Calculate(14,292,'','A B C D @cos_ * E D @sin_ * + * + ')(15,48,52,49,56)[hidden];
+{60} Calculate(14,292,'','A B C D @cos_ * E D @sin_ * + * + ')(15,48,53,49,57)[hidden];
+{61} Calculate(14,292,'','A B C * D @sin_ * + ')(15,48,58,49)[hidden];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>12T</P></H4>
+</BODY>
+</HTML>

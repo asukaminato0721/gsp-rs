@@ -1,0 +1,140 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>平面截圆柱面的展开图</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(410,266)[label('O'),mediumPoint];
+{2} UnitPoint(1,37.7953)[hidden];
+{3} SquareUnitPoint(2)[hidden];
+{4} VerticalAxis(1,3)[hidden];
+{5} HorizontalAxis(1,2)[hidden];
+{6} CoordSysByAxes(5,4)[hidden];
+{7} Point(539,207)[large];
+{8} Abscissa(7,6,14,21,'')[hidden];
+{9} Calculate(14,21,'视距d = ','20 0 A * + ')(8)[black];
+{10} Calculate(14,42,'视径R = ','25 0 A * + ')(9)[black];
+{11} Calculate(14,126,'','1 0 A * + ')(10)[hidden];
+{12} Calculate(14,126,'','0 A * ')(10)[hidden];
+{13} Calculate(14,126,'','A B @cos_ * A B @sin_ * - ')(12,8)[hidden];
+{14} Calculate(14,126,'','A B @cos_ * C B @sin_ * - ')(11,8,12)[hidden];
+{15} Calculate(14,126,'','A B @cos_ * C B @sin_ * - ')(12,8,11)[hidden];
+{16} Calculate(14,126,'','0.7 A * B / ')(10,9)[hidden];
+{17} Ordinate(7,6,14,126,'')[hidden];
+{18} Calculate(14,126,'','A ! B @sin_ * C @sin_ * D B @cos_ * - A B @sin_ * C @cos_ * - E + ')(12,17,8,11,10)[hidden];
+{19} Calculate(14,126,'','A B * C / ')(9,13,18)[hidden];
+{20} Calculate(14,126,'','A ! B @cos_ * C @sin_ * D B @sin_ * + D B @cos_ * C @cos_ * - ')(11,17,8,12)[hidden];
+{21} Calculate(14,126,'','A ! B @sin_ * C @sin_ * D B @cos_ * - D B @sin_ * C @cos_ * - E + ')(11,17,8,12,10)[hidden];
+{22} Calculate(14,126,'','A B * C / ')(9,14,21)[hidden];
+{23} Calculate(14,126,'','A B * C / ')(9,20,21)[hidden];
+{24} PlotXY(23,6,22)[label('j'),green];
+{25} Segment(24,1)[green,mediumLine];
+{26} Calculate(14,126,'','A ! B @cos_ * C @sin_ * A B @sin_ * + D B @cos_ * C @cos_ * - ')(12,17,8,11)[hidden];
+{27} Calculate(14,126,'','A ! B @sin_ * C @sin_ * A B @cos_ * - D B @sin_ * C @cos_ * - E + ')(12,17,8,11,10)[hidden];
+{28} Calculate(14,126,'','A B * C / ')(9,15,27)[hidden];
+{29} Calculate(14,126,'','A B * C / ')(9,26,27)[hidden];
+{30} PlotXY(29,6,28)[label('i'),red];
+{31} Calculate(14,126,'','A ! B @cos_ * C @sin_ * D B @sin_ * + A B @cos_ * C @cos_ * - ')(12,17,8,11)[hidden];
+{32} Calculate(14,126,'','A B * C / ')(9,31,18)[hidden];
+{33} PlotXY(32,6,19)[label('k'),blue];
+{34} Polygon(30,1,33,1,24,1)[hidden];
+{35} Dilation/MarkedRatio(34,1,16)[hidden];
+{36} Segment(33,1)[blue,mediumLine];
+{37} VectorTranslation(35,1,7)[color(128,128,128),mediumLine];
+{38} Segment(30,1)[red,mediumLine];
+{39} Point(273,605)[hidden];
+{40} Point(567,605)[hidden];
+{41} Segment(40,39)[color(192,192,192),mediumLine];
+{42} Point on object(41,1)[white,large];
+{43} Point(600,349)[hidden];
+{44} Point(758,349)[hidden];
+{45} Segment(44,43)[hidden];
+{46} Rotation(44,43,1.5708)[hidden];
+{47} Segment(46,43)[hidden];
+{48} Point(596.628,439.835)[hidden];
+{49} Parameter(-1,118,70,'t = ')[black];
+{50} Calculate(118,89,'t + 1 = ','A 1 + ')(49)[black];
+{51} Parameter(8,14,172,'L = ')[black];
+{52} VectorTranslation(45,43,46)[hidden];
+{53} Parameter(0,14,262,'0 = ')[black];
+{54} Translation(41,0,18.8976)[color(192,192,192),mediumLine];
+{55} Translation(54,0,18.8976)[color(192,192,192),mediumLine];
+{56} Point on object(55,1)[label('A'),color(255,253,253),large];
+{57} Point on object(54,1)[label('φ'),color(255,253,253),large];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>平面截圆柱面的展开图</P></H4>
+</BODY>
+</HTML>

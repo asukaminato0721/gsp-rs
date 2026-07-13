@@ -1,0 +1,108 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>正棱柱的侧面三维展开</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(215,450)[hidden];
+{2} Point(1025,438)[hidden];
+{3} Point(199,542)[hidden];
+{4} Point(401,542)[hidden];
+{5} Parameter(0,890,257,'y[2] = ')[black];
+{6} Parameter(5,272,572,'n = ')[black];
+{7} Parameter(3,890,66,'x[1] = ')[black];
+{8} Parameter(0,890,98,'y[1] = ')[black];
+{9} Parameter(4,890,130,'z[1] = ')[black];
+{10} Translation(2,32.126,0)[hidden];
+{11} Circle(2,10)[color(255,128,0),mediumLine,dotted];
+{12} Point on object(11,-0.425693)[hidden];
+{13} Point on object(11,-2.03807)[blue,mediumPoint];
+{14} Point on object(11,0.00420964)[red,mediumPoint];
+{15} Rotation(14,2,1.5708)[hidden];
+{16} Point on object(11,-0.48523)[cyan,mediumPoint];
+{17} Rotation(16,2,-1.5708)[hidden];
+{18} Dilation/3PtRatio(17,2,2,17,12)[hidden];
+{19} Dilation(1,2,1)[hidden];
+{20} Segment(3,4)[color(0,0,128)];
+{21} Point on object(20,1)[label('合←→开'),white,large];
+{22} Calculate(890,37,'k = ','A 1 - ')(6)[black];
+{23} Calculate(893,408,'α = ','2 3.14159 * A 1 + / ')(22)[black];
+{24} Calculate(890,341,'x[1]*sin(0.5*α) = ','A 0.5 B * @sin_ * ')(7,23)[black];
+{25} Calculate(890,225,'x[2] = ','A 2 B * + ')(7,24)[black];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>正棱柱的侧面三维展开</P></H4>
+</BODY>
+</HTML>

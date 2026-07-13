@@ -1,0 +1,228 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>正四面体表面展开</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(445,295)[hidden];
+{2} UnitPoint(1,37.7953)[hidden];
+{3} SquareUnitPoint(2)[hidden];
+{4} VerticalAxis(1,3)[hidden];
+{5} HorizontalAxis(1,2)[hidden];
+{6} CoordSysByAxes(5,4)[hidden];
+{7} Point(617.756,247.182)[large];
+{8} Abscissa(7,6,143,24,'')[hidden];
+{9} Parameter(15,14,24,'视距d = ')[black];
+{10} Parameter(20,14,45,'视径R = ')[black];
+{11} Calculate(14,126,'','1 0 A * + ')(10)[hidden];
+{12} Calculate(14,126,'','0 A * ')(10)[hidden];
+{13} Calculate(14,126,'','A B @cos_ * A B @sin_ * - ')(12,8)[hidden];
+{14} Calculate(14,126,'','A B @cos_ * C B @sin_ * - ')(11,8,12)[hidden];
+{15} Calculate(14,126,'','A B @cos_ * C B @sin_ * - ')(12,8,11)[hidden];
+{16} Calculate(14,126,'','0.7 A * B / ')(10,9)[hidden];
+{17} Ordinate(7,6,145,57,'')[hidden];
+{18} Calculate(14,126,'','A ! B @sin_ * C @sin_ * D B @cos_ * - A B @sin_ * C @cos_ * - E + ')(12,17,8,11,10)[hidden];
+{19} Calculate(14,126,'','A B * C / ')(9,13,18)[hidden];
+{20} Calculate(14,126,'','A ! B @cos_ * C @sin_ * D B @sin_ * + D B @cos_ * C @cos_ * - ')(11,17,8,12)[hidden];
+{21} Calculate(14,126,'','A ! B @sin_ * C @sin_ * D B @cos_ * - D B @sin_ * C @cos_ * - E + ')(11,17,8,12,10)[hidden];
+{22} Calculate(14,126,'','A B * C / ')(9,14,21)[hidden];
+{23} Calculate(14,126,'','A B * C / ')(9,20,21)[hidden];
+{24} PlotXY(23,6,22)[hidden];
+{25} Calculate(14,126,'','A ! B @cos_ * C @sin_ * A B @sin_ * + D B @cos_ * C @cos_ * - ')(12,17,8,11)[hidden];
+{26} Calculate(14,126,'','A ! B @sin_ * C @sin_ * A B @cos_ * - D B @sin_ * C @cos_ * - E + ')(12,17,8,11,10)[hidden];
+{27} Calculate(14,126,'','A B * C / ')(9,15,26)[hidden];
+{28} Calculate(14,126,'','A B * C / ')(9,25,26)[hidden];
+{29} PlotXY(28,6,27)[hidden];
+{30} Calculate(14,126,'','A ! B @cos_ * C @sin_ * D B @sin_ * + A B @cos_ * C @cos_ * - ')(12,17,8,11)[hidden];
+{31} Calculate(14,126,'','A B * C / ')(9,30,18)[hidden];
+{32} PlotXY(31,6,19)[hidden];
+{33} Polygon(29,1,32,1,24,1)[hidden];
+{34} Dilation/MarkedRatio(33,1,16)[hidden];
+{35} VectorTranslation(34,1,7)[color(128,128,128),mediumLine];
+{36} Parameter(0,15,132,'A[y] = ')[black];
+{37} Parameter(8,14,72,'a = ')[black];
+{38} Calculate(15,99,'A[x] = ','A 3 @sqrt * 3 / ')(37)[black];
+{39} Calculate(15,186,'C[x] = ','0.5 ! A * ')(38)[black];
+{40} Calculate(96,99,'B[x] = ','0.5 ! A * ')(38)[black];
+{41} Calculate(15,159,'A[z] = ','0.5 ! A * ')(38)[black];
+{42} Calculate(96,159,'B[z] = ','0.5 ! A * ')(38)[black];
+{43} Calculate(15,240,'C[z] = ','0.5 ! A * ')(38)[black];
+{44} Calculate(15,213,'C[y] = ','0.5 ! A * ')(37)[black];
+{45} Calculate(96,129,'B[y] = ','0.5 A * ')(37)[black];
+{46} Calculate(95,212,'','A B @cos_ * C B @sin_ * - ')(36,8,38)[hidden];
+{47} Calculate(95,212,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(36,17,8,41,38,10)[hidden];
+{48} Calculate(95,212,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(36,17,8,41,38)[hidden];
+{49} Calculate(95,212,'','A B * C / ')(9,46,47)[hidden];
+{50} Calculate(95,212,'','A B * C / ')(9,48,47)[hidden];
+{51} PlotXY(50,6,49)[hidden];
+{52} Calculate(95,212,'','A B @cos_ * C B @sin_ * - ')(44,8,39)[hidden];
+{53} Calculate(95,212,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(44,17,8,43,39,10)[hidden];
+{54} Calculate(95,212,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(44,17,8,43,39)[hidden];
+{55} Calculate(95,212,'','A B * C / ')(9,52,53)[hidden];
+{56} Calculate(95,212,'','A B * C / ')(9,54,53)[hidden];
+{57} PlotXY(56,6,55)[hidden];
+{58} Calculate(95,212,'','A B @cos_ * C B @sin_ * - ')(45,8,40)[hidden];
+{59} Calculate(95,212,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(45,17,8,42,40,10)[hidden];
+{60} Calculate(95,212,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(45,17,8,42,40)[hidden];
+{61} Calculate(95,212,'','A B * C / ')(9,58,59)[hidden];
+{62} Calculate(95,212,'','A B * C / ')(9,60,59)[hidden];
+{63} PlotXY(62,6,61)[hidden];
+{64} Parameter(1,96,188,'H[0] = ')[black];
+{65} Parameter(0.75,96,218,'H[1] = ')[black];
+{66} Parameter(0.5,96,248,'H[2] = ')[black];
+{67} Parameter(0.25,96,278,'H[3] = ')[black];
+{68} Point(312,557)[hidden];
+{69} Point(355,558)[hidden];
+{70} Point(400,558)[hidden];
+{71} Point(305,608)[hidden];
+{72} Point(559,608)[hidden];
+{73} Segment(72,71)[color(192,192,192),mediumLine];
+{74} Point on object(73,1)[white,large];
+{75} Distance(51,74,26,300,'')[hidden];
+{76} Calculate(26,300,'','A 18 / ')(75)[hidden];
+{77} Distance(51,7,26,300,'')[hidden];
+{78} Angle(51,57,63,26,300,'')[hidden];
+{79} Calculate(26,300,'','1 A B * 15 3.14159 * / 2 ^ + 0 B ! @sqrt * + ')(77,78)[hidden];
+{80} Polygon(51,57,63)[hidden];
+{81} Colorized_HSV(80,79,76,64,0,1,2);
+{82} Calculate(26,300,'','1 A B * 15 3.14159 * / 2 ^ + 0 A @sqrt * + ')(78,77)[hidden];
+{83} Colorized_HSV(80,82,76,64,0,1,2);
+{84} Abscissa(68,6,26,300,'')[hidden];
+{85} Distance(57,74,26,300,'')[hidden];
+{86} Calculate(26,300,'','A 18 / ')(85)[hidden];
+{87} Distance(57,7,26,300,'')[hidden];
+{88} Calculate(26,300,'','A B - 2 ^ C D - 2 ^ + E F - 2 ^ + ')(38,39,36,44,41,43)[hidden];
+{89} Calculate(26,300,'','A B - C D - * E B - F D - * - G + ')(38,39,45,44,40,36,43)[hidden];
+{90} Calculate(26,300,'','A B - C D - * E B - F D - * - G + ')(36,44,42,43,45,41,39)[hidden];
+{91} Calculate(26,300,'','A B - C D - * E B - F D - * - G + ')(40,39,41,43,38,42,44)[hidden];
+{92} Calculate(26,300,'','A B - 2 ^ C D - 2 ^ + E F - 2 ^ + ')(90,39,91,44,89,43)[hidden];
+{93} Calculate(26,300,'','A B - C D - * E D - F B - * - G @sqrt / ')(90,39,36,44,91,38,92)[hidden];
+{94} Calculate(26,300,'','A B - C B - * D E - F E - * + G H - I H - * + ')(38,39,90,36,44,91,41,43,89)[hidden];
+{95} Calculate(26,300,'','A B - C D - * E D - F B - * - G @sqrt / ')(91,44,41,43,89,36,92)[hidden];
+{96} Calculate(26,300,'','A B - C D - * E D - F B - * - G @sqrt / ')(89,43,38,39,90,41,92)[hidden];
+{97} Calculate(26,300,'','A B C A - * D / + 0.5 E A - B C A - * D / - * + 0.5 F * 3 @sqrt * + 0 G * + ')(43,94,89,92,41,93,84)[hidden];
+{98} Calculate(26,300,'','A B C A - * D / + 0.5 E A - B C A - * D / - * + 0.5 F * 3 @sqrt * + 0 G * + ')(44,94,91,92,36,96,84)[hidden];
+{99} Calculate(26,300,'','A B C A - * D / + 0.5 E A - B C A - * D / - * + 0.5 F * 3 @sqrt * + 0 G * + ')(39,94,90,92,38,95,84)[hidden];
+{100} Calculate(26,300,'','A B - C D - * E D - F B - * - G @sqrt / ')(38,39,98,44,36,99,88)[hidden];
+{101} Calculate(26,300,'','A B - C B - * D E - F E - * + G H - I H - * + ')(99,39,38,98,44,36,97,43,41)[hidden];
+{102} Calculate(26,300,'','A B - C D - * E D - F B - * - G @sqrt / ')(36,44,97,43,41,98,88)[hidden];
+{103} Calculate(26,300,'','A B - C D - * E D - F B - * - G @sqrt / ')(41,43,99,39,38,97,88)[hidden];
+{104} Abscissa(69,6,26,368,'')[hidden];
+{105} Calculate(26,368,'','A B - 2 ^ C D - 2 ^ + E F - 2 ^ + ')(40,38,45,36,42,41)[hidden];
+{106} Calculate(26,368,'','A B - C D - * E B - F D - * - G + ')(40,38,44,36,39,45,41)[hidden];
+{107} Calculate(26,368,'','A B - C D - * E B - F D - * - G + ')(45,36,43,41,44,42,38)[hidden];
+{108} Calculate(26,368,'','A B - C D - * E B - F D - * - G + ')(39,38,42,41,40,43,36)[hidden];
+{109} Calculate(26,368,'','A B - 2 ^ C D - 2 ^ + E F - 2 ^ + ')(107,38,108,36,106,41)[hidden];
+{110} Calculate(26,368,'','A B - C D - * E D - F B - * - G @sqrt / ')(107,38,45,36,108,40,109)[hidden];
+{111} Calculate(26,368,'','A B - C B - * D E - F E - * + G H - I H - * + ')(40,38,107,45,36,108,42,41,106)[hidden];
+{112} Calculate(26,368,'','A B - C D - * E D - F B - * - G @sqrt / ')(108,36,42,41,106,45,109)[hidden];
+{113} Calculate(26,368,'','A B - C D - * E D - F B - * - G @sqrt / ')(106,41,40,38,107,42,109)[hidden];
+{114} Calculate(26,368,'','A B C A - * D / + 0.5 E A - B C A - * D / - * + 0.5 F * 3 @sqrt * + 0 G * + ')(41,111,106,109,42,110,104)[hidden];
+{115} Calculate(26,368,'','A B C A - * D / + 0.5 E A - B C A - * D / - * + 0.5 F * 3 @sqrt * + 0 G * + ')(36,111,108,109,45,113,104)[hidden];
+{116} Calculate(26,368,'','A B C A - * D / + 0.5 E A - B C A - * D / - * + 0.5 F * 3 @sqrt * + 0 G * + ')(38,111,107,109,40,112,104)[hidden];
+{117} Calculate(26,368,'','A B - C D - * E D - F B - * - G @sqrt / ')(40,38,115,36,45,116,105)[hidden];
+{118} Calculate(26,368,'','A B - C B - * D E - F E - * + G H - I H - * + ')(116,38,40,115,36,45,114,41,42)[hidden];
+{119} Calculate(26,368,'','A B - C D - * E D - F B - * - G @sqrt / ')(45,36,114,41,42,115,105)[hidden];
+{120} Calculate(26,368,'','A B - C D - * E D - F B - * - G @sqrt / ')(42,41,116,38,40,114,105)[hidden];
+{121} Abscissa(70,6,26,436,'')[hidden];
+{122} Distance(63,74,26,436,'')[hidden];
+{123} Calculate(26,436,'','A 18 / ')(122)[hidden];
+{124} Distance(63,7,26,436,'')[hidden];
+{125} Calculate(26,436,'','A B - 2 ^ C D - 2 ^ + E F - 2 ^ + ')(39,40,44,45,43,42)[hidden];
+{126} Calculate(26,436,'','A B - C D - * E B - F D - * - G + ')(39,40,36,45,38,44,42)[hidden];
+{127} Calculate(26,436,'','A B - C D - * E B - F D - * - G + ')(44,45,41,42,36,43,40)[hidden];
+{128} Calculate(26,436,'','A B - C D - * E B - F D - * - G + ')(38,40,43,42,39,41,45)[hidden];
+{129} Calculate(26,436,'','A B - 2 ^ C D - 2 ^ + E F - 2 ^ + ')(127,40,128,45,126,42)[hidden];
+{130} Calculate(26,436,'','A B - C D - * E D - F B - * - G @sqrt / ')(127,40,44,45,128,39,129)[hidden];
+{131} Calculate(26,436,'','A B - C B - * D E - F E - * + G H - I H - * + ')(39,40,127,44,45,128,43,42,126)[hidden];
+{132} Calculate(26,436,'','A B - C D - * E D - F B - * - G @sqrt / ')(128,45,43,42,126,44,129)[hidden];
+{133} Calculate(26,436,'','A B - C D - * E D - F B - * - G @sqrt / ')(126,42,39,40,127,43,129)[hidden];
+{134} Calculate(26,436,'','A B C A - * D / + 0.5 E A - B C A - * D / - * + 0.5 F * 3 @sqrt * + 0 G * + ')(42,131,126,129,43,130,121)[hidden];
+{135} Calculate(26,436,'','A B C A - * D / + 0.5 E A - B C A - * D / - * + 0.5 F * 3 @sqrt * + 0 G * + ')(45,131,128,129,44,133,121)[hidden];
+{136} Calculate(26,436,'','A B C A - * D / + 0.5 E A - B C A - * D / - * + 0.5 F * 3 @sqrt * + 0 G * + ')(40,131,127,129,39,132,121)[hidden];
+{137} Calculate(26,436,'','A B - C D - * E D - F B - * - G @sqrt / ')(39,40,135,45,44,136,125)[hidden];
+{138} Calculate(26,436,'','A B - C B - * D E - F E - * + G H - I H - * + ')(136,40,39,135,45,44,134,42,43)[hidden];
+{139} Calculate(26,436,'','A B - C D - * E D - F B - * - G @sqrt / ')(44,45,134,42,43,135,125)[hidden];
+{140} Calculate(26,436,'','A B - C D - * E D - F B - * - G @sqrt / ')(43,42,136,40,39,134,125)[hidden];
+{141} Segment(57,51)[hidden];
+{142} Angle(63,57,51,26,525,'')[hidden];
+{143} Segment(63,51)[hidden];
+{144} Angle(57,63,51,26,525,'')[hidden];
+{145} Segment(57,63)[hidden];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>正四面体表面展开</P></H4>
+</BODY>
+</HTML>

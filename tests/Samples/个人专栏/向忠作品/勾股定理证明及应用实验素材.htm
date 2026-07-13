@@ -1,0 +1,126 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>赵爽的弦图</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(189,383)[hidden];
+{2} Point(437,383)[hidden];
+{3} Point(176,431)[hidden];
+{4} Point(432,431)[hidden];
+{5} Segment(2,1)[hidden];
+{6} Rotation(2,1,1.5708)[hidden];
+{7} Rotation(1,6,1.5708)[hidden];
+{8} Dilation(6,2,0.5)[hidden];
+{9} Point on object(5,0.58871)[white,mediumPoint];
+{10} Rotation(9,8,-1.5708)[hidden];
+{11} Segment(4,3)[color(128,128,128),mediumLine];
+{12} Point on object(11,0.0419846)[hidden];
+{13} Point on object(11,0.117969)[hidden];
+{14} Segment(13,12)[hidden];
+{15} Point on object(11,0)[white,large];
+{16} Point on object(11,0.161845)[hidden];
+{17} Point on object(11,0.249712)[hidden];
+{18} Segment(17,16)[hidden];
+{19} Point on object(11,0.296131)[hidden];
+{20} Point on object(11,0.378052)[hidden];
+{21} Segment(20,19)[hidden];
+{22} Point on object(11,0.566837)[hidden];
+{23} Point on object(11,0.669564)[hidden];
+{24} Segment(23,22)[hidden];
+{25} Rotation(9,8,3.14159)[hidden];
+{26} Point on object(11,0.724107)[hidden];
+{27} Point on object(11,0.819648)[hidden];
+{28} Segment(27,26)[hidden];
+{29} Point on object(11,0.877447)[hidden];
+{30} Polygon(1,2,7,6)[hidden];
+{31} Dilation(10,9,0.5)[hidden];
+{32} Rotation(1,31,-3.14159)[hidden];
+{33} Polygon(10,9,32)[red,mediumLine];
+{34} Rotation(9,8,1.5708)[hidden];
+{35} Rotation(32,8,1.5708)[hidden];
+{36} Rotation(35,8,1.5708)[hidden];
+{37} Rotation(36,8,1.5708)[hidden];
+{38} Point on object(11,0.430279)[hidden];
+{39} Point on object(11,0.50996)[hidden];
+{40} Segment(39,38)[hidden];
+{41} Polygon(35,36,37,32)[hidden];
+{42} VectorTranslation(36,35,9)[hidden];
+{43} Segment(4,29)[hidden];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>赵爽的弦图</P></H4>
+</BODY>
+</HTML>

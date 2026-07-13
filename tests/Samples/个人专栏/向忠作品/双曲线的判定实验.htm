@@ -1,0 +1,181 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>双曲线的判定实验</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(316,292)[hidden];
+{2} Point(358,523)[hidden];
+{3} Point(383,447)[hidden];
+{4} Point(499,329)[hidden];
+{5} Point(637,458)[hidden];
+{6} Point(196,562)[hidden];
+{7} Point(860,562)[hidden];
+{8} FixedText(352,78,'双曲线的判定实验         这是双曲线吗？')[black];
+{9} Translation(1,-1.31961e-013,37.7953)[hidden];
+{10} Circle(1,9)[hidden];
+{11} Point on object(10,-0.66385)[hidden];
+{12} Line(11,1)[hidden];
+{13} Line(4,1)[hidden];
+{14} Line(3,4)[hidden];
+{15} Line(5,3)[hidden];
+{16} Line(2,5)[hidden];
+{17} Intersect(13,16)[hidden];
+{18} Intersect(15,12)[hidden];
+{19} Line(18,17)[hidden];
+{20} Intersect(19,14)[hidden];
+{21} Line(20,2)[hidden];
+{22} Intersect(12,21)[hidden];
+{23} Locus(22,11,10,500)[red,mediumLine];
+{24} Point on object(23,0.906696)[hidden];
+{25} Point on object(23,0.772603)[hidden];
+{26} Point on object(23,0.576386)[hidden];
+{27} Segment(7,6)[color(192,192,192),mediumLine];
+{28} Point on object(27,0)[white,large];
+{29} Point on object(27,0.0240964)[hidden];
+{30} Segment(29,6)[hidden];
+{31} Point on object(27,0.0421687)[hidden];
+{32} Point on object(27,0.0692771)[hidden];
+{33} Segment(32,31)[hidden];
+{34} Point on object(27,0.0903614)[hidden];
+{35} Segment(34,32)[hidden];
+{36} Point on object(27,0.10994)[hidden];
+{37} Point on object(27,0.143072)[hidden];
+{38} Segment(37,36)[hidden];
+{39} Point on object(27,0.162651)[hidden];
+{40} Segment(39,37)[hidden];
+{41} Point on object(27,0.183735)[hidden];
+{42} Point on object(27,0.218373)[hidden];
+{43} Segment(42,41)[hidden];
+{44} Point on object(27,0.24247)[hidden];
+{45} Segment(44,42)[hidden];
+{46} Point on object(27,0.26506)[hidden];
+{47} Point on object(27,0.302711)[hidden];
+{48} Segment(47,46)[hidden];
+{49} Point on object(27,0.325301)[hidden];
+{50} Segment(49,47)[hidden];
+{51} Point on object(27,0.346386)[hidden];
+{52} Point on object(27,0.376506)[hidden];
+{53} Segment(52,51)[hidden];
+{54} Point on object(27,0.39759)[hidden];
+{55} Segment(54,52)[hidden];
+{56} Point on object(27,0.417169)[hidden];
+{57} Point on object(27,0.453313)[hidden];
+{58} Segment(57,56)[hidden];
+{59} Point on object(27,0.475904)[hidden];
+{60} Segment(59,57)[hidden];
+{61} Point on object(27,0.495482)[hidden];
+{62} Point on object(27,0.53012)[hidden];
+{63} Segment(62,61)[hidden];
+{64} Point on object(27,0.552711)[hidden];
+{65} Segment(64,62)[hidden];
+{66} Point on object(27,0.570783)[hidden];
+{67} Point on object(27,0.591867)[hidden];
+{68} Segment(67,66)[hidden];
+{69} Point on object(27,0.60994)[hidden];
+{70} Point on object(27,0.634036)[hidden];
+{71} Segment(70,69)[hidden];
+{72} Point on object(27,0.652108)[hidden];
+{73} Point on object(27,0.673193)[hidden];
+{74} Segment(73,72)[hidden];
+{75} Point on object(27,0.692771)[hidden];
+{76} Point on object(27,0.718373)[hidden];
+{77} Segment(76,75)[hidden];
+{78} Point on object(27,0.733434)[hidden];
+{79} Point on object(27,0.75753)[hidden];
+{80} Segment(79,78)[hidden];
+{81} Point on object(27,0.775602)[hidden];
+{82} Point on object(27,0.798193)[hidden];
+{83} Segment(82,81)[hidden];
+{84} Point on object(27,0.813253)[hidden];
+{85} Point on object(27,0.837349)[hidden];
+{86} Segment(85,84)[hidden];
+{87} Point on object(27,0.856928)[hidden];
+{88} Point on object(27,0.887048)[hidden];
+{89} Segment(88,87)[hidden];
+{90} Point on object(27,0.90512)[hidden];
+{91} Point on object(27,0.938253)[hidden];
+{92} Segment(91,90)[hidden];
+{93} Point on object(23,0.422573)[hidden];
+{94} Point on object(27,0.959337)[hidden];
+{95} Segment(94,91)[hidden];
+{96} Point on object(27,0.974398)[hidden];
+{97} Segment(7,96)[hidden];
+{98} AnimateButton(504,529,'验证是否满足定义')(93,23)(3)(0)(0)[color(255,128,0)];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>双曲线的判定实验</P></H4>
+</BODY>
+</HTML>

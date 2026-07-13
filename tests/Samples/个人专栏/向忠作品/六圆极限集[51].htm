@@ -1,0 +1,374 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>六圆极限集[51]</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=117>
+<PARAM NAME=BackGreen VALUE=117>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(482,308)[hidden];
+{2} Point(477,53)[hidden];
+{3} Rotation(2,1,1.25664)[hidden];
+{4} Rotation(3,1,1.25664)[hidden];
+{5} Rotation(4,1,1.25664)[hidden];
+{6} Rotation(5,1,1.25664)[hidden];
+{7} Dilation(3,2,0.5)[hidden];
+{8} Rotation(7,1,1.25664)[hidden];
+{9} Circle(3,8)[hidden];
+{10} Rotation(8,1,1.25664)[hidden];
+{11} Circle(4,10)[hidden];
+{12} Rotation(10,1,1.25664)[hidden];
+{13} Circle(5,12)[hidden];
+{14} Rotation(12,1,1.25664)[hidden];
+{15} Circle(6,14)[hidden];
+{16} Circle(2,7)[hidden];
+{17} Segment(1,7)[hidden];
+{18} Point on object(17,0.368724)[hidden];
+{19} Rotation(18,1,1.25664)[hidden];
+{20} Rotation(19,1,1.25664)[hidden];
+{21} Rotation(20,1,1.25664)[hidden];
+{22} Rotation(21,1,1.25664)[hidden];
+{23} Dilation(18,22,0.5)[hidden];
+{24} Circle(18,23)[white,mediumLine];
+{25} Intersect2(17,24)[hidden];
+{26} Circle(1,25)[white,mediumLine];
+{27} Rotation(24,1,1.25664)[white,mediumLine];
+{28} Rotation(27,1,1.25664)[white,mediumLine];
+{29} Rotation(28,1,1.25664)[white,mediumLine];
+{30} Rotation(29,1,1.25664)[white,mediumLine];
+{31} Parameter(0,455,583,'n = ')[white];
+{32} Translation(1,3.77953e-006,0)[hidden];
+{33} Rotation/MarkedAngle(7,2,7,2,32)[hidden];
+{34} Rotation/MarkedAngle(8,3,8,3,32)[hidden];
+{35} Rotation/MarkedAngle(12,5,12,5,32)[hidden];
+{36} Rotation/MarkedAngle(14,6,14,6,32)[hidden];
+{37} Rotation/MarkedAngle(10,4,10,4,32)[hidden];
+{38} Rotation/MarkedAngle(23,1,23,1,32)[hidden];
+{39} Point on object(26,-1.57176)[hidden];
+{40} Circle(32,39)[white,mediumLine];
+{41} Rotation/MarkedAngle(39,32,39,32,2)[hidden];
+{42} Dilation/3PtRatio(33,2,2,41,33)[hidden];
+{43} Rotation(41,32,-3.14159)[hidden];
+{44} Dilation/3PtRatio(33,2,2,43,33)[hidden];
+{45} Dilation(44,42,0.5)[hidden];
+{46} Rotation/MarkedAngle(39,32,39,32,3)[hidden];
+{47} Dilation/3PtRatio(34,3,3,46,34)[hidden];
+{48} Rotation(46,32,-3.14159)[hidden];
+{49} Dilation/3PtRatio(34,3,3,48,34)[hidden];
+{50} Dilation(49,47,0.5)[hidden];
+{51} Rotation/MarkedAngle(39,32,39,32,5)[hidden];
+{52} Dilation/3PtRatio(35,5,5,51,35)[hidden];
+{53} Rotation(51,32,-3.14159)[hidden];
+{54} Dilation/3PtRatio(35,5,5,53,35)[hidden];
+{55} Dilation(54,52,0.5)[hidden];
+{56} Rotation/MarkedAngle(39,32,39,32,6)[hidden];
+{57} Dilation/3PtRatio(36,6,6,56,36)[hidden];
+{58} Rotation(56,32,-3.14159)[hidden];
+{59} Dilation/3PtRatio(36,6,6,58,36)[hidden];
+{60} Dilation(59,57,0.5)[hidden];
+{61} Rotation/MarkedAngle(39,32,39,32,4)[hidden];
+{62} Dilation/3PtRatio(37,4,4,61,37)[hidden];
+{63} Rotation(61,32,-3.14159)[hidden];
+{64} Dilation/3PtRatio(37,4,4,63,37)[hidden];
+{65} Dilation(64,62,0.5)[hidden];
+{66} Segment(39,32)[hidden];
+{67} Point on object(66,3.005e-294)[hidden];
+{68} Ratio/Points(32,39,67,111,366,'')[hidden];
+{69} Point on object(66,3.75023e-294)[hidden];
+{70} Circle(32,69)[hidden];
+{71} Rotation/MarkedAngle(39,32,39,32,1)[hidden];
+{72} Dilation/3PtRatio(38,1,1,71,38)[hidden];
+{73} Rotation(71,32,-3.14159)[hidden];
+{74} Dilation/3PtRatio(38,1,1,73,38)[hidden];
+{75} Dilation(74,72,0.5)[hidden];
+{76} Rotation/MarkedAngle(7,2,7,2,18)[hidden];
+{77} Rotation/MarkedAngle(8,3,8,3,18)[hidden];
+{78} Rotation/MarkedAngle(12,5,12,5,18)[hidden];
+{79} Rotation/MarkedAngle(14,6,14,6,18)[hidden];
+{80} Rotation/MarkedAngle(10,4,10,4,18)[hidden];
+{81} Rotation/MarkedAngle(23,1,23,1,18)[hidden];
+{82} Point on object(24,-2.2137)[hidden];
+{83} Circle(18,82)[white,mediumLine];
+{84} Rotation/MarkedAngle(82,18,82,18,2)[hidden];
+{85} Dilation/3PtRatio(76,2,2,84,76)[hidden];
+{86} Rotation(84,18,-3.14159)[hidden];
+{87} Dilation/3PtRatio(76,2,2,86,76)[hidden];
+{88} Dilation(87,85,0.5)[hidden];
+{89} Rotation/MarkedAngle(82,18,82,18,3)[hidden];
+{90} Dilation/3PtRatio(77,3,3,89,77)[hidden];
+{91} Rotation(89,18,-3.14159)[hidden];
+{92} Dilation/3PtRatio(77,3,3,91,77)[hidden];
+{93} Dilation(92,90,0.5)[hidden];
+{94} Rotation/MarkedAngle(82,18,82,18,5)[hidden];
+{95} Dilation/3PtRatio(78,5,5,94,78)[hidden];
+{96} Rotation(94,18,-3.14159)[hidden];
+{97} Dilation/3PtRatio(78,5,5,96,78)[hidden];
+{98} Dilation(97,95,0.5)[hidden];
+{99} Rotation/MarkedAngle(82,18,82,18,6)[hidden];
+{100} Dilation/3PtRatio(79,6,6,99,79)[hidden];
+{101} Rotation(99,18,-3.14159)[hidden];
+{102} Dilation/3PtRatio(79,6,6,101,79)[hidden];
+{103} Dilation(102,100,0.5)[hidden];
+{104} Rotation/MarkedAngle(82,18,82,18,4)[hidden];
+{105} Dilation/3PtRatio(80,4,4,104,80)[hidden];
+{106} Rotation(104,18,-3.14159)[hidden];
+{107} Dilation/3PtRatio(80,4,4,106,80)[hidden];
+{108} Dilation(107,105,0.5)[hidden];
+{109} Segment(82,18)[hidden];
+{110} Point on object(109,0.162388)[hidden];
+{111} Ratio/Points(18,82,110,111,366,'')[hidden];
+{112} Point on object(109,1.43702e-310)[hidden];
+{113} Circle(18,112)[hidden];
+{114} Rotation/MarkedAngle(82,18,82,18,1)[hidden];
+{115} Dilation/3PtRatio(81,1,1,114,81)[hidden];
+{116} Rotation(114,18,-3.14159)[hidden];
+{117} Dilation/3PtRatio(81,1,1,116,81)[hidden];
+{118} Dilation(117,115,0.5)[hidden];
+{119} Rotation/MarkedAngle(7,2,7,2,19)[hidden];
+{120} Rotation/MarkedAngle(8,3,8,3,19)[hidden];
+{121} Rotation/MarkedAngle(12,5,12,5,19)[hidden];
+{122} Rotation/MarkedAngle(14,6,14,6,19)[hidden];
+{123} Rotation/MarkedAngle(10,4,10,4,19)[hidden];
+{124} Rotation/MarkedAngle(23,1,23,1,19)[hidden];
+{125} Point on object(27,2.86005)[hidden];
+{126} Circle(19,125)[white,mediumLine];
+{127} Rotation/MarkedAngle(125,19,125,19,2)[hidden];
+{128} Dilation/3PtRatio(119,2,2,127,119)[hidden];
+{129} Rotation(127,19,-3.14159)[hidden];
+{130} Dilation/3PtRatio(119,2,2,129,119)[hidden];
+{131} Dilation(130,128,0.5)[hidden];
+{132} Rotation/MarkedAngle(125,19,125,19,3)[hidden];
+{133} Dilation/3PtRatio(120,3,3,132,120)[hidden];
+{134} Rotation(132,19,-3.14159)[hidden];
+{135} Dilation/3PtRatio(120,3,3,134,120)[hidden];
+{136} Dilation(135,133,0.5)[hidden];
+{137} Rotation/MarkedAngle(125,19,125,19,5)[hidden];
+{138} Dilation/3PtRatio(121,5,5,137,121)[hidden];
+{139} Rotation(137,19,-3.14159)[hidden];
+{140} Dilation/3PtRatio(121,5,5,139,121)[hidden];
+{141} Dilation(140,138,0.5)[hidden];
+{142} Rotation/MarkedAngle(125,19,125,19,6)[hidden];
+{143} Dilation/3PtRatio(122,6,6,142,122)[hidden];
+{144} Rotation(142,19,-3.14159)[hidden];
+{145} Dilation/3PtRatio(122,6,6,144,122)[hidden];
+{146} Dilation(145,143,0.5)[hidden];
+{147} Rotation/MarkedAngle(125,19,125,19,4)[hidden];
+{148} Dilation/3PtRatio(123,4,4,147,123)[hidden];
+{149} Rotation(147,19,-3.14159)[hidden];
+{150} Dilation/3PtRatio(123,4,4,149,123)[hidden];
+{151} Dilation(150,148,0.5)[hidden];
+{152} Segment(125,19)[hidden];
+{153} Point on object(152,0.556563)[hidden];
+{154} Ratio/Points(19,125,153,111,366,'')[hidden];
+{155} Point on object(152,2.24507e-310)[hidden];
+{156} Circle(19,155)[hidden];
+{157} Rotation/MarkedAngle(125,19,125,19,1)[hidden];
+{158} Dilation/3PtRatio(124,1,1,157,124)[hidden];
+{159} Rotation(157,19,-3.14159)[hidden];
+{160} Dilation/3PtRatio(124,1,1,159,124)[hidden];
+{161} Dilation(160,158,0.5)[hidden];
+{162} Rotation/MarkedAngle(7,2,7,2,20)[hidden];
+{163} Rotation/MarkedAngle(8,3,8,3,20)[hidden];
+{164} Rotation/MarkedAngle(12,5,12,5,20)[hidden];
+{165} Rotation/MarkedAngle(14,6,14,6,20)[hidden];
+{166} Rotation/MarkedAngle(10,4,10,4,20)[hidden];
+{167} Rotation/MarkedAngle(23,1,23,1,20)[hidden];
+{168} Point on object(28,1.56645)[hidden];
+{169} Circle(20,168)[white,mediumLine];
+{170} Rotation/MarkedAngle(168,20,168,20,2)[hidden];
+{171} Dilation/3PtRatio(162,2,2,170,162)[hidden];
+{172} Rotation(170,20,-3.14159)[hidden];
+{173} Dilation/3PtRatio(162,2,2,172,162)[hidden];
+{174} Dilation(173,171,0.5)[hidden];
+{175} Rotation/MarkedAngle(168,20,168,20,3)[hidden];
+{176} Dilation/3PtRatio(163,3,3,175,163)[hidden];
+{177} Rotation(175,20,-3.14159)[hidden];
+{178} Dilation/3PtRatio(163,3,3,177,163)[hidden];
+{179} Dilation(178,176,0.5)[hidden];
+{180} Rotation/MarkedAngle(168,20,168,20,5)[hidden];
+{181} Dilation/3PtRatio(164,5,5,180,164)[hidden];
+{182} Rotation(180,20,-3.14159)[hidden];
+{183} Dilation/3PtRatio(164,5,5,182,164)[hidden];
+{184} Dilation(183,181,0.5)[hidden];
+{185} Rotation/MarkedAngle(168,20,168,20,6)[hidden];
+{186} Dilation/3PtRatio(165,6,6,185,165)[hidden];
+{187} Rotation(185,20,-3.14159)[hidden];
+{188} Dilation/3PtRatio(165,6,6,187,165)[hidden];
+{189} Dilation(188,186,0.5)[hidden];
+{190} Rotation/MarkedAngle(168,20,168,20,4)[hidden];
+{191} Dilation/3PtRatio(166,4,4,190,166)[hidden];
+{192} Rotation(190,20,-3.14159)[hidden];
+{193} Dilation/3PtRatio(166,4,4,192,166)[hidden];
+{194} Dilation(193,191,0.5)[hidden];
+{195} Segment(168,20)[hidden];
+{196} Point on object(195,0.268181)[hidden];
+{197} Ratio/Points(20,168,196,111,366,'')[hidden];
+{198} Point on object(195,4.66839e-313)[hidden];
+{199} Circle(20,198)[hidden];
+{200} Rotation/MarkedAngle(168,20,168,20,1)[hidden];
+{201} Dilation/3PtRatio(167,1,1,200,167)[hidden];
+{202} Rotation(200,20,-3.14159)[hidden];
+{203} Dilation/3PtRatio(167,1,1,202,167)[hidden];
+{204} Dilation(203,201,0.5)[hidden];
+{205} Rotation/MarkedAngle(7,2,7,2,21)[hidden];
+{206} Rotation/MarkedAngle(8,3,8,3,21)[hidden];
+{207} Rotation/MarkedAngle(12,5,12,5,21)[hidden];
+{208} Rotation/MarkedAngle(14,6,14,6,21)[hidden];
+{209} Rotation/MarkedAngle(10,4,10,4,21)[hidden];
+{210} Rotation/MarkedAngle(23,1,23,1,21)[hidden];
+{211} Point on object(29,0.390168)[hidden];
+{212} Circle(21,211)[white,mediumLine];
+{213} Rotation/MarkedAngle(211,21,211,21,2)[hidden];
+{214} Dilation/3PtRatio(205,2,2,213,205)[hidden];
+{215} Rotation(213,21,-3.14159)[hidden];
+{216} Dilation/3PtRatio(205,2,2,215,205)[hidden];
+{217} Dilation(216,214,0.5)[hidden];
+{218} Rotation/MarkedAngle(211,21,211,21,3)[hidden];
+{219} Dilation/3PtRatio(206,3,3,218,206)[hidden];
+{220} Rotation(218,21,-3.14159)[hidden];
+{221} Dilation/3PtRatio(206,3,3,220,206)[hidden];
+{222} Dilation(221,219,0.5)[hidden];
+{223} Rotation/MarkedAngle(211,21,211,21,5)[hidden];
+{224} Dilation/3PtRatio(207,5,5,223,207)[hidden];
+{225} Rotation(223,21,-3.14159)[hidden];
+{226} Dilation/3PtRatio(207,5,5,225,207)[hidden];
+{227} Dilation(226,224,0.5)[hidden];
+{228} Rotation/MarkedAngle(211,21,211,21,6)[hidden];
+{229} Dilation/3PtRatio(208,6,6,228,208)[hidden];
+{230} Rotation(228,21,-3.14159)[hidden];
+{231} Dilation/3PtRatio(208,6,6,230,208)[hidden];
+{232} Dilation(231,229,0.5)[hidden];
+{233} Rotation/MarkedAngle(211,21,211,21,4)[hidden];
+{234} Dilation/3PtRatio(209,4,4,233,209)[hidden];
+{235} Rotation(233,21,-3.14159)[hidden];
+{236} Dilation/3PtRatio(209,4,4,235,209)[hidden];
+{237} Dilation(236,234,0.5)[hidden];
+{238} Segment(211,21)[hidden];
+{239} Point on object(238,0.818314)[hidden];
+{240} Ratio/Points(21,211,239,111,366,'')[hidden];
+{241} Point on object(238,1.01283e-321)[hidden];
+{242} Circle(21,241)[hidden];
+{243} Rotation/MarkedAngle(211,21,211,21,1)[hidden];
+{244} Dilation/3PtRatio(210,1,1,243,210)[hidden];
+{245} Rotation(243,21,-3.14159)[hidden];
+{246} Dilation/3PtRatio(210,1,1,245,210)[hidden];
+{247} Dilation(246,244,0.5)[hidden];
+{248} Rotation/MarkedAngle(7,2,7,2,22)[hidden];
+{249} Rotation/MarkedAngle(8,3,8,3,22)[hidden];
+{250} Rotation/MarkedAngle(12,5,12,5,22)[hidden];
+{251} Rotation/MarkedAngle(14,6,14,6,22)[hidden];
+{252} Rotation/MarkedAngle(10,4,10,4,22)[hidden];
+{253} Rotation/MarkedAngle(23,1,23,1,22)[hidden];
+{254} Point on object(30,-0.950832)[hidden];
+{255} Circle(22,254)[white,mediumLine];
+{256} Rotation/MarkedAngle(254,22,254,22,2)[hidden];
+{257} Dilation/3PtRatio(248,2,2,256,248)[hidden];
+{258} Rotation(256,22,-3.14159)[hidden];
+{259} Dilation/3PtRatio(248,2,2,258,248)[hidden];
+{260} Dilation(259,257,0.5)[hidden];
+{261} Rotation/MarkedAngle(254,22,254,22,3)[hidden];
+{262} Dilation/3PtRatio(249,3,3,261,249)[hidden];
+{263} Rotation(261,22,-3.14159)[hidden];
+{264} Dilation/3PtRatio(249,3,3,263,249)[hidden];
+{265} Dilation(264,262,0.5)[hidden];
+{266} Rotation/MarkedAngle(254,22,254,22,5)[hidden];
+{267} Dilation/3PtRatio(250,5,5,266,250)[hidden];
+{268} Rotation(266,22,-3.14159)[hidden];
+{269} Dilation/3PtRatio(250,5,5,268,250)[hidden];
+{270} Dilation(269,267,0.5)[hidden];
+{271} Rotation/MarkedAngle(254,22,254,22,6)[hidden];
+{272} Dilation/3PtRatio(251,6,6,271,251)[hidden];
+{273} Rotation(271,22,-3.14159)[hidden];
+{274} Dilation/3PtRatio(251,6,6,273,251)[hidden];
+{275} Dilation(274,272,0.5)[hidden];
+{276} Rotation/MarkedAngle(254,22,254,22,4)[hidden];
+{277} Dilation/3PtRatio(252,4,4,276,252)[hidden];
+{278} Rotation(276,22,-3.14159)[hidden];
+{279} Dilation/3PtRatio(252,4,4,278,252)[hidden];
+{280} Dilation(279,277,0.5)[hidden];
+{281} Segment(254,22)[hidden];
+{282} Point on object(281,0.459795)[hidden];
+{283} Ratio/Points(22,254,282,111,366,'')[hidden];
+{284} Point on object(281,4.19731e-310)[hidden];
+{285} Circle(22,284)[hidden];
+{286} Rotation/MarkedAngle(254,22,254,22,1)[hidden];
+{287} Dilation/3PtRatio(253,1,1,286,253)[hidden];
+{288} Rotation(286,22,-3.14159)[hidden];
+{289} Dilation/3PtRatio(253,1,1,288,253)[hidden];
+{290} Dilation(289,287,0.5)[hidden];
+{291} Circle(32,7)[white,thick];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>六圆极限集[51]</P></H4>
+</BODY>
+</HTML>

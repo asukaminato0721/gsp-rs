@@ -1,0 +1,212 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>转动的齿轮 (1)</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=233>
+<PARAM NAME=BackGreen VALUE=233>
+<PARAM NAME=BackBlue VALUE=233>
+<PARAM NAME=Construction VALUE="
+{1} Point(673,379)[hidden];
+{2} UnitPoint(1,178.795)[hidden];
+{3} Segment(1,2)[hidden];
+{4} Point(535,722)[label('A'),mediumPoint];
+{5} VectorTranslation(2,1,4)[label('D'''),red,mediumPoint];
+{6} Segment(4,5)[color(0,0,128),mediumLine];
+{7} Point on object(6,0.939548)[label('C'),red,mediumPoint];
+{8} Ratio/Points(4,7,5,63,112,'')[hidden];
+{9} Calculate(35,158,'','3 A @rond * ')(8)[hidden];
+{10} Midpoint(3)[hidden];
+{11} Circle(1,10)[hidden];
+{12} Circle(2,10)[hidden];
+{13} Rotation(12,1,1.0472)[hidden];
+{14} Rotation(2,1,1.0472)[hidden];
+{15} Rotation(13,1,1.0472)[hidden];
+{16} Rotation(14,1,1.0472)[hidden];
+{17} Rotation(15,1,1.0472)[hidden];
+{18} Rotation(16,1,1.0472)[hidden];
+{19} Rotation(17,1,1.0472)[hidden];
+{20} Rotation(18,1,1.0472)[hidden];
+{21} Rotation(19,1,1.0472)[hidden];
+{22} Rotation(20,1,1.0472)[hidden];
+{23} ToggleVisibilityButton(10,53,'隐藏点 C|显示点 C')(7)[hidden];
+{24} Calculate(16,331,'','6.28319 A / ')(9)[hidden];
+{25} Calculate(16,397,'','A 1 - ')(9)[hidden];
+{26} Point on object(6,0.978459)[label('E'),red,mediumPoint];
+{27} Distance(26,4,15,262,'')[hidden];
+{28} Point on object(12,-0.977053)[hidden];
+{29} Segment(28,2)[hidden];
+{30} Circle by radius(28,27)[hidden];
+{31} Intersect1(29,30)[hidden];
+{32} Circle(2,31)[hidden];
+{33} Rotation/MeasuredAngle(31,2,24)[hidden];
+{34} Rotation/MeasuredAngle(28,2,24)[hidden];
+{35} Calculate(19,446,'','A 0.5 * ')(24)[hidden];
+{36} Rotation/MeasuredAngle(31,2,35)[hidden];
+{37} Rotation/MeasuredAngle(28,2,35)[hidden];
+{38} Segment(36,31)[color(0,128,0),mediumLine];
+{39} Segment(34,37)[hidden];
+{40} Reflection(36,39)[hidden];
+{41} Reflection(33,39)[hidden];
+{42} Polygon(41,34,33,36,37,40)[color(0,128,0)];
+{43} Circle interior(32)[color(0,128,0)];
+{44} AnimateButton(1136,342,'')(28,12)(1)(0)(1)[hidden];
+{45} Point on object(13,2.51733)[hidden];
+{46} Segment(45,14)[hidden];
+{47} Circle by radius(45,27)[hidden];
+{48} Intersect1(46,47)[hidden];
+{49} Circle(14,48)[hidden];
+{50} Rotation/MeasuredAngle(48,14,35)[hidden];
+{51} Rotation/MeasuredAngle(45,14,35)[hidden];
+{52} Rotation/MeasuredAngle(50,14,35)[hidden];
+{53} Rotation/MeasuredAngle(51,14,35)[hidden];
+{54} Segment(50,48)[hidden];
+{55} Segment(53,51)[hidden];
+{56} Reflection(50,55)[hidden];
+{57} Reflection(52,55)[hidden];
+{58} Polygon(57,53,52,50,51,56)[blue];
+{59} Circle interior(49)[blue];
+{60} AnimateButton(1120,93,'')(45,13)(1)(0)(0)[hidden];
+{61} Point on object(15,-2.21058)[hidden];
+{62} Segment(61,16)[hidden];
+{63} Circle by radius(61,27)[hidden];
+{64} Intersect1(62,63)[hidden];
+{65} Circle(16,64)[hidden];
+{66} Rotation/MeasuredAngle(64,16,35)[hidden];
+{67} Rotation/MeasuredAngle(61,16,35)[hidden];
+{68} Rotation/MeasuredAngle(66,16,35)[hidden];
+{69} Rotation/MeasuredAngle(67,16,35)[hidden];
+{70} Segment(66,64)[green,mediumLine];
+{71} Segment(69,67)[hidden];
+{72} Reflection(66,71)[hidden];
+{73} Reflection(68,71)[hidden];
+{74} Polygon(73,69,68,66,67,72)[green];
+{75} Circle interior(65)[green];
+{76} AnimateButton(269,145,'')(61,15)(1)(0)(1)[hidden];
+{77} Point on object(19,-2.08827)[hidden];
+{78} Segment(77,20)[hidden];
+{79} Circle by radius(77,27)[hidden];
+{80} Intersect1(78,79)[hidden];
+{81} Rotation/MeasuredAngle(80,20,35)[hidden];
+{82} Rotation/MeasuredAngle(77,20,35)[hidden];
+{83} Rotation/MeasuredAngle(81,20,35)[hidden];
+{84} Rotation/MeasuredAngle(82,20,35)[hidden];
+{85} Point on object(21,-3.02587)[hidden];
+{86} Segment(85,22)[hidden];
+{87} Circle by radius(85,27)[hidden];
+{88} Intersect1(86,87)[hidden];
+{89} Rotation/MeasuredAngle(88,22,35)[hidden];
+{90} Rotation/MeasuredAngle(85,22,35)[hidden];
+{91} Rotation/MeasuredAngle(89,22,35)[hidden];
+{92} Rotation/MeasuredAngle(90,22,35)[hidden];
+{93} Point on object(17,-2.78276)[hidden];
+{94} Circle by radius(93,27)[hidden];
+{95} Rotation/MeasuredAngle(93,18,35)[hidden];
+{96} Rotation/MeasuredAngle(95,18,35)[hidden];
+{97} Segment(95,96)[hidden];
+{98} Segment(93,18)[hidden];
+{99} Intersect1(98,94)[hidden];
+{100} Circle(18,99)[hidden];
+{101} Rotation/MeasuredAngle(99,18,35)[hidden];
+{102} Segment(99,101)[magenta,mediumLine];
+{103} Reflection(101,97)[hidden];
+{104} Rotation/MeasuredAngle(101,18,35)[hidden];
+{105} Reflection(104,97)[hidden];
+{106} Polygon(101,95,103,105,96,104)[magenta];
+{107} AnimateButton(230,215,'')(93,17)(1)(0)(0)[hidden];
+{108} Segment(81,80)[color(128,0,0),mediumLine];
+{109} Segment(82,84)[hidden];
+{110} Reflection(83,109)[hidden];
+{111} Reflection(81,109)[hidden];
+{112} Polygon(81,83,84,110,111,82)[color(128,0,0)];
+{113} Circle(20,80)[hidden];
+{114} Circle interior(113)[color(128,0,0)];
+{115} AnimateButton(321,607,'')(77,19)(1)(0)(1)[hidden];
+{116} Segment(89,88)[color(0,0,128),mediumLine];
+{117} Segment(92,90)[color(0,0,128),mediumLine];
+{118} Reflection(91,117)[hidden];
+{119} Reflection(89,117)[hidden];
+{120} Polygon(119,118,92,91,89,90)[color(0,0,128)];
+{121} Circle(22,88)[hidden];
+{122} Circle interior(121)[color(0,0,128)];
+{123} AnimateButton(988,637,'')(85,21)(1)(0)(0)[hidden];
+{124} Circle interior(100)[magenta];
+{125} ToggleVisibilityButton(952,482,'隐藏对象|显示对象')(4,5,6,7,26)[hidden];
+{126} FixedText(527,65,'转动的齿轮')[blue];
+{127} FixedText(782,80,'李庄中学  况永胜')[color(138,102,217)];
+{128} FixedText(150,79,'2017.9.17')[color(138,102,217)];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>转动的齿轮 (1)</P></H4>
+</BODY>
+</HTML>

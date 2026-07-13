@@ -1,0 +1,133 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>正方体的展开（3D效果）</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(90,309)[mediumPoint];
+{2} Translation(1,32.126,0)[hidden];
+{3} Rotation(2,1,-0.523599)[hidden];
+{4} Rotation(3,1,-0.785398)[hidden];
+{5} Dilation(4,1,1.6)[hidden];
+{6} Dilation(3,1,1.4)[hidden];
+{7} Circle(1,2)[hidden];
+{8} Point on object(7,-1.5708)[cyan,mediumPoint];
+{9} Rotation(8,1,-1.5708)[hidden];
+{10} Point on object(7,3.046)[hidden];
+{11} Dilation/3PtRatio(9,1,1,9,10)[hidden];
+{12} Point on object(7,-0.212959)[blue,mediumPoint];
+{13} Point on object(7,1.92363)[red,mediumPoint];
+{14} Rotation(13,1,1.5708)[green,mediumPoint];
+{15} Rotation(2,1,1.5708)[red,hidden];
+{16} Translation(15,0,0)[cyan,hidden];
+{17} Rotation(2,1,0.349066)[hidden];
+{18} Rotation(2,1,-2.18166)[hidden];
+{19} Dilation(18,1,2)[hidden];
+{20} Dilation(18,1,1.4)[hidden];
+{21} Rotation(2,1,-1.5708)[red,hidden];
+{22} MoveButton(10,53,0,'左视图')(21,13,2,12,15,8)[color(255,128,0),hidden];
+{23} Rotation(2,1,0.261799)[hidden];
+{24} Rotation(23,1,0.261799)[hidden];
+{25} Dilation(2,1,-1)[hidden];
+{26} MoveButton(10,53,0,'主视图')(2,12,25,13,15,8)[color(255,128,0),hidden];
+{27} MoveButton(10,53,0,'俯视图')(25,13,16,12,15,8)[color(255,128,0),hidden];
+{28} Point(221,489)[mediumPoint];
+{29} Translation(28,0,0)[label('O'),blue,dot];
+{30} Point(648,331)[hidden];
+{31} Point(150,176)[label('1'),hidden];
+{32} UnitPoint(31,447.795)[hidden];
+{33} Dilation(32,31,0.2)[hidden];
+{34} VectorTranslation(33,31,33)[hidden];
+{35} VectorTranslation(34,31,33)[hidden];
+{36} VectorTranslation(35,31,33)[hidden];
+{37} Segment(32,31)[hidden];
+{38} Segment(33,31)[color(0,0,128),hidden,mediumLine];
+{39} Segment(34,33)[hidden];
+{40} Segment(35,34)[hidden];
+{41} Segment(36,35)[hidden];
+{42} Segment(32,36)[hidden];
+{43} Translation(13,37.7953,0)[red,mediumPoint];
+{44} Point on object(37,0)[label('M'),red,hidden,mediumPoint];
+{45} MoveButton(10,5,1,'合拢')(32,44)[color(255,128,0),hidden];
+{46} MoveButton(10,27,3,'展开')(31,44)[color(255,128,0),hidden];
+{47} FixedText(465,62,'正方体的展开（3D效果)')[blue];
+{48} FixedText(667,106,'四川宜宾   况永胜 ')[blue];
+{49} FixedText(755,62,'2018.5.1')[blue];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>正方体的展开（3D效果）</P></H4>
+</BODY>
+</HTML>

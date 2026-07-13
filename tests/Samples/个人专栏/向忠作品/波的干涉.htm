@@ -1,0 +1,135 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>波的干涉</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=103>
+<PARAM NAME=BackGreen VALUE=103>
+<PARAM NAME=BackBlue VALUE=103>
+<PARAM NAME=Construction VALUE="
+{1} Point(578,242)[hidden];
+{2} UnitPoint(1,46.7953)[hidden];
+{3} SquareUnitPoint(2)[hidden];
+{4} VerticalAxis(1,3)[hidden];
+{5} HorizontalAxis(1,2)[hidden];
+{6} CoordSysByAxes(5,4)[hidden];
+{7} Point(980,192)[large];
+{8} Abscissa(7,6,14,25,'')[hidden];
+{9} Calculate(14,25,'视距d = ','15 0 A * + ')(8)[black];
+{10} Calculate(14,51,'视径R = ','20 0 A * + ')(9)[black];
+{11} Calculate(14,155,'','1 0 A * + ')(10)[hidden];
+{12} Calculate(14,155,'','0 A * ')(10)[hidden];
+{13} Calculate(14,155,'','A B @cos_ * A B @sin_ * - ')(12,8)[hidden];
+{14} Calculate(14,155,'','A B @cos_ * C B @sin_ * - ')(11,8,12)[hidden];
+{15} Calculate(14,155,'','A B @cos_ * C B @sin_ * - ')(12,8,11)[hidden];
+{16} Calculate(14,155,'','0.7 A * B / ')(10,9)[hidden];
+{17} Ordinate(7,6,14,155,'')[hidden];
+{18} Calculate(14,155,'','A ! B @sin_ * C @sin_ * D B @cos_ * - A B @sin_ * C @cos_ * - E + ')(12,17,8,11,10)[hidden];
+{19} Calculate(14,155,'','A B * C / ')(9,13,18)[hidden];
+{20} Calculate(14,155,'','A ! B @cos_ * C @sin_ * D B @sin_ * + D B @cos_ * C @cos_ * - ')(11,17,8,12)[hidden];
+{21} Calculate(14,155,'','A ! B @sin_ * C @sin_ * D B @cos_ * - D B @sin_ * C @cos_ * - E + ')(11,17,8,12,10)[hidden];
+{22} Calculate(14,155,'','A B * C / ')(9,14,21)[hidden];
+{23} Calculate(14,155,'','A B * C / ')(9,20,21)[hidden];
+{24} PlotXY(23,6,22)[hidden];
+{25} Calculate(14,155,'','A ! B @cos_ * C @sin_ * A B @sin_ * + D B @cos_ * C @cos_ * - ')(12,17,8,11)[hidden];
+{26} Calculate(14,155,'','A ! B @sin_ * C @sin_ * A B @cos_ * - D B @sin_ * C @cos_ * - E + ')(12,17,8,11,10)[hidden];
+{27} Calculate(14,155,'','A B * C / ')(9,15,26)[hidden];
+{28} Calculate(14,155,'','A B * C / ')(9,25,26)[hidden];
+{29} PlotXY(28,6,27)[hidden];
+{30} Calculate(14,155,'','A ! B @cos_ * C @sin_ * D B @sin_ * + A B @cos_ * C @cos_ * - ')(12,17,8,11)[hidden];
+{31} Calculate(14,155,'','A B * C / ')(9,30,18)[hidden];
+{32} PlotXY(31,6,19)[hidden];
+{33} Polygon(29,1,32,1,24,1)[hidden];
+{34} Dilation/MarkedRatio(33,1,16)[hidden];
+{35} VectorTranslation(34,1,7)[color(128,128,128),mediumLine];
+{36} Parameter(0,15,138,'θ = ')[black];
+{37} Parameter(20.3997,14,205,'u = ')[black];
+{38} Parameter(4,14,172,'d = ')[black];
+{39} Parameter(1,14,238,'t = ')[black];
+{40} Parameter(1,15,105,'ρ = ')[black];
+{41} Calculate(14,298,'ρ[2] = ','A 2 ^ B 2 ^ + 2 A * B * C @cos_ * - @sqrt ')(40,38,36)[black];
+{42} Calculate(14,268,'ρ[1] = ','A 2 ^ B 2 ^ + 2 A * B * C @cos_ * + @sqrt ')(40,38,36)[black];
+{43} Calculate(14,384,'z = ','0.1 2 ! 3.14159 * A * B + @sin_ 2 ! 3.14159 * C * B + @sin_ + * ')(42,37,41)[black];
+{44} Calculate(14,356,'y = ','A B @sin_ * ')(40,36)[black];
+{45} Calculate(14,328,'x = ','A B @cos_ * ')(40,36)[black];
+{46} Calculate(20,220,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(44,17,8,43,45)[hidden];
+{47} Calculate(20,220,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(44,17,8,43,45,10)[hidden];
+{48} Calculate(20,220,'','A B * C / ')(9,46,47)[hidden];
+{49} Calculate(20,220,'','A B @cos_ * C B @sin_ * - ')(44,8,45)[hidden];
+{50} Calculate(20,220,'','A B * C / ')(9,49,47)[hidden];
+{51} PlotXY(48,6,50)[hidden];
+{52} Calculate(20,167,'','A B @cos_ * C B @sin_ * - ')(36,8,40)[hidden];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>波的干涉</P></H4>
+</BODY>
+</HTML>

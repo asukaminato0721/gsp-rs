@@ -1,0 +1,133 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>柱面等距螺旋线</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(241,504)[hidden];
+{2} UnitPoint(1,438.795)[hidden];
+{3} RectangularUnitPoint(2,431.795)[hidden];
+{4} Dilation(3,2,0.5)[hidden];
+{5} UnitPoint(4,37.7953)[hidden];
+{6} SquareUnitPoint(5)[hidden];
+{7} VerticalAxis(4,6)[hidden];
+{8} HorizontalAxis(4,5)[hidden];
+{9} CoordSysByAxes(8,7)[hidden];
+{10} Point(632,256)[large];
+{11} Abscissa(10,9,14,25,'')[hidden];
+{12} Parameter(30,14,28,'视距d = ')[black];
+{13} Parameter(2,14,94,'ρ = ')[black];
+{14} Ordinate(10,9,14,155,'')[hidden];
+{15} VectorTranslation(2,1,3)[hidden];
+{16} Parameter(0,14,239,'0 = ')[black];
+{17} Point(333,549)[hidden];
+{18} Point(570,549)[hidden];
+{19} Segment(18,17)[color(0,0,128)];
+{20} Point on object(19,0.57384)[white,large];
+{21} Calculate(14,208,'z = ','3 2 A * 1 - * ')(16)[black];
+{22} Polygon(1,2,15,3)[black];
+{23} Parameter(30,14,61,'视径R = ')[black];
+{24} Calculate(14,155,'','1 0 A * + ')(23)[hidden];
+{25} Calculate(14,155,'','0 A * ')(23)[hidden];
+{26} Calculate(14,155,'','A B @cos_ * C B @sin_ * - ')(24,11,25)[hidden];
+{27} Calculate(14,155,'','A B @cos_ * C B @sin_ * - ')(25,11,24)[hidden];
+{28} Calculate(14,155,'','A ! B @cos_ * C @sin_ * A B @sin_ * + D B @cos_ * C @cos_ * - ')(25,14,11,24)[hidden];
+{29} Calculate(14,155,'','A ! B @cos_ * C @sin_ * D B @sin_ * + D B @cos_ * C @cos_ * - ')(24,14,11,25)[hidden];
+{30} Calculate(14,155,'','A ! B @cos_ * C @sin_ * D B @sin_ * + A B @cos_ * C @cos_ * - ')(25,14,11,24)[hidden];
+{31} Calculate(14,155,'','A B @cos_ * A B @sin_ * - ')(25,11)[hidden];
+{32} Calculate(14,155,'','0.7 A * B / ')(23,12)[hidden];
+{33} Calculate(14,155,'','A ! B @sin_ * C @sin_ * D B @cos_ * - A B @sin_ * C @cos_ * - E + ')(25,14,11,24,23)[hidden];
+{34} Calculate(14,155,'','A B * C / ')(12,30,33)[hidden];
+{35} Calculate(14,155,'','A B * C / ')(12,31,33)[hidden];
+{36} PlotXY(34,9,35)[hidden];
+{37} Calculate(14,155,'','A ! B @sin_ * C @sin_ * D B @cos_ * - D B @sin_ * C @cos_ * - E + ')(24,14,11,25,23)[hidden];
+{38} Calculate(14,155,'','A B * C / ')(12,29,37)[hidden];
+{39} Calculate(14,155,'','A B * C / ')(12,26,37)[hidden];
+{40} PlotXY(38,9,39)[hidden];
+{41} Calculate(14,256,'','A B @cos_ * C - ')(23,14,21)[hidden];
+{42} Calculate(14,155,'','A ! B @sin_ * C @sin_ * A B @cos_ * - D B @sin_ * C @cos_ * - E + ')(25,14,11,24,23)[hidden];
+{43} Calculate(14,155,'','A B * C / ')(12,28,42)[hidden];
+{44} Calculate(14,155,'','A B * C / ')(12,27,42)[hidden];
+{45} PlotXY(43,9,44)[hidden];
+{46} Polygon(45,4,36,4,40,4)[hidden];
+{47} Dilation/MarkedRatio(46,4,32)[hidden];
+{48} VectorTranslation(47,4,10)[color(128,128,128),mediumLine];
+{49} Parameter(0.4,14,272,'色[实] = ')[black];
+{50} Parameter(0.4,14,305,'色[虚] = ')[black];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>柱面等距螺旋线</P></H4>
+</BODY>
+</HTML>

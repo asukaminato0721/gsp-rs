@@ -1,0 +1,571 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>希尔伯特曲线填充正方体表面</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(225,631)[hidden];
+{2} UnitPoint(1,600.795)[hidden];
+{3} RectangularUnitPoint(2,607.795)[hidden];
+{4} Dilation(3,2,0.5)[hidden];
+{5} UnitPoint(4,37.7953)[hidden];
+{6} SquareUnitPoint(5)[hidden];
+{7} VerticalAxis(4,6)[hidden];
+{8} HorizontalAxis(4,5)[hidden];
+{9} CoordSysByAxes(8,7)[hidden];
+{10} Point(848.66,408.838)[large];
+{11} Abscissa(10,9,14,25,'')[hidden];
+{12} Calculate(16,46,'视距d = ','20 0 A * + ')(11)[black];
+{13} Calculate(16,72,'视径R = ','20 0 A * + ')(12)[black];
+{14} Parameter(4.2,16,101,'a = ')[black];
+{15} Parameter(0,16,127,'0 = ')[black];
+{16} Calculate(14,155,'','0.7 A * B / ')(13,12)[hidden];
+{17} Ordinate(10,9,14,155,'')[hidden];
+{18} VectorTranslation(2,1,3)[hidden];
+{19} Calculate(14,155,'','1 0 A * + ')(13)[hidden];
+{20} Calculate(14,155,'','0 A * ')(13)[hidden];
+{21} Calculate(14,155,'','A B @cos_ * C B @sin_ * - ')(19,11,20)[hidden];
+{22} Calculate(14,155,'','A B @cos_ * C B @sin_ * - ')(20,11,19)[hidden];
+{23} Calculate(14,155,'','A ! B @sin_ * C @sin_ * D B @cos_ * - A B @sin_ * C @cos_ * - E + ')(20,17,11,19,13)[hidden];
+{24} Calculate(14,155,'','A ! B @cos_ * C @sin_ * D B @sin_ * + D B @cos_ * C @cos_ * - ')(19,17,11,20)[hidden];
+{25} Calculate(14,155,'','A ! B @sin_ * C @sin_ * D B @cos_ * - D B @sin_ * C @cos_ * - E + ')(19,17,11,20,13)[hidden];
+{26} Calculate(14,155,'','A B * C / ')(12,24,25)[hidden];
+{27} Calculate(14,155,'','A B * C / ')(12,21,25)[hidden];
+{28} Calculate(14,155,'','A ! B @cos_ * C @sin_ * A B @sin_ * + D B @cos_ * C @cos_ * - ')(20,17,11,19)[hidden];
+{29} Calculate(14,155,'','A ! B @sin_ * C @sin_ * A B @cos_ * - D B @sin_ * C @cos_ * - E + ')(20,17,11,19,13)[hidden];
+{30} Calculate(14,155,'','A B * C / ')(12,28,29)[hidden];
+{31} Calculate(14,155,'','A B * C / ')(12,22,29)[hidden];
+{32} Calculate(14,155,'','A ! B @cos_ * C @sin_ * D B @sin_ * + A B @cos_ * C @cos_ * - ')(20,17,11,19)[hidden];
+{33} Calculate(14,155,'','A B * C / ')(12,32,23)[hidden];
+{34} Calculate(14,155,'','A B @cos_ * A B @sin_ * - ')(20,11)[hidden];
+{35} Calculate(14,155,'','A B * C / ')(12,34,23)[hidden];
+{36} PlotXY(33,9,35)[hidden];
+{37} PlotXY(30,9,31)[hidden];
+{38} PlotXY(26,9,27)[hidden];
+{39} Polygon(37,4,36,4,38,4)[hidden];
+{40} Dilation/MarkedRatio(39,4,16)[hidden];
+{41} VectorTranslation(40,4,10)[color(128,128,128),mediumLine];
+{42} Calculate(99,100,'-a = ','A ! ')(14)[black];
+{43} Calculate(97,104,'','A B @cos_ * A B @sin_ * - ')(14,11)[hidden];
+{44} Calculate(97,104,'','A ! B @sin_ * C @sin_ * A B @cos_ * - A B @sin_ * C @cos_ * - D + ')(14,17,11,13)[hidden];
+{45} Calculate(97,104,'','A ! B @cos_ * C @sin_ * A B @sin_ * + A B @cos_ * C @cos_ * - ')(14,17,11)[hidden];
+{46} Calculate(97,104,'','A B * C / ')(12,43,44)[hidden];
+{47} Calculate(97,104,'','A B * C / ')(12,45,44)[hidden];
+{48} PlotXY(47,9,46)[hidden];
+{49} Calculate(97,104,'','A B @cos_ * A B @sin_ * - ')(14,11)[hidden];
+{50} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - A B @sin_ * C @cos_ * - E + ')(14,17,11,42,13)[hidden];
+{51} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + A B @cos_ * C @cos_ * - ')(14,17,11,42)[hidden];
+{52} Calculate(97,104,'','A B * C / ')(12,49,50)[hidden];
+{53} Calculate(97,104,'','A B * C / ')(12,51,50)[hidden];
+{54} PlotXY(53,9,52)[hidden];
+{55} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(42,11,14)[hidden];
+{56} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - D B @sin_ * C @cos_ * - E + ')(42,17,11,14,13)[hidden];
+{57} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + D B @cos_ * C @cos_ * - ')(42,17,11,14)[hidden];
+{58} Calculate(97,104,'','A B * C / ')(12,55,56)[hidden];
+{59} Calculate(97,104,'','A B * C / ')(12,57,56)[hidden];
+{60} PlotXY(59,9,58)[hidden];
+{61} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(14,11,42)[hidden];
+{62} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - D B @sin_ * C @cos_ * - E + ')(14,17,11,42,13)[hidden];
+{63} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + D B @cos_ * C @cos_ * - ')(14,17,11,42)[hidden];
+{64} Calculate(97,104,'','A B * C / ')(12,61,62)[hidden];
+{65} Calculate(97,104,'','A B * C / ')(12,63,62)[hidden];
+{66} PlotXY(65,9,64)[hidden];
+{67} Calculate(97,104,'','A ! B @sin_ * C @sin_ * A B @cos_ * - D B @sin_ * C @cos_ * - E + ')(14,17,11,42,13)[hidden];
+{68} Calculate(97,104,'','A ! B @cos_ * C @sin_ * A B @sin_ * + D B @cos_ * C @cos_ * - ')(14,17,11,42)[hidden];
+{69} Calculate(97,104,'','A B * C / ')(12,61,67)[hidden];
+{70} Calculate(97,104,'','A B * C / ')(12,68,67)[hidden];
+{71} PlotXY(70,9,69)[hidden];
+{72} Calculate(97,104,'','A ! B @sin_ * C @sin_ * A B @cos_ * - D B @sin_ * C @cos_ * - E + ')(42,17,11,14,13)[hidden];
+{73} Calculate(97,104,'','A ! B @cos_ * C @sin_ * A B @sin_ * + D B @cos_ * C @cos_ * - ')(42,17,11,14)[hidden];
+{74} Calculate(97,104,'','A B * C / ')(12,55,72)[hidden];
+{75} Calculate(97,104,'','A B * C / ')(12,73,72)[hidden];
+{76} PlotXY(75,9,74)[hidden];
+{77} Calculate(97,104,'','A B @cos_ * A B @sin_ * - ')(42,11)[hidden];
+{78} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - A B @sin_ * C @cos_ * - E + ')(42,17,11,14,13)[hidden];
+{79} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + A B @cos_ * C @cos_ * - ')(42,17,11,14)[hidden];
+{80} Calculate(97,104,'','A B * C / ')(12,77,78)[hidden];
+{81} Calculate(97,104,'','A B * C / ')(12,79,78)[hidden];
+{82} PlotXY(81,9,80)[hidden];
+{83} Calculate(97,104,'','A B @cos_ * A B @sin_ * - ')(42,11)[hidden];
+{84} Calculate(97,104,'','A ! B @sin_ * C @sin_ * A B @cos_ * - A B @sin_ * C @cos_ * - D + ')(42,17,11,13)[hidden];
+{85} Calculate(97,104,'','A ! B @cos_ * C @sin_ * A B @sin_ * + A B @cos_ * C @cos_ * - ')(42,17,11)[hidden];
+{86} Calculate(97,104,'','A B * C / ')(12,83,84)[hidden];
+{87} Calculate(97,104,'','A B * C / ')(12,85,84)[hidden];
+{88} PlotXY(87,9,86)[hidden];
+{89} Segment(48,54)[hidden];
+{90} Angle(66,48,54,97,104,'')[hidden];
+{91} Angle(76,48,54,97,104,'')[hidden];
+{92} Calculate(97,104,'','A B * @sgn_ B @sgn_ + 2 + @sgn_ ')(90,91)[hidden];
+{93} Dilation/MarkedRatio(89,66,92)[white,mediumLine];
+{94} Calculate(97,104,'','1 A - ')(92)[hidden];
+{95} Dilation/MarkedRatio(89,66,94)[color(105,105,105)];
+{96} Segment(71,66)[hidden];
+{97} Angle(88,71,66,97,104,'')[hidden];
+{98} Angle(54,71,66,97,104,'')[hidden];
+{99} Calculate(97,104,'','A B * @sgn_ B @sgn_ + 2 + @sgn_ ')(97,98)[hidden];
+{100} Dilation/MarkedRatio(96,88,99)[white,mediumLine];
+{101} Calculate(97,104,'','1 A - ')(99)[hidden];
+{102} Segment(82,88)[hidden];
+{103} Angle(76,82,88,97,104,'')[hidden];
+{104} Angle(66,82,88,97,104,'')[hidden];
+{105} Calculate(97,104,'','A B * @sgn_ B @sgn_ + 2 + @sgn_ ')(103,104)[hidden];
+{106} Dilation/MarkedRatio(102,76,105)[white,mediumLine];
+{107} Calculate(97,104,'','1 A - ')(105)[hidden];
+{108} Segment(60,76)[hidden];
+{109} Angle(54,60,76,97,104,'')[hidden];
+{110} Angle(88,60,76,97,104,'')[hidden];
+{111} Calculate(97,104,'','A B * @sgn_ B @sgn_ + 2 + @sgn_ ')(109,110)[hidden];
+{112} Dilation/MarkedRatio(108,54,111)[white,mediumLine];
+{113} Calculate(97,104,'','1 A - ')(111)[hidden];
+{114} Dilation/MarkedRatio(108,54,113)[color(106,106,106)];
+{115} Segment(71,48)[hidden];
+{116} Angle(54,71,48,97,104,'')[hidden];
+{117} Angle(60,71,48,97,104,'')[hidden];
+{118} Calculate(97,104,'','A B * @sgn_ B @sgn_ + 2 + @sgn_ ')(116,117)[hidden];
+{119} Dilation/MarkedRatio(115,54,118)[white,mediumLine];
+{120} Calculate(97,104,'','1 A - ')(118)[hidden];
+{121} Dilation/MarkedRatio(115,54,120)[color(106,106,106)];
+{122} Segment(82,71)[hidden];
+{123} Angle(66,82,71,97,104,'')[hidden];
+{124} Angle(48,82,71,97,104,'')[hidden];
+{125} Calculate(97,104,'','A B * @sgn_ B @sgn_ + 2 + @sgn_ ')(123,124)[hidden];
+{126} Dilation/MarkedRatio(122,66,125)[white,mediumLine];
+{127} Calculate(97,104,'','1 A - ')(125)[hidden];
+{128} Dilation/MarkedRatio(122,66,127)[color(106,106,106)];
+{129} Segment(60,82)[hidden];
+{130} Angle(88,60,82,97,104,'')[hidden];
+{131} Angle(71,60,82,97,104,'')[hidden];
+{132} Calculate(97,104,'','A B * @sgn_ B @sgn_ + 2 + @sgn_ ')(130,131)[hidden];
+{133} Dilation/MarkedRatio(129,88,132)[white,mediumLine];
+{134} Calculate(97,104,'','1 A - ')(132)[hidden];
+{135} Dilation/MarkedRatio(129,88,134)[color(108,108,108)];
+{136} Segment(48,60)[hidden];
+{137} Angle(76,48,60,97,104,'')[hidden];
+{138} Angle(82,48,60,97,104,'')[hidden];
+{139} Calculate(97,104,'','A B * @sgn_ B @sgn_ + 2 + @sgn_ ')(137,138)[hidden];
+{140} Dilation/MarkedRatio(136,76,139)[white,mediumLine];
+{141} Calculate(97,104,'','1 A - ')(139)[hidden];
+{142} Dilation/MarkedRatio(136,76,141)[color(108,108,108)];
+{143} Segment(66,54)[hidden];
+{144} Angle(76,66,54,97,104,'')[hidden];
+{145} Angle(48,66,54,97,104,'')[hidden];
+{146} Calculate(97,104,'','A B * @sgn_ B @sgn_ + 2 + @sgn_ ')(144,145)[hidden];
+{147} Dilation/MarkedRatio(143,76,146)[white,mediumLine];
+{148} Calculate(97,104,'','1 A - ')(146)[hidden];
+{149} Dilation/MarkedRatio(143,76,148)[color(105,105,105)];
+{150} Segment(88,66)[hidden];
+{151} Angle(54,88,66,97,104,'')[hidden];
+{152} Angle(71,88,66,97,104,'')[hidden];
+{153} Calculate(97,104,'','A B * @sgn_ B @sgn_ + 2 + @sgn_ ')(151,152)[hidden];
+{154} Dilation/MarkedRatio(150,54,153)[white,mediumLine];
+{155} Calculate(97,104,'','1 A - ')(153)[hidden];
+{156} Dilation/MarkedRatio(150,54,155)[color(108,108,108)];
+{157} Segment(76,88)[hidden];
+{158} Angle(66,76,88,97,104,'')[hidden];
+{159} Angle(82,76,88,97,104,'')[hidden];
+{160} Calculate(97,104,'','A B * @sgn_ B @sgn_ + 2 + @sgn_ ')(158,159)[hidden];
+{161} Dilation/MarkedRatio(157,66,160)[white,mediumLine];
+{162} Calculate(97,104,'','1 A - ')(160)[hidden];
+{163} Dilation/MarkedRatio(157,66,162)[color(108,108,108)];
+{164} Segment(54,76)[hidden];
+{165} Angle(88,54,76,97,104,'')[hidden];
+{166} Angle(60,54,76,97,104,'')[hidden];
+{167} Calculate(97,104,'','A B * @sgn_ B @sgn_ + 2 + @sgn_ ')(165,166)[hidden];
+{168} Dilation/MarkedRatio(164,88,167)[white,mediumLine];
+{169} Calculate(97,104,'','1 A - ')(167)[hidden];
+{170} Dilation/MarkedRatio(164,88,169)[color(106,106,106)];
+{171} Point(139,362)[hidden];
+{172} Point(209,368)[hidden];
+{173} Point(130,462)[hidden];
+{174} Point(193,463)[hidden];
+{175} Point(124,490)[hidden];
+{176} Point(176,491)[hidden];
+{177} Angle(48,71,82,97,104,'')[hidden];
+{178} Calculate(97,104,'','1 0 A ! @sqrt * + ')(177)[hidden];
+{179} Calculate(97,104,'','1 0 A @sqrt * + ')(177)[hidden];
+{180} Angle(54,76,88,97,104,'')[hidden];
+{181} Calculate(97,104,'','1 0 A ! @sqrt * + ')(180)[hidden];
+{182} Calculate(97,104,'','1 0 A @sqrt * + ')(180)[hidden];
+{183} Angle(54,66,71,97,104,'')[hidden];
+{184} Calculate(97,104,'','1 0 A ! @sqrt * + ')(183)[hidden];
+{185} Calculate(97,104,'','1 0 A @sqrt * + ')(183)[hidden];
+{186} Angle(82,88,76,97,104,'')[hidden];
+{187} Calculate(97,104,'','1 0 A ! @sqrt * + ')(186)[hidden];
+{188} Calculate(97,104,'','1 0 A @sqrt * + ')(186)[hidden];
+{189} Angle(76,54,48,97,104,'')[hidden];
+{190} Calculate(97,104,'','1 0 A ! @sqrt * + ')(189)[hidden];
+{191} Calculate(97,104,'','1 0 A @sqrt * + ')(189)[hidden];
+{192} Angle(66,88,82,97,104,'')[hidden];
+{193} Calculate(97,104,'','1 0 A ! @sqrt * + ')(192)[hidden];
+{194} Calculate(97,104,'','1 0 A @sqrt * + ')(192)[hidden];
+{195} PlotXY(14,9,14)[hidden];
+{196} PlotXY(14,9,42)[hidden];
+{197} Dilation(195,196,0.5)[hidden];
+{198} Rotation(196,197,1.5708)[hidden];
+{199} VectorTranslation(198,197,198)[hidden];
+{200} VectorTranslation(196,197,198)[hidden];
+{201} Polygon(1,2,18,3)[black];
+{202} Parameter(3,731,76,'n = ')[color(192,133,74)];
+{203} Calculate(14,261,'m[3] = ','0.5 A 1 + ^ ')(202)[black];
+{204} Dilation/MarkedRatio(195,198,203)[hidden];
+{205} Abscissa(204,9,82,205,'x[B[2]] = ')[black];
+{206} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(205,11,14)[hidden];
+{207} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(14,11,205)[hidden];
+{208} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(42,11,205)[hidden];
+{209} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(205,11,42)[hidden];
+{210} Ordinate(204,9,82,232,'y[B[2]] = ')[black];
+{211} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(210,17,11,14,205,13)[hidden];
+{212} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(210,17,11,14,205)[hidden];
+{213} Calculate(97,104,'','A B * C / ')(12,212,211)[hidden];
+{214} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(210,17,11,42,205,13)[hidden];
+{215} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(210,17,11,42,205)[hidden];
+{216} Calculate(97,104,'','A B * C / ')(12,215,214)[hidden];
+{217} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(14,17,11,210,205,13)[hidden];
+{218} Calculate(97,104,'','A B * C / ')(12,207,217)[hidden];
+{219} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(14,17,11,210,205)[hidden];
+{220} Calculate(97,104,'','A B * C / ')(12,219,217)[hidden];
+{221} PlotXY(220,9,218)[hidden];
+{222} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(42,17,11,210,205,13)[hidden];
+{223} Calculate(97,104,'','A B * C / ')(12,208,222)[hidden];
+{224} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(42,17,11,210,205)[hidden];
+{225} Calculate(97,104,'','A B * C / ')(12,224,222)[hidden];
+{226} PlotXY(225,9,223)[hidden];
+{227} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(205,17,11,210,14,13)[hidden];
+{228} Calculate(97,104,'','A B * C / ')(12,206,227)[hidden];
+{229} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(205,17,11,210,14)[hidden];
+{230} Calculate(97,104,'','A B * C / ')(12,229,227)[hidden];
+{231} PlotXY(230,9,228)[hidden];
+{232} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(205,17,11,210,42,13)[hidden];
+{233} Calculate(97,104,'','A B * C / ')(12,209,232)[hidden];
+{234} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(205,17,11,210,42)[hidden];
+{235} Calculate(97,104,'','A B * C / ')(12,234,232)[hidden];
+{236} PlotXY(235,9,233)[hidden];
+{237} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(210,11,205)[hidden];
+{238} Calculate(97,104,'','A B * C / ')(12,237,214)[hidden];
+{239} PlotXY(216,9,238)[hidden];
+{240} Calculate(97,104,'','A B * C / ')(12,237,211)[hidden];
+{241} PlotXY(213,9,240)[hidden];
+{242} Calculate(14,285,'2*m[3] = ','2 A * ')(203)[black];
+{243} Dilation/MarkedRatio(199,200,203)[hidden];
+{244} Ordinate(243,9,14,232,'y[A[2]] = ')[black];
+{245} Abscissa(243,9,14,205,'x[A[2]] = ')[black];
+{246} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(244,17,11,14,245,13)[hidden];
+{247} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(244,17,11,14,245)[hidden];
+{248} Calculate(97,104,'','A B * C / ')(12,247,246)[hidden];
+{249} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(244,17,11,42,245,13)[hidden];
+{250} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(244,17,11,42,245)[hidden];
+{251} Calculate(97,104,'','A B * C / ')(12,250,249)[hidden];
+{252} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(14,11,245)[hidden];
+{253} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(14,17,11,244,245,13)[hidden];
+{254} Calculate(97,104,'','A B * C / ')(12,252,253)[hidden];
+{255} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(14,17,11,244,245)[hidden];
+{256} Calculate(97,104,'','A B * C / ')(12,255,253)[hidden];
+{257} PlotXY(256,9,254)[hidden];
+{258} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(42,11,245)[hidden];
+{259} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(42,17,11,244,245,13)[hidden];
+{260} Calculate(97,104,'','A B * C / ')(12,258,259)[hidden];
+{261} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(42,17,11,244,245)[hidden];
+{262} Calculate(97,104,'','A B * C / ')(12,261,259)[hidden];
+{263} PlotXY(262,9,260)[hidden];
+{264} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(245,11,14)[hidden];
+{265} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(245,17,11,244,14,13)[hidden];
+{266} Calculate(97,104,'','A B * C / ')(12,264,265)[hidden];
+{267} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(245,17,11,244,14)[hidden];
+{268} Calculate(97,104,'','A B * C / ')(12,267,265)[hidden];
+{269} PlotXY(268,9,266)[hidden];
+{270} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(245,11,42)[hidden];
+{271} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(245,17,11,244,42,13)[hidden];
+{272} Calculate(97,104,'','A B * C / ')(12,270,271)[hidden];
+{273} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(245,17,11,244,42)[hidden];
+{274} Calculate(97,104,'','A B * C / ')(12,273,271)[hidden];
+{275} PlotXY(274,9,272)[hidden];
+{276} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(244,11,245)[hidden];
+{277} Calculate(97,104,'','A B * C / ')(12,276,249)[hidden];
+{278} PlotXY(251,9,277)[hidden];
+{279} Calculate(97,104,'','A B * C / ')(12,276,246)[hidden];
+{280} PlotXY(248,9,279)[hidden];
+{281} Rotation(243,198,-3.14159)[hidden];
+{282} Abscissa(281,9,155,151,'x[C[1]] = ')[black];
+{283} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(282,11,14)[hidden];
+{284} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(14,11,282)[hidden];
+{285} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(42,11,282)[hidden];
+{286} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(282,11,42)[hidden];
+{287} Ordinate(281,9,155,178,'y[C[1]] = ')[black];
+{288} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(287,17,11,14,282,13)[hidden];
+{289} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(287,17,11,14,282)[hidden];
+{290} Calculate(97,104,'','A B * C / ')(12,289,288)[hidden];
+{291} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(287,17,11,42,282,13)[hidden];
+{292} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(287,17,11,42,282)[hidden];
+{293} Calculate(97,104,'','A B * C / ')(12,292,291)[hidden];
+{294} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(14,17,11,287,282,13)[hidden];
+{295} Calculate(97,104,'','A B * C / ')(12,284,294)[hidden];
+{296} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(14,17,11,287,282)[hidden];
+{297} Calculate(97,104,'','A B * C / ')(12,296,294)[hidden];
+{298} PlotXY(297,9,295)[hidden];
+{299} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(42,17,11,287,282,13)[hidden];
+{300} Calculate(97,104,'','A B * C / ')(12,285,299)[hidden];
+{301} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(42,17,11,287,282)[hidden];
+{302} Calculate(97,104,'','A B * C / ')(12,301,299)[hidden];
+{303} PlotXY(302,9,300)[hidden];
+{304} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(282,17,11,287,14,13)[hidden];
+{305} Calculate(97,104,'','A B * C / ')(12,283,304)[hidden];
+{306} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(282,17,11,287,14)[hidden];
+{307} Calculate(97,104,'','A B * C / ')(12,306,304)[hidden];
+{308} PlotXY(307,9,305)[hidden];
+{309} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(282,17,11,287,42,13)[hidden];
+{310} Calculate(97,104,'','A B * C / ')(12,286,309)[hidden];
+{311} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(282,17,11,287,42)[hidden];
+{312} Calculate(97,104,'','A B * C / ')(12,311,309)[hidden];
+{313} PlotXY(312,9,310)[hidden];
+{314} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(287,11,282)[hidden];
+{315} Calculate(97,104,'','A B * C / ')(12,314,291)[hidden];
+{316} PlotXY(293,9,315)[hidden];
+{317} Calculate(97,104,'','A B * C / ')(12,314,288)[hidden];
+{318} PlotXY(290,9,317)[hidden];
+{319} Dilation/MarkedRatio(197,200,203)[hidden];
+{320} Ordinate(319,9,14,178,'y[A[1]] = ')[black];
+{321} Abscissa(319,9,14,151,'x[A[1]] = ')[black];
+{322} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(320,17,11,14,321,13)[hidden];
+{323} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(320,17,11,14,321)[hidden];
+{324} Calculate(97,104,'','A B * C / ')(12,323,322)[hidden];
+{325} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(320,17,11,42,321,13)[hidden];
+{326} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(320,17,11,42,321)[hidden];
+{327} Calculate(97,104,'','A B * C / ')(12,326,325)[hidden];
+{328} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(14,11,321)[hidden];
+{329} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(14,17,11,320,321,13)[hidden];
+{330} Calculate(97,104,'','A B * C / ')(12,328,329)[hidden];
+{331} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(14,17,11,320,321)[hidden];
+{332} Calculate(97,104,'','A B * C / ')(12,331,329)[hidden];
+{333} PlotXY(332,9,330)[hidden];
+{334} Segment(333,257)[hidden];
+{335} Dilation/MarkedRatio(334,54,185)[color(106,106,106)];
+{336} Dilation/MarkedRatio(334,54,184)[white,mediumLine];
+{337} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(42,11,321)[hidden];
+{338} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(42,17,11,320,321,13)[hidden];
+{339} Calculate(97,104,'','A B * C / ')(12,337,338)[hidden];
+{340} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(42,17,11,320,321)[hidden];
+{341} Calculate(97,104,'','A B * C / ')(12,340,338)[hidden];
+{342} PlotXY(341,9,339)[hidden];
+{343} Segment(342,263)[hidden];
+{344} Dilation/MarkedRatio(343,82,188)[color(107,107,107)];
+{345} Dilation/MarkedRatio(343,82,187)[white,mediumLine];
+{346} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(321,11,14)[hidden];
+{347} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(321,17,11,320,14,13)[hidden];
+{348} Calculate(97,104,'','A B * C / ')(12,346,347)[hidden];
+{349} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(321,17,11,320,14)[hidden];
+{350} Calculate(97,104,'','A B * C / ')(12,349,347)[hidden];
+{351} PlotXY(350,9,348)[hidden];
+{352} Segment(351,269)[hidden];
+{353} Dilation/MarkedRatio(352,76,191)[color(107,107,107)];
+{354} Dilation/MarkedRatio(352,76,190)[white,mediumLine];
+{355} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(321,11,42)[hidden];
+{356} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(321,17,11,320,42,13)[hidden];
+{357} Calculate(97,104,'','A B * C / ')(12,355,356)[hidden];
+{358} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(321,17,11,320,42)[hidden];
+{359} Calculate(97,104,'','A B * C / ')(12,358,356)[hidden];
+{360} PlotXY(359,9,357)[hidden];
+{361} Segment(360,275)[hidden];
+{362} Dilation/MarkedRatio(361,66,194)[color(106,106,106)];
+{363} Dilation/MarkedRatio(361,66,193)[white,mediumLine];
+{364} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(320,11,321)[hidden];
+{365} Calculate(97,104,'','A B * C / ')(12,364,325)[hidden];
+{366} PlotXY(327,9,365)[hidden];
+{367} Segment(366,278)[hidden];
+{368} Dilation/MarkedRatio(367,54,182)[color(105,105,105)];
+{369} Dilation/MarkedRatio(367,54,181)[white,mediumLine];
+{370} Calculate(97,104,'','A B * C / ')(12,364,322)[hidden];
+{371} PlotXY(324,9,370)[hidden];
+{372} Segment(371,280)[hidden];
+{373} Dilation/MarkedRatio(372,48,179)[color(106,106,106)];
+{374} Dilation/MarkedRatio(372,48,178)[white,mediumLine];
+{375} Rotation(319,198,-3.14159)[hidden];
+{376} Abscissa(375,9,155,205,'x[C[2]] = ')[black];
+{377} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(376,11,14)[hidden];
+{378} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(14,11,376)[hidden];
+{379} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(42,11,376)[hidden];
+{380} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(376,11,42)[hidden];
+{381} Ordinate(375,9,155,232,'y[C[2]] = ')[black];
+{382} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(381,17,11,14,376,13)[hidden];
+{383} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(381,17,11,14,376)[hidden];
+{384} Calculate(97,104,'','A B * C / ')(12,383,382)[hidden];
+{385} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(381,17,11,42,376,13)[hidden];
+{386} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(381,17,11,42,376)[hidden];
+{387} Calculate(97,104,'','A B * C / ')(12,386,385)[hidden];
+{388} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(14,17,11,381,376,13)[hidden];
+{389} Calculate(97,104,'','A B * C / ')(12,378,388)[hidden];
+{390} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(14,17,11,381,376)[hidden];
+{391} Calculate(97,104,'','A B * C / ')(12,390,388)[hidden];
+{392} PlotXY(391,9,389)[hidden];
+{393} Segment(298,392)[hidden];
+{394} Dilation/MarkedRatio(393,54,185)[color(107,107,107)];
+{395} Dilation/MarkedRatio(393,54,184)[white,mediumLine];
+{396} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(42,17,11,381,376,13)[hidden];
+{397} Calculate(97,104,'','A B * C / ')(12,379,396)[hidden];
+{398} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(42,17,11,381,376)[hidden];
+{399} Calculate(97,104,'','A B * C / ')(12,398,396)[hidden];
+{400} PlotXY(399,9,397)[hidden];
+{401} Segment(400,303)[hidden];
+{402} Dilation/MarkedRatio(401,82,188)[color(106,106,106)];
+{403} Dilation/MarkedRatio(401,82,187)[white,mediumLine];
+{404} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(376,17,11,381,14,13)[hidden];
+{405} Calculate(97,104,'','A B * C / ')(12,377,404)[hidden];
+{406} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(376,17,11,381,14)[hidden];
+{407} Calculate(97,104,'','A B * C / ')(12,406,404)[hidden];
+{408} PlotXY(407,9,405)[hidden];
+{409} Segment(408,308)[hidden];
+{410} Dilation/MarkedRatio(409,76,191)[color(107,107,107)];
+{411} Dilation/MarkedRatio(409,76,190)[white,mediumLine];
+{412} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(376,17,11,381,42,13)[hidden];
+{413} Calculate(97,104,'','A B * C / ')(12,380,412)[hidden];
+{414} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(376,17,11,381,42)[hidden];
+{415} Calculate(97,104,'','A B * C / ')(12,414,412)[hidden];
+{416} PlotXY(415,9,413)[hidden];
+{417} Segment(313,416)[hidden];
+{418} Dilation/MarkedRatio(417,66,194)[color(106,106,106)];
+{419} Dilation/MarkedRatio(417,66,193)[white,mediumLine];
+{420} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(381,11,376)[hidden];
+{421} Calculate(97,104,'','A B * C / ')(12,420,385)[hidden];
+{422} PlotXY(387,9,421)[hidden];
+{423} Segment(422,316)[hidden];
+{424} Dilation/MarkedRatio(423,54,182)[color(105,105,105)];
+{425} Dilation/MarkedRatio(423,54,181)[white,mediumLine];
+{426} Calculate(97,104,'','A B * C / ')(12,420,382)[hidden];
+{427} PlotXY(384,9,426)[hidden];
+{428} Segment(427,318)[hidden];
+{429} Dilation/MarkedRatio(428,48,179)[color(106,106,106)];
+{430} Dilation/MarkedRatio(428,48,178)[white,mediumLine];
+{431} Dilation/MarkedRatio(196,198,203)[hidden];
+{432} Abscissa(431,9,82,151,'x[B[1]] = ')[black];
+{433} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(432,11,14)[hidden];
+{434} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(14,11,432)[hidden];
+{435} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(42,11,432)[hidden];
+{436} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(432,11,42)[hidden];
+{437} Ordinate(431,9,82,178,'y[B[1]] = ')[black];
+{438} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(437,17,11,14,432,13)[hidden];
+{439} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(437,17,11,14,432)[hidden];
+{440} Calculate(97,104,'','A B * C / ')(12,439,438)[hidden];
+{441} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(437,17,11,42,432,13)[hidden];
+{442} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(437,17,11,42,432)[hidden];
+{443} Calculate(97,104,'','A B * C / ')(12,442,441)[hidden];
+{444} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(14,17,11,437,432,13)[hidden];
+{445} Calculate(97,104,'','A B * C / ')(12,434,444)[hidden];
+{446} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(14,17,11,437,432)[hidden];
+{447} Calculate(97,104,'','A B * C / ')(12,446,444)[hidden];
+{448} PlotXY(447,9,445)[hidden];
+{449} Segment(448,221)[hidden];
+{450} Dilation/MarkedRatio(449,54,185)[color(107,107,107)];
+{451} Dilation/MarkedRatio(449,54,184)[white,mediumLine];
+{452} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(42,17,11,437,432,13)[hidden];
+{453} Calculate(97,104,'','A B * C / ')(12,435,452)[hidden];
+{454} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(42,17,11,437,432)[hidden];
+{455} Calculate(97,104,'','A B * C / ')(12,454,452)[hidden];
+{456} PlotXY(455,9,453)[hidden];
+{457} Segment(226,456)[hidden];
+{458} Dilation/MarkedRatio(457,82,188)[color(100,100,100)];
+{459} Dilation/MarkedRatio(457,82,187)[white,mediumLine];
+{460} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(432,17,11,437,14,13)[hidden];
+{461} Calculate(97,104,'','A B * C / ')(12,433,460)[hidden];
+{462} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(432,17,11,437,14)[hidden];
+{463} Calculate(97,104,'','A B * C / ')(12,462,460)[hidden];
+{464} PlotXY(463,9,461)[hidden];
+{465} Segment(231,464)[hidden];
+{466} Dilation/MarkedRatio(465,76,191)[color(106,106,106)];
+{467} Dilation/MarkedRatio(465,76,190)[white,mediumLine];
+{468} Calculate(97,104,'','A ! B @sin_ * C @sin_ * D B @cos_ * - E B @sin_ * C @cos_ * - F + ')(432,17,11,437,42,13)[hidden];
+{469} Calculate(97,104,'','A B * C / ')(12,436,468)[hidden];
+{470} Calculate(97,104,'','A ! B @cos_ * C @sin_ * D B @sin_ * + E B @cos_ * C @cos_ * - ')(432,17,11,437,42)[hidden];
+{471} Calculate(97,104,'','A B * C / ')(12,470,468)[hidden];
+{472} PlotXY(471,9,469)[hidden];
+{473} Segment(472,236)[hidden];
+{474} Dilation/MarkedRatio(473,66,194)[color(105,105,105)];
+{475} Dilation/MarkedRatio(473,66,193)[white,mediumLine];
+{476} Calculate(97,104,'','A B @cos_ * C B @sin_ * - ')(437,11,432)[hidden];
+{477} Calculate(97,104,'','A B * C / ')(12,476,441)[hidden];
+{478} PlotXY(443,9,477)[hidden];
+{479} Segment(239,478)[hidden];
+{480} Dilation/MarkedRatio(479,54,182)[color(105,105,105)];
+{481} Dilation/MarkedRatio(479,54,181)[white,mediumLine];
+{482} Calculate(97,104,'','A B * C / ')(12,476,438)[hidden];
+{483} PlotXY(440,9,482)[hidden];
+{484} Segment(241,483)[hidden];
+{485} Dilation/MarkedRatio(484,48,179)[color(107,107,107)];
+{486} Dilation/MarkedRatio(484,48,178)[white,mediumLine];
+{487} Dilation/MarkedRatio(102,76,107)[color(108,108,108)];
+{488} Dilation/MarkedRatio(96,88,101)[color(105,105,105)];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>希尔伯特曲线填充正方体表面</P></H4>
+</BODY>
+</HTML>

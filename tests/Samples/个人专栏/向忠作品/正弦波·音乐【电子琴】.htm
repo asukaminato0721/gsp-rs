@@ -1,0 +1,124 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>正弦波·音乐【电子琴】</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(514,180)[label('O'),hidden];
+{2} Point(468,479)[hidden];
+{3} Point(540,479)[hidden];
+{4} Point(18,5)[hidden];
+{5} Point(18,387)[hidden];
+{6} Point(1010,387)[hidden];
+{7} Point(1010,5)[hidden];
+{8} Point(477,511)[hidden];
+{9} Point(540,511)[hidden];
+{10} Point(511,500)[hidden];
+{11} Parameter(0.249333,12,336,'')[hidden];
+{12} Parameter(0,12,380,'')[hidden];
+{13} Point(499,539)[large];
+{14} FixedText(24,88,'音乐是形象化的数学  数学是抽象化的音乐')[yellow];
+{15} FixedText(28,142,'        声音是若干简单正弦函数的叠加，就单一的声音元素来说 ( 即可以 由一个正弦函数来表示，也称为“简谐波” )，音量与该函数的振幅有关， 音调与该函数的频率有关，音色则与函数的波形有关。如果是单一的声 音元素，发出来的声音必然单调乏味，只有很多种元素融合在一起才能 形成美妙动听的旋律，这就是“复合波”  (各种不同频率、振幅及相位元 素的叠加)。数字音乐应该正是按照该原理设计的。')[white];
+{16} UnitPoint(1,41.811)[hidden];
+{17} HorizontalAxis(1,16)[white,hidden,mediumLine];
+{18} SquareUnitPoint(16)[hidden];
+{19} VerticalAxis(1,18)[hidden];
+{20} CoordSysByAxes(17,19)[hidden];
+{21} Segment(3,2)[hidden];
+{22} Polygon(4,5,6,7)[black,thick];
+{23} Point on object(17,-1.98)[black];
+{24} Point on object(17,2.98)[color(78,78,78)];
+{25} Segment(9,8)[color(0,0,128),mediumLine];
+{26} Point on object(25,1)[white,large];
+{27} ToggleVisibilityButton(8,98,'隐藏说明|显示说明')(14,15)[black,hidden];
+{28} Translation(10,47.2441,81.8292)[hidden];
+{29} Translation(10,-47.2441,81.8292)[hidden];
+{30} Rotation/MeasuredAngle(29,10,11)[hidden];
+{31} Distance(10,13,12,227,'')[hidden];
+{32} Calculate(12,284,'','1 A 1.87 - 2.5 A - * @sgn_ + @sgn_ ')(31)[hidden];
+{33} Calculate(12,408,'','A 1 + ')(12)[hidden];
+{34} Calculate(12,441,'t - 7*trunc((t/7)) + 1 = ','A 7 A 7 / @trnc * - 1 + ')(12)[black,hidden];
+{35} Dilation(29,10,0.75)[hidden];
+{36} Segment(35,29)[color(255,128,0),mediumLine];
+{37} Dilation(30,35,0.5)[red,hidden,mediumPoint];
+{38} PeggedText(37,34)[color(0,0,128)];
+{39} Dilation(10,28,0.25)[hidden];
+{40} Segment(39,28)[color(255,128,0),mediumLine];
+{41} Segment(29,28)[color(255,128,0),mediumLine];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>正弦波·音乐【电子琴】</P></H4>
+</BODY>
+</HTML>

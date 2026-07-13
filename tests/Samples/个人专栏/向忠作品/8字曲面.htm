@@ -1,0 +1,148 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>8字曲面</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(445,277)[hidden];
+{2} UnitPoint(1,37.7953)[hidden];
+{3} SquareUnitPoint(2)[hidden];
+{4} VerticalAxis(1,3)[hidden];
+{5} HorizontalAxis(1,2)[hidden];
+{6} CoordSysByAxes(5,4)[hidden];
+{7} Point(488,244)[large];
+{8} Abscissa(7,6,9,19,'')[hidden];
+{9} Calculate(9,19,'视距d = ','20 0 A * + ')(8)[black];
+{10} Calculate(9,40,'视径R = ','30 0 A * + ')(9)[black];
+{11} Calculate(9,119,'','1 0 A * + ')(10)[hidden];
+{12} Calculate(9,119,'','0 A * ')(10)[hidden];
+{13} Calculate(9,119,'','A B @cos_ * A B @sin_ * - ')(12,8)[hidden];
+{14} Calculate(9,119,'','A B @cos_ * C B @sin_ * - ')(11,8,12)[hidden];
+{15} Calculate(9,119,'','A B @cos_ * C B @sin_ * - ')(12,8,11)[hidden];
+{16} Calculate(9,119,'','0.7 A * B / ')(10,9)[hidden];
+{17} Ordinate(7,6,9,119,'')[hidden];
+{18} Calculate(9,119,'','A ! B @sin_ * C @sin_ * D B @cos_ * - A B @sin_ * C @cos_ * - E + ')(12,17,8,11,10)[hidden];
+{19} Calculate(9,119,'','A B * C / ')(9,13,18)[hidden];
+{20} Calculate(9,119,'','A ! B @cos_ * C @sin_ * D B @sin_ * + D B @cos_ * C @cos_ * - ')(11,17,8,12)[hidden];
+{21} Calculate(9,119,'','A ! B @sin_ * C @sin_ * D B @cos_ * - D B @sin_ * C @cos_ * - E + ')(11,17,8,12,10)[hidden];
+{22} Calculate(9,119,'','A B * C / ')(9,14,21)[hidden];
+{23} Calculate(9,119,'','A B * C / ')(9,20,21)[hidden];
+{24} PlotXY(23,6,22)[hidden];
+{25} Calculate(9,119,'','A ! B @cos_ * C @sin_ * A B @sin_ * + D B @cos_ * C @cos_ * - ')(12,17,8,11)[hidden];
+{26} Calculate(9,119,'','A ! B @sin_ * C @sin_ * A B @cos_ * - D B @sin_ * C @cos_ * - E + ')(12,17,8,11,10)[hidden];
+{27} Calculate(9,119,'','A B * C / ')(9,15,26)[hidden];
+{28} Calculate(9,119,'','A B * C / ')(9,25,26)[hidden];
+{29} PlotXY(28,6,27)[hidden];
+{30} Calculate(9,119,'','A ! B @cos_ * C @sin_ * D B @sin_ * + A B @cos_ * C @cos_ * - ')(12,17,8,11)[hidden];
+{31} Calculate(9,119,'','A B * C / ')(9,30,18)[hidden];
+{32} PlotXY(31,6,19)[hidden];
+{33} Polygon(29,1,32,1,24,1)[hidden];
+{34} Dilation/MarkedRatio(33,1,16)[hidden];
+{35} VectorTranslation(34,1,7)[color(128,128,128),mediumLine];
+{36} Parameter(1.62,9,82,'d = ')[black];
+{37} Parameter(4,9,106,'b = ')[black];
+{38} Point(746,331)[hidden];
+{39} Point(871,331)[hidden];
+{40} Segment(39,38)[hidden];
+{41} Rotation(39,38,1.5708)[hidden];
+{42} Segment(41,38)[hidden];
+{43} Point(785,362)[hidden];
+{44} Parameter(31,9,202,'n = ')[black];
+{45} Calculate(9,316,'','1 A / ')(44)[hidden];
+{46} Dilation/MarkedRatio(41,38,45)[hidden];
+{47} Parameter(48,9,175,'m = ')[black];
+{48} Calculate(9,226,'m*n = ','A B * ')(47,44)[black];
+{49} Calculate(9,356,'','1 A / ')(47)[hidden];
+{50} Dilation/MarkedRatio(39,38,49)[hidden];
+{51} Parameter(-1,9,247,'t = ')[black];
+{52} Calculate(9,376,'','A B / @trnc ')(51,47)[hidden];
+{53} Calculate(9,376,'','A B C * - ')(51,47,52)[hidden];
+{54} Dilation/MarkedRatio(50,38,53)[hidden];
+{55} VectorTranslation(46,38,54)[hidden];
+{56} Dilation/MarkedRatio(55,54,52)[hidden];
+{57} VectorTranslation(56,38,50)[hidden];
+{58} VectorTranslation(57,38,46)[hidden];
+{59} VectorTranslation(56,38,46)[hidden];
+{60} Calculate(9,268,'t + 1 = ','A 1 + ')(51)[black];
+{61} Parameter(1.50757,9,61,'a = ')[black];
+{62} Point(393,490)[hidden];
+{63} Point(489,490)[hidden];
+{64} Segment(63,62)[color(192,192,192),mediumLine];
+{65} Point on object(64,0.802083)[white,large];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>8字曲面</P></H4>
+</BODY>
+</HTML>

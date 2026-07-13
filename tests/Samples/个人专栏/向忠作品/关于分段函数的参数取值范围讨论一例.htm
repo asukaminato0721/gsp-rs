@@ -1,0 +1,205 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>关于分段函数的参数取值范围讨论一例</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(289,464)[label('O'),mediumPoint];
+{2} UnitPoint(1,314.795)[hidden];
+{3} RectangularUnitPoint(2,265.795)[hidden];
+{4} Translation(3,11.3386,0)[hidden];
+{5} Translation(2,11.3386,0)[hidden];
+{6} Translation(1,-0,0)[hidden];
+{7} UnitPoint(6,129.795)[hidden];
+{8} RectangularUnitPoint(7,161.795)[hidden];
+{9} Rotation(8,6,-3.14159)[hidden];
+{10} Rotation/MarkedAngle(4,3,4,3,9)[hidden];
+{11} Rotation(10,3,-3.14159)[hidden];
+{12} Dilation(11,3,3)[hidden];
+{13} Dilation(12,11,0.4)[hidden];
+{14} Segment(9,13)[black,mediumLine];
+{15} Segment(13,3)[black,mediumLine];
+{16} Dilation(13,11,0.5)[hidden];
+{17} Rotation(16,11,-1.5708)[hidden];
+{18} Rotation(16,11,1.5708)[hidden];
+{19} Rotation(7,6,-3.14159)[hidden];
+{20} Rotation/MarkedAngle(5,2,5,2,19)[hidden];
+{21} Rotation(20,2,-3.14159)[hidden];
+{22} Dilation(21,2,3)[hidden];
+{23} Dilation(22,21,0.4)[hidden];
+{24} Segment(19,23)[black,mediumLine];
+{25} Segment(23,2)[black,mediumLine];
+{26} Dilation(23,21,0.5)[hidden];
+{27} Rotation(26,21,-1.5708)[hidden];
+{28} Rotation(26,21,1.5708)[hidden];
+{29} Translation(1,37.7953,0)[hidden];
+{30} Distance(29,1,9,-27,'')[hidden];
+{31} Calculate(9,-27,'','A A / 1 * ')(30)[hidden];
+{32} Calculate(9,-5,'','0 A / 1 + ')(30)[hidden];
+{33} Calculate(9,17,'','1 A / ')(32)[hidden];
+{34} Calculate(9,39,'','0 A * 1 + ')(30)[hidden];
+{35} Calculate(9,61,'','1 A / ')(34)[hidden];
+{36} Dilation/MarkedRatio(29,1,33)[hidden];
+{37} Segment(36,1)[hidden];
+{38} Rotation(29,1,1.5708)[hidden];
+{39} Dilation/MarkedRatio(38,1,35)[hidden];
+{40} Segment(39,1)[hidden];
+{41} Function(9,241,'','x 2 ^ 1 - ')()[hidden];
+{42} Point on object(24,0.420766)[label('m'),white,large];
+{43} Point(388,516)[hidden];
+{44} Point on object(14,0.566881)[label('b'),white,large];
+{45} Point(309,96)[hidden];
+{46} Point(308,38)[hidden];
+{47} Dilation(46,45,0.5)[hidden];
+{48} Dilation(45,47,0.25)[hidden];
+{49} Rotation(48,47,-1.5708)[hidden];
+{50} Segment(49,47)[hidden];
+{51} VectorTranslation(45,47,49)[hidden];
+{52} Segment(51,45)[hidden];
+{53} Point on object(52,0.841356)[hidden];
+{54} Dilation/3PtRatio(49,47,45,51,53)[hidden];
+{55} Dilation/3PtRatio(47,48,45,51,53)[hidden];
+{56} Dilation/3PtRatio(48,51,45,51,53)[hidden];
+{57} Dilation/3PtRatio(55,56,45,51,53)[hidden];
+{58} Dilation/3PtRatio(54,57,45,51,53)[hidden];
+{59} Dilation/3PtRatio(58,57,45,51,53)[hidden];
+{60} Dilation/3PtRatio(56,53,45,51,53)[hidden];
+{61} Dilation/3PtRatio(57,60,45,51,53)[hidden];
+{62} Dilation/3PtRatio(59,61,45,51,53)[hidden];
+{63} Reflection(62,50)[hidden];
+{64} Locus(63,53,52,500)[black];
+{65} Locus(62,53,52,500)[black];
+{66} FixedText(115,78,'         已知函数y=                                ，若存在实数b,使关于   x的方程y=b有三个不同实根，则m的取值范围是                 。')[black];
+{67} FixedText(311,43,'(x^2)-1,         x≤(m/2)')[black];
+{68} FixedText(312,102,'(x^2)-mx+m, x>(m/2)')[black];
+{69} Parameter(2.73205,55,225,'')[hidden];
+{70} Dilation/MarkedRatio(36,1,69)[hidden];
+{71} Translation(70,-0,0)[hidden];
+{72} Translation(71,2.63923e-013,-75.5906)[hidden];
+{73} UnitPoint(72,6.79528)[hidden];
+{74} SquareUnitPoint(73)[color(255,253,253),hidden];
+{75} Segment(71,74)[hidden];
+{76} FixedText(626,187,'√(3)+1')[black,hidden];
+{77} PeggedText(74,76)[hidden];
+{78} Translation(70,2.63923e-013,-75.5906)[hidden];
+{79} UnitPoint(78,99.1)[hidden];
+{80} SquareUnitPoint(79)[hidden];
+{81} Segment(70,80)[hidden];
+{82} Polygon(12,17,13,18)[black];
+{83} Polygon(22,27,23,28)[black];
+{84} Function(65,409,'','1 ')()[hidden];
+{85} Point(505,283)[hidden];
+{86} Translation(85,11.4567,0)[hidden];
+{87} Translation(85,19.0945,0)[hidden];
+{88} Circle(85,87)[hidden];
+{89} Circle(85,86)[hidden];
+{90} Point(632,286)[hidden];
+{91} Translation(90,11.4567,0)[hidden];
+{92} Translation(90,19.0945,0)[hidden];
+{93} Circle(90,92)[hidden];
+{94} Circle(90,91)[hidden];
+{95} Translation(85,-6.59807e-014,18.8976)[white,hidden];
+{96} Translation(90,-6.59807e-014,18.8976)[white,hidden];
+{97} FixedText(579,70,'(((m/2))^2)-1')[black,hidden];
+{98} FixedText(768,155,'(((m/2))^2)-((m^2)/2)-m')[black,hidden];
+{99} PeggedText(96,98)[hidden];
+{100} PeggedText(95,97)[hidden];
+{101} FixedText(529,221,'m>0     >')[red,hidden];
+{102} Point(474,283)[hidden];
+{103} Point(473,200)[hidden];
+{104} Dilation(103,102,0.5)[hidden];
+{105} Dilation(102,104,0.25)[hidden];
+{106} Rotation(105,104,-1.5708)[hidden];
+{107} Segment(106,104)[hidden];
+{108} VectorTranslation(102,104,106)[hidden];
+{109} Segment(108,102)[hidden];
+{110} Point on object(109,0.841356)[hidden];
+{111} Dilation/3PtRatio(106,104,102,108,110)[hidden];
+{112} Dilation/3PtRatio(104,105,102,108,110)[hidden];
+{113} Dilation/3PtRatio(105,108,102,108,110)[hidden];
+{114} Dilation/3PtRatio(112,113,102,108,110)[hidden];
+{115} Dilation/3PtRatio(111,114,102,108,110)[hidden];
+{116} Dilation/3PtRatio(115,114,102,108,110)[hidden];
+{117} Dilation/3PtRatio(113,110,102,108,110)[hidden];
+{118} Dilation/3PtRatio(114,117,102,108,110)[hidden];
+{119} Dilation/3PtRatio(116,118,102,108,110)[hidden];
+{120} Reflection(119,107)[hidden];
+{121} Locus(120,110,109,500)[red,hidden,mediumLine];
+{122} Locus(119,110,109,500)[red,hidden,mediumLine];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>关于分段函数的参数取值范围讨论一例</P></H4>
+</BODY>
+</HTML>

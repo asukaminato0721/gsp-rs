@@ -1,0 +1,164 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>抛物线的判定实验</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(295.881,485.069)[hidden];
+{2} Point(423.002,538.991)[hidden];
+{3} Point(523.115,549.704)[hidden];
+{4} Point(364.341,242.559)[hidden];
+{5} Point(308.146,316.557)[hidden];
+{6} Point(219,605)[hidden];
+{7} Point(778,605)[hidden];
+{8} FixedText(352,78,'抛物线的判定实验         这是抛物线吗？')[black];
+{9} Translation(1,-1.31961e-013,37.7953)[hidden];
+{10} Circle(1,9)[hidden];
+{11} Point on object(10,0.719075)[hidden];
+{12} Line(11,1)[hidden];
+{13} Line(4,1)[hidden];
+{14} Line(3,4)[hidden];
+{15} Line(5,3)[hidden];
+{16} Line(2,5)[hidden];
+{17} Intersect(13,16)[hidden];
+{18} Intersect(15,12)[hidden];
+{19} Line(18,17)[hidden];
+{20} Intersect(19,14)[hidden];
+{21} Line(20,2)[hidden];
+{22} Intersect(12,21)[hidden];
+{23} Locus(22,11,10,500)[red,mediumLine];
+{24} Segment(7,6)[color(192,192,192),mediumLine];
+{25} Point on object(24,0)[white,large];
+{26} Point on object(23,0.864992)[hidden];
+{27} Point on object(23,0.223371)[hidden];
+{28} Point on object(23,0.914677)[hidden];
+{29} Point on object(24,0.0304114)[hidden];
+{30} Segment(29,6)[hidden];
+{31} Point on object(24,0.0518784)[hidden];
+{32} Point on object(24,0.0840787)[hidden];
+{33} Segment(32,31)[hidden];
+{34} Point on object(24,0.107335)[hidden];
+{35} Segment(34,32)[hidden];
+{36} Point on object(24,0.127013)[hidden];
+{37} Point on object(24,0.161002)[hidden];
+{38} Segment(37,36)[hidden];
+{39} Point on object(24,0.186047)[hidden];
+{40} Segment(39,37)[hidden];
+{41} Point on object(24,0.207513)[hidden];
+{42} Point on object(24,0.239714)[hidden];
+{43} Segment(42,41)[hidden];
+{44} Point on object(24,0.26297)[hidden];
+{45} Point on object(24,0.300537)[hidden];
+{46} Segment(45,44)[hidden];
+{47} Point on object(24,0.32737)[hidden];
+{48} Segment(47,45)[hidden];
+{49} Point on object(24,0.357782)[hidden];
+{50} Segment(49,47)[hidden];
+{51} Point on object(24,0.389982)[hidden];
+{52} Point on object(24,0.418605)[hidden];
+{53} Segment(52,51)[hidden];
+{54} Point on object(24,0.44186)[hidden];
+{55} Segment(54,52)[hidden];
+{56} Point on object(24,0.468694)[hidden];
+{57} Point on object(24,0.506261)[hidden];
+{58} Segment(57,56)[hidden];
+{59} Point on object(24,0.529517)[hidden];
+{60} Point on object(24,0.559928)[hidden];
+{61} Segment(60,59)[hidden];
+{62} Segment(59,57)[hidden];
+{63} Point on object(24,0.579606)[hidden];
+{64} Point on object(24,0.617174)[hidden];
+{65} Segment(64,63)[hidden];
+{66} Point on object(24,0.63864)[hidden];
+{67} Point on object(24,0.679785)[hidden];
+{68} Segment(67,66)[hidden];
+{69} Point on object(24,0.701252)[hidden];
+{70} Point on object(24,0.744186)[hidden];
+{71} Segment(70,69)[hidden];
+{72} Point on object(24,0.767442)[hidden];
+{73} Point on object(24,0.815742)[hidden];
+{74} Segment(73,72)[hidden];
+{75} Point on object(24,0.867621)[hidden];
+{76} Segment(75,73)[hidden];
+{77} Point on object(24,0.899821)[hidden];
+{78} Point on object(24,0.937388)[hidden];
+{79} Segment(78,77)[hidden];
+{80} Point on object(24,0.957066)[hidden];
+{81} Segment(7,80)[hidden];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>抛物线的判定实验</P></H4>
+</BODY>
+</HTML>

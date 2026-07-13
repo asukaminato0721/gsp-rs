@@ -1,0 +1,428 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>y=Asin(wx+v)</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(152,249)[label('O')];
+{2} UnitPoint(1,58)[hidden];
+{3} HorizontalAxis(1,2)[hidden];
+{4} SquareUnitPoint(2)[label('1'),red];
+{5} VerticalAxis(1,4)[hidden];
+{6} CoordSysByAxes(3,5)[hidden];
+{7} Point(567,82)[label('0'),hidden];
+{8} Translation(7,37.7953,0)[hidden];
+{9} Line(8,7)[hidden];
+{10} Translation(7,-3.95885e-014,11.3386)[hidden];
+{11} Translation(10,-3.95885e-014,11.3386)[hidden];
+{12} Parallel(9,10)[hidden];
+{13} Parallel(9,11)[hidden];
+{14} Point on object(13,2.03458)[red,hidden];
+{15} Point on object(12,2.03458)[red,hidden];
+{16} Point on object(9,0)[red,hidden];
+{17} VectorTranslation(11,1,2)[red,hidden];
+{18} VectorTranslation(10,1,2)[red,hidden];
+{19} Translation(10,-1.31962e-014,3.77953)[hidden];
+{20} Translation(7,-1.31962e-014,3.77953)[hidden];
+{21} Translation(11,-1.31962e-014,3.77953)[hidden];
+{22} Translation(16,-1.31962e-014,3.77953)[hidden];
+{23} Translation(15,-1.31962e-014,3.77953)[hidden];
+{24} Translation(14,-1.31962e-014,3.77953)[hidden];
+{25} Segment(20,22)[hidden];
+{26} Translation(20,-1.31962e-014,3.77953)[red,hidden];
+{27} Translation(19,-1.31962e-014,3.77953)[hidden];
+{28} Translation(21,-1.31962e-014,3.77953)[red];
+{29} Parallel(9,28)[hidden];
+{30} Parallel(9,27)[hidden];
+{31} Parallel(9,26)[hidden];
+{32} Point on object(29,2.03458)[red,hidden];
+{33} Point on object(30,2.03458)[red,hidden];
+{34} Point on object(31,0.5)[red,hidden];
+{35} Segment(15,10)[color(0,0,128)];
+{36} Segment(14,11)[color(0,0,128)];
+{37} Segment(16,7)[color(0,0,128)];
+{38} Translation(32,-1.31962e-014,-3.77953)[hidden];
+{39} Translation(33,-1.31962e-014,-3.77953)[hidden];
+{40} Translation(34,-1.31962e-014,-3.77953)[hidden];
+{41} Segment(32,28)[color(0,0,128)];
+{42} Segment(28,7)[color(0,0,128)];
+{43} Segment(33,27)[color(0,0,128)];
+{44} Segment(34,26)[color(0,0,128)];
+{45} Abscissa(15,6,525,103,'')[hidden];
+{46} Abscissa(24,6,525,130,'')[hidden];
+{47} Abscissa(22,6,525,157,'')[hidden];
+{48} Abscissa(7,6,525,184,'')[hidden];
+{49} Calculate(254,-21,'','A B - ')(46,48)[hidden];
+{50} Calculate(254,6,'','A B - ')(45,48)[hidden];
+{51} Calculate(254,33,'','A B - ')(47,48)[hidden];
+{52} Parameter(1,758,60,'A = ')[blue];
+{53} Parameter(1,758,101,'w = ')[blue];
+{54} Parameter(0,761,142,'j = ')[blue];
+{55} Calculate(532,357,'','A B + ')(52,48)[hidden];
+{56} Calculate(535,284,'','A B + ')(53,48)[hidden];
+{57} Calculate(526,244,'','A B + ')(54,48)[hidden];
+{58} Ordinate(7,6,529,262,'')[hidden];
+{59} PlotXY(58,6,57)[red,hidden];
+{60} Ordinate(10,6,534,303,'')[hidden];
+{61} PlotXY(60,6,56)[red,hidden];
+{62} Ordinate(11,6,534,330,'')[hidden];
+{63} PlotXY(62,6,55)[red,hidden];
+{64} VectorTranslation(18,17,18)[hidden];
+{65} VectorTranslation(17,11,28)[red,hidden];
+{66} MoveButton(380,49,5,'')(63,14,61,15,59,16)[hidden];
+{67} VectorTranslation(59,11,28)[red,hidden];
+{68} VectorTranslation(61,11,28)[red,hidden];
+{69} VectorTranslation(63,11,28)[red,hidden];
+{70} MoveButton(560,206,0,'')(7,16,18,15,17,14)[hidden];
+{71} Abscissa(32,6,539,84,'')[hidden];
+{72} Abscissa(33,6,539,111,'')[hidden];
+{73} Abscissa(34,6,539,138,'')[hidden];
+{74} Calculate(416,130,'','A B - ')(71,48)[hidden];
+{75} Calculate(416,157,'','A B - ')(72,48)[hidden];
+{76} Calculate(416,184,'','A B - ')(73,48)[hidden];
+{77} Calculate(95,4,'','A ! B / ')(54,53)[hidden];
+{78} Calculate(95,54,'','2 3.14159 * A - B / ')(54,53)[hidden];
+{79} Calculate(408,218,'','A ! B / ')(76,75)[hidden];
+{80} Calculate(408,268,'','2 3.14159 * A - B / ')(76,75)[hidden];
+{81} MoveButton(797,475,1,'平移变换')(67,34)[black];
+{82} MoveButton(797,500,1,'周期变换')(68,33)[black];
+{83} MoveButton(797,525,1,'振幅变换')(69,32)[black];
+{84} Parameter(6.28319,95,4,'')[hidden];
+{85} Segment(21,38)[hidden];
+{86} Segment(19,39)[hidden];
+{87} Intersect(86,42)[hidden];
+{88} VectorTranslation(18,87,11)[red,hidden];
+{89} MoveButton(552,234,0,'')(65,32,88,33,26,34)[hidden];
+{90} Segment(20,40)[hidden];
+{91} Segment(19,23)[hidden];
+{92} Segment(21,24)[hidden];
+{93} VectorTranslation(16,7,26)[hidden];
+{94} VectorTranslation(67,26,7)[hidden];
+{95} VectorTranslation(34,26,7)[hidden];
+{96} Polygon(26,7,95,34)[color(0,128,0)];
+{97} Polygon(34,95,16,93)[yellow];
+{98} Segment(93,34)[color(0,0,128)];
+{99} Segment(16,93)[color(0,0,128)];
+{100} Segment(95,16)[color(0,0,128)];
+{101} Segment(34,95)[hidden];
+{102} VectorTranslation(24,14,24)[hidden];
+{103} VectorTranslation(38,32,38)[hidden];
+{104} Polygon(32,103,14,102)[color(0,181,181)];
+{105} Segment(103,32)[hidden];
+{106} Segment(102,32)[color(0,0,128)];
+{107} Segment(14,102)[color(0,0,128)];
+{108} VectorTranslation(39,33,39)[hidden];
+{109} Segment(33,108)[hidden];
+{110} Intersect(43,42)[hidden];
+{111} Intersect(35,42)[hidden];
+{112} VectorTranslation(15,108,33)[hidden];
+{113} Polygon(112,33,108,15)[yellow];
+{114} Segment(112,33)[color(0,0,128)];
+{115} Segment(15,112)[color(0,0,128)];
+{116} Segment(18,65)[color(0,0,128)];
+{117} Intersect(116,36)[hidden];
+{118} Intersect(37,101)[hidden];
+{119} Segment(88,112)[color(0,0,128)];
+{120} Segment(18,15)[color(0,0,128)];
+{121} Polygon(18,88,112,15)[color(0,136,136)];
+{122} Polygon(108,33,110,111)[color(0,128,0)];
+{123} Parameter(3,563,144,'n = ')[blue];
+{124} Calculate(678,138,'(π/n) = ','3.14159 A / ')(123)[blue];
+{125} FixedText(642,140,'|j|=')[blue];
+{126} Calculate(79,86,'','A ! B / ')(54,53)[hidden];
+{127} Calculate(79,136,'','2 3.14159 * A - B / ')(54,53)[hidden];
+{128} Calculate(79,186,'','A B + 2 / ')(127,126)[hidden];
+{129} Abscissa(1,6,226,-17,'')[hidden];
+{130} PlotXY(129,6,78)[hidden];
+{131} Coordinates(130,6,619,499,'')[hidden];
+{132} PlotXY(129,6,79)[color(0,128,0),mediumPoint];
+{133} PlotXY(129,6,80)[color(0,128,0),mediumPoint];
+{134} Segment(132,133)[hidden];
+{135} Point on object(134,0.753755)[hidden];
+{136} Abscissa(135,6,408,314,'')[hidden];
+{137} Calculate(408,345,'','A B C * D + @sin_ * ')(74,75,136,76)[hidden];
+{138} PlotXY(137,6,136)[hidden];
+{139} Locus(138,135,134,1000)[color(0,94,0),mediumLine];
+{140} ShowButton(553,269,'显示 变动图象')(139)[black,hidden];
+{141} PlotXY(129,6,84)[red];
+{142} Segment(141,1)[hidden];
+{143} Point on object(142,0.74272)[hidden];
+{144} Abscissa(143,6,95,28,'')[hidden];
+{145} Calculate(95,55,'','A @sin_ ')(144)[hidden];
+{146} PlotXY(145,6,144)[hidden];
+{147} Locus(146,143,142,1000)[black,mediumLine];
+{148} PlotXY(129,6,127)[hidden];
+{149} PlotXY(129,6,126)[red,hidden,mediumPoint];
+{150} PlotXY(129,6,128)[hidden];
+{151} PlotXY(129,6,77)[label('A'),red,hidden,mediumPoint];
+{152} Coordinates(151,6,619,375,'')[hidden];
+{153} Segment(130,151)[hidden];
+{154} Midpoint(153)[hidden];
+{155} Segment(133,154)[hidden];
+{156} Midpoint(155)[hidden];
+{157} Abscissa(156,6,95,82,'')[hidden];
+{158} Parameter(0,95,136,'')[hidden];
+{159} PlotXY(158,6,157)[hidden];
+{160} Coordinates(159,6,652,705,'')[hidden];
+{161} Coordinates(154,6,619,436,'')[hidden];
+{162} Segment(154,151)[hidden];
+{163} Midpoint(162)[hidden];
+{164} Abscissa(163,6,95,55,'')[hidden];
+{165} Calculate(95,109,'','A B C * D + @sin_ * ')(52,53,164,54)[hidden];
+{166} PlotXY(165,6,164)[hidden];
+{167} Coordinates(166,6,619,406,'')[hidden];
+{168} HideButton(95,279,'隐藏 对象')(152,167,161,160,131,151,166,154,159,130)[black,hidden];
+{169} ToggleVisibilityButton(-55,-42,'描点|描点')(152,167,161,160,131,151,166,159,130,154)[black,hidden];
+{170} Point on object(153,0)[label('连线'),red,hidden];
+{171} MoveButton(103,-41,0,'')(151,170)[hidden];
+{172} MoveButton(8,-42,1,'')(130,170)[hidden];
+{173} Abscissa(170,6,95,104,'')[hidden];
+{174} Calculate(95,131,'','A B C * D + @sin_ * ')(52,53,173,54)[hidden];
+{175} PlotXY(174,6,173)[yellow,hidden,traced,mediumPoint];
+{176} ShowButton(-32,-37,'显示 绘制的点')(175)[black,hidden];
+{177} HideButton(-30,29,'隐藏 绘制的点')(175)[black,hidden];
+{178} Locus(175,170,153,1000)[red,hidden,mediumLine];
+{179} HideButton(384,76,'隐藏轨迹')(178)[black,hidden];
+{180} ShowButton(81,-31,'显示 图象')(178,132,133)[black,hidden];
+{181} ToggleVisibilityButton(375,66,'隐藏绘制的点|显示绘制的点')(149,150,148)[black,hidden];
+{182} Point on object(3,-0.13)[black,dot];
+{183} Point on object(3,3.895)[black,dot];
+{184} Segment(183,182)[color(32,32,64)];
+{185} Translation(183,19.2,0)[hidden];
+{186} Circle(183,185)[hidden];
+{187} Intersect1(184,186)[hidden];
+{188} Rotation(187,183,0.523599)[hidden];
+{189} Rotation(188,183,-1.0472)[hidden];
+{190} Segment(183,188)[hidden];
+{191} Segment(189,183)[hidden];
+{192} Point on object(5,1.36)[black,dot];
+{193} Point on object(5,-0.375)[black,dot];
+{194} Segment(193,192)[black];
+{195} Translation(193,19.2,0)[hidden];
+{196} Circle(193,195)[hidden];
+{197} Intersect1(194,196)[hidden];
+{198} Rotation(197,193,0.523599)[hidden];
+{199} Rotation(198,193,-1.0472)[hidden];
+{200} Segment(193,198)[hidden];
+{201} Segment(199,193)[hidden];
+{202} Midpoint(200)[hidden];
+{203} Midpoint(201)[hidden];
+{204} Midpoint(191)[hidden];
+{205} Midpoint(190)[hidden];
+{206} Segment(203,193)[color(0,0,128)];
+{207} Segment(202,193)[color(0,0,128)];
+{208} Segment(183,204)[color(0,0,128)];
+{209} Segment(205,183)[color(0,0,128)];
+{210} Point(128.46,301)[hidden];
+{211} Point(189.64,367)[hidden];
+{212} Point(215.82,367)[hidden];
+{213} Point(268.18,367)[hidden];
+{214} Point(294.36,367)[hidden];
+{215} Point(320.54,367)[hidden];
+{216} Point(346.72,367)[hidden];
+{217} Point(372.9,367)[hidden];
+{218} FixedText(243,228,'(p/6)')[black,hidden];
+{219} FixedText(262,231,'(p/3)')[black,hidden];
+{220} FixedText(287,237,'(p/2)')[black,hidden];
+{221} FixedText(311,235,'(2p/3)')[black,hidden];
+{222} FixedText(344,239,'(5p/6)')[black,hidden];
+{223} FixedText(381,232,'p')[black,hidden];
+{224} FixedText(531,224,'2p')[black,hidden];
+{225} FixedText(197,235,'-(p/6)')[black,hidden];
+{226} FixedText(171,235,'-(p/3)')[black,hidden];
+{227} FixedText(139,239,'-(p/2)')[black,hidden];
+{228} FixedText(465,254,'(3p/2)')[black,hidden];
+{229} Point(477.619,317)[hidden];
+{230} Point(399.08,329.5)[hidden];
+{231} Point(556.159,329.5)[hidden];
+{232} PeggedText(210,227)[hidden];
+{233} PeggedText(211,226)[hidden];
+{234} PeggedText(212,225)[hidden];
+{235} PeggedText(213,218)[hidden];
+{236} PeggedText(214,219)[hidden];
+{237} PeggedText(215,220)[hidden];
+{238} PeggedText(216,221)[hidden];
+{239} PeggedText(217,222)[hidden];
+{240} PeggedText(229,228)[hidden];
+{241} PeggedText(230,223)[hidden];
+{242} PeggedText(231,224)[hidden];
+{243} Parameter(0.523599,56,101,'')[hidden];
+{244} PlotXY(129,6,243)[yellow];
+{245} VectorTranslation(244,1,244)[yellow];
+{246} Parameter(0.785398,56,151,'')[hidden];
+{247} PlotXY(129,6,246)[yellow];
+{248} Parameter(1.5708,56,201,'')[hidden];
+{249} PlotXY(129,6,248)[yellow,mediumPoint];
+{250} Rotation(1,249,-3.14159)[red];
+{251} Rotation(244,249,-3.14159)[yellow];
+{252} Rotation(247,249,-3.14159)[yellow];
+{253} Rotation(245,249,-3.14159)[yellow];
+{254} Rotation(249,250,-3.14159)[yellow];
+{255} Rotation(244,1,-3.14159)[yellow];
+{256} Rotation(247,1,-3.14159)[yellow];
+{257} Rotation(245,1,-3.14159)[yellow];
+{258} Rotation(249,1,-3.14159)[yellow];
+{259} Segment(154,130)[hidden];
+{260} Midpoint(259)[hidden];
+{261} Abscissa(260,6,468,277,'')[hidden];
+{262} VectorTranslation(260,166,163)[hidden];
+{263} Coordinates(262,6,618,467,'')[hidden];
+{264} ShowButton(84,-34,'显示 对象')(263,262)[black,hidden];
+{265} HideButton(599,219,'隐藏 对象')(262,263)[black,hidden];
+{266} Abscissa(32,6,590,264,'')[hidden];
+{267} Abscissa(28,6,590,288,'')[hidden];
+{268} Calculate(590,312,'x[G] - x[0''''''''] = ','A B - ')(266,267)[color(0,128,0),hidden];
+{269} PeggedText(32,268)[red];
+{270} Abscissa(33,6,602,324,'')[hidden];
+{271} Calculate(602,348,'x[H] - x[0''''''''] = ','A B - ')(270,267)[color(0,0,128),hidden];
+{272} PeggedText(33,271)[red];
+{273} Abscissa(34,6,589,327,'')[hidden];
+{274} Calculate(589,350,'x[I] - x[0''''''''] = ','A B - ')(273,267)[color(0,0,128),hidden];
+{275} PeggedText(34,274)[red];
+{276} FixedText(56,554,'例1 画出函数y=2sinx与y=(1/2)sinx的简图.')[blue,hidden];
+{277} FixedText(54,554,'例2  画出函数y=sin2x与y=sin(1/2)x的简图.')[blue,hidden];
+{278} FixedText(58,560,'例3  画出函数y=sin(x+(π/3))与y=sin(x-(π/4))的简图.')[blue,hidden];
+{279} FixedText(60,555,'例4  画出函数y=3sin(2x+(π/3))的简图.')[blue,hidden];
+{280} FixedText(890,534,'p')[white];
+{281} FixedText(882,574,'p')[white];
+{282} ToggleVisibilityButton(53,264,'例3''|例3''')(281,280,278)[hidden];
+{283} ToggleVisibilityButton(18,264,'例2''|例2''')(277)[hidden];
+{284} FixedText(264,38,'y=Asin(   x+   )')[blue];
+{285} FixedText(345,35,'w')[blue];
+{286} FixedText(387,35,'j')[blue];
+{287} FixedText(208,39,'函数')[blue];
+{288} FixedText(422,38,'的图象')[blue];
+{289} Polygon(32,103,11,28)[color(0,128,0)];
+{290} FixedText(910,569,'p')[white];
+{291} Translation(258,-9.2373e-014,-26.4567)[yellow,hidden];
+{292} FixedText(102,304,'-(π/2)')[cyan,hidden];
+{293} PeggedText(291,292)[blue];
+{294} Translation(257,-9.2373e-014,-26.4567)[yellow,hidden];
+{295} Translation(255,-9.2373e-014,-26.4567)[yellow,hidden];
+{296} Translation(244,-9.2373e-014,-26.4567)[yellow,hidden];
+{297} Translation(247,-9.2373e-014,-26.4567)[yellow,hidden];
+{298} Translation(245,-9.2373e-014,-26.4567)[yellow,hidden];
+{299} Translation(249,-9.2373e-014,-26.4567)[yellow,hidden];
+{300} Translation(253,-9.2373e-014,-26.4567)[yellow,hidden];
+{301} Translation(252,-9.2373e-014,-26.4567)[hidden];
+{302} Translation(251,-9.2373e-014,-26.4567)[yellow,hidden];
+{303} Translation(150,-5.93827e-014,-17.0079)[red,hidden];
+{304} Translation(256,-9.2373e-014,-26.4567)[hidden];
+{305} FixedText(126,308,'-(π/3)')[cyan,hidden];
+{306} PeggedText(294,305)[blue];
+{307} FixedText(113,335,'-(π/6)')[blue,hidden];
+{308} PeggedText(295,307)[blue];
+{309} FixedText(232,310,'(π/6)')[blue,hidden];
+{310} PeggedText(296,309)[blue];
+{311} FixedText(235,306,'(π/4)')[blue,hidden];
+{312} PeggedText(297,311)[blue];
+{313} FixedText(227,314,'(π/3)')[blue,hidden];
+{314} PeggedText(298,313)[blue];
+{315} FixedText(252,293,'(π/2)')[blue,hidden];
+{316} PeggedText(299,315)[blue];
+{317} FixedText(299,308,'(2π/3)')[blue,hidden];
+{318} PeggedText(300,317)[blue];
+{319} FixedText(274,292,'(5π/6)')[blue,hidden];
+{320} PeggedText(302,319)[blue];
+{321} FixedText(335,316,'π')[blue,hidden];
+{322} PeggedText(303,321)[hidden];
+{323} Translation(254,-9.2373e-014,26.4567)[yellow,hidden];
+{324} FixedText(398,308,'(3π/2)')[blue,hidden];
+{325} PeggedText(323,324)[blue];
+{326} FixedText(534,278,'')[hidden];
+{327} ShowButton(797,551,'显示说明')(276)[black,hidden];
+{328} ShowButton(797,593,'显示说明')(277)[black,hidden];
+{329} ShowButton(797,635,'显示说明')(278)[black,hidden];
+{330} ShowButton(1038,5,'显示说明')(279)[black,hidden];
+{331} Point(1125,622)[hidden];
+{332} Point(1202,623)[hidden];
+{333} Segment(332,331)[hidden];
+{334} Point on object(333,0.820643)[hidden];
+{335} AnimateButton(189,456,'下一题')(334,333)(3)(0)(0)[black];
+{336} HideButton(797,572,'隐藏说明')(276)[black,hidden];
+{337} HideButton(797,614,'隐藏说明')(277)[black,hidden];
+{338} HideButton(797,656,'隐藏说明')(278)[black,hidden];
+{339} HideButton(1038,26,'隐藏说明')(279)[black,hidden];
+{340} Translation(250,1.15715e-015,18.8976)[red,hidden];
+{341} FixedText(342,297,'π')[blue,hidden];
+{342} PeggedText(340,341)[blue];
+{343} Translation(141,1.15715e-015,18.8976)[red,hidden];
+{344} FixedText(395,314,'2π')[blue,hidden];
+{345} PeggedText(343,344)[blue];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>y=Asin(wx+v)</P></H4>
+</BODY>
+</HTML>
