@@ -26,8 +26,8 @@ fn standalone_html_keeps_framed_default_and_includes_fullscreen_toggle() {
     assert!(html.contains("<div id=\"viewer-shell\" class=\"app-shell\">"));
     assert!(html.contains("id=\"toggle-fullscreen\""));
     assert!(html.contains(">全屏</button>"));
-    assert!(html.contains("--scene-width: 800;"));
-    assert!(html.contains("--scene-height: 600;"));
+    assert!(html.contains("--scene-width: 1637;"));
+    assert!(html.contains("--scene-height: 841;"));
     assert!(html.contains(
         ".app-shell{width:100%;margin:0 auto;display:grid;min-height:calc(100dvh - 40px);"
     ));
@@ -50,7 +50,7 @@ fn svg_runtime_keeps_geometry_and_grid_layers_inside_the_same_stage() {
 
     assert!(html.contains("<g id=\"grid-layer\"></g>"));
     assert!(html.contains("<g id=\"scene-layer\"></g>"));
-    assert!(html.contains("viewBox=\"0 0 800 600\""));
+    assert!(html.contains("viewBox=\"0 0 1637 841\""));
 }
 
 #[test]
@@ -67,6 +67,23 @@ fn multipage_fixture_exports_one_html_document_with_page_tabs() {
     assert!(html.contains("\"kind\":\"gsp-document\""));
     assert!(html.contains("\"title\":\"Page 1\""));
     assert!(html.contains("\"title\":\"Page 2\""));
+}
+
+#[test]
+fn multipage_scene_json_preserves_every_page_and_document_dimensions() {
+    let scene = fixture_scene(
+        include_bytes!("../../../tests/fixtures/bug/迭代方法2(蚂蚁).gsp"),
+        "multipage fixture should compile",
+    );
+    assert_eq!(scene["kind"].as_str(), Some("gsp-document"));
+    let pages = scene["pages"].as_array().expect("document pages");
+    assert_eq!(pages.len(), 2);
+    let first_width = pages[0]["scene"]["width"].as_u64();
+    let first_height = pages[0]["scene"]["height"].as_u64();
+    assert!(first_width.is_some_and(|width| width != 800));
+    assert!(first_height.is_some_and(|height| height != 600));
+    assert_eq!(pages[1]["scene"]["width"].as_u64(), first_width);
+    assert_eq!(pages[1]["scene"]["height"].as_u64(), first_height);
 }
 
 #[test]
@@ -88,9 +105,9 @@ fn compiles_fixture_and_also_writes_payload_log_and_debug_json() {
             .contains("{1} Point(323,217)[mediumPoint];")
     );
 
-    assert!(output.debug_json.contains("\n  \"width\": 800,"));
+    assert!(output.debug_json.contains("\n  \"width\": 1637,"));
     assert!(output.debug_json.contains("\"points\": ["));
-    assert_eq!(output.scene["width"].as_u64(), Some(800));
+    assert_eq!(output.scene["width"].as_u64(), Some(1637));
 }
 
 #[test]
@@ -124,7 +141,7 @@ fn exports_scene_json_for_console_debugging() {
         "fixture should compile",
     );
 
-    assert!(scene_json.contains("\n  \"width\": 800,"));
+    assert!(scene_json.contains("\n  \"width\": 1637,"));
     assert!(scene_json.contains("\"points\": ["));
 }
 

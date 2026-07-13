@@ -12,8 +12,9 @@ use super::{
 };
 use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
 use crate::runtime::functions::{
-    BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters, try_decode_function_expr,
-    try_decode_function_expr_with_inlined_refs, try_decode_function_plot_descriptor,
+    FunctionAst, FunctionExpr, evaluate_expr_with_parameters, try_decode_embedded_calculate_expr,
+    try_decode_function_expr, try_decode_function_expr_with_inlined_refs,
+    try_decode_function_plot_descriptor,
 };
 use crate::runtime::geometry::{
     GraphTransform, arc_on_circle_control_points, lerp_point, locate_polyline_parameter_by_length,
@@ -347,14 +348,16 @@ pub(crate) fn regular_polygon_iteration_step(
     let parameter_name =
         editable_non_graph_parameter_name_for_group(file, groups, parameter_group)?;
     let n = decode_non_graph_parameter_value_for_group(file, parameter_group)?;
-    let decoded_angle_expr = try_decode_function_expr(file, groups, calc_group).ok();
-    let fallback_angle_expr = regular_polygon_angle_expr(&parameter_name, n);
-    let angle_expr = decoded_angle_expr
-        .filter(|expr| {
-            evaluate_expr_with_parameters(expr, 0.0, &BTreeMap::from([(parameter_name.clone(), n)]))
-                .is_some_and(|value| (value - (360.0 / n)).abs() < 1e-6)
-        })
-        .unwrap_or(fallback_angle_expr);
+    let angle_expr = [
+        try_decode_embedded_calculate_expr(file, groups, calc_group),
+        try_decode_function_expr(file, groups, calc_group),
+    ]
+    .into_iter()
+    .filter_map(Result::ok)
+    .find(|expr| {
+        evaluate_expr_with_parameters(expr, 0.0, &BTreeMap::from([(parameter_name.clone(), n)]))
+            .is_some_and(|value| (value - (360.0 / n)).abs() < 1e-6)
+    })?;
     (n.abs() >= 1.0).then_some((center_group_index, angle_expr, parameter_name, n))
 }
 
@@ -388,17 +391,6 @@ pub(crate) fn regular_polygon_angle_expr_for_calc_group(
     let (_center_group_index, angle_expr, parameter_name, n) =
         regular_polygon_iteration_step(file, groups, iter_group)?;
     Some((angle_expr, parameter_name, n))
-}
-
-fn regular_polygon_angle_expr(parameter_name: &str, parameter_value: f64) -> FunctionExpr {
-    FunctionExpr::Parsed(FunctionAst::Binary {
-        lhs: Box::new(FunctionAst::Constant(360.0)),
-        op: BinaryOp::Div,
-        rhs: Box::new(FunctionAst::Parameter(
-            parameter_name.to_string(),
-            parameter_value,
-        )),
-    })
 }
 
 pub(crate) fn polygon_parameter_to_edge(

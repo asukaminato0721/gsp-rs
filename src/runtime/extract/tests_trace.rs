@@ -392,8 +392,8 @@ fn preserves_two_circle_intersection_inrm_fixture_interactivity() {
             .iter()
             .filter(|circle| circle.fill_color.is_some())
             .count(),
-        0,
-        "expected payload helper circle interiors not to render as full-disk circle fills"
+        2,
+        "expected both Circle interior objects declared by the HTM payload"
     );
     assert_eq!(
         scene

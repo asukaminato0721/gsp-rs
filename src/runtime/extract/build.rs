@@ -81,8 +81,8 @@ pub(in crate::runtime) fn payload_debug_source(group: &ObjectGroup) -> PayloadDe
 
 pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
     let groups = file.object_groups();
-    let context = SceneContext::new(file, &groups);
     validate_scene_payloads(file, &groups)?;
+    let context = SceneContext::new(file, &groups);
     let point_map = collect_point_objects(file, &groups);
     let analysis = analyze_scene(file, &groups, &point_map);
     let mut shapes = collect_scene_shapes(file, &groups, &context, &analysis);

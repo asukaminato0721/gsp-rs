@@ -384,12 +384,12 @@ pub(crate) fn collect_carried_line_iteration_families(
             if source_path.refs.len() != 2 {
                 return None;
             }
-            let start_index = mapped_or_equivalent_point_index(
+            let start_index = mapped_point_index_exact(
                 group_to_point_index,
                 anchors,
                 source_path.refs[0].checked_sub(1)?,
             )?;
-            let end_index = mapped_or_equivalent_point_index(
+            let end_index = mapped_point_index_exact(
                 group_to_point_index,
                 anchors,
                 source_path.refs[1].checked_sub(1)?,
@@ -833,7 +833,7 @@ fn regular_polygon_translation_vector_index(
 ) -> Option<usize> {
     let path = find_indexed_path(file, iter_group)?;
     let group_index = path.refs.get(ref_slot)?.checked_sub(1)?;
-    mapped_or_equivalent_point_index(group_to_point_index, anchors, group_index)
+    mapped_point_index_exact(group_to_point_index, anchors, group_index)
 }
 
 fn translated_control_point_index(
@@ -854,28 +854,12 @@ fn translated_control_point_index(
     })
 }
 
-fn mapped_or_equivalent_point_index(
+fn mapped_point_index_exact(
     group_to_point_index: &[Option<usize>],
-    anchors: &[Option<PointRecord>],
+    _anchors: &[Option<PointRecord>],
     group_index: usize,
 ) -> Option<usize> {
-    if let Some(point_index) = group_to_point_index.get(group_index).copied().flatten() {
-        return Some(point_index);
-    }
-    let anchor = anchors.get(group_index).cloned().flatten()?;
-    group_to_point_index
-        .iter()
-        .enumerate()
-        .filter_map(|(candidate_index, point_index)| {
-            let point_index = (*point_index)?;
-            let candidate = anchors.get(candidate_index).cloned().flatten()?;
-            same_iteration_step(
-                &(candidate - anchor.clone()),
-                &PointRecord { x: 0.0, y: 0.0 },
-            )
-            .then_some(point_index)
-        })
-        .next()
+    group_to_point_index.get(group_index).copied().flatten()
 }
 
 fn regular_polygon_translation_iteration_depth_expr(

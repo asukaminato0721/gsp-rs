@@ -16,6 +16,11 @@ pub(super) fn collect_unsupported_payload_issues(
     let point_map = collect_point_objects(file, groups);
     let anchors = collect_raw_object_anchors(file, groups, &point_map, None);
     for group in groups {
+        collect_validation_issue(
+            &mut issues,
+            &[group.ordinal],
+            validate_indexed_path_payload(file, groups, group),
+        );
         collect_validation_issue(&mut issues, &[group.ordinal], validate_group_kind(group));
         collect_validation_issue(
             &mut issues,
@@ -39,6 +44,28 @@ pub(super) fn collect_unsupported_payload_issues(
         );
     }
     issues
+}
+
+fn validate_indexed_path_payload(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Result<()> {
+    let Some(path) = try_find_indexed_path(file, group).map_err(anyhow::Error::msg)? else {
+        return Ok(());
+    };
+    if let Some(reference) = path
+        .refs
+        .iter()
+        .copied()
+        .find(|reference| *reference == 0 || *reference > groups.len())
+    {
+        bail!(
+            "malformed indexed path: group #{} references nonexistent object #{reference}",
+            group.ordinal
+        );
+    }
+    Ok(())
 }
 
 fn function_issue_group_ordinals(

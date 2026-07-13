@@ -72,11 +72,17 @@ impl<'a> SceneContext<'a> {
     }
 
     pub(crate) fn indexed_path(&self, group: &ObjectGroup) -> Option<&IndexedPathRecord> {
-        self.indexed_paths
+        match self
+            .indexed_paths
             .get(group.ordinal.checked_sub(1)?)?
             .as_ref()
-            .ok()
-            .and_then(Option::as_ref)
+        {
+            Ok(path) => path.as_ref(),
+            Err(error) => panic!(
+                "validated scene contains malformed indexed path in group #{}: {error}",
+                group.ordinal
+            ),
+        }
     }
 
     pub(crate) fn path_ref_group_index(

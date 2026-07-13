@@ -4,8 +4,8 @@ assertion_line: 159
 expression: scene_json
 ---
 {
-  "width": 800,
-  "height": 600,
+  "width": 1637,
+  "height": 841,
   "graphMode": false,
   "piMode": false,
   "savedViewport": false,

@@ -107,6 +107,61 @@ pub(crate) fn try_decode_function_expr_with_inlined_refs(
     decode_function_expr_recursive_with_inlined_refs(file, groups, group, &mut BTreeSet::new())
 }
 
+pub(crate) fn try_decode_embedded_calculate_expr(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Result<FunctionExpr, FunctionExprParseError> {
+    let payload = group_function_payload(file, group)?;
+    let mut visiting = BTreeSet::from([group.ordinal]);
+    let parameters = collect_parameter_bindings(file, groups, group, &mut visiting, true);
+    decode_trailing_unit_calculate_expr(payload, &parameters)
+        .or_else(|_| decode_embedded_postfix_payload_function_expr(payload, &parameters))
+}
+
+fn decode_trailing_unit_calculate_expr(
+    payload: &[u8],
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Result<FunctionExpr, FunctionExprParseError> {
+    let words = payload
+        .chunks_exact(2)
+        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+        .collect::<Vec<_>>();
+    let len = words.len();
+    if len < 6
+        || !matches!(words[len - 3], 0x0101 | 0x0201)
+        || !matches!(
+            words[len - 2],
+            EXPR_OP_ADD | EXPR_OP_SUB | EXPR_OP_MUL | EXPR_OP_DIV | EXPR_OP_POW
+        )
+        || (words[len - 1] & EXPR_PARAMETER_MASK) != EXPR_PARAMETER_PREFIX
+    {
+        return Err(FunctionExprParseError::NoExpressionFound { word_len: len });
+    }
+    let lhs_start = len - 6;
+    let (lhs, lhs_end) = parse_function_expr_from(&words[..len - 2], lhs_start, parameters)?;
+    if lhs_end != len - 2 {
+        return Err(FunctionExprParseError::NoExpressionFound { word_len: len });
+    }
+    let (rhs, rhs_end) = parse_function_expr_from(&words, len - 1, parameters)?;
+    if rhs_end != len {
+        return Err(FunctionExprParseError::NoExpressionFound { word_len: len });
+    }
+    let op = match words[len - 2] {
+        EXPR_OP_ADD => BinaryOp::Add,
+        EXPR_OP_SUB => BinaryOp::Sub,
+        EXPR_OP_MUL => BinaryOp::Mul,
+        EXPR_OP_DIV => BinaryOp::Div,
+        EXPR_OP_POW => BinaryOp::Pow,
+        _ => unreachable!(),
+    };
+    Ok(canonicalize_function_expr(FunctionAst::Binary {
+        lhs: Box::new(lhs),
+        op,
+        rhs: Box::new(rhs),
+    }))
+}
+
 pub(crate) fn try_decode_plot_component_expr(
     file: &GspFile,
     groups: &[ObjectGroup],

@@ -16,9 +16,13 @@ fn exports_two_circle_intersection_inrm_fixture_with_live_bindings() {
             .all(|circle| circle["binding"]["kind"].as_str() == Some("point-radius-circle")),
         "expected every exported circle to keep its live point-radius binding"
     );
-    assert!(
-        circles.iter().all(|circle| circle["fillColor"].is_null()),
-        "expected payload helper circle interiors not to render as full-disk circle fills"
+    assert_eq!(
+        circles
+            .iter()
+            .filter(|circle| !circle["fillColor"].is_null())
+            .count(),
+        2,
+        "expected both Circle interior objects declared by the HTM payload"
     );
 
     let polygons = scene["polygons"]

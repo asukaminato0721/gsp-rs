@@ -1474,6 +1474,44 @@ mod tests {
     }
 
     #[test]
+    fn malformed_indexed_path_is_reported_for_every_group_kind() {
+        let file = GspFile::parse(include_bytes!(
+            "../../../tests/fixtures/gsp/static/perpendicular.gsp"
+        ))
+        .expect("fixture parses");
+        let mut groups = file.object_groups();
+        let group = groups
+            .iter_mut()
+            .find(|group| {
+                group.records.iter().any(|record| {
+                    matches!(
+                        record.record_type,
+                        RECORD_INDEXED_PATH_A | RECORD_INDEXED_PATH_B
+                    )
+                })
+            })
+            .expect("fixture should contain an indexed path");
+        let ordinal = group.ordinal;
+        let record = group
+            .records
+            .iter_mut()
+            .find(|record| {
+                matches!(
+                    record.record_type,
+                    RECORD_INDEXED_PATH_A | RECORD_INDEXED_PATH_B
+                )
+            })
+            .expect("indexed-path record");
+        record.payload_range.end -= 1;
+        record.length -= 1;
+
+        let issues = collect_unsupported_payload_issues(&file, &groups);
+        assert!(issues.iter().any(|issue| {
+            issue.summary.contains("malformed indexed path") && issue.group_ordinals == [ordinal]
+        }));
+    }
+
+    #[test]
     fn action_button_without_label_text_is_reported() {
         let file = GspFile::parse(include_bytes!(
             "../../../tests/Samples/个人专栏/向忠作品/正弦波与音乐.gsp"

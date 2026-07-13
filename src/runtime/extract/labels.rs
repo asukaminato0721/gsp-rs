@@ -3373,38 +3373,17 @@ fn label_iteration_vector_indices(
         return None;
     }
     Some((
-        mapped_or_equivalent_point_index(
-            group_to_point_index,
-            anchors,
-            path.refs[1].checked_sub(1)?,
-        )?,
-        mapped_or_equivalent_point_index(
-            group_to_point_index,
-            anchors,
-            path.refs[2].checked_sub(1)?,
-        )?,
+        mapped_point_index_exact(group_to_point_index, anchors, path.refs[1].checked_sub(1)?)?,
+        mapped_point_index_exact(group_to_point_index, anchors, path.refs[2].checked_sub(1)?)?,
     ))
 }
 
-fn mapped_or_equivalent_point_index(
+fn mapped_point_index_exact(
     group_to_point_index: &[Option<usize>],
-    anchors: &[Option<PointRecord>],
+    _anchors: &[Option<PointRecord>],
     group_index: usize,
 ) -> Option<usize> {
-    if let Some(point_index) = mapped_point_index(group_to_point_index, group_index) {
-        return Some(point_index);
-    }
-    let anchor = anchors.get(group_index).cloned().flatten()?;
-    group_to_point_index
-        .iter()
-        .enumerate()
-        .filter_map(|(candidate_index, point_index)| {
-            let point_index = (*point_index)?;
-            let candidate = anchors.get(candidate_index).cloned().flatten()?;
-            ((candidate.x - anchor.x).abs() < 1e-6 && (candidate.y - anchor.y).abs() < 1e-6)
-                .then_some(point_index)
-        })
-        .next()
+    mapped_point_index(group_to_point_index, group_index)
 }
 
 fn label_iteration_depth_expr(
@@ -3539,7 +3518,7 @@ pub(super) fn bind_point_label_anchors(
             continue;
         };
         let Some(point_index) =
-            mapped_or_equivalent_point_index(group_to_point_index, anchors, point_group_index)
+            mapped_point_index_exact(group_to_point_index, anchors, point_group_index)
         else {
             continue;
         };

@@ -2,10 +2,11 @@ use super::*;
 
 #[test]
 fn exports_ant_fixture_with_two_axis_line_iterations() {
-    let scene = fixture_scene(
+    let document = fixture_scene(
         include_bytes!("../../../../tests/fixtures/bug/迭代方法2(蚂蚁).gsp"),
         "ant fixture should compile",
     );
+    let scene = &document["pages"][0]["scene"];
     let line_iterations = scene["lineIterations"]
         .as_array()
         .expect("scene line iterations should be an array");

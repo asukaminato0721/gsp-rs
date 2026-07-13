@@ -132,7 +132,7 @@ pub(super) fn render_standalone_html_pages(pages: &[StandaloneHtmlPage<'_>]) -> 
     html
 }
 
-fn render_document_scene_json(pages: &[StandaloneHtmlPage<'_>]) -> String {
+pub(crate) fn render_document_scene_json(pages: &[StandaloneHtmlPage<'_>]) -> String {
     if pages.len() == 1 {
         let page = &pages[0];
         return render_scene_json(page.scene, page.width, page.height, false);

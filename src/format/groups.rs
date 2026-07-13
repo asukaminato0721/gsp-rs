@@ -1,6 +1,39 @@
 use super::{
-    ObjectGroup, Record, decode_object_aux_u16, decode_object_aux_words, decode_object_group_header,
+    ObjectGroup, ParseError, Record, decode_object_aux_u16, decode_object_aux_words,
+    decode_object_group_header,
 };
+
+pub(super) fn validate_object_groups(records: &[Record], data: &[u8]) -> Result<(), ParseError> {
+    let mut index = 0;
+    while index < records.len() {
+        let record = &records[index];
+        if record.record_type != 0x07d0 {
+            index += 1;
+            continue;
+        }
+        if decode_object_group_header(record.payload(data)).is_none() {
+            return Err(ParseError::InvalidObjectGroupHeader {
+                offset: record.offset,
+                length: record.length,
+            });
+        }
+        let Some(relative_end) = records[index + 1..]
+            .iter()
+            .position(|record| matches!(record.record_type, 0x07d7 | 0x07d0 | 0x0387))
+        else {
+            return Err(ParseError::UnterminatedObjectGroup {
+                offset: record.offset,
+            });
+        };
+        if records[index + relative_end + 1].record_type != 0x07d7 {
+            return Err(ParseError::UnterminatedObjectGroup {
+                offset: record.offset,
+            });
+        }
+        index += relative_end + 2;
+    }
+    Ok(())
+}
 
 pub(super) fn collect_object_groups(records: &[Record], data: &[u8]) -> Vec<ObjectGroup> {
     let mut groups = Vec::new();
@@ -13,10 +46,8 @@ pub(super) fn collect_object_groups(records: &[Record], data: &[u8]) -> Vec<Obje
             continue;
         }
 
-        let Some(header) = decode_object_group_header(record.payload(data)) else {
-            index += 1;
-            continue;
-        };
+        let header = decode_object_group_header(record.payload(data))
+            .expect("GspFile::parse validates every object-group header");
 
         let start_offset = record.offset;
         let mut group_records = Vec::new();

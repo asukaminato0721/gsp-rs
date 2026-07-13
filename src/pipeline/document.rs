@@ -1,4 +1,6 @@
-use crate::export::html::{StandaloneHtmlPage, render_scene_json, render_standalone_html_pages};
+use crate::export::html::{
+    StandaloneHtmlPage, render_document_scene_json, render_scene_json, render_standalone_html_pages,
+};
 use crate::gsp;
 use crate::runtime::build_scene_checked;
 use crate::runtime::scene::Scene;
@@ -6,6 +8,40 @@ use miette::{Result, WrapErr, miette};
 
 pub fn compile_bytes_to_html_document(data: &[u8], width: u32, height: u32) -> Result<String> {
     let file = gsp::parse(data).map_err(miette::Report::new)?;
+    let compiled_pages = compile_pages(&file, width, height)?;
+    let html_pages = compiled_pages
+        .iter()
+        .map(|page| StandaloneHtmlPage {
+            title: &page.title,
+            scene: &page.scene,
+            width: page.width,
+            height: page.height,
+            document_layout: page.document_layout,
+        })
+        .collect::<Vec<_>>();
+    Ok(render_standalone_html_pages(&html_pages))
+}
+
+pub fn compile_bytes_to_scene_json(data: &[u8], width: u32, height: u32) -> Result<String> {
+    let file = gsp::parse(data).map_err(miette::Report::new)?;
+    let compiled_pages = compile_pages(&file, width, height)?;
+    if let [page] = compiled_pages.as_slice() {
+        return Ok(render_scene_json(
+            &page.scene,
+            page.width,
+            page.height,
+            true,
+        ));
+    }
+    let html_pages = as_html_pages(&compiled_pages);
+    Ok(render_document_scene_json(&html_pages))
+}
+
+fn compile_pages(
+    file: &crate::format::GspFile,
+    width: u32,
+    height: u32,
+) -> Result<Vec<CompiledHtmlPage>> {
     let page_files = file.page_files();
     let mut compiled_pages = Vec::with_capacity(page_files.len());
     for (index, page_file) in page_files.iter().enumerate() {
@@ -22,7 +58,11 @@ pub fn compile_bytes_to_html_document(data: &[u8], width: u32, height: u32) -> R
             document_layout,
         });
     }
-    let html_pages = compiled_pages
+    Ok(compiled_pages)
+}
+
+fn as_html_pages(pages: &[CompiledHtmlPage]) -> Vec<StandaloneHtmlPage<'_>> {
+    pages
         .iter()
         .map(|page| StandaloneHtmlPage {
             title: &page.title,
@@ -31,19 +71,7 @@ pub fn compile_bytes_to_html_document(data: &[u8], width: u32, height: u32) -> R
             height: page.height,
             document_layout: page.document_layout,
         })
-        .collect::<Vec<_>>();
-    Ok(render_standalone_html_pages(&html_pages))
-}
-
-pub fn compile_bytes_to_scene_json(data: &[u8], width: u32, height: u32) -> Result<String> {
-    let file = gsp::parse(data).map_err(miette::Report::new)?;
-    let page_files = file.page_files();
-    let page_file = page_files.first().unwrap_or(&file);
-    let scene = build_scene_checked(page_file)
-        .map_err(|error| miette!("{error:#}"))
-        .wrap_err("failed to build scene from parsed payload")?;
-    let (width, height) = export_dimensions(page_file, &scene, width, height);
-    Ok(render_scene_json(&scene, width, height, true))
+        .collect()
 }
 
 struct CompiledHtmlPage {
@@ -69,11 +97,5 @@ fn export_dimensions(
 }
 
 fn is_document_layout(file: &crate::format::GspFile, scene: &crate::runtime::scene::Scene) -> bool {
-    !scene.graph_mode
-        && file.object_groups().iter().any(|group| {
-            group
-                .records
-                .iter()
-                .any(|record| record.record_type == 0x08fc)
-        })
+    !scene.graph_mode && file.document_canvas_size().is_some()
 }

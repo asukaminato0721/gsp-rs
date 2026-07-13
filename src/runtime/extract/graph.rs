@@ -1,6 +1,6 @@
 use super::decode::{decode_label_name, decode_measurement_value, find_indexed_path};
 use super::shapes::{ArcShape, CircleShape};
-use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord, read_u16};
+use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord};
 use crate::runtime::functions::{evaluate_expr_with_parameters, try_decode_function_expr};
 use crate::runtime::geometry::{
     Bounds, GraphTransform, arc_sample_points, read_f32_unaligned, to_world,
@@ -8,9 +8,15 @@ use crate::runtime::geometry::{
 use crate::runtime::scene::{LineShape, PolygonShape, TextLabel, TextLabelBinding};
 
 pub(super) fn collect_saved_viewport(file: &GspFile, groups: &[ObjectGroup]) -> Option<Bounds> {
-    let (min_x, max_x) = collect_graph_window_hint(file, groups, "x")?;
-    let (min_y, max_y) = collect_graph_window_hint(file, groups, "y")
-        .or_else(|| collect_graph_window_hint(file, groups, "x"))?;
+    saved_viewport_from_axis_hints(
+        collect_graph_window_hint(file, groups, "x"),
+        collect_graph_window_hint(file, groups, "y"),
+    )
+}
+
+fn saved_viewport_from_axis_hints(x: Option<(f64, f64)>, y: Option<(f64, f64)>) -> Option<Bounds> {
+    let (min_x, max_x) = x?;
+    let (min_y, max_y) = y?;
     Some(Bounds {
         min_x,
         max_x,
@@ -20,26 +26,13 @@ pub(super) fn collect_saved_viewport(file: &GspFile, groups: &[ObjectGroup]) -> 
 }
 
 pub(super) fn collect_document_canvas_bounds(file: &GspFile) -> Option<Bounds> {
-    let header = file
-        .records
-        .first()
-        .filter(|record| record.record_type == 0x0384)?;
-    let payload = header.payload(&file.data);
-    if payload.len() < 22 {
-        return None;
-    }
-
-    let width = f64::from(read_u16(payload, 18));
-    let height = f64::from(read_u16(payload, 20));
-    if width <= 0.0 || height <= 0.0 {
-        return None;
-    }
+    let (width, height) = file.document_canvas_size()?;
 
     Some(Bounds {
         min_x: 0.0,
-        max_x: width,
+        max_x: f64::from(width),
         min_y: 0.0,
-        max_y: height,
+        max_y: f64::from(height),
     })
 }
 
@@ -155,13 +148,6 @@ fn detect_explicit_axis_graph_transform(
                         .iter()
                         .find(|record| record.record_type == 0x07d3 && record.length == 12)
                         .and_then(|record| decode_measurement_value(record.payload(&file.data)))
-                })
-                .or_else(|| {
-                    let unit_raw = anchors
-                        .get(x_measure_path.refs.get(1)?.checked_sub(1)?)?
-                        .clone()?;
-                    let distance = (unit_raw.x - origin_raw.x).hypot(unit_raw.y - origin_raw.y);
-                    (distance > 1e-9).then_some(distance)
                 })?;
             (raw_per_unit > 1e-9).then_some(GraphTransform {
                 origin_raw,
@@ -349,4 +335,14 @@ pub(super) fn expand_bounds(bounds: &mut Bounds) {
     bounds.max_x += margin_x;
     bounds.min_y -= margin_y;
     bounds.max_y += margin_y;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::saved_viewport_from_axis_hints;
+
+    #[test]
+    fn saved_viewport_requires_independent_y_axis_hint() {
+        assert!(saved_viewport_from_axis_hints(Some((-5.0, 5.0)), None).is_none());
+    }
 }

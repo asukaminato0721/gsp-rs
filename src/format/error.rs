@@ -44,4 +44,18 @@ pub enum ParseError {
         end: usize,
         file_len: usize,
     },
+
+    #[error("invalid object-group header at 0x{offset:x}: payload length is 0x{length:x}")]
+    #[diagnostic(
+        code(gsp_rs::format::invalid_object_group_header),
+        help("object-group headers must use one of the payload layouts defined by GSP4")
+    )]
+    InvalidObjectGroupHeader { offset: usize, length: u32 },
+
+    #[error("object group starting at 0x{offset:x} has no 0x07d7 terminator")]
+    #[diagnostic(
+        code(gsp_rs::format::unterminated_object_group),
+        help("the payload ended or a document section began before the object group was closed")
+    )]
+    UnterminatedObjectGroup { offset: usize },
 }

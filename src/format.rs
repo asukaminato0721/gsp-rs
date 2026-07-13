@@ -26,6 +26,8 @@ pub struct GspFile {
     pub magic: String,
     pub data: Vec<u8>,
     pub records: Vec<Record>,
+    document_header: Option<Record>,
+    document_preamble: Option<Record>,
 }
 
 impl GspFile {
@@ -40,10 +42,21 @@ impl GspFile {
         }
 
         let records = parse_records(data)?;
+        groups::validate_object_groups(&records, data)?;
+        let document_header = records
+            .iter()
+            .find(|record| record.record_type == 0x0384)
+            .cloned();
+        let document_preamble = records
+            .iter()
+            .find(|record| record.record_type == 0x03e8)
+            .cloned();
         Ok(Self {
             magic,
             data: data.to_vec(),
             records,
+            document_header,
+            document_preamble,
         })
     }
 
@@ -102,14 +115,15 @@ impl GspFile {
                 magic: self.magic.clone(),
                 data: self.data.clone(),
                 records: records.to_vec(),
+                document_header: self.document_header.clone(),
+                document_preamble: self.document_preamble.clone(),
             })
             .collect()
     }
 
     pub fn document_page_count(&self) -> usize {
-        self.records
-            .first()
-            .filter(|record| record.record_type == 0x0384)
+        self.document_header
+            .as_ref()
             .and_then(|record| {
                 let payload = record.payload(&self.data);
                 (payload.len() >= 4).then(|| usize::from(read_u16(payload, 2)))
@@ -119,10 +133,7 @@ impl GspFile {
     }
 
     pub fn document_canvas_size(&self) -> Option<(u32, u32)> {
-        let header = self
-            .records
-            .first()
-            .filter(|record| record.record_type == 0x0384)?;
+        let header = self.document_header.as_ref()?;
         let payload = header.payload(&self.data);
         if payload.len() < 22 {
             return None;
@@ -133,11 +144,7 @@ impl GspFile {
     }
 
     pub fn document_display_offset(&self) -> Option<PointRecord> {
-        let payload = self
-            .records
-            .iter()
-            .find(|record| record.record_type == 0x03e8)?
-            .payload(&self.data);
+        let payload = self.document_preamble.as_ref()?.payload(&self.data);
         (payload.len() >= 8).then(|| PointRecord {
             x: f64::from(read_i16(payload, 4)),
             y: f64::from(read_i16(payload, 6)),
@@ -416,6 +423,36 @@ mod tests {
     }
 
     #[test]
+    fn rejects_object_group_with_unknown_header_layout() {
+        let mut data = b"GSP4".to_vec();
+        data.extend_from_slice(&4_u32.to_le_bytes());
+        data.extend_from_slice(&0x07d0_u32.to_le_bytes());
+        data.extend_from_slice(&0_u32.to_le_bytes());
+        data.extend_from_slice(&0_u32.to_le_bytes());
+        data.extend_from_slice(&0x07d7_u32.to_le_bytes());
+
+        assert!(matches!(
+            GspFile::parse(&data),
+            Err(ParseError::InvalidObjectGroupHeader { .. })
+        ));
+    }
+
+    #[test]
+    fn rejects_unterminated_object_group() {
+        let mut data = b"GSP4".to_vec();
+        data.extend_from_slice(&12_u32.to_le_bytes());
+        data.extend_from_slice(&0x07d0_u32.to_le_bytes());
+        data.extend_from_slice(&3_u32.to_le_bytes());
+        data.extend_from_slice(&0_u32.to_le_bytes());
+        data.extend_from_slice(&0x0001_0004_u32.to_le_bytes());
+
+        assert!(matches!(
+            GspFile::parse(&data),
+            Err(ParseError::UnterminatedObjectGroup { .. })
+        ));
+    }
+
+    #[test]
     fn page_files_keep_object_ordinals_local_to_each_page() {
         let mut data = Vec::new();
         data.extend_from_slice(b"GSP4");
@@ -424,7 +461,10 @@ mod tests {
         data.extend_from_slice(&5_u16.to_le_bytes());
         data.extend_from_slice(&2_u16.to_le_bytes());
         data.extend_from_slice(&1_u16.to_le_bytes());
-        data.extend_from_slice(&[0; 22]);
+        let mut header_tail = [0_u8; 22];
+        header_tail[12..14].copy_from_slice(&640_u16.to_le_bytes());
+        header_tail[14..16].copy_from_slice(&480_u16.to_le_bytes());
+        data.extend_from_slice(&header_tail);
         data.extend_from_slice(&0_u32.to_le_bytes());
         data.extend_from_slice(&0x0387_u32.to_le_bytes());
         data.extend_from_slice(&12_u32.to_le_bytes());
@@ -449,6 +489,9 @@ mod tests {
 
         let pages = file.page_files();
         assert_eq!(pages.len(), 2);
+        assert_eq!(pages[0].document_page_count(), 2);
+        assert_eq!(pages[0].document_canvas_size(), Some((640, 480)));
+        assert_eq!(pages[1].document_canvas_size(), Some((640, 480)));
         assert_eq!(pages[0].object_groups().len(), 1);
         assert_eq!(
             pages[0].object_groups()[0].header.kind(),

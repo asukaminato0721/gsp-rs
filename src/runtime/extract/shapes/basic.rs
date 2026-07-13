@@ -24,19 +24,14 @@ const ARC_BOUNDARY_SUBDIVISIONS: usize = 48;
 pub(crate) fn collect_circle_fill_colors(
     file: &GspFile,
     groups: &[ObjectGroup],
-    anchors: &[Option<PointRecord>],
+    _anchors: &[Option<PointRecord>],
 ) -> BTreeMap<usize, ([u8; 4], bool)> {
-    let suppressed_circle_indices = collect_boundary_fill_circle_indices(file, groups, anchors);
     groups
         .iter()
-        .enumerate()
-        .filter(|(_, group)| (group.header.kind()) == crate::format::GroupKind::CircleInterior)
-        .filter_map(|(fill_group_index, group)| {
+        .filter(|group| (group.header.kind()) == crate::format::GroupKind::CircleInterior)
+        .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let circle_group_index = path.refs.first()?.checked_sub(1)?;
-            if suppressed_circle_indices.contains(&(circle_group_index, fill_group_index)) {
-                return None;
-            }
             Some((
                 circle_group_index,
                 (
@@ -44,85 +39,6 @@ pub(crate) fn collect_circle_fill_colors(
                     !group.header.is_hidden(),
                 ),
             ))
-        })
-        .collect()
-}
-
-fn collect_boundary_fill_circle_indices(
-    file: &GspFile,
-    groups: &[ObjectGroup],
-    anchors: &[Option<PointRecord>],
-) -> BTreeSet<(usize, usize)> {
-    let boundary_candidates = groups
-        .iter()
-        .filter(|group| {
-            matches!(
-                group.header.kind(),
-                crate::format::GroupKind::SectorBoundary
-                    | crate::format::GroupKind::CircularSegmentBoundary
-            )
-        })
-        .filter_map(|group| {
-            Some((
-                resolve_boundary_arc_seed_points(file, groups, anchors, group)?,
-                fill_color_from_styles(group.header.style_b, group.header.style_c),
-            ))
-        })
-        .collect::<Vec<_>>();
-
-    groups
-        .iter()
-        .enumerate()
-        .filter(|(_, group)| (group.header.kind()) == crate::format::GroupKind::CircleInterior)
-        .filter_map(|(fill_group_index, group)| {
-            let path = find_indexed_path(file, group)?;
-            let circle_group_index = path.refs.first()?.checked_sub(1)?;
-            let circle_group = groups.get(circle_group_index)?;
-            let (center, radius_point) =
-                resolve_circle_points_raw(file, groups, anchors, circle_group)?;
-            let radius =
-                ((radius_point.x - center.x).powi(2) + (radius_point.y - center.y).powi(2)).sqrt();
-            let fill_color = fill_color_from_styles(group.header.style_b, group.header.style_c);
-            let matches_boundary_points =
-                boundary_candidates
-                    .iter()
-                    .any(|(boundary_points, boundary_fill)| {
-                        *boundary_fill == fill_color
-                            && boundary_points.iter().all(|point| {
-                                let distance = ((point.x - center.x).powi(2)
-                                    + (point.y - center.y).powi(2))
-                                .sqrt();
-                                (distance - radius).abs() < 1e-3
-                            })
-                    });
-            let has_duplicate_outline =
-                groups
-                    .iter()
-                    .enumerate()
-                    .any(|(other_group_index, other_group)| {
-                        if other_group_index == circle_group_index
-                            || !is_circle_group_kind(other_group.header.kind())
-                        {
-                            return false;
-                        }
-                        let Some((other_center, other_radius_point)) =
-                            resolve_circle_points_raw(file, groups, anchors, other_group)
-                        else {
-                            return false;
-                        };
-                        let other_radius = ((other_radius_point.x - other_center.x).powi(2)
-                            + (other_radius_point.y - other_center.y).powi(2))
-                        .sqrt();
-                        (other_center.x - center.x).abs() < 1e-6
-                            && (other_center.y - center.y).abs() < 1e-6
-                            && (other_radius - radius).abs() < 1e-6
-                    });
-            let matches_duplicate_boundary_fill = has_duplicate_outline
-                && boundary_candidates
-                    .iter()
-                    .any(|(_, boundary_fill)| *boundary_fill == fill_color);
-            (matches_boundary_points || matches_duplicate_boundary_fill)
-                .then_some((circle_group_index, fill_group_index))
         })
         .collect()
 }
