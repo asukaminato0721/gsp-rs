@@ -1,16 +1,18 @@
 (function() {
   const modules = window.GspViewerModules || (window.GspViewerModules = {});
 
-  function createDynamicsIterations(dependencies: Record<string, Function>) {
+  function createDynamicsIterations(dependencies: Record<string, any>) {
     const {
       affineMapFromTriangles,
       applyNormalizedParameterToPoint,
       applySegmentCoefficients,
       buildPlainTextRichMarkup,
+      cloneTracePoint,
       darken,
       deriveExpressionLabelParameters,
       deriveLabelParameters,
       discreteIterationDepth,
+      DERIVED_POINT_BINDING_REFRESHERS,
       evaluateExpr,
       evaluateRecursiveExpression,
       formatSequenceValue,
@@ -22,6 +24,7 @@
       rotateAround,
       samplePointTraceLine,
       segmentPointCoefficients,
+      SYNC_DYNAMIC_POINT_BINDING_UPDATERS,
     } = dependencies;
   function rebuildIterationPoints(env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) {
     const families = env.sourceScene.pointIterations || [];

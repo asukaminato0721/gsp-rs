@@ -1,24 +1,8 @@
 import { test, expect } from '@playwright/test';
-import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
-
-function compileFixtureToTempHtml(relativeFixturePath: string): string {
-  const repoRoot = process.cwd();
-  const sourcePath = path.resolve(repoRoot, relativeFixturePath);
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsp-icosahedron-'));
-  const tempFixturePath = path.join(tempDir, path.basename(sourcePath));
-  fs.copyFileSync(sourcePath, tempFixturePath);
-  execFileSync('cargo', ['run', '--', '--no-upload', tempFixturePath], {
-    cwd: repoRoot,
-    stdio: 'pipe',
-  });
-  return tempFixturePath.replace(/\.gsp$/i, '.html');
-}
 
 test('icosahedron projection rotates when dragging point A', async ({ page }) => {
-  const file = compileFixtureToTempHtml('tests/Samples/个人专栏/向忠作品/正二十面体.gsp');
+  const file = path.resolve('tests/Samples/个人专栏/向忠作品/正二十面体.html');
   await page.goto(`file://${file}`);
 
   const result = await page.evaluate(() => {

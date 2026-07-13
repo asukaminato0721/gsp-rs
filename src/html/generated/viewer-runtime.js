@@ -4453,7 +4453,7 @@
 (function() {
   const modules = window.GspViewerModules || (window.GspViewerModules = {});
   function createDynamicsIterations(dependencies) {
-    const { affineMapFromTriangles, applyNormalizedParameterToPoint, applySegmentCoefficients, buildPlainTextRichMarkup, darken, deriveExpressionLabelParameters, deriveLabelParameters, discreteIterationDepth, evaluateExpr, evaluateRecursiveExpression, formatSequenceValue, hasLineIndexHandle, hasPointIndexHandle, isFiniteNumber, pointIterationDepth, refreshDerivedPoints, rotateAround, samplePointTraceLine, segmentPointCoefficients } = dependencies;
+    const { affineMapFromTriangles, applyNormalizedParameterToPoint, applySegmentCoefficients, buildPlainTextRichMarkup, cloneTracePoint, darken, deriveExpressionLabelParameters, deriveLabelParameters, discreteIterationDepth, DERIVED_POINT_BINDING_REFRESHERS, evaluateExpr, evaluateRecursiveExpression, formatSequenceValue, hasLineIndexHandle, hasPointIndexHandle, isFiniteNumber, pointIterationDepth, refreshDerivedPoints, rotateAround, samplePointTraceLine, segmentPointCoefficients, SYNC_DYNAMIC_POINT_BINDING_UPDATERS } = dependencies;
     function rebuildIterationPoints(env, scene, parameters) {
       const families = env.sourceScene.pointIterations || [];
       if (families.length === 0) {
@@ -6770,27 +6770,6 @@
     return typeof value === "number" && Number.isFinite(value) ? value : null;
   }
   const { buildExpressionRichMarkup, buildRatioValueRichMarkup, buildPlainTextRichMarkup, replaceRichMarkupPathValues, replaceTemplateTextRanges } = modules.dynamicsRichText;
-  const { rebuildIterationPoints, rebuildIteratedLines, rebuildIteratedPolygons, rebuildIteratedLabels, rebuildIterationTables } = modules.dynamicsIterations.createDynamicsIterations({
-    affineMapFromTriangles,
-    applyNormalizedParameterToPoint,
-    applySegmentCoefficients,
-    buildPlainTextRichMarkup,
-    darken,
-    deriveExpressionLabelParameters,
-    deriveLabelParameters,
-    discreteIterationDepth,
-    evaluateExpr,
-    evaluateRecursiveExpression,
-    formatSequenceValue,
-    hasLineIndexHandle,
-    hasPointIndexHandle,
-    isFiniteNumber,
-    pointIterationDepth,
-    refreshDerivedPoints,
-    rotateAround,
-    samplePointTraceLine,
-    segmentPointCoefficients
-  });
   function updateCoordinateSourcePoint(point, source, parameters) {
     if (!source) return;
     const parameterValue = parameters.get(point.binding.name);
@@ -8277,12 +8256,40 @@
     env.markDependencyRootsDirty?.(names.map((name) => parameterRootId(name)));
     env.updateScene(() => {}, "graph");
   }
+  const { rebuildIterationPoints, rebuildIteratedLines, rebuildIteratedPolygons, rebuildIteratedLabels, rebuildIterationTables } = modules.dynamicsIterations.createDynamicsIterations({
+    affineMapFromTriangles,
+    applyNormalizedParameterToPoint,
+    applySegmentCoefficients,
+    buildPlainTextRichMarkup,
+    cloneTracePoint,
+    darken,
+    deriveExpressionLabelParameters,
+    deriveLabelParameters,
+    discreteIterationDepth,
+    DERIVED_POINT_BINDING_REFRESHERS,
+    evaluateExpr,
+    evaluateRecursiveExpression,
+    formatSequenceValue,
+    hasLineIndexHandle,
+    hasPointIndexHandle,
+    isFiniteNumber,
+    pointIterationDepth,
+    refreshDerivedPoints,
+    rotateAround,
+    samplePointTraceLine,
+    segmentPointCoefficients,
+    SYNC_DYNAMIC_POINT_BINDING_UPDATERS
+  });
   function refreshIterationGeometry(env, scene, parameters) {
     rebuildIterationPoints(env, scene, parameters);
     rebuildIteratedLines(env, scene, parameters);
     rebuildIteratedPolygons(env, scene, parameters);
     rebuildIteratedLabels(env, scene, parameters);
     rebuildIterationTables(env, scene, parameters);
+    // Point iteration rebuilds replace the exported iteration tail. Re-resolve
+    // the preserved base graph afterwards so bindings that depend on a moved
+    // source point are not left with their pre-rebuild coordinates.
+    refreshDerivedPoints(env, scene);
   }
   function parameterValueSuffix(parameter) {
     switch (parameter.unit) {

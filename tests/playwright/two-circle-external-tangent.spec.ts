@@ -10,7 +10,7 @@ function compileFixtureToTempHtml(relativeFixturePath: string): string {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsp-external-tangent-'));
   const tempFixturePath = path.join(tempDir, path.basename(sourcePath));
   fs.copyFileSync(sourcePath, tempFixturePath);
-  execFileSync('cargo', ['run', '--', '--no-upload', tempFixturePath], {
+  execFileSync(path.resolve(repoRoot, 'target/debug/gsp-rs'), ['--html', tempFixturePath], {
     cwd: repoRoot,
     stdio: 'pipe',
   });
@@ -100,7 +100,9 @@ test('two-circle common tangents follow line-hosted radius points', async ({ pag
       const rightRadiusPoint = scene.points[3];
       const leftRadius = Math.hypot(leftRadiusPoint.x - leftCenter.x, leftRadiusPoint.y - leftCenter.y);
       const rightRadius = Math.hypot(rightRadiusPoint.x - rightCenter.x, rightRadiusPoint.y - rightCenter.y);
-      const tangentLines = [scene.lines[2], scene.lines[5]].map((line) => ({
+      const tangentLines = [13, 19].map((ordinal) => scene.lines.find((line) =>
+        line.debug?.groupOrdinal === ordinal,
+      )).filter(Boolean).map((line) => ({
         leftDistance: distancePointToLine(leftCenter, line.points[0], line.points[1]),
         rightDistance: distancePointToLine(rightCenter, line.points[0], line.points[1]),
       }));
@@ -132,6 +134,7 @@ test('two-circle common tangents follow line-hosted radius points', async ({ pag
   expect(result.after.helperX).not.toBeCloseTo(result.before.helperX, 6);
   expect(result.after.upperIntersectionY).not.toBeCloseTo(result.before.upperIntersectionY, 6);
   expect(result.after.lowerIntersectionY).not.toBeCloseTo(result.before.lowerIntersectionY, 6);
+  expect(result.after.tangentLines).toHaveLength(2);
   for (const tangentLine of result.after.tangentLines) {
     expect(tangentLine.leftDistance).toBeCloseTo(result.after.leftRadius, 6);
     expect(tangentLine.rightDistance).toBeCloseTo(result.after.rightRadius, 6);

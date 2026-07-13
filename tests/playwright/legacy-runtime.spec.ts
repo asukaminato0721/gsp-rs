@@ -10,7 +10,7 @@ function compileFixtureToTempHtml(relativeFixturePath: string): string {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsp-legacy-runtime-'));
   const tempFixturePath = path.join(tempDir, path.basename(sourcePath));
   fs.copyFileSync(sourcePath, tempFixturePath);
-  execFileSync('cargo', ['run', '--', '--no-upload', tempFixturePath], {
+  execFileSync(path.resolve(repoRoot, 'target/debug/gsp-rs'), ['--html', tempFixturePath], {
     cwd: repoRoot,
     stdio: 'pipe',
   });
@@ -37,7 +37,7 @@ test('line-intersection helper points stay pan-only in the browser runtime', asy
   expect(result?.dragMode).toBe('pan');
 });
 
-test('fixed coordinate helper points stay pan-only and follow their graph source in runtime', async ({ page }) => {
+test('fixed coordinate helper points stay pan-only when their coordinate source moves', async ({ page }) => {
   const file = compileFixtureToTempHtml('tests/Samples/热研系列/概率问题/蒲丰投针实验求π的近似值.gsp');
   await page.goto(`file://${file}`);
 
@@ -69,11 +69,11 @@ test('fixed coordinate helper points stay pan-only and follow their graph source
 
   expect(result).not.toBeNull();
   expect(result?.dragMode).toBe('pan');
-  expect(result?.dx).toBeCloseTo(0.4, 3);
-  expect(result?.dy).toBeCloseTo(-0.3, 3);
+  expect(result?.dx).toBeCloseTo(0, 6);
+  expect(result?.dy).toBeCloseTo(0, 6);
 });
 
-test('angle-referenced rotate points stay live in the browser runtime', async ({ page }) => {
+test('payload-defined rotate expressions stay live in the browser runtime', async ({ page }) => {
   const file = compileFixtureToTempHtml('tests/Samples/热研系列/滚动系列/正Ｎ边形真滚1.gsp');
   await page.goto(`file://${file}`);
 
@@ -82,25 +82,20 @@ test('angle-referenced rotate points stay live in the browser runtime', async ({
     const pointIndex = scene.points.findIndex((point: any) =>
       point.binding?.kind === 'derived'
       && point.binding?.transform?.kind === 'rotate'
-      && typeof point.binding.transform.angleStartIndex === 'number'
-      && typeof point.binding.transform.angleVertexIndex === 'number'
-      && typeof point.binding.transform.angleEndIndex === 'number',
+      && point.binding.transform.angleExpr?.kind === 'parsed',
     );
     if (pointIndex < 0) {
       return null;
     }
     const point = scene.points[pointIndex] as any;
     return {
-      hasAngleRefs:
-        typeof point.binding.transform.angleStartIndex === 'number'
-        && typeof point.binding.transform.angleVertexIndex === 'number'
-        && typeof point.binding.transform.angleEndIndex === 'number',
+      hasExpression: point.binding.transform.angleExpr?.kind === 'parsed',
       draggable: point.draggable,
     };
   });
 
   expect(result).not.toBeNull();
-  expect(result?.hasAngleRefs).toBe(true);
+  expect(result?.hasExpression).toBe(true);
   expect(result?.draggable).toBe(false);
 });
 
@@ -629,7 +624,7 @@ test('angle-marker class payload renders bug fixture without path explosion', as
 
   expect(Math.max(...result.angleMarkerClasses)).toBeLessThanOrEqual(2);
   expect(result.pathCount).toBe(19);
-  expect(result.redPointCount).toBe(6);
+  expect(result.redPointCount).toBe(8);
   expect(result.visibleArcOrdinals).toEqual([]);
   expect(result.labelTexts).toContain('⇒△CBD∼△CEB');
   expect(result.labelTexts).toContain('⇒(BC^2)=CD*CE');

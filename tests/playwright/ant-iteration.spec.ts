@@ -28,5 +28,7 @@ test('ant fixture rebuilds iterated lines without duplicating exported payload l
     };
   });
   expect(countsAtFour.n).toBe(4);
-  expect(countsAtFour.currentLines).toBe(160);
+  // The HTM contains four seed segments. At depth four each of the four
+  // bidirectional two-vector families contributes 40 iterated segments.
+  expect(countsAtFour.currentLines).toBe(164);
 });

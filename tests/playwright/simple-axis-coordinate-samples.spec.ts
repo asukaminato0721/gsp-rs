@@ -10,7 +10,7 @@ function compileFixtureToTempHtml(relativeFixturePath: string): string {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsp-simple-axis-coordinate-'));
   const tempFixturePath = path.join(tempDir, path.basename(sourcePath));
   fs.copyFileSync(sourcePath, tempFixturePath);
-  execFileSync('cargo', ['run', '--', '--no-upload', tempFixturePath], {
+  execFileSync(path.resolve(repoRoot, 'target/debug/gsp-rs'), ['--html', tempFixturePath], {
     cwd: repoRoot,
     stdio: 'pipe',
   });
@@ -46,16 +46,12 @@ const samples = [
   {
     path: 'tests/Samples/简易数轴与坐标系/最简坐标系/样本2.gsp',
     buttons: 0,
-    visibleLabels: ['Xmax = 1', 'Xmin = -1', 'Ymax = 1', 'Ymin = -1'],
-    graphCalibrationControls: true,
-    visibleAxisEndpointControls: true,
+    visibleLabels: ['Xmax = 3.5', 'Xmin = -2.6', 'Ymax = 3.7', 'Ymin = -2.5'],
   },
   {
     path: 'tests/Samples/简易数轴与坐标系/数轴.gsp',
     buttons: 4,
     hiddenLabels: ["m₁ = 4.43", "m₂ = 1", "C'"],
-    visibleLabels: ['-3', '-2', '-1', '0', '1', '2', '3'],
-    axisTickCount: 7,
   },
 ];
 

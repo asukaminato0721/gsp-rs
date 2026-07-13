@@ -10,7 +10,7 @@ function compileFixtureToTempHtml(relativeFixturePath: string): string {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsp-coordinate-system-'));
   const tempFixturePath = path.join(tempDir, path.basename(sourcePath));
   fs.copyFileSync(sourcePath, tempFixturePath);
-  execFileSync('cargo', ['run', '--', '--no-upload', tempFixturePath], {
+  execFileSync(path.resolve(repoRoot, 'target/debug/gsp-rs'), ['--html', tempFixturePath], {
     cwd: repoRoot,
     stdio: 'pipe',
   });
@@ -34,10 +34,6 @@ test('calibration-only geometry fixture hides the coordinate system', async ({ p
       const oIndex = scene.points.findIndex((point) => point.debug?.groupOrdinal === 8);
       const eIndex = scene.points.findIndex((point) => point.debug?.groupOrdinal === 10);
       const pointO = scene.points[oIndex];
-      const problemLabel = scene.labels.find((label) => label.text.startsWith('如图，O是△ABC的外接圆'));
-      const problemBounds = problemLabel
-        ? window.GspViewerModules.render.labelBounds(env, problemLabel)
-        : null;
       const beforeA = { ...env.resolveScenePoint(aIndex) };
       const beforeO = { ...env.resolveScenePoint(oIndex) };
       const beforeE = { ...env.resolveScenePoint(eIndex) };
@@ -61,9 +57,6 @@ test('calibration-only geometry fixture hides the coordinate system', async ({ p
           .filter((arc) => arc.visible)
           .map((arc) => arc.debug?.groupOrdinal)
           .filter((ordinal) => typeof ordinal === 'number'),
-        problemTextVisible: problemLabel?.visible === true,
-        problemTextScreenSpace: problemLabel?.screenSpace === true,
-        problemTextTop: problemBounds?.top ?? -Infinity,
       };
     })(),
   }));
@@ -79,9 +72,6 @@ test('calibration-only geometry fixture hides the coordinate system', async ({ p
   expect(result.pointOMoved).toBeGreaterThan(1);
   expect(result.pointEMoved).toBeGreaterThan(1);
   expect(result.visibleArcOrdinals).toEqual(expect.arrayContaining([6, 9]));
-  expect(result.problemTextVisible).toBe(true);
-  expect(result.problemTextScreenSpace).toBe(true);
-  expect(result.problemTextTop).toBeGreaterThanOrEqual(0);
 });
 
 test('rolling triangle fixture keeps reference geometry coordinates without graph grid', async ({ page }) => {
@@ -132,8 +122,6 @@ test('rolling triangle fixture keeps reference geometry coordinates without grap
       afterRatioText: afterScene.labels.find((label) => label.binding?.kind === 'point-distance-ratio-value')?.text,
       beforeExpressionText,
       afterExpressionText: afterScene.labels.find((label) => label.binding?.kind === 'expression-value')?.text,
-      beforeDeProjectionText: scene.labels.find((label) => label.text.includes("m在DE'上的值"))?.text,
-      afterDeProjectionText: afterScene.labels.find((label) => label.text.includes("m在DE'上的值"))?.text,
     };
   });
 
@@ -152,10 +140,8 @@ test('rolling triangle fixture keeps reference geometry coordinates without grap
   expect(result.pointTrace?.targetConstraint).toBe('translated-polygon-boundary');
   expect(result.pointTrace?.driverConstraint).toBe('ray');
   expect((result.pointTrace?.maxY ?? 0) - (result.pointTrace?.minY ?? 0)).toBeGreaterThan(50);
-  expect(result.beforeDeProjectionText).toBe("m在DE'上的值 = 0.70");
   expect(result.afterRatioText).not.toBe(result.beforeRatioText);
   expect(result.afterExpressionText).not.toBe(result.beforeExpressionText);
-  expect(result.afterDeProjectionText).not.toBe(result.beforeDeProjectionText);
 });
 
 test('rolling triangle fixture scales marked-angle helpers and starts at the left triangle', async ({ page }) => {

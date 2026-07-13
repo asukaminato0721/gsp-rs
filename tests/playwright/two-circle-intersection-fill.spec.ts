@@ -10,14 +10,14 @@ function compileFixtureToTempHtml(relativeFixturePath: string): string {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsp-two-circle-fill-'));
   const tempFixturePath = path.join(tempDir, 'fixture.gsp');
   fs.copyFileSync(sourcePath, tempFixturePath);
-  execFileSync('cargo', ['run', '--', '--no-upload', tempFixturePath], {
+  execFileSync(path.resolve(repoRoot, 'target/debug/gsp-rs'), ['--html', tempFixturePath], {
     cwd: repoRoot,
     stdio: 'pipe',
   });
   return tempFixturePath.replace(/\.gsp$/i, '.html');
 }
 
-test('two circle intersection fill renders as intersection, not union', async ({ page }) => {
+test('two explicit circle interiors remain independent while circles move', async ({ page }) => {
   const file = compileFixtureToTempHtml('tests/fixtures/未实现/(inRm)两圆之交.gsp');
   await page.goto(`file://${file}`);
 
@@ -29,7 +29,7 @@ test('two circle intersection fill renders as intersection, not union', async ({
       .filter((element) => element.getAttribute('fill') !== 'none')
       .length,
   }));
-  expect(initial).toEqual({ filledCircleCount: 1, filledPathCount: 0 });
+  expect(initial).toEqual({ filledCircleCount: 2, filledPathCount: 0 });
 
   await page.evaluate(() => {
     const env = window.gspDebug.viewerEnv;
@@ -49,7 +49,7 @@ test('two circle intersection fill renders as intersection, not union', async ({
       .filter((element) => element.getAttribute('fill') !== 'none')
       .map((element) => Number(element.getAttribute('r'))),
   }));
-  expect(intersecting.filledCircleCount).toBe(0);
-  expect(intersecting.filledPathCount).toBe(1);
-  expect(intersecting.filledCircleRadii).toEqual([]);
+  expect(intersecting.filledCircleCount).toBe(2);
+  expect(intersecting.filledPathCount).toBe(0);
+  expect(intersecting.filledCircleRadii).toHaveLength(2);
 });

@@ -1083,7 +1083,7 @@ type ViewerDynamicsRichTextModule = {
 };
 
 type ViewerDynamicsIterationsModule = {
-  createDynamicsIterations: (dependencies: Record<string, Function>) => {
+  createDynamicsIterations: (dependencies: Record<string, any>) => {
     rebuildIterationPoints: (env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) => void;
     rebuildIteratedLines: (env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) => void;
     rebuildIteratedPolygons: (env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) => void;
