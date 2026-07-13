@@ -4,8 +4,8 @@ use crate::format::GspFile;
 use crate::runtime::functions::UnaryFunction;
 use crate::runtime::scene::{
     ButtonAction, CircularConstraint, ColorBinding, IterationTableValueBinding, LineBinding,
-    LineConstraint, LineTransformBinding, ScenePointBinding, ScenePointConstraint, ShapeBinding,
-    TextLabelBinding,
+    LineConstraint, LineLikeKind, LineTransformBinding, ScenePointBinding, ScenePointConstraint,
+    ShapeBinding, TextLabelBinding,
 };
 
 #[test]
@@ -43,13 +43,25 @@ fn refraction_sample_uses_raw_translation_offsets_and_live_iteration_depth() {
             .as_deref()
             .is_some_and(|markup| markup.contains("SP2#30R1G81L1"))
     );
-    assert!(scene.labels.iter().any(|label| {
-        !label.visible
-            && label
+    let refractive_index_label = scene
+        .labels
+        .iter()
+        .find(|label| {
+            label
                 .debug
                 .as_ref()
                 .is_some_and(|debug| debug.group_ordinal == 18)
-    }));
+        })
+        .expect("expected refractive-index parameter label #18");
+    assert!(!refractive_index_label.visible);
+    assert_eq!(refractive_index_label.text, "折射率n = 1.64");
+    assert!(matches!(
+        refractive_index_label.binding,
+        Some(TextLabelBinding::LineProjectionParameter {
+            line_kind: LineLikeKind::Ray,
+            ..
+        })
+    ));
     let value_table = scene
         .iteration_tables
         .iter()
@@ -371,10 +383,11 @@ fn triangle_angle_sum_fixture_keeps_measured_angle_rotation_live() {
         assert!(
             matches!(
                 &label_for_group(label_ordinal).binding,
-                Some(TextLabelBinding::SegmentProjectionParameter {
+                Some(TextLabelBinding::LineProjectionParameter {
                     point_index,
                     start_index: actual_start_index,
                     end_index: actual_end_index,
+                    line_kind: LineLikeKind::Segment,
                     ..
                 }) if (*point_index, *actual_start_index, *actual_end_index)
                     == (h_index, start_index, end_index)

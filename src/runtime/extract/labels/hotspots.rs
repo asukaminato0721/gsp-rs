@@ -462,7 +462,7 @@ pub(super) fn collect_polygon_parameter_labels(
     labels
 }
 
-pub(super) fn collect_segment_parameter_labels(
+pub(super) fn collect_line_projection_parameter_labels(
     file: &GspFile,
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
@@ -487,7 +487,8 @@ pub(super) fn collect_segment_parameter_labels(
 
             let point_name =
                 decode_label_name(file, group).or_else(|| decode_label_name(file, point_group))?;
-            let segment_name = segment_name(file, groups, segment_group)?;
+            let object_name = segment_name(file, groups, segment_group)?;
+            let line_kind = line_like_kind(segment_group.header.kind())?;
             let anchor_record = group
                 .records
                 .iter()
@@ -496,25 +497,26 @@ pub(super) fn collect_segment_parameter_labels(
             let point = anchors.get(path.refs[0].checked_sub(1)?)?.as_ref()?;
             let start = anchors.get(start_group_index)?.as_ref()?;
             let end = anchors.get(end_group_index)?.as_ref()?;
-            let projected_t = segment_projection_parameter(point, start, end)?;
+            let projected_t = line_projection_parameter(point, start, end, line_kind)?;
 
             Some(TextLabel {
                 anchor,
                 text: if decode_label_name(file, group).is_some() {
                     format!("{point_name} = {:.2}", projected_t)
                 } else {
-                    format!("{point_name}在{segment_name}上的t值 = {:.2}", projected_t)
+                    format!("{point_name}在{object_name}上的t值 = {:.2}", projected_t)
                 },
                 color: [30, 30, 30, 255],
                 visible: !group.header.is_hidden()
                     && (decode_label_name(file, group).is_some()
                         || label_visible_for_group(file, group)),
-                binding: Some(TextLabelBinding::SegmentProjectionParameter {
+                binding: Some(TextLabelBinding::LineProjectionParameter {
                     point_index: path.refs[0].checked_sub(1)?,
                     start_index: start_group_index,
                     end_index: end_group_index,
+                    line_kind,
                     point_name,
-                    segment_name,
+                    object_name,
                 }),
                 screen_space: false,
                 debug: Some(payload_debug_source(group)),

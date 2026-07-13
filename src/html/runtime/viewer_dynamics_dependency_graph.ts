@@ -261,7 +261,7 @@
       return binding.name;
     }
     if (
-      (binding.kind === "segment-projection-parameter"
+      (binding.kind === "line-projection-parameter"
         || binding.kind === "polyline-parameter"
         || binding.kind === "polygon-boundary-parameter"
         || binding.kind === "circle-parameter")

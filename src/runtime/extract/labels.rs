@@ -96,7 +96,7 @@ pub(super) fn collect_scene_labels(
         groups,
         &analysis.raw_anchors,
     ));
-    labels.extend(collect_segment_parameter_labels(
+    labels.extend(collect_line_projection_parameter_labels(
         file,
         groups,
         &analysis.raw_anchors,
@@ -678,7 +678,12 @@ fn parameter_anchor_value(
         let end = anchors
             .get(segment_path.refs.get(1)?.checked_sub(1)?)?
             .as_ref()?;
-        return segment_projection_parameter(point, start, end);
+        return line_projection_parameter(
+            point,
+            start,
+            end,
+            line_like_kind(segment_group.header.kind())?,
+        );
     }
     match try_decode_point_constraint(file, groups, point_group, None, &None).ok()? {
         RawPointConstraint::Segment(constraint) => Some(constraint.t),
@@ -745,10 +750,11 @@ fn ratio_value_label_name(
     Some(format!("({origin}{numerator}/{origin}{denominator})"))
 }
 
-fn segment_projection_parameter(
+fn line_projection_parameter(
     point: &PointRecord,
     start: &PointRecord,
     end: &PointRecord,
+    line_kind: crate::runtime::scene::LineLikeKind,
 ) -> Option<f64> {
     gsp_runtime_core::project_to_line_like(
         gsp_runtime_core::Point {
@@ -760,9 +766,24 @@ fn segment_projection_parameter(
             y: start.y,
         },
         gsp_runtime_core::Point { x: end.x, y: end.y },
-        gsp_runtime_core::LineKind::Segment,
+        match line_kind {
+            crate::runtime::scene::LineLikeKind::Segment => gsp_runtime_core::LineKind::Segment,
+            crate::runtime::scene::LineLikeKind::Line => gsp_runtime_core::LineKind::Line,
+            crate::runtime::scene::LineLikeKind::Ray => gsp_runtime_core::LineKind::Ray,
+        },
     )
     .map(|projection| projection.t)
+}
+
+fn line_like_kind(kind: crate::format::GroupKind) -> Option<crate::runtime::scene::LineLikeKind> {
+    match kind {
+        crate::format::GroupKind::Segment | crate::format::GroupKind::GraphMeasurementSegment => {
+            Some(crate::runtime::scene::LineLikeKind::Segment)
+        }
+        crate::format::GroupKind::Line => Some(crate::runtime::scene::LineLikeKind::Line),
+        crate::format::GroupKind::Ray => Some(crate::runtime::scene::LineLikeKind::Ray),
+        _ => None,
+    }
 }
 
 fn detect_graph_context(

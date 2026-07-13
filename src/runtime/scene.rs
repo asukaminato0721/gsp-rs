@@ -1192,12 +1192,13 @@ pub(crate) enum TextLabelBinding {
         point_name: String,
         polygon_name: String,
     },
-    SegmentProjectionParameter {
+    LineProjectionParameter {
         point_index: usize,
         start_index: usize,
         end_index: usize,
+        line_kind: LineLikeKind,
         point_name: String,
-        segment_name: String,
+        object_name: String,
     },
     PolylineParameter {
         point_index: usize,

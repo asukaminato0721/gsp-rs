@@ -202,6 +202,8 @@ test('refraction iteration arrows follow the dragged medium point', async ({ pag
     return {
       mediumBeforeX: medium.x,
       mediumAfterX: after.scene.points[mediumIndex].x,
+      mediumConstraintKind: after.scene.points[mediumIndex].constraint?.kind,
+      mediumConstraintParameter: after.scene.points[mediumIndex].constraint?.t,
       refractedControlBeforeX: before.scene.points[29].x,
       refractedControlAfterX: after.scene.points[29].x,
       mediumColorBefore: before.scene.polygons[mediumPolygonIndex].color,
@@ -219,6 +221,8 @@ test('refraction iteration arrows follow the dragged medium point', async ({ pag
   });
 
   expect(result.mediumAfterX).toBeGreaterThan(result.mediumBeforeX + 70);
+  expect(result.mediumConstraintKind).toBe('ray');
+  expect(result.mediumConstraintParameter).toBeGreaterThan(1);
   expect(result.refractedControlAfterX).not.toBeCloseTo(result.refractedControlBeforeX);
   expect(result.mediumColorAfter).not.toEqual(result.mediumColorBefore);
   expect(result.iteratedArrowColors).toEqual([
@@ -229,6 +233,8 @@ test('refraction iteration arrows follow the dragged medium point', async ({ pag
   expect(result.tableValuesAfter[0]).toBeCloseTo(result.tableValuesBefore[0]);
   expect(result.tableValuesAfter[1]).not.toBeCloseTo(result.tableValuesBefore[1]);
   expect(result.tableValuesAfter[2]).not.toBeCloseTo(result.tableValuesBefore[2]);
+  expect(result.tableValuesAfter[2]).toBeGreaterThan(1);
+  expect(result.tableValuesAfter[2]).toBeCloseTo(result.mediumConstraintParameter, 4);
   expect(result.movedLineCount).toBeGreaterThan(8);
   expect(result.movedPolygonCount).toBeGreaterThan(8);
 });

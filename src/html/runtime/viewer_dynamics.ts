@@ -76,7 +76,7 @@
       const point = resolvePointAt(transform.factorParameterPointIndex);
       const start = resolvePointAt(transform.factorParameterStartIndex);
       const end = resolvePointAt(transform.factorParameterEndIndex);
-      const value = segmentProjectionParameterFromPoints(point, start, end);
+      const value = lineProjectionParameterFromPoints(point, start, end);
       if (Number.isFinite(value)) return value;
     }
     if (transform.factorExpr) {
@@ -160,7 +160,7 @@
           return;
         }
         if (
-          (binding.kind === "segment-projection-parameter"
+          (binding.kind === "line-projection-parameter"
             || binding.kind === "polyline-parameter"
             || binding.kind === "polygon-boundary-parameter"
             || binding.kind === "circle-parameter")
@@ -465,17 +465,17 @@
   }
 
 
-  function segmentProjectionParameterFromBinding(scene: ViewerSceneData, binding: { pointIndex?: number; startIndex?: number; endIndex?: number }) {
+  function lineProjectionParameterFromBinding(scene: ViewerSceneData, binding: { pointIndex?: number; startIndex?: number; endIndex?: number; lineKind?: RuntimeLineKind }) {
     const point = scene.points[binding.pointIndex];
     const start = scene.points[binding.startIndex];
     const end = scene.points[binding.endIndex];
-    return segmentProjectionParameterFromPoints(point, start, end);
+    return lineProjectionParameterFromPoints(point, start, end, binding.lineKind);
   }
 
 
-  function segmentProjectionParameterFromPoints(point: Point | null | undefined, start: Point | null | undefined, end: Point | null | undefined) {
+  function lineProjectionParameterFromPoints(point: Point | null | undefined, start: Point | null | undefined, end: Point | null | undefined, lineKind: RuntimeLineKind = "segment") {
     if (!point || !start || !end) return null;
-    return window.GspRuntimeCore.projectToLineLike(point, start, end, "segment")?.t ?? null;
+    return window.GspRuntimeCore.projectToLineLike(point, start, end, lineKind)?.t ?? null;
   }
 
 
@@ -673,8 +673,8 @@
 
 
   function labelParameterValueFromBinding(scene: ViewerSceneData, binding: LabelBindingJson) {
-    if (binding.kind === "segment-projection-parameter") {
-      return segmentProjectionParameterFromBinding(scene, binding);
+    if (binding.kind === "line-projection-parameter") {
+      return lineProjectionParameterFromBinding(scene, binding);
     }
     if (binding.kind === "polyline-parameter") {
       return polylineParameterFromPoint(scene, binding.pointIndex);
@@ -1265,7 +1265,7 @@
     "derived-parameter"(_env: ViewerEnv, scene: ViewerSceneData, point: RuntimeScenePointJson) {
       const value = typeof point.binding.parameterStartIndex === "number"
         && typeof point.binding.parameterEndIndex === "number"
-        ? segmentProjectionParameterFromBinding(scene, {
+        ? lineProjectionParameterFromBinding(scene, {
             pointIndex: point.binding.sourceIndex,
             startIndex: point.binding.parameterStartIndex,
             endIndex: point.binding.parameterEndIndex,
@@ -1562,11 +1562,11 @@
         label.richMarkup = buildPlainTextRichMarkup(label.text);
       }
     },
-    "segment-projection-parameter"(env: ViewerEnv, scene: ViewerSceneData, label: RuntimeLabelJson) {
-      const value = segmentProjectionParameterFromBinding(scene, label.binding);
+    "line-projection-parameter"(env: ViewerEnv, scene: ViewerSceneData, label: RuntimeLabelJson) {
+      const value = lineProjectionParameterFromBinding(scene, label.binding);
       if (value !== null) {
         label.text = usesVerboseParameterLabel(label)
-          ? `${label.binding.pointName}在${label.binding.segmentName}上的t值 = ${env.formatNumber(value)}`
+          ? `${label.binding.pointName}在${label.binding.objectName}上的t值 = ${env.formatNumber(value)}`
           : `${label.binding.pointName} = ${env.formatNumber(value)}`;
         label.richMarkup = buildPlainTextRichMarkup(label.text);
       }
@@ -1913,7 +1913,7 @@
           const start = resolveTracePoint(points, point.binding.parameterStartIndex, visiting);
           const end = resolveTracePoint(points, point.binding.parameterEndIndex, visiting);
           value = source && start && end
-            ? segmentProjectionParameterFromPoints(source, start, end)
+            ? lineProjectionParameterFromPoints(source, start, end)
             : null;
         } else {
           value = parameterValueFromPoint(sampleScene, point.binding.sourceIndex);

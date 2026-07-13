@@ -499,18 +499,20 @@ enum LabelBindingJson {
         #[serde(rename = "polygonName")]
         polygon_name: String,
     },
-    #[serde(rename = "segment-projection-parameter")]
-    SegmentProjectionParameter {
+    #[serde(rename = "line-projection-parameter")]
+    LineProjectionParameter {
         #[serde(rename = "pointIndex")]
         point_index: usize,
         #[serde(rename = "startIndex")]
         start_index: usize,
         #[serde(rename = "endIndex")]
         end_index: usize,
+        #[serde(rename = "lineKind")]
+        line_kind: LineLikeKindJson,
         #[serde(rename = "pointName")]
         point_name: String,
-        #[serde(rename = "segmentName")]
-        segment_name: String,
+        #[serde(rename = "objectName")]
+        object_name: String,
     },
     #[serde(rename = "polyline-parameter")]
     PolylineParameter {
@@ -809,18 +811,20 @@ impl LabelBindingJson {
                 point_name: point_name.clone(),
                 polygon_name: polygon_name.clone(),
             },
-            TextLabelBinding::SegmentProjectionParameter {
+            TextLabelBinding::LineProjectionParameter {
                 point_index,
                 start_index,
                 end_index,
+                line_kind,
                 point_name,
-                segment_name,
-            } => Self::SegmentProjectionParameter {
+                object_name,
+            } => Self::LineProjectionParameter {
                 point_index: *point_index,
                 start_index: *start_index,
                 end_index: *end_index,
+                line_kind: LineLikeKindJson::from_kind(*line_kind),
                 point_name: point_name.clone(),
-                segment_name: segment_name.clone(),
+                object_name: object_name.clone(),
             },
             TextLabelBinding::PolylineParameter {
                 point_index,
@@ -873,6 +877,24 @@ impl LabelBindingJson {
 enum AxisJson {
     Horizontal,
     Vertical,
+}
+
+#[derive(Serialize, TS)]
+#[serde(rename_all = "kebab-case")]
+enum LineLikeKindJson {
+    Segment,
+    Line,
+    Ray,
+}
+
+impl LineLikeKindJson {
+    fn from_kind(kind: crate::runtime::scene::LineLikeKind) -> Self {
+        match kind {
+            crate::runtime::scene::LineLikeKind::Segment => Self::Segment,
+            crate::runtime::scene::LineLikeKind::Line => Self::Line,
+            crate::runtime::scene::LineLikeKind::Ray => Self::Ray,
+        }
+    }
 }
 
 impl AxisJson {

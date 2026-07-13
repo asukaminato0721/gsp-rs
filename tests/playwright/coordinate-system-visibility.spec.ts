@@ -102,7 +102,7 @@ test('rolling triangle fixture keeps reference geometry coordinates without grap
       lineCount: scene.lines.length,
       hasRatioMeasurement: afterScene.labels.some((label) => label.visible
         && label.binding?.kind === 'point-distance-ratio-value'),
-      parameterMeasurementCount: afterScene.labels.filter((label) => label.binding?.kind === 'segment-projection-parameter').length,
+      parameterMeasurementCount: afterScene.labels.filter((label) => label.binding?.kind === 'line-projection-parameter').length,
       hasTriangle: afterScene.polygons.some((polygon) => polygon.binding?.kind === 'point-polygon'),
       hasTranslatedPolygonPoint: afterScene.points.some((point) => point.constraint?.kind === 'translated-polygon-boundary'),
       hasPointTrace: afterScene.lines.some((line) => line.binding?.kind === 'point-trace' && line.points.length > 20),
