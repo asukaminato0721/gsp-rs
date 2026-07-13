@@ -484,7 +484,7 @@
     const lenSq = dx * dx + dy * dy;
     if (lenSq <= 1e-9) return null;
     const t = ((point.x - start.x) * dx + (point.y - start.y) * dy) / lenSq;
-    return Math.max(0, Math.min(1, t));
+    return t;
   }
 
 
@@ -812,10 +812,7 @@
     const rawValue = family.depthParameterName
       ? parameters.get(family.depthParameterName)
       : family.depthExpr
-        ? Math.max(
-          Number.isFinite(family.depth) ? family.depth : 0,
-          evaluateExpr(family.depthExpr, 0, parameters) ?? 0,
-        )
+        ? evaluateExpr(family.depthExpr, 0, parameters)
       : family.parameterName
         ? parameters.get(family.parameterName)
         : family.depth;

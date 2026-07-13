@@ -8,6 +8,102 @@ use crate::runtime::scene::{
 };
 
 #[test]
+fn refraction_sample_uses_raw_translation_offsets_and_live_iteration_depth() {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/侯仰顺作品/光的折射(蚂蚁制作).gsp")
+    else {
+        return;
+    };
+    let scene = fixture_scene(&data);
+
+    let offset = |ordinal| {
+        let point = scene
+            .points
+            .iter()
+            .find(|point| {
+                point
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .unwrap_or_else(|| panic!("expected translated point #{ordinal}"));
+        match point.constraint {
+            ScenePointConstraint::Offset { dx, dy, .. } => (dx, dy),
+            ref constraint => {
+                panic!("expected offset constraint for #{ordinal}, got {constraint:?}")
+            }
+        }
+    };
+
+    let (dx, dy) = offset(2);
+    assert!((dx - 453.54330708661416).abs() < 1e-9 && dy.abs() < 1e-9);
+    let (dx, dy) = offset(3);
+    assert!(dx.abs() < 1e-9 && (dy - 340.1574803149606).abs() < 1e-9);
+    let (dx, dy) = offset(21);
+    assert!((dx - 7.637795448303222).abs() < 1e-9 && dy.abs() < 1e-9);
+    let (dx, dy) = offset(120);
+    assert!((dx + 7.559055118110236).abs() < 1e-9);
+    assert!((dy - 18.89763779527559).abs() < 1e-9);
+
+    let refracted_intersection = scene
+        .points
+        .iter()
+        .find(|point| {
+            point
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 68)
+        })
+        .expect("expected refracted-ray intersection #68");
+    assert!(matches!(
+        refracted_intersection.constraint,
+        ScenePointConstraint::LineIntersection {
+            left: LineConstraint::Ray { .. },
+            right: LineConstraint::ParallelLine { .. },
+        }
+    ));
+
+    assert!(scene.parameters.iter().any(|parameter| {
+        parameter.name == "光线条数" && parameter.visible && (parameter.value - 8.0).abs() < 1e-9
+    }));
+    assert_eq!(scene.line_iterations.len(), 3);
+    assert!(scene.line_iterations.iter().all(|family| matches!(
+        family,
+        crate::runtime::scene::LineIterationFamily::Translate {
+            depth: 7,
+            depth_expr: Some(_),
+            vector_start_index: Some(6),
+            vector_end_index: Some(12),
+            dx,
+            dy,
+            ..
+        } if (*dx - 21.0).abs() < 1e-9 && dy.abs() < 1e-9
+    )));
+    assert_eq!(scene.polygon_iterations.len(), 3);
+    assert_eq!(scene.polygons.len(), 32);
+    assert!(scene.polygon_iterations.iter().all(|family| matches!(
+        family,
+        crate::runtime::scene::PolygonIterationFamily::Translate {
+            depth: 7,
+            depth_expr: Some(_),
+            vector_start_index: Some(6),
+            vector_end_index: Some(12),
+            secondary_dx: None,
+            secondary_dy: None,
+            dx,
+            dy,
+            ..
+        } if (*dx - 21.0).abs() < 1e-9 && dy.abs() < 1e-9
+    )));
+    assert!(scene.buttons.iter().any(|button| {
+        button.text == "隐藏反射光线"
+            && matches!(
+                button.action,
+                ButtonAction::SetVisibility { visible: false, .. }
+            )
+    }));
+}
+
+#[test]
 fn builds_unnamed1_fixture_with_live_angle_rotation_points() {
     let data = include_bytes!("../../../tests/fixtures/未实现的系统功能/未命名1.gsp");
     let scene = fixture_scene(data);

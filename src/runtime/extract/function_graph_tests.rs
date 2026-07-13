@@ -527,7 +527,7 @@ fn builds_moving_pulley_with_payload_function_plot_branch_and_arc_length() {
         .iter()
         .map(|point| point.y)
         .fold(f64::NEG_INFINITY, f64::max);
-    assert!((max_x - min_x - 4.0).abs() < 1e-6);
+    assert!((max_x - min_x - 2.0).abs() < 1e-6);
     assert!((max_y - min_y - 1.0).abs() < 1e-6);
 }
 

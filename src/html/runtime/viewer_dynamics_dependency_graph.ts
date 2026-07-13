@@ -502,11 +502,13 @@
     (env.sourceScene.polygonIterations || []).forEach((family, index: number) => {
       const deps = new Set<string>();
       collectDeps(deps, family);
+      if ("depthExpr" in family) {
+        addExprParameterDeps(deps, family.depthExpr, knownParameters, derivedParameterDeps);
+      }
       if (family.kind === "coordinate-grid") {
         addExprParameterDeps(deps, family.stepExpr, knownParameters, derivedParameterDeps);
         addExprParameterDeps(deps, family.xExpr, knownParameters, derivedParameterDeps);
         addExprParameterDeps(deps, family.yExpr, knownParameters, derivedParameterDeps);
-        addExprParameterDeps(deps, family.depthExpr, knownParameters, derivedParameterDeps);
       }
       addNode({
         id: `polygon-iteration:${index}`,

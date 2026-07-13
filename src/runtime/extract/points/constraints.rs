@@ -442,14 +442,13 @@ pub(crate) fn decode_translated_point_constraint(
         .map(|record| record.payload(&file.data))?;
     match group.header.kind() {
         crate::format::GroupKind::PolarOffsetPoint => {
-            if payload.len() < 48 {
+            if payload.len() < 40 {
                 return None;
             }
 
             let angle_radians = read_f64(payload, 20);
-            let units_to_raw = read_f64(payload, 32);
-            let distance = read_f64(payload, 40);
-            if !angle_radians.is_finite() || !units_to_raw.is_finite() || !distance.is_finite() {
+            let raw_distance = read_f64(payload, 32);
+            if !angle_radians.is_finite() || !raw_distance.is_finite() {
                 return None;
             }
 
@@ -458,34 +457,25 @@ pub(crate) fn decode_translated_point_constraint(
             } else {
                 angle_radians
             };
-            let step = units_to_raw.abs() * distance;
             Some(TranslatedPointConstraint {
                 origin_group_index,
-                dx: step * angle_radians.cos(),
-                dy: -step * angle_radians.sin(),
+                dx: raw_distance * angle_radians.cos(),
+                dy: -raw_distance * angle_radians.sin(),
             })
         }
         crate::format::GroupKind::CartesianOffsetPoint => {
             if payload.len() < 40 {
                 return None;
             }
-            let x_units_to_raw = read_f64(payload, 4);
-            let x_distance = read_f64(payload, 12);
-            let y_units_to_raw = read_f64(payload, 24);
-            let y_distance = read_f64(payload, 32);
-            if !x_units_to_raw.is_finite()
-                || !x_distance.is_finite()
-                || !y_units_to_raw.is_finite()
-                || !y_distance.is_finite()
-            {
+            let raw_dx = read_f64(payload, 4);
+            let raw_dy = read_f64(payload, 24);
+            if !raw_dx.is_finite() || !raw_dy.is_finite() {
                 return None;
             }
-            // Legacy simple-iteration seeds store independent horizontal and vertical offsets
-            // instead of the angle+distance layout used by class 21 translated points.
             Some(TranslatedPointConstraint {
                 origin_group_index,
-                dx: x_units_to_raw * x_distance,
-                dy: -(y_units_to_raw * y_distance),
+                dx: raw_dx,
+                dy: -raw_dy,
             })
         }
         _ => None,

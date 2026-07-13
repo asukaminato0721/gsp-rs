@@ -5089,6 +5089,10 @@
         const secondaryDx = isFiniteNumber(family.secondaryDx) ? family.secondaryDx : null;
         const secondaryDy = isFiniteNumber(family.secondaryDy) ? family.secondaryDy : null;
         const hasSecondary = secondaryDx !== null && secondaryDy !== null;
+        const vectorStart = isFiniteNumber(family.vectorStartIndex) ? env.resolveScenePoint(family.vectorStartIndex) : null;
+        const vectorEnd = isFiniteNumber(family.vectorEndIndex) ? env.resolveScenePoint(family.vectorEndIndex) : null;
+        const primaryDx = vectorStart && vectorEnd ? vectorEnd.x - vectorStart.x : family.dx;
+        const primaryDy = vectorStart && vectorEnd ? vectorEnd.y - vectorStart.y : family.dy;
         const deltas = [];
         if (family.bidirectional && hasSecondary) {
           for (let primary = -depth; primary <= depth; primary += 1) {
@@ -5097,8 +5101,8 @@
                 continue;
               }
               deltas.push({
-                dx: family.dx * primary + secondaryDx * secondary,
-                dy: family.dy * primary + secondaryDy * secondary
+                dx: primaryDx * primary + secondaryDx * secondary,
+                dy: primaryDy * primary + secondaryDy * secondary
               });
             }
           }
@@ -5109,27 +5113,27 @@
           });
           for (let step = 1; step <= depth; step += 1) {
             deltas.push({
-              dx: family.dx * step,
-              dy: family.dy * step
+              dx: primaryDx * step,
+              dy: primaryDy * step
             }, {
-              dx: -family.dx * step,
-              dy: -family.dy * step
+              dx: -primaryDx * step,
+              dy: -primaryDy * step
             });
           }
         } else if (hasSecondary) {
           for (let primary = 0; primary <= depth; primary += 1) {
             for (let secondary = 0; secondary <= depth - primary; secondary += 1) {
               deltas.push({
-                dx: family.dx * primary + secondaryDx * secondary,
-                dy: family.dy * primary + secondaryDy * secondary
+                dx: primaryDx * primary + secondaryDx * secondary,
+                dy: primaryDy * primary + secondaryDy * secondary
               });
             }
           }
         } else {
           for (let step = 0; step <= depth; step += 1) {
             deltas.push({
-              dx: family.dx * step,
-              dy: family.dy * step
+              dx: primaryDx * step,
+              dy: primaryDy * step
             });
           }
         }
@@ -5718,11 +5722,13 @@
       (env.sourceScene.polygonIterations || []).forEach((family, index) => {
         const deps = new Set();
         collectDeps(deps, family);
+        if ("depthExpr" in family) {
+          addExprParameterDeps(deps, family.depthExpr, knownParameters, derivedParameterDeps);
+        }
         if (family.kind === "coordinate-grid") {
           addExprParameterDeps(deps, family.stepExpr, knownParameters, derivedParameterDeps);
           addExprParameterDeps(deps, family.xExpr, knownParameters, derivedParameterDeps);
           addExprParameterDeps(deps, family.yExpr, knownParameters, derivedParameterDeps);
-          addExprParameterDeps(deps, family.depthExpr, knownParameters, derivedParameterDeps);
         }
         addNode({
           id: `polygon-iteration:${index}`,
@@ -6294,7 +6300,7 @@
     const lenSq = dx * dx + dy * dy;
     if (lenSq <= 1e-9) return null;
     const t = ((point.x - start.x) * dx + (point.y - start.y) * dy) / lenSq;
-    return Math.max(0, Math.min(1, t));
+    return t;
   }
   function polygonBoundaryParameterFromPoint(scene, pointIndex) {
     const point = scene.points[pointIndex];
@@ -6604,7 +6610,7 @@
     applyNormalizedParameterToPoint(point, scene, normalized);
   }
   function pointIterationDepth(family, parameters) {
-    const rawValue = family.depthParameterName ? parameters.get(family.depthParameterName) : family.depthExpr ? Math.max(Number.isFinite(family.depth) ? family.depth : 0, evaluateExpr(family.depthExpr, 0, parameters) ?? 0) : family.parameterName ? parameters.get(family.parameterName) : family.depth;
+    const rawValue = family.depthParameterName ? parameters.get(family.depthParameterName) : family.depthExpr ? evaluateExpr(family.depthExpr, 0, parameters) : family.parameterName ? parameters.get(family.parameterName) : family.depth;
     const fallback = Number.isFinite(family.depth) ? family.depth : 0;
     const depth = typeof rawValue === "number" && Number.isFinite(rawValue) ? rawValue : fallback;
     return discreteIterationDepth(depth);

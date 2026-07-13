@@ -407,15 +407,15 @@ pub(crate) fn collect_carried_line_iteration_families(
                 );
                 let vector_start_index = regular_polygon_translation_vector_index(
                     file,
+                    groups,
                     iter_group,
-                    anchors,
                     group_to_point_index,
                     1,
                 );
                 let vector_end_index = regular_polygon_translation_vector_index(
                     file,
+                    groups,
                     iter_group,
-                    anchors,
                     group_to_point_index,
                     2,
                 );
@@ -810,30 +810,60 @@ fn regular_polygon_translation_iteration_step(
         return None;
     }
     let path = find_indexed_path(file, iter_group)?;
-    if path.refs.len() < 3 {
-        return None;
-    }
-    if groups.get(path.refs[0].checked_sub(1)?)?.header.kind()
+    if groups
+        .get(path.refs.first()?.checked_sub(1)?)?
+        .header
+        .kind()
         != crate::format::GroupKind::FunctionExpr
     {
         return None;
     }
-    let start = anchors.get(path.refs[1].checked_sub(1)?)?.clone()?;
-    let end = anchors.get(path.refs[2].checked_sub(1)?)?.clone()?;
+    let (start_group_index, end_group_index) =
+        regular_polygon_translation_vector_group_indices(file, groups, iter_group)?;
+    let start = anchors.get(start_group_index)?.clone()?;
+    let end = anchors.get(end_group_index)?.clone()?;
     let step = end - start;
     (!is_zero_step(&step)).then_some(step)
 }
 
 fn regular_polygon_translation_vector_index(
     file: &GspFile,
+    groups: &[ObjectGroup],
     iter_group: &ObjectGroup,
-    anchors: &[Option<PointRecord>],
     group_to_point_index: &[Option<usize>],
     ref_slot: usize,
 ) -> Option<usize> {
-    let path = find_indexed_path(file, iter_group)?;
-    let group_index = path.refs.get(ref_slot)?.checked_sub(1)?;
-    mapped_point_index_exact(group_to_point_index, anchors, group_index)
+    let (start_group_index, end_group_index) =
+        regular_polygon_translation_vector_group_indices(file, groups, iter_group)?;
+    let group_index = match ref_slot {
+        1 => start_group_index,
+        2 => end_group_index,
+        _ => return None,
+    };
+    group_to_point_index.get(group_index).copied().flatten()
+}
+
+fn regular_polygon_translation_vector_group_indices(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    iter_group: &ObjectGroup,
+) -> Option<(usize, usize)> {
+    let iter_path = find_indexed_path(file, iter_group)?;
+    iter_path.refs.iter().find_map(|ordinal| {
+        let group = groups.get(ordinal.checked_sub(1)?)?;
+        if group.header.kind() != crate::format::GroupKind::Translation {
+            return None;
+        }
+        let translation_path = find_indexed_path(file, group)?;
+        let source_ordinal = *translation_path.refs.first()?;
+        if !iter_path.refs.contains(&source_ordinal) {
+            return None;
+        }
+        Some((
+            translation_path.refs.get(1)?.checked_sub(1)?,
+            translation_path.refs.get(2)?.checked_sub(1)?,
+        ))
+    })
 }
 
 fn translated_control_point_index(
@@ -1245,8 +1275,14 @@ pub(crate) fn collect_carried_iteration_polygons(
                 .iter()
                 .map(|ordinal| anchors.get(ordinal.checked_sub(1)?).cloned().flatten())
                 .collect::<Option<Vec<_>>>()?;
-            let steps = carried_iteration_steps(file, groups, iter_group, anchors);
-            let (step, secondary_step, bidirectional) = carried_iteration_basis(&steps)?;
+            let (step, secondary_step, bidirectional) = if let Some(step) =
+                regular_polygon_translation_iteration_step(file, groups, iter_group, anchors)
+            {
+                (step, None, false)
+            } else {
+                let steps = carried_iteration_steps(file, groups, iter_group, anchors);
+                carried_iteration_basis(&steps)?
+            };
             let depth = iter_group
                 .records
                 .iter()
@@ -1897,19 +1933,44 @@ pub(crate) fn collect_carried_polygon_iteration_families(
                         .flatten()
                 })
                 .collect::<Option<Vec<_>>>()?;
-            let steps = carried_iteration_steps(file, groups, iter_group, anchors);
-            let (step, secondary_step, bidirectional) = carried_iteration_basis(&steps)?;
+            let (step, secondary_step, bidirectional) = if let Some(step) =
+                regular_polygon_translation_iteration_step(file, groups, iter_group, anchors)
+            {
+                (step, None, false)
+            } else {
+                let steps = carried_iteration_steps(file, groups, iter_group, anchors);
+                carried_iteration_basis(&steps)?
+            };
             let depth = carried_iteration_depth(file, iter_group, 3);
             if depth == 0 {
                 return None;
             }
+            let depth_expr =
+                regular_polygon_translation_iteration_depth_expr(file, groups, iter_group, depth);
+            let vector_start_index = regular_polygon_translation_vector_index(
+                file,
+                groups,
+                iter_group,
+                group_to_point_index,
+                1,
+            );
+            let vector_end_index = regular_polygon_translation_vector_index(
+                file,
+                groups,
+                iter_group,
+                group_to_point_index,
+                2,
+            );
             Some(PolygonIterationFamily::Translate {
                 vertex_indices,
                 dx: step.x,
                 dy: step.y,
                 secondary_dx: secondary_step.as_ref().map(|step| step.x),
                 secondary_dy: secondary_step.as_ref().map(|step| step.y),
+                vector_start_index,
+                vector_end_index,
                 depth,
+                depth_expr,
                 parameter_name: carried_iteration_parameter_name(file, groups, iter_group),
                 bidirectional,
                 color: fill_color_from_styles(

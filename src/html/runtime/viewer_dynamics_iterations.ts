@@ -695,6 +695,14 @@
       const secondaryDx = isFiniteNumber(family.secondaryDx) ? family.secondaryDx : null;
       const secondaryDy = isFiniteNumber(family.secondaryDy) ? family.secondaryDy : null;
       const hasSecondary = secondaryDx !== null && secondaryDy !== null;
+      const vectorStart = isFiniteNumber(family.vectorStartIndex)
+        ? env.resolveScenePoint(family.vectorStartIndex)
+        : null;
+      const vectorEnd = isFiniteNumber(family.vectorEndIndex)
+        ? env.resolveScenePoint(family.vectorEndIndex)
+        : null;
+      const primaryDx = vectorStart && vectorEnd ? vectorEnd.x - vectorStart.x : family.dx;
+      const primaryDy = vectorStart && vectorEnd ? vectorEnd.y - vectorStart.y : family.dy;
       const deltas = [];
       if (family.bidirectional && hasSecondary) {
         for (let primary = -depth; primary <= depth; primary += 1) {
@@ -703,8 +711,8 @@
               continue;
             }
             deltas.push({
-              dx: family.dx * primary + secondaryDx * secondary,
-              dy: family.dy * primary + secondaryDy * secondary,
+              dx: primaryDx * primary + secondaryDx * secondary,
+              dy: primaryDy * primary + secondaryDy * secondary,
             });
           }
         }
@@ -712,24 +720,24 @@
         deltas.push({ dx: 0, dy: 0 });
         for (let step = 1; step <= depth; step += 1) {
           deltas.push(
-            { dx: family.dx * step, dy: family.dy * step },
-            { dx: -family.dx * step, dy: -family.dy * step },
+            { dx: primaryDx * step, dy: primaryDy * step },
+            { dx: -primaryDx * step, dy: -primaryDy * step },
           );
         }
       } else if (hasSecondary) {
         for (let primary = 0; primary <= depth; primary += 1) {
           for (let secondary = 0; secondary <= depth - primary; secondary += 1) {
             deltas.push({
-              dx: family.dx * primary + secondaryDx * secondary,
-              dy: family.dy * primary + secondaryDy * secondary,
+              dx: primaryDx * primary + secondaryDx * secondary,
+              dy: primaryDy * primary + secondaryDy * secondary,
             });
           }
         }
       } else {
         for (let step = 0; step <= depth; step += 1) {
           deltas.push({
-            dx: family.dx * step,
-            dy: family.dy * step,
+            dx: primaryDx * step,
+            dy: primaryDy * step,
           });
         }
       }

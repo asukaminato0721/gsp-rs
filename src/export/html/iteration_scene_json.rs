@@ -417,7 +417,13 @@ pub(super) enum PolygonIterationJson {
         secondary_dx: Option<f64>,
         #[serde(rename = "secondaryDy")]
         secondary_dy: Option<f64>,
+        #[serde(rename = "vectorStartIndex")]
+        vector_start_index: Option<usize>,
+        #[serde(rename = "vectorEndIndex")]
+        vector_end_index: Option<usize>,
         depth: usize,
+        #[serde(rename = "depthExpr")]
+        depth_expr: Option<FunctionExprJson>,
         #[serde(rename = "parameterName")]
         parameter_name: Option<String>,
         bidirectional: bool,
@@ -454,7 +460,10 @@ impl PolygonIterationJson {
                 dy,
                 secondary_dx,
                 secondary_dy,
+                vector_start_index,
+                vector_end_index,
                 depth,
+                depth_expr,
                 parameter_name,
                 bidirectional,
                 color,
@@ -464,7 +473,10 @@ impl PolygonIterationJson {
                 dy: *dy,
                 secondary_dx: *secondary_dx,
                 secondary_dy: *secondary_dy,
+                vector_start_index: *vector_start_index,
+                vector_end_index: *vector_end_index,
                 depth: *depth,
+                depth_expr: depth_expr.as_ref().map(FunctionExprJson::from_expr),
                 parameter_name: parameter_name.clone(),
                 bidirectional: *bidirectional,
                 color: *color,

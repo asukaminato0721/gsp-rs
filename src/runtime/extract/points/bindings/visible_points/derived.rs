@@ -412,25 +412,24 @@ fn resolve_line_constraint(
             }
             let through_index = (*group_to_point_index.get(path.refs[0].checked_sub(1)?)?)?;
             let host_group = groups.get(path.refs[1].checked_sub(1)?)?;
-            let host_path = find_indexed_path(file, host_group)?;
-            if host_path.refs.len() != 2 {
-                return None;
-            }
-            let line_start_index =
-                (*group_to_point_index.get(host_path.refs[0].checked_sub(1)?)?)?;
-            let line_end_index = (*group_to_point_index.get(host_path.refs[1].checked_sub(1)?)?)?;
-            Some(match group.header.kind() {
-                crate::format::GroupKind::PerpendicularLine => LineConstraint::PerpendicularLine {
+            let host = resolve_line_constraint(file, groups, host_group, group_to_point_index)?;
+            let (line_start_index, line_end_index, host_is_perpendicular) =
+                line_direction_reference(&host)?;
+            let result_is_perpendicular = (group.header.kind()
+                == crate::format::GroupKind::PerpendicularLine)
+                ^ host_is_perpendicular;
+            Some(if result_is_perpendicular {
+                LineConstraint::PerpendicularLine {
                     through_index,
                     line_start_index,
                     line_end_index,
-                },
-                crate::format::GroupKind::ParallelLine => LineConstraint::ParallelLine {
+                }
+            } else {
+                LineConstraint::ParallelLine {
                     through_index,
                     line_start_index,
                     line_end_index,
-                },
-                _ => unreachable!(),
+                }
             })
         }
         crate::format::GroupKind::AngleBisectorRay => {
@@ -499,6 +498,35 @@ fn resolve_line_constraint(
             })
         }
         _ => None,
+    }
+}
+
+fn line_direction_reference(constraint: &LineConstraint) -> Option<(usize, usize, bool)> {
+    match constraint {
+        LineConstraint::Segment {
+            start_index,
+            end_index,
+        }
+        | LineConstraint::Line {
+            start_index,
+            end_index,
+        }
+        | LineConstraint::Ray {
+            start_index,
+            end_index,
+        } => Some((*start_index, *end_index, false)),
+        LineConstraint::PerpendicularLine {
+            line_start_index,
+            line_end_index,
+            ..
+        } => Some((*line_start_index, *line_end_index, true)),
+        LineConstraint::ParallelLine {
+            line_start_index,
+            line_end_index,
+            ..
+        } => Some((*line_start_index, *line_end_index, false)),
+        LineConstraint::Translated { line, .. } => line_direction_reference(line),
+        LineConstraint::AngleBisectorRay { .. } => None,
     }
 }
 
