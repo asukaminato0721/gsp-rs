@@ -783,27 +783,6 @@ impl<'a> GroupedFunctionParser<'a> {
         }
     }
 
-    fn skip_group_delimiter_before_infix(&mut self) {
-        if self.offset >= self.words.len() || self.words[self.offset] != 0x000c {
-            return;
-        }
-        let infix_index = self.offset + 1;
-        if !matches!(
-            self.words.get(infix_index).copied(),
-            Some(EXPR_OP_ADD | EXPR_OP_SUB | EXPR_OP_MUL | EXPR_OP_DIV | EXPR_OP_POW)
-        ) {
-            return;
-        }
-        let has_group_close_before_nested_group = self.words[infix_index + 1..]
-            .iter()
-            .copied()
-            .find(|word| matches!(*word, 0x000b | 0x000c))
-            == Some(0x000c);
-        if has_group_close_before_nested_group {
-            self.offset += 1;
-        }
-    }
-
     fn parse_expr(&mut self, min_bp: u8) -> Result<FunctionAst, FunctionExprParseError> {
         let mut lhs = self.parse_prefix()?;
         loop {
@@ -828,7 +807,6 @@ impl<'a> GroupedFunctionParser<'a> {
     fn parse_group_body(&mut self, min_bp: u8) -> Result<FunctionAst, FunctionExprParseError> {
         let mut lhs = self.parse_prefix()?;
         loop {
-            self.skip_group_delimiter_before_infix();
             let Some((op, left_bp, right_bp)) = self.peek_infix()? else {
                 break;
             };
@@ -837,23 +815,6 @@ impl<'a> GroupedFunctionParser<'a> {
             }
             let _ = self.bump()?;
             let rhs = self.parse_group_body(right_bp)?;
-            lhs = FunctionAst::Binary {
-                lhs: Box::new(lhs),
-                op,
-                rhs: Box::new(rhs),
-            };
-        }
-        Ok(lhs)
-    }
-
-    fn parse_expr_no_delim(&mut self, min_bp: u8) -> Result<FunctionAst, FunctionExprParseError> {
-        let mut lhs = self.parse_prefix()?;
-        while let Some((op, left_bp, right_bp)) = self.peek_infix()? {
-            if left_bp < min_bp {
-                break;
-            }
-            let _ = self.bump()?;
-            let rhs = self.parse_expr_no_delim(right_bp)?;
             lhs = FunctionAst::Binary {
                 lhs: Box::new(lhs),
                 op,
@@ -876,7 +837,11 @@ impl<'a> GroupedFunctionParser<'a> {
                 let expr = if matches!(self.peek()?, Some(GroupedFunctionToken::LParen)) {
                     self.parse_unary_grouped_argument()?
                 } else {
-                    self.parse_expr_no_delim(0)?
+                    let expr = self.parse_group_body(0)?;
+                    if matches!(self.peek()?, Some(GroupedFunctionToken::RParen)) {
+                        let _ = self.bump()?;
+                    }
+                    expr
                 };
                 Ok(unary_ast(op, expr))
             }
@@ -1026,7 +991,7 @@ pub(super) fn parse_grouped_function_expr_from_words(
     parse_grouped_function_expr_at(words, 0, parameters)
 }
 
-fn parse_grouped_function_expr_at(
+pub(super) fn parse_grouped_function_expr_at(
     words: &[u16],
     start: usize,
     parameters: &BTreeMap<u16, ParameterBinding>,

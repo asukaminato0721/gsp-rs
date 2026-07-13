@@ -14,7 +14,7 @@ use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord, read_f64, read
 use crate::runtime::functions::{
     FunctionAst, FunctionExpr, evaluate_expr_with_parameters, try_decode_embedded_calculate_expr,
     try_decode_function_expr, try_decode_function_expr_with_inlined_refs,
-    try_decode_function_plot_descriptor,
+    try_decode_function_plot_descriptor, try_decode_parameter_control_expr,
 };
 use crate::runtime::geometry::{
     GraphTransform, arc_on_circle_control_points, lerp_point, locate_polyline_parameter_by_length,
@@ -669,8 +669,9 @@ pub(crate) fn try_decode_parameter_controlled_point(
             false,
         )
     } else if (source_group.header.kind()) == crate::format::GroupKind::FunctionExpr {
-        let expr = try_decode_function_expr(file, groups, source_group)
-            .map_err(|_| ParameterControlledPointDecodeError::InvalidSource)?;
+        let (expr, source_expr_absolute_parameter) =
+            try_decode_parameter_control_expr(file, groups, source_group)
+                .map_err(|_| ParameterControlledPointDecodeError::InvalidSource)?;
         let source_path = find_indexed_path(file, source_group)
             .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
         let mut parameters = BTreeMap::new();
@@ -715,8 +716,9 @@ pub(crate) fn try_decode_parameter_controlled_point(
         }
         let mut value = evaluate_expr_with_parameters(&expr, 0.0, &parameters)
             .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
-        if let (Some(_), Some(anchor_value)) =
-            (anchor_parameter_name.as_ref(), anchor_parameter_value)
+        if !source_expr_absolute_parameter
+            && let (Some(_), Some(anchor_value)) =
+                (anchor_parameter_name.as_ref(), anchor_parameter_value)
         {
             value += anchor_value;
         }
@@ -726,7 +728,7 @@ pub(crate) fn try_decode_parameter_controlled_point(
             source_point_group_index,
             source_parameter_segment_group_indices,
             Some(expr),
-            false,
+            source_expr_absolute_parameter,
         )
     } else {
         return Err(ParameterControlledPointDecodeError::InvalidSource);

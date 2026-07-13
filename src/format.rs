@@ -174,6 +174,9 @@ impl GspFile {
                 let payload = record.payload(&self.data);
                 (payload.len() == 2).then(|| read_u16(payload, 0))
             })?;
+        if palette_index == 0 {
+            return Some([255, 255, 255, 255]);
+        }
         self.records
             .iter()
             .filter(|record| record.record_type == RECORD_PALETTE_ENTRY)

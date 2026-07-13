@@ -33,7 +33,7 @@ pub(crate) use self::parser::try_decode_inner_function_expr;
 use self::parser::{
     decode_embedded_postfix_payload_function_expr, embedded_calculate_expr_start,
     has_ignorable_expr_suffix, parse_function_expr_from, parse_function_expr_from_words,
-    parse_grouped_function_expr_from_words,
+    parse_grouped_function_expr_at, parse_grouped_function_expr_from_words,
 };
 
 #[cfg(test)]
@@ -99,6 +99,32 @@ pub(crate) fn try_decode_function_expr(
     decode_function_expr_recursive(file, groups, group, &mut BTreeSet::new())
 }
 
+pub(crate) fn try_decode_parameter_control_expr(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Result<(FunctionExpr, bool), FunctionExprParseError> {
+    if let Ok(expr) = try_decode_function_expr(file, groups, group) {
+        return Ok((expr, false));
+    }
+    let payload = group_function_payload(file, group)?;
+    let mut visiting = BTreeSet::from([group.ordinal]);
+    let parameters = collect_parameter_bindings(file, groups, group, &mut visiting, false, true);
+    with_function_payload_context(payload, || {
+        let words = payload
+            .chunks_exact(2)
+            .map(|word| u16::from_le_bytes([word[0], word[1]]))
+            .collect::<Vec<_>>();
+        let start = embedded_calculate_expr_start(&words).ok_or(
+            FunctionExprParseError::NoExpressionFound {
+                word_len: words.len(),
+            },
+        )?;
+        let ast = parse_grouped_function_expr_at(&words, start, &parameters)?;
+        Ok((canonicalize_function_expr(ast), true))
+    })
+}
+
 pub(crate) fn try_decode_function_expr_with_inlined_refs(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -114,7 +140,7 @@ pub(crate) fn try_decode_embedded_calculate_expr(
 ) -> Result<FunctionExpr, FunctionExprParseError> {
     let payload = group_function_payload(file, group)?;
     let mut visiting = BTreeSet::from([group.ordinal]);
-    let parameters = collect_parameter_bindings(file, groups, group, &mut visiting, true);
+    let parameters = collect_parameter_bindings(file, groups, group, &mut visiting, true, false);
     decode_trailing_unit_calculate_expr(payload, &parameters)
         .or_else(|_| decode_embedded_postfix_payload_function_expr(payload, &parameters))
 }
@@ -262,7 +288,7 @@ fn decode_group_function_payload_expr(
 ) -> Result<FunctionExpr, FunctionExprParseError> {
     let payload = group_function_payload(file, group)?;
     let parameters =
-        collect_parameter_bindings(file, groups, group, visiting, inline_function_refs);
+        collect_parameter_bindings(file, groups, group, visiting, inline_function_refs, false);
 
     let function_ref_expr = try_decode_single_payload_function_application(
         file,
@@ -1289,7 +1315,7 @@ fn decode_embedded_grouped_function_expr(
         return Err(FunctionExprParseError::NoExpressionFound { word_len: 0 });
     }
     let payload = group_function_payload(file, group)?;
-    let parameters = collect_parameter_bindings(file, groups, group, visiting, true);
+    let parameters = collect_parameter_bindings(file, groups, group, visiting, true, false);
     with_function_payload_context(payload, || {
         let words = payload
             .chunks_exact(2)
@@ -1392,6 +1418,7 @@ fn collect_parameter_bindings(
     group: &ObjectGroup,
     visiting: &mut BTreeSet<usize>,
     inline_function_refs: bool,
+    allow_constraint_anchor_bindings: bool,
 ) -> BTreeMap<u16, ParameterBinding> {
     let mut bindings = BTreeMap::new();
     let Some(path) = find_indexed_path(file, group) else {
@@ -1412,7 +1439,7 @@ fn collect_parameter_bindings(
             parameter_group,
             visiting,
             inline_function_refs,
-            false,
+            allow_constraint_anchor_bindings,
         ) {
             bindings.insert(index as u16, binding);
         }

@@ -510,7 +510,7 @@ fn build_scene_point_for_group(
     group_to_point_index: &[Option<usize>],
 ) -> Option<ScenePoint> {
     let kind = group.header.kind();
-    let visible = !group.header.is_hidden() && point_marker_visible(group);
+    let visible = !group.header.is_hidden();
     match kind {
         crate::format::GroupKind::Point => (!is_parameter_control_group(group)
             && !context.map_or_else(
@@ -610,6 +610,7 @@ fn build_scene_point_for_group(
         })(
         ),
         crate::format::GroupKind::ParameterControlledPoint => (|| {
+            let visible = visible && !is_parameter_control_group(group);
             let parameter_point =
                 try_decode_parameter_controlled_point(file, groups, group, anchors).ok()?;
             scene_point_from_parameter_controlled(
@@ -747,6 +748,10 @@ fn build_scene_point_for_group(
             })
         })(),
         crate::format::GroupKind::Reflection => (|| {
+            let visible = context.map_or_else(
+                || visible_point_or_control_shape_point(file, groups, group),
+                |context| visible_point_or_control_shape_point_with_context(context, group),
+            );
             let path = indexed_path_for(file, context, group)?;
             let source_group_index = path.refs.first()?.checked_sub(1)?;
             let position = decode_reflection_anchor_raw(file, groups, group, anchors)
@@ -785,6 +790,10 @@ fn build_scene_point_for_group(
             ))
         })(),
         crate::format::GroupKind::Translation => (|| {
+            let visible = context.map_or_else(
+                || visible_point_or_control_shape_point(file, groups, group),
+                |context| visible_point_or_control_shape_point_with_context(context, group),
+            );
             let position = anchors.get(index).cloned().flatten()?;
             let path = indexed_path_for(file, context, group)?;
             let source_group_index = path.refs.first()?.checked_sub(1)?;
@@ -818,6 +827,10 @@ fn build_scene_point_for_group(
         | crate::format::GroupKind::ParameterRotation
         | crate::format::GroupKind::ExpressionRotation
         | crate::format::GroupKind::Scale => {
+            let visible = context.map_or_else(
+                || visible_point_or_control_shape_point(file, groups, group),
+                |context| visible_point_or_control_shape_point_with_context(context, group),
+            );
             let binding = match kind {
                 crate::format::GroupKind::ParameterRotation => {
                     try_decode_parameter_rotation_binding(file, groups, group).ok()
@@ -977,6 +990,7 @@ fn build_scene_point_for_group(
             ))
         })(),
         crate::format::GroupKind::AngleRotation => (|| {
+            let visible = !group.header.is_hidden() && point_marker_visible(group);
             let binding = try_decode_angle_rotation_binding(file, group).ok()?;
             let position = anchors.get(index).cloned().flatten()?;
             let source_index =
@@ -1016,6 +1030,7 @@ fn build_scene_point_for_group(
             ))
         })(),
         crate::format::GroupKind::LegacyAngleRotation => (|| {
+            let visible = !group.header.is_hidden() && point_marker_visible(group);
             let path = indexed_path_for(file, context, group)?;
             if path.refs.len() < 3 {
                 return None;
@@ -1064,15 +1079,21 @@ fn build_scene_point_for_group(
                 }),
             ))
         })(),
-        crate::format::GroupKind::RatioScale => scene_point_from_ratio_scale(
-            index,
-            group,
-            file,
-            groups,
-            anchors,
-            group_to_point_index,
-            visible,
-        ),
+        crate::format::GroupKind::RatioScale => {
+            let visible = context.map_or_else(
+                || visible_point_or_control_shape_point(file, groups, group),
+                |context| visible_point_or_control_shape_point_with_context(context, group),
+            );
+            scene_point_from_ratio_scale(
+                index,
+                group,
+                file,
+                groups,
+                anchors,
+                group_to_point_index,
+                visible,
+            )
+        }
         _ => None,
     }
 }
@@ -1092,7 +1113,7 @@ fn build_scene_point_for_group_checked(
     let kind = group.header.kind();
     match kind {
         crate::format::GroupKind::PointConstraint | crate::format::GroupKind::PathPoint => {
-            let visible = !group.header.is_hidden() && point_marker_visible(group);
+            let visible = !group.header.is_hidden();
             let Ok(constraint) =
                 try_decode_point_constraint(file, groups, group, Some(anchors), graph)
                     .with_context(|| {
@@ -1596,7 +1617,7 @@ fn build_scene_point_for_group_checked(
             })())
         }
         crate::format::GroupKind::ParameterControlledPoint => {
-            let visible = !group.header.is_hidden() && point_marker_visible(group);
+            let visible = !group.header.is_hidden() && !is_parameter_control_group(group);
             let Ok(parameter_point) = try_decode_parameter_controlled_point(
                 file, groups, group, anchors,
             )

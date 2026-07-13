@@ -1,4 +1,6 @@
+use super::analysis::analyze_scene;
 use super::build_scene_checked;
+use super::points::{collect_point_objects, try_decode_parameter_controlled_point};
 use super::test_support::{fixture_bytes, fixture_log, fixture_scene, function_expr_has_unary};
 use crate::format::GspFile;
 use crate::runtime::functions::UnaryFunction;
@@ -213,6 +215,84 @@ fn refraction_sample_uses_raw_translation_offsets_and_live_iteration_depth() {
                     ..
                 } if line_iteration_indices.len() == 1 && polygon_iteration_indices.len() == 1
             )
+    }));
+}
+
+#[test]
+fn moving_equilateral_triangle_preserves_payload_parameter_chain() {
+    let Some(data) = fixture_bytes(
+        "tests/Samples/个人专栏/侯仰顺作品/参数的应用-正三角形在正方形内滑动【蚂蚁制作】.gsp",
+    ) else {
+        return;
+    };
+    let file = GspFile::parse(&data).expect("fixture parses");
+    let groups = file.object_groups();
+    let point_map = collect_point_objects(&file, &groups);
+    let analysis = analyze_scene(&file, &groups, &point_map);
+    crate::runtime::functions::try_decode_parameter_control_expr(&file, &groups, &groups[11])
+        .expect("parameter control expression #12 decodes");
+    let controlled =
+        try_decode_parameter_controlled_point(&file, &groups, &groups[12], &analysis.raw_anchors)
+            .expect("payload point #13 should decode from expression #12 on polygon #9");
+    assert!(matches!(
+        controlled.constraint,
+        super::points::RawPointConstraint::PolygonBoundary { .. }
+    ));
+    assert!(controlled.source_expr_absolute_parameter);
+
+    let scene = build_scene_checked(&file).expect("scene builds");
+    assert_eq!(scene.background_color, Some([255, 255, 255, 255]));
+    let point_for_group = |ordinal| {
+        scene
+            .points
+            .iter()
+            .find(|point| {
+                point
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .unwrap_or_else(|| panic!("expected point #{ordinal}"))
+    };
+    let e = point_for_group(10);
+    assert!(e.visible && e.draggable);
+    let f = point_for_group(13);
+    assert!(f.visible);
+    assert!(matches!(
+        f.constraint,
+        ScenePointConstraint::OnPolygonBoundary { .. }
+    ));
+    assert!(matches!(
+        f.binding,
+        Some(ScenePointBinding::ConstraintParameterFromPointExpr { .. })
+    ));
+    let g = point_for_group(15);
+    assert!(g.visible);
+    assert!(matches!(g.binding, Some(ScenePointBinding::Rotate { .. })));
+    let side_length = |left: &crate::format::PointRecord, right: &crate::format::PointRecord| {
+        (left.x - right.x).hypot(left.y - right.y)
+    };
+    let square_side = side_length(&point_for_group(1).position, &point_for_group(2).position);
+    for triangle_side in [
+        side_length(&e.position, &f.position),
+        side_length(&f.position, &g.position),
+        side_length(&g.position, &e.position),
+    ] {
+        assert!((triangle_side - square_side).abs() < 1e-6);
+    }
+    for ordinal in [14, 16, 17] {
+        assert!(scene.lines.iter().any(|line| {
+            line.debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == ordinal)
+                && line.binding.is_some()
+        }));
+    }
+    assert!(scene.lines.iter().any(|line| {
+        line.debug
+            .as_ref()
+            .is_some_and(|debug| debug.group_ordinal == 18)
+            && matches!(line.binding, Some(LineBinding::PointTrace { .. }))
     }));
 }
 

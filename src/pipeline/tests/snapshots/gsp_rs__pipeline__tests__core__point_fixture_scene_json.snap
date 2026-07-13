@@ -8,8 +8,8 @@ expression: scene_json
   "height": 841,
   "backgroundColor": [
     255,
-    0,
-    0,
+    255,
+    255,
     255
   ],
   "graphMode": false,

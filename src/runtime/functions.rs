@@ -8,7 +8,7 @@ pub(crate) use decode::{
     FunctionExprParseError, evaluate_function_group_with_overrides,
     try_decode_embedded_calculate_expr, try_decode_function_expr,
     try_decode_function_expr_with_inlined_refs, try_decode_function_plot_descriptor,
-    try_decode_standalone_function_expr,
+    try_decode_parameter_control_expr, try_decode_standalone_function_expr,
 };
 pub(crate) use eval::evaluate_expr_with_parameters;
 pub(crate) use expr::{
