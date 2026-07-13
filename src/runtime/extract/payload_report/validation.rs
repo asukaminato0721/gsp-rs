@@ -289,7 +289,12 @@ fn validate_action_button_payload(
         return Ok(());
     }
 
-    let payload = group_record_payload(file, group, 0x0906, "action button payload")?;
+    let payload = group_record_payload(
+        file,
+        group,
+        crate::runtime::payload_consts::RECORD_ACTION_BUTTON_PAYLOAD,
+        "action button payload",
+    )?;
     if payload.len() < 16 {
         bail!(
             "unsupported payload: action button payload too short ({} bytes) in {}",
@@ -332,7 +337,13 @@ fn validate_image_payload(file: &GspFile, group: &ObjectGroup) -> Result<()> {
         return Ok(());
     }
 
-    let has_image_records = [0x090c, 0x08a8, 0x1f44].into_iter().any(|record_type| {
+    let has_image_records = [
+        crate::runtime::payload_consts::RECORD_IMAGE_SIZE,
+        crate::runtime::payload_consts::RECORD_IMAGE_TRANSFORM,
+        crate::runtime::payload_consts::RECORD_IMAGE_RESOURCE,
+    ]
+    .into_iter()
+    .any(|record_type| {
         group
             .records
             .iter()
@@ -342,9 +353,24 @@ fn validate_image_payload(file: &GspFile, group: &ObjectGroup) -> Result<()> {
         return Ok(());
     }
 
-    let size_payload = group_record_payload(file, group, 0x090c, "image size payload")?;
-    let transform_payload = group_record_payload(file, group, 0x08a8, "image transform payload")?;
-    let resource_payload = group_record_payload(file, group, 0x1f44, "image resource payload")?;
+    let size_payload = group_record_payload(
+        file,
+        group,
+        crate::runtime::payload_consts::RECORD_IMAGE_SIZE,
+        "image size payload",
+    )?;
+    let transform_payload = group_record_payload(
+        file,
+        group,
+        crate::runtime::payload_consts::RECORD_IMAGE_TRANSFORM,
+        "image transform payload",
+    )?;
+    let resource_payload = group_record_payload(
+        file,
+        group,
+        crate::runtime::payload_consts::RECORD_IMAGE_RESOURCE,
+        "image resource payload",
+    )?;
     if size_payload.len() < 8 || transform_payload.len() < 48 || resource_payload.len() < 2 {
         bail!(
             "unsupported payload: malformed image payload in {} (size={}, transform={}, resource={})",

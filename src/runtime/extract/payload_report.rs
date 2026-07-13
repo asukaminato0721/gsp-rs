@@ -600,7 +600,13 @@ fn describe_point_group_in_chinese(file: &GspFile, refs: &[usize], group: &Objec
         .records
         .iter()
         .any(|record| record.record_type == RECORD_POINT_F64_PAIR);
-    let has_image_payload = [0x090c, 0x08a8, 0x1f44].into_iter().all(|record_type| {
+    let has_image_payload = [
+        crate::runtime::payload_consts::RECORD_IMAGE_SIZE,
+        crate::runtime::payload_consts::RECORD_IMAGE_TRANSFORM,
+        crate::runtime::payload_consts::RECORD_IMAGE_RESOURCE,
+    ]
+    .into_iter()
+    .all(|record_type| {
         group
             .records
             .iter()
@@ -818,7 +824,9 @@ fn describe_action_button_group_in_chinese(
     let action_kind = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x0906)
+        .find(|record| {
+            record.record_type == crate::runtime::payload_consts::RECORD_ACTION_BUTTON_PAYLOAD
+        })
         .map(|record| record.payload(&file.data))
         .filter(|payload| payload.len() >= 16)
         .map(|payload| (read_u16(payload, 12), read_u16(payload, 14)));

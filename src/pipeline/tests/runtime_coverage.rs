@@ -30,7 +30,7 @@ fn js_runtime_covers_exported_payload_kinds() {
         })
         .collect::<BTreeSet<_>>();
 
-    let allowed_missing = BTreeSet::from(["function-label".to_string()]);
+    let allowed_missing = BTreeSet::new();
     assert_eq!(
         runtime_missing, allowed_missing,
         "exported payload kinds should have explicit JS runtime coverage unless intentionally static",

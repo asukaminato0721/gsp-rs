@@ -61,16 +61,18 @@ mod tests {
         let function_group = groups
             .iter()
             .find(|group| {
-                group
-                    .records
-                    .iter()
-                    .any(|record| record.record_type == 0x0907)
+                group.records.iter().any(|record| {
+                    record.record_type
+                        == crate::runtime::payload_consts::RECORD_FUNCTION_EXPR_PAYLOAD
+                })
             })
             .expect("function group");
         let payload = function_group
             .records
             .iter()
-            .find(|record| record.record_type == 0x0907)
+            .find(|record| {
+                record.record_type == crate::runtime::payload_consts::RECORD_FUNCTION_EXPR_PAYLOAD
+            })
             .expect("0907 record")
             .payload(&file.data);
         let parameters = BTreeMap::new();
@@ -142,7 +144,10 @@ mod tests {
                     && group
                         .records
                         .iter()
-                        .find(|record| record.record_type == 0x0907)
+                        .find(|record| {
+                            record.record_type
+                                == crate::runtime::payload_consts::RECORD_FUNCTION_EXPR_PAYLOAD
+                        })
                         .is_some_and(|record| {
                             let payload = record.payload(&file.data);
                             payload.len() >= 16
@@ -179,7 +184,10 @@ mod tests {
                     && group
                         .records
                         .iter()
-                        .find(|record| record.record_type == 0x0907)
+                        .find(|record| {
+                            record.record_type
+                                == crate::runtime::payload_consts::RECORD_FUNCTION_EXPR_PAYLOAD
+                        })
                         .is_some_and(|record| {
                             let payload = record.payload(&file.data);
                             payload.len() >= 16

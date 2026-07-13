@@ -90,7 +90,9 @@ fn exports_kaleidoscope_exjh_link_button() {
     let action_payload = link_group
         .records
         .iter()
-        .find(|record| record.record_type == 0x0906)
+        .find(|record| {
+            record.record_type == crate::runtime::payload_consts::RECORD_ACTION_BUTTON_PAYLOAD
+        })
         .expect("expected link action payload")
         .payload(&file.data);
     assert_eq!(

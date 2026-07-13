@@ -50,17 +50,17 @@ fn decode_affine_image_group(
     let size_payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x090c)
+        .find(|record| record.record_type == crate::runtime::payload_consts::RECORD_IMAGE_SIZE)
         .map(|record| record.payload(&file.data))?;
     let transform_payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x08a8)
+        .find(|record| record.record_type == crate::runtime::payload_consts::RECORD_IMAGE_TRANSFORM)
         .map(|record| record.payload(&file.data))?;
     let resource_payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x1f44)
+        .find(|record| record.record_type == crate::runtime::payload_consts::RECORD_IMAGE_RESOURCE)
         .map(|record| record.payload(&file.data))?;
     if size_payload.len() < 8 || transform_payload.len() < 48 || resource_payload.len() < 2 {
         return None;
@@ -124,12 +124,12 @@ fn decode_bbox_image_group(
     let rect_payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x090c)
+        .find(|record| record.record_type == crate::runtime::payload_consts::RECORD_IMAGE_SIZE)
         .map(|record| record.payload(&file.data))?;
     let resource_payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x1f44)
+        .find(|record| record.record_type == crate::runtime::payload_consts::RECORD_IMAGE_RESOURCE)
         .map(|record| record.payload(&file.data))?;
     if rect_payload.len() < 16 || resource_payload.len() < 2 {
         return None;

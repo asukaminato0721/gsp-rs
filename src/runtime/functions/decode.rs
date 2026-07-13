@@ -629,7 +629,10 @@ fn explicit_axis_context_for_coordinate_value(
             unit_expr_group
                 .records
                 .iter()
-                .find(|record| record.record_type == 0x07d3 && record.length == 12)
+                .find(|record| {
+                    record.record_type == crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD
+                        && record.length == 12
+                })
                 .and_then(|record| decode_measurement_value(record.payload(&file.data)))
         })
         .or_else(|| {
@@ -798,10 +801,10 @@ fn detect_graph_context(
         .iter()
         .filter(|group| group.header.kind().is_graph_calibration())
         .find_map(|group| {
-            let record = group
-                .records
-                .iter()
-                .find(|record| record.record_type == 0x07d3 && record.length == 12)?;
+            let record = group.records.iter().find(|record| {
+                record.record_type == crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD
+                    && record.length == 12
+            })?;
             decode_measurement_value(record.payload(&file.data))
         })?;
     let origin_raw = groups.iter().find_map(|group| {
@@ -1167,7 +1170,11 @@ impl<'a> FunctionRefParser<'a> {
                     expr: Box::new(expr),
                 })
             }
-            _ => Ok(FunctionAst::Constant(f64::from(word))),
+            _ if word < EXPR_OP_ADD => Ok(FunctionAst::Constant(f64::from(word))),
+            _ => Err(FunctionExprParseError::UnknownOpcode {
+                offset,
+                opcode: word,
+            }),
         }
     }
 
@@ -1901,6 +1908,19 @@ pub(crate) enum FunctionExprParseError {
         "missing parameter binding #{parameter_index} at function payload word offset {offset}"
     )]
     MissingParameterBinding { offset: usize, parameter_index: u16 },
+    #[error(
+        "postfix opcode 0x{opcode:04x} at function payload word offset {offset} requires {expected} operands, found {found}"
+    )]
+    InvalidPostfixArity {
+        offset: usize,
+        opcode: u16,
+        expected: usize,
+        found: usize,
+    },
+    #[error("postfix function expression left {remaining} uncombined operands")]
+    TrailingPostfixOperands { remaining: usize },
+    #[error("unknown function opcode 0x{opcode:04x} at function payload word offset {offset}")]
+    UnknownOpcode { offset: usize, opcode: u16 },
     #[error("no parseable function expression found in {word_len} payload words")]
     NoExpressionFound { word_len: usize },
     #[error(
@@ -1937,10 +1957,12 @@ fn function_payload_parse_error(
 
 #[cfg(test)]
 mod parse_tests {
+    use crate::runtime::payload_consts::{EXPR_OP_ADD, EXPR_OP_SUB, EXPR_VARIABLE_WORD};
+
     use super::{
-        FunctionExprParseError, ParameterBinding, decode_payload_function_expr,
-        group_function_payload, parse_function_expr, try_decode_function_expr,
-        try_decode_inner_function_expr, try_decode_plot_component_expr,
+        FunctionExprParseError, ParameterBinding, decode_embedded_postfix_payload_function_expr,
+        decode_payload_function_expr, group_function_payload, parse_function_expr,
+        try_decode_function_expr, try_decode_inner_function_expr, try_decode_plot_component_expr,
         try_decode_standalone_function_expr,
     };
     use crate::gsp::GspFile;
@@ -1995,6 +2017,47 @@ mod parse_tests {
                 opcode: 0x2006,
             })
         );
+    }
+
+    #[test]
+    fn rejects_postfix_binary_operators_with_missing_operands() {
+        for opcode in [EXPR_OP_ADD, EXPR_OP_SUB] {
+            let payload = payload_from_words(&[0x0112, 0, EXPR_VARIABLE_WORD, opcode]);
+            assert_eq!(
+                decode_embedded_postfix_payload_function_expr(&payload, &BTreeMap::new()),
+                Err(FunctionExprParseError::InvalidPostfixArity {
+                    offset: 3,
+                    opcode,
+                    expected: 2,
+                    found: 1,
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_uncombined_postfix_operands_instead_of_multiplying_them() {
+        let payload = payload_from_words(&[0x0112, 0, EXPR_VARIABLE_WORD, 2]);
+        let error = decode_embedded_postfix_payload_function_expr(&payload, &BTreeMap::new())
+            .expect_err("two operands without an opcode must be rejected");
+        assert!(matches!(
+            error,
+            FunctionExprParseError::TrailingPostfixOperands { remaining: 2 }
+        ));
+    }
+
+    #[test]
+    fn rejects_unknown_postfix_opcodes_instead_of_treating_them_as_constants() {
+        let payload = payload_from_words(&[0x0112, 0, EXPR_VARIABLE_WORD, 0x3000]);
+        let error = decode_embedded_postfix_payload_function_expr(&payload, &BTreeMap::new())
+            .expect_err("unknown opcode must be rejected");
+        assert!(matches!(
+            error,
+            FunctionExprParseError::UnknownOpcode {
+                offset: 3,
+                opcode: 0x3000
+            }
+        ));
     }
 
     #[test]

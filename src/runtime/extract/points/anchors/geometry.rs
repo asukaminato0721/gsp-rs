@@ -71,14 +71,35 @@ pub(super) fn select_line_circle_intersection(
     let intersections = gsp_runtime_core::line_circle_intersections(
         to_core_point(&line_start),
         to_core_point(&line_end),
-        to_core_line_kind(line_kind),
+        gsp_runtime_core::LineKind::Line,
         to_core_point(&center),
         radius,
     );
-    intersections
-        .get(variant.min(intersections.len().saturating_sub(1)))
-        .copied()
-        .map(from_core_point)
+    let selected = intersections.get(variant).copied().map(from_core_point)?;
+    point_lies_on_line_kind(&selected, &line_start, &line_end, line_kind).then_some(selected)
+}
+
+fn point_lies_on_line_kind(
+    point: &PointRecord,
+    start: &PointRecord,
+    end: &PointRecord,
+    kind: LineLikeKind,
+) -> bool {
+    if matches!(kind, LineLikeKind::Line) {
+        return true;
+    }
+    let dx = end.x - start.x;
+    let dy = end.y - start.y;
+    let length_squared = dx * dx + dy * dy;
+    if length_squared <= 1e-18 {
+        return false;
+    }
+    let t = ((point.x - start.x) * dx + (point.y - start.y) * dy) / length_squared;
+    match kind {
+        LineLikeKind::Line => true,
+        LineLikeKind::Ray => t >= -1e-9,
+        LineLikeKind::Segment => (-1e-9..=1.0 + 1e-9).contains(&t),
+    }
 }
 
 pub(super) fn line_line_intersection(
@@ -117,9 +138,7 @@ pub(super) fn select_circular_intersection(
         .filter(|point| point_lies_on_circular_constraint(point, right))
         .cloned()
         .collect::<Vec<_>>();
-    on_both
-        .get(variant.min(on_both.len().saturating_sub(1)))
-        .cloned()
+    on_both.get(variant).cloned()
 }
 
 pub(super) fn select_point_circle_tangent(
@@ -133,7 +152,7 @@ pub(super) fn select_point_circle_tangent(
         .into_iter()
         .map(from_core_point)
         .filter(|candidate| point_lies_on_circular_constraint(candidate, circle))
-        .nth(variant.min(1))
+        .nth(variant)
 }
 
 fn circle_circle_intersections(
@@ -221,9 +240,13 @@ pub(super) fn resolve_polyline_point(
 
 #[cfg(test)]
 mod tests {
-    use super::{CircularConstraintRaw, normalize_angle_delta_raw, select_circular_intersection};
+    use super::{
+        CircularConstraintRaw, normalize_angle_delta_raw, select_circular_intersection,
+        select_line_circle_intersection, select_point_circle_tangent,
+    };
     use crate::format::PointRecord;
     use crate::runtime::geometry::three_point_arc_geometry;
+    use crate::runtime::scene::LineLikeKind;
 
     fn arc(start: PointRecord, mid: PointRecord, end: PointRecord) -> CircularConstraintRaw {
         let geometry = three_point_arc_geometry(&start, &mid, &end).expect("valid arc");
@@ -258,5 +281,32 @@ mod tests {
             select_circular_intersection(&left, &right, 0).is_none(),
             "expected no intersection when arc spans do not overlap"
         );
+    }
+
+    #[test]
+    fn intersection_variants_outside_the_payload_defined_candidates_are_rejected() {
+        let left = CircularConstraintRaw::Circle {
+            center: PointRecord { x: 0.0, y: 0.0 },
+            radius: 2.0,
+        };
+        let right = CircularConstraintRaw::Circle {
+            center: PointRecord { x: 2.0, y: 0.0 },
+            radius: 2.0,
+        };
+        assert!(select_circular_intersection(&left, &right, 2).is_none());
+
+        assert!(
+            select_line_circle_intersection(
+                PointRecord { x: -3.0, y: 0.0 },
+                PointRecord { x: 3.0, y: 0.0 },
+                LineLikeKind::Line,
+                PointRecord { x: 0.0, y: 0.0 },
+                2.0,
+                2,
+            )
+            .is_none()
+        );
+
+        assert!(select_point_circle_tangent(&PointRecord { x: 3.0, y: 0.0 }, &left, 2,).is_none());
     }
 }

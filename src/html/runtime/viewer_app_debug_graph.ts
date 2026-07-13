@@ -6,6 +6,19 @@
   }: {
     formatNumber: (value: number) => string;
   }) {
+    type DebugSummaryEntity = {
+      text?: string;
+      name?: string;
+      kind?: string;
+      visible?: boolean;
+      depth?: number;
+      edgeCount?: number;
+      parameterName?: string | null;
+      anchor?: PointHandle;
+      screenSpace?: boolean;
+      x?: number;
+      y?: number;
+    };
     function formatReference(key: string, value: number) {
       if (!Number.isInteger(value)) return null;
       switch (key) {
@@ -60,7 +73,7 @@
     }
 
     function summarizeDebugEntity(entity: unknown) {
-      const item = (entity ?? {}) as RuntimePayload;
+      const item = (entity ?? {}) as DebugSummaryEntity;
       const parts: string[] = [];
       if (typeof item.text === "string") parts.push(JSON.stringify(item.text));
       if (typeof item.name === "string") parts.push(`name=${item.name}`);

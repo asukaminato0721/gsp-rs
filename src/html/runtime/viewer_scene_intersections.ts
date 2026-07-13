@@ -93,6 +93,7 @@
   
   function choosePointCandidate(candidates: Point[] | null, reference: RuntimeScenePointJson | Point | null | undefined, variant: number) {
     if (!Array.isArray(candidates) || candidates.length === 0) return null;
+    if (!Number.isInteger(variant) || variant < 0 || variant >= candidates.length) return null;
     if (reference && Number.isFinite(reference.x) && Number.isFinite(reference.y)) {
       return candidates.reduce<Point | null>((best, candidate) => {
         if (!best) return candidate;
@@ -101,13 +102,29 @@
         return candidateDistance < bestDistance ? candidate : best;
       }, null);
     }
-    return candidates[Math.max(0, Math.min(candidates.length - 1, variant || 0))] || null;
+    return chooseVariantCandidate(candidates, variant);
   }
 
   
   function chooseVariantCandidate(candidates: Point[] | null, variant: number) {
     if (!Array.isArray(candidates) || candidates.length === 0) return null;
-    return candidates[Math.max(0, Math.min(candidates.length - 1, variant || 0))] || null;
+    if (!Number.isInteger(variant) || variant < 0) return null;
+    return candidates[variant] || null;
+  }
+
+  function pointLiesOnLineKind(
+    point: Point,
+    start: Point,
+    end: Point,
+    lineKind: LineKind,
+  ) {
+    if (lineKind === "line") return true;
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const lengthSquared = dx * dx + dy * dy;
+    if (lengthSquared <= 1e-18) return false;
+    const t = ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared;
+    return lineKind === "ray" ? t >= -1e-9 : t >= -1e-9 && t <= 1 + 1e-9;
   }
 
   
@@ -157,15 +174,20 @@
   }
 
   
-  function lineCircleIntersection(lineStart: Point, lineEnd: Point, lineKind: LineKind, center: Point, radiusPoint: Point, variant: number, _reference: RuntimeScenePointJson | Point | null | undefined) {
+  function lineCircleIntersection(lineStart: Point, lineEnd: Point, lineKind: LineKind, center: Point, radiusPoint: Point, variant: number, reference: RuntimeScenePointJson | Point | null | undefined) {
     const radius = Math.hypot(radiusPoint.x - center.x, radiusPoint.y - center.y);
-    return chooseVariantCandidate(window.GspRuntimeCore.lineCircleIntersections(
+    const orderedCandidates = window.GspRuntimeCore.lineCircleIntersections(
       lineStart,
       lineEnd,
-      lineKind,
+      "line",
       center,
       radius,
-    ), variant);
+    );
+    void reference;
+    const selected = chooseVariantCandidate(orderedCandidates, variant);
+    return selected && pointLiesOnLineKind(selected, lineStart, lineEnd, lineKind)
+      ? selected
+      : null;
   }
 
   
@@ -179,11 +201,11 @@
   }
 
   
-  function circleCircleIntersection(leftCenter: Point, leftRadiusPoint: Point, rightCenter: Point, rightRadiusPoint: Point, variant: number, _reference: RuntimeScenePointJson | Point | null | undefined) {
+  function circleCircleIntersection(leftCenter: Point, leftRadiusPoint: Point, rightCenter: Point, rightRadiusPoint: Point, variant: number, reference: RuntimeScenePointJson | Point | null | undefined) {
     const leftRadius = Math.hypot(leftRadiusPoint.x - leftCenter.x, leftRadiusPoint.y - leftCenter.y);
     const rightRadius = Math.hypot(rightRadiusPoint.x - rightCenter.x, rightRadiusPoint.y - rightCenter.y);
     const points = circleCircleIntersections(leftCenter, leftRadius, rightCenter, rightRadius);
-    return chooseVariantCandidate(points, variant);
+    return choosePointCandidate(points, reference, variant);
   }
 
   

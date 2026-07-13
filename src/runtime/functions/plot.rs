@@ -438,11 +438,9 @@ pub(crate) fn synthesize_function_labels(
                 .find(|record| record.record_type == RECORD_FUNCTION_PLOT_DESCRIPTOR)?;
             let descriptor =
                 try_decode_function_plot_descriptor(descriptor_record.payload(&file.data)).ok()?;
-            let name = if let Some(record) = definition_group
-                .records
-                .iter()
-                .find(|record| record.record_type == 0x07d5)
-            {
+            let name = if let Some(record) = definition_group.records.iter().find(|record| {
+                record.record_type == crate::runtime::payload_consts::RECORD_LABEL_AUX
+            }) {
                 let name = {
                     let payload = record.payload(&file.data);
                     if payload.len() < 24 {

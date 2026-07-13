@@ -147,14 +147,39 @@ fn trace_line_circle_intersection(
     let candidates = gsp_runtime_core::line_circle_intersections(
         to_core_point(line_start),
         to_core_point(line_end),
-        trace_core_line_kind(line_kind),
+        gsp_runtime_core::LineKind::Line,
         to_core_point(center),
         radius,
     )
         .into_iter()
         .map(from_core_point)
         .collect::<Vec<_>>();
-    choose_trace_candidate(&candidates, reference, variant)
+    let _ = reference;
+    let selected = choose_trace_candidate(&candidates, None, variant)?;
+    trace_point_lies_on_line_kind(&selected, line_start, line_end, line_kind).then_some(selected)
+}
+
+fn trace_point_lies_on_line_kind(
+    point: &PointRecord,
+    start: &PointRecord,
+    end: &PointRecord,
+    kind: LineLikeKind,
+) -> bool {
+    if matches!(kind, LineLikeKind::Line) {
+        return true;
+    }
+    let dx = end.x - start.x;
+    let dy = end.y - start.y;
+    let length_squared = dx * dx + dy * dy;
+    if length_squared <= 1e-18 {
+        return false;
+    }
+    let t = ((point.x - start.x) * dx + (point.y - start.y) * dy) / length_squared;
+    match kind {
+        LineLikeKind::Line => true,
+        LineLikeKind::Ray => t >= -1e-9,
+        LineLikeKind::Segment => (-1e-9..=1.0 + 1e-9).contains(&t),
+    }
 }
 
 fn trace_core_line_kind(kind: LineLikeKind) -> gsp_runtime_core::LineKind {
@@ -474,6 +499,7 @@ fn choose_trace_candidate(
     if candidates.is_empty() {
         return None;
     }
+    candidates.get(variant)?;
     if let Some(reference) = reference {
         return candidates
             .iter()
@@ -485,9 +511,7 @@ fn choose_trace_candidate(
             })
             .cloned();
     }
-    candidates
-        .get(variant.min(candidates.len().saturating_sub(1)))
-        .cloned()
+    candidates.get(variant).cloned()
 }
 
 fn trace_circle_circle_intersections(
@@ -527,7 +551,7 @@ fn trace_point_circular_tangent(
         .into_iter()
         .map(from_core_point)
         .filter(|candidate| trace_point_on_circular_constraint(candidate, circle))
-        .nth(variant.min(1))
+        .nth(variant)
 }
 
 fn trace_point_on_circular_constraint(
@@ -564,4 +588,27 @@ fn trace_point_on_circular_constraint(
 
 fn trace_normalized_angle_delta(from: f64, to: f64) -> f64 {
     (to - from).rem_euclid(std::f64::consts::TAU)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::choose_trace_candidate;
+    use crate::format::PointRecord;
+
+    #[test]
+    fn candidate_selection_uses_reference_or_rejects_an_invalid_variant() {
+        let candidates = [
+            PointRecord { x: -1.0, y: 0.0 },
+            PointRecord { x: 1.0, y: 0.0 },
+        ];
+        assert!(choose_trace_candidate(&candidates, None, 2).is_none());
+        let selected = choose_trace_candidate(
+            &candidates,
+            Some(&PointRecord { x: 0.8, y: 0.0 }),
+            0,
+        )
+        .expect("reference should select the nearest branch");
+        assert_eq!(selected.x, candidates[1].x);
+        assert_eq!(selected.y, candidates[1].y);
+    }
 }

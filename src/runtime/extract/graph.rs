@@ -62,7 +62,9 @@ fn collect_graph_window_hint(
             let payload = group
                 .records
                 .iter()
-                .find(|record| record.record_type == 0x07d5)
+                .find(|record| {
+                    record.record_type == crate::runtime::payload_consts::RECORD_LABEL_AUX
+                })
                 .map(|record| record.payload(&file.data))?;
             if payload.len() < 22 {
                 return None;
@@ -92,10 +94,10 @@ fn detect_calibration_graph_transform(
         .iter()
         .filter(|group| group.header.kind().is_graph_calibration())
         .find_map(|group| {
-            let record = group
-                .records
-                .iter()
-                .find(|record| record.record_type == 0x07d3 && record.length == 12)?;
+            let record = group.records.iter().find(|record| {
+                record.record_type == crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD
+                    && record.length == 12
+            })?;
             decode_measurement_value(record.payload(&file.data))
         })?;
 
@@ -146,7 +148,11 @@ fn detect_explicit_axis_graph_transform(
                     unit_expr_group
                         .records
                         .iter()
-                        .find(|record| record.record_type == 0x07d3 && record.length == 12)
+                        .find(|record| {
+                            record.record_type
+                                == crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD
+                                && record.length == 12
+                        })
                         .and_then(|record| decode_measurement_value(record.payload(&file.data)))
                 })?;
             (raw_per_unit > 1e-9).then_some(GraphTransform {

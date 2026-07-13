@@ -98,7 +98,7 @@ fn custom_transform_suffix(file: &GspFile, expr_group: &ObjectGroup) -> Option<u
     let payload = expr_group
         .records
         .iter()
-        .find(|record| record.record_type == 0x0907)?
+        .find(|record| record.record_type == crate::runtime::payload_consts::RECORD_FUNCTION_EXPR_PAYLOAD)?
         .payload(&file.data);
     let words = payload
         .chunks_exact(2)
@@ -205,7 +205,7 @@ pub(crate) fn decode_parameter_rotation_anchor_raw(
             GroupKind::FunctionExpr => {
                 let (angle_expr, parameters, parameter_name) =
                     expression_runtime_context(file, groups, angle_group, anchors)?;
-                let angle_expr = scale_angle_expr_to_degrees(file, angle_group, angle_expr);
+                let angle_expr = scale_angle_expr_to_degrees(angle_expr);
                 (
                     evaluate_expr_with_parameters(&angle_expr, 0.0, &parameters)?,
                     parameter_name,
@@ -274,7 +274,7 @@ pub(crate) fn decode_derived_polar_endpoint_binding(
     let payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x07d3)
+        .find(|record| record.record_type == crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD)
         .map(|record| record.payload(&file.data))?;
     if payload.len() < 28 || read_u32(payload, 0) != u32::from(group.header.kind().raw()) {
         return None;
@@ -540,7 +540,7 @@ pub(crate) fn decode_point_on_ray_anchor_raw(
     let direction_payload = direction_group
         .records
         .iter()
-        .find(|record| record.record_type == 0x07d3)
+        .find(|record| record.record_type == crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD)
         .map(|record| record.payload(&file.data))?;
     if direction_payload.len() < 20 {
         return None;
@@ -555,7 +555,7 @@ pub(crate) fn decode_point_on_ray_anchor_raw(
     let payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x07d3)
+        .find(|record| record.record_type == crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD)
         .map(|record| record.payload(&file.data))?;
     if payload.len() < 12 {
         return None;
@@ -629,7 +629,7 @@ pub(crate) fn decode_offset_anchor_raw(
     let payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x07d3)
+        .find(|record| record.record_type == crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD)
         .map(|record| record.payload(&file.data))?;
     if payload.len() < 20 {
         return None;

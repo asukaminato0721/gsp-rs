@@ -164,10 +164,13 @@ fn htm_group_is_payload_blocking_seed(
         return true;
     }
     if group.header.kind() == GroupKind::PathPoint
-        && group
-            .records
-            .iter()
-            .any(|record| matches!(record.record_type, 0x07d5 | 0x07d8))
+        && group.records.iter().any(|record| {
+            matches!(
+                record.record_type,
+                crate::runtime::payload_consts::RECORD_LABEL_AUX
+                    | crate::runtime::payload_consts::RECORD_PATH_POINT_AUX
+            )
+        })
     {
         return true;
     }
@@ -765,10 +768,14 @@ fn htm_point_is_image_anchor(file: &GspFile, group: &ObjectGroup) -> bool {
     group.header.kind() == GroupKind::Point
         && !decode::is_parameter_control_group(group)
         && decode_group_point(file, group).is_none()
-        && group
-            .records
-            .iter()
-            .any(|record| matches!(record.record_type, 0x08a3 | 0x08a8 | RECORD_RICH_TEXT))
+        && group.records.iter().any(|record| {
+            matches!(
+                record.record_type,
+                crate::runtime::payload_consts::RECORD_BBOX_C
+                    | crate::runtime::payload_consts::RECORD_IMAGE_TRANSFORM
+                    | RECORD_RICH_TEXT
+            )
+        })
         && try_decode_group_label_text(file, group)
             .unwrap_or_default()
             .trim()
@@ -1676,7 +1683,9 @@ fn htm_action_button_kind(file: &GspFile, group: &ObjectGroup) -> Option<(u16, u
     group
         .records
         .iter()
-        .find(|record| record.record_type == 0x0906)
+        .find(|record| {
+            record.record_type == crate::runtime::payload_consts::RECORD_ACTION_BUTTON_PAYLOAD
+        })
         .map(|record| record.payload(&file.data))
         .filter(|payload| payload.len() >= 16)
         .map(|payload| (read_u16(payload, 12), read_u16(payload, 14)))
@@ -1729,7 +1738,10 @@ fn decode_graph_calibration_unit_length(file: &GspFile, group: &ObjectGroup) -> 
     group
         .records
         .iter()
-        .find(|record| record.record_type == 0x07d3 && record.length == 12)
+        .find(|record| {
+            record.record_type == crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD
+                && record.length == 12
+        })
         .and_then(|record| decode::decode_measurement_value(record.payload(&file.data)))
 }
 

@@ -219,14 +219,12 @@ fn is_auxiliary_segment_group(file: &GspFile, groups: &[ObjectGroup], group: &Ob
             crate::format::GroupKind::ParameterRotation
             | crate::format::GroupKind::FunctionExpr => true,
             crate::format::GroupKind::Point => {
-                referenced_group
-                    .records
-                    .iter()
-                    .any(|record| record.record_type == 0x0907)
-                    && !referenced_group
-                        .records
-                        .iter()
-                        .any(|record| record.record_type == 0x0899)
+                referenced_group.records.iter().any(|record| {
+                    record.record_type
+                        == crate::runtime::payload_consts::RECORD_FUNCTION_EXPR_PAYLOAD
+                }) && !referenced_group.records.iter().any(|record| {
+                    record.record_type == crate::runtime::payload_consts::RECORD_POINT_F64_PAIR
+                })
             }
             _ => false,
         }
@@ -499,7 +497,9 @@ fn decode_angle_marker_class(file: &GspFile, group: &ObjectGroup) -> u32 {
     group
         .records
         .iter()
-        .find(|record| record.record_type == 0x090e)
+        .find(|record| {
+            record.record_type == crate::runtime::payload_consts::RECORD_ANGLE_MARKER_CLASS
+        })
         .map(|record| record.payload(&file.data))
         .filter(|payload| payload.len() >= 2)
         .map(|payload| u32::from(read_u16(payload, 0)))
@@ -510,7 +510,9 @@ fn decode_segment_marker_payload(file: &GspFile, group: &ObjectGroup) -> Option<
     let payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x090f)
+        .find(|record| {
+            record.record_type == crate::runtime::payload_consts::RECORD_SEGMENT_MARKER_PAYLOAD
+        })
         .map(|record| record.payload(&file.data))?;
     (payload.len() >= 12).then(|| (read_f64(payload, 0), read_u32(payload, 8)))
 }
@@ -1336,7 +1338,10 @@ pub(crate) fn collect_coordinate_traces(
             let payload = group
                 .records
                 .iter()
-                .find(|record| record.record_type == 0x0902)
+                .find(|record| {
+                    record.record_type
+                        == crate::runtime::payload_consts::RECORD_FUNCTION_PLOT_DESCRIPTOR
+                })
                 .map(|record| record.payload(&file.data))?;
             let descriptor = try_decode_function_plot_descriptor(payload).ok()?;
             let expr = try_decode_function_expr(file, groups, calc_group).ok()?;
@@ -1368,7 +1373,10 @@ pub(crate) fn collect_coordinate_traces(
                             let driver_payload = driver_group
                                 .records
                                 .iter()
-                                .find(|record| record.record_type == 0x07d3)
+                                .find(|record| {
+                                    record.record_type
+                                        == crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD
+                                })
                                 .map(|record| record.payload(&file.data))?;
                             let axis = match (driver_payload.len() >= 24)
                                 .then(|| crate::format::read_u32(driver_payload, 20))

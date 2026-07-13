@@ -354,7 +354,9 @@ fn decode_spectrum_range(file: &GspFile, group: &ObjectGroup) -> Option<(f64, f6
     let payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x07d3)?
+        .find(|record| {
+            record.record_type == crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD
+        })?
         .payload(&file.data);
     if payload.len() < 24 {
         return None;

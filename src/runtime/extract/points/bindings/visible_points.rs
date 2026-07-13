@@ -9,10 +9,10 @@ use super::{
     decode_expression_scale_binding, decode_iteration_binding_point_alias_raw,
     decode_legacy_coordinate_construct_point, decode_reflection_anchor_raw,
     decode_translated_point_constraint, expression_runtime_context, reflection_line_group_indices,
-    regular_polygon_angle_expr_for_calc_group, translation_point_pair_group_indices,
-    try_decode_angle_rotation_binding, try_decode_parameter_controlled_point,
-    try_decode_parameter_rotation_binding, try_decode_point_constraint,
-    try_decode_transform_binding,
+    regular_polygon_angle_expr_for_calc_group, scale_angle_expr_to_degrees,
+    translation_point_pair_group_indices, try_decode_angle_rotation_binding,
+    try_decode_parameter_controlled_point, try_decode_parameter_rotation_binding,
+    try_decode_point_constraint, try_decode_transform_binding,
 };
 use crate::runtime::extract::context::SceneContext;
 use crate::runtime::extract::decode::{
@@ -23,8 +23,8 @@ use crate::runtime::extract::decode::{
 use crate::runtime::extract::points::constraints::CoordinatePointSource;
 use crate::runtime::extract::{find_indexed_path, payload_debug_source};
 use crate::runtime::functions::{
-    BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters, function_expr_ast,
-    try_decode_function_expr, try_decode_function_plot_descriptor,
+    FunctionExpr, evaluate_expr_with_parameters, try_decode_function_expr,
+    try_decode_function_plot_descriptor,
 };
 use crate::runtime::geometry::{
     GraphTransform, angle_degrees_from_points, color_from_style, rotate_around, scale_around,
@@ -55,84 +55,6 @@ fn transformed_position_from_anchors(
             Some(rotate_around(source, center, angle_degrees.to_radians()))
         }
         TransformBindingKind::Scale { factor } => Some(scale_around(source, center, *factor)),
-    }
-}
-
-fn scale_angle_expr_to_degrees(
-    file: &GspFile,
-    group: &ObjectGroup,
-    expr: FunctionExpr,
-) -> FunctionExpr {
-    if decode_label_name(file, group).is_some_and(|label| label.contains('°'))
-        || function_expr_contains_pi_angle(&expr)
-        || function_expr_has_degree_multiplier(&expr)
-    {
-        return expr;
-    }
-    scale_function_expr(expr, 180.0 / std::f64::consts::PI)
-}
-
-fn function_expr_contains_pi_angle(expr: &FunctionExpr) -> bool {
-    match expr {
-        FunctionExpr::Parsed(ast) => function_ast_contains_pi_angle(ast),
-        FunctionExpr::Constant(_)
-        | FunctionExpr::Identity
-        | FunctionExpr::SinIdentity
-        | FunctionExpr::CosIdentityPlus(_)
-        | FunctionExpr::TanIdentityMinus(_) => false,
-    }
-}
-
-fn function_ast_contains_pi_angle(expr: &FunctionAst) -> bool {
-    match expr {
-        FunctionAst::PiAngle => true,
-        FunctionAst::Unary { expr, .. } => function_ast_contains_pi_angle(expr),
-        FunctionAst::Binary { lhs, rhs, .. } => {
-            function_ast_contains_pi_angle(lhs) || function_ast_contains_pi_angle(rhs)
-        }
-        FunctionAst::Variable | FunctionAst::Constant(_) | FunctionAst::Parameter(_, _) => false,
-    }
-}
-
-fn function_expr_has_degree_multiplier(expr: &FunctionExpr) -> bool {
-    match expr {
-        FunctionExpr::Parsed(ast) => function_ast_has_degree_multiplier(ast),
-        FunctionExpr::Constant(value) => is_degree_multiplier_constant(*value),
-        FunctionExpr::Identity
-        | FunctionExpr::SinIdentity
-        | FunctionExpr::CosIdentityPlus(_)
-        | FunctionExpr::TanIdentityMinus(_) => false,
-    }
-}
-
-fn function_ast_has_degree_multiplier(expr: &FunctionAst) -> bool {
-    match expr {
-        FunctionAst::Constant(value) => is_degree_multiplier_constant(*value),
-        FunctionAst::Unary { expr, .. } => function_ast_has_degree_multiplier(expr),
-        FunctionAst::Binary { lhs, rhs, .. } => {
-            function_ast_has_degree_multiplier(lhs) || function_ast_has_degree_multiplier(rhs)
-        }
-        FunctionAst::Variable | FunctionAst::PiAngle | FunctionAst::Parameter(_, _) => false,
-    }
-}
-
-fn is_degree_multiplier_constant(value: f64) -> bool {
-    [180.0, 360.0]
-        .into_iter()
-        .any(|degree| (value.abs() - degree).abs() < 1e-9)
-}
-
-fn scale_function_expr(expr: FunctionExpr, factor: f64) -> FunctionExpr {
-    if (factor - 1.0).abs() <= 1e-9 {
-        return expr;
-    }
-    match expr {
-        FunctionExpr::Constant(value) => FunctionExpr::Constant(value * factor),
-        other => FunctionExpr::Parsed(FunctionAst::Binary {
-            lhs: Box::new(FunctionAst::Constant(factor)),
-            op: BinaryOp::Mul,
-            rhs: Box::new(function_expr_ast(other)),
-        }),
     }
 }
 
@@ -1547,7 +1469,7 @@ fn build_scene_point_for_group_checked(
                         )
                     };
                 let angle_expr = if angle_expr_is_radians {
-                    scale_angle_expr_to_degrees(file, calc_group, angle_expr)
+                    scale_angle_expr_to_degrees(angle_expr)
                 } else {
                     angle_expr
                 };
@@ -1825,11 +1747,9 @@ fn is_orphan_duplicate_point_helper(
     if (group.header.kind()) != crate::format::GroupKind::Point {
         return false;
     }
-    if group
-        .records
-        .iter()
-        .any(|record| record.record_type == 0x0907)
-    {
+    if group.records.iter().any(|record| {
+        record.record_type == crate::runtime::payload_consts::RECORD_FUNCTION_EXPR_PAYLOAD
+    }) {
         return false;
     }
     if decode_label_visible(file, group).unwrap_or(true) {
@@ -1853,10 +1773,10 @@ fn is_orphan_duplicate_point_helper(
             && decode_label_name(file, other).as_deref() == Some(name.as_str())
             && (is_referenced(other.ordinal)
                 || find_indexed_path(file, other).is_some_and(|path| !path.refs.is_empty())
-                || other
-                    .records
-                    .iter()
-                    .any(|record| record.record_type == 0x0907))
+                || other.records.iter().any(|record| {
+                    record.record_type
+                        == crate::runtime::payload_consts::RECORD_FUNCTION_EXPR_PAYLOAD
+                }))
     })
 }
 
@@ -1868,11 +1788,9 @@ fn is_orphan_duplicate_point_helper_with_context(
     if (group.header.kind()) != crate::format::GroupKind::Point {
         return false;
     }
-    if group
-        .records
-        .iter()
-        .any(|record| record.record_type == 0x0907)
-    {
+    if group.records.iter().any(|record| {
+        record.record_type == crate::runtime::payload_consts::RECORD_FUNCTION_EXPR_PAYLOAD
+    }) {
         return false;
     }
     if decode_label_visible(file, group).unwrap_or(true) {
@@ -1899,10 +1817,10 @@ fn is_orphan_duplicate_point_helper_with_context(
                 || context
                     .indexed_path(other)
                     .is_some_and(|path| !path.refs.is_empty())
-                || other
-                    .records
-                    .iter()
-                    .any(|record| record.record_type == 0x0907))
+                || other.records.iter().any(|record| {
+                    record.record_type
+                        == crate::runtime::payload_consts::RECORD_FUNCTION_EXPR_PAYLOAD
+                }))
     })
 }
 

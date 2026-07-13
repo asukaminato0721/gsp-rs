@@ -27,7 +27,7 @@ fn source_function_name(file: &GspFile, group: &ObjectGroup) -> Option<String> {
     let record = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x07d5)?;
+        .find(|record| record.record_type == crate::runtime::payload_consts::RECORD_LABEL_AUX)?;
     let name = decode_parameter_name(record.payload(&file.data))?;
     name.chars()
         .all(|ch| ch.is_ascii_alphabetic())
@@ -100,10 +100,10 @@ pub(crate) fn collect_scene_functions(
             let definition_ordinal = *path.refs.first()?;
             let definition_group = groups.get(definition_ordinal.checked_sub(1)?)?;
             let expr = try_decode_function_expr(file, groups, definition_group).ok()?;
-            let descriptor_record = group
-                .records
-                .iter()
-                .find(|record| record.record_type == 0x0902)?;
+            let descriptor_record = group.records.iter().find(|record| {
+                record.record_type
+                    == crate::runtime::payload_consts::RECORD_FUNCTION_PLOT_DESCRIPTOR
+            })?;
             let descriptor =
                 try_decode_function_plot_descriptor(descriptor_record.payload(&file.data)).ok()?;
             let name = source_function_name(file, definition_group).unwrap_or_default();
@@ -490,7 +490,7 @@ fn decode_parameter_binding(
     let label_payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x07d5)
+        .find(|record| record.record_type == crate::runtime::payload_consts::RECORD_LABEL_AUX)
         .map(|record| record.payload(&file.data))?;
     let name = decode_parameter_name(label_payload)?;
     let value = try_decode_parameter_control_value_for_group(file, groups, group).ok()?;

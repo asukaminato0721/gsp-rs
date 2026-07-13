@@ -363,7 +363,7 @@ pub(crate) fn is_parameter_control_group(group: &ObjectGroup) -> bool {
         && group
             .records
             .iter()
-            .any(|record| record.record_type == 0x08a3)
+            .any(|record| record.record_type == crate::runtime::payload_consts::RECORD_BBOX_C)
         && !group
             .records
             .iter()
@@ -907,7 +907,9 @@ fn decode_angle_marker_class(file: &GspFile, group: &ObjectGroup) -> u32 {
     group
         .records
         .iter()
-        .find(|record| record.record_type == 0x090e)
+        .find(|record| {
+            record.record_type == crate::runtime::payload_consts::RECORD_ANGLE_MARKER_CLASS
+        })
         .map(|record| record.payload(&file.data))
         .filter(|payload| payload.len() >= 2)
         .map(|payload| u32::from(read_u16(payload, 0)))
@@ -1019,10 +1021,15 @@ pub(crate) fn try_decode_bbox_rect_raw(
     file: &GspFile,
     group: &ObjectGroup,
 ) -> Result<Option<(f64, f64, f64, f64)>, BboxDecodeError> {
-    let record = group
-        .records
-        .iter()
-        .find(|record| matches!(record.record_type, 0x0898 | 0x08a2 | 0x08a3 | 0x0903));
+    let record = group.records.iter().find(|record| {
+        matches!(
+            record.record_type,
+            crate::runtime::payload_consts::RECORD_BBOX_A
+                | crate::runtime::payload_consts::RECORD_BBOX_B
+                | crate::runtime::payload_consts::RECORD_BBOX_C
+                | crate::runtime::payload_consts::RECORD_ACTION_AUX
+        )
+    });
     let Some(record) = record else {
         return Ok(None);
     };

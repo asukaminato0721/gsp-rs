@@ -422,7 +422,7 @@ pub(super) fn collect_polygon_parameter_labels(
                 let anchor_record = group
                     .records
                     .iter()
-                    .find(|record| record.record_type == 0x0903)?;
+                    .find(|record| record.record_type == crate::runtime::payload_consts::RECORD_ACTION_AUX)?;
                 decode_text_anchor(anchor_record.payload(&file.data))
             })?;
             let RawPointConstraint::PolygonBoundary {
@@ -492,7 +492,7 @@ pub(super) fn collect_line_projection_parameter_labels(
             let anchor_record = group
                 .records
                 .iter()
-                .find(|record| record.record_type == 0x0903)?;
+                .find(|record| record.record_type == crate::runtime::payload_consts::RECORD_ACTION_AUX)?;
             let anchor = decode_text_anchor(anchor_record.payload(&file.data))?;
             let point = anchors.get(path.refs[0].checked_sub(1)?)?.as_ref()?;
             let start = anchors.get(start_group_index)?.as_ref()?;
@@ -560,7 +560,7 @@ pub(super) fn collect_polyline_parameter_labels(
             let anchor_record = group
                 .records
                 .iter()
-                .find(|record| record.record_type == 0x0903)?;
+                .find(|record| record.record_type == crate::runtime::payload_consts::RECORD_ACTION_AUX)?;
             let anchor = decode_text_anchor(anchor_record.payload(&file.data))?;
 
             Some(TextLabel {
@@ -615,7 +615,7 @@ pub(super) fn collect_circle_parameter_labels(
             let anchor_record = group
                 .records
                 .iter()
-                .find(|record| record.record_type == 0x0903)?;
+                .find(|record| record.record_type == crate::runtime::payload_consts::RECORD_ACTION_AUX)?;
             let anchor = decode_text_anchor(anchor_record.payload(&file.data))?;
             let RawPointConstraint::Circle(constraint) =
                 try_decode_point_constraint(file, groups, point_group, None, &None).ok()?
@@ -770,7 +770,7 @@ fn custom_transform_expr_suffix(file: &GspFile, expr_group: &ObjectGroup) -> Opt
     let payload = expr_group
         .records
         .iter()
-        .find(|record| record.record_type == 0x0907)
+        .find(|record| record.record_type == crate::runtime::payload_consts::RECORD_FUNCTION_EXPR_PAYLOAD)
         .map(|record| record.payload(&file.data))?;
     payload
         .chunks_exact(2)

@@ -383,9 +383,16 @@ fn lex_function_token(
                     width_words: 1 + suffix_width(word, words.get(1).copied()),
                 });
             }
-            LexedFunctionToken {
-                kind: FunctionToken::Constant(f64::from(word)),
-                width_words: 1 + suffix_width(word, words.get(1).copied()),
+            if word < EXPR_OP_ADD {
+                LexedFunctionToken {
+                    kind: FunctionToken::Constant(f64::from(word)),
+                    width_words: 1 + suffix_width(word, words.get(1).copied()),
+                }
+            } else {
+                return Err(FunctionExprParseError::UnknownOpcode {
+                    offset,
+                    opcode: word,
+                });
             }
         }
     };
@@ -511,62 +518,26 @@ fn parse_postfix_function_expr_from_words(
             index += 1;
             continue;
         }
-        if word == 0
-            && matches!(
-                words.get(index + 1).copied(),
-                Some(EXPR_OP_ADD | EXPR_OP_SUB | EXPR_OP_MUL | EXPR_OP_DIV | EXPR_OP_POW)
-            )
-        {
-            index += 1;
-            continue;
-        }
         if let Some((value, width_words)) = decode_postfix_decimal_digit_literal(&words[index..]) {
             stack.push(FunctionAst::Constant(value));
             index += width_words;
             continue;
         }
         match word {
-            EXPR_OP_ADD => {
-                if stack.len() >= 2 {
-                    let rhs = stack.pop().unwrap();
-                    let lhs = stack.pop().unwrap();
-                    stack.push(FunctionAst::Binary {
-                        lhs: Box::new(lhs),
-                        op: BinaryOp::Add,
-                        rhs: Box::new(rhs),
+            EXPR_OP_ADD | EXPR_OP_SUB | EXPR_OP_MUL | EXPR_OP_DIV | EXPR_OP_POW => {
+                if stack.len() < 2 {
+                    return Err(FunctionExprParseError::InvalidPostfixArity {
+                        offset: index,
+                        opcode: word,
+                        expected: 2,
+                        found: stack.len(),
                     });
                 }
-                index += 1;
-            }
-            EXPR_OP_SUB => {
-                let rhs = stack.pop().ok_or(FunctionExprParseError::UnexpectedToken {
-                    offset: index,
-                    found: FunctionToken::Sub,
-                })?;
-                let lhs = stack.pop().unwrap_or(FunctionAst::Constant(0.0));
-                stack.push(FunctionAst::Binary {
-                    lhs: Box::new(lhs),
-                    op: BinaryOp::Sub,
-                    rhs: Box::new(rhs),
-                });
-                index += 1;
-            }
-            EXPR_OP_MUL | EXPR_OP_DIV | EXPR_OP_POW => {
-                let found = match word {
-                    EXPR_OP_MUL => FunctionToken::Mul,
-                    EXPR_OP_DIV => FunctionToken::Div,
-                    EXPR_OP_POW => FunctionToken::Pow,
-                    _ => unreachable!(),
-                };
-                let rhs = stack.pop().ok_or(FunctionExprParseError::UnexpectedToken {
-                    offset: index,
-                    found: found.clone(),
-                })?;
-                let lhs = stack.pop().ok_or(FunctionExprParseError::UnexpectedToken {
-                    offset: index,
-                    found,
-                })?;
+                let rhs = stack.pop().expect("postfix arity checked");
+                let lhs = stack.pop().expect("postfix arity checked");
                 let op = match word {
+                    EXPR_OP_ADD => BinaryOp::Add,
+                    EXPR_OP_SUB => BinaryOp::Sub,
                     EXPR_OP_MUL => BinaryOp::Mul,
                     EXPR_OP_DIV => BinaryOp::Div,
                     EXPR_OP_POW => BinaryOp::Pow,
@@ -618,19 +589,21 @@ fn parse_postfix_function_expr_from_words(
                 stack.push(unary_ast(decode_unary_function(word).unwrap(), expr));
                 index += 1;
             }
-            _ => {
+            _ if word < EXPR_OP_ADD => {
                 stack.push(FunctionAst::Constant(f64::from(word)));
                 index += 1 + postfix_suffix_width(word, words.get(index + 1).copied());
             }
+            _ => {
+                return Err(FunctionExprParseError::UnknownOpcode {
+                    offset: index,
+                    opcode: word,
+                });
+            }
         }
     }
-    while stack.len() > 1 {
-        let rhs = stack.pop().unwrap();
-        let lhs = stack.pop().unwrap();
-        stack.push(FunctionAst::Binary {
-            lhs: Box::new(lhs),
-            op: BinaryOp::Mul,
-            rhs: Box::new(rhs),
+    if stack.len() > 1 {
+        return Err(FunctionExprParseError::TrailingPostfixOperands {
+            remaining: stack.len(),
         });
     }
     stack
@@ -965,7 +938,13 @@ fn lex_grouped_function_token(
         _ if decode_unary_function(word).is_some() => {
             GroupedFunctionToken::Unary(decode_unary_function(word).unwrap())
         }
-        _ => GroupedFunctionToken::Constant(f64::from(word)),
+        _ if word < EXPR_OP_ADD => GroupedFunctionToken::Constant(f64::from(word)),
+        _ => {
+            return Err(FunctionExprParseError::UnknownOpcode {
+                offset,
+                opcode: word,
+            });
+        }
     })
 }
 

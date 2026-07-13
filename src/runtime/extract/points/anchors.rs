@@ -15,7 +15,7 @@ use super::{
     try_decode_parameter_rotation_binding, try_decode_transform_binding,
 };
 use crate::format::GroupKind;
-use crate::format::read_u32;
+use crate::format::{read_u16, read_u32};
 use crate::runtime::functions::{
     BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters, function_expr_ast,
     try_decode_function_expr, try_decode_function_expr_with_inlined_refs,
@@ -27,6 +27,10 @@ use crate::runtime::geometry::{
     three_point_arc_geometry, to_core_point, to_raw_from_world, to_world,
 };
 use crate::runtime::payload_consts::RECORD_ITERATION_DEFINITION;
+use crate::runtime::payload_consts::{
+    EXPRESSION_TRANSFORM_CALCULATED_SCALE_CLASS, EXPRESSION_TRANSFORM_MARKED_SCALE_CLASS,
+    EXPRESSION_TRANSFORM_ROTATE_CLASS, EXPRESSION_TRANSFORM_SCALE_CLASS,
+};
 use crate::runtime::scene::LineLikeKind;
 
 mod geometry;
@@ -77,6 +81,43 @@ pub(crate) struct ExpressionScaleBindingDef {
     pub(crate) factor_expr: FunctionExpr,
     pub(crate) factor: f64,
     pub(crate) parameter_name: Option<String>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ExpressionTransformKind {
+    Rotate,
+    Scale,
+}
+
+pub(crate) fn expression_value_class(file: &GspFile, group: &ObjectGroup) -> Option<u16> {
+    group
+        .records
+        .iter()
+        .find(|record| record.record_type == crate::runtime::payload_consts::RECORD_PATH_POINT_AUX)
+        .map(|record| record.payload(&file.data))
+        .filter(|payload| payload.len() >= 2)
+        .map(|payload| read_u16(payload, 0))
+}
+
+fn expression_transform_kind(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<ExpressionTransformKind> {
+    if group.header.kind() != GroupKind::ExpressionRotation {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    let value_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
+    match expression_value_class(file, group)
+        .or_else(|| expression_value_class(file, value_group))?
+    {
+        EXPRESSION_TRANSFORM_SCALE_CLASS
+        | EXPRESSION_TRANSFORM_MARKED_SCALE_CLASS
+        | EXPRESSION_TRANSFORM_CALCULATED_SCALE_CLASS => Some(ExpressionTransformKind::Scale),
+        EXPRESSION_TRANSFORM_ROTATE_CLASS => Some(ExpressionTransformKind::Rotate),
+        _ => None,
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -393,15 +434,8 @@ fn scale_function_expr(expr: FunctionExpr, factor: f64) -> FunctionExpr {
     }
 }
 
-fn scale_angle_expr_to_degrees(
-    file: &GspFile,
-    group: &ObjectGroup,
-    expr: FunctionExpr,
-) -> FunctionExpr {
-    if decode_label_name(file, group).is_some_and(|label| label.contains('°'))
-        || function_expr_contains_pi_angle(&expr)
-        || function_expr_has_degree_multiplier(&expr)
-    {
+pub(crate) fn scale_angle_expr_to_degrees(expr: FunctionExpr) -> FunctionExpr {
+    if function_expr_contains_pi_angle(&expr) || function_expr_has_degree_multiplier(&expr) {
         return expr;
     }
     scale_function_expr(expr, 180.0 / std::f64::consts::PI)
@@ -463,7 +497,7 @@ pub(crate) fn decode_expression_rotation_binding(
     group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
 ) -> Option<ExpressionRotationBindingDef> {
-    if group.header.kind() != GroupKind::ExpressionRotation {
+    if expression_transform_kind(file, groups, group)? != ExpressionTransformKind::Rotate {
         return None;
     }
     let path = find_indexed_path(file, group)?;
@@ -478,7 +512,7 @@ pub(crate) fn decode_expression_rotation_binding(
     {
         let (angle_expr, parameters, parameter_name) =
             expression_runtime_context(file, groups, expr_group, anchors)?;
-        let angle_expr = scale_angle_expr_to_degrees(file, expr_group, angle_expr);
+        let angle_expr = scale_angle_expr_to_degrees(angle_expr);
         let angle_degrees = evaluate_expr_with_parameters(&angle_expr, 0.0, &parameters)?;
         (angle_expr, angle_degrees, parameter_name)
     } else if expr_group.header.kind() == GroupKind::Point {
@@ -536,7 +570,7 @@ pub(crate) fn decode_expression_scale_binding(
     group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
 ) -> Option<ExpressionScaleBindingDef> {
-    if group.header.kind() != GroupKind::ExpressionRotation {
+    if expression_transform_kind(file, groups, group)? != ExpressionTransformKind::Scale {
         return None;
     }
     let path = find_indexed_path(file, group)?;
@@ -546,12 +580,9 @@ pub(crate) fn decode_expression_scale_binding(
     let source_group_index = path.refs[0].checked_sub(1)?;
     let center_group_index = path.refs[1].checked_sub(1)?;
     let expr_group = groups.get(path.refs[2].checked_sub(1)?)?;
-    let (mut factor_expr, mut factor, parameter_name) = if expr_group.header.kind()
+    let (factor_expr, factor, parameter_name) = if expr_group.header.kind()
         == GroupKind::FunctionExpr
     {
-        if decode_label_name(file, expr_group).is_some_and(|label| label.contains('°')) {
-            return None;
-        }
         let (factor_expr, parameters, parameter_name) =
             expression_runtime_context(file, groups, expr_group, anchors)?;
         let factor = evaluate_expr_with_parameters(&factor_expr, 0.0, &parameters)?;
@@ -579,14 +610,6 @@ pub(crate) fn decode_expression_scale_binding(
     } else {
         return None;
     };
-    if groups
-        .get(source_group_index)
-        .and_then(|source_group| decode_label_name(file, source_group))
-        .is_some_and(|label| matches!(label.as_str(), "x" | "y" | "z"))
-    {
-        factor = -factor;
-        factor_expr = scale_function_expr(factor_expr, -1.0);
-    }
     Some(ExpressionScaleBindingDef {
         source_group_index,
         center_group_index,
@@ -809,7 +832,7 @@ pub(crate) fn decode_expression_offset_binding(
     let payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x07d3)
+        .find(|record| record.record_type == crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD)
         .map(|record| record.payload(&file.data))?;
     if payload.len() < 20 {
         return None;
@@ -862,7 +885,10 @@ pub(crate) fn decode_graph_calibration_anchor_raw(
     let unit_length = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x07d3 && record.length == 12)
+        .find(|record| {
+            record.record_type == crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD
+                && record.length == 12
+        })
         .and_then(|record| {
             crate::runtime::extract::decode::decode_measurement_value(record.payload(&file.data))
         })
@@ -947,7 +973,9 @@ pub(crate) fn decode_coordinate_expression_anchor_raw(
             let payload = group
                 .records
                 .iter()
-                .find(|record| record.record_type == 0x07d3)
+                .find(|record| {
+                    record.record_type == crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD
+                })
                 .map(|record| record.payload(&file.data))?;
             let axis = match group.header.kind() {
                 crate::format::GroupKind::CoordinateExpressionPointAlt => {
@@ -1128,7 +1156,7 @@ fn coordinate_trace_intersection_sample_hint(file: &GspFile, group: &ObjectGroup
     group
         .records
         .iter()
-        .find(|record| record.record_type == 0x07d3)
+        .find(|record| record.record_type == crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD)
         .map(|record| record.payload(&file.data))
         .filter(|payload| payload.len() >= 4)
         .map(|payload| read_u32(payload, 0) as usize)
@@ -1191,7 +1219,9 @@ fn sample_coordinate_trace_points_raw(
     let payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x0902)
+        .find(|record| {
+            record.record_type == crate::runtime::payload_consts::RECORD_FUNCTION_PLOT_DESCRIPTOR
+        })
         .map(|record| record.payload(&file.data))?;
     let descriptor = try_decode_function_plot_descriptor(payload).ok()?;
     let expr = try_decode_function_expr(file, groups, calc_group).ok()?;
@@ -1230,7 +1260,10 @@ fn sample_coordinate_trace_points_raw(
                     let payload = driver_group
                         .records
                         .iter()
-                        .find(|record| record.record_type == 0x07d3)
+                        .find(|record| {
+                            record.record_type
+                                == crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD
+                        })
                         .map(|record| record.payload(&file.data))?;
                     let axis =
                         match (payload.len() >= 24).then(|| crate::format::read_u32(payload, 20)) {
@@ -1309,7 +1342,9 @@ fn sample_function_plot_points_raw(
     let payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x0902)
+        .find(|record| {
+            record.record_type == crate::runtime::payload_consts::RECORD_FUNCTION_PLOT_DESCRIPTOR
+        })
         .map(|record| record.payload(&file.data))?;
     let descriptor = try_decode_function_plot_descriptor(payload).ok()?;
     let expr = try_decode_function_expr(file, groups, expr_group).ok()?;

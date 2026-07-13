@@ -443,7 +443,7 @@ pub(crate) fn decode_translated_point_constraint(
     let payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x07d3)
+        .find(|record| record.record_type == crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD)
         .map(|record| record.payload(&file.data))?;
     match group.header.kind() {
         crate::format::GroupKind::PolarOffsetPoint => {
@@ -506,7 +506,10 @@ fn decode_point_on_line_like_constraint(
     let payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x07d3 && record.length == 12)
+        .find(|record| {
+            record.record_type == crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD
+                && record.length == 12
+        })
         .map(|record| record.payload(&file.data))?;
     let t = read_f64(payload, 4);
     if !t.is_finite() {
@@ -1192,7 +1195,9 @@ pub(crate) fn decode_coordinate_point(
             let payload = group
                 .records
                 .iter()
-                .find(|record| record.record_type == 0x07d3)
+                .find(|record| {
+                    record.record_type == crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD
+                })
                 .map(|record| record.payload(&file.data))?;
             let axis = match kind {
                 crate::format::GroupKind::CoordinateExpressionPointAlt => {

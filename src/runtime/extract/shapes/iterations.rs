@@ -348,7 +348,10 @@ pub(crate) fn collect_carried_line_iteration_families(
                 let descriptor = source_group
                     .records
                     .iter()
-                    .find(|record| record.record_type == 0x0902)
+                    .find(|record| {
+                        record.record_type
+                            == crate::runtime::payload_consts::RECORD_FUNCTION_PLOT_DESCRIPTOR
+                    })
                     .map(|record| record.payload(&file.data))
                     .and_then(|payload| {
                         crate::runtime::functions::try_decode_function_plot_descriptor(payload).ok()

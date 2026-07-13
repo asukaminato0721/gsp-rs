@@ -20,7 +20,6 @@
       isFiniteNumber,
       pointAngleValue,
       pointIterationDepth,
-      refreshDerivedPoints,
       rotateAround,
       samplePointTraceLine,
       segmentPointCoefficients,
@@ -37,7 +36,7 @@
       }
       return sum + (family.depth || 0);
     }, 0);
-    const standaloneParameterPoints = env.sourceScene.points.filter(( point) =>
+    const standaloneParameterPoints: RuntimeScenePointJson[] = env.sourceScene.points.filter(( point) =>
       point?.binding?.kind === "parameter" && !point.constraint
     );
     const baseCount = Math.max(
@@ -191,11 +190,11 @@
 
 
   function resolvePointsWithParameters(env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) {
-    const draft = {
+    const draft: ViewerSceneData = {
       ...scene,
       lines: scene.lines,
       circles: scene.circles,
-      points: scene.points.map(cloneTracePoint),
+      points: scene.points.map((point): RuntimeScenePointJson => cloneTracePoint(point)),
     };
     const draftEnv = {
       ...env,
@@ -850,7 +849,7 @@
       }
       const seedLabel = scene.labels[family.seedLabelIndex];
       const seedAnchor = seedLabel?.anchor;
-      const seedPointIndex = typeof seedAnchor?.pointIndex === "number"
+      const seedPointIndex = seedAnchor && "pointIndex" in seedAnchor && typeof seedAnchor.pointIndex === "number"
         ? seedAnchor.pointIndex
         : (seedLabel?.binding?.kind === "point-expression-value"
           && typeof seedLabel.binding.pointIndex === "number"

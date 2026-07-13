@@ -588,7 +588,7 @@ fn decode_trace_constraint(
     let payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x0902)
+        .find(|record| record.record_type == crate::runtime::payload_consts::RECORD_FUNCTION_PLOT_DESCRIPTOR)
         .map(|record| record.payload(&file.data))?;
     let descriptor = try_decode_function_plot_descriptor(payload).ok()?;
     Some((
@@ -603,7 +603,7 @@ fn intersection_sample_hint(file: &GspFile, group: &ObjectGroup) -> Option<usize
     group
         .records
         .iter()
-        .find(|record| record.record_type == 0x07d3)
+        .find(|record| record.record_type == crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD)
         .map(|record| record.payload(&file.data))
         .filter(|payload| payload.len() >= 4)
         .map(|payload| crate::format::read_u32(payload, 0) as usize)

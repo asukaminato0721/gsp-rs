@@ -11,6 +11,51 @@ use crate::runtime::scene::{
 };
 
 #[test]
+fn expression_transform_kind_follows_payload_value_class() {
+    let rolling = GspFile::parse(include_bytes!(
+        "../../../tests/Samples/热研系列/滚动系列/正Ｎ边形真滚1.gsp"
+    ))
+    .expect("rolling fixture parses");
+    let rolling_scene = build_scene_checked(&rolling).expect("rolling scene builds");
+    let rolling_point = rolling_scene
+        .points
+        .iter()
+        .find(|point| {
+            point
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 9)
+        })
+        .expect("rolling point #9");
+    assert!(matches!(
+        rolling_point.binding,
+        Some(ScenePointBinding::Rotate { .. })
+    ));
+
+    let solid = GspFile::parse(include_bytes!(
+        "../../../tests/Samples/个人专栏/李章博作品/动画演示立体几何轨迹形成（李章博）.gsp"
+    ))
+    .expect("solid-geometry fixture parses");
+    let solid_scene = build_scene_checked(&solid).expect("solid-geometry scene builds");
+    for ordinal in [107, 113] {
+        let point = solid_scene
+            .points
+            .iter()
+            .find(|point| {
+                point
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .unwrap_or_else(|| panic!("solid-geometry point #{ordinal}"));
+        assert!(matches!(
+            point.binding,
+            Some(ScenePointBinding::Scale { .. })
+        ));
+    }
+}
+
+#[test]
 fn refraction_sample_uses_raw_translation_offsets_and_live_iteration_depth() {
     let Some(data) = fixture_bytes("tests/Samples/个人专栏/侯仰顺作品/光的折射(蚂蚁制作).gsp")
     else {

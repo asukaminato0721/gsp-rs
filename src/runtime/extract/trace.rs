@@ -67,7 +67,10 @@ pub(super) fn collect_point_traces(
             let payload = group
                 .records
                 .iter()
-                .find(|record| record.record_type == 0x0902)
+                .find(|record| {
+                    record.record_type
+                        == crate::runtime::payload_consts::RECORD_FUNCTION_PLOT_DESCRIPTOR
+                })
                 .map(|record| record.payload(&file.data))?;
             let descriptor =
                 crate::runtime::functions::try_decode_function_plot_descriptor(payload).ok()?;
@@ -249,7 +252,10 @@ pub(super) fn collect_segment_traces(
             let payload = group
                 .records
                 .iter()
-                .find(|record| record.record_type == 0x0902)
+                .find(|record| {
+                    record.record_type
+                        == crate::runtime::payload_consts::RECORD_FUNCTION_PLOT_DESCRIPTOR
+                })
                 .map(|record| record.payload(&file.data))?;
             let driver_path_is_open = trace_driver_path_is_open(payload);
             let descriptor =
@@ -804,7 +810,9 @@ fn sample_point_trace_at_parameter_normalized(
     let payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x0902)
+        .find(|record| {
+            record.record_type == crate::runtime::payload_consts::RECORD_FUNCTION_PLOT_DESCRIPTOR
+        })
         .map(|record| record.payload(&file.data))?;
     let descriptor =
         crate::runtime::functions::try_decode_function_plot_descriptor(payload).ok()?;

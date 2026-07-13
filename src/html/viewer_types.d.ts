@@ -51,7 +51,9 @@ type CircularConstraintJson = import("./generated/CircularConstraintJson").Circu
 type ArcBoundaryKind = import("./generated/ArcBoundaryKindJson").ArcBoundaryKindJson;
 type CoordinateAxisJson = import("./generated/CoordinateAxisJson").CoordinateAxisJson;
 type ShapeBindingJson = import("./generated/ShapeBindingJson").ShapeBindingJson;
+type ColorBindingJson = import("./generated/ColorBindingJson").ColorBindingJson;
 type RichTextExpressionRefJson = import("./generated/RichTextExpressionRefJson").RichTextExpressionRefJson;
+type IterationPointHandleJson = import("./generated/IterationPointHandleJson").IterationPointHandleJson;
 type DomainJson = import("./generated/DomainJson").DomainJson;
 type DebugSourceJson = import("./generated/DebugSourceJson").DebugSourceJson;
 
@@ -73,257 +75,6 @@ type VisibilityTarget =
   | RuntimeLineJson
   | RuntimeCircleJson
   | RuntimePolygonJson;
-type RuntimePayload = Object & {
-  [Symbol.iterator]?: () => IterableIterator<RuntimePayload>;
-  addEventListener?: Element["addEventListener"];
-  classList?: Element["classList"];
-  dataset?: DOMStringMap;
-  preventDefault?: Event["preventDefault"];
-  setAttribute?: Element["setAttribute"];
-  stopPropagation?: Event["stopPropagation"];
-  target?: EventTarget | null;
-  active?: boolean;
-  absoluteValue?: boolean;
-  centeredOnAnchor?: boolean;
-  clampToUnit?: boolean;
-  complement?: boolean;
-  counterclockwise?: boolean;
-  dashed?: boolean;
-  derivative?: boolean;
-  draggable?: boolean;
-  fillVisible?: boolean;
-  graphMode?: boolean;
-  ray?: boolean;
-  reversed?: boolean;
-  screenSpace?: boolean;
-  signed?: boolean;
-  visible?: boolean;
-  anchorDx?: number;
-  anchorDy?: number;
-  anchorYDy?: number | null;
-  angleDegrees?: number;
-  angleDegreesScale?: number;
-  alpha?: number;
-  brightnessPointIndex?: number;
-  bottom?: number;
-  button?: number;
-  centerIndex?: number;
-  circleIndex?: number;
-  clientX?: number;
-  clientY?: number;
-  centerX?: number;
-  centerY?: number;
-  columnIndex?: number;
-  decimals?: number;
-  defaultDepth?: number;
-  deltaY?: number;
-  depth?: number;
-  distanceRawScale?: number;
-  dx?: number;
-  dy?: number;
-  edgeCount?: number;
-  edgeIndex?: number;
-  end?: number;
-  endIndex?: number;
-  factor?: number;
-  functionKey?: number;
-  greenPointIndex?: number;
-  groupOrdinal?: number;
-  height?: number;
-  hostKey?: number;
-  huePointIndex?: number;
-  index?: number;
-  labelIndex?: number;
-  kind?: string;
-  length?: number;
-  left?: number | LineConstraintJson | CircularConstraintJson | RuntimePayload;
-  lineEndIndex?: number | null;
-  lineIndex?: number | null;
-  lineStartIndex?: number | null;
-  markerClass?: number;
-  midIndex?: number | null;
-  originIndex?: number | null;
-  parameterEndIndex?: number | null;
-  parameterStartIndex?: number | null;
-  parameterValue?: number;
-  pointIndex?: number;
-  pointerId?: number;
-  polygonIndex?: number;
-  radius?: number;
-  radiusIndex?: number;
-  redPointIndex?: number;
-  leftCenterIndex?: number;
-  leftRadiusIndex?: number;
-  rawPerUnit?: number;
-  rawValue?: number;
-  reflectionAxisLineIndex?: number | null;
-  reflectionDirectrixLineIndex?: number | null;
-  reflectionFocusIndex?: number | null;
-  reflectionSourceIndex?: number | null;
-  right?: number | LineConstraintJson | CircularConstraintJson | RuntimePayload;
-  rightCenterIndex?: number;
-  rightRadiusIndex?: number;
-  sampleCount?: number;
-  sampleHint?: number | null;
-  saturationPointIndex?: number;
-  segmentIndex?: number;
-  slot?: number | string;
-  sourceIndex?: number;
-  spanX?: number;
-  spanY?: number;
-  start?: number;
-  startIndex?: number;
-  stepIndex?: number;
-  t?: number;
-  top?: number;
-  traceEndpointIndex?: number;
-  traceLineIndex?: number;
-  throughIndex?: number;
-  unitX?: number;
-  unitY?: number;
-  value?: number | string | boolean;
-  valueScale?: number;
-  variant?: number;
-  vectorEndIndex?: number;
-  vectorStartIndex?: number;
-  vertexIndex?: number;
-  ccwMid?: number;
-  ccwSpan?: number;
-  endAngle?: number;
-  startAngle?: number;
-  width?: number;
-  x?: number;
-  xMax?: number;
-  xMin?: number;
-  y?: number;
-  yMax?: number;
-  yMin?: number;
-  action?: RuntimePayload | LabelHotspotActionJson | ButtonActionJson | null;
-  angleExpr?: FunctionExprJson;
-  axis?: RuntimePayload | string;
-  binding?: RuntimePayload | PointBindingJson | LineBindingJson | LabelBindingJson | ShapeBindingJson | null;
-  bottomRight?: RuntimePayload | Point;
-  bounds?: RuntimePayload;
-  center?: RuntimePayload | Point | null;
-  circle?: RuntimePayload;
-  color?: [number, number, number, number] | number[];
-  constraint?: RuntimePayload | PointConstraintJson | null;
-  debug?: RuntimePayload | DebugSourceJson | null;
-  domain?: RuntimePayload | DomainJson | null;
-  expr?: FunctionExprJson | FunctionAstJson | null;
-  fillColor?: [number, number, number, number] | number[] | null;
-  fillColorBinding?: RuntimePayload | null;
-  leftCenter?: RuntimePayload | Point;
-  line?: RuntimePayload | LineConstraintJson | number;
-  plotMode?: RuntimePayload | string;
-  projected?: RuntimePayload | Point;
-  radiusPoint?: RuntimePayload | Point;
-  rightCenter?: RuntimePayload | Point;
-  source?: RuntimePayload;
-  sourceScene?: SceneData | ViewerSceneData;
-  depthExpr?: RuntimePayload | null;
-  targetTriangle?: RuntimePayload[];
-  topLeft?: RuntimePayload | Point;
-  transform?: RuntimePayload;
-  xExpr?: FunctionExprJson | FunctionAstJson;
-  yExpr?: FunctionExprJson | FunctionAstJson;
-  anchor?: RuntimePayload | Point;
-  arcs?: RuntimePayload[];
-  buttons?: RuntimePayload[];
-  children?: RuntimePayload[] | HTMLCollection;
-  circleIterations?: RuntimePayload[];
-  circles?: RuntimePayload[];
-  columns?: RuntimePayload[];
-  constrainedPointIndices?: number[];
-  dependsOn?: string[];
-  directDeps?: string[];
-  exprNames?: string[];
-  functions?: RuntimePayload[] | FunctionJson[];
-  hotspots?: RuntimePayload[];
-  images?: RuntimePayload[];
-  iterationTables?: RuntimePayload[];
-  labelIterations?: RuntimePayload[];
-  labels?: RuntimePayload[] | NodeListOf<HTMLLabelElement>;
-  lineIterations?: RuntimePayload[];
-  lines?: RuntimePayload[];
-  names?: string[];
-  pages?: SceneData[] | RuntimePayload[];
-  parameters?: RuntimePayload[];
-  pointIndices?: number[];
-  pointIterations?: RuntimePayload[];
-  points?: RuntimePayload[];
-  polygonIterations?: RuntimePayload[];
-  polygons?: RuntimePayload[];
-  refs?: RuntimePayload[] | RichTextExpressionRefJson[];
-  replacementRanges?: RuntimePayload[];
-  recordNames?: string[];
-  recordTypes?: number[];
-  rows?: RuntimePayload[];
-  sourceTriangleIndices?: number[];
-  stateExprs?: FunctionExprJson[];
-  stateParameterNames?: string[];
-  stepExpr?: RuntimePayload;
-  targetSegments?: RuntimePayload[][];
-  targetParameterName?: string;
-  values?: number[] | RuntimePayload[]["values"] | Array<string | number | boolean>["values"];
-  vertexIndices?: number[];
-  axisEndIndex?: number;
-  axisName?: string;
-  category?: string;
-  code?: string;
-  depthParameterName?: string | null;
-  exprLabel?: string;
-  id?: string;
-  label?: string | null;
-  name?: string;
-  numerator?: string;
-  denominator?: string;
-  objectName?: string;
-  parameterName?: string;
-  pointName?: string;
-  polygonName?: string;
-  resultName?: string | null;
-  richMarkup?: string | null;
-  segmentName?: string;
-  src?: string;
-  templateRichMarkup?: string | null;
-  templateText?: string;
-  text?: string;
-  type?: string;
-  valueSuffix?: string;
-  variableName?: string;
-  xName?: string;
-  yName?: string;
-  key?: string | number;
-  scene?: RuntimePayload;
-  origin?: RuntimePayload;
-  recipe?: RuntimePayload;
-  shiftKey?: boolean;
-  view?: RuntimePayload;
-  currentDynamics?: () => RuntimeDynamicsState;
-  currentScene?: () => ViewerSceneData;
-  dynamics?: RuntimeDynamicsState;
-  every?: RuntimePayload[]["every"];
-  filter?: RuntimePayload[]["filter"];
-  find?: RuntimePayload[]["find"];
-  flatMap?: RuntimePayload[]["flatMap"];
-  forEach?: RuntimePayload[]["forEach"] | Set<string>["forEach"];
-  get?: Map<string, RuntimePayload>["get"];
-  has?: Set<string>["has"];
-  join?: RuntimePayload[]["join"];
-  map?: RuntimePayload[]["map"];
-  nodeMap?: Map<string, RuntimePayload>;
-  push?: RuntimePayload[]["push"];
-  reduce?: RuntimePayload[]["reduce"];
-  resolvePoint?: (handle: PointHandle) => Point | null;
-  resolveScenePoint?: (index: number) => Point | null;
-  reverseEdges?: Map<string, string[]>;
-  set?: Map<string, RuntimePayload>["set"];
-  some?: RuntimePayload[]["some"];
-  sort?: RuntimePayload[]["sort"];
-  updateDynamics?: (updater: (draft: RuntimeDynamicsState) => void) => void;
-  updateScene?: (updater: (draft: ViewerSceneData) => void, mode?: string) => void;
-};
 
 type RuntimePointRef =
   | Point
@@ -518,20 +269,20 @@ type RuntimePointConstraintJson = (
 type RuntimeScenePointJson = Omit<ScenePointJson, "constraint" | "binding" | "debug"> & {
   constraint?: RuntimePointConstraintJson | null;
   binding?: RuntimePointBindingJson | null;
-  debug?: DebugSourceJson | RuntimePayload | null;
+  debug?: DebugSourceJson | null;
 };
 type RuntimeLineJson = Partial<Omit<LineJson, "points" | "binding" | "debug" | "color">> & {
   points: PointHandle[];
   color?: [number, number, number, number] | number[];
   binding?: RuntimeLineBindingJson | null;
   segments?: Point[][];
-  debug?: DebugSourceJson | RuntimePayload | null;
+  debug?: DebugSourceJson | null;
 };
 type RuntimePolygonJson = Partial<Omit<PolygonJson, "points" | "binding" | "debug" | "color">> & {
   points: PointHandle[];
   color?: [number, number, number, number] | number[];
   binding?: RuntimeShapeBindingJson | null;
-  debug?: DebugSourceJson | RuntimePayload | null;
+  debug?: DebugSourceJson | null;
 };
 type RuntimeCircleJson = Partial<Omit<CircleJson, "center" | "radiusPoint" | "binding" | "debug" | "color" | "fillColor">> & {
   center?: PointHandle;
@@ -539,12 +290,12 @@ type RuntimeCircleJson = Partial<Omit<CircleJson, "center" | "radiusPoint" | "bi
   color?: [number, number, number, number] | number[];
   fillColor?: [number, number, number, number] | number[] | null;
   binding?: RuntimeShapeBindingJson | null;
-  debug?: DebugSourceJson | RuntimePayload | null;
+  debug?: DebugSourceJson | null;
 };
 type RuntimeArcJson = Partial<Omit<ArcJson, "points" | "center" | "debug">> & {
   points: PointHandle[];
   center?: PointHandle | null;
-  debug?: DebugSourceJson | RuntimePayload | null;
+  debug?: DebugSourceJson | null;
 };
 type RuntimeLabelHotspotJson = Omit<LabelHotspotJson, "action"> & {
   action: LabelHotspotActionJson;
@@ -554,7 +305,7 @@ type RuntimeLabelJson = Partial<Omit<LabelJson, "anchor" | "binding" | "hotspots
   binding?: RuntimeLabelBindingJson | null;
   centeredOnAnchor?: boolean;
   hotspots?: RuntimeLabelHotspotJson[];
-  debug?: DebugSourceJson | RuntimePayload | null;
+  debug?: DebugSourceJson | null;
 };
 type TextLabel = RuntimeLabelJson;
 
@@ -1089,6 +840,173 @@ type ViewerDynamicsRichTextModule = {
   ) => string;
 };
 
+type RuntimeDynamicsParameterDependencies = {
+  discreteIterationDepth: (value: number | null | undefined) => number;
+  evaluateExpr: ViewerDynamicsExpressionModule["evaluateExpr"];
+  formatExpr: ViewerDynamicsExpressionModule["formatExpr"];
+  formatSequenceValue: (value: number) => string;
+  isDiscreteIterationParameterName: (
+    scene: ViewerSceneData | SceneData | null | undefined,
+    name: string,
+  ) => boolean;
+  labelParameterValueFromBinding: (scene: ViewerSceneData, binding: LabelBindingJson) => number | null;
+  pointAngleValue: (
+    scene: ViewerSceneData,
+    binding: Extract<LabelBindingJson, { kind: "point-angle-value" }>,
+  ) => number;
+  pointDistanceRatioValue: (
+    scene: ViewerSceneData,
+    binding: Extract<LabelBindingJson, { kind: "point-distance-ratio-value" }>,
+  ) => number | null;
+  pointDistanceValue: (
+    scene: ViewerSceneData,
+    binding: Extract<LabelBindingJson, { kind: "point-distance-value" }>,
+  ) => number;
+  pointIterationDepth: (
+    family: {
+      depth: number;
+      parameterName?: string | null;
+      depthParameterName?: string | null;
+      depthExpr?: FunctionExprJson | null;
+    },
+    parameters: Map<string, number>,
+  ) => number;
+  polygonAreaValue: (
+    scene: ViewerSceneData,
+    binding: Extract<LabelBindingJson, { kind: "polygon-area-value" }>,
+  ) => number;
+};
+
+type ViewerDynamicsParametersModule = {
+  createDynamicsParameters: (dependencies: RuntimeDynamicsParameterDependencies) => {
+    deriveExpressionLabelParameters: (
+      scene: ViewerSceneData | null | undefined,
+      parameters: Map<string, number>,
+    ) => Map<string, number>;
+    deriveLabelParameters: (
+      scene: ViewerSceneData | null | undefined,
+      parameters: Map<string, number>,
+    ) => Map<string, number>;
+    parameterMapForScene: (env: ViewerEnv, scene: ViewerSceneData) => Map<string, number>;
+  };
+};
+
+type RuntimeDynamicsGeometryDependencies = {
+  applyTraceValueToPoint: (
+    point: RuntimeScenePointJson,
+    scene: ViewerSceneData,
+    value: number | null | undefined,
+    xMin: number,
+    xMax: number,
+  ) => void;
+  circumcenter: (start: Point, mid: Point, end: Point) => Point | null;
+  clipRayToBounds: (start: Point, end: Point, bounds: RuntimeBounds) => Point[] | null;
+  collectExprParameterNames: (
+    expr: FunctionExprJson | FunctionAstJson | null | undefined,
+    names: Set<string>,
+  ) => void;
+  deriveLabelParameters: (
+    scene: ViewerSceneData | null | undefined,
+    parameters: Map<string, number>,
+  ) => Map<string, number>;
+  discreteIterationDepth: (value: number | null | undefined) => number;
+  evaluateExpr: ViewerDynamicsExpressionModule["evaluateExpr"];
+  hsbToRgba: (
+    hue: number,
+    saturation: number,
+    brightness: number,
+    alpha: number,
+  ) => [number, number, number, number];
+  isFiniteNumber: (value: unknown) => value is number;
+  lerpPoint: (start: Point, end: Point, t: number) => Point;
+  lineProjectionParameterFromPoints: (
+    point: Point | null | undefined,
+    start: Point | null | undefined,
+    end: Point | null | undefined,
+    lineKind?: RuntimeLineKind,
+  ) => number | null;
+  parameterNameFromPoint: (scene: ViewerSceneData, pointIndex: number) => string | null;
+  parameterValueFromPoint: (scene: ViewerSceneData, pointIndex: number) => number | null;
+  pointOnPolylineByIndex: (points: Point[], normalized: number) => Point | null;
+  polylineParameterFromPoint: (scene: ViewerSceneData, pointIndex: number) => number | null;
+  reflectAcrossLine: (point: Point, lineStart: Point, lineEnd: Point) => Point | null;
+  reflectionAxisPoints: (
+    scene: ViewerSceneData,
+    binding: HostLineBinding,
+  ) => [PointHandle | null, PointHandle | null];
+  resolveLineConstraintPoints: (
+    resolvePointAt: (pointIndex: number) => Point | null,
+    bounds: RuntimeBounds,
+    constraint: LineConstraintJson,
+  ) => Point[] | null;
+  resolveRotateTransformAngleDegrees: (
+    transform:
+      | Extract<TransformJson, { kind: "rotate" }>
+      | Extract<PointTransformJson, { kind: "rotate" }>,
+    parameters: Map<string, number>,
+    resolvePoint: (index: number) => Point | null | undefined,
+  ) => number | null | undefined;
+  resolveScaleTransformFactor: (
+    transform:
+      | Extract<TransformJson, { kind: "scale" }>
+      | Extract<PointTransformJson, { kind: "scale" }>,
+    parameters: Map<string, number>,
+    resolvePoint?: ((index: number) => Point | null | undefined) | null,
+  ) => number | null | undefined;
+  rotateAround: (point: Point, center: Point, radians: number) => Point;
+  scaleAround: (point: Point, center: Point, factor: number) => Point;
+  scaleByThreePointRatio: (
+    source: Point,
+    center: Point,
+    ratioOrigin: Point,
+    ratioDenominator: Point,
+    ratioNumerator: Point,
+    signed: boolean,
+    clampToUnit: boolean,
+  ) => Point | null;
+  updateConstraintParameterizedPoint: (
+    point: RuntimeScenePointJson,
+    scene: ViewerSceneData,
+    value: number,
+  ) => void;
+  updateCustomTransformPoint: (
+    point: RuntimeScenePointJson,
+    parameters: Map<string, number>,
+    resolvePointAt: (pointIndex: number) => Point | null,
+    parameterSourceScene: ViewerSceneData,
+  ) => void;
+};
+
+type ViewerDynamicsGeometryModule = {
+  createDynamicsGeometry: (dependencies: RuntimeDynamicsGeometryDependencies) => {
+    resolveHostLinePoints: (scene: ViewerSceneData, binding: HostLineBinding) => PointHandle[] | null;
+    sampleCustomTransformTraceLine: (
+      scene: ViewerSceneData,
+      line: RuntimeLineJson,
+      parameters: Map<string, number>,
+    ) => Point[] | null;
+    cloneTracePoint: <T extends Point>(point: T) => T;
+    samplePointTraceTargets: (
+      scene: ViewerSceneData,
+      line: RuntimeLineJson,
+      parameters: Map<string, number>,
+      targetPointIndices: number[],
+    ) => Point[][] | null;
+    samplePointTraceLine: (
+      scene: ViewerSceneData,
+      line: RuntimeLineJson,
+      parameters: Map<string, number>,
+    ) => Point[] | null;
+    refreshDerivedLine: LineBindingRefresher;
+    refreshColorizedSpectrumLine: LineBindingRefresher;
+    refreshDerivedPolygon: (
+      env: CircleBindingRefreshContext,
+      polygon: RuntimePolygonJson,
+    ) => void;
+    refreshDerivedCircle: CircleBindingRefresher;
+  };
+};
+
 type ViewerDynamicsIterationsModule = {
   createDynamicsIterations: (dependencies: Record<string, any>) => {
     rebuildIterationPoints: (env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) => void;
@@ -1110,6 +1028,46 @@ type ViewerDynamicsDependencyGraphModule = {
     describeDependencyGraph: (env: ViewerEnv) => unknown[];
     runDependencyGraph: (env: ViewerEnv, scene: ViewerSceneData, dirtyRootIds: string[]) => unknown;
   };
+};
+
+type RuntimeSceneDependencyCollector = {
+  expr: (deps: Set<string>, expr: FunctionExprJson | FunctionAstJson | null | undefined) => void;
+  points: (
+    deps: Set<string>,
+    indices: readonly (number | null | undefined)[] | null | undefined,
+  ) => void;
+  pointBinding: (deps: Set<string>, binding: RuntimePointBindingJson | null | undefined) => void;
+  pointConstraint: (deps: Set<string>, constraint: RuntimePointConstraintJson | null | undefined) => void;
+  lineBinding: (deps: Set<string>, binding: RuntimeLineBindingJson | null | undefined) => void;
+  shapeBinding: (
+    deps: Set<string>,
+    binding: RuntimeShapeBindingJson | null | undefined,
+    sourceKind: "circle" | "polygon",
+  ) => void;
+  colorBinding: (deps: Set<string>, binding: ColorBindingJson | null | undefined) => void;
+  labelBinding: (deps: Set<string>, binding: RuntimeLabelBindingJson | null | undefined) => void;
+  labelReferencedParameterNames: (
+    binding: RuntimeLabelBindingJson | null | undefined,
+    names: Set<string>,
+  ) => void;
+  pointIteration: (deps: Set<string>, family: PointIterationJson) => void;
+  lineIteration: (deps: Set<string>, family: LineIterationJson) => void;
+  circleIteration: (deps: Set<string>, family: CircleIterationJson) => void;
+  polygonIteration: (deps: Set<string>, family: PolygonIterationJson) => void;
+  labelIteration: (deps: Set<string>, family: LabelIterationJson) => void;
+  iterationTable: (deps: Set<string>, table: IterationTableJson) => void;
+};
+
+type ViewerDynamicsDependenciesModule = {
+  createSceneDependencyCollector: (options: {
+    sourceScene: SceneData | ViewerSceneData;
+    knownParameters: Set<string>;
+    derivedParameterDeps?: Map<string, Set<string>>;
+    collectExprParameterNames: (
+      expr: FunctionExprJson | FunctionAstJson | null | undefined,
+      names: Set<string>,
+    ) => void;
+  }) => RuntimeSceneDependencyCollector;
 };
 
 type DocumentScenePage = { index: number; title: string; scene: SceneData };
@@ -1156,7 +1114,10 @@ type ViewerModules = {
   drag: ViewerDragModule;
   dynamicsExpression: ViewerDynamicsExpressionModule;
   dynamicsRichText: ViewerDynamicsRichTextModule;
+  dynamicsParameters: ViewerDynamicsParametersModule;
+  dynamicsGeometry: ViewerDynamicsGeometryModule;
   dynamicsIterations: ViewerDynamicsIterationsModule;
+  dynamicsDependencies: ViewerDynamicsDependenciesModule;
   dynamicsDependencyGraph: ViewerDynamicsDependencyGraphModule;
   appDocument: ViewerAppDocumentModule;
   appDebugGraph: ViewerAppDebugGraphModule;

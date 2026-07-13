@@ -91,10 +91,13 @@ pub(super) fn collect_buttons(
     for group in groups {
         let kind = group.header.kind();
         if kind == crate::format::GroupKind::Point
-            && !group
-                .records
-                .iter()
-                .any(|record| matches!(record.record_type, 0x0899 | 0x0907))
+            && !group.records.iter().any(|record| {
+                matches!(
+                    record.record_type,
+                    crate::runtime::payload_consts::RECORD_POINT_F64_PAIR
+                        | crate::runtime::payload_consts::RECORD_FUNCTION_EXPR_PAYLOAD
+                )
+            })
             && let Some(href) = decode::try_decode_link_button_url(file, group)
                 .ok()
                 .flatten()
@@ -121,7 +124,9 @@ pub(super) fn collect_buttons(
         let payload = group
             .records
             .iter()
-            .find(|record| record.record_type == 0x0906)
+            .find(|record| {
+                record.record_type == crate::runtime::payload_consts::RECORD_ACTION_BUTTON_PAYLOAD
+            })
             .map(|record| record.payload(&file.data));
         let action_payload = if let Some(payload) = payload {
             payload

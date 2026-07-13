@@ -59,7 +59,7 @@ pub(crate) fn collect_point_objects(
                 return None;
             }
             group.records.iter().find_map(|record| {
-                (record.record_type == 0x0899)
+                (record.record_type == crate::runtime::payload_consts::RECORD_POINT_F64_PAIR)
                     .then(|| decode_point_record(record.payload(&file.data)))
                     .flatten()
                     .map(|point| file.document_display_point(point))
@@ -393,7 +393,9 @@ pub(super) fn decode_non_graph_parameter_value_for_group(
     let payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x0907)
+        .find(|record| {
+            record.record_type == crate::runtime::payload_consts::RECORD_FUNCTION_EXPR_PAYLOAD
+        })
         .map(|record| record.payload(&file.data))?;
     decode_non_graph_parameter_value(payload)
 }
@@ -405,7 +407,9 @@ fn decode_orphan_parameter_control_value_for_group(
     let payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x0907)
+        .find(|record| {
+            record.record_type == crate::runtime::payload_consts::RECORD_FUNCTION_EXPR_PAYLOAD
+        })
         .map(|record| record.payload(&file.data))?;
     let control_value_offset = match payload
         .len()
@@ -437,7 +441,9 @@ fn parameter_unit_for_group(
     let payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x0907)
+        .find(|record| {
+            record.record_type == crate::runtime::payload_consts::RECORD_FUNCTION_EXPR_PAYLOAD
+        })
         .map(|record| record.payload(&file.data));
     if let Some(unit) = payload.and_then(decode_parameter_unit_from_payload) {
         return Some(unit.to_string());
@@ -455,7 +461,9 @@ pub(super) fn decode_angle_parameter_value_for_group(
     let payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x0907)
+        .find(|record| {
+            record.record_type == crate::runtime::payload_consts::RECORD_FUNCTION_EXPR_PAYLOAD
+        })
         .map(|record| record.payload(&file.data))?;
     if decode_parameter_unit_from_payload(payload) == Some("degree") {
         return try_decode_parameter_control_value_for_group(file, &[], group).ok();

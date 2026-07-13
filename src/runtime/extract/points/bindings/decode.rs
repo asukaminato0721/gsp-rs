@@ -2,9 +2,7 @@ use super::{
     AngleRotationBinding, GspFile, ObjectGroup, TransformBinding, TransformBindingKind,
     decode_angle_parameter_value_for_group,
 };
-use crate::runtime::extract::decode::{
-    decode_label_name, try_decode_parameter_control_value_for_group,
-};
+use crate::runtime::extract::decode::try_decode_parameter_control_value_for_group;
 use crate::runtime::extract::points::editable_non_graph_parameter_name_for_group;
 use crate::runtime::extract::try_find_indexed_path;
 use crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD;
@@ -152,17 +150,10 @@ pub(crate) fn try_decode_parameter_rotation_binding(
         });
     }
 
-    let mut factor = try_decode_parameter_control_value_for_group(file, groups, angle_group)
+    let factor = try_decode_parameter_control_value_for_group(file, groups, angle_group)
         .map_err(|_| TransformBindingDecodeError::NonFiniteParameterRotationAngle)?;
     if !factor.is_finite() {
         return Err(TransformBindingDecodeError::NonFiniteParameterRotationAngle);
-    }
-    if groups
-        .get(source_group_index)
-        .and_then(|source_group| decode_label_name(file, source_group))
-        .is_some_and(|label| matches!(label.as_str(), "x" | "y" | "z"))
-    {
-        factor = -factor;
     }
     Ok(TransformBinding {
         source_group_index,
