@@ -5,7 +5,6 @@
   type RichMarkupNode = { name: string; children: RichMarkupNode[] };
   type RichMarkupStyle = { color?: string, fontSize?: string };
   type RichMarkupItem = { kind: "text"; text: string; style?: RichMarkupStyle } | { kind: "fraction"; numerator: RichMarkupItem[]; denominator: RichMarkupItem[]; style?: RichMarkupStyle } | { kind: "radical" | "overline" | "ray" | "arc"; children: RichMarkupItem[]; style?: RichMarkupStyle };
-  type ButtonPointerState = { buttonIndex: number; pointerId: number; startClientX: number; startClientY: number; originX: number; originY: number; scaleX: number; scaleY: number; dragged: boolean };
   type VisibilityButtonAction = Extract<ButtonActionJson, { kind: "show-hide-visibility" }>;
   type OverlayButtonElement = HTMLButtonElement & { __gspButtonIndex?: number, __gspHotspotAction?: LabelHotspotActionJson | null };
 
@@ -1290,7 +1289,7 @@
           }
           if (label.richMarkup && !label.hotspots?.length) {
             const anchor = label.screenSpace
-              ? label.anchor
+              ? label.anchor as Point
               : env.resolvePoint(label.anchor);
             if (!anchor) {
               return;

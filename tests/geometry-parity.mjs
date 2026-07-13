@@ -11,6 +11,7 @@ const vectorFile = JSON.parse(fs.readFileSync(vectorsPath, "utf8"));
 const modules = loadViewerModules(repoRoot);
 const geometry = modules.geometry;
 const scene = modules.scene;
+const runtimeCore = modules.runtimeCore;
 const epsilon = 1e-6;
 
 runPointCases("lerpPoint", vectorFile.lerpPoint, (testCase) =>
@@ -50,10 +51,21 @@ runNullablePointCases(
 runNullablePointCases("pointOnCircleArc", vectorFile.pointOnCircleArc, (testCase) =>
   scene.pointOnCircleArc(testCase.center, testCase.start, testCase.end, testCase.t, false),
 );
+runRuntimeCoreIntersectionCases();
 
 console.log("geometry parity passed");
 
 function loadViewerModules(rootDir) {
+  class HTMLScriptElement {
+    constructor(textContent) {
+      this.textContent = textContent;
+    }
+  }
+  const wasmBase64 = fs.readFileSync(
+    path.join(rootDir, "src/html/generated/runtime-core.wasm.b64"),
+    "utf8",
+  );
+  const wasmElement = new HTMLScriptElement(wasmBase64);
   const context = vm.createContext({
     console,
     Math,
@@ -66,23 +78,95 @@ function loadViewerModules(rootDir) {
     String,
     Boolean,
     Date,
+    Uint8Array,
+    WeakMap,
+    WebAssembly,
+    TextEncoder,
+    TextDecoder,
+    atob,
+    HTMLScriptElement,
+    document: {
+      getElementById(id) {
+        return id === "gsp-runtime-core-wasm" ? wasmElement : null;
+      },
+    },
   });
   context.window = { GspViewerModules: {} };
   context.globalThis = context;
   context.window.window = context.window;
   context.window.globalThis = context.window;
 
-  const scripts = [
-    "src/html/viewer_geometry.js",
-    "src/html/viewer_scene_basic.js",
-    "src/html/viewer_scene_circular.js",
+  const bundle = fs.readFileSync(
+    path.join(rootDir, "src/html/generated/viewer-runtime.js"),
+    "utf8",
+  );
+  const modules = [
+    "viewer_runtime_core",
+    "viewer_geometry",
+    "viewer_scene_basic",
+    "viewer_scene_circular",
   ];
-  for (const relativePath of scripts) {
-    const filename = path.join(rootDir, relativePath);
-    const source = fs.readFileSync(filename, "utf8");
-    vm.runInContext(source, context, { filename });
+  for (const moduleName of modules) {
+    const marker = `// ---- ${moduleName}.ts ----`;
+    const markerIndex = bundle.indexOf(marker);
+    assert.notEqual(markerIndex, -1, `missing runtime module ${moduleName}`);
+    const start = markerIndex + marker.length;
+    const next = bundle.indexOf("// ---- ", start);
+    const source = bundle.slice(start, next < 0 ? bundle.length : next);
+    vm.runInContext(source, context, { filename: `${moduleName}.js` });
   }
-  return context.window.GspViewerModules;
+  return {
+    ...context.window.GspViewerModules,
+    runtimeCore: context.window.GspRuntimeCore,
+  };
+}
+
+function runRuntimeCoreIntersectionCases() {
+  assert.equal(
+    runtimeCore.lineLineIntersection(
+      { x: 0, y: 0 }, { x: 1, y: 0 }, "segment",
+      { x: 2, y: -1 }, { x: 2, y: 1 }, "line",
+    ),
+    null,
+    "lineLineIntersection honors segment bounds",
+  );
+  approxPoint(
+    runtimeCore.lineLineIntersection(
+      { x: 0, y: 0 }, { x: 1, y: 0 }, "line",
+      { x: 2, y: -1 }, { x: 2, y: 1 }, "line",
+    ),
+    { x: 2, y: 0 },
+    "lineLineIntersection line extension",
+  );
+  approxPointArray(
+    runtimeCore.lineCircleIntersections(
+      { x: -2, y: 0 }, { x: 2, y: 0 }, "segment", { x: 0, y: 0 }, 1,
+    ),
+    [{ x: -1, y: 0 }, { x: 1, y: 0 }],
+    "lineCircleIntersections",
+  );
+  approxPointArray(
+    runtimeCore.circleCircleIntersections(
+      { x: 0, y: 0 }, 1, { x: 1, y: 0 }, 1,
+    ),
+    [
+      { x: 0.5, y: -Math.sqrt(3) / 2 },
+      { x: 0.5, y: Math.sqrt(3) / 2 },
+    ],
+    "circleCircleIntersections ordered",
+  );
+  const tangents = runtimeCore.pointCircleTangents(
+    { x: 2, y: 0 }, { x: 0, y: 0 }, 1,
+  );
+  assert.equal(tangents.length, 2, "pointCircleTangents count");
+  for (const [index, tangent] of tangents.entries()) {
+    approxNumber(Math.hypot(tangent.x, tangent.y), 1, `pointCircleTangents[${index}].radius`);
+    approxNumber(
+      tangent.x * (2 - tangent.x) + tangent.y * -tangent.y,
+      0,
+      `pointCircleTangents[${index}].orthogonal`,
+    );
+  }
 }
 
 function runPointCases(label, cases, resolver) {
@@ -125,6 +209,11 @@ function approxNullablePoint(actual, expected, label) {
 function approxPoint(actual, expected, label) {
   approxNumber(actual.x, expected.x, `${label}.x`);
   approxNumber(actual.y, expected.y, `${label}.y`);
+}
+
+function approxPointArray(actual, expected, label) {
+  assert.equal(actual.length, expected.length, `${label}.length`);
+  actual.forEach((point, index) => approxPoint(point, expected[index], `${label}[${index}]`));
 }
 
 function approxNullableSegment(actual, expected, label) {

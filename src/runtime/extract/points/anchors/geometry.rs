@@ -1,5 +1,5 @@
 use crate::format::PointRecord;
-use crate::runtime::geometry::lerp_point;
+use crate::runtime::geometry::{from_core_point, lerp_point, to_core_point};
 use crate::runtime::scene::LineLikeKind;
 
 #[derive(Clone)]
@@ -68,33 +68,17 @@ pub(super) fn select_line_circle_intersection(
     radius: f64,
     variant: usize,
 ) -> Option<PointRecord> {
-    let dx = line_end.x - line_start.x;
-    let dy = line_end.y - line_start.y;
-    let a = dx * dx + dy * dy;
-    if a <= 1e-9 {
-        return None;
-    }
-    let fx = line_start.x - center.x;
-    let fy = line_start.y - center.y;
-    let b = 2.0 * (fx * dx + fy * dy);
-    let c = fx * fx + fy * fy - radius * radius;
-    let discriminant = b * b - 4.0 * a * c;
-    if discriminant < -1e-9 {
-        return None;
-    }
-    let root = discriminant.max(0.0).sqrt();
-    let ts = [(-b - root) / (2.0 * a), (-b + root) / (2.0 * a)]
-        .into_iter()
-        .filter(|t| line_like_allows_param(*t, line_kind))
-        .collect::<Vec<_>>();
-    if ts.is_empty() {
-        return None;
-    }
-    let t = ts[variant.min(ts.len().saturating_sub(1))];
-    Some(PointRecord {
-        x: line_start.x + dx * t,
-        y: line_start.y + dy * t,
-    })
+    let intersections = gsp_runtime_core::line_circle_intersections(
+        to_core_point(&line_start),
+        to_core_point(&line_end),
+        to_core_line_kind(line_kind),
+        to_core_point(&center),
+        radius,
+    );
+    intersections
+        .get(variant.min(intersections.len().saturating_sub(1)))
+        .copied()
+        .map(from_core_point)
 }
 
 pub(super) fn line_line_intersection(
@@ -105,48 +89,15 @@ pub(super) fn line_line_intersection(
     right_end: &PointRecord,
     right_kind: LineLikeKind,
 ) -> Option<PointRecord> {
-    let left_dx = left_end.x - left_start.x;
-    let left_dy = left_end.y - left_start.y;
-    let right_dx = right_end.x - right_start.x;
-    let right_dy = right_end.y - right_start.y;
-    let determinant = left_dx * right_dy - left_dy * right_dx;
-    if determinant.abs() <= 1e-9 {
-        return None;
-    }
-    let delta_x = right_start.x - left_start.x;
-    let delta_y = right_start.y - left_start.y;
-    let t = (delta_x * right_dy - delta_y * right_dx) / determinant;
-    let point = PointRecord {
-        x: left_start.x + t * left_dx,
-        y: left_start.y + t * left_dy,
-    };
-    (line_like_contains(left_start, left_end, left_kind, &point)
-        && line_like_contains(right_start, right_end, right_kind, &point))
-    .then_some(point)
-}
-
-fn line_like_contains(
-    start: &PointRecord,
-    end: &PointRecord,
-    kind: LineLikeKind,
-    point: &PointRecord,
-) -> bool {
-    let dx = end.x - start.x;
-    let dy = end.y - start.y;
-    let len_sq = dx * dx + dy * dy;
-    if len_sq <= 1e-9 {
-        return false;
-    }
-    let t = ((point.x - start.x) * dx + (point.y - start.y) * dy) / len_sq;
-    line_like_allows_param(t, kind)
-}
-
-fn line_like_allows_param(t: f64, kind: LineLikeKind) -> bool {
-    match kind {
-        LineLikeKind::Line => true,
-        LineLikeKind::Ray => t >= -1e-9,
-        LineLikeKind::Segment => (-1e-9..=1.0 + 1e-9).contains(&t),
-    }
+    gsp_runtime_core::line_line_intersection(
+        to_core_point(left_start),
+        to_core_point(left_end),
+        to_core_line_kind(left_kind),
+        to_core_point(right_start),
+        to_core_point(right_end),
+        to_core_line_kind(right_kind),
+    )
+    .map(from_core_point)
 }
 
 pub(super) fn select_circular_intersection(
@@ -178,32 +129,9 @@ pub(super) fn select_point_circle_tangent(
 ) -> Option<PointRecord> {
     let center = circle.center();
     let radius = circle.radius();
-    let dx = point.x - center.x;
-    let dy = point.y - center.y;
-    let distance_sq = dx * dx + dy * dy;
-    if distance_sq <= radius * radius + 1e-9 {
-        return None;
-    }
-    let distance = distance_sq.sqrt();
-    let base_angle = dy.atan2(dx);
-    let offset = (radius / distance).acos();
-    let mut tangents = vec![
-        PointRecord {
-            x: center.x + radius * (base_angle - offset).cos(),
-            y: center.y + radius * (base_angle - offset).sin(),
-        },
-        PointRecord {
-            x: center.x + radius * (base_angle + offset).cos(),
-            y: center.y + radius * (base_angle + offset).sin(),
-        },
-    ];
-    tangents.sort_by(|left, right| {
-        left.y
-            .total_cmp(&right.y)
-            .then_with(|| left.x.total_cmp(&right.x))
-    });
-    tangents
+    gsp_runtime_core::point_circle_tangents(to_core_point(point), to_core_point(&center), radius)
         .into_iter()
+        .map(from_core_point)
         .filter(|candidate| point_lies_on_circular_constraint(candidate, circle))
         .nth(variant.min(1))
 }
@@ -214,45 +142,24 @@ fn circle_circle_intersections(
     right_center: &PointRecord,
     right_radius: f64,
 ) -> Option<Vec<PointRecord>> {
-    let dx = right_center.x - left_center.x;
-    let dy = right_center.y - left_center.y;
-    let distance = (dx * dx + dy * dy).sqrt();
-    if distance <= 1e-9
-        || distance > left_radius + right_radius + 1e-9
-        || distance < (left_radius - right_radius).abs() - 1e-9
-    {
-        return None;
-    }
+    let intersections = gsp_runtime_core::circle_circle_intersections(
+        to_core_point(left_center),
+        left_radius,
+        to_core_point(right_center),
+        right_radius,
+    )
+    .into_iter()
+    .map(from_core_point)
+    .collect::<Vec<_>>();
+    (!intersections.is_empty()).then_some(intersections)
+}
 
-    let along = (left_radius * left_radius - right_radius * right_radius + distance * distance)
-        / (2.0 * distance);
-    let height_sq = left_radius * left_radius - along * along;
-    if height_sq < -1e-9 {
-        return None;
+fn to_core_line_kind(kind: LineLikeKind) -> gsp_runtime_core::LineKind {
+    match kind {
+        LineLikeKind::Segment => gsp_runtime_core::LineKind::Segment,
+        LineLikeKind::Line => gsp_runtime_core::LineKind::Line,
+        LineLikeKind::Ray => gsp_runtime_core::LineKind::Ray,
     }
-    let height = height_sq.max(0.0).sqrt();
-    let ux = dx / distance;
-    let uy = dy / distance;
-    let base = PointRecord {
-        x: left_center.x + along * ux,
-        y: left_center.y + along * uy,
-    };
-    let mut intersections = vec![
-        PointRecord {
-            x: base.x - height * uy,
-            y: base.y + height * ux,
-        },
-        PointRecord {
-            x: base.x + height * uy,
-            y: base.y - height * ux,
-        },
-    ];
-    intersections.sort_by(|left, right| {
-        left.y
-            .total_cmp(&right.y)
-            .then_with(|| left.x.total_cmp(&right.x))
-    });
-    Some(intersections)
 }
 
 fn point_lies_on_circular_constraint(

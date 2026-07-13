@@ -41,12 +41,8 @@
       const start = resolvePoint(transform.angleParameterStartIndex);
       const end = resolvePoint(transform.angleParameterEndIndex);
       if (!point || !start || !end) return null;
-      const dx = end.x - start.x;
-      const dy = end.y - start.y;
-      const lenSq = dx * dx + dy * dy;
-      if (lenSq <= 1e-9) return null;
-      const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lenSq));
-      return t * (transform.angleParameterScale ?? 1);
+      const projection = window.GspRuntimeCore.projectToLineLike(point, start, end, "segment");
+      return projection ? projection.t * (transform.angleParameterScale ?? 1) : null;
     }
     if (
       typeof transform.angleStartIndex === "number"
@@ -479,12 +475,7 @@
 
   function segmentProjectionParameterFromPoints(point: Point | null | undefined, start: Point | null | undefined, end: Point | null | undefined) {
     if (!point || !start || !end) return null;
-    const dx = end.x - start.x;
-    const dy = end.y - start.y;
-    const lenSq = dx * dx + dy * dy;
-    if (lenSq <= 1e-9) return null;
-    const t = ((point.x - start.x) * dx + (point.y - start.y) * dy) / lenSq;
-    return t;
+    return window.GspRuntimeCore.projectToLineLike(point, start, end, "segment")?.t ?? null;
   }
 
 
@@ -1127,27 +1118,7 @@
 
 
   function circumcenter(start: Point, mid: Point, end: Point) {
-    const determinant = 2 * (
-      start.x * (mid.y - end.y)
-      + mid.x * (end.y - start.y)
-      + end.x * (start.y - mid.y)
-    );
-    if (Math.abs(determinant) <= 1e-9) return null;
-    const startSq = start.x * start.x + start.y * start.y;
-    const midSq = mid.x * mid.x + mid.y * mid.y;
-    const endSq = end.x * end.x + end.y * end.y;
-    return {
-      x: (
-        startSq * (mid.y - end.y)
-        + midSq * (end.y - start.y)
-        + endSq * (start.y - mid.y)
-      ) / determinant,
-      y: (
-        startSq * (end.x - mid.x)
-        + midSq * (start.x - end.x)
-        + endSq * (mid.x - start.x)
-      ) / determinant,
-    };
+    return window.GspRuntimeCore.threePointArcGeometry(start, mid, end)?.center ?? null;
   }
 
 
@@ -2133,7 +2104,12 @@
     | { kind: "reflect"; lineStart: Point; lineEnd: Point };
 
 
-  function resolveDerivedTransform(transform: TransformJson | null | undefined, scene: ViewerSceneData, parameters: Map<string, number>): DerivedTransform | null {
+  function resolveDerivedTransform(
+    transform: TransformJson | null | undefined,
+    scene: ViewerSceneData,
+    parameters: Map<string, number>,
+    resolveHandle: (handle: PointHandle) => Point | null,
+  ): DerivedTransform | null {
     if (!transform) return null;
     if (transform.kind === "translate") {
       const vectorStart = scene.points[transform.vectorStartIndex];
@@ -2171,7 +2147,9 @@
       return { kind: "scale", center, factor };
     }
     if (transform.kind === "reflect") {
-      const [lineStart, lineEnd] = reflectionAxisPoints(scene, transform);
+      const [lineStartHandle, lineEndHandle] = reflectionAxisPoints(scene, transform);
+      const lineStart = lineStartHandle ? resolveHandle(lineStartHandle) : null;
+      const lineEnd = lineEndHandle ? resolveHandle(lineEndHandle) : null;
       if (!lineStart || !lineEnd) return null;
       return { kind: "reflect", lineStart, lineEnd };
     }
@@ -2193,23 +2171,33 @@
   }
 
 
-  function refreshDerivedLine(env: { scene: ViewerSceneData, parameters: Map<string, number> }, line: RuntimeLineJson) {
+  function refreshDerivedLine(env: LineBindingRefreshContext, line: RuntimeLineJson) {
     const source = env.scene.lines[line.binding.sourceIndex];
-    const transform = resolveDerivedTransform(line.binding.transform, env.scene, env.parameters);
+    const transform = resolveDerivedTransform(
+      line.binding.transform,
+      env.scene,
+      env.parameters,
+      env.env.resolvePoint,
+    );
     if (!source || !transform) return;
     const nextPoints = source.points
-      .map(( point) => applyDerivedTransform(point, transform));
+      .map(env.env.resolvePoint)
+      .filter((point): point is Point => point !== null)
+      .map((point) => applyDerivedTransform(point, transform));
     if (nextPoints.some(( point) => !point)) return;
     line.points =  (nextPoints);
   }
 
 
-  function refreshColorizedSpectrumLine(context: { scene: ViewerSceneData, bounds: BoundsJson, parameters: Map<string, number> }, line: RuntimeLineJson) {
+  function refreshColorizedSpectrumLine(context: LineBindingRefreshContext, line: RuntimeLineJson) {
     const binding = line.binding;
     const hostLine = context.scene.lines[binding.lineIndex];
     const traceLine = context.scene.lines[binding.traceLineIndex];
     const baseParameter = polylineParameterFromPoint(context.scene, binding.pointIndex);
-    if (!traceLine?.points || traceLine.points.length < 2 || !isFiniteNumber(baseParameter)) {
+    const tracePoints = traceLine?.points
+      .map(context.env.resolvePoint)
+      .filter((point): point is Point => point !== null) ?? [];
+    if (tracePoints.length < 2 || !isFiniteNumber(baseParameter)) {
       return;
     }
     const rawDepth = binding.depthParameterName
@@ -2222,12 +2210,14 @@
     }
     line.color = hsbToRgba((binding.stepIndex || 0) / depth, 1, 1, 255);
     const sample = pointOnPolylineByIndex(
-      traceLine.points,
+      tracePoints,
       baseParameter + (binding.stepIndex || 0) / depth,
     );
     if (!sample) return;
 
-    const hostPoints = hostLine?.points;
+    const hostPoints = hostLine?.points
+      .map(context.env.resolvePoint)
+      .filter((point): point is Point => point !== null);
     if (!hostPoints || hostPoints.length < 2) return;
     const traceEndpointIndex = binding.traceEndpointIndex === 1 ? 1 : 0;
     const hostStart = hostPoints[traceEndpointIndex];
@@ -2239,10 +2229,19 @@
       && isFiniteNumber(binding.reflectionAxisLineIndex)
     ) {
       const source = context.scene.points[binding.reflectionSourceIndex];
-      const sampledAxis = sampledReflectionAxis(context.scene, binding, sample);
+      const sampledAxis = sampledReflectionAxis(
+        context.scene,
+        binding,
+        sample,
+        context.env.resolvePoint,
+      );
       const axisLine = sampledAxis ? null : context.scene.lines[binding.reflectionAxisLineIndex];
-      const axisStart = sampledAxis?.[0] ?? axisLine?.points?.[0];
-      const axisEnd = sampledAxis?.[1] ?? axisLine?.points?.[axisLine.points.length - 1];
+      const axisStartHandle = axisLine?.points?.[0];
+      const axisEndHandle = axisLine?.points?.[axisLine.points.length - 1];
+      const axisStart = sampledAxis?.[0]
+        ?? (axisStartHandle ? context.env.resolvePoint(axisStartHandle) : null);
+      const axisEnd = sampledAxis?.[1]
+        ?? (axisEndHandle ? context.env.resolvePoint(axisEndHandle) : null);
       if (source && axisStart && axisEnd) {
         const reflected = reflectAcrossLine(source, axisStart, axisEnd);
         if (reflected) {
@@ -2274,7 +2273,12 @@
   }
 
 
-  function sampledReflectionAxis(scene: ViewerSceneData, binding: RuntimeLineBindingJson, sample: Point) {
+  function sampledReflectionAxis(
+    scene: ViewerSceneData,
+    binding: RuntimeLineBindingJson,
+    sample: Point,
+    resolveHandle: (handle: PointHandle) => Point | null,
+  ) {
     if (
       !isFiniteNumber(binding.reflectionFocusIndex)
       || !isFiniteNumber(binding.reflectionDirectrixLineIndex)
@@ -2283,8 +2287,10 @@
     }
     const focus = scene.points[binding.reflectionFocusIndex];
     const directrixLine = scene.lines[binding.reflectionDirectrixLineIndex];
-    const directrixStart = directrixLine?.points?.[0];
-    const directrixEnd = directrixLine?.points?.[directrixLine.points.length - 1];
+    const directrixStartHandle = directrixLine?.points?.[0];
+    const directrixEndHandle = directrixLine?.points?.[directrixLine.points.length - 1];
+    const directrixStart = directrixStartHandle ? resolveHandle(directrixStartHandle) : null;
+    const directrixEnd = directrixEndHandle ? resolveHandle(directrixEndHandle) : null;
     if (!focus || !directrixStart || !directrixEnd) return null;
     const projection = projectPointToLine(sample, directrixStart, directrixEnd);
     if (!projection) return null;
@@ -2299,21 +2305,18 @@
 
 
   function projectPointToLine(point: Point, lineStart: Point, lineEnd: Point) {
-    const dx = lineEnd.x - lineStart.x;
-    const dy = lineEnd.y - lineStart.y;
-    const lenSq = dx * dx + dy * dy;
-    if (lenSq <= 1e-9) return null;
-    const t = ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / lenSq;
-    return {
-      x: lineStart.x + t * dx,
-      y: lineStart.y + t * dy,
-    };
+    return window.GspRuntimeCore.projectToLineLike(point, lineStart, lineEnd, "line")?.projected ?? null;
   }
 
 
   function refreshDerivedPolygon(env: { scene: ViewerSceneData, parameters: Map<string, number>, resolveHandle: (handle: PointHandle) => Point | null }, polygon: RuntimePolygonJson) {
     const source = env.scene.polygons[polygon.binding.sourceIndex];
-    const transform = resolveDerivedTransform(polygon.binding.transform, env.scene, env.parameters);
+    const transform = resolveDerivedTransform(
+      polygon.binding.transform,
+      env.scene,
+      env.parameters,
+      env.resolveHandle,
+    );
     if (!source || !transform) return;
     const nextPoints = source.points
       .map(( handle) => env.resolveHandle(handle))
@@ -2326,7 +2329,12 @@
 
   function refreshDerivedCircle(env: { scene: ViewerSceneData, parameters: Map<string, number>, resolveHandle: (handle: PointHandle) => Point | null }, circle: RuntimeCircleJson) {
     const source = env.scene.circles[circle.binding.sourceIndex];
-    const transform = resolveDerivedTransform(circle.binding.transform, env.scene, env.parameters);
+    const transform = resolveDerivedTransform(
+      circle.binding.transform,
+      env.scene,
+      env.parameters,
+      env.resolveHandle,
+    );
     if (!source || !transform) return;
     const sourceCenter = env.resolveHandle(source.center);
     const sourceRadius = env.resolveHandle(source.radiusPoint);

@@ -10,11 +10,12 @@
     "exactOptionalPropertyTypes": false,
     "noImplicitReturns": true,
     "noImplicitAny": false,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "skipLibCheck": true
   },
   "files": [
+    "src/html/runtime/viewer_runtime_core.ts",
     "src/html/runtime/viewer_geometry.ts",
     "src/html/runtime/viewer_scene_basic.ts",
     "src/html/runtime/viewer_scene_circular.ts",
@@ -29,6 +30,7 @@
     "src/html/runtime/viewer_render_hotspots.ts",
     "src/html/runtime/viewer_overlay.ts",
     "src/html/runtime/viewer_drag.ts",
+    "src/html/runtime/viewer_dynamics_expression.ts",
     "src/html/runtime/viewer_dynamics.ts",
     "src/html/runtime/viewer.ts",
     "src/html/viewer_types.d.ts",

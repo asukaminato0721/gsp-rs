@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "exactOptionalPropertyTypes": false
+  },
+  "files": [
+    "src/html/runtime/viewer_runtime_core.ts",
+    "src/html/runtime/viewer_geometry.ts",
+    "src/html/runtime/viewer_scene_circular.ts",
+    "src/html/runtime/viewer_scene_intersections.ts",
+    "src/html/runtime/viewer_render_circular.ts",
+    "src/html/runtime/viewer_dynamics_expression.ts",
+    "src/html/viewer_types.d.ts",
+    "src/html/vendor/van-1.6.0.d.ts"
+  ],
+  "include": [
+    "src/html/generated/**/*.ts"
+  ]
+}

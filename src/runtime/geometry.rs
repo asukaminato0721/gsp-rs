@@ -44,7 +44,11 @@ pub(super) fn to_raw_from_world(point: &PointRecord, graph: &GraphTransform) -> 
 }
 
 pub(crate) fn lerp_point(start: &PointRecord, end: &PointRecord, t: f64) -> PointRecord {
-    start.clone() + (end.clone() - start.clone()) * t
+    from_core_point(gsp_runtime_core::lerp_point(
+        to_core_point(start),
+        to_core_point(end),
+        t,
+    ))
 }
 
 pub(crate) fn rotate_around(
@@ -52,13 +56,11 @@ pub(crate) fn rotate_around(
     center: &PointRecord,
     radians: f64,
 ) -> PointRecord {
-    let cos = radians.cos();
-    let sin = radians.sin();
-    let delta = point.clone() - center.clone();
-    PointRecord {
-        x: center.x + delta.x * cos + delta.y * sin,
-        y: center.y - delta.x * sin + delta.y * cos,
-    }
+    from_core_point(gsp_runtime_core::rotate_around(
+        to_core_point(point),
+        to_core_point(center),
+        radians,
+    ))
 }
 
 pub(crate) fn angle_degrees_from_points(
@@ -66,22 +68,20 @@ pub(crate) fn angle_degrees_from_points(
     vertex: &PointRecord,
     end: &PointRecord,
 ) -> Option<f64> {
-    let start_dx = start.x - vertex.x;
-    let start_dy = vertex.y - start.y;
-    let end_dx = end.x - vertex.x;
-    let end_dy = vertex.y - end.y;
-    let start_len = start_dx.hypot(start_dy);
-    let end_len = end_dx.hypot(end_dy);
-    if start_len <= 1e-9 || end_len <= 1e-9 {
-        return None;
-    }
-    let dot = start_dx * end_dx + start_dy * end_dy;
-    let cross = start_dx * end_dy - start_dy * end_dx;
-    Some(cross.atan2(dot).to_degrees())
+    gsp_runtime_core::measured_rotation_radians(
+        to_core_point(start),
+        to_core_point(vertex),
+        to_core_point(end),
+    )
+    .map(f64::to_degrees)
 }
 
 pub(crate) fn scale_around(point: &PointRecord, center: &PointRecord, factor: f64) -> PointRecord {
-    center.clone() + (point.clone() - center.clone()) * factor
+    from_core_point(gsp_runtime_core::scale_around(
+        to_core_point(point),
+        to_core_point(center),
+        factor,
+    ))
 }
 
 pub(crate) fn reflect_across_line(
@@ -89,15 +89,26 @@ pub(crate) fn reflect_across_line(
     line_start: &PointRecord,
     line_end: &PointRecord,
 ) -> Option<PointRecord> {
-    let line_delta = line_end.clone() - line_start.clone();
-    let len_sq = line_delta.x * line_delta.x + line_delta.y * line_delta.y;
-    if len_sq <= 1e-9 {
-        return None;
+    gsp_runtime_core::reflect_across_line(
+        to_core_point(point),
+        to_core_point(line_start),
+        to_core_point(line_end),
+    )
+    .map(from_core_point)
+}
+
+pub(crate) fn to_core_point(point: &PointRecord) -> gsp_runtime_core::Point {
+    gsp_runtime_core::Point {
+        x: point.x,
+        y: point.y,
     }
-    let point_delta = point.clone() - line_start.clone();
-    let t = (point_delta.x * line_delta.x + point_delta.y * line_delta.y) / len_sq;
-    let projection = line_start.clone() + line_delta * t;
-    Some(projection.clone() * 2.0 - point.clone())
+}
+
+pub(crate) fn from_core_point(point: gsp_runtime_core::Point) -> PointRecord {
+    PointRecord {
+        x: point.x,
+        y: point.y,
+    }
 }
 
 pub(super) fn read_f32_unaligned(data: &[u8], offset: usize) -> Option<f32> {
@@ -136,7 +147,12 @@ pub(crate) fn clip_line_to_bounds(
     end: &PointRecord,
     bounds: &Bounds,
 ) -> Option<[PointRecord; 2]> {
-    clip_parametric_line_to_bounds(start, end, bounds, false)
+    gsp_runtime_core::clip_line_to_bounds(
+        to_core_point(start),
+        to_core_point(end),
+        to_core_bounds(bounds),
+    )
+    .map(|points| points.map(from_core_point))
 }
 
 pub(crate) fn clip_ray_to_bounds(
@@ -144,87 +160,21 @@ pub(crate) fn clip_ray_to_bounds(
     end: &PointRecord,
     bounds: &Bounds,
 ) -> Option<[PointRecord; 2]> {
-    clip_parametric_line_to_bounds(start, end, bounds, true)
+    gsp_runtime_core::clip_ray_to_bounds(
+        to_core_point(start),
+        to_core_point(end),
+        to_core_bounds(bounds),
+    )
+    .map(|points| points.map(from_core_point))
 }
 
-fn clip_parametric_line_to_bounds(
-    start: &PointRecord,
-    end: &PointRecord,
-    bounds: &Bounds,
-    ray_only: bool,
-) -> Option<[PointRecord; 2]> {
-    let dx = end.x - start.x;
-    let dy = end.y - start.y;
-    if dx.abs() <= 1e-9 && dy.abs() <= 1e-9 {
-        return None;
+fn to_core_bounds(bounds: &Bounds) -> gsp_runtime_core::Bounds {
+    gsp_runtime_core::Bounds {
+        min_x: bounds.min_x,
+        max_x: bounds.max_x,
+        min_y: bounds.min_y,
+        max_y: bounds.max_y,
     }
-
-    let mut hits = Vec::<(f64, PointRecord)>::new();
-    let mut push_hit = |t: f64, point: PointRecord| {
-        if !t.is_finite()
-            || (ray_only && t < -1e-9)
-            || point.x < bounds.min_x - 1e-6
-            || point.x > bounds.max_x + 1e-6
-            || point.y < bounds.min_y - 1e-6
-            || point.y > bounds.max_y + 1e-6
-        {
-            return;
-        }
-        if hits.iter().any(|(existing_t, existing)| {
-            (existing_t - t).abs() < 1e-6
-                || ((existing.x - point.x).abs() < 1e-6 && (existing.y - point.y).abs() < 1e-6)
-        }) {
-            return;
-        }
-        hits.push((t, point));
-    };
-
-    if dx.abs() > 1e-9 {
-        for x in [bounds.min_x, bounds.max_x] {
-            let t = (x - start.x) / dx;
-            push_hit(
-                t,
-                PointRecord {
-                    x,
-                    y: start.y + dy * t,
-                },
-            );
-        }
-    }
-
-    if dy.abs() > 1e-9 {
-        for y in [bounds.min_y, bounds.max_y] {
-            let t = (y - start.y) / dy;
-            push_hit(
-                t,
-                PointRecord {
-                    x: start.x + dx * t,
-                    y,
-                },
-            );
-        }
-    }
-
-    if ray_only
-        && start.x >= bounds.min_x - 1e-6
-        && start.x <= bounds.max_x + 1e-6
-        && start.y >= bounds.min_y - 1e-6
-        && start.y <= bounds.max_y + 1e-6
-    {
-        push_hit(0.0, start.clone());
-    }
-
-    if hits.len() < 2 {
-        return None;
-    }
-    hits.sort_by(|left, right| left.0.total_cmp(&right.0));
-    let first = hits.first()?.1.clone();
-    let last = hits.last()?.1.clone();
-    if (first.x - last.x).abs() < 1e-6 && (first.y - last.y).abs() < 1e-6 {
-        return None;
-    }
-    let _ = ray_only;
-    Some([first, last])
 }
 
 pub(super) fn format_number(value: f64) -> String {
@@ -283,38 +233,17 @@ pub(crate) fn three_point_arc_geometry(
     mid: &PointRecord,
     end: &PointRecord,
 ) -> Option<ThreePointArcGeometry> {
-    let determinant =
-        2.0 * (start.x * (mid.y - end.y) + mid.x * (end.y - start.y) + end.x * (start.y - mid.y));
-    if determinant.abs() <= 1e-9 {
-        return None;
-    }
-
-    let start_sq = start.x * start.x + start.y * start.y;
-    let mid_sq = mid.x * mid.x + mid.y * mid.y;
-    let end_sq = end.x * end.x + end.y * end.y;
-    let center = PointRecord {
-        x: (start_sq * (mid.y - end.y) + mid_sq * (end.y - start.y) + end_sq * (start.y - mid.y))
-            / determinant,
-        y: (start_sq * (end.x - mid.x) + mid_sq * (start.x - end.x) + end_sq * (mid.x - start.x))
-            / determinant,
-    };
-    let radius = ((start.x - center.x).powi(2) + (start.y - center.y).powi(2)).sqrt();
-    if radius <= 1e-9 {
-        return None;
-    }
-
-    let start_angle = (start.y - center.y).atan2(start.x - center.x);
-    let mid_angle = (mid.y - center.y).atan2(mid.x - center.x);
-    let end_angle = (end.y - center.y).atan2(end.x - center.x);
-    let ccw_span = normalized_angle_delta(start_angle, end_angle);
-    let ccw_mid = normalized_angle_delta(start_angle, mid_angle);
-
+    let geometry = gsp_runtime_core::three_point_arc_geometry(
+        to_core_point(start),
+        to_core_point(mid),
+        to_core_point(end),
+    )?;
     Some(ThreePointArcGeometry {
-        center,
-        radius,
-        start_angle,
-        end_angle,
-        counterclockwise: ccw_mid > ccw_span + 1e-9,
+        center: from_core_point(geometry.center),
+        radius: geometry.radius,
+        start_angle: geometry.start_angle,
+        end_angle: geometry.end_angle,
+        counterclockwise: geometry.ccw_mid > geometry.ccw_span + 1e-9,
     })
 }
 
@@ -352,8 +281,13 @@ pub(crate) fn point_on_three_point_arc(
     end: &PointRecord,
     t: f64,
 ) -> Option<PointRecord> {
-    let geometry = three_point_arc_geometry(start, mid, end)?;
-    point_on_three_point_arc_for_geometry(&geometry, mid, t, false)
+    gsp_runtime_core::point_on_three_point_arc(
+        to_core_point(start),
+        to_core_point(mid),
+        to_core_point(end),
+        t,
+    )
+    .map(from_core_point)
 }
 
 pub(crate) fn point_on_three_point_arc_complement(
@@ -362,34 +296,13 @@ pub(crate) fn point_on_three_point_arc_complement(
     end: &PointRecord,
     t: f64,
 ) -> Option<PointRecord> {
-    let geometry = three_point_arc_geometry(start, mid, end)?;
-    point_on_three_point_arc_for_geometry(&geometry, mid, t, true)
-}
-
-fn point_on_three_point_arc_for_geometry(
-    geometry: &ThreePointArcGeometry,
-    mid: &PointRecord,
-    t: f64,
-    complement: bool,
-) -> Option<PointRecord> {
-    let ccw_span = normalized_angle_delta(geometry.start_angle, geometry.end_angle);
-    let ccw_mid = normalized_angle_delta(geometry.start_angle, mid_angle(&geometry.center, mid));
-    let clamped_t = t.clamp(0.0, 1.0);
-    let use_ccw = if complement {
-        ccw_mid > ccw_span + 1e-9
-    } else {
-        ccw_mid <= ccw_span + 1e-9
-    };
-    let angle = if use_ccw {
-        geometry.start_angle + ccw_span * clamped_t
-    } else {
-        geometry.start_angle
-            - normalized_angle_delta(geometry.end_angle, geometry.start_angle) * clamped_t
-    };
-    Some(PointRecord {
-        x: geometry.center.x + geometry.radius * angle.cos(),
-        y: geometry.center.y + geometry.radius * angle.sin(),
-    })
+    gsp_runtime_core::point_on_three_point_arc_complement(
+        to_core_point(start),
+        to_core_point(mid),
+        to_core_point(end),
+        t,
+    )
+    .map(from_core_point)
 }
 
 pub(crate) fn point_on_circle_arc(
@@ -398,8 +311,14 @@ pub(crate) fn point_on_circle_arc(
     end: &PointRecord,
     t: f64,
 ) -> Option<PointRecord> {
-    let [start, mid, end] = arc_on_circle_control_points(center, start, end)?;
-    point_on_three_point_arc(&start, &mid, &end, t)
+    gsp_runtime_core::point_on_circle_arc(
+        to_core_point(center),
+        to_core_point(start),
+        to_core_point(end),
+        t,
+        false,
+    )
+    .map(from_core_point)
 }
 
 pub(crate) fn sample_three_point_arc(
@@ -476,27 +395,13 @@ pub(crate) fn arc_on_circle_control_points(
     start: &PointRecord,
     end: &PointRecord,
 ) -> Option<[PointRecord; 3]> {
-    let start_dx = start.x - center.x;
-    let start_dy = start.y - center.y;
-    let end_dx = end.x - center.x;
-    let end_dy = end.y - center.y;
-    let start_radius = (start_dx * start_dx + start_dy * start_dy).sqrt();
-    let end_radius = (end_dx * end_dx + end_dy * end_dy).sqrt();
-    let radius = (start_radius + end_radius) * 0.5;
-    if radius <= 1e-9 {
-        return None;
-    }
-
-    let start_angle = (-start_dy).atan2(start_dx);
-    let end_angle = (-end_dy).atan2(end_dx);
-    let ccw_span = normalized_angle_delta(start_angle, end_angle);
-    let midpoint_angle = start_angle + ccw_span * 0.5;
-    let mid = PointRecord {
-        x: center.x + radius * midpoint_angle.cos(),
-        y: center.y - radius * midpoint_angle.sin(),
-    };
-
-    Some([start.clone(), mid, end.clone()])
+    gsp_runtime_core::circle_arc_control_points(
+        to_core_point(center),
+        to_core_point(start),
+        to_core_point(end),
+        false,
+    )
+    .map(|points| points.map(from_core_point))
 }
 
 fn angle_lies_on_arc(angle: f64, start_angle: f64, end_angle: f64, counterclockwise: bool) -> bool {
@@ -510,12 +415,7 @@ fn angle_lies_on_arc(angle: f64, start_angle: f64, end_angle: f64, counterclockw
 }
 
 fn normalized_angle_delta(from: f64, to: f64) -> f64 {
-    let tau = std::f64::consts::TAU;
-    (to - from).rem_euclid(tau)
-}
-
-fn mid_angle(center: &PointRecord, point: &PointRecord) -> f64 {
-    (point.y - center.y).atan2(point.x - center.x)
+    gsp_runtime_core::normalize_angle_delta(from, to)
 }
 
 #[cfg(test)]

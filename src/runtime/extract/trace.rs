@@ -5,8 +5,9 @@ use crate::runtime::extract::bindings::normalized_hsb;
 use crate::runtime::extract::decode::decode_label_name;
 use crate::runtime::functions::{evaluate_expr_with_parameters, try_decode_function_expr};
 use crate::runtime::geometry::{
-    GraphTransform, lerp_point, line_stroke_width_from_style, point_on_circle_arc,
-    point_on_three_point_arc, reflect_across_line, rotate_around, scale_around, to_raw_from_world,
+    GraphTransform, from_core_point, lerp_point, line_stroke_width_from_style, point_on_circle_arc,
+    point_on_three_point_arc, reflect_across_line, rotate_around, scale_around, to_core_point,
+    to_raw_from_world,
 };
 use crate::runtime::payload_consts::{RECORD_BINDING_PAYLOAD, RECORD_ITERATION_DEFINITION};
 use crate::runtime::scene::{
@@ -25,14 +26,13 @@ fn segment_projection_parameter(
     start: &PointRecord,
     end: &PointRecord,
 ) -> Option<f64> {
-    let dx = end.x - start.x;
-    let dy = end.y - start.y;
-    let len_sq = dx * dx + dy * dy;
-    if len_sq <= 1e-9 {
-        return None;
-    }
-    let t = ((point.x - start.x) * dx + (point.y - start.y) * dy) / len_sq;
-    Some(t.clamp(0.0, 1.0))
+    gsp_runtime_core::project_to_line_like(
+        to_core_point(point),
+        to_core_point(start),
+        to_core_point(end),
+        gsp_runtime_core::LineKind::Segment,
+    )
+    .map(|projection| projection.t)
 }
 
 pub(super) fn collect_point_traces(
@@ -1375,30 +1375,16 @@ fn resolve_trace_point(
             let ratio_denominator =
                 resolve_trace_point(points, *ratio_denominator_index, visiting)?;
             let ratio_numerator = resolve_trace_point(points, *ratio_numerator_index, visiting)?;
-            let denominator_dx = ratio_denominator.x - ratio_origin.x;
-            let denominator_dy = ratio_denominator.y - ratio_origin.y;
-            let numerator_dx = ratio_numerator.x - ratio_origin.x;
-            let numerator_dy = ratio_numerator.y - ratio_origin.y;
-            let denominator = denominator_dx.hypot(denominator_dy);
-            if denominator <= 1e-9 {
-                return None;
-            }
-            let numerator = if *clamp_to_unit {
-                numerator_dx.hypot(numerator_dy).min(denominator)
-            } else {
-                numerator_dx.hypot(numerator_dy)
-            };
-            let direction =
-                if *signed && denominator_dx * numerator_dx + denominator_dy * numerator_dy < 0.0 {
-                    -1.0
-                } else {
-                    1.0
-                };
-            Some(scale_around(
-                &source,
-                &center,
-                direction * numerator / denominator,
-            ))
+            gsp_runtime_core::scale_by_three_point_ratio(
+                to_core_point(&source),
+                to_core_point(&center),
+                to_core_point(&ratio_origin),
+                to_core_point(&ratio_denominator),
+                to_core_point(&ratio_numerator),
+                *signed,
+                *clamp_to_unit,
+            )
+            .map(from_core_point)
         }
         Some(ScenePointBinding::Midpoint {
             start_index,

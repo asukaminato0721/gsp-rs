@@ -16,7 +16,7 @@ fn js_runtime_covers_exported_payload_kinds() {
         include_str!("../../html/generated/LineIterationJson.ts"),
         include_str!("../../html/generated/PolygonIterationJson.ts"),
     ];
-    let runtime_sources = include_str!("../../html/generated/viewer-runtime.js");
+    let runtime_sources = include_str!(concat!(env!("OUT_DIR"), "/viewer-runtime.js"));
 
     let exported_kinds = generated_sources
         .into_iter()
@@ -39,7 +39,7 @@ fn js_runtime_covers_exported_payload_kinds() {
 
 #[test]
 fn circle_constraint_runtime_has_single_resolver_implementation() {
-    let runtime_sources = include_str!("../../html/generated/viewer-runtime.js");
+    let runtime_sources = include_str!(concat!(env!("OUT_DIR"), "/viewer-runtime.js"));
     let resolver_definitions = runtime_sources
         .matches("function circleFromConstraint(")
         .count();

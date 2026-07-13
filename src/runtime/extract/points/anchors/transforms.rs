@@ -399,24 +399,16 @@ pub(crate) fn decode_ratio_scale_anchor_raw(
     let ratio_origin = anchors.get(path.refs[2].checked_sub(1)?)?.clone()?;
     let ratio_denominator = anchors.get(path.refs[3].checked_sub(1)?)?.clone()?;
     let ratio_numerator = anchors.get(path.refs[4].checked_sub(1)?)?.clone()?;
-    let denominator_dx = ratio_denominator.x - ratio_origin.x;
-    let denominator_dy = ratio_denominator.y - ratio_origin.y;
-    let numerator_dx = ratio_numerator.x - ratio_origin.x;
-    let numerator_dy = ratio_numerator.y - ratio_origin.y;
-    let denominator = denominator_dx.hypot(denominator_dy);
-    if denominator <= 1e-9 {
-        return None;
-    }
-    let numerator = numerator_dx.hypot(numerator_dy);
-    let direction = if denominator_dx * numerator_dx + denominator_dy * numerator_dy < 0.0 {
-        -1.0
-    } else {
-        1.0
-    };
-    let factor = direction * numerator / denominator;
-    Some(crate::runtime::geometry::scale_around(
-        &source, &center, factor,
-    ))
+    gsp_runtime_core::scale_by_three_point_ratio(
+        to_core_point(&source),
+        to_core_point(&center),
+        to_core_point(&ratio_origin),
+        to_core_point(&ratio_denominator),
+        to_core_point(&ratio_numerator),
+        true,
+        false,
+    )
+    .map(from_core_point)
 }
 
 pub(crate) fn decode_reflection_anchor_raw(

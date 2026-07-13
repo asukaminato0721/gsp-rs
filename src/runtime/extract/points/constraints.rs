@@ -235,14 +235,19 @@ fn segment_projection_parameter(
     start: &PointRecord,
     end: &PointRecord,
 ) -> Option<f64> {
-    let dx = end.x - start.x;
-    let dy = end.y - start.y;
-    let len_sq = dx * dx + dy * dy;
-    if len_sq <= 1e-9 {
-        return None;
-    }
-    let t = ((point.x - start.x) * dx + (point.y - start.y) * dy) / len_sq;
-    Some(t.clamp(0.0, 1.0))
+    gsp_runtime_core::project_to_line_like(
+        gsp_runtime_core::Point {
+            x: point.x,
+            y: point.y,
+        },
+        gsp_runtime_core::Point {
+            x: start.x,
+            y: start.y,
+        },
+        gsp_runtime_core::Point { x: end.x, y: end.y },
+        gsp_runtime_core::LineKind::Segment,
+    )
+    .map(|projection| projection.t)
 }
 
 fn parameter_anchor_value(

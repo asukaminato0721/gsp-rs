@@ -7,8 +7,8 @@
     "generate:geometry-parity": "cargo run --bin generate_geometry_parity_vectors",
     "build:runtime": "cargo xtask runtime",
     "check:runtime": "cargo xtask check-runtime",
-    "test:geometry-parity": "npm run generate:geometry-parity && node tests/geometry-parity.mjs",
-    "typecheck:js": "tsc -p tsconfig.json --noEmit",
+    "test:geometry-parity": "npm run build:runtime && npm run generate:geometry-parity && node tests/geometry-parity.mjs",
+    "typecheck:js": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.runtime-core.json --noEmit && tsc -p tsconfig.interaction.json --noEmit",
     "typecheck:js:interactive": "tsc -p tsconfig.interaction.json --noEmit"
   },
   "devDependencies": {

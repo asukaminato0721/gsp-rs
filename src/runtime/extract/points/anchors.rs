@@ -22,9 +22,9 @@ use crate::runtime::functions::{
     try_decode_function_plot_descriptor,
 };
 use crate::runtime::geometry::{
-    GraphTransform, angle_degrees_from_points, lerp_point, point_on_circle_arc,
+    GraphTransform, angle_degrees_from_points, from_core_point, lerp_point, point_on_circle_arc,
     point_on_three_point_arc, reflect_across_line, rotate_around, scale_around,
-    three_point_arc_geometry, to_raw_from_world, to_world,
+    three_point_arc_geometry, to_core_point, to_raw_from_world, to_world,
 };
 use crate::runtime::payload_consts::RECORD_ITERATION_DEFINITION;
 use crate::runtime::scene::LineLikeKind;
@@ -1637,28 +1637,22 @@ pub(crate) fn resolve_line_like_constraint_raw(
             let start = anchors.get(path.refs[0].checked_sub(1)?)?.clone()?;
             let vertex = anchors.get(path.refs[1].checked_sub(1)?)?.clone()?;
             let end = anchors.get(path.refs[2].checked_sub(1)?)?.clone()?;
-            let first_dx = start.x - vertex.x;
-            let first_dy = start.y - vertex.y;
-            let first_len = (first_dx * first_dx + first_dy * first_dy).sqrt();
-            let second_dx = end.x - vertex.x;
-            let second_dy = end.y - vertex.y;
-            let second_len = (second_dx * second_dx + second_dy * second_dy).sqrt();
-            if first_len <= 1e-9 || second_len <= 1e-9 {
-                return None;
-            }
-            let sum_x = first_dx / first_len + second_dx / second_len;
-            let sum_y = first_dy / first_len + second_dy / second_len;
-            let sum_len = (sum_x * sum_x + sum_y * sum_y).sqrt();
-            let (dir_x, dir_y) = if sum_len > 1e-9 {
-                (sum_x / sum_len, sum_y / sum_len)
-            } else {
-                (-first_dy / first_len, first_dx / first_len)
-            };
+            let direction = gsp_runtime_core::angle_bisector_direction(
+                gsp_runtime_core::Point {
+                    x: start.x,
+                    y: start.y,
+                },
+                gsp_runtime_core::Point {
+                    x: vertex.x,
+                    y: vertex.y,
+                },
+                gsp_runtime_core::Point { x: end.x, y: end.y },
+            )?;
             distinct_pair(
                 vertex.clone(),
                 PointRecord {
-                    x: vertex.x + dir_x,
-                    y: vertex.y + dir_y,
+                    x: vertex.x + direction.x,
+                    y: vertex.y + direction.y,
                 },
             )
             .map(|(start, end)| (start, end, LineLikeKind::Ray))

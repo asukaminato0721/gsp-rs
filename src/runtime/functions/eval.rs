@@ -2,9 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::format::PointRecord;
 
-use super::expr::{
-    BinaryOp, FunctionAst, FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode, UnaryFunction,
-};
+use super::expr::{FunctionExpr, FunctionPlotDescriptor, FunctionPlotMode};
 
 pub(crate) fn sample_function_points(
     expr: &FunctionExpr,
@@ -17,21 +15,7 @@ pub(crate) fn sample_function_points(
     for index in 0..descriptor.sample_count {
         let t = index as f64 / last;
         let x = descriptor.x_min + span * t;
-        let y = match expr {
-            FunctionExpr::Constant(value) => Some(*value),
-            FunctionExpr::Identity => Some(x),
-            FunctionExpr::SinIdentity => Some(x.sin()),
-            FunctionExpr::CosIdentityPlus(offset) => Some(x.cos() + offset),
-            FunctionExpr::TanIdentityMinus(offset) => {
-                let y = x.tan() - offset;
-                if !y.is_finite() || x.cos().abs() < 0.04 || y.abs() > 5.0 {
-                    None
-                } else {
-                    Some(y)
-                }
-            }
-            FunctionExpr::Parsed(ast) => evaluate_ast(ast, x, &BTreeMap::new()),
-        };
+        let y = gsp_runtime_core::evaluate_expr(expr, x, &BTreeMap::new());
         if let Some(y) = y {
             let point = match descriptor.mode {
                 FunctionPlotMode::Cartesian => PointRecord { x, y },
@@ -58,84 +42,5 @@ pub(crate) fn evaluate_expr_with_parameters(
     x: f64,
     parameters: &BTreeMap<String, f64>,
 ) -> Option<f64> {
-    match expr {
-        FunctionExpr::Constant(value) => Some(*value),
-        FunctionExpr::Identity => Some(x),
-        FunctionExpr::SinIdentity => Some(x.sin()),
-        FunctionExpr::CosIdentityPlus(offset) => Some(x.cos() + offset),
-        FunctionExpr::TanIdentityMinus(offset) => {
-            let y = x.tan() - offset;
-            (y.is_finite() && x.cos().abs() >= 0.04 && y.abs() <= 5.0).then_some(y)
-        }
-        FunctionExpr::Parsed(ast) => evaluate_ast(ast, x, parameters),
-    }
-}
-
-fn evaluate_ast(expr: &FunctionAst, x: f64, parameters: &BTreeMap<String, f64>) -> Option<f64> {
-    let value = match expr {
-        FunctionAst::Variable => x,
-        FunctionAst::Constant(value) => *value,
-        FunctionAst::PiAngle => 180.0,
-        FunctionAst::Parameter(name, value) => *parameters.get(name).unwrap_or(value),
-        FunctionAst::Unary { op, expr } => {
-            let value = evaluate_ast(expr, x, parameters)?;
-            let trig_value = || {
-                if ast_contains_pi_angle(expr) {
-                    value.to_radians()
-                } else {
-                    value
-                }
-            };
-            match op {
-                UnaryFunction::Sin => trig_value().sin(),
-                UnaryFunction::Cos => trig_value().cos(),
-                UnaryFunction::Tan => {
-                    let radians = trig_value();
-                    let y = radians.tan();
-                    if !y.is_finite() || radians.cos().abs() < 0.04 || y.abs() > 5.0 {
-                        return None;
-                    }
-                    y
-                }
-                UnaryFunction::Abs => value.abs(),
-                UnaryFunction::Sqrt => (value >= 0.0).then(|| value.sqrt())?,
-                UnaryFunction::Ln => (value > 0.0).then(|| value.ln())?,
-                UnaryFunction::Log10 => (value > 0.0).then(|| value.log10())?,
-                UnaryFunction::Sign => {
-                    if value > 0.0 {
-                        1.0
-                    } else if value < 0.0 {
-                        -1.0
-                    } else {
-                        0.0
-                    }
-                }
-                UnaryFunction::Round => value.round(),
-                UnaryFunction::Trunc => value.trunc(),
-            }
-        }
-        FunctionAst::Binary { lhs, op, rhs } => {
-            let lhs = evaluate_ast(lhs, x, parameters)?;
-            let rhs = evaluate_ast(rhs, x, parameters)?;
-            match op {
-                BinaryOp::Add => lhs + rhs,
-                BinaryOp::Sub => lhs - rhs,
-                BinaryOp::Mul => lhs * rhs,
-                BinaryOp::Div => (rhs.abs() >= 1e-9).then_some(lhs / rhs)?,
-                BinaryOp::Pow => lhs.powf(rhs),
-            }
-        }
-    };
-    value.is_finite().then_some(value)
-}
-
-fn ast_contains_pi_angle(expr: &FunctionAst) -> bool {
-    match expr {
-        FunctionAst::PiAngle => true,
-        FunctionAst::Unary { expr, .. } => ast_contains_pi_angle(expr),
-        FunctionAst::Binary { lhs, rhs, .. } => {
-            ast_contains_pi_angle(lhs) || ast_contains_pi_angle(rhs)
-        }
-        FunctionAst::Variable | FunctionAst::Constant(_) | FunctionAst::Parameter(_, _) => false,
-    }
+    gsp_runtime_core::evaluate_expr(expr, x, parameters)
 }

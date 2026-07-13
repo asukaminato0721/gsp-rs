@@ -1,5 +1,7 @@
 /target
 node_modules
+src/html/generated/runtime-core.wasm.b64
+src/html/generated/viewer-runtime.js
 tests/**/*.html
 tests/**/*.log
 tests/**/*.debug.json

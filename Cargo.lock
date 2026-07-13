@@ -469,6 +469,8 @@ dependencies = [
  "ab_glyph",
  "anyhow",
  "binrw",
+ "gsp-runtime-assets",
+ "gsp-runtime-core",
  "insta",
  "miette",
  "reqwest",
@@ -476,6 +478,27 @@ dependencies = [
  "serde_json",
  "thiserror",
  "ts-rs",
+]
+
+[[package]]
+name = "gsp-runtime-assets"
+version = "0.1.0"
+dependencies = [
+ "oxc_allocator",
+ "oxc_codegen",
+ "oxc_data_structures",
+ "oxc_parser",
+ "oxc_semantic",
+ "oxc_span",
+ "oxc_transformer",
+]
+
+[[package]]
+name = "gsp-runtime-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -2380,13 +2403,7 @@ checksum = "1ffae5123b2d3fc086436f8834ae3ab053a283cfac8fe0a0b8eaae044768a4c4"
 name = "xtask"
 version = "0.1.0"
 dependencies = [
- "oxc_allocator",
- "oxc_codegen",
- "oxc_data_structures",
- "oxc_parser",
- "oxc_semantic",
- "oxc_span",
- "oxc_transformer",
+ "gsp-runtime-assets",
 ]
 
 [[package]]

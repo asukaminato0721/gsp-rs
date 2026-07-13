@@ -757,17 +757,18 @@ fn angle_bisector_direction(
     vertex: &PointRecord,
     end: &PointRecord,
 ) -> Option<(f64, f64)> {
-    let first = normalize_direction(vertex, start)?;
-    let second = normalize_direction(vertex, end)?;
-    let sum_x = first.0 + second.0;
-    let sum_y = first.1 + second.1;
-    let sum_len = (sum_x * sum_x + sum_y * sum_y).sqrt();
-    if sum_len > 1e-9 {
-        return Some((sum_x / sum_len, sum_y / sum_len));
-    }
-
-    // A straight angle still has a deterministic bisector: the perpendicular through the vertex.
-    Some((-first.1, first.0))
+    let direction = gsp_runtime_core::angle_bisector_direction(
+        gsp_runtime_core::Point {
+            x: start.x,
+            y: start.y,
+        },
+        gsp_runtime_core::Point {
+            x: vertex.x,
+            y: vertex.y,
+        },
+        gsp_runtime_core::Point { x: end.x, y: end.y },
+    )?;
+    Some((direction.x, direction.y))
 }
 
 fn normalize_direction(from: &PointRecord, to: &PointRecord) -> Option<(f64, f64)> {

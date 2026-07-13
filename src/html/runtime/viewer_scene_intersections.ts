@@ -3,50 +3,26 @@
     scene: ViewerSceneModule;
   };
   const scene = modules.scene;
+  type LineKind = "segment" | "line" | "ray";
+  type ResolvedLineConstraint = { start: Point; end: Point; kind: LineKind };
 
   
-  function lineLikeAllowsParam(t: number, kind: string) {
-    if (kind === "line") return true;
-    if (kind === "ray") return t >= -1e-9;
-    return t >= -1e-9 && t <= 1 + 1e-9;
+  function lineLineIntersection(leftStart: Point, leftEnd: Point, leftKind: LineKind, rightStart: Point, rightEnd: Point, rightKind: LineKind) {
+    return window.GspRuntimeCore.lineLineIntersection(
+      leftStart,
+      leftEnd,
+      leftKind,
+      rightStart,
+      rightEnd,
+      rightKind,
+    );
   }
 
   
-  function lineLikeContainsPoint(start: Point, end: Point, kind: string, point: Point) {
-    const dx = end.x - start.x;
-    const dy = end.y - start.y;
-    const lenSquared = dx * dx + dy * dy;
-    if (lenSquared <= 1e-9) return false;
-    const t = ((point.x - start.x) * dx + (point.y - start.y) * dy) / lenSquared;
-    return lineLikeAllowsParam(t, kind);
-  }
-
-  
-  function lineLineIntersection(leftStart: Point, leftEnd: Point, leftKind: string, rightStart: Point, rightEnd: Point, rightKind: string) {
-    const leftDx = leftEnd.x - leftStart.x;
-    const leftDy = leftEnd.y - leftStart.y;
-    const rightDx = rightEnd.x - rightStart.x;
-    const rightDy = rightEnd.y - rightStart.y;
-    const determinant = leftDx * rightDy - leftDy * rightDx;
-    if (Math.abs(determinant) <= 1e-9) return null;
-    const deltaX = rightStart.x - leftStart.x;
-    const deltaY = rightStart.y - leftStart.y;
-    const t = (deltaX * rightDy - deltaY * rightDx) / determinant;
-    const point = {
-      x: leftStart.x + t * leftDx,
-      y: leftStart.y + t * leftDy,
-    };
-    return lineLikeContainsPoint(leftStart, leftEnd, leftKind, point)
-      && lineLikeContainsPoint(rightStart, rightEnd, rightKind, point)
-      ? point
-      : null;
-  }
-
-  
-  function linePolylineIntersection(lineStart: Point, lineEnd: Point, lineKind: string, points: Point[] | null, sampleHint: number | null | undefined = null) {
+  function linePolylineIntersection(lineStart: Point, lineEnd: Point, lineKind: LineKind, points: Point[] | null, sampleHint: number | null | undefined = null) {
     if (!Array.isArray(points) || points.length < 2) return null;
-    if (Number.isFinite(sampleHint)) {
-      let best = null;
+    if (typeof sampleHint === "number" && Number.isFinite(sampleHint)) {
+      let best: Point | null = null;
       let bestDistance = Infinity;
       for (let index = 0; index < points.length - 1; index += 1) {
         const start = points[index];
@@ -73,19 +49,19 @@
   }
 
   
-  function sampleFunctionIntersectionPoints(env: ViewerEnv | null, constraint: Extract<RuntimePointConstraintJson, { kind: "line-function-intersection" }>) {
+  function sampleFunctionIntersectionPoints(env: ViewerSceneResolverEnv | null, constraint: Extract<RuntimePointConstraintJson, { kind: "line-function-intersection" }>): Point[] | null {
     const evaluateExpr = modules.dynamics?.evaluateExpr;
     if (typeof evaluateExpr !== "function") return null;
     const currentScene = typeof env?.currentScene === "function" ? env.currentScene() : env?.sourceScene;
+    const interactiveEnv: ViewerEnv | null = env && "currentDynamics" in env ? env : null;
     const parameters = typeof modules.dynamics?.parameterMapForScene === "function"
-      && typeof env?.currentDynamics === "function"
-      && env
+      && interactiveEnv
       && currentScene
-      ? modules.dynamics.parameterMapForScene(env, currentScene as ViewerSceneData)
-      : typeof env?.currentDynamics === "function"
-        ? new Map(env.currentDynamics().parameters.map((parameter) => [parameter.name, parameter.value]))
+      ? modules.dynamics.parameterMapForScene(interactiveEnv, currentScene as ViewerSceneData)
+      : interactiveEnv
+        ? new Map(interactiveEnv.currentDynamics().parameters.map((parameter) => [parameter.name, parameter.value]))
         : new Map();
-    const points = [];
+    const points: Point[] = [];
     const sampleCount = Math.max(2, constraint.sampleCount || 0);
     const last = Math.max(1, sampleCount - 1);
     for (let index = 0; index < sampleCount; index += 1) {
@@ -106,7 +82,7 @@
   function choosePointCandidate(candidates: Point[] | null, reference: RuntimeScenePointJson | Point | null | undefined, variant: number) {
     if (!Array.isArray(candidates) || candidates.length === 0) return null;
     if (reference && Number.isFinite(reference.x) && Number.isFinite(reference.y)) {
-      return candidates.reduce((best, candidate) => {
+      return candidates.reduce<Point | null>((best, candidate) => {
         if (!best) return candidate;
         const bestDistance = (best.x - reference.x) ** 2 + (best.y - reference.y) ** 2;
         const candidateDistance = (candidate.x - reference.x) ** 2 + (candidate.y - reference.y) ** 2;
@@ -123,7 +99,7 @@
   }
 
   
-  function resolveLineConstraint(env: ViewerEnv | null, constraint: LineConstraintJson, resolveFn: (index: number) => Point | null) {
+  function resolveLineConstraint(_env: ViewerSceneResolverEnv | null, constraint: LineConstraintJson, resolveFn: (index: number) => Point | null): ResolvedLineConstraint | null {
     if (!constraint) return null;
     if (constraint.kind === "segment" || constraint.kind === "line" || constraint.kind === "ray") {
       const start = resolveFn(constraint.startIndex);
@@ -148,29 +124,12 @@
       const vertex = resolveFn(constraint.vertexIndex);
       const end = resolveFn(constraint.endIndex);
       if (!start || !vertex || !end) return null;
-      const direction = scene.resolveLinePoints
-        ? (() => {
-            const dir = (() => {
-              const startDx = start.x - vertex.x;
-              const startDy = start.y - vertex.y;
-              const startLen = Math.hypot(startDx, startDy);
-              const endDx = end.x - vertex.x;
-              const endDy = end.y - vertex.y;
-              const endLen = Math.hypot(endDx, endDy);
-              if (startLen <= 1e-9 || endLen <= 1e-9) return null;
-              const sumX = startDx / startLen + endDx / endLen;
-              const sumY = startDy / startLen + endDy / endLen;
-              const sumLen = Math.hypot(sumX, sumY);
-              return sumLen > 1e-9 ? { x: sumX / sumLen, y: sumY / sumLen } : { x: -startDy / startLen, y: startDx / startLen };
-            })();
-            return dir;
-          })()
-        : null;
+      const direction = modules.geometry?.angleBisectorDirection(start, vertex, end) ?? null;
       if (!direction) return null;
       return { start: vertex, end: { x: vertex.x + direction.x, y: vertex.y + direction.y }, kind: "ray" };
     }
     if (constraint.kind === "translated") {
-      const base = resolveLineConstraint(env, constraint.line, resolveFn);
+      const base: ResolvedLineConstraint | null = resolveLineConstraint(_env, constraint.line, resolveFn);
       const vectorStart = resolveFn(constraint.vectorStartIndex);
       const vectorEnd = resolveFn(constraint.vectorEndIndex);
       if (!base || !vectorStart || !vectorEnd) return null;
@@ -186,57 +145,29 @@
   }
 
   
-  function lineCircleIntersection(lineStart: Point, lineEnd: Point, lineKind: string, center: Point, radiusPoint: Point, variant: number, reference: RuntimeScenePointJson | Point | null | undefined) {
-    const dx = lineEnd.x - lineStart.x;
-    const dy = lineEnd.y - lineStart.y;
-    const a = dx * dx + dy * dy;
-    if (a <= 1e-9) return null;
+  function lineCircleIntersection(lineStart: Point, lineEnd: Point, lineKind: LineKind, center: Point, radiusPoint: Point, variant: number, _reference: RuntimeScenePointJson | Point | null | undefined) {
     const radius = Math.hypot(radiusPoint.x - center.x, radiusPoint.y - center.y);
-    if (radius <= 1e-9) return null;
-    const fx = lineStart.x - center.x;
-    const fy = lineStart.y - center.y;
-    const b = 2 * (fx * dx + fy * dy);
-    const c = fx * fx + fy * fy - radius * radius;
-    const discriminant = b * b - 4 * a * c;
-    if (discriminant < -1e-9) return null;
-    const root = Math.sqrt(Math.max(0, discriminant));
-    const ts = [(-b - root) / (2 * a), (-b + root) / (2 * a)]
-      .filter((t) => lineLikeAllowsParam(t, lineKind));
-    if (ts.length === 0) return null;
-    return chooseVariantCandidate(
-      ts.map((t) => ({ x: lineStart.x + dx * t, y: lineStart.y + dy * t })),
-      variant,
-    );
+    return chooseVariantCandidate(window.GspRuntimeCore.lineCircleIntersections(
+      lineStart,
+      lineEnd,
+      lineKind,
+      center,
+      radius,
+    ), variant);
   }
 
   
   function circleCircleIntersections(leftCenter: Point, leftRadius: number, rightCenter: Point, rightRadius: number) {
-    if (leftRadius <= 1e-9 || rightRadius <= 1e-9) return null;
-    const dx = rightCenter.x - leftCenter.x;
-    const dy = rightCenter.y - leftCenter.y;
-    const distance = Math.hypot(dx, dy);
-    if (
-      distance <= 1e-9 ||
-      distance > leftRadius + rightRadius + 1e-9 ||
-      distance < Math.abs(leftRadius - rightRadius) - 1e-9
-    ) {
-      return null;
-    }
-    const along = (leftRadius * leftRadius - rightRadius * rightRadius + distance * distance) / (2 * distance);
-    const heightSquared = leftRadius * leftRadius - along * along;
-    if (heightSquared < -1e-9) return null;
-    const height = Math.sqrt(Math.max(0, heightSquared));
-    const ux = dx / distance;
-    const uy = dy / distance;
-    const base = { x: leftCenter.x + along * ux, y: leftCenter.y + along * uy };
-    return [
-      { x: base.x - height * uy, y: base.y + height * ux },
-      { x: base.x + height * uy, y: base.y - height * ux },
-    ].sort((left, right) => (left.y - right.y) || (left.x - right.x));
+    return window.GspRuntimeCore.circleCircleIntersections(
+      leftCenter,
+      leftRadius,
+      rightCenter,
+      rightRadius,
+    );
   }
 
   
-  function circleCircleIntersection(leftCenter: Point, leftRadiusPoint: Point, rightCenter: Point, rightRadiusPoint: Point, variant: number, reference: RuntimeScenePointJson | Point | null | undefined) {
+  function circleCircleIntersection(leftCenter: Point, leftRadiusPoint: Point, rightCenter: Point, rightRadiusPoint: Point, variant: number, _reference: RuntimeScenePointJson | Point | null | undefined) {
     const leftRadius = Math.hypot(leftRadiusPoint.x - leftCenter.x, leftRadiusPoint.y - leftCenter.y);
     const rightRadius = Math.hypot(rightRadiusPoint.x - rightCenter.x, rightRadiusPoint.y - rightCenter.y);
     const points = circleCircleIntersections(leftCenter, leftRadius, rightCenter, rightRadius);
@@ -245,50 +176,41 @@
 
   
   function pointCircularTangent(point: Point, circle: { kind: string; center?: Point; radius?: number; ccwMid?: number; ccwSpan?: number; startAngle?: number; endAngle?: number }, variant: number, reference: RuntimeScenePointJson | Point | null | undefined) {
-    if (!circle) return null;
-    const dx = point.x - circle.center.x;
-    const dy = point.y - circle.center.y;
-    const distanceSquared = dx * dx + dy * dy;
-    if (distanceSquared <= circle.radius * circle.radius + 1e-9) return null;
-    const distance = Math.sqrt(distanceSquared);
-    const baseAngle = Math.atan2(dy, dx);
-    const offset = Math.acos(circle.radius / distance);
+    if (!circle?.center || !Number.isFinite(circle.radius)) return null;
     const liesOn = scene._pointLiesOnCircularConstraint;
-    const candidates = [
-      { x: circle.center.x + circle.radius * Math.cos(baseAngle - offset), y: circle.center.y + circle.radius * Math.sin(baseAngle - offset) },
-      { x: circle.center.x + circle.radius * Math.cos(baseAngle + offset), y: circle.center.y + circle.radius * Math.sin(baseAngle + offset) },
-    ]
-      .filter((candidate) => typeof liesOn === "function" ? liesOn(candidate, circle as { kind: string; center?: Point; radius?: number; ccwMid?: number; ccwSpan?: number; startAngle?: number; endAngle?: number }) : true)
-      .sort((left, right) => (left.y - right.y) || (left.x - right.x));
+    const radius = circle.radius;
+    if (typeof radius !== "number" || !Number.isFinite(radius)) return null;
+    const candidates = window.GspRuntimeCore.pointCircleTangents(point, circle.center, radius)
+      .filter((candidate) => typeof liesOn === "function" ? liesOn(candidate, circle as { kind: string; center?: Point; radius?: number; ccwMid?: number; ccwSpan?: number; startAngle?: number; endAngle?: number }) : true);
     return choosePointCandidate(candidates, reference, variant);
   }
 
-  scene.registerPointConstraintResolver("line-intersection", ((env: ViewerEnv, constraint, resolveFn) => {
+  scene.registerPointConstraintResolver("line-intersection", ((env: ViewerSceneResolverEnv | null, constraint, resolveFn) => {
     const left = resolveLineConstraint(env, constraint.left, resolveFn);
     const right = resolveLineConstraint(env, constraint.right, resolveFn);
     return left && right ? lineLineIntersection(left.start, left.end, left.kind, right.start, right.end, right.kind) : null;
   }));
-  scene.registerPointConstraintResolver("line-trace-intersection", ((env: ViewerEnv, constraint, resolveFn) => {
+  scene.registerPointConstraintResolver("line-trace-intersection", ((env: ViewerSceneResolverEnv | null, constraint, resolveFn) => {
     const line = resolveLineConstraint(env, constraint.line, resolveFn);
     const tracePoints = typeof scene.sampleCoordinateTracePoints === "function"
       ? scene.sampleCoordinateTracePoints(env as ViewerEnv | null, constraint)
       : null;
     return line && tracePoints ? linePolylineIntersection(line.start, line.end, line.kind, tracePoints) : null;
   }));
-  scene.registerPointConstraintResolver("line-function-intersection", ((env: ViewerEnv, constraint, resolveFn) => {
+  scene.registerPointConstraintResolver("line-function-intersection", ((env: ViewerSceneResolverEnv | null, constraint, resolveFn) => {
     const line = resolveLineConstraint(env, constraint.line, resolveFn);
     const tracePoints = sampleFunctionIntersectionPoints(env, constraint);
     return line && tracePoints
       ? linePolylineIntersection(line.start, line.end, line.kind, tracePoints, constraint.sampleHint)
       : null;
   }));
-  scene.registerPointConstraintResolver("point-circular-tangent", ((env: ViewerEnv, constraint, resolveFn, reference) => {
+  scene.registerPointConstraintResolver("point-circular-tangent", ((env: ViewerSceneResolverEnv | null, constraint, resolveFn, reference) => {
     const point = resolveFn(constraint.pointIndex);
     const circleFromConstraint = scene._circleFromConstraint;
     const circle = typeof circleFromConstraint === "function" ? circleFromConstraint(env as ViewerEnv | null, constraint.circle, resolveFn) : null;
     return point && circle ? pointCircularTangent(point, circle, constraint.variant, reference) : null;
   }));
-  scene.registerPointConstraintResolver("line-circle-intersection", ((env: ViewerEnv, constraint, resolveFn, reference) => {
+  scene.registerPointConstraintResolver("line-circle-intersection", ((env: ViewerSceneResolverEnv | null, constraint, resolveFn, reference) => {
     const line = resolveLineConstraint(env, constraint.line, resolveFn);
     const center = resolveFn(constraint.centerIndex);
     const radiusPoint = resolveFn(constraint.radiusIndex);
@@ -296,7 +218,7 @@
       ? lineCircleIntersection(line.start, line.end, line.kind, center, radiusPoint, constraint.variant, reference)
       : null;
   }));
-  scene.registerPointConstraintResolver("line-circular-intersection", ((env: ViewerEnv, constraint, resolveFn, reference) => {
+  scene.registerPointConstraintResolver("line-circular-intersection", ((env: ViewerSceneResolverEnv | null, constraint, resolveFn, reference) => {
     const line = resolveLineConstraint(env, constraint.line, resolveFn);
     const circleFromConstraint = scene._circleFromConstraint;
     const circle = typeof circleFromConstraint === "function" ? circleFromConstraint(env as ViewerEnv | null, constraint.circle, resolveFn) : null;
@@ -304,7 +226,7 @@
     const radiusPoint = { x: circle.center.x + circle.radius, y: circle.center.y };
     return lineCircleIntersection(line.start, line.end, line.kind, circle.center, radiusPoint, constraint.variant, reference);
   }));
-  scene.registerPointConstraintResolver("circle-circle-intersection", ((_env: ViewerEnv, constraint, resolveFn, reference) => {
+  scene.registerPointConstraintResolver("circle-circle-intersection", ((_env: ViewerSceneResolverEnv | null, constraint, resolveFn, reference) => {
     const leftCenter = resolveFn(constraint.leftCenterIndex);
     const leftRadiusPoint = resolveFn(constraint.leftRadiusIndex);
     const rightCenter = resolveFn(constraint.rightCenterIndex);
@@ -313,7 +235,7 @@
       ? circleCircleIntersection(leftCenter, leftRadiusPoint, rightCenter, rightRadiusPoint, constraint.variant, reference)
       : null;
   }));
-  scene.registerPointConstraintResolver("circular-intersection", ((env: ViewerEnv, constraint, resolveFn, reference) => {
+  scene.registerPointConstraintResolver("circular-intersection", ((env: ViewerSceneResolverEnv | null, constraint, resolveFn, reference) => {
     const circleFromConstraint = scene._circleFromConstraint;
     const left = typeof circleFromConstraint === "function" ? circleFromConstraint(env as ViewerEnv | null, constraint.left, resolveFn) : null;
     const right = typeof circleFromConstraint === "function" ? circleFromConstraint(env as ViewerEnv | null, constraint.right, resolveFn) : null;

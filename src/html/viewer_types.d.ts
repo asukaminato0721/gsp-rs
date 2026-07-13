@@ -1,15 +1,21 @@
 declare const van: typeof import("./vendor/van-1.6.0").default;
 
 type PointJson = import("./generated/PointJson").PointJson;
-type Point = {
-  x?: number;
-  y?: number;
-  pointIndex?: number;
-  lineIndex?: number;
-  segmentIndex?: number;
-  t?: number;
-  dx?: number;
-  dy?: number;
+type Point = PointJson;
+type RuntimeLineKind = "segment" | "line" | "ray";
+type RuntimeBounds = { minX: number; maxX: number; minY: number; maxY: number };
+type RuntimeProjection = { t: number; projected: Point; distanceSquared: number };
+type RuntimeArcGeometry = {
+  start: Point;
+  mid: Point;
+  end: Point;
+  center: Point;
+  radius: number;
+  startAngle: number;
+  midAngle: number;
+  endAngle: number;
+  ccwSpan: number;
+  ccwMid: number;
 };
 type BoundsJson = import("./generated/BoundsJson").BoundsJson;
 type SceneData = import("./generated/SceneData").SceneData;
@@ -830,15 +836,15 @@ type ViewerSceneModule = {
   lineLineIntersection: (
     leftStart: Point,
     leftEnd: Point,
-    leftKind: string,
+    leftKind: RuntimeLineKind,
     rightStart: Point,
     rightEnd: Point,
-    rightKind: string,
+    rightKind: RuntimeLineKind,
   ) => Point | null;
   lineCircleIntersection: (
     lineStart: Point,
     lineEnd: Point,
-    lineKind: string,
+    lineKind: RuntimeLineKind,
     center: Point,
     radiusPoint: Point,
     variant: number,
@@ -1155,6 +1161,60 @@ type ViewerModules = {
 };
 
 interface Window {
+  GspRuntimeCore: {
+    normalizeAngleDelta: (from: number, to: number) => number;
+    lerpPoint: (start: Point, end: Point, t: number) => Point;
+    rotateAround: (point: Point, center: Point, radians: number) => Point;
+    scaleAround: (point: Point, center: Point, factor: number) => Point;
+    reflectAcrossLine: (point: Point, lineStart: Point, lineEnd: Point) => Point | null;
+    projectToLineLike: (point: Point, start: Point, end: Point, kind: RuntimeLineKind) => RuntimeProjection | null;
+    angleBisectorDirection: (start: Point, vertex: Point, end: Point) => Point | null;
+    measuredRotationRadians: (start: Point, vertex: Point, end: Point) => number | null;
+    scaleByThreePointRatio: (
+      source: Point,
+      center: Point,
+      ratioOrigin: Point,
+      ratioDenominator: Point,
+      ratioNumerator: Point,
+      signed: boolean,
+      clampToUnit: boolean,
+    ) => Point | null;
+    clipLineToBounds: (start: Point, end: Point, bounds: RuntimeBounds) => Point[] | null;
+    clipRayToBounds: (start: Point, end: Point, bounds: RuntimeBounds) => Point[] | null;
+    threePointArcGeometry: (start: Point, mid: Point, end: Point) => RuntimeArcGeometry | null;
+    pointOnThreePointArc: (start: Point, mid: Point, end: Point, t: number, complement: boolean) => Point | null;
+    circleArcControlPoints: (center: Point, start: Point, end: Point, yUp: boolean) => [Point, Point, Point] | null;
+    pointOnCircleArc: (center: Point, start: Point, end: Point, t: number, yUp: boolean) => Point | null;
+    projectToThreePointArc: (point: Point, start: Point, mid: Point, end: Point) => RuntimeProjection | null;
+    projectToCircleArc: (point: Point, center: Point, start: Point, end: Point, yUp: boolean) => RuntimeProjection | null;
+    lineLineIntersection: (
+      leftStart: Point,
+      leftEnd: Point,
+      leftKind: RuntimeLineKind,
+      rightStart: Point,
+      rightEnd: Point,
+      rightKind: RuntimeLineKind,
+    ) => Point | null;
+    lineCircleIntersections: (
+      start: Point,
+      end: Point,
+      lineKind: RuntimeLineKind,
+      center: Point,
+      radius: number,
+    ) => Point[];
+    circleCircleIntersections: (
+      leftCenter: Point,
+      leftRadius: number,
+      rightCenter: Point,
+      rightRadius: number,
+    ) => Point[];
+    pointCircleTangents: (point: Point, center: Point, radius: number) => Point[];
+    evaluateExpr: (
+      expr: FunctionExprJson | FunctionAstJson,
+      x: number,
+      parameters: Map<string, number>,
+    ) => number | null;
+  };
   gspDebug?: {
     sourceScene: SceneData;
     viewerEnv: ViewerEnv;

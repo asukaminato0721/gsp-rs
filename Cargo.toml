@@ -5,7 +5,7 @@ edition = "2024"
 default-run = "gsp-rs"
 
 [workspace]
-members = [".", "xtask"]
+members = [".", "crates/runtime-assets", "crates/runtime-core", "xtask"]
 
 [dependencies]
 ab_glyph = "0.2"
@@ -17,9 +17,20 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ts-rs = "12"
 thiserror = "2"
+gsp-runtime-core = { path = "crates/runtime-core" }
 
 [dev-dependencies]
 insta = "1"
 
+[build-dependencies]
+gsp-runtime-assets = { path = "crates/runtime-assets" }
+
 [profile.release]
 strip = true
+
+[profile.wasm-release]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"

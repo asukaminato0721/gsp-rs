@@ -1,9 +1,13 @@
 (function() {
   const modules =  (
     window.GspViewerModules || (window.GspViewerModules = {})
-  );
+  ) as Partial<ViewerModules> & {
+    scene: ViewerSceneModule;
+    dynamics: ViewerDynamicsModule;
+    geometry: ViewerGeometryModule;
+  };
   
-  const PAN_ONLY_POINT_BINDINGS = new Set([
+  const PAN_ONLY_POINT_BINDINGS = new Set<string>([
     "midpoint",
     "coordinate",
     "coordinate-source",
@@ -130,9 +134,16 @@
     return !!anchor && typeof anchor === "object" && "x" in anchor && "y" in anchor;
   }
 
-  type DraggedPointConstraintUpdater = (env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) => void;
-  
-  const DRAGGED_POINT_CONSTRAINT_UPDATERS = {
+  type ConstraintUpdater = (
+    env: ViewerEnv,
+    draft: ViewerSceneData,
+    point: RuntimeScenePointJson,
+    world: Point,
+  ) => void;
+
+  const DRAGGED_POINT_CONSTRAINT_UPDATERS: Partial<
+    Record<NonNullable<RuntimeScenePointJson["constraint"]>["kind"], ConstraintUpdater>
+  > = {
     offset(env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
       const constraint = point.constraint;
       if (!isOffsetConstraint(constraint)) return;
@@ -141,11 +152,15 @@
         if (!origin) return;
         const baseDx = constraint.dx;
         const baseDy = constraint.dy;
-        const lenSq = baseDx * baseDx + baseDy * baseDy;
-        if (lenSq <= 1e-9) return;
-        const t = ((world.x - origin.x) * baseDx + (world.y - origin.y) * baseDy) / lenSq;
-        constraint.dx = baseDx * t;
-        constraint.dy = baseDy * t;
+        const projection = window.GspRuntimeCore.projectToLineLike(
+          world,
+          origin,
+          { x: origin.x + baseDx, y: origin.y + baseDy },
+          "line",
+        );
+        if (!projection) return;
+        constraint.dx = baseDx * projection.t;
+        constraint.dy = baseDy * projection.t;
         return;
       }
       const originPoint = draft.points[constraint.originIndex];
@@ -171,14 +186,18 @@
       const constraint = point.constraint;
       if (!isLineLikeConstraint(constraint)) return;
       const line = "line" in constraint
-        ? modules.dynamics.resolveLineConstraintParameterPoints(
-            (index: number) => env.resolveScenePoint(index),
-            constraint.line,
-          )
-        : [
-            env.resolveScenePoint(constraint.startIndex),
-            env.resolveScenePoint(constraint.endIndex),
-          ];
+        ? constraint.line
+          ? modules.dynamics.resolveLineConstraintParameterPoints(
+              (index: number) => env.resolveScenePoint(index),
+              constraint.line,
+            )
+          : null
+        : typeof constraint.startIndex === "number" && typeof constraint.endIndex === "number"
+          ? [
+              env.resolveScenePoint(constraint.startIndex),
+              env.resolveScenePoint(constraint.endIndex),
+            ]
+          : null;
       const [start, end] = line || [];
       if (!start || !end) return;
       const projection = modules.scene.projectToLineLike(
@@ -198,16 +217,16 @@
       }
     },
     line(env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
-      DRAGGED_POINT_CONSTRAINT_UPDATERS.segment(env, draft, point, world);
+      DRAGGED_POINT_CONSTRAINT_UPDATERS.segment?.(env, draft, point, world);
     },
     "line-constraint"(env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
-      DRAGGED_POINT_CONSTRAINT_UPDATERS.segment(env, draft, point, world);
+      DRAGGED_POINT_CONSTRAINT_UPDATERS.segment?.(env, draft, point, world);
     },
     ray(env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
-      DRAGGED_POINT_CONSTRAINT_UPDATERS.segment(env, draft, point, world);
+      DRAGGED_POINT_CONSTRAINT_UPDATERS.segment?.(env, draft, point, world);
     },
     "ray-constraint"(env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
-      DRAGGED_POINT_CONSTRAINT_UPDATERS.segment(env, draft, point, world);
+      DRAGGED_POINT_CONSTRAINT_UPDATERS.segment?.(env, draft, point, world);
     },
     polyline(env: ViewerEnv, _draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
       const constraint = point.constraint;
@@ -295,7 +314,7 @@
       }
     },
     "circular-constraint"(env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
-      DRAGGED_POINT_CONSTRAINT_UPDATERS.circle(env, draft, point, world);
+      DRAGGED_POINT_CONSTRAINT_UPDATERS.circle?.(env, draft, point, world);
     },
     "circle-arc"(env: ViewerEnv, _draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
       const constraint = point.constraint;
@@ -375,7 +394,7 @@
       if (constraintKind && !DRAGGED_POINT_CONSTRAINT_UPDATERS[constraintKind]) {
         return "pan";
       }
-      if (PAN_ONLY_POINT_BINDINGS.has(point?.binding?.kind)) {
+      if (typeof point?.binding?.kind === "string" && PAN_ONLY_POINT_BINDINGS.has(point.binding.kind)) {
         return "pan";
       }
       return env.currentScene().graphMode && env.isOriginPointIndex(pointIndex) ? "origin-pan" : "point";

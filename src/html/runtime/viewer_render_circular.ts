@@ -1,65 +1,27 @@
 (function() {
   const modules =  (
     window.GspViewerModules || (window.GspViewerModules = {})
-  );
+  ) as Partial<ViewerModules> & { render: ViewerRenderModule };
 
   
   function arcGeometryFromPoints(start: Point, mid: Point, end: Point) {
-    const determinant = 2 * (
-      start.x * (mid.y - end.y)
-      + mid.x * (end.y - start.y)
-      + end.x * (start.y - mid.y)
-    );
-    if (Math.abs(determinant) <= 1e-9) return null;
-
-    const startSq = start.x * start.x + start.y * start.y;
-    const midSq = mid.x * mid.x + mid.y * mid.y;
-    const endSq = end.x * end.x + end.y * end.y;
-    const center = {
-      x: (
-        startSq * (mid.y - end.y)
-        + midSq * (end.y - start.y)
-        + endSq * (start.y - mid.y)
-      ) / determinant,
-      y: (
-        startSq * (end.x - mid.x)
-        + midSq * (start.x - end.x)
-        + endSq * (mid.x - start.x)
-      ) / determinant,
-    };
-    const radius = Math.hypot(start.x - center.x, start.y - center.y);
-    if (radius <= 1e-9) return null;
-
-    const startAngle = Math.atan2(start.y - center.y, start.x - center.x);
-    const midAngle = Math.atan2(mid.y - center.y, mid.x - center.x);
-    const endAngle = Math.atan2(end.y - center.y, end.x - center.x);
-    const forwardSpan = ((endAngle - startAngle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
-    const forwardMid = ((midAngle - startAngle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
-
+    const geometry = window.GspRuntimeCore.threePointArcGeometry(start, mid, end);
+    if (!geometry) return null;
     return {
-      center,
-      radius,
-      startAngle,
-      endAngle,
-      counterClockwise: forwardMid > forwardSpan + 1e-9,
+      center: geometry.center,
+      radius: geometry.radius,
+      startAngle: geometry.startAngle,
+      endAngle: geometry.endAngle,
+      counterClockwise: geometry.ccwMid > geometry.ccwSpan + 1e-9,
     };
   }
 
   
   function midpointOnCircleWorld(start: Point, end: Point, center: Point, counterclockwise: boolean, yUp: boolean) {
-    const ySign = yUp ? 1 : -1;
-    const startAngle = Math.atan2((start.y - center.y) * ySign, start.x - center.x);
-    const endAngle = Math.atan2((end.y - center.y) * ySign, end.x - center.x);
-    const radius = (Math.hypot(start.x - center.x, start.y - center.y) + Math.hypot(end.x - center.x, end.y - center.y)) / 2;
-    if (radius <= 1e-9) return null;
-    const span = counterclockwise
-      ? ((endAngle - startAngle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2)
-      : -(((startAngle - endAngle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2));
-    const midpointAngle = startAngle + span * 0.5;
-    return {
-      x: center.x + radius * Math.cos(midpointAngle),
-      y: center.y + ySign * radius * Math.sin(midpointAngle),
-    };
+    const controls = counterclockwise
+      ? window.GspRuntimeCore.circleArcControlPoints(center, start, end, yUp)
+      : window.GspRuntimeCore.circleArcControlPoints(center, end, start, yUp);
+    return controls?.[1] ?? null;
   }
 
   
@@ -68,6 +30,7 @@
       const fillVisible = circle.fillColor && circle.fillVisible !== false;
       const strokeVisible = circle.visible !== false;
       if (!fillVisible && !strokeVisible) return;
+      if (!circle.center || !circle.radiusPoint) return;
       const centerWorld = env.resolvePoint(circle.center);
       const radiusPointWorld = env.resolvePoint(circle.radiusPoint);
       if (!centerWorld || !radiusPointWorld) return;
@@ -115,7 +78,7 @@
       } else {
         const worldPoints = arc.points.map(( handle) => env.resolvePoint(handle));
         if (worldPoints.some(( point) => !point)) return;
-        screenPoints = worldPoints.map(( point) => env.toScreen(point));
+        screenPoints = worldPoints.filter((point): point is Point => point !== null).map(( point) => env.toScreen(point));
       }
       const geometry = arcGeometryFromPoints(screenPoints[0], screenPoints[1], screenPoints[2]);
       if (!geometry) return;

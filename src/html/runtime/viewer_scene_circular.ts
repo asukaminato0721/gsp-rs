@@ -1,25 +1,25 @@
 (function() {
-  const modules = window.GspViewerModules || (window.GspViewerModules = {});
-  const scene =  (modules.scene);
-  const pointOnCircleArc = scene.pointOnCircleArc;
-  const pointOnThreePointArc = scene.pointOnThreePointArc;
-  const pointOnThreePointArcComplement = scene._pointOnThreePointArcComplement;
+  const modules = (window.GspViewerModules || (window.GspViewerModules = {})) as Partial<ViewerModules> & {
+    scene: ViewerSceneModule;
+  };
+  const scene = modules.scene;
 
   
   function sampleArcBoundaryPoints(env: ViewerEnv, binding: RuntimeLineBindingJson | RuntimeShapeBindingJson | RuntimePointConstraintJson) {
     const steps = 48;
+    if (typeof binding.startIndex !== "number" || typeof binding.endIndex !== "number") return null;
     const start = scene.resolveScenePoint(env, binding.startIndex);
     const end = scene.resolveScenePoint(env, binding.endIndex);
     if (!start || !end) return null;
     const reversed = !!binding.reversed;
     
-    const sampledArc = [];
+    const sampledArc: Point[] = [];
 
     if (typeof binding.centerIndex === "number") {
       const center = scene.resolveScenePoint(env, binding.centerIndex);
       if (!center) return null;
       for (let step = 0; step <= steps; step += 1) {
-        const point = pointOnCircleArc(center, start, end, step / steps, !!env.sourceScene.yUp);
+        const point = window.GspRuntimeCore.pointOnCircleArc(center, start, end, step / steps, !!env.sourceScene.yUp);
         if (!point) return null;
         sampledArc.push(point);
       }
@@ -37,9 +37,13 @@
     const mid = scene.resolveScenePoint(env, binding.midIndex);
     if (!mid) return null;
     for (let step = 0; step <= steps; step += 1) {
-      const point = binding.complement
-        ? pointOnThreePointArcComplement(start, mid, end, step / steps)
-        : pointOnThreePointArc(start, mid, end, step / steps);
+      const point = window.GspRuntimeCore.pointOnThreePointArc(
+        start,
+        mid,
+        end,
+        step / steps,
+        binding.complement === true,
+      );
       if (!point) return null;
       sampledArc.push(point);
     }
@@ -49,7 +53,7 @@
     return reversed ? [end, start, ...sampledArc.slice(1)] : [start, ...sampledArc.slice(1), start];
   }
 
-  scene.registerPointConstraintResolver("circle", ((_env: ViewerEnv, constraint, resolveFn) => {
+  scene.registerPointConstraintResolver("circle", ((_env: ViewerSceneResolverEnv | null, constraint, resolveFn) => {
     const center = resolveFn(constraint.centerIndex);
     const radiusPoint = resolveFn(constraint.radiusIndex);
     if (!center || !radiusPoint) return null;
@@ -59,17 +63,21 @@
       y: center.y + radius * constraint.unitY,
     };
   }));
-  scene.registerPointConstraintResolver("circle-arc", ((env: ViewerEnv, constraint, resolveFn) => {
+  scene.registerPointConstraintResolver("circle-arc", ((env: ViewerSceneResolverEnv | null, constraint, resolveFn) => {
     const center = resolveFn(constraint.centerIndex);
     const start = resolveFn(constraint.startIndex);
     const end = resolveFn(constraint.endIndex);
-    return center && start && end ? pointOnCircleArc(center, start, end, constraint.t, !!env?.sourceScene?.yUp) : null;
+    return center && start && end
+      ? window.GspRuntimeCore.pointOnCircleArc(center, start, end, constraint.t, !!env?.sourceScene?.yUp)
+      : null;
   }));
-  scene.registerPointConstraintResolver("arc", ((_env: ViewerEnv, constraint, resolveFn) => {
+  scene.registerPointConstraintResolver("arc", ((_env: ViewerSceneResolverEnv | null, constraint, resolveFn) => {
     const start = resolveFn(constraint.startIndex);
     const mid = resolveFn(constraint.midIndex);
     const end = resolveFn(constraint.endIndex);
-    return start && mid && end ? pointOnThreePointArc(start, mid, end, constraint.t) : null;
+    return start && mid && end
+      ? window.GspRuntimeCore.pointOnThreePointArc(start, mid, end, constraint.t, false)
+      : null;
   }));
   scene.registerLineBindingResolver("arc-boundary", ((env: ViewerEnv, line) => sampleArcBoundaryPoints(env, line.binding)));
 

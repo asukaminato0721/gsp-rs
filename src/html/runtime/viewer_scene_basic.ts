@@ -67,153 +67,43 @@
 
   
   function projectToLineLike(point: Point, start: Point, end: Point, kind: "segment" | "line" | "ray") {
-    const dx = end.x - start.x;
-    const dy = end.y - start.y;
-    const lengthSquared = dx * dx + dy * dy;
-    if (lengthSquared <= 1e-9) {
-      return null;
-    }
-    const rawT = ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared;
-    const t = kind === "line"
-      ? rawT
-      : kind === "ray"
-        ? Math.max(0, rawT)
-        : Math.max(0, Math.min(1, rawT));
-    const projected = lerpPoint(start, end, t);
-    return {
-      t,
-      projected,
-      distanceSquared: (point.x - projected.x) ** 2 + (point.y - projected.y) ** 2,
-    };
+    return window.GspRuntimeCore.projectToLineLike(point, start, end, kind);
   }
 
   
   function threePointArcGeometry(start: Point, mid: Point, end: Point) {
-    const determinant = 2 * (
-      start.x * (mid.y - end.y)
-      + mid.x * (end.y - start.y)
-      + end.x * (start.y - mid.y)
-    );
-    if (Math.abs(determinant) <= 1e-9) return null;
-
-    const startSq = start.x * start.x + start.y * start.y;
-    const midSq = mid.x * mid.x + mid.y * mid.y;
-    const endSq = end.x * end.x + end.y * end.y;
-    const center = {
-      x: (
-        startSq * (mid.y - end.y)
-        + midSq * (end.y - start.y)
-        + endSq * (start.y - mid.y)
-      ) / determinant,
-      y: (
-        startSq * (end.x - mid.x)
-        + midSq * (start.x - end.x)
-        + endSq * (mid.x - start.x)
-      ) / determinant,
-    };
-    const radius = Math.hypot(start.x - center.x, start.y - center.y);
-    if (radius <= 1e-9) return null;
-
-    const startAngle = Math.atan2(start.y - center.y, start.x - center.x);
-    const midAngle = Math.atan2(mid.y - center.y, mid.x - center.x);
-    const endAngle = Math.atan2(end.y - center.y, end.x - center.x);
-    return {
-      start,
-      mid,
-      end,
-      center,
-      radius,
-      startAngle,
-      midAngle,
-      endAngle,
-      ccwSpan: normalizeAngleDelta(startAngle, endAngle),
-      ccwMid: normalizeAngleDelta(startAngle, midAngle),
-    };
+    return window.GspRuntimeCore.threePointArcGeometry(start, mid, end);
   }
 
   
   function circleArcControlPoints(center: Point, start: Point, end: Point, yUp: boolean) {
-    const startDx = start.x - center.x;
-    const startDy = start.y - center.y;
-    const endDx = end.x - center.x;
-    const endDy = end.y - center.y;
-    const startRadius = Math.hypot(startDx, startDy);
-    const endRadius = Math.hypot(endDx, endDy);
-    const radius = (startRadius + endRadius) * 0.5;
-    if (radius <= 1e-9) return null;
-
-    const ySign = yUp ? 1 : -1;
-    const startAngle = Math.atan2(startDy * ySign, startDx);
-    const endAngle = Math.atan2(endDy * ySign, endDx);
-    const ccwSpan = normalizeAngleDelta(startAngle, endAngle);
-    const midpointAngle = startAngle + ccwSpan * 0.5;
-    return {
-      start,
-      mid: {
-        x: center.x + radius * Math.cos(midpointAngle),
-        y: center.y + ySign * radius * Math.sin(midpointAngle),
-      },
-      end,
-    };
-  }
-
-  
-  function pointOnThreePointArcWithGeometry(geometry: { center: Point; radius: number; startAngle: number; endAngle: number; ccwSpan: number; ccwMid: number }, t: number, complement: boolean) {
-    const clampedT = Math.max(0, Math.min(1, t));
-    const useCcw = complement
-      ? geometry.ccwMid > geometry.ccwSpan + 1e-9
-      : geometry.ccwMid <= geometry.ccwSpan + 1e-9;
-    const angle = useCcw
-      ? geometry.startAngle + geometry.ccwSpan * clampedT
-      : geometry.startAngle - normalizeAngleDelta(geometry.endAngle, geometry.startAngle) * clampedT;
-    return {
-      x: geometry.center.x + geometry.radius * Math.cos(angle),
-      y: geometry.center.y + geometry.radius * Math.sin(angle),
-    };
+    const controls = window.GspRuntimeCore.circleArcControlPoints(center, start, end, yUp);
+    return controls ? { start: controls[0], mid: controls[1], end: controls[2] } : null;
   }
 
   
   function pointOnThreePointArc(start: Point, mid: Point, end: Point, t: number) {
-    const geometry = threePointArcGeometry(start, mid, end);
-    if (!geometry) return null;
-    return pointOnThreePointArcWithGeometry(geometry, t, false);
+    return window.GspRuntimeCore.pointOnThreePointArc(start, mid, end, t, false);
   }
 
   
   function pointOnThreePointArcComplement(start: Point, mid: Point, end: Point, t: number) {
-    const geometry = threePointArcGeometry(start, mid, end);
-    if (!geometry) return null;
-    return pointOnThreePointArcWithGeometry(geometry, t, true);
+    return window.GspRuntimeCore.pointOnThreePointArc(start, mid, end, t, true);
   }
 
   
   function pointOnCircleArc(center: Point, start: Point, end: Point, t: number, yUp: boolean) {
-    const controls = circleArcControlPoints(center, start, end, yUp);
-    if (!controls) return null;
-    return pointOnThreePointArc(controls.start, controls.mid, controls.end, t);
+    return window.GspRuntimeCore.pointOnCircleArc(center, start, end, t, yUp);
   }
 
   
   function projectToThreePointArc(point: Point, start: Point, mid: Point, end: Point) {
-    let best = null;
-    const steps = 256;
-    for (let step = 0; step <= steps; step += 1) {
-      const t = step / steps;
-      const projected = pointOnThreePointArc(start, mid, end, t);
-      if (!projected) return null;
-      const distanceSquared = (point.x - projected.x) ** 2 + (point.y - projected.y) ** 2;
-      if (!best || distanceSquared < best.distanceSquared) {
-        best = { t, projected, distanceSquared };
-      }
-    }
-    return best;
+    return window.GspRuntimeCore.projectToThreePointArc(point, start, mid, end);
   }
 
   
   function projectToCircleArc(point: Point, center: Point, start: Point, end: Point, yUp: boolean) {
-    const controls = circleArcControlPoints(center, start, end, yUp);
-    if (!controls) return null;
-    return projectToThreePointArc(point, controls.start, controls.mid, controls.end);
+    return window.GspRuntimeCore.projectToCircleArc(point, center, start, end, yUp);
   }
 
   

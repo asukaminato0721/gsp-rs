@@ -1,5 +1,6 @@
 use super::assets::{
-    VIEWER_CSS, VIEWER_RUNTIME_JS, indent_asset, minify_css_asset, van_runtime_to_global,
+    RUNTIME_CORE_WASM_BASE64, VIEWER_CSS, VIEWER_RUNTIME_JS, indent_asset, minify_css_asset,
+    van_runtime_to_global,
 };
 use super::render_scene_json;
 use crate::runtime::scene::Scene;
@@ -107,6 +108,7 @@ pub(super) fn render_standalone_html_pages(pages: &[StandaloneHtmlPage<'_>]) -> 
     </div>
   </main>
   <script id="scene-data" type="application/json">{scene_json}</script>
+  <script id="gsp-runtime-core-wasm" type="application/octet-stream">{runtime_core_wasm}</script>
   <!-- viewer-runtime: full -->
   <script>
 {embedded_van_js}
@@ -125,6 +127,7 @@ pub(super) fn render_standalone_html_pages(pages: &[StandaloneHtmlPage<'_>]) -> 
         shape_count = shape_count,
         page_tabs = page_tabs,
         scene_json = scene_json,
+        runtime_core_wasm = RUNTIME_CORE_WASM_BASE64,
         embedded_css = minify_css_asset(VIEWER_CSS),
         embedded_van_js = indent_asset(&van_js, 4),
         embedded_viewer_runtime_js = indent_asset(VIEWER_RUNTIME_JS, 4),
@@ -241,7 +244,11 @@ mod tests {
         }]);
 
         assert!(html.contains("<!-- viewer-runtime: full -->"));
-        assert!(html.contains("function lineLikeAllowsParam"));
+        assert!(html.contains("id=\"gsp-runtime-core-wasm\""));
+        assert!(html.contains("gsp_runtime_abi_version"));
+        assert!(html.contains("new WebAssembly.Module"));
+        assert!(!html.contains("instantiateStreaming"));
+        assert!(html.contains("window.GspRuntimeCore.lineLineIntersection"));
         assert!(html.contains("function dependencyRootsForDraggedPoint"));
         assert!(html.contains("function isVisibilityButtonAction"));
         assert!(!html.contains("viewer-runtime: scene="));

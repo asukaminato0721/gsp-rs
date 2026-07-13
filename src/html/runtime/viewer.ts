@@ -12,7 +12,6 @@
   const XLINK_NS = "http://www.w3.org/1999/xlink";
   const sceneDataElement = document.getElementById("scene-data");
   const {
-    raw: rawSceneData,
     pages: documentPages,
     activePageIndex,
     sourceScene,
@@ -270,17 +269,8 @@
 
 
   function distanceToSegmentSquared(point: Point, start: Point, end: Point) {
-    const dx = end.x - start.x;
-    const dy = end.y - start.y;
-    const lengthSquared = dx * dx + dy * dy;
-    if (lengthSquared <= 1e-9) {
-      return distanceSquared(point, start);
-    }
-    const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared));
-    return distanceSquared(point, {
-      x: start.x + dx * t,
-      y: start.y + dy * t,
-    });
+    return window.GspRuntimeCore.projectToLineLike(point, start, end, "segment")?.distanceSquared
+      ?? distanceSquared(point, start);
   }
 
 
@@ -294,61 +284,23 @@
 
 
   function arcGeometryFromPoints(start: Point, mid: Point, end: Point) {
-    const determinant = 2 * (
-      start.x * (mid.y - end.y)
-      + mid.x * (end.y - start.y)
-      + end.x * (start.y - mid.y)
-    );
-    if (Math.abs(determinant) <= 1e-9) return null;
-
-    const startSq = start.x * start.x + start.y * start.y;
-    const midSq = mid.x * mid.x + mid.y * mid.y;
-    const endSq = end.x * end.x + end.y * end.y;
-    const center = {
-      x: (
-        startSq * (mid.y - end.y)
-        + midSq * (end.y - start.y)
-        + endSq * (start.y - mid.y)
-      ) / determinant,
-      y: (
-        startSq * (end.x - mid.x)
-        + midSq * (start.x - end.x)
-        + endSq * (mid.x - start.x)
-      ) / determinant,
-    };
-    const radius = Math.hypot(start.x - center.x, start.y - center.y);
-    if (radius <= 1e-9) return null;
-
-    const startAngle = Math.atan2(start.y - center.y, start.x - center.x);
-    const midAngle = Math.atan2(mid.y - center.y, mid.x - center.x);
-    const endAngle = Math.atan2(end.y - center.y, end.x - center.x);
-    const forwardSpan = ((endAngle - startAngle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
-    const forwardMid = ((midAngle - startAngle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
-
+    const geometry = window.GspRuntimeCore.threePointArcGeometry(start, mid, end);
+    if (!geometry) return null;
     return {
-      center,
-      radius,
-      startAngle,
-      endAngle,
-      counterClockwise: forwardMid > forwardSpan + 1e-9,
+      center: geometry.center,
+      radius: geometry.radius,
+      startAngle: geometry.startAngle,
+      endAngle: geometry.endAngle,
+      counterClockwise: geometry.ccwMid > geometry.ccwSpan + 1e-9,
     };
   }
 
 
   function midpointOnCircleWorld(start: Point, end: Point, center: Point, counterclockwise: boolean, yUp: boolean) {
-    const ySign = yUp ? 1 : -1;
-    const startAngle = Math.atan2((start.y - center.y) * ySign, start.x - center.x);
-    const endAngle = Math.atan2((end.y - center.y) * ySign, end.x - center.x);
-    const radius = (Math.hypot(start.x - center.x, start.y - center.y) + Math.hypot(end.x - center.x, end.y - center.y)) / 2;
-    if (radius <= 1e-9) return null;
-    const span = counterclockwise
-      ? ((endAngle - startAngle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2)
-      : -(((startAngle - endAngle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2));
-    const midpointAngle = startAngle + span * 0.5;
-    return {
-      x: center.x + radius * Math.cos(midpointAngle),
-      y: center.y + ySign * radius * Math.sin(midpointAngle),
-    };
+    const controls = counterclockwise
+      ? window.GspRuntimeCore.circleArcControlPoints(center, start, end, yUp)
+      : window.GspRuntimeCore.circleArcControlPoints(center, end, start, yUp);
+    return controls?.[1] ?? null;
   }
 
 

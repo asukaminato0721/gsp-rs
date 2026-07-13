@@ -1,5 +1,7 @@
 use crate::runtime::geometry::format_number;
 
+pub(crate) use gsp_runtime_core::{BinaryOp, FunctionAst, FunctionExpr, UnaryFunction};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FunctionPlotMode {
     Cartesian,
@@ -12,56 +14,6 @@ pub(crate) struct FunctionPlotDescriptor {
     pub(crate) x_max: f64,
     pub(crate) sample_count: usize,
     pub(crate) mode: FunctionPlotMode,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum FunctionExpr {
-    Constant(f64),
-    Identity,
-    SinIdentity,
-    CosIdentityPlus(f64),
-    TanIdentityMinus(f64),
-    Parsed(FunctionAst),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BinaryOp {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Pow,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum UnaryFunction {
-    Sin,
-    Cos,
-    Tan,
-    Abs,
-    Sqrt,
-    Ln,
-    Log10,
-    Sign,
-    Round,
-    Trunc,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum FunctionAst {
-    Variable,
-    Constant(f64),
-    PiAngle,
-    Parameter(String, f64),
-    Unary {
-        op: UnaryFunction,
-        expr: Box<FunctionAst>,
-    },
-    Binary {
-        lhs: Box<FunctionAst>,
-        op: BinaryOp,
-        rhs: Box<FunctionAst>,
-    },
 }
 
 pub(crate) fn function_expr_ast(expr: FunctionExpr) -> FunctionAst {

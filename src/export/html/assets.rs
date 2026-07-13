@@ -1,6 +1,13 @@
-pub(super) const VIEWER_CSS: &str = include_str!("../../html/viewer.css");
-pub(super) const VAN_JS: &str = include_str!("../../html/vendor/van-1.6.0.js");
-pub(super) const VIEWER_RUNTIME_JS: &str = include_str!("../../html/generated/viewer-runtime.js");
+pub(super) const VIEWER_CSS: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/html/viewer.css"));
+pub(super) const VAN_JS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/src/html/vendor/van-1.6.0.js"
+));
+pub(super) const VIEWER_RUNTIME_JS: &str =
+    include_str!(concat!(env!("OUT_DIR"), "/viewer-runtime.js"));
+pub(super) const RUNTIME_CORE_WASM_BASE64: &str =
+    include_str!(concat!(env!("OUT_DIR"), "/runtime-core.wasm.b64"));
 
 pub(super) fn van_runtime_to_global() -> String {
     VAN_JS.replacen("export default {", "window.van = {", 1)
