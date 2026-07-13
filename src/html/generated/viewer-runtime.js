@@ -2569,7 +2569,7 @@
     return typeof value === "number" && Number.isFinite(value);
   }
   function isVisibilityButtonAction(action) {
-    return action.kind === "toggle-visibility" || action.kind === "set-visibility" || action.kind === "show-hide-visibility";
+    return action.kind === "show-hide-visibility";
   }
   function cleanRichText(text) {
     return text.split("–").join("-").split("—").join("-").split("厘米").join("cm");
@@ -2838,6 +2838,12 @@
       (action.polygonIndices || []).forEach((index) => {
         callback(scene.polygons[index]);
       });
+      (action.lineIterationIndices || []).forEach((index) => {
+        callback(env.sourceScene.lineIterations[index]);
+      });
+      (action.polygonIterationIndices || []).forEach((index) => {
+        callback(env.sourceScene.polygonIterations[index]);
+      });
     }
     function buttonPointerScale() {
       const rect = env.canvas.getBoundingClientRect();
@@ -2854,6 +2860,9 @@
         });
       }, "none");
       buttonsState.val = nextButtons;
+      if ((action.lineIterationIndices || []).length > 0 || (action.polygonIterationIndices || []).length > 0) {
+        env.syncDynamicScene();
+      }
     }
     function visibilityTargetsMatch(action, visible) {
       const scene = env.currentScene();
@@ -2903,11 +2912,7 @@
     }
     function syncVisibilityButtonState(buttonIndex, action) {
       let active = false;
-      if (action.kind === "toggle-visibility") {
-        active = visibilityTargetsMatch(action, true);
-      } else if (action.kind === "set-visibility") {
-        active = visibilityTargetsMatch(action, !!action.visible);
-      } else if (action.kind === "show-hide-visibility") {
+      if (action.kind === "show-hide-visibility") {
         active = visibilityTargetsMatch(action, true);
       } else {
         return;
@@ -2915,25 +2920,17 @@
       updateButtons((buttons) => {
         if (buttons[buttonIndex]) {
           buttons[buttonIndex].active = active;
-          if (action.kind === "show-hide-visibility" || action.kind === "toggle-visibility") {
+          if (action.kind === "show-hide-visibility") {
             buttons[buttonIndex].text = toggledVisibilityText(buttons[buttonIndex].baseText || buttons[buttonIndex].text, active);
           }
         }
       });
-      if (action.kind === "show-hide-visibility" || action.kind === "toggle-visibility") {
+      if (action.kind === "show-hide-visibility") {
         const button = buttonsState.val[buttonIndex];
         if (button) {
           updateLinkedButtonLabels(buttonIndex, button.text);
         }
       }
-    }
-    function toggleTargetsVisibility(action) {
-      const scene = env.currentScene();
-      let hasHiddenTarget = false;
-      forEachVisibilityTarget(action, scene, buttonsState.val, (target) => {
-        hasHiddenTarget = hasHiddenTarget || target?.visible === false;
-      });
-      setTargetsVisibility(action, hasHiddenTarget);
     }
     function focusPoint(pointIndex) {
       const point = env.currentScene().points[pointIndex];
@@ -3478,14 +3475,6 @@
           if (action.href) {
             window.open(action.href, "_blank", "noopener,noreferrer");
           }
-          break;
-        case "toggle-visibility":
-          toggleTargetsVisibility(action);
-          syncVisibilityButtonState(buttonIndex, action);
-          break;
-        case "set-visibility":
-          setTargetsVisibility(action, !!action.visible);
-          syncVisibilityButtonState(buttonIndex, action);
           break;
         case "show-hide-visibility": {
           const nextVisible = !visibilityTargetsMatch(action, true);
@@ -4787,6 +4776,7 @@
               points: [],
               color: family.color,
               dashed: !!family.dashed,
+              visible: family.visible !== false,
               binding: {
                 kind: "point-trace",
                 pointIndex: family.pointIndex,
@@ -4805,6 +4795,7 @@
               points: sampled,
               color: family.color,
               dashed: !!family.dashed,
+              visible: family.visible !== false,
               binding: null
             });
           }
@@ -4852,6 +4843,7 @@
                   points: [{ ...childStart }, { ...childEnd }],
                   color: family.color,
                   dashed: !!family.dashed,
+                  visible: family.visible !== false,
                   binding: null
                 });
                 next.push({
@@ -4888,6 +4880,7 @@
               points: [{ ...currentStart }, { ...currentEnd }],
               color: family.color,
               dashed: !!family.dashed,
+              visible: family.visible !== false,
               binding: null
             });
           }
@@ -4909,6 +4902,7 @@
               points: source.points.map((point) => rotateAround(point, center, radians)),
               color: family.color,
               dashed: !!family.dashed,
+              visible: family.visible !== false,
               binding: {
                 kind: "derived",
                 sourceIndex: family.sourceIndex,
@@ -4979,6 +4973,7 @@
               }],
               color: family.color,
               dashed: !!family.dashed,
+              visible: family.visible !== false,
               binding: null
             });
             emittedControlledTickSeeds.add(seedKey);
@@ -5044,6 +5039,7 @@
             }],
             color: family.color,
             dashed: !!family.dashed,
+            visible: family.visible !== false,
             binding: null
           });
         });
@@ -5109,6 +5105,7 @@
               })),
               color: familyColor,
               outlineColor: darken(familyColor, 80),
+              visible: family.visible !== false,
               binding: null
             });
           }
@@ -5177,6 +5174,7 @@
             })),
             color: familyColor,
             outlineColor: darken(familyColor, 80),
+            visible: family.visible !== false,
             binding: null
           });
         });

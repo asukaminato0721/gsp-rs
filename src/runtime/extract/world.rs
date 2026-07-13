@@ -66,6 +66,8 @@ pub(super) fn world_line_iteration_family(
 ) -> LineIterationFamily {
     match family {
         LineIterationFamily::Translate {
+            binding_group_ordinal,
+            visible,
             start_index,
             end_index,
             start_control_index,
@@ -85,6 +87,8 @@ pub(super) fn world_line_iteration_family(
         } => {
             let delta = world_delta(&PointRecord { x: dx, y: dy }, graph_ref);
             LineIterationFamily::Translate {
+                binding_group_ordinal,
+                visible,
                 start_index,
                 end_index,
                 start_control_index,
@@ -126,6 +130,8 @@ pub(super) fn world_polygon_iteration_family(
 ) -> PolygonIterationFamily {
     match family {
         PolygonIterationFamily::Translate {
+            binding_group_ordinal,
+            visible,
             vertex_indices,
             dx,
             dy,
@@ -141,6 +147,8 @@ pub(super) fn world_polygon_iteration_family(
         } => {
             let delta = world_delta(&PointRecord { x: dx, y: dy }, graph_ref);
             PolygonIterationFamily::Translate {
+                binding_group_ordinal,
+                visible,
                 vertex_indices,
                 dx: delta.x,
                 dy: delta.y,

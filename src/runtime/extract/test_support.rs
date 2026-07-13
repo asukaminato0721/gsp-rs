@@ -130,7 +130,7 @@ pub(super) fn fixture_buttons_without_validation(data: &[u8]) -> Vec<SceneButton
         &analysis.graph_ref,
     )
     .expect("visible points build");
-    let (binding_maps, _, _) = remap_scene_bindings(
+    let (binding_maps, line_iterations, polygon_iterations) = remap_scene_bindings(
         &file,
         &groups,
         &analysis.raw_anchors,
@@ -138,6 +138,16 @@ pub(super) fn fixture_buttons_without_validation(data: &[u8]) -> Vec<SceneButton
         analysis.function_plots.len(),
         &mut shapes,
     );
+    let line_iteration_group_to_index = line_iterations
+        .iter()
+        .enumerate()
+        .map(|(index, family)| (family.binding_group_ordinal(), index))
+        .collect();
+    let polygon_iteration_group_to_index = polygon_iterations
+        .iter()
+        .enumerate()
+        .map(|(index, family)| (family.binding_group_ordinal(), index))
+        .collect();
     let (buttons, _) = collect_buttons(
         &file,
         &groups,
@@ -149,6 +159,8 @@ pub(super) fn fixture_buttons_without_validation(data: &[u8]) -> Vec<SceneButton
             line_group_to_index: &binding_maps.line_group_to_index,
             circle_group_to_index: &binding_maps.circle_group_to_index,
             polygon_group_to_index: &binding_maps.polygon_group_to_index,
+            line_iteration_group_to_index: &line_iteration_group_to_index,
+            polygon_iteration_group_to_index: &polygon_iteration_group_to_index,
         },
     );
     buttons
@@ -175,7 +187,7 @@ pub(super) fn fixture_labels_without_validation(
         &analysis.graph_ref,
     )
     .expect("visible points build");
-    let (binding_maps, _, _) = remap_scene_bindings(
+    let (binding_maps, line_iterations, polygon_iterations) = remap_scene_bindings(
         &file,
         &groups,
         &analysis.raw_anchors,
@@ -183,6 +195,16 @@ pub(super) fn fixture_labels_without_validation(
         analysis.function_plots.len(),
         &mut shapes,
     );
+    let line_iteration_group_to_index = line_iterations
+        .iter()
+        .enumerate()
+        .map(|(index, family)| (family.binding_group_ordinal(), index))
+        .collect();
+    let polygon_iteration_group_to_index = polygon_iterations
+        .iter()
+        .enumerate()
+        .map(|(index, family)| (family.binding_group_ordinal(), index))
+        .collect();
     let _ = collect_buttons(
         &file,
         &groups,
@@ -194,6 +216,8 @@ pub(super) fn fixture_labels_without_validation(
             line_group_to_index: &binding_maps.line_group_to_index,
             circle_group_to_index: &binding_maps.circle_group_to_index,
             polygon_group_to_index: &binding_maps.polygon_group_to_index,
+            line_iteration_group_to_index: &line_iteration_group_to_index,
+            polygon_iteration_group_to_index: &polygon_iteration_group_to_index,
         },
     );
     labels

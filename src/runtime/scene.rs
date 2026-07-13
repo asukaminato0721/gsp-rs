@@ -64,25 +64,6 @@ pub(crate) enum ButtonAction {
     Link {
         href: String,
     },
-    ToggleVisibility {
-        button_indices: Vec<usize>,
-        label_indices: Vec<usize>,
-        image_indices: Vec<usize>,
-        point_indices: Vec<usize>,
-        line_indices: Vec<usize>,
-        circle_indices: Vec<usize>,
-        polygon_indices: Vec<usize>,
-    },
-    SetVisibility {
-        visible: bool,
-        button_indices: Vec<usize>,
-        label_indices: Vec<usize>,
-        image_indices: Vec<usize>,
-        point_indices: Vec<usize>,
-        line_indices: Vec<usize>,
-        circle_indices: Vec<usize>,
-        polygon_indices: Vec<usize>,
-    },
     ShowHideVisibility {
         button_indices: Vec<usize>,
         label_indices: Vec<usize>,
@@ -91,6 +72,8 @@ pub(crate) enum ButtonAction {
         line_indices: Vec<usize>,
         circle_indices: Vec<usize>,
         polygon_indices: Vec<usize>,
+        line_iteration_indices: Vec<usize>,
+        polygon_iteration_indices: Vec<usize>,
     },
     MovePoint {
         point_index: usize,
@@ -204,6 +187,8 @@ pub(crate) struct CircleIterationFamily {
 #[derive(Debug, Clone)]
 pub(crate) enum LineIterationFamily {
     Translate {
+        binding_group_ordinal: usize,
+        visible: bool,
         start_index: usize,
         end_index: usize,
         start_control_index: Option<usize>,
@@ -222,6 +207,8 @@ pub(crate) enum LineIterationFamily {
         dashed: bool,
     },
     Rotate {
+        binding_group_ordinal: usize,
+        visible: bool,
         source_index: usize,
         center_index: usize,
         angle_expr: FunctionExpr,
@@ -232,6 +219,8 @@ pub(crate) enum LineIterationFamily {
         dashed: bool,
     },
     Affine {
+        binding_group_ordinal: usize,
+        visible: bool,
         start_index: usize,
         end_index: usize,
         source_triangle_indices: [usize; 3],
@@ -241,6 +230,8 @@ pub(crate) enum LineIterationFamily {
         dashed: bool,
     },
     Branching {
+        binding_group_ordinal: usize,
+        visible: bool,
         start_index: usize,
         end_index: usize,
         target_segments: Vec<[IterationPointHandle; 2]>,
@@ -250,6 +241,8 @@ pub(crate) enum LineIterationFamily {
         dashed: bool,
     },
     ParameterizedPointTrace {
+        binding_group_ordinal: usize,
+        visible: bool,
         point_index: usize,
         driver_index: usize,
         depth_parameter_name: Option<String>,
@@ -280,6 +273,8 @@ pub(crate) enum IterationPointHandle {
 #[derive(Debug, Clone)]
 pub(crate) enum PolygonIterationFamily {
     Translate {
+        binding_group_ordinal: usize,
+        visible: bool,
         vertex_indices: Vec<usize>,
         dx: f64,
         dy: f64,
@@ -294,6 +289,8 @@ pub(crate) enum PolygonIterationFamily {
         color: [u8; 4],
     },
     CoordinateGrid {
+        binding_group_ordinal: usize,
+        visible: bool,
         vertex_indices: Vec<usize>,
         parameter_name: String,
         step_expr: FunctionExpr,
@@ -305,6 +302,48 @@ pub(crate) enum PolygonIterationFamily {
         depth_expr: Option<FunctionExpr>,
         color: [u8; 4],
     },
+}
+
+impl LineIterationFamily {
+    pub(crate) fn binding_group_ordinal(&self) -> usize {
+        match self {
+            Self::Translate {
+                binding_group_ordinal,
+                ..
+            }
+            | Self::Rotate {
+                binding_group_ordinal,
+                ..
+            }
+            | Self::Affine {
+                binding_group_ordinal,
+                ..
+            }
+            | Self::Branching {
+                binding_group_ordinal,
+                ..
+            }
+            | Self::ParameterizedPointTrace {
+                binding_group_ordinal,
+                ..
+            } => *binding_group_ordinal,
+        }
+    }
+}
+
+impl PolygonIterationFamily {
+    pub(crate) fn binding_group_ordinal(&self) -> usize {
+        match self {
+            Self::Translate {
+                binding_group_ordinal,
+                ..
+            }
+            | Self::CoordinateGrid {
+                binding_group_ordinal,
+                ..
+            } => *binding_group_ordinal,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

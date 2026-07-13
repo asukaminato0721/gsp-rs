@@ -119,6 +119,8 @@ pub(crate) fn collect_rotational_line_iteration_families(
                     })
                 });
             Some(LineIterationFamily::Rotate {
+                binding_group_ordinal: group.ordinal,
+                visible: !group.header.is_hidden(),
                 source_index,
                 center_index,
                 angle_expr,
@@ -354,6 +356,8 @@ pub(crate) fn collect_carried_line_iteration_families(
                     return None;
                 }
                 return Some(LineIterationFamily::ParameterizedPointTrace {
+                    binding_group_ordinal: group.ordinal,
+                    visible: !group.header.is_hidden(),
                     point_index: trace_point_index,
                     driver_index: trace_driver_index,
                     depth_parameter_name: carried_iteration_parameter_name(
@@ -445,6 +449,8 @@ pub(crate) fn collect_carried_line_iteration_families(
                         )
                     });
                 return Some(LineIterationFamily::Translate {
+                    binding_group_ordinal: group.ordinal,
+                    visible: !group.header.is_hidden(),
                     start_index,
                     end_index,
                     start_control_index,
@@ -490,6 +496,8 @@ pub(crate) fn collect_carried_line_iteration_families(
                     })
                     .collect::<Option<Vec<_>>>()?;
                 return Some(LineIterationFamily::Branching {
+                    binding_group_ordinal: group.ordinal,
+                    visible: !group.header.is_hidden(),
                     start_index,
                     end_index,
                     target_segments,
@@ -509,6 +517,8 @@ pub(crate) fn collect_carried_line_iteration_families(
                 anchors,
             ) {
                 return Some(LineIterationFamily::Affine {
+                    binding_group_ordinal: group.ordinal,
+                    visible: !group.header.is_hidden(),
                     start_index,
                     end_index,
                     source_triangle_indices: source_indices,
@@ -522,6 +532,8 @@ pub(crate) fn collect_carried_line_iteration_families(
             let steps = carried_iteration_steps(file, groups, iter_group, anchors);
             let (step, secondary_step, bidirectional) = carried_iteration_basis(&steps)?;
             Some(LineIterationFamily::Translate {
+                binding_group_ordinal: group.ordinal,
+                visible: !group.header.is_hidden(),
                 start_index,
                 end_index,
                 start_control_index: None,
@@ -1901,6 +1913,7 @@ pub(crate) fn collect_carried_polygon_iteration_families(
             if let Some(family) = build_coordinate_point_polygon_grid_iteration_family(
                 file,
                 groups,
+                group,
                 source_group,
                 iter_group,
                 group_to_point_index,
@@ -1965,6 +1978,8 @@ pub(crate) fn collect_carried_polygon_iteration_families(
                 2,
             );
             Some(PolygonIterationFamily::Translate {
+                binding_group_ordinal: group.ordinal,
+                visible: !group.header.is_hidden(),
                 vertex_indices,
                 dx: step.x,
                 dy: step.y,
@@ -1988,6 +2003,7 @@ pub(crate) fn collect_carried_polygon_iteration_families(
 fn build_coordinate_point_polygon_grid_iteration_family(
     file: &GspFile,
     groups: &[ObjectGroup],
+    binding_group: &ObjectGroup,
     source_group: &ObjectGroup,
     iter_group: &ObjectGroup,
     group_to_point_index: &[Option<usize>],
@@ -2047,6 +2063,8 @@ fn build_coordinate_point_polygon_grid_iteration_family(
     let y_expr = try_decode_function_expr(file, groups, y_calc_group).ok()?;
 
     Some(PolygonIterationFamily::CoordinateGrid {
+        binding_group_ordinal: binding_group.ordinal,
+        visible: !binding_group.header.is_hidden(),
         vertex_indices,
         parameter_name,
         step_expr,

@@ -19,19 +19,14 @@ fn collects_button_visibility_targets_for_show_hide_line_segment_controls() {
         .find(|button| button.text == "隐藏线段")
         .expect("expected hide-line button");
     match &hide_line.action {
-        ButtonAction::SetVisibility {
-            visible,
-            button_indices,
-            ..
-        } => {
-            assert!(!visible, "expected hide-line button to hide its targets");
+        ButtonAction::ShowHideVisibility { button_indices, .. } => {
             assert_eq!(
                 button_indices.len(),
                 3,
                 "expected hide-line payload to target the three line-control buttons"
             );
         }
-        action => panic!("expected set-visibility action, got {action:?}"),
+        action => panic!("expected show-hide visibility action, got {action:?}"),
     }
 
     let show_line = buttons
@@ -39,19 +34,14 @@ fn collects_button_visibility_targets_for_show_hide_line_segment_controls() {
         .find(|button| button.text == "显示线段")
         .expect("expected show-line button");
     match &show_line.action {
-        ButtonAction::SetVisibility {
-            visible,
-            button_indices,
-            ..
-        } => {
-            assert!(*visible, "expected show-line button to show its targets");
+        ButtonAction::ShowHideVisibility { button_indices, .. } => {
             assert_eq!(
                 button_indices.len(),
                 3,
                 "expected show-line payload to target the same three line-control buttons"
             );
         }
-        action => panic!("expected set-visibility action, got {action:?}"),
+        action => panic!("expected show-hide visibility action, got {action:?}"),
     }
 }
 
@@ -71,20 +61,18 @@ fn preserves_show_image_button_in_wuxi_fixture() {
         .find(|button| button.text == "显示图片")
         .expect("expected show-image button");
     match &show_image.action {
-        ButtonAction::SetVisibility {
-            visible,
+        ButtonAction::ShowHideVisibility {
             image_indices,
             point_indices,
             ..
         } => {
-            assert!(*visible, "expected the image button to show its target");
             assert_eq!(image_indices.as_slice(), &[0]);
             assert!(
                 point_indices.is_empty(),
                 "expected image visibility to target the exported image, not a point fallback"
             );
         }
-        action => panic!("expected set-visibility action, got {action:?}"),
+        action => panic!("expected show-hide visibility action, got {action:?}"),
     }
 }
 
@@ -142,15 +130,10 @@ fn collects_label_visibility_button_without_validation() {
         .find(|button| button.text == "隐藏说明")
         .expect("expected hide-help button");
     match &hide_help.action {
-        ButtonAction::SetVisibility {
-            visible,
-            label_indices,
-            ..
-        } => {
-            assert!(!visible, "expected hide-help button to hide its labels");
+        ButtonAction::ShowHideVisibility { label_indices, .. } => {
             assert_eq!(label_indices.len(), 2);
         }
-        action => panic!("expected set-visibility action, got {action:?}"),
+        action => panic!("expected show-hide visibility action, got {action:?}"),
     }
 }
 

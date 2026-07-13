@@ -42,39 +42,6 @@ enum ButtonActionJson {
     Link {
         href: String,
     },
-    ToggleVisibility {
-        #[serde(rename = "buttonIndices")]
-        button_indices: Vec<usize>,
-        #[serde(rename = "labelIndices")]
-        label_indices: Vec<usize>,
-        #[serde(rename = "imageIndices")]
-        image_indices: Vec<usize>,
-        #[serde(rename = "pointIndices")]
-        point_indices: Vec<usize>,
-        #[serde(rename = "lineIndices")]
-        line_indices: Vec<usize>,
-        #[serde(rename = "circleIndices")]
-        circle_indices: Vec<usize>,
-        #[serde(rename = "polygonIndices")]
-        polygon_indices: Vec<usize>,
-    },
-    SetVisibility {
-        visible: bool,
-        #[serde(rename = "buttonIndices")]
-        button_indices: Vec<usize>,
-        #[serde(rename = "labelIndices")]
-        label_indices: Vec<usize>,
-        #[serde(rename = "imageIndices")]
-        image_indices: Vec<usize>,
-        #[serde(rename = "pointIndices")]
-        point_indices: Vec<usize>,
-        #[serde(rename = "lineIndices")]
-        line_indices: Vec<usize>,
-        #[serde(rename = "circleIndices")]
-        circle_indices: Vec<usize>,
-        #[serde(rename = "polygonIndices")]
-        polygon_indices: Vec<usize>,
-    },
     ShowHideVisibility {
         #[serde(rename = "buttonIndices")]
         button_indices: Vec<usize>,
@@ -90,6 +57,10 @@ enum ButtonActionJson {
         circle_indices: Vec<usize>,
         #[serde(rename = "polygonIndices")]
         polygon_indices: Vec<usize>,
+        #[serde(rename = "lineIterationIndices")]
+        line_iteration_indices: Vec<usize>,
+        #[serde(rename = "polygonIterationIndices")]
+        polygon_iteration_indices: Vec<usize>,
     },
     MovePoint {
         #[serde(rename = "pointIndex")]
@@ -150,42 +121,6 @@ impl ButtonActionJson {
     fn from_action(action: &ButtonAction) -> Self {
         match action {
             ButtonAction::Link { href } => Self::Link { href: href.clone() },
-            ButtonAction::ToggleVisibility {
-                button_indices,
-                label_indices,
-                image_indices,
-                point_indices,
-                line_indices,
-                circle_indices,
-                polygon_indices,
-            } => Self::ToggleVisibility {
-                button_indices: button_indices.clone(),
-                label_indices: label_indices.clone(),
-                image_indices: image_indices.clone(),
-                point_indices: point_indices.clone(),
-                line_indices: line_indices.clone(),
-                circle_indices: circle_indices.clone(),
-                polygon_indices: polygon_indices.clone(),
-            },
-            ButtonAction::SetVisibility {
-                visible,
-                button_indices,
-                label_indices,
-                image_indices,
-                point_indices,
-                line_indices,
-                circle_indices,
-                polygon_indices,
-            } => Self::SetVisibility {
-                visible: *visible,
-                button_indices: button_indices.clone(),
-                label_indices: label_indices.clone(),
-                image_indices: image_indices.clone(),
-                point_indices: point_indices.clone(),
-                line_indices: line_indices.clone(),
-                circle_indices: circle_indices.clone(),
-                polygon_indices: polygon_indices.clone(),
-            },
             ButtonAction::ShowHideVisibility {
                 button_indices,
                 label_indices,
@@ -194,6 +129,8 @@ impl ButtonActionJson {
                 line_indices,
                 circle_indices,
                 polygon_indices,
+                line_iteration_indices,
+                polygon_iteration_indices,
             } => Self::ShowHideVisibility {
                 button_indices: button_indices.clone(),
                 label_indices: label_indices.clone(),
@@ -202,6 +139,8 @@ impl ButtonActionJson {
                 line_indices: line_indices.clone(),
                 circle_indices: circle_indices.clone(),
                 polygon_indices: polygon_indices.clone(),
+                line_iteration_indices: line_iteration_indices.clone(),
+                polygon_iteration_indices: polygon_iteration_indices.clone(),
             },
             ButtonAction::MovePoint {
                 point_index,

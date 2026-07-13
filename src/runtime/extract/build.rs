@@ -147,6 +147,18 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
         &label_stage.labels,
         &label_stage.label_group_to_index,
     );
+    let line_iteration_group_to_index = binding_stage
+        .line_iterations
+        .iter()
+        .enumerate()
+        .map(|(index, family)| (family.binding_group_ordinal(), index))
+        .collect::<BTreeMap<_, _>>();
+    let polygon_iteration_group_to_index = binding_stage
+        .polygon_iterations
+        .iter()
+        .enumerate()
+        .map(|(index, family)| (family.binding_group_ordinal(), index))
+        .collect::<BTreeMap<_, _>>();
     let (buttons, button_group_to_index) = collect_buttons(
         file,
         &groups,
@@ -158,6 +170,8 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
             line_group_to_index: &binding_stage.maps.line_group_to_index,
             circle_group_to_index: &binding_stage.maps.circle_group_to_index,
             polygon_group_to_index: &binding_stage.maps.polygon_group_to_index,
+            line_iteration_group_to_index: &line_iteration_group_to_index,
+            polygon_iteration_group_to_index: &polygon_iteration_group_to_index,
         },
     );
     resolve_label_hotspots(

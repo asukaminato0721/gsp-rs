@@ -194,8 +194,12 @@ fn refraction_sample_uses_raw_translation_offsets_and_live_iteration_depth() {
     assert!(scene.buttons.iter().any(|button| {
         button.text == "隐藏反射光线"
             && matches!(
-                button.action,
-                ButtonAction::SetVisibility { visible: false, .. }
+                &button.action,
+                ButtonAction::ShowHideVisibility {
+                    line_iteration_indices,
+                    polygon_iteration_indices,
+                    ..
+                } if line_iteration_indices.len() == 1 && polygon_iteration_indices.len() == 1
             )
     }));
 }

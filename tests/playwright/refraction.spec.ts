@@ -82,6 +82,76 @@ test('refraction sample updates its ray iterations from the light-count paramete
   expect(after.polygons).toBeLessThan(before.polygons);
 });
 
+test('refraction show-hide button toggles the reflected ray and every iterated image', async ({ page }) => {
+  const file = path.resolve('tests/Samples/个人专栏/侯仰顺作品/光的折射(蚂蚁制作).html');
+  await page.goto(`file://${file}`);
+
+  const visibilityState = () => page.evaluate(() => {
+    const runtime = JSON.parse(window.gspDebug.json());
+    const button = runtime.buttons.find(
+      (candidate: { text: string }) => candidate.text.includes('反射光线'),
+    );
+    const action = button.action;
+    const red = JSON.stringify([255, 0, 0, 255]);
+    const generatedRedLines = runtime.scene.lines.filter(
+      (line: { debug?: unknown; color: number[] }) => !line.debug && JSON.stringify(line.color) === red,
+    );
+    const generatedRedPolygons = runtime.scene.polygons.filter(
+      (polygon: { debug?: unknown; color: number[] }) =>
+        !polygon.debug && JSON.stringify(polygon.color) === red,
+    );
+    return {
+      text: button.text,
+      directVisible: [
+        ...action.lineIndices.map((index: number) => runtime.scene.lines[index].visible),
+        ...action.polygonIndices.map((index: number) => runtime.scene.polygons[index].visible),
+      ],
+      lineIterationVisible: action.lineIterationIndices.map(
+        (index: number) => runtime.scene.lineIterations[index].visible,
+      ),
+      polygonIterationVisible: action.polygonIterationIndices.map(
+        (index: number) => runtime.scene.polygonIterations[index].visible,
+      ),
+      generatedRedVisible: [...generatedRedLines, ...generatedRedPolygons].map(
+        (shape: { visible: boolean }) => shape.visible,
+      ),
+    };
+  });
+
+  const before = await visibilityState();
+  expect(before.text).toBe('隐藏反射光线');
+  expect(before.directVisible.every(Boolean)).toBe(true);
+  expect(before.lineIterationVisible).toEqual([true]);
+  expect(before.polygonIterationVisible).toEqual([true]);
+  expect(before.generatedRedVisible.length).toBeGreaterThan(8);
+  expect(before.generatedRedVisible.every(Boolean)).toBe(true);
+
+  await page.getByRole('button', { name: '隐藏反射光线' }).click();
+  const hidden = await visibilityState();
+  expect(hidden.text).toBe('显示反射光线');
+  expect(hidden.directVisible.every((visible: boolean) => !visible)).toBe(true);
+  expect(hidden.lineIterationVisible).toEqual([false]);
+  expect(hidden.polygonIterationVisible).toEqual([false]);
+  expect(hidden.generatedRedVisible.every((visible: boolean) => !visible)).toBe(true);
+
+  await page.locator('#parameter-controls input').evaluate((element) => {
+    const input = element as HTMLInputElement;
+    input.value = '4';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const rebuiltWhileHidden = await visibilityState();
+  expect(rebuiltWhileHidden.generatedRedVisible.length).toBeGreaterThan(4);
+  expect(rebuiltWhileHidden.generatedRedVisible.every((visible: boolean) => !visible)).toBe(true);
+
+  await page.getByRole('button', { name: '显示反射光线' }).click();
+  const shown = await visibilityState();
+  expect(shown.text).toBe('隐藏反射光线');
+  expect(shown.directVisible.every(Boolean)).toBe(true);
+  expect(shown.lineIterationVisible).toEqual([true]);
+  expect(shown.polygonIterationVisible).toEqual([true]);
+  expect(shown.generatedRedVisible.every(Boolean)).toBe(true);
+});
+
 test('refraction iteration arrows follow the dragged medium point', async ({ page }) => {
   const file = path.resolve('tests/Samples/个人专栏/侯仰顺作品/光的折射(蚂蚁制作).html');
   await page.goto(`file://${file}`);

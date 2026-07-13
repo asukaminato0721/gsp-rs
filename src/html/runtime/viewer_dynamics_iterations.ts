@@ -361,6 +361,7 @@
             points: [],
             color: family.color,
             dashed: !!family.dashed,
+            visible: family.visible !== false,
             binding: {
               kind: "point-trace",
               pointIndex: family.pointIndex,
@@ -379,6 +380,7 @@
             points: sampled,
             color: family.color,
             dashed: !!family.dashed,
+            visible: family.visible !== false,
             binding: null,
           });
         }
@@ -426,6 +428,7 @@
                 points: [{ ...childStart }, { ...childEnd }],
                 color: family.color,
                 dashed: !!family.dashed,
+                visible: family.visible !== false,
                 binding: null,
               });
               next.push({ start: childStart, end: childEnd });
@@ -462,6 +465,7 @@
             points: [{ ...currentStart }, { ...currentEnd }],
             color: family.color,
             dashed: !!family.dashed,
+            visible: family.visible !== false,
             binding: null,
           });
         }
@@ -483,6 +487,7 @@
             points: source.points.map(( point) => rotateAround(point, center, radians)),
             color: family.color,
             dashed: !!family.dashed,
+            visible: family.visible !== false,
             binding: {
               kind: "derived",
               sourceIndex: family.sourceIndex,
@@ -548,6 +553,7 @@
             ],
             color: family.color,
             dashed: !!family.dashed,
+            visible: family.visible !== false,
             binding: null,
           });
           emittedControlledTickSeeds.add(seedKey);
@@ -607,6 +613,7 @@
           ],
           color: family.color,
           dashed: !!family.dashed,
+          visible: family.visible !== false,
           binding: null,
         });
       });
@@ -690,6 +697,7 @@
             })),
             color: familyColor,
             outlineColor: darken(familyColor, 80),
+            visible: family.visible !== false,
             binding: null,
           });
         }
@@ -753,6 +761,7 @@
           points: seedPoints.map((point) => ({ x: point.x + dx, y: point.y + dy })),
           color: familyColor,
           outlineColor: darken(familyColor, 80),
+          visible: family.visible !== false,
           binding: null,
         });
       });

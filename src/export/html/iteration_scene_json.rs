@@ -144,6 +144,7 @@ impl PointIterationJson {
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub(super) enum LineIterationJson {
     Rotate {
+        visible: bool,
         #[serde(rename = "sourceIndex")]
         source_index: usize,
         #[serde(rename = "centerIndex")]
@@ -159,6 +160,7 @@ pub(super) enum LineIterationJson {
         dashed: bool,
     },
     Translate {
+        visible: bool,
         #[serde(rename = "startIndex")]
         start_index: usize,
         #[serde(rename = "endIndex")]
@@ -187,6 +189,7 @@ pub(super) enum LineIterationJson {
         dashed: bool,
     },
     Affine {
+        visible: bool,
         #[serde(rename = "startIndex")]
         start_index: usize,
         #[serde(rename = "endIndex")]
@@ -200,6 +203,7 @@ pub(super) enum LineIterationJson {
         dashed: bool,
     },
     Branching {
+        visible: bool,
         #[serde(rename = "startIndex")]
         start_index: usize,
         #[serde(rename = "endIndex")]
@@ -213,6 +217,7 @@ pub(super) enum LineIterationJson {
         dashed: bool,
     },
     ParameterizedPointTrace {
+        visible: bool,
         #[serde(rename = "pointIndex")]
         point_index: usize,
         #[serde(rename = "driverIndex")]
@@ -239,6 +244,8 @@ impl LineIterationJson {
     pub(super) fn from_family(family: &LineIterationFamily) -> Self {
         match family {
             LineIterationFamily::Rotate {
+                binding_group_ordinal: _,
+                visible,
                 source_index,
                 center_index,
                 angle_expr,
@@ -248,6 +255,7 @@ impl LineIterationJson {
                 color,
                 dashed,
             } => Self::Rotate {
+                visible: *visible,
                 source_index: *source_index,
                 center_index: *center_index,
                 angle_expr: FunctionExprJson::from_expr(angle_expr),
@@ -258,6 +266,8 @@ impl LineIterationJson {
                 dashed: *dashed,
             },
             LineIterationFamily::ParameterizedPointTrace {
+                binding_group_ordinal: _,
+                visible,
                 point_index,
                 driver_index,
                 depth_parameter_name,
@@ -270,6 +280,7 @@ impl LineIterationJson {
                 color,
                 dashed,
             } => Self::ParameterizedPointTrace {
+                visible: *visible,
                 point_index: *point_index,
                 driver_index: *driver_index,
                 depth_parameter_name: depth_parameter_name.clone(),
@@ -283,6 +294,8 @@ impl LineIterationJson {
                 dashed: *dashed,
             },
             LineIterationFamily::Branching {
+                binding_group_ordinal: _,
+                visible,
                 start_index,
                 end_index,
                 target_segments,
@@ -291,6 +304,7 @@ impl LineIterationJson {
                 color,
                 dashed,
             } => Self::Branching {
+                visible: *visible,
                 start_index: *start_index,
                 end_index: *end_index,
                 target_segments: target_segments
@@ -306,6 +320,8 @@ impl LineIterationJson {
                 dashed: *dashed,
             },
             LineIterationFamily::Affine {
+                binding_group_ordinal: _,
+                visible,
                 start_index,
                 end_index,
                 source_triangle_indices,
@@ -314,6 +330,7 @@ impl LineIterationJson {
                 color,
                 dashed,
             } => Self::Affine {
+                visible: *visible,
                 start_index: *start_index,
                 end_index: *end_index,
                 source_triangle_indices: *source_triangle_indices,
@@ -325,6 +342,8 @@ impl LineIterationJson {
                 dashed: *dashed,
             },
             LineIterationFamily::Translate {
+                binding_group_ordinal: _,
+                visible,
                 start_index,
                 end_index,
                 start_control_index,
@@ -342,6 +361,7 @@ impl LineIterationJson {
                 color,
                 dashed,
             } => Self::Translate {
+                visible: *visible,
                 start_index: *start_index,
                 end_index: *end_index,
                 start_control_index: *start_control_index,
@@ -410,6 +430,7 @@ impl IterationPointHandleJson {
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub(super) enum PolygonIterationJson {
     Translate {
+        visible: bool,
         #[serde(rename = "vertexIndices")]
         vertex_indices: Vec<usize>,
         dx: f64,
@@ -431,6 +452,7 @@ pub(super) enum PolygonIterationJson {
         color: [u8; 4],
     },
     CoordinateGrid {
+        visible: bool,
         #[serde(rename = "vertexIndices")]
         vertex_indices: Vec<usize>,
         #[serde(rename = "parameterName")]
@@ -456,6 +478,8 @@ impl PolygonIterationJson {
     pub(super) fn from_family(family: &PolygonIterationFamily) -> Self {
         match family {
             PolygonIterationFamily::Translate {
+                binding_group_ordinal: _,
+                visible,
                 vertex_indices,
                 dx,
                 dy,
@@ -469,6 +493,7 @@ impl PolygonIterationJson {
                 bidirectional,
                 color,
             } => Self::Translate {
+                visible: *visible,
                 vertex_indices: vertex_indices.clone(),
                 dx: *dx,
                 dy: *dy,
@@ -483,6 +508,8 @@ impl PolygonIterationJson {
                 color: *color,
             },
             PolygonIterationFamily::CoordinateGrid {
+                binding_group_ordinal: _,
+                visible,
                 vertex_indices,
                 parameter_name,
                 step_expr,
@@ -494,6 +521,7 @@ impl PolygonIterationJson {
                 depth_expr,
                 color,
             } => Self::CoordinateGrid {
+                visible: *visible,
                 vertex_indices: vertex_indices.clone(),
                 parameter_name: parameter_name.clone(),
                 step_expr: FunctionExprJson::from_expr(step_expr),

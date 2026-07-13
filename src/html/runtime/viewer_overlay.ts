@@ -6,7 +6,7 @@
   type RichMarkupStyle = { color?: string, fontSize?: string };
   type RichMarkupItem = { kind: "text"; text: string; style?: RichMarkupStyle } | { kind: "fraction"; numerator: RichMarkupItem[]; denominator: RichMarkupItem[]; style?: RichMarkupStyle } | { kind: "radical" | "overline" | "ray" | "arc"; children: RichMarkupItem[]; style?: RichMarkupStyle };
   type ButtonPointerState = { buttonIndex: number; pointerId: number; startClientX: number; startClientY: number; originX: number; originY: number; scaleX: number; scaleY: number; dragged: boolean };
-  type VisibilityButtonAction = Extract<ButtonActionJson, { kind: "toggle-visibility" }> | Extract<ButtonActionJson, { kind: "set-visibility" }> | Extract<ButtonActionJson, { kind: "show-hide-visibility" }>;
+  type VisibilityButtonAction = Extract<ButtonActionJson, { kind: "show-hide-visibility" }>;
   type OverlayButtonElement = HTMLButtonElement & { __gspButtonIndex?: number, __gspHotspotAction?: LabelHotspotActionJson | null };
 
   
@@ -16,9 +16,7 @@
 
   
   function isVisibilityButtonAction(action: ButtonActionJson) {
-    return action.kind === "toggle-visibility"
-      || action.kind === "set-visibility"
-      || action.kind === "show-hide-visibility";
+    return action.kind === "show-hide-visibility";
   }
 
   
@@ -317,6 +315,12 @@
         (action.polygonIndices || []).forEach(( index: number) => {
           callback(scene.polygons[index]);
         });
+        (action.lineIterationIndices || []).forEach(( index: number) => {
+          callback(env.sourceScene.lineIterations[index]);
+        });
+        (action.polygonIterationIndices || []).forEach(( index: number) => {
+          callback(env.sourceScene.polygonIterations[index]);
+        });
       }
 
       function buttonPointerScale() {
@@ -336,6 +340,10 @@
           });
         }, "none");
         buttonsState.val = nextButtons;
+        if ((action.lineIterationIndices || []).length > 0
+          || (action.polygonIterationIndices || []).length > 0) {
+          env.syncDynamicScene();
+        }
       }
 
       
@@ -397,11 +405,7 @@
       
       function syncVisibilityButtonState(buttonIndex: number, action: VisibilityButtonAction) {
         let active = false;
-        if (action.kind === "toggle-visibility") {
-          active = visibilityTargetsMatch(action, true);
-        } else if (action.kind === "set-visibility") {
-          active = visibilityTargetsMatch(action, !!action.visible);
-        } else if (action.kind === "show-hide-visibility") {
+        if (action.kind === "show-hide-visibility") {
           active = visibilityTargetsMatch(action, true);
         } else {
           return;
@@ -409,7 +413,7 @@
         updateButtons((buttons) => {
           if (buttons[buttonIndex]) {
             buttons[buttonIndex].active = active;
-            if (action.kind === "show-hide-visibility" || action.kind === "toggle-visibility") {
+            if (action.kind === "show-hide-visibility") {
               buttons[buttonIndex].text = toggledVisibilityText(
                 buttons[buttonIndex].baseText || buttons[buttonIndex].text,
                 active,
@@ -417,22 +421,12 @@
             }
           }
         });
-        if (action.kind === "show-hide-visibility" || action.kind === "toggle-visibility") {
+        if (action.kind === "show-hide-visibility") {
           const button = buttonsState.val[buttonIndex];
           if (button) {
             updateLinkedButtonLabels(buttonIndex, button.text);
           }
         }
-      }
-
-      
-      function toggleTargetsVisibility(action: VisibilityButtonAction) {
-        const scene = env.currentScene();
-        let hasHiddenTarget = false;
-        forEachVisibilityTarget(action, scene, buttonsState.val, (target) => {
-          hasHiddenTarget = hasHiddenTarget || target?.visible === false;
-        });
-        setTargetsVisibility(action, hasHiddenTarget);
       }
 
       
@@ -1031,14 +1025,6 @@
             if (action.href) {
               window.open(action.href, "_blank", "noopener,noreferrer");
             }
-            break;
-          case "toggle-visibility":
-            toggleTargetsVisibility(action);
-            syncVisibilityButtonState(buttonIndex, action);
-            break;
-          case "set-visibility":
-            setTargetsVisibility(action, !!action.visible);
-            syncVisibilityButtonState(buttonIndex, action);
             break;
           case "show-hide-visibility": {
             const nextVisible = !visibilityTargetsMatch(action, true);
