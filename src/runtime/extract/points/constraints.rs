@@ -564,7 +564,15 @@ fn decode_point_on_line_like_constraint(
         | crate::format::GroupKind::ParallelLine
         | crate::format::GroupKind::AngleBisectorRay => Some(RawPointConstraint::ConstructedLine {
             host_group_index,
-            t,
+            // GSP stores a point on a constructed infinite line relative to
+            // the line's through-point, which is parameter 0.5. Our runtime
+            // line basis starts at that through-point, so convert the payload
+            // parameter to the corresponding signed affine coordinate.
+            t: if host_group.header.kind() == crate::format::GroupKind::AngleBisectorRay {
+                t
+            } else {
+                t - 0.5
+            },
             line_like_kind: match host_group.header.kind() {
                 crate::format::GroupKind::AngleBisectorRay => LineLikeKind::Ray,
                 _ => LineLikeKind::Line,

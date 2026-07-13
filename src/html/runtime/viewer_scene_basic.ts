@@ -214,6 +214,20 @@
         radius: Math.abs(value) * constraint.rawPerUnit,
       };
     }
+    if (constraint.kind === "expression-radius-circle") {
+      const center = resolveFn(constraint.centerIndex);
+      const parameters = env && "currentDynamics" in env
+        ? new Map(env.currentDynamics().parameters.map((parameter) => [parameter.name, parameter.value]))
+        : new Map();
+      const value = modules.dynamics?.evaluateExpr?.(constraint.expr, 0, parameters)
+        ?? constraint.initialValue;
+      if (!center || !Number.isFinite(value)) return null;
+      return {
+        kind: "circle",
+        center,
+        radius: Math.abs(value),
+      };
+    }
     if (constraint.kind === "derived" && constraint.transform.kind === "translate-delta") {
       const source = circleFromConstraint(env, constraint.source, resolveFn);
       if (!source || source.kind !== "circle") return null;

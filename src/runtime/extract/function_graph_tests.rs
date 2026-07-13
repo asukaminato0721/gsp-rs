@@ -382,7 +382,7 @@ fn builds_moving_pulley_with_payload_function_plot_branch_and_arc_length() {
                 .is_some_and(|debug| debug.group_ordinal == 45)
         })
         .expect("expected total rope length label #45");
-    assert_eq!(total.text, "DA + BC + CD = 31.00");
+    assert_eq!(total.text, "DA + BC + CD = 31.28");
     let function_parameters = collect_function_parameter_names(&scene.functions[0].expr);
     assert!(
         ["m[5]", "m[9]", "m[10]", "m₄"]
@@ -490,10 +490,15 @@ fn builds_moving_pulley_with_payload_function_plot_branch_and_arc_length() {
                 .is_some_and(|debug| debug.group_ordinal == 43)
         })
         .expect("expected pulley contact arc #43");
-    assert!(arc.points[0].x < center.x && arc.points[2].x > center.x);
     let arc_center = arc.center.as_ref().expect("expected center arc center");
     assert!((arc_center.x - center.x).abs() < 1e-6);
     assert!((arc_center.y - center.y).abs() < 1e-6);
+    for endpoint in [&arc.points[0], &arc.points[2]] {
+        assert!(
+            ((endpoint.x - center.x).hypot(endpoint.y - center.y) - 1.0).abs() < 1e-6,
+            "expected each pulley contact endpoint to use the payload radius r = 1"
+        );
+    }
 
     let weight = scene
         .polygons
@@ -563,21 +568,30 @@ fn yx2_axis_symmetry_honors_function_definition_visibility() {
         }),
         "hidden plotted helper function #8 must not get a synthesized visible label"
     );
-    let segment_trace_count = scene
+    let segment_trace = scene
         .lines
         .iter()
-        .filter(|line| {
+        .find(|line| {
             line.visible
-                && line.points.len() == 2
                 && line
                     .debug
                     .as_ref()
                     .is_some_and(|debug| debug.group_ordinal == 21)
         })
-        .count();
+        .expect("expected visible line trace #21");
     assert!(
-        segment_trace_count >= 500,
-        "expected visible line trace #21, got {segment_trace_count} sampled segments"
+        matches!(
+            segment_trace.binding,
+            Some(LineBinding::SegmentTrace {
+                sample_count,
+                ..
+            }) if sample_count >= 500
+        ),
+        "expected line trace #21 to retain its live segment-trace binding"
+    );
+    assert!(
+        segment_trace.points.len() >= 1_000 && segment_trace.points.len().is_multiple_of(2),
+        "expected line trace #21 to retain at least 500 sampled segment pairs"
     );
     assert!(
         scene.lines.iter().any(|line| {

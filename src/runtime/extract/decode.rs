@@ -1,4 +1,6 @@
-use super::points::{TransformBindingKind, try_decode_transform_binding};
+use super::points::{
+    TransformBindingKind, expression_runtime_context, try_decode_transform_binding,
+};
 use crate::format::{
     GroupKind, GspFile, IndexedPathRecord, ObjectGroup, PointRecord, collect_strings,
     decode_indexed_path, read_f64, read_i16, read_u16, read_u32,
@@ -282,6 +284,12 @@ pub(crate) fn circle_center_radius_value(
         let start = anchors.get(start_group_index)?.clone()?;
         let end = anchors.get(end_group_index)?.clone()?;
         return Some(((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt());
+    }
+    if radius_group.header.kind() == GroupKind::FunctionExpr {
+        let (expr, parameters, _) =
+            expression_runtime_context(file, groups, radius_group, anchors)?;
+        return crate::runtime::functions::evaluate_expr_with_parameters(&expr, 0.0, &parameters)
+            .map(f64::abs);
     }
     try_decode_parameter_control_value_for_group(file, groups, radius_group)
         .ok()

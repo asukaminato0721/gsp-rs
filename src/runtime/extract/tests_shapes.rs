@@ -1,8 +1,121 @@
-use super::test_support::{fixture_bytes, fixture_scene, function_expr_has_parameter};
+use super::test_support::{fixture_bytes, fixture_log, fixture_scene, function_expr_has_parameter};
 use crate::runtime::scene::{
-    LineBinding, LineConstraint, ScenePointBinding, ScenePointConstraint, ShapeBinding,
-    TextLabelBinding,
+    ButtonAction, LineBinding, LineConstraint, ScenePointBinding, ScenePointConstraint,
+    ShapeBinding, TextLabelBinding,
 };
+
+#[test]
+fn cylinder_net_exports_live_translation_parallel_trace_and_move_buttons() {
+    let path = "tests/Samples/个人专栏/侯仰顺作品/圆柱侧面展开图(蚂蚁制作).gsp";
+    let Some(data) = fixture_bytes(path) else {
+        return;
+    };
+    let log = fixture_log(&data, path);
+    assert!(log.contains("问题数量: 0"));
+    assert!(log.contains("{7} Translation/FixedAngle/MarkedDistance(6,5,0)"));
+    let scene = fixture_scene(&data);
+    let point_for_group = |ordinal| {
+        scene
+            .points
+            .iter()
+            .find(|point| {
+                point
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .expect("expected payload point")
+    };
+    let line_for_group = |ordinal| {
+        scene
+            .lines
+            .iter()
+            .find(|line| {
+                line.debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .expect("expected payload line")
+    };
+    assert!(matches!(
+        &point_for_group(7).binding,
+        Some(ScenePointBinding::PolarOffset { distance_expr, .. })
+            if function_expr_has_parameter(distance_expr, "A底面大小")
+    ));
+    assert!(scene.circles.iter().any(|circle| {
+        circle
+            .debug
+            .as_ref()
+            .is_some_and(|debug| debug.group_ordinal == 17)
+            && matches!(
+                circle.binding,
+                Some(ShapeBinding::ExpressionRadiusCircle { .. })
+            )
+    }));
+    assert!(matches!(
+        point_for_group(102).constraint,
+        ScenePointConstraint::OnCircularConstraint { .. }
+    ));
+    assert!(matches!(
+        point_for_group(24).constraint,
+        ScenePointConstraint::OnLineConstraint { t, .. }
+            if (t - 0.452_707).abs() < 1e-6
+    ));
+    assert!(matches!(
+        point_for_group(111).constraint,
+        ScenePointConstraint::OnPolyline {
+            function_key: 108,
+            ..
+        }
+    ));
+    assert!(matches!(
+        point_for_group(113).constraint,
+        ScenePointConstraint::LineTraceIntersection { variant: 1, .. }
+    ));
+    assert!(scene.lines.iter().any(|line| {
+        line.debug
+            .as_ref()
+            .is_some_and(|debug| debug.group_ordinal == 112)
+            && matches!(line.binding, Some(LineBinding::ParallelLine { .. }))
+    }));
+    assert!(scene.lines.iter().any(|line| {
+        line.debug
+            .as_ref()
+            .is_some_and(|debug| debug.group_ordinal == 108)
+            && matches!(line.binding, Some(LineBinding::PointTrace { .. }))
+    }));
+    for (ordinal, color) in [
+        (74, [102, 102, 178, 255]),
+        (75, [192, 192, 192, 255]),
+        (92, [192, 192, 192, 255]),
+        (115, [255, 255, 0, 255]),
+    ] {
+        let trace = line_for_group(ordinal);
+        assert!(matches!(
+            trace.binding,
+            Some(LineBinding::SegmentTrace { .. })
+        ));
+        assert_eq!(trace.color, color);
+    }
+    let segment_trace_paint_order = scene
+        .lines
+        .iter()
+        .filter(|line| matches!(line.binding, Some(LineBinding::SegmentTrace { .. })))
+        .filter_map(|line| line.debug.as_ref().map(|debug| debug.group_ordinal))
+        .collect::<Vec<_>>();
+    assert_eq!(segment_trace_paint_order, [92, 75, 74, 115]);
+    assert_eq!(
+        scene
+            .buttons
+            .iter()
+            .filter(|button| matches!(
+                button.action,
+                ButtonAction::MovePoint { .. } | ButtonAction::MovePoints { .. }
+            ))
+            .count(),
+        2
+    );
+}
 
 #[test]
 fn hejixu_fold2_exports_marked_ratio_dilation_and_reflection() {

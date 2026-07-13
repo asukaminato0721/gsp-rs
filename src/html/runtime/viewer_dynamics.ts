@@ -512,15 +512,39 @@
   }
 
 
+  function polylineConstraintPoints(
+    scene: ViewerSceneData,
+    constraint: Extract<RuntimePointConstraintJson, { kind: "polyline" }>,
+  ) {
+    if (typeof constraint.functionKey === "number") {
+      const hostLine = scene.lines.find((line) =>
+        line?.binding?.kind === "arc-boundary" && line.binding.hostKey === constraint.functionKey
+        || line?.debug?.groupOrdinal === constraint.functionKey
+          && (
+            line?.binding?.kind === "point-trace"
+            || line?.binding?.kind === "coordinate-trace"
+            || line?.binding?.kind === "custom-transform-trace"
+          )
+      );
+      if (hostLine?.points?.length >= 2) {
+        return hostLine.points;
+      }
+    }
+    return constraint.points;
+  }
+
+
   function polylineParameterFromPoint(scene: ViewerSceneData, pointIndex: number) {
     const point = scene.points[pointIndex];
     const constraint = point?.constraint;
     if (constraint?.kind !== "polyline" || !Array.isArray(constraint.points) || constraint.points.length < 2) {
       return null;
     }
+    const points = polylineConstraintPoints(scene, constraint);
+    if (!Array.isArray(points) || points.length < 2) return null;
     const segmentIndex = Number.isFinite(constraint.segmentIndex) ? constraint.segmentIndex : 0;
     const t = Number.isFinite(constraint.t) ? Math.max(0, Math.min(1, constraint.t)) : 0;
-    return (segmentIndex + t) / (constraint.points.length - 1);
+    return (segmentIndex + t) / (points.length - 1);
   }
 
 
@@ -609,8 +633,19 @@
     "ray-constraint"(point: RuntimeScenePointJson, _scene: ViewerSceneData, value: number) {
       point.constraint.t = Math.max(0, value);
     },
-    polyline(point: RuntimeScenePointJson, _scene: ViewerSceneData, value: number) {
-      point.constraint.t = wrapUnitInterval(value);
+    polyline(point: RuntimeScenePointJson, scene: ViewerSceneData, value: number) {
+      const constraint = point.constraint as Extract<
+        RuntimePointConstraintJson,
+        { kind: "polyline" }
+      >;
+      const pointCount = polylineConstraintPoints(scene, constraint)?.length ?? 0;
+      if (pointCount < 2) return;
+      const scaled = wrapUnitInterval(value) * (pointCount - 1);
+      constraint.segmentIndex = Math.min(
+        pointCount - 2,
+        Math.floor(scaled),
+      );
+      constraint.t = scaled - constraint.segmentIndex;
     },
     "polygon-boundary"(point: RuntimeScenePointJson, scene: ViewerSceneData, value: number) {
       const wrapped = wrapUnitInterval(value);
@@ -1068,6 +1103,15 @@
   }
 
 
+  function updatePolarOffsetPoint(point: RuntimeScenePointJson, source: Point | null, parameters: Map<string, number>) {
+    if (!source) return;
+    const distance = evaluateExpr(point.binding.distanceExpr, 0, parameters);
+    if (!isFiniteNumber(distance)) return;
+    point.x = source.x + distance * point.binding.xScale;
+    point.y = source.y + distance * point.binding.yScale;
+  }
+
+
   function updateConstraintParameterizedPoint(point: RuntimeScenePointJson, scene: ViewerSceneData, value: number) {
     if (!Number.isFinite(value)) return;
     applyNormalizedParameterToPoint(point, scene, value);
@@ -1302,6 +1346,9 @@
     },
     "coordinate-source-2d"(env: ViewerEnv, _scene: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
       updateCoordinateSource2dPoint(point, env.resolveScenePoint(point.binding.sourceIndex), parameters);
+    },
+    "polar-offset"(env: ViewerEnv, _scene: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
+      updatePolarOffsetPoint(point, env.resolveScenePoint(point.binding.sourceIndex), parameters);
     },
     derived(env: ViewerEnv, scene: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
       const source = resolveScenePointInScene(env, scene, point.binding.sourceIndex);
@@ -1644,6 +1691,9 @@
     "coordinate-source-2d"(_env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
       updateCoordinateSource2dPoint(point, draft.points[point.binding.sourceIndex], parameters);
     },
+    "polar-offset"(_env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
+      updatePolarOffsetPoint(point, draft.points[point.binding.sourceIndex], parameters);
+    },
     "custom-transform"(_env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
       updateCustomTransformPoint(point, parameters, (index: number) => draft.points[index], draft);
     },
@@ -1747,10 +1797,17 @@
   }
 
 
-  function samplePointTraceLine(scene: ViewerSceneData, line: RuntimeLineJson, parameters: Map<string, number>) {
+  function samplePointTraceTargets(
+    scene: ViewerSceneData,
+    line: RuntimeLineJson,
+    parameters: Map<string, number>,
+    targetPointIndices: number[],
+  ) {
     const driver = scene.points[line.binding.driverIndex];
     if (!driver?.constraint) return null;
-    const tracedPoint = scene.points[line.binding.pointIndex];
+    const tracedPoint = targetPointIndices.length === 1
+      ? scene.points[targetPointIndices[0]]
+      : null;
     const sourceBinding = tracedPoint?.binding;
     const sourcePoint = sourceBinding?.kind === "coordinate-source-2d"
       ? scene.points[sourceBinding.sourceIndex]
@@ -1794,7 +1851,7 @@
           y: sourcePoint.y + dy,
         });
       }
-      return sampled.length >= 2 ? sampled : null;
+      return sampled.length >= 2 ? [sampled] : null;
     }
     const sampleScene = {
       ...scene,
@@ -2047,7 +2104,7 @@
       return finalPoint;
     };
 
-    const sampled = [];
+    const sampledByTarget = targetPointIndices.map(() => [] as Point[]);
     const rawTraceMax = line.binding.kind === "custom-transform-trace"
       ? parameterValueFromPoint(scene, line.binding.driverIndex)
       : null;
@@ -2060,7 +2117,13 @@
         ? line.binding.xMin
           + (sampleXMax - line.binding.xMin) * ((index + 0.5) / Math.max(1, line.binding.sampleCount))
         : line.binding.xMin + (sampleXMax - line.binding.xMin) * (index / last);
-      const points = scene.points.map(cloneTracePoint);
+      // Trace evaluation replaces derived entries in this per-sample array;
+      // only the driver itself is mutated in place. Avoid deep-cloning every
+      // point (including large polyline constraints) for every trace sample.
+      const points = scene.points.slice();
+      points[line.binding.driverIndex] = cloneTracePoint(
+        scene.points[line.binding.driverIndex],
+      );
       sampleScene.points = points;
       applyTraceValueToPoint(
         points[line.binding.driverIndex],
@@ -2089,12 +2152,28 @@
       baseParameters = deriveLabelParameters(sampleScene, new Map<string, number>(parameters));
       driverValue = parameterValueFromPoint(sampleScene, line.binding.driverIndex) ?? Number.NaN;
       resolvedCache = new Map();
-      const point = resolveTracePoint(points, line.binding.pointIndex);
-      if (point) {
-        sampled.push({ x: point.x, y: point.y });
+      const resolvedTargets = targetPointIndices.map((pointIndex) =>
+        resolveTracePoint(points, pointIndex)
+      );
+      if (resolvedTargets.every(Boolean)) {
+        resolvedTargets.forEach((point, targetIndex) => {
+          sampledByTarget[targetIndex].push({ x: point.x, y: point.y });
+        });
       }
     }
-    return sampled.length >= 2 ? sampled : null;
+    return sampledByTarget.every((sampled) => sampled.length >= 2)
+      ? sampledByTarget
+      : null;
+  }
+
+
+  function samplePointTraceLine(scene: ViewerSceneData, line: RuntimeLineJson, parameters: Map<string, number>) {
+    return samplePointTraceTargets(
+      scene,
+      line,
+      parameters,
+      [line.binding.pointIndex],
+    )?.[0] ?? null;
   }
 
   type DerivedTransform =
@@ -2457,6 +2536,21 @@
         line.points = sampled;
       }
     },
+    "segment-trace"({ scene, parameters }: LineBindingRefreshContext, line: RuntimeLineJson) {
+      const sampled = samplePointTraceTargets(
+        scene,
+        line,
+        parameters,
+        [line.binding.startIndex, line.binding.endIndex],
+      );
+      if (!sampled) return;
+      const sampleCount = Math.min(sampled[0].length, sampled[1].length);
+      line.segments = Array.from({ length: sampleCount }, (_, index) => [
+        sampled[0][index],
+        sampled[1][index],
+      ]);
+      line.points = line.segments.flat();
+    },
     "colorized-spectrum": refreshColorizedSpectrumLine,
     "parametric-curve"({ parameters }: LineBindingRefreshContext, line: RuntimeLineJson) {
       const sampled = sampleParametricCurve(line.binding, parameters);
@@ -2506,6 +2600,14 @@
       const value = parameters.get(circle.binding.parameterName);
       if (!center || !isFiniteNumber(value)) return;
       const radius = Math.abs(value) * circle.binding.rawPerUnit;
+      circle.center = { x: center.x, y: center.y };
+      circle.radiusPoint = { x: center.x + radius, y: center.y };
+    },
+    "expression-radius-circle"({ env, parameters }: CircleBindingRefreshContext, circle: RuntimeCircleJson) {
+      const center = env.resolveScenePoint(circle.binding.centerIndex);
+      const value = evaluateExpr(circle.binding.expr, 0, parameters);
+      if (!center || !isFiniteNumber(value)) return;
+      const radius = Math.abs(value);
       circle.center = { x: center.x, y: center.y };
       circle.radiusPoint = { x: center.x + radius, y: center.y };
     },

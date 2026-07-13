@@ -490,6 +490,7 @@ pub(crate) enum ScenePointConstraint {
         x_min: f64,
         x_max: f64,
         sample_count: usize,
+        variant: usize,
     },
     LineFunctionIntersection {
         line: LineConstraint,
@@ -546,6 +547,11 @@ pub(crate) enum CircularConstraint {
         parameter_name: String,
         parameter_value: f64,
         raw_per_unit: f64,
+    },
+    ExpressionRadiusCircle {
+        center_index: usize,
+        expr: FunctionExpr,
+        initial_value: f64,
     },
     TranslateCircle {
         source: Box<CircularConstraint>,
@@ -749,6 +755,14 @@ pub(crate) enum LineBinding {
         x_max: f64,
         sample_count: usize,
     },
+    SegmentTrace {
+        start_index: usize,
+        end_index: usize,
+        driver_index: usize,
+        x_min: f64,
+        x_max: f64,
+        sample_count: usize,
+    },
     ColorizedSpectrum {
         line_index: usize,
         trace_line_index: usize,
@@ -900,6 +914,12 @@ pub(crate) enum ScenePointBinding {
         y_name: String,
         y_expr: FunctionExpr,
     },
+    PolarOffset {
+        source_index: usize,
+        distance_expr: FunctionExpr,
+        x_scale: f64,
+        y_scale: f64,
+    },
     CustomTransform {
         source_index: usize,
         origin_index: usize,
@@ -1011,6 +1031,10 @@ pub(crate) enum ShapeBinding {
         center_index: usize,
         parameter_name: String,
         raw_per_unit: f64,
+    },
+    ExpressionRadiusCircle {
+        center_index: usize,
+        expr: FunctionExpr,
     },
     DerivedTransform {
         source_index: usize,

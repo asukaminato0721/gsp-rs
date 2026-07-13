@@ -247,6 +247,15 @@ fn resolve_trace_circular_constraint(
             let radius = parameter_value.abs() * raw_per_unit;
             (radius > 1e-9).then_some(TraceCircularConstraint::Circle { center, radius })
         }
+        CircularConstraint::ExpressionRadiusCircle {
+            center_index,
+            initial_value,
+            ..
+        } => {
+            let center = resolve_trace_point(points, *center_index, visiting)?;
+            let radius = initial_value.abs();
+            (radius > 1e-9).then_some(TraceCircularConstraint::Circle { center, radius })
+        }
         CircularConstraint::TranslateCircle { source, dx, dy } => {
             let source = resolve_trace_circular_constraint(points, source, visiting)?;
             match source {

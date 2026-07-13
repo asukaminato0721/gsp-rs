@@ -8,6 +8,8 @@ use ts_rs::TS;
 #[derive(Serialize, TS)]
 pub(super) struct LineJson {
     points: Vec<PointJson>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    segments: Option<Vec<Vec<PointJson>>>,
     color: [u8; 4],
     dashed: bool,
     #[serde(rename = "strokeWidth")]
@@ -22,6 +24,12 @@ impl LineJson {
     pub(super) fn from_line(line: &crate::runtime::scene::LineShape) -> Self {
         Self {
             points: PointJson::collect(&line.points),
+            segments: matches!(line.binding, Some(LineBinding::SegmentTrace { .. })).then(|| {
+                line.points
+                    .chunks_exact(2)
+                    .map(PointJson::collect)
+                    .collect()
+            }),
             color: line.color,
             dashed: line.dashed,
             stroke_width: line.stroke_width.unwrap_or(1.0),
@@ -149,6 +157,21 @@ enum LineBindingJson {
     PointTrace {
         #[serde(rename = "pointIndex")]
         point_index: usize,
+        #[serde(rename = "driverIndex")]
+        driver_index: usize,
+        #[serde(rename = "xMin")]
+        x_min: f64,
+        #[serde(rename = "xMax")]
+        x_max: f64,
+        #[serde(rename = "sampleCount")]
+        sample_count: usize,
+    },
+    #[serde(rename = "segment-trace")]
+    SegmentTrace {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
         #[serde(rename = "driverIndex")]
         driver_index: usize,
         #[serde(rename = "xMin")]
@@ -350,6 +373,21 @@ impl LineBindingJson {
                 sample_count,
             } => Self::PointTrace {
                 point_index: *point_index,
+                driver_index: *driver_index,
+                x_min: *x_min,
+                x_max: *x_max,
+                sample_count: *sample_count,
+            },
+            LineBinding::SegmentTrace {
+                start_index,
+                end_index,
+                driver_index,
+                x_min,
+                x_max,
+                sample_count,
+            } => Self::SegmentTrace {
+                start_index: *start_index,
+                end_index: *end_index,
                 driver_index: *driver_index,
                 x_min: *x_min,
                 x_max: *x_max,
@@ -653,6 +691,12 @@ enum ShapeBindingJson {
         #[serde(rename = "rawPerUnit")]
         raw_per_unit: f64,
     },
+    #[serde(rename = "expression-radius-circle")]
+    ExpressionRadiusCircle {
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        expr: FunctionExprJson,
+    },
     #[serde(rename = "derived")]
     Derived {
         #[serde(rename = "sourceIndex")]
@@ -695,7 +739,8 @@ impl ShapeBindingJson {
             }),
             ShapeBinding::PointRadiusCircle { .. }
             | ShapeBinding::SegmentRadiusCircle { .. }
-            | ShapeBinding::ParameterRadiusCircle { .. } => None,
+            | ShapeBinding::ParameterRadiusCircle { .. }
+            | ShapeBinding::ExpressionRadiusCircle { .. } => None,
         }
     }
 
@@ -726,6 +771,12 @@ impl ShapeBindingJson {
                 parameter_name: parameter_name.clone(),
                 raw_per_unit: *raw_per_unit,
             }),
+            ShapeBinding::ExpressionRadiusCircle { center_index, expr } => {
+                Some(Self::ExpressionRadiusCircle {
+                    center_index: *center_index,
+                    expr: FunctionExprJson::from_expr(expr),
+                })
+            }
             ShapeBinding::DerivedTransform {
                 source_index,
                 transform,

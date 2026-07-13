@@ -241,6 +241,7 @@ pub(crate) fn decode_derived_polar_endpoint_binding(
     file: &GspFile,
     groups: &[ObjectGroup],
     group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
 ) -> Option<DerivedPolarEndpointBindingDef> {
     if !matches!(
         group.header.kind(),
@@ -253,12 +254,23 @@ pub(crate) fn decode_derived_polar_endpoint_binding(
         return None;
     }
     let center_group_index = path.refs[0].checked_sub(1)?;
-    let radius_group_index = path.refs[1].checked_sub(1)?;
-    let radius_group = groups.get(radius_group_index)?;
-    let parameter_name = decode_label_name(file, radius_group)?;
-    let parameter_value = try_decode_parameter_control_value_for_group(file, groups, radius_group)
-        .ok()?
-        .abs();
+    let distance_group_index = path.refs[1].checked_sub(1)?;
+    let distance_group = groups.get(distance_group_index)?;
+    let (distance_expr, distance_value) = if distance_group.header.kind() == GroupKind::FunctionExpr
+    {
+        let (expr, parameters, _) =
+            expression_runtime_context(file, groups, distance_group, anchors)?;
+        let value = evaluate_expr_with_parameters(&expr, 0.0, &parameters)?;
+        (expr, value)
+    } else {
+        let name = decode_label_name(file, distance_group)?;
+        let value =
+            try_decode_parameter_control_value_for_group(file, groups, distance_group).ok()?;
+        (
+            FunctionExpr::Parsed(FunctionAst::Parameter(name, value)),
+            value,
+        )
+    };
     let payload = group
         .records
         .iter()
@@ -267,17 +279,17 @@ pub(crate) fn decode_derived_polar_endpoint_binding(
     if payload.len() < 28 || read_u32(payload, 0) != u32::from(group.header.kind().raw()) {
         return None;
     }
-    let radius_scale = read_f64(payload, 4);
-    let angle_radians = read_f64(payload, 20);
-    if !radius_scale.is_finite() || !angle_radians.is_finite() {
+    let y_scale = read_f64(payload, 4);
+    let x_scale = read_f64(payload, 12);
+    if !x_scale.is_finite() || !y_scale.is_finite() || !distance_value.is_finite() {
         return None;
     }
     Some(DerivedPolarEndpointBindingDef {
         center_group_index,
-        parameter_name,
-        parameter_value: parameter_value * radius_scale.abs(),
-        radius_scale: radius_scale.abs(),
-        angle_radians,
+        distance_expr,
+        distance_value,
+        x_scale,
+        y_scale,
     })
 }
 
@@ -288,12 +300,12 @@ pub(crate) fn decode_derived_polar_endpoint_anchor_raw(
     anchors: &[Option<PointRecord>],
     graph: Option<&GraphTransform>,
 ) -> Option<PointRecord> {
-    let binding = decode_derived_polar_endpoint_binding(file, groups, group)?;
+    let binding = decode_derived_polar_endpoint_binding(file, groups, group, anchors)?;
     let center = anchors.get(binding.center_group_index)?.clone()?;
     let center_world = to_world(&center, &graph.cloned());
     let world = PointRecord {
-        x: center_world.x + binding.parameter_value * binding.angle_radians.cos(),
-        y: center_world.y + binding.parameter_value * binding.angle_radians.sin(),
+        x: center_world.x + binding.distance_value * binding.x_scale,
+        y: center_world.y + binding.distance_value * binding.y_scale,
     };
     Some(if let Some(transform) = graph {
         to_raw_from_world(&world, transform)

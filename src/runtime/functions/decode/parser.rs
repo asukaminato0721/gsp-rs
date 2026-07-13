@@ -336,6 +336,10 @@ fn lex_function_token(
             kind: FunctionToken::PiAngle,
             width_words: 2,
         },
+        EXPR_PI_WORD if words.len() == 1 => LexedFunctionToken {
+            kind: FunctionToken::Constant(std::f64::consts::PI),
+            width_words: 1,
+        },
         EXPR_VARIABLE_WORD if matches!(words.get(1), Some(&EXPR_VARIABLE_SUFFIX)) => {
             LexedFunctionToken {
                 kind: FunctionToken::Variable,
@@ -578,6 +582,10 @@ fn parse_postfix_function_expr_from_words(
             EXPR_PI_WORD if matches!(words.get(index + 1), Some(&EXPR_PI_SUFFIX)) => {
                 stack.push(FunctionAst::PiAngle);
                 index += 2;
+            }
+            EXPR_PI_WORD if index + 1 == words.len() => {
+                stack.push(FunctionAst::Constant(std::f64::consts::PI));
+                index += 1;
             }
             EXPR_VARIABLE_WORD if matches!(words.get(index + 1), Some(&EXPR_VARIABLE_SUFFIX)) => {
                 stack.push(FunctionAst::Variable);

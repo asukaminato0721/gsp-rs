@@ -196,12 +196,14 @@ pub(super) fn build_world_data(
                     x_min,
                     x_max,
                     sample_count,
+                    variant,
                 } => ScenePointConstraint::LineTraceIntersection {
                     line: clone_line_constraint(line),
                     point_index: *point_index,
                     x_min: *x_min,
                     x_max: *x_max,
                     sample_count: *sample_count,
+                    variant: *variant,
                 },
                 ScenePointConstraint::LineFunctionIntersection {
                     line,
@@ -443,6 +445,15 @@ fn clone_circular_constraint(constraint: &CircularConstraint) -> CircularConstra
             parameter_name: parameter_name.clone(),
             parameter_value: *parameter_value,
             raw_per_unit: *raw_per_unit,
+        },
+        CircularConstraint::ExpressionRadiusCircle {
+            center_index,
+            expr,
+            initial_value,
+        } => CircularConstraint::ExpressionRadiusCircle {
+            center_index: *center_index,
+            expr: expr.clone(),
+            initial_value: *initial_value,
         },
         CircularConstraint::TranslateCircle { source, dx, dy } => {
             CircularConstraint::TranslateCircle {

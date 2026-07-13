@@ -65,6 +65,7 @@ fn scene_point_from_midpoint(
         _ => return None,
     };
     let position = anchors.get(index).cloned().flatten()?;
+
     Some(scene_point(
         position,
         group_color(group),
@@ -116,7 +117,7 @@ fn scene_point_from_intersection(
 
     if let (Some(line), Some((point_index, x_min, x_max, sample_count))) = (
         resolve_intersection_line_constraint(file, groups, left_group, group_to_point_index),
-        decode_coordinate_trace_constraint(file, groups, right_group, group_to_point_index),
+        decode_trace_constraint(file, groups, right_group, group_to_point_index),
     ) {
         return Some(scene_point(
             position,
@@ -129,13 +130,14 @@ fn scene_point_from_intersection(
                 x_min,
                 x_max,
                 sample_count,
+                variant: trace_intersection_variant(file, group),
             },
             None,
         ));
     }
 
     if let (Some((point_index, x_min, x_max, sample_count)), Some(line)) = (
-        decode_coordinate_trace_constraint(file, groups, left_group, group_to_point_index),
+        decode_trace_constraint(file, groups, left_group, group_to_point_index),
         resolve_intersection_line_constraint(file, groups, right_group, group_to_point_index),
     ) {
         return Some(scene_point(
@@ -149,6 +151,7 @@ fn scene_point_from_intersection(
                 x_min,
                 x_max,
                 sample_count,
+                variant: trace_intersection_variant(file, group),
             },
             None,
         ));
@@ -564,13 +567,16 @@ fn mapped_rotated_endpoint_index(
         })
 }
 
-fn decode_coordinate_trace_constraint(
+fn decode_trace_constraint(
     file: &GspFile,
     _groups: &[ObjectGroup],
     group: &ObjectGroup,
     group_to_point_index: &[Option<usize>],
 ) -> Option<(usize, f64, f64, usize)> {
-    if (group.header.kind()) != crate::format::GroupKind::CoordinateTrace {
+    if !matches!(
+        group.header.kind(),
+        crate::format::GroupKind::CoordinateTrace | crate::format::GroupKind::PointTrace
+    ) {
         return None;
     }
 
@@ -601,6 +607,18 @@ fn intersection_sample_hint(file: &GspFile, group: &ObjectGroup) -> Option<usize
         .map(|record| record.payload(&file.data))
         .filter(|payload| payload.len() >= 4)
         .map(|payload| crate::format::read_u32(payload, 0) as usize)
+}
+
+fn trace_intersection_variant(file: &GspFile, group: &ObjectGroup) -> usize {
+    group
+        .records
+        .iter()
+        .find(|record| {
+            record.record_type == crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD
+        })
+        .map(|record| record.payload(&file.data))
+        .filter(|payload| payload.len() >= 8)
+        .map_or(0, |payload| crate::format::read_u32(payload, 4) as usize)
 }
 
 fn decode_function_plot_constraint(
@@ -678,6 +696,15 @@ fn resolve_circular_constraint(
                     center_index,
                     line_start_index: (*group_to_point_index.get(line_start_group_index)?)?,
                     line_end_index: (*group_to_point_index.get(line_end_group_index)?)?,
+                })
+            } else if radius_group.header.kind() == crate::format::GroupKind::FunctionExpr {
+                let expr = try_decode_function_expr(file, groups, radius_group).ok()?;
+                let initial_value =
+                    evaluate_expr_with_parameters(&expr, 0.0, &std::collections::BTreeMap::new())?;
+                Some(CircularConstraint::ExpressionRadiusCircle {
+                    center_index,
+                    expr,
+                    initial_value,
                 })
             } else {
                 Some(CircularConstraint::ParameterRadiusCircle {

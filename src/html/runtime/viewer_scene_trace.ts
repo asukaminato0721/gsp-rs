@@ -7,7 +7,17 @@
     if (!binding) return null;
     const evaluateExpr = modules.dynamics?.evaluateExpr;
     if (typeof evaluateExpr !== "function") return null;
-    const point = env?.currentScene?.().points?.[binding.pointIndex];
+    const currentScene = env?.currentScene?.();
+    const sampledPointTrace = currentScene?.lines?.find((line) =>
+      line.binding?.kind === "point-trace"
+      && line.binding.pointIndex === binding.pointIndex
+      && Array.isArray(line.points)
+      && line.points.length >= 2
+    );
+    if (sampledPointTrace) {
+      return sampledPointTrace.points;
+    }
+    const point = currentScene?.points?.[binding.pointIndex];
     const pointBinding = point?.binding;
     const source = pointBinding?.kind === "coordinate-source" || pointBinding?.kind === "coordinate-source-2d"
       ? env.resolveScenePoint(pointBinding.sourceIndex)

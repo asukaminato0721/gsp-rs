@@ -299,6 +299,12 @@ pub(super) fn dedupe_line_shapes(lines: Vec<LineShape>) -> Vec<LineShape> {
     let mut deduped: Vec<LineShape> = Vec::new();
     'outer: for line in lines {
         for existing in &deduped {
+            // Coincident dynamic constructions are still distinct payload
+            // objects. Their bindings may diverge after an interaction, so
+            // only collapse genuinely static geometry.
+            if line.binding.is_some() || existing.binding.is_some() {
+                continue;
+            }
             if line.points.len() != existing.points.len() {
                 continue;
             }

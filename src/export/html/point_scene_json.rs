@@ -131,6 +131,17 @@ enum PointBindingJson {
         #[serde(rename = "yExpr")]
         y_expr: FunctionExprJson,
     },
+    #[serde(rename = "polar-offset")]
+    PolarOffset {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        #[serde(rename = "distanceExpr")]
+        distance_expr: FunctionExprJson,
+        #[serde(rename = "xScale")]
+        x_scale: f64,
+        #[serde(rename = "yScale")]
+        y_scale: f64,
+    },
     #[serde(rename = "custom-transform")]
     CustomTransform {
         #[serde(rename = "sourceIndex")]
@@ -416,6 +427,17 @@ impl PointBindingJson {
                 y_name: y_name.clone(),
                 y_expr: FunctionExprJson::from_expr(y_expr),
             },
+            ScenePointBinding::PolarOffset {
+                source_index,
+                distance_expr,
+                x_scale,
+                y_scale,
+            } => Self::PolarOffset {
+                source_index: *source_index,
+                distance_expr: FunctionExprJson::from_expr(distance_expr),
+                x_scale: *x_scale,
+                y_scale: *y_scale,
+            },
             ScenePointBinding::CustomTransform {
                 source_index,
                 origin_index,
@@ -559,6 +581,7 @@ enum PointConstraintJson {
         x_max: f64,
         #[serde(rename = "sampleCount")]
         sample_count: usize,
+        variant: usize,
     },
     #[serde(rename = "line-function-intersection")]
     LineFunctionIntersection {
@@ -752,12 +775,14 @@ impl PointConstraintJson {
                 x_min,
                 x_max,
                 sample_count,
+                variant,
             } => Some(Self::LineTraceIntersection {
                 line: LineConstraintJson::from_constraint(line),
                 point_index: *point_index,
                 x_min: *x_min,
                 x_max: *x_max,
                 sample_count: *sample_count,
+                variant: *variant,
             }),
             ScenePointConstraint::LineFunctionIntersection {
                 line,
@@ -881,6 +906,13 @@ enum CircularConstraintJson {
         #[serde(rename = "rawPerUnit")]
         raw_per_unit: f64,
     },
+    ExpressionRadiusCircle {
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        expr: FunctionExprJson,
+        #[serde(rename = "initialValue")]
+        initial_value: f64,
+    },
     Derived {
         source: Box<CircularConstraintJson>,
         transform: TransformJson,
@@ -932,6 +964,15 @@ impl CircularConstraintJson {
                 parameter_name: parameter_name.clone(),
                 parameter_value: *parameter_value,
                 raw_per_unit: *raw_per_unit,
+            },
+            CircularConstraint::ExpressionRadiusCircle {
+                center_index,
+                expr,
+                initial_value,
+            } => Self::ExpressionRadiusCircle {
+                center_index: *center_index,
+                expr: FunctionExprJson::from_expr(expr),
+                initial_value: *initial_value,
             },
             CircularConstraint::TranslateCircle { source, dx, dy } => Self::Derived {
                 source: Box::new(Self::from_constraint(source)),

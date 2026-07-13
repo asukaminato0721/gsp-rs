@@ -99,10 +99,10 @@ pub(crate) struct ExpressionOffsetBindingDef {
 #[derive(Clone)]
 pub(crate) struct DerivedPolarEndpointBindingDef {
     pub(crate) center_group_index: usize,
-    pub(crate) parameter_name: String,
-    pub(crate) parameter_value: f64,
-    pub(crate) radius_scale: f64,
-    pub(crate) angle_radians: f64,
+    pub(crate) distance_expr: FunctionExpr,
+    pub(crate) distance_value: f64,
+    pub(crate) x_scale: f64,
+    pub(crate) y_scale: f64,
 }
 
 #[derive(Clone)]

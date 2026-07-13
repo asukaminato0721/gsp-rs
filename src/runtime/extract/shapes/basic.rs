@@ -957,6 +957,11 @@ pub(crate) fn collect_circle_shapes(
                             line_start_index,
                             line_end_index,
                         })
+                    } else if radius_group.header.kind() == GroupKind::FunctionExpr {
+                        Some(ShapeBinding::ExpressionRadiusCircle {
+                            center_index,
+                            expr: try_decode_function_expr(file, groups, radius_group).ok()?,
+                        })
                     } else {
                         let parameter_name = decode_label_name(file, radius_group)?;
                         circle_center_radius_value(file, groups, anchors, radius_group)?;

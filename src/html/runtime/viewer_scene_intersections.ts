@@ -19,7 +19,14 @@
   }
 
   
-  function linePolylineIntersection(lineStart: Point, lineEnd: Point, lineKind: LineKind, points: Point[] | null, sampleHint: number | null | undefined = null) {
+  function linePolylineIntersection(
+    lineStart: Point,
+    lineEnd: Point,
+    lineKind: LineKind,
+    points: Point[] | null,
+    sampleHint: number | null | undefined = null,
+    variant = 0,
+  ) {
     if (!Array.isArray(points) || points.length < 2) return null;
     if (typeof sampleHint === "number" && Number.isFinite(sampleHint)) {
       let best: Point | null = null;
@@ -38,14 +45,19 @@
       }
       if (best) return best;
     }
+    const candidates: Point[] = [];
     for (let index = 0; index < points.length - 1; index += 1) {
       const start = points[index];
       const end = points[index + 1];
       if (!start || !end) continue;
       const hit = lineLineIntersection(lineStart, lineEnd, lineKind, start, end, "segment");
-      if (hit) return hit;
+      if (hit && !candidates.some((candidate) =>
+        Math.hypot(candidate.x - hit.x, candidate.y - hit.y) <= 1e-6
+      )) {
+        candidates.push(hit);
+      }
     }
-    return null;
+    return chooseVariantCandidate(candidates, variant);
   }
 
   
@@ -195,7 +207,16 @@
     const tracePoints = typeof scene.sampleCoordinateTracePoints === "function"
       ? scene.sampleCoordinateTracePoints(env as ViewerEnv | null, constraint)
       : null;
-    return line && tracePoints ? linePolylineIntersection(line.start, line.end, line.kind, tracePoints) : null;
+    return line && tracePoints
+      ? linePolylineIntersection(
+          line.start,
+          line.end,
+          line.kind,
+          tracePoints,
+          null,
+          constraint.variant,
+        )
+      : null;
   }));
   scene.registerPointConstraintResolver("line-function-intersection", ((env: ViewerSceneResolverEnv | null, constraint, resolveFn) => {
     const line = resolveLineConstraint(env, constraint.line, resolveFn);

@@ -453,7 +453,8 @@ pub(crate) fn remap_circle_bindings(
                 *line_end_index = mapped_line_end_index;
                 continue;
             }
-            ShapeBinding::ParameterRadiusCircle { center_index, .. } => {
+            ShapeBinding::ParameterRadiusCircle { center_index, .. }
+            | ShapeBinding::ExpressionRadiusCircle { center_index, .. } => {
                 let Some(mapped_center_index) = mapped_index(group_to_point_index, *center_index)
                 else {
                     circle.binding = None;
@@ -794,6 +795,30 @@ pub(crate) fn remap_line_bindings(
                     continue;
                 };
                 *point_index = mapped_point_index;
+                *driver_index = mapped_driver_index;
+            }
+            LineBinding::SegmentTrace {
+                start_index,
+                end_index,
+                driver_index,
+                ..
+            } => {
+                let Some(mapped_start_index) = mapped_index(group_to_point_index, *start_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                let Some(mapped_end_index) = mapped_index(group_to_point_index, *end_index) else {
+                    line.binding = None;
+                    continue;
+                };
+                let Some(mapped_driver_index) = mapped_index(group_to_point_index, *driver_index)
+                else {
+                    line.binding = None;
+                    continue;
+                };
+                *start_index = mapped_start_index;
+                *end_index = mapped_end_index;
                 *driver_index = mapped_driver_index;
             }
             LineBinding::ColorizedSpectrum {

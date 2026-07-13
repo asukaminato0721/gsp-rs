@@ -21,6 +21,13 @@ use super::points::{
 };
 use super::{find_indexed_path, payload_debug_source};
 
+const TRACE_DESCRIPTOR_PATH_FLAGS_OFFSET: usize = 20;
+const TRACE_DESCRIPTOR_OPEN_PATH_FLAG: u32 = 1 << 16;
+
+fn trace_driver_path_is_open(payload: &[u8]) -> bool {
+    read_u32(payload, TRACE_DESCRIPTOR_PATH_FLAGS_OFFSET) & TRACE_DESCRIPTOR_OPEN_PATH_FLAG != 0
+}
+
 fn segment_projection_parameter(
     point: &PointRecord,
     start: &PointRecord,
@@ -137,35 +144,40 @@ pub(super) fn collect_point_traces(
             for sample_index in 0..descriptor.sample_count {
                 let t = sample_index as f64 / last;
                 let parameter = descriptor.x_min + (trace_max - descriptor.x_min) * t;
-                let mut sampled_points = visible_points.to_vec();
-                let driver_point = sampled_points.get_mut(driver_point_index)?;
-                apply_trace_parameter_with_mode(
-                    driver_point,
-                    parameter,
-                    descriptor.x_min,
-                    trace_max,
-                    use_raw_parameter,
-                );
-                let trace_parameters = trace_parameter_values(
-                    file,
-                    groups,
-                    &path.refs,
-                    &mut sampled_points,
-                    group_to_point_index,
-                );
-                refresh_trace_expression_scale_factors(&mut sampled_points, &trace_parameters);
-                refresh_sampled_trace_polylines(
-                    file,
-                    groups,
-                    &mut sampled_points,
-                    group_to_point_index,
-                    graph_ref,
-                );
-                points.push(resolve_trace_point(
-                    &mut sampled_points,
-                    target_point_index,
-                    &mut BTreeSet::new(),
-                )?);
+                let sample = (|| {
+                    let mut sampled_points = visible_points.to_vec();
+                    let driver_point = sampled_points.get_mut(driver_point_index)?;
+                    apply_trace_parameter_with_mode(
+                        driver_point,
+                        parameter,
+                        descriptor.x_min,
+                        trace_max,
+                        use_raw_parameter,
+                    );
+                    let trace_parameters = trace_parameter_values(
+                        file,
+                        groups,
+                        &path.refs,
+                        &mut sampled_points,
+                        group_to_point_index,
+                    );
+                    refresh_trace_expression_scale_factors(&mut sampled_points, &trace_parameters);
+                    refresh_sampled_trace_polylines(
+                        file,
+                        groups,
+                        &mut sampled_points,
+                        group_to_point_index,
+                        graph_ref,
+                    );
+                    resolve_trace_point(
+                        &mut sampled_points,
+                        target_point_index,
+                        &mut BTreeSet::new(),
+                    )
+                })();
+                if let Some(sample) = sample {
+                    points.push(sample);
+                }
             }
 
             let binding = match group_kind {
@@ -188,7 +200,7 @@ pub(super) fn collect_point_traces(
                 _ => return None,
             };
 
-            (points.len() >= 2).then_some(crate::runtime::scene::LineShape {
+            Some(crate::runtime::scene::LineShape {
                 points,
                 color: crate::runtime::geometry::color_from_style(group.header.style_b),
                 dashed: false,
@@ -219,7 +231,7 @@ pub(super) fn collect_segment_traces(
     group_to_point_index: &[Option<usize>],
     graph_ref: &Option<GraphTransform>,
 ) -> Vec<LineShape> {
-    groups
+    let traces = groups
         .iter()
         .filter(|group| group.header.kind() == GroupKind::PointTrace)
         .filter_map(|group| {
@@ -239,6 +251,7 @@ pub(super) fn collect_segment_traces(
                 .iter()
                 .find(|record| record.record_type == 0x0902)
                 .map(|record| record.payload(&file.data))?;
+            let driver_path_is_open = trace_driver_path_is_open(payload);
             let descriptor =
                 crate::runtime::functions::try_decode_function_plot_descriptor(payload).ok()?;
             let driver = path
@@ -260,62 +273,88 @@ pub(super) fn collect_segment_traces(
                         })
                         .find(|(_, group_index)| *group_index != target_group_index)
                 })?;
-            let (driver_point_index, _) = driver;
+            let (driver_point_index, driver_group_index) = driver;
 
-            let mut sampled_segments = Vec::with_capacity(descriptor.sample_count);
+            let mut sampled_points = Vec::with_capacity(descriptor.sample_count * 2);
             let last = descriptor.sample_count.saturating_sub(1).max(1) as f64;
             for sample_index in 0..descriptor.sample_count {
                 let t = sample_index as f64 / last;
                 let parameter = descriptor.x_min + (descriptor.x_max - descriptor.x_min) * t;
-                let mut sampled_points = visible_points.to_vec();
-                let driver_point = sampled_points.get_mut(driver_point_index)?;
-                apply_trace_parameter_with_mode(
-                    driver_point,
-                    parameter,
-                    descriptor.x_min,
-                    descriptor.x_max,
-                    false,
-                );
-                let trace_parameters = trace_parameter_values(
-                    file,
-                    groups,
-                    &path.refs,
-                    &mut sampled_points,
-                    group_to_point_index,
-                );
-                refresh_trace_expression_scale_factors(&mut sampled_points, &trace_parameters);
-                refresh_sampled_trace_polylines(
-                    file,
-                    groups,
-                    &mut sampled_points,
-                    group_to_point_index,
-                    graph_ref,
-                );
-                let start = resolve_trace_point(
-                    &mut sampled_points,
-                    start_point_index,
-                    &mut BTreeSet::new(),
-                )?;
-                let end = resolve_trace_point(
-                    &mut sampled_points,
-                    end_point_index,
-                    &mut BTreeSet::new(),
-                )?;
-                if (end.x - start.x).hypot(end.y - start.y) > 1e-9 {
-                    sampled_segments.push(LineShape {
-                        points: vec![start, end],
-                        color: crate::runtime::geometry::color_from_style(group.header.style_b),
-                        dashed: false,
-                        stroke_width: Some(line_stroke_width_from_style(group.header.style_a)),
-                        visible: !group.header.is_hidden(),
-                        binding: None,
-                        debug: Some(payload_debug_source(group)),
-                    });
+                let sample = (|| {
+                    let mut sampled_points = visible_points.to_vec();
+                    let driver_point = sampled_points.get_mut(driver_point_index)?;
+                    apply_trace_parameter_with_mode(
+                        driver_point,
+                        parameter,
+                        descriptor.x_min,
+                        descriptor.x_max,
+                        false,
+                    );
+                    let trace_parameters = trace_parameter_values(
+                        file,
+                        groups,
+                        &path.refs,
+                        &mut sampled_points,
+                        group_to_point_index,
+                    );
+                    refresh_trace_expression_scale_factors(&mut sampled_points, &trace_parameters);
+                    refresh_sampled_trace_polylines(
+                        file,
+                        groups,
+                        &mut sampled_points,
+                        group_to_point_index,
+                        graph_ref,
+                    );
+                    let start = resolve_trace_point(
+                        &mut sampled_points,
+                        start_point_index,
+                        &mut BTreeSet::new(),
+                    )?;
+                    let end = resolve_trace_point(
+                        &mut sampled_points,
+                        end_point_index,
+                        &mut BTreeSet::new(),
+                    )?;
+                    Some((start, end))
+                })();
+                if let Some((start, end)) = sample
+                    && (end.x - start.x).hypot(end.y - start.y) > 1e-9
+                {
+                    sampled_points.push(start);
+                    sampled_points.push(end);
                 }
             }
-            (!sampled_segments.is_empty()).then_some(sampled_segments)
+            Some((
+                driver_path_is_open,
+                LineShape {
+                    points: sampled_points,
+                    color: crate::runtime::geometry::color_from_style(group.header.style_b),
+                    dashed: false,
+                    stroke_width: Some(line_stroke_width_from_style(group.header.style_a)),
+                    visible: !group.header.is_hidden(),
+                    binding: Some(crate::runtime::scene::LineBinding::SegmentTrace {
+                        start_index: start_group_index,
+                        end_index: end_group_index,
+                        driver_index: driver_group_index,
+                        x_min: descriptor.x_min,
+                        x_max: descriptor.x_max,
+                        sample_count: descriptor.sample_count,
+                    }),
+                    debug: Some(payload_debug_source(group)),
+                },
+            ))
         })
-        .flatten()
+        .collect::<Vec<_>>();
+
+    // Sketchpad paints sweeps driven by open paths back-to-front. Closed-path
+    // sweeps (such as a cylinder cap) are then painted in construction order.
+    let (mut open_path_traces, closed_path_traces): (Vec<_>, Vec<_>) =
+        traces.into_iter().partition(|(is_open, _)| *is_open);
+    open_path_traces.reverse();
+    open_path_traces
+        .into_iter()
+        .chain(closed_path_traces)
+        .map(|(_, line)| line)
         .collect()
 }
 
@@ -377,15 +416,25 @@ pub(super) fn bind_points_to_point_traces(
         }) else {
             continue;
         };
-        if trace_line.points.len() < 2 {
+        let trace_points = if trace_line.points.len() >= 2 {
+            trace_line.points.clone()
+        } else if let Some(point_index) = existing_point_index
+            && let Some(point) = visible_points.get(point_index)
+        {
+            // Keep the payload trace relationship even when its current
+            // geometry is degenerate. The runtime will replace this
+            // zero-length placeholder as soon as the upstream construction
+            // produces a sampled trace again.
+            vec![point.position.clone(), point.position.clone()]
+        } else {
             continue;
-        }
+        };
         let wrapped_t = normalized_t.rem_euclid(1.0);
-        let scaled = wrapped_t * (trace_line.points.len() - 1) as f64;
-        let segment_index = (scaled.floor() as usize).min(trace_line.points.len() - 2);
+        let scaled = wrapped_t * (trace_points.len() - 1) as f64;
+        let segment_index = (scaled.floor() as usize).min(trace_points.len() - 2);
         let t = scaled.fract();
-        let start = &trace_line.points[segment_index];
-        let end = &trace_line.points[segment_index + 1];
+        let start = &trace_points[segment_index];
+        let end = &trace_points[segment_index + 1];
         let position = PointRecord {
             x: start.x + (end.x - start.x) * t,
             y: start.y + (end.y - start.y) * t,
@@ -408,7 +457,7 @@ pub(super) fn bind_points_to_point_traces(
             point.position = position;
             point.constraint = ScenePointConstraint::OnPolyline {
                 function_key: host_ordinal,
-                points: trace_line.points.clone(),
+                points: trace_points,
                 segment_index,
                 t,
             };
@@ -939,6 +988,7 @@ fn point_accepts_trace_parameter(point: &ScenePoint) -> bool {
             | ScenePointConstraint::OnPolygonBoundary { .. }
             | ScenePointConstraint::OnTranslatedPolygonBoundary { .. }
             | ScenePointConstraint::OnCircle { .. }
+            | ScenePointConstraint::OnCircularConstraint { .. }
             | ScenePointConstraint::OnCircleArc { .. }
             | ScenePointConstraint::OnArc { .. }
     )
@@ -1015,6 +1065,11 @@ fn apply_trace_parameter_with_mode(
             *t = scaled.fract();
         }
         ScenePointConstraint::OnCircle { unit_x, unit_y, .. } => {
+            let angle = value;
+            *unit_x = angle.cos();
+            *unit_y = -angle.sin();
+        }
+        ScenePointConstraint::OnCircularConstraint { unit_x, unit_y, .. } => {
             let angle = value;
             *unit_x = angle.cos();
             *unit_y = -angle.sin();

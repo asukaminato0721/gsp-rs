@@ -379,8 +379,10 @@ type RuntimePointBindingJson = (PointBindingJson | {
   transform?: PointTransformJson;
   xExpr?: FunctionExprJson;
   xName?: string;
+  xScale?: number;
   yExpr?: FunctionExprJson;
   yName?: string;
+  yScale?: number;
 };
 
 type RuntimeLabelBindingJson = LabelBindingJson & {
@@ -465,6 +467,7 @@ type RuntimeShapeBindingJson = ShapeBindingJson & {
   complement?: boolean;
   centerIndex?: number | null;
   endIndex?: number;
+  expr?: FunctionExprJson;
   hostKey?: number;
   lineEndIndex?: number;
   lineStartIndex?: number;

@@ -116,7 +116,7 @@
       }
     };
     Object.entries( (value)).forEach(([key, child]) => {
-      if (key === "expr" && child && typeof child === "object") {
+      if ((key === "expr" || key.endsWith("Expr")) && child && typeof child === "object") {
         addExprParameterDeps(
           deps,
            (child),

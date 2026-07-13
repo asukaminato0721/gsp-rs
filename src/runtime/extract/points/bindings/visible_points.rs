@@ -136,17 +136,6 @@ fn scale_function_expr(expr: FunctionExpr, factor: f64) -> FunctionExpr {
     }
 }
 
-fn scaled_parameter_expr(name: &str, value: f64, factor: f64) -> FunctionExpr {
-    if factor.abs() < 1e-12 {
-        return FunctionExpr::Constant(0.0);
-    }
-    FunctionExpr::Parsed(FunctionAst::Binary {
-        lhs: Box::new(FunctionAst::Constant(factor)),
-        op: BinaryOp::Mul,
-        rhs: Box::new(FunctionAst::Parameter(name.to_string(), value)),
-    })
-}
-
 fn indexed_path_for(
     file: &GspFile,
     context: Option<&SceneContext<'_>>,
@@ -593,20 +582,38 @@ fn build_scene_point_for_group(
             ))
         })(),
         crate::format::GroupKind::PointConstraint | crate::format::GroupKind::PathPoint => (|| {
-            let constraint =
-                try_decode_point_constraint(file, groups, group, Some(anchors), graph).ok()?;
-            scene_point_from_constraint(
-                index,
-                file,
-                groups,
-                group,
+            if let Ok(constraint) =
+                try_decode_point_constraint(file, groups, group, Some(anchors), graph)
+                && let Some(point) = scene_point_from_constraint(
+                    index,
+                    file,
+                    groups,
+                    group,
+                    group_color(group),
+                    anchors,
+                    group_to_point_index,
+                    constraint,
+                    visible,
+                    true,
+                )
+            {
+                return Some(point);
+            }
+            let path = indexed_path_for(file, context, group)?;
+            let host_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            if !group.header.is_hidden()
+                || host_group.header.kind() != crate::format::GroupKind::PointTrace
+            {
+                return None;
+            }
+            Some(scene_point(
+                anchors.get(index).cloned().flatten()?,
                 group_color(group),
-                anchors,
-                group_to_point_index,
-                constraint,
                 visible,
                 true,
-            )
+                ScenePointConstraint::Free,
+                None,
+            ))
         })(
         ),
         crate::format::GroupKind::ParameterControlledPoint => (|| {
@@ -624,32 +631,21 @@ fn build_scene_point_for_group(
         })(),
         crate::format::GroupKind::DerivedSegment24 | crate::format::GroupKind::DerivedSegment75 => {
             (|| {
-                let binding = decode_derived_polar_endpoint_binding(file, groups, group)?;
+                let binding = decode_derived_polar_endpoint_binding(file, groups, group, anchors)?;
                 let position = anchors.get(index).cloned().flatten()?;
                 let source_index =
                     mapped_point_index(group_to_point_index, binding.center_group_index)?;
-                let dx_factor = binding.radius_scale * binding.angle_radians.cos();
-                let dy_factor = binding.radius_scale * binding.angle_radians.sin();
                 Some(scene_point(
                     position,
                     group_color(group),
                     visible,
                     false,
                     ScenePointConstraint::Free,
-                    Some(ScenePointBinding::CoordinateSource2d {
+                    Some(ScenePointBinding::PolarOffset {
                         source_index,
-                        x_name: binding.parameter_name.clone(),
-                        x_expr: scaled_parameter_expr(
-                            &binding.parameter_name,
-                            binding.parameter_value,
-                            dx_factor,
-                        ),
-                        y_name: binding.parameter_name.clone(),
-                        y_expr: scaled_parameter_expr(
-                            &binding.parameter_name,
-                            binding.parameter_value,
-                            dy_factor,
-                        ),
+                        distance_expr: binding.distance_expr,
+                        x_scale: binding.x_scale,
+                        y_scale: binding.y_scale,
                     }),
                 ))
             })()
@@ -1114,29 +1110,48 @@ fn build_scene_point_for_group_checked(
     match kind {
         crate::format::GroupKind::PointConstraint | crate::format::GroupKind::PathPoint => {
             let visible = !group.header.is_hidden();
-            let Ok(constraint) =
+            if let Ok(constraint) =
                 try_decode_point_constraint(file, groups, group, Some(anchors), graph)
-                    .with_context(|| {
-                        format!(
-                            "failed to decode point constraint for group #{} {:?}",
-                            group.ordinal, kind
-                        )
-                    })
+                && let Some(point) = scene_point_from_constraint(
+                    index,
+                    file,
+                    groups,
+                    group,
+                    group_color(group),
+                    anchors,
+                    group_to_point_index,
+                    constraint,
+                    visible,
+                    true,
+                )
+            {
+                return Ok(Some(point));
+            }
+            let Some(path) = indexed_path_for(file, context, group) else {
+                return Ok(None);
+            };
+            let Some(host_group) = path
+                .refs
+                .first()
+                .and_then(|ordinal| group_by_ordinal(context, groups, *ordinal))
             else {
                 return Ok(None);
             };
-            Ok(scene_point_from_constraint(
-                index,
-                file,
-                groups,
-                group,
-                group_color(group),
-                anchors,
-                group_to_point_index,
-                constraint,
-                visible,
-                true,
-            ))
+            if !group.header.is_hidden()
+                || host_group.header.kind() != crate::format::GroupKind::PointTrace
+            {
+                return Ok(None);
+            }
+            Ok(anchors.get(index).cloned().flatten().map(|position| {
+                scene_point(
+                    position,
+                    group_color(group),
+                    visible,
+                    true,
+                    ScenePointConstraint::Free,
+                    None,
+                )
+            }))
         }
         crate::format::GroupKind::Rotation
         | crate::format::GroupKind::ExpressionRotation

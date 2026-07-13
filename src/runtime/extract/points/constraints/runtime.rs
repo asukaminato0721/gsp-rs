@@ -387,7 +387,10 @@ fn decode_path_point_constraint(
             };
             let t = match line_like_kind {
                 LineLikeKind::Ray => normalized_t.max(0.0),
-                _ => normalized_t,
+                // Perpendicular and parallel line constraints use their
+                // through-point as the runtime basis origin. In the payload
+                // that same point is parameter 0.5.
+                _ => normalized_t - 0.5,
             };
             Some(RawPointConstraint::ConstructedLine {
                 host_group_index: host_group.ordinal.checked_sub(1)?,
