@@ -374,8 +374,10 @@ fn squared_distance(left: &PointRecord, right: &PointRecord) -> f64 {
 
 fn orient_rotation_bindings_to_world_positions(points: &mut [ScenePoint]) {
     for index in 0..points.len() {
-        let Some((source_index, center_index, angle_degrees)) =
-            points[index].binding.as_ref().and_then(|binding| match binding {
+        let Some((source_index, center_index, angle_degrees)) = points[index]
+            .binding
+            .as_ref()
+            .and_then(|binding| match binding {
                 ScenePointBinding::Rotate {
                     source_index,
                     center_index,
@@ -692,6 +694,7 @@ pub(super) fn assemble_scene(
                     .map(|point| to_world(&point, &analysis.graph_ref))
                     .collect(),
                 color: polygon.color,
+                color_binding: polygon.color_binding,
                 visible: polygon.visible,
                 binding: polygon.binding,
                 debug: polygon.debug,
@@ -791,9 +794,9 @@ fn world_shape_binding(
         }) => Some(ShapeBinding::ParameterRadiusCircle {
             center_index,
             parameter_name,
-            raw_per_unit: graph_ref
-                .as_ref()
-                .map_or(raw_per_unit, |transform| raw_per_unit / transform.raw_per_unit),
+            raw_per_unit: graph_ref.as_ref().map_or(raw_per_unit, |transform| {
+                raw_per_unit / transform.raw_per_unit
+            }),
         }),
         other => other,
     }

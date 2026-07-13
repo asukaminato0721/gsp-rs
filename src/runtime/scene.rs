@@ -734,6 +734,7 @@ pub(crate) enum ArcBoundaryKind {
 pub(crate) struct PolygonShape {
     pub(crate) points: Vec<PointRecord>,
     pub(crate) color: [u8; 4],
+    pub(crate) color_binding: Option<ColorBinding>,
     pub(crate) visible: bool,
     pub(crate) binding: Option<ShapeBinding>,
     pub(crate) debug: Option<PayloadDebugSource>,
@@ -904,6 +905,12 @@ pub(crate) struct SceneArc {
 
 #[derive(Debug, Clone)]
 pub(crate) enum ColorBinding {
+    Spectrum {
+        point_index: usize,
+        base_value: f64,
+        period: f64,
+        base_color: [u8; 4],
+    },
     Rgb {
         red_point_index: usize,
         green_point_index: usize,

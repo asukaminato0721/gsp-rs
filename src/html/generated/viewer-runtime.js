@@ -5046,6 +5046,8 @@
         if (family.vertexIndices.length < 3) {
           return;
         }
+        const sourcePolygon = scene.polygons.find((polygon) => polygon.binding?.kind === "point-polygon" && polygon.binding.vertexIndices.length === family.vertexIndices.length && polygon.binding.vertexIndices.every((index, slot) => index === family.vertexIndices[slot]));
+        const familyColor = sourcePolygon?.color || family.color;
         const seedVertices = family.vertexIndices.map((index) => env.resolveScenePoint(index));
         if (seedVertices.some((point) => !point)) {
           return;
@@ -5075,8 +5077,8 @@
                 x: point.x + dx * family.xRawScale,
                 y: point.y - dy * family.yRawScale
               })),
-              color: family.color,
-              outlineColor: darken(family.color, 80),
+              color: familyColor,
+              outlineColor: darken(familyColor, 80),
               binding: null
             });
           }
@@ -5143,8 +5145,8 @@
               x: point.x + dx,
               y: point.y + dy
             })),
-            color: family.color,
-            outlineColor: darken(family.color, 80),
+            color: familyColor,
+            outlineColor: darken(familyColor, 80),
             binding: null
           });
         });
@@ -5642,9 +5644,10 @@
         });
       });
       (env.sourceScene.polygons || []).forEach((polygon, index) => {
-        if (!polygon.binding) return;
+        if (!polygon.binding && !polygon.colorBinding) return;
         const deps = new Set();
         collectDeps(deps, polygon.binding);
+        collectDeps(deps, polygon.colorBinding);
         addNode({
           id: `polygon:${index}`,
           kind: "polygon",
@@ -6561,6 +6564,35 @@
       Math.round(b * 255),
       alpha
     ];
+  }
+  function rgbaToHsb(color) {
+    const red = color[0] / 255;
+    const green = color[1] / 255;
+    const blue = color[2] / 255;
+    const max = Math.max(red, green, blue);
+    const min = Math.min(red, green, blue);
+    const delta = max - min;
+    let hue = 0;
+    if (delta > 1e-9) {
+      if (max === red) hue = (green - blue) / delta / 6;
+      else if (max === green) hue = (2 + (blue - red) / delta) / 6;
+      else hue = (4 + (red - green) / delta) / 6;
+    }
+    return {
+      hue: wrapUnitInterval(hue),
+      saturation: max <= 1e-9 ? 0 : delta / max,
+      brightness: max
+    };
+  }
+  function refreshPolygonColorBinding(scene, polygon) {
+    const binding = polygon.colorBinding;
+    if (!binding || binding.kind !== "spectrum") return;
+    const value = parameterValueFromPoint(scene, binding.pointIndex);
+    if (!isFiniteNumber(value) || !isFiniteNumber(binding.period) || binding.period <= 1e-9) return;
+    const base = rgbaToHsb(binding.baseColor);
+    const color = hsbToRgba(base.hue + (value - binding.baseValue) / binding.period, base.saturation, base.brightness, binding.baseColor[3]);
+    polygon.color = color;
+    polygon.outlineColor = darken(color, 80);
   }
   function refreshCircleFillColorBinding(scene, circle) {
     const binding = circle.fillColorBinding;
@@ -8166,6 +8198,7 @@
       if (refreshPolygon) {
         refreshPolygon(shapeContext, polygon);
       }
+      refreshPolygonColorBinding(scene, polygon);
     });
   }
   function refreshConstrainedPointPositions(env, scene) {
@@ -8906,6 +8939,7 @@
         outlineColor: polygon.outlineColor,
         visible: polygon.visible !== false,
         points: polygon.points.map(attachPointRef),
+        colorBinding: polygon.colorBinding ? { ...polygon.colorBinding } : null,
         binding: polygon.binding ? { ...polygon.binding } : null,
         debug: clonePayloadDebug(polygon.debug)
       })),

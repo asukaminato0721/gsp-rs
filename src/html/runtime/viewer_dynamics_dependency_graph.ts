@@ -419,9 +419,10 @@
     });
 
     (env.sourceScene.polygons || []).forEach((polygon, index: number) => {
-      if (!polygon.binding) return;
+      if (!polygon.binding && !polygon.colorBinding) return;
       const deps = new Set<string>();
       collectDeps(deps, polygon.binding);
+      collectDeps(deps, polygon.colorBinding);
       addNode({
         id: `polygon:${index}`,
         kind: "polygon",

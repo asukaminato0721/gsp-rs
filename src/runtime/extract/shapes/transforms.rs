@@ -755,6 +755,7 @@ fn derived_polygon_shape(
     (points.len() >= 3).then_some(PolygonShape {
         points,
         color: fill_color_from_styles(source_group.header.style_b, source_group.header.style_c),
+        color_binding: None,
         visible: !group.header.is_hidden(),
         binding: Some(ShapeBinding::DerivedTransform {
             source_index: source_group_index,

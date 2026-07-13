@@ -641,6 +641,12 @@
       if (family.vertexIndices.length < 3) {
         return;
       }
+      const sourcePolygon = scene.polygons.find((polygon) =>
+        polygon.binding?.kind === "point-polygon"
+        && polygon.binding.vertexIndices.length === family.vertexIndices.length
+        && polygon.binding.vertexIndices.every((index: number, slot: number) => index === family.vertexIndices[slot])
+      );
+      const familyColor = sourcePolygon?.color || family.color;
       const seedVertices = family.vertexIndices
         .map((index: number) => env.resolveScenePoint(index));
       if (seedVertices.some((point) => !point)) {
@@ -681,8 +687,8 @@
               x: point.x + dx * family.xRawScale,
               y: point.y - dy * family.yRawScale,
             })),
-            color: family.color,
-            outlineColor: darken(family.color, 80),
+            color: familyColor,
+            outlineColor: darken(familyColor, 80),
             binding: null,
           });
         }
@@ -744,8 +750,8 @@
       deltas.forEach(({ dx, dy }) => {
         scene.polygons.push({
           points: seedPoints.map((point) => ({ x: point.x + dx, y: point.y + dy })),
-          color: family.color,
-          outlineColor: darken(family.color, 80),
+          color: familyColor,
+          outlineColor: darken(familyColor, 80),
           binding: null,
         });
       });

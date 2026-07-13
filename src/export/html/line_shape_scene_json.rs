@@ -438,6 +438,7 @@ pub(super) struct PolygonJson {
     points: Vec<PointJson>,
     color: [u8; 4],
     outline_color: [u8; 4],
+    color_binding: Option<ColorBindingJson>,
     visible: bool,
     binding: Option<ShapeBindingJson>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -450,6 +451,10 @@ impl PolygonJson {
             points: PointJson::collect(&polygon.points),
             color: polygon.color,
             outline_color: darken(polygon.color, 80),
+            color_binding: polygon
+                .color_binding
+                .as_ref()
+                .map(ColorBindingJson::from_binding),
             visible: polygon.visible,
             binding: polygon
                 .binding
@@ -502,6 +507,16 @@ impl CircleJson {
 #[derive(Serialize, TS)]
 #[serde(tag = "kind")]
 enum ColorBindingJson {
+    #[serde(rename = "spectrum")]
+    Spectrum {
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+        #[serde(rename = "baseValue")]
+        base_value: f64,
+        period: f64,
+        #[serde(rename = "baseColor")]
+        base_color: [u8; 4],
+    },
     #[serde(rename = "rgb")]
     Rgb {
         #[serde(rename = "redPointIndex")]
@@ -527,6 +542,17 @@ enum ColorBindingJson {
 impl ColorBindingJson {
     fn from_binding(binding: &ColorBinding) -> Self {
         match binding {
+            ColorBinding::Spectrum {
+                point_index,
+                base_value,
+                period,
+                base_color,
+            } => Self::Spectrum {
+                point_index: *point_index,
+                base_value: *base_value,
+                period: *period,
+                base_color: *base_color,
+            },
             ColorBinding::Rgb {
                 red_point_index,
                 green_point_index,

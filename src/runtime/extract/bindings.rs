@@ -180,9 +180,6 @@ pub(super) fn apply_payload_color_bindings(
         let Some(path) = find_indexed_path(file, group) else {
             continue;
         };
-        if path.refs.len() < 4 {
-            continue;
-        }
 
         let Some(host_group_index) = path.refs[0].checked_sub(1) else {
             continue;
@@ -201,9 +198,39 @@ pub(super) fn apply_payload_color_bindings(
             let Some(polygon) = shapes.polygons.get_mut(polygon_index) else {
                 continue;
             };
-            let color = crate::runtime::geometry::color_from_style(group.header.style_b);
-            polygon.color = [color[0], color[1], color[2], polygon.color[3]];
+            let Some(parameter_ordinal) = path.refs.get(1).copied() else {
+                continue;
+            };
+            let Some(point_index) = resolve_color_parameter_point_index(
+                file,
+                groups,
+                group_to_point_index,
+                parameter_ordinal,
+            ) else {
+                continue;
+            };
+            let Some(base_value) =
+                resolve_payload_color_parameter_value(file, groups, raw_anchors, parameter_ordinal)
+            else {
+                continue;
+            };
+            let Some((range_start, range_end)) = decode_spectrum_range(file, group) else {
+                continue;
+            };
+            let period = (range_end - range_start).abs();
+            if period <= 1e-9 {
+                continue;
+            }
+            polygon.color_binding = Some(ColorBinding::Spectrum {
+                point_index,
+                base_value,
+                period,
+                base_color: polygon.color,
+            });
             polygon.visible = !group.header.is_hidden();
+            continue;
+        }
+        if path.refs.len() < 4 {
             continue;
         }
         if host_group.header.kind() != GroupKind::CircleInterior {
@@ -306,6 +333,35 @@ pub(super) fn apply_payload_color_bindings(
             circle.fill_color_binding = Some(binding);
         }
     }
+}
+
+fn resolve_color_parameter_point_index(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group_to_point_index: &[Option<usize>],
+    anchor_ordinal: usize,
+) -> Option<usize> {
+    let anchor_group = groups.get(anchor_ordinal.checked_sub(1)?)?;
+    let anchor_path = find_indexed_path(file, anchor_group)?;
+    let point_group_index = anchor_path.refs.first()?.checked_sub(1)?;
+    group_to_point_index
+        .get(point_group_index)
+        .copied()
+        .flatten()
+}
+
+fn decode_spectrum_range(file: &GspFile, group: &ObjectGroup) -> Option<(f64, f64)> {
+    let payload = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x07d3)?
+        .payload(&file.data);
+    if payload.len() < 24 {
+        return None;
+    }
+    let start = crate::runtime::extract::read_f64(payload, 8);
+    let end = crate::runtime::extract::read_f64(payload, 16);
+    (start.is_finite() && end.is_finite()).then_some((start, end))
 }
 
 fn resolve_payload_color_parameter_value(

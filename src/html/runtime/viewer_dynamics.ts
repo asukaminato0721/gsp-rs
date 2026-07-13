@@ -720,7 +720,7 @@
   }
 
 
-  function hsbToRgba(hue: number, saturation: number, brightness: number, alpha: number) {
+  function hsbToRgba(hue: number, saturation: number, brightness: number, alpha: number): [number, number, number, number] {
     const wrappedHue = wrapUnitInterval(hue);
     const s = Math.max(0, Math.min(1, saturation));
     const v = Math.max(0, Math.min(1, brightness));
@@ -745,6 +745,44 @@
       }
     })();
     return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255), alpha];
+  }
+
+
+  function rgbaToHsb(color: [number, number, number, number]) {
+    const red = color[0] / 255;
+    const green = color[1] / 255;
+    const blue = color[2] / 255;
+    const max = Math.max(red, green, blue);
+    const min = Math.min(red, green, blue);
+    const delta = max - min;
+    let hue = 0;
+    if (delta > 1e-9) {
+      if (max === red) hue = ((green - blue) / delta) / 6;
+      else if (max === green) hue = (2 + (blue - red) / delta) / 6;
+      else hue = (4 + (red - green) / delta) / 6;
+    }
+    return {
+      hue: wrapUnitInterval(hue),
+      saturation: max <= 1e-9 ? 0 : delta / max,
+      brightness: max,
+    };
+  }
+
+
+  function refreshPolygonColorBinding(scene: ViewerSceneData, polygon: RuntimePolygonJson) {
+    const binding = polygon.colorBinding;
+    if (!binding || binding.kind !== "spectrum") return;
+    const value = parameterValueFromPoint(scene, binding.pointIndex);
+    if (!isFiniteNumber(value) || !isFiniteNumber(binding.period) || binding.period <= 1e-9) return;
+    const base = rgbaToHsb(binding.baseColor);
+    const color = hsbToRgba(
+      base.hue + (value - binding.baseValue) / binding.period,
+      base.saturation,
+      base.brightness,
+      binding.baseColor[3],
+    );
+    polygon.color = color;
+    polygon.outlineColor = darken(color, 80);
   }
 
 
@@ -2624,6 +2662,7 @@
       if (refreshPolygon) {
         refreshPolygon(shapeContext, polygon);
       }
+      refreshPolygonColorBinding(scene, polygon);
     });
   }
 

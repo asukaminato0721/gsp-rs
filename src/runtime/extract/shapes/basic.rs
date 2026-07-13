@@ -364,6 +364,7 @@ pub(crate) fn collect_arc_boundary_fill_polygons(
             (color[3] > 0).then_some(PolygonShape {
                 points,
                 color,
+                color_binding: None,
                 visible: !group.header.is_hidden(),
                 binding: Some(binding),
                 debug: Some(payload_debug_source(group)),
@@ -863,6 +864,7 @@ pub(crate) fn collect_polygon_shapes(
             (points.len() >= 3).then_some(PolygonShape {
                 points,
                 color: fill_color_from_styles(group.header.style_b, group.header.style_c),
+                color_binding: None,
                 visible: !group.header.is_hidden(),
                 binding: Some(ShapeBinding::PointPolygon {
                     vertex_indices: path

@@ -49,6 +49,9 @@ test('refraction iteration arrows follow the dragged medium point', async ({ pag
     const beforePolygons = before.scene.polygons.map(
       (polygon: { points: Array<{ x: number; y: number }> }) => polygon.points,
     );
+    const mediumPolygonIndex = before.scene.polygons.findIndex(
+      (polygon: { debug?: { groupOrdinal?: number } }) => polygon.debug?.groupOrdinal === 12,
+    );
     const medium = before.scene.points[mediumIndex];
 
     drag.beginDrag(env, 1, { x: medium.x, y: medium.y }, mediumIndex, null, null, null, null);
@@ -68,6 +71,13 @@ test('refraction iteration arrows follow the dragged medium point', async ({ pag
       mediumAfterX: after.scene.points[mediumIndex].x,
       refractedControlBeforeX: before.scene.points[29].x,
       refractedControlAfterX: after.scene.points[29].x,
+      mediumColorBefore: before.scene.polygons[mediumPolygonIndex].color,
+      mediumColorAfter: after.scene.polygons[mediumPolygonIndex].color,
+      iteratedArrowColors: Array.from(new Set(
+        after.scene.polygons.slice(8).map(
+          (polygon: { color: [number, number, number, number] }) => JSON.stringify(polygon.color),
+        ),
+      )).sort(),
       movedLineCount,
       movedPolygonCount,
     };
@@ -75,6 +85,12 @@ test('refraction iteration arrows follow the dragged medium point', async ({ pag
 
   expect(result.mediumAfterX).toBeGreaterThan(result.mediumBeforeX + 70);
   expect(result.refractedControlAfterX).not.toBeCloseTo(result.refractedControlBeforeX);
+  expect(result.mediumColorAfter).not.toEqual(result.mediumColorBefore);
+  expect(result.iteratedArrowColors).toEqual([
+    JSON.stringify([0, 0, 255, 255]),
+    JSON.stringify([255, 0, 0, 255]),
+    JSON.stringify([255, 0, 255, 255]),
+  ].sort());
   expect(result.movedLineCount).toBeGreaterThan(8);
   expect(result.movedPolygonCount).toBeGreaterThan(8);
 });

@@ -1292,7 +1292,7 @@ pub(crate) fn collect_carried_iteration_polygons(
                 .map(|payload| super::read_u32(payload, 16) as usize)
                 .unwrap_or(3);
             let color =
-                fill_color_from_styles(source_group.header.style_a, source_group.header.style_b);
+                fill_color_from_styles(source_group.header.style_b, source_group.header.style_c);
             Some(
                 carried_iteration_polygon_deltas(
                     &step,
@@ -1308,6 +1308,7 @@ pub(crate) fn collect_carried_iteration_polygons(
                         .map(|point| point + delta.clone())
                         .collect(),
                     color,
+                    color_binding: None,
                     visible: !iter_group.header.is_hidden(),
                     binding: None,
                     debug: None,
@@ -1424,6 +1425,7 @@ fn collect_coordinate_point_polygon_grid_iteration(
                 .map(|point| point + delta.clone())
                 .collect(),
             color,
+            color_binding: None,
             visible: !iter_group.header.is_hidden(),
             binding: None,
             debug: None,
@@ -1974,8 +1976,8 @@ pub(crate) fn collect_carried_polygon_iteration_families(
                 parameter_name: carried_iteration_parameter_name(file, groups, iter_group),
                 bidirectional,
                 color: fill_color_from_styles(
-                    source_group.header.style_a,
                     source_group.header.style_b,
+                    source_group.header.style_c,
                 ),
             })
         })

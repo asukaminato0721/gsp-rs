@@ -478,6 +478,7 @@
         outlineColor: polygon.outlineColor,
         visible: polygon.visible !== false,
         points: polygon.points.map(attachPointRef),
+        colorBinding: polygon.colorBinding ? { ...polygon.colorBinding } : null,
         binding: polygon.binding ? { ...polygon.binding } : null,
         debug: clonePayloadDebug(polygon.debug),
       })),

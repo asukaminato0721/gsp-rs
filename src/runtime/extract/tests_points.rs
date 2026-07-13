@@ -3,8 +3,8 @@ use super::test_support::{fixture_bytes, fixture_log, fixture_scene, function_ex
 use crate::format::GspFile;
 use crate::runtime::functions::UnaryFunction;
 use crate::runtime::scene::{
-    ButtonAction, CircularConstraint, LineBinding, LineConstraint, LineTransformBinding,
-    ScenePointBinding, ScenePointConstraint, ShapeBinding, TextLabelBinding,
+    ButtonAction, CircularConstraint, ColorBinding, LineBinding, LineConstraint,
+    LineTransformBinding, ScenePointBinding, ScenePointConstraint, ShapeBinding, TextLabelBinding,
 };
 
 #[test]
@@ -44,6 +44,27 @@ fn refraction_sample_uses_raw_translation_offsets_and_live_iteration_depth() {
     assert!((dx + 7.559055118110236).abs() < 1e-9);
     assert!((dy - 18.89763779527559).abs() < 1e-9);
 
+    let medium_polygon = scene
+        .polygons
+        .iter()
+        .find(|polygon| {
+            polygon
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 12)
+        })
+        .expect("expected medium polygon #12");
+    assert!(matches!(
+        medium_polygon.color_binding,
+        Some(ColorBinding::Spectrum {
+            point_index: 8,
+            base_value,
+            period,
+            base_color: [0, 128, 0, 99],
+        }) if (base_value - 1.640416666666667).abs() < 1e-9
+            && (period - 1.0).abs() < 1e-9
+    ));
+
     let refracted_intersection = scene
         .points
         .iter()
@@ -80,6 +101,17 @@ fn refraction_sample_uses_raw_translation_offsets_and_live_iteration_depth() {
     )));
     assert_eq!(scene.polygon_iterations.len(), 3);
     assert_eq!(scene.polygons.len(), 32);
+    assert_eq!(
+        scene
+            .polygon_iterations
+            .iter()
+            .map(|family| match family {
+                crate::runtime::scene::PolygonIterationFamily::Translate { color, .. } => *color,
+                family => panic!("expected translated arrow iteration, got {family:?}"),
+            })
+            .collect::<Vec<_>>(),
+        vec![[255, 0, 0, 255], [255, 0, 255, 255], [0, 0, 255, 255]]
+    );
     assert!(scene.polygon_iterations.iter().all(|family| matches!(
         family,
         crate::runtime::scene::PolygonIterationFamily::Translate {
