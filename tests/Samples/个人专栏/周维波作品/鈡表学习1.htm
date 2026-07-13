@@ -1,0 +1,368 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>鈡表学习1</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=0>
+<PARAM NAME=BackGreen VALUE=0>
+<PARAM NAME=BackBlue VALUE=0>
+<PARAM NAME=Construction VALUE="
+{1} Parameter(23997,14,201,'t = ')[green];
+{2} Calculate(14,153,'','0.10472 ! A * ')(1)[hidden];
+{3} Calculate(14,180,'','0.00174533 ! A * ')(1)[hidden];
+{4} Calculate(36,308,'','A 60 / @trnc ')(1)[black,hidden];
+{5} Calculate(36,390,'','A 60 A 60 / @trnc * - ')(1)[black,hidden];
+{6} Point(398,359)[hidden];
+{7} Point(448,359)[hidden];
+{8} Dilation(7,6,0.0625)[hidden];
+{9} VectorTranslation(8,6,8)[hidden];
+{10} VectorTranslation(9,6,8)[hidden];
+{11} VectorTranslation(10,6,8)[hidden];
+{12} VectorTranslation(11,6,8)[hidden];
+{13} VectorTranslation(12,6,8)[hidden];
+{14} VectorTranslation(13,6,8)[hidden];
+{15} VectorTranslation(14,6,8)[hidden];
+{16} VectorTranslation(15,6,8)[hidden];
+{17} VectorTranslation(16,6,8)[hidden];
+{18} VectorTranslation(17,6,8)[hidden];
+{19} VectorTranslation(18,6,8)[hidden];
+{20} VectorTranslation(19,6,8)[hidden];
+{21} VectorTranslation(20,6,8)[hidden];
+{22} VectorTranslation(21,6,8)[hidden];
+{23} Rotation(8,6,1.5708)[hidden];
+{24} VectorTranslation(8,6,23)[hidden];
+{25} VectorTranslation(13,6,23)[hidden];
+{26} VectorTranslation(14,6,23)[hidden];
+{27} VectorTranslation(15,6,23)[hidden];
+{28} VectorTranslation(16,6,23)[hidden];
+{29} VectorTranslation(17,6,23)[hidden];
+{30} VectorTranslation(22,6,23)[hidden];
+{31} VectorTranslation(24,6,23)[hidden];
+{32} VectorTranslation(25,6,23)[hidden];
+{33} VectorTranslation(26,6,23)[hidden];
+{34} VectorTranslation(27,6,23)[hidden];
+{35} VectorTranslation(28,6,23)[hidden];
+{36} VectorTranslation(29,6,23)[hidden];
+{37} VectorTranslation(30,6,23)[hidden];
+{38} VectorTranslation(31,6,23)[hidden];
+{39} VectorTranslation(32,6,23)[hidden];
+{40} VectorTranslation(33,6,23)[hidden];
+{41} VectorTranslation(34,6,23)[hidden];
+{42} VectorTranslation(35,6,23)[hidden];
+{43} VectorTranslation(36,6,23)[hidden];
+{44} VectorTranslation(37,6,23)[hidden];
+{45} VectorTranslation(38,6,23)[hidden];
+{46} VectorTranslation(39,6,23)[hidden];
+{47} VectorTranslation(40,6,23)[hidden];
+{48} VectorTranslation(41,6,23)[hidden];
+{49} VectorTranslation(42,6,23)[hidden];
+{50} VectorTranslation(43,6,23)[hidden];
+{51} VectorTranslation(44,6,23)[hidden];
+{52} VectorTranslation(45,6,23)[hidden];
+{53} VectorTranslation(46,6,23)[hidden];
+{54} VectorTranslation(47,6,23)[hidden];
+{55} VectorTranslation(48,6,23)[hidden];
+{56} VectorTranslation(49,6,23)[hidden];
+{57} VectorTranslation(50,6,23)[hidden];
+{58} VectorTranslation(51,6,23)[hidden];
+{59} VectorTranslation(52,6,23)[hidden];
+{60} VectorTranslation(53,6,23)[hidden];
+{61} VectorTranslation(54,6,23)[hidden];
+{62} VectorTranslation(55,6,23)[hidden];
+{63} VectorTranslation(56,6,23)[hidden];
+{64} VectorTranslation(57,6,23)[hidden];
+{65} VectorTranslation(58,6,23)[hidden];
+{66} VectorTranslation(59,6,23)[hidden];
+{67} VectorTranslation(60,6,23)[hidden];
+{68} VectorTranslation(61,6,23)[hidden];
+{69} VectorTranslation(62,6,23)[hidden];
+{70} VectorTranslation(63,6,23)[hidden];
+{71} VectorTranslation(64,6,23)[hidden];
+{72} VectorTranslation(65,6,23)[hidden];
+{73} VectorTranslation(66,6,23)[hidden];
+{74} VectorTranslation(67,6,23)[hidden];
+{75} VectorTranslation(68,6,23)[hidden];
+{76} VectorTranslation(69,6,23)[hidden];
+{77} VectorTranslation(70,6,23)[hidden];
+{78} VectorTranslation(71,6,23)[hidden];
+{79} VectorTranslation(72,6,23)[hidden];
+{80} VectorTranslation(73,6,23)[hidden];
+{81} VectorTranslation(74,6,23)[hidden];
+{82} VectorTranslation(75,6,23)[hidden];
+{83} VectorTranslation(76,6,23)[hidden];
+{84} VectorTranslation(77,6,23)[hidden];
+{85} VectorTranslation(78,6,23)[hidden];
+{86} VectorTranslation(79,6,23)[hidden];
+{87} VectorTranslation(81,6,23)[hidden];
+{88} VectorTranslation(83,6,23)[hidden];
+{89} VectorTranslation(85,6,23)[hidden];
+{90} VectorTranslation(88,6,23)[hidden];
+{91} VectorTranslation(90,6,23)[hidden];
+{92} VectorTranslation(91,6,23)[hidden];
+{93} VectorTranslation(92,6,23)[hidden];
+{94} Segment(55,6)[hidden];
+{95} Segment(7,55)[hidden];
+{96} Segment(67,6)[hidden];
+{97} Segment(71,7)[hidden];
+{98} Segment(86,71)[hidden];
+{99} Segment(80,67)[hidden];
+{100} Segment(87,80)[hidden];
+{101} Segment(89,86)[hidden];
+{102} Segment(93,87)[hidden];
+{103} Segment(89,93)[hidden];
+{104} Polygon(6,67,80,87,93,89,86,71,7,55)[yellow];
+{105} Segment(83,82)[hidden];
+{106} Midpoint(105)[hidden];
+{107} Segment(84,83)[hidden];
+{108} Midpoint(107)[hidden];
+{109} Segment(69,74)[hidden];
+{110} Segment(78,69)[hidden];
+{111} Colorized_Spectrum(69,1,0,1,2);
+{112} Colorized_Spectrum(94,1,0,1,2);
+{113} Colorized_Spectrum(95,1,0,1,2);
+{114} Colorized_Spectrum(96,1,0,1,2);
+{115} Colorized_Spectrum(97,1,0,1,2);
+{116} Colorized_Spectrum(98,1,0,1,2);
+{117} Colorized_Spectrum(99,1,0,1,2);
+{118} Colorized_Spectrum(100,1,0,1,2);
+{119} Colorized_Spectrum(101,1,0,1,2);
+{120} Colorized_Spectrum(102,1,0,1,2);
+{121} Colorized_Spectrum(103,1,0,1,2);
+{122} Colorized_Spectrum(106,1,0,1,2);
+{123} Colorized_Spectrum(108,1,0,1,2);
+{124} Colorized_Spectrum(109,1,0,1,2);
+{125} Colorized_Spectrum(110,1,0,1,2);
+{126} Point(409,265)[hidden];
+{127} FixedText(19,99,'时钟')[red];
+{128} Point(421,269)[mediumPoint];
+{129} Translation(128,2.31429e-015,37.7953)[hidden];
+{130} Ray(129,128)[hidden];
+{131} Point on object(130,5.36275)[hidden];
+{132} Rotation/MeasuredAngle(131,128,3)[hidden];
+{133} Dilation(132,128,0.714286)[hidden];
+{134} Translation(133,30.5512,0)[hidden];
+{135} Segment(133,128)[hidden];
+{136} Circle(133,134)[hidden];
+{137} Intersect1(135,136)[hidden];
+{138} Rotation(137,133,-0.349066)[hidden];
+{139} Rotation(137,133,0.349066)[hidden];
+{140} Translation(133,22.9134,0)[hidden];
+{141} Circle(133,140)[hidden];
+{142} Intersect1(135,141)[hidden];
+{143} Rotation(142,133,0.174533)[hidden];
+{144} VectorTranslation(143,142,128)[hidden];
+{145} Rotation(142,133,-0.174533)[hidden];
+{146} VectorTranslation(145,142,128)[hidden];
+{147} Segment(144,146)[black];
+{148} Polygon(146,145,138,133,139,143,144)[yellow];
+{149} Segment(128,132)[hidden];
+{150} Translation(131,0,-15.1181)[hidden];
+{151} Translation(131,0,-22.6772)[hidden];
+{152} Segment(151,131)[hidden];
+{153} Rotation(152,128,0.523599)[red,thick];
+{154} Rotation(153,128,0.523599)[red,thick];
+{155} Colorized_Spectrum(152,1,0,1,2)[hidden];
+{156} Colorized_Spectrum(155,1,0,1,1)[thick];
+{157} Rotation(152,128,1.5708)[hidden];
+{158} Rotation(157,128,0.523599)[red,thick];
+{159} Rotation(158,128,0.523599)[red,thick];
+{160} Colorized_Spectrum(157,1,0,1,2)[hidden];
+{161} Colorized_Spectrum(160,1,0,1,1)[thick];
+{162} Rotation(157,128,1.5708)[hidden];
+{163} Rotation(162,128,0.523599)[red,thick];
+{164} Rotation(163,128,0.523599)[red,thick];
+{165} Colorized_Spectrum(162,1,0,1,2)[hidden];
+{166} Colorized_Spectrum(165,1,0,1,1)[thick];
+{167} Rotation(162,128,1.5708)[hidden];
+{168} Colorized_Spectrum(167,1,0,1,2)[hidden];
+{169} Colorized_Spectrum(168,1,0,1,1)[thick];
+{170} Rotation(167,128,0.523599)[red,thick];
+{171} Rotation(170,128,0.523599)[red,thick];
+{172} Rotation(131,128,0.523599)[hidden];
+{173} Rotation(172,128,0.523599)[hidden];
+{174} Segment(131,150)[red];
+{175} Rotation(174,128,0.10472)[yellow];
+{176} Rotation(175,128,0.10472)[yellow];
+{177} Rotation(176,128,0.10472)[yellow];
+{178} Rotation(177,128,0.10472)[yellow];
+{179} Rotation(178,128,0.20944)[yellow];
+{180} Rotation(179,128,0.10472)[yellow];
+{181} Rotation(180,128,0.10472)[yellow];
+{182} Rotation(181,128,0.10472)[yellow];
+{183} Rotation(182,128,0.20944)[yellow];
+{184} Rotation(183,128,0.10472)[yellow];
+{185} Rotation(184,128,0.10472)[yellow];
+{186} Rotation(185,128,0.10472)[yellow];
+{187} Rotation(186,128,0.20944)[yellow];
+{188} Rotation(187,128,0.10472)[yellow];
+{189} Rotation(188,128,0.10472)[yellow];
+{190} Rotation(189,128,0.10472)[yellow];
+{191} Rotation(190,128,0.20944)[yellow];
+{192} Rotation(191,128,0.10472)[yellow];
+{193} Rotation(192,128,0.10472)[yellow];
+{194} Rotation(193,128,0.10472)[yellow];
+{195} Rotation(194,128,0.20944)[yellow];
+{196} Rotation(195,128,0.10472)[yellow];
+{197} Rotation(196,128,0.10472)[yellow];
+{198} Rotation(197,128,0.10472)[yellow];
+{199} Rotation(198,128,0.20944)[yellow];
+{200} Rotation(199,128,0.10472)[yellow];
+{201} Rotation(200,128,0.10472)[yellow];
+{202} Rotation(201,128,0.10472)[yellow];
+{203} Rotation(202,128,0.20944)[yellow];
+{204} Rotation(203,128,0.10472)[yellow];
+{205} Rotation(204,128,0.10472)[yellow];
+{206} Rotation(205,128,0.10472)[yellow];
+{207} Rotation(206,128,0.20944)[yellow];
+{208} Rotation(207,128,0.10472)[yellow];
+{209} Rotation(208,128,0.10472)[yellow];
+{210} Rotation(209,128,0.10472)[yellow];
+{211} Rotation(210,128,0.20944)[yellow];
+{212} Rotation(211,128,0.10472)[yellow];
+{213} Rotation(212,128,0.10472)[yellow];
+{214} Rotation(213,128,0.10472)[yellow];
+{215} Rotation(214,128,0.20944)[yellow];
+{216} Rotation(215,128,0.10472)[yellow];
+{217} Rotation(216,128,0.10472)[yellow];
+{218} Rotation(217,128,0.10472)[yellow];
+{219} Rotation(218,128,0.20944)[yellow];
+{220} Rotation(219,128,0.10472)[yellow];
+{221} Rotation(220,128,0.10472)[yellow];
+{222} Rotation(221,128,0.10472)[yellow];
+{223} Rotation(131,128,-0.523599)[hidden];
+{224} Rotation(223,128,-0.523599)[hidden];
+{225} Rotation(224,128,-0.523599)[hidden];
+{226} Rotation(225,128,-0.523599)[hidden];
+{227} Rotation(226,128,-0.523599)[hidden];
+{228} Rotation(227,128,-0.523599)[hidden];
+{229} Rotation(228,128,-0.523599)[hidden];
+{230} Rotation(229,128,-0.523599)[hidden];
+{231} Rotation(230,128,-0.523599)[hidden];
+{232} Rotation/MeasuredAngle(131,128,2)[hidden];
+{233} Segment(232,128)[hidden];
+{234} Dilation(232,128,0.833333)[hidden];
+{235} Segment(234,128)[red,thick];
+{236} Translation(234,22.6772,0)[hidden];
+{237} Circle(234,236)[hidden];
+{238} Intersect1(235,237)[hidden];
+{239} Dilation(238,234,0.5)[hidden];
+{240} Rotation(238,234,0.349066)[hidden];
+{241} Rotation(238,234,-0.349066)[hidden];
+{242} Polygon(241,234,240,239)[red];
+{243} Circle(128,131)[hidden];
+{244} Colorized_Spectrum(243,1,0,1,2)[mediumLine];
+{245} Intersect1(156,244)[yellow];
+{246} Translation(245,0,15.1181)[hidden];
+{247} Circle(128,246)[hidden];
+{248} Intersect2(220,244)[hidden];
+{249} Circle interior(243)[hidden];
+{250} Parameter(1,23,165,'')[hidden];
+{251} Parameter(0.23,23,283,'')[hidden];
+{252} Circle by radius(128,251)[magenta,mediumLine];
+{253} Circle interior(252)[yellow];
+{254} Calculate(32,447,'','0.0174533 120 / ! A * ')(1)[hidden];
+{255} Rotation/MeasuredAngle(246,128,254)[hidden];
+{256} Segment(128,255)[hidden];
+{257} Dilation(255,128,0.5)[hidden];
+{258} Translation(257,22.9134,0)[hidden];
+{259} Translation(257,30.5512,0)[hidden];
+{260} Segment(257,128)[hidden];
+{261} Circle(257,258)[hidden];
+{262} Circle(257,259)[hidden];
+{263} Intersect1(260,261)[hidden];
+{264} Intersect1(260,262)[hidden];
+{265} Rotation(263,257,-0.174533)[hidden];
+{266} Rotation(263,257,0.174533)[hidden];
+{267} Rotation(264,257,-0.349066)[hidden];
+{268} Rotation(264,257,0.349066)[hidden];
+{269} Segment(265,267)[green,thick];
+{270} Segment(267,257)[green,thick];
+{271} Segment(257,268)[green,thick];
+{272} Segment(268,266)[green,thick];
+{273} VectorTranslation(266,263,128)[hidden];
+{274} VectorTranslation(265,263,128)[hidden];
+{275} Segment(273,274)[black];
+{276} Segment(274,265)[green,thick];
+{277} Segment(266,273)[green,thick];
+{278} Calculate(848,478,'m[2] = ','A 3600 / @trnc ')(1)[green,hidden];
+{279} Calculate(846,545,'','A 60 / @trnc ')(1)[hidden];
+{280} Calculate(846,600,'m[1] - 60*m[2] = ','A 60 B * - ')(279,278)[green,hidden];
+{281} Calculate(846,655,'t - 60*m[1] = ','A 60 B * - ')(1,279)[green,hidden];
+{282} Intersect2(219,244)[hidden];
+{283} Circle interior(244)[color(192,133,74)];
+{284} Colorized_Spectrum(247,1,0,10,2)[thick];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>鈡表学习1</P></H4>
+</BODY>
+</HTML>

@@ -1,0 +1,151 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>2010年四川眉山中考数学试题最后一题</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} FixedText(175,49,'2010年四川眉山中考数学最后一题')[blue];
+{2} Parameter(8,29,9,'')[hidden];
+{3} Point(22,85)[mediumPoint];
+{4} Translation(3,37.7953,0)[hidden];
+{5} Ray(4,3)[hidden];
+{6} Point on object(5,1.02646)[label('1'),yellow];
+{7} MoveButton(24,31,3,'')(4,6)[hidden];
+{8} Segment(6,3)[blue];
+{9} Length(8,26,104,'')[hidden];
+{10} Point(505,423)[label('O'),mediumPoint];
+{11} Translation(10,0,7.55906)[hidden];
+{12} Segment(11,10)[blue];
+{13} Translation(10,7.55906,0)[hidden];
+{14} Segment(10,13)[blue];
+{15} VectorTranslation(10,3,6)[hidden];
+{16} Rotation(15,10,-3.14159)[hidden];
+{17} Rotation(15,10,1.5708)[hidden];
+{18} Line(15,16)[hidden];
+{19} Ray(17,10)[hidden];
+{20} Translation(10,0,-37.7953)[hidden];
+{21} Translation(20,37.7953,0)[hidden];
+{22} Calculate(26,104,'','A B * 18.8976 + ')(2,9)[hidden];
+{23} Circle by radius(10,22)[hidden];
+{24} Intersect2(19,23)[label('Y'),yellow];
+{25} Intersect1(18,23)[hidden];
+{26} Intersect2(18,23)[label('X'),yellow];
+{27} Segment(26,25)[blue];
+{28} Segment(24,20)[blue];
+{29} Translation(25,37.7953,0)[hidden];
+{30} Rotation/MarkedAngle(26,25,26,25,29)[hidden];
+{31} Translation(30,-15.1181,5.66929)[hidden];
+{32} Translation(30,-15.1181,-5.66929)[hidden];
+{33} Translation(30,-7.55906,0)[hidden];
+{34} Polygon(32,33,31,30)[hidden];
+{35} Rotation/MarkedAngle(34,25,30,25,26)[black];
+{36} Rotation/MarkedAngle(24,20,24,20,21)[hidden];
+{37} Translation(36,-15.1181,5.66929)[hidden];
+{38} Translation(36,-15.1181,-5.66929)[hidden];
+{39} Translation(36,-7.55906,0)[hidden];
+{40} Polygon(38,39,37,36)[hidden];
+{41} Rotation/MarkedAngle(40,20,36,20,24)[black];
+{42} Function(27,852,'','2 3 / x 2 ^ * 10 3 / x * - 4 + 0 x 1 + 6 x - * @sqrt * + ')()[hidden];
+{43} Parameter(1e-005,27,272,'')[hidden];
+{44} Point(16,868)[hidden,mediumPoint];
+{45} Point(684,868)[hidden];
+{46} Rotation(44,45,-1.5708)[hidden];
+{47} Segment(44,45)[hidden];
+{48} Ray(46,45)[hidden];
+{49} Point on object(48,0.576339)[hidden];
+{50} Perpendicular(48,49)[hidden];
+{51} Perpendicular(50,44)[hidden];
+{52} Intersect(50,51)[hidden];
+{53} Segment(52,44)[hidden];
+{54} Segment(45,52)[hidden];
+{55} Midpoint(54)[hidden];
+{56} Segment(52,49)[hidden];
+{57} Point on object(56,1)[hidden];
+{58} VectorTranslation(57,52,44)[red,mediumPoint];
+{59} Segment(57,58)[hidden];
+{60} Polygon(44,58,57,52)[color(255,253,253)];
+{61} Segment(45,49)[hidden];
+{62} Point on object(59,1)[hidden];
+{63} VectorTranslation(62,57,49)[hidden];
+{64} Polygon(62,63,49,57)[color(255,255,202)];
+{65} MoveButton(335,263,3,'原题')(44,62)[color(255,128,0),hidden];
+{66} MoveButton(11,917,0,'擦除')(57,62)[color(255,128,0),hidden];
+{67} FixedText(787,39,'烟台飞狐制作')[red];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>2010年四川眉山中考数学试题最后一题</P></H4>
+</BODY>
+</HTML>

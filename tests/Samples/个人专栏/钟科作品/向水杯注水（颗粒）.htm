@@ -1,0 +1,245 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>向水杯注水（颗粒）</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(27,737);
+{2} UnitPoint(1,305.795)[hidden];
+{3} Dilation(2,1,0.5)[red];
+{4} Dilation(3,1,0.5)[hidden];
+{5} Rotation(4,1,0.785398)[red];
+{6} VectorTranslation(5,1,3)[red];
+{7} Segment(3,1)[color(0,0,128),mediumLine];
+{8} Segment(6,3)[color(0,0,128),mediumLine];
+{9} Segment(5,6)[color(0,0,128),dashed];
+{10} Segment(1,5)[color(0,0,128),dashed];
+{11} Rotation(2,1,1.5708)[red];
+{12} VectorTranslation(3,1,11)[red];
+{13} VectorTranslation(5,1,11)[red];
+{14} VectorTranslation(6,1,11)[red];
+{15} VectorTranslation(7,1,11)[color(0,0,128),mediumLine];
+{16} VectorTranslation(8,1,11)[color(0,0,128),mediumLine];
+{17} VectorTranslation(9,1,11)[color(0,0,128),mediumLine];
+{18} VectorTranslation(10,1,11)[color(0,0,128),mediumLine];
+{19} Segment(11,1)[color(0,0,128),mediumLine];
+{20} Segment(12,3)[color(0,0,128),mediumLine];
+{21} Segment(14,6)[color(0,0,128),mediumLine];
+{22} Segment(13,5)[color(0,0,128),dashed];
+{23} Dilation(3,1,0.447214)[hidden];
+{24} Midpoint(19)[red,hidden];
+{25} Parameter(90,-210,361,'')[hidden];
+{26} Parameter(10,-210,393,'')[hidden];
+{27} Calculate(-210,425,'','A ')(25)[hidden];
+{28} Calculate(-210,425,'','1 A / ')(27)[hidden];
+{29} Calculate(-210,425,'','A ')(26)[hidden];
+{30} Calculate(-210,425,'','1 A / ')(29)[hidden];
+{31} Point(332,713)[hidden,mediumPoint];
+{32} UnitPoint(31,107.795)[hidden];
+{33} RectangularUnitPoint(32,151.795)[color(255,128,0),hidden];
+{34} Translation(31,0,0)[hidden];
+{35} UnitPoint(34,274.795)[hidden];
+{36} RectangularUnitPoint(35,327.795)[green,hidden];
+{37} Translation(31,0,0)[hidden];
+{38} UnitPoint(37,21.7953)[hidden];
+{39} RectangularUnitPoint(38,22.7953)[hidden];
+{40} Rotation(38,31,-3.14159)[hidden];
+{41} Rotation(39,31,-3.14159)[green,hidden];
+{42} Ratio/Points(31,32,35,-210,425,'')[hidden];
+{43} Ratio/Points(31,33,36,-210,425,'')[hidden];
+{44} Ratio/Points(31,32,40,-210,425,'')[hidden];
+{45} Ratio/Points(31,33,41,-210,425,'')[hidden];
+{46} Calculate(-210,425,'','A @trnc ')(42)[hidden];
+{47} Calculate(-210,425,'','A @trnc ')(43)[hidden];
+{48} Calculate(-210,425,'','A @trnc ')(44)[hidden];
+{49} Calculate(-210,425,'','A @trnc ')(45)[hidden];
+{50} Calculate(-210,425,'','A ! ')(48)[hidden];
+{51} Calculate(-210,425,'','A ! ')(49)[hidden];
+{52} Calculate(-210,425,'','A B + ')(46,50)[hidden];
+{53} Calculate(-210,425,'','A B + ')(47,51)[hidden];
+{54} Calculate(-210,425,'','A 1 - @trnc ')(44)[hidden];
+{55} Calculate(-210,425,'','A 1 + ')(54)[hidden];
+{56} Calculate(-210,425,'','A A @sgn_ 1 - @sgn_ + ')(55)[hidden];
+{57} Calculate(-210,425,'','A 1 - @trnc ')(45)[hidden];
+{58} Calculate(-210,425,'','A 1 + ')(57)[hidden];
+{59} Calculate(-210,425,'','A A @sgn_ 1 - @sgn_ + ')(58)[hidden];
+{60} Calculate(-210,425,'x[精度] = ','A B * ')(27,56)[black,hidden];
+{61} Calculate(-210,451,'y[精度] = ','A B * ')(29,59)[black,hidden];
+{62} Dilation/MarkedRatio(32,31,56)[hidden];
+{63} Dilation/MarkedRatio(33,31,59)[hidden];
+{64} Dilation/MarkedRatio(32,31,46)[hidden];
+{65} Dilation/MarkedRatio(33,31,47)[hidden];
+{66} Dilation/MarkedRatio(32,31,48)[hidden];
+{67} Dilation/MarkedRatio(33,31,49)[hidden];
+{68} Segment(64,66)[black];
+{69} Segment(65,67)[black];
+{70} Translation(31,-1.58354e-013,-45.3543)[hidden];
+{71} Segment(31,70)[hidden];
+{72} Point on object(71,0.71)[red,hidden,dot];
+{73} Translation(31,-56.6929,-3.95884e-013)[hidden];
+{74} Segment(31,73)[hidden];
+{75} Point on object(74,0.75)[hidden];
+{76} VectorTranslation(75,31,63)[hidden];
+{77} VectorTranslation(63,31,66)[hidden];
+{78} VectorTranslation(77,31,33)[hidden];
+{79} VectorTranslation(68,66,77)[hidden];
+{80} VectorTranslation(63,31,33)[hidden];
+{81} Translation(63,5.66929,0)[hidden];
+{82} Segment(81,63)[hidden];
+{83} VectorTranslation(62,31,67)[hidden];
+{84} VectorTranslation(69,80,83)[hidden];
+{85} Translation(62,-1.97942e-014,5.66929)[hidden];
+{86} Segment(85,62)[hidden];
+{87} VectorTranslation(62,31,32)[hidden];
+{88} VectorTranslation(83,31,32)[hidden];
+{89} VectorTranslation(72,31,62)[red,hidden,dot];
+{90} PeggedText(89,60)[hidden];
+{91} VectorTranslation(89,31,32)[hidden];
+{92} Translation(31,-14.1732,-9.89711e-014)[hidden];
+{93} Translation(31,-4.59226e-014,-13.1528)[red,hidden,dot];
+{94} Translation(31,-1.31961e-013,37.7953)[hidden];
+{95} Translation(31,37.7953,0)[hidden];
+{96} Translation(41,15.748,0)[hidden];
+{97} Translation(96,37.7953,0)[hidden];
+{98} Segment(97,96)[hidden];
+{99} Point on object(98,0)[hidden];
+{100} Distance(99,41,-210,477,'')[hidden];
+{101} Calculate(-210,477,'','0.12 A @sgn_ 1 + * B * ')(59,100)[hidden];
+{102} Translation/FixedAngle/MarkedDistance(76,101,0)[red,hidden,dot];
+{103} PeggedText(102,61)[hidden];
+{104} VectorTranslation(102,31,33)[hidden];
+{105} MoveButton(-214,459,0,'系统初始化')(96,99,93,72,92,75,94,33,95,32)[color(255,128,0),hidden];
+{106} Segment(66,40)[black];
+{107} Translation(35,-11.3386,-0)[hidden];
+{108} Translation(35,-18.2537,4.89107)[hidden];
+{109} Translation(35,-18.2537,-4.89107)[hidden];
+{110} Segment(107,64)[black];
+{111} Translation(36,-4.89107,-18.2537)[hidden];
+{112} Translation(36,4.89107,-18.2537)[hidden];
+{113} Translation(36,-3.95884e-014,-11.3386)[hidden];
+{114} Segment(113,65)[black];
+{115} Segment(67,41)[black];
+{116} Polygon(112,36,111,113)[black];
+{117} Polygon(109,35,108,107)[black];
+{118} ToggleVisibilityButton(-214,459,'刻度值对正|刻度值对正')(99)[color(255,128,0),hidden];
+{119} Dilation/MarkedRatio(33,31,30)[hidden];
+{120} Segment(119,31)[hidden];
+{121} ToggleVisibilityButton(-214,459,'调整刻度值|调整刻度值')(90,103)[color(255,128,0),hidden];
+{122} ShowButton(-214,459,'显示线段')(68,69)[color(255,128,0),hidden];
+{123} Rotation(32,31,1.5708)[red,hidden,dot];
+{124} MoveButton(-214,459,0,'xy轴等单位')(123,33)[color(255,128,0),hidden];
+{125} Dilation/MarkedRatio(32,31,28)[hidden];
+{126} Segment(125,31)[hidden];
+{127} Distance(125,31,-210,477,'')[hidden];
+{128} ToggleVisibilityButton(-214,485,'坐标系控制|坐标系控制')(40,35,41,31,32,33,36,25,60,26,61,127)[color(255,128,0),hidden];
+{129} Segment(24,1)[color(0,0,128),mediumLine];
+{130} Distance(3,1,699,424,'')[hidden];
+{131} Dilation(23,1,0.5)[hidden];
+{132} Midpoint(10)[hidden];
+{133} Segment(132,1)[color(0,0,128),dashed];
+{134} Point on object(133,1)[hidden];
+{135} Segment(4,1)[color(0,0,128),mediumLine];
+{136} Point on object(133,0.907506)[hidden];
+{137} Parallel(9,136)[hidden];
+{138} Rotation(23,4,-3.14159)[hidden];
+{139} Segment(138,1)[color(0,0,128),mediumLine];
+{140} Point on object(139,0.651535)[hidden];
+{141} Parallel(8,140)[hidden];
+{142} Intersect(137,141)[green];
+{143} VectorTranslation(142,1,23)[green];
+{144} VectorTranslation(142,1,132)[green];
+{145} VectorTranslation(143,1,132)[green];
+{146} Segment(143,142)[color(0,0,128),dashed];
+{147} Segment(145,143)[color(0,0,128),dashed];
+{148} Segment(144,145)[color(0,0,128),dashed];
+{149} Segment(142,144)[color(0,0,128),dashed];
+{150} VectorTranslation(142,1,24)[green];
+{151} VectorTranslation(146,1,24)[color(0,0,128),dashed];
+{152} VectorTranslation(143,1,24)[green];
+{153} VectorTranslation(147,1,24)[color(0,0,128),dashed];
+{154} VectorTranslation(145,1,24)[green];
+{155} VectorTranslation(144,1,24)[green];
+{156} VectorTranslation(149,1,24)[color(0,0,128),dashed];
+{157} VectorTranslation(148,1,24)[color(0,0,128),dashed];
+{158} Segment(150,142)[color(0,0,128),dashed];
+{159} Segment(152,143)[color(0,0,128),dashed];
+{160} Segment(154,145)[color(0,0,128),dashed];
+{161} Segment(155,144)[color(0,0,128),dashed];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>向水杯注水（颗粒）</P></H4>
+</BODY>
+</HTML>

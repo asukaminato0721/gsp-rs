@@ -1,0 +1,458 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>P值修正控制（完整版）</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(87,399)[label('A'),mediumPoint];
+{2} UnitPoint(1,376.795)[label('B'),red,mediumPoint];
+{3} Segment(2,1)[color(0,0,128),mediumLine];
+{4} Length(3,17,28,'')[hidden];
+{5} Calculate(17,55,'','0.8 A * ')(4)[hidden];
+{6} Calculate(17,82,'','0.6 A * ')(4)[hidden];
+{7} Circle by radius(1,5)[hidden];
+{8} Circle by radius(2,6)[hidden];
+{9} Intersect2(8,7)[label('C'),red,mediumPoint];
+{10} Segment(1,9)[color(0,0,128),mediumLine];
+{11} Segment(9,2)[color(0,0,128),mediumLine];
+{12} Midpoint(3)[label('D'),red,mediumPoint];
+{13} Segment(12,9)[color(0,0,128),mediumLine];
+{14} Dilation(12,9,0.4)[hidden];
+{15} Polygon(1,12,14,12)[color(192,133,74)];
+{16} Point on object(15,0)[label('P'),green,mediumPoint];
+{17} Segment(9,16)[color(0,0,128),mediumLine];
+{18} Point(624,483)[hidden,mediumPoint];
+{19} Translation(18,0,-37.7953)[hidden];
+{20} Translation(18,151.181,0)[hidden];
+{21} VectorTranslation(20,18,19)[hidden];
+{22} Segment(21,19)[hidden];
+{23} Midpoint(22)[hidden];
+{24} Dilation(21,23,0.4)[hidden];
+{25} Distance(23,21,14,106,'')[hidden];
+{26} Distance(23,19,14,106,'')[hidden];
+{27} Segment(23,21)[hidden];
+{28} Point on object(27,0.467708)[hidden];
+{29} Segment(21,28)[hidden];
+{30} Segment(28,23)[hidden];
+{31} Distance(23,28,14,106,'')[hidden];
+{32} Translation(28,0,-11.3386)[hidden];
+{33} Translation(32,0,7.55906)[hidden];
+{34} Rotation(33,32,2.0944)[hidden];
+{35} Rotation(34,32,2.0944)[hidden];
+{36} Polygon(33,35,34)[hidden];
+{37} Translation(28,0,11.3386)[red,hidden];
+{38} Segment(23,19)[hidden];
+{39} Point on object(38,0.0178125)[hidden];
+{40} Segment(23,39)[hidden];
+{41} Segment(39,19)[color(0,187,0),hidden,mediumLine];
+{42} Distance(23,39,14,106,'')[hidden];
+{43} Translation(39,0,-11.3386)[hidden];
+{44} Translation(43,0,7.55906)[hidden];
+{45} Rotation(44,43,2.0944)[hidden];
+{46} Rotation(45,43,2.0944)[hidden];
+{47} Polygon(44,46,45)[hidden];
+{48} Translation(39,0,11.3386)[red,hidden];
+{49} Segment(20,18)[hidden];
+{50} Midpoint(49)[hidden];
+{51} Segment(50,18)[hidden];
+{52} Point on object(51,0.0575)[hidden];
+{53} Segment(18,52)[hidden];
+{54} Segment(50,52)[hidden];
+{55} Translation(52,0,11.3386)[red,hidden];
+{56} Distance(50,52,14,106,'')[hidden];
+{57} Translation(52,0,-11.3386)[hidden];
+{58} Translation(57,0,7.55906)[hidden];
+{59} Rotation(58,57,2.0944)[hidden];
+{60} Rotation(59,57,2.0944)[hidden];
+{61} Polygon(58,60,59)[hidden];
+{62} Distance(50,20,14,106,'')[hidden];
+{63} Distance(50,18,14,106,'')[hidden];
+{64} Segment(50,20)[hidden];
+{65} Point on object(64,0.6)[hidden];
+{66} Segment(20,65)[hidden];
+{67} Segment(50,65)[hidden];
+{68} Distance(50,65,14,106,'')[hidden];
+{69} Translation(65,0,-11.3386)[hidden];
+{70} Translation(69,0,7.55906)[hidden];
+{71} Rotation(70,69,2.0944)[hidden];
+{72} Rotation(71,69,2.0944)[hidden];
+{73} Polygon(70,72,71)[hidden];
+{74} Translation(65,0,11.3386)[red,hidden];
+{75} Dilation(20,50,0.4)[hidden];
+{76} Calculate(14,106,'','15 16 A * B / @trnc - ')(56,63)[black,hidden];
+{77} Calculate(14,106,'','A ')(76)[hidden];
+{78} Calculate(14,106,'','A 10 + A 10 + / 17.0079 * ')(77)[hidden];
+{79} Calculate(14,106,'','A 1 + ')(77)[hidden];
+{80} Calculate(14,106,'','A ')(79)[hidden];
+{81} Calculate(14,106,'','1 A / ')(80)[hidden];
+{82} Calculate(14,106,'','1 A / ')(79)[hidden];
+{83} Calculate(14,106,'','1 1 A / - ')(79)[hidden];
+{84} Calculate(14,106,'','16 A * B / @trnc 1 - ')(68,62)[black,hidden];
+{85} Calculate(14,106,'','A ')(84)[hidden];
+{86} Calculate(14,106,'','A 1 + ')(85)[hidden];
+{87} Calculate(14,106,'','A ')(86)[hidden];
+{88} Calculate(14,106,'','1 A / ')(87)[hidden];
+{89} PeggedText(55,76)[hidden];
+{90} PeggedText(74,84)[hidden];
+{91} Calculate(14,106,'','15 16 A * B / @trnc - ')(42,26)[hidden];
+{92} Calculate(14,106,'','A ')(91)[black,hidden];
+{93} Calculate(14,106,'','A 1 + ')(92)[hidden];
+{94} Calculate(14,106,'','1 A / ')(93)[hidden];
+{95} Calculate(14,106,'','1 1 A / - ')(93)[hidden];
+{96} Calculate(14,106,'','16 A * B / @trnc 1 - ')(31,25)[hidden];
+{97} Calculate(14,106,'','A ')(96)[black,hidden];
+{98} Calculate(14,106,'','A 1 + ')(97)[hidden];
+{99} Calculate(14,106,'','1 A / ')(98)[hidden];
+{100} Calculate(14,106,'','1 1 A / - ')(98)[hidden];
+{101} PeggedText(48,92)[hidden];
+{102} PeggedText(37,97)[hidden];
+{103} Dilation(23,19,0.375)[hidden];
+{104} Dilation(50,18,0.375)[hidden];
+{105} MoveButton(10,88,0,'')(103,39,104,52,75,65,24,28)[hidden];
+{106} Point(633,573)[hidden,mediumPoint];
+{107} Translation(106,0,-60.4724)[cyan,hidden];
+{108} VectorTranslation(20,18,107)[hidden];
+{109} Dilation(108,107,0.333333)[hidden];
+{110} Distance(109,107,14,106,'')[hidden];
+{111} Segment(109,107)[hidden];
+{112} Point on object(111,0.3175)[red,hidden];
+{113} Segment(109,112)[magenta,hidden,mediumLine];
+{114} Segment(112,107)[color(0,183,183),hidden,mediumLine];
+{115} Translation(112,0,11.3386)[red,hidden];
+{116} Translation(112,0,-11.3386)[hidden];
+{117} Translation(116,0,7.55906)[hidden];
+{118} Rotation(117,116,2.0944)[hidden];
+{119} Rotation(118,116,2.0944)[hidden];
+{120} Polygon(117,119,118)[hidden];
+{121} Distance(109,112,14,106,'')[hidden];
+{122} Calculate(14,106,'','10 9 A * B / @trnc - ')(121,110)[black,hidden];
+{123} PeggedText(115,122)[hidden];
+{124} Dilation(108,107,0.666667)[hidden];
+{125} Distance(108,124,14,106,'')[hidden];
+{126} Segment(108,124)[hidden];
+{127} Point on object(126,0)[hidden];
+{128} Segment(108,127)[hidden];
+{129} Segment(127,124)[color(0,183,183),mediumLine];
+{130} Translation(127,0,11.3386)[red,hidden];
+{131} Translation(127,0,-11.3386)[hidden];
+{132} Translation(131,0,7.55906)[hidden];
+{133} Rotation(132,131,2.0944)[hidden];
+{134} Rotation(133,131,2.0944)[hidden];
+{135} Polygon(132,134,133)[hidden];
+{136} Distance(108,127,14,106,'')[hidden];
+{137} Calculate(14,106,'','1000 10 A * B / @trnc 100 * - ')(136,125)[black,hidden];
+{138} PeggedText(130,137)[hidden];
+{139} Distance(124,109,14,106,'')[hidden];
+{140} Segment(124,109)[hidden];
+{141} Point on object(140,0)[hidden];
+{142} Segment(124,141)[hidden];
+{143} Segment(141,109)[color(0,183,183),mediumLine];
+{144} Translation(141,0,11.3386)[red,hidden];
+{145} Translation(141,0,-11.3386)[hidden];
+{146} Translation(145,0,7.55906)[hidden];
+{147} Rotation(146,145,2.0944)[hidden];
+{148} Rotation(147,145,2.0944)[hidden];
+{149} Polygon(146,148,147)[hidden];
+{150} Distance(124,141,14,106,'')[hidden];
+{151} Calculate(14,106,'','100 10 A * B / @trnc 10 * - ')(150,139)[black,hidden];
+{152} Calculate(14,106,'','A B + C + ')(122,151,137)[black,hidden];
+{153} Calculate(14,106,'','A ! ')(152)[hidden];
+{154} Calculate(14,106,'m[14] = ','A ')(153)[black,hidden];
+{155} Calculate(14,106,'2*m[14] = ','2 A * ')(154)[black,hidden];
+{156} Calculate(14,106,'3*m[14] = ','3 A * ')(154)[black,hidden];
+{157} Calculate(14,106,'5*m[14] = ','5 A * ')(154)[black,hidden];
+{158} Calculate(14,106,'4*m[14] = ','4 A * ')(154)[black,hidden];
+{159} Calculate(14,106,'6*m[14] = ','6 A * ')(154)[black,hidden];
+{160} Calculate(14,106,'7*m[14] = ','7 A * ')(154)[black,hidden];
+{161} Calculate(14,106,'8*m[14] = ','8 A * ')(154)[black,hidden];
+{162} Calculate(14,106,'9*m[14] = ','9 A * ')(154)[black,hidden];
+{163} Calculate(14,106,'10*m[14] = ','10 A * ')(154)[black,hidden];
+{164} Calculate(14,106,'11*m[14] = ','11 A * ')(154)[black,hidden];
+{165} Calculate(14,106,'14*m[14] = ','14 A * ')(154)[black,hidden];
+{166} Calculate(14,106,'12*m[14] = ','12 A * ')(154)[black,hidden];
+{167} Calculate(14,106,'13*m[14] = ','13 A * ')(154)[black,hidden];
+{168} Calculate(14,106,'15*m[14] = ','15 A * ')(154)[black,hidden];
+{169} Calculate(14,106,'','A ')(152)[hidden];
+{170} Calculate(14,106,'m[15] = ','A ')(169)[black,hidden];
+{171} Calculate(14,106,'2*m[15] = ','2 A * ')(170)[black,hidden];
+{172} Calculate(14,106,'3*m[15] = ','3 A * ')(170)[black,hidden];
+{173} Calculate(14,106,'5*m[15] = ','5 A * ')(170)[black,hidden];
+{174} Calculate(14,106,'4*m[15] = ','4 A * ')(170)[black,hidden];
+{175} Calculate(14,106,'6*m[15] = ','6 A * ')(170)[black,hidden];
+{176} Calculate(14,106,'7*m[15] = ','7 A * ')(170)[black,hidden];
+{177} Calculate(14,106,'8*m[15] = ','8 A * ')(170)[black,hidden];
+{178} Calculate(14,106,'9*m[15] = ','9 A * ')(170)[black,hidden];
+{179} Calculate(14,106,'10*m[15] = ','10 A * ')(170)[black,hidden];
+{180} Calculate(14,106,'11*m[15] = ','11 A * ')(170)[black,hidden];
+{181} Calculate(14,106,'14*m[15] = ','14 A * ')(170)[black,hidden];
+{182} Calculate(14,106,'12*m[15] = ','12 A * ')(170)[black,hidden];
+{183} Calculate(14,106,'13*m[15] = ','13 A * ')(170)[black,hidden];
+{184} Calculate(14,106,'15*m[15] = ','15 A * ')(170)[black,hidden];
+{185} Calculate(14,106,'','1 A / ')(152)[hidden];
+{186} PeggedText(144,151)[hidden];
+{187} VectorTranslation(20,18,106)[hidden];
+{188} Dilation(187,106,0.666667)[hidden];
+{189} Distance(187,188,14,106,'')[hidden];
+{190} Segment(187,188)[hidden];
+{191} Point on object(190,0)[hidden];
+{192} Segment(187,191)[hidden];
+{193} Segment(191,188)[color(0,183,183),mediumLine];
+{194} Translation(191,0,11.3386)[red,hidden];
+{195} Translation(191,0,-11.3386)[hidden];
+{196} Translation(195,0,7.55906)[hidden];
+{197} Rotation(196,195,2.0944)[hidden];
+{198} Rotation(197,195,2.0944)[hidden];
+{199} Polygon(196,198,197)[hidden];
+{200} Distance(187,191,14,106,'')[hidden];
+{201} Calculate(14,106,'','1000 10 A * B / @trnc 100 * - ')(200,189)[black,hidden];
+{202} PeggedText(194,201)[hidden];
+{203} Dilation(187,106,0.333333)[hidden];
+{204} Distance(188,203,14,106,'')[hidden];
+{205} Segment(188,203)[hidden];
+{206} Point on object(205,0)[hidden];
+{207} Segment(188,206)[hidden];
+{208} Segment(206,203)[color(0,183,183),mediumLine];
+{209} Translation(206,0,11.3386)[red,hidden];
+{210} Translation(206,0,-11.3386)[hidden];
+{211} Translation(210,0,7.55906)[hidden];
+{212} Rotation(211,210,2.0944)[hidden];
+{213} Rotation(212,210,2.0944)[hidden];
+{214} Polygon(211,213,212)[hidden];
+{215} Distance(188,206,14,106,'')[hidden];
+{216} Calculate(14,106,'','100 10 A * B / @trnc 10 * - ')(215,204)[black,hidden];
+{217} PeggedText(209,216)[hidden];
+{218} Distance(203,106,14,106,'')[hidden];
+{219} Segment(203,106)[hidden];
+{220} Point on object(219,0)[red,hidden];
+{221} Segment(106,220)[color(0,183,183),mediumLine];
+{222} Segment(203,220)[magenta,hidden,mediumLine];
+{223} Translation(220,0,11.3386)[red,hidden];
+{224} Translation(220,0,-11.3386)[hidden];
+{225} Translation(224,0,7.55906)[hidden];
+{226} Rotation(225,224,2.0944)[hidden];
+{227} Rotation(226,224,2.0944)[hidden];
+{228} Polygon(225,227,226)[hidden];
+{229} Distance(203,220,14,106,'')[hidden];
+{230} Calculate(14,106,'','10 9 A * B / @trnc - ')(229,218)[black,hidden];
+{231} Calculate(14,106,'','A B + C + ')(230,216,201)[black,hidden];
+{232} Calculate(14,106,'','A ! ')(231)[hidden];
+{233} Calculate(14,106,'m[16] = ','A ')(232)[black,hidden];
+{234} Calculate(14,106,'2*m[16] = ','2 A * ')(233)[black,hidden];
+{235} Calculate(14,106,'3*m[16] = ','3 A * ')(233)[black,hidden];
+{236} Calculate(14,106,'5*m[16] = ','5 A * ')(233)[black,hidden];
+{237} Calculate(14,106,'4*m[16] = ','4 A * ')(233)[black,hidden];
+{238} Calculate(14,106,'6*m[16] = ','6 A * ')(233)[black,hidden];
+{239} Calculate(14,106,'7*m[16] = ','7 A * ')(233)[black,hidden];
+{240} Calculate(14,106,'8*m[16] = ','8 A * ')(233)[black,hidden];
+{241} Calculate(14,106,'9*m[16] = ','9 A * ')(233)[black,hidden];
+{242} Calculate(14,106,'10*m[16] = ','10 A * ')(233)[black,hidden];
+{243} Calculate(14,106,'11*m[16] = ','11 A * ')(233)[black,hidden];
+{244} Calculate(14,106,'14*m[16] = ','14 A * ')(233)[black,hidden];
+{245} Calculate(14,106,'12*m[16] = ','12 A * ')(233)[black,hidden];
+{246} Calculate(14,106,'13*m[16] = ','13 A * ')(233)[black,hidden];
+{247} Calculate(14,106,'15*m[16] = ','15 A * ')(233)[black,hidden];
+{248} Calculate(14,106,'','A ')(231)[hidden];
+{249} Calculate(14,106,'m[17] = ','A ')(248)[black,hidden];
+{250} Calculate(14,106,'2*m[17] = ','2 A * ')(249)[black,hidden];
+{251} Calculate(14,106,'3*m[17] = ','3 A * ')(249)[black,hidden];
+{252} Calculate(14,106,'5*m[17] = ','5 A * ')(249)[black,hidden];
+{253} Calculate(14,106,'4*m[17] = ','4 A * ')(249)[black,hidden];
+{254} Calculate(14,106,'6*m[17] = ','6 A * ')(249)[black,hidden];
+{255} Calculate(14,106,'7*m[17] = ','7 A * ')(249)[black,hidden];
+{256} Calculate(14,106,'8*m[17] = ','8 A * ')(249)[black,hidden];
+{257} Calculate(14,106,'9*m[17] = ','9 A * ')(249)[black,hidden];
+{258} Calculate(14,106,'10*m[17] = ','10 A * ')(249)[black,hidden];
+{259} Calculate(14,106,'11*m[17] = ','11 A * ')(249)[black,hidden];
+{260} Calculate(14,106,'14*m[17] = ','14 A * ')(249)[black,hidden];
+{261} Calculate(14,106,'12*m[17] = ','12 A * ')(249)[black,hidden];
+{262} Calculate(14,106,'13*m[17] = ','13 A * ')(249)[black,hidden];
+{263} Calculate(14,106,'15*m[17] = ','15 A * ')(249)[black,hidden];
+{264} Calculate(14,106,'','1 A / ')(231)[hidden];
+{265} PeggedText(223,230)[hidden];
+{266} VectorTranslation(49,18,107)[hidden];
+{267} Midpoint(266)[hidden];
+{268} VectorTranslation(49,18,106)[hidden];
+{269} Midpoint(268)[hidden];
+{270} Translation(269,0,30.2362)[red,hidden];
+{271} PeggedText(270,231)[hidden];
+{272} VectorTranslation(267,269,270)[red,hidden];
+{273} PeggedText(272,152)[hidden];
+{274} MoveButton(10,88,0,'')(124,127,109,141,107,112,188,191,203,206,106,220)[hidden];
+{275} Point(631,682)[hidden,mediumPoint];
+{276} Translation(275,0,-37.7953)[hidden];
+{277} VectorTranslation(20,18,276)[hidden];
+{278} VectorTranslation(20,18,275)[hidden];
+{279} Dilation(278,275,0.5)[hidden];
+{280} Dilation(275,279,0.4)[hidden];
+{281} Translation(279,-1.31961e-013,37.7953)[hidden];
+{282} Line(281,279)[hidden];
+{283} Point on object(282,-16.2798)[hidden];
+{284} VectorTranslation(278,279,283)[hidden];
+{285} Dilation(284,283,0.666667)[hidden];
+{286} Distance(285,283,14,106,'')[hidden];
+{287} Segment(285,283)[hidden];
+{288} Point on object(287,0)[hidden];
+{289} Dilation(288,283,0.75)[hidden];
+{290} Distance(285,288,14,106,'')[hidden];
+{291} Calculate(14,106,'','11 9 A * B / @trnc 1 + - ')(290,286)[black,hidden];
+{292} Rotation(285,283,-3.14159)[hidden];
+{293} Distance(283,292,14,106,'')[hidden];
+{294} Segment(283,292)[hidden];
+{295} Point on object(294,0)[hidden];
+{296} Dilation(295,283,0.75)[hidden];
+{297} Distance(283,295,14,106,'')[hidden];
+{298} Calculate(14,106,'','12 10 A * B / @trnc 1 + - ')(297,293)[black,hidden];
+{299} Calculate(14,106,'','A ! B / ')(291,298)[hidden];
+{300} Segment(279,278)[hidden];
+{301} Midpoint(300)[hidden];
+{302} VectorTranslation(289,283,301)[hidden];
+{303} Segment(278,302)[hidden];
+{304} Segment(301,302)[magenta,mediumLine];
+{305} Translation(302,0,-11.3386)[hidden];
+{306} Translation(305,0,7.55906)[hidden];
+{307} Rotation(306,305,2.0944)[hidden];
+{308} Rotation(307,305,2.0944)[hidden];
+{309} Polygon(308,306,307)[hidden];
+{310} Translation(302,0,11.3386)[red,hidden];
+{311} PeggedText(310,291)[hidden];
+{312} VectorTranslation(296,283,301)[hidden];
+{313} Segment(301,312)[hidden];
+{314} Segment(312,279)[hidden];
+{315} Translation(312,0,-11.3386)[hidden];
+{316} Translation(315,0,7.55906)[hidden];
+{317} Rotation(316,315,2.0944)[hidden];
+{318} Rotation(317,315,2.0944)[hidden];
+{319} Polygon(316,317,318)[hidden];
+{320} Translation(312,0,11.3386)[red,hidden];
+{321} PeggedText(320,298)[hidden];
+{322} Segment(279,275)[hidden];
+{323} Point on object(322,0.375104)[hidden];
+{324} Segment(279,323)[hidden];
+{325} Segment(323,275)[color(255,128,0),hidden,mediumLine];
+{326} Translation(323,0,-11.3386)[hidden];
+{327} Translation(326,0,7.55906)[hidden];
+{328} Rotation(327,326,2.0944)[hidden];
+{329} Rotation(328,326,2.0944)[hidden];
+{330} Polygon(327,328,329)[hidden];
+{331} Dilation/MarkedRatio(323,279,299)[hidden];
+{332} Dilation/MarkedRatio(331,279,185)[hidden];
+{333} Distance(279,332,14,106,'')[hidden];
+{334} Dilation/MarkedRatio(323,279,264)[hidden];
+{335} Distance(279,334,14,106,'')[hidden];
+{336} VectorTranslation(50,18,276)[hidden];
+{337} Dilation(277,336,0.35)[hidden];
+{338} Dilation(276,336,0.4)[hidden];
+{339} Segment(277,336)[hidden];
+{340} Midpoint(339)[hidden];
+{341} Point on object(339,0.35)[hidden];
+{342} Segment(277,341)[hidden];
+{343} Segment(341,336)[hidden];
+{344} Translation(341,0,-11.3386)[hidden];
+{345} Translation(344,0,7.55906)[hidden];
+{346} Rotation(345,344,2.0944)[hidden];
+{347} Rotation(346,344,2.0944)[hidden];
+{348} Polygon(347,345,346)[hidden];
+{349} Rotation(341,340,1.5708)[hidden];
+{350} Segment(336,276)[hidden];
+{351} Midpoint(350)[hidden];
+{352} Point on object(350,0.666146)[hidden];
+{353} Segment(336,352)[hidden];
+{354} Segment(352,276)[color(255,128,0),hidden,mediumLine];
+{355} Translation(352,0,-11.3386)[hidden];
+{356} Translation(355,0,7.55906)[hidden];
+{357} Rotation(356,355,2.0944)[hidden];
+{358} Rotation(357,355,2.0944)[hidden];
+{359} Polygon(356,357,358)[hidden];
+{360} Dilation(352,351,0.5)[hidden];
+{361} Rotation(360,351,1.5708)[hidden];
+{362} MoveButton(10,88,0,'')(337,341,338,352,301,302,279,312,280,323)[hidden];
+{363} HideButton(10,88,'')(18,106,275)[hidden];
+{364} MoveButton(10,88,0,'')(275,312)[hidden];
+{365} Point(595,405)[mediumPoint];
+{366} Translation(365,-1.31962e-013,37.7953)[hidden];
+{367} Translation(366,1.31962e-013,-37.7953)[color(0,85,0)];
+{368} Translation(367,1.31962e-013,-37.7953)[hidden];
+{369} Segment(366,368)[hidden];
+{370} Translation(367,-1.31962e-013,37.7953)[hidden];
+{371} Translation(370,1.31962e-013,-37.7953)[color(0,85,0)];
+{372} Translation(371,1.31962e-013,-37.7953)[hidden];
+{373} Segment(370,372)[hidden];
+{374} ToggleVisibilityButton(8,648,'坐标系控制|坐标系控制')(18,29,30,36,40,41,47,53,54,61,66,67,73,89,90,101,102,106,113,114,120,123,128,135,138,142,149,186,192,199,202,207,214,217,222,228,265,271,273,275,303,309,311,313,314,319,321,324,325,330,342,343,348,353,354,359)[color(255,128,0)];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>P值修正控制（完整版）</P></H4>
+</BODY>
+</HTML>

@@ -1,0 +1,133 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>3D正方体堆垒（颗粒）</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(278,384)[mediumPoint];
+{2} Translation(1,32.126,0)[hidden];
+{3} Rotation(2,1,-0.523599)[hidden];
+{4} Rotation(3,1,-0.785398)[hidden];
+{5} Dilation(4,1,1.6)[hidden];
+{6} Dilation(3,1,1.4)[hidden];
+{7} Circle(1,2)[hidden];
+{8} Point on object(7,-1.5708)[cyan,mediumPoint];
+{9} Rotation(8,1,-1.5708)[hidden];
+{10} Point on object(7,0.284754)[hidden];
+{11} Dilation/3PtRatio(9,1,1,9,10)[hidden];
+{12} Point on object(7,-0.349066)[blue,mediumPoint];
+{13} Point on object(7,2.14632)[red,mediumPoint];
+{14} Rotation(13,1,1.5708)[green,mediumPoint];
+{15} Rotation(2,1,1.5708)[red,hidden];
+{16} Translation(15,0,0)[cyan,hidden];
+{17} Rotation(2,1,0.349066)[hidden];
+{18} Rotation(2,1,-2.18166)[hidden];
+{19} Dilation(18,1,2)[hidden];
+{20} Dilation(18,1,1.4)[hidden];
+{21} Rotation(2,1,-1.5708)[red,hidden];
+{22} MoveButton(-78,101,0,'左视图')(21,13,2,12,15,8)[color(255,128,0),hidden];
+{23} Rotation(2,1,0.261799)[hidden];
+{24} Rotation(23,1,0.261799)[hidden];
+{25} Dilation(2,1,-1)[hidden];
+{26} MoveButton(-78,101,0,'主视图')(2,12,25,13,15,8)[color(255,128,0),hidden];
+{27} MoveButton(-78,101,0,'俯视图')(25,13,16,12,15,8)[color(255,128,0),hidden];
+{28} Point(339,546)[mediumPoint];
+{29} Translation(28,0,0)[label('O'),blue,dot];
+{30} Point(561,630)[hidden];
+{31} Parameter(-1,362,198,'t = ')[black];
+{32} Calculate(362,226,'h = ','3 A * 9 A 2 ^ * A @sgn_ 27 / - @sqrt + 1 3 / ^ 3 A * 9 A 2 ^ * A @sgn_ 27 / - @sqrt - 1 3 / ^ + 0.9999 - @trnc ')(31)[black];
+{33} Calculate(362,248,'l = ','A B B 1 + * B 2 + * 6 / - ')(31,32)[black];
+{34} Calculate(362,270,'h'' = ','0.5 1 8 A * + @sqrt 1 - * @trnc ')(33)[black];
+{35} Calculate(362,292,'l'' = ','A 0.5 B * B 1 + * - ')(33,34)[black];
+{36} Segment(12,1)[hidden];
+{37} Point on object(36,0.301048)[hidden];
+{38} Point on object(36,0.562353)[hidden];
+{39} Point on object(36,0.888131)[hidden];
+{40} Point on object(36,0.128785)[hidden];
+{41} Point on object(36,0.877294)[hidden];
+{42} Point on object(36,0.172027)[hidden];
+{43} Parameter(5,482,249,'n = ')[magenta];
+{44} Calculate(362,320,'(n*(n + 1)*(n + 2)/6) = ','A A 1 + * A 2 + * 6 / ')(43)[black];
+{45} Calculate(362,359,'t + 1 = ','A 1 + ')(31)[black];
+{46} Calculate(362,384,'0.23*(1 + √(h'' - h)) = ','0.23 1 A B - @sqrt + * ')(34,32)[black];
+{47} Calculate(362,409,'0.58*(1 + √(h'' - h)) = ','0.58 1 A B - @sqrt + * ')(34,32)[black];
+{48} Calculate(362,434,'0.83*(1 + √(h'' - h)) = ','0.83 1 A B - @sqrt + * ')(34,32)[black];
+{49} FixedText(265,153,'正方体堆垒')[magenta];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>3D正方体堆垒（颗粒）</P></H4>
+</BODY>
+</HTML>

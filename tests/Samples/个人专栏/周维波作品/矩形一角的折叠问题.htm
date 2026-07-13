@@ -1,0 +1,118 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>矩形一角的折叠问题</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(391,399)[label('A')];
+{2} Translation(1,37.7953,0)[hidden];
+{3} Ray(2,1)[hidden];
+{4} Point on object(3,7.0211)[label('D'),red];
+{5} Segment(4,1)[color(0,0,128),mediumLine];
+{6} Dilation(4,1,0.6)[hidden];
+{7} Rotation(6,1,1.5708)[label('B'),red];
+{8} VectorTranslation(7,1,4)[label('C'),red];
+{9} Segment(4,8)[color(0,0,128),mediumLine];
+{10} Segment(7,1)[color(0,0,128),mediumLine];
+{11} Segment(8,7)[color(0,0,128),mediumLine];
+{12} Dilation(8,7,0.2)[hidden];
+{13} Dilation(8,7,0.6)[hidden];
+{14} Segment(13,12)[hidden];
+{15} Point on object(14,0.114425)[green,dot];
+{16} Segment(1,15)[hidden];
+{17} Midpoint(16)[hidden];
+{18} Perpendicular(16,17)[hidden];
+{19} Intersect(18,10)[label('P'),blue,dot];
+{20} Intersect(18,5)[label('Q'),blue,dot];
+{21} Segment(20,19)[color(0,0,128),mediumLine];
+{22} Polygon(1,20,19)[color(255,128,0)];
+{23} Point on object(22,0.650584)[hidden];
+{24} FixedText(209,488,'A''')[color(0,128,0),hidden];
+{25} Translation(13,18.8976,0)[hidden];
+{26} Segment(25,12)[hidden];
+{27} Reflection(23,21)[hidden];
+{28} Segment(27,23)[hidden];
+{29} Point on object(28,0)[label('E'),yellow,mediumPoint];
+{30} Locus(29,23,22,500)[color(0,0,128)];
+{31} Distance(15,7,199,526,'')[hidden];
+{32} Length(11,199,552,'')[hidden];
+{33} Calculate(422,162,'BA'' = ','5 A * B / ')(31,32)[color(0,128,0)];
+{34} FixedText(406,528,'雪山飞狐制作（2011.02.22）')[color(0,128,0)];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>矩形一角的折叠问题</P></H4>
+</BODY>
+</HTML>

@@ -1,0 +1,108 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>2010年江苏盐城24题（飞狐制作）</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Parameter(12,13,85,'')[hidden];
+{2} Parameter(10,12,123,'')[hidden];
+{3} Point(29,364)[hidden];
+{4} Translation(3,2.31429e-015,37.7953)[red,hidden,mediumPoint];
+{5} Rotation(4,3,-1.5708)[hidden];
+{6} Ray(5,3)[hidden];
+{7} Ray(4,3)[hidden];
+{8} Point on object(7,1)[label('行高'),red,hidden];
+{9} Point on object(6,1)[hidden];
+{10} Segment(8,3)[color(0,0,128),hidden,mediumLine];
+{11} Segment(9,3)[color(0,0,128),hidden,mediumLine];
+{12} Point(291,543);
+{13} MoveButton(17,210,0,'标准格')(4,8,5,9)[color(255,128,0),hidden];
+{14} Point on object(7,0.472197)[label('可调标准格'),red,hidden];
+{15} Rotation(14,3,-1.5708)[hidden];
+{16} MoveButton(17,234,0,'可调标准格')(15,9,14,8)[color(255,128,0),hidden];
+{17} Segment(3,14)[red,hidden,mediumLine];
+{18} FixedText(133,29,'2010年江苏省盐城市第24题         图中的小方格都是边长为1的正方形，△ABC的顶点和O点都在正方形的顶点上.      （1）以点O为位似中心，在方格图中将△ABC放大为原来的2倍，得到△A′B′C′；      （2）△A′B′C′绕点B′顺时针旋转90°，画出旋转后得到的△A″B′C″，并求边A′B′在 旋转过程中扫过的图形面积.')[black];
+{19} Parameter(0.0001,7,165,'')[hidden];
+{20} Parameter(0.75,7,199,'')[hidden];
+{21} Parameter(-2,7,131,'')[hidden];
+{22} FixedText(21,177,'解： （1）见图中△A′B′C′  （2）见图中△A″B′C″          S=(90/360) π ( (2^2)+(4^2))             =(1/4) π•20=5π(平方单位)  ')[color(0,0,128),hidden];
+{23} ToggleVisibilityButton(10,39,'（2）答案|（2）答案')(22)[color(255,128,0),hidden];
+{24} FixedText(669,615,'烟台飞狐制作')[red];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>2010年江苏盐城24题（飞狐制作）</P></H4>
+</BODY>
+</HTML>

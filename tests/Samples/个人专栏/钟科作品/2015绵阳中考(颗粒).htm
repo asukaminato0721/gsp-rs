@@ -1,0 +1,112 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>2015绵阳中考(颗粒)</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Parameter(-1,741,123,'t = ')[blue];
+{2} Point(284,423);
+{3} UnitPoint(2,31.7953)[red];
+{4} RectangularUnitPoint(3,51.2953)[hidden];
+{5} Rotation(4,2,-3.14159)[red];
+{6} Parameter(6,98,407,'n = ')[blue];
+{7} Calculate(739,203,'h = ','A B / @trnc ')(1,6)[blue];
+{8} Calculate(743,245,'l = ','A B C * - ')(1,6,7)[blue];
+{9} FixedText(852,128,'○')[black];
+{10} Calculate(738,163,'t + 1 = ','A 1 + ')(1)[blue];
+{11} Calculate(740,280,'n*(n - 1) = ','A A 1 - * ')(6)[blue];
+{12} Dilation/MarkedRatio(5,2,8)[hidden];
+{13} Dilation/MarkedRatio(3,2,7)[hidden];
+{14} VectorTranslation(12,2,13)[red,hidden];
+{15} PeggedText(14,9)[hidden];
+{16} VectorTranslation(2,3,13)[red,hidden];
+{17} Dilation/MarkedRatio(2,16,6)[red,hidden];
+{18} PeggedText(17,9)[black];
+{19} PeggedText(16,9)[black];
+{20} Dilation(17,16,0.5)[hidden];
+{21} Dilation/MarkedRatio(5,2,6)[hidden];
+{22} VectorTranslation(21,2,16)[red,hidden];
+{23} VectorTranslation(22,16,17)[red,hidden];
+{24} PeggedText(23,9)[black];
+{25} PeggedText(22,9)[black];
+{26} VectorTranslation(20,5,2)[red,hidden];
+{27} PeggedText(26,9)[black];
+{28} FixedText(71,62,'''''龟图''''迭代')[color(128,0,0)];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>2015绵阳中考(颗粒)</P></H4>
+</BODY>
+</HTML>

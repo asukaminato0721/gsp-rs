@@ -1,0 +1,134 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>2009衡阳第26题[飞狐制作]</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Function(1048,219,'','x ! 4 + ')()[hidden];
+{2} FixedText(136,25,'2009衡阳第26题 如图，直线y=-x+4与两坐标轴分别相交于A、B点，点M是线段AB上任意一点 （A、B  两点除外），过M分别  作MC⊥OA于点C，MD⊥OB于D． （1）当点M在AB上运动时,你认为四边形OCMD的周长是否发生变化?并说明理由: （2）当点M运动到什么位置时,四边形OCMD的面积有最大值?最大值是多少? （3）当四边形OCMD为正方形时,将四边形OCMD沿着x轴的正方向移动,设平移的           距离为a (o<a<4),正方形OCMD与△AOB重叠部分的面积为S．试求S与a的函           数关系式并画出该函数的图象．')[color(0,0,1)];
+{3} Parameter(5,19,409,'')[hidden];
+{4} Point(33,419)[mediumPoint];
+{5} Translation(4,37.7953,0)[hidden];
+{6} Ray(5,4)[hidden];
+{7} Point on object(6,1.82021)[label('1'),yellow];
+{8} MoveButton(15,423,3,'')(5,7)[hidden];
+{9} Segment(7,4)[blue];
+{10} Length(9,19,465,'')[hidden];
+{11} Point(470.537,538)[label('O'),mediumPoint];
+{12} Translation(11,0,7.55906)[hidden];
+{13} Segment(12,11)[blue];
+{14} Translation(11,7.55906,0)[hidden];
+{15} Segment(11,14)[blue];
+{16} VectorTranslation(11,4,7)[hidden];
+{17} Rotation(16,11,1.5708)[hidden];
+{18} Ray(17,11)[hidden];
+{19} Ray(16,11)[hidden];
+{20} Translation(11,0,-37.7953)[hidden];
+{21} Translation(11,-37.7953,0)[hidden];
+{22} Translation(21,37.7953,0)[hidden];
+{23} Translation(20,37.7953,0)[hidden];
+{24} Calculate(19,465,'','A B * 18.8976 + ')(3,10)[hidden];
+{25} Circle by radius(11,24)[hidden];
+{26} Intersect2(18,25)[label('y'),yellow];
+{27} Intersect2(19,25)[label('x'),yellow];
+{28} Segment(27,21)[blue];
+{29} Segment(26,20)[blue];
+{30} Rotation/MarkedAngle(27,21,27,21,22)[hidden];
+{31} Translation(30,-15.1181,5.66929)[hidden];
+{32} Translation(30,-15.1181,-5.66929)[hidden];
+{33} Translation(30,-7.55906,0)[hidden];
+{34} Polygon(32,33,31,30)[hidden];
+{35} Rotation/MarkedAngle(34,21,30,21,27)[black];
+{36} Rotation/MarkedAngle(26,20,26,20,23)[hidden];
+{37} Translation(36,-15.1181,5.66929)[hidden];
+{38} Translation(36,-15.1181,-5.66929)[hidden];
+{39} Translation(36,-7.55906,0)[hidden];
+{40} Polygon(38,39,37,36)[hidden];
+{41} Rotation/MarkedAngle(40,20,36,20,26)[black];
+{42} Function(952,60,'','x ! 4 + 0 x 0.5 + 4.5 x - * @sqrt * + ')()[hidden];
+{43} Parameter(0.0001,952,238,'')[hidden];
+{44} Circle by radius(11,43)[color(0,128,0),mediumLine];
+{45} ToggleVisibilityButton(10,11,'题目|题目')(2)[red,hidden];
+{46} FixedText(507,614,'烟台飞狐制作')[blue];
+{47} FixedText(833,25,'（1）设点M的横坐标为x，则点M的纵坐标      为－x+4（0<x<4，x>0，－x+4>0）； 		    则：MC＝∣－x+4∣＝－x+4，MD＝∣x∣＝x； 			∴C[四边形OCMD]＝2（MC+MD）＝2（－x+4+x）＝8 ∴当点M在AB上运动时，四边形OCMD的周长不发生变化，总是等于8；')[black,hidden];
+{48} FixedText(830,147,'（2）根据题意得：S[四边形OCMD]＝MC•MD＝（－x+4）• x＝－(x^2)+4x＝－((x-2)^2)+4      ∴四边形OCMD的面积是关于点M的横坐标x（0<x<4）的二次函数，      并且当x＝2，即当点M运动到线段AB的中点时，四边形OCMD的面      积最大且最大面积为4；')[black,hidden];
+{49} FixedText(844,257,'(3) 当o<a≤2时，S=-(1/2)(a^2)+4:当2<a≤4时，S=(1/2)((a-4)^2) ； ∴S与 的函数的图象如右图所示： ')[black,hidden];
+{50} ToggleVisibilityButton(688,8,'答案|答案')(49,48,47)[red,hidden];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>2009衡阳第26题[飞狐制作]</P></H4>
+</BODY>
+</HTML>

@@ -1,0 +1,148 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>长方形的滚动</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(201,467)[hidden];
+{2} Translation(1,2.31429e-015,37.7953)[hidden];
+{3} Ray(2,1)[hidden];
+{4} Rotation(3,1,-1.5708)[hidden];
+{5} Point on object(4,1.905)[hidden];
+{6} Segment(5,1)[hidden];
+{7} Point on object(3,4.78896)[label('高控制'),red,hidden,mediumPoint];
+{8} Segment(7,1)[hidden];
+{9} VectorTranslation(7,1,5)[hidden];
+{10} Segment(7,9)[hidden];
+{11} Segment(5,9)[hidden];
+{12} Dilation(5,7,0.5)[red];
+{13} Length(8,14,57,'')[hidden];
+{14} Length(10,14,85,'')[hidden];
+{15} Midpoint(6)[hidden];
+{16} Ray(5,15)[hidden];
+{17} VectorTranslation(16,15,12)[color(0,0,128)];
+{18} Calculate(14,113,'','2 A B + * ')(13,14)[hidden];
+{19} Point on object(17,0)[label('M[拖动]'),green,mediumPoint];
+{20} Distance(12,19,14,141,'')[hidden];
+{21} Calculate(14,169,'','A B / @trnc B * ')(20,18)[hidden];
+{22} Translation/FixedAngle/MarkedDistance(12,21,0)[hidden];
+{23} Calculate(14,199,'','A B - ')(20,21)[hidden];
+{24} Calculate(14,227,'','1 A 4 / B - @sgn_ + @sgn_ ')(18,23)[hidden];
+{25} Calculate(14,257,'','1 A B 4 / - B 2 / A - * @sgn_ + @sgn_ ')(23,18)[hidden];
+{26} Calculate(14,287,'','1 A B 2 / - 3 4 / B * A - * @sgn_ + @sgn_ ')(23,18)[hidden];
+{27} Calculate(14,317,'','1 A - B - C - ')(24,25,26)[hidden];
+{28} Calculate(14,347,'','A 2 ! 3.14159 * B / C * * D 2 ! 3.14159 * B / C * * + E 2 ! 3.14159 * B / C * * + F 2 ! 3.14159 * B / C * * + 1 * ')(24,18,23,25,26,27)[hidden];
+{29} Rotation/MeasuredAngle(9,12,28)[hidden];
+{30} Rotation/MeasuredAngle(7,12,28)[hidden];
+{31} Rotation/MeasuredAngle(1,12,28)[hidden];
+{32} Rotation/MeasuredAngle(5,12,28)[hidden];
+{33} Segment(31,30)[hidden];
+{34} Segment(32,31)[hidden];
+{35} Segment(29,32)[hidden];
+{36} Segment(30,29)[hidden];
+{37} Polygon(30,31,32,29)[hidden];
+{38} Intersect(11,17)[hidden];
+{39} Distance(17,30,14,523,'')[hidden];
+{40} Line(12,38)[hidden];
+{41} Perpendicular(40,30)[hidden];
+{42} Intersect(41,40)[hidden];
+{43} Intersect(8,40)[hidden];
+{44} Distance(42,43,14,375,'')[hidden];
+{45} Perpendicular(40,31)[hidden];
+{46} Intersect(45,40)[hidden];
+{47} Distance(31,46,14,553,'')[hidden];
+{48} Perpendicular(40,32)[hidden];
+{49} Intersect(40,48)[hidden];
+{50} Distance(49,32,14,583,'')[hidden];
+{51} Distance(43,49,14,435,'')[hidden];
+{52} Perpendicular(40,29)[hidden];
+{53} Intersect(52,40)[hidden];
+{54} Distance(29,53,14,613,'')[hidden];
+{55} Calculate(14,643,'','A B * C D * + E F * + G H * + ')(24,39,25,47,26,50,27,54)[hidden];
+{56} Calculate(14,671,'','A 0 * B 0.25 * + C 0.5 * + D 0.75 * + ')(24,25,26,27)[hidden];
+{57} Segment(19,12)[hidden];
+{58} ToggleVisibilityButton(511,723,'控制点|控制点')(7,5)[color(255,128,0),hidden];
+{59} AnimateButton(511,747,'动画点')(19,17)(3)(0)(0)[color(255,128,0),hidden];
+{60} VectorTranslation(12,38,9)[red];
+{61} Rotation(60,12,1.5708)[hidden];
+{62} Distance(61,53,14,465,'')[hidden];
+{63} Distance(61,46,14,405,'')[hidden];
+{64} Calculate(14,495,'','A B * C D 4 / E + * + F D 2 / G + * + H 3 D * 4 / I + * + ')(24,44,25,18,63,26,51,27,62)[hidden];
+{65} ToggleVisibilityButton(511,771,'隐藏度量值|显示度量值')(13,14,18,20,21,23,24,25,26,27,28,39,44,47,63,50,51,54,55,62,64,56)[color(255,128,0),hidden];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>长方形的滚动</P></H4>
+</BODY>
+</HTML>

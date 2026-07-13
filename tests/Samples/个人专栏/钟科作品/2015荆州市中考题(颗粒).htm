@@ -1,0 +1,203 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>2015荆州市中考题(颗粒)</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(488,581)[label('B')];
+{2} UnitPoint(1,138.795)[label('C'),red];
+{3} Rotation(2,1,1.5708)[label('A'),red];
+{4} Rotation(1,3,1.5708)[label('D'),red];
+{5} Segment(3,1)[black];
+{6} Point on object(5,0.848698)[label('Q'),cyan,large];
+{7} Polygon(1,2,4,3,4,2)[black];
+{8} Distance(2,1,995,345,'')[hidden];
+{9} Point(325,608)[hidden,mediumPoint];
+{10} Translation(9,7.55906,0)[hidden];
+{11} Translation(10,37.7953,0)[hidden];
+{12} Translation(11,7.55906,0)[hidden];
+{13} Translation(12,37.7953,0)[hidden];
+{14} Segment(11,10)[hidden];
+{15} Segment(13,12)[hidden];
+{16} Translation(10,-1.31961e-013,-37.7953)[hidden];
+{17} Translation(12,-1.31961e-013,-37.7953)[hidden];
+{18} Translation(14,-1.31961e-013,-37.7953)[hidden];
+{19} Translation(15,-1.31961e-013,-37.7953)[hidden];
+{20} Translation(18,-1.31961e-013,-37.7953)[hidden];
+{21} Translation(19,-1.31961e-013,-37.7953)[hidden];
+{22} Translation(9,-1.31961e-013,-37.7953)[hidden];
+{23} Translation(22,-1.31961e-013,-37.7953)[hidden];
+{24} Translation(22,-37.7953,-2.63923e-013)[hidden];
+{25} Segment(22,24)[hidden];
+{26} Point on object(25,0.5)[hidden];
+{27} Segment(9,23)[hidden];
+{28} Segment(26,9)[color(0,191,191),hidden,mediumLine];
+{29} Segment(23,26)[hidden];
+{30} Polygon(26,23,9)[hidden];
+{31} Point on object(14,0)[hidden];
+{32} Point on object(14,0)[hidden];
+{33} Point on object(15,0)[hidden];
+{34} Point on object(15,0)[hidden];
+{35} Point on object(18,0)[hidden];
+{36} Point on object(19,0)[hidden];
+{37} Point on object(20,0.3)[hidden];
+{38} Point on object(21,0.22)[hidden];
+{39} Point on object(18,0)[hidden];
+{40} Point on object(19,0)[hidden];
+{41} Point on object(21,0.639831)[hidden];
+{42} Point on object(20,0.3)[hidden];
+{43} VectorTranslation(27,22,26)[hidden];
+{44} Translation(31,-1.97942e-014,5.66929)[hidden];
+{45} Translation(34,-1.97942e-014,5.66929)[hidden];
+{46} Translation(32,1.97942e-014,-5.66929)[hidden];
+{47} Translation(33,1.97942e-014,-5.66929)[hidden];
+{48} Translation(40,1.97942e-014,-5.66929)[hidden];
+{49} Translation(39,1.97942e-014,-5.66929)[hidden];
+{50} Translation(35,-1.97942e-014,5.66929)[hidden];
+{51} Translation(36,-1.97942e-014,5.66929)[hidden];
+{52} MoveButton(20,508,0,'')(17,36,16,35,12,34,10,31)[hidden];
+{53} MoveButton(20,508,0,'')(17,40,16,39,12,33,10,32)[hidden];
+{54} Translation(26,-5.66929,-3.95884e-014)[hidden];
+{55} Translation(37,-1.97942e-014,5.66929)[hidden];
+{56} Translation(38,-1.97942e-014,5.66929)[hidden];
+{57} Translation(42,1.97942e-014,-5.66929)[hidden];
+{58} Translation(41,1.97942e-014,-5.66929)[hidden];
+{59} Point(707,572)[hidden,mediumPoint];
+{60} UnitPoint(59,37.7953)[hidden];
+{61} RectangularUnitPoint(60,37.7953)[red,hidden];
+{62} UnitPoint(60,100.843)[hidden];
+{63} UnitPoint(61,37.7953)[hidden];
+{64} RectangularUnitPoint(63,105.843)[cyan,hidden];
+{65} Translation(59,0,0)[hidden];
+{66} UnitPoint(65,11.6535)[hidden];
+{67} RectangularUnitPoint(66,14.6535)[hidden];
+{68} Rotation(66,59,-3.14159)[hidden];
+{69} Rotation(67,59,-3.14159)[cyan,hidden];
+{70} Ratio/Points(59,60,62,379,494,'')[hidden];
+{71} Ratio/Points(59,60,68,379,494,'')[hidden];
+{72} Calculate(379,494,'','A 1 - @trnc ')(71)[hidden];
+{73} Calculate(379,494,'','A 1 A @sgn_ + @sgn_ + ')(72)[hidden];
+{74} Calculate(379,494,'','A 1 + ')(72)[hidden];
+{75} Calculate(379,494,'','A @trnc ')(70)[hidden];
+{76} Calculate(379,494,'','A @trnc B @trnc - ')(70,71)[hidden];
+{77} Ratio/Points(59,61,64,379,494,'')[hidden];
+{78} Ratio/Points(59,61,69,379,494,'')[hidden];
+{79} Calculate(379,494,'','A 1 - @trnc ')(78)[hidden];
+{80} Calculate(379,494,'','A 1 A @sgn_ + @sgn_ + ')(79)[hidden];
+{81} Calculate(379,494,'','A 1 + ')(79)[hidden];
+{82} Calculate(379,494,'','A @trnc ')(77)[hidden];
+{83} Calculate(379,494,'','A @trnc B @trnc - ')(77,78)[hidden];
+{84} Dilation/MarkedRatio(61,59,82)[hidden];
+{85} Translation(62,-8.69291,-6.07023e-014)[hidden];
+{86} Translation(62,-18.1417,-1.26683e-013)[hidden];
+{87} Translation(62,-18.6105,3.28154)[hidden];
+{88} Translation(62,-17.1271,7.98649)[hidden];
+{89} Translation(64,-3.03511e-014,-8.69291)[hidden];
+{90} Translation(64,-6.33415e-014,-18.1417)[hidden];
+{91} Translation(64,-7.98649,-17.1271)[hidden];
+{92} Translation(64,-3.28154,-18.6105)[hidden];
+{93} Calculate(379,494,'','A 1 + ')(76)[hidden];
+{94} Calculate(379,494,'','A 1 + ')(83)[hidden];
+{95} Dilation/MarkedRatio(60,59,75)[hidden];
+{96} Distance(60,59,379,494,'')[hidden];
+{97} Distance(61,59,379,494,'')[hidden];
+{98} Dilation/MarkedRatio(60,59,72)[hidden];
+{99} Dilation/MarkedRatio(61,59,79)[hidden];
+{100} Dilation/MarkedRatio(60,59,73)[hidden];
+{101} VectorTranslation(100,59,60)[hidden];
+{102} Translation(100,-1.31961e-013,37.7953)[hidden];
+{103} Translation(100,-1.31961e-013,-37.7953)[hidden];
+{104} Dilation/MarkedRatio(61,59,80)[hidden];
+{105} Translation(104,37.7953,0)[hidden];
+{106} Translation(104,-37.7953,-0)[hidden];
+{107} VectorTranslation(104,59,61)[hidden];
+{108} Rotation(60,59,1.5708)[red,hidden];
+{109} MoveButton(20,508,0,'xy轴等单位')(108,61)[color(255,128,0),hidden];
+{110} Translation(59,37.7953,0)[hidden];
+{111} Translation(59,-1.31961e-013,37.7953)[hidden];
+{112} MoveButton(20,508,0,'')(111,61,110,60)[hidden];
+{113} ToggleVisibilityButton(20,508,'隐藏控制台|显示控制台')(9,14,15,18,19,20,21,27,28,29,30,43,44,45,46,47,48,49,50,51,54,55,56,57,58,59,60,61,68,62,69,64)[color(255,128,0),hidden];
+{114} Dilation(61,59,4.7)[red,hidden];
+{115} Dilation(60,59,4.7)[hidden];
+{116} Dilation(61,59,-4.33)[red,hidden];
+{117} Dilation(60,59,-4.33)[hidden];
+{118} MoveButton(20,508,0,'')(114,64,116,69,115,62,117,68)[hidden];
+{119} Segment(6,1)[black];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>2015荆州市中考题(颗粒)</P></H4>
+</BODY>
+</HTML>

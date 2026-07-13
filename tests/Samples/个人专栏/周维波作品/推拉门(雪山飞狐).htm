@@ -1,0 +1,120 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>推拉门(雪山飞狐)</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(27,301)[hidden];
+{2} Translation(1,37.7953,0)[color(0,0,128),mediumPoint];
+{3} Ray(2,1)[hidden];
+{4} Point on object(3,19.7908)[color(0,0,128),mediumPoint];
+{5} Rotation(3,1,1.5708)[hidden];
+{6} Point on object(5,4.39208)[hidden];
+{7} Segment(6,1)[black,thick];
+{8} VectorTranslation(6,1,4)[color(0,0,128),mediumPoint];
+{9} Segment(6,8)[black,thick];
+{10} Segment(4,8)[black,thick];
+{11} Segment(4,1)[black,thick];
+{12} Point on object(9,0.0129114)[hidden];
+{13} Translation(12,0,-3.77953)[color(0,0,128)];
+{14} VectorTranslation(12,8,4)[hidden];
+{15} VectorTranslation(14,13,12)[color(0,0,128)];
+{16} Segment(13,15)[black,mediumLine];
+{17} VectorTranslation(13,12,6)[hidden];
+{18} VectorTranslation(15,12,6)[hidden];
+{19} Segment(17,13)[black];
+{20} Segment(18,15)[black];
+{21} Parameter(10,26,25,'n = ')[black];
+{22} Calculate(19,60,'(1/n) = ','1 A / ')(21)[black];
+{23} Calculate(19,105,'n - 1 = ','A 1 - ')(21)[black];
+{24} Dilation/MarkedRatio(17,13,22)[color(0,0,128)];
+{25} VectorTranslation(24,13,15)[color(0,0,128)];
+{26} Segment(24,25)[black,mediumLine];
+{27} Dilation(14,12,0.5)[label('E'),red,mediumPoint];
+{28} VectorTranslation(12,13,24)[hidden];
+{29} VectorTranslation(28,12,14)[hidden];
+{30} Dilation(28,29,0.5)[color(0,0,128)];
+{31} Segment(30,13)[black];
+{32} Segment(24,27)[black];
+{33} Segment(30,15)[black];
+{34} Segment(25,27)[black];
+{35} FixedText(91,416,'选中n通过键盘的“+”或“-”可以控制推拉门的栅栏数目。（雪山飞狐制作-2010.10.11）')[color(0,0,1)];
+{36} AnimateButton(573,504,'动画点')(12,9)(3)(0)(0)[color(255,128,0)];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>推拉门(雪山飞狐)</P></H4>
+</BODY>
+</HTML>

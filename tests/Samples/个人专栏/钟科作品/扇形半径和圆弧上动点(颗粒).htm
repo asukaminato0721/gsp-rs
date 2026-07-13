@@ -1,0 +1,191 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>扇形半径和圆弧上动点(颗粒)</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(267,441)[hidden,mediumPoint];
+{2} Translation(1,3.77953,0)[hidden];
+{3} Translation(2,37.7953,0)[hidden];
+{4} Ray(3,2)[hidden];
+{5} Rotation(4,1,1.5708)[hidden];
+{6} Point on object(5,0.9)[cyan,hidden];
+{7} Point on object(4,0.9)[hidden];
+{8} VectorTranslation(1,6,1)[hidden];
+{9} VectorTranslation(1,7,1)[hidden];
+{10} Rotation(5,1,1.5708)[hidden];
+{11} Rotation(10,1,1.5708)[hidden];
+{12} Point on object(4,17.8285)[hidden];
+{13} Ratio/Points(1,7,12,1026,207,'')[hidden];
+{14} Calculate(1026,207,'','A @trnc ')(13)[hidden];
+{15} Dilation/MarkedRatio(7,1,14)[hidden];
+{16} Point on object(5,4.52)[red,hidden];
+{17} Ratio/Points(1,6,16,1026,207,'')[hidden];
+{18} Calculate(1026,207,'','A @trnc ')(17)[hidden];
+{19} Dilation/MarkedRatio(6,1,18)[hidden];
+{20} Point on object(10,1.13333)[hidden];
+{21} Ratio/Points(1,9,20,1026,207,'')[hidden];
+{22} Calculate(1026,207,'','A @trnc ')(21)[hidden];
+{23} Dilation/MarkedRatio(9,1,22)[hidden];
+{24} Point on object(11,2.2975)[red,hidden];
+{25} Translation(24,11.3386,0)[hidden];
+{26} Translation(25,1.51181,0)[hidden];
+{27} VectorTranslation(24,26,24)[hidden];
+{28} Translation(27,-1.51181,-0)[hidden];
+{29} Translation(28,-1.51181,-0)[hidden];
+{30} Ray(29,28)[hidden];
+{31} Point on object(30,0)[hidden];
+{32} Ratio/Points(27,28,31,1026,207,'')[hidden];
+{33} Calculate(1026,207,'','A @trnc ')(32)[hidden];
+{34} Calculate(1026,207,'','1 A / ')(33)[hidden];
+{35} Dilation/MarkedRatio(6,1,34)[hidden];
+{36} Segment(35,1)[hidden];
+{37} Translation(26,1.51181,0)[hidden];
+{38} Ray(37,26)[hidden];
+{39} Point on object(38,0)[hidden];
+{40} Ratio/Points(25,26,39,1026,207,'')[hidden];
+{41} Calculate(1026,207,'','A @trnc ')(40)[hidden];
+{42} Calculate(1026,207,'','1 A / ')(41)[hidden];
+{43} Dilation/MarkedRatio(7,1,42)[hidden];
+{44} Segment(43,1)[hidden];
+{45} Ratio/Points(1,8,24,1026,207,'')[hidden];
+{46} Calculate(1026,207,'','A @trnc ')(45)[hidden];
+{47} Dilation/MarkedRatio(8,1,46)[hidden];
+{48} Segment(47,19)[black];
+{49} Segment(15,23)[black];
+{50} Translation(20,-1.05569e-013,30.2362)[hidden];
+{51} Segment(50,20)[hidden];
+{52} Point on object(51,0.2125)[hidden];
+{53} Rotation(52,20,-1.5708)[hidden];
+{54} Translation(20,1.97942e-013,-56.6929)[hidden];
+{55} VectorTranslation(1,20,52)[hidden];
+{56} Segment(55,1)[hidden];
+{57} VectorTranslation(1,20,53)[hidden];
+{58} Segment(1,57)[hidden];
+{59} Translation(1,37.7953,0)[hidden];
+{60} Translation(1,-1.31961e-013,37.7953)[hidden];
+{61} Translation(1,-6.09662e-013,174.614)[hidden];
+{62} Reflection(61,49)[hidden];
+{63} Translation(1,174.614,0)[hidden];
+{64} Reflection(63,48)[hidden];
+{65} Line(16,19)[hidden];
+{66} Line(12,15)[hidden];
+{67} Segment(54,20)[hidden];
+{68} Point on object(67,0.2)[hidden];
+{69} VectorTranslation(1,20,68)[red,hidden];
+{70} Translation(20,-15.1181,-0)[hidden];
+{71} Translation(54,-15.1181,-0)[hidden];
+{72} Segment(70,71)[hidden];
+{73} Point on object(72,0.8)[hidden];
+{74} Rotation(73,70,-1.5708)[hidden];
+{75} VectorTranslation(1,70,74)[red,hidden];
+{76} Translation(70,-3.95884e-014,-11.3386)[hidden];
+{77} Translation(20,-3.95884e-014,-11.3386)[hidden];
+{78} Segment(23,20)[black];
+{79} Segment(24,47)[black];
+{80} Translation(12,15.1181,0)[hidden];
+{81} Circle(12,80)[hidden];
+{82} Intersect1(66,81)[hidden];
+{83} Dilation(12,82,0.333333)[hidden];
+{84} Rotation(82,12,0.261799)[hidden];
+{85} Reflection(84,66)[hidden];
+{86} Polygon(84,12,85,83)[black];
+{87} Segment(83,15)[black];
+{88} Translation(16,15.1181,0)[hidden];
+{89} Circle(16,88)[hidden];
+{90} Intersect1(65,89)[hidden];
+{91} Dilation(16,90,0.333333)[hidden];
+{92} Rotation(90,16,0.261799)[hidden];
+{93} Reflection(92,65)[hidden];
+{94} Polygon(92,16,93,91)[black];
+{95} Segment(91,19)[black];
+{96} Translation(20,-2.24335e-014,6.4252)[hidden];
+{97} MoveButton(146,293,0,'')(60,6,61,16,64,20,59,7,63,12,62,24,26,39,27,31,96,52,76,73,77,68)[hidden];
+{98} Translation(52,-2.24335e-014,6.4252)[hidden];
+{99} Intersect(49,48)[label('O'),black,dot];
+{100} Rotation(7,1,1.5708)[cyan,hidden];
+{101} MoveButton(146,293,0,'等单位长')(100,6)[color(255,128,0),hidden];
+{102} ToggleVisibilityButton(146,293,'坐标控制|坐标控制')(39,24,31,68,20,98,73,6,7,12,16,1)[color(255,128,0),hidden];
+{103} Segment(15,1)[hidden];
+{104} Point on object(103,0.245311)[cyan,mediumPoint];
+{105} Segment(104,1)[hidden];
+{106} FixedText(48,50,'调研一 在平面直角坐标系中，若干个半径为2个单位长度，圆心角为60°的扇形组成 一条连续的曲线，点P从原点出发，沿这条曲线向右上下起伏运动，点在半径 上的速度为每秒2个单位长度，在弧上的速度为每秒(2π/3)个单位长度， 则2017秒时点P的坐标是                      .')[black];
+{107} AnimateButton(134,239,'动画')(104,103)(1)(0)(1)[color(255,128,0)];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>扇形半径和圆弧上动点(颗粒)</P></H4>
+</BODY>
+</HTML>

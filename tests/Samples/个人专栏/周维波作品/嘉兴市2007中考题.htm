@@ -1,0 +1,143 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>嘉兴市2007中考题</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} FixedText(450,39,'2007年中考嘉兴市压轴题 已知A(8,0)，B（0,6）,两个动点P、Q同时在△OAB的 边上按逆时针方向(B→O→A→B)运动，开始时点P在B 点的位置，点Q在点O的位置，点P的运动速度为每秒2 个单位，点Q的运动速度为每秒1个单位。 (1)在前3秒内，求△OPQ的最大面积 (2)在前10秒内，求P、Q两点之间的最小距离?     并求此时点P、Q的坐标 (3)在前15秒内，探求PQ平行于△OAB一边的情况，并 求平行时点P、Q的坐标 ')[color(0,0,1)];
+{2} Parameter(10,23,36,'坐标轴长度 = ')[black];
+{3} Point(208,522)[label('O')];
+{4} Translation(3,0,7.55906)[hidden];
+{5} Segment(4,3)[blue];
+{6} Translation(3,7.55906,0)[hidden];
+{7} Segment(3,6)[blue];
+{8} Translation(3,0,-37.7953)[hidden];
+{9} Translation(3,-37.7953,0)[hidden];
+{10} Translation(9,37.7953,0)[hidden];
+{11} Translation(8,37.7953,0)[hidden];
+{12} Point(193,657)[hidden];
+{13} Translation(12,377.953,0)[hidden];
+{14} Segment(13,12)[color(0,0,128)];
+{15} Dilation(13,12,0.2)[hidden];
+{16} Point(25,524)[hidden];
+{17} Translation(16,37.7953,0)[hidden];
+{18} Ray(17,16)[hidden];
+{19} Point on object(18,1)[hidden];
+{20} VectorTranslation(3,16,19)[hidden];
+{21} Ray(20,3)[hidden];
+{22} Rotation(20,3,1.5708)[hidden];
+{23} Ray(22,3)[hidden];
+{24} MoveButton(2,12,3,'')(17,19)[hidden];
+{25} Segment(19,16)[hidden];
+{26} Length(25,118,289,'')[hidden];
+{27} Calculate(118,289,'','A B * 18.8976 + ')(2,26)[hidden];
+{28} Circle by radius(3,27)[hidden];
+{29} Intersect2(21,28)[label('x'),yellow];
+{30} Rotation/MarkedAngle(29,9,29,9,10)[hidden];
+{31} Translation(30,-15.1181,-5.66929)[hidden];
+{32} Translation(30,-7.55906,0)[hidden];
+{33} Translation(30,-15.1181,5.66929)[hidden];
+{34} Polygon(31,32,33,30)[hidden];
+{35} Rotation/MarkedAngle(34,9,30,9,29)[black];
+{36} Segment(29,9)[blue];
+{37} Intersect2(23,28)[label('y'),yellow];
+{38} Rotation/MarkedAngle(37,8,37,8,11)[hidden];
+{39} Translation(38,-15.1181,-5.66929)[hidden];
+{40} Translation(38,-7.55906,0)[hidden];
+{41} Translation(38,-15.1181,5.66929)[hidden];
+{42} Polygon(39,40,41,38)[hidden];
+{43} Rotation/MarkedAngle(42,8,38,8,37)[black];
+{44} Segment(37,8)[blue];
+{45} Dilation(13,12,0.1)[hidden];
+{46} Point(1225,1027);
+{47} Dilation(13,12,0.666667)[hidden];
+{48} Dilation(13,12,0.145455)[hidden];
+{49} Dilation(13,12,0.492308)[hidden];
+{50} Dilation(13,12,0.892308)[hidden];
+{51} Point on object(14,0)[red,mediumPoint];
+{52} MoveButton(2,346,0,'')(12,51)[hidden];
+{53} MoveButton(2,369,3,'')(47,51)[hidden];
+{54} MoveButton(2,484,1,'')(15,51)[hidden];
+{55} MoveButton(2,553,5,'')(50,51)[hidden];
+{56} MoveButton(2,530,3,'')(49,51)[hidden];
+{57} MoveButton(2,576,5,'')(48,51)[hidden];
+{58} MoveButton(2,35,3,'')(45,51)[hidden];
+{59} FixedText(758,627,'烟台 Zhousir作品')[color(0,0,128)];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>嘉兴市2007中考题</P></H4>
+</BODY>
+</HTML>
