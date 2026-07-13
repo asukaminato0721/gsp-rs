@@ -3,4 +3,4 @@ import type { DebugSourceJson } from "./DebugSourceJson";
 import type { FunctionExprJson } from "./FunctionExprJson";
 import type { IterationTableColumnJson } from "./IterationTableColumnJson";
 
-export type IterationTableJson = { x: number, y: number, exprLabel: string, parameterName: string, expr: FunctionExprJson, columns: Array<IterationTableColumnJson>, depth: number, depthExpr: FunctionExprJson | null, depthParameterName: string | null, visible: boolean, debug: DebugSourceJson | null, };
+export type IterationTableJson = { x: number, y: number, exprLabel: string, parameterName: string, expr: FunctionExprJson, columns: Array<IterationTableColumnJson>, showIndex: boolean, anchorAtTop: boolean, depth: number, depthExpr: FunctionExprJson | null, depthParameterName: string | null, visible: boolean, debug: DebugSourceJson | null, };

@@ -2812,6 +2812,7 @@
     hasPointIndexHandle,
     isFiniteNumber,
     pointIterationDepth,
+    pointAngleValue,
     refreshDerivedPoints,
     rotateAround,
     samplePointTraceLine,

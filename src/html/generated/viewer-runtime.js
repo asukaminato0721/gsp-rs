@@ -2352,10 +2352,11 @@
       return null;
     }
     const columns = Array.isArray(table.columns) && table.columns.length > 0 ? table.columns : [{ exprLabel: table.exprLabel }];
-    const header = ["n", ...columns.map((column) => column.exprLabel)];
+    const showIndex = table.showIndex !== false;
+    const header = showIndex ? ["n", ...columns.map((column) => column.exprLabel)] : columns.map((column) => column.exprLabel);
     const body = table.rows.map((row) => {
       const values = Array.isArray(row.values) ? row.values : [row.value ?? Number.NaN];
-      return [String(row.index), ...values.map((value) => env.formatNumber(value))];
+      return showIndex ? [String(row.index), ...values.map((value) => env.formatNumber(value))] : values.map((value) => env.formatNumber(value));
     });
     const rows = [header, ...body];
     const colWidths = Array.from({ length: header.length }, () => 0);
@@ -2371,7 +2372,7 @@
     const height = rowHeight * rows.length;
     return {
       left: table.x,
-      top: table.y - height,
+      top: table.anchorAtTop ? table.y : table.y - height,
       width,
       height,
       colWidths,
@@ -4482,7 +4483,7 @@
 (function() {
   const modules = window.GspViewerModules || (window.GspViewerModules = {});
   function createDynamicsIterations(dependencies) {
-    const { affineMapFromTriangles, applyNormalizedParameterToPoint, applySegmentCoefficients, buildPlainTextRichMarkup, cloneTracePoint, darken, deriveExpressionLabelParameters, deriveLabelParameters, discreteIterationDepth, DERIVED_POINT_BINDING_REFRESHERS, evaluateExpr, evaluateRecursiveExpression, formatSequenceValue, hasLineIndexHandle, hasPointIndexHandle, isFiniteNumber, pointIterationDepth, refreshDerivedPoints, rotateAround, samplePointTraceLine, segmentPointCoefficients, SYNC_DYNAMIC_POINT_BINDING_UPDATERS } = dependencies;
+    const { affineMapFromTriangles, applyNormalizedParameterToPoint, applySegmentCoefficients, buildPlainTextRichMarkup, cloneTracePoint, darken, deriveExpressionLabelParameters, deriveLabelParameters, discreteIterationDepth, DERIVED_POINT_BINDING_REFRESHERS, evaluateExpr, evaluateRecursiveExpression, formatSequenceValue, hasLineIndexHandle, hasPointIndexHandle, isFiniteNumber, pointAngleValue, pointIterationDepth, refreshDerivedPoints, rotateAround, samplePointTraceLine, segmentPointCoefficients, SYNC_DYNAMIC_POINT_BINDING_UPDATERS } = dependencies;
     function rebuildIterationPoints(env, scene, parameters) {
       const families = env.sourceScene.pointIterations || [];
       if (families.length === 0) {
@@ -5314,7 +5315,7 @@
           }
         });
         const rows = [];
-        if (columns.every((column) => isFiniteNumber(state.get(column.parameterName)))) {
+        if (columns.every((column) => column.valueBinding || isFiniteNumber(state.get(column.parameterName)))) {
           for (let index = 0; index <= depth; index += 1) {
             const derived = deriveExpressionLabelParameters(scene, state);
             columns.forEach((column) => {
@@ -5323,7 +5324,19 @@
                 derived.set(column.parameterName, value);
               }
             });
-            const values = columns.map((column) => evaluateExpr(column.expr, 0, derived));
+            columns.forEach((column) => {
+              if (column.valueBinding?.kind !== "angle-marker") return;
+              const value = pointAngleValue(scene, column.valueBinding);
+              if (isFiniteNumber(value)) {
+                derived.set(column.parameterName, value);
+              }
+            });
+            const values = columns.map((column) => {
+              if (column.valueBinding?.kind === "angle-marker") {
+                return derived.get(column.parameterName);
+              }
+              return evaluateExpr(column.expr, 0, derived);
+            });
             if (!values.every(isFiniteNumber)) {
               break;
             }
@@ -8342,6 +8355,7 @@
     hasPointIndexHandle,
     isFiniteNumber,
     pointIterationDepth,
+    pointAngleValue,
     refreshDerivedPoints,
     rotateAround,
     samplePointTraceLine,

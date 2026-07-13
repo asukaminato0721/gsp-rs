@@ -338,6 +338,8 @@ pub(crate) struct IterationTable {
     pub(crate) parameter_name: String,
     pub(crate) expr: FunctionExpr,
     pub(crate) columns: Vec<IterationTableColumn>,
+    pub(crate) show_index: bool,
+    pub(crate) anchor_at_top: bool,
     pub(crate) depth: usize,
     pub(crate) depth_expr: Option<FunctionExpr>,
     pub(crate) depth_parameter_name: Option<String>,
@@ -350,6 +352,16 @@ pub(crate) struct IterationTableColumn {
     pub(crate) expr_label: String,
     pub(crate) parameter_name: String,
     pub(crate) expr: FunctionExpr,
+    pub(crate) value_binding: Option<IterationTableValueBinding>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum IterationTableValueBinding {
+    AngleMarker {
+        start_index: usize,
+        vertex_index: usize,
+        end_index: usize,
+    },
 }
 
 #[derive(Debug, Clone)]

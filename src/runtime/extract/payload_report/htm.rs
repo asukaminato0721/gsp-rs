@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime::payload_consts::RECORD_RICH_TEXT;
 use std::fs;
 use std::path::Path;
 
@@ -767,7 +768,7 @@ fn htm_point_is_image_anchor(file: &GspFile, group: &ObjectGroup) -> bool {
         && group
             .records
             .iter()
-            .any(|record| matches!(record.record_type, 0x08a3 | 0x08a8 | 0x08fc))
+            .any(|record| matches!(record.record_type, 0x08a3 | 0x08a8 | RECORD_RICH_TEXT))
         && try_decode_group_label_text(file, group)
             .unwrap_or_default()
             .trim()

@@ -11,6 +11,7 @@ use super::*;
 use crate::format::read_u32;
 use crate::runtime::functions::FunctionExpr;
 use crate::runtime::geometry::rotate_around;
+use crate::runtime::payload_consts::RECORD_ITERATION_DEFINITION;
 
 #[path = "bindings/decode.rs"]
 mod decode;
@@ -62,7 +63,7 @@ fn iteration_depth(file: &GspFile, group: &ObjectGroup, default_depth: usize) ->
     group
         .records
         .iter()
-        .find(|record| record.record_type == 0x090a)
+        .find(|record| record.record_type == RECORD_ITERATION_DEFINITION)
         .map(|record| record.payload(&file.data))
         .filter(|payload| payload.len() >= 20)
         .map(|payload| read_u32(payload, 16) as usize)

@@ -12,6 +12,10 @@ test('refraction sample preserves payload background and rich-text styling witho
     );
     const richLabel = document.querySelector<HTMLElement>('.scene-rich-label[data-gsp-group="126"]');
     const styledTitle = richLabel?.querySelector<HTMLElement>('.scene-rich-line:first-child span');
+    const tableText = Array.from(
+      document.querySelectorAll<SVGTextElement>('[data-gsp-group="83"] text'),
+      (node) => node.textContent,
+    );
     return {
       background: runtime.scene.backgroundColor,
       canvasBackground: getComputedStyle(document.querySelector('#view') as Element).backgroundColor,
@@ -27,6 +31,7 @@ test('refraction sample preserves payload background and rich-text styling witho
       titleScreenSpace: title?.screenSpace,
       inlineTitleColor: styledTitle ? getComputedStyle(styledTitle).color : null,
       inlineTitleFontSize: styledTitle ? getComputedStyle(styledTitle).fontSize : null,
+      tableText,
     };
   });
 
@@ -39,6 +44,9 @@ test('refraction sample preserves payload background and rich-text styling witho
   expect(result.titleScreenSpace).toBe(true);
   expect(result.inlineTitleColor).toBe('rgb(0, 128, 0)');
   expect(result.inlineTitleFontSize).toBe('48px');
+  expect(result.tableText).toEqual([
+    '入射角θ₁', '折射角θ₂', 'sinθ₁/sinθ₂', '43.11', '24.62', '1.64',
+  ]);
 });
 
 test('refraction sample updates its ray iterations from the light-count parameter', async ({ page }) => {
@@ -93,6 +101,7 @@ test('refraction iteration arrows follow the dragged medium point', async ({ pag
       (polygon: { debug?: { groupOrdinal?: number } }) => polygon.debug?.groupOrdinal === 12,
     );
     const medium = before.scene.points[mediumIndex];
+    const tableValuesBefore = before.scene.iterationTables[0].rows[0].values;
 
     drag.beginDrag(env, 1, { x: medium.x, y: medium.y }, mediumIndex, null, null, null, null);
     drag.updateDraggedPoint(env, { x: medium.x + 80, y: medium.y });
@@ -118,6 +127,8 @@ test('refraction iteration arrows follow the dragged medium point', async ({ pag
           (polygon: { color: [number, number, number, number] }) => JSON.stringify(polygon.color),
         ),
       )).sort(),
+      tableValuesBefore,
+      tableValuesAfter: after.scene.iterationTables[0].rows[0].values,
       movedLineCount,
       movedPolygonCount,
     };
@@ -131,6 +142,9 @@ test('refraction iteration arrows follow the dragged medium point', async ({ pag
     JSON.stringify([255, 0, 0, 255]),
     JSON.stringify([255, 0, 255, 255]),
   ].sort());
+  expect(result.tableValuesAfter[0]).toBeCloseTo(result.tableValuesBefore[0]);
+  expect(result.tableValuesAfter[1]).not.toBeCloseTo(result.tableValuesBefore[1]);
+  expect(result.tableValuesAfter[2]).not.toBeCloseTo(result.tableValuesBefore[2]);
   expect(result.movedLineCount).toBeGreaterThan(8);
   expect(result.movedPolygonCount).toBeGreaterThan(8);
 });

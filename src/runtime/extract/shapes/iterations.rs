@@ -13,6 +13,7 @@ use crate::runtime::extract::points::editable_non_graph_parameter_name_for_group
 use crate::runtime::functions::{
     FunctionExpr, evaluate_function_group_with_overrides, try_decode_function_expr,
 };
+use crate::runtime::payload_consts::RECORD_ITERATION_DEFINITION;
 use crate::runtime::scene::{CircleIterationFamily, IterationPointHandle};
 
 #[derive(Clone)]
@@ -1102,7 +1103,7 @@ fn carried_iteration_depth(
     iter_group
         .records
         .iter()
-        .find(|record| record.record_type == 0x090a)
+        .find(|record| record.record_type == RECORD_ITERATION_DEFINITION)
         .map(|record| record.payload(&file.data))
         .filter(|payload| payload.len() >= 20)
         .map(|payload| super::read_u32(payload, 16) as usize)
@@ -1286,7 +1287,7 @@ pub(crate) fn collect_carried_iteration_polygons(
             let depth = iter_group
                 .records
                 .iter()
-                .find(|record| record.record_type == 0x090a)
+                .find(|record| record.record_type == RECORD_ITERATION_DEFINITION)
                 .map(|record| record.payload(&file.data))
                 .filter(|payload| payload.len() >= 20)
                 .map(|payload| super::read_u32(payload, 16) as usize)

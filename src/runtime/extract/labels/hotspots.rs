@@ -269,7 +269,7 @@ fn collect_label_iteration_output_labels_for_binding(
     let depth = iter_group
         .records
         .iter()
-        .find(|record| record.record_type == 0x090a)
+        .find(|record| record.record_type == RECORD_ITERATION_DEFINITION)
         .map(|record| record.payload(&file.data))
         .filter(|payload| payload.len() >= 20)
         .map(|payload| read_u32(payload, 16) as usize)

@@ -11,10 +11,15 @@
     const columns = Array.isArray(table.columns) && table.columns.length > 0
       ? table.columns
       : [{ exprLabel: table.exprLabel }];
-    const header = ["n", ...columns.map(( column) => column.exprLabel)];
+    const showIndex = table.showIndex !== false;
+    const header = showIndex
+      ? ["n", ...columns.map(( column) => column.exprLabel)]
+      : columns.map(( column) => column.exprLabel);
     const body = table.rows.map(( row) => {
       const values = Array.isArray(row.values) ? row.values : [row.value ?? Number.NaN];
-      return [String(row.index), ...values.map((value) => env.formatNumber(value))];
+      return showIndex
+        ? [String(row.index), ...values.map((value) => env.formatNumber(value))]
+        : values.map((value) => env.formatNumber(value));
     });
     const rows = [header, ...body];
     
@@ -31,7 +36,7 @@
     const height = rowHeight * rows.length;
     return {
       left: table.x,
-      top: table.y - height,
+      top: table.anchorAtTop ? table.y : table.y - height,
       width,
       height,
       colWidths,

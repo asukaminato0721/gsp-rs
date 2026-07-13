@@ -2,6 +2,13 @@ use super::{ParseError, Record};
 use binrw::{BinRead, BinReaderExt};
 use std::io::Cursor;
 
+pub const RECORD_PALETTE_ENTRY: u32 = 0x2724;
+pub const RECORD_BACKGROUND_PALETTE_INDEX: u32 = 0x2725;
+pub const RECORD_FONT_ENTRY: u32 = 0x273c;
+pub const RECORD_RICH_TEXT: u32 = 0x08fc;
+pub const RECORD_ITERATION_DEFINITION: u32 = 0x090a;
+pub const RECORD_VALUE_TABLE_LAYOUT: u32 = 0x090d;
+
 #[derive(BinRead)]
 #[br(little)]
 struct RawRecordHeader {
@@ -82,6 +89,9 @@ pub fn record_name(record_type: u32) -> &'static str {
         0x07d7 => "OBJECT_MARKER_0x7d7",
         0x07d8 => "OBJECT_AUX_0x7d8",
         0x0899 => "POINT_F64_PAIR",
+        RECORD_RICH_TEXT => "RICH_TEXT",
+        RECORD_ITERATION_DEFINITION => "ITERATION_DEFINITION",
+        RECORD_VALUE_TABLE_LAYOUT => "VALUE_TABLE_LAYOUT",
         0x2328 => "METADATA_0x2328",
         0x2329 => "METADATA_0x2329",
         0x232b => "DISPLAY_SLOT_0x232b",
@@ -91,8 +101,9 @@ pub fn record_name(record_type: u32) -> &'static str {
         0x232f => "TEXT_BLOB_0x232f",
         0x2330 => "BUILD_INFO_EXTRA",
         0x2331 => "METADATA_0x2331",
-        0x2724 => "PALETTE_ENTRY",
-        0x273c => "FONT_ENTRY",
+        RECORD_PALETTE_ENTRY => "PALETTE_ENTRY",
+        RECORD_BACKGROUND_PALETTE_INDEX => "BACKGROUND_PALETTE_INDEX",
+        RECORD_FONT_ENTRY => "FONT_ENTRY",
         0x095f..=0x0973 => "SYMBOL_SLOT",
         _ => "UNKNOWN",
     }

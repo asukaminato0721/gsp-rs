@@ -24,17 +24,20 @@ use crate::runtime::functions::{
     FunctionExpr, evaluate_expr_with_parameters, function_expr_label, synthesize_function_labels,
     synthesize_standalone_function_definition_labels, try_decode_function_expr,
 };
-use crate::runtime::geometry::{color_from_style, distance_world, format_number};
+use crate::runtime::geometry::{
+    angle_degrees_from_points, color_from_style, distance_world, format_number,
+};
 use crate::runtime::payload_consts::{
     EXPR_OP_ADD, EXPR_OP_DIV, EXPR_OP_MUL, EXPR_OP_POW, EXPR_OP_SUB, EXPR_PARAMETER_MASK,
     EXPR_PARAMETER_PREFIX, EXPR_PI_WORD, EXPR_VARIABLE_WORD, FUNCTION_EXPR_MARKER_A,
     FUNCTION_EXPR_MARKER_B, RECORD_BINDING_PAYLOAD, RECORD_FUNCTION_EXPR_PAYLOAD,
-    RECORD_POINT_F64_PAIR,
+    RECORD_ITERATION_DEFINITION, RECORD_POINT_F64_PAIR, RECORD_RICH_TEXT,
+    RECORD_VALUE_TABLE_LAYOUT,
 };
 use crate::runtime::scene::{
-    IterationTable, IterationTableColumn, LabelIterationFamily, RichTextExpressionRef,
-    RichTextExpressionValue, ScenePoint, ScreenPoint, TextLabel, TextLabelBinding,
-    TextLabelHotspot, TextLabelHotspotAction,
+    IterationTable, IterationTableColumn, IterationTableValueBinding, LabelIterationFamily,
+    RichTextExpressionRef, RichTextExpressionValue, ScenePoint, ScreenPoint, TextLabel,
+    TextLabelBinding, TextLabelHotspot, TextLabelHotspotAction,
 };
 
 use super::analysis::{CollectedShapes, SceneAnalysis};
@@ -247,7 +250,7 @@ fn rich_text_font(file: &GspFile, group: &ObjectGroup) -> (Option<f64>, Option<S
     let Some(payload) = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x08fc)
+        .find(|record| record.record_type == RECORD_RICH_TEXT)
         .map(|record| record.payload(&file.data))
     else {
         return (None, None);
@@ -438,7 +441,7 @@ fn rich_text_iteration_coordinate_value_ref(
     let depth = iter_group
         .records
         .iter()
-        .find(|record| record.record_type == 0x090a)
+        .find(|record| record.record_type == RECORD_ITERATION_DEFINITION)
         .map(|record| record.payload(&file.data))
         .filter(|payload| payload.len() >= 20)
         .map(|payload| read_u32(payload, 16) as usize)
@@ -1414,7 +1417,7 @@ fn decode_iteration_table_anchor(file: &GspFile, group: &ObjectGroup) -> Option<
     let payload = group
         .records
         .iter()
-        .find(|record| record.record_type == 0x090d)
+        .find(|record| record.record_type == RECORD_VALUE_TABLE_LAYOUT)
         .map(|record| record.payload(&file.data))?;
     (payload.len() >= 16).then(|| ScreenPoint {
         x: crate::format::read_u16(payload, 12) as f64,
@@ -1518,7 +1521,7 @@ pub(super) fn collect_labels(
                             || group
                                 .records
                                 .iter()
-                                .any(|record| record.record_type == 0x08fc),
+                                .any(|record| record.record_type == RECORD_RICH_TEXT),
                         hotspots: Vec::new(),
                         debug: Some(payload_debug_source(group)),
                     });
@@ -1655,7 +1658,7 @@ pub(super) fn collect_labels(
                             || group
                                 .records
                                 .iter()
-                                .any(|record| record.record_type == 0x08fc),
+                                .any(|record| record.record_type == RECORD_RICH_TEXT),
                         hotspots: Vec::new(),
                         debug: Some(payload_debug_source(group)),
                     });

@@ -59,7 +59,7 @@ pub(super) fn analyze_scene(
         group
             .records
             .iter()
-            .any(|record| record.record_type == 0x08fc)
+            .any(|record| record.record_type == crate::runtime::payload_consts::RECORD_RICH_TEXT)
     });
     let document_viewport = if !graph_mode && graph_ref.is_none() && has_rich_text_layout {
         collect_document_canvas_bounds(file)

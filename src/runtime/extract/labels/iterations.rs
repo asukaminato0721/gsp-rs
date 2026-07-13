@@ -33,7 +33,7 @@ pub(super) fn collect_label_iterations(
             let depth = iter_group
                 .records
                 .iter()
-                .find(|record| record.record_type == 0x090a)
+                .find(|record| record.record_type == RECORD_ITERATION_DEFINITION)
                 .map(|record| record.payload(&file.data))
                 .filter(|payload| payload.len() >= 20)
                 .map(|payload| read_u32(payload, 16) as usize)
@@ -503,8 +503,9 @@ pub(super) fn collect_iteration_tables(
     groups: &[ObjectGroup],
     context: &SceneContext<'_>,
     anchors: &[Option<PointRecord>],
+    group_to_point_index: &[Option<usize>],
 ) -> Vec<IterationTable> {
-    groups
+    let mut tables = groups
         .iter()
         .filter(|group| {
             (group.header.kind()) == crate::format::GroupKind::IterationExpressionHelper
@@ -550,6 +551,7 @@ pub(super) fn collect_iteration_tables(
                         expr_label,
                         parameter_name,
                         expr,
+                        value_binding: None,
                     })
                 })
                 .collect::<Vec<_>>();
@@ -557,7 +559,7 @@ pub(super) fn collect_iteration_tables(
             let depth = iter_group
                 .records
                 .iter()
-                .find(|record| record.record_type == 0x090a)
+                .find(|record| record.record_type == RECORD_ITERATION_DEFINITION)
                 .map(|record| record.payload(&file.data))
                 .filter(|payload| payload.len() >= 20)
                 .map(|payload| read_u32(payload, 16) as usize)
@@ -575,10 +577,110 @@ pub(super) fn collect_iteration_tables(
                 parameter_name: first_column.parameter_name.clone(),
                 expr: first_column.expr.clone(),
                 columns,
+                show_index: true,
+                anchor_at_top: false,
                 depth,
                 depth_expr,
                 depth_parameter_name,
                 visible: true,
+                debug: Some(payload_debug_source(group)),
+            })
+        })
+        .collect::<Vec<_>>();
+    tables.extend(collect_value_tables(
+        file,
+        groups,
+        context,
+        anchors,
+        group_to_point_index,
+    ));
+    tables
+}
+
+fn collect_value_tables(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    context: &SceneContext<'_>,
+    anchors: &[Option<PointRecord>],
+    group_to_point_index: &[Option<usize>],
+) -> Vec<IterationTable> {
+    groups
+        .iter()
+        .filter(|group| group.header.kind() == crate::format::GroupKind::ValueTableRow)
+        .filter_map(|group| {
+            let path = context.indexed_path(group)?;
+            let columns = path
+                .refs
+                .iter()
+                .filter_map(|ordinal| {
+                    let source_group = context.group_by_ordinal(*ordinal)?;
+                    let expr_label = decode_label_name(file, source_group)?;
+                    if source_group.header.kind() == crate::format::GroupKind::FunctionExpr {
+                        return Some(IterationTableColumn {
+                            parameter_name: expr_label.clone(),
+                            expr_label,
+                            expr: context.function_expr(source_group).ok()?,
+                            value_binding: None,
+                        });
+                    }
+                    let source_path = context.indexed_path(source_group)?;
+                    let marker_group = context.group_by_ordinal(*source_path.refs.first()?)?;
+                    if marker_group.header.kind() != crate::format::GroupKind::AngleMarker {
+                        return None;
+                    }
+                    let marker_path = context.indexed_path(marker_group)?;
+                    if marker_path.refs.len() != 3 {
+                        return None;
+                    }
+                    let [start_ordinal, vertex_ordinal, end_ordinal] = marker_path.refs.as_slice()
+                    else {
+                        return None;
+                    };
+                    let start_group_index = start_ordinal.checked_sub(1)?;
+                    let vertex_group_index = vertex_ordinal.checked_sub(1)?;
+                    let end_group_index = end_ordinal.checked_sub(1)?;
+                    let start_index = group_to_point_index.get(start_group_index).copied().flatten()?;
+                    let vertex_index = group_to_point_index.get(vertex_group_index).copied().flatten()?;
+                    let end_index = group_to_point_index.get(end_group_index).copied().flatten()?;
+                    let initial_value = angle_degrees_from_points(
+                        anchors.get(start_group_index)?.as_ref()?,
+                        anchors.get(vertex_group_index)?.as_ref()?,
+                        anchors.get(end_group_index)?.as_ref()?,
+                    )?
+                    .abs();
+                    Some(IterationTableColumn {
+                        parameter_name: expr_label.clone(),
+                        expr_label,
+                        expr: FunctionExpr::Constant(initial_value),
+                        value_binding: Some(IterationTableValueBinding::AngleMarker {
+                            start_index,
+                            vertex_index,
+                            end_index,
+                        }),
+                    })
+                })
+                .collect::<Vec<_>>();
+            let first_column = columns.first()?;
+            let raw_anchor = decode_iteration_table_anchor(file, group)?;
+            let anchor = file.document_display_point(PointRecord {
+                x: raw_anchor.x,
+                y: raw_anchor.y,
+            });
+            Some(IterationTable {
+                anchor: ScreenPoint {
+                    x: anchor.x,
+                    y: anchor.y,
+                },
+                expr_label: first_column.expr_label.clone(),
+                parameter_name: first_column.parameter_name.clone(),
+                expr: first_column.expr.clone(),
+                columns,
+                show_index: false,
+                anchor_at_top: true,
+                depth: 0,
+                depth_expr: None,
+                depth_parameter_name: None,
+                visible: !group.header.is_hidden(),
                 debug: Some(payload_debug_source(group)),
             })
         })

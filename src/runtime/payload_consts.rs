@@ -4,8 +4,10 @@ pub(crate) const RECORD_BINDING_PAYLOAD: u32 = 0x07d3;
 pub(crate) const RECORD_LABEL_AUX: u32 = 0x07d5;
 pub(crate) const RECORD_LABEL_VISIBILITY: u32 = 0x07d5;
 pub(crate) const RECORD_POINT_F64_PAIR: u32 = 0x0899;
-pub(crate) const RECORD_RICH_TEXT: u32 = 0x08fc;
-pub(crate) const RECORD_RICH_TEXT_MAGIC: u32 = 0x08fc;
+pub(crate) use crate::format::{
+    RECORD_ITERATION_DEFINITION, RECORD_RICH_TEXT, RECORD_VALUE_TABLE_LAYOUT,
+};
+pub(crate) const RECORD_RICH_TEXT_MAGIC: u32 = RECORD_RICH_TEXT;
 pub(crate) const RECORD_ACTION_BUTTON_PAYLOAD: u32 = 0x0906;
 pub(crate) const RECORD_FUNCTION_EXPR_PAYLOAD: u32 = 0x0907;
 pub(crate) const RECORD_FUNCTION_PLOT_DESCRIPTOR: u32 = 0x0902;

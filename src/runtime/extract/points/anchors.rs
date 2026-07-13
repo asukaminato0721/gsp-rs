@@ -26,6 +26,7 @@ use crate::runtime::geometry::{
     point_on_three_point_arc, reflect_across_line, rotate_around, scale_around,
     three_point_arc_geometry, to_raw_from_world, to_world,
 };
+use crate::runtime::payload_consts::RECORD_ITERATION_DEFINITION;
 use crate::runtime::scene::LineLikeKind;
 
 mod geometry;
@@ -761,7 +762,7 @@ fn iteration_depth_raw(file: &GspFile, group: &ObjectGroup, default_depth: usize
     group
         .records
         .iter()
-        .find(|record| record.record_type == 0x090a)
+        .find(|record| record.record_type == RECORD_ITERATION_DEFINITION)
         .map(|record| record.payload(&file.data))
         .filter(|payload| payload.len() >= 20)
         .map(|payload| read_u32(payload, 16) as usize)

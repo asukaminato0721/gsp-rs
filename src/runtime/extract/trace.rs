@@ -8,7 +8,7 @@ use crate::runtime::geometry::{
     GraphTransform, lerp_point, point_on_circle_arc, point_on_three_point_arc, reflect_across_line,
     rotate_around, scale_around, to_raw_from_world,
 };
-use crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD;
+use crate::runtime::payload_consts::{RECORD_BINDING_PAYLOAD, RECORD_ITERATION_DEFINITION};
 use crate::runtime::scene::{
     CircularConstraint, LineConstraint, LineLikeKind, LineShape, ScenePoint, ScenePointBinding,
     ScenePointConstraint,
@@ -527,7 +527,7 @@ pub(super) fn collect_colorized_spectrum_lines(
         let depth = iter_group
             .records
             .iter()
-            .find(|record| record.record_type == 0x090a)
+            .find(|record| record.record_type == RECORD_ITERATION_DEFINITION)
             .map(|record| record.payload(&file.data))
             .filter(|payload| payload.len() >= 20)
             .map(|payload| read_u32(payload, 16) as usize)

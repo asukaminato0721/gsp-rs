@@ -17,7 +17,10 @@ pub use decode::{
 pub use error::ParseError;
 pub use group_kind::GroupKind;
 #[allow(unused_imports)]
-pub use records::{parse_records, record_name};
+pub use records::{
+    RECORD_BACKGROUND_PALETTE_INDEX, RECORD_FONT_ENTRY, RECORD_ITERATION_DEFINITION,
+    RECORD_PALETTE_ENTRY, RECORD_RICH_TEXT, RECORD_VALUE_TABLE_LAYOUT, parse_records, record_name,
+};
 #[allow(unused_imports)]
 pub use strings::{collect_strings, decode_c_string};
 
@@ -166,14 +169,14 @@ impl GspFile {
         let palette_index = self
             .records
             .iter()
-            .find(|record| record.record_type == 0x2725)
+            .find(|record| record.record_type == RECORD_BACKGROUND_PALETTE_INDEX)
             .and_then(|record| {
                 let payload = record.payload(&self.data);
                 (payload.len() == 2).then(|| read_u16(payload, 0))
             })?;
         self.records
             .iter()
-            .filter(|record| record.record_type == 0x2724)
+            .filter(|record| record.record_type == RECORD_PALETTE_ENTRY)
             .find_map(|record| {
                 let payload = record.payload(&self.data);
                 (payload.len() >= 5 && read_u16(payload, 0) == palette_index)
@@ -185,7 +188,7 @@ impl GspFile {
         let payload = self
             .records
             .iter()
-            .filter(|record| record.record_type == 0x273c)
+            .filter(|record| record.record_type == RECORD_FONT_ENTRY)
             .map(|record| record.payload(&self.data))
             .find(|payload| payload.len() >= 8 && read_u32(payload, 0) == index)?;
         let point_size = read_u16(payload, 6);

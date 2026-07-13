@@ -98,7 +98,13 @@ pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
         &point_stage,
         &mut label_stage,
     );
-    let iteration_tables = collect_iteration_tables(file, &groups, &context, &analysis.raw_anchors);
+    let iteration_tables = collect_iteration_tables(
+        file,
+        &groups,
+        &context,
+        &analysis.raw_anchors,
+        &point_stage.group_to_point_index,
+    );
     let binding_stage = remap_binding_stage(
         file,
         &groups,

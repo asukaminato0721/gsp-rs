@@ -19,6 +19,7 @@
       hasLineIndexHandle,
       hasPointIndexHandle,
       isFiniteNumber,
+      pointAngleValue,
       pointIterationDepth,
       refreshDerivedPoints,
       rotateAround,
@@ -909,7 +910,7 @@
       });
 
       const rows = [];
-      if (columns.every(( column) => isFiniteNumber(state.get(column.parameterName)))) {
+      if (columns.every(( column) => column.valueBinding || isFiniteNumber(state.get(column.parameterName)))) {
         for (let index = 0; index <= depth; index += 1) {
           const derived = deriveExpressionLabelParameters(scene, state);
           columns.forEach(( column) => {
@@ -918,9 +919,19 @@
               derived.set(column.parameterName, value);
             }
           });
-          const values = columns.map(( column) =>
-            evaluateExpr(column.expr, 0, derived),
-          );
+          columns.forEach((column) => {
+            if (column.valueBinding?.kind !== "angle-marker") return;
+            const value = pointAngleValue(scene, column.valueBinding);
+            if (isFiniteNumber(value)) {
+              derived.set(column.parameterName, value);
+            }
+          });
+          const values = columns.map(( column) => {
+            if (column.valueBinding?.kind === "angle-marker") {
+              return derived.get(column.parameterName);
+            }
+            return evaluateExpr(column.expr, 0, derived);
+          });
           if (!values.every(isFiniteNumber)) {
             break;
           }

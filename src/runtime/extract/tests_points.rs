@@ -3,8 +3,9 @@ use super::test_support::{fixture_bytes, fixture_log, fixture_scene, function_ex
 use crate::format::GspFile;
 use crate::runtime::functions::UnaryFunction;
 use crate::runtime::scene::{
-    ButtonAction, CircularConstraint, ColorBinding, LineBinding, LineConstraint,
-    LineTransformBinding, ScenePointBinding, ScenePointConstraint, ShapeBinding, TextLabelBinding,
+    ButtonAction, CircularConstraint, ColorBinding, IterationTableValueBinding, LineBinding,
+    LineConstraint, LineTransformBinding, ScenePointBinding, ScenePointConstraint, ShapeBinding,
+    TextLabelBinding,
 };
 
 #[test]
@@ -49,6 +50,35 @@ fn refraction_sample_uses_raw_translation_offsets_and_live_iteration_depth() {
                 .as_ref()
                 .is_some_and(|debug| debug.group_ordinal == 18)
     }));
+    let value_table = scene
+        .iteration_tables
+        .iter()
+        .find(|table| {
+            table
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 83)
+        })
+        .expect("expected payload value table #83");
+    assert!(!value_table.show_index && value_table.anchor_at_top && value_table.depth == 0);
+    assert_eq!((value_table.anchor.x, value_table.anchor.y), (247.0, 178.0));
+    assert_eq!(
+        value_table
+            .columns
+            .iter()
+            .map(|column| column.expr_label.as_str())
+            .collect::<Vec<_>>(),
+        vec!["入射角θ₁", "折射角θ₂", "sinθ₁/sinθ₂"]
+    );
+    assert!(matches!(
+        value_table.columns[0].value_binding,
+        Some(IterationTableValueBinding::AngleMarker { .. })
+    ));
+    assert!(matches!(
+        value_table.columns[1].value_binding,
+        Some(IterationTableValueBinding::AngleMarker { .. })
+    ));
+    assert!(value_table.columns[2].value_binding.is_none());
 
     let offset = |ordinal| {
         let point = scene
