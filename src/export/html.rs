@@ -1,4 +1,5 @@
 mod assets;
+mod dependency_scene_json;
 mod document;
 mod function_expr_json;
 mod function_scene_json;

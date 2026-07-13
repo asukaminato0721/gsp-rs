@@ -1,5 +1,6 @@
 use super::function_expr_json::FunctionExprJson;
 use super::scene_json::{DebugSourceJson, PointJson};
+use crate::runtime::functions::function_expr_label;
 use crate::runtime::scene::{
     ButtonAction, RichTextExpressionRef, RichTextExpressionValue, SceneButton, TextLabelBinding,
     TextLabelHotspotAction,
@@ -385,6 +386,10 @@ enum LabelBindingJson {
         #[serde(rename = "exprLabel")]
         expr_label: String,
         expr: FunctionExprJson,
+        #[serde(rename = "canonicalExprLabel")]
+        canonical_expr_label: String,
+        #[serde(rename = "degreeValue")]
+        degree_value: bool,
     },
     #[serde(rename = "point-bound-expression-value")]
     PointBoundExpressionValue {
@@ -401,6 +406,10 @@ enum LabelBindingJson {
         #[serde(rename = "exprLabel")]
         expr_label: String,
         expr: FunctionExprJson,
+        #[serde(rename = "canonicalExprLabel")]
+        canonical_expr_label: String,
+        #[serde(rename = "degreeValue")]
+        degree_value: bool,
     },
     #[serde(rename = "point-anchor")]
     PointAnchor {
@@ -676,6 +685,8 @@ impl LabelBindingJson {
                 result_name: result_name.clone(),
                 expr_label: expr_label.clone(),
                 expr: FunctionExprJson::from_expr(expr),
+                canonical_expr_label: function_expr_label(expr.clone()),
+                degree_value: gsp_runtime_core::expression_contains_pi_angle(expr),
             },
             TextLabelBinding::PointBoundExpressionValue {
                 point_index,
@@ -693,6 +704,8 @@ impl LabelBindingJson {
                 result_name: result_name.clone(),
                 expr_label: expr_label.clone(),
                 expr: FunctionExprJson::from_expr(expr),
+                canonical_expr_label: function_expr_label(expr.clone()),
+                degree_value: gsp_runtime_core::expression_contains_pi_angle(expr),
             },
             TextLabelBinding::PointAnchor {
                 point_index,

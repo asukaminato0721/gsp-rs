@@ -1,6 +1,6 @@
 const EPSILON: f64 = 1e-9;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Deserialize)]
 pub struct Point {
     pub x: f64,
     pub y: f64,

@@ -17,7 +17,7 @@ function compilePointFixture(): string {
   return fixture.replace(/\.gsp$/i, '.html');
 }
 
-test('dependency graph uses typed references, resolves arbitrary-depth chains, and rejects cycles', async ({ page }) => {
+test('dependency graph consumes Rust metadata while WASM resolves deep chains and rejects cycles', async ({ page }) => {
   await page.goto(`file://${compilePointFixture()}`);
 
   const result = await page.evaluate(() => {
@@ -29,86 +29,42 @@ test('dependency graph uses typed references, resolves arbitrary-depth chains, a
         refreshDynamicLabels() {},
         refreshIterationGeometry() {},
       });
-    const baseScene = structuredClone(window.gspDebug!.sourceScene);
-    const parsedParameter = (name: string) => ({
-      kind: 'parsed',
-      expr: { kind: 'parameter', name, value: 0 },
-    });
-    const label = (resultName: string, sourceName: string) => ({
-      anchor: { x: 0, y: 0 },
-      text: '',
-      richMarkup: null,
-      color: [0, 0, 0, 255],
-      fontSize: null,
-      fontFamily: null,
-      visible: true,
-      binding: {
-        kind: 'expression-value',
-        parameterName: sourceName,
-        resultName,
-        exprLabel: resultName,
-        expr: parsedParameter(sourceName),
-      },
-      hotspots: [],
-      screenSpace: false,
-      debug: null,
-    });
-
-    const typedScene = structuredClone(baseScene) as any;
-    typedScene.lineIterations = [{
-      kind: 'rotate',
-      visible: true,
-      sourceIndex: 0,
-      centerIndex: 0,
-      angleExpr: { kind: 'constant', value: 30 },
-      depth: 1,
-      parameterName: null,
-      depthParameterName: null,
-      color: [0, 0, 0, 255],
-      dashed: false,
-      strokeWidth: 1,
-    }];
-    typedScene.labels = Array.from({ length: 6 }, (_, index) =>
-      label(`p${index + 1}`, `p${index}`));
-    const typedEnv = {
-      sourceScene: typedScene,
-      currentDynamics: () => ({
-        parameters: [{ name: 'p0', value: 1, unit: null }],
-        functions: [],
-      }),
+    const sourceScene = window.gspDebug!.sourceScene;
+    const env = {
+      sourceScene,
+      currentDynamics: () => ({ parameters: [], functions: [] }),
     } as any;
-    const graph = createRuntime().describeDependencyGraph(typedEnv) as Array<{
+    const graph = createRuntime().describeDependencyGraph(env) as Array<{
       id: string;
       dependsOn: string[];
     }>;
-    const lineIterationDeps = graph.find((node) => node.id === 'line-iteration:0')?.dependsOn || [];
-    const deepestLabelDeps = graph.find((node) => node.id === 'label:5')?.dependsOn || [];
+    const exportedGraph = sourceScene.dependencyGraph.nodes;
+    const exportedIds = exportedGraph.map((node) => node.id);
+    const describedIds = graph.map((node) => node.id);
 
-    const cyclicScene = structuredClone(baseScene) as any;
-    const pointTemplate = cyclicScene.points[0];
-    cyclicScene.points = [0, 1].map((index) => ({
-      ...pointTemplate,
-      binding: {
-        kind: 'midpoint',
-        startIndex: 1 - index,
-        endIndex: 1 - index,
-      },
-      constraint: null,
-    }));
-    const cyclicEnv = {
-      sourceScene: cyclicScene,
-      currentDynamics: () => ({ parameters: [], functions: [] }),
-    } as any;
+    const deepNodes = [
+      { id: 'source-line:0', dependsOn: [] as string[] },
+      ...Array.from({ length: 8 }, (_, index) => ({
+        id: `node:${index}`,
+        dependsOn: [index === 0 ? 'source-line:0' : `node:${index - 1}`],
+      })),
+    ];
+    const deepPlan = window.GspRuntimeCore.createDependencyPlan(deepNodes);
+    const affectedIds = deepPlan.affected(['source-line:0']).map((index) => deepNodes[index].id);
+
     let cycleError = '';
     try {
-      createRuntime().describeDependencyGraph(cyclicEnv);
+      window.GspRuntimeCore.createDependencyPlan([
+        { id: 'left', dependsOn: ['right'] },
+        { id: 'right', dependsOn: ['left'] },
+      ]);
     } catch (error) {
       cycleError = String(error);
     }
-    return { lineIterationDeps, deepestLabelDeps, cycleError };
+    return { exportedIds, describedIds, affectedIds, cycleError };
   });
 
-  expect(result.lineIterationDeps).toContain('source-line:0');
-  expect(result.deepestLabelDeps).toContain('param:p0');
+  expect(result.describedIds).toEqual(result.exportedIds);
+  expect(result.affectedIds).toContain('node:7');
   expect(result.cycleError).toContain('cyclic scene dependency graph');
 });

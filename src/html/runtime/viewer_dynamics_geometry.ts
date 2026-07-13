@@ -6,7 +6,6 @@
       applyTraceValueToPoint,
       circumcenter,
       clipRayToBounds,
-      collectExprParameterNames,
       deriveLabelParameters,
       discreteIterationDepth,
       evaluateExpr,
@@ -14,12 +13,10 @@
       isFiniteNumber,
       lerpPoint,
       lineProjectionParameterFromPoints,
-      parameterNameFromPoint,
       parameterValueFromPoint,
       pointOnPolylineByIndex,
       polylineParameterFromPoint,
       reflectAcrossLine,
-      reflectionAxisPoints,
       resolveLineConstraintPoints,
       resolveRotateTransformAngleDegrees,
       resolveScaleTransformFactor,
@@ -101,43 +98,19 @@
       : null;
     if (sourceBinding?.kind === "coordinate-source-2d" && sourcePoint) {
       const baseParameters = deriveLabelParameters(scene, new Map<string, number>(parameters));
-      const driverParameterName = parameterNameFromPoint(scene, line.binding.driverIndex);
-      const xNames = new Set<string>();
-      const yNames = new Set<string>();
-      collectExprParameterNames(sourceBinding.xExpr, xNames);
-      collectExprParameterNames(sourceBinding.yExpr, yNames);
-      const sampled = [];
-      const sampleCount = Math.max(2, line.binding.sampleCount || 2);
-      const last = Math.max(1, sampleCount - 1);
-      for (let index = 0; index < sampleCount; index += 1) {
-        const value = line.binding.useMidpoints
-          ? line.binding.xMin
-            + (line.binding.xMax - line.binding.xMin) * ((index + 0.5) / sampleCount)
-          : line.binding.xMin + (line.binding.xMax - line.binding.xMin) * (index / last);
-        const exprParameters = new Map(baseParameters);
-        if (driverParameterName) {
-          exprParameters.set(driverParameterName, value);
-        }
-        xNames.forEach((name: string) => {
-          if (!exprParameters.has(name)) {
-            exprParameters.set(name, value);
-          }
-        });
-        yNames.forEach((name: string) => {
-          if (!exprParameters.has(name)) {
-            exprParameters.set(name, value);
-          }
-        });
-        const dx = evaluateExpr(sourceBinding.xExpr, 0, exprParameters);
-        const dy = evaluateExpr(sourceBinding.yExpr, 0, exprParameters);
-        if (dx === null || dy === null) {
-          continue;
-        }
-        sampled.push({
-          x: sourcePoint.x + dx,
-          y: sourcePoint.y + dy,
-        });
-      }
+      const sampled = window.GspRuntimeCore.sampleCoordinateTrace(
+        sourceBinding.xExpr,
+        sourceBinding.yExpr,
+        baseParameters,
+        sourceBinding.xName,
+        sourceBinding.yName,
+        sourcePoint,
+        line.binding.xMin,
+        line.binding.xMax,
+        Math.max(2, line.binding.sampleCount || 2),
+        line.binding.useMidpoints === true,
+        "two-dimensional",
+      );
       return sampled.length >= 2 ? [sampled] : null;
     }
     const sampleScene = {
@@ -150,7 +123,8 @@
   
     let baseParameters = new Map<string, number>(parameters);
     let driverValue = Number.NaN;
-  
+    const pointOrder = modules.dynamicsDependencies.createPointDependencyOrder(scene);
+    let resolvedBatch: Array<Point | null> = [];
     let resolvedCache = new Map();
   
   
@@ -161,19 +135,9 @@
       if (visiting.has(index)) return null;
       const point = points[index];
       if (!point) return null;
+      const batchPoint = resolvedBatch[index];
+      if (batchPoint) return batchPoint;
       visiting.add(index);
-  
-      const applyDriverParameterGuesses = (exprParameters, ...exprs: FunctionExprJson[]) => {
-        if (!Number.isFinite(driverValue)) return exprParameters;
-        const names = new Set<string>();
-        exprs.forEach((expr) => collectExprParameterNames(expr, names));
-        names.forEach((name: string) => {
-          if (!exprParameters.has(name)) {
-            exprParameters.set(name, driverValue);
-          }
-        });
-        return exprParameters;
-      };
   
       let resolved = null;
       if (point.binding?.kind === "derived") {
@@ -285,8 +249,8 @@
           resolved = circumcenter(start, mid, end);
         }
       } else if (point.binding?.kind === "coordinate") {
-        const exprParameters = applyDriverParameterGuesses(new Map(baseParameters), point.binding.expr);
-        if (typeof point.binding.name === "string" && !exprParameters.has(point.binding.name) && Number.isFinite(driverValue)) {
+        const exprParameters = new Map(baseParameters);
+        if (typeof point.binding.name === "string" && Number.isFinite(driverValue)) {
           exprParameters.set(point.binding.name, driverValue);
         }
         const x = exprParameters.get(point.binding.name);
@@ -296,8 +260,8 @@
         }
       } else if (point.binding?.kind === "coordinate-source") {
         const source = resolveTracePoint(points, point.binding.sourceIndex, visiting);
-        const exprParameters = applyDriverParameterGuesses(new Map(baseParameters), point.binding.expr);
-        if (typeof point.binding.name === "string" && !exprParameters.has(point.binding.name) && Number.isFinite(driverValue)) {
+        const exprParameters = new Map(baseParameters);
+        if (typeof point.binding.name === "string" && Number.isFinite(driverValue)) {
           exprParameters.set(point.binding.name, driverValue);
         }
         const offset = evaluateExpr(point.binding.expr, 0, exprParameters);
@@ -308,11 +272,11 @@
         }
       } else if (point.binding?.kind === "coordinate-source-2d") {
         const source = resolveTracePoint(points, point.binding.sourceIndex, visiting);
-        const exprParameters = applyDriverParameterGuesses(
-          new Map(baseParameters),
-          point.binding.xExpr,
-          point.binding.yExpr,
-        );
+        const exprParameters = new Map(baseParameters);
+        if (Number.isFinite(driverValue)) {
+          exprParameters.set(point.binding.xName, driverValue);
+          exprParameters.set(point.binding.yName, driverValue);
+        }
         const dx = evaluateExpr(point.binding.xExpr, 0, exprParameters);
         const dy = evaluateExpr(point.binding.yExpr, 0, exprParameters);
         if (source && dx !== null && dy !== null) {
@@ -438,6 +402,12 @@
       }
       baseParameters = deriveLabelParameters(sampleScene, new Map<string, number>(parameters));
       driverValue = parameterValueFromPoint(sampleScene, line.binding.driverIndex) ?? Number.NaN;
+      resolvedBatch = window.GspRuntimeCore.resolvePointConstraints(
+        points,
+        pointOrder,
+        scene.yUp,
+        baseParameters,
+      );
       resolvedCache = new Map();
       const resolvedTargets = targetPointIndices.map((pointIndex) =>
         resolveTracePoint(points, pointIndex)
@@ -463,95 +433,19 @@
     )?.[0] ?? null;
   }
   
-  type DerivedTransform =
-    | { kind: "translate"; dx: number; dy: number }
-    | { kind: "rotate"; center: Point; radians: number }
-    | { kind: "scale"; center: Point; factor: number }
-    | { kind: "reflect"; lineStart: Point; lineEnd: Point };
-  
-  
-  function resolveDerivedTransform(
-    transform: TransformJson | null | undefined,
-    scene: ViewerSceneData,
-    parameters: Map<string, number>,
-    resolveHandle: (handle: PointHandle) => Point | null,
-  ): DerivedTransform | null {
-    if (!transform) return null;
-    if (transform.kind === "translate") {
-      const vectorStart = scene.points[transform.vectorStartIndex];
-      const vectorEnd = scene.points[transform.vectorEndIndex];
-      if (!vectorStart || !vectorEnd) return null;
-      return {
-        kind: "translate",
-        dx: vectorEnd.x - vectorStart.x,
-        dy: vectorEnd.y - vectorStart.y,
-      };
-    }
-    if (transform.kind === "translate-delta") {
-      return { kind: "translate", dx: transform.dx, dy: transform.dy };
-    }
-    if (transform.kind === "rotate") {
-      const center = scene.points[transform.centerIndex];
-      if (!center) return null;
-      const angleDegrees = resolveRotateTransformAngleDegrees(
-        transform,
-        parameters,
-        (index: number) => scene.points[index] || null,
-      );
-      if (!isFiniteNumber(angleDegrees)) return null;
-      return { kind: "rotate", center, radians: angleDegrees * Math.PI / 180 };
-    }
-    if (transform.kind === "scale") {
-      const center = scene.points[transform.centerIndex];
-      if (!center) return null;
-      const factor = resolveScaleTransformFactor(
-        transform,
-        parameters,
-        (pointIndex: number) => scene.points[pointIndex] || null,
-      );
-      if (!isFiniteNumber(factor)) return null;
-      return { kind: "scale", center, factor };
-    }
-    if (transform.kind === "reflect") {
-      const [lineStartHandle, lineEndHandle] = reflectionAxisPoints(scene, transform);
-      const lineStart = lineStartHandle ? resolveHandle(lineStartHandle) : null;
-      const lineEnd = lineEndHandle ? resolveHandle(lineEndHandle) : null;
-      if (!lineStart || !lineEnd) return null;
-      return { kind: "reflect", lineStart, lineEnd };
-    }
-    return null;
-  }
-  
-  
-  function applyDerivedTransform(point: Point, transform: DerivedTransform) {
-    if (transform.kind === "translate") {
-      return { x: point.x + transform.dx, y: point.y + transform.dy };
-    }
-    if (transform.kind === "rotate") {
-      return rotateAround(point, transform.center, transform.radians);
-    }
-    if (transform.kind === "scale") {
-      return scaleAround(point, transform.center, transform.factor);
-    }
-    return reflectAcrossLine(point, transform.lineStart, transform.lineEnd);
-  }
-  
-  
   function refreshDerivedLine(env: LineBindingRefreshContext, line: RuntimeLineJson) {
     const source = env.scene.lines[line.binding.sourceIndex];
-    const transform = resolveDerivedTransform(
+    if (!source) return;
+    const sourcePoints = source.points
+      .map(env.env.resolvePoint)
+      .filter((point): point is Point => point !== null);
+    const nextPoints = window.GspRuntimeCore.transformPoints(
+      sourcePoints,
       line.binding.transform,
       env.scene,
       env.parameters,
-      env.env.resolvePoint,
     );
-    if (!source || !transform) return;
-    const nextPoints = source.points
-      .map(env.env.resolvePoint)
-      .filter((point): point is Point => point !== null)
-      .map((point) => applyDerivedTransform(point, transform));
-    if (nextPoints.some(( point) => !point)) return;
-    line.points =  (nextPoints);
+    if (nextPoints) line.points = nextPoints;
   }
   
   
@@ -677,39 +571,34 @@
   
   function refreshDerivedPolygon(env: { scene: ViewerSceneData, parameters: Map<string, number>, resolveHandle: (handle: PointHandle) => Point | null }, polygon: RuntimePolygonJson) {
     const source = env.scene.polygons[polygon.binding.sourceIndex];
-    const transform = resolveDerivedTransform(
+    if (!source) return;
+    const sourcePoints = source.points
+      .map(( handle) => env.resolveHandle(handle))
+      .filter((point): point is Point => point !== null);
+    const nextPoints = window.GspRuntimeCore.transformPoints(
+      sourcePoints,
       polygon.binding.transform,
       env.scene,
       env.parameters,
-      env.resolveHandle,
     );
-    if (!source || !transform) return;
-    const nextPoints = source.points
-      .map(( handle) => env.resolveHandle(handle))
-      .filter(Boolean)
-      .map(( point) => applyDerivedTransform(point, transform));
-    if (nextPoints.some(( point) => !point)) return;
-    polygon.points =  (nextPoints);
+    if (nextPoints) polygon.points = nextPoints;
   }
   
   
   function refreshDerivedCircle(env: { scene: ViewerSceneData, parameters: Map<string, number>, resolveHandle: (handle: PointHandle) => Point | null }, circle: RuntimeCircleJson) {
     const source = env.scene.circles[circle.binding.sourceIndex];
-    const transform = resolveDerivedTransform(
-      circle.binding.transform,
-      env.scene,
-      env.parameters,
-      env.resolveHandle,
-    );
-    if (!source || !transform) return;
+    if (!source) return;
     const sourceCenter = env.resolveHandle(source.center);
     const sourceRadius = env.resolveHandle(source.radiusPoint);
     if (!sourceCenter || !sourceRadius) return;
-    const nextCenter = applyDerivedTransform(sourceCenter, transform);
-    const nextRadius = applyDerivedTransform(sourceRadius, transform);
-    if (!nextCenter || !nextRadius) return;
-    circle.center = nextCenter;
-    circle.radiusPoint = nextRadius;
+    const transformed = window.GspRuntimeCore.transformPoints(
+      [sourceCenter, sourceRadius],
+      circle.binding.transform,
+      env.scene,
+      env.parameters,
+    );
+    if (!transformed) return;
+    [circle.center, circle.radiusPoint] = transformed;
   }
   
   

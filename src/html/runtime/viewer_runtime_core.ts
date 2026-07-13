@@ -24,6 +24,9 @@
     gsp_circle_circle_intersections: (leftX: number, leftY: number, leftRadius: number, rightX: number, rightY: number, rightRadius: number) => number;
     gsp_point_circle_tangents: (pointX: number, pointY: number, centerX: number, centerY: number, radius: number) => number;
     gsp_compile_dependency_plan: (pointer: number, length: number) => number;
+    gsp_resolve_point_constraints: (pointer: number, length: number) => number;
+    gsp_inverse_point_transform: (pointer: number, length: number) => number;
+    gsp_transform_points: (pointer: number, length: number) => number;
     gsp_dependency_topo_order: (handle: number) => number;
     gsp_dependency_affected: (handle: number, rootsPointer: number, rootsLength: number) => number;
     gsp_last_error_ptr: () => number;
@@ -58,6 +61,7 @@
     gsp_expression_parameter_name_len: (handle: number, index: number) => number;
     gsp_expression_set_parameter: (handle: number, index: number, value: number) => number;
     gsp_evaluate_expression: (handle: number, x: number) => number;
+    gsp_evaluate_expression_with_driver: (handle: number, x: number, driverValue: number) => number;
     gsp_iterate_expression: (handle: number, parameterIndex: number, initialValue: number, count: number, x: number) => number;
   };
 
@@ -94,7 +98,7 @@
   const module = new WebAssembly.Module(bytes);
   const instance = new WebAssembly.Instance(module, {});
   const wasm = instance.exports as unknown as RuntimeCoreWasmExports;
-  if (wasm.gsp_runtime_abi_version() !== 4) {
+  if (wasm.gsp_runtime_abi_version() !== 6) {
     throw new Error("Unsupported gsp-rs runtime core ABI");
   }
 
@@ -377,6 +381,65 @@
     };
   }
 
+  function resolvePointConstraints(
+    points: RuntimeScenePointJson[],
+    pointOrder: number[],
+    yUp: boolean,
+    parameters: Map<string, number>,
+  ): Array<Point | null> {
+    const input = encoder.encode(JSON.stringify({
+      points,
+      pointOrder,
+      yUp,
+      parameters: Object.fromEntries(parameters),
+    }));
+    const count = withInputBytes(input, (pointer) =>
+      wasm.gsp_resolve_point_constraints(pointer, input.length));
+    if (count !== points.length) {
+      throw new Error(lastRuntimeError());
+    }
+    const values = batchScalars(count * 2);
+    return Array.from({ length: count }, (_, index) => {
+      const x = values[index * 2];
+      const y = values[index * 2 + 1];
+      return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+    });
+  }
+
+  function inversePointTransform(
+    world: Point,
+    transform: PointTransformJson,
+    points: RuntimeScenePointJson[],
+    parameters: Map<string, number>,
+  ): Point | null {
+    const input = encoder.encode(JSON.stringify({
+      world,
+      transform,
+      points,
+      parameters: Object.fromEntries(parameters),
+    }));
+    return withInputBytes(input, (pointer) =>
+      geometryResult(wasm.gsp_inverse_point_transform(pointer, input.length)));
+  }
+
+  function transformPoints(
+    points: Point[],
+    transform: TransformJson,
+    scene: ViewerSceneData,
+    parameters: Map<string, number>,
+  ): Point[] | null {
+    const input = encoder.encode(JSON.stringify({
+      points,
+      transform,
+      scenePoints: scene.points,
+      lines: scene.lines,
+      parameters: Object.fromEntries(parameters),
+    }));
+    const transformed = withInputBytes(input, (pointer) =>
+      batchPoints(wasm.gsp_transform_points(pointer, input.length)));
+    return transformed.length === points.length ? transformed : null;
+  }
+
   function setExpressionParameters(compiled: CompiledExpression, parameters: Map<string, number>) {
     for (let index = 0; index < compiled.parameterNames.length; index += 1) {
       const value = parameters.get(compiled.parameterNames[index]);
@@ -512,6 +575,31 @@
       angleDegreesScale,
     );
     return batchPoints(length);
+  }
+
+  function customTransformPoint(
+    distanceExpr: FunctionExprJson | FunctionAstJson,
+    angleExpr: FunctionExprJson | FunctionAstJson,
+    parameters: Map<string, number>,
+    origin: Point,
+    axisEnd: Point,
+    value: number,
+    distanceScale: number,
+    angleDegreesScale: number,
+  ): Point | null {
+    return sampleCustomTransformTrace(
+      distanceExpr,
+      angleExpr,
+      parameters,
+      origin,
+      axisEnd,
+      value,
+      value,
+      value,
+      1,
+      distanceScale,
+      angleDegreesScale,
+    )[0] ?? null;
   }
 
   function sampleCircleArc(center: Point, start: Point, end: Point, steps: number, yUp: boolean): Point[] | null {
@@ -755,8 +843,16 @@
     return Number.isFinite(value) ? value : null;
   }
 
-  function expressionParameterNames(expr: FunctionExprJson | FunctionAstJson): string[] {
-    return [...compileExpression(expr).parameterNames];
+  function evaluateExprWithDriver(
+    expr: FunctionExprJson | FunctionAstJson,
+    x: number,
+    parameters: Map<string, number>,
+    driverValue: number,
+  ): number | null {
+    const compiled = compileExpression(expr);
+    setExpressionParameters(compiled, parameters);
+    const value = wasm.gsp_evaluate_expression_with_driver(compiled.handle, x, driverValue);
+    return Number.isFinite(value) ? value : null;
   }
 
   function iterateExpression(
@@ -802,10 +898,14 @@
     circleCircleIntersections,
     pointCircleTangents,
     createDependencyPlan,
+    resolvePointConstraints,
+    inversePointTransform,
+    transformPoints,
     sampleFunction,
     sampleParametricCurve,
     sampleCoordinateTrace,
     sampleCustomTransformTrace,
+    customTransformPoint,
     sampleCircleArc,
     sampleThreePointArc,
     translationIterationDeltas,
@@ -820,7 +920,7 @@
     pointAngleDegrees,
     polygonArea,
     evaluateExpr,
-    expressionParameterNames,
+    evaluateExprWithDriver,
     iterateExpression,
   };
 })();

@@ -1,17 +1,8 @@
 (function() {
   const modules = window.GspViewerModules || (window.GspViewerModules = {});
 
-  type DependencyRecipe =
-    | "sync-base-dynamics"
-    | "refresh-derived-points"
-    | "rebuild-iteration-geometry"
-    | "refresh-dynamic-labels";
-  type DependencyNode = {
-    id: string;
-    kind: string;
-    dependsOn: string[];
-    recipe: DependencyRecipe | null;
-  };
+  type DependencyRecipe = NonNullable<SceneData["dependencyGraph"]["nodes"][number]["recipe"]>;
+  type DependencyNode = SceneData["dependencyGraph"]["nodes"][number];
   type DependencyGraph = {
     nodes: DependencyNode[];
     nodeMap: Map<string, DependencyNode>;
@@ -29,12 +20,6 @@
       refreshDynamicLabels,
       refreshIterationGeometry,
     } = dependencies;
-    const dependencyCollectorModule = modules.dynamicsDependencies;
-    if (!dependencyCollectorModule) {
-      throw new Error("viewer dynamics dependency collector is unavailable");
-    }
-    const { createSceneDependencyCollector } = dependencyCollectorModule;
-
     let dependencyGraphCache: DependencyGraph | null = null;
 
     function parameterRootId(name: string) {
@@ -72,210 +57,17 @@
       },
     };
 
-    function collectExprParameterNames(
-      expr: FunctionExprJson | FunctionAstJson | null | undefined,
-      names: Set<string>,
-    ) {
-      if (!expr) return;
-      window.GspRuntimeCore.expressionParameterNames(expr).forEach((name) => names.add(name));
-    }
-
-    function labelDerivedParameterName(label: RuntimeLabelJson) {
-      const binding = label.binding;
-      if (!binding) return null;
-      switch (binding.kind) {
-        case "point-distance-ratio-value":
-        case "point-distance-value":
-        case "point-angle-value":
-        case "polygon-area-value":
-        case "point-axis-value":
-          return binding.name;
-        case "line-projection-parameter":
-        case "polyline-parameter":
-        case "polygon-boundary-parameter":
-        case "circle-parameter":
-          return binding.pointName;
-        case "expression-value":
-        case "point-bound-expression-value":
-          return binding.resultName;
-        default:
-          return null;
-      }
-    }
-
-    function collectLabelDerivedParameterDeps(
-      scene: SceneData | ViewerSceneData,
-      knownParameters: Set<string>,
-    ) {
-      type Definition = {
-        directDeps: Set<string>;
-        referencedNames: Set<string>;
-      };
-      const definitions = new Map<string, Definition>();
-      const directCollector = createSceneDependencyCollector({
-        sourceScene: scene,
-        knownParameters,
-        collectExprParameterNames,
-      });
-
-      (scene.labels || []).forEach((label) => {
-        const name = labelDerivedParameterName(label);
-        if (!name || !label.binding) return;
-        const definition = definitions.get(name) || {
-          directDeps: new Set<string>(),
-          referencedNames: new Set<string>(),
-        };
-        directCollector.labelBinding(definition.directDeps, label.binding);
-        directCollector.labelReferencedParameterNames(label.binding, definition.referencedNames);
-        definitions.set(name, definition);
-      });
-
-      const resolved = new Map<string, Set<string>>();
-      const resolving: string[] = [];
-      function resolve(name: string): Set<string> {
-        const cached = resolved.get(name);
-        if (cached) return cached;
-        const cycleStart = resolving.indexOf(name);
-        if (cycleStart >= 0) {
-          const cycle = [...resolving.slice(cycleStart), name];
-          throw new Error(`cyclic derived parameter dependency: ${cycle.join(" -> ")}`);
-        }
-        const definition = definitions.get(name);
-        if (!definition) return new Set<string>();
-        resolving.push(name);
-        const deps = new Set(definition.directDeps);
-        definition.referencedNames.forEach((referencedName) => {
-          if (knownParameters.has(referencedName)) deps.add(parameterRootId(referencedName));
-          resolve(referencedName).forEach((dep) => deps.add(dep));
-        });
-        resolving.pop();
-        resolved.set(name, deps);
-        return deps;
-      }
-      definitions.forEach((_, name) => resolve(name));
-      return resolved;
-    }
-
     function ensureDependencyGraph(env: ViewerEnv): DependencyGraph {
       if (dependencyGraphCache) return dependencyGraphCache;
-
-      const nodes: DependencyNode[] = [];
-      const nodeMap = new Map<string, DependencyNode>();
-      const knownParameters = new Set(
-        (env.currentDynamics().parameters || []).map((parameter) => parameter.name),
-      );
-      const derivedParameterDeps = collectLabelDerivedParameterDeps(env.sourceScene, knownParameters);
-      const collect = createSceneDependencyCollector({
-        sourceScene: env.sourceScene,
-        knownParameters,
-        derivedParameterDeps,
-        collectExprParameterNames,
-      });
-
-      function addNode(node: DependencyNode) {
-        const normalized = {
-          ...node,
-          dependsOn: [...new Set(node.dependsOn.filter((dep) => dep !== node.id))],
-        };
-        nodes.push(normalized);
-        nodeMap.set(normalized.id, normalized);
+      const exported = env.sourceScene.dependencyGraph;
+      if (!exported || !Array.isArray(exported.nodes)) {
+        throw new Error("scene-data is missing its Rust-generated dependency graph");
       }
-
-      (env.currentDynamics().parameters || []).forEach((parameter) => {
-        addNode({ id: parameterRootId(parameter.name), kind: "parameter-root", dependsOn: [], recipe: null });
-        addNode({
-          id: `parameter-sync:${parameter.name}`,
-          kind: "parameter-sync",
-          dependsOn: [parameterRootId(parameter.name)],
-          recipe: "sync-base-dynamics",
-        });
-      });
-      (env.sourceScene.points || []).forEach((_, index) =>
-        addNode({ id: sourcePointRootId(index), kind: "source-point", dependsOn: [], recipe: null }));
-      (env.sourceScene.lines || []).forEach((_, index) =>
-        addNode({ id: sourceLineRootId(index), kind: "source-line", dependsOn: [], recipe: null }));
-      (env.sourceScene.circles || []).forEach((_, index) =>
-        addNode({ id: sourceCircleRootId(index), kind: "source-circle", dependsOn: [], recipe: null }));
-      (env.sourceScene.polygons || []).forEach((_, index) =>
-        addNode({ id: sourcePolygonRootId(index), kind: "source-polygon", dependsOn: [], recipe: null }));
-
-      (env.sourceScene.points || []).forEach((point, index) => {
-        if (!point.binding && !point.constraint) return;
-        const deps = new Set<string>();
-        collect.pointBinding(deps, point.binding);
-        collect.pointConstraint(deps, point.constraint);
-        addNode({ id: `point:${index}`, kind: "point", dependsOn: [...deps], recipe: "refresh-derived-points" });
-      });
-      (env.sourceScene.lines || []).forEach((line, index) => {
-        if (!line.binding) return;
-        const deps = new Set<string>();
-        collect.lineBinding(deps, line.binding);
-        if (line.binding.kind === "point-trace") {
-          [line.binding.pointIndex, line.binding.driverIndex].forEach((pointIndex) => {
-            const source = env.sourceScene.points?.[pointIndex];
-            collect.pointBinding(deps, source?.binding);
-            collect.pointConstraint(deps, source?.constraint);
-          });
-        }
-        addNode({ id: `line:${index}`, kind: "line", dependsOn: [...deps], recipe: "refresh-derived-points" });
-      });
-      (env.sourceScene.circles || []).forEach((circle, index) => {
-        if (!circle.binding && !circle.fillColorBinding) return;
-        const deps = new Set<string>();
-        collect.shapeBinding(deps, circle.binding, "circle");
-        collect.colorBinding(deps, circle.fillColorBinding);
-        addNode({ id: `circle:${index}`, kind: "circle", dependsOn: [...deps], recipe: "refresh-derived-points" });
-      });
-      (env.sourceScene.polygons || []).forEach((polygon, index) => {
-        if (!polygon.binding && !polygon.colorBinding) return;
-        const deps = new Set<string>();
-        collect.shapeBinding(deps, polygon.binding, "polygon");
-        collect.colorBinding(deps, polygon.colorBinding);
-        addNode({ id: `polygon:${index}`, kind: "polygon", dependsOn: [...deps], recipe: "refresh-derived-points" });
-      });
-      (env.currentDynamics().functions || []).forEach((functionDef, index) => {
-        const deps = new Set<string>();
-        collect.expr(deps, functionDef.expr);
-        collect.points(deps, functionDef.constrainedPointIndices);
-        addNode({ id: `function:${index}`, kind: "function", dependsOn: [...deps], recipe: "sync-base-dynamics" });
-      });
-      (env.sourceScene.labels || []).forEach((label, index) => {
-        if (!label.binding) return;
-        const deps = new Set<string>();
-        collect.labelBinding(deps, label.binding);
-        addNode({ id: `label:${index}`, kind: "label", dependsOn: [...deps], recipe: "refresh-dynamic-labels" });
-      });
-      (env.sourceScene.pointIterations || []).forEach((family, index) => {
-        const deps = new Set<string>();
-        collect.pointIteration(deps, family);
-        addNode({ id: `point-iteration:${index}`, kind: "point-iteration", dependsOn: [...deps], recipe: "rebuild-iteration-geometry" });
-      });
-      (env.sourceScene.circleIterations || []).forEach((family, index) => {
-        const deps = new Set<string>();
-        collect.circleIteration(deps, family);
-        addNode({ id: `circle-iteration:${index}`, kind: "circle-iteration", dependsOn: [...deps], recipe: "rebuild-iteration-geometry" });
-      });
-      (env.sourceScene.lineIterations || []).forEach((family, index) => {
-        const deps = new Set<string>();
-        collect.lineIteration(deps, family);
-        addNode({ id: `line-iteration:${index}`, kind: "line-iteration", dependsOn: [...deps], recipe: "rebuild-iteration-geometry" });
-      });
-      (env.sourceScene.polygonIterations || []).forEach((family, index) => {
-        const deps = new Set<string>();
-        collect.polygonIteration(deps, family);
-        addNode({ id: `polygon-iteration:${index}`, kind: "polygon-iteration", dependsOn: [...deps], recipe: "rebuild-iteration-geometry" });
-      });
-      (env.sourceScene.labelIterations || []).forEach((family, index) => {
-        const deps = new Set<string>();
-        collect.labelIteration(deps, family);
-        addNode({ id: `label-iteration:${index}`, kind: "label-iteration", dependsOn: [...deps], recipe: "rebuild-iteration-geometry" });
-      });
-      (env.sourceScene.iterationTables || []).forEach((table, index) => {
-        const deps = new Set<string>();
-        collect.iterationTable(deps, table);
-        addNode({ id: `iteration-table:${index}`, kind: "iteration-table", dependsOn: [...deps], recipe: "rebuild-iteration-geometry" });
-      });
-
+      const nodes = exported.nodes.map((node) => ({
+        ...node,
+        dependsOn: [...node.dependsOn],
+      }));
+      const nodeMap = new Map(nodes.map((node) => [node.id, node]));
       const plan = window.GspRuntimeCore.createDependencyPlan(nodes);
       const topoOrder = plan.topoOrder.map((index) => nodes[index].id);
       dependencyGraphCache = { nodes, nodeMap, topoOrder, plan };
@@ -284,12 +76,10 @@
 
     function describeDependencyGraph(env: ViewerEnv) {
       const graph = ensureDependencyGraph(env);
-      return graph.topoOrder.map((id) => graph.nodeMap.get(id)).filter((node): node is DependencyNode => !!node).map((node) => ({
-        id: node.id,
-        kind: node.kind,
-        dependsOn: [...node.dependsOn],
-        recipe: node.recipe,
-      }));
+      return graph.topoOrder
+        .map((id) => graph.nodeMap.get(id))
+        .filter((node): node is DependencyNode => !!node)
+        .map((node) => ({ ...node, dependsOn: [...node.dependsOn] }));
     }
 
     function runDependencyGraph(env: ViewerEnv, scene: ViewerSceneData, dirtyRootIds: string[]) {
@@ -330,7 +120,6 @@
     return {
       parameterRootId,
       sourcePointRootId,
-      collectExprParameterNames,
       describeDependencyGraph,
       runDependencyGraph,
     };

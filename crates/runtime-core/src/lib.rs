@@ -2,6 +2,7 @@
 
 mod dependency;
 mod geometry;
+mod point_constraints;
 mod scene_math;
 
 pub use dependency::{DependencyNodeInput, DependencyPlan, DependencyPlanError};
@@ -15,6 +16,9 @@ pub use geometry::{
     project_to_line_like, project_to_three_point_arc, reflect_across_line, rotate_around,
     scale_around, scale_by_three_point_ratio, three_point_arc_geometry,
 };
+pub use point_constraints::{
+    inverse_point_transform_json, resolve_point_constraints_json, transform_points_json,
+};
 pub use scene_math::{
     CoordinateTraceMode, PlotMode, affine_iteration_segment, branching_iteration_segments,
     choose_point_candidate, line_circle_intersection_candidate, line_polyline_intersection,
@@ -26,7 +30,6 @@ pub use scene_math::{
 
 use std::collections::BTreeMap;
 
-#[cfg(any(test, target_arch = "wasm32"))]
 use serde::Deserialize;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -39,9 +42,8 @@ pub enum FunctionExpr {
     Parsed(FunctionAst),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(any(test, target_arch = "wasm32"), derive(Deserialize))]
-#[cfg_attr(any(test, target_arch = "wasm32"), serde(rename_all = "lowercase"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum BinaryOp {
     Add,
     Sub,
@@ -50,9 +52,8 @@ pub enum BinaryOp {
     Pow,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(any(test, target_arch = "wasm32"), derive(Deserialize))]
-#[cfg_attr(any(test, target_arch = "wasm32"), serde(rename_all = "lowercase"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum UnaryFunction {
     Sin,
     Cos,
@@ -99,6 +100,44 @@ pub fn evaluate_expr(
         }
         FunctionExpr::Parsed(ast) => evaluate_ast(ast, x, parameters),
     }
+}
+
+/// Returns the parameter names referenced by an expression in payload order.
+///
+/// Keeping this traversal in the shared Rust core prevents the exporter and the
+/// browser runtime from growing separate interpretations of the expression AST.
+pub fn expression_parameter_names(expr: &FunctionExpr) -> Vec<String> {
+    fn collect(
+        ast: &FunctionAst,
+        seen: &mut std::collections::BTreeSet<String>,
+        names: &mut Vec<String>,
+    ) {
+        match ast {
+            FunctionAst::Parameter(name, _) if seen.insert(name.clone()) => {
+                names.push(name.clone())
+            }
+            FunctionAst::Unary { expr, .. } => collect(expr, seen, names),
+            FunctionAst::Binary { lhs, rhs, .. } => {
+                collect(lhs, seen, names);
+                collect(rhs, seen, names);
+            }
+            FunctionAst::Variable
+            | FunctionAst::Constant(_)
+            | FunctionAst::PiAngle
+            | FunctionAst::Parameter(_, _) => {}
+        }
+    }
+
+    let mut names = Vec::new();
+    if let FunctionExpr::Parsed(ast) = expr {
+        collect(ast, &mut std::collections::BTreeSet::new(), &mut names);
+    }
+    names
+}
+
+/// Reports whether an expression uses the payload's degree-angle constant.
+pub fn expression_contains_pi_angle(expr: &FunctionExpr) -> bool {
+    matches!(expr, FunctionExpr::Parsed(ast) if ast_contains_pi_angle(ast))
 }
 
 fn evaluate_ast(expr: &FunctionAst, x: f64, parameters: &BTreeMap<String, f64>) -> Option<f64> {
@@ -170,7 +209,6 @@ fn ast_contains_pi_angle(expr: &FunctionAst) -> bool {
     }
 }
 
-#[cfg(any(test, target_arch = "wasm32"))]
 #[derive(Deserialize)]
 #[serde(untagged)]
 enum ExpressionInput {
@@ -178,7 +216,6 @@ enum ExpressionInput {
     Ast(WireFunctionAst),
 }
 
-#[cfg(any(test, target_arch = "wasm32"))]
 #[derive(Deserialize)]
 #[serde(tag = "kind")]
 enum WireFunctionExpr {
@@ -190,7 +227,6 @@ enum WireFunctionExpr {
     Parsed { expr: WireFunctionAst },
 }
 
-#[cfg(any(test, target_arch = "wasm32"))]
 #[derive(Deserialize)]
 #[serde(tag = "kind")]
 enum WireFunctionAst {
@@ -215,7 +251,6 @@ enum WireFunctionAst {
     },
 }
 
-#[cfg(any(test, target_arch = "wasm32"))]
 impl From<WireFunctionExpr> for FunctionExpr {
     fn from(value: WireFunctionExpr) -> Self {
         match value {
@@ -226,7 +261,6 @@ impl From<WireFunctionExpr> for FunctionExpr {
     }
 }
 
-#[cfg(any(test, target_arch = "wasm32"))]
 impl From<WireFunctionAst> for FunctionAst {
     fn from(value: WireFunctionAst) -> Self {
         match value {
@@ -247,7 +281,6 @@ impl From<WireFunctionAst> for FunctionAst {
     }
 }
 
-#[cfg(any(test, target_arch = "wasm32"))]
 fn parse_expression_json(bytes: &[u8]) -> Result<FunctionExpr, serde_json::Error> {
     serde_json::from_slice::<ExpressionInput>(bytes).map(|input| match input {
         ExpressionInput::Expression(expr) => expr.into(),
@@ -267,16 +300,17 @@ mod wasm_abi {
         FunctionExpr, LineKind, PlotMode, Point, Projection, affine_iteration_segment,
         angle_bisector_direction, branching_iteration_segments, choose_point_candidate,
         circle_arc_control_points, circle_circle_intersections, clip_line_to_bounds,
-        clip_ray_to_bounds, evaluate_expr, lerp_point, line_circle_intersection_candidate,
-        line_circle_intersections, line_line_intersection, line_polyline_intersection,
-        measured_rotation_radians, normalize_angle_delta, parse_expression_json,
-        point_angle_degrees, point_circle_tangents, point_distance, point_distance_ratio,
-        point_on_circle_arc, point_on_three_point_arc, point_on_three_point_arc_complement,
-        polygon_area, project_to_circle_arc, project_to_line_like, project_to_three_point_arc,
-        reflect_across_line, rotate_around, rotate_iteration_points, sample_circle_arc,
+        clip_ray_to_bounds, evaluate_expr, inverse_point_transform_json, lerp_point,
+        line_circle_intersection_candidate, line_circle_intersections, line_line_intersection,
+        line_polyline_intersection, measured_rotation_radians, normalize_angle_delta,
+        parse_expression_json, point_angle_degrees, point_circle_tangents, point_distance,
+        point_distance_ratio, point_on_circle_arc, point_on_three_point_arc,
+        point_on_three_point_arc_complement, polygon_area, project_to_circle_arc,
+        project_to_line_like, project_to_three_point_arc, reflect_across_line,
+        resolve_point_constraints_json, rotate_around, rotate_iteration_points, sample_circle_arc,
         sample_coordinate_trace, sample_custom_transform_trace, sample_expression,
         sample_parametric_curve, sample_three_point_arc, scale_around, scale_by_three_point_ratio,
-        three_point_arc_geometry, translation_iteration_deltas,
+        three_point_arc_geometry, transform_points_json, translation_iteration_deltas,
     };
 
     struct CompiledExpression {
@@ -297,7 +331,7 @@ mod wasm_abi {
 
     #[unsafe(no_mangle)]
     pub extern "C" fn gsp_runtime_abi_version() -> u32 {
-        4
+        6
     }
 
     #[unsafe(no_mangle)]
@@ -865,6 +899,74 @@ mod wasm_abi {
             plans.push(plan);
             plans.len() as u32
         })
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn gsp_resolve_point_constraints(ptr: u32, len: u32) -> u32 {
+        if ptr == 0 || len == 0 {
+            set_last_error("point constraint input is empty");
+            return write_batch_scalars(std::iter::empty());
+        }
+        // SAFETY: the caller owns an allocation of at least `len` bytes in this module's memory.
+        let bytes = unsafe { std::slice::from_raw_parts(ptr as usize as *const u8, len as usize) };
+        let results = match resolve_point_constraints_json(bytes) {
+            Ok(results) => results,
+            Err(error) => {
+                set_last_error(&format!("invalid point constraint input: {error}"));
+                return write_batch_scalars(std::iter::empty());
+            }
+        };
+        clear_last_error();
+        let count = results.len() as u32;
+        write_batch_scalars(results.into_iter().flat_map(|point| match point {
+            Some(point) => [point.x, point.y],
+            None => [f64::NAN, f64::NAN],
+        }));
+        count
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn gsp_inverse_point_transform(ptr: u32, len: u32) -> u32 {
+        if ptr == 0 || len == 0 {
+            set_last_error("inverse point transform input is empty");
+            return write_geometry_results(std::iter::empty());
+        }
+        // SAFETY: the caller owns an allocation of at least `len` bytes in this module's memory.
+        let bytes = unsafe { std::slice::from_raw_parts(ptr as usize as *const u8, len as usize) };
+        match inverse_point_transform_json(bytes) {
+            Ok(point) => {
+                clear_last_error();
+                write_geometry_results(point)
+            }
+            Err(error) => {
+                set_last_error(&format!("invalid inverse point transform input: {error}"));
+                write_geometry_results(std::iter::empty())
+            }
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn gsp_transform_points(ptr: u32, len: u32) -> u32 {
+        if ptr == 0 || len == 0 {
+            set_last_error("point transform input is empty");
+            return write_batch_points(std::iter::empty());
+        }
+        // SAFETY: the caller owns an allocation of at least `len` bytes in this module's memory.
+        let bytes = unsafe { std::slice::from_raw_parts(ptr as usize as *const u8, len as usize) };
+        match transform_points_json(bytes) {
+            Ok(Some(points)) => {
+                clear_last_error();
+                write_batch_points(points)
+            }
+            Ok(None) => {
+                clear_last_error();
+                write_batch_points(std::iter::empty())
+            }
+            Err(error) => {
+                set_last_error(&format!("invalid point transform input: {error}"));
+                write_batch_points(std::iter::empty())
+            }
+        }
     }
 
     #[unsafe(no_mangle)]
@@ -1541,6 +1643,22 @@ mod wasm_abi {
     pub extern "C" fn gsp_evaluate_expression(handle: u32, x: f64) -> f64 {
         with_expression(handle, |compiled| {
             evaluate_expr(&compiled.expr, x, &compiled.parameters).unwrap_or(f64::NAN)
+        })
+        .unwrap_or(f64::NAN)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn gsp_evaluate_expression_with_driver(
+        handle: u32,
+        x: f64,
+        driver_value: f64,
+    ) -> f64 {
+        with_expression(handle, |compiled| {
+            let mut parameters = compiled.parameters.clone();
+            for name in &compiled.parameter_names {
+                parameters.insert(name.clone(), driver_value);
+            }
+            evaluate_expr(&compiled.expr, x, &parameters).unwrap_or(f64::NAN)
         })
         .unwrap_or(f64::NAN)
     }

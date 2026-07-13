@@ -1,5 +1,7 @@
 use super::function_expr_json::FunctionExprJson;
-use crate::runtime::functions::FunctionPlotMode;
+use crate::runtime::functions::{
+    FunctionPlotMode, function_expr_label, function_expr_label_with_variable,
+};
 use serde::Serialize;
 use ts_rs::TS;
 
@@ -36,6 +38,8 @@ pub(super) struct FunctionJson {
     label_index: Option<usize>,
     constrained_point_indices: Vec<usize>,
     expr: FunctionExprJson,
+    expr_label: String,
+    polar_expr_label: String,
 }
 
 impl FunctionJson {
@@ -49,6 +53,8 @@ impl FunctionJson {
             label_index: function_def.label_index,
             constrained_point_indices: function_def.constrained_point_indices.clone(),
             expr: FunctionExprJson::from_expr(&function_def.expr),
+            expr_label: function_expr_label(function_def.expr.clone()),
+            polar_expr_label: function_expr_label_with_variable(function_def.expr.clone(), "θ"),
         }
     }
 }

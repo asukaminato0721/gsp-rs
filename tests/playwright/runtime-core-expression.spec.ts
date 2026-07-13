@@ -120,6 +120,12 @@ test('standalone file HTML evaluates expressions in the embedded Rust runtime co
         empty,
         4,
       ),
+      resolvedPoints: window.GspRuntimeCore.resolvePointConstraints([
+        { x: 0, y: 0, constraint: null },
+        { x: 0, y: 0, constraint: { kind: 'offset', originIndex: 0, dx: 4, dy: 2 } },
+        { x: 0, y: 0, constraint: { kind: 'segment', startIndex: 0, endIndex: 1, t: 0.25 } },
+        { x: 3, y: 5, constraint: { kind: 'line-function-intersection' } },
+      ] as any, [1, 2, 3], false, new Map()),
     };
   });
 
@@ -154,5 +160,11 @@ test('standalone file HTML evaluates expressions in the embedded Rust runtime co
       { x: 0, y: 1 },
     ],
     iteration: [1, 2, 3, 4],
+    resolvedPoints: [
+      { x: 0, y: 0 },
+      { x: 4, y: 2 },
+      { x: 1, y: 0.5 },
+      null,
+    ],
   });
 });

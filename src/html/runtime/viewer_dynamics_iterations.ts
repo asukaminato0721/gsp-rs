@@ -17,7 +17,6 @@
       isFiniteNumber,
       pointAngleValue,
       pointIterationDepth,
-      rotateAround,
       samplePointTraceLine,
       SYNC_DYNAMIC_POINT_BINDING_UPDATERS,
     } = dependencies;
@@ -47,15 +46,26 @@
         return;
       }
       if (family.kind === "offset") {
+        const seed = scene.points[family.seedIndex];
+        if (!seed) {
+          return;
+        }
+        const deltas = window.GspRuntimeCore.translationIterationDeltas(
+          depth,
+          { x: family.dx, y: family.dy },
+          null,
+          false,
+          false,
+        );
         let previousIndex = family.seedIndex;
-        for (let step = 0; step < depth; step += 1) {
+        deltas.forEach((delta) => {
           const origin = scene.points[previousIndex];
           if (!origin) {
-            break;
+            return;
           }
           scene.points.push({
-            x: origin.x + family.dx,
-            y: origin.y + family.dy,
+            x: seed.x + delta.x,
+            y: seed.y + delta.y,
             color: origin.color || [255, 60, 40, 255],
             visible: true,
             draggable: false,
@@ -69,7 +79,7 @@
             debug: null,
           });
           previousIndex = scene.points.length - 1;
-        }
+        });
         return;
       }
 
@@ -79,12 +89,21 @@
         if (!center) {
           return;
         }
-        for (let step = 0; step < depth; step += 1) {
+        const seed = scene.points[family.seedIndex];
+        if (!seed) {
+          return;
+        }
+        const rotatedSteps = window.GspRuntimeCore.rotateIterationPoints(
+          [seed],
+          center,
+          family.angleDegrees * Math.PI / 180,
+          depth,
+        );
+        rotatedSteps.forEach(([rotated]) => {
           const source = scene.points[previousIndex];
-          if (!source) {
-            break;
+          if (!source || !rotated) {
+            return;
           }
-          const rotated = rotateAround(source, center, family.angleDegrees * Math.PI / 180);
           scene.points.push({
             x: rotated.x,
             y: rotated.y,
@@ -101,7 +120,7 @@
             debug: null,
           });
           previousIndex = scene.points.length - 1;
-        }
+        });
         return;
       }
 
@@ -115,8 +134,15 @@
         if (typeof angleDegrees !== "number" || !Number.isFinite(angleDegrees)) {
           return;
         }
-        for (let step = 1; step <= depth; step += 1) {
-          const rotated = rotateAround(source, center, (angleDegrees * step) * Math.PI / 180);
+        const rotatedSteps = window.GspRuntimeCore.rotateIterationPoints(
+          [source],
+          center,
+          angleDegrees * Math.PI / 180,
+          depth,
+        );
+        rotatedSteps.forEach(([rotated], index) => {
+          if (!rotated) return;
+          const step = index + 1;
           scene.points.push({
             x: rotated.x,
             y: rotated.y,
@@ -130,9 +156,9 @@
               centerIndex: family.centerIndex,
               angleDegrees: angleDegrees * step,
             },
-            debug: null,
+              debug: null,
           });
-        }
+        });
         return;
       }
 
@@ -199,19 +225,34 @@
     if (!dependencyCollectorModule) {
       throw new Error("viewer dynamics dependency collector is unavailable");
     }
-    const pointOrder = dependencyCollectorModule.createPointDependencyOrder(
-      draft,
-      new Set(parameters.keys()),
-    );
+    const pointOrder = dependencyCollectorModule.createPointDependencyOrder(draft);
 
     pointOrder.forEach((pointIndex) => {
       const point = draft.points[pointIndex];
-      if (point.binding?.kind === "parameter" && point.constraint) {
-        const value = parameters.get(point.binding.name);
-        if (isFiniteNumber(value)) {
-          applyNormalizedParameterToPoint(point, draft, value);
-        }
-      } else {
+      if (point?.binding?.kind !== "parameter" || !point.constraint) return;
+      const value = parameters.get(point.binding.name);
+      if (isFiniteNumber(value)) {
+        applyNormalizedParameterToPoint(point, draft, value);
+      }
+    });
+    const resolvedByWasm = window.GspRuntimeCore.resolvePointConstraints(
+      draft.points,
+      pointOrder,
+      draft.yUp,
+      parameters,
+    );
+    pointOrder.forEach((pointIndex) => {
+      const point = draft.points[pointIndex];
+      if (!point) {
+        return;
+      }
+      const wasmPoint = resolvedByWasm[pointIndex];
+      if (wasmPoint) {
+        point.x = wasmPoint.x;
+        point.y = wasmPoint.y;
+        return;
+      }
+      if (point.binding?.kind !== "parameter") {
         const updatePoint = point.binding ? SYNC_DYNAMIC_POINT_BINDING_UPDATERS[point.binding.kind] : null;
         if (updatePoint) {
           updatePoint(draftEnv, draft, point, parameters);

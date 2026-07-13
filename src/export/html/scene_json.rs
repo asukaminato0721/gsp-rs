@@ -1,3 +1,4 @@
+use super::dependency_scene_json::DependencyGraphJson;
 use super::function_scene_json::{FunctionDefinitionJson, FunctionJson, ParameterJson};
 use super::iteration_scene_json::{
     CircleIterationJson, IterationTableJson, LabelIterationJson, LineIterationJson,
@@ -50,6 +51,7 @@ struct SceneJson {
     parameters: Vec<ParameterJson>,
     functions: Vec<FunctionJson>,
     function_definitions: Vec<FunctionDefinitionJson>,
+    dependency_graph: DependencyGraphJson,
 }
 
 impl SceneJson {
@@ -125,6 +127,7 @@ impl SceneJson {
                 .iter()
                 .map(FunctionDefinitionJson::from_definition)
                 .collect(),
+            dependency_graph: DependencyGraphJson::from_scene(scene),
         }
     }
 }

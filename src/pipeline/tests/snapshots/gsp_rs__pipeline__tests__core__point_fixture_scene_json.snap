@@ -66,5 +66,16 @@ expression: scene_json
   "buttons": [],
   "parameters": [],
   "functions": [],
-  "functionDefinitions": []
+  "functionDefinitions": [],
+  "dependencyGraph": {
+    "nodes": [
+      {
+        "id": "source-point:0",
+        "kind": "source-point",
+        "dependsOn": [],
+        "recipe": null
+      }
+    ],
+    "derivedLabelOrder": []
+  }
 }

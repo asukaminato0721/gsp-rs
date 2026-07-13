@@ -370,16 +370,14 @@
   
   function updateDerivedPointSourceToWorld(env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
     if (point.binding?.kind !== "derived") return false;
-    const transform = point.binding.transform;
-    if (transform?.kind !== "rotate" || typeof transform.angleDegrees !== "number") {
-      return false;
-    }
-    const center = env.resolveScenePoint(transform.centerIndex);
-    const rotateAround = modules.geometry.rotateAround;
-    if (!center || typeof rotateAround !== "function") {
-      return false;
-    }
-    const sourceWorld = rotateAround(world, center, -transform.angleDegrees * Math.PI / 180);
+    const parameters = modules.dynamics.parameterMapForScene?.(env, draft) ?? new Map<string, number>();
+    const sourceWorld = window.GspRuntimeCore.inversePointTransform(
+      world,
+      point.binding.transform,
+      draft.points,
+      parameters,
+    );
+    if (!sourceWorld) return false;
     updatePointToWorld(env, draft, point.binding.sourceIndex, sourceWorld);
     return true;
   }

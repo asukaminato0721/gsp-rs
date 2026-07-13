@@ -154,3 +154,35 @@ fn snapshots_point_fixture_scene_json() {
 
     assert_snapshot!("point_fixture_scene_json", scene_json);
 }
+
+#[test]
+fn exports_rust_generated_scene_dependency_graph() {
+    let scene = fixture_scene(
+        include_bytes!("../../../tests/fixtures/gsp/static/scale.gsp"),
+        "scale fixture should compile",
+    );
+    let nodes = scene["dependencyGraph"]["nodes"]
+        .as_array()
+        .expect("dependency nodes exported by Rust");
+    assert!(nodes.iter().any(|node| {
+        node["kind"] == "point"
+            && node["recipe"] == "refresh-derived-points"
+            && node["dependsOn"]
+                .as_array()
+                .is_some_and(|deps| deps.iter().any(|dep| dep == "source-point:0"))
+    }));
+}
+
+#[test]
+fn exports_rust_generated_derived_label_order() {
+    let scene = fixture_scene(
+        include_bytes!("../../../tests/fixtures/gsp/calculation.gsp"),
+        "calculation fixture should compile",
+    );
+
+    assert_eq!(
+        scene["dependencyGraph"]["derivedLabelOrder"],
+        serde_json::json!([1, 2, 3, 4, 5]),
+        "Rust should identify and order the fixture's expression labels",
+    );
+}

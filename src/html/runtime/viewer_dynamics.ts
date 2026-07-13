@@ -94,7 +94,7 @@
   }
 
 
-  const { evaluateExpr, formatExpr, exprContainsPiAngle } = modules.dynamicsExpression;
+  const { evaluateExpr } = modules.dynamicsExpression;
   const {
     deriveExpressionLabelParameters,
     deriveLabelParameters,
@@ -102,8 +102,6 @@
   } = modules.dynamicsParameters.createDynamicsParameters({
     discreteIterationDepth,
     evaluateExpr,
-    formatExpr,
-    formatSequenceValue,
     isDiscreteIterationParameterName,
     labelParameterValueFromBinding,
     pointAngleValue,
@@ -115,7 +113,6 @@
   const {
     parameterRootId,
     sourcePointRootId,
-    collectExprParameterNames,
     describeDependencyGraph,
     runDependencyGraph,
   } = modules.dynamicsDependencyGraph.createDependencyGraphRuntime({
@@ -480,24 +477,6 @@
   }
 
 
-  function parameterNameFromPoint(scene: ViewerSceneData, pointIndex: number) {
-    for (const label of scene.labels || []) {
-      const binding = label?.binding;
-      if (!binding || binding.pointIndex !== pointIndex || typeof binding.pointName !== "string") {
-        continue;
-      }
-      if (
-        binding.kind === "polyline-parameter"
-        || binding.kind === "polygon-boundary-parameter"
-        || binding.kind === "circle-parameter"
-      ) {
-        return binding.pointName;
-      }
-    }
-    return null;
-  }
-
-
   function clampNormalizedValue(value: number | null | undefined) {
     return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : null;
   }
@@ -702,7 +681,7 @@
     if (value === null) {
       return "未定义";
     }
-    return label.binding.exprLabel.includes("°") || exprContainsPiAngle(label.binding.expr)
+    return label.binding.exprLabel.includes("°") || label.binding.degreeValue
       ? `${value.toFixed(2)}°`
       : env.formatNumber(value);
   }
@@ -817,21 +796,22 @@
   function updateCustomTransformPoint(point: RuntimeScenePointJson, parameters: Map<string, number>, resolvePointAt: (pointIndex: number) => Point | null, parameterSourceScene: ViewerSceneData) {
     const value = parameterValueFromPoint(parameterSourceScene, point.binding.sourceIndex);
     if (!isFiniteNumber(value)) return;
-    const exprParameters = new Map<string, number>(parameters);
-    const names = new Set<string>();
-    collectExprParameterNames(point.binding.distanceExpr, names);
-    collectExprParameterNames(point.binding.angleExpr, names);
-    names.forEach((name: string) => exprParameters.set(name, value));
-    const distanceValue = evaluateExpr(point.binding.distanceExpr, value, exprParameters);
-    const angleValue = evaluateExpr(point.binding.angleExpr, value, exprParameters);
     const origin = resolvePointAt(point.binding.originIndex);
     const axisEnd = resolvePointAt(point.binding.axisEndIndex);
-    if (distanceValue === null || angleValue === null || !origin || !axisEnd) return;
-    const baseAngle = Math.atan2(-(axisEnd.y - origin.y), axisEnd.x - origin.x) * 180 / Math.PI;
-    const radians = (baseAngle + angleValue * point.binding.angleDegreesScale) * Math.PI / 180;
-    const distance = distanceValue * point.binding.distanceRawScale;
-    point.x = origin.x + distance * Math.cos(radians);
-    point.y = origin.y - distance * Math.sin(radians);
+    if (!origin || !axisEnd) return;
+    const transformed = window.GspRuntimeCore.customTransformPoint(
+      point.binding.distanceExpr,
+      point.binding.angleExpr,
+      parameters,
+      origin,
+      axisEnd,
+      value,
+      point.binding.distanceRawScale,
+      point.binding.angleDegreesScale,
+    );
+    if (!transformed) return;
+    point.x = transformed.x;
+    point.y = transformed.y;
   }
 
 
@@ -1334,16 +1314,7 @@
       const vertex = scene.points[label.binding.vertexIndex];
       const end = scene.points[label.binding.endIndex];
       if (!start || !vertex || !end) return;
-      const first = { x: start.x - vertex.x, y: start.y - vertex.y };
-      const second = { x: end.x - vertex.x, y: end.y - vertex.y };
-      const firstLen = Math.hypot(first.x, first.y);
-      const secondLen = Math.hypot(second.x, second.y);
-      if (firstLen <= 1e-9 || secondLen <= 1e-9) return;
-      const cross = (first.x / firstLen) * (second.y / secondLen)
-        - (first.y / firstLen) * (second.x / secondLen);
-      const dot = (first.x / firstLen) * (second.x / secondLen)
-        + (first.y / firstLen) * (second.y / secondLen);
-      const value = Math.abs(Math.atan2(cross, dot)) * 180 / Math.PI;
+      const value = window.GspRuntimeCore.pointAngleDegrees(start, vertex, end);
       if (Number.isFinite(value)) {
         label.text = value.toFixed(label.binding.decimals);
         label.richMarkup = buildPlainTextRichMarkup(label.text);
@@ -1352,11 +1323,12 @@
     "custom-transform-value"(env: ViewerEnv, scene: ViewerSceneData, label: RuntimeLabelJson, parameters: Map<string, number>) {
       const value = parameterValueFromPoint(scene, label.binding.pointIndex);
       if (!isFiniteNumber(value)) return;
-      const exprParameters = new Map<string, number>(parameters);
-      const names = new Set<string>();
-      collectExprParameterNames(label.binding.expr, names);
-      names.forEach((name: string) => exprParameters.set(name, value));
-      const evaluated = evaluateExpr(label.binding.expr, value, exprParameters);
+      const evaluated = window.GspRuntimeCore.evaluateExprWithDriver(
+        label.binding.expr,
+        value,
+        parameters,
+        value,
+      );
       if (evaluated !== null) {
         label.text = `${label.binding.exprLabel} = ${env.formatNumber(evaluated * label.binding.valueScale)}${label.binding.valueSuffix}`;
         label.richMarkup = buildPlainTextRichMarkup(label.text);
@@ -1439,7 +1411,6 @@
     applyTraceValueToPoint,
     circumcenter,
     clipRayToBounds,
-    collectExprParameterNames,
     deriveLabelParameters,
     discreteIterationDepth,
     evaluateExpr,
@@ -1447,12 +1418,10 @@
     isFiniteNumber,
     lerpPoint,
     lineProjectionParameterFromPoints,
-    parameterNameFromPoint,
     parameterValueFromPoint,
     pointOnPolylineByIndex,
     polylineParameterFromPoint,
     reflectAcrossLine,
-    reflectionAxisPoints,
     resolveLineConstraintPoints,
     resolveRotateTransformAngleDegrees,
     resolveScaleTransformFactor,
@@ -1675,11 +1644,8 @@
   function refreshDerivedPoints(env: ViewerEnv, scene: ViewerSceneData) {
     const bounds = env.getViewBounds ? env.getViewBounds() : (scene.bounds || env.sourceScene.bounds);
     let parameters = parameterMapForScene(env, scene);
-    const pointOrder = modules.dynamicsDependencies.createPointDependencyOrder(
-      scene,
-      new Set(parameters.keys()),
-    );
-    refreshConstrainedPointPositions(env, scene, pointOrder);
+    const pointOrder = modules.dynamicsDependencies.createPointDependencyOrder(scene);
+    const resolvedByWasm = refreshWasmResolvedPointPositions(scene, pointOrder, parameters);
     parameters = parameterMapForScene(env, scene);
     const resolveHandle = ( handle) => {
       if (hasPointIndexHandle(handle)) {
@@ -1702,6 +1668,12 @@
 
     pointOrder.forEach((pointIndex) => {
       const point = scene.points[pointIndex];
+      if (!point) {
+        return;
+      }
+      if (resolvedByWasm[pointIndex]) {
+        return;
+      }
       const refreshBinding = point.binding ? DERIVED_POINT_BINDING_REFRESHERS[point.binding.kind] : null;
       if (refreshBinding) {
         refreshBinding(env, scene, point, parameters);
@@ -1815,23 +1787,30 @@
   }
 
 
-  function refreshConstrainedPointPositions(
-    env: ViewerEnv,
+  function refreshWasmResolvedPointPositions(
     scene: ViewerSceneData,
     pointOrder = scene.points.map((_, index) => index),
+    parameters = new Map<string, number>(),
   ) {
+    const resolvedByWasm = window.GspRuntimeCore.resolvePointConstraints(
+      scene.points,
+      pointOrder,
+      scene.yUp,
+      parameters,
+    );
     pointOrder.forEach((pointIndex) => {
       const point = scene.points[pointIndex];
-      if (!point.constraint) {
+      if (!point) {
         return;
       }
-      const resolved = resolveScenePointInScene(env, scene, pointIndex);
+      const resolved = resolvedByWasm[pointIndex];
       if (!resolved) {
         return;
       }
       point.x = resolved.x;
       point.y = resolved.y;
     });
+    return resolvedByWasm;
   }
 
 
@@ -1847,26 +1826,6 @@
       point.x = resolved.x;
       point.y = resolved.y;
     });
-  }
-
-
-  function reflectionAxisPoints(scene: ViewerSceneData, binding: HostLineBinding): [PointHandle | null, PointHandle | null] {
-    const lineIndex = binding.lineIndex;
-    if (typeof lineIndex === "number" && Number.isInteger(lineIndex)) {
-      const axis = scene.lines[lineIndex];
-      if (axis?.points?.length >= 2) {
-        return [axis.points[0], axis.points[axis.points.length - 1]];
-      }
-    }
-    const lineStartIndex = binding.lineStartIndex;
-    const lineEndIndex = binding.lineEndIndex;
-    const lineStart = typeof lineStartIndex === "number" && Number.isInteger(lineStartIndex)
-      ? scene.points[lineStartIndex]
-      : null;
-    const lineEnd = typeof lineEndIndex === "number" && Number.isInteger(lineEndIndex)
-      ? scene.points[lineEndIndex]
-      : null;
-    return [lineStart || null, lineEnd || null];
   }
 
 
@@ -1909,7 +1868,10 @@
           : (functionDef.derivative
             ? `${functionDef.name}'(${variableLabel})`
             : `${functionDef.name}(${variableLabel})`);
-        draft.labels[functionDef.labelIndex].text = `${head} = ${formatExpr(functionDef.expr, env.formatAxisNumber, variableLabel)}`;
+        const exprLabel = functionDef.domain.plotMode === "polar"
+          ? functionDef.polarExprLabel
+          : functionDef.exprLabel;
+        draft.labels[functionDef.labelIndex].text = `${head} = ${exprLabel}`;
       }
       const sampledSegments = sampleDynamicFunction(functionDef, parameters);
       const sampled = sampledSegments.flat();
@@ -1963,7 +1925,6 @@
     pointIterationDepth,
     pointAngleValue,
     refreshDerivedPoints,
-    rotateAround,
     samplePointTraceLine,
     SYNC_DYNAMIC_POINT_BINDING_UPDATERS,
   });
@@ -2047,7 +2008,6 @@
   modules.dynamics = {
     buildParameterControls,
     evaluateExpr,
-    formatExpr,
     parameterMapForScene,
     parameterValueFromPoint,
     applyNormalizedParameterToPoint,
