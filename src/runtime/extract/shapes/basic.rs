@@ -1075,7 +1075,7 @@ fn arc_stroke_visible(group: &ObjectGroup) -> bool {
         || color_from_style(group.header.style_b) == [0, 0, 0, 255]
 }
 
-fn resolve_arc_boundary_points(
+pub(super) fn resolve_arc_boundary_points(
     file: &GspFile,
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],

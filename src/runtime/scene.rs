@@ -291,6 +291,19 @@ pub(crate) enum IterationPointHandle {
 
 #[derive(Debug, Clone)]
 pub(crate) enum PolygonIterationFamily {
+    Similarity {
+        binding_group_ordinal: usize,
+        visible: bool,
+        source_index: usize,
+        source_start_index: usize,
+        source_end_index: usize,
+        target_start_index: usize,
+        target_end_index: usize,
+        depth: usize,
+        depth_expr: Option<FunctionExpr>,
+        inverse: bool,
+        color: [u8; 4],
+    },
     Translate {
         binding_group_ordinal: usize,
         visible: bool,
@@ -353,7 +366,11 @@ impl LineIterationFamily {
 impl PolygonIterationFamily {
     pub(crate) fn binding_group_ordinal(&self) -> usize {
         match self {
-            Self::Translate {
+            Self::Similarity {
+                binding_group_ordinal,
+                ..
+            }
+            | Self::Translate {
                 binding_group_ordinal,
                 ..
             }

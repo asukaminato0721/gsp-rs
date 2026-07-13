@@ -1,5 +1,7 @@
 use std::collections::BTreeSet;
 
+use super::SceneContext;
+use super::transforms::polygon_points_raw;
 use super::{
     CircleShape, GspFile, LineIterationFamily, LineShape, ObjectGroup, PointRecord,
     PolygonIterationFamily, PolygonShape, color_from_style, decode_label_name,
@@ -640,23 +642,35 @@ fn similarity_coefficients(
         return None;
     }
 
-    let point_coefficients = |point: &PointRecord| {
-        let relative_x = point.x - source_start.x;
-        let relative_y = point.y - source_start.y;
-        (
-            (relative_x * source_dx + relative_y * source_dy) / source_len_sq,
-            (relative_x * -source_dy + relative_y * source_dx) / source_len_sq,
-        )
-    };
-
-    let (start_alpha, start_beta) = point_coefficients(target_start);
-    let (end_alpha, end_beta) = point_coefficients(target_end);
+    let (start_alpha, start_beta) =
+        similarity_coefficients_for_point(source_start, source_end, target_start)?;
+    let (end_alpha, end_beta) =
+        similarity_coefficients_for_point(source_start, source_end, target_end)?;
     Some(SegmentSimilarityCoefficients {
         start_alpha,
         start_beta,
         end_alpha,
         end_beta,
     })
+}
+
+fn similarity_coefficients_for_point(
+    source_start: &PointRecord,
+    source_end: &PointRecord,
+    point: &PointRecord,
+) -> Option<(f64, f64)> {
+    let source_dx = source_end.x - source_start.x;
+    let source_dy = source_end.y - source_start.y;
+    let source_len_sq = source_dx * source_dx + source_dy * source_dy;
+    if source_len_sq <= 1e-9 {
+        return None;
+    }
+    let relative_x = point.x - source_start.x;
+    let relative_y = point.y - source_start.y;
+    Some((
+        (relative_x * source_dx + relative_y * source_dy) / source_len_sq,
+        (relative_x * -source_dy + relative_y * source_dx) / source_len_sq,
+    ))
 }
 
 fn apply_similarity_coefficients(
@@ -1143,6 +1157,74 @@ fn carried_iteration_depth(
         .unwrap_or(default_depth)
 }
 
+fn single_similarity_iteration_group_indices(
+    file: &GspFile,
+    iter_group: &ObjectGroup,
+) -> Option<([usize; 2], [usize; 2], usize)> {
+    if iter_group.header.kind() != crate::format::GroupKind::RegularPolygonIteration {
+        return None;
+    }
+    let definition = iter_group
+        .records
+        .iter()
+        .find(|record| record.record_type == RECORD_ITERATION_DEFINITION)?
+        .payload(&file.data);
+    if definition.len() < 20
+        || super::read_u16(definition, 6) != 2
+        || super::read_u32(definition, 8) != 1
+    {
+        return None;
+    }
+    let path = find_indexed_path(file, iter_group)?;
+    Some((
+        [
+            path.refs.get(1)?.checked_sub(1)?,
+            path.refs.get(2)?.checked_sub(1)?,
+        ],
+        [
+            path.refs.get(3)?.checked_sub(1)?,
+            path.refs.get(4)?.checked_sub(1)?,
+        ],
+        super::read_u32(definition, 16) as usize,
+    ))
+}
+
+fn polygon_reflection_parity(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    visiting: &mut BTreeSet<usize>,
+) -> Option<bool> {
+    let group_index = group.ordinal.checked_sub(1)?;
+    if !visiting.insert(group_index) {
+        return None;
+    }
+    let result = match group.header.kind() {
+        crate::format::GroupKind::Polygon
+        | crate::format::GroupKind::SectorBoundary
+        | crate::format::GroupKind::CircularSegmentBoundary => Some(false),
+        crate::format::GroupKind::Reflection
+        | crate::format::GroupKind::Translation
+        | crate::format::GroupKind::Rotation
+        | crate::format::GroupKind::ParameterRotation
+        | crate::format::GroupKind::Scale => {
+            let path = find_indexed_path(file, group)?;
+            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            let source_parity = polygon_reflection_parity(file, groups, source_group, visiting)?;
+            Some(
+                if group.header.kind() == crate::format::GroupKind::Reflection {
+                    !source_parity
+                } else {
+                    source_parity
+                },
+            )
+        }
+        _ => None,
+    };
+    visiting.remove(&group_index);
+    result
+}
+
 fn carried_iteration_parameter_name(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -1267,6 +1349,7 @@ fn carried_iteration_affine_handles(
 pub(crate) fn collect_carried_iteration_polygons(
     file: &GspFile,
     groups: &[ObjectGroup],
+    context: &SceneContext<'_>,
     anchors: &[Option<PointRecord>],
 ) -> Vec<PolygonShape> {
     groups
@@ -1275,6 +1358,55 @@ pub(crate) fn collect_carried_iteration_polygons(
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+            if regular_polygon_iteration_step(file, groups, iter_group).is_none()
+                && regular_polygon_translation_iteration_step(file, groups, iter_group, anchors)
+                    .is_none()
+                && let Some((source, target, depth)) =
+                    single_similarity_iteration_group_indices(file, iter_group)
+            {
+                let color = fill_color_from_styles(
+                    source_group.header.style_b,
+                    source_group.header.style_c,
+                );
+                let source_start = anchors.get(source[0])?.clone()?;
+                let source_end = anchors.get(source[1])?.clone()?;
+                let target_start = anchors.get(target[0])?.clone()?;
+                let target_end = anchors.get(target[1])?.clone()?;
+                let inverse =
+                    polygon_reflection_parity(file, groups, source_group, &mut BTreeSet::new())?;
+                let (basis_start, basis_end, image_start, image_end) = if inverse {
+                    (&target_start, &target_end, &source_start, &source_end)
+                } else {
+                    (&source_start, &source_end, &target_start, &target_end)
+                };
+                let mut points = polygon_points_raw(file, groups, context, anchors, source_group)?;
+                let mut polygons = Vec::with_capacity(depth);
+                for _ in 0..depth {
+                    points = points
+                        .iter()
+                        .map(|point| {
+                            let (alpha, beta) =
+                                similarity_coefficients_for_point(basis_start, basis_end, point)?;
+                            Some(apply_similarity_coefficients(
+                                image_start,
+                                image_end,
+                                alpha,
+                                beta,
+                            ))
+                        })
+                        .collect::<Option<Vec<_>>>()?;
+                    polygons.push(PolygonShape {
+                        points: points.clone(),
+                        color,
+                        color_binding: None,
+                        visible: !group.header.is_hidden(),
+                        binding: None,
+                        debug: None,
+                    });
+                }
+                return Some(polygons);
+            }
             if let Some(polygons) = collect_coordinate_point_polygon_grid_iteration(
                 file,
                 groups,
@@ -1287,7 +1419,6 @@ pub(crate) fn collect_carried_iteration_polygons(
             if (source_group.header.kind()) != crate::format::GroupKind::Polygon {
                 return None;
             }
-            let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
             if !matches!(
                 iter_group.header.kind(),
                 crate::format::GroupKind::AffineIteration
@@ -1923,6 +2054,7 @@ pub(crate) fn collect_carried_polygon_iteration_families(
     groups: &[ObjectGroup],
     anchors: &[Option<PointRecord>],
     group_to_point_index: &[Option<usize>],
+    polygon_group_to_index: &[Option<usize>],
 ) -> Vec<PolygonIterationFamily> {
     groups
         .iter()
@@ -1931,6 +2063,42 @@ pub(crate) fn collect_carried_polygon_iteration_families(
             let path = find_indexed_path(file, group)?;
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
             let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+            if regular_polygon_iteration_step(file, groups, iter_group).is_none()
+                && regular_polygon_translation_iteration_step(file, groups, iter_group, anchors)
+                    .is_none()
+                && let Some((source, target, depth)) =
+                    single_similarity_iteration_group_indices(file, iter_group)
+            {
+                let source_group_index = path.refs.first()?.checked_sub(1)?;
+                let source_index = polygon_group_to_index
+                    .get(source_group_index)
+                    .copied()
+                    .flatten()?;
+                let point_index =
+                    |group_index: usize| group_to_point_index.get(group_index).copied().flatten();
+                let depth_expr = find_indexed_path(file, iter_group)
+                    .and_then(|iter_path| iter_path.refs.first().copied())
+                    .and_then(|ordinal| groups.get(ordinal.checked_sub(1)?))
+                    .and_then(|group| decode_iteration_depth_expr(file, groups, group));
+                let inverse =
+                    polygon_reflection_parity(file, groups, source_group, &mut BTreeSet::new())?;
+                return Some(PolygonIterationFamily::Similarity {
+                    binding_group_ordinal: group.ordinal,
+                    visible: !group.header.is_hidden(),
+                    source_index,
+                    source_start_index: point_index(source[0])?,
+                    source_end_index: point_index(source[1])?,
+                    target_start_index: point_index(target[0])?,
+                    target_end_index: point_index(target[1])?,
+                    depth,
+                    depth_expr,
+                    inverse,
+                    color: fill_color_from_styles(
+                        source_group.header.style_b,
+                        source_group.header.style_c,
+                    ),
+                });
+            }
             if let Some(family) = build_coordinate_point_polygon_grid_iteration_family(
                 file,
                 groups,

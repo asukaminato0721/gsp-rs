@@ -1572,6 +1572,29 @@ impl Collector<'_> {
     }
     fn polygon_iteration(&self, deps: &mut Dependencies, family: &PolygonIterationFamily) {
         match family {
+            PolygonIterationFamily::Similarity {
+                source_index,
+                source_start_index,
+                source_end_index,
+                target_start_index,
+                target_end_index,
+                depth_expr,
+                ..
+            } => {
+                self.polygon(deps, *source_index);
+                self.points(
+                    deps,
+                    [
+                        *source_start_index,
+                        *source_end_index,
+                        *target_start_index,
+                        *target_end_index,
+                    ],
+                );
+                if let Some(expr) = depth_expr {
+                    self.expr(deps, expr);
+                }
+            }
             PolygonIterationFamily::Translate {
                 vertex_indices,
                 vector_start_index,

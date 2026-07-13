@@ -655,7 +655,11 @@
         add(line.binding.depthParameterName);
       }
     });
-    (scene?.polygonIterations || []).forEach((family) => add(family.parameterName));
+    (scene?.polygonIterations || []).forEach((family) => {
+      if ("parameterName" in family) {
+        add(family.parameterName);
+      }
+    });
     (scene?.labelIterations || []).forEach((family) => add(family.depthParameterName));
     (scene?.iterationTables || []).forEach((table) => add(table.depthParameterName));
     return names;

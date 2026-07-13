@@ -1031,6 +1031,10 @@ pub(super) fn embedded_calculate_expr_start(words: &[u16]) -> Option<usize> {
         return Some(start);
     }
 
+    trailing_calculate_expr_start(words)
+}
+
+pub(super) fn trailing_calculate_expr_start(words: &[u16]) -> Option<usize> {
     words
         .windows(2)
         .rposition(|pair| pair == [0x0112, 0x0000])

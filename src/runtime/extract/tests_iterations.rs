@@ -10,6 +10,117 @@ use crate::runtime::scene::{
 use std::collections::BTreeMap;
 
 #[test]
+fn circle_to_square_sample_keeps_live_calculations_and_bidirectional_sector_iterations() {
+    let data = include_bytes!("../../../tests/Samples/个人专栏/李章博作品/割圆为方（李章博）.gsp");
+    let scene = fixture_scene(data);
+
+    let angle_step = scene
+        .labels
+        .iter()
+        .find(|label| {
+            label
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 4)
+        })
+        .expect("expected the payload angle-step calculation #4");
+    let Some(TextLabelBinding::ExpressionValue {
+        parameter_name,
+        expr: angle_step_expr,
+        ..
+    }) = angle_step.binding.as_ref()
+    else {
+        panic!("expected angle step to carry an expression binding");
+    };
+    assert_eq!(parameter_name, "n");
+    let parameters = BTreeMap::from([("n".to_string(), 10.0), ("b".to_string(), 0.5)]);
+    let angle_step_value = evaluate_expr_with_parameters(angle_step_expr, 0.0, &parameters)
+        .expect("expected angle step to evaluate");
+    assert!((angle_step_value - std::f64::consts::PI / 20.0).abs() < 1e-9);
+    let transition_angle = scene
+        .labels
+        .iter()
+        .find(|label| {
+            label
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 17)
+        })
+        .expect("expected the payload transition-angle calculation #17");
+    let Some(TextLabelBinding::ExpressionValue {
+        parameter_name,
+        expr: transition_angle_expr,
+        ..
+    }) = transition_angle.binding.as_ref()
+    else {
+        panic!("expected transition angle to carry an expression binding");
+    };
+    assert_eq!(parameter_name, "b");
+    let transition_angle_value =
+        evaluate_expr_with_parameters(transition_angle_expr, 0.0, &parameters)
+            .expect("expected transition angle to evaluate");
+    assert!((transition_angle_value + std::f64::consts::PI / 80.0).abs() < 1e-9);
+
+    assert_eq!(
+        scene.polygons.len(),
+        40,
+        "expected four seeds and 36 iterated sectors"
+    );
+    let seed_colors = scene.polygons[..4]
+        .iter()
+        .map(|polygon| polygon.color)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        seed_colors,
+        vec![
+            [255, 0, 0, 127],
+            [0, 128, 0, 127],
+            [0, 128, 0, 127],
+            [255, 0, 0, 127],
+        ],
+        "expected transformed sectors to retain their own payload styles"
+    );
+    assert_eq!(scene.polygon_iterations.len(), 4);
+    let mut inverse_count = 0;
+    let mut source_indices = scene
+        .polygon_iterations
+        .iter()
+        .map(|family| match family {
+            PolygonIterationFamily::Similarity {
+                source_index,
+                source_start_index,
+                source_end_index,
+                target_start_index,
+                target_end_index,
+                depth,
+                depth_expr,
+                inverse,
+                ..
+            } => {
+                assert_eq!(*depth, 9);
+                assert_ne!(source_start_index, source_end_index);
+                assert_ne!(target_start_index, target_end_index);
+                let live_depth = evaluate_expr_with_parameters(
+                    depth_expr.as_ref().expect("expected live n - 1 depth"),
+                    0.0,
+                    &BTreeMap::from([("n".to_string(), 6.0)]),
+                );
+                assert_eq!(live_depth, Some(5.0));
+                inverse_count += usize::from(*inverse);
+                *source_index
+            }
+            other => panic!("expected similarity iteration, got {other:?}"),
+        })
+        .collect::<Vec<_>>();
+    source_indices.sort_unstable();
+    assert_eq!(source_indices, vec![0, 1, 2, 3]);
+    assert_eq!(
+        inverse_count, 2,
+        "expected one inverse branch above and below"
+    );
+}
+
+#[test]
 fn builds_spiral_arrow_iteration_fixture_with_expression_offset_seed() {
     let Some(data) =
         fixture_bytes("tests/Samples/热研系列/迭代系列/长度为1,1,2,2,3,3…的螺旋箭头迭代.gsp")

@@ -449,6 +449,24 @@ impl IterationPointHandleJson {
 #[derive(Serialize, TS)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub(super) enum PolygonIterationJson {
+    Similarity {
+        visible: bool,
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        #[serde(rename = "sourceStartIndex")]
+        source_start_index: usize,
+        #[serde(rename = "sourceEndIndex")]
+        source_end_index: usize,
+        #[serde(rename = "targetStartIndex")]
+        target_start_index: usize,
+        #[serde(rename = "targetEndIndex")]
+        target_end_index: usize,
+        depth: usize,
+        #[serde(rename = "depthExpr")]
+        depth_expr: Option<FunctionExprJson>,
+        inverse: bool,
+        color: [u8; 4],
+    },
     Translate {
         visible: bool,
         #[serde(rename = "vertexIndices")]
@@ -497,6 +515,30 @@ pub(super) enum PolygonIterationJson {
 impl PolygonIterationJson {
     pub(super) fn from_family(family: &PolygonIterationFamily) -> Self {
         match family {
+            PolygonIterationFamily::Similarity {
+                binding_group_ordinal: _,
+                visible,
+                source_index,
+                source_start_index,
+                source_end_index,
+                target_start_index,
+                target_end_index,
+                depth,
+                depth_expr,
+                inverse,
+                color,
+            } => Self::Similarity {
+                visible: *visible,
+                source_index: *source_index,
+                source_start_index: *source_start_index,
+                source_end_index: *source_end_index,
+                target_start_index: *target_start_index,
+                target_end_index: *target_end_index,
+                depth: *depth,
+                depth_expr: depth_expr.as_ref().map(FunctionExprJson::from_expr),
+                inverse: *inverse,
+                color: *color,
+            },
             PolygonIterationFamily::Translate {
                 binding_group_ordinal: _,
                 visible,

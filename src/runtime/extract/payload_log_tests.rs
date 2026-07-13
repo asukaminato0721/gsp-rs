@@ -143,6 +143,21 @@ fn refraction_sample_payload_log_uses_reference_htm_construction() {
 }
 
 #[test]
+fn circle_to_square_payload_log_uses_reference_htm_construction() {
+    let gsp_path = "tests/Samples/个人专栏/李章博作品/割圆为方（李章博）.gsp";
+    let htm_path = "tests/Samples/个人专栏/李章博作品/割圆为方（李章博）.htm";
+    let gsp = fs::read(gsp_path).expect("circle-to-square gsp should be readable");
+    let htm = fs::read_to_string(htm_path).expect("reference htm should be readable");
+    let log = fixture_log(&gsp, gsp_path);
+
+    assert_eq!(
+        construction_lines_from_log(&log),
+        construction_lines_from_htm(&htm),
+        "expected the payload log to preserve the paired .htm construction"
+    );
+}
+
+#[test]
 fn unimplemented_system_payload_logs_match_reference_htm_construction() {
     let fixture_names = [
         "parameter",

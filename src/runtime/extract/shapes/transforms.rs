@@ -1,3 +1,4 @@
+use super::basic::resolve_arc_boundary_points;
 use super::{
     CircleShape, GspFile, LineBinding, LineShape, ObjectGroup, PointRecord, PolygonShape,
     SceneContext, ShapeBinding, TransformBindingKind, collect_circle_fill_colors, color_from_style,
@@ -391,7 +392,6 @@ pub(crate) fn collect_translated_polygon_shapes(
             derived_polygon_shape(
                 group,
                 source_group_index,
-                source_group,
                 points,
                 ShapeTransformBinding::TranslateVector {
                     vector_start_index,
@@ -470,7 +470,6 @@ pub(crate) fn collect_rotated_polygon_shapes(
             derived_polygon_shape(
                 group,
                 source_group_index,
-                source_group,
                 points,
                 ShapeTransformBinding::Rotate(rotation_binding(
                     &binding.kind,
@@ -507,7 +506,6 @@ pub(crate) fn collect_transformed_polygon_shapes(
             derived_polygon_shape(
                 group,
                 source_group_index,
-                source_group,
                 points,
                 ShapeTransformBinding::Scale(ScaleBinding {
                     center_index: binding.center_group_index,
@@ -583,7 +581,6 @@ pub(crate) fn collect_reflected_polygon_shapes(
             derived_polygon_shape(
                 group,
                 source_group_index,
-                source_group,
                 points,
                 ShapeTransformBinding::Reflect(AxisBinding {
                     line_start_index: None,
@@ -610,7 +607,7 @@ fn source_path_points(
     )
 }
 
-fn polygon_points_raw(
+pub(super) fn polygon_points_raw(
     file: &GspFile,
     groups: &[ObjectGroup],
     context: &SceneContext<'_>,
@@ -635,6 +632,10 @@ fn polygon_points_raw_inner(
     stack.push(group_index);
     let result = match group.header.kind() {
         crate::format::GroupKind::Polygon => source_path_points(context, anchors, group),
+        crate::format::GroupKind::SectorBoundary
+        | crate::format::GroupKind::CircularSegmentBoundary => {
+            resolve_arc_boundary_points(file, groups, anchors, group)
+        }
         crate::format::GroupKind::Translation => {
             let path = context.indexed_path(group)?;
             let source_group = context.path_ref_group(path, 0)?;
@@ -749,13 +750,12 @@ fn derived_circle_shape(
 fn derived_polygon_shape(
     group: &ObjectGroup,
     source_group_index: usize,
-    source_group: &ObjectGroup,
     points: Vec<PointRecord>,
     transform: ShapeTransformBinding,
 ) -> Option<PolygonShape> {
     (points.len() >= 3).then_some(PolygonShape {
         points,
-        color: fill_color_from_styles(source_group.header.style_b, source_group.header.style_c),
+        color: fill_color_from_styles(group.header.style_b, group.header.style_c),
         color_binding: None,
         visible: !group.header.is_hidden(),
         binding: Some(ShapeBinding::DerivedTransform {

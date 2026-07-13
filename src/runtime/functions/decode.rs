@@ -34,6 +34,7 @@ use self::parser::{
     decode_embedded_postfix_payload_function_expr, embedded_calculate_expr_start,
     has_ignorable_expr_suffix, parse_function_expr_from, parse_function_expr_from_words,
     parse_grouped_function_expr_at, parse_grouped_function_expr_from_words,
+    trailing_calculate_expr_start,
 };
 
 #[cfg(test)]
@@ -1020,18 +1021,91 @@ fn try_decode_embedded_static_function_expr(
         .chunks_exact(2)
         .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
         .collect::<Vec<_>>();
-    let start =
-        embedded_calculate_expr_start(&words).ok_or(FunctionExprParseError::NoExpressionFound {
-            word_len: words.len(),
-        })?;
-    let (parsed, end) = parse_function_expr_from(&words, start, parameters)?;
-    if has_ignorable_expr_suffix(&words, end) {
-        Ok(canonicalize_function_expr(parsed))
-    } else {
-        Err(FunctionExprParseError::NoExpressionFound {
-            word_len: words.len(),
-        })
+    let primary = embedded_calculate_expr_start(&words);
+    let trailing = trailing_calculate_expr_start(&words);
+    if let Some(start) = primary
+        && let Ok((parsed, end)) = parse_function_expr_from(&words, start, parameters)
+        && has_ignorable_expr_suffix(&words, end)
+    {
+        return Ok(canonicalize_function_expr(parsed));
     }
+    if let Some(start) = trailing
+        && trailing_expr_has_explicit_unit_or_unary_prefix(&words, start)
+    {
+        if let Ok((parsed, end)) = parse_function_expr_from(&words, start, parameters)
+            && has_ignorable_expr_suffix(&words, end)
+        {
+            return Ok(canonicalize_function_expr(parsed));
+        }
+        if let Some(expr) = decode_trailing_degree_literal_expr(&words, start, parameters) {
+            return Ok(expr);
+        }
+        if let Some(expr) = decode_trailing_negated_expr(&words, start, parameters) {
+            return Ok(expr);
+        }
+    }
+    Err(FunctionExprParseError::NoExpressionFound {
+        word_len: words.len(),
+    })
+}
+
+fn decode_trailing_negated_expr(
+    words: &[u16],
+    start: usize,
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Option<FunctionExpr> {
+    if words.get(start).copied() != Some(EXPR_OP_SUB) {
+        return None;
+    }
+    let (expr, end) = parse_function_expr_from(words, start + 1, parameters).ok()?;
+    if !has_ignorable_expr_suffix(words, end) {
+        return None;
+    }
+    Some(canonicalize_function_expr(FunctionAst::Binary {
+        lhs: Box::new(FunctionAst::Constant(0.0)),
+        op: BinaryOp::Sub,
+        rhs: Box::new(expr),
+    }))
+}
+
+fn trailing_expr_has_explicit_unit_or_unary_prefix(words: &[u16], start: usize) -> bool {
+    words.get(start).copied() == Some(EXPR_OP_SUB)
+        || matches!(
+            words.get(start..start + 3),
+            Some([tens, ones, 0x0101]) if *tens <= 9 && *ones <= 9
+        )
+}
+
+fn decode_trailing_degree_literal_expr(
+    words: &[u16],
+    start: usize,
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Option<FunctionExpr> {
+    let [tens, ones, 0x0101, op, ..] = words.get(start..)? else {
+        return None;
+    };
+    if *tens > 9 || *ones > 9 {
+        return None;
+    }
+    let op = match *op {
+        EXPR_OP_ADD => BinaryOp::Add,
+        EXPR_OP_SUB => BinaryOp::Sub,
+        EXPR_OP_MUL => BinaryOp::Mul,
+        EXPR_OP_DIV => BinaryOp::Div,
+        EXPR_OP_POW => BinaryOp::Pow,
+        _ => return None,
+    };
+    let (rhs, end) = parse_function_expr_from(words, start + 4, parameters).ok()?;
+    if !has_ignorable_expr_suffix(words, end) {
+        return None;
+    }
+    Some(canonicalize_function_expr(FunctionAst::Binary {
+        lhs: Box::new(FunctionAst::Constant(
+            f64::from(tens * 10 + ones).to_radians(),
+        )),
+        op,
+        rhs: Box::new(rhs),
+    }))
 }
 
 fn substitute_variable(ast: FunctionAst, replacement: &FunctionAst) -> FunctionAst {

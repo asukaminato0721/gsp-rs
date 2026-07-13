@@ -622,6 +622,9 @@
       if (family.kind === "coordinate-grid") {
         return sum + Math.max(0, Math.round(family.depth || 0));
       }
+      if (family.kind === "similarity") {
+        return sum + Math.max(0, Math.round(family.depth || 0));
+      }
       const depth = family.depth || 0;
       if (family.bidirectional) {
         if (Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy)) {
@@ -638,6 +641,52 @@
     scene.polygons = scene.polygons.slice(0, baseCount);
 
     families.forEach((family) => {
+      if (family.kind === "similarity") {
+        const sourcePolygon = scene.polygons[family.sourceIndex];
+        const sourceStart = scene.points[family.sourceStartIndex];
+        const sourceEnd = scene.points[family.sourceEndIndex];
+        const targetStart = scene.points[family.targetStartIndex];
+        const targetEnd = scene.points[family.targetEndIndex];
+        if (!sourcePolygon || !sourceStart || !sourceEnd || !targetStart || !targetEnd) {
+          return;
+        }
+        const basisStart = family.inverse ? targetStart : sourceStart;
+        const basisEnd = family.inverse ? targetEnd : sourceEnd;
+        const imageStart = family.inverse ? sourceStart : targetStart;
+        const imageEnd = family.inverse ? sourceEnd : targetEnd;
+        const basisDx = basisEnd.x - basisStart.x;
+        const basisDy = basisEnd.y - basisStart.y;
+        const basisLengthSquared = basisDx * basisDx + basisDy * basisDy;
+        if (basisLengthSquared <= 1e-9) {
+          return;
+        }
+        const imageDx = imageEnd.x - imageStart.x;
+        const imageDy = imageEnd.y - imageStart.y;
+        const transformPoint = (point: PointJson) => {
+          const relativeX = point.x - basisStart.x;
+          const relativeY = point.y - basisStart.y;
+          const alpha = (relativeX * basisDx + relativeY * basisDy) / basisLengthSquared;
+          const beta = (relativeX * -basisDy + relativeY * basisDx) / basisLengthSquared;
+          return {
+            x: imageStart.x + alpha * imageDx - beta * imageDy,
+            y: imageStart.y + alpha * imageDy + beta * imageDx,
+          };
+        };
+        const depth = pointIterationDepth(family, parameters);
+        let points = sourcePolygon.points.map((point) => ({ x: point.x, y: point.y }));
+        for (let step = 0; step < depth; step += 1) {
+          points = points.map(transformPoint);
+          scene.polygons.push({
+            points: points.map((point) => ({ x: point.x, y: point.y })),
+            color: family.color,
+            colorBinding: null,
+            visible: family.visible !== false,
+            binding: null,
+            debug: null,
+          });
+        }
+        return;
+      }
       if (family.vertexIndices.length < 3) {
         return;
       }

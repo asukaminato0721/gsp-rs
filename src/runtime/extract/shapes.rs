@@ -232,6 +232,7 @@ pub(super) fn collect_scene_shapes(
         .chain(collect_carried_iteration_polygons(
             file,
             groups,
+            context,
             &analysis.raw_anchors,
         ))
         .collect::<Vec<_>>();

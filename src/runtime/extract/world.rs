@@ -132,6 +132,7 @@ pub(super) fn world_polygon_iteration_family(
     graph_ref: &Option<GraphTransform>,
 ) -> PolygonIterationFamily {
     match family {
+        PolygonIterationFamily::Similarity { .. } => family,
         PolygonIterationFamily::Translate {
             binding_group_ordinal,
             visible,

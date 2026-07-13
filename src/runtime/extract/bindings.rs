@@ -146,8 +146,13 @@ pub(super) fn remap_scene_bindings(
         group_to_point_index,
         &line_group_to_index,
     );
-    let polygon_iterations =
-        collect_carried_polygon_iteration_families(file, groups, raw_anchors, group_to_point_index);
+    let polygon_iterations = collect_carried_polygon_iteration_families(
+        file,
+        groups,
+        raw_anchors,
+        group_to_point_index,
+        &polygon_group_to_index,
+    );
     let mut line_iterations = rotational_line_iterations;
     line_iterations.extend(carried_line_iterations);
 
