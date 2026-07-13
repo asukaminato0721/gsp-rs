@@ -53,7 +53,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Some("runtime") => build_runtime(),
         Some("check-runtime") => {
             build_runtime()?;
-            run_command(Command::new("npm").args(["run", "typecheck:js"]), repo_root())?;
+            run_command(
+                Command::new("npm").args(["run", "typecheck:js"]),
+                repo_root(),
+            )?;
             Ok(())
         }
         Some("build") => {
@@ -87,7 +90,8 @@ fn write_runtime_bundle(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
     );
     for source in RUNTIME_SOURCES {
         let source_path = root.join(format!("src/html/runtime/{source}.ts"));
-        let source_js = transpile_typescript(&source_path)?.replace("import(\"./generated/", "import(\"./");
+        let source_js =
+            transpile_typescript(&source_path)?.replace("import(\"./generated/", "import(\"./");
         bundle.push_str("// ---- ");
         bundle.push_str(source);
         bundle.push_str(".ts ----\n");

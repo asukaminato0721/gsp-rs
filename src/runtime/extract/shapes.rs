@@ -62,8 +62,7 @@ pub(super) use iterations::{
     collect_carried_circle_iteration_families, collect_carried_iteration_circles,
     collect_carried_iteration_lines, collect_carried_iteration_polygons,
     collect_carried_line_iteration_families, collect_carried_polygon_edge_segment_groups,
-    collect_carried_polygon_iteration_families, collect_iteration_shapes,
-    collect_rotational_line_iteration_families,
+    collect_carried_polygon_iteration_families, collect_rotational_line_iteration_families,
 };
 pub(super) use transforms::{
     collect_reflected_circle_shapes, collect_reflected_line_shapes,
@@ -189,8 +188,8 @@ pub(super) fn collect_scene_shapes(
     .collect::<Vec<_>>();
     let base_circles = collect_circle_shapes(file, groups, &analysis.raw_anchors);
     let arcs = collect_three_point_arc_shapes(file, groups, &analysis.raw_anchors);
-    let (iteration_lines, iteration_polygons) =
-        collect_iteration_shapes(file, groups, &base_circles);
+    let iteration_lines = Vec::new();
+    let iteration_polygons = Vec::new();
     let synthetic_axes = synthesize_axes_if_needed(analysis, &axes);
     let carried_iteration_lines = collect_carried_iteration_lines(
         file,

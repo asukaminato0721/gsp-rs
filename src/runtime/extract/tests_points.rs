@@ -15,6 +15,41 @@ fn refraction_sample_uses_raw_translation_offsets_and_live_iteration_depth() {
     };
     let scene = fixture_scene(&data);
 
+    assert_eq!(scene.background_color, Some([253, 224, 181, 255]));
+    assert!(
+        scene.lines.iter().all(|line| {
+            !(line.debug.is_none() && line.color == [30, 30, 30, 255] && line.points.len() == 7)
+        }),
+        "the refraction payload does not define a synthetic hexagon"
+    );
+    let title = scene
+        .labels
+        .iter()
+        .find(|label| {
+            label
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 126)
+        })
+        .expect("expected rich-text title #126");
+    assert_eq!(title.color, [0, 0, 255, 255]);
+    assert_eq!(title.font_size, Some(24.0));
+    assert_eq!(title.font_family.as_deref(), Some("Times New Roman"));
+    assert!(title.screen_space);
+    assert!(
+        title
+            .rich_markup
+            .as_deref()
+            .is_some_and(|markup| markup.contains("SP2#30R1G81L1"))
+    );
+    assert!(scene.labels.iter().any(|label| {
+        !label.visible
+            && label
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 18)
+    }));
+
     let offset = |ordinal| {
         let point = scene
             .points

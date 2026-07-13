@@ -269,6 +269,8 @@ pub(crate) fn synthesize_standalone_function_definition_labels(
                 text,
                 rich_markup: None,
                 color: [30, 30, 30, 255],
+                font_size: None,
+                font_family: None,
                 visible: true,
                 binding: None,
                 screen_space: true,

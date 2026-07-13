@@ -197,6 +197,7 @@ mod tests {
 
     fn empty_scene() -> Scene {
         Scene {
+            background_color: None,
             graph_mode: false,
             pi_mode: false,
             saved_viewport: false,

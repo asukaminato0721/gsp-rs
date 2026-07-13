@@ -2,6 +2,7 @@ use super::shapes::{ArcShape, CircleShape};
 use super::*;
 
 pub(super) struct SceneAnalysis {
+    pub(super) background_color: Option<[u8; 4]>,
     pub(super) graph_mode: bool,
     pub(super) graph_ref: Option<GraphTransform>,
     pub(super) saved_viewport: Option<Bounds>,
@@ -86,6 +87,7 @@ pub(super) fn analyze_scene(
         .any(|group| group.header.kind().is_coordinate_object());
 
     SceneAnalysis {
+        background_color: file.document_background_color(),
         graph_mode,
         graph_ref,
         saved_viewport,

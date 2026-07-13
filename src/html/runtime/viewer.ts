@@ -24,6 +24,9 @@
   canvas.setAttribute("viewBox", `0 0 ${sourceScene.width} ${sourceScene.height}`);
   canvas.setAttribute("width", String(sourceScene.width));
   canvas.setAttribute("height", String(sourceScene.height));
+  if (sourceScene.backgroundColor) {
+    canvas.style.background = rgba(sourceScene.backgroundColor);
+  }
 
   const gridLayer = document.getElementById("grid-layer") as unknown as SVGGElement;
 
@@ -506,6 +509,8 @@
         text: label.text,
         richMarkup: label.richMarkup || null,
         color: label.color,
+        fontSize: label.fontSize || null,
+        fontFamily: label.fontFamily || null,
         visible: label.visible !== false,
         anchor: label.screenSpace
           ? { ...label.anchor }

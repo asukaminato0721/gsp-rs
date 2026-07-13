@@ -4,4 +4,4 @@ import type { LabelBindingJson } from "./LabelBindingJson";
 import type { LabelHotspotJson } from "./LabelHotspotJson";
 import type { PointJson } from "./PointJson";
 
-export type LabelJson = { anchor: PointJson, text: string, richMarkup: string | null, color: [number, number, number, number], visible: boolean, binding: LabelBindingJson | null, hotspots: Array<LabelHotspotJson>, screenSpace: boolean, debug: DebugSourceJson | null, };
+export type LabelJson = { anchor: PointJson, text: string, richMarkup: string | null, color: [number, number, number, number], fontSize: number | null, fontFamily: string | null, visible: boolean, binding: LabelBindingJson | null, hotspots: Array<LabelHotspotJson>, screenSpace: boolean, debug: DebugSourceJson | null, };

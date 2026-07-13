@@ -13,6 +13,7 @@ pub(crate) struct PayloadDebugSource {
 
 #[derive(Debug, Clone)]
 pub(crate) struct Scene {
+    pub(crate) background_color: Option<[u8; 4]>,
     pub(crate) graph_mode: bool,
     pub(crate) pi_mode: bool,
     pub(crate) saved_viewport: bool,
@@ -966,6 +967,8 @@ pub(crate) struct TextLabel {
     pub(crate) text: String,
     pub(crate) rich_markup: Option<String>,
     pub(crate) color: [u8; 4],
+    pub(crate) font_size: Option<f64>,
+    pub(crate) font_family: Option<String>,
     pub(crate) visible: bool,
     pub(crate) binding: Option<TextLabelBinding>,
     pub(crate) screen_space: bool,

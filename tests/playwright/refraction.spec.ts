@@ -1,6 +1,46 @@
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
 
+test('refraction sample preserves payload background and rich-text styling without synthetic geometry', async ({ page }) => {
+  const file = path.resolve('tests/Samples/个人专栏/侯仰顺作品/光的折射(蚂蚁制作).html');
+  await page.goto(`file://${file}`);
+
+  const result = await page.evaluate(() => {
+    const runtime = JSON.parse(window.gspDebug.json());
+    const title = runtime.scene.labels.find(
+      (label: { debug?: { groupOrdinal?: number } }) => label.debug?.groupOrdinal === 126,
+    );
+    const richLabel = document.querySelector<HTMLElement>('.scene-rich-label[data-gsp-group="126"]');
+    const styledTitle = richLabel?.querySelector<HTMLElement>('.scene-rich-line:first-child span');
+    return {
+      background: runtime.scene.backgroundColor,
+      canvasBackground: getComputedStyle(document.querySelector('#view') as Element).backgroundColor,
+      hasSyntheticHexagon: runtime.scene.lines.some(
+        (line: { debug?: unknown; color: number[]; points: unknown[] }) =>
+          !line.debug
+          && JSON.stringify(line.color) === JSON.stringify([30, 30, 30, 255])
+          && line.points.length === 7,
+      ),
+      titleColor: title?.color,
+      titleFontSize: title?.fontSize,
+      titleFontFamily: title?.fontFamily,
+      titleScreenSpace: title?.screenSpace,
+      inlineTitleColor: styledTitle ? getComputedStyle(styledTitle).color : null,
+      inlineTitleFontSize: styledTitle ? getComputedStyle(styledTitle).fontSize : null,
+    };
+  });
+
+  expect(result.background).toEqual([253, 224, 181, 255]);
+  expect(result.canvasBackground).toBe('rgb(253, 224, 181)');
+  expect(result.hasSyntheticHexagon).toBe(false);
+  expect(result.titleColor).toEqual([0, 0, 255, 255]);
+  expect(result.titleFontSize).toBe(24);
+  expect(result.titleFontFamily).toBe('Times New Roman');
+  expect(result.titleScreenSpace).toBe(true);
+  expect(result.inlineTitleColor).toBe('rgb(0, 128, 0)');
+  expect(result.inlineTitleFontSize).toBe('48px');
+});
+
 test('refraction sample updates its ray iterations from the light-count parameter', async ({ page }) => {
   const file = path.resolve('tests/Samples/个人专栏/侯仰顺作品/光的折射(蚂蚁制作).html');
   await page.goto(`file://${file}`);

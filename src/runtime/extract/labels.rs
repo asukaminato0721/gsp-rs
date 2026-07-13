@@ -232,10 +232,33 @@ fn label_color_for_group(group: &ObjectGroup) -> [u8; 4] {
             .iter()
             .any(|record| record.record_type == RECORD_POINT_F64_PAIR)
     {
-        color_from_style(group.header.style_b)
+        let color = color_from_style(group.header.style_b);
+        if color[..3].iter().all(|component| *component <= 1) {
+            [color[0] * 255, color[1] * 255, color[2] * 255, 255]
+        } else {
+            color
+        }
     } else {
         [30, 30, 30, 255]
     }
+}
+
+fn rich_text_font(file: &GspFile, group: &ObjectGroup) -> (Option<f64>, Option<String>) {
+    let Some(payload) = group
+        .records
+        .iter()
+        .find(|record| record.record_type == 0x08fc)
+        .map(|record| record.payload(&file.data))
+    else {
+        return (None, None);
+    };
+    if payload.len() < 12 {
+        return (None, None);
+    }
+    let index = crate::format::read_u32(payload, 8);
+    file.document_font(index)
+        .map(|(point_size, family)| (Some(f64::from(point_size) * 4.0 / 3.0), Some(family)))
+        .unwrap_or((None, None))
 }
 
 fn resolve_label_text(
@@ -1481,14 +1504,21 @@ pub(super) fn collect_labels(
                     };
                     let label_index = labels.len();
                     label_group_to_index.insert(group.ordinal, label_index);
+                    let (font_size, font_family) = rich_text_font(file, group);
                     labels.push(TextLabel {
                         anchor,
                         text,
                         rich_markup,
                         color: label_color_for_group(group),
+                        font_size,
+                        font_family,
                         visible,
                         binding,
-                        screen_space: kind == crate::format::GroupKind::ButtonLabel,
+                        screen_space: kind == crate::format::GroupKind::ButtonLabel
+                            || group
+                                .records
+                                .iter()
+                                .any(|record| record.record_type == 0x08fc),
                         hotspots: Vec::new(),
                         debug: Some(payload_debug_source(group)),
                     });
@@ -1611,14 +1641,21 @@ pub(super) fn collect_labels(
                     };
                     let label_index = labels.len();
                     label_group_to_index.insert(group.ordinal, label_index);
+                    let (font_size, font_family) = rich_text_font(file, group);
                     labels.push(TextLabel {
                         anchor,
                         text,
                         rich_markup,
                         color: label_color_for_group(group),
+                        font_size,
+                        font_family,
                         visible,
                         binding,
-                        screen_space: kind == crate::format::GroupKind::ButtonLabel,
+                        screen_space: kind == crate::format::GroupKind::ButtonLabel
+                            || group
+                                .records
+                                .iter()
+                                .any(|record| record.record_type == 0x08fc),
                         hotspots: Vec::new(),
                         debug: Some(payload_debug_source(group)),
                     });
@@ -2415,6 +2452,8 @@ pub(super) fn collect_coordinate_labels(
                 text,
                 rich_markup: build_expression_rich_markup(&expr_label, &value_text),
                 color: [30, 30, 30, 255],
+                font_size: None,
+                font_family: None,
                 visible: !group.header.is_hidden(),
                 binding,
                 screen_space: true,
@@ -2491,6 +2530,8 @@ fn collect_legacy_expression_label(
         text: format!("{expr_label} = {value_text}"),
         rich_markup: build_expression_rich_markup(&expr_label, &value_text),
         color: [30, 30, 30, 255],
+        font_size: None,
+        font_family: None,
         visible: label_visible_for_group(file, group),
         binding: Some(TextLabelBinding::ExpressionValue {
             parameter_name,

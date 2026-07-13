@@ -162,6 +162,46 @@ impl GspFile {
         }
     }
 
+    pub fn document_background_color(&self) -> Option<[u8; 4]> {
+        let palette_index = self
+            .records
+            .iter()
+            .find(|record| record.record_type == 0x2725)
+            .and_then(|record| {
+                let payload = record.payload(&self.data);
+                (payload.len() == 2).then(|| read_u16(payload, 0))
+            })?;
+        self.records
+            .iter()
+            .filter(|record| record.record_type == 0x2724)
+            .find_map(|record| {
+                let payload = record.payload(&self.data);
+                (payload.len() >= 5 && read_u16(payload, 0) == palette_index)
+                    .then(|| [payload[2], payload[3], payload[4], 255])
+            })
+    }
+
+    pub fn document_font(&self, index: u32) -> Option<(u16, String)> {
+        let payload = self
+            .records
+            .iter()
+            .filter(|record| record.record_type == 0x273c)
+            .map(|record| record.payload(&self.data))
+            .find(|payload| payload.len() >= 8 && read_u32(payload, 0) == index)?;
+        let point_size = read_u16(payload, 6);
+        let family = (20..payload.len()).find_map(|start| {
+            let tail = &payload[start..];
+            let end = tail.iter().position(|byte| *byte == 0)?;
+            let candidate = std::str::from_utf8(&tail[..end]).ok()?;
+            (candidate.len() >= 3
+                && candidate
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b' ' || byte == b'-'))
+            .then(|| candidate.to_string())
+        })?;
+        (point_size > 0).then_some((point_size, family))
+    }
+
     fn page_record_sections(&self) -> Vec<&[Record]> {
         let page_count = self.document_page_count();
         if page_count <= 1 {

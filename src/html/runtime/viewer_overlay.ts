@@ -3,7 +3,8 @@
     window.GspViewerModules || (window.GspViewerModules = {})
   ) as Partial<ViewerModules>;
   type RichMarkupNode = { name: string; children: RichMarkupNode[] };
-  type RichMarkupItem = { kind: "text"; text: string } | { kind: "fraction"; numerator: RichMarkupItem[]; denominator: RichMarkupItem[] } | { kind: "radical" | "overline" | "ray" | "arc"; children: RichMarkupItem[] };
+  type RichMarkupStyle = { color?: string, fontSize?: string };
+  type RichMarkupItem = { kind: "text"; text: string; style?: RichMarkupStyle } | { kind: "fraction"; numerator: RichMarkupItem[]; denominator: RichMarkupItem[]; style?: RichMarkupStyle } | { kind: "radical" | "overline" | "ray" | "arc"; children: RichMarkupItem[]; style?: RichMarkupStyle };
   type ButtonPointerState = { buttonIndex: number; pointerId: number; startClientX: number; startClientY: number; originX: number; originY: number; scaleX: number; scaleY: number; dragged: boolean };
   type VisibilityButtonAction = Extract<ButtonActionJson, { kind: "toggle-visibility" }> | Extract<ButtonActionJson, { kind: "set-visibility" }> | Extract<ButtonActionJson, { kind: "show-hide-visibility" }>;
   type OverlayButtonElement = HTMLButtonElement & { __gspButtonIndex?: number, __gspHotspotAction?: LabelHotspotActionJson | null };
@@ -105,6 +106,27 @@
       .flatMap((line, index: number) => (index === 0 ? line : [{ kind: "text", text: " " }, ...line]));
   }
 
+  function richMarkupStyle(token: string): RichMarkupStyle | null {
+    const fontMatch = token.match(/#([0-9a-f]+)/i);
+    const colorMatch = token.match(/R([0-9a-f]+)G([0-9a-f]+)L([0-9a-f]+)/i);
+    const style: RichMarkupStyle = {};
+    if (fontMatch?.[1]) {
+      const size = Number.parseInt(fontMatch[1], 16);
+      if (Number.isFinite(size) && size > 0) style.fontSize = `${size}px`;
+    }
+    if (colorMatch?.[1] && colorMatch[2] && colorMatch[3]) {
+      const component = (value: string) => Math.max(0, Math.min(255, Number.parseInt(value, 16) - 1));
+      style.color = `rgb(${component(colorMatch[1])},${component(colorMatch[2])},${component(colorMatch[3])})`;
+    }
+    return Object.keys(style).length ? style : null;
+  }
+
+  function applyRichMarkupStyle(items: RichMarkupItem[][], style: RichMarkupStyle | null) {
+    if (!style) return items;
+    items.flat().forEach((item) => { item.style = { ...item.style, ...style }; });
+    return items;
+  }
+
   
   function renderRichMarkupNode(node: RichMarkupNode) {
     const text = decodeRichMarkupText(node.name);
@@ -155,7 +177,7 @@
         children: renderRichMarkupInline(node.children),
       }]];
     }
-    return renderRichMarkupNodes(node.children);
+    return applyRichMarkupStyle(renderRichMarkupNodes(node.children), richMarkupStyle(node.name));
   }
 
   
@@ -180,6 +202,7 @@
     if (item.kind === "text") {
       const span = document.createElement("span");
       span.textContent = item.text;
+      Object.assign(span.style, item.style || {});
       return span;
     }
     if (item.kind === "fraction") {
@@ -194,6 +217,7 @@
       denominator.className = "scene-rich-fraction-part";
       appendRichMarkupItems(denominator, item.denominator);
       fraction.append(numerator, bar, denominator);
+      Object.assign(fraction.style, item.style || {});
       return fraction;
     }
     const span = document.createElement("span");
@@ -209,6 +233,7 @@
       return span;
     }
     span.className = `scene-rich-${item.kind}`;
+    Object.assign(span.style, item.style || {});
     appendRichMarkupItems(span, item.children);
     return span;
   }
@@ -1295,6 +1320,10 @@
             richLabel.className = renderedRichLabel.className;
             richLabel.replaceChildren(...Array.from(renderedRichLabel.childNodes));
             richLabel.style.color = env.rgba(label.color);
+            richLabel.style.fontSize = label.fontSize ? `${label.fontSize}px` : "";
+            richLabel.style.fontFamily = label.fontFamily
+              ? `"${label.fontFamily}", "Noto Sans", "Segoe UI", sans-serif`
+              : "";
             richLabel.style.left = `${(((screen.x + (label.centeredOnAnchor ? 0 : 2)) / sourceScene.width) * 100)}%`;
             richLabel.style.top = `${(((screen.y + (label.centeredOnAnchor ? -10 : -14)) / sourceScene.height) * 100)}%`;
             richLabel.style.transform = label.centeredOnAnchor ? "translate(-50%, -50%)" : "";

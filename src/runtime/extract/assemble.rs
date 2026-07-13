@@ -652,6 +652,7 @@ pub(super) fn assemble_scene(
         remap_function_line_indices(artifacts.functions, &analysis.function_plots, &raw_lines);
 
     Scene {
+        background_color: analysis.background_color,
         graph_mode: analysis.graph_mode,
         pi_mode: analysis.pi_mode,
         saved_viewport: bounds_data.use_saved_viewport,
@@ -741,6 +742,8 @@ pub(super) fn assemble_scene(
                 text: label.text,
                 rich_markup: label.rich_markup,
                 color: label.color,
+                font_size: label.font_size,
+                font_family: label.font_family,
                 visible: label.visible,
                 binding: world_label_binding(label.binding, &analysis.graph_ref),
                 screen_space: label.screen_space,

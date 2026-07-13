@@ -267,6 +267,12 @@ pub(super) struct LabelJson {
     #[serde(skip_serializing_if = "Option::is_none")]
     rich_markup: Option<String>,
     color: [u8; 4],
+    #[serde(rename = "fontSize")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    font_size: Option<f64>,
+    #[serde(rename = "fontFamily")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    font_family: Option<String>,
     visible: bool,
     binding: Option<LabelBindingJson>,
     hotspots: Vec<LabelHotspotJson>,
@@ -283,6 +289,8 @@ impl LabelJson {
             text: label.text.clone(),
             rich_markup: label.rich_markup.clone(),
             color: label.color,
+            font_size: label.font_size,
+            font_family: label.font_family.clone(),
             visible: label.visible,
             binding: label.binding.as_ref().map(LabelBindingJson::from_binding),
             hotspots: label

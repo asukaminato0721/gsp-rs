@@ -6,6 +6,12 @@ expression: scene_json
 {
   "width": 1637,
   "height": 841,
+  "backgroundColor": [
+    255,
+    0,
+    0,
+    255
+  ],
   "graphMode": false,
   "piMode": false,
   "savedViewport": false,

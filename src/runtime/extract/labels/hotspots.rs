@@ -444,8 +444,9 @@ pub(super) fn collect_polygon_parameter_labels(
                     format!("{point_name}在{polygon_name}上的值 = {:.2}", global_t)
                 },
                 color: [30, 30, 30, 255],
-                visible: decode_label_name(file, group).is_some()
-                    || label_visible_for_group(file, group),
+                visible: !group.header.is_hidden()
+                    && (decode_label_name(file, group).is_some()
+                        || label_visible_for_group(file, group)),
                 binding: Some(TextLabelBinding::PolygonBoundaryParameter {
                     point_index: path.refs[0].checked_sub(1)?,
                     point_name,
@@ -505,8 +506,9 @@ pub(super) fn collect_segment_parameter_labels(
                     format!("{point_name}在{segment_name}上的t值 = {:.2}", projected_t)
                 },
                 color: [30, 30, 30, 255],
-                visible: decode_label_name(file, group).is_some()
-                    || label_visible_for_group(file, group),
+                visible: !group.header.is_hidden()
+                    && (decode_label_name(file, group).is_some()
+                        || label_visible_for_group(file, group)),
                 binding: Some(TextLabelBinding::SegmentProjectionParameter {
                     point_index: path.refs[0].checked_sub(1)?,
                     start_index: start_group_index,
@@ -773,4 +775,3 @@ fn custom_transform_expr_suffix(file: &GspFile, expr_group: &ObjectGroup) -> Opt
         .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
         .next_back()
 }
-

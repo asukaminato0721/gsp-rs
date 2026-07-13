@@ -2643,6 +2643,30 @@
       text: " "
     }, ...line]);
   }
+  function richMarkupStyle(token) {
+    const fontMatch = token.match(/#([0-9a-f]+)/i);
+    const colorMatch = token.match(/R([0-9a-f]+)G([0-9a-f]+)L([0-9a-f]+)/i);
+    const style = {};
+    if (fontMatch?.[1]) {
+      const size = Number.parseInt(fontMatch[1], 16);
+      if (Number.isFinite(size) && size > 0) style.fontSize = `${size}px`;
+    }
+    if (colorMatch?.[1] && colorMatch[2] && colorMatch[3]) {
+      const component = (value) => Math.max(0, Math.min(255, Number.parseInt(value, 16) - 1));
+      style.color = `rgb(${component(colorMatch[1])},${component(colorMatch[2])},${component(colorMatch[3])})`;
+    }
+    return Object.keys(style).length ? style : null;
+  }
+  function applyRichMarkupStyle(items, style) {
+    if (!style) return items;
+    items.flat().forEach((item) => {
+      item.style = {
+        ...item.style,
+        ...style
+      };
+    });
+    return items;
+  }
   function renderRichMarkupNode(node) {
     const text = decodeRichMarkupText(node.name);
     if (text !== null) {
@@ -2695,7 +2719,7 @@
         children: renderRichMarkupInline(node.children)
       }]];
     }
-    return renderRichMarkupNodes(node.children);
+    return applyRichMarkupStyle(renderRichMarkupNodes(node.children), richMarkupStyle(node.name));
   }
   function renderRichMarkupNodes(nodes) {
     const lines = [[]];
@@ -2713,6 +2737,7 @@
     if (item.kind === "text") {
       const span = document.createElement("span");
       span.textContent = item.text;
+      Object.assign(span.style, item.style || {});
       return span;
     }
     if (item.kind === "fraction") {
@@ -2727,6 +2752,7 @@
       denominator.className = "scene-rich-fraction-part";
       appendRichMarkupItems(denominator, item.denominator);
       fraction.append(numerator, bar, denominator);
+      Object.assign(fraction.style, item.style || {});
       return fraction;
     }
     const span = document.createElement("span");
@@ -2742,6 +2768,7 @@
       return span;
     }
     span.className = `scene-rich-${item.kind}`;
+    Object.assign(span.style, item.style || {});
     appendRichMarkupItems(span, item.children);
     return span;
   }
@@ -3707,6 +3734,8 @@
           richLabel.className = renderedRichLabel.className;
           richLabel.replaceChildren(...Array.from(renderedRichLabel.childNodes));
           richLabel.style.color = env.rgba(label.color);
+          richLabel.style.fontSize = label.fontSize ? `${label.fontSize}px` : "";
+          richLabel.style.fontFamily = label.fontFamily ? `"${label.fontFamily}", "Noto Sans", "Segoe UI", sans-serif` : "";
           richLabel.style.left = `${(screen.x + (label.centeredOnAnchor ? 0 : 2)) / sourceScene.width * 100}%`;
           richLabel.style.top = `${(screen.y + (label.centeredOnAnchor ? -10 : -14)) / sourceScene.height * 100}%`;
           richLabel.style.transform = label.centeredOnAnchor ? "translate(-50%, -50%)" : "";
@@ -8590,6 +8619,9 @@
   canvas.setAttribute("viewBox", `0 0 ${sourceScene.width} ${sourceScene.height}`);
   canvas.setAttribute("width", String(sourceScene.width));
   canvas.setAttribute("height", String(sourceScene.height));
+  if (sourceScene.backgroundColor) {
+    canvas.style.background = rgba(sourceScene.backgroundColor);
+  }
   const gridLayer = document.getElementById("grid-layer");
   const sceneLayer = document.getElementById("scene-layer");
   const measureTextNode = document.getElementById("measure-text");
@@ -8967,6 +8999,8 @@
         text: label.text,
         richMarkup: label.richMarkup || null,
         color: label.color,
+        fontSize: label.fontSize || null,
+        fontFamily: label.fontFamily || null,
         visible: label.visible !== false,
         anchor: label.screenSpace ? { ...label.anchor } : usesFixedLabelAnchor(label) ? { ...label.anchor } : label.binding?.kind === "point-anchor" ? {
           pointIndex: label.binding.pointIndex,

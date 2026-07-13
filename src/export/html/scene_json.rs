@@ -26,6 +26,7 @@ pub(super) fn scene_to_json(scene: &Scene, width: u32, height: u32, pretty: bool
 struct SceneJson {
     width: u32,
     height: u32,
+    background_color: Option<[u8; 4]>,
     graph_mode: bool,
     pi_mode: bool,
     saved_viewport: bool,
@@ -56,6 +57,7 @@ impl SceneJson {
         Self {
             width,
             height,
+            background_color: scene.background_color,
             graph_mode: scene.graph_mode,
             pi_mode: scene.pi_mode,
             saved_viewport: scene.saved_viewport,
