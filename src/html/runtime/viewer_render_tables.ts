@@ -10,16 +10,20 @@
     }
     const columns = Array.isArray(table.columns) && table.columns.length > 0
       ? table.columns
-      : [{ exprLabel: table.exprLabel }];
+      : [{ exprLabel: table.exprLabel, valueBinding: null }];
     const showIndex = table.showIndex !== false;
     const header = showIndex
       ? ["n", ...columns.map(( column) => column.exprLabel)]
       : columns.map(( column) => column.exprLabel);
     const body = table.rows.map(( row) => {
       const values = Array.isArray(row.values) ? row.values : [row.value ?? Number.NaN];
+      const formattedValues = values.map((value, columnIndex: number) => {
+        const suffix = columns[columnIndex]?.valueBinding?.kind === "angle-marker" ? "°" : "";
+        return `${env.formatNumber(value)}${suffix}`;
+      });
       return showIndex
-        ? [String(row.index), ...values.map((value) => env.formatNumber(value))]
-        : values.map((value) => env.formatNumber(value));
+        ? [String(row.index), ...formattedValues]
+        : formattedValues;
     });
     const rows = [header, ...body];
     

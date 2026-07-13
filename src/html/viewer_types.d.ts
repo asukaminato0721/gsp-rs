@@ -209,7 +209,6 @@ type RuntimePayload = Object & {
   fillColorBinding?: RuntimePayload | null;
   leftCenter?: RuntimePayload | Point;
   line?: RuntimePayload | LineConstraintJson | number;
-  outlineColor?: [number, number, number, number] | number[];
   plotMode?: RuntimePayload | string;
   projected?: RuntimePayload | Point;
   radiusPoint?: RuntimePayload | Point;
@@ -519,10 +518,9 @@ type RuntimeLineJson = Partial<Omit<LineJson, "points" | "binding" | "debug" | "
   segments?: Point[][];
   debug?: DebugSourceJson | RuntimePayload | null;
 };
-type RuntimePolygonJson = Partial<Omit<PolygonJson, "points" | "binding" | "debug" | "color" | "outlineColor">> & {
+type RuntimePolygonJson = Partial<Omit<PolygonJson, "points" | "binding" | "debug" | "color">> & {
   points: PointHandle[];
   color?: [number, number, number, number] | number[];
-  outlineColor?: [number, number, number, number] | number[];
   binding?: RuntimeShapeBindingJson | null;
   debug?: DebugSourceJson | RuntimePayload | null;
 };

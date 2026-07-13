@@ -261,15 +261,6 @@ pub(super) fn fill_color_from_styles(style_b: u32, style_c: u32) -> [u8; 4] {
     color
 }
 
-pub(crate) fn darken(rgba: [u8; 4], amount: u8) -> [u8; 4] {
-    [
-        rgba[0].saturating_sub(amount),
-        rgba[1].saturating_sub(amount),
-        rgba[2].saturating_sub(amount),
-        rgba[3],
-    ]
-}
-
 pub(super) fn has_distinct_points(points: &[PointRecord]) -> bool {
     points.windows(2).any(|pair| {
         let delta = pair[0].clone() - pair[1].clone();

@@ -64,8 +64,8 @@
       const resolvedPoints = worldPoints as Point[];
       const screenPoints = resolvedPoints.map(( point) => env.toScreen(point));
       modules.render.appendPointPath(env, screenPoints, {
-        stroke: env.rgba(polygon.outlineColor),
-        strokeWidth: 1.5,
+        stroke: "none",
+        strokeWidth: 0,
         fill: env.rgba(polygon.color),
         close: true,
         debugTarget: { category: "polygons", index },

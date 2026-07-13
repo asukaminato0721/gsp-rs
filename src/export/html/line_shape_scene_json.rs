@@ -1,7 +1,6 @@
 use super::function_expr_json::FunctionExprJson;
 use super::scene_json::{DebugSourceJson, PointJson};
 use super::transform_json::TransformJson;
-use crate::runtime::geometry::darken;
 use crate::runtime::scene::{ArcBoundaryKind, ColorBinding, LineBinding, ShapeBinding};
 use serde::Serialize;
 use ts_rs::TS;
@@ -437,7 +436,6 @@ impl ArcBoundaryKindJson {
 pub(super) struct PolygonJson {
     points: Vec<PointJson>,
     color: [u8; 4],
-    outline_color: [u8; 4],
     color_binding: Option<ColorBindingJson>,
     visible: bool,
     binding: Option<ShapeBindingJson>,
@@ -450,7 +448,6 @@ impl PolygonJson {
         Self {
             points: PointJson::collect(&polygon.points),
             color: polygon.color,
-            outline_color: darken(polygon.color, 80),
             color_binding: polygon
                 .color_binding
                 .as_ref()

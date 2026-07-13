@@ -12,6 +12,7 @@ test('refraction sample preserves payload background and rich-text styling witho
     );
     const richLabel = document.querySelector<HTMLElement>('.scene-rich-label[data-gsp-group="126"]');
     const styledTitle = richLabel?.querySelector<HTMLElement>('.scene-rich-line:first-child span');
+    const upperMediumPolygon = document.querySelector<SVGElement>('[data-gsp-group="11"]');
     const tableText = Array.from(
       document.querySelectorAll<SVGTextElement>('[data-gsp-group="83"] text'),
       (node) => node.textContent,
@@ -31,6 +32,7 @@ test('refraction sample preserves payload background and rich-text styling witho
       titleScreenSpace: title?.screenSpace,
       inlineTitleColor: styledTitle ? getComputedStyle(styledTitle).color : null,
       inlineTitleFontSize: styledTitle ? getComputedStyle(styledTitle).fontSize : null,
+      upperMediumPolygonStroke: upperMediumPolygon?.getAttribute('stroke'),
       tableText,
     };
   });
@@ -44,8 +46,9 @@ test('refraction sample preserves payload background and rich-text styling witho
   expect(result.titleScreenSpace).toBe(true);
   expect(result.inlineTitleColor).toBe('rgb(0, 128, 0)');
   expect(result.inlineTitleFontSize).toBe('48px');
+  expect(result.upperMediumPolygonStroke).toBe('none');
   expect(result.tableText).toEqual([
-    '入射角θ₁', '折射角θ₂', 'sinθ₁/sinθ₂', '43.11', '24.62', '1.64',
+    '入射角θ₁', '折射角θ₂', 'sinθ₁/sinθ₂', '43.11°', '24.62°', '1.64',
   ]);
 });
 

@@ -782,7 +782,6 @@
       binding.baseColor[3],
     );
     polygon.color = color;
-    polygon.outlineColor = darken(color, 80);
   }
 
 
@@ -984,16 +983,6 @@
     return label.binding.exprLabel.includes("°") || exprContainsPiAngle(label.binding.expr)
       ? `${value.toFixed(2)}°`
       : env.formatNumber(value);
-  }
-
-
-  function darken(color: [number, number, number, number], amount: number) {
-    return [
-      Math.max(0, color[0] - amount),
-      Math.max(0, color[1] - amount),
-      Math.max(0, color[2] - amount),
-      color[3],
-    ];
   }
 
 
@@ -2800,7 +2789,6 @@
     applySegmentCoefficients,
     buildPlainTextRichMarkup,
     cloneTracePoint,
-    darken,
     deriveExpressionLabelParameters,
     deriveLabelParameters,
     discreteIterationDepth,

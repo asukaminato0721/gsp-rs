@@ -8,7 +8,6 @@
       applySegmentCoefficients,
       buildPlainTextRichMarkup,
       cloneTracePoint,
-      darken,
       deriveExpressionLabelParameters,
       deriveLabelParameters,
       discreteIterationDepth,
@@ -696,7 +695,6 @@
               y: point.y - dy * family.yRawScale,
             })),
             color: familyColor,
-            outlineColor: darken(familyColor, 80),
             visible: family.visible !== false,
             binding: null,
           });
@@ -760,7 +758,6 @@
         scene.polygons.push({
           points: seedPoints.map((point) => ({ x: point.x + dx, y: point.y + dy })),
           color: familyColor,
-          outlineColor: darken(familyColor, 80),
           visible: family.visible !== false,
           binding: null,
         });

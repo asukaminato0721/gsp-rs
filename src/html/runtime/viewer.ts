@@ -478,7 +478,6 @@
       lines: hydratedLines,
       polygons: scene.polygons.map((polygon: PolygonJson): RuntimePolygonJson => ({
         color: polygon.color,
-        outlineColor: polygon.outlineColor,
         visible: polygon.visible !== false,
         points: polygon.points.map(attachPointRef),
         colorBinding: polygon.colorBinding ? { ...polygon.colorBinding } : null,

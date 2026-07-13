@@ -2096,8 +2096,8 @@
       const resolvedPoints = worldPoints;
       const screenPoints = resolvedPoints.map((point) => env.toScreen(point));
       modules.render.appendPointPath(env, screenPoints, {
-        stroke: env.rgba(polygon.outlineColor),
-        strokeWidth: 1.5,
+        stroke: "none",
+        strokeWidth: 0,
         fill: env.rgba(polygon.color),
         close: true,
         debugTarget: {
@@ -2351,12 +2351,19 @@
     if (table.visible === false || !Array.isArray(table.rows) || table.rows.length === 0) {
       return null;
     }
-    const columns = Array.isArray(table.columns) && table.columns.length > 0 ? table.columns : [{ exprLabel: table.exprLabel }];
+    const columns = Array.isArray(table.columns) && table.columns.length > 0 ? table.columns : [{
+      exprLabel: table.exprLabel,
+      valueBinding: null
+    }];
     const showIndex = table.showIndex !== false;
     const header = showIndex ? ["n", ...columns.map((column) => column.exprLabel)] : columns.map((column) => column.exprLabel);
     const body = table.rows.map((row) => {
       const values = Array.isArray(row.values) ? row.values : [row.value ?? Number.NaN];
-      return showIndex ? [String(row.index), ...values.map((value) => env.formatNumber(value))] : values.map((value) => env.formatNumber(value));
+      const formattedValues = values.map((value, columnIndex) => {
+        const suffix = columns[columnIndex]?.valueBinding?.kind === "angle-marker" ? "°" : "";
+        return `${env.formatNumber(value)}${suffix}`;
+      });
+      return showIndex ? [String(row.index), ...formattedValues] : formattedValues;
     });
     const rows = [header, ...body];
     const colWidths = Array.from({ length: header.length }, () => 0);
@@ -4472,7 +4479,7 @@
 (function() {
   const modules = window.GspViewerModules || (window.GspViewerModules = {});
   function createDynamicsIterations(dependencies) {
-    const { affineMapFromTriangles, applyNormalizedParameterToPoint, applySegmentCoefficients, buildPlainTextRichMarkup, cloneTracePoint, darken, deriveExpressionLabelParameters, deriveLabelParameters, discreteIterationDepth, DERIVED_POINT_BINDING_REFRESHERS, evaluateExpr, evaluateRecursiveExpression, formatSequenceValue, hasLineIndexHandle, hasPointIndexHandle, isFiniteNumber, pointAngleValue, pointIterationDepth, refreshDerivedPoints, rotateAround, samplePointTraceLine, segmentPointCoefficients, SYNC_DYNAMIC_POINT_BINDING_UPDATERS } = dependencies;
+    const { affineMapFromTriangles, applyNormalizedParameterToPoint, applySegmentCoefficients, buildPlainTextRichMarkup, cloneTracePoint, deriveExpressionLabelParameters, deriveLabelParameters, discreteIterationDepth, DERIVED_POINT_BINDING_REFRESHERS, evaluateExpr, evaluateRecursiveExpression, formatSequenceValue, hasLineIndexHandle, hasPointIndexHandle, isFiniteNumber, pointAngleValue, pointIterationDepth, refreshDerivedPoints, rotateAround, samplePointTraceLine, segmentPointCoefficients, SYNC_DYNAMIC_POINT_BINDING_UPDATERS } = dependencies;
     function rebuildIterationPoints(env, scene, parameters) {
       const families = env.sourceScene.pointIterations || [];
       if (families.length === 0) {
@@ -5104,7 +5111,6 @@
                 y: point.y - dy * family.yRawScale
               })),
               color: familyColor,
-              outlineColor: darken(familyColor, 80),
               visible: family.visible !== false,
               binding: null
             });
@@ -5173,7 +5179,6 @@
               y: point.y + dy
             })),
             color: familyColor,
-            outlineColor: darken(familyColor, 80),
             visible: family.visible !== false,
             binding: null
           });
@@ -6632,7 +6637,6 @@
     const base = rgbaToHsb(binding.baseColor);
     const color = hsbToRgba(base.hue + (value - binding.baseValue) / binding.period, base.saturation, base.brightness, binding.baseColor[3]);
     polygon.color = color;
-    polygon.outlineColor = darken(color, 80);
   }
   function refreshCircleFillColorBinding(scene, circle) {
     const binding = circle.fillColorBinding;
@@ -6796,14 +6800,6 @@
       return "未定义";
     }
     return label.binding.exprLabel.includes("°") || exprContainsPiAngle(label.binding.expr) ? `${value.toFixed(2)}°` : env.formatNumber(value);
-  }
-  function darken(color, amount) {
-    return [
-      Math.max(0, color[0] - amount),
-      Math.max(0, color[1] - amount),
-      Math.max(0, color[2] - amount),
-      color[3]
-    ];
   }
   function evaluateRecursiveExpression(expr, parameterName, currentValue, parameters) {
     const nextParameters = new Map(parameters);
@@ -8341,7 +8337,6 @@
     applySegmentCoefficients,
     buildPlainTextRichMarkup,
     cloneTracePoint,
-    darken,
     deriveExpressionLabelParameters,
     deriveLabelParameters,
     discreteIterationDepth,
@@ -8980,7 +8975,6 @@
       lines: hydratedLines,
       polygons: scene.polygons.map((polygon) => ({
         color: polygon.color,
-        outlineColor: polygon.outlineColor,
         visible: polygon.visible !== false,
         points: polygon.points.map(attachPointRef),
         colorBinding: polygon.colorBinding ? { ...polygon.colorBinding } : null,

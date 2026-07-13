@@ -4,4 +4,4 @@ import type { DebugSourceJson } from "./DebugSourceJson";
 import type { PointJson } from "./PointJson";
 import type { ShapeBindingJson } from "./ShapeBindingJson";
 
-export type PolygonJson = { points: Array<PointJson>, color: [number, number, number, number], outlineColor: [number, number, number, number], colorBinding: ColorBindingJson | null, visible: boolean, binding: ShapeBindingJson | null, debug: DebugSourceJson | null, };
+export type PolygonJson = { points: Array<PointJson>, color: [number, number, number, number], colorBinding: ColorBindingJson | null, visible: boolean, binding: ShapeBindingJson | null, debug: DebugSourceJson | null, };
