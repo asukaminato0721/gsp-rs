@@ -183,23 +183,28 @@ fn expression_transform_kind(
     let value_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
     let transform_class = expression_value_class(file, group);
     let value_class = expression_value_class(file, value_group);
-    match (transform_class, value_class) {
+    match (
+        transform_class.unwrap_or(EXPRESSION_TRANSFORM_SCALE_CLASS),
+        value_class,
+    ) {
         (
-            Some(EXPRESSION_TRANSFORM_SCALE_CLASS),
+            EXPRESSION_TRANSFORM_SCALE_CLASS,
             Some(
                 EXPRESSION_TRANSFORM_CALCULATED_ROTATE_CLASS
                 | EXPRESSION_TRANSFORM_FUNCTION_ROTATE_CLASS,
             ),
         ) => return Some(ExpressionTransformKind::Rotate),
-        (
-            Some(
-                EXPRESSION_TRANSFORM_SCALE_CLASS
-                | EXPRESSION_TRANSFORM_MARKED_SCALE_CLASS
-                | EXPRESSION_TRANSFORM_CALCULATED_SCALE_CLASS,
-            ),
-            _,
-        ) => return Some(ExpressionTransformKind::Scale),
         _ => {}
+    }
+    if matches!(
+        transform_class,
+        Some(
+            EXPRESSION_TRANSFORM_SCALE_CLASS
+                | EXPRESSION_TRANSFORM_MARKED_SCALE_CLASS
+                | EXPRESSION_TRANSFORM_CALCULATED_SCALE_CLASS
+        )
+    ) {
+        return Some(ExpressionTransformKind::Scale);
     }
     match transform_class.or(value_class)? {
         EXPRESSION_TRANSFORM_SCALE_CLASS

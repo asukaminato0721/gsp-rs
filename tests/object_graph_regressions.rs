@@ -46,6 +46,8 @@ fn parameter_controlled_locus_point_uses_its_payload_expression_parents() {
     let source = object_id_for_group(scene, "points", "point", 29);
     let ratio = object_id_for_group(scene, "labels", "scalar:label", 28);
     assert_eq!(operation_kind(scene, &point), Some("point-on-polyline"));
+    let nested_trace = object_id_for_group(scene, "lines", "line", 39);
+    assert_eq!(operation_kind(scene, &nested_trace), Some("point-trace"));
     assert!(
         scene["objectGraph"]["pendingOperations"]
             .as_array()
@@ -80,6 +82,101 @@ fn parameter_controlled_locus_point_uses_its_payload_expression_parents() {
     assert_eq!(
         source_parameter_node["definition"]["parents"],
         serde_json::json!([format!("control:{source}:t")])
+    );
+}
+
+#[test]
+fn nested_measurements_drive_rotation_trace_and_controlled_point() {
+    let document = compile_fixture("tests/Samples/个人专栏/孟令岩作品/勾股定理小题.gsp");
+    let scene = &document["pages"][1]["scene"];
+    assert_eq!(
+        scene["objectGraph"]["pendingOperations"],
+        serde_json::json!([])
+    );
+
+    let parameter_rotation = object_id_for_group(scene, "points", "point", 55);
+    let linear_intersection = object_id_for_group(scene, "points", "point", 59);
+    let first_expression_rotation = object_id_for_group(scene, "points", "point", 60);
+    let second_expression_rotation = object_id_for_group(scene, "points", "point", 68);
+    let controlled_trace_point = object_id_for_group(scene, "points", "point", 85);
+    assert_eq!(
+        operation_kind(scene, &parameter_rotation),
+        Some("rotate-point-degrees")
+    );
+    assert_eq!(
+        operation_kind(scene, &linear_intersection),
+        Some("line-intersection")
+    );
+    assert_eq!(
+        operation_kind(scene, &first_expression_rotation),
+        Some("rotate-point-degrees")
+    );
+    assert_eq!(
+        operation_kind(scene, &second_expression_rotation),
+        Some("rotate-point-degrees")
+    );
+    assert_eq!(
+        operation_kind(scene, &controlled_trace_point),
+        Some("point-on-polyline")
+    );
+
+    let measured_p_arrow = object_id_for_group(scene, "labels", "scalar:label", 53);
+    let measured_bc = object_id_for_group(scene, "labels", "scalar:label", 36);
+    let rotation_scalar_id = format!("scalar:{parameter_rotation}:rotation-degrees");
+    let rotation_scalar = scene["objectGraph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == rotation_scalar_id)
+        .expect("parameter rotation scalar");
+    let parents = rotation_scalar["definition"]["parents"].as_array().unwrap();
+    assert!(parents.contains(&Value::String(measured_p_arrow)));
+    assert!(parents.contains(&Value::String(measured_bc)));
+}
+
+#[test]
+fn angle_rotated_segment_intersects_legacy_radius_circle() {
+    let document = compile_fixture("tests/Samples/个人专栏/孟令岩作品/勾股定理小题.gsp");
+    let scene = &document["pages"][2]["scene"];
+    assert_eq!(
+        scene["objectGraph"]["pendingOperations"],
+        serde_json::json!([])
+    );
+
+    let intersection = object_id_for_group(scene, "points", "point", 30);
+    assert_eq!(
+        operation_kind(scene, &intersection),
+        Some("line-circle-intersection")
+    );
+
+    let line_id = format!("domain:{intersection}:line");
+    let circle_id = format!("domain:{intersection}:circle");
+    assert_eq!(
+        operation_kind(scene, &line_id),
+        Some("rotate-shape-degrees")
+    );
+    assert_eq!(
+        operation_kind(scene, &circle_id),
+        Some("circle-by-segment-radius")
+    );
+
+    let center = object_id_for_group(scene, "points", "point", 1);
+    let source_circle_center = object_id_for_group(scene, "points", "point", 24);
+    let circle = scene["objectGraph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == circle_id)
+        .expect("legacy radius circle domain");
+    assert_eq!(
+        circle["definition"]["parents"],
+        serde_json::json!([center, source_circle_center, center])
+    );
+
+    let angle_scalar_id = format!("scalar:{line_id}:rotation-degrees");
+    assert_eq!(
+        operation_kind(scene, &angle_scalar_id),
+        Some("measured-rotation-degrees")
     );
 }
 

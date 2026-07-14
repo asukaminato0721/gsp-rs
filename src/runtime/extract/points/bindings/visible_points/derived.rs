@@ -510,19 +510,79 @@ fn resolve_line_constraint(
             })
         }
         crate::format::GroupKind::Rotation | crate::format::GroupKind::ParameterRotation => {
-            let binding = if group.header.kind() == crate::format::GroupKind::ParameterRotation {
-                try_decode_parameter_rotation_binding(file, groups, group).ok()?
+            let (
+                source_group_index,
+                center_group_index,
+                angle_degrees,
+                parameter_name,
+                angle_expr,
+                angle_parameter_group_ordinals,
+            ) = if group.header.kind() == crate::format::GroupKind::ParameterRotation {
+                if let Ok(binding) = try_decode_parameter_rotation_binding(file, groups, group) {
+                    let TransformBindingKind::Rotate {
+                        angle_degrees,
+                        parameter_name,
+                    } = binding.kind
+                    else {
+                        return None;
+                    };
+                    (
+                        binding.source_group_index,
+                        binding.center_group_index,
+                        angle_degrees,
+                        parameter_name,
+                        None,
+                        std::collections::BTreeMap::new(),
+                    )
+                } else {
+                    let source_group_index = path.refs.first()?.checked_sub(1)?;
+                    let center_group_index = path.refs.get(1)?.checked_sub(1)?;
+                    let angle_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
+                    if angle_group.header.kind() != crate::format::GroupKind::FunctionExpr {
+                        return None;
+                    }
+                    let (angle_expr, parameters, parameter_name) =
+                        expression_runtime_context(file, groups, angle_group, anchors)?;
+                    let angle_expr =
+                        if crate::runtime::functions::function_expr_uses_degree_units(
+                            file,
+                            groups,
+                            angle_group,
+                        ) {
+                            angle_expr
+                        } else {
+                            scale_angle_expr_to_degrees(angle_expr)
+                        };
+                    let angle_degrees =
+                        evaluate_expr_with_parameters(&angle_expr, 0.0, &parameters)?;
+                    (
+                        source_group_index,
+                        center_group_index,
+                        angle_degrees,
+                        parameter_name,
+                        Some(angle_expr),
+                        function_parameter_group_ordinals(file, groups, angle_group),
+                    )
+                }
             } else {
-                try_decode_transform_binding(file, group).ok()?
-            };
-            let (angle_degrees, parameter_name) = match &binding.kind {
-                TransformBindingKind::Rotate {
+                let binding = try_decode_transform_binding(file, group).ok()?;
+                let TransformBindingKind::Rotate {
                     angle_degrees,
                     parameter_name,
-                } => (*angle_degrees, parameter_name.clone()),
-                TransformBindingKind::Scale { .. } => return None,
+                } = binding.kind
+                else {
+                    return None;
+                };
+                (
+                    binding.source_group_index,
+                    binding.center_group_index,
+                    angle_degrees,
+                    parameter_name,
+                    None,
+                    std::collections::BTreeMap::new(),
+                )
             };
-            let source_group = groups.get(binding.source_group_index)?;
+            let source_group = groups.get(source_group_index)?;
             Some(LineConstraint::Rotated {
                 line: Box::new(resolve_line_constraint(
                     file,
@@ -534,11 +594,12 @@ fn resolve_line_constraint(
                 rotation: RotationBinding {
                     center_index: mapped_point_index(
                         group_to_point_index,
-                        binding.center_group_index,
+                        center_group_index,
                     )?,
                     angle_degrees,
                     parameter_name,
-                    angle_expr: None,
+                    angle_expr,
+                    angle_parameter_group_ordinals,
                     angle_start_index: None,
                     angle_vertex_index: None,
                     angle_end_index: None,
@@ -571,6 +632,7 @@ fn resolve_line_constraint(
                     )?,
                     parameter_name: None,
                     angle_expr: None,
+                    angle_parameter_group_ordinals: std::collections::BTreeMap::new(),
                     angle_start_index: Some(mapped_point_index(
                         group_to_point_index,
                         binding.angle_start_group_index,

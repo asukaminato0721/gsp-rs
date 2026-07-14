@@ -26,7 +26,8 @@ use crate::runtime::extract::points::constraints::CoordinatePointSource;
 use crate::runtime::extract::{find_indexed_path, payload_debug_source};
 use crate::runtime::functions::{
     FunctionExpr, evaluate_expr_with_parameters, evaluate_function_group_with_overrides,
-    try_decode_function_expr, try_decode_function_plot_descriptor,
+    function_parameter_group_ordinals, try_decode_function_expr,
+    try_decode_function_plot_descriptor,
 };
 use crate::runtime::geometry::{
     GraphTransform, angle_degrees_from_points, color_from_style, rotate_around, scale_around,

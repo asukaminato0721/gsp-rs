@@ -237,6 +237,7 @@ fn rotation_binding(
         angle_degrees: binding_angle_degrees(binding)?,
         parameter_name: binding_parameter_name(binding),
         angle_expr: None,
+        angle_parameter_group_ordinals: std::collections::BTreeMap::new(),
         angle_start_index: angle_group_indices.map(|indices| indices.0),
         angle_vertex_index: angle_group_indices.map(|indices| indices.1),
         angle_end_index: angle_group_indices.map(|indices| indices.2),

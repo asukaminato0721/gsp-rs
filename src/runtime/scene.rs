@@ -738,6 +738,7 @@ pub(crate) struct RotationBinding {
     pub(crate) angle_degrees: f64,
     pub(crate) parameter_name: Option<String>,
     pub(crate) angle_expr: Option<crate::runtime::functions::FunctionExpr>,
+    pub(crate) angle_parameter_group_ordinals: BTreeMap<String, usize>,
     pub(crate) angle_start_index: Option<usize>,
     pub(crate) angle_vertex_index: Option<usize>,
     pub(crate) angle_end_index: Option<usize>,

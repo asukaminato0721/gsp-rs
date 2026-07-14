@@ -301,6 +301,20 @@ pub(crate) fn measured_radius_segment_group_indices(
     groups: &[ObjectGroup],
     radius_group: &ObjectGroup,
 ) -> Option<(usize, usize)> {
+    if radius_group.header.kind() == GroupKind::GraphObject40 {
+        if !is_legacy_radius_value(file, radius_group) {
+            return None;
+        }
+        let radius_path = find_indexed_path(file, radius_group)?;
+        let circle_group = groups.get(radius_path.refs.first()?.checked_sub(1)?)?;
+        if circle_group.header.kind() == GroupKind::Circle {
+            let circle_path = find_indexed_path(file, circle_group)?;
+            return Some((
+                circle_path.refs.first()?.checked_sub(1)?,
+                circle_path.refs.get(1)?.checked_sub(1)?,
+            ));
+        }
+    }
     if radius_group.header.kind() == GroupKind::Segment {
         let segment_path = find_indexed_path(file, radius_group)?;
         return Some((
@@ -333,6 +347,17 @@ pub(crate) fn measured_radius_segment_group_indices(
         source_path.refs.first()?.checked_sub(1)?,
         source_path.refs.get(1)?.checked_sub(1)?,
     ))
+}
+
+fn is_legacy_radius_value(file: &GspFile, group: &ObjectGroup) -> bool {
+    group.header.kind() == GroupKind::GraphObject40
+        && group.records.iter().any(|record| {
+            record.record_type == crate::runtime::payload_consts::RECORD_ACTION_AUX
+                && record
+                    .payload(&file.data)
+                    .windows(b"<0>\0MR".len())
+                    .any(|window| window == b"<0>\0MR")
+        })
 }
 
 #[derive(Debug, Clone, PartialEq, Error)]

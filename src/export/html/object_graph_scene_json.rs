@@ -65,6 +65,13 @@ impl ObjectGraphJson {
                 .filter_map(|function| {
                     function
                         .line_index
+                        .filter(|line_index| {
+                            scene.lines.get(*line_index).is_some_and(|line| {
+                                !line.points.is_empty()
+                                    || line.binding.is_some()
+                                    || line.debug.is_some()
+                            })
+                        })
                         .map(|line_index| (line_index, function.clone()))
                 })
                 .collect(),
@@ -173,9 +180,16 @@ impl ObjectGraphJson {
         for (index, line) in base_lines.clone().filter(|(_, line)| !is_trace_line(line)) {
             builder.line(index, line);
         }
+        for (index, line) in base_lines.clone().filter(|(_, line)| {
+            is_trace_line(line)
+                && !is_segment_trace_line(line)
+                && !is_custom_transform_trace_line(line)
+        }) {
+            builder.line(index, line);
+        }
         for (index, line) in base_lines
             .clone()
-            .filter(|(_, line)| is_trace_line(line) && !is_segment_trace_line(line))
+            .filter(|(_, line)| is_custom_transform_trace_line(line))
         {
             builder.line(index, line);
         }
@@ -4020,7 +4034,11 @@ impl Builder {
                 ],
             );
         } else if let Some(expr) = &rotation.angle_expr {
-            self.expression(id.clone(), expr);
+            self.expression_with_group_sources(
+                id.clone(),
+                expr,
+                &rotation.angle_parameter_group_ordinals,
+            );
         } else if let Some(parameter_name) = &rotation.parameter_name {
             let parent = self.named_scalars.get(parameter_name)?.clone();
             self.derived(id.clone(), ObjectOp::Copy, [parent]);
@@ -4135,6 +4153,10 @@ fn is_trace_line(line: &crate::runtime::scene::LineShape) -> bool {
 
 fn is_segment_trace_line(line: &crate::runtime::scene::LineShape) -> bool {
     matches!(line.binding, Some(LineBinding::SegmentTrace { .. }))
+}
+
+fn is_custom_transform_trace_line(line: &crate::runtime::scene::LineShape) -> bool {
+    matches!(line.binding, Some(LineBinding::CustomTransformTrace { .. }))
 }
 
 fn trace_driver_source_ids(driver: &TraceDriver) -> Vec<String> {

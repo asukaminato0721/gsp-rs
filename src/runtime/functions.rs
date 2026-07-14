@@ -232,6 +232,26 @@ mod tests {
     }
 
     #[test]
+    fn decodes_nested_measured_value_rotation_expression() {
+        let data = include_bytes!("../../tests/Samples/个人专栏/孟令岩作品/勾股定理小题.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let page = &file.page_files()[1];
+        let groups = page.object_groups();
+        let rotation_expr =
+            with_numeric_helper_cache(|| try_decode_function_expr(page, &groups, &groups[53]))
+                .expect("parameter rotation expression");
+        let derived_expr =
+            with_numeric_helper_cache(|| try_decode_function_expr(page, &groups, &groups[36]))
+                .expect("downstream expression rotation expression");
+        assert!(matches!(rotation_expr, FunctionExpr::Parsed(_)));
+        assert!(matches!(derived_expr, FunctionExpr::Parsed(_)));
+        assert_eq!(
+            function_parameter_group_ordinals(page, &groups, &groups[53]),
+            BTreeMap::from([("BC".to_string(), 36), ("P→".to_string(), 53)])
+        );
+    }
+
+    #[test]
     fn decodes_marker_based_function_expr_with_structured_parser() {
         let payload = payload_from_words(&[0x0094, 0x0001, 0x2006, 0x000f, 0x000c, 0x1000, 0x0002]);
 

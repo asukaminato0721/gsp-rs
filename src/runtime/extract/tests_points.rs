@@ -255,6 +255,29 @@ fn expression_transform_kind_follows_payload_value_class() {
             Some(ScenePointBinding::Scale { .. })
         ));
     }
+
+    let pythagorean = GspFile::parse(include_bytes!(
+        "../../../tests/Samples/个人专栏/孟令岩作品/勾股定理小题.gsp"
+    ))
+    .expect("pythagorean fixture parses");
+    let page = &pythagorean.page_files()[1];
+    let scene = build_scene_checked(page).expect("pythagorean page builds");
+    for ordinal in [60, 68] {
+        let point = scene
+            .points
+            .iter()
+            .find(|point| {
+                point
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .unwrap_or_else(|| panic!("pythagorean rotation point #{ordinal}"));
+        assert!(matches!(
+            point.binding,
+            Some(ScenePointBinding::Rotate { .. })
+        ));
+    }
 }
 
 #[test]

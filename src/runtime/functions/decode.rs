@@ -1,4 +1,4 @@
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u16, read_u32};
@@ -44,7 +44,7 @@ use self::parser::{
 use self::parser::parse_function_expr;
 
 thread_local! {
-    static RESOLVING_MEASURED_VALUE: Cell<bool> = const { Cell::new(false) };
+    static RESOLVING_MEASURED_VALUES: RefCell<BTreeSet<usize>> = RefCell::new(BTreeSet::new());
     static MEASURED_VALUE_ANCHORS_CACHE: RefCell<Option<Vec<Option<PointRecord>>>> = const { RefCell::new(None) };
     static RESOLVING_NUMERIC_HELPERS: RefCell<BTreeSet<usize>> = RefCell::new(BTreeSet::new());
     static NUMERIC_HELPER_CACHE: RefCell<BTreeMap<usize, Option<FunctionExpr>>> = RefCell::new(BTreeMap::new());
@@ -54,10 +54,12 @@ pub(crate) fn with_numeric_helper_cache<T>(f: impl FnOnce() -> T) -> T {
     NUMERIC_HELPER_CACHE.with(|cache| cache.borrow_mut().clear());
     MEASURED_VALUE_ANCHORS_CACHE.with(|cache| *cache.borrow_mut() = None);
     RESOLVING_NUMERIC_HELPERS.with(|resolving| resolving.borrow_mut().clear());
+    RESOLVING_MEASURED_VALUES.with(|resolving| resolving.borrow_mut().clear());
     let result = f();
     NUMERIC_HELPER_CACHE.with(|cache| cache.borrow_mut().clear());
     MEASURED_VALUE_ANCHORS_CACHE.with(|cache| *cache.borrow_mut() = None);
     RESOLVING_NUMERIC_HELPERS.with(|resolving| resolving.borrow_mut().clear());
+    RESOLVING_MEASURED_VALUES.with(|resolving| resolving.borrow_mut().clear());
     result
 }
 
@@ -2091,12 +2093,12 @@ fn decode_measured_value_binding(
         return None;
     }
 
-    let anchors = RESOLVING_MEASURED_VALUE.with(|flag| {
-        if flag.replace(true) {
+    let anchors = RESOLVING_MEASURED_VALUES.with(|resolving| {
+        if !resolving.borrow_mut().insert(group.ordinal) {
             return None;
         }
         let anchors = collect_measured_value_anchors(file, groups);
-        flag.set(false);
+        resolving.borrow_mut().remove(&group.ordinal);
         Some(anchors)
     })?;
     let start = anchors.get(host_path.refs[0].checked_sub(1)?)?.clone()?;
@@ -2107,8 +2109,19 @@ fn decode_measured_value_binding(
         return None;
     }
 
-    let name =
-        group_name(file, groups, group).or_else(|| segment_name(file, groups, host_group))?;
+    let name = group_name(file, groups, group)
+        .or_else(|| segment_name(file, groups, host_group))
+        .or_else(|| {
+            let left = groups
+                .get(host_path.refs[0].checked_sub(1)?)
+                .and_then(|group| group_name(file, groups, group))
+                .unwrap_or_else(|| "P".to_string());
+            let right = groups
+                .get(host_path.refs[1].checked_sub(1)?)
+                .and_then(|group| group_name(file, groups, group))
+                .unwrap_or_else(|| "Q".to_string());
+            Some(format!("{left}{right}"))
+        })?;
     Some(ParameterBinding::value(name, value))
 }
 
