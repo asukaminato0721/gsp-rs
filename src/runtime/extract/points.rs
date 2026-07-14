@@ -27,13 +27,16 @@ pub(crate) use anchors::{
     decode_expression_rotation_binding, decode_expression_scale_binding,
     decode_graph_calibration_anchor_raw, decode_intersection_anchor_raw,
     decode_iteration_binding_point_alias_raw, decode_legacy_angle_rotation_anchor_raw,
-    decode_line_midpoint_anchor_raw, decode_offset_anchor_raw,
+    decode_line_midpoint_anchor_raw, decode_marked_angle_translation_anchor_raw,
+    decode_marked_angle_translation_binding, decode_offset_anchor_raw,
     decode_parameter_controlled_anchor_raw, decode_parameter_rotation_anchor_raw,
-    decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,
-    decode_point_pair_translation_anchor_raw, decode_ratio_scale_anchor_raw,
-    decode_reflection_anchor_raw, decode_regular_polygon_vertex_anchor_raw,
-    decode_translated_point_anchor_raw, expression_runtime_context, resolve_circle_like_raw,
-    resolve_line_like_points_raw, translation_point_pair_group_indices,
+    decode_parameter_rotation_transform_binding_raw, decode_point_constraint_anchor,
+    decode_point_on_ray_anchor_raw, decode_point_pair_translation_anchor_raw,
+    decode_ratio_scale_anchor_raw, decode_reflection_anchor_raw,
+    decode_regular_polygon_vertex_anchor_raw, decode_translated_point_anchor_raw,
+    expression_runtime_context, resolve_circle_like_raw, resolve_line_like_points_raw,
+    resolve_polygon_boundary_parameter_point_raw, scale_angle_expr_to_degrees,
+    translation_point_pair_group_indices,
 };
 #[allow(unused_imports)]
 pub(crate) use bindings::TransformBinding;

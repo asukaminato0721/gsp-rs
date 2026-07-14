@@ -78,6 +78,16 @@ enum PointBindingJson {
     ConstraintParameterFromPointExpr {
         #[serde(rename = "sourceIndex")]
         source_index: usize,
+        #[serde(
+            rename = "sourceParameterStartIndex",
+            skip_serializing_if = "Option::is_none"
+        )]
+        source_parameter_start_index: Option<usize>,
+        #[serde(
+            rename = "sourceParameterEndIndex",
+            skip_serializing_if = "Option::is_none"
+        )]
+        source_parameter_end_index: Option<usize>,
         #[serde(rename = "parameterName")]
         parameter_name: String,
         expr: FunctionExprJson,
@@ -119,6 +129,20 @@ enum PointBindingJson {
         #[serde(rename = "clampToUnit")]
         clamp_to_unit: bool,
     },
+    #[serde(rename = "marked-angle-translation")]
+    MarkedAngleTranslation {
+        #[serde(rename = "targetIndex")]
+        target_index: usize,
+        #[serde(rename = "angleStartIndex")]
+        angle_start_index: usize,
+        #[serde(rename = "angleVertexIndex")]
+        angle_vertex_index: usize,
+        #[serde(rename = "angleEndIndex")]
+        angle_end_index: usize,
+        distance: f64,
+        #[serde(rename = "distanceExpr")]
+        distance_expr: FunctionExprJson,
+    },
     #[serde(rename = "midpoint")]
     Midpoint {
         #[serde(rename = "startIndex")]
@@ -146,6 +170,8 @@ enum PointBindingJson {
         source_index: usize,
         name: String,
         expr: FunctionExprJson,
+        #[serde(rename = "parameterGroupOrdinals")]
+        parameter_group_ordinals: std::collections::BTreeMap<String, usize>,
         axis: CoordinateAxisJson,
     },
     #[serde(rename = "coordinate-source-2d")]
@@ -321,11 +347,8 @@ impl PointBindingJson {
     fn from_binding(binding: &ScenePointBinding) -> Self {
         match binding {
             ScenePointBinding::GraphCalibration => Self::GraphCalibration,
-            ScenePointBinding::PayloadAlias {
-                parent_indices,
-                source_parent,
-            } => Self::PayloadAlias {
-                source_index: parent_indices[*source_parent],
+            ScenePointBinding::ProjectedCoordinate { source_index, .. } => Self::PayloadAlias {
+                source_index: *source_index,
             },
             ScenePointBinding::Parameter { name } => Self::Parameter { name: name.clone() },
             ScenePointBinding::DerivedParameter {
@@ -353,12 +376,16 @@ impl PointBindingJson {
             },
             ScenePointBinding::ConstraintParameterFromPointExpr {
                 source_index,
+                source_parameter_start_index,
+                source_parameter_end_index,
                 parameter_name,
                 expr,
                 absolute_value,
                 ..
             } => Self::ConstraintParameterFromPointExpr {
                 source_index: *source_index,
+                source_parameter_start_index: *source_parameter_start_index,
+                source_parameter_end_index: *source_parameter_end_index,
                 parameter_name: parameter_name.clone(),
                 expr: FunctionExprJson::from_expr(expr),
                 absolute_value: *absolute_value,
@@ -475,6 +502,22 @@ impl PointBindingJson {
                     factor_parameter_end_index: *factor_parameter_end_index,
                 },
             },
+            ScenePointBinding::MarkedAngleTranslation {
+                target_index,
+                angle_start_index,
+                angle_vertex_index,
+                angle_end_index,
+                distance,
+                distance_expr,
+                ..
+            } => Self::MarkedAngleTranslation {
+                target_index: *target_index,
+                angle_start_index: *angle_start_index,
+                angle_vertex_index: *angle_vertex_index,
+                angle_end_index: *angle_end_index,
+                distance: *distance,
+                distance_expr: FunctionExprJson::from_expr(distance_expr),
+            },
             ScenePointBinding::Midpoint {
                 start_index,
                 end_index,
@@ -499,11 +542,13 @@ impl PointBindingJson {
                 source_index,
                 name,
                 expr,
+                parameter_group_ordinals,
                 axis,
             } => Self::CoordinateSource {
                 source_index: *source_index,
                 name: name.clone(),
                 expr: FunctionExprJson::from_expr(expr),
+                parameter_group_ordinals: parameter_group_ordinals.clone(),
                 axis: CoordinateAxisJson::from_axis(*axis),
             },
             ScenePointBinding::CoordinateSource2d {
@@ -639,6 +684,7 @@ enum PointConstraintJson {
         #[serde(rename = "segmentIndex")]
         segment_index: usize,
         t: f64,
+        parameter: f64,
     },
     #[serde(rename = "polygon-boundary")]
     PolygonBoundary {
@@ -647,6 +693,12 @@ enum PointConstraintJson {
         #[serde(rename = "edgeIndex")]
         edge_index: usize,
         t: f64,
+    },
+    #[serde(rename = "polygon-boundary-parameter")]
+    PolygonBoundaryParameter {
+        #[serde(rename = "vertexIndices")]
+        vertex_indices: Vec<usize>,
+        parameter: f64,
     },
     #[serde(rename = "translated-polygon-boundary")]
     TranslatedPolygonBoundary {
@@ -857,11 +909,13 @@ impl PointConstraintJson {
                 points,
                 segment_index,
                 t,
+                parameter,
             } => Some(Self::Polyline {
                 function_key: *function_key,
                 points: PointJson::collect(points),
                 segment_index: *segment_index,
                 t: *t,
+                parameter: *parameter,
             }),
             ScenePointConstraint::OnPolygonBoundary {
                 vertex_indices,
@@ -871,6 +925,13 @@ impl PointConstraintJson {
                 vertex_indices: vertex_indices.clone(),
                 edge_index: *edge_index,
                 t: *t,
+            }),
+            ScenePointConstraint::OnPolygonBoundaryParameter {
+                vertex_indices,
+                parameter,
+            } => Some(Self::PolygonBoundaryParameter {
+                vertex_indices: vertex_indices.clone(),
+                parameter: *parameter,
             }),
             ScenePointConstraint::OnTranslatedPolygonBoundary {
                 vertex_indices,
@@ -1378,6 +1439,11 @@ enum LineConstraintJson {
         #[serde(rename = "vectorEndIndex")]
         vector_end_index: usize,
     },
+    TranslatedDelta {
+        line: Box<LineConstraintJson>,
+        dx: f64,
+        dy: f64,
+    },
     Reflected {
         line: Box<LineConstraintJson>,
         axis: Box<LineConstraintJson>,
@@ -1474,6 +1540,11 @@ impl LineConstraintJson {
                 line: Box::new(Self::from_constraint(line)),
                 vector_start_index: *vector_start_index,
                 vector_end_index: *vector_end_index,
+            },
+            LineConstraint::TranslatedDelta { line, dx, dy } => Self::TranslatedDelta {
+                line: Box::new(Self::from_constraint(line)),
+                dx: *dx,
+                dy: *dy,
             },
             LineConstraint::Reflected { line, axis } => Self::Reflected {
                 line: Box::new(Self::from_constraint(line)),

@@ -129,6 +129,19 @@ pub(crate) fn try_decode_point_constraint(
                     points,
                     segment_index,
                     t: scaled - segment_index as f64,
+                    parameter: normalized,
+                });
+            }
+        }
+        (_, GroupKind::PointTrace) => {
+            let parameter = read_f64(payload, 4);
+            if parameter.is_finite() {
+                return Ok(RawPointConstraint::Polyline {
+                    function_key: host_group.ordinal,
+                    points: Vec::new(),
+                    segment_index: 0,
+                    t: parameter.clamp(0.0, 1.0),
+                    parameter: parameter.clamp(0.0, 1.0),
                 });
             }
         }
@@ -231,6 +244,7 @@ fn decode_point_constraint_impl(
                 points,
                 segment_index,
                 t,
+                parameter: normalized_t,
             })
         }
         (crate::format::GroupKind::Circle, 20) => {
@@ -251,6 +265,24 @@ fn decode_point_constraint_impl(
                 unit_x,
                 unit_y,
             }))
+        }
+        (crate::format::GroupKind::Polygon, 12) => {
+            let host_path = find_indexed_path(file, host_group)?;
+            if host_path.refs.len() < 2 {
+                return None;
+            }
+            let parameter = read_f64(payload, 4);
+            if !parameter.is_finite() {
+                return None;
+            }
+            Some(RawPointConstraint::PolygonBoundaryParameter {
+                vertex_group_indices: host_path
+                    .refs
+                    .iter()
+                    .map(|vertex| vertex.checked_sub(1))
+                    .collect::<Option<Vec<_>>>()?,
+                parameter: wrap_unit_interval(parameter),
+            })
         }
         (crate::format::GroupKind::Polygon, 20) => {
             let host_path = find_indexed_path(file, host_group)?;
@@ -493,21 +525,14 @@ fn decode_path_point_constraint(
             if host_path.refs.len() < 2 {
                 return None;
             }
-            let anchors = anchors?;
             let vertex_group_indices = host_path
                 .refs
                 .iter()
                 .map(|vertex| vertex.checked_sub(1))
                 .collect::<Option<Vec<_>>>()?;
-            let vertices = vertex_group_indices
-                .iter()
-                .map(|group_index| anchors.get(*group_index)?.clone())
-                .collect::<Option<Vec<_>>>()?;
-            let (edge_index, t) = polygon_parameter_to_edge(&vertices, normalized_t)?;
-            Some(RawPointConstraint::PolygonBoundary {
+            Some(RawPointConstraint::PolygonBoundaryParameter {
                 vertex_group_indices,
-                edge_index,
-                t,
+                parameter: wrap_unit_interval(normalized_t),
             })
         }
         crate::format::GroupKind::SectorBoundary
@@ -519,6 +544,7 @@ fn decode_path_point_constraint(
                 points,
                 segment_index,
                 t,
+                parameter: normalized_t,
             })
         }
         crate::format::GroupKind::FunctionPlot
@@ -740,7 +766,6 @@ fn try_decode_path_point_constraint(
         host_group.header.kind(),
         crate::format::GroupKind::SectorBoundary
             | crate::format::GroupKind::CircularSegmentBoundary
-            | crate::format::GroupKind::Polygon
     ) && anchors.is_none()
     {
         return Err(PointConstraintDecodeError::MissingAnchors);
@@ -885,6 +910,7 @@ fn decode_point_on_function_constraint(
         points,
         segment_index,
         t,
+        parameter: normalized_t,
     })
 }
 

@@ -1,0 +1,265 @@
+<!--This file created by The Geometer's Sketchpad 5.06-->
+<HTML><HEAD><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<TITLE>多边形滚动</TITLE></HEAD><BODY>
+<P><HR SIZE="4">This page uses <B><A HREF="http://www.dynamicgeometry.com/javasketchpad/">JavaSketchpad</A></B>, a World-Wide-Web component of <I><A HREF="http://www.dynamicgeometry.com">The Geometer's Sketchpad</A>.</I> Copyright &copy; 1990-2012 by KCP Technologies, Inc. Licensed only for non-commercial use.<HR SIZE="4"></P>
+<H4 ALIGN=CENTER>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+/*
+	The following JavaScript code can detect whether the jar applet file is located in the same
+	directory as this file and, if not, display an error. This error can be useful for helping 
+	first-time JavaSketch authors troubleshoot a JavaSketch that is not working correctly. 
+	However, if the default location or name of the jar file is altered by changing the 
+	parameters in the <APPLET> tag, this JavaScript code will continue to look next to this 
+	file for the jar file, which may result in an error message even though the JavaSketch
+	is otherwise functioning correctly. Additionally, future browser updates may cause this code
+	to display errors incorrectly.
+
+	This code is completely optional--the entire contents of this <SCRIPT> tag can be deleted and
+	the JavaSketch will continue to function normally.
+*/
+
+if( IsFileMissing( "./jsp5.jar"))
+{
+	document.write("<p>This JavaSketch may be unusable because the applet file (jsp5.jar) appears to be missing from its proper location. (It should be located in the same directory as this web page on the web server.)</p>");
+}
+
+function IsFileMissing( iFileName)
+{
+	var tFileIsMissing = false;
+	var xmlhttp = null;
+	/* If the user is viewing this page with an Opera or Chrome browser locally, we return false
+		 as we cannot rely on the detection to work correctly and avoid showing the error altogether */
+	if (window.location.protocol == "file:")
+		if (window.opera || navigator.userAgent.indexOf("Chrome/") > -1)
+			return false;
+	if (window.ActiveXObject)
+	{
+		try
+		{
+			xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+		}
+		catch(e)
+		{
+			try
+			{
+				xmlhttp=new ActiveXObject("MSXML2.XMLHTTP.3.0");
+			}
+			catch(e)
+			{
+				return false;
+			}
+		}
+ 	}
+	else if (window.XMLHttpRequest)
+	{
+		xmlhttp=new XMLHttpRequest();
+	}
+	if( xmlhttp != null)
+	{
+		try{
+			xmlhttp.open("HEAD", iFileName += (iFileName.match(/\?/) == null ? "?" : "&") + (new Date()).getTime(), false);
+			xmlhttp.send(null);
+			tFileIsMissing = !((xmlhttp.status==200) || (xmlhttp.status == 0));
+		}
+		catch(er){
+			tFileIsMissing = true;
+		}
+	}
+	return tFileIsMissing;
+}
+//-->
+</SCRIPT>
+<APPLET CODE="GSP.class"  ARCHIVE="jsp5.jar" CODEBASE="." WIDTH=2222 HEIGHT=1282 ALIGN=CENTER><PARAM NAME=MinGrammarVersion VALUE=2>
+<PARAM NAME=MeasureInDegrees VALUE=1><PARAM NAME=DirectedAngles VALUE=0>
+<PARAM NAME=PixelsPerLengthUnit VALUE=37.7953>
+<PARAM NAME=BackRed VALUE=255>
+<PARAM NAME=BackGreen VALUE=255>
+<PARAM NAME=BackBlue VALUE=255>
+<PARAM NAME=Construction VALUE="
+{1} Point(81,186)[label('A')];
+{2} UnitPoint(1,37.7953)[hidden];
+{3} HorizontalAxis(1,2)[hidden];
+{4} SquareUnitPoint(2)[hidden];
+{5} VerticalAxis(1,4)[hidden];
+{6} CoordSysByAxes(3,5)[hidden];
+{7} Point(76.4889,274.118)[hidden];
+{8} Ray(2,1)[hidden];
+{9} Point on object(8,11.3095)[label('C'),red];
+{10} Abscissa(9,6,606,136,'')[hidden];
+{11} AnimateButton(457,556,'滚动')(9,8)(1)(0)(1)[black];
+{12} MoveButton(258,63,5,'')(1,9)[hidden];
+{13} Point(197,452)[hidden];
+{14} Point(284,452)[hidden];
+{15} Line(14,13)[hidden];
+{16} Point on object(15,3.74546)[hidden];
+{17} VectorTranslation(16,13,14)[hidden];
+{18} VectorTranslation(16,14,13)[hidden];
+{19} MoveButton(495,555,5,'增加边数')(17,16)[black];
+{20} MoveButton(556,555,0,'减少边数')(18,16)[black];
+{21} Ratio/Points(13,14,16,41,128,'')[hidden];
+{22} Calculate(625,569,'边数 = ','A @trnc ')(21)[red];
+{23} Calculate(430,87,'','6.28319 ! A / ')(22)[hidden];
+{24} Calculate(26,28,'','6.28319 A / ')(22)[hidden];
+{25} Calculate(108,14,'','A 2 / ')(24)[hidden];
+{26} Point(284,346)[hidden];
+{27} Ratio/Points(13,14,16,61,148,'')[hidden];
+{28} Calculate(166,112,'','A @trnc ')(27)[hidden];
+{29} Calculate(46,51,'','6.28319 A / ')(28)[hidden];
+{30} Calculate(411,287,'','A 2 / ')(23)[hidden];
+{31} Parameter(1.656,300,54,'')[hidden];
+{32} Point(217,472)[hidden];
+{33} Point(304,472)[hidden];
+{34} Line(33,32)[hidden];
+{35} Point on object(34,7.88832)[hidden];
+{36} Ratio/Points(32,33,35,61,148,'')[hidden];
+{37} Calculate(630,82,'','A @trnc ')(36)[hidden];
+{38} Calculate(450,107,'','6.28319 ! A / ')(37)[hidden];
+{39} Calculate(46,48,'','6.28319 A / ')(37)[hidden];
+{40} Calculate(431,307,'','A 2 / ')(38)[hidden];
+{41} Point(278,385)[hidden];
+{42} Point(477,385)[hidden];
+{43} Line(42,41)[color(0,0,128)];
+{44} Perpendicular(43,9)[hidden];
+{45} Intersect(43,44)[hidden];
+{46} Point(217,472)[hidden];
+{47} Point(304,472)[hidden];
+{48} Line(47,46)[hidden];
+{49} Point on object(48,6.88832)[hidden];
+{50} Ratio/Points(46,47,49,61,148,'')[hidden];
+{51} Calculate(630,82,'','A @trnc ')(50)[hidden];
+{52} Calculate(450,107,'','6.28319 ! A / ')(51)[hidden];
+{53} Calculate(46,48,'','6.28319 A / ')(51)[hidden];
+{54} Calculate(431,307,'','A 2 / ')(52)[hidden];
+{55} Point(217,472)[hidden];
+{56} Point(304,472)[hidden];
+{57} Line(56,55)[hidden];
+{58} Point on object(57,3.88832)[hidden];
+{59} Ratio/Points(55,56,58,61,148,'')[hidden];
+{60} Calculate(630,82,'','A @trnc ')(59)[hidden];
+{61} Calculate(450,107,'','6.28319 ! A / ')(60)[hidden];
+{62} Calculate(46,48,'','6.28319 A / ')(60)[hidden];
+{63} Calculate(431,307,'','A 2 / ')(61)[hidden];
+{64} Point(87,487)[hidden];
+{65} Point(142,487)[hidden];
+{66} Line(65,64)[hidden];
+{67} Point on object(66,2.87829)[hidden];
+{68} VectorTranslation(67,64,65)[hidden];
+{69} VectorTranslation(67,65,64)[hidden];
+{70} Ratio/Points(64,65,67,136,244,'')[hidden];
+{71} Calculate(136,292,'','A @trnc ')(70)[hidden];
+{72} MoveButton(495,574,3,'增加轮距')(68,67)[black];
+{73} MoveButton(555,574,3,'减少轮距')(69,67)[black];
+{74} Ray(7,1)[hidden];
+{75} Point on object(74,0.704148)[color(192,133,74)];
+{76} Circle(1,75)[color(0,128,0)];
+{77} Intersect2(5,76)[hidden];
+{78} Rotation/MeasuredAngle(77,1,30)[label('E'),red];
+{79} Reflection(78,5)[label('A'),red];
+{80} Perpendicular(43,79)[hidden];
+{81} Intersect(80,43)[hidden];
+{82} Distance(79,1,271,33,'')[hidden];
+{83} Line(79,78)[color(0,0,128)];
+{84} Perpendicular(83,1)[hidden];
+{85} Intersect(84,83)[color(192,133,74)];
+{86} Abscissa(79,6,26,77,'')[hidden];
+{87} Ordinate(79,6,228,101,'')[hidden];
+{88} Distance(1,79,582,11,'')[hidden];
+{89} Translation/FixedAngle/MarkedDistance(81,88,-1.5708)[color(192,133,74)];
+{90} Calculate(211,6,'','A 2 / ')(88)[hidden];
+{91} Translation/FixedAngle/MarkedDistance(81,90,-1.5708)[hidden];
+{92} Ordinate(91,6,315,117,'')[hidden];
+{93} Abscissa(91,6,315,91,'')[hidden];
+{94} Calculate(382,4,'','A B 2 / @sin_ * 2 * ')(88,24)[hidden];
+{95} Calculate(623,588,'车轮中心距 = ','A B * ')(94,71)[red];
+{96} Calculate(397,128,'','A 2 / ')(94)[hidden];
+{97} Translation/FixedAngle/MarkedDistance(89,94,-3.14159)[color(192,133,74)];
+{98} Segment(97,89)[hidden];
+{99} Intersect(98,84)[hidden];
+{100} VectorTranslation(99,1,85)[hidden];
+{101} Ordinate(100,6,211,77,'')[hidden];
+{102} Abscissa(100,6,211,51,'')[hidden];
+{103} Calculate(-189,504,'','A B 2 ^ C 1 C D / @trnc + D * - E - D 2 / + 2 ^ - @sqrt + ')(101,88,10,94,102)[hidden];
+{104} PlotXY(103,6,10)[hidden];
+{105} Translation/FixedAngle/MarkedDistance(104,96,-3.14159)[color(192,133,74)];
+{106} Locus(105,9,8,250)[color(128,0,0)];
+{107} Locus(104,9,8,250)[hidden];
+{108} Calculate(56,268,'','A B 2 ^ C C D / @trnc D * - E - 2 ^ - @sqrt + ')(87,88,10,94,86)[hidden];
+{109} PlotXY(108,6,10)[label('D'),red];
+{110} Translation/FixedAngle/MarkedDistance(109,95,0)[red];
+{111} VectorTranslation(45,109,110)[color(192,133,74)];
+{112} UnitPoint(110,37.7953)[hidden];
+{113} SquareUnitPoint(112)[hidden];
+{114} VerticalAxis(110,113)[hidden];
+{115} Locus(109,9,8,250)[color(128,0,0),hidden];
+{116} ToggleVisibilityButton(526,612,'中心轨迹|中心轨迹')(115)[black];
+{117} UnitPoint(109,37.7953)[hidden];
+{118} HorizontalAxis(109,117)[hidden];
+{119} SquareUnitPoint(117)[hidden];
+{120} VerticalAxis(109,119)[hidden];
+{121} CoordSysByAxes(118,120)[hidden];
+{122} Ray(117,109)[hidden];
+{123} Point on object(122,3.54566)[hidden];
+{124} Abscissa(123,121,602,51,'')[hidden];
+{125} Circle(109,26)[hidden];
+{126} Calculate(184,395,'','A B / @trnc B * B 2 / + ')(10,94)[hidden];
+{127} PlotXY(87,6,126)[red];
+{128} Calculate(540,48,'','A B / @trnc 37.7953 * ')(10,94)[hidden];
+{129} Calculate(349,155,'','A ! 6.28319 B / * ')(128,22)[hidden];
+{130} Rotation/MeasuredAngle(127,109,129)[color(0,128,0),traced];
+{131} Rotation/MeasuredAngle(130,109,23)[label('E'''),red,traced];
+{132} VectorTranslation(110,109,131)[red];
+{133} Rotation/MeasuredAngle(132,110,29)[color(192,133,74)];
+{134} Segment(132,133)[color(0,0,128)];
+{135} Circle(110,132)[hidden];
+{136} Locus(131,9,8,250)[color(128,0,0),hidden];
+{137} ToggleVisibilityButton(462,613,'顶点轨迹|顶点轨迹')(136)[black];
+{138} Rotation/MeasuredAngle(131,109,23)[label('D'''),blue,traced];
+{139} VectorTranslation(45,109,138)[color(192,133,74)];
+{140} Rotation/MeasuredAngle(139,45,29)[color(192,133,74)];
+{141} VectorTranslation(111,45,140)[color(192,133,74)];
+{142} Rotation/MeasuredAngle(141,111,29)[color(192,133,74)];
+{143} Segment(142,141)[color(0,0,128)];
+{144} Circle(111,141)[hidden];
+{145} Segment(140,139)[color(0,0,128)];
+{146} Circle(45,139)[hidden];
+{147} Rotation/MeasuredAngle(138,109,23)[label('C'''),color(192,133,74),traced];
+{148} Rotation/MeasuredAngle(147,109,23)[label('B'''),red];
+{149} Rotation/MeasuredAngle(148,109,23)[red];
+{150} Rotation/MeasuredAngle(149,109,23)[red];
+{151} Rotation/MeasuredAngle(150,109,23)[red];
+{152} Rotation/MeasuredAngle(151,109,23)[red];
+{153} Rotation/MeasuredAngle(152,109,23)[red];
+{154} Rotation/MeasuredAngle(153,109,23)[red];
+{155} Rotation/MeasuredAngle(154,109,23)[red];
+{156} Segment(154,155)[hidden];
+{157} Rotation/MeasuredAngle(155,109,23)[red];
+{158} Segment(149,150)[hidden];
+{159} Segment(131,130)[hidden];
+{160} Rotation/MeasuredAngle(130,109,29)[hidden];
+{161} Segment(130,160)[hidden];
+{162} Rotation/MeasuredAngle(79,1,24)[label('B'),magenta,traced];
+{163} Segment(79,162)[color(0,0,128)];
+{164} Rotation/MeasuredAngle(77,1,25)[hidden];
+{165} MoveButton(258,84,0,'')(164,79)[hidden];
+{166} AnimateButton(461,594,'增加半径')(75,74)(1)(0)(1)[black];
+{167} AnimateButton(525,594,'减少半径')(75,74)(1)(0)(1)[black];
+{168} Distance(1,75,624,609,'轮子半径 = ')[red];
+{169} Calculate(624,629,'车轮中心距 + 轮子半径 + 1 厘米 = ','A B + 37.7953 + ')(95,168)[red];
+{170} Translation/FixedAngle/MarkedDistance(111,169,-3.14159)[hidden];
+{171} Calculate(624,660,'轮子半径 + ((1 厘米/2)) = ','A 37.7953 2 / + ')(168)[red];
+{172} Translation/FixedAngle/MarkedDistance(111,171,0)[hidden];
+{173} Translation/FixedAngle/MarkedDistance(170,171,1.5708)[hidden];
+{174} VectorTranslation(173,170,172)[hidden];
+{175} Segment(173,174)[color(0,0,128)];
+{176} Segment(170,173)[color(0,0,128)];
+{177} Segment(172,170)[color(0,0,128)];
+{178} Segment(174,172)[color(0,0,128)];
+{179} Polygon(172,174,173,170)[blue];
+{180} Translation/FixedAngle/MarkedDistance(111,95,-3.14159)[color(192,133,74)];
+{181} FixedText(488,656,'榕坚于2003年')[red];
+">
+Please install <a href="http://www.sun.com/getjava">Java</a> (version 1.4 or later) to use JavaSketchpad applets.</APPLET>
+<P ALIGN=CENTER>多边形滚动</P></H4>
+</BODY>
+</HTML>

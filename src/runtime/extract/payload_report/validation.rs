@@ -1,6 +1,5 @@
 use super::*;
 use anyhow::{Context, Result, bail};
-use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone)]
 pub(super) struct UnsupportedPayloadIssue {
@@ -14,7 +13,6 @@ pub(super) fn collect_unsupported_payload_issues(
 ) -> Vec<UnsupportedPayloadIssue> {
     let mut issues = Vec::new();
     let mut anchors = None;
-    let mut line_structure_cache = BTreeMap::new();
     for group in groups {
         if decode::is_action_button_group(group)
             && decode::decode_button_screen_anchor(file, group).is_none()
@@ -47,7 +45,7 @@ pub(super) fn collect_unsupported_payload_issues(
         collect_validation_issue(
             &mut issues,
             &[group.ordinal],
-            validate_constructed_line_payload(file, groups, group, &mut line_structure_cache),
+            validate_constructed_line_payload(file, groups, group),
         );
         collect_validation_issue(
             &mut issues,
@@ -178,7 +176,6 @@ fn validate_constructed_line_payload(
     file: &GspFile,
     groups: &[ObjectGroup],
     group: &ObjectGroup,
-    line_structure_cache: &mut BTreeMap<usize, bool>,
 ) -> Result<()> {
     let kind = group.header.kind();
     if !matches!(
@@ -211,45 +208,11 @@ fn validate_constructed_line_payload(
 
     match kind {
         GroupKind::PerpendicularLine | GroupKind::ParallelLine => {
-            let through_index = path.refs[0].checked_sub(1).with_context(|| {
-                format!(
-                    "unsupported payload: constructed line through-point ordinal underflow in {}",
-                    describe_group(group)
-                )
-            })?;
-            let host_index = path.refs[1].checked_sub(1).with_context(|| {
-                format!(
-                    "unsupported payload: constructed line host ordinal underflow in {}",
-                    describe_group(group)
-                )
-            })?;
-            groups.get(through_index).with_context(|| {
-                format!(
-                    "unsupported payload: constructed line references missing through point #{} in {}",
-                    path.refs[0],
-                    describe_group(group)
-                )
-            })?;
-            let host_group = groups.get(host_index).with_context(|| {
-                format!(
-                    "unsupported payload: constructed line references missing host #{} in {}",
-                    path.refs[1],
-                    describe_group(group)
-                )
-            })?;
-            line_like_payload_is_structural(
-                file,
-                groups,
-                host_group,
-                &mut BTreeSet::new(),
-                line_structure_cache,
-            )
-                .then_some(())
+            decode::constructed_line_parent_group_indices(file, groups, group)
+                .map(|_| ())
                 .with_context(|| {
                 format!(
-                    "unsupported payload: constructed line host #{} ({:?}) is not a decodable line in {}",
-                    path.refs[1],
-                    host_group.header.kind(),
+                    "unsupported payload: constructed line does not contain one point parent and one decodable line parent in {}",
                     describe_group(group)
                 )
                 })?;
@@ -281,61 +244,6 @@ fn validate_constructed_line_payload(
     }
 
     Ok(())
-}
-
-fn line_like_payload_is_structural(
-    file: &GspFile,
-    groups: &[ObjectGroup],
-    group: &ObjectGroup,
-    visiting: &mut BTreeSet<usize>,
-    cache: &mut BTreeMap<usize, bool>,
-) -> bool {
-    if let Some(result) = cache.get(&group.ordinal) {
-        return *result;
-    }
-    if !visiting.insert(group.ordinal) {
-        return false;
-    }
-    let result = (|| {
-        let path = try_find_indexed_path(file, group).ok().flatten()?;
-        let mut referenced_line = |position: usize, visiting: &mut BTreeSet<usize>| {
-            let ordinal = *path.refs.get(position)?;
-            let referenced = groups.get(ordinal.checked_sub(1)?)?;
-            line_like_payload_is_structural(file, groups, referenced, visiting, cache).then_some(())
-        };
-        match group.header.kind() {
-            GroupKind::Segment
-            | GroupKind::Line
-            | GroupKind::Ray
-            | GroupKind::MeasurementLine
-            | GroupKind::AxisLine
-            | GroupKind::GraphMeasurementSegment => (path.refs.len() == 2).then_some(()),
-            GroupKind::PerpendicularLine | GroupKind::ParallelLine => {
-                (path.refs.len() == 2).then_some(())?;
-                referenced_line(1, visiting)
-            }
-            GroupKind::AngleBisectorRay => (path.refs.len() == 3).then_some(()),
-            GroupKind::Translation => {
-                (path.refs.len() >= 3).then_some(())?;
-                referenced_line(0, visiting)
-            }
-            GroupKind::Rotation
-            | GroupKind::AngleRotation
-            | GroupKind::ParameterRotation
-            | GroupKind::Scale
-            | GroupKind::ExpressionRotation
-            | GroupKind::LegacyAngleRotation => referenced_line(0, visiting),
-            GroupKind::Reflection => {
-                referenced_line(0, visiting)?;
-                referenced_line(1, visiting)
-            }
-            _ => None,
-        }
-    })()
-    .is_some();
-    visiting.remove(&group.ordinal);
-    cache.insert(group.ordinal, result);
-    result
 }
 
 fn validate_action_button_payload(

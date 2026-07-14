@@ -10,8 +10,10 @@ use super::{
 use crate::format::{GroupKind, read_f64, read_u16, read_u32};
 use crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT;
 use crate::runtime::extract::decode::{
-    circle_center_radius_value, detect_perpendicular_segment_payload, is_circle_group_kind,
-    measured_radius_segment_group_indices, resolve_circle_points_raw,
+    circle_center_radius_value, constructed_line_parent_group_indices,
+    detect_perpendicular_segment_payload, is_circle_group_kind,
+    measured_radius_segment_group_indices, numeric_helper_scalar_binding,
+    resolve_circle_points_raw,
 };
 use crate::runtime::extract::points::{is_non_graph_parameter_group, resolve_line_like_points_raw};
 use crate::runtime::geometry::{
@@ -567,13 +569,7 @@ fn resolve_perpendicular_line_shape(
     anchors: &[Option<PointRecord>],
     group: &ObjectGroup,
 ) -> Option<LineShape> {
-    let path = find_indexed_path(file, group)?;
-    if path.refs.len() != 2 {
-        return None;
-    }
-
-    let through_index = path.refs[0].checked_sub(1)?;
-    let host_index = path.refs[1].checked_sub(1)?;
+    let (through_index, host_index) = constructed_line_parent_group_indices(file, groups, group)?;
     let through = anchors.get(through_index)?.clone()?;
     let (line_start_index, line_end_index, host_start, host_end) =
         resolve_host_line_points(file, groups, anchors, host_index)?;
@@ -613,13 +609,7 @@ fn resolve_parallel_line_shape(
     anchors: &[Option<PointRecord>],
     group: &ObjectGroup,
 ) -> Option<LineShape> {
-    let path = find_indexed_path(file, group)?;
-    if path.refs.len() != 2 {
-        return None;
-    }
-
-    let through_index = path.refs[0].checked_sub(1)?;
-    let host_index = path.refs[1].checked_sub(1)?;
+    let (through_index, host_index) = constructed_line_parent_group_indices(file, groups, group)?;
     let through = anchors.get(through_index)?.clone()?;
     let (line_start_index, line_end_index, host_start, host_end) =
         resolve_host_line_points(file, groups, anchors, host_index)?;
@@ -856,6 +846,14 @@ pub(crate) fn collect_circle_shapes(
                                     groups,
                                     radius_group,
                                 ),
+                        })
+                    } else if let Some(radius) =
+                        numeric_helper_scalar_binding(file, groups, radius_group)
+                    {
+                        Some(ShapeBinding::ExpressionRadiusCircle {
+                            center_index,
+                            expr: radius.expr,
+                            parameter_group_ordinals: radius.parameter_group_ordinals,
                         })
                     } else {
                         let parameter_name = decode_label_name(file, radius_group)?;

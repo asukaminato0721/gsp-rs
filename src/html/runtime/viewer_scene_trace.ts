@@ -107,10 +107,12 @@
   scene.registerPointConstraintResolver("polyline", ((env: ViewerEnv, constraint, resolveFn) => {
     const points = resolvePolylineConstraintPoints(env, constraint, resolveFn);
     if (!points || points.length < 2) return null;
-    const segmentIndex = Math.max(0, Math.min(points.length - 2, constraint.segmentIndex));
+    const parameter = ((constraint.parameter % 1) + 1) % 1;
+    const scaled = parameter * (points.length - 1);
+    const segmentIndex = Math.max(0, Math.min(points.length - 2, Math.floor(scaled)));
     const start = points[segmentIndex];
     const end = points[segmentIndex + 1];
-    return start && end ? scene.lerpPoint(start, end, constraint.t) : null;
+    return start && end ? scene.lerpPoint(start, end, scaled - segmentIndex) : null;
   }));
   scene.registerLineBindingResolver("coordinate-trace", ((env: ViewerEnv, line) => sampleCoordinateTracePoints(env, line.binding)));
   scene.sampleCoordinateTracePoints = sampleCoordinateTracePoints;

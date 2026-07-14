@@ -5,17 +5,19 @@ use super::super::decode::{
     try_decode_parameter_control_value_for_group,
 };
 use super::anchors::{
-    resolve_circle_like_raw, resolve_circle_point_raw, resolve_line_like_constraint_raw,
-    resolve_polygon_boundary_point_raw, sample_coordinate_trace_points_raw, scale_function_expr,
+    expression_runtime_context, resolve_circle_like_raw, resolve_circle_point_raw,
+    resolve_line_like_constraint_raw, resolve_polygon_boundary_point_raw,
+    sample_coordinate_trace_points_raw, scale_function_expr,
 };
 use super::{
     decode_non_graph_parameter_value_for_group, editable_non_graph_parameter_name_for_group,
 };
 use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
 use crate::runtime::functions::{
-    FunctionAst, FunctionExpr, evaluate_expr_with_parameters, try_decode_embedded_calculate_expr,
-    try_decode_function_expr, try_decode_function_expr_with_inlined_refs,
-    try_decode_function_plot_descriptor, try_decode_parameter_control_expr,
+    FunctionAst, FunctionExpr, evaluate_expr_with_parameters, function_parameter_group_ordinals,
+    try_decode_embedded_calculate_expr, try_decode_function_expr,
+    try_decode_function_expr_with_inlined_refs, try_decode_function_plot_descriptor,
+    try_decode_parameter_control_expr,
 };
 use crate::runtime::geometry::{
     GraphTransform, arc_on_circle_control_points, lerp_point, locate_polyline_parameter_by_length,
@@ -78,11 +80,16 @@ pub(crate) enum RawPointConstraint {
         points: Vec<PointRecord>,
         segment_index: usize,
         t: f64,
+        parameter: f64,
     },
     PolygonBoundary {
         vertex_group_indices: Vec<usize>,
         edge_index: usize,
         t: f64,
+    },
+    PolygonBoundaryParameter {
+        vertex_group_indices: Vec<usize>,
+        parameter: f64,
     },
     TranslatedPolygonBoundary {
         vertex_group_indices: Vec<usize>,
@@ -227,6 +234,7 @@ pub(crate) enum CoordinatePointSource {
     SourcePoint {
         source_group_index: usize,
         parameter_name: String,
+        parameter_group_ordinals: BTreeMap<String, usize>,
         axis: crate::runtime::scene::CoordinateAxis,
     },
     SourcePoint2d {
@@ -375,7 +383,10 @@ fn parameter_anchor_value(
         let point = anchors.get(point_group_index)?.as_ref()?;
         let start = anchors.get(start_group_index)?.as_ref()?;
         let end = anchors.get(end_group_index)?.as_ref()?;
-        let t = segment_projection_parameter(point, start, end)?;
+        // Keep the parameter symbolic when its host segment is temporarily
+        // degenerate at the saved state. Dynamic evaluation will recompute the
+        // projection after upstream parameter-controlled endpoints refresh.
+        let t = segment_projection_parameter(point, start, end).unwrap_or(0.0);
         let name = decode_label_name(file, group)
             .or_else(|| decode_label_name(file, point_group))
             .unwrap_or_default();
@@ -409,6 +420,25 @@ fn parameter_anchor_value(
         .refs
         .get(1)
         .and_then(|ordinal| groups.get(ordinal.checked_sub(1)?))
+        .filter(|host| host.header.kind() == GroupKind::Polygon)
+    {
+        let host_path = find_indexed_path(file, host_group)?;
+        let vertices = host_path
+            .refs
+            .iter()
+            .map(|ordinal| anchors.get(ordinal.checked_sub(1)?)?.clone())
+            .collect::<Option<Vec<_>>>()?;
+        let point = anchors.get(point_group_index)?.as_ref()?;
+        let t = polygon_parameter_from_point(&vertices, point)?;
+        let name = decode_label_name(file, group)
+            .or_else(|| decode_label_name(file, point_group))
+            .unwrap_or_default();
+        return Some((name, t, point_group_index, None));
+    }
+    if let Some(host_group) = path
+        .refs
+        .get(1)
+        .and_then(|ordinal| groups.get(ordinal.checked_sub(1)?))
         && let Some(circle) = resolve_circle_like_raw(file, groups, anchors, host_group)
     {
         let point = anchors.get(point_group_index)?.as_ref()?;
@@ -437,6 +467,7 @@ fn parameter_anchor_value(
             edge_index,
             t,
         )?,
+        RawPointConstraint::PolygonBoundaryParameter { parameter, .. } => parameter,
         RawPointConstraint::TranslatedPolygonBoundary {
             edge_index,
             t,
@@ -578,6 +609,51 @@ pub(crate) fn polygon_parameter_to_edge(
         traveled += length;
     }
     None
+}
+
+fn polygon_parameter_from_point(vertices: &[PointRecord], point: &PointRecord) -> Option<f64> {
+    if vertices.len() < 2 {
+        return None;
+    }
+    let lengths = (0..vertices.len())
+        .map(|index| {
+            let start = &vertices[index];
+            let end = &vertices[(index + 1) % vertices.len()];
+            (end.x - start.x).hypot(end.y - start.y)
+        })
+        .collect::<Vec<_>>();
+    let perimeter: f64 = lengths.iter().sum();
+    if perimeter <= 1e-9 {
+        return None;
+    }
+    let mut traveled = 0.0;
+    let mut closest = None::<(f64, f64)>;
+    for (edge_index, length) in lengths.iter().copied().enumerate() {
+        let start = &vertices[edge_index];
+        let end = &vertices[(edge_index + 1) % vertices.len()];
+        if length > 1e-9
+            && let Some(projection) = gsp_runtime_core::project_to_line_like(
+                gsp_runtime_core::Point {
+                    x: point.x,
+                    y: point.y,
+                },
+                gsp_runtime_core::Point {
+                    x: start.x,
+                    y: start.y,
+                },
+                gsp_runtime_core::Point { x: end.x, y: end.y },
+                gsp_runtime_core::LineKind::Segment,
+            )
+        {
+            let distance_squared = projection.distance_squared;
+            let parameter = (traveled + length * projection.t) / perimeter;
+            if closest.is_none_or(|(best_distance, _)| distance_squared < best_distance) {
+                closest = Some((distance_squared, parameter));
+            }
+        }
+        traveled += length;
+    }
+    closest.map(|(_, parameter)| wrap_unit_interval(parameter))
 }
 
 pub(crate) fn decode_translated_point_constraint(
@@ -730,7 +806,9 @@ fn decode_point_on_line_like_constraint(
         crate::format::GroupKind::Rotation
         | crate::format::GroupKind::Reflection
         | crate::format::GroupKind::Translation
-        | crate::format::GroupKind::Scale => Some(RawPointConstraint::ConstructedLine {
+        | crate::format::GroupKind::Scale
+        | crate::format::GroupKind::CartesianOffsetPoint
+        | crate::format::GroupKind::PolarOffsetPoint => Some(RawPointConstraint::ConstructedLine {
             host_group_index,
             t,
             line_like_kind: transformed_line_like_kind(file, groups, host_group)?,
@@ -752,7 +830,12 @@ fn transformed_line_like_kind(
         }
         GroupKind::Line => Some(LineLikeKind::Line),
         GroupKind::Ray => Some(LineLikeKind::Ray),
-        GroupKind::Rotation | GroupKind::Reflection | GroupKind::Translation | GroupKind::Scale => {
+        GroupKind::Rotation
+        | GroupKind::Reflection
+        | GroupKind::Translation
+        | GroupKind::Scale
+        | GroupKind::CartesianOffsetPoint
+        | GroupKind::PolarOffsetPoint => {
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
             transformed_line_like_kind(file, groups, source_group)
         }
@@ -807,6 +890,7 @@ pub(crate) fn try_decode_parameter_controlled_point(
 
     match host_group.header.kind() {
         crate::format::GroupKind::Segment
+        | crate::format::GroupKind::MeasurementLine
         | crate::format::GroupKind::Line
         | crate::format::GroupKind::Ray => {
             let host_path = find_indexed_path(file, host_group)
@@ -815,7 +899,9 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 return Err(ParameterControlledPointDecodeError::InvalidHostGeometry);
             }
             let line_like_kind = match host_group.header.kind() {
-                crate::format::GroupKind::Segment => LineLikeKind::Segment,
+                crate::format::GroupKind::Segment | crate::format::GroupKind::MeasurementLine => {
+                    LineLikeKind::Segment
+                }
                 crate::format::GroupKind::Line => LineLikeKind::Line,
                 crate::format::GroupKind::Ray => LineLikeKind::Ray,
                 _ => unreachable!(),
@@ -1233,6 +1319,7 @@ pub(crate) fn try_decode_parameter_controlled_point_on_polyline(
             points: points.to_vec(),
             segment_index,
             t,
+            parameter: normalized,
         },
         parameter_name: value.parameter_name,
         source_point_group_index: value.source_point_group_index,
@@ -1486,7 +1573,11 @@ pub(crate) fn decode_coordinate_point(
     }
 
     let path = find_indexed_path(file, group)?;
-    if path.refs.len() < 2 {
+    let minimum_path_len = match kind {
+        crate::format::GroupKind::FixedCoordinatePoint => 1,
+        _ => 2,
+    };
+    if path.refs.len() < minimum_path_len {
         return None;
     }
 
@@ -1634,7 +1725,22 @@ pub(crate) fn decode_coordinate_point(
         crate::format::GroupKind::CoordinateExpressionPoint
         | crate::format::GroupKind::CoordinateExpressionPointAlt => {
             let calc_group = groups.get(path.refs[1].checked_sub(1)?)?;
-            let expr = try_decode_function_expr(file, groups, calc_group).ok()?;
+            let parameter_control = is_parameter_control_group(calc_group);
+            let (expr, mut parameter_values, preferred_parameter_name) = if parameter_control {
+                let (name, _, expr) =
+                    coordinate_parameter_binding(file, groups, calc_group, anchors)?;
+                (expr, BTreeMap::new(), Some(name))
+            } else {
+                expression_runtime_context(file, groups, calc_group, anchors)?
+            };
+            let parameter_group_ordinals = if parameter_control {
+                BTreeMap::from([(
+                    preferred_parameter_name.clone().unwrap_or_default(),
+                    calc_group.ordinal,
+                )])
+            } else {
+                function_parameter_group_ordinals(file, groups, calc_group)
+            };
             let source_group_index = path.refs[0].checked_sub(1)?;
             let source_position = anchors.get(source_group_index)?.clone()?;
             let source_world = to_world(&source_position, graph);
@@ -1654,7 +1760,8 @@ pub(crate) fn decode_coordinate_point(
                     _ => crate::runtime::scene::CoordinateAxis::Horizontal,
                 },
             };
-            if is_parameter_control_group(calc_group) {
+            if parameter_control {
+                let parameter_name = preferred_parameter_name.unwrap_or_default();
                 let raw_per_unit = graph
                     .as_ref()
                     .map_or(crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT, |transform| {
@@ -1680,24 +1787,25 @@ pub(crate) fn decode_coordinate_point(
                     position,
                     source: CoordinatePointSource::SourcePoint {
                         source_group_index,
-                        parameter_name: decode_label_name(file, calc_group).unwrap_or_default(),
+                        parameter_name: parameter_name.clone(),
+                        parameter_group_ordinals: BTreeMap::from([(
+                            parameter_name,
+                            calc_group.ordinal,
+                        )]),
                         axis,
                     },
                     expr,
                 });
             }
-            let parameter_group = first_path_group(file, groups, calc_group)?;
-            let parameter_name = decode_label_name(file, parameter_group)?;
+            let parameter_name = first_path_group(file, groups, calc_group)
+                .and_then(|parameter_group| decode_label_name(file, parameter_group))
+                .or(preferred_parameter_name)
+                .or_else(|| parameter_group_ordinals.keys().next().cloned())
+                .or_else(|| decode_label_name(file, calc_group))
+                .unwrap_or_default();
             let world = match axis {
                 crate::runtime::scene::CoordinateAxis::Horizontal => {
-                    let parameter_value =
-                        try_decode_parameter_control_value_for_group(file, groups, parameter_group)
-                            .ok()?;
-                    let offset = evaluate_expr_with_parameters(
-                        &expr,
-                        0.0,
-                        &BTreeMap::from([(parameter_name.clone(), parameter_value)]),
-                    )?;
+                    let offset = evaluate_expr_with_parameters(&expr, 0.0, &parameter_values)?;
                     PointRecord {
                         x: source_world.x + offset,
                         y: source_world.y,
@@ -1705,11 +1813,9 @@ pub(crate) fn decode_coordinate_point(
                 }
                 crate::runtime::scene::CoordinateAxis::Vertical => {
                     let parameter_value = source_world.x;
-                    let y = evaluate_expr_with_parameters(
-                        &expr,
-                        0.0,
-                        &BTreeMap::from([(parameter_name.clone(), parameter_value)]),
-                    )?;
+                    parameter_values.insert(parameter_name.clone(), parameter_value);
+                    let y =
+                        evaluate_expr_with_parameters(&expr, parameter_value, &parameter_values)?;
                     PointRecord {
                         x: parameter_value,
                         y,
@@ -1727,6 +1833,7 @@ pub(crate) fn decode_coordinate_point(
                 source: CoordinatePointSource::SourcePoint {
                     source_group_index,
                     parameter_name,
+                    parameter_group_ordinals,
                     axis,
                 },
                 expr,
@@ -1756,7 +1863,11 @@ pub(crate) fn decode_coordinate_point(
                 position,
                 source: CoordinatePointSource::SourcePoint {
                     source_group_index,
-                    parameter_name,
+                    parameter_name: parameter_name.clone(),
+                    parameter_group_ordinals: BTreeMap::from([(
+                        parameter_name,
+                        parameter_group.ordinal,
+                    )]),
                     axis: crate::runtime::scene::CoordinateAxis::Vertical,
                 },
                 expr,
@@ -1786,7 +1897,11 @@ pub(crate) fn decode_coordinate_point(
                 position,
                 source: CoordinatePointSource::SourcePoint {
                     source_group_index,
-                    parameter_name,
+                    parameter_name: parameter_name.clone(),
+                    parameter_group_ordinals: BTreeMap::from([(
+                        parameter_name,
+                        parameter_group.ordinal,
+                    )]),
                     axis: crate::runtime::scene::CoordinateAxis::Horizontal,
                 },
                 expr,
@@ -1866,6 +1981,11 @@ pub(crate) fn decode_coordinate_point(
                 source: CoordinatePointSource::SourcePoint {
                     source_group_index,
                     parameter_name,
+                    parameter_group_ordinals: function_parameter_group_ordinals(
+                        file,
+                        groups,
+                        value_group,
+                    ),
                     axis: crate::runtime::scene::CoordinateAxis::Horizontal,
                 },
                 expr,
@@ -1874,7 +1994,9 @@ pub(crate) fn decode_coordinate_point(
         crate::format::GroupKind::FixedCoordinatePoint => {
             let axis_group = groups.get(path.refs[0].checked_sub(1)?)?;
             let axis_path = find_indexed_path(file, axis_group)?;
-            let source_group_index = axis_path.refs.first()?.checked_sub(1)?;
+            let origin_measurement_group = groups.get(axis_path.refs.first()?.checked_sub(1)?)?;
+            let origin_measurement_path = find_indexed_path(file, origin_measurement_group)?;
+            let source_group_index = origin_measurement_path.refs.first()?.checked_sub(1)?;
             let source_position = anchors.get(source_group_index)?.clone()?;
             let source_world = to_world(&source_position, graph);
             let payload = group

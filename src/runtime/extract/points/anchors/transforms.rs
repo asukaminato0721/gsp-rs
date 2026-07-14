@@ -34,8 +34,9 @@ pub(crate) fn decode_custom_transform_parameter(
             {
                 RawPointConstraint::Segment(constraint) => Some(constraint.t),
                 RawPointConstraint::ConstructedLine { t, .. } => Some(t),
-                RawPointConstraint::Polyline { t, .. } => Some(t),
+                RawPointConstraint::Polyline { parameter, .. } => Some(parameter),
                 RawPointConstraint::PolygonBoundary { t, .. } => Some(t),
+                RawPointConstraint::PolygonBoundaryParameter { parameter, .. } => Some(parameter),
                 RawPointConstraint::TranslatedPolygonBoundary { t, .. } => Some(t),
                 RawPointConstraint::Circle(constraint) => {
                     let angle = (-constraint.unit_y).atan2(constraint.unit_x);
@@ -59,8 +60,9 @@ pub(crate) fn decode_custom_transform_parameter(
             match parameter_point.constraint {
                 RawPointConstraint::Segment(constraint) => Some(constraint.t),
                 RawPointConstraint::ConstructedLine { t, .. } => Some(t),
-                RawPointConstraint::Polyline { t, .. } => Some(t),
+                RawPointConstraint::Polyline { parameter, .. } => Some(parameter),
                 RawPointConstraint::PolygonBoundary { t, .. } => Some(t),
+                RawPointConstraint::PolygonBoundaryParameter { parameter, .. } => Some(parameter),
                 RawPointConstraint::TranslatedPolygonBoundary { t, .. } => Some(t),
                 RawPointConstraint::Circle(constraint) => {
                     let angle = (-constraint.unit_y).atan2(constraint.unit_x);
@@ -86,6 +88,9 @@ pub(crate) fn decode_custom_transform_distance_scale(
     file: &GspFile,
     expr_group: &ObjectGroup,
 ) -> Option<f64> {
+    if expr_group.header.kind() == GroupKind::MeasuredValue {
+        return Some(crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT);
+    }
     Some(match custom_transform_suffix(file, expr_group)? {
         0x0201 => PX_PER_CM,
         _ => 1.0,
@@ -198,12 +203,29 @@ pub(crate) fn decode_parameter_rotation_anchor_raw(
     group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
 ) -> Option<PointRecord> {
-    let binding = if let Ok(binding) = try_decode_parameter_rotation_binding(file, groups, group) {
-        binding
+    let binding = decode_parameter_rotation_transform_binding_raw(file, groups, group, anchors)?;
+    let source = anchors.get(binding.source_group_index)?.clone()?;
+    let center = anchors.get(binding.center_group_index)?.clone()?;
+    match binding.kind {
+        TransformBindingKind::Rotate { angle_degrees, .. } => {
+            Some(rotate_around(&source, &center, angle_degrees.to_radians()))
+        }
+        TransformBindingKind::Scale { factor } => Some(scale_around(&source, &center, factor)),
+    }
+}
+
+pub(crate) fn decode_parameter_rotation_transform_binding_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<super::bindings::TransformBinding> {
+    if let Ok(binding) = try_decode_parameter_rotation_binding(file, groups, group) {
+        Some(binding)
     } else if let Some(binding) =
         decode_measured_angle_parameter_rotation_binding_raw(file, groups, group, anchors)
     {
-        binding
+        Some(binding)
     } else {
         let path = find_indexed_path(file, group)?;
         let source_group_index = path.refs.first()?.checked_sub(1)?;
@@ -222,10 +244,10 @@ pub(crate) fn decode_parameter_rotation_anchor_raw(
                 } else {
                     scale_angle_expr_to_degrees(angle_expr)
                 };
-                (
-                    evaluate_expr_with_parameters(&angle_expr, 0.0, &parameters)?,
-                    parameter_name,
-                )
+                let angle_degrees = evaluate_expr_with_parameters(&angle_expr, 0.0, &parameters)
+                    .filter(|value| value.is_finite())
+                    .unwrap_or(0.0);
+                (angle_degrees, parameter_name)
             }
             GroupKind::ParameterAnchor => {
                 let (_, angle_radians) =
@@ -234,22 +256,14 @@ pub(crate) fn decode_parameter_rotation_anchor_raw(
             }
             _ => return None,
         };
-        super::bindings::TransformBinding {
+        Some(super::bindings::TransformBinding {
             source_group_index,
             center_group_index,
             kind: TransformBindingKind::Rotate {
                 angle_degrees,
                 parameter_name,
             },
-        }
-    };
-    let source = anchors.get(binding.source_group_index)?.clone()?;
-    let center = anchors.get(binding.center_group_index)?.clone()?;
-    match binding.kind {
-        TransformBindingKind::Rotate { angle_degrees, .. } => {
-            Some(rotate_around(&source, &center, angle_degrees.to_radians()))
-        }
-        TransformBindingKind::Scale { factor } => Some(scale_around(&source, &center, factor)),
+        })
     }
 }
 
@@ -276,7 +290,9 @@ pub(crate) fn decode_derived_polar_endpoint_binding(
         if distance_group.header.kind() == GroupKind::FunctionExpr {
         let (expr, parameters, _) =
             expression_runtime_context(file, groups, distance_group, anchors)?;
-        let value = evaluate_expr_with_parameters(&expr, 0.0, &parameters)?;
+        let value = evaluate_expr_with_parameters(&expr, 0.0, &parameters)
+            .filter(|value| value.is_finite())
+            .unwrap_or(0.0);
         (
             expr,
             function_parameter_group_ordinals(file, groups, distance_group),
@@ -295,12 +311,17 @@ pub(crate) fn decode_derived_polar_endpoint_binding(
             value,
         )
     } else {
-        let expression = try_decode_function_expr(file, groups, distance_group).ok()?;
+        let expression = try_decode_function_expr(file, groups, distance_group).ok();
         let value = try_decode_parameter_control_value_for_group(file, groups, distance_group)
             .ok()
-            .or_else(|| evaluate_expr_with_parameters(&expression, 0.0, &BTreeMap::new()))?;
+            .or_else(|| {
+                expression.as_ref().and_then(|expression| {
+                    evaluate_expr_with_parameters(expression, 0.0, &BTreeMap::new())
+                })
+            })?;
         let name = decode_label_name(file, distance_group)
-            .unwrap_or_else(|| crate::runtime::functions::function_expr_label(expression));
+            .or_else(|| expression.map(crate::runtime::functions::function_expr_label))
+            .unwrap_or_else(|| format!("__scalar_{}", distance_group.ordinal));
         (
             FunctionExpr::Parsed(FunctionAst::Parameter(name.clone(), value)),
             BTreeMap::from([(name, distance_group.ordinal)]),
@@ -725,6 +746,16 @@ pub(crate) fn decode_point_constraint_anchor(
                 .collect::<Option<Vec<_>>>()?;
             resolve_polygon_boundary_point_raw(&vertices, edge_index, t)
         }
+        RawPointConstraint::PolygonBoundaryParameter {
+            vertex_group_indices,
+            parameter,
+        } => {
+            let vertices = vertex_group_indices
+                .iter()
+                .map(|group_index| anchors.get(*group_index)?.clone())
+                .collect::<Option<Vec<_>>>()?;
+            resolve_polygon_boundary_parameter_point_raw(&vertices, parameter)
+        }
         RawPointConstraint::TranslatedPolygonBoundary {
             vertex_group_indices,
             vector_start_group_index,
@@ -820,4 +851,41 @@ pub(crate) fn resolve_polygon_boundary_point_raw(
     let start = &vertices[edge_index % vertices.len()];
     let end = &vertices[(edge_index + 1) % vertices.len()];
     Some(lerp_point(start, end, t))
+}
+
+pub(crate) fn resolve_polygon_boundary_parameter_point_raw(
+    vertices: &[PointRecord],
+    parameter: f64,
+) -> Option<PointRecord> {
+    if vertices.len() < 2 {
+        return None;
+    }
+    let lengths = vertices
+        .iter()
+        .zip(vertices.iter().cycle().skip(1))
+        .take(vertices.len())
+        .map(|(start, end)| (end.x - start.x).hypot(end.y - start.y))
+        .collect::<Vec<_>>();
+    let perimeter = lengths.iter().sum::<f64>();
+    if perimeter <= 1e-9 {
+        return vertices.first().cloned();
+    }
+    let target = parameter.rem_euclid(1.0) * perimeter;
+    let mut traveled = 0.0;
+    for (edge_index, length) in lengths.iter().copied().enumerate() {
+        if traveled + length >= target || edge_index + 1 == vertices.len() {
+            let local = if length <= 1e-9 {
+                0.0
+            } else {
+                ((target - traveled) / length).clamp(0.0, 1.0)
+            };
+            return Some(lerp_point(
+                &vertices[edge_index],
+                &vertices[(edge_index + 1) % vertices.len()],
+                local,
+            ));
+        }
+        traveled += length;
+    }
+    None
 }

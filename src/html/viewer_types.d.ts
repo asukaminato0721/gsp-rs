@@ -752,6 +752,11 @@ type RuntimeDynamicsGeometryDependencies = {
     xMin: number,
     xMax: number,
   ) => void;
+  markedAngleTranslationPoint: (
+    binding: Extract<PointBindingJson, { kind: "marked-angle-translation" }>,
+    parameters: Map<string, number>,
+    resolvePointAt: (pointIndex: number) => Point | null | undefined,
+  ) => Point | null;
   circumcenter: (start: Point, mid: Point, end: Point) => Point | null;
   clipRayToBounds: (start: Point, end: Point, bounds: RuntimeBounds) => Point[] | null;
   deriveLabelParameters: (

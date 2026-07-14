@@ -155,6 +155,15 @@
         kind: base.kind,
       };
     }
+    if (constraint.kind === "translated-delta") {
+      const base: ResolvedLineConstraint | null = resolveLineConstraint(_env, constraint.line, resolveFn);
+      if (!base) return null;
+      return {
+        start: { x: base.start.x + constraint.dx, y: base.start.y + constraint.dy },
+        end: { x: base.end.x + constraint.dx, y: base.end.y + constraint.dy },
+        kind: base.kind,
+      };
+    }
     return null;
   }
 

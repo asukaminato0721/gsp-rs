@@ -283,12 +283,19 @@
     const constraint = point?.constraint;
     if (
       !constraint
-      || (constraint.kind !== "polygon-boundary" && constraint.kind !== "translated-polygon-boundary")
+      || (
+        constraint.kind !== "polygon-boundary"
+        && constraint.kind !== "polygon-boundary-parameter"
+        && constraint.kind !== "translated-polygon-boundary"
+      )
       || constraint.vertexIndices.length < 2
     ) {
       return null;
     }
 
+    if (constraint.kind === "polygon-boundary-parameter") {
+      return wrapUnitInterval(constraint.parameter);
+    }
     const count = constraint.vertexIndices.length;
     let perimeter = 0;
     let traveled = 0;
@@ -341,9 +348,9 @@
     }
     const points = polylineConstraintPoints(scene, constraint);
     if (!Array.isArray(points) || points.length < 2) return null;
-    const segmentIndex = Number.isFinite(constraint.segmentIndex) ? constraint.segmentIndex : 0;
-    const t = Number.isFinite(constraint.t) ? Math.max(0, Math.min(1, constraint.t)) : 0;
-    return (segmentIndex + t) / (points.length - 1);
+    return Number.isFinite(constraint.parameter)
+      ? wrapUnitInterval(constraint.parameter)
+      : null;
   }
 
 
@@ -409,6 +416,7 @@
     "ray-constraint": (scene: ViewerSceneData, pointIndex: number) => scene.points[pointIndex]?.constraint?.t ?? null,
     polyline: (scene: ViewerSceneData, pointIndex: number) => scene.points[pointIndex]?.constraint?.t ?? null,
     "polygon-boundary": polygonBoundaryParameterFromPoint,
+    "polygon-boundary-parameter": polygonBoundaryParameterFromPoint,
     "translated-polygon-boundary": polygonBoundaryParameterFromPoint,
     circle: circleParameterFromPoint,
     "circle-arc": (scene: ViewerSceneData, pointIndex: number) => scene.points[pointIndex]?.constraint?.t ?? null,
@@ -439,7 +447,8 @@
       >;
       const pointCount = polylineConstraintPoints(scene, constraint)?.length ?? 0;
       if (pointCount < 2) return;
-      const scaled = wrapUnitInterval(value) * (pointCount - 1);
+      constraint.parameter = wrapUnitInterval(value);
+      const scaled = constraint.parameter * (pointCount - 1);
       constraint.segmentIndex = Math.min(
         pointCount - 2,
         Math.floor(scaled),
@@ -473,6 +482,9 @@
         traveled += length;
       }
     },
+    "polygon-boundary-parameter"(point: RuntimeScenePointJson, _scene: ViewerSceneData, value: number) {
+      point.constraint.parameter = wrapUnitInterval(value);
+    },
     "translated-polygon-boundary"(point: RuntimeScenePointJson, scene: ViewerSceneData, value: number) {
       POINT_CONSTRAINT_PARAMETER_APPLIERS["polygon-boundary"](point, scene, value);
     },
@@ -503,6 +515,29 @@
     if (!constraint) return null;
     const readParameter = POINT_CONSTRAINT_PARAMETER_READERS[constraint.kind];
     return readParameter ? readParameter(scene, pointIndex) : null;
+  }
+
+  function constraintExpressionSourceValue(
+    scene: ViewerSceneData,
+    binding: {
+      sourceIndex?: number | null;
+      sourceParameterStartIndex?: number | null;
+      sourceParameterEndIndex?: number | null;
+    },
+  ) {
+    if (
+      typeof binding.sourceParameterStartIndex === "number"
+      && typeof binding.sourceParameterEndIndex === "number"
+    ) {
+      return lineProjectionParameterFromBinding(scene, {
+        pointIndex: binding.sourceIndex,
+        startIndex: binding.sourceParameterStartIndex,
+        endIndex: binding.sourceParameterEndIndex,
+        lineKind: "segment",
+      });
+    }
+    if (typeof binding.sourceIndex !== "number") return null;
+    return parameterValueFromPoint(scene, binding.sourceIndex);
   }
 
 
@@ -904,6 +939,40 @@
   }
 
 
+  function markedAngleTranslationPoint(
+    binding: Extract<PointBindingJson, { kind: "marked-angle-translation" }>,
+    parameters: Map<string, number>,
+    resolvePointAt: (pointIndex: number) => Point | null | undefined,
+  ) {
+    const target = resolvePointAt(binding.targetIndex);
+    const angleStart = resolvePointAt(binding.angleStartIndex);
+    const angleVertex = resolvePointAt(binding.angleVertexIndex);
+    const angleEnd = resolvePointAt(binding.angleEndIndex);
+    if (!target || !angleStart || !angleVertex || !angleEnd) return null;
+    const distance = evaluateExpr(binding.distanceExpr, 0, parameters) ?? binding.distance;
+    const angle = measuredRotationRadians(angleStart, angleVertex, angleEnd);
+    if (!isFiniteNumber(distance) || !isFiniteNumber(angle)) return null;
+    const result = {
+      x: target.x + distance * Math.cos(angle),
+      y: target.y - distance * Math.sin(angle),
+    };
+    return Number.isFinite(result.x) && Number.isFinite(result.y) ? result : null;
+  }
+
+
+  function updateMarkedAngleTranslationPoint(
+    point: RuntimeScenePointJson,
+    parameters: Map<string, number>,
+    resolvePointAt: (pointIndex: number) => Point | null | undefined,
+  ) {
+    if (point.binding?.kind !== "marked-angle-translation") return;
+    const result = markedAngleTranslationPoint(point.binding, parameters, resolvePointAt);
+    if (!result) return;
+    point.x = result.x;
+    point.y = result.y;
+  }
+
+
   function circumcenter(start: Point, mid: Point, end: Point) {
     return window.GspRuntimeCore.threePointArcGeometry(start, mid, end)?.center ?? null;
   }
@@ -999,6 +1068,14 @@
       const dy = vectorEnd.y - vectorStart.y;
       return source.map(( point) => ({ x: point.x + dx, y: point.y + dy }));
     }
+    if (constraint.kind === "translated-delta") {
+      const source = resolveLineConstraintPoints(resolvePointAt, bounds, constraint.line);
+      if (!source) return null;
+      return source.map((point) => ({
+        x: point.x + constraint.dx,
+        y: point.y + constraint.dy,
+      }));
+    }
     if (constraint.kind === "reflected") {
       const source = resolveLineConstraintPoints(resolvePointAt, bounds, constraint.line);
       const axis = resolveLineConstraintParameterPoints(resolvePointAt, constraint.axis);
@@ -1081,6 +1158,14 @@
       const dy = vectorEnd.y - vectorStart.y;
       return source.map(( point) => ({ x: point.x + dx, y: point.y + dy }));
     }
+    if (constraint.kind === "translated-delta") {
+      const source = resolveLineConstraintParameterPoints(resolvePointAt, constraint.line);
+      if (!source) return null;
+      return source.map((point) => ({
+        x: point.x + constraint.dx,
+        y: point.y + constraint.dy,
+      }));
+    }
     if (constraint.kind === "reflected") {
       const source = resolveLineConstraintParameterPoints(resolvePointAt, constraint.line);
       const axis = resolveLineConstraintParameterPoints(resolvePointAt, constraint.axis);
@@ -1122,6 +1207,13 @@
       point.x = resolved.x;
       point.y = resolved.y;
     },
+    "marked-angle-translation"(env: ViewerEnv, scene: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
+      updateMarkedAngleTranslationPoint(
+        point,
+        parameters,
+        (index: number) => resolveScenePointInScene(env, scene, index),
+      );
+    },
     "derived-parameter"(_env: ViewerEnv, scene: ViewerSceneData, point: RuntimeScenePointJson) {
       const value = typeof point.binding.parameterStartIndex === "number"
         && typeof point.binding.parameterEndIndex === "number"
@@ -1148,7 +1240,7 @@
       }
     },
     "constraint-parameter-from-point-expr"(_env: ViewerEnv, scene: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
-      const sourceValue = parameterValueFromPoint(scene, point.binding.sourceIndex);
+      const sourceValue = constraintExpressionSourceValue(scene, point.binding);
       if (!isFiniteNumber(sourceValue)) return;
       const exprParameters = new Map<string, number>(parameters);
       if (point.binding.parameterName) {
@@ -1563,6 +1655,9 @@
       point.x = resolved.x;
       point.y = resolved.y;
     },
+    "marked-angle-translation"(_env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
+      updateMarkedAngleTranslationPoint(point, parameters, (index: number) => draft.points[index]);
+    },
     coordinate(_env: ViewerEnv, _draft: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
       const value = parameters.get(point.binding.name);
       if (!isFiniteNumber(value)) return;
@@ -1618,7 +1713,7 @@
       }
     },
     "constraint-parameter-from-point-expr"(_env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
-      const sourceValue = parameterValueFromPoint(draft, point.binding.sourceIndex);
+      const sourceValue = constraintExpressionSourceValue(draft, point.binding);
       if (!isFiniteNumber(sourceValue)) return;
       const exprParameters = new Map<string, number>(parameters);
       if (point.binding.parameterName) {
@@ -1648,6 +1743,7 @@
     refreshDerivedCircle,
   } = modules.dynamicsGeometry.createDynamicsGeometry({
     applyTraceValueToPoint,
+    markedAngleTranslationPoint,
     circumcenter,
     clipRayToBounds,
     deriveLabelParameters,
@@ -2412,7 +2508,11 @@
         const constraint = draft.points[pointIndex]?.constraint;
         if (constraint && constraint.kind === "polyline") {
           constraint.points = sampled.map((point) => ({ ...point }));
-          constraint.segmentIndex = Math.min(constraint.segmentIndex, Math.max(0, sampled.length - 2));
+          if (sampled.length >= 2) {
+            const scaled = wrapUnitInterval(constraint.parameter) * (sampled.length - 1);
+            constraint.segmentIndex = Math.min(sampled.length - 2, Math.floor(scaled));
+            constraint.t = scaled - constraint.segmentIndex;
+          }
         }
       });
     });

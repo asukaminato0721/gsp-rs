@@ -14,7 +14,7 @@ use crate::runtime::extract::points::{
     decode_expression_offset_anchor_raw, decode_expression_rotation_anchor_raw,
     decode_graph_calibration_anchor_raw, decode_intersection_anchor_raw,
     decode_iteration_binding_point_alias_raw, decode_legacy_coordinate_construct_point,
-    decode_ratio_scale_anchor_raw,
+    decode_marked_angle_translation_anchor_raw, decode_ratio_scale_anchor_raw,
 };
 use crate::runtime::extract::points::{
     decode_directed_angle_anchor_raw, decode_legacy_angle_rotation_anchor_raw,
@@ -41,6 +41,10 @@ pub(crate) fn collect_raw_object_anchors(
         {
             Some(anchor)
         } else if let Some(anchor) = decode_directed_angle_anchor_raw(file, group, &anchors) {
+            Some(anchor)
+        } else if let Some(anchor) =
+            decode_marked_angle_translation_anchor_raw(file, groups, group, &anchors)
+        {
             Some(anchor)
         } else if matches!(
             group.header.kind(),

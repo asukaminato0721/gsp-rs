@@ -14,6 +14,7 @@ pub(crate) struct PayloadDebugSource {
 
 #[derive(Debug, Clone)]
 pub(crate) struct Scene {
+    pub(crate) payload_dependencies: BTreeMap<usize, Vec<usize>>,
     pub(crate) background_color: Option<[u8; 4]>,
     pub(crate) graph_mode: bool,
     pub(crate) pi_mode: bool,
@@ -56,6 +57,17 @@ pub(crate) enum SceneScalarBinding {
     ArcAngle {
         arc_index: usize,
     },
+    ArcLength {
+        arc_index: usize,
+    },
+    PolarAngle {
+        point_index: usize,
+        center_index: usize,
+        reference_index: usize,
+    },
+    Alias {
+        source_group_ordinal: usize,
+    },
     PointParameter {
         point_index: usize,
     },
@@ -69,6 +81,10 @@ pub(crate) enum SceneScalarBinding {
         point_index: usize,
         center_index: usize,
         radius_index: usize,
+    },
+    PointArcParameter {
+        point_index: usize,
+        arc_index: usize,
     },
     PointPolylineParameter {
         point_index: usize,
@@ -518,11 +534,16 @@ pub(crate) enum ScenePointConstraint {
         points: Vec<PointRecord>,
         segment_index: usize,
         t: f64,
+        parameter: f64,
     },
     OnPolygonBoundary {
         vertex_indices: Vec<usize>,
         edge_index: usize,
         t: f64,
+    },
+    OnPolygonBoundaryParameter {
+        vertex_indices: Vec<usize>,
+        parameter: f64,
     },
     OnTranslatedPolygonBoundary {
         vertex_indices: Vec<usize>,
@@ -759,6 +780,11 @@ pub(crate) enum LineConstraint {
         vector_start_index: usize,
         vector_end_index: usize,
     },
+    TranslatedDelta {
+        line: Box<LineConstraint>,
+        dx: f64,
+        dy: f64,
+    },
     Reflected {
         line: Box<LineConstraint>,
         axis: Box<LineConstraint>,
@@ -970,17 +996,24 @@ pub(crate) struct SceneParameter {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) enum ScenePointParameterDomain {
+    Circular(CircularConstraint),
+    PolygonBoundary { vertex_indices: Vec<usize> },
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct ScenePointParameterSource {
     pub(crate) name: String,
     pub(crate) point_index: usize,
-    pub(crate) circle: Option<CircularConstraint>,
+    pub(crate) domain: Option<ScenePointParameterDomain>,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) enum ScenePointBinding {
     GraphCalibration,
-    PayloadAlias {
-        parent_indices: Vec<usize>,
+    ProjectedCoordinate {
+        source_index: usize,
+        parent_group_ordinals: Vec<usize>,
         source_parent: usize,
     },
     Parameter {
@@ -1002,6 +1035,8 @@ pub(crate) enum ScenePointBinding {
     },
     ConstraintParameterFromPointExpr {
         source_index: usize,
+        source_parameter_start_index: Option<usize>,
+        source_parameter_end_index: Option<usize>,
         parameter_name: String,
         expr: FunctionExpr,
         absolute_value: bool,
@@ -1065,6 +1100,15 @@ pub(crate) enum ScenePointBinding {
         factor_parameter_start_index: Option<usize>,
         factor_parameter_end_index: Option<usize>,
     },
+    MarkedAngleTranslation {
+        target_index: usize,
+        angle_start_index: usize,
+        angle_vertex_index: usize,
+        angle_end_index: usize,
+        distance: f64,
+        distance_expr: FunctionExpr,
+        distance_parameter_group_ordinals: BTreeMap<String, usize>,
+    },
     Midpoint {
         start_index: usize,
         end_index: usize,
@@ -1082,6 +1126,7 @@ pub(crate) enum ScenePointBinding {
         source_index: usize,
         name: String,
         expr: FunctionExpr,
+        parameter_group_ordinals: BTreeMap<String, usize>,
         axis: CoordinateAxis,
     },
     CoordinateSource2d {

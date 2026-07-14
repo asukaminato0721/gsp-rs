@@ -142,6 +142,20 @@ fn resolve_trace_line_constraint(
                 kind,
             ))
         }
+        LineConstraint::TranslatedDelta { line, dx, dy } => {
+            let (start, end, kind) = resolve_trace_line_constraint(points, line, visiting)?;
+            Some((
+                PointRecord {
+                    x: start.x + dx,
+                    y: start.y + dy,
+                },
+                PointRecord {
+                    x: end.x + dx,
+                    y: end.y + dy,
+                },
+                kind,
+            ))
+        }
         LineConstraint::Reflected { line, axis } => {
             let (start, end, kind) = resolve_trace_line_constraint(points, line, visiting)?;
             let (axis_start, axis_end, _) =

@@ -577,6 +577,9 @@ fn display_group_reference_label(
             None
         })
         .or_else(|| {
+            numeric_helper_group_name(file, groups, parameter_group)
+        })
+        .or_else(|| {
             numeric_helper_function_parameter(file, groups, parameter_group).map(|(name, _)| name)
         })
         .or_else(|| {

@@ -4,6 +4,7 @@
   function createDynamicsGeometry(dependencies: RuntimeDynamicsGeometryDependencies) {
     const {
       applyTraceValueToPoint,
+      markedAngleTranslationPoint,
       circumcenter,
       clipRayToBounds,
       deriveLabelParameters,
@@ -206,6 +207,12 @@
             point.binding.clampToUnit === true,
           );
         }
+      } else if (point.binding?.kind === "marked-angle-translation") {
+        resolved = markedAngleTranslationPoint(
+          point.binding,
+          baseParameters,
+          (pointIndex: number) => resolveTracePoint(points, pointIndex, visiting),
+        );
       } else if (point.binding?.kind === "midpoint") {
         const start = resolveTracePoint(points, point.binding.startIndex, visiting);
         const end = resolveTracePoint(points, point.binding.endIndex, visiting);
@@ -335,7 +342,15 @@
           );
         }
       } else if (point.binding?.kind === "constraint-parameter-from-point-expr") {
-        const sourceValue = parameterValueFromPoint(sampleScene, point.binding.sourceIndex);
+        const sourceValue = typeof point.binding.sourceParameterStartIndex === "number"
+          && typeof point.binding.sourceParameterEndIndex === "number"
+          ? lineProjectionParameterFromPoints(
+              sampleScene.points[point.binding.sourceIndex],
+              sampleScene.points[point.binding.sourceParameterStartIndex],
+              sampleScene.points[point.binding.sourceParameterEndIndex],
+              "segment",
+            )
+          : parameterValueFromPoint(sampleScene, point.binding.sourceIndex);
         if (isFiniteNumber(sourceValue)) {
           const exprParameters = new Map(baseParameters);
           if (point.binding.parameterName) {

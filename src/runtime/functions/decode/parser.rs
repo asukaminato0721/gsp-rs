@@ -91,56 +91,7 @@ struct FunctionExprParser<'a> {
     tokens: FunctionTokenCursor<'a>,
 }
 
-fn is_degree_angle_parameter_name(name: &str) -> bool {
-    name.contains('θ') || name.contains('φ')
-}
-
-fn ast_contains_degree_angle_parameter(expr: &FunctionAst) -> bool {
-    match expr {
-        FunctionAst::Parameter(name, _) => is_degree_angle_parameter_name(name),
-        FunctionAst::Unary { expr, .. } => ast_contains_degree_angle_parameter(expr),
-        FunctionAst::Binary { lhs, rhs, .. } => {
-            ast_contains_degree_angle_parameter(lhs) || ast_contains_degree_angle_parameter(rhs)
-        }
-        _ => false,
-    }
-}
-
-fn ast_contains_pi_angle_marker(expr: &FunctionAst) -> bool {
-    match expr {
-        FunctionAst::PiAngle => true,
-        FunctionAst::Unary { expr, .. } => ast_contains_pi_angle_marker(expr),
-        FunctionAst::Binary { lhs, rhs, .. } => {
-            ast_contains_pi_angle_marker(lhs) || ast_contains_pi_angle_marker(rhs)
-        }
-        _ => false,
-    }
-}
-
-fn mark_degree_trig_argument(expr: FunctionAst) -> FunctionAst {
-    if ast_contains_pi_angle_marker(&expr) || !ast_contains_degree_angle_parameter(&expr) {
-        return expr;
-    }
-    FunctionAst::Binary {
-        lhs: Box::new(expr),
-        op: BinaryOp::Add,
-        rhs: Box::new(FunctionAst::Binary {
-            lhs: Box::new(FunctionAst::Constant(0.0)),
-            op: BinaryOp::Mul,
-            rhs: Box::new(FunctionAst::PiAngle),
-        }),
-    }
-}
-
 fn unary_ast(op: UnaryFunction, expr: FunctionAst) -> FunctionAst {
-    let expr = if matches!(
-        op,
-        UnaryFunction::Sin | UnaryFunction::Cos | UnaryFunction::Tan
-    ) {
-        mark_degree_trig_argument(expr)
-    } else {
-        expr
-    };
     FunctionAst::Unary {
         op,
         expr: Box::new(expr),
@@ -1205,11 +1156,28 @@ pub(super) fn parse_grouped_parameter_control_expr_at(
     start: usize,
     parameters: &BTreeMap<u16, ParameterBinding>,
 ) -> Result<FunctionAst, FunctionExprParseError> {
+    parse_grouped_parameter_control_value_at(words, start, parameters, true)
+}
+
+pub(super) fn parse_grouped_parameter_control_scalar_at(
+    words: &[u16],
+    start: usize,
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Result<FunctionAst, FunctionExprParseError> {
+    parse_grouped_parameter_control_value_at(words, start, parameters, false)
+}
+
+fn parse_grouped_parameter_control_value_at(
+    words: &[u16],
+    start: usize,
+    parameters: &BTreeMap<u16, ParameterBinding>,
+    require_symbol: bool,
+) -> Result<FunctionAst, FunctionExprParseError> {
     let mut parser = GroupedFunctionParser::new(&words[start..], parameters, start)
         .allowing_unclosed_unary_argument()
         .allowing_decimal_literals();
     let expr = parser.parse_expr(0)?;
-    if !parsed_contains_symbol(&expr) {
+    if require_symbol && !parsed_contains_symbol(&expr) {
         return Err(FunctionExprParseError::NoExpressionFound {
             word_len: words.len(),
         });

@@ -459,6 +459,12 @@ enum LineConstraint {
         #[serde(rename = "vectorEndIndex")]
         vector_end_index: usize,
     },
+    #[serde(rename = "translated-delta")]
+    TranslatedDelta {
+        line: Box<LineConstraint>,
+        dx: f64,
+        dy: f64,
+    },
     #[serde(rename = "reflected")]
     Reflected {
         line: Box<LineConstraint>,
@@ -1744,6 +1750,20 @@ impl Resolver {
                 let vector_end = self.resolve(*vector_end_index)?;
                 let dx = vector_end.x - vector_start.x;
                 let dy = vector_end.y - vector_start.y;
+                Some((
+                    Point {
+                        x: start.x + dx,
+                        y: start.y + dy,
+                    },
+                    Point {
+                        x: end.x + dx,
+                        y: end.y + dy,
+                    },
+                    kind,
+                ))
+            }
+            LineConstraint::TranslatedDelta { line, dx, dy } => {
+                let (start, end, kind) = self.line_geometry(line)?;
                 Some((
                     Point {
                         x: start.x + dx,

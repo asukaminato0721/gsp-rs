@@ -19,6 +19,104 @@ pub(crate) fn is_circle_group_kind(kind: GroupKind) -> bool {
     matches!(kind, GroupKind::Circle | GroupKind::CircleCenterRadius)
 }
 
+pub(crate) fn constructed_line_parent_group_indices(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<(usize, usize)> {
+    if !matches!(
+        group.header.kind(),
+        GroupKind::PerpendicularLine | GroupKind::ParallelLine
+    ) {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    let [first, second] = path.refs.as_slice() else {
+        return None;
+    };
+    let first_index = first.checked_sub(1)?;
+    let second_index = second.checked_sub(1)?;
+    let first_is_line = line_payload_is_structural(
+        file,
+        groups,
+        groups.get(first_index)?,
+        &mut std::collections::BTreeSet::new(),
+    );
+    let second_is_line = line_payload_is_structural(
+        file,
+        groups,
+        groups.get(second_index)?,
+        &mut std::collections::BTreeSet::new(),
+    );
+    match (first_is_line, second_is_line) {
+        (false, true) => Some((first_index, second_index)),
+        (true, false) => Some((second_index, first_index)),
+        _ => None,
+    }
+}
+
+pub(crate) fn line_payload_is_structural(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    visiting: &mut std::collections::BTreeSet<usize>,
+) -> bool {
+    if !visiting.insert(group.ordinal) {
+        return false;
+    }
+    let result = (|| {
+        let path = find_indexed_path(file, group)?;
+        let referenced_line =
+            |position: usize, visiting: &mut std::collections::BTreeSet<usize>| {
+                let ordinal = *path.refs.get(position)?;
+                let referenced = groups.get(ordinal.checked_sub(1)?)?;
+                line_payload_is_structural(file, groups, referenced, visiting).then_some(())
+            };
+        match group.header.kind() {
+            GroupKind::Segment
+            | GroupKind::Line
+            | GroupKind::Ray
+            | GroupKind::MeasurementLine
+            | GroupKind::AxisLine
+            | GroupKind::GraphMeasurementSegment => (path.refs.len() == 2).then_some(()),
+            GroupKind::PerpendicularLine | GroupKind::ParallelLine => {
+                let [first, second] = path.refs.as_slice() else {
+                    return None;
+                };
+                let first_group = groups.get(first.checked_sub(1)?)?;
+                let second_group = groups.get(second.checked_sub(1)?)?;
+                let first_is_line = line_payload_is_structural(file, groups, first_group, visiting);
+                let second_is_line =
+                    line_payload_is_structural(file, groups, second_group, visiting);
+                (first_is_line ^ second_is_line).then_some(())
+            }
+            GroupKind::AngleBisectorRay => (path.refs.len() == 3).then_some(()),
+            GroupKind::Translation => {
+                (path.refs.len() >= 3).then_some(())?;
+                referenced_line(0, visiting)
+            }
+            GroupKind::CartesianOffsetPoint | GroupKind::PolarOffsetPoint => {
+                (!path.refs.is_empty()).then_some(())?;
+                referenced_line(0, visiting)
+            }
+            GroupKind::Rotation
+            | GroupKind::AngleRotation
+            | GroupKind::ParameterRotation
+            | GroupKind::Scale
+            | GroupKind::ExpressionRotation
+            | GroupKind::LegacyAngleRotation => referenced_line(0, visiting),
+            GroupKind::Reflection => {
+                referenced_line(0, visiting)?;
+                referenced_line(1, visiting)
+            }
+            _ => None,
+        }
+    })()
+    .is_some();
+    visiting.remove(&group.ordinal);
+    result
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct PerpendicularSegmentPayload {
     pub(crate) center_group_index: usize,
@@ -291,9 +389,48 @@ pub(crate) fn circle_center_radius_value(
         return crate::runtime::functions::evaluate_expr_with_parameters(&expr, 0.0, &parameters)
             .map(f64::abs);
     }
+    if let Some(binding) = numeric_helper_scalar_binding(file, groups, radius_group) {
+        return Some(binding.initial_value.abs());
+    }
     try_decode_parameter_control_value_for_group(file, groups, radius_group)
         .ok()
         .map(|value| value.abs() * DEFAULT_GRAPH_RAW_PER_UNIT)
+}
+
+pub(crate) struct NumericHelperScalarBinding {
+    pub(crate) expr: crate::runtime::functions::FunctionExpr,
+    pub(crate) initial_value: f64,
+    pub(crate) parameter_group_ordinals: std::collections::BTreeMap<String, usize>,
+}
+
+/// Exposes a payload numeric helper as a scalar dependency instead of freezing its current value.
+/// The object graph resolves the synthetic parameter through `parameter_group_ordinals`.
+pub(crate) fn numeric_helper_scalar_binding(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<NumericHelperScalarBinding> {
+    let decoded = crate::runtime::functions::try_decode_numeric_helper_group(file, groups, group)?;
+    let initial_value = crate::runtime::functions::evaluate_expr_with_parameters(
+        &decoded,
+        0.0,
+        &std::collections::BTreeMap::new(),
+    )?;
+    let parameter_name =
+        decode_label_name(file, group).unwrap_or_else(|| format!("__scalar_{}", group.ordinal));
+    Some(NumericHelperScalarBinding {
+        expr: crate::runtime::functions::FunctionExpr::Parsed(
+            crate::runtime::functions::FunctionAst::Parameter(
+                parameter_name.clone(),
+                initial_value,
+            ),
+        ),
+        initial_value,
+        parameter_group_ordinals: std::collections::BTreeMap::from([(
+            parameter_name,
+            group.ordinal,
+        )]),
+    })
 }
 
 pub(crate) fn measured_radius_segment_group_indices(
@@ -373,6 +510,12 @@ pub(crate) fn graph_object_circle_measurement_kind(
                 Some(GraphObjectCircleMeasurementKind::Radius)
             }
             Some(crate::runtime::payload_consts::GRAPH_OBJECT_CIRCUMFERENCE_CLASS) => {
+                Some(GraphObjectCircleMeasurementKind::Circumference)
+            }
+            _ if payload
+                .windows(b"<0>\0L".len())
+                .any(|window| window == b"<0>\0L") =>
+            {
                 Some(GraphObjectCircleMeasurementKind::Circumference)
             }
             _ if payload

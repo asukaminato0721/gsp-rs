@@ -22,8 +22,8 @@ use crate::runtime::extract::context::SceneContext;
 use crate::runtime::extract::iteration_depth::decode_iteration_depth_expr;
 use crate::runtime::functions::{
     FunctionExpr, evaluate_expr_with_parameters, function_expr_label,
-    function_parameter_group_ordinals, synthesize_standalone_function_definition_labels,
-    try_decode_function_expr,
+    function_parameter_group_ordinals, numeric_helper_group_name,
+    synthesize_standalone_function_definition_labels, try_decode_function_expr,
 };
 use crate::runtime::geometry::{
     angle_degrees_from_points, color_from_style, distance_world, format_number,
@@ -716,6 +716,7 @@ fn parameter_anchor_value(
             t,
             vertex_group_indices,
         } => polygon_boundary_parameter(anchors, &vertex_group_indices, edge_index, t),
+        RawPointConstraint::PolygonBoundaryParameter { parameter, .. } => Some(parameter),
         RawPointConstraint::TranslatedPolygonBoundary {
             edge_index,
             t,

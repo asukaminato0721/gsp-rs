@@ -9,6 +9,7 @@ use super::{
     decode_expression_offset_binding, decode_expression_ratio_scale_binding,
     decode_expression_rotation_binding, decode_expression_scale_binding,
     decode_iteration_binding_point_alias_raw, decode_legacy_coordinate_construct_point,
+    decode_marked_angle_translation_binding, decode_parameter_rotation_transform_binding_raw,
     decode_reflection_anchor_raw, decode_translated_point_constraint, expression_runtime_context,
     reflection_line_group_indices, regular_polygon_angle_expr_for_calc_group,
     scale_angle_expr_to_degrees, translation_point_pair_group_indices,
@@ -19,16 +20,17 @@ use super::{
 use crate::format::{read_f64, read_u32};
 use crate::runtime::extract::context::SceneContext;
 use crate::runtime::extract::decode::{
-    decode_bbox_anchor_raw, decode_label_name, decode_label_visible,
-    detect_perpendicular_segment_payload, is_parameter_control_group,
-    measured_radius_segment_group_indices, try_decode_payload_anchor_point,
+    constructed_line_parent_group_indices, decode_bbox_anchor_raw, decode_label_name,
+    decode_label_visible, detect_perpendicular_segment_payload, is_parameter_control_group,
+    measured_radius_segment_group_indices, numeric_helper_scalar_binding,
+    try_decode_payload_anchor_point,
 };
 use crate::runtime::extract::points::constraints::CoordinatePointSource;
 use crate::runtime::extract::{find_indexed_path, payload_debug_source};
 use crate::runtime::functions::{
-    FunctionExpr, evaluate_expr_with_parameters, evaluate_function_group_with_overrides,
-    function_parameter_group_ordinals, try_decode_function_expr,
-    try_decode_function_plot_descriptor,
+    FunctionAst, FunctionExpr, evaluate_expr_with_parameters,
+    evaluate_function_group_with_overrides, function_parameter_group_ordinals,
+    try_decode_function_expr, try_decode_function_plot_descriptor,
 };
 use crate::runtime::geometry::{
     GraphTransform, angle_degrees_from_points, color_from_style, rotate_around, scale_around,
@@ -546,24 +548,54 @@ fn build_scene_point_for_group(
                 )
             })
         }
+        crate::format::GroupKind::LegacyCircularConstraintHelper => (|| {
+            let binding = decode_marked_angle_translation_binding(file, groups, group, anchors)?;
+            let position = anchors.get(index)?.clone()?;
+            Some(scene_point(
+                position,
+                group_color(group),
+                visible,
+                false,
+                ScenePointConstraint::Free,
+                Some(ScenePointBinding::MarkedAngleTranslation {
+                    target_index: mapped_point_index(
+                        group_to_point_index,
+                        binding.target_group_index,
+                    )?,
+                    angle_start_index: mapped_point_index(
+                        group_to_point_index,
+                        binding.angle_start_group_index,
+                    )?,
+                    angle_vertex_index: mapped_point_index(
+                        group_to_point_index,
+                        binding.angle_vertex_group_index,
+                    )?,
+                    angle_end_index: mapped_point_index(
+                        group_to_point_index,
+                        binding.angle_end_group_index,
+                    )?,
+                    distance: binding.distance,
+                    distance_expr: binding.distance_expr,
+                    distance_parameter_group_ordinals: binding.distance_parameter_group_ordinals,
+                }),
+            ))
+        })(),
         crate::format::GroupKind::ProjectedCoordinatePoint => (|| {
             let path = indexed_path_for(file, context, group)?;
             if path.refs.len() < 2 || path.refs.first() != path.refs.last() {
                 return None;
             }
-            let parent_indices = path
-                .refs
-                .iter()
-                .map(|ordinal| mapped_point_index(group_to_point_index, ordinal.checked_sub(1)?))
-                .collect::<Option<Vec<_>>>()?;
+            let source_group_index = path.refs[0].checked_sub(1)?;
+            let source_index = mapped_point_index(group_to_point_index, source_group_index)?;
             Some(scene_point(
-                anchors.get(path.refs[0].checked_sub(1)?)?.clone()?,
+                anchors.get(source_group_index)?.clone()?,
                 group_color(group),
                 visible,
                 false,
                 ScenePointConstraint::Free,
-                Some(ScenePointBinding::PayloadAlias {
-                    parent_indices,
+                Some(ScenePointBinding::ProjectedCoordinate {
+                    source_index,
+                    parent_group_ordinals: path.refs,
                     source_parent: 0,
                 }),
             ))
@@ -607,38 +639,20 @@ fn build_scene_point_for_group(
             ))
         })(),
         crate::format::GroupKind::PointConstraint | crate::format::GroupKind::PathPoint => (|| {
-            if let Ok(constraint) =
-                try_decode_point_constraint(file, groups, group, Some(anchors), graph)
-                && let Some(point) = scene_point_from_constraint(
-                    index,
-                    file,
-                    groups,
-                    group,
-                    group_color(group),
-                    anchors,
-                    group_to_point_index,
-                    constraint,
-                    visible,
-                    true,
-                )
-            {
-                return Some(point);
-            }
-            let path = indexed_path_for(file, context, group)?;
-            let host_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            if !group.header.is_hidden()
-                || host_group.header.kind() != crate::format::GroupKind::PointTrace
-            {
-                return None;
-            }
-            Some(scene_point(
-                anchors.get(index).cloned().flatten()?,
+            let constraint =
+                try_decode_point_constraint(file, groups, group, Some(anchors), graph).ok()?;
+            scene_point_from_constraint(
+                index,
+                file,
+                groups,
+                group,
                 group_color(group),
+                anchors,
+                group_to_point_index,
+                constraint,
                 visible,
                 true,
-                ScenePointConstraint::Free,
-                None,
-            ))
+            )
         })(
         ),
         crate::format::GroupKind::ParameterControlledPoint => (|| {
@@ -1189,6 +1203,7 @@ fn build_scene_point_for_group(
                     source_index,
                     name: binding.parameter_name.unwrap_or_default(),
                     expr: binding.scaled_expr,
+                    parameter_group_ordinals: std::collections::BTreeMap::new(),
                     axis: crate::runtime::scene::CoordinateAxis::Horizontal,
                 }),
             ))
@@ -1403,64 +1418,6 @@ fn build_scene_point_for_group_checked(
             Ok((|| {
                 let position = position?;
                 if kind == crate::format::GroupKind::ExpressionRotation {
-                    let path = indexed_path_for(file, context, group)?;
-                    if let Some(calc_group) = path
-                        .refs
-                        .get(2)
-                        .and_then(|ordinal| group_by_ordinal(context, groups, *ordinal))
-                        && calc_group.header.kind() == crate::format::GroupKind::ParameterAnchor
-                    {
-                        let source_group_index = path.refs.first()?.checked_sub(1)?;
-                        let center_group_index = path.refs.get(1)?.checked_sub(1)?;
-                        let anchor_path = indexed_path_for(file, context, calc_group)?;
-                        let angle_point_group_index = anchor_path.refs.first()?.checked_sub(1)?;
-                        let segment_group =
-                            group_by_ordinal(context, groups, *anchor_path.refs.get(1)?)?;
-                        let segment_path = indexed_path_for(file, context, segment_group)?;
-                        let angle_start_group_index = segment_path.refs.first()?.checked_sub(1)?;
-                        let angle_end_group_index = segment_path.refs.get(1)?.checked_sub(1)?;
-                        let source_index =
-                            mapped_point_index(group_to_point_index, source_group_index)?;
-                        let center_index =
-                            mapped_point_index(group_to_point_index, center_group_index)?;
-                        let angle_parameter_point_index =
-                            mapped_point_index(group_to_point_index, angle_point_group_index)?;
-                        let angle_parameter_start_index =
-                            mapped_point_index(group_to_point_index, angle_start_group_index)?;
-                        let angle_parameter_end_index =
-                            mapped_point_index(group_to_point_index, angle_end_group_index)?;
-                        let angle_point = anchors.get(angle_point_group_index)?.as_ref()?;
-                        let angle_start = anchors.get(angle_start_group_index)?.as_ref()?;
-                        let angle_end = anchors.get(angle_end_group_index)?.as_ref()?;
-                        let dx = angle_end.x - angle_start.x;
-                        let dy = angle_end.y - angle_start.y;
-                        let len_sq = dx * dx + dy * dy;
-                        if len_sq <= 1e-9 {
-                            return None;
-                        }
-                        let scale_factor = (((angle_point.x - angle_start.x) * dx
-                            + (angle_point.y - angle_start.y) * dy)
-                            / len_sq)
-                            .clamp(0.0, 1.0);
-                        return Some(scene_point(
-                            position,
-                            group_color(group),
-                            visible,
-                            false,
-                            ScenePointConstraint::Free,
-                            Some(ScenePointBinding::Scale {
-                                source_index,
-                                center_index,
-                                factor: scale_factor,
-                                parameter_name: None,
-                                factor_expr: None,
-                                factor_parameter_group_ordinals: std::collections::BTreeMap::new(),
-                                factor_parameter_point_index: Some(angle_parameter_point_index),
-                                factor_parameter_start_index: Some(angle_parameter_start_index),
-                                factor_parameter_end_index: Some(angle_parameter_end_index),
-                            }),
-                        ));
-                    }
                     if let Some(point) = scene_point_from_expression_ratio_scale(
                         index,
                         group,
@@ -1757,6 +1714,59 @@ fn build_scene_point_for_group_checked(
                             angle_start_index: Some(angle_start_index),
                             angle_vertex_index: Some(angle_vertex_index),
                             angle_end_index: Some(angle_end_index),
+                            angle_parameter_point_index: None,
+                            angle_parameter_start_index: None,
+                            angle_parameter_end_index: None,
+                            angle_parameter_scale: None,
+                        }),
+                    ));
+                }
+                if (calc_group.header.kind()) == crate::format::GroupKind::ArcAngleValue {
+                    let source_index =
+                        mapped_point_index(group_to_point_index, source_group_index)?;
+                    let center_index =
+                        mapped_point_index(group_to_point_index, center_group_index)?;
+                    let angle_degrees = try_decode_function_expr(file, groups, calc_group)
+                        .ok()
+                        .and_then(|expr| {
+                            evaluate_expr_with_parameters(
+                                &expr,
+                                0.0,
+                                &std::collections::BTreeMap::new(),
+                            )
+                        })
+                        .filter(|value| value.is_finite())?;
+                    let parameter_name = format!("__arc_angle_{}", calc_group.ordinal);
+                    let angle_expr = FunctionExpr::Parsed(FunctionAst::Parameter(
+                        parameter_name.clone(),
+                        angle_degrees,
+                    ));
+                    let angle_parameter_group_ordinals = std::collections::BTreeMap::from([(
+                        parameter_name.clone(),
+                        calc_group.ordinal,
+                    )]);
+                    let position = (|| {
+                        let source = anchors.get(source_group_index)?.as_ref()?;
+                        let center = anchors.get(center_group_index)?.as_ref()?;
+                        Some(rotate_around(source, center, angle_degrees.to_radians()))
+                    })()
+                    .or(raw_position)?;
+                    return Some(scene_point(
+                        position,
+                        group_color(group),
+                        visible,
+                        false,
+                        ScenePointConstraint::Free,
+                        Some(ScenePointBinding::Rotate {
+                            source_index,
+                            center_index,
+                            angle_degrees,
+                            parameter_name: Some(parameter_name),
+                            angle_expr: Some(angle_expr),
+                            angle_parameter_group_ordinals,
+                            angle_start_index: None,
+                            angle_vertex_index: None,
+                            angle_end_index: None,
                             angle_parameter_point_index: None,
                             angle_parameter_start_index: None,
                             angle_parameter_end_index: None,
@@ -2355,6 +2365,7 @@ fn scene_point_from_constraint(
             points,
             segment_index,
             t,
+            parameter,
         } => {
             if let Some(center_point) = scene_point_from_sector_boundary_center(
                 file,
@@ -2379,6 +2390,7 @@ fn scene_point_from_constraint(
                     points,
                     segment_index,
                     t,
+                    parameter,
                 },
                 None,
             ))
@@ -2401,6 +2413,26 @@ fn scene_point_from_constraint(
                     vertex_indices,
                     edge_index,
                     t,
+                },
+                None,
+            ))
+        }
+        RawPointConstraint::PolygonBoundaryParameter {
+            vertex_group_indices,
+            parameter,
+        } => {
+            let vertex_indices = vertex_group_indices
+                .iter()
+                .map(|group_index| mapped_point_index(group_to_point_index, *group_index))
+                .collect::<Option<Vec<_>>>()?;
+            Some(scene_point(
+                position,
+                color,
+                visible,
+                draggable,
+                ScenePointConstraint::OnPolygonBoundaryParameter {
+                    vertex_indices,
+                    parameter,
                 },
                 None,
             ))
@@ -2676,6 +2708,26 @@ pub(crate) fn scene_point_from_parameter_controlled(
                 binding,
             ))
         }
+        RawPointConstraint::PolygonBoundaryParameter {
+            vertex_group_indices,
+            parameter,
+        } => {
+            let vertex_indices = vertex_group_indices
+                .iter()
+                .map(|group_index| mapped_point_index(group_to_point_index, *group_index))
+                .collect::<Option<Vec<_>>>()?;
+            Some(scene_point(
+                parameter_point.position.clone(),
+                color,
+                visible,
+                true,
+                ScenePointConstraint::OnPolygonBoundaryParameter {
+                    vertex_indices,
+                    parameter: *parameter,
+                },
+                binding,
+            ))
+        }
         RawPointConstraint::TranslatedPolygonBoundary {
             vertex_group_indices,
             vector_start_group_index,
@@ -2807,6 +2859,7 @@ pub(crate) fn scene_point_from_parameter_controlled(
             points,
             segment_index,
             t,
+            parameter,
         } => Some(scene_point(
             parameter_point.position,
             color,
@@ -2817,6 +2870,7 @@ pub(crate) fn scene_point_from_parameter_controlled(
                 points: points.clone(),
                 segment_index: *segment_index,
                 t: *t,
+                parameter: *parameter,
             },
             binding,
         )),
@@ -2940,21 +2994,45 @@ fn parameter_point_binding(
                 let point_index =
                     mapped_point_index(group_to_point_index, source.point_group_index)?;
                 let host_group = groups.get(source.host_group_index)?;
+                let domain = resolve_circular_constraint(
+                    file,
+                    groups,
+                    host_group,
+                    group_to_point_index,
+                )
+                .map(crate::runtime::scene::ScenePointParameterDomain::Circular)
+                .or_else(|| {
+                    resolve_polygon_vertex_indices(file, host_group, group_to_point_index).map(
+                        |vertex_indices| {
+                            crate::runtime::scene::ScenePointParameterDomain::PolygonBoundary {
+                                vertex_indices,
+                            }
+                        },
+                    )
+                });
                 Some(ScenePointParameterSource {
                     name: source.name.clone(),
                     point_index,
-                    circle: resolve_circular_constraint(
-                        file,
-                        groups,
-                        host_group,
-                        group_to_point_index,
-                    ),
+                    domain,
                 })
             })
             .collect::<Option<Vec<_>>>()?;
         if let Some(primary) = expression_sources.first() {
+            let (source_parameter_start_index, source_parameter_end_index) =
+                if let Some((start_group_index, end_group_index)) =
+                    parameter_point.source_parameter_segment_group_indices
+                {
+                    (
+                        Some(mapped_point_index(group_to_point_index, start_group_index)?),
+                        Some(mapped_point_index(group_to_point_index, end_group_index)?),
+                    )
+                } else {
+                    (None, None)
+                };
             return Some(Some(ScenePointBinding::ConstraintParameterFromPointExpr {
                 source_index: primary.point_index,
+                source_parameter_start_index,
+                source_parameter_end_index,
                 parameter_name: primary.name.clone(),
                 expr: expr.clone(),
                 absolute_value: parameter_point.source_expr_absolute_parameter,
@@ -2964,8 +3042,21 @@ fn parameter_point_binding(
         }
         if let Some(source_group_index) = parameter_point.source_point_group_index {
             let source_index = mapped_point_index(group_to_point_index, source_group_index)?;
+            let (source_parameter_start_index, source_parameter_end_index) =
+                if let Some((start_group_index, end_group_index)) =
+                    parameter_point.source_parameter_segment_group_indices
+                {
+                    (
+                        Some(mapped_point_index(group_to_point_index, start_group_index)?),
+                        Some(mapped_point_index(group_to_point_index, end_group_index)?),
+                    )
+                } else {
+                    (None, None)
+                };
             return Some(Some(ScenePointBinding::ConstraintParameterFromPointExpr {
                 source_index,
+                source_parameter_start_index,
+                source_parameter_end_index,
                 parameter_name: parameter_point.parameter_name.clone(),
                 expr: expr.clone(),
                 absolute_value: parameter_point.source_expr_absolute_parameter,
@@ -3018,11 +3109,13 @@ fn scene_point_from_coordinate(
         CoordinatePointSource::SourcePoint {
             source_group_index,
             parameter_name,
+            parameter_group_ordinals,
             axis,
         } => ScenePointBinding::CoordinateSource {
             source_index: mapped_point_index(group_to_point_index, source_group_index)?,
             name: parameter_name,
             expr: point.expr,
+            parameter_group_ordinals,
             axis,
         },
         CoordinatePointSource::SourcePoint2d {

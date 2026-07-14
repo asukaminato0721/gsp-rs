@@ -388,6 +388,7 @@ impl Collector<'_> {
                 self.line_constraint(deps, line);
                 self.points(deps, [*vector_start_index, *vector_end_index]);
             }
+            LineConstraint::TranslatedDelta { line, .. } => self.line_constraint(deps, line),
             LineConstraint::Reflected { line, axis } => {
                 self.line_constraint(deps, line);
                 self.line_constraint(deps, axis);
@@ -575,8 +576,8 @@ impl Collector<'_> {
     fn point_binding(&self, deps: &mut Dependencies, binding: &ScenePointBinding) {
         match binding {
             ScenePointBinding::GraphCalibration => {}
-            ScenePointBinding::PayloadAlias { parent_indices, .. } => {
-                self.points(deps, parent_indices.iter().copied())
+            ScenePointBinding::ProjectedCoordinate { source_index, .. } => {
+                self.point(deps, Some(*source_index))
             }
             ScenePointBinding::Parameter { name } => self.parameter(deps, Some(name)),
             ScenePointBinding::DerivedParameter {
@@ -598,9 +599,24 @@ impl Collector<'_> {
                 source_index,
                 parameter_name,
                 expr,
+                expression_sources,
                 ..
             } => {
                 self.point(deps, Some(*source_index));
+                for source in expression_sources {
+                    self.point(deps, Some(source.point_index));
+                    match &source.domain {
+                        Some(crate::runtime::scene::ScenePointParameterDomain::Circular(
+                            circle,
+                        )) => self.circular_constraint(deps, circle),
+                        Some(
+                            crate::runtime::scene::ScenePointParameterDomain::PolygonBoundary {
+                                vertex_indices,
+                            },
+                        ) => self.points(deps, vertex_indices.iter().copied()),
+                        None => {}
+                    }
+                }
                 self.parameter(deps, Some(parameter_name));
                 self.expr(deps, expr);
             }
@@ -709,6 +725,25 @@ impl Collector<'_> {
                     self.expr(deps, expr);
                 }
             }
+            ScenePointBinding::MarkedAngleTranslation {
+                target_index,
+                angle_start_index,
+                angle_vertex_index,
+                angle_end_index,
+                distance_expr,
+                ..
+            } => {
+                self.points(
+                    deps,
+                    [
+                        *target_index,
+                        *angle_start_index,
+                        *angle_vertex_index,
+                        *angle_end_index,
+                    ],
+                );
+                self.expr(deps, distance_expr);
+            }
             ScenePointBinding::Midpoint {
                 start_index,
                 end_index,
@@ -809,7 +844,8 @@ impl Collector<'_> {
             | ScenePointConstraint::OnRayConstraint { line, .. } => {
                 self.line_constraint(deps, line)
             }
-            ScenePointConstraint::OnPolygonBoundary { vertex_indices, .. } => {
+            ScenePointConstraint::OnPolygonBoundary { vertex_indices, .. }
+            | ScenePointConstraint::OnPolygonBoundaryParameter { vertex_indices, .. } => {
                 self.points(deps, vertex_indices.iter().copied())
             }
             ScenePointConstraint::OnTranslatedPolygonBoundary {

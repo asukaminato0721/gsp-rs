@@ -287,22 +287,26 @@ fn describe_group_in_chinese(
             }
         }
         GroupKind::PerpendicularLine => {
-            if refs.len() == 2 {
+            if let Some((through_index, host_index)) =
+                decode::constructed_line_parent_group_indices(file, groups, group)
+            {
                 format!(
                     "过 {} 且垂直于 {} 的直线",
-                    format_ref(refs[0]),
-                    format_ref_with_kind(groups, refs[1])
+                    format_ref(through_index + 1),
+                    format_ref_with_kind(groups, host_index + 1)
                 )
             } else {
                 describe_generic_group(group, &refs)
             }
         }
         GroupKind::ParallelLine => {
-            if refs.len() == 2 {
+            if let Some((through_index, host_index)) =
+                decode::constructed_line_parent_group_indices(file, groups, group)
+            {
                 format!(
                     "过 {} 且平行于 {} 的直线",
-                    format_ref(refs[0]),
-                    format_ref_with_kind(groups, refs[1])
+                    format_ref(through_index + 1),
+                    format_ref_with_kind(groups, host_index + 1)
                 )
             } else {
                 describe_generic_group(group, &refs)
@@ -1209,6 +1213,10 @@ fn write_group_detail(output: &mut String, file: &GspFile, group: &ObjectGroup, 
                     self::points::RawPointConstraint::PolygonBoundary { edge_index, t, .. } => {
                         format!("polygon edge={} t={:.6}", edge_index, t)
                     }
+                    self::points::RawPointConstraint::PolygonBoundaryParameter {
+                        parameter,
+                        ..
+                    } => format!("polygon boundary parameter={parameter:.6}"),
                     self::points::RawPointConstraint::TranslatedPolygonBoundary {
                         edge_index,
                         t,
@@ -1247,10 +1255,11 @@ fn write_group_detail(output: &mut String, file: &GspFile, group: &ObjectGroup, 
                         function_key,
                         segment_index,
                         t,
+                        parameter,
                         ..
                     } => format!(
-                        "polyline function_key={} segment={} t={:.6}",
-                        function_key, segment_index, t
+                        "polyline function_key={} parameter={:.6} segment={} t={:.6}",
+                        function_key, parameter, segment_index, t
                     ),
                     self::points::RawPointConstraint::HostedArc {
                         host_group_index,

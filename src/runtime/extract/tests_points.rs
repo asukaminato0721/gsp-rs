@@ -2,16 +2,995 @@ use super::analysis::analyze_scene;
 use super::build_scene_checked;
 use super::points::{
     collect_point_objects, decode_directed_angle_anchor_binding, decode_expression_scale_binding,
-    try_decode_parameter_controlled_point,
+    try_decode_parameter_controlled_point, try_decode_point_constraint,
 };
 use super::test_support::{fixture_bytes, fixture_log, fixture_scene, function_expr_has_unary};
 use crate::format::GspFile;
-use crate::runtime::functions::UnaryFunction;
+use crate::runtime::functions::{FunctionExpr, UnaryFunction};
 use crate::runtime::scene::{
     ArcBinding, ArcConstraint, ButtonAction, CircularConstraint, ColorBinding,
     IterationTableValueBinding, LineBinding, LineConstraint, LineLikeKind, LineTransformBinding,
-    ScenePointBinding, ScenePointConstraint, ShapeBinding, TextLabelBinding,
+    ScenePointBinding, ScenePointConstraint, SceneScalarBinding, ShapeBinding, TextLabelBinding,
 };
+
+#[test]
+fn point_trace_constraint_keeps_its_payload_parameter() {
+    let data = fixture_bytes("tests/Samples/个人专栏/向忠作品/n叶草系列迭代.gsp")
+        .expect("n-leaf iteration fixture");
+    let document = GspFile::parse(&data).expect("n-leaf iteration fixture parses");
+    let page = &document.page_files()[0];
+    let scene = build_scene_checked(page).expect("n-leaf iteration scene builds");
+    assert!(
+        scene.lines.iter().any(|line| {
+            line.debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 43)
+                && matches!(line.binding, Some(LineBinding::PointTrace { .. }))
+        }),
+        "line ordinals: {:?}; point ordinals: {:?}",
+        scene
+            .lines
+            .iter()
+            .filter_map(|line| line.debug.as_ref().map(|debug| debug.group_ordinal))
+            .collect::<Vec<_>>(),
+        scene
+            .points
+            .iter()
+            .filter_map(|point| point.debug.as_ref().map(|debug| debug.group_ordinal))
+            .collect::<Vec<_>>(),
+    );
+    let point = scene
+        .points
+        .iter()
+        .find(|point| {
+            point
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 44)
+        })
+        .expect("point constrained to trace #43");
+    match &point.constraint {
+        ScenePointConstraint::OnPolyline {
+            function_key,
+            parameter,
+            ..
+        } => {
+            assert_eq!(*function_key, 43);
+            assert!(parameter.is_finite());
+            assert!((0.0..=1.0).contains(parameter));
+        }
+        other => panic!("expected payload point-trace constraint, got {other:?}"),
+    }
+}
+
+#[test]
+fn triangle_rolling_trace_parameter_keeps_its_construction_chain() {
+    let data =
+        fixture_bytes("tests/Samples/个人专栏/贺基旭作品/圆在三角形边上滚动（成品 By hjx4882).gsp")
+            .expect("triangle rolling fixture");
+    let file = GspFile::parse(&data).expect("triangle rolling fixture parses");
+    let groups = file.object_groups();
+    let point_map = collect_point_objects(&file, &groups);
+    let analysis = analyze_scene(&file, &groups, &point_map);
+    for ordinal in 24usize..=29 {
+        crate::runtime::functions::try_decode_function_expr(&file, &groups, &groups[ordinal - 1])
+            .unwrap_or_else(|error| panic!("length scalar #{ordinal}: {error:?}"));
+    }
+    for ordinal in 33usize..=38 {
+        crate::runtime::functions::try_decode_function_expr(&file, &groups, &groups[ordinal - 1])
+            .unwrap_or_else(|error| panic!("segment expression #{ordinal}: {error:?}"));
+    }
+    for ordinal in 45usize..=49 {
+        try_decode_parameter_controlled_point(
+            &file,
+            &groups,
+            &groups[ordinal - 1],
+            &analysis.raw_anchors,
+        )
+        .unwrap_or_else(|error| panic!("parameter point #{ordinal} must decode: {error:?}"));
+    }
+    try_decode_parameter_controlled_point(&file, &groups, &groups[62], &analysis.raw_anchors)
+        .unwrap_or_else(|error| panic!("parameter point #63 must decode: {error:?}"));
+    for ordinal in [64usize, 65, 66] {
+        crate::runtime::functions::try_decode_function_expr(&file, &groups, &groups[ordinal - 1])
+            .unwrap_or_else(|error| panic!("rotation expression #{ordinal}: {error:?}"));
+    }
+
+    let scene = build_scene_checked(&file).expect("triangle rolling scene builds");
+    assert!(
+        scene.lines.iter().any(|line| {
+            line.debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 74)
+                && matches!(line.binding, Some(LineBinding::PointTrace { .. }))
+        }),
+        "point ordinals: {:?}",
+        scene
+            .points
+            .iter()
+            .filter_map(|point| point.debug.as_ref().map(|debug| debug.group_ordinal))
+            .collect::<Vec<_>>()
+    );
+    assert!(matches!(
+        scene.points.iter().find(|point| point
+            .debug
+            .as_ref()
+            .is_some_and(|debug| debug.group_ordinal == 78)),
+        Some(crate::runtime::scene::ScenePoint {
+            constraint: ScenePointConstraint::OnPolyline {
+                function_key: 74,
+                ..
+            },
+            ..
+        })
+    ));
+}
+
+#[test]
+fn quadrilateral_rolling_translations_keep_rotation_parents() {
+    let data = fixture_bytes("tests/Samples/个人专栏/方小庆作品/圆在四边形上滚动(inRm).gsp")
+        .expect("quadrilateral rolling fixture");
+    let file = GspFile::parse(&data).expect("quadrilateral rolling fixture parses");
+    let groups = file.object_groups();
+    assert_eq!(
+        super::decode::graph_object_circle_measurement_kind(&file, &groups[13]),
+        Some(super::decode::GraphObjectCircleMeasurementKind::Circumference),
+        "circle measurement payload: {:?}",
+        groups[13]
+            .records
+            .iter()
+            .map(|record| (record.record_type, record.payload(&file.data).to_vec()))
+            .collect::<Vec<_>>()
+    );
+    for ordinal in [8usize, 14, 19] {
+        crate::runtime::functions::try_decode_function_expr(&file, &groups, &groups[ordinal - 1])
+            .unwrap_or_else(|error| panic!("scalar #{ordinal} must decode: {error:?}"));
+    }
+    let scene = build_scene_checked(&file).expect("quadrilateral rolling scene builds");
+
+    for ordinal in [20, 37, 38, 39, 40, 44, 45, 46] {
+        let point = scene
+            .points
+            .iter()
+            .find(|point| {
+                point
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .unwrap_or_else(|| panic!("rotation parent #{ordinal} must be materialized"));
+        assert!(matches!(
+            point.binding,
+            Some(ScenePointBinding::Rotate { .. })
+        ));
+    }
+    for ordinal in 47..=54 {
+        let point = scene
+            .points
+            .iter()
+            .find(|point| {
+                point
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .unwrap_or_else(|| panic!("translated point #{ordinal}"));
+        assert!(
+            matches!(point.binding, Some(ScenePointBinding::Translate { .. })),
+            "translated point #{ordinal}: {:?}",
+            point.binding
+        );
+    }
+}
+
+#[test]
+fn trajectory_polygon_parameter_restores_line_arc_intersection_chain() {
+    let data = fixture_bytes("tests/Samples/个人专栏/贺基旭作品/轨迹(hjx4882).gsp")
+        .expect("trajectory fixture");
+    let document = GspFile::parse(&data).expect("trajectory fixture parses");
+    let pages = document.page_files();
+    let page = &pages[0];
+    let groups = page.object_groups();
+    let point_map = collect_point_objects(page, &groups);
+    let analysis = analyze_scene(page, &groups, &point_map);
+    crate::runtime::functions::try_decode_parameter_control_expr(page, &groups, &groups[9])
+        .unwrap_or_else(|error| panic!("parameter expression #10 must decode: {error:?}"));
+    let parameter_point =
+        try_decode_parameter_controlled_point(page, &groups, &groups[10], &analysis.raw_anchors)
+            .unwrap_or_else(|error| {
+                panic!("parameter point #11 must decode from #9/#10: {error:?}")
+            });
+    assert!(matches!(
+        parameter_point.constraint,
+        super::points::RawPointConstraint::PolygonBoundary { .. }
+    ));
+
+    let scene = build_scene_checked(page).expect("first trajectory page builds");
+    let point = |ordinal| {
+        scene.points.iter().find(|point| {
+            point
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == ordinal)
+        })
+    };
+    assert!(matches!(
+        point(11).map(|point| &point.constraint),
+        Some(ScenePointConstraint::OnPolygonBoundary { .. })
+    ));
+    assert!(matches!(
+        point(19).map(|point| &point.constraint),
+        Some(ScenePointConstraint::LineCircularIntersection { .. })
+    ));
+}
+
+#[test]
+fn walking_person_multi_parent_coordinate_restores_the_intersection_chain() {
+    let data = fixture_bytes("tests/Samples/个人专栏/方小庆作品/步行拄拐人(inRm).gsp")
+        .expect("walking-person fixture");
+    let file = GspFile::parse(&data).expect("walking-person fixture parses");
+    let groups = file.object_groups();
+    let point_map = collect_point_objects(&file, &groups);
+    let analysis = analyze_scene(&file, &groups, &point_map);
+    let coordinate = super::points::decode_coordinate_point(
+        &file,
+        &groups,
+        &groups[23],
+        &analysis.raw_anchors,
+        &analysis.graph_ref,
+    )
+    .expect("the payload-defined horizontal coordinate decodes");
+    let anchor = analysis.raw_anchors[23]
+        .as_ref()
+        .expect("coordinate anchor");
+    assert!((coordinate.position.x - anchor.x).abs() < 1e-12);
+    assert!((coordinate.position.y - anchor.y).abs() < 1e-12);
+    let scene = build_scene_checked(&file).expect("walking-person scene builds");
+    let point = |ordinal| {
+        scene.points.iter().find(|point| {
+            point
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == ordinal)
+        })
+    };
+    assert!(matches!(
+        point(24).and_then(|point| point.binding.as_ref()),
+        Some(ScenePointBinding::CoordinateSource {
+            parameter_group_ordinals,
+            axis: crate::runtime::scene::CoordinateAxis::Horizontal,
+            ..
+        }) if parameter_group_ordinals
+            == &std::collections::BTreeMap::from([
+                ("OM".to_string(), 15),
+                ("st".to_string(), 18),
+            ])
+    ));
+    assert!(matches!(
+        point(29).map(|point| &point.constraint),
+        Some(ScenePointConstraint::LineIntersection { .. })
+    ));
+    assert!(matches!(
+        point(98).map(|point| &point.constraint),
+        Some(ScenePointConstraint::CircularIntersection { .. })
+    ));
+}
+
+#[test]
+fn parameter_coordinate_restores_isochronous_circle_intersections() {
+    let data = fixture_bytes("tests/Samples/个人专栏/庞坤生作品/等时圆.gsp")
+        .expect("isochronous-circle fixture");
+    let file = GspFile::parse(&data).expect("fixture parses");
+    let groups = file.object_groups();
+    let point_map = collect_point_objects(&file, &groups);
+    let analysis = analyze_scene(&file, &groups, &point_map);
+    let coordinate = super::points::decode_coordinate_point(
+        &file,
+        &groups,
+        &groups[3],
+        &analysis.raw_anchors,
+        &analysis.graph_ref,
+    )
+    .expect("parameter-controlled coordinate decodes");
+    let anchor = analysis.raw_anchors[3]
+        .as_ref()
+        .expect("parameter-controlled coordinate anchor");
+    assert!((coordinate.position.x - anchor.x).abs() < 1e-12);
+    assert!((coordinate.position.y - anchor.y).abs() < 1e-12);
+
+    let scene = build_scene_checked(&file).expect("isochronous-circle scene builds");
+    let point = |ordinal| {
+        scene.points.iter().find(|point| {
+            point
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == ordinal)
+        })
+    };
+    assert!(matches!(
+        point(4).and_then(|point| point.binding.as_ref()),
+        Some(ScenePointBinding::CoordinateSource {
+            parameter_group_ordinals,
+            axis: crate::runtime::scene::CoordinateAxis::Vertical,
+            ..
+        }) if parameter_group_ordinals
+            == &std::collections::BTreeMap::from([("圆半径R".to_string(), 2)])
+    ));
+    assert!(matches!(
+        point(10).map(|point| &point.constraint),
+        Some(ScenePointConstraint::LineCircularIntersection { .. })
+    ));
+    assert!(matches!(
+        point(52).map(|point| &point.constraint),
+        Some(ScenePointConstraint::LineIntersection { .. })
+    ));
+}
+
+#[test]
+fn fixed_translated_line_restores_running_person_dependency_chain() {
+    let data = fixture_bytes("tests/Samples/个人专栏/方小庆作品/(inRm)跑步人.gsp")
+        .expect("running-person fixture");
+    let file = GspFile::parse(&data).expect("fixture parses");
+    let scene = build_scene_checked(&file).expect("running-person scene builds");
+    let point = |ordinal| {
+        scene.points.iter().find(|point| {
+            point
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == ordinal)
+        })
+    };
+    assert!(matches!(
+        point(42).map(|point| &point.constraint),
+        Some(ScenePointConstraint::OnLineConstraint {
+            line: crate::runtime::scene::LineConstraint::TranslatedDelta { .. },
+            ..
+        })
+    ));
+    assert!(matches!(
+        point(45).and_then(|point| point.binding.as_ref()),
+        Some(ScenePointBinding::ScaleByRatio { .. })
+    ));
+    assert!(matches!(
+        point(124).map(|point| &point.constraint),
+        Some(ScenePointConstraint::CircularIntersection { variant: 1, .. })
+    ));
+    assert!(matches!(
+        point(129),
+        Some(crate::runtime::scene::ScenePoint {
+            binding: Some(ScenePointBinding::ConstraintParameterFromPointExpr { .. }),
+            constraint: ScenePointConstraint::OnPolyline { .. },
+            ..
+        })
+    ));
+}
+
+#[test]
+fn polar_offset_line_host_passes_payload_validation() {
+    let data = fixture_bytes("tests/Samples/个人专栏/贺基旭作品/任意长方体展开(hjx4882).gsp")
+        .expect("cuboid-unfolding fixture");
+    let file = GspFile::parse(&data).expect("fixture parses");
+    let scene = build_scene_checked(&file).expect("polar-offset line host builds");
+    assert!(scene.lines.iter().any(|line| {
+        line.debug.as_ref().is_some_and(|debug| {
+            debug.group_ordinal == 23 && debug.group_kind == "PerpendicularLine"
+        })
+    }));
+}
+
+#[test]
+fn fixed_coordinate_point_restores_heart_curve_transform_chain() {
+    let Some(data) = fixture_bytes("tests/Samples/未分类档/心脏线.gsp") else {
+        return;
+    };
+    let file = GspFile::parse(&data).expect("heart curve fixture parses");
+    let groups = file.object_groups();
+    let point_map = collect_point_objects(&file, &groups);
+    let analysis = analyze_scene(&file, &groups, &point_map);
+    let coordinate = super::points::decode_coordinate_point(
+        &file,
+        &groups,
+        &groups[8],
+        &analysis.raw_anchors,
+        &analysis.graph_ref,
+    )
+    .expect("the payload-defined fixed coordinate point decodes");
+    let anchor = analysis.raw_anchors[8]
+        .as_ref()
+        .expect("fixed coordinate point has a payload-derived anchor");
+    assert!((coordinate.position.x - anchor.x).abs() < 1e-12);
+    assert!((coordinate.position.y - anchor.y).abs() < 1e-12);
+
+    let scene = build_scene_checked(&file).expect("heart curve fixture builds");
+    let point_index = |ordinal| {
+        scene
+            .points
+            .iter()
+            .position(|point| {
+                point
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .unwrap_or_else(|| panic!("point group #{ordinal}"))
+    };
+    let origin = point_index(1);
+    let center = point_index(9);
+    let circle_point = point_index(11);
+    let first_translation = point_index(13);
+    let second_translation = point_index(14);
+    let parameter_rotation = point_index(17);
+    let fixed_rotation = point_index(20);
+    let arc_point = point_index(23);
+
+    assert!(matches!(
+        scene.points[center].binding,
+        Some(ScenePointBinding::CoordinateSource2d {
+            source_index,
+            ref x_expr,
+            ref y_expr,
+            ..
+        }) if source_index == origin
+            && matches!(x_expr, FunctionExpr::Constant(x) if (*x + 0.5).abs() < 1e-12)
+            && matches!(y_expr, FunctionExpr::Constant(y) if y.abs() < 1e-12)
+    ));
+    assert!(matches!(
+        scene.points[circle_point].constraint,
+        ScenePointConstraint::OnCircle {
+            center_index,
+            radius_index,
+            ..
+        } if center_index == center && radius_index == origin
+    ));
+    assert!(matches!(
+        scene.points[first_translation].binding,
+        Some(ScenePointBinding::Translate {
+            source_index,
+            vector_start_index,
+            vector_end_index,
+        }) if source_index == circle_point
+            && vector_start_index == center
+            && vector_end_index == circle_point
+    ));
+    assert!(matches!(
+        scene.points[second_translation].binding,
+        Some(ScenePointBinding::Translate {
+            source_index,
+            vector_start_index,
+            vector_end_index,
+        }) if source_index == origin
+            && vector_start_index == center
+            && vector_end_index == first_translation
+    ));
+    assert!(matches!(
+        scene.points[parameter_rotation].binding,
+        Some(ScenePointBinding::Rotate {
+            source_index,
+            center_index,
+            angle_start_index: Some(angle_start_index),
+            angle_vertex_index: Some(angle_vertex_index),
+            angle_end_index: Some(angle_end_index),
+            ..
+        }) if source_index == circle_point
+            && center_index == first_translation
+            && angle_start_index == origin
+            && angle_vertex_index == center
+            && angle_end_index == circle_point
+    ));
+    assert!(matches!(
+        scene.points[fixed_rotation].binding,
+        Some(ScenePointBinding::Rotate {
+            source_index,
+            center_index,
+            angle_degrees,
+            ..
+        }) if source_index == parameter_rotation
+            && center_index == first_translation
+            && (angle_degrees - 359.0).abs() < 1e-12
+    ));
+    assert!(matches!(
+        scene.points[arc_point].constraint,
+        ScenePointConstraint::OnCircleArc {
+            center_index,
+            start_index,
+            end_index,
+            ..
+        } if center_index == first_translation
+            && start_index == parameter_rotation
+            && end_index == fixed_rotation
+    ));
+    let arc = scene
+        .arcs
+        .iter()
+        .find(|arc| {
+            arc.debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 22)
+        })
+        .expect("center arc #22");
+    assert!(matches!(
+        arc.binding,
+        Some(ArcBinding::CenterArc {
+            center_index,
+            start_index,
+            end_index,
+        }) if center_index == first_translation
+            && start_index == parameter_rotation
+            && end_index == fixed_rotation
+    ));
+}
+
+#[test]
+fn polygon_rolling_translation_keeps_its_expression_and_measurement_parent_chain() {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/阮国祥作品/多边形在多边形上的滚动.gsp")
+    else {
+        return;
+    };
+    let file = GspFile::parse(&data).expect("polygon rolling fixture parses");
+    let groups = file.object_groups();
+    let point_map = collect_point_objects(&file, &groups);
+    let analysis = analyze_scene(&file, &groups, &point_map);
+    assert!(crate::runtime::functions::function_expr_uses_degree_units(
+        &file,
+        &groups,
+        &groups[24]
+    ));
+    let (distance_expr, parameters, _) = super::points::expression_runtime_context(
+        &file,
+        &groups,
+        &groups[24],
+        &analysis.raw_anchors,
+    )
+    .expect("group #25 decodes a / tan((360 / n2) / 2) from the payload");
+    let distance =
+        crate::runtime::functions::evaluate_expr_with_parameters(&distance_expr, 0.0, &parameters)
+            .expect("the payload angle unit makes the tangent argument 30 degrees");
+    assert!((distance - 121.91182810124567).abs() < 1e-9);
+    let endpoint = super::points::decode_derived_polar_endpoint_binding(
+        &file,
+        &groups,
+        &groups[25],
+        &analysis.raw_anchors,
+    )
+    .expect("derived endpoint #26 uses the live distance expression");
+    assert_eq!(endpoint.center_group_index, 12);
+    assert!((endpoint.distance_value - distance).abs() < 1e-9);
+
+    let measured_distance =
+        crate::runtime::functions::try_decode_function_expr(&file, &groups, &groups[17])
+            .expect("measured value #18 is a scalar expression");
+    assert!(matches!(
+        measured_distance,
+        FunctionExpr::Parsed(crate::runtime::functions::FunctionAst::Parameter(ref name, value))
+            if name == "m[6]" && (value - 3.724583333333335).abs() < 1e-12
+    ));
+
+    let scene = build_scene_checked(&file).expect("polygon rolling fixture builds");
+    let point_index = |ordinal| {
+        scene
+            .points
+            .iter()
+            .position(|point| {
+                point
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .unwrap_or_else(|| panic!("point group #{ordinal}"))
+    };
+    let parameter_rotation = point_index(38);
+    let measured_transform = point_index(39);
+    let parameter_point = point_index(68);
+    let second_rotation = point_index(72);
+    let third_rotation = point_index(73);
+    let translation = point_index(74);
+
+    assert!(matches!(
+        scene.points[measured_transform].binding,
+        Some(ScenePointBinding::PolarTransform {
+            source_index,
+            distance_scale,
+            ref distance_expr,
+            ..
+        }) if source_index == parameter_rotation
+            && (distance_scale - crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT).abs() < 1e-12
+            && matches!(distance_expr,
+                FunctionExpr::Parsed(crate::runtime::functions::FunctionAst::Parameter(name, value))
+                    if name == "m[6]" && (*value - 3.724583333333335).abs() < 1e-12)
+    ));
+    assert!(matches!(
+        scene.points[parameter_point].constraint,
+        ScenePointConstraint::OnSegment {
+            start_index,
+            end_index,
+            ..
+        } if start_index == parameter_rotation && end_index == measured_transform
+    ));
+    assert!(matches!(
+        scene.points[second_rotation].binding,
+        Some(ScenePointBinding::Rotate { center_index, .. })
+            if center_index == parameter_rotation
+    ));
+    assert!(matches!(
+        scene.points[third_rotation].binding,
+        Some(ScenePointBinding::Rotate {
+            source_index,
+            center_index,
+            ..
+        }) if source_index == second_rotation && center_index == parameter_rotation
+    ));
+    assert!(matches!(
+        scene.points[translation].binding,
+        Some(ScenePointBinding::Translate {
+            source_index,
+            vector_start_index,
+            vector_end_index,
+        }) if source_index == parameter_rotation
+            && vector_start_index == third_rotation
+            && vector_end_index == parameter_point
+    ));
+    let trace = scene
+        .lines
+        .iter()
+        .find(|line| {
+            line.debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 75)
+        })
+        .expect("custom transform trace #75");
+    assert!(matches!(
+        trace.binding,
+        Some(LineBinding::CustomTransformTrace { point_index, .. })
+            if point_index == translation
+    ));
+}
+
+#[test]
+fn moon_center_arcs_keep_parameter_point_endpoint_chains() {
+    let Some(data) = fixture_bytes(
+        "tests/Samples/个人专栏/庞坤生作品/月球的公转和自转（为何看不到月球背面）.gsp",
+    ) else {
+        return;
+    };
+    let file = GspFile::parse(&data).expect("moon fixture parses");
+    for (page_index, page) in file.page_files().iter().enumerate() {
+        let scene = build_scene_checked(page).expect("moon page builds");
+        let point_index = |ordinal| {
+            scene
+                .points
+                .iter()
+                .position(|point| {
+                    point
+                        .debug
+                        .as_ref()
+                        .is_some_and(|debug| debug.group_ordinal == ordinal)
+                })
+                .unwrap_or_else(|| panic!("page {} point group #{ordinal}", page_index + 1))
+        };
+        let assert_polar_offset = |ordinal, source_ordinal, value: f64| {
+            assert!(matches!(
+                scene.points[point_index(ordinal)].binding,
+                Some(ScenePointBinding::PolarOffset {
+                    source_index,
+                    ref distance_expr,
+                    ..
+                }) if source_index == point_index(source_ordinal)
+                    && matches!(distance_expr, FunctionExpr::Parsed(
+                        crate::runtime::functions::FunctionAst::Parameter(_, actual)
+                    ) if (*actual - value).abs() < 1e-12)
+            ));
+        };
+        let assert_rotation = |ordinal, source_ordinal, center_ordinal| {
+            assert!(matches!(
+                scene.points[point_index(ordinal)].binding,
+                Some(ScenePointBinding::Rotate {
+                    source_index,
+                    center_index,
+                    ..
+                }) if source_index == point_index(source_ordinal)
+                    && center_index == point_index(center_ordinal)
+            ));
+        };
+        let assert_arc = |ordinal, center_ordinal, start_ordinal, end_ordinal| {
+            let arc = scene
+                .arcs
+                .iter()
+                .find(|arc| {
+                    arc.debug
+                        .as_ref()
+                        .is_some_and(|debug| debug.group_ordinal == ordinal)
+                })
+                .unwrap_or_else(|| panic!("page {} arc group #{ordinal}", page_index + 1));
+            assert!(matches!(
+                arc.binding,
+                Some(ArcBinding::CenterArc {
+                    center_index,
+                    start_index,
+                    end_index,
+                }) if center_index == point_index(center_ordinal)
+                    && start_index == point_index(start_ordinal)
+                    && end_index == point_index(end_ordinal)
+            ));
+        };
+
+        assert_polar_offset(5, 1, 5.9);
+        match page_index {
+            0 => {
+                assert_polar_offset(14, 5, 0.7);
+                assert_polar_offset(15, 5, 0.7);
+                assert_rotation(16, 5, 1);
+                assert_rotation(17, 15, 1);
+                assert_rotation(18, 14, 1);
+                assert_arc(20, 16, 17, 18);
+                assert_arc(21, 16, 18, 17);
+            }
+            1 => {
+                assert_rotation(22, 5, 1);
+                assert_polar_offset(24, 22, 0.7);
+                assert_polar_offset(25, 22, 0.7);
+                assert_arc(26, 22, 24, 25);
+                assert_arc(28, 22, 25, 24);
+            }
+            _ => panic!("unexpected moon fixture page {}", page_index + 1),
+        }
+    }
+}
+
+#[test]
+fn half_sector_pages_keep_scale_translation_arc_and_intersection_chains() {
+    let Some(data) = fixture_bytes("tests/Samples/热研系列/滚动系列/半圆扇形滚动操作详解.gsp")
+    else {
+        return;
+    };
+    let file = GspFile::parse(&data).expect("half-sector fixture parses");
+    for (page_index, page) in file.page_files().iter().enumerate() {
+        let scene = build_scene_checked(page)
+            .unwrap_or_else(|error| panic!("half-sector page {} builds: {error}", page_index + 1));
+        let point_index = |ordinal| {
+            scene
+                .points
+                .iter()
+                .position(|point| {
+                    point
+                        .debug
+                        .as_ref()
+                        .is_some_and(|debug| debug.group_ordinal == ordinal)
+                })
+                .unwrap_or_else(|| panic!("page {} point group #{ordinal}", page_index + 1))
+        };
+        let assert_translation = |ordinal, source_ordinal, start_ordinal, end_ordinal| {
+            assert!(matches!(
+                scene.points[point_index(ordinal)].binding,
+                Some(ScenePointBinding::Translate {
+                    source_index,
+                    vector_start_index,
+                    vector_end_index,
+                }) if source_index == point_index(source_ordinal)
+                    && vector_start_index == point_index(start_ordinal)
+                    && vector_end_index == point_index(end_ordinal)
+            ));
+        };
+        let assert_arc = |ordinal, center_ordinal, start_ordinal, end_ordinal| {
+            let arc = scene
+                .arcs
+                .iter()
+                .find(|arc| {
+                    arc.debug
+                        .as_ref()
+                        .is_some_and(|debug| debug.group_ordinal == ordinal)
+                })
+                .unwrap_or_else(|| panic!("page {} arc group #{ordinal}", page_index + 1));
+            assert!(matches!(
+                arc.binding,
+                Some(ArcBinding::CenterArc {
+                    center_index,
+                    start_index,
+                    end_index,
+                }) if center_index == point_index(center_ordinal)
+                    && start_index == point_index(start_ordinal)
+                    && end_index == point_index(end_ordinal)
+            ));
+        };
+
+        assert!(matches!(
+            scene.points[point_index(6)].binding,
+            Some(ScenePointBinding::Scale {
+                source_index,
+                center_index,
+                factor,
+                ref parameter_name,
+                factor_expr: Some(_),
+                ..
+            }) if source_index == point_index(4)
+                && center_index == point_index(1)
+                && (factor - 2.0).abs() < 1e-12
+                && parameter_name.as_deref() == Some("m₃")
+        ));
+        assert_translation(7, 6, 4, 1);
+        assert!(matches!(
+            scene.points[point_index(12)].binding,
+            Some(ScenePointBinding::Scale {
+                source_index,
+                center_index,
+                factor_expr: Some(_),
+                ..
+            }) if source_index == point_index(6) && center_index == point_index(1)
+        ));
+        assert_translation(16, 15, 1, 4);
+        assert_translation(17, 15, 4, 1);
+        assert_arc(18, 15, 16, 17);
+
+        if page_index == 1 {
+            assert!(matches!(
+                scene.points[point_index(24)].constraint,
+                ScenePointConstraint::LineIntersection { .. }
+            ));
+            assert!(matches!(
+                scene.points[point_index(26)].constraint,
+                ScenePointConstraint::LineCircularIntersection { .. }
+            ));
+            assert_arc(31, 26, 28, 29);
+        }
+    }
+}
+
+#[test]
+fn fraction_arc_keeps_non_finite_expression_parents_symbolic() {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/钟科作品/分数有意义（颗粒）.gsp")
+    else {
+        return;
+    };
+    let file = GspFile::parse(&data).expect("fraction fixture parses");
+    let groups = file.object_groups();
+    crate::runtime::functions::try_decode_function_expr(&file, &groups, &groups[68])
+        .expect("group #69 remains a symbolic expression when group #33 is initially non-finite");
+    assert_eq!(
+        crate::runtime::functions::function_parameter_group_ordinals(&file, &groups, &groups[68])
+            .get("分母₃"),
+        Some(&33)
+    );
+
+    let scene = build_scene_checked(&file).expect("fraction fixture builds");
+    let point_index = |ordinal| {
+        scene
+            .points
+            .iter()
+            .position(|point| {
+                point
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .unwrap_or_else(|| panic!("point group #{ordinal}"))
+    };
+    assert!(matches!(
+        scene.points[point_index(92)].binding,
+        Some(ScenePointBinding::Rotate {
+            source_index,
+            center_index,
+            angle_expr: Some(_),
+            ref angle_parameter_group_ordinals,
+            ..
+        }) if source_index == point_index(68)
+            && center_index == point_index(67)
+            && angle_parameter_group_ordinals.get("分母₃") == Some(&33)
+    ));
+    assert!(matches!(
+        scene.points[point_index(93)].binding,
+        Some(ScenePointBinding::Rotate {
+            source_index,
+            center_index,
+            angle_start_index: Some(angle_start_index),
+            angle_vertex_index: Some(angle_vertex_index),
+            angle_end_index: Some(angle_end_index),
+            ..
+        }) if source_index == point_index(68)
+            && center_index == point_index(67)
+            && angle_start_index == point_index(92)
+            && angle_vertex_index == point_index(67)
+            && angle_end_index == point_index(68)
+    ));
+    assert!(matches!(
+        scene.points[point_index(94)].binding,
+        Some(ScenePointBinding::Rotate {
+            source_index,
+            center_index,
+            angle_expr: Some(_),
+            ..
+        }) if source_index == point_index(93) && center_index == point_index(67)
+    ));
+    let arc = scene
+        .arcs
+        .iter()
+        .find(|arc| {
+            arc.debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 95)
+        })
+        .expect("center arc #95");
+    assert!(matches!(
+        arc.binding,
+        Some(ArcBinding::CenterArc {
+            center_index,
+            start_index,
+            end_index,
+        }) if center_index == point_index(67)
+            && start_index == point_index(93)
+            && end_index == point_index(94)
+    ));
+}
+
+#[test]
+fn arbitrary_sector_arc_uses_the_measured_arc_angle_as_a_scalar_parent() {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/高峻清作品/任意角扇形的滚动(gjq).gsp")
+    else {
+        return;
+    };
+    let file = GspFile::parse(&data).expect("arbitrary-sector fixture parses");
+    let scene = build_scene_checked(&file).expect("arbitrary-sector fixture builds");
+    let point_index = |ordinal| {
+        scene
+            .points
+            .iter()
+            .position(|point| {
+                point
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .unwrap_or_else(|| panic!("point group #{ordinal}"))
+    };
+    assert!(matches!(
+        scene.points[point_index(49)].binding,
+        Some(ScenePointBinding::Rotate {
+            source_index,
+            center_index,
+            angle_expr: Some(_),
+            ref angle_parameter_group_ordinals,
+            ..
+        }) if source_index == point_index(48)
+            && center_index == point_index(46)
+            && angle_parameter_group_ordinals.get("__arc_angle_7") == Some(&7)
+    ));
+    for (ordinal, source_ordinal, center_ordinal) in [
+        (51, 46, 49),
+        (52, 48, 49),
+        (54, 49, 51),
+        (55, 52, 51),
+        (57, 51, 55),
+        (58, 54, 55),
+    ] {
+        assert!(matches!(
+            scene.points[point_index(ordinal)].binding,
+            Some(ScenePointBinding::Rotate {
+                source_index,
+                center_index,
+                angle_expr: Some(_),
+                ..
+            }) if source_index == point_index(source_ordinal)
+                && center_index == point_index(center_ordinal)
+        ));
+    }
+    let arc = scene
+        .arcs
+        .iter()
+        .find(|arc| {
+            arc.debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 61)
+        })
+        .expect("center arc #61");
+    assert!(matches!(
+        arc.binding,
+        Some(ArcBinding::CenterArc {
+            center_index,
+            start_index,
+            end_index,
+        }) if center_index == point_index(57)
+            && start_index == point_index(55)
+            && end_index == point_index(58)
+    ));
+}
 
 #[test]
 fn decodes_involute_parameter_rotation_chain() {
@@ -30,6 +1009,258 @@ fn decodes_involute_parameter_rotation_chain() {
     assert_eq!(binding.source_group_index, 0);
     assert_eq!(binding.center_group_index, 15);
     assert!((binding.factor - 3.0_f64.sqrt().recip()).abs() < 1e-12);
+}
+
+#[test]
+fn circular_arc_parameter_anchor_drives_expression_rotation() {
+    let data = fixture_bytes("tests/Samples/个人专栏/方小庆作品/(inRm)圆柱圆锥展开.gsp")
+        .expect("cylinder-cone fixture");
+    let file = GspFile::parse(&data).expect("cylinder-cone fixture parses");
+    let page = &file.page_files()[0];
+    let scene = build_scene_checked(page).expect("first page builds");
+    let point = |ordinal| {
+        scene
+            .points
+            .iter()
+            .find(|point| {
+                point
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .unwrap_or_else(|| panic!("missing derived point #{ordinal}"))
+    };
+    assert!(
+        matches!(
+            &point(22).binding,
+            Some(ScenePointBinding::Rotate {
+                angle_degrees,
+                angle_expr: Some(_),
+                angle_parameter_group_ordinals,
+                ..
+            }) if (*angle_degrees - 149.366_407_980_351_34).abs() < 1e-9
+                && angle_parameter_group_ordinals.get("m") == Some(&19)
+        ),
+        "group #22 binding: {:?}",
+        point(22).binding
+    );
+    assert!(matches!(
+        point(23).binding,
+        Some(ScenePointBinding::Translate { .. })
+    ));
+}
+
+#[test]
+fn measurement_line_parameter_point_drives_vector_translation() {
+    let data = fixture_bytes("tests/Samples/未分类档/平移正弦线作正弦函数图像.gsp")
+        .expect("translated-sine fixture");
+    let file = GspFile::parse(&data).expect("translated-sine fixture parses");
+    let scene = build_scene_checked(&file).expect("translated-sine fixture builds");
+    let point = |ordinal| {
+        scene
+            .points
+            .iter()
+            .find(|point| {
+                point
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .unwrap_or_else(|| panic!("missing derived point #{ordinal}"))
+    };
+    assert!(matches!(
+        point(18).constraint,
+        ScenePointConstraint::OnSegment { .. }
+    ));
+    assert!(matches!(
+        point(24).binding,
+        Some(ScenePointBinding::Translate { .. })
+    ));
+}
+
+#[test]
+fn initially_undefined_polar_endpoint_keeps_scale_translation_chain() {
+    let data = fixture_bytes(
+        "tests/Samples/个人专栏/孙禄京作品/温州市龙湾区实验中学适应性测试试题(孙禄京).gsp",
+    )
+    .expect("conditional-dilation fixture");
+    let file = GspFile::parse(&data).expect("conditional-dilation fixture parses");
+    let scene = build_scene_checked(&file).expect("conditional-dilation fixture builds");
+    let point = |ordinal| {
+        scene
+            .points
+            .iter()
+            .find(|point| {
+                point
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .unwrap_or_else(|| panic!("missing derived point #{ordinal}"))
+    };
+    assert!(matches!(
+        point(65).binding,
+        Some(ScenePointBinding::PolarOffset { .. })
+    ));
+    assert!(matches!(
+        point(66).binding,
+        Some(ScenePointBinding::Scale { factor, .. }) if (factor - 1.0).abs() < 1e-12
+    ));
+    assert!(matches!(
+        point(69).binding,
+        Some(ScenePointBinding::Translate { .. })
+    ));
+}
+
+#[test]
+fn initially_undefined_rotated_ray_keeps_circle_intersection_chain() {
+    let data = fixture_bytes("tests/Samples/未分类档/圆内点的弹性束缚 (3).gsp")
+        .expect("elastic-circle fixture");
+    let file = GspFile::parse(&data).expect("elastic-circle fixture parses");
+    let scene = build_scene_checked(&file).expect("elastic-circle fixture builds");
+    let rotated_ray = scene
+        .lines
+        .iter()
+        .find(|line| {
+            line.debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 14)
+        })
+        .expect("rotated ray #14");
+    assert!(matches!(
+        &rotated_ray.binding,
+        Some(LineBinding::DerivedTransform {
+            transform: LineTransformBinding::Rotate(binding),
+            ..
+        }) if binding.angle_degrees == 0.0 && binding.angle_expr.is_some()
+    ));
+    let intersection = scene
+        .points
+        .iter()
+        .find(|point| {
+            point
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 15)
+        })
+        .expect("intersection #15");
+    assert!(matches!(
+        intersection.constraint,
+        ScenePointConstraint::LineCircularIntersection { variant: 1, .. }
+    ));
+}
+
+#[test]
+fn boundary_curve_length_radius_keeps_circle_intersection_chain() {
+    let data = fixture_bytes("tests/Samples/热研系列/滚动系列/三角车轮.gsp")
+        .expect("triangle-wheel fixture");
+    let file = GspFile::parse(&data).expect("triangle-wheel fixture parses");
+    let scene = build_scene_checked(&file).expect("triangle-wheel fixture builds");
+    let circle = scene
+        .circles
+        .iter()
+        .find(|circle| {
+            circle
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 29)
+        })
+        .expect("arc-length radius circle #29");
+    assert!(matches!(
+        &circle.binding,
+        Some(ShapeBinding::ExpressionRadiusCircle {
+            parameter_group_ordinals,
+            ..
+        }) if parameter_group_ordinals.values().copied().eq([24])
+    ));
+    let intersection = scene
+        .points
+        .iter()
+        .find(|point| {
+            point
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 30)
+        })
+        .expect("second circle intersection #30");
+    assert!(matches!(
+        intersection.constraint,
+        ScenePointConstraint::LineCircularIntersection { variant: 1, .. }
+    ));
+}
+
+#[test]
+fn parameter_anchor_on_arc_keeps_its_scalar_parent_chain() {
+    let data = fixture_bytes("tests/Samples/个人专栏/向忠作品/正弦波·音乐【电子琴】.gsp")
+        .expect("electronic-keyboard fixture");
+    let file = GspFile::parse(&data).expect("electronic-keyboard fixture parses");
+    let scene = build_scene_checked(&file).expect("electronic-keyboard fixture builds");
+    let scalar = scene
+        .scalars
+        .iter()
+        .find(|scalar| scalar.group_ordinal == 62)
+        .expect("parameter anchor #62");
+    assert!(matches!(
+        scalar.binding,
+        SceneScalarBinding::PointArcParameter { .. }
+    ));
+}
+
+#[test]
+fn point_grid_boundary_payload_keeps_polygon_parent_chain() {
+    let data = fixture_bytes("tests/Samples/个人专栏/向忠作品/点阵的局部放大.gsp")
+        .expect("point-grid fixture");
+    let file = GspFile::parse(&data).expect("point-grid fixture parses");
+    let groups = file.object_groups();
+    let point_map = collect_point_objects(&file, &groups);
+    let analysis = analyze_scene(&file, &groups, &point_map);
+    let polygon_point = try_decode_point_constraint(
+        &file,
+        &groups,
+        &groups[20],
+        Some(&analysis.raw_anchors),
+        &analysis.graph_ref,
+    )
+    .unwrap_or_else(|error| panic!("polygon path point #21 must decode: {error:?}"));
+    assert!(matches!(
+        polygon_point,
+        super::points::RawPointConstraint::PolygonBoundaryParameter { parameter, .. }
+            if parameter == 0.0
+    ));
+    let scene = build_scene_checked(&file).expect("point-grid fixture builds");
+    let point = |ordinal| {
+        scene
+            .points
+            .iter()
+            .find(|point| {
+                point
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .unwrap_or_else(|| panic!("missing point group #{ordinal}"))
+    };
+    assert!(matches!(
+        point(20).constraint,
+        ScenePointConstraint::OnPolygonBoundaryParameter { parameter, .. }
+            if parameter == 0.5
+    ));
+    assert!(matches!(
+        point(21).constraint,
+        ScenePointConstraint::OnPolygonBoundaryParameter { parameter, .. }
+            if parameter == 0.0
+    ));
+    assert!(matches!(
+        point(35).constraint,
+        ScenePointConstraint::LinePolygonIntersection { .. }
+    ));
+    assert!(scene.scalars.iter().any(|scalar| {
+        scalar.group_ordinal == 36
+            && matches!(
+                scalar.binding,
+                SceneScalarBinding::PointPolygonParameter { .. }
+            )
+    }));
 }
 
 #[test]
@@ -151,11 +1382,12 @@ fn projected_coordinate_points_keep_their_payload_parent_chain() {
         let point = &scene.points[point_index(ordinal)];
         assert!(matches!(
             &point.binding,
-            Some(ScenePointBinding::PayloadAlias {
-                parent_indices,
+            Some(ScenePointBinding::ProjectedCoordinate {
+                source_index,
+                parent_group_ordinals,
                 source_parent: 0,
-            }) if parent_indices
-                == &parent_ordinals.map(point_index)
+            }) if *source_index == point_index(parent_ordinals[0])
+                && parent_group_ordinals == &parent_ordinals
         ));
     }
 }
@@ -230,16 +1462,13 @@ fn ellipse_trace_intersection_chain_uses_payload_objects() {
     let groups = file.object_groups();
     let point_map = collect_point_objects(&file, &groups);
     let analysis = analyze_scene(&file, &groups, &point_map);
-    assert!(groups[104].records.iter().any(|record| {
-        record.record_type == crate::runtime::payload_consts::RECORD_EXPRESSION_ROTATION_MARKER
-    }));
     let rotation = super::points::decode_expression_rotation_binding(
         &file,
         &groups,
         &groups[104],
         &analysis.raw_anchors,
     )
-    .expect("group #105 carries the calculated-rotation marker");
+    .expect("group #105 carries the calculated-rotation payload class");
     assert_eq!(rotation.source_group_index, 103);
     assert_eq!(rotation.center_group_index, 23);
     assert_eq!(rotation.parameter_name.as_deref(), Some("拖我"));
@@ -271,10 +1500,15 @@ fn ellipse_trace_intersection_chain_uses_payload_objects() {
             ..
         })
     ));
-    assert!(matches!(
+    assert!(
+        matches!(
+            point(119).constraint,
+            ScenePointConstraint::LineTraceIntersection { .. }
+        ),
+        "group #119 constraint: {:?}, binding: {:?}",
         point(119).constraint,
-        ScenePointConstraint::LineTraceIntersection { .. }
-    ));
+        point(119).binding
+    );
     assert!(matches!(
         point(138).constraint,
         ScenePointConstraint::CircularTraceIntersection { .. }
@@ -411,12 +1645,15 @@ fn rolling_sector_parameter_anchor_drives_hidden_arc_center() {
     else {
         return;
     };
-    let file = GspFile::parse(&data).expect("rolling-sector fixture parses");
+    let document = GspFile::parse(&data).expect("rolling-sector fixture parses");
+    let pages = document.page_files();
+    assert_eq!(pages.len(), 4);
+    let file = &pages[0];
     let groups = file.object_groups();
-    let point_map = collect_point_objects(&file, &groups);
-    let analysis = analyze_scene(&file, &groups, &point_map);
+    let point_map = collect_point_objects(file, &groups);
+    let analysis = analyze_scene(file, &groups, &point_map);
     let controlled =
-        try_decode_parameter_controlled_point(&file, &groups, &groups[13], &analysis.raw_anchors)
+        try_decode_parameter_controlled_point(file, &groups, &groups[13], &analysis.raw_anchors)
             .expect("payload point #14 decodes from ParameterAnchor #13");
     assert_eq!(controlled.source_point_group_index, Some(4));
     assert!(matches!(
@@ -427,7 +1664,7 @@ fn rolling_sector_parameter_anchor_drives_hidden_arc_center() {
             ..
         }
     ));
-    let scene = build_scene_checked(&file).expect("rolling-sector scene builds");
+    let scene = build_scene_checked(file).expect("rolling-sector first page builds");
     assert!(scene.points.iter().any(|point| {
         point
             .debug
@@ -435,8 +1672,6 @@ fn rolling_sector_parameter_anchor_drives_hidden_arc_center() {
             .is_some_and(|debug| debug.group_ordinal == 14)
     }));
 
-    let pages = file.page_files();
-    assert_eq!(pages.len(), 4);
     for (page_index, page) in pages.iter().enumerate() {
         let scene = build_scene_checked(page)
             .unwrap_or_else(|error| panic!("rolling-sector page {}: {error:#}", page_index + 1));
@@ -1900,4 +3135,101 @@ fn exports_three_moving_point_fixture_parameter_rotation_and_buttons() {
         text.starts_with("AE / BC*3 = ")
             && matches!(binding, Some(TextLabelBinding::ExpressionValue { .. }))
     }));
+}
+
+#[test]
+fn ellipse_polygon_rolling_keeps_marked_translation_and_intersection_chain() {
+    let Some(data) = fixture_bytes("tests/Samples/热研系列/滚动系列/椭圆在正多边形上的滚动.gsp")
+    else {
+        return;
+    };
+    let file = GspFile::parse(&data).expect("ellipse rolling fixture parses");
+    let scene = build_scene_checked(&file).expect("ellipse rolling fixture builds");
+    let point = |ordinal| {
+        scene
+            .points
+            .iter()
+            .find(|point| {
+                point
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .unwrap_or_else(|| panic!("missing point group #{ordinal}"))
+    };
+    let line = |ordinal| {
+        scene
+            .lines
+            .iter()
+            .find(|line| {
+                line.debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .unwrap_or_else(|| panic!("missing line group #{ordinal}"))
+    };
+
+    match &point(69).binding {
+        Some(ScenePointBinding::MarkedAngleTranslation {
+            target_index,
+            angle_start_index,
+            angle_vertex_index,
+            angle_end_index,
+            distance,
+            distance_parameter_group_ordinals,
+            ..
+        }) => {
+            assert_eq!(
+                (
+                    *target_index,
+                    *angle_start_index,
+                    *angle_vertex_index,
+                    *angle_end_index
+                ),
+                (0, 3, 0, 5)
+            );
+            assert!((distance - 47.01831435133081).abs() < 1e-9);
+            assert_eq!(
+                distance_parameter_group_ordinals,
+                &std::collections::BTreeMap::from([("a".to_string(), 66), ("b".to_string(), 67)])
+            );
+        }
+        other => panic!("expected marked-angle translation for group #69, got {other:?}"),
+    }
+    assert!(matches!(
+        point(86).binding,
+        Some(ScenePointBinding::DerivedParameter { .. })
+    ));
+    for ordinal in [105, 108] {
+        assert!(matches!(
+            point(ordinal).constraint,
+            ScenePointConstraint::LineCircularIntersection { .. }
+        ));
+    }
+    assert!(matches!(
+        point(119).constraint,
+        ScenePointConstraint::LineIntersection { .. }
+    ));
+    for ordinal in [85, 101, 110] {
+        assert!(matches!(
+            line(ordinal).binding,
+            Some(LineBinding::DerivedTransform {
+                transform: LineTransformBinding::Rotate(_),
+                ..
+            })
+        ));
+    }
+    assert!(matches!(
+        line(102).binding,
+        Some(LineBinding::DerivedTransform {
+            transform: LineTransformBinding::Reflect(_),
+            ..
+        })
+    ));
+    for ordinal in [87, 118] {
+        assert!(matches!(
+            line(ordinal).binding,
+            Some(LineBinding::PerpendicularLine { .. })
+        ));
+    }
 }

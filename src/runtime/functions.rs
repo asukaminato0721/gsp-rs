@@ -6,11 +6,11 @@ mod scene;
 
 pub(crate) use decode::{
     FunctionExprParseError, evaluate_function_group_with_overrides,
-    function_expr_uses_degree_units, function_parameter_group_ordinals,
+    function_expr_uses_degree_units, function_parameter_group_ordinals, numeric_helper_group_name,
     try_decode_embedded_calculate_expr, try_decode_function_expr,
     try_decode_function_expr_with_inlined_refs, try_decode_function_plot_descriptor,
-    try_decode_parameter_control_expr, try_decode_standalone_function_expr,
-    with_numeric_helper_cache,
+    try_decode_numeric_helper_group, try_decode_parameter_control_expr,
+    try_decode_standalone_function_expr, with_numeric_helper_cache,
 };
 pub(crate) use eval::evaluate_expr_with_parameters;
 pub(crate) use expr::{

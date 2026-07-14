@@ -73,6 +73,23 @@ pub fn scale_around(point: Point, center: Point, factor: f64) -> Point {
     }
 }
 
+pub fn marked_angle_translation_point(
+    target: Point,
+    angle_start: Point,
+    angle_vertex: Point,
+    angle_end: Point,
+    distance: f64,
+) -> Option<Point> {
+    if !distance.is_finite() {
+        return None;
+    }
+    let angle = measured_rotation_radians(angle_start, angle_vertex, angle_end)?;
+    Some(Point {
+        x: target.x + distance * angle.cos(),
+        y: target.y - distance * angle.sin(),
+    })
+}
+
 pub fn reflect_across_line(point: Point, line_start: Point, line_end: Point) -> Option<Point> {
     let dx = line_end.x - line_start.x;
     let dy = line_end.y - line_start.y;
@@ -682,6 +699,26 @@ mod tests {
                 Point { x: 1.0, y: 0.0 },
                 true,
                 false,
+            )
+            .is_none()
+        );
+
+        let translated = marked_angle_translation_point(
+            Point { x: 10.0, y: 20.0 },
+            Point { x: 1.0, y: 0.0 },
+            Point::ZERO,
+            Point { x: 0.0, y: -1.0 },
+            3.0,
+        )
+        .unwrap();
+        assert_point_close(translated, Point { x: 10.0, y: 17.0 });
+        assert!(
+            marked_angle_translation_point(
+                Point::ZERO,
+                Point::ZERO,
+                Point::ZERO,
+                Point { x: 1.0, y: 0.0 },
+                1.0,
             )
             .is_none()
         );

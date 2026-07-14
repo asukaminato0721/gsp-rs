@@ -13,6 +13,7 @@ use super::graph::{BoundsInputs, collect_bounds, expand_bounds};
 use super::world::{world_line_iteration_family, world_line_shape, world_polygon_iteration_family};
 
 pub(super) struct SceneAssemblyArtifacts {
+    pub(super) payload_dependencies: std::collections::BTreeMap<usize, Vec<usize>>,
     pub(super) circle_iterations: Vec<CircleIterationFamily>,
     pub(super) line_iterations: Vec<LineIterationFamily>,
     pub(super) polygon_iterations: Vec<PolygonIterationFamily>,
@@ -104,6 +105,7 @@ pub(super) fn build_world_data(
                     points,
                     segment_index,
                     t,
+                    parameter,
                 } => ScenePointConstraint::OnPolyline {
                     function_key: *function_key,
                     points: points
@@ -112,6 +114,7 @@ pub(super) fn build_world_data(
                         .collect(),
                     segment_index: *segment_index,
                     t: *t,
+                    parameter: *parameter,
                 },
                 ScenePointConstraint::OnPolygonBoundary {
                     vertex_indices,
@@ -121,6 +124,13 @@ pub(super) fn build_world_data(
                     vertex_indices: vertex_indices.clone(),
                     edge_index: *edge_index,
                     t: *t,
+                },
+                ScenePointConstraint::OnPolygonBoundaryParameter {
+                    vertex_indices,
+                    parameter,
+                } => ScenePointConstraint::OnPolygonBoundaryParameter {
+                    vertex_indices: vertex_indices.clone(),
+                    parameter: *parameter,
                 },
                 ScenePointConstraint::OnTranslatedPolygonBoundary {
                     vertex_indices,
@@ -716,6 +726,11 @@ fn clone_line_constraint(constraint: &LineConstraint) -> LineConstraint {
             vector_start_index: *vector_start_index,
             vector_end_index: *vector_end_index,
         },
+        LineConstraint::TranslatedDelta { line, dx, dy } => LineConstraint::TranslatedDelta {
+            line: Box::new(clone_line_constraint(line)),
+            dx: *dx,
+            dy: *dy,
+        },
         LineConstraint::Reflected { line, axis } => LineConstraint::Reflected {
             line: Box::new(clone_line_constraint(line)),
             axis: Box::new(clone_line_constraint(axis)),
@@ -823,6 +838,7 @@ pub(super) fn assemble_scene(
         remap_function_line_indices(artifacts.functions, &analysis.function_plots, &raw_lines);
 
     Scene {
+        payload_dependencies: artifacts.payload_dependencies,
         background_color: analysis.background_color,
         graph_mode: analysis.graph_mode,
         pi_mode: analysis.pi_mode,

@@ -350,6 +350,29 @@
       const end = resolveFn(constraint.vertexIndices[(constraint.edgeIndex + 1 + count) % count]);
       return start && end ? lerpPoint(start, end, constraint.t) : null;
     }
+    if (constraint.kind === "polygon-boundary-parameter") {
+      const vertices = constraint.vertexIndices
+        .map((index) => resolveFn(index))
+        .filter((point): point is Point => !!point);
+      if (vertices.length !== constraint.vertexIndices.length || vertices.length < 2) return null;
+      const lengths = vertices.map((start, index) => {
+        const end = vertices[(index + 1) % vertices.length];
+        return Math.hypot(end.x - start.x, end.y - start.y);
+      });
+      const perimeter = lengths.reduce((sum, length) => sum + length, 0);
+      if (perimeter <= 1e-9) return vertices[0];
+      const target = ((constraint.parameter % 1) + 1) % 1 * perimeter;
+      let traveled = 0;
+      for (let index = 0; index < lengths.length; index += 1) {
+        const length = lengths[index];
+        if (traveled + length >= target || index + 1 === lengths.length) {
+          const t = length <= 1e-9 ? 0 : Math.max(0, Math.min(1, (target - traveled) / length));
+          return lerpPoint(vertices[index], vertices[(index + 1) % vertices.length], t);
+        }
+        traveled += length;
+      }
+      return null;
+    }
     if (constraint.kind === "translated-polygon-boundary") {
       const count = constraint.vertexIndices.length;
       if (count < 2) return null;

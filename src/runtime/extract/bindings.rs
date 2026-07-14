@@ -418,6 +418,7 @@ fn resolve_payload_color_parameter_value(
             t,
             vertex_group_indices,
         } => polygon_boundary_parameter(raw_anchors, &vertex_group_indices, edge_index, t),
+        RawPointConstraint::PolygonBoundaryParameter { parameter, .. } => Some(parameter),
         RawPointConstraint::TranslatedPolygonBoundary {
             edge_index,
             t,
@@ -434,7 +435,8 @@ fn resolve_payload_color_parameter_value(
         RawPointConstraint::Circular(_) => None,
         RawPointConstraint::CircleArc(constraint) => Some(constraint.t),
         RawPointConstraint::Arc(constraint) => Some(constraint.t),
-        RawPointConstraint::Polyline { t, .. } | RawPointConstraint::HostedArc { t, .. } => Some(t),
+        RawPointConstraint::Polyline { parameter, .. } => Some(parameter),
+        RawPointConstraint::HostedArc { t, .. } => Some(t),
     }
 }
 

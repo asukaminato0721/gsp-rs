@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use anyhow::Result;
 
@@ -224,6 +224,12 @@ fn build_scene_checked_inner(file: &GspFile) -> Result<Scene> {
         world_data,
         bounds_data,
         SceneAssemblyArtifacts {
+            payload_dependencies: groups
+                .iter()
+                .filter_map(|group| {
+                    find_indexed_path(file, group).map(|path| (group.ordinal, path.refs))
+                })
+                .collect(),
             circle_iterations,
             line_iterations: binding_stage.line_iterations,
             polygon_iterations: binding_stage.polygon_iterations,
@@ -255,6 +261,9 @@ fn collect_scene_scalars(
                 GroupKind::ParameterAnchor
                     | GroupKind::ParameterControlledPoint
                     | GroupKind::ArcAngleValue
+                    | GroupKind::BoundaryCurveLengthValue
+                    | GroupKind::PolarAngleValue
+                    | GroupKind::NamedAlias
                     | GroupKind::GraphObject40
             )
         })
@@ -294,6 +303,41 @@ fn collect_scene_scalars(
                     binding: SceneScalarBinding::ArcAngle { arc_index },
                 });
             }
+            if group.header.kind() == GroupKind::BoundaryCurveLengthValue {
+                let arc_group_index = path.refs.first()?.checked_sub(1)?;
+                let arc_index = arc_group_to_index.get(arc_group_index).copied().flatten()?;
+                return Some(SceneScalar {
+                    group_ordinal: group.ordinal,
+                    binding: SceneScalarBinding::ArcLength { arc_index },
+                });
+            }
+            if group.header.kind() == GroupKind::PolarAngleValue {
+                return Some(SceneScalar {
+                    group_ordinal: group.ordinal,
+                    binding: SceneScalarBinding::PolarAngle {
+                        point_index: group_to_point_index
+                            .get(path.refs.first()?.checked_sub(1)?)
+                            .copied()
+                            .flatten()?,
+                        center_index: group_to_point_index
+                            .get(path.refs.get(1)?.checked_sub(1)?)
+                            .copied()
+                            .flatten()?,
+                        reference_index: group_to_point_index
+                            .get(path.refs.get(2)?.checked_sub(1)?)
+                            .copied()
+                            .flatten()?,
+                    },
+                });
+            }
+            if group.header.kind() == GroupKind::NamedAlias {
+                return Some(SceneScalar {
+                    group_ordinal: group.ordinal,
+                    binding: SceneScalarBinding::Alias {
+                        source_group_ordinal: *path.refs.first()?,
+                    },
+                });
+            }
             let point_group_index = path.refs.first()?.checked_sub(1)?;
             let point_index = group_to_point_index
                 .get(point_group_index)
@@ -306,6 +350,7 @@ fn collect_scene_scalars(
                 point_index,
                 group_to_point_index,
                 line_group_to_index,
+                arc_group_to_index,
             )
             .unwrap_or(SceneScalarBinding::PointParameter { point_index });
             Some(SceneScalar {
@@ -323,6 +368,7 @@ fn scene_scalar_binding(
     point_index: usize,
     group_to_point_index: &[Option<usize>],
     line_group_to_index: &[Option<usize>],
+    arc_group_to_index: &[Option<usize>],
 ) -> Option<SceneScalarBinding> {
     let host_group_index = path.refs.get(1)?.checked_sub(1)?;
     let host = groups.get(host_group_index)?;
@@ -366,6 +412,19 @@ fn scene_scalar_binding(
             point_index,
             center_index: point_index_for_group(host_path.refs.first()?.checked_sub(1)?)?,
             radius_index: point_index_for_group(host_path.refs.get(1)?.checked_sub(1)?)?,
+        });
+    }
+
+    if matches!(
+        host.header.kind(),
+        GroupKind::CenterArc | GroupKind::ThreePointArc
+    ) {
+        return Some(SceneScalarBinding::PointArcParameter {
+            point_index,
+            arc_index: arc_group_to_index
+                .get(host_group_index)
+                .copied()
+                .flatten()?,
         });
     }
 
@@ -538,25 +597,37 @@ fn collect_visible_points_and_traces(
         &mut visible_points,
         &mut group_to_point_index,
     )?;
-    let existing_point_trace_ordinals = shapes
+    let existing_point_trace_indices = shapes
         .trace_lines
         .iter()
-        .filter_map(|trace| trace.debug.as_ref().map(|debug| debug.group_ordinal))
-        .collect::<BTreeSet<_>>();
-    shapes.trace_lines.extend(
-        collect_point_traces(
-            file,
-            groups,
-            &visible_points,
-            &group_to_point_index,
-            &analysis.graph_ref,
-        )
-        .into_iter()
-        .filter(|trace| match trace.debug.as_ref() {
-            Some(debug) => !existing_point_trace_ordinals.contains(&debug.group_ordinal),
-            None => true,
-        }),
-    );
+        .enumerate()
+        .filter_map(|(index, trace)| {
+            trace
+                .debug
+                .as_ref()
+                .map(|debug| (debug.group_ordinal, index))
+        })
+        .collect::<BTreeMap<_, _>>();
+    for trace in collect_point_traces(
+        file,
+        groups,
+        &visible_points,
+        &group_to_point_index,
+        &analysis.graph_ref,
+    ) {
+        let Some(existing_index) = trace
+            .debug
+            .as_ref()
+            .and_then(|debug| existing_point_trace_indices.get(&debug.group_ordinal))
+            .copied()
+        else {
+            shapes.trace_lines.push(trace);
+            continue;
+        };
+        if shapes.trace_lines[existing_index].points.len() < 2 && trace.points.len() >= 2 {
+            shapes.trace_lines[existing_index] = trace;
+        }
+    }
     bind_points_to_point_traces(
         file,
         groups,

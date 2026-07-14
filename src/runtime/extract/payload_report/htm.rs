@@ -355,10 +355,23 @@ fn htm_payload_signature(
             _ => ("Line", format_reversed_ref_args(refs, ordinal_map)),
         },
         GroupKind::AxisLine => ("CoordSysByAxes", format_ref_args(refs, ordinal_map)),
-        GroupKind::PerpendicularLine => {
-            ("Perpendicular", format_reversed_ref_args(refs, ordinal_map))
+        GroupKind::PerpendicularLine | GroupKind::ParallelLine => {
+            let object_type = if group.header.kind() == GroupKind::PerpendicularLine {
+                "Perpendicular"
+            } else {
+                "Parallel"
+            };
+            let args = decode::constructed_line_parent_group_indices(file, groups, group)
+                .map(|(through_index, host_index)| {
+                    format!(
+                        "{},{}",
+                        map_htm_ordinal(host_index + 1, ordinal_map),
+                        map_htm_ordinal(through_index + 1, ordinal_map)
+                    )
+                })
+                .unwrap_or_else(|| format_reversed_ref_args(refs, ordinal_map));
+            (object_type, args)
         }
-        GroupKind::ParallelLine => ("Parallel", format_reversed_ref_args(refs, ordinal_map)),
         GroupKind::AngleBisectorRay => ("Bisector", format_ref_args(refs, ordinal_map)),
         GroupKind::Ray => ("Ray", format_reversed_ref_args(refs, ordinal_map)),
         GroupKind::Polygon => ("Polygon", format_ref_args(refs, ordinal_map)),
@@ -1758,8 +1771,9 @@ fn decode_htm_object_parameter(
     match try_decode_point_constraint(file, groups, group, None, &graph).ok()? {
         RawPointConstraint::Segment(constraint) => Some(constraint.t),
         RawPointConstraint::ConstructedLine { t, .. } => Some(t),
-        RawPointConstraint::Polyline { t, .. } => Some(t),
+        RawPointConstraint::Polyline { parameter, .. } => Some(parameter),
         RawPointConstraint::PolygonBoundary { t, .. } => Some(t),
+        RawPointConstraint::PolygonBoundaryParameter { parameter, .. } => Some(parameter),
         RawPointConstraint::TranslatedPolygonBoundary { t, .. } => Some(t),
         RawPointConstraint::Circle(constraint) => {
             Some((-constraint.unit_y).atan2(constraint.unit_x))

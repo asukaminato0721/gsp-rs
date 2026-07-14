@@ -8,7 +8,11 @@ use super::{
     try_decode_transform_binding,
 };
 use crate::runtime::extract::decode::resolve_circle_points_raw;
-use crate::runtime::extract::points::{TransformBinding, resolve_line_like_points_raw};
+use crate::runtime::extract::points::{
+    TransformBinding, decode_parameter_rotation_transform_binding_raw, expression_runtime_context,
+    resolve_line_like_points_raw, scale_angle_expr_to_degrees,
+};
+use crate::runtime::functions::{FunctionExpr, function_parameter_group_ordinals};
 use crate::runtime::geometry::angle_degrees_from_points;
 use crate::runtime::scene::{
     ArcBinding, AxisBinding, LineTransformBinding, RotationBinding, ScaleBinding,
@@ -183,6 +187,8 @@ pub(crate) fn collect_reflected_arc_shapes(
 struct RotationTransform {
     binding: TransformBinding,
     angle_group_indices: Option<(usize, usize, usize)>,
+    angle_expr: Option<FunctionExpr>,
+    angle_parameter_group_ordinals: std::collections::BTreeMap<String, usize>,
 }
 
 fn rotation_transform_for_group(
@@ -212,67 +218,72 @@ fn rotation_transform_for_group(
                 binding.angle_vertex_group_index,
                 binding.angle_end_group_index,
             )),
+            angle_expr: None,
+            angle_parameter_group_ordinals: std::collections::BTreeMap::new(),
         });
     }
     if group.header.kind() == crate::format::GroupKind::ParameterRotation {
-        if let Ok(binding) = try_decode_parameter_rotation_binding(file, groups, group) {
-            return Some(RotationTransform {
-                binding,
-                angle_group_indices: None,
-            });
-        }
         let path = find_indexed_path(file, group)?;
-        let source_group_index = path.refs.first()?.checked_sub(1)?;
-        let center_group_index = path.refs.get(1)?.checked_sub(1)?;
         let angle_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
-        if angle_group.header.kind() != crate::format::GroupKind::AngleValue {
-            return None;
-        }
-        let angle_path = find_indexed_path(file, angle_group)?;
-        let angle_start_group_index = angle_path.refs.first()?.checked_sub(1)?;
-        let angle_vertex_group_index = angle_path.refs.get(1)?.checked_sub(1)?;
-        let angle_end_group_index = angle_path.refs.get(2)?.checked_sub(1)?;
-        let angle_start = anchors.get(angle_start_group_index)?.clone()?;
-        let angle_vertex = anchors.get(angle_vertex_group_index)?.clone()?;
-        let angle_end = anchors.get(angle_end_group_index)?.clone()?;
-        let angle_degrees = angle_degrees_from_points(&angle_start, &angle_vertex, &angle_end)?;
+        let binding =
+            decode_parameter_rotation_transform_binding_raw(file, groups, group, anchors)?;
+        let angle_group_indices =
+            if angle_group.header.kind() == crate::format::GroupKind::AngleValue {
+                let angle_path = find_indexed_path(file, angle_group)?;
+                Some((
+                    angle_path.refs.first()?.checked_sub(1)?,
+                    angle_path.refs.get(1)?.checked_sub(1)?,
+                    angle_path.refs.get(2)?.checked_sub(1)?,
+                ))
+            } else {
+                None
+            };
+        let (angle_expr, angle_parameter_group_ordinals) =
+            if angle_group.header.kind() == crate::format::GroupKind::FunctionExpr {
+                let (expr, _, _) = expression_runtime_context(file, groups, angle_group, anchors)?;
+                let expr = if crate::runtime::functions::function_expr_uses_degree_units(
+                    file,
+                    groups,
+                    angle_group,
+                ) {
+                    expr
+                } else {
+                    scale_angle_expr_to_degrees(expr)
+                };
+                (
+                    Some(expr),
+                    function_parameter_group_ordinals(file, groups, angle_group),
+                )
+            } else {
+                (None, std::collections::BTreeMap::new())
+            };
         return Some(RotationTransform {
-            binding: TransformBinding {
-                source_group_index,
-                center_group_index,
-                kind: TransformBindingKind::Rotate {
-                    angle_degrees,
-                    parameter_name: None,
-                },
-            },
-            angle_group_indices: Some((
-                angle_start_group_index,
-                angle_vertex_group_index,
-                angle_end_group_index,
-            )),
+            binding,
+            angle_group_indices,
+            angle_expr,
+            angle_parameter_group_ordinals,
         });
     }
 
     Some(RotationTransform {
         binding: try_decode_transform_binding(file, group).ok()?,
         angle_group_indices: None,
+        angle_expr: None,
+        angle_parameter_group_ordinals: std::collections::BTreeMap::new(),
     })
 }
 
-fn rotation_binding(
-    binding: &TransformBindingKind,
-    center_index: usize,
-    angle_group_indices: Option<(usize, usize, usize)>,
-) -> Option<RotationBinding> {
+fn rotation_binding(transform: &RotationTransform, center_index: usize) -> Option<RotationBinding> {
+    let binding = &transform.binding.kind;
     Some(RotationBinding {
         center_index,
         angle_degrees: binding_angle_degrees(binding)?,
         parameter_name: binding_parameter_name(binding),
-        angle_expr: None,
-        angle_parameter_group_ordinals: std::collections::BTreeMap::new(),
-        angle_start_index: angle_group_indices.map(|indices| indices.0),
-        angle_vertex_index: angle_group_indices.map(|indices| indices.1),
-        angle_end_index: angle_group_indices.map(|indices| indices.2),
+        angle_expr: transform.angle_expr.clone(),
+        angle_parameter_group_ordinals: transform.angle_parameter_group_ordinals.clone(),
+        angle_start_index: transform.angle_group_indices.map(|indices| indices.0),
+        angle_vertex_index: transform.angle_group_indices.map(|indices| indices.1),
+        angle_end_index: transform.angle_group_indices.map(|indices| indices.2),
     })
 }
 
@@ -294,7 +305,7 @@ pub(crate) fn collect_rotated_line_shapes(
         })
         .filter_map(|group| {
             let transform = rotation_transform_for_group(file, groups, group, anchors)?;
-            let binding = transform.binding;
+            let binding = &transform.binding;
             let path = context.indexed_path(group)?;
             let source_group_index = context.path_ref_group_index(path, 0)?;
             let source_group = context.path_ref_group(path, 0)?;
@@ -311,9 +322,8 @@ pub(crate) fn collect_rotated_line_shapes(
                 source_group,
                 points,
                 LineTransformBinding::Rotate(rotation_binding(
-                    &binding.kind,
+                    &transform,
                     binding.center_group_index,
-                    transform.angle_group_indices,
                 )?),
             )
         })
@@ -406,24 +416,18 @@ pub(crate) fn collect_reflected_line_shapes(
 ) -> Vec<LineShape> {
     groups
         .iter()
-        .filter(|group| {
-            matches!(
-                group.header.kind(),
-                crate::format::GroupKind::Translation | crate::format::GroupKind::Reflection
-            )
-        })
+        .filter(|group| group.header.kind() == crate::format::GroupKind::Reflection)
         .filter_map(|group| {
             let path = context.indexed_path(group)?;
             let source_group_index = context.path_ref_group_index(path, 0)?;
             let source_group = context.path_ref_group(path, 0)?;
-            if (source_group.header.kind()) != crate::format::GroupKind::Segment {
-                return None;
-            }
             let line_group_index = context.path_ref_group_index(path, 1)?;
             let line_group = context.path_ref_group(path, 1)?;
             let (line_start, line_end) =
                 resolve_line_like_points_raw(file, groups, anchors, line_group)?;
-            let points = source_path_points(context, anchors, source_group)?
+            let (source_start, source_end) =
+                resolve_line_like_points_raw(file, groups, anchors, source_group)?;
+            let points = [source_start, source_end]
                 .into_iter()
                 .filter_map(|point| reflect_across_line(&point, &line_start, &line_end))
                 .collect::<Vec<_>>();
@@ -454,7 +458,7 @@ pub(crate) fn collect_rotated_circle_shapes(
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::ParameterRotation)
         .filter_map(|group| {
             let transform = rotation_transform_for_group(file, groups, group, anchors)?;
-            let binding = transform.binding;
+            let binding = &transform.binding;
             let path = context.indexed_path(group)?;
             let source_group_index = context.path_ref_group_index(path, 0)?;
             let source_group = context.path_ref_group(path, 0)?;
@@ -472,9 +476,8 @@ pub(crate) fn collect_rotated_circle_shapes(
                 rotate_around(&source_radius, &center, radians),
                 source_fill,
                 ShapeTransformBinding::Rotate(rotation_binding(
-                    &binding.kind,
+                    &transform,
                     binding.center_group_index,
-                    transform.angle_group_indices,
                 )?),
             ))
         })
@@ -650,7 +653,7 @@ pub(crate) fn collect_rotated_polygon_shapes(
         })
         .filter_map(|group| {
             let transform = rotation_transform_for_group(file, groups, group, anchors)?;
-            let binding = transform.binding;
+            let binding = &transform.binding;
             let path = context.indexed_path(group)?;
             let source_group_index = context.path_ref_group_index(path, 0)?;
             let source_group = context.path_ref_group(path, 0)?;
@@ -665,9 +668,8 @@ pub(crate) fn collect_rotated_polygon_shapes(
                 source_group_index,
                 points,
                 ShapeTransformBinding::Rotate(rotation_binding(
-                    &binding.kind,
+                    &transform,
                     binding.center_group_index,
-                    transform.angle_group_indices,
                 )?),
             )
         })

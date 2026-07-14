@@ -44,6 +44,7 @@ impl ObjectGraphJson {
     pub(super) fn from_scene(scene: &Scene) -> Self {
         let mut builder = Builder {
             y_up: scene.y_up,
+            payload_dependencies: scene.payload_dependencies.clone(),
             point_bindings: scene
                 .points
                 .iter()
@@ -77,6 +78,46 @@ impl ObjectGraphJson {
                 .collect(),
             ..Builder::default()
         };
+        for (index, point) in scene.points.iter().enumerate() {
+            if let Some(debug) = &point.debug {
+                builder
+                    .group_objects
+                    .entry(debug.group_ordinal)
+                    .or_insert_with(|| point_id(index));
+            }
+        }
+        for (index, line) in scene.lines.iter().enumerate() {
+            if let Some(debug) = &line.debug {
+                builder
+                    .group_objects
+                    .entry(debug.group_ordinal)
+                    .or_insert_with(|| line_id(index));
+            }
+        }
+        for (index, circle) in scene.circles.iter().enumerate() {
+            if let Some(debug) = &circle.debug {
+                builder
+                    .group_objects
+                    .entry(debug.group_ordinal)
+                    .or_insert_with(|| circle_id(index));
+            }
+        }
+        for (index, arc) in scene.arcs.iter().enumerate() {
+            if let Some(debug) = &arc.debug {
+                builder
+                    .group_objects
+                    .entry(debug.group_ordinal)
+                    .or_insert_with(|| arc_id(index));
+            }
+        }
+        for (index, polygon) in scene.polygons.iter().enumerate() {
+            if let Some(debug) = &polygon.debug {
+                builder
+                    .group_objects
+                    .entry(debug.group_ordinal)
+                    .or_insert_with(|| polygon_id(index));
+            }
+        }
         for parameter in &scene.parameters {
             if builder.named_scalars.contains_key(&parameter.name) {
                 continue;
@@ -123,6 +164,9 @@ impl ObjectGraphJson {
         for index in label_indices {
             let label = &scene.labels[index];
             builder.label_scalar(index, label.binding.as_ref());
+        }
+        for (group_ordinal, id) in builder.group_scalars.clone() {
+            builder.group_objects.entry(group_ordinal).or_insert(id);
         }
         let standalone_parameter_count = scene
             .points
@@ -545,6 +589,8 @@ struct Builder {
     pending_operations: Vec<String>,
     named_scalars: BTreeMap<String, String>,
     group_scalars: BTreeMap<usize, String>,
+    group_objects: BTreeMap<usize, String>,
+    payload_dependencies: BTreeMap<usize, Vec<usize>>,
     point_bindings: Vec<Option<ScenePointBinding>>,
     point_constraints: Vec<ScenePointConstraint>,
     line_group_ordinals: Vec<Option<usize>>,
@@ -553,6 +599,34 @@ struct Builder {
 }
 
 impl Builder {
+    fn payload_group_object_id(
+        &mut self,
+        group_ordinal: usize,
+        visiting: &mut std::collections::BTreeSet<usize>,
+    ) -> Option<String> {
+        if let Some(id) = self.group_objects.get(&group_ordinal) {
+            return Some(id.clone());
+        }
+        if !visiting.insert(group_ordinal) {
+            return None;
+        }
+        let parent_ordinals = self.payload_dependencies.get(&group_ordinal)?.clone();
+        if parent_ordinals.is_empty() {
+            visiting.remove(&group_ordinal);
+            return None;
+        }
+        let parents = parent_ordinals
+            .into_iter()
+            .map(|ordinal| self.payload_group_object_id(ordinal, visiting))
+            .collect::<Option<Vec<_>>>();
+        visiting.remove(&group_ordinal);
+        let parents = parents?;
+        let id = format!("payload-group:{group_ordinal}");
+        self.derived(id.clone(), ObjectOp::SelectParent { index: 0 }, parents);
+        self.group_objects.insert(group_ordinal, id.clone());
+        Some(id)
+    }
+
     fn scene_scalar(&mut self, id: String, scalar: &SceneScalar) {
         match scalar.binding {
             SceneScalarBinding::CircularMeasure {
@@ -579,6 +653,31 @@ impl Builder {
             }
             SceneScalarBinding::ArcAngle { arc_index } => {
                 self.derived(id, ObjectOp::ArcAngleDegrees, [arc_id(arc_index)]);
+            }
+            SceneScalarBinding::ArcLength { arc_index } => {
+                self.derived(id, ObjectOp::ArcLength, [arc_id(arc_index)]);
+            }
+            SceneScalarBinding::PolarAngle {
+                point_index,
+                center_index,
+                reference_index,
+            } => self.derived(
+                id,
+                ObjectOp::MeasuredRotationDegrees,
+                [
+                    point_id(point_index),
+                    point_id(center_index),
+                    point_id(reference_index),
+                ],
+            ),
+            SceneScalarBinding::Alias {
+                source_group_ordinal,
+            } => {
+                if let Some(parent) = self.group_scalars.get(&source_group_ordinal).cloned() {
+                    self.derived(id, ObjectOp::Copy, [parent]);
+                } else {
+                    self.pending(&format!("scalar-alias-group-{source_group_ordinal}"));
+                }
             }
             SceneScalarBinding::PointParameter { point_index } => {
                 if !self.point_parameter(id.clone(), point_index) {
@@ -620,6 +719,14 @@ impl Builder {
                     [point_id(point_index), circle_id],
                 );
             }
+            SceneScalarBinding::PointArcParameter {
+                point_index,
+                arc_index,
+            } => self.derived(
+                id,
+                ObjectOp::ArcParameterFromPoint,
+                [arc_id(arc_index), point_id(point_index)],
+            ),
             SceneScalarBinding::PointPolylineParameter {
                 point_index,
                 line_index,
@@ -1385,16 +1492,32 @@ impl Builder {
                 ScenePointBinding::GraphCalibration | ScenePointBinding::Parameter { .. } => {
                     self.source(id, source_value);
                 }
-                ScenePointBinding::PayloadAlias {
-                    parent_indices,
+                ScenePointBinding::ProjectedCoordinate {
+                    parent_group_ordinals,
                     source_parent,
-                } => self.derived(
-                    id,
-                    ObjectOp::SelectParent {
-                        index: *source_parent,
-                    },
-                    parent_indices.iter().copied().map(point_id),
-                ),
+                    ..
+                } => {
+                    let parents = parent_group_ordinals
+                        .iter()
+                        .map(|ordinal| {
+                            self.payload_group_object_id(
+                                *ordinal,
+                                &mut std::collections::BTreeSet::new(),
+                            )
+                        })
+                        .collect::<Option<Vec<_>>>();
+                    if let Some(parents) = parents {
+                        self.derived(
+                            id,
+                            ObjectOp::ProjectedCoordinatePoint {
+                                source_parent: *source_parent,
+                            },
+                            parents,
+                        );
+                    } else {
+                        self.pending_source(id, "projected-coordinate-parents", source_value);
+                    }
+                }
                 ScenePointBinding::DerivedParameter {
                     source_index,
                     parameter_start_index,
@@ -1441,6 +1564,8 @@ impl Builder {
                 }
                 ScenePointBinding::ConstraintParameterFromPointExpr {
                     source_index,
+                    source_parameter_start_index,
+                    source_parameter_end_index,
                     parameter_name,
                     expr,
                     absolute_value,
@@ -1449,11 +1574,32 @@ impl Builder {
                 } => {
                     if !expression_sources.is_empty() {
                         let parameter_id = format!("scalar:{id}:constraint-parameter");
+                        let primary_parameter_override =
+                            match (source_parameter_start_index, source_parameter_end_index) {
+                                (Some(start_index), Some(end_index)) => {
+                                    let primary_id = format!("{parameter_id}:primary");
+                                    self.derived(
+                                        primary_id.clone(),
+                                        ObjectOp::PointLineParameter {
+                                            line_kind: LineKind::Segment,
+                                        },
+                                        [
+                                            point_id(*source_index),
+                                            point_id(*start_index),
+                                            point_id(*end_index),
+                                        ],
+                                    );
+                                    Some(primary_id)
+                                }
+                                _ => None,
+                            };
                         if !self.expression_with_point_parameter_sources(
                             parameter_id.clone(),
                             expr,
                             expression_sources,
                             expression_parameter_group_ordinals,
+                            *absolute_value,
+                            primary_parameter_override,
                         ) || !self.point_at_parameter(id.clone(), index, parameter_id)
                         {
                             self.pending_source(id, "point-binding", source_value);
@@ -1461,29 +1607,54 @@ impl Builder {
                         return;
                     }
                     let raw_id = format!("scalar:{id}:source-parameter");
-                    let bound_id = if *absolute_value {
-                        let absolute_id = format!("{raw_id}:absolute");
-                        if !self.point_parameter(raw_id.clone(), *source_index) {
-                            self.pending_source(id, "point-binding", source_value);
-                            return;
-                        }
-                        self.derived(absolute_id.clone(), ObjectOp::AbsoluteScalar, [raw_id]);
-                        absolute_id
-                    } else {
-                        if !self.point_parameter(raw_id.clone(), *source_index) {
-                            self.pending_source(id, "point-binding", source_value);
-                            return;
-                        }
+                    let bound_id = if let Some(exact_id) = expression_parameter_group_ordinals
+                        .get(parameter_name)
+                        .and_then(|ordinal| self.group_scalars.get(ordinal))
+                        .cloned()
+                    {
+                        exact_id
+                    } else if let (Some(start_index), Some(end_index)) =
+                        (source_parameter_start_index, source_parameter_end_index)
+                    {
+                        self.derived(
+                            raw_id.clone(),
+                            ObjectOp::PointLineParameter {
+                                line_kind: LineKind::Segment,
+                            },
+                            [
+                                point_id(*source_index),
+                                point_id(*start_index),
+                                point_id(*end_index),
+                            ],
+                        );
                         raw_id
+                    } else if self.point_parameter(raw_id.clone(), *source_index) {
+                        raw_id
+                    } else {
+                        self.pending_source(id, "point-binding", source_value);
+                        return;
                     };
                     let parameter_id = format!("scalar:{id}:constraint-parameter");
+                    let expression_id = if *absolute_value {
+                        parameter_id.clone()
+                    } else {
+                        format!("{parameter_id}:offset")
+                    };
                     if !self.expression_with_bound_parameter(
-                        parameter_id.clone(),
+                        expression_id.clone(),
                         expr,
                         parameter_name,
-                        bound_id,
-                    ) || !self.point_at_parameter(id.clone(), index, parameter_id)
-                    {
+                        bound_id.clone(),
+                    ) {
+                        self.pending_source(id, "point-binding", source_value);
+                        return;
+                    }
+                    if !absolute_value {
+                        let sum_id = format!("{parameter_id}:sum");
+                        self.scalar_sum(sum_id.clone(), bound_id, expression_id);
+                        self.derived(parameter_id.clone(), ObjectOp::WrapUnitScalar, [sum_id]);
+                    }
+                    if !self.point_at_parameter(id.clone(), index, parameter_id) {
                         self.pending_source(id, "point-binding", source_value);
                     }
                 }
@@ -1595,6 +1766,34 @@ impl Builder {
                     } else {
                         self.pending_source(id, "point-binding", source_value);
                     }
+                }
+                ScenePointBinding::MarkedAngleTranslation {
+                    target_index,
+                    angle_start_index,
+                    angle_vertex_index,
+                    angle_end_index,
+                    distance_expr,
+                    distance_parameter_group_ordinals,
+                    ..
+                } => {
+                    let distance_id =
+                        format!("scalar:point:{index}:marked-angle-translation-distance");
+                    self.expression_with_group_sources(
+                        distance_id.clone(),
+                        distance_expr,
+                        distance_parameter_group_ordinals,
+                    );
+                    self.derived(
+                        id,
+                        ObjectOp::MarkedAngleTranslationPoint,
+                        [
+                            point_id(*target_index),
+                            point_id(*angle_start_index),
+                            point_id(*angle_vertex_index),
+                            point_id(*angle_end_index),
+                            distance_id,
+                        ],
+                    );
                 }
                 ScenePointBinding::ScaleByRatio {
                     source_index,
@@ -1752,11 +1951,16 @@ impl Builder {
                 ScenePointBinding::CoordinateSource {
                     source_index,
                     expr,
+                    parameter_group_ordinals,
                     axis,
                     ..
                 } => {
                     let offset_id = format!("scalar:{id}:coordinate-offset");
-                    self.expression(offset_id.clone(), expr);
+                    self.expression_with_group_sources(
+                        offset_id.clone(),
+                        expr,
+                        parameter_group_ordinals,
+                    );
                     let (x_scale, y_scale) = match axis {
                         CoordinateAxis::Horizontal => (1.0, 0.0),
                         CoordinateAxis::Vertical => (0.0, 1.0),
@@ -1850,9 +2054,8 @@ impl Builder {
             } => self.point_on_line(id, *start_index, *end_index, *t, LineKind::Ray),
             ScenePointConstraint::OnPolyline {
                 function_key,
-                points,
-                segment_index,
-                t,
+                parameter,
+                ..
             } => {
                 let mut matching_lines = self
                     .line_group_ordinals
@@ -1871,14 +2074,9 @@ impl Builder {
                 matching_lines.dedup();
                 if let [line_index] = matching_lines.as_slice() {
                     let parameter_id = format!("control:{id}:t");
-                    let parameter = if points.len() < 2 {
-                        0.0
-                    } else {
-                        (*segment_index as f64 + *t) / (points.len() - 1) as f64
-                    };
                     self.source(
                         parameter_id.clone(),
-                        ObjectValue::Scalar { value: parameter },
+                        ObjectValue::Scalar { value: *parameter },
                     );
                     self.derived(
                         id,
@@ -1931,6 +2129,29 @@ impl Builder {
                             .copied()
                             .map(point_id)
                             .chain(std::iter::once(boundary_parameter_id)),
+                    );
+                }
+            }
+            ScenePointConstraint::OnPolygonBoundaryParameter {
+                vertex_indices,
+                parameter,
+            } => {
+                if vertex_indices.len() < 2 {
+                    self.pending_source(id, "point-constraint", source_value);
+                } else {
+                    let parameter_id = format!("control:{id}:boundary");
+                    self.source(
+                        parameter_id.clone(),
+                        ObjectValue::Scalar { value: *parameter },
+                    );
+                    self.derived(
+                        id,
+                        ObjectOp::PointOnPolygonBoundary,
+                        vertex_indices
+                            .iter()
+                            .copied()
+                            .map(point_id)
+                            .chain(std::iter::once(parameter_id)),
                     );
                 }
             }
@@ -2462,12 +2683,36 @@ impl Builder {
         true
     }
 
+    fn scalar_sum(&mut self, id: String, left: String, right: String) {
+        self.derived(
+            id,
+            ObjectOp::EvaluateExpression {
+                expression: ObjectExpression::Binary {
+                    left: Box::new(ObjectExpression::Parameter {
+                        name: "__left".to_string(),
+                        default: 0.0,
+                    }),
+                    op: gsp_runtime_core::BinaryOp::Add,
+                    right: Box::new(ObjectExpression::Parameter {
+                        name: "__right".to_string(),
+                        default: 0.0,
+                    }),
+                },
+                parameter_names: vec!["__left".to_string(), "__right".to_string()],
+                x: 0.0,
+            },
+            [left, right],
+        );
+    }
+
     fn expression_with_point_parameter_sources(
         &mut self,
         id: String,
         expression: &gsp_runtime_core::FunctionExpr,
         sources: &[crate::runtime::scene::ScenePointParameterSource],
         parameter_group_ordinals: &BTreeMap<String, usize>,
+        absolute_value: bool,
+        primary_parameter_override: Option<String>,
     ) -> bool {
         let parameter_names = expression_parameter_names(expression);
         let mut parents = Vec::with_capacity(parameter_names.len());
@@ -2478,21 +2723,19 @@ impl Builder {
                 .cloned()
             {
                 parents.push(parent);
-            } else if let Some(source) = sources.iter().find(|source| source.name == *name) {
+            } else if let Some((source_index, source)) = sources
+                .iter()
+                .enumerate()
+                .find(|(_, source)| source.name == *name)
+            {
+                if source_index == 0
+                    && let Some(primary_id) = &primary_parameter_override
+                {
+                    parents.push(primary_id.clone());
+                    continue;
+                }
                 let scalar_id = format!("{id}:source:{}", parents.len());
-                if let Some(circle) = &source.circle {
-                    let circle_id = format!("{scalar_id}:circle");
-                    if !self.circular_constraint(circle_id.clone(), circle) {
-                        return false;
-                    }
-                    self.derived(
-                        scalar_id.clone(),
-                        ObjectOp::CircleParameter {
-                            invert_y: !self.y_up,
-                        },
-                        [point_id(source.point_index), circle_id],
-                    );
-                } else if !self.point_parameter(scalar_id.clone(), source.point_index) {
+                if !self.point_parameter_source(scalar_id.clone(), source) {
                     return false;
                 }
                 parents.push(scalar_id);
@@ -2502,8 +2745,13 @@ impl Builder {
                 return false;
             }
         }
+        let expression_id = if absolute_value {
+            id.clone()
+        } else {
+            format!("{id}:offset")
+        };
         self.derived(
-            id,
+            expression_id.clone(),
             ObjectOp::EvaluateExpression {
                 expression: ObjectExpression::from_function_expr(expression),
                 parameter_names,
@@ -2511,6 +2759,59 @@ impl Builder {
             },
             parents,
         );
+        if !absolute_value {
+            let Some(primary) = sources.first() else {
+                return false;
+            };
+            let base_id = if let Some(primary_id) = primary_parameter_override {
+                primary_id
+            } else {
+                let base_id = format!("{id}:base");
+                if !self.point_parameter_source(base_id.clone(), primary) {
+                    return false;
+                }
+                base_id
+            };
+            let sum_id = format!("{id}:sum");
+            self.scalar_sum(sum_id.clone(), base_id, expression_id);
+            self.derived(id, ObjectOp::WrapUnitScalar, [sum_id]);
+        }
+        true
+    }
+
+    fn point_parameter_source(
+        &mut self,
+        id: String,
+        source: &crate::runtime::scene::ScenePointParameterSource,
+    ) -> bool {
+        match &source.domain {
+            Some(crate::runtime::scene::ScenePointParameterDomain::Circular(circle)) => {
+                let circle_id = format!("{id}:circle");
+                if !self.circular_constraint(circle_id.clone(), circle) {
+                    return false;
+                }
+                self.derived(
+                    id,
+                    ObjectOp::CircleParameter {
+                        invert_y: !self.y_up,
+                    },
+                    [point_id(source.point_index), circle_id],
+                );
+            }
+            Some(crate::runtime::scene::ScenePointParameterDomain::PolygonBoundary {
+                vertex_indices,
+            }) => self.derived(
+                id,
+                ObjectOp::PolygonBoundaryParameterFromPoint,
+                vertex_indices
+                    .iter()
+                    .copied()
+                    .map(point_id)
+                    .chain(std::iter::once(point_id(source.point_index))),
+            ),
+            None if !self.point_parameter(id, source.point_index) => return false,
+            None => {}
+        }
         true
     }
 
@@ -2564,6 +2865,20 @@ impl Builder {
                     point_id(end_index),
                 ],
             ),
+            ScenePointConstraint::OnLineConstraint { line, .. }
+            | ScenePointConstraint::OnRayConstraint { line, .. } => {
+                let domain_id = format!("domain:{id}:line");
+                if !self.line_constraint(domain_id.clone(), &line) {
+                    return false;
+                }
+                self.derived(
+                    id,
+                    ObjectOp::PointLineParameter {
+                        line_kind: LineKind::Line,
+                    },
+                    [point_id(point_index), domain_id],
+                );
+            }
             ScenePointConstraint::OnCircle {
                 center_index,
                 radius_index,
@@ -2800,7 +3115,8 @@ impl Builder {
                     [circle_id, parameter_id],
                 );
             }
-            ScenePointConstraint::OnPolygonBoundary { vertex_indices, .. } => {
+            ScenePointConstraint::OnPolygonBoundary { vertex_indices, .. }
+            | ScenePointConstraint::OnPolygonBoundaryParameter { vertex_indices, .. } => {
                 if vertex_indices.len() < 2 {
                     return false;
                 }
@@ -3098,6 +3414,17 @@ impl Builder {
                         point_id(*vector_start_index),
                         point_id(*vector_end_index),
                     ],
+                );
+            }
+            LineConstraint::TranslatedDelta { line, dx, dy } => {
+                let base_id = format!("{id}:base");
+                if !self.line_constraint(base_id.clone(), line) {
+                    return false;
+                }
+                self.derived(
+                    id,
+                    ObjectOp::TranslateShapeDelta { dx: *dx, dy: *dy },
+                    [base_id],
                 );
             }
             LineConstraint::Reflected { line, axis } => {
@@ -3916,7 +4243,14 @@ impl Builder {
         else {
             return false;
         };
-        let (source_index, x_expression, y_expression, trace_parameter_name, mode) = match binding {
+        let (
+            source_index,
+            x_expression,
+            y_expression,
+            trace_parameter_name,
+            parameter_group_ordinals,
+            mode,
+        ) = match binding {
             ScenePointBinding::Coordinate { name, expr } => {
                 let mut parameter_names = expression_parameter_names(&expr);
                 parameter_names.retain(|parameter_name| parameter_name != &name);
@@ -3945,12 +4279,14 @@ impl Builder {
                 source_index,
                 name,
                 expr,
+                parameter_group_ordinals,
                 axis,
             } => (
                 source_index,
                 expr,
                 None,
                 name,
+                parameter_group_ordinals,
                 match axis {
                     CoordinateAxis::Horizontal => CoordinateTraceMode::Horizontal,
                     CoordinateAxis::Vertical => CoordinateTraceMode::Vertical,
@@ -3962,12 +4298,18 @@ impl Builder {
                 x_expr,
                 y_name,
                 y_expr,
-                ..
+                x_scalar_group_ordinal,
+                y_scalar_group_ordinal,
             } if x_name == y_name => (
                 source_index,
                 x_expr,
                 Some(y_expr),
-                x_name,
+                x_name.clone(),
+                [x_scalar_group_ordinal, y_scalar_group_ordinal]
+                    .into_iter()
+                    .flatten()
+                    .map(|ordinal| (x_name.clone(), ordinal))
+                    .collect(),
                 CoordinateTraceMode::TwoDimensional,
             ),
             _ => return false,
@@ -3981,7 +4323,13 @@ impl Builder {
         parameter_names.retain(|name| name != &trace_parameter_name);
         let Some(parents) = parameter_names
             .iter()
-            .map(|name| self.named_scalars.get(name).cloned())
+            .map(|name| {
+                parameter_group_ordinals
+                    .get(name)
+                    .and_then(|ordinal| self.group_scalars.get(ordinal))
+                    .or_else(|| self.named_scalars.get(name))
+                    .cloned()
+            })
             .collect::<Option<Vec<_>>>()
         else {
             return false;

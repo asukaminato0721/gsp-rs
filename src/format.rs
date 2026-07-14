@@ -210,9 +210,6 @@ impl GspFile {
 
     fn page_record_sections(&self) -> Vec<&[Record]> {
         let page_count = self.document_page_count();
-        if page_count <= 1 {
-            return vec![&self.records];
-        }
         let Some(section_start) = self
             .records
             .iter()
@@ -594,6 +591,18 @@ mod tests {
             GroupKind::Segment
         );
         assert_eq!(pages[1].object_groups()[0].header.kind(), GroupKind::Circle);
+
+        // Sections after the declared page count contain embedded tool
+        // constructions, not additional objects on the visible page.
+        data[14..16].copy_from_slice(&1_u16.to_le_bytes());
+        let single_page_file = GspFile::parse(&data).expect("valid single-page file with tools");
+        let pages = single_page_file.page_files();
+        assert_eq!(pages.len(), 1);
+        assert_eq!(pages[0].object_groups().len(), 1);
+        assert_eq!(
+            pages[0].object_groups()[0].header.kind(),
+            GroupKind::Segment
+        );
     }
 
     #[test]

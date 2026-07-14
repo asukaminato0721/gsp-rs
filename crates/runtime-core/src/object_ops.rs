@@ -191,8 +191,12 @@ impl ObjectValue {
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum ObjectOp {
     Copy,
+    WrapUnitScalar,
     SelectParent {
         index: usize,
+    },
+    ProjectedCoordinatePoint {
+        source_parent: usize,
     },
     PointOffset {
         dx: f64,
@@ -245,6 +249,7 @@ pub enum ObjectOp {
         factor: f64,
     },
     ScalePointByScalar,
+    MarkedAngleTranslationPoint,
     ScalePointByRatio {
         signed: bool,
         clamp_to_unit: bool,
@@ -432,6 +437,7 @@ pub enum ObjectOp {
     CircleParameter {
         invert_y: bool,
     },
+    ArcParameterFromPoint,
     PolygonBoundaryParameter {
         edge_index: usize,
     },
@@ -684,12 +690,21 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
                 expect_arity("copy", parents, 1)?;
                 Ok(parents[0].clone())
             }
+            ObjectOp::WrapUnitScalar => {
+                expect_arity("wrap-unit-scalar", parents, 1)?;
+                Ok(ObjectValue::Scalar {
+                    value: expect_scalar("wrap-unit-scalar", parents, 0)?.rem_euclid(1.0),
+                })
+            }
             ObjectOp::SelectParent { index } => parents
                 .get(*index)
                 .map(|value| (*value).clone())
                 .ok_or(ObjectOpError::Degenerate {
                     op: "select-parent",
                 }),
+            ObjectOp::ProjectedCoordinatePoint { source_parent } => Ok(ObjectValue::point(
+                expect_point("projected-coordinate-point", parents, *source_parent)?,
+            )),
             ObjectOp::PointOffset { dx, dy } => {
                 expect_arity("point-offset", parents, 1)?;
                 let origin = expect_point("point-offset", parents, 0)?;
@@ -968,6 +983,20 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
                     expect_point("scale-point-by-scalar", parents, 1)?,
                     expect_scalar("scale-point-by-scalar", parents, 2)?,
                 )))
+            }
+            ObjectOp::MarkedAngleTranslationPoint => {
+                expect_arity("marked-angle-translation-point", parents, 5)?;
+                crate::marked_angle_translation_point(
+                    expect_point("marked-angle-translation-point", parents, 0)?,
+                    expect_point("marked-angle-translation-point", parents, 1)?,
+                    expect_point("marked-angle-translation-point", parents, 2)?,
+                    expect_point("marked-angle-translation-point", parents, 3)?,
+                    expect_scalar("marked-angle-translation-point", parents, 4)?,
+                )
+                .map(ObjectValue::point)
+                .ok_or(ObjectOpError::Degenerate {
+                    op: "marked-angle-translation-point",
+                })
             }
             ObjectOp::ScalePointByRatio {
                 signed,
@@ -2085,16 +2114,22 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
                 Ok(ObjectValue::Scalar { value })
             }
             ObjectOp::PointLineParameter { line_kind } => {
-                expect_arity("point-line-parameter", parents, 3)?;
-                let projection = project_to_line_like(
-                    expect_point("point-line-parameter", parents, 0)?,
-                    expect_point("point-line-parameter", parents, 1)?,
-                    expect_point("point-line-parameter", parents, 2)?,
-                    *line_kind,
-                )
-                .ok_or(ObjectOpError::Degenerate {
-                    op: "point-line-parameter",
-                })?;
+                let point = expect_point("point-line-parameter", parents, 0)?;
+                let (resolved_kind, start, end) = if parents.len() == 2 {
+                    expect_line("point-line-parameter", parents, 1)?
+                } else {
+                    expect_arity("point-line-parameter", parents, 3)?;
+                    (
+                        *line_kind,
+                        expect_point("point-line-parameter", parents, 1)?,
+                        expect_point("point-line-parameter", parents, 2)?,
+                    )
+                };
+                let projection = project_to_line_like(point, start, end, resolved_kind).ok_or(
+                    ObjectOpError::Degenerate {
+                        op: "point-line-parameter",
+                    },
+                )?;
                 Ok(ObjectValue::Scalar {
                     value: projection.t,
                 })
@@ -2152,6 +2187,36 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
                 let angle = (if *invert_y { -dy } else { dy }).atan2(dx);
                 Ok(ObjectValue::Scalar {
                     value: angle.rem_euclid(std::f64::consts::TAU) / std::f64::consts::TAU,
+                })
+            }
+            ObjectOp::ArcParameterFromPoint => {
+                expect_arity("arc-parameter-from-point", parents, 2)?;
+                let (start, mid, end, _, _, complement) =
+                    expect_arc("arc-parameter-from-point", parents, 0)?;
+                let point = expect_point("arc-parameter-from-point", parents, 1)?;
+                let mut best = None::<(f64, f64)>;
+                for step in 0..=256 {
+                    let t = step as f64 / 256.0;
+                    let projected = if complement {
+                        point_on_three_point_arc_complement(start, mid, end, t)
+                    } else {
+                        point_on_three_point_arc(start, mid, end, t)
+                    }
+                    .ok_or(ObjectOpError::Degenerate {
+                        op: "arc-parameter-from-point",
+                    })?;
+                    let distance_squared =
+                        (point.x - projected.x).powi(2) + (point.y - projected.y).powi(2);
+                    if best.is_none_or(|(best_distance, _)| distance_squared < best_distance) {
+                        best = Some((distance_squared, t));
+                    }
+                }
+                Ok(ObjectValue::Scalar {
+                    value: best
+                        .ok_or(ObjectOpError::Degenerate {
+                            op: "arc-parameter-from-point",
+                        })?
+                        .1,
                 })
             }
             ObjectOp::PolygonBoundaryParameter { edge_index } => {
@@ -3032,6 +3097,25 @@ mod tests {
     }
 
     #[test]
+    fn projected_coordinate_point_selects_its_payload_source_with_mixed_parents() {
+        let source = ObjectValue::point(Point { x: 7.0, y: -3.0 });
+        let line = ObjectValue::Line {
+            line_kind: LineKind::Ray,
+            start: Point { x: 0.0, y: 0.0 },
+            end: Point { x: 1.0, y: 0.0 },
+        };
+        let closing_source = source.clone();
+        let value = BuiltinOperationTable
+            .evaluate(
+                "projected",
+                &ObjectOp::ProjectedCoordinatePoint { source_parent: 0 },
+                &[&source, &line, &closing_source],
+            )
+            .unwrap();
+        assert_eq!(value, source);
+    }
+
+    #[test]
     fn line_circle_intersection_accepts_an_arc_as_its_circular_parent() {
         let line = ObjectValue::Line {
             line_kind: LineKind::Line,
@@ -3212,6 +3296,32 @@ mod tests {
             )
             .unwrap();
         assert_eq!(parameter, ObjectValue::Scalar { value: 0.75 });
+    }
+
+    #[test]
+    fn arc_parameter_is_derived_from_the_live_arc_and_point() {
+        let center = ObjectValue::point(Point { x: 0.0, y: 0.0 });
+        let start = ObjectValue::point(Point { x: 2.0, y: 0.0 });
+        let end = ObjectValue::point(Point { x: 0.0, y: 2.0 });
+        let arc = BuiltinOperationTable
+            .evaluate(
+                "arc",
+                &ObjectOp::CenterArc { y_up: true },
+                &[&center, &start, &end],
+            )
+            .unwrap();
+        let point = ObjectValue::point(Point {
+            x: 2.0_f64.sqrt(),
+            y: 2.0_f64.sqrt(),
+        });
+        let parameter = BuiltinOperationTable
+            .evaluate(
+                "arc-parameter",
+                &ObjectOp::ArcParameterFromPoint,
+                &[&arc, &point],
+            )
+            .unwrap();
+        assert_eq!(parameter, ObjectValue::Scalar { value: 0.5 });
     }
 
     #[test]

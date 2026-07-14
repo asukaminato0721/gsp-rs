@@ -1,9 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::super::decode::{
-    circle_center_radius_value, decode_label_name, find_indexed_path, is_parameter_control_group,
-    measured_radius_segment_group_indices, try_decode_parameter_control_value_for_group,
-    try_decode_payload_anchor_point,
+    circle_center_radius_value, constructed_line_parent_group_indices, decode_label_name,
+    find_indexed_path, is_parameter_control_group, measured_radius_segment_group_indices,
+    try_decode_parameter_control_value_for_group, try_decode_payload_anchor_point,
 };
 use super::constraints::{
     RawPointConstraint, decode_translated_point_constraint, regular_polygon_iteration_step,
@@ -77,6 +77,70 @@ pub(crate) struct DirectedAngleAnchorBindingDef {
     pub(crate) second_end_group_index: usize,
     pub(crate) distance: f64,
     pub(crate) parameter: f64,
+}
+
+#[derive(Clone)]
+pub(crate) struct MarkedAngleTranslationBindingDef {
+    pub(crate) target_group_index: usize,
+    pub(crate) angle_start_group_index: usize,
+    pub(crate) angle_vertex_group_index: usize,
+    pub(crate) angle_end_group_index: usize,
+    pub(crate) distance: f64,
+    pub(crate) distance_expr: FunctionExpr,
+    pub(crate) distance_parameter_group_ordinals: BTreeMap<String, usize>,
+}
+
+pub(crate) fn decode_marked_angle_translation_binding(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<MarkedAngleTranslationBindingDef> {
+    if group.header.kind() != GroupKind::LegacyCircularConstraintHelper {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    let [target, angle_start, angle_vertex, angle_end, distance] = path.refs.as_slice() else {
+        return None;
+    };
+    let distance_group = groups.get(distance.checked_sub(1)?)?;
+    let (distance_expr, parameters, _) =
+        expression_runtime_context(file, groups, distance_group, anchors)?;
+    let distance_value = evaluate_expr_with_parameters(&distance_expr, 0.0, &parameters)
+        .or_else(|| {
+            evaluate_function_group_with_overrides(file, groups, distance_group, &parameters)
+        })
+        .filter(|value| value.is_finite())?;
+    Some(MarkedAngleTranslationBindingDef {
+        target_group_index: target.checked_sub(1)?,
+        angle_start_group_index: angle_start.checked_sub(1)?,
+        angle_vertex_group_index: angle_vertex.checked_sub(1)?,
+        angle_end_group_index: angle_end.checked_sub(1)?,
+        distance: distance_value,
+        distance_expr,
+        distance_parameter_group_ordinals: function_parameter_group_ordinals(
+            file,
+            groups,
+            distance_group,
+        ),
+    })
+}
+
+pub(crate) fn decode_marked_angle_translation_anchor_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    let binding = decode_marked_angle_translation_binding(file, groups, group, anchors)?;
+    gsp_runtime_core::marked_angle_translation_point(
+        to_core_point(anchors.get(binding.target_group_index)?.as_ref()?),
+        to_core_point(anchors.get(binding.angle_start_group_index)?.as_ref()?),
+        to_core_point(anchors.get(binding.angle_vertex_group_index)?.as_ref()?),
+        to_core_point(anchors.get(binding.angle_end_group_index)?.as_ref()?),
+        binding.distance,
+    )
+    .map(from_core_point)
 }
 
 pub(crate) fn decode_directed_angle_anchor_binding(
@@ -184,6 +248,9 @@ fn expression_transform_kind(
     let value_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
     let transform_class = expression_value_class(file, group);
     let value_class = expression_value_class(file, value_group);
+    if value_group.header.kind() == GroupKind::ParameterAnchor {
+        return Some(ExpressionTransformKind::Rotate);
+    }
     match (transform_class, value_class) {
         (
             Some(EXPRESSION_TRANSFORM_SCALE_CLASS),
@@ -200,16 +267,14 @@ fn expression_transform_kind(
     if transform_class.is_none()
         && value_class == Some(EXPRESSION_TRANSFORM_CALCULATED_ROTATE_CLASS)
     {
-        return Some(
-            if group.records.iter().any(|record| {
-                record.record_type
-                    == crate::runtime::payload_consts::RECORD_EXPRESSION_ROTATION_MARKER
-            }) {
-                ExpressionTransformKind::Rotate
-            } else {
-                ExpressionTransformKind::Scale
-            },
-        );
+        let has_rotation_marker = group.records.iter().any(|record| {
+            record.record_type == crate::runtime::payload_consts::RECORD_EXPRESSION_ROTATION_MARKER
+        });
+        return Some(if group.header.is_hidden() && !has_rotation_marker {
+            ExpressionTransformKind::Scale
+        } else {
+            ExpressionTransformKind::Rotate
+        });
     }
     if matches!(
         transform_class,
@@ -304,6 +369,7 @@ fn parameter_anchor_runtime_value(
                 edge_index,
                 t,
             )?,
+            RawPointConstraint::PolygonBoundaryParameter { parameter, .. } => parameter,
             RawPointConstraint::TranslatedPolygonBoundary {
                 edge_index,
                 t,
@@ -322,33 +388,49 @@ fn parameter_anchor_runtime_value(
                 constraint.unit_x,
                 constraint.unit_y,
             )?,
-            RawPointConstraint::Circular(_)
-            | RawPointConstraint::CircleArc(_)
-            | RawPointConstraint::Arc(_)
-            | RawPointConstraint::HostedArc { .. }
-            | RawPointConstraint::Polyline { .. } => return None,
+            RawPointConstraint::CircleArc(constraint) => constraint.t,
+            RawPointConstraint::Arc(constraint) => constraint.t,
+            RawPointConstraint::HostedArc { t, .. } => t,
+            RawPointConstraint::Circular(_) | RawPointConstraint::Polyline { .. } => return None,
         }
     } else {
         let host_group_index = path.refs.get(1)?.checked_sub(1)?;
         let host_group = groups.get(host_group_index)?;
-        if !host_group.header.kind().is_line_like() {
-            return None;
-        }
         let host_path = find_indexed_path(file, host_group)?;
-        let start = anchors
-            .get(host_path.refs.first()?.checked_sub(1)?)?
-            .as_ref()?;
-        let end = anchors
-            .get(host_path.refs.get(1)?.checked_sub(1)?)?
-            .as_ref()?;
-        let point = anchors.get(point_group_index)?.as_ref()?;
-        let dx = end.x - start.x;
-        let dy = end.y - start.y;
-        let len_sq = dx * dx + dy * dy;
-        if len_sq <= 1e-9 {
-            return None;
+        if host_group.header.kind() == GroupKind::Polygon {
+            let vertex_group_indices = host_path
+                .refs
+                .iter()
+                .map(|ordinal| ordinal.checked_sub(1))
+                .collect::<Option<Vec<_>>>()?;
+            let edge_index = vertex_group_indices
+                .iter()
+                .position(|group_index| *group_index == point_group_index)?;
+            super::super::labels::polygon_boundary_parameter(
+                anchors,
+                &vertex_group_indices,
+                edge_index,
+                0.0,
+            )?
+        } else {
+            if !host_group.header.kind().is_line_like() {
+                return None;
+            }
+            let start = anchors
+                .get(host_path.refs.first()?.checked_sub(1)?)?
+                .as_ref()?;
+            let end = anchors
+                .get(host_path.refs.get(1)?.checked_sub(1)?)?
+                .as_ref()?;
+            let point = anchors.get(point_group_index)?.as_ref()?;
+            let dx = end.x - start.x;
+            let dy = end.y - start.y;
+            let len_sq = dx * dx + dy * dy;
+            if len_sq <= 1e-9 {
+                return None;
+            }
+            (((point.x - start.x) * dx + (point.y - start.y) * dy) / len_sq).clamp(0.0, 1.0)
         }
-        (((point.x - start.x) * dx + (point.y - start.y) * dy) / len_sq).clamp(0.0, 1.0)
     };
     let name = decode_label_name(file, group)
         .or_else(|| decode_label_name(file, point_group))
@@ -518,9 +600,6 @@ pub(crate) fn expression_runtime_context(
     expr_group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
 ) -> Option<(FunctionExpr, BTreeMap<String, f64>, Option<String>)> {
-    if expr_group.header.kind() != GroupKind::FunctionExpr {
-        return None;
-    }
     let expr = try_decode_function_expr(file, groups, expr_group)
         .or_else(|_| {
             crate::runtime::functions::try_decode_function_expr_with_inlined_refs(
@@ -735,15 +814,27 @@ pub(crate) fn decode_expression_rotation_binding(
             };
         (angle_expr, angle_degrees, parameter_name)
     } else if expr_group.header.kind() == GroupKind::ParameterAnchor {
-        let (_name, angle_radians) =
-            parameter_anchor_runtime_value(file, groups, expr_group, anchors)?;
+        let (name, turns) = parameter_anchor_runtime_value(file, groups, expr_group, anchors)?;
+        let angle_degrees = turns * 360.0;
         (
-            FunctionExpr::Constant(angle_radians.to_degrees()),
-            angle_radians.to_degrees(),
-            None,
+            FunctionExpr::Parsed(FunctionAst::Binary {
+                lhs: Box::new(FunctionAst::Constant(360.0)),
+                op: BinaryOp::Mul,
+                rhs: Box::new(FunctionAst::Parameter(name.clone(), turns)),
+            }),
+            angle_degrees,
+            Some(name),
         )
     } else {
         return None;
+    };
+    let parameter_group_ordinals = if expr_group.header.kind() == GroupKind::ParameterAnchor {
+        parameter_name
+            .as_ref()
+            .map(|name| BTreeMap::from([(name.clone(), expr_group.ordinal)]))
+            .unwrap_or_default()
+    } else {
+        crate::runtime::functions::function_parameter_group_ordinals(file, groups, expr_group)
     };
     Some(ExpressionRotationBindingDef {
         source_group_index,
@@ -751,9 +842,7 @@ pub(crate) fn decode_expression_rotation_binding(
         angle_expr,
         angle_degrees,
         parameter_name,
-        parameter_group_ordinals: crate::runtime::functions::function_parameter_group_ordinals(
-            file, groups, expr_group,
-        ),
+        parameter_group_ordinals,
     })
 }
 
@@ -790,25 +879,36 @@ pub(crate) fn decode_expression_scale_binding(
             .filter(|value| value.is_finite())
             .unwrap_or(1.0);
         (factor_expr, factor, parameter_name)
-    } else if expr_group.header.kind() == GroupKind::Point
-        && decode_angle_parameter_value_for_group(file, expr_group).is_none()
-    {
+    } else if expr_group.header.kind() == GroupKind::Point {
         let parameter_name = editable_non_graph_parameter_name_for_group(file, groups, expr_group)
             .or_else(|| decode_label_name(file, expr_group));
         let decoded_expr = try_decode_function_expr(file, groups, expr_group).ok();
-        let factor = decoded_expr
-            .as_ref()
-            .and_then(|expr| evaluate_expr_with_parameters(expr, 0.0, &BTreeMap::new()))
-            .filter(|value| value.is_finite())
-            .or_else(|| {
-                try_decode_parameter_control_value_for_group(file, groups, expr_group).ok()
-            })?;
-        let factor_expr = decoded_expr.unwrap_or_else(|| {
-            parameter_name
+        let (factor_expr, factor) = if let Some(name) = &parameter_name {
+            let factor = try_decode_parameter_control_value_for_group(file, groups, expr_group)
+                .ok()
+                .filter(|value| value.is_finite())
+                .or_else(|| {
+                    decoded_expr
+                        .as_ref()
+                        .and_then(|expr| evaluate_expr_with_parameters(expr, 0.0, &BTreeMap::new()))
+                })?;
+            (
+                FunctionExpr::Parsed(FunctionAst::Parameter(name.clone(), factor)),
+                factor,
+            )
+        } else {
+            let factor = decoded_expr
                 .as_ref()
-                .map(|name| FunctionExpr::Parsed(FunctionAst::Parameter(name.clone(), factor)))
-                .unwrap_or(FunctionExpr::Constant(factor))
-        });
+                .and_then(|expr| evaluate_expr_with_parameters(expr, 0.0, &BTreeMap::new()))
+                .filter(|value| value.is_finite())
+                .or_else(|| {
+                    try_decode_parameter_control_value_for_group(file, groups, expr_group).ok()
+                })?;
+            (
+                decoded_expr.unwrap_or(FunctionExpr::Constant(factor)),
+                factor,
+            )
+        };
         (factor_expr, factor, parameter_name)
     } else {
         return None;
@@ -1270,7 +1370,15 @@ pub(crate) fn decode_coordinate_expression_anchor_raw(
                     },
                 });
             }
-            let expr = try_decode_function_expr(file, groups, calc_group).ok()?;
+            let parameter_control = is_parameter_control_group(calc_group);
+            let expr = if parameter_control {
+                let name = decode_label_name(file, calc_group)?;
+                let value =
+                    try_decode_parameter_control_value_for_group(file, groups, calc_group).ok()?;
+                FunctionExpr::Parsed(FunctionAst::Parameter(name, value))
+            } else {
+                try_decode_function_expr(file, groups, calc_group).ok()?
+            };
             let payload = group
                 .records
                 .iter()
@@ -1287,7 +1395,7 @@ pub(crate) fn decode_coordinate_expression_anchor_raw(
                     _ => crate::runtime::scene::CoordinateAxis::Horizontal,
                 },
             };
-            if is_parameter_control_group(calc_group) {
+            if parameter_control {
                 let raw_per_unit = graph.map_or(PX_PER_CM, |transform| transform.raw_per_unit);
                 let raw_scale = match axis {
                     crate::runtime::scene::CoordinateAxis::Horizontal => raw_per_unit,
@@ -2099,11 +2207,10 @@ pub(crate) fn resolve_line_like_constraint_raw(
             Some((origin, end, LineLikeKind::Segment))
         }
         crate::format::GroupKind::PerpendicularLine => {
-            if path.refs.len() != 2 {
-                return None;
-            }
-            let through = anchors.get(path.refs[0].checked_sub(1)?)?.clone()?;
-            let host_group = groups.get(path.refs[1].checked_sub(1)?)?;
+            let (through_group_index, host_group_index) =
+                constructed_line_parent_group_indices(file, groups, group)?;
+            let through = anchors.get(through_group_index)?.clone()?;
+            let host_group = groups.get(host_group_index)?;
             let (host_start, host_end) =
                 resolve_line_like_points_raw(file, groups, anchors, host_group)?;
             let dx = host_end.x - host_start.x;
@@ -2120,11 +2227,10 @@ pub(crate) fn resolve_line_like_constraint_raw(
             Some((through, end, LineLikeKind::Line))
         }
         crate::format::GroupKind::ParallelLine => {
-            if path.refs.len() != 2 {
-                return None;
-            }
-            let through = anchors.get(path.refs[0].checked_sub(1)?)?.clone()?;
-            let host_group = groups.get(path.refs[1].checked_sub(1)?)?;
+            let (through_group_index, host_group_index) =
+                constructed_line_parent_group_indices(file, groups, group)?;
+            let through = anchors.get(through_group_index)?.clone()?;
+            let host_group = groups.get(host_group_index)?;
             let (host_start, host_end) =
                 resolve_line_like_points_raw(file, groups, anchors, host_group)?;
             let dx = host_end.x - host_start.x;
@@ -2167,6 +2273,24 @@ pub(crate) fn resolve_line_like_constraint_raw(
             );
             Some((vertex, ray_end, LineLikeKind::Ray))
         }
+        crate::format::GroupKind::CartesianOffsetPoint
+        | crate::format::GroupKind::PolarOffsetPoint => {
+            let translation = decode_translated_point_constraint(file, group)?;
+            let source_group = groups.get(translation.origin_group_index)?;
+            let (start, end, kind) =
+                resolve_line_like_constraint_raw(file, groups, anchors, source_group)?;
+            Some((
+                PointRecord {
+                    x: start.x + translation.dx,
+                    y: start.y + translation.dy,
+                },
+                PointRecord {
+                    x: end.x + translation.dx,
+                    y: end.y + translation.dy,
+                },
+                kind,
+            ))
+        }
         crate::format::GroupKind::Translation => {
             if path.refs.len() < 3 {
                 return None;
@@ -2190,17 +2314,27 @@ pub(crate) fn resolve_line_like_constraint_raw(
                 kind,
             ))
         }
+        crate::format::GroupKind::Reflection => {
+            if path.refs.len() != 2 {
+                return None;
+            }
+            let source_group = groups.get(path.refs[0].checked_sub(1)?)?;
+            let axis_group = groups.get(path.refs[1].checked_sub(1)?)?;
+            let (start, end, kind) =
+                resolve_line_like_constraint_raw(file, groups, anchors, source_group)?;
+            let (axis_start, axis_end, _) =
+                resolve_line_like_constraint_raw(file, groups, anchors, axis_group)?;
+            Some((
+                reflect_across_line(&start, &axis_start, &axis_end)?,
+                reflect_across_line(&end, &axis_start, &axis_end)?,
+                kind,
+            ))
+        }
         crate::format::GroupKind::Rotation
         | crate::format::GroupKind::ParameterRotation
         | crate::format::GroupKind::Scale => {
             let binding = if group.header.kind() == crate::format::GroupKind::ParameterRotation {
-                try_decode_parameter_rotation_binding(file, groups, group)
-                    .ok()
-                    .or_else(|| {
-                        decode_measured_angle_parameter_rotation_binding_raw(
-                            file, groups, group, anchors,
-                        )
-                    })?
+                decode_parameter_rotation_transform_binding_raw(file, groups, group, anchors)?
             } else {
                 try_decode_transform_binding(file, group).ok()?
             };

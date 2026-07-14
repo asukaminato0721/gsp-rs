@@ -38,7 +38,8 @@ use self::parser::{
     decode_trailing_scanned_payload_function_expr, embedded_calculate_expr_start,
     has_ignorable_expr_suffix, parse_function_expr_from, parse_function_expr_from_words,
     parse_grouped_function_expr_at, parse_grouped_function_expr_from_words,
-    parse_grouped_parameter_control_expr_at, trailing_calculate_expr_start,
+    parse_grouped_parameter_control_expr_at, parse_grouped_parameter_control_scalar_at,
+    trailing_calculate_expr_start,
 };
 
 #[cfg(test)]
@@ -48,7 +49,7 @@ thread_local! {
     static RESOLVING_MEASURED_VALUES: RefCell<BTreeSet<usize>> = RefCell::new(BTreeSet::new());
     static MEASURED_VALUE_ANCHORS_CACHE: RefCell<Option<Vec<Option<PointRecord>>>> = const { RefCell::new(None) };
     static RESOLVING_NUMERIC_HELPERS: RefCell<BTreeSet<usize>> = RefCell::new(BTreeSet::new());
-    static NUMERIC_HELPER_CACHE: RefCell<BTreeMap<usize, FunctionExpr>> = RefCell::new(BTreeMap::new());
+    static NUMERIC_HELPER_CACHE: RefCell<BTreeMap<usize, Option<FunctionExpr>>> = RefCell::new(BTreeMap::new());
 }
 
 pub(crate) fn with_numeric_helper_cache<T>(f: impl FnOnce() -> T) -> T {
@@ -77,12 +78,14 @@ fn is_function_like_group(group: &ObjectGroup) -> bool {
             | crate::format::GroupKind::AngleValue
             | crate::format::GroupKind::VertexAngleValue
             | crate::format::GroupKind::ArcAngleValue
+            | crate::format::GroupKind::BoundaryLengthValue
             | crate::format::GroupKind::BoundaryCurveLengthValue
             | crate::format::GroupKind::RadiusValue
             | crate::format::GroupKind::PolygonAreaValue
             | crate::format::GroupKind::RatioValue
             | crate::format::GroupKind::GraphDistanceValue
             | crate::format::GroupKind::GraphSlopeValue
+            | crate::format::GroupKind::PolarAngleValue
             | crate::format::GroupKind::NamedAlias
             | crate::format::GroupKind::FunctionDefinition
     )
@@ -118,7 +121,73 @@ pub(crate) fn try_decode_function_expr(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> Result<FunctionExpr, FunctionExprParseError> {
-    decode_function_expr_recursive(file, groups, group, &mut BTreeSet::new())
+    let expr = decode_function_expr_recursive(file, groups, group, &mut BTreeSet::new())?;
+    Ok(apply_payload_angle_units(file, groups, group, expr))
+}
+
+fn apply_payload_angle_units(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    expr: FunctionExpr,
+) -> FunctionExpr {
+    if !function_expr_uses_degree_units(file, groups, group) {
+        return expr;
+    }
+    match expr {
+        FunctionExpr::Parsed(ast) => FunctionExpr::Parsed(mark_degree_trig_arguments(ast)),
+        other => other,
+    }
+}
+
+fn mark_degree_trig_arguments(ast: FunctionAst) -> FunctionAst {
+    match ast {
+        FunctionAst::Unary { op, expr } => {
+            let expr = mark_degree_trig_arguments(*expr);
+            let expr = if matches!(
+                op,
+                UnaryFunction::Sin | UnaryFunction::Cos | UnaryFunction::Tan
+            ) && !function_ast_contains_pi_angle(&expr)
+            {
+                FunctionAst::Binary {
+                    lhs: Box::new(expr),
+                    op: BinaryOp::Add,
+                    rhs: Box::new(FunctionAst::Binary {
+                        lhs: Box::new(FunctionAst::Constant(0.0)),
+                        op: BinaryOp::Mul,
+                        rhs: Box::new(FunctionAst::PiAngle),
+                    }),
+                }
+            } else {
+                expr
+            };
+            FunctionAst::Unary {
+                op,
+                expr: Box::new(expr),
+            }
+        }
+        FunctionAst::Binary { lhs, op, rhs } => FunctionAst::Binary {
+            lhs: Box::new(mark_degree_trig_arguments(*lhs)),
+            op,
+            rhs: Box::new(mark_degree_trig_arguments(*rhs)),
+        },
+        other => other,
+    }
+}
+
+fn function_ast_contains_pi_angle(ast: &FunctionAst) -> bool {
+    match ast {
+        FunctionAst::PiAngle => true,
+        FunctionAst::Unary { expr, .. } => function_ast_contains_pi_angle(expr),
+        FunctionAst::Binary { lhs, rhs, .. } => {
+            function_ast_contains_pi_angle(lhs) || function_ast_contains_pi_angle(rhs)
+        }
+        FunctionAst::Variable
+        | FunctionAst::Constant(_)
+        | FunctionAst::PiConstant
+        | FunctionAst::EulerConstant
+        | FunctionAst::Parameter(_, _) => false,
+    }
 }
 
 pub(crate) fn function_expr_uses_degree_units(
@@ -189,7 +258,36 @@ pub(crate) fn try_decode_parameter_control_expr(
         };
         Ok((canonicalize_function_expr(ast), true))
     });
-    absolute.or_else(|_| try_decode_function_expr(file, groups, group).map(|expr| (expr, false)))
+    absolute
+        .or_else(|_| {
+            let has_parameter_anchor_parent = find_indexed_path(file, group).is_some_and(|path| {
+                path.refs.iter().any(|ordinal| {
+                    groups.get(ordinal.saturating_sub(1)).is_some_and(|parent| {
+                        parent.header.kind() == crate::format::GroupKind::ParameterAnchor
+                    })
+                })
+            });
+            if !has_parameter_anchor_parent {
+                return Err(FunctionExprParseError::NoExpressionFound {
+                    word_len: payload.len() / 2,
+                });
+            }
+            with_function_payload_context(payload, || {
+                let words = payload
+                    .chunks_exact(2)
+                    .map(|word| u16::from_le_bytes([word[0], word[1]]))
+                    .collect::<Vec<_>>();
+                let start = words
+                    .windows(2)
+                    .rposition(|pair| pair == [0x0000, 0x000a])
+                    .ok_or(FunctionExprParseError::NoExpressionFound {
+                        word_len: words.len(),
+                    })?;
+                let ast = parse_grouped_parameter_control_scalar_at(&words, start, &parameters)?;
+                Ok((canonicalize_function_expr(ast), false))
+            })
+        })
+        .or_else(|_| try_decode_function_expr(file, groups, group).map(|expr| (expr, false)))
 }
 
 pub(crate) fn try_decode_function_expr_with_inlined_refs(
@@ -197,7 +295,13 @@ pub(crate) fn try_decode_function_expr_with_inlined_refs(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> Result<FunctionExpr, FunctionExprParseError> {
-    decode_function_expr_recursive_with_inlined_refs(file, groups, group, &mut BTreeSet::new())
+    let expr = decode_function_expr_recursive_with_inlined_refs(
+        file,
+        groups,
+        group,
+        &mut BTreeSet::new(),
+    )?;
+    Ok(apply_payload_angle_units(file, groups, group, expr))
 }
 
 pub(crate) fn try_decode_embedded_calculate_expr(
@@ -590,7 +694,7 @@ fn decode_grouped_preferred_payload_function_expr(
     })
 }
 
-fn try_decode_numeric_helper_group(
+pub(crate) fn try_decode_numeric_helper_group(
     file: &GspFile,
     groups: &[ObjectGroup],
     group: &ObjectGroup,
@@ -598,7 +702,7 @@ fn try_decode_numeric_helper_group(
     if let Some(cached) =
         NUMERIC_HELPER_CACHE.with(|cache| cache.borrow().get(&group.ordinal).cloned())
     {
-        return Some(cached);
+        return cached;
     }
     RESOLVING_NUMERIC_HELPERS.with(|resolving| {
         if !resolving.borrow_mut().insert(group.ordinal) {
@@ -606,9 +710,16 @@ fn try_decode_numeric_helper_group(
         }
         let result = try_decode_numeric_helper_group_inner(file, groups, group);
         resolving.borrow_mut().remove(&group.ordinal);
-        if let Some(expr) = result.as_ref() {
+        let retry_after_missing_dependencies = match group.header.kind() {
+            crate::format::GroupKind::GraphObject40 => {
+                graph_object_circle_measurement_kind(file, group).is_some()
+            }
+            crate::format::GroupKind::MeasuredValue => true,
+            _ => false,
+        };
+        if result.is_some() || !retry_after_missing_dependencies {
             NUMERIC_HELPER_CACHE.with(|cache| {
-                cache.borrow_mut().insert(group.ordinal, expr.clone());
+                cache.borrow_mut().insert(group.ordinal, result.clone());
             });
         }
         result
@@ -632,15 +743,25 @@ fn try_decode_numeric_helper_group_inner(
             | crate::format::GroupKind::AngleValue
             | crate::format::GroupKind::VertexAngleValue
             | crate::format::GroupKind::ArcAngleValue
+            | crate::format::GroupKind::BoundaryLengthValue
             | crate::format::GroupKind::BoundaryCurveLengthValue
             | crate::format::GroupKind::RadiusValue
             | crate::format::GroupKind::PolygonAreaValue
             | crate::format::GroupKind::RatioValue
             | crate::format::GroupKind::GraphDistanceValue
             | crate::format::GroupKind::GraphSlopeValue
+            | crate::format::GroupKind::PolarAngleValue
             | crate::format::GroupKind::NamedAlias
+            | crate::format::GroupKind::MeasuredValue
     ) {
         return None;
+    }
+    if group.header.kind() == crate::format::GroupKind::MeasuredValue {
+        let binding = decode_measured_value_binding(file, groups, group)?;
+        return Some(FunctionExpr::Parsed(FunctionAst::Parameter(
+            binding.name,
+            binding.value,
+        )));
     }
     let path = find_indexed_path(file, group)?;
     let max_ref_ordinal = path.refs.iter().copied().max()?;
@@ -750,7 +871,8 @@ fn try_decode_numeric_helper_group_inner(
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
             arc_angle_degrees_raw(file, groups, &anchors, source_group)?
         }
-        crate::format::GroupKind::BoundaryCurveLengthValue => {
+        crate::format::GroupKind::BoundaryLengthValue
+        | crate::format::GroupKind::BoundaryCurveLengthValue => {
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
             if path.refs.len() == 3 && is_circle_group_kind(source_group.header.kind()) {
                 let circle = resolve_circle_like_raw(file, groups, &anchors, source_group)?;
@@ -824,6 +946,12 @@ fn try_decode_numeric_helper_group_inner(
             let dx = end_world.x - start_world.x;
             let dy = end_world.y - start_world.y;
             (dx.abs() > 1e-9).then_some(dy / dx)?
+        }
+        crate::format::GroupKind::PolarAngleValue => {
+            let point = anchors.get(path.refs.first()?.checked_sub(1)?)?.clone()?;
+            let center = anchors.get(path.refs.get(1)?.checked_sub(1)?)?.clone()?;
+            let reference = anchors.get(path.refs.get(2)?.checked_sub(1)?)?.clone()?;
+            angle_degrees_from_points(&point, &center, &reference)?
         }
         crate::format::GroupKind::NamedAlias => {
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
@@ -1846,6 +1974,9 @@ fn decode_runtime_parameter_binding(
     overrides: &BTreeMap<String, f64>,
     visiting: &mut BTreeSet<usize>,
 ) -> Option<ParameterBinding> {
+    if (group.header.kind()) == crate::format::GroupKind::MeasuredValue {
+        return decode_measured_value_binding(file, groups, group);
+    }
     if let Some(expr) = try_decode_numeric_helper_group(file, groups, group) {
         let value = evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new())?;
         let name = group_name(file, groups, group).unwrap_or_else(|| function_expr_label(expr));
@@ -1862,9 +1993,6 @@ fn decode_runtime_parameter_binding(
             value,
             expr: None,
         });
-    }
-    if (group.header.kind()) == crate::format::GroupKind::MeasuredValue {
-        return decode_measured_value_binding(file, groups, group);
     }
     if group.header.kind() == crate::format::GroupKind::ParameterControlledPoint
         && let Some(path) = find_indexed_path(file, group)
@@ -1926,6 +2054,9 @@ fn decode_parameter_binding_recursive(
     inline_function_refs: bool,
     allow_constraint_anchor_bindings: bool,
 ) -> Option<ParameterBinding> {
+    if (group.header.kind()) == crate::format::GroupKind::MeasuredValue {
+        return decode_measured_value_binding(file, groups, group);
+    }
     if let Some(expr) = try_decode_numeric_helper_group(file, groups, group) {
         let value = evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new())?;
         let name = group_name(file, groups, group).unwrap_or_else(|| function_expr_label(expr));
@@ -1933,9 +2064,6 @@ fn decode_parameter_binding_recursive(
     }
     if (group.header.kind()) == crate::format::GroupKind::ParameterAnchor {
         return decode_parameter_anchor_binding(file, group, allow_constraint_anchor_bindings);
-    }
-    if (group.header.kind()) == crate::format::GroupKind::MeasuredValue {
-        return decode_measured_value_binding(file, groups, group);
     }
     if group.header.kind() == crate::format::GroupKind::ParameterControlledPoint
         && let Some(path) = find_indexed_path(file, group)
@@ -1971,7 +2099,7 @@ fn decode_parameter_binding_recursive(
                 || function_expr_contains_variable(&expr)
                 || group.header.kind() != crate::format::GroupKind::FunctionDefinition
             {
-                return value.map(|value| ParameterBinding::value(name, value));
+                return Some(ParameterBinding::value(name, value.unwrap_or(0.0)));
             }
             return Some(ParameterBinding::expression(
                 name,
@@ -2189,14 +2317,6 @@ fn decode_measured_value_binding(
 ) -> Option<ParameterBinding> {
     let path = find_indexed_path(file, group)?;
     let host_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-    if !host_group.header.kind().is_line_like() {
-        return None;
-    }
-    let host_path = find_indexed_path(file, host_group)?;
-    if host_path.refs.len() != 2 {
-        return None;
-    }
-
     let anchors = RESOLVING_MEASURED_VALUES.with(|resolving| {
         if !resolving.borrow_mut().insert(group.ordinal) {
             return None;
@@ -2205,8 +2325,7 @@ fn decode_measured_value_binding(
         resolving.borrow_mut().remove(&group.ordinal);
         Some(anchors)
     })?;
-    let start = anchors.get(host_path.refs[0].checked_sub(1)?)?.clone()?;
-    let end = anchors.get(host_path.refs[1].checked_sub(1)?)?.clone()?;
+    let (start, end) = resolve_line_like_points_raw(file, groups, &anchors, host_group)?;
     let value =
         ((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt() / DEFAULT_GRAPH_RAW_PER_UNIT;
     if !value.is_finite() {
@@ -2216,6 +2335,10 @@ fn decode_measured_value_binding(
     let name = group_name(file, groups, group)
         .or_else(|| segment_name(file, groups, host_group))
         .or_else(|| {
+            let host_path = find_indexed_path(file, host_group)?;
+            if host_path.refs.len() != 2 {
+                return None;
+            }
             let left = groups
                 .get(host_path.refs[0].checked_sub(1)?)
                 .and_then(|group| group_name(file, groups, group))
@@ -2285,7 +2408,7 @@ fn group_name(file: &GspFile, groups: &[ObjectGroup], group: &ObjectGroup) -> Op
         .or_else(|| numeric_helper_group_name(file, groups, group))
 }
 
-fn numeric_helper_group_name(
+pub(crate) fn numeric_helper_group_name(
     file: &GspFile,
     groups: &[ObjectGroup],
     group: &ObjectGroup,
@@ -2640,6 +2763,27 @@ mod parse_tests {
                 op: BinaryOp::Div,
                 rhs: Box::new(FunctionAst::Constant(2.0)),
             }))
+        );
+    }
+
+    #[test]
+    fn decodes_native_trunc_rotation_expression_payload() {
+        let payload = payload_from_words(&[
+            2300, 0, 22, 0, 4, 0, 59, 474, 3, 12348, 62, 0, 6, 0, 0, 0, 2311, 0, 90, 0, 48, 0, 15,
+            4, 36, 3, 0, 0, 0, 0, 64940, 25, 36660, 193, 112, 0, 595, 65510, 28875, 65342, 59164,
+            29823, 60427, 29823, 0, 0, 8204, 24576, 4098, 24577, 4098, 3, 6, 0, 257, 4100, 4097, 1,
+            12, 4098, 24578,
+        ]);
+        let parameters = BTreeMap::from([
+            (0, ParameterBinding::value("a".to_string(), 0.5)),
+            (1, ParameterBinding::value("m".to_string(), 2.0)),
+            (2, ParameterBinding::value("angle".to_string(), 90.0)),
+        ]);
+        let expression = try_decode_inner_function_expr(&payload, &parameters)
+            .expect("native trunc rotation expression");
+        assert_eq!(
+            function_expr_label(expression),
+            "trunc(a*m*360^(0 - 1))*angle"
         );
     }
 

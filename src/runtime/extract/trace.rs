@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
 use crate::runtime::extract::bindings::normalized_hsb;
-use crate::runtime::extract::decode::decode_label_name;
+use crate::runtime::extract::decode::{constructed_line_parent_group_indices, decode_label_name};
 use crate::runtime::functions::{evaluate_expr_with_parameters, try_decode_function_expr};
 use crate::runtime::geometry::{
     GraphTransform, from_core_point, lerp_point, line_stroke_width_from_style, point_on_circle_arc,
@@ -91,6 +91,16 @@ pub(super) fn collect_point_traces(
                             .get(target_point_index)
                             .filter(|point| point_accepts_trace_parameter(point))
                             .map(|_| (target_point_index, target_group_index))
+                    })
+                    .or_else(|| {
+                        unique_trace_driver_from_dependencies(
+                            file,
+                            groups,
+                            visible_points,
+                            group_to_point_index,
+                            &path.refs,
+                            target_group_index,
+                        )
                     }),
                 _ => return None,
             };
@@ -226,6 +236,36 @@ fn trace_driver_point(
     let point_index = (*group_to_point_index.get(group_index)?)?;
     let point = visible_points.get(point_index)?;
     point_accepts_trace_parameter(point).then_some((point_index, group_index))
+}
+
+fn unique_trace_driver_from_dependencies(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    visible_points: &[ScenePoint],
+    group_to_point_index: &[Option<usize>],
+    root_ordinals: &[usize],
+    target_group_index: usize,
+) -> Option<(usize, usize)> {
+    let mut pending = root_ordinals.to_vec();
+    let mut visited = BTreeSet::new();
+    let mut candidates = BTreeSet::new();
+    while let Some(ordinal) = pending.pop() {
+        let Some(group_index) = ordinal.checked_sub(1) else {
+            continue;
+        };
+        if group_index == target_group_index || !visited.insert(group_index) {
+            continue;
+        }
+        if let Some(candidate) = trace_driver_point(visible_points, group_to_point_index, ordinal) {
+            candidates.insert(candidate);
+        }
+        if let Some(group) = groups.get(group_index)
+            && let Some(path) = find_indexed_path(file, group)
+        {
+            pending.extend(path.refs.iter().copied());
+        }
+    }
+    (candidates.len() == 1).then(|| *candidates.iter().next().unwrap())
 }
 
 pub(super) fn collect_segment_traces(
@@ -510,6 +550,7 @@ pub(super) fn bind_points_to_point_traces(
                 points: trace_points,
                 segment_index,
                 t,
+                parameter: normalized_t,
             };
             point.draggable = true;
         }
@@ -742,15 +783,13 @@ fn sampled_reflection_axis_driver(
     if axis_group.header.kind() != GroupKind::PerpendicularLine {
         return None;
     }
-    let axis_path = find_indexed_path(file, axis_group)?;
-    let [through_ordinal, host_line_ordinal] = axis_path.refs.as_slice() else {
-        return None;
-    };
-    if through_ordinal.checked_sub(1)? != trace_point_group_index {
+    let (through_group_index, host_line_group_index) =
+        constructed_line_parent_group_indices(file, groups, axis_group)?;
+    if through_group_index != trace_point_group_index {
         return None;
     }
 
-    let host_line_group = groups.get(host_line_ordinal.checked_sub(1)?)?;
+    let host_line_group = groups.get(host_line_group_index)?;
     let host_line_path = find_indexed_path(file, host_line_group)?;
     let intersection_group_index = host_line_path.refs.iter().find_map(|ordinal| {
         let index = ordinal.checked_sub(1)?;
@@ -822,15 +861,13 @@ fn refresh_sampled_trace_polylines(
             ScenePointConstraint::OnPolyline {
                 function_key,
                 points: polyline,
-                segment_index,
-                t,
+                parameter,
+                ..
             } => {
                 if polyline.len() < 2 {
                     return None;
                 }
-                let normalized = (*segment_index as f64 + *t)
-                    .clamp(0.0, (polyline.len() - 1) as f64)
-                    / (polyline.len() - 1) as f64;
+                let normalized = parameter.clamp(0.0, 1.0);
                 let group = function_key
                     .checked_sub(1)
                     .and_then(|group_index| groups.get(group_index))?;
@@ -1101,8 +1138,10 @@ fn apply_trace_parameter_with_mode(
             points,
             segment_index,
             t,
+            parameter,
             ..
         } => {
+            *parameter = normalized;
             if points.len() < 2 {
                 return;
             }
@@ -1169,9 +1208,9 @@ fn trace_parameter_value_from_point(
         | ScenePointConstraint::OnLineConstraint { t, .. }
         | ScenePointConstraint::OnRay { t, .. }
         | ScenePointConstraint::OnRayConstraint { t, .. }
-        | ScenePointConstraint::OnPolyline { t, .. }
         | ScenePointConstraint::OnCircleArc { t, .. }
         | ScenePointConstraint::OnArc { t, .. } => Some(t),
+        ScenePointConstraint::OnPolyline { parameter, .. } => Some(parameter),
         ScenePointConstraint::OnPolygonBoundary {
             vertex_indices,
             edge_index,
@@ -1379,10 +1418,9 @@ fn resolve_trace_point(
 
     let point = points.get(index)?.clone();
     let resolved = match &point.binding {
-        Some(ScenePointBinding::PayloadAlias {
-            parent_indices,
-            source_parent,
-        }) => resolve_trace_point(points, *parent_indices.get(*source_parent)?, visiting),
+        Some(ScenePointBinding::ProjectedCoordinate { source_index, .. }) => {
+            resolve_trace_point(points, *source_index, visiting)
+        }
         Some(ScenePointBinding::DirectedAngleAnchor {
             first_start_index,
             first_end_index,
@@ -1602,12 +1640,22 @@ fn resolve_trace_point(
         }
         Some(ScenePointBinding::ConstraintParameterFromPointExpr {
             source_index,
+            source_parameter_start_index,
+            source_parameter_end_index,
             parameter_name,
             expr,
             absolute_value,
             ..
         }) => {
-            let source_value = trace_parameter_value_from_point(points, *source_index, visiting)?;
+            let source_value = match (source_parameter_start_index, source_parameter_end_index) {
+                (Some(start_index), Some(end_index)) => {
+                    let source = resolve_trace_point(points, *source_index, visiting)?;
+                    let start = resolve_trace_point(points, *start_index, visiting)?;
+                    let end = resolve_trace_point(points, *end_index, visiting)?;
+                    segment_projection_parameter(&source, &start, &end)?
+                }
+                _ => trace_parameter_value_from_point(points, *source_index, visiting)?,
+            };
             let mut parameters = BTreeMap::new();
             if !parameter_name.is_empty() {
                 parameters.insert(parameter_name.clone(), source_value);
@@ -1702,6 +1750,16 @@ fn resolve_trace_point(
                     )?;
                     Some(lerp_point(&start, &end, *t))
                 }
+            }
+            ScenePointConstraint::OnPolygonBoundaryParameter {
+                vertex_indices,
+                parameter,
+            } => {
+                let vertices = vertex_indices
+                    .iter()
+                    .map(|index| resolve_trace_point(points, *index, visiting))
+                    .collect::<Option<Vec<_>>>()?;
+                super::points::resolve_polygon_boundary_parameter_point_raw(&vertices, *parameter)
             }
             ScenePointConstraint::OnTranslatedPolygonBoundary {
                 vertex_indices,

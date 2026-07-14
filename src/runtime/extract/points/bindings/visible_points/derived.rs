@@ -504,11 +504,10 @@ fn resolve_line_constraint(
             })
         }
         crate::format::GroupKind::PerpendicularLine | crate::format::GroupKind::ParallelLine => {
-            if path.refs.len() != 2 {
-                return None;
-            }
-            let through_index = (*group_to_point_index.get(path.refs[0].checked_sub(1)?)?)?;
-            let host_group = groups.get(path.refs[1].checked_sub(1)?)?;
+            let (through_group_index, host_group_index) =
+                constructed_line_parent_group_indices(file, groups, group)?;
+            let through_index = (*group_to_point_index.get(through_group_index)?)?;
+            let host_group = groups.get(host_group_index)?;
             let host =
                 resolve_line_constraint(file, groups, host_group, anchors, group_to_point_index)?;
             let Some((line_start_index, line_end_index, host_is_perpendicular)) =
@@ -564,30 +563,21 @@ fn resolve_line_constraint(
                 angle_expr,
                 angle_parameter_group_ordinals,
             ) = if group.header.kind() == crate::format::GroupKind::ParameterRotation {
-                if let Ok(binding) = try_decode_parameter_rotation_binding(file, groups, group) {
-                    let TransformBindingKind::Rotate {
-                        angle_degrees,
-                        parameter_name,
-                    } = binding.kind
-                    else {
-                        return None;
-                    };
-                    (
-                        binding.source_group_index,
-                        binding.center_group_index,
-                        angle_degrees,
-                        parameter_name,
-                        None,
-                        std::collections::BTreeMap::new(),
-                    )
-                } else {
-                    let source_group_index = path.refs.first()?.checked_sub(1)?;
-                    let center_group_index = path.refs.get(1)?.checked_sub(1)?;
-                    let angle_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
-                    if angle_group.header.kind() != crate::format::GroupKind::FunctionExpr {
-                        return None;
-                    }
-                    let (angle_expr, parameters, parameter_name) =
+                let binding = decode_parameter_rotation_transform_binding_raw(
+                    file, groups, group, anchors,
+                )?;
+                let TransformBindingKind::Rotate {
+                    angle_degrees,
+                    parameter_name,
+                } = binding.kind
+                else {
+                    return None;
+                };
+                let angle_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
+                let (angle_expr, angle_parameter_group_ordinals) = if angle_group.header.kind()
+                    == crate::format::GroupKind::FunctionExpr
+                {
+                    let (angle_expr, _, _) =
                         expression_runtime_context(file, groups, angle_group, anchors)?;
                     let angle_expr =
                         if crate::runtime::functions::function_expr_uses_degree_units(
@@ -599,17 +589,21 @@ fn resolve_line_constraint(
                         } else {
                             scale_angle_expr_to_degrees(angle_expr)
                         };
-                    let angle_degrees =
-                        evaluate_expr_with_parameters(&angle_expr, 0.0, &parameters)?;
                     (
-                        source_group_index,
-                        center_group_index,
-                        angle_degrees,
-                        parameter_name,
                         Some(angle_expr),
                         function_parameter_group_ordinals(file, groups, angle_group),
                     )
-                }
+                } else {
+                    (None, std::collections::BTreeMap::new())
+                };
+                (
+                    binding.source_group_index,
+                    binding.center_group_index,
+                    angle_degrees,
+                    parameter_name,
+                    angle_expr,
+                    angle_parameter_group_ordinals,
+                )
             } else {
                 let binding = try_decode_transform_binding(file, group).ok()?;
                 let TransformBindingKind::Rotate {
@@ -707,6 +701,22 @@ fn resolve_line_constraint(
                 vector_end_index: (*group_to_point_index.get(path.refs[2].checked_sub(1)?)?)?,
             })
         }
+        crate::format::GroupKind::CartesianOffsetPoint
+        | crate::format::GroupKind::PolarOffsetPoint => {
+            let translation = decode_translated_point_constraint(file, group)?;
+            let source_group = groups.get(translation.origin_group_index)?;
+            Some(LineConstraint::TranslatedDelta {
+                line: Box::new(resolve_line_constraint(
+                    file,
+                    groups,
+                    source_group,
+                    anchors,
+                    group_to_point_index,
+                )?),
+                dx: translation.dx,
+                dy: translation.dy,
+            })
+        }
         crate::format::GroupKind::Reflection => {
             if path.refs.len() != 2 {
                 return None;
@@ -758,7 +768,8 @@ fn line_direction_reference(constraint: &LineConstraint) -> Option<(usize, usize
             line_end_index,
             ..
         } => Some((*line_start_index, *line_end_index, false)),
-        LineConstraint::Translated { line, .. } => line_direction_reference(line),
+        LineConstraint::Translated { line, .. }
+        | LineConstraint::TranslatedDelta { line, .. } => line_direction_reference(line),
         LineConstraint::PerpendicularTo { .. } | LineConstraint::ParallelTo { .. } => None,
         LineConstraint::AngleBisectorRay { .. }
         | LineConstraint::Reflected { .. }
@@ -942,6 +953,15 @@ fn resolve_circular_constraint(
                             groups,
                             radius_group,
                         ),
+                })
+            } else if let Some(radius) =
+                numeric_helper_scalar_binding(file, groups, radius_group)
+            {
+                Some(CircularConstraint::ExpressionRadiusCircle {
+                    center_index,
+                    expr: radius.expr,
+                    initial_value: radius.initial_value,
+                    parameter_group_ordinals: radius.parameter_group_ordinals,
                 })
             } else {
                 Some(CircularConstraint::ParameterRadiusCircle {

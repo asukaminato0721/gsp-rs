@@ -98,6 +98,12 @@
     return !!constraint && constraint.kind === "polygon-boundary";
   }
 
+  function isPolygonBoundaryParameterConstraint(
+    constraint: RuntimeScenePointJson["constraint"],
+  ): constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "polygon-boundary-parameter" }> {
+    return !!constraint && constraint.kind === "polygon-boundary-parameter";
+  }
+
   
   function isCircleConstraint(
     constraint: RuntimeScenePointJson["constraint"],
@@ -265,6 +271,7 @@
       }
       constraint.segmentIndex = bestSegmentIndex;
       constraint.t = bestT;
+      constraint.parameter = (bestSegmentIndex + bestT) / (count - 1);
     },
     "polygon-boundary"(env: ViewerEnv, _draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
       const constraint = point.constraint;
@@ -291,6 +298,37 @@
       }
       constraint.edgeIndex = bestEdgeIndex;
       constraint.t = bestT;
+    },
+    "polygon-boundary-parameter"(env: ViewerEnv, _draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
+      const constraint = point.constraint;
+      if (!isPolygonBoundaryParameterConstraint(constraint)) return;
+      const count = constraint.vertexIndices.length;
+      if (count < 2) return;
+      const lengths: number[] = [];
+      let perimeter = 0;
+      let bestEdgeIndex = 0;
+      let bestT = 0;
+      let bestDistanceSquared = Number.POSITIVE_INFINITY;
+      for (let edgeIndex = 0; edgeIndex < count; edgeIndex += 1) {
+        const start = env.resolveScenePoint(constraint.vertexIndices[edgeIndex]);
+        const end = env.resolveScenePoint(constraint.vertexIndices[(edgeIndex + 1) % count]);
+        if (!start || !end) return;
+        const length = Math.hypot(end.x - start.x, end.y - start.y);
+        lengths.push(length);
+        perimeter += length;
+        const projection = modules.scene.projectToSegment(world, start, end);
+        if (projection && projection.distanceSquared < bestDistanceSquared) {
+          bestDistanceSquared = projection.distanceSquared;
+          bestEdgeIndex = edgeIndex;
+          bestT = projection.t;
+        }
+      }
+      if (perimeter <= 1e-9) return;
+      const traveled = lengths
+        .slice(0, bestEdgeIndex)
+        .reduce((sum, length) => sum + length, 0)
+        + lengths[bestEdgeIndex] * bestT;
+      constraint.parameter = traveled / perimeter;
     },
     circle(env: ViewerEnv, _draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
       const constraint = point.constraint;

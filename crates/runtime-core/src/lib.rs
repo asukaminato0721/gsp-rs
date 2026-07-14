@@ -13,10 +13,11 @@ pub use geometry::{
     Bounds, LineKind, Point, Projection, ThreePointArcGeometry, angle_bisector_direction,
     circle_arc_control_points, circle_circle_intersections, clip_line_to_bounds,
     clip_ray_to_bounds, lerp_point, line_circle_intersections, line_line_intersection,
-    measured_rotation_radians, normalize_angle_delta, point_circle_tangents, point_on_circle_arc,
-    point_on_three_point_arc, point_on_three_point_arc_complement, project_to_circle_arc,
-    project_to_line_like, project_to_three_point_arc, reflect_across_line, rotate_around,
-    scale_around, scale_by_three_point_ratio, three_point_arc_geometry,
+    marked_angle_translation_point, measured_rotation_radians, normalize_angle_delta,
+    point_circle_tangents, point_on_circle_arc, point_on_three_point_arc,
+    point_on_three_point_arc_complement, project_to_circle_arc, project_to_line_like,
+    project_to_three_point_arc, reflect_across_line, rotate_around, scale_around,
+    scale_by_three_point_ratio, three_point_arc_geometry,
 };
 pub use object_ops::{
     AffineTargetHandle, BuiltinOperationTable, ObjectCircle, ObjectExpression,
