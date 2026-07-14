@@ -1769,6 +1769,7 @@ fn decode_htm_object_parameter(
         }
         RawPointConstraint::CircleArc(constraint) => Some(constraint.t),
         RawPointConstraint::Arc(constraint) => Some(constraint.t),
+        RawPointConstraint::HostedArc { t, .. } => Some(t),
     }
     .or_else(|| decode_object_parameter(file, group))
 }

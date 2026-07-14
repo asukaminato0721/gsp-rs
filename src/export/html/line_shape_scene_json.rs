@@ -146,6 +146,8 @@ enum LineBindingJson {
     CoordinateTrace {
         #[serde(rename = "pointIndex")]
         point_index: usize,
+        #[serde(rename = "parameterGroupOrdinal")]
+        parameter_group_ordinal: usize,
         #[serde(rename = "xMin")]
         x_min: f64,
         #[serde(rename = "xMax")]
@@ -356,11 +358,13 @@ impl LineBindingJson {
             },
             LineBinding::CoordinateTrace {
                 point_index,
+                parameter_group_ordinal,
                 x_min,
                 x_max,
                 sample_count,
             } => Self::CoordinateTrace {
                 point_index: *point_index,
+                parameter_group_ordinal: *parameter_group_ordinal,
                 x_min: *x_min,
                 x_max: *x_max,
                 sample_count: *sample_count,
@@ -771,12 +775,12 @@ impl ShapeBindingJson {
                 parameter_name: parameter_name.clone(),
                 raw_per_unit: *raw_per_unit,
             }),
-            ShapeBinding::ExpressionRadiusCircle { center_index, expr } => {
-                Some(Self::ExpressionRadiusCircle {
-                    center_index: *center_index,
-                    expr: FunctionExprJson::from_expr(expr),
-                })
-            }
+            ShapeBinding::ExpressionRadiusCircle {
+                center_index, expr, ..
+            } => Some(Self::ExpressionRadiusCircle {
+                center_index: *center_index,
+                expr: FunctionExprJson::from_expr(expr),
+            }),
             ShapeBinding::DerivedTransform {
                 source_index,
                 transform,

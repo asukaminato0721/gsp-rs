@@ -1,6 +1,6 @@
 use super::basic::resolve_arc_boundary_points;
 use super::{
-    CircleShape, GspFile, LineBinding, LineShape, ObjectGroup, PointRecord, PolygonShape,
+    ArcShape, CircleShape, GspFile, LineBinding, LineShape, ObjectGroup, PointRecord, PolygonShape,
     SceneContext, ShapeBinding, TransformBindingKind, collect_circle_fill_colors, color_from_style,
     fill_color_from_styles, find_indexed_path, is_circle_group_kind, line_is_dashed,
     line_stroke_width_from_style, payload_debug_source, reflect_across_line, rotate_around,
@@ -11,8 +11,142 @@ use crate::runtime::extract::decode::resolve_circle_points_raw;
 use crate::runtime::extract::points::{TransformBinding, resolve_line_like_points_raw};
 use crate::runtime::geometry::angle_degrees_from_points;
 use crate::runtime::scene::{
-    AxisBinding, LineTransformBinding, RotationBinding, ScaleBinding, ShapeTransformBinding,
+    ArcBinding, AxisBinding, LineTransformBinding, RotationBinding, ScaleBinding,
+    ShapeTransformBinding,
 };
+
+fn arc_shape_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group: &ObjectGroup,
+    stack: &mut Vec<usize>,
+) -> Option<([PointRecord; 3], Option<PointRecord>, bool)> {
+    let group_index = group.ordinal.checked_sub(1)?;
+    if stack.contains(&group_index) {
+        return None;
+    }
+    stack.push(group_index);
+    let result = match group.header.kind() {
+        crate::format::GroupKind::ThreePointArc => {
+            let path = find_indexed_path(file, group)?;
+            let [start, mid, end] = path.refs.as_slice() else {
+                return None;
+            };
+            Some((
+                [
+                    anchors.get(start.checked_sub(1)?)?.clone()?,
+                    anchors.get(mid.checked_sub(1)?)?.clone()?,
+                    anchors.get(end.checked_sub(1)?)?.clone()?,
+                ],
+                None,
+                false,
+            ))
+        }
+        crate::format::GroupKind::CenterArc => {
+            let path = find_indexed_path(file, group)?;
+            let [center, start, end] = path.refs.as_slice() else {
+                return None;
+            };
+            let center = anchors.get(center.checked_sub(1)?)?.clone()?;
+            let start = anchors.get(start.checked_sub(1)?)?.clone()?;
+            let end = anchors.get(end.checked_sub(1)?)?.clone()?;
+            Some((
+                crate::runtime::geometry::arc_on_circle_control_points(&center, &start, &end)?,
+                Some(center),
+                true,
+            ))
+        }
+        crate::format::GroupKind::ArcOnCircle => {
+            let path = find_indexed_path(file, group)?;
+            let [circle, start, end] = path.refs.as_slice() else {
+                return None;
+            };
+            let circle_group = groups.get(circle.checked_sub(1)?)?;
+            let (center, _) = resolve_circle_points_raw(file, groups, anchors, circle_group)?;
+            let start = anchors.get(start.checked_sub(1)?)?.clone()?;
+            let end = anchors.get(end.checked_sub(1)?)?.clone()?;
+            Some((
+                crate::runtime::geometry::arc_on_circle_control_points(&center, &start, &end)?,
+                Some(center),
+                true,
+            ))
+        }
+        crate::format::GroupKind::Reflection => {
+            let path = find_indexed_path(file, group)?;
+            let [source, axis] = path.refs.as_slice() else {
+                return None;
+            };
+            let source_group = groups.get(source.checked_sub(1)?)?;
+            let axis_group = groups.get(axis.checked_sub(1)?)?;
+            let (axis_start, axis_end) =
+                resolve_line_like_points_raw(file, groups, anchors, axis_group)?;
+            let (points, center, counterclockwise) =
+                arc_shape_raw(file, groups, anchors, source_group, stack)?;
+            Some((
+                points
+                    .map(|point| reflect_across_line(&point, &axis_start, &axis_end))
+                    .into_iter()
+                    .collect::<Option<Vec<_>>>()?
+                    .try_into()
+                    .ok()?,
+                match center {
+                    Some(point) => Some(reflect_across_line(&point, &axis_start, &axis_end)?),
+                    None => None,
+                },
+                !counterclockwise,
+            ))
+        }
+        _ => None,
+    };
+    stack.pop();
+    result
+}
+
+pub(crate) fn collect_reflected_arc_shapes(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    context: &SceneContext<'_>,
+    anchors: &[Option<PointRecord>],
+) -> Vec<ArcShape> {
+    groups
+        .iter()
+        .filter(|group| group.header.kind() == crate::format::GroupKind::Reflection)
+        .filter_map(|group| {
+            let path = context.indexed_path(group)?;
+            let source_group_index = context.path_ref_group_index(path, 0)?;
+            let source_group = context.path_ref_group(path, 0)?;
+            if !matches!(
+                source_group.header.kind(),
+                crate::format::GroupKind::ThreePointArc
+                    | crate::format::GroupKind::CenterArc
+                    | crate::format::GroupKind::ArcOnCircle
+                    | crate::format::GroupKind::Reflection
+            ) {
+                return None;
+            }
+            let line_group_index = context.path_ref_group_index(path, 1)?;
+            let (points, center, counterclockwise) =
+                arc_shape_raw(file, groups, anchors, group, &mut Vec::new())?;
+            Some(ArcShape {
+                points,
+                color: color_from_style(group.header.style_b),
+                center,
+                counterclockwise,
+                visible: !group.header.is_hidden(),
+                binding: Some(ArcBinding::DerivedTransform {
+                    source_index: source_group_index,
+                    transform: ShapeTransformBinding::Reflect(AxisBinding {
+                        line_start_index: None,
+                        line_end_index: None,
+                        line_index: Some(line_group_index),
+                    }),
+                }),
+                debug: Some(payload_debug_source(group)),
+            })
+        })
+        .collect()
+}
 
 struct RotationTransform {
     binding: TransformBinding,

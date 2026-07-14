@@ -3,7 +3,8 @@ use super::scene_json::{DebugSourceJson, PointJson};
 use super::transform_json::TransformJson;
 use crate::runtime::functions::{FunctionExpr, FunctionPlotMode};
 use crate::runtime::scene::{
-    AxisBinding, CircularConstraint, LineConstraint, ScenePointBinding, ScenePointConstraint,
+    ArcConstraint, AxisBinding, CircularConstraint, LineConstraint, ScenePointBinding,
+    ScenePointConstraint,
 };
 use serde::Serialize;
 use ts_rs::TS;
@@ -83,6 +84,19 @@ enum PointBindingJson {
         #[serde(rename = "sourceIndex")]
         source_index: usize,
         transform: PointTransformJson,
+    },
+    #[serde(rename = "directed-angle-anchor")]
+    DirectedAngleAnchor {
+        #[serde(rename = "firstStartIndex")]
+        first_start_index: usize,
+        #[serde(rename = "firstEndIndex")]
+        first_end_index: usize,
+        #[serde(rename = "secondStartIndex")]
+        second_start_index: usize,
+        #[serde(rename = "secondEndIndex")]
+        second_end_index: usize,
+        distance: f64,
+        parameter: f64,
     },
     #[serde(rename = "scale-by-ratio")]
     ScaleByRatio {
@@ -336,6 +350,21 @@ impl PointBindingJson {
                     vector_end_index: *vector_end_index,
                 },
             },
+            ScenePointBinding::DirectedAngleAnchor {
+                first_start_index,
+                first_end_index,
+                second_start_index,
+                second_end_index,
+                distance,
+                parameter,
+            } => Self::DirectedAngleAnchor {
+                first_start_index: *first_start_index,
+                first_end_index: *first_end_index,
+                second_start_index: *second_start_index,
+                second_end_index: *second_end_index,
+                distance: *distance,
+                parameter: *parameter,
+            },
             ScenePointBinding::Reflect {
                 source_index,
                 line_start_index,
@@ -475,6 +504,7 @@ impl PointBindingJson {
                 distance_expr,
                 x_scale,
                 y_scale,
+                ..
             } => Self::PolarOffset {
                 source_index: *source_index,
                 distance_expr: FunctionExprJson::from_expr(distance_expr),
@@ -631,10 +661,19 @@ enum PointConstraintJson {
         end_index: usize,
         t: f64,
     },
+    #[serde(rename = "arc-constraint")]
+    ArcConstraint { arc: ArcConstraintJson, t: f64 },
     #[serde(rename = "line-intersection")]
     LineIntersection {
         left: LineConstraintJson,
         right: LineConstraintJson,
+    },
+    #[serde(rename = "line-polygon-intersection")]
+    LinePolygonIntersection {
+        line: LineConstraintJson,
+        #[serde(rename = "vertexIndices")]
+        vertex_indices: Vec<usize>,
+        variant: usize,
     },
     #[serde(rename = "line-trace-intersection")]
     LineTraceIntersection {
@@ -833,12 +872,25 @@ impl PointConstraintJson {
                 end_index: *end_index,
                 t: *t,
             }),
+            ScenePointConstraint::OnArcConstraint { arc, t } => Some(Self::ArcConstraint {
+                arc: ArcConstraintJson::from_constraint(arc),
+                t: *t,
+            }),
             ScenePointConstraint::LineIntersection { left, right } => {
                 Some(Self::LineIntersection {
                     left: LineConstraintJson::from_constraint(left),
                     right: LineConstraintJson::from_constraint(right),
                 })
             }
+            ScenePointConstraint::LinePolygonIntersection {
+                line,
+                vertex_indices,
+                variant,
+            } => Some(Self::LinePolygonIntersection {
+                line: LineConstraintJson::from_constraint(line),
+                vertex_indices: vertex_indices.clone(),
+                variant: *variant,
+            }),
             ScenePointConstraint::LineTraceIntersection {
                 line,
                 trace_key,
@@ -926,6 +978,76 @@ impl PointConstraintJson {
                 right: CircularConstraintJson::from_constraint(right),
                 variant: *variant,
             }),
+        }
+    }
+}
+
+#[derive(Serialize, TS)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+enum ArcConstraintJson {
+    CenterArc {
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+    },
+    CircleArc {
+        circle: CircularConstraintJson,
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+    },
+    ThreePointArc {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "midIndex")]
+        mid_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+    },
+    Reflected {
+        arc: Box<ArcConstraintJson>,
+        axis: LineConstraintJson,
+    },
+}
+
+impl ArcConstraintJson {
+    fn from_constraint(constraint: &ArcConstraint) -> Self {
+        match constraint {
+            ArcConstraint::CenterArc {
+                center_index,
+                start_index,
+                end_index,
+            } => Self::CenterArc {
+                center_index: *center_index,
+                start_index: *start_index,
+                end_index: *end_index,
+            },
+            ArcConstraint::CircleArc {
+                circle,
+                start_index,
+                end_index,
+            } => Self::CircleArc {
+                circle: CircularConstraintJson::from_constraint(circle),
+                start_index: *start_index,
+                end_index: *end_index,
+            },
+            ArcConstraint::ThreePointArc {
+                start_index,
+                mid_index,
+                end_index,
+            } => Self::ThreePointArc {
+                start_index: *start_index,
+                mid_index: *mid_index,
+                end_index: *end_index,
+            },
+            ArcConstraint::Reflected { arc, axis } => Self::Reflected {
+                arc: Box::new(Self::from_constraint(arc)),
+                axis: LineConstraintJson::from_constraint(axis),
+            },
         }
     }
 }
@@ -1043,6 +1165,7 @@ impl CircularConstraintJson {
                 center_index,
                 expr,
                 initial_value,
+                ..
             } => Self::ExpressionRadiusCircle {
                 center_index: *center_index,
                 expr: FunctionExprJson::from_expr(expr),
@@ -1072,6 +1195,14 @@ impl CircularConstraintJson {
             } => Self::Derived {
                 source: Box::new(Self::from_constraint(source)),
                 transform: TransformJson::scale(*center_index, *factor),
+            },
+            CircularConstraint::RotateCircle {
+                source,
+                center_index,
+                angle_degrees,
+            } => Self::Derived {
+                source: Box::new(Self::from_constraint(source)),
+                transform: TransformJson::rotate(*center_index, *angle_degrees),
             },
             CircularConstraint::CircleArc {
                 center_index,

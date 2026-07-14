@@ -594,6 +594,38 @@ pub fn point_angle_degrees(start: Point, vertex: Point, end: Point) -> Option<f6
     finite(cross.atan2(dot).abs().to_degrees())
 }
 
+pub fn directed_angle_anchor(
+    first_start: Point,
+    first_end: Point,
+    second_start: Point,
+    second_end: Point,
+    distance: f64,
+    parameter: f64,
+) -> Option<Point> {
+    let first_dx = first_end.x - first_start.x;
+    let first_dy = first_end.y - first_start.y;
+    let second_dx = second_end.x - second_start.x;
+    let second_dy = second_end.y - second_start.y;
+    if first_dx.hypot(first_dy) <= 1e-9
+        || second_dx.hypot(second_dy) <= 1e-9
+        || !distance.is_finite()
+        || !parameter.is_finite()
+    {
+        return None;
+    }
+    let first_angle = first_dy.atan2(first_dx);
+    let second_angle = second_dy.atan2(second_dx);
+    let delta = (second_angle - first_angle + std::f64::consts::PI)
+        .rem_euclid(std::f64::consts::TAU)
+        - std::f64::consts::PI;
+    let angle = first_angle + delta * parameter;
+    let point = Point {
+        x: first_start.x + distance * angle.cos(),
+        y: first_start.y + distance * angle.sin(),
+    };
+    (point.x.is_finite() && point.y.is_finite()).then_some(point)
+}
+
 pub fn angle_marker_points(
     start: Point,
     vertex: Point,

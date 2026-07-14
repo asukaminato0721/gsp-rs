@@ -357,6 +357,7 @@ fn collect_visible_points_and_traces(
     bind_points_to_point_traces(
         file,
         groups,
+        &analysis.raw_anchors,
         &mut visible_points,
         &mut group_to_point_index,
         &shapes.trace_lines,
@@ -383,6 +384,7 @@ fn collect_visible_points_and_traces(
     bind_points_to_point_traces(
         file,
         groups,
+        &analysis.raw_anchors,
         &mut visible_points,
         &mut group_to_point_index,
         &shapes.trace_lines,

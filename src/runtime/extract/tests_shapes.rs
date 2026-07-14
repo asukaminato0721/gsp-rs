@@ -5,6 +5,90 @@ use crate::runtime::scene::{
 };
 
 #[test]
+fn derived_endpoint_accepts_the_exact_twenty_four_byte_payload() {
+    let data = fixture_bytes("tests/Samples/个人专栏/孟令岩作品/整体面积三例（孟令岩）.gsp")
+        .expect("fixture");
+    let document = crate::format::GspFile::parse(&data).expect("fixture parses");
+    let page = &document.page_files()[1];
+    let groups = page.object_groups();
+    let point_map = super::points::collect_point_objects(page, &groups);
+    let analysis = super::analysis::analyze_scene(page, &groups, &point_map);
+    let endpoint = &groups[170];
+    let payload = endpoint
+        .records
+        .iter()
+        .find(|record| record.record_type == crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD)
+        .expect("group #171 binding payload")
+        .payload(&page.data);
+    assert_eq!(payload.len(), 24);
+
+    let binding = super::points::decode_derived_polar_endpoint_binding(
+        page,
+        &groups,
+        endpoint,
+        &analysis.raw_anchors,
+    )
+    .expect("the 24-byte derived endpoint payload decodes");
+    assert_eq!(binding.center_group_index, 167);
+    assert!((binding.distance_value - 0.3).abs() < 1e-12);
+}
+
+#[test]
+fn measured_radius_circle_from_exam_sample_is_live() {
+    let data = fixture_bytes("tests/Samples/个人专栏/侯仰顺作品/09年潍坊17题答案（蚂蚁制作）.gsp")
+        .expect("exam fixture");
+    let scene = fixture_scene(&data);
+
+    let endpoint = scene
+        .points
+        .iter()
+        .find(|point| {
+            point
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 8)
+        })
+        .expect("measured endpoint #8 is materialized");
+    assert!(matches!(
+        endpoint.binding,
+        Some(ScenePointBinding::PolarOffset {
+            ref distance_parameter_group_ordinals,
+            ..
+        }) if distance_parameter_group_ordinals.values().copied().eq([6])
+    ));
+
+    let circle = scene
+        .circles
+        .iter()
+        .find(|circle| {
+            circle
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 13)
+        })
+        .expect("measured-radius circle #13");
+    assert!(matches!(
+        circle.binding,
+        Some(ShapeBinding::SegmentRadiusCircle { .. })
+    ));
+
+    let intersection = scene
+        .points
+        .iter()
+        .find(|point| {
+            point
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 14)
+        })
+        .expect("line-circle intersection #14");
+    assert!(matches!(
+        intersection.constraint,
+        ScenePointConstraint::LineCircularIntersection { variant: 0, .. }
+    ));
+}
+
+#[test]
 fn rolling_circle_decodes_grouped_rotation_and_boundary_expressions() {
     let data = fixture_bytes("tests/Samples/个人专栏/方小庆作品/圆的滚动全解(inRm).gsp")
         .expect("rolling-circle fixture");

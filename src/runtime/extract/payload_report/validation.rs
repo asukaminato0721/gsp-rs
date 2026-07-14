@@ -120,7 +120,7 @@ fn validate_group_kind(group: &ObjectGroup) -> Result<()> {
     if matches!(
         kind,
         GroupKind::CoordinateExpressionPointPair
-            | GroupKind::LegacyVisibilityHelper
+            | GroupKind::DirectedAngleAnchor
             | GroupKind::LegacyCircularConstraintHelper
             | GroupKind::LegacyCoordinateConstructPoint
             | GroupKind::DistanceValue
@@ -674,7 +674,7 @@ fn is_supported_group_kind(kind: GroupKind) -> bool {
             | GroupKind::IterationPointAlias
             | GroupKind::LegacyCoordinateParameterHelper
             | GroupKind::LegacyCoordinatePointHelper
-            | GroupKind::LegacyVisibilityHelper
+            | GroupKind::DirectedAngleAnchor
             | GroupKind::LegacyCircularConstraintHelper
             | GroupKind::SmoothCurvePlot
     )

@@ -50,6 +50,7 @@ pub(crate) fn decode_custom_transform_parameter(
                 }
                 RawPointConstraint::CircleArc(constraint) => Some(constraint.t),
                 RawPointConstraint::Arc(constraint) => Some(constraint.t),
+                RawPointConstraint::HostedArc { t, .. } => Some(t),
             }
         }
         crate::format::GroupKind::ParameterControlledPoint => {
@@ -74,6 +75,7 @@ pub(crate) fn decode_custom_transform_parameter(
                 }
                 RawPointConstraint::CircleArc(constraint) => Some(constraint.t),
                 RawPointConstraint::Arc(constraint) => Some(constraint.t),
+                RawPointConstraint::HostedArc { t, .. } => Some(t),
             }
         }
         _ => None,
@@ -264,12 +266,28 @@ pub(crate) fn decode_derived_polar_endpoint_binding(
     let center_group_index = path.refs[0].checked_sub(1)?;
     let distance_group_index = path.refs[1].checked_sub(1)?;
     let distance_group = groups.get(distance_group_index)?;
-    let (distance_expr, distance_value) = if distance_group.header.kind() == GroupKind::FunctionExpr
-    {
+    let (distance_expr, distance_parameter_group_ordinals, distance_value) =
+        if distance_group.header.kind() == GroupKind::FunctionExpr {
         let (expr, parameters, _) =
             expression_runtime_context(file, groups, distance_group, anchors)?;
         let value = evaluate_expr_with_parameters(&expr, 0.0, &parameters)?;
-        (expr, value)
+        (
+            expr,
+            function_parameter_group_ordinals(file, groups, distance_group),
+            value,
+        )
+    } else if let Some((start_group_index, end_group_index)) =
+        measured_radius_segment_group_indices(file, groups, distance_group)
+    {
+        let start = anchors.get(start_group_index)?.as_ref()?;
+        let end = anchors.get(end_group_index)?.as_ref()?;
+        let value = (end.x - start.x).hypot(end.y - start.y);
+        let name = format!("__measured_value_{}", distance_group.ordinal);
+        (
+            FunctionExpr::Parsed(FunctionAst::Parameter(name.clone(), value)),
+            BTreeMap::from([(name, distance_group.ordinal)]),
+            value,
+        )
     } else {
         let expression = try_decode_function_expr(file, groups, distance_group).ok()?;
         let value = try_decode_parameter_control_value_for_group(file, groups, distance_group)
@@ -278,7 +296,8 @@ pub(crate) fn decode_derived_polar_endpoint_binding(
         let name = decode_label_name(file, distance_group)
             .unwrap_or_else(|| crate::runtime::functions::function_expr_label(expression));
         (
-            FunctionExpr::Parsed(FunctionAst::Parameter(name, value)),
+            FunctionExpr::Parsed(FunctionAst::Parameter(name.clone(), value)),
+            BTreeMap::from([(name, distance_group.ordinal)]),
             value,
         )
     };
@@ -287,7 +306,7 @@ pub(crate) fn decode_derived_polar_endpoint_binding(
         .iter()
         .find(|record| record.record_type == crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD)
         .map(|record| record.payload(&file.data))?;
-    if payload.len() < 28 || read_u32(payload, 0) != u32::from(group.header.kind().raw()) {
+    if payload.len() < 20 || read_u32(payload, 0) != u32::from(group.header.kind().raw()) {
         return None;
     }
     let y_scale = read_f64(payload, 4);
@@ -298,6 +317,7 @@ pub(crate) fn decode_derived_polar_endpoint_binding(
     Some(DerivedPolarEndpointBindingDef {
         center_group_index,
         distance_expr,
+        distance_parameter_group_ordinals,
         distance_value,
         x_scale,
         y_scale,
@@ -751,6 +771,20 @@ pub(crate) fn decode_point_constraint_anchor(
             let mid = anchors.get(constraint.mid_group_index)?.clone()?;
             let end = anchors.get(constraint.end_group_index)?.clone()?;
             point_on_three_point_arc(&start, &mid, &end, constraint.t)
+        }
+        RawPointConstraint::HostedArc {
+            host_group_index,
+            t,
+        } => {
+            let host = groups.get(host_group_index)?;
+            let points = super::constraints::resolve_arc_points_raw(
+                file,
+                groups,
+                anchors,
+                host,
+                &mut Vec::new(),
+            )?;
+            point_on_three_point_arc(&points[0], &points[1], &points[2], t)
         }
     }
 }

@@ -21,6 +21,34 @@
     return typeof value === "number" && Number.isFinite(value);
   }
 
+  function directedAngleAnchorPoint(
+    binding: Extract<PointBindingJson, { kind: "directed-angle-anchor" }>,
+    resolvePoint: (index: number) => Point | null | undefined,
+  ): Point | null {
+    const firstStart = resolvePoint(binding.firstStartIndex);
+    const firstEnd = resolvePoint(binding.firstEndIndex);
+    const secondStart = resolvePoint(binding.secondStartIndex);
+    const secondEnd = resolvePoint(binding.secondEndIndex);
+    if (!firstStart || !firstEnd || !secondStart || !secondEnd) return null;
+    const firstDx = firstEnd.x - firstStart.x;
+    const firstDy = firstEnd.y - firstStart.y;
+    const secondDx = secondEnd.x - secondStart.x;
+    const secondDy = secondEnd.y - secondStart.y;
+    if (Math.hypot(firstDx, firstDy) <= 1e-9 || Math.hypot(secondDx, secondDy) <= 1e-9) {
+      return null;
+    }
+    const firstAngle = Math.atan2(firstDy, firstDx);
+    const secondAngle = Math.atan2(secondDy, secondDx);
+    const tau = 2 * Math.PI;
+    const delta = ((secondAngle - firstAngle + Math.PI) % tau + tau) % tau - Math.PI;
+    const angle = firstAngle + delta * binding.parameter;
+    const point = {
+      x: firstStart.x + binding.distance * Math.cos(angle),
+      y: firstStart.y + binding.distance * Math.sin(angle),
+    };
+    return Number.isFinite(point.x) && Number.isFinite(point.y) ? point : null;
+  }
+
   function hasPointIndexHandle(handle: PointHandle): handle is Extract<PointHandle, { pointIndex: number }> {
     return !!handle && typeof handle === "object" && "pointIndex" in handle && typeof handle.pointIndex === "number";
   }
@@ -767,9 +795,10 @@
   function updateCoordinateSourcePoint(point: RuntimeScenePointJson, source: Point | null, parameters: Map<string, number>) {
     if (!source) return;
     const parameterValue = parameters.get(point.binding.name);
-    if (!isFiniteNumber(parameterValue)) return;
     const exprParameters = new Map<string, number>(parameters);
-    exprParameters.set(point.binding.name, parameterValue);
+    if (isFiniteNumber(parameterValue) && point.binding.name) {
+      exprParameters.set(point.binding.name, parameterValue);
+    }
     const offset = evaluateExpr(point.binding.expr, 0, exprParameters);
     if (offset === null) return;
     if (point.binding.axis === "horizontal") {
@@ -1060,6 +1089,16 @@
 
 
   const DERIVED_POINT_BINDING_REFRESHERS = {
+    "directed-angle-anchor"(env: ViewerEnv, scene: ViewerSceneData, point: RuntimeScenePointJson) {
+      if (point.binding.kind !== "directed-angle-anchor") return;
+      const resolved = directedAngleAnchorPoint(
+        point.binding,
+        (index: number) => resolveScenePointInScene(env, scene, index),
+      );
+      if (!resolved) return;
+      point.x = resolved.x;
+      point.y = resolved.y;
+    },
     "derived-parameter"(_env: ViewerEnv, scene: ViewerSceneData, point: RuntimeScenePointJson) {
       const value = typeof point.binding.parameterStartIndex === "number"
         && typeof point.binding.parameterEndIndex === "number"
@@ -1353,6 +1392,17 @@
       label.text = `${label.binding.name} = ${env.formatAxisNumber(value)}`;
       label.richMarkup = buildPlainTextRichMarkup(label.text);
     },
+    "scalar-alias"(_env: ViewerEnv, scene: ViewerSceneData, label: RuntimeLabelJson) {
+      const source = scene.labels.find(
+        (candidate) => candidate.debug?.groupOrdinal === label.binding.sourceGroupOrdinal,
+      );
+      if (!source) return;
+      const separator = source.text.indexOf("=");
+      label.text = separator >= 0
+        ? `${label.binding.name} ${source.text.slice(separator)}`
+        : source.text;
+      label.richMarkup = buildPlainTextRichMarkup(label.text);
+    },
     "expression-value"(env: ViewerEnv, _scene: ViewerSceneData, label: RuntimeLabelJson, parameters: Map<string, number>) {
       const value = evaluateExpr(label.binding.expr, 0, parameters);
       const valueText = formatExpressionLabelValue(label, value, env);
@@ -1466,6 +1516,16 @@
 
 
   const SYNC_DYNAMIC_POINT_BINDING_UPDATERS = {
+    "directed-angle-anchor"(_env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson) {
+      if (point.binding.kind !== "directed-angle-anchor") return;
+      const resolved = directedAngleAnchorPoint(
+        point.binding,
+        (index: number) => draft.points[index],
+      );
+      if (!resolved) return;
+      point.x = resolved.x;
+      point.y = resolved.y;
+    },
     coordinate(_env: ViewerEnv, _draft: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
       const value = parameters.get(point.binding.name);
       if (!isFiniteNumber(value)) return;

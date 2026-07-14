@@ -11,13 +11,14 @@ use crate::runtime::geometry::{
 };
 use crate::runtime::payload_consts::{RECORD_BINDING_PAYLOAD, RECORD_ITERATION_DEFINITION};
 use crate::runtime::scene::{
-    CircularConstraint, LineConstraint, LineLikeKind, LineShape, ScenePoint, ScenePointBinding,
-    ScenePointConstraint,
+    ArcConstraint, CircularConstraint, LineConstraint, LineLikeKind, LineShape, ScenePoint,
+    ScenePointBinding, ScenePointConstraint,
 };
 
 use super::points::{
     custom_transform_expression_parameter_map, custom_transform_trace_parameter,
-    editable_non_graph_parameter_name_for_group,
+    editable_non_graph_parameter_name_for_group, scene_point_from_parameter_controlled,
+    try_decode_parameter_controlled_point_on_polyline,
 };
 use super::{find_indexed_path, payload_debug_source};
 
@@ -367,6 +368,7 @@ pub(super) fn collect_segment_traces(
 pub(super) fn bind_points_to_point_traces(
     file: &GspFile,
     groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
     visible_points: &mut Vec<ScenePoint>,
     group_to_point_index: &mut [Option<usize>],
     point_trace_lines: &[LineShape],
@@ -421,6 +423,37 @@ pub(super) fn bind_points_to_point_traces(
         } else {
             continue;
         };
+        if group.header.kind() == GroupKind::ParameterControlledPoint
+            && let Ok(parameter_point) = try_decode_parameter_controlled_point_on_polyline(
+                file,
+                groups,
+                group,
+                anchors,
+                host_ordinal,
+                &trace_points,
+            )
+            && let Some(mut point) = scene_point_from_parameter_controlled(
+                file,
+                groups,
+                anchors,
+                group_to_point_index,
+                parameter_point,
+                crate::runtime::geometry::color_from_style(group.header.style_b),
+                !group.header.is_hidden(),
+            )
+        {
+            point.debug = Some(payload_debug_source(group));
+            let point_index = existing_point_index.unwrap_or_else(|| {
+                let next_index = visible_points.len();
+                group_to_point_index[group_index] = Some(next_index);
+                visible_points.push(point.clone());
+                next_index
+            });
+            if let Some(existing) = visible_points.get_mut(point_index) {
+                *existing = point;
+            }
+            continue;
+        }
         let normalized_t = group
             .records
             .iter()
@@ -1346,6 +1379,22 @@ fn resolve_trace_point(
 
     let point = points.get(index)?.clone();
     let resolved = match &point.binding {
+        Some(ScenePointBinding::DirectedAngleAnchor {
+            first_start_index,
+            first_end_index,
+            second_start_index,
+            second_end_index,
+            distance,
+            parameter,
+        }) => gsp_runtime_core::directed_angle_anchor(
+            to_core_point(&resolve_trace_point(points, *first_start_index, visiting)?),
+            to_core_point(&resolve_trace_point(points, *first_end_index, visiting)?),
+            to_core_point(&resolve_trace_point(points, *second_start_index, visiting)?),
+            to_core_point(&resolve_trace_point(points, *second_end_index, visiting)?),
+            *distance,
+            *parameter,
+        )
+        .map(from_core_point),
         Some(ScenePointBinding::Translate {
             source_index,
             vector_start_index,
@@ -1731,6 +1780,10 @@ fn resolve_trace_point(
                 let end = resolve_trace_point(points, *end_index, visiting)?;
                 point_on_three_point_arc(&start, &mid, &end, *t)
             }
+            ScenePointConstraint::OnArcConstraint { arc, t } => {
+                let [start, mid, end] = resolve_trace_arc_constraint(points, arc, visiting)?;
+                point_on_three_point_arc(&start, &mid, &end, *t)
+            }
             ScenePointConstraint::LineIntersection { left, right } => {
                 let (left_start, left_end, left_kind) =
                     resolve_trace_line_constraint(points, left, visiting)?;
@@ -1744,6 +1797,31 @@ fn resolve_trace_point(
                     &right_end,
                     right_kind,
                 )
+            }
+            ScenePointConstraint::LinePolygonIntersection {
+                line,
+                vertex_indices,
+                variant,
+            } => {
+                let (line_start, line_end, line_kind) =
+                    resolve_trace_line_constraint(points, line, visiting)?;
+                let mut polygon = vertex_indices
+                    .iter()
+                    .map(|index| {
+                        resolve_trace_point(points, *index, visiting)
+                            .map(|point| to_core_point(&point))
+                    })
+                    .collect::<Option<Vec<_>>>()?;
+                polygon.push(*polygon.first()?);
+                gsp_runtime_core::line_polyline_intersection(
+                    to_core_point(&line_start),
+                    to_core_point(&line_end),
+                    trace_core_line_kind(line_kind),
+                    &polygon,
+                    None,
+                    *variant,
+                )
+                .map(from_core_point)
             }
             ScenePointConstraint::LineTraceIntersection { .. }
             | ScenePointConstraint::LineFunctionIntersection { .. } => None,
@@ -1841,6 +1919,58 @@ fn resolve_trace_point(
         point.position = resolved_point;
     }
     resolved
+}
+
+fn resolve_trace_arc_constraint(
+    points: &mut [ScenePoint],
+    arc: &ArcConstraint,
+    visiting: &mut BTreeSet<usize>,
+) -> Option<[PointRecord; 3]> {
+    match arc {
+        ArcConstraint::CenterArc {
+            center_index,
+            start_index,
+            end_index,
+        } => crate::runtime::geometry::arc_on_circle_control_points(
+            &resolve_trace_point(points, *center_index, visiting)?,
+            &resolve_trace_point(points, *start_index, visiting)?,
+            &resolve_trace_point(points, *end_index, visiting)?,
+        ),
+        ArcConstraint::CircleArc {
+            circle,
+            start_index,
+            end_index,
+        } => {
+            let circle = resolve_trace_circular_constraint(points, circle, visiting)?;
+            let (center, _) = trace_circle_center_radius(&circle);
+            crate::runtime::geometry::arc_on_circle_control_points(
+                &center,
+                &resolve_trace_point(points, *start_index, visiting)?,
+                &resolve_trace_point(points, *end_index, visiting)?,
+            )
+        }
+        ArcConstraint::ThreePointArc {
+            start_index,
+            mid_index,
+            end_index,
+        } => Some([
+            resolve_trace_point(points, *start_index, visiting)?,
+            resolve_trace_point(points, *mid_index, visiting)?,
+            resolve_trace_point(points, *end_index, visiting)?,
+        ]),
+        ArcConstraint::Reflected { arc, axis } => {
+            let [start, mid, end] = resolve_trace_arc_constraint(points, arc, visiting)?;
+            let (axis_start, axis_end, _) = resolve_trace_line_constraint(points, axis, visiting)?;
+            Some(
+                [start, mid, end]
+                    .map(|point| reflect_across_line(&point, &axis_start, &axis_end))
+                    .into_iter()
+                    .collect::<Option<Vec<_>>>()?
+                    .try_into()
+                    .ok()?,
+            )
+        }
+    }
 }
 
 include!("trace/intersections.rs");

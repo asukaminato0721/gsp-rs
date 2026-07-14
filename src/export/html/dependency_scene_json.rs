@@ -6,11 +6,11 @@ use ts_rs::TS;
 use crate::runtime::{
     functions::{FunctionExpr, function_expr_label},
     scene::{
-        AxisBinding, CircleIterationFamily, CircularConstraint, ColorBinding, IterationPointHandle,
-        IterationTable, LabelIterationFamily, LineBinding, LineConstraint, LineIterationFamily,
-        LineTransformBinding, PointIterationFamily, PolygonIterationFamily, RichTextExpressionRef,
-        RichTextExpressionValue, Scene, ScenePointBinding, ScenePointConstraint, ShapeBinding,
-        ShapeTransformBinding, TextLabelBinding,
+        ArcConstraint, AxisBinding, CircleIterationFamily, CircularConstraint, ColorBinding,
+        IterationPointHandle, IterationTable, LabelIterationFamily, LineBinding, LineConstraint,
+        LineIterationFamily, LineTransformBinding, PointIterationFamily, PolygonIterationFamily,
+        RichTextExpressionRef, RichTextExpressionValue, Scene, ScenePointBinding,
+        ScenePointConstraint, ShapeBinding, ShapeTransformBinding, TextLabelBinding,
     },
 };
 
@@ -460,6 +460,14 @@ impl Collector<'_> {
                 self.circular_constraint(deps, source);
                 self.point(deps, Some(*center_index));
             }
+            CircularConstraint::RotateCircle {
+                source,
+                center_index,
+                ..
+            } => {
+                self.circular_constraint(deps, source);
+                self.point(deps, Some(*center_index));
+            }
             CircularConstraint::CircleArc {
                 center_index,
                 start_index,
@@ -473,6 +481,33 @@ impl Collector<'_> {
                 end_index,
             } => {
                 self.points(deps, [*start_index, *mid_index, *end_index]);
+            }
+        }
+    }
+
+    fn arc_constraint(&self, deps: &mut Dependencies, arc: &ArcConstraint) {
+        match arc {
+            ArcConstraint::CenterArc {
+                center_index,
+                start_index,
+                end_index,
+            } => self.points(deps, [*center_index, *start_index, *end_index]),
+            ArcConstraint::CircleArc {
+                circle,
+                start_index,
+                end_index,
+            } => {
+                self.circular_constraint(deps, circle);
+                self.points(deps, [*start_index, *end_index]);
+            }
+            ArcConstraint::ThreePointArc {
+                start_index,
+                mid_index,
+                end_index,
+            } => self.points(deps, [*start_index, *mid_index, *end_index]),
+            ArcConstraint::Reflected { arc, axis } => {
+                self.arc_constraint(deps, arc);
+                self.line_constraint(deps, axis);
             }
         }
     }
@@ -565,6 +600,21 @@ impl Collector<'_> {
             } => self.points(
                 deps,
                 [*source_index, *vector_start_index, *vector_end_index],
+            ),
+            ScenePointBinding::DirectedAngleAnchor {
+                first_start_index,
+                first_end_index,
+                second_start_index,
+                second_end_index,
+                ..
+            } => self.points(
+                deps,
+                [
+                    *first_start_index,
+                    *first_end_index,
+                    *second_start_index,
+                    *second_end_index,
+                ],
             ),
             ScenePointBinding::Reflect {
                 source_index,
@@ -770,9 +820,18 @@ impl Collector<'_> {
                 end_index,
                 ..
             } => self.points(deps, [*start_index, *mid_index, *end_index]),
+            ScenePointConstraint::OnArcConstraint { arc, .. } => self.arc_constraint(deps, arc),
             ScenePointConstraint::LineIntersection { left, right } => {
                 self.line_constraint(deps, left);
                 self.line_constraint(deps, right);
+            }
+            ScenePointConstraint::LinePolygonIntersection {
+                line,
+                vertex_indices,
+                ..
+            } => {
+                self.line_constraint(deps, line);
+                self.points(deps, vertex_indices.iter().copied());
             }
             ScenePointConstraint::LineTraceIntersection {
                 line, point_index, ..
@@ -985,7 +1044,9 @@ impl Collector<'_> {
                 self.point(deps, Some(*center_index));
                 self.parameter(deps, Some(parameter_name));
             }
-            ShapeBinding::ExpressionRadiusCircle { center_index, expr } => {
+            ShapeBinding::ExpressionRadiusCircle {
+                center_index, expr, ..
+            } => {
                 self.point(deps, Some(*center_index));
                 self.expr(deps, expr);
             }

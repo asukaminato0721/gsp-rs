@@ -487,6 +487,8 @@ pub(crate) fn remap_arc_bindings(
     arcs: &mut [ArcShape],
     group_to_point_index: &[Option<usize>],
     group_to_circle_index: &[Option<usize>],
+    group_to_arc_index: &[Option<usize>],
+    group_to_line_index: &[Option<usize>],
 ) {
     for arc in arcs {
         let Some(binding) = arc.binding.as_mut() else {
@@ -520,6 +522,21 @@ pub(crate) fn remap_arc_bindings(
                 mid_index: mapped_index(group_to_point_index, *mid_index)?,
                 end_index: mapped_index(group_to_point_index, *end_index)?,
             }),
+            ArcBinding::DerivedTransform {
+                source_index,
+                transform,
+            } => {
+                let source_index = mapped_index(group_to_arc_index, *source_index)?;
+                let mut transform = transform.clone();
+                if !remap_shape_transform(&mut transform, group_to_point_index, group_to_line_index)
+                {
+                    return None;
+                }
+                Some(ArcBinding::DerivedTransform {
+                    source_index,
+                    transform,
+                })
+            }
         })();
         arc.binding = mapped;
     }

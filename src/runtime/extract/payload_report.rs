@@ -987,7 +987,7 @@ fn group_kind_name_in_chinese(kind: GroupKind) -> &'static str {
         GroupKind::AngleMarker => "角标记",
         GroupKind::LegacyAngleMarker => "旧版角标记",
         GroupKind::LegacyAngleRotation => "旧版角度旋转点",
-        GroupKind::LegacyVisibilityHelper => "旧版显隐辅助对象",
+        GroupKind::DirectedAngleAnchor => "有向角锚点",
         GroupKind::LegacyCircularConstraintHelper => "旧版圆形约束辅助对象",
         GroupKind::LegacyCoordinateConstructPoint => "旧版坐标构造点",
         GroupKind::PathPoint => "路径点",
@@ -1252,6 +1252,10 @@ fn write_group_detail(output: &mut String, file: &GspFile, group: &ObjectGroup, 
                         "polyline function_key={} segment={} t={:.6}",
                         function_key, segment_index, t
                     ),
+                    self::points::RawPointConstraint::HostedArc {
+                        host_group_index,
+                        t,
+                    } => format!("arc host=#{} t={:.6}", host_group_index + 1, t),
                 };
                 let _ = writeln!(output, "{indent}  点约束: {}", summary);
             }

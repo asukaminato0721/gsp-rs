@@ -850,6 +850,12 @@ pub(crate) fn collect_circle_shapes(
                         Some(ShapeBinding::ExpressionRadiusCircle {
                             center_index,
                             expr: try_decode_function_expr(file, groups, radius_group).ok()?,
+                            parameter_group_ordinals:
+                                crate::runtime::functions::function_parameter_group_ordinals(
+                                    file,
+                                    groups,
+                                    radius_group,
+                                ),
                         })
                     } else {
                         let parameter_name = decode_label_name(file, radius_group)?;
@@ -1350,6 +1356,7 @@ pub(crate) fn collect_coordinate_traces(
                 visible: !group.header.is_hidden(),
                 binding: Some(LineBinding::CoordinateTrace {
                     point_index: path.refs[0].checked_sub(1)?,
+                    parameter_group_ordinal: *path.refs.get(1)?,
                     x_min: descriptor.x_min,
                     x_max: descriptor.x_max,
                     sample_count: descriptor.sample_count,

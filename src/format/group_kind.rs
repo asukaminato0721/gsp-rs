@@ -124,7 +124,7 @@ define_group_kinds! {
     CoordinateExpressionPoint = 18,
     CoordinateExpressionPointAlt = 19,
     CoordinateExpressionPointPair = 20,
-    LegacyVisibilityHelper = 22,
+    DirectedAngleAnchor = 22,
     PolarOffsetPoint = 21,
     ExpressionOffsetPoint = 23,
     DerivedSegment24 = 24,

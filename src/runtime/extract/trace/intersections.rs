@@ -429,6 +429,63 @@ fn resolve_trace_circular_constraint(
                 TraceCircularConstraint::ThreePointArc { .. } => None,
             }
         }
+        CircularConstraint::RotateCircle {
+            source,
+            center_index,
+            angle_degrees,
+        } => {
+            let source = resolve_trace_circular_constraint(points, source, visiting)?;
+            let center = resolve_trace_point(points, *center_index, visiting)?;
+            let angle = angle_degrees.to_radians();
+            match source {
+                TraceCircularConstraint::Circle {
+                    center: source_center,
+                    radius,
+                } => Some(TraceCircularConstraint::Circle {
+                    center: rotate_around(&source_center, &center, angle),
+                    radius,
+                }),
+                TraceCircularConstraint::ThreePointArc {
+                    start,
+                    end,
+                    center: source_center,
+                    radius,
+                    start_angle,
+                    ccw_mid,
+                    ..
+                } => {
+                    let mid = PointRecord {
+                        x: source_center.x + radius * (start_angle + ccw_mid).cos(),
+                        y: source_center.y + radius * (start_angle + ccw_mid).sin(),
+                    };
+                    let rotated_start = rotate_around(&start, &center, angle);
+                    let rotated_mid = rotate_around(&mid, &center, angle);
+                    let rotated_end = rotate_around(&end, &center, angle);
+                    let geometry = crate::runtime::geometry::three_point_arc_geometry(
+                        &rotated_start,
+                        &rotated_mid,
+                        &rotated_end,
+                    )?;
+                    Some(TraceCircularConstraint::ThreePointArc {
+                        start: rotated_start,
+                        end: rotated_end,
+                        center: geometry.center.clone(),
+                        radius: geometry.radius,
+                        start_angle: geometry.start_angle,
+                        end_angle: geometry.end_angle,
+                        ccw_span: trace_normalized_angle_delta(
+                            geometry.start_angle,
+                            geometry.end_angle,
+                        ),
+                        ccw_mid: trace_normalized_angle_delta(
+                            geometry.start_angle,
+                            (rotated_mid.y - geometry.center.y)
+                                .atan2(rotated_mid.x - geometry.center.x),
+                        ),
+                    })
+                }
+            }
+        }
         CircularConstraint::ScaleCircle {
             source,
             center_index,

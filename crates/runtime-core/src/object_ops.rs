@@ -2,15 +2,15 @@ use crate::object_graph::{ObjectGraph, ObjectNode, ObjectValues};
 use crate::{
     BinaryOp, CoordinateTraceMode, FunctionAst, FunctionExpr, LineKind, PlotMode, Point,
     UnaryFunction, affine_iteration_segment, angle_bisector_direction, angle_marker_points,
-    choose_point_candidate, circle_arc_control_points, circle_circle_intersections, evaluate_expr,
-    lerp_point, line_circle_intersection_candidate, line_line_intersection,
-    line_polyline_intersection, measured_rotation_radians, object_graph::OperationTable,
-    point_angle_degrees, point_circle_tangents, point_distance, point_distance_ratio,
-    point_on_three_point_arc, point_on_three_point_arc_complement, polygon_area,
-    project_to_line_like, reflect_across_line, rotate_around, sample_circle_arc,
-    sample_coordinate_trace, sample_custom_transform_trace, sample_parametric_curve,
-    sample_three_point_arc, scale_around, scale_by_three_point_ratio, segment_marker_points,
-    three_point_arc_geometry, translation_iteration_deltas,
+    choose_point_candidate, circle_arc_control_points, circle_circle_intersections,
+    directed_angle_anchor, evaluate_expr, lerp_point, line_circle_intersection_candidate,
+    line_circle_intersections, line_line_intersection, line_polyline_intersection,
+    measured_rotation_radians, object_graph::OperationTable, point_angle_degrees,
+    point_circle_tangents, point_distance, point_distance_ratio, point_on_three_point_arc,
+    point_on_three_point_arc_complement, polygon_area, project_to_line_like, reflect_across_line,
+    rotate_around, sample_circle_arc, sample_coordinate_trace, sample_custom_transform_trace,
+    sample_parametric_curve, sample_three_point_arc, scale_around, scale_by_three_point_ratio,
+    segment_marker_points, three_point_arc_geometry, translation_iteration_deltas,
 };
 use std::collections::BTreeMap;
 
@@ -193,6 +193,10 @@ pub enum ObjectOp {
     },
     PointOffsetByScalars,
     PointFromScalars,
+    DirectedAngleAnchor {
+        distance: f64,
+        parameter: f64,
+    },
     PointOnLine,
     PointOnCircle {
         invert_y: bool,
@@ -680,6 +684,24 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
                     x: expect_scalar("point-from-scalars", parents, 0)?,
                     y: expect_scalar("point-from-scalars", parents, 1)?,
                 }))
+            }
+            ObjectOp::DirectedAngleAnchor {
+                distance,
+                parameter,
+            } => {
+                expect_arity("directed-angle-anchor", parents, 4)?;
+                let point = directed_angle_anchor(
+                    expect_point("directed-angle-anchor", parents, 0)?,
+                    expect_point("directed-angle-anchor", parents, 1)?,
+                    expect_point("directed-angle-anchor", parents, 2)?,
+                    expect_point("directed-angle-anchor", parents, 3)?,
+                    *distance,
+                    *parameter,
+                )
+                .ok_or(ObjectOpError::Degenerate {
+                    op: "directed-angle-anchor",
+                })?;
+                Ok(ObjectValue::point(point))
             }
             ObjectOp::PointOnLine => {
                 expect_arity("point-on-line", parents, 2)?;
@@ -1808,15 +1830,18 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
             ObjectOp::LineCircleIntersection { variant } => {
                 expect_arity("line-circle-intersection", parents, 2)?;
                 let (line_kind, start, end) = expect_line("line-circle-intersection", parents, 0)?;
-                let (center, radius_point) = expect_circle("line-circle-intersection", parents, 1)?;
-                let point = line_circle_intersection_candidate(
-                    start,
-                    end,
-                    line_kind,
-                    center,
-                    (radius_point.x - center.x).hypot(radius_point.y - center.y),
-                    *variant,
-                )
+                let (center, radius) =
+                    circular_center_radius("line-circle-intersection", parents, 1)?;
+                let point = if matches!(parents[1], ObjectValue::Arc { .. }) {
+                    line_circle_intersections(start, end, line_kind, center, radius)
+                        .into_iter()
+                        .filter(|point| point_lies_on_circular_value(*point, parents[1]))
+                        .nth(*variant)
+                } else {
+                    line_circle_intersection_candidate(
+                        start, end, line_kind, center, radius, *variant,
+                    )
+                }
                 .ok_or(ObjectOpError::Degenerate {
                     op: "line-circle-intersection",
                 })?;
@@ -2489,7 +2514,8 @@ fn point_lies_on_circular_value(point: Point, value: &ObjectValue) -> bool {
         return matches!(value, ObjectValue::Circle { .. });
     };
     let Some(geometry) = three_point_arc_geometry(*start, *mid, *end) else {
-        return false;
+        return (point.x - start.x).hypot(point.y - start.y) <= 1e-6
+            || (point.x - end.x).hypot(point.y - end.y) <= 1e-6;
     };
     let radial = (point.x - geometry.center.x).hypot(point.y - geometry.center.y);
     if (radial - geometry.radius).abs() > 1e-6 {
@@ -2617,6 +2643,78 @@ fn transform_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn directed_angle_anchor_is_derived_from_all_four_point_parents() {
+        let first_start = ObjectValue::point(Point { x: 1.0, y: 2.0 });
+        let first_end = ObjectValue::point(Point { x: 5.0, y: 2.0 });
+        let second_start = ObjectValue::point(Point { x: -3.0, y: -4.0 });
+        let second_end = ObjectValue::point(Point { x: -3.0, y: 1.0 });
+        let value = BuiltinOperationTable
+            .evaluate(
+                "anchor",
+                &ObjectOp::DirectedAngleAnchor {
+                    distance: 2.0,
+                    parameter: 0.5,
+                },
+                &[&first_start, &first_end, &second_start, &second_end],
+            )
+            .unwrap();
+        let point = value.as_point().unwrap();
+        assert!((point.x - (1.0 + 2.0_f64.sqrt())).abs() < 1e-9);
+        assert!((point.y - (2.0 + 2.0_f64.sqrt())).abs() < 1e-9);
+    }
+
+    #[test]
+    fn line_circle_intersection_accepts_an_arc_as_its_circular_parent() {
+        let line = ObjectValue::Line {
+            line_kind: LineKind::Line,
+            start: Point { x: -3.0, y: 0.0 },
+            end: Point { x: 3.0, y: 0.0 },
+        };
+        let arc = ObjectValue::Arc {
+            start: Point { x: 2.0, y: 0.0 },
+            mid: Point { x: 0.0, y: 2.0 },
+            end: Point { x: -2.0, y: 0.0 },
+            center: Some(Point { x: 0.0, y: 0.0 }),
+            counterclockwise: true,
+            complement: false,
+        };
+        let value = BuiltinOperationTable
+            .evaluate(
+                "intersection",
+                &ObjectOp::LineCircleIntersection { variant: 0 },
+                &[&line, &arc],
+            )
+            .unwrap();
+        assert_eq!(value.as_point(), Some(Point { x: -2.0, y: 0.0 }));
+    }
+
+    #[test]
+    fn line_intersection_with_a_collapsed_arc_keeps_its_shared_endpoint() {
+        let line = ObjectValue::Line {
+            line_kind: LineKind::Line,
+            start: Point { x: -3.0, y: 0.0 },
+            end: Point { x: 3.0, y: 0.0 },
+        };
+        let endpoint = Point { x: 2.0, y: 0.0 };
+        let arc = ObjectValue::Arc {
+            start: endpoint,
+            mid: endpoint,
+            end: endpoint,
+            center: Some(Point { x: 0.0, y: 0.0 }),
+            counterclockwise: true,
+            complement: false,
+        };
+        let value = BuiltinOperationTable
+            .evaluate(
+                "intersection",
+                &ObjectOp::LineCircleIntersection { variant: 0 },
+                &[&line, &arc],
+            )
+            .unwrap();
+        assert_eq!(value.as_point(), Some(endpoint));
+    }
 
     #[test]
     fn table_drives_a_geometry_construction_from_source_points() {

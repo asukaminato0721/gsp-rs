@@ -44,6 +44,21 @@ fn polygon_group_to_index_map(
     mapping
 }
 
+fn arc_group_to_index_map(groups: &[ObjectGroup], shapes: &CollectedShapes) -> Vec<Option<usize>> {
+    let mut mapping = vec![None; groups.len()];
+    for (shape_index, arc) in shapes.arcs.iter().enumerate() {
+        let Some(group_ordinal) = arc.debug.as_ref().map(|debug| debug.group_ordinal) else {
+            continue;
+        };
+        if let Some(group_index) = group_ordinal.checked_sub(1)
+            && group_index < mapping.len()
+        {
+            mapping[group_index] = Some(shape_index);
+        }
+    }
+    mapping
+}
+
 fn map_line_shape(mapping: &mut [Option<usize>], line: &LineShape, shape_index: usize) {
     let Some(group_ordinal) = line.debug.as_ref().map(|debug| debug.group_ordinal) else {
         return;
@@ -103,10 +118,13 @@ pub(super) fn remap_scene_bindings(
         collect_carried_polygon_edge_segment_groups(file, groups);
     let line_group_to_index = line_group_to_index_map(groups, shapes, function_plot_count);
     let circle_group_to_index = circle_group_to_index_map(groups, shapes);
+    let arc_group_to_index = arc_group_to_index_map(groups, shapes);
     remap_arc_bindings(
         &mut shapes.arcs,
         group_to_point_index,
         &circle_group_to_index,
+        &arc_group_to_index,
+        &line_group_to_index,
     );
     remap_circle_bindings(
         &mut shapes.circles,
@@ -414,7 +432,7 @@ fn resolve_payload_color_parameter_value(
         RawPointConstraint::Circular(_) => None,
         RawPointConstraint::CircleArc(constraint) => Some(constraint.t),
         RawPointConstraint::Arc(constraint) => Some(constraint.t),
-        RawPointConstraint::Polyline { t, .. } => Some(t),
+        RawPointConstraint::Polyline { t, .. } | RawPointConstraint::HostedArc { t, .. } => Some(t),
     }
 }
 

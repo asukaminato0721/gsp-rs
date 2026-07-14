@@ -8,7 +8,6 @@ use super::{
     decode_translated_point_anchor_raw, find_indexed_path, try_decode_payload_anchor_point,
 };
 use crate::runtime::extract::decode::is_parameter_control_group;
-use crate::runtime::extract::points::decode_legacy_angle_rotation_anchor_raw;
 use crate::runtime::extract::points::{
     decode_coordinate_expression_anchor_raw, decode_coordinate_point,
     decode_custom_transform_anchor_raw, decode_derived_polar_endpoint_anchor_raw,
@@ -16,6 +15,9 @@ use crate::runtime::extract::points::{
     decode_graph_calibration_anchor_raw, decode_intersection_anchor_raw,
     decode_iteration_binding_point_alias_raw, decode_legacy_coordinate_construct_point,
     decode_ratio_scale_anchor_raw,
+};
+use crate::runtime::extract::points::{
+    decode_directed_angle_anchor_raw, decode_legacy_angle_rotation_anchor_raw,
 };
 
 pub(crate) fn collect_raw_object_anchors(
@@ -37,6 +39,8 @@ pub(crate) fn collect_raw_object_anchors(
         } else if let Some(anchor) =
             decode_coordinate_expression_anchor_raw(file, groups, group, &anchors, graph)
         {
+            Some(anchor)
+        } else if let Some(anchor) = decode_directed_angle_anchor_raw(file, group, &anchors) {
             Some(anchor)
         } else if matches!(
             group.header.kind(),

@@ -68,7 +68,7 @@ pub(super) use iterations::{
     collect_rotational_line_iteration_families,
 };
 pub(super) use transforms::{
-    collect_reflected_circle_shapes, collect_reflected_line_shapes,
+    collect_reflected_arc_shapes, collect_reflected_circle_shapes, collect_reflected_line_shapes,
     collect_reflected_polygon_shapes, collect_rotated_circle_shapes, collect_rotated_line_shapes,
     collect_rotated_polygon_shapes, collect_scaled_line_shapes, collect_transformed_circle_shapes,
     collect_transformed_polygon_shapes, collect_translated_circle_shapes,
@@ -128,11 +128,8 @@ pub(super) fn collect_scene_shapes(
     } else {
         Vec::new()
     };
-    let coordinate_traces = if analysis.graph_mode {
-        collect_coordinate_traces(file, groups, &analysis.raw_anchors, &analysis.graph_ref)
-    } else {
-        Vec::new()
-    };
+    let coordinate_traces =
+        collect_coordinate_traces(file, groups, &analysis.raw_anchors, &analysis.graph_ref);
     let axes = if analysis.graph_mode {
         collect_line_shapes(
             file,
@@ -196,7 +193,15 @@ pub(super) fn collect_scene_shapes(
     ))
     .collect::<Vec<_>>();
     let base_circles = collect_circle_shapes(file, groups, &analysis.raw_anchors);
-    let arcs = collect_three_point_arc_shapes(file, groups, &analysis.raw_anchors);
+    let arcs = collect_three_point_arc_shapes(file, groups, &analysis.raw_anchors)
+        .into_iter()
+        .chain(collect_reflected_arc_shapes(
+            file,
+            groups,
+            context,
+            &analysis.raw_anchors,
+        ))
+        .collect();
     let iteration_lines = Vec::new();
     let iteration_polygons = Vec::new();
     let carried_iteration_lines = collect_carried_iteration_lines(

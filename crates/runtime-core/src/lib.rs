@@ -28,11 +28,12 @@ pub use point_constraints::{
 };
 pub use scene_math::{
     CoordinateTraceMode, PlotMode, affine_iteration_segment, angle_marker_points,
-    branching_iteration_segments, choose_point_candidate, line_circle_intersection_candidate,
-    line_polyline_intersection, point_angle_degrees, point_distance, point_distance_ratio,
-    polygon_area, rotate_iteration_points, sample_circle_arc, sample_coordinate_trace,
-    sample_custom_transform_trace, sample_expression, sample_parametric_curve,
-    sample_three_point_arc, segment_marker_points, translation_iteration_deltas,
+    branching_iteration_segments, choose_point_candidate, directed_angle_anchor,
+    line_circle_intersection_candidate, line_polyline_intersection, point_angle_degrees,
+    point_distance, point_distance_ratio, polygon_area, rotate_iteration_points, sample_circle_arc,
+    sample_coordinate_trace, sample_custom_transform_trace, sample_expression,
+    sample_parametric_curve, sample_three_point_arc, segment_marker_points,
+    translation_iteration_deltas,
 };
 
 use std::collections::BTreeMap;

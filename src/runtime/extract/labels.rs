@@ -738,6 +738,7 @@ fn parameter_anchor_value(
             t,
             ..
         } => polyline_parameter(points.len(), segment_index, t),
+        RawPointConstraint::HostedArc { t, .. } => Some(t),
     }
 }
 

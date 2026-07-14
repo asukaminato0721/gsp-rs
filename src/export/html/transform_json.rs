@@ -116,6 +116,18 @@ impl TransformJson {
         }
     }
 
+    pub(super) fn rotate(center_index: usize, angle_degrees: f64) -> Self {
+        Self::Rotate {
+            center_index,
+            angle_degrees,
+            parameter_name: None,
+            angle_expr: None,
+            angle_start_index: None,
+            angle_vertex_index: None,
+            angle_end_index: None,
+        }
+    }
+
     pub(super) fn reflect(axis: &AxisBinding) -> Self {
         Self::from_axis(axis)
     }

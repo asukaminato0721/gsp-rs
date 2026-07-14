@@ -54,6 +54,54 @@
     return reversed ? [end, start, ...sampledArc.slice(1)] : [start, ...sampledArc.slice(1), start];
   }
 
+  type RuntimeArcConstraintJson = Extract<
+    RuntimePointConstraintJson,
+    { kind: "arc-constraint" }
+  >["arc"];
+
+  function pointOnArcConstraint(
+    env: ViewerSceneResolverEnv | null,
+    arc: RuntimeArcConstraintJson,
+    t: number,
+    resolveFn: (index: number) => Point | null,
+  ): Point | null {
+    if (arc.kind === "center-arc") {
+      const center = resolveFn(arc.centerIndex);
+      const start = resolveFn(arc.startIndex);
+      const end = resolveFn(arc.endIndex);
+      return center && start && end
+        ? window.GspRuntimeCore.pointOnCircleArc(center, start, end, t, !!env?.sourceScene?.yUp)
+        : null;
+    }
+    if (arc.kind === "circle-arc") {
+      const circle = scene._circleFromConstraint?.(env as ViewerEnv | null, arc.circle, resolveFn);
+      const start = resolveFn(arc.startIndex);
+      const end = resolveFn(arc.endIndex);
+      return circle && start && end
+        ? window.GspRuntimeCore.pointOnCircleArc(circle.center, start, end, t, !!env?.sourceScene?.yUp)
+        : null;
+    }
+    if (arc.kind === "three-point-arc") {
+      const start = resolveFn(arc.startIndex);
+      const mid = resolveFn(arc.midIndex);
+      const end = resolveFn(arc.endIndex);
+      return start && mid && end
+        ? window.GspRuntimeCore.pointOnThreePointArc(start, mid, end, t, false)
+        : null;
+    }
+    const point = pointOnArcConstraint(env, arc.arc, t, resolveFn);
+    const dynamics = window.GspViewerModules.dynamics;
+    const geometry = window.GspViewerModules.geometry;
+    if (!dynamics || !geometry) return null;
+    const axis = dynamics.resolveLineConstraintParameterPoints(
+      resolveFn,
+      arc.axis,
+    );
+    return point && axis
+      ? geometry.reflectAcrossLine(point, axis[0], axis[1])
+      : null;
+  }
+
   scene.registerPointConstraintResolver("circle", ((_env: ViewerSceneResolverEnv | null, constraint, resolveFn) => {
     const center = resolveFn(constraint.centerIndex);
     const radiusPoint = resolveFn(constraint.radiusIndex);
@@ -80,6 +128,9 @@
       ? window.GspRuntimeCore.pointOnThreePointArc(start, mid, end, constraint.t, false)
       : null;
   }));
+  scene.registerPointConstraintResolver("arc-constraint", ((env: ViewerSceneResolverEnv | null, constraint, resolveFn) => (
+    pointOnArcConstraint(env, constraint.arc, constraint.t, resolveFn)
+  )));
   scene.registerLineBindingResolver("arc-boundary", ((env: ViewerEnv, line) => sampleArcBoundaryPoints(env, line.binding)));
 
   scene.sampleArcBoundaryPoints = sampleArcBoundaryPoints;

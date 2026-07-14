@@ -10,11 +10,11 @@ use ts_rs::TS;
 use crate::format::PointRecord;
 use crate::runtime::functions::function_expr_label;
 use crate::runtime::scene::{
-    ArcBinding, ArcBoundaryKind, CircleIterationFamily, CircularConstraint, ColorBinding,
-    CoordinateAxis, IterationPointHandle, LineBinding, LineConstraint, LineIterationFamily,
-    LineLikeKind, LineTransformBinding, PointIterationFamily, PolygonIterationFamily,
-    RotationBinding, Scene, ScenePointBinding, ScenePointConstraint, ShapeBinding,
-    ShapeTransformBinding, TextLabelBinding,
+    ArcBinding, ArcBoundaryKind, ArcConstraint, CircleIterationFamily, CircularConstraint,
+    ColorBinding, CoordinateAxis, IterationPointHandle, LineBinding, LineConstraint,
+    LineIterationFamily, LineLikeKind, LineTransformBinding, PointIterationFamily,
+    PolygonIterationFamily, RotationBinding, Scene, ScenePointBinding, ScenePointConstraint,
+    ShapeBinding, ShapeTransformBinding, TextLabelBinding,
 };
 
 #[derive(Debug, Clone, Serialize, TS)]
@@ -94,12 +94,18 @@ impl ObjectGraphJson {
         for &index in &label_indices {
             let label = &scene.labels[index];
             builder.register_label_scalar(index, label.binding.as_ref());
-            if Builder::label_binding_is_scalar(label.binding.as_ref())
-                && let Some(debug) = &label.debug
-            {
-                builder
-                    .group_scalars
-                    .insert(debug.group_ordinal, label_scalar_id(index));
+            if let Some(debug) = &label.debug {
+                if Builder::label_binding_is_scalar(label.binding.as_ref()) {
+                    builder
+                        .group_scalars
+                        .insert(debug.group_ordinal, label_scalar_id(index));
+                } else if let Some(TextLabelBinding::ParameterValue { name }) = &label.binding
+                    && let Some(parameter_id) = builder.named_scalars.get(name).cloned()
+                {
+                    builder
+                        .group_scalars
+                        .insert(debug.group_ordinal, parameter_id);
+                }
             }
         }
         for index in label_indices {
@@ -232,8 +238,17 @@ impl ObjectGraphJson {
                         );
                     }
                 }
-                Some(ShapeBinding::ExpressionRadiusCircle { center_index, expr }) => {
-                    builder.expression_radius_circle(id, *center_index, expr);
+                Some(ShapeBinding::ExpressionRadiusCircle {
+                    center_index,
+                    expr,
+                    parameter_group_ordinals,
+                }) => {
+                    builder.expression_radius_circle(
+                        id,
+                        *center_index,
+                        expr,
+                        parameter_group_ordinals,
+                    );
                 }
                 Some(ShapeBinding::DerivedTransform {
                     source_index,
@@ -434,6 +449,25 @@ impl ObjectGraphJson {
                         point_id(*end_index),
                     ],
                 ),
+                Some(ArcBinding::DerivedTransform {
+                    source_index,
+                    transform,
+                }) => {
+                    if !builder.shape_transform(id.clone(), arc_id(*source_index), transform) {
+                        builder.pending_source(
+                            id,
+                            "arc-binding",
+                            ObjectValue::Arc {
+                                start: core_point(&arc.points[0]),
+                                mid: core_point(&arc.points[1]),
+                                end: core_point(&arc.points[2]),
+                                center: arc.center.as_ref().map(core_point),
+                                counterclockwise: arc.counterclockwise,
+                                complement: false,
+                            },
+                        );
+                    }
+                }
                 None => builder.pending_source(
                     id,
                     "arc-binding",
@@ -757,9 +791,10 @@ impl Builder {
         id: String,
         center_index: usize,
         expression: &gsp_runtime_core::FunctionExpr,
+        parameter_group_ordinals: &BTreeMap<String, usize>,
     ) {
         let radius_id = format!("scalar:{id}:radius");
-        self.expression(radius_id.clone(), expression);
+        self.expression_with_group_sources(radius_id.clone(), expression, parameter_group_ordinals);
         self.derived(
             id,
             ObjectOp::CircleByRadius,
@@ -1269,6 +1304,7 @@ impl Builder {
                     expr,
                     absolute_value,
                     expression_sources,
+                    expression_parameter_group_ordinals,
                 } => {
                     if !expression_sources.is_empty() {
                         let parameter_id = format!("scalar:{id}:constraint-parameter");
@@ -1276,6 +1312,7 @@ impl Builder {
                             parameter_id.clone(),
                             expr,
                             expression_sources,
+                            expression_parameter_group_ordinals,
                         ) || !self.point_at_parameter(id.clone(), index, parameter_id)
                         {
                             self.pending_source(id, "point-binding", source_value);
@@ -1320,6 +1357,26 @@ impl Builder {
                         point_id(*source_index),
                         point_id(*vector_start_index),
                         point_id(*vector_end_index),
+                    ],
+                ),
+                ScenePointBinding::DirectedAngleAnchor {
+                    first_start_index,
+                    first_end_index,
+                    second_start_index,
+                    second_end_index,
+                    distance,
+                    parameter,
+                } => self.derived(
+                    id,
+                    ObjectOp::DirectedAngleAnchor {
+                        distance: *distance,
+                        parameter: *parameter,
+                    },
+                    [
+                        point_id(*first_start_index),
+                        point_id(*first_end_index),
+                        point_id(*second_start_index),
+                        point_id(*second_end_index),
                     ],
                 ),
                 ScenePointBinding::Reflect {
@@ -1423,11 +1480,16 @@ impl Builder {
                 ScenePointBinding::PolarOffset {
                     source_index,
                     distance_expr,
+                    distance_parameter_group_ordinals,
                     x_scale,
                     y_scale,
                 } => {
                     let distance_id = format!("scalar:{id}:distance");
-                    self.expression(distance_id.clone(), distance_expr);
+                    self.expression_with_group_sources(
+                        distance_id.clone(),
+                        distance_expr,
+                        distance_parameter_group_ordinals,
+                    );
                     self.derived(
                         id,
                         ObjectOp::PointScaledOffset {
@@ -1579,7 +1641,17 @@ impl Builder {
         }
 
         match &point.constraint {
-            ScenePointConstraint::Free => self.source(id, source_value),
+            ScenePointConstraint::Free => {
+                let is_payload_source = point
+                    .debug
+                    .as_ref()
+                    .is_none_or(|debug| debug.group_kind == "Point");
+                if is_payload_source {
+                    self.source(id, source_value);
+                } else {
+                    self.pending_source(id, "point-binding", source_value);
+                }
+            }
             ScenePointConstraint::Offset {
                 origin_index,
                 dx,
@@ -1797,6 +1869,16 @@ impl Builder {
                 self.source(parameter_id.clone(), ObjectValue::Scalar { value: *t });
                 self.derived(id, ObjectOp::PointOnArc, [domain_id, parameter_id]);
             }
+            ScenePointConstraint::OnArcConstraint { arc, t } => {
+                let domain_id = format!("domain:{id}");
+                let parameter_id = format!("control:{id}:t");
+                if self.arc_constraint(domain_id.clone(), arc) {
+                    self.source(parameter_id.clone(), ObjectValue::Scalar { value: *t });
+                    self.derived(id, ObjectOp::PointOnArc, [domain_id, parameter_id]);
+                } else {
+                    self.pending_source(id, "point-constraint", source_value);
+                }
+            }
             ScenePointConstraint::LineIntersection { left, right } => {
                 let left_id = format!("domain:{id}:left");
                 let right_id = format!("domain:{id}:right");
@@ -1804,6 +1886,35 @@ impl Builder {
                     && self.line_constraint(right_id.clone(), right)
                 {
                     self.derived(id, ObjectOp::LineIntersection, [left_id, right_id]);
+                } else {
+                    self.pending_source(id, "point-constraint", source_value);
+                }
+            }
+            ScenePointConstraint::LinePolygonIntersection {
+                line,
+                vertex_indices,
+                variant,
+            } => {
+                let domain_line_id = format!("domain:{id}:line");
+                let domain_polygon_id = format!("domain:{id}:polygon");
+                if vertex_indices.len() >= 2 && self.line_constraint(domain_line_id.clone(), line) {
+                    self.derived(
+                        domain_polygon_id.clone(),
+                        ObjectOp::Polygon,
+                        vertex_indices
+                            .iter()
+                            .copied()
+                            .chain(vertex_indices.first().copied())
+                            .map(point_id),
+                    );
+                    self.derived(
+                        id,
+                        ObjectOp::LinePolylineIntersection {
+                            variant: *variant,
+                            sample_hint: None,
+                        },
+                        [domain_line_id, domain_polygon_id],
+                    );
                 } else {
                     self.pending_source(id, "point-constraint", source_value);
                 }
@@ -2153,6 +2264,7 @@ impl Builder {
         id: String,
         expression: &gsp_runtime_core::FunctionExpr,
         sources: &[crate::runtime::scene::ScenePointParameterSource],
+        parameter_group_ordinals: &BTreeMap<String, usize>,
     ) -> bool {
         let parameter_names = expression_parameter_names(expression);
         let mut parents = Vec::with_capacity(parameter_names.len());
@@ -2175,6 +2287,12 @@ impl Builder {
                     return false;
                 }
                 parents.push(scalar_id);
+            } else if let Some(parent) = parameter_group_ordinals
+                .get(name)
+                .and_then(|ordinal| self.group_scalars.get(ordinal))
+                .cloned()
+            {
+                parents.push(parent);
             } else if let Some(parent) = self.named_scalars.get(name).cloned() {
                 parents.push(parent);
             } else {
@@ -2439,6 +2557,14 @@ impl Builder {
                 );
                 self.derived(id, ObjectOp::PointOnLine, [domain_id, parameter_id]);
             }
+            ScenePointConstraint::OnLineConstraint { line, .. }
+            | ScenePointConstraint::OnRayConstraint { line, .. } => {
+                let domain_id = format!("domain:{id}");
+                if !self.line_constraint(domain_id.clone(), &line) {
+                    return false;
+                }
+                self.derived(id, ObjectOp::PointOnLine, [domain_id, parameter_id]);
+            }
             ScenePointConstraint::OnCircle {
                 center_index,
                 radius_index,
@@ -2519,6 +2645,38 @@ impl Builder {
                     ],
                 );
                 self.derived(id, ObjectOp::PointOnArc, [arc_id, parameter_id]);
+            }
+            ScenePointConstraint::OnArcConstraint { arc, .. } => {
+                let arc_id = format!("domain:{id}");
+                if !self.arc_constraint(arc_id.clone(), &arc) {
+                    return false;
+                }
+                self.derived(id, ObjectOp::PointOnArc, [arc_id, parameter_id]);
+            }
+            ScenePointConstraint::OnPolyline { function_key, .. } => {
+                let mut matching_lines = self
+                    .line_group_ordinals
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(line_index, group_ordinal)| {
+                        (*group_ordinal == Some(function_key)).then_some(line_index)
+                    })
+                    .collect::<Vec<_>>();
+                matching_lines.extend(self.function_lines.iter().filter_map(
+                    |(line_index, function)| {
+                        (function.plot_key == Some(function_key)).then_some(*line_index)
+                    },
+                ));
+                matching_lines.sort_unstable();
+                matching_lines.dedup();
+                let [line_index] = matching_lines.as_slice() else {
+                    return false;
+                };
+                self.derived(
+                    id,
+                    ObjectOp::PointOnPolyline,
+                    [line_id(*line_index), parameter_id],
+                );
             }
             _ => return false,
         }
@@ -2801,8 +2959,11 @@ impl Builder {
                 }
             }
             CircularConstraint::ExpressionRadiusCircle {
-                center_index, expr, ..
-            } => self.expression_radius_circle(id, *center_index, expr),
+                center_index,
+                expr,
+                parameter_group_ordinals,
+                ..
+            } => self.expression_radius_circle(id, *center_index, expr, parameter_group_ordinals),
             CircularConstraint::TranslateCircle { source, dx, dy } => {
                 let source_id = format!("{id}:source");
                 if !self.circular_constraint(source_id.clone(), source) {
@@ -2845,6 +3006,28 @@ impl Builder {
                     id,
                     ObjectOp::ScaleShape { factor: *factor },
                     [source_id, point_id(*center_index)],
+                );
+            }
+            CircularConstraint::RotateCircle {
+                source,
+                center_index,
+                angle_degrees,
+            } => {
+                let source_id = format!("{id}:source");
+                if !self.circular_constraint(source_id.clone(), source) {
+                    return false;
+                }
+                let angle_id = format!("scalar:{id}:rotation-degrees");
+                self.source(
+                    angle_id.clone(),
+                    ObjectValue::Scalar {
+                        value: *angle_degrees,
+                    },
+                );
+                self.derived(
+                    id,
+                    ObjectOp::RotateShapeDegrees,
+                    [source_id, point_id(*center_index), angle_id],
                 );
             }
             CircularConstraint::CircleArc {
@@ -3067,11 +3250,21 @@ impl Builder {
             }
             Some(LineBinding::CoordinateTrace {
                 point_index,
+                parameter_group_ordinal,
                 x_min,
                 x_max,
                 sample_count,
             }) => {
-                if !self.coordinate_trace(id.clone(), *point_index, *x_min, *x_max, *sample_count) {
+                if !self.coordinate_trace(id.clone(), *point_index, *x_min, *x_max, *sample_count)
+                    && !self.scalar_point_trace(
+                        id.clone(),
+                        *point_index,
+                        *parameter_group_ordinal,
+                        *x_min,
+                        *x_max,
+                        *sample_count,
+                    )
+                {
                     self.pending_source(id, "line-binding", value);
                 }
             }
@@ -3193,6 +3386,42 @@ impl Builder {
         let driver_source_ids = trace_driver_source_ids(&driver);
         let target_id = point_id(point_index);
         let Some(program) = self.object_program(&target_id, &driver_source_ids) else {
+            return false;
+        };
+        let parents = program.source_ids.clone();
+        self.derived(
+            id,
+            ObjectOp::PointTrace {
+                program,
+                driver,
+                value_min,
+                value_max,
+                sample_count,
+            },
+            parents,
+        );
+        true
+    }
+
+    fn scalar_point_trace(
+        &mut self,
+        id: String,
+        point_index: usize,
+        parameter_group_ordinal: usize,
+        value_min: f64,
+        value_max: f64,
+        sample_count: usize,
+    ) -> bool {
+        let Some(source_id) = self.group_scalars.get(&parameter_group_ordinal).cloned() else {
+            return false;
+        };
+        let driver = TraceDriver::Scalar {
+            source_id: source_id.clone(),
+            normalized: false,
+        };
+        let target_id = point_id(point_index);
+        let Some(program) = self.object_program(&target_id, std::slice::from_ref(&source_id))
+        else {
             return false;
         };
         let parents = program.source_ids.clone();
@@ -3707,6 +3936,63 @@ impl Builder {
                 ) else {
                     return false;
                 };
+                self.derived(id, ObjectOp::ReflectShapeAcrossLine, [source_id, axis_id]);
+            }
+        }
+        true
+    }
+
+    fn arc_constraint(&mut self, id: String, arc: &ArcConstraint) -> bool {
+        match arc {
+            ArcConstraint::CenterArc {
+                center_index,
+                start_index,
+                end_index,
+            } => self.derived(
+                id,
+                ObjectOp::CenterArc { y_up: self.y_up },
+                [
+                    point_id(*center_index),
+                    point_id(*start_index),
+                    point_id(*end_index),
+                ],
+            ),
+            ArcConstraint::CircleArc {
+                circle,
+                start_index,
+                end_index,
+            } => {
+                let circle_id = format!("{id}:circle");
+                if !self.circular_constraint(circle_id.clone(), circle) {
+                    return false;
+                }
+                self.derived(
+                    id,
+                    ObjectOp::CircleArc { y_up: self.y_up },
+                    [circle_id, point_id(*start_index), point_id(*end_index)],
+                );
+            }
+            ArcConstraint::ThreePointArc {
+                start_index,
+                mid_index,
+                end_index,
+            } => self.derived(
+                id,
+                ObjectOp::ThreePointArc { complement: false },
+                [
+                    point_id(*start_index),
+                    point_id(*mid_index),
+                    point_id(*end_index),
+                ],
+            ),
+            ArcConstraint::Reflected { arc, axis } => {
+                let source_id = format!("{id}:source");
+                let axis_id = format!("{id}:axis");
+                if !self.arc_constraint(source_id.clone(), arc)
+                    || !self.line_constraint(axis_id.clone(), axis)
+                {
+                    return false;
+                }
                 self.derived(id, ObjectOp::ReflectShapeAcrossLine, [source_id, axis_id]);
             }
         }

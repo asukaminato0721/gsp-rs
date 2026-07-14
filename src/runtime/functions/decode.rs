@@ -382,16 +382,24 @@ fn decode_group_function_payload_expr(
             decode_grouped_preferred_payload_function_expr(payload, &parameters)
         }
     };
-    decoded.or_else(|error| {
-        if function_expr_is_rotation_calculation(file, groups, group.ordinal)
-            || function_definition_is_plotted(file, groups, group)
-            || function_expression_is_definition_parameter(file, groups, group.ordinal)
-        {
-            decode_trailing_scanned_payload_function_expr(payload, &parameters)
-        } else {
-            Err(error)
-        }
-    })
+    decoded
+        .or_else(|error| {
+            if function_expr_is_rotation_calculation(file, groups, group.ordinal)
+                || function_definition_is_plotted(file, groups, group)
+                || function_expression_is_definition_parameter(file, groups, group.ordinal)
+            {
+                decode_trailing_scanned_payload_function_expr(payload, &parameters)
+            } else {
+                Err(error)
+            }
+        })
+        .or_else(|error| {
+            if group.header.kind() == crate::format::GroupKind::FunctionExpr {
+                decode_inline_parameter_token(payload, &parameters).ok_or(error)
+            } else {
+                Err(error)
+            }
+        })
 }
 
 fn function_expression_is_definition_parameter(
@@ -1215,6 +1223,22 @@ fn decode_payload_function_expr(
             try_decode_inner_function_expr(payload, parameters)
         }
     })
+}
+
+fn decode_inline_parameter_token(
+    payload: &[u8],
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Option<FunctionExpr> {
+    let parameter_index = extract_inline_function_token(payload)?
+        .parse::<u16>()
+        .ok()?;
+    let binding = parameters.get(&parameter_index)?;
+    Some(canonicalize_function_expr(
+        binding
+            .expr
+            .clone()
+            .unwrap_or_else(|| FunctionAst::Parameter(binding.name.clone(), binding.value)),
+    ))
 }
 
 fn payload_has_function_expr_evidence(payload: &[u8]) -> bool {
@@ -2356,8 +2380,9 @@ mod parse_tests {
     use super::parser::parse_grouped_parameter_control_expr_at;
     use super::{
         FunctionExprParseError, ParameterBinding, decode_embedded_postfix_payload_function_expr,
-        decode_payload_function_expr, function_definition_is_plotted, parse_function_expr,
-        try_decode_function_expr, try_decode_inner_function_expr, try_decode_plot_component_expr,
+        decode_inline_parameter_token, decode_payload_function_expr,
+        function_definition_is_plotted, parse_function_expr, try_decode_function_expr,
+        try_decode_inner_function_expr, try_decode_plot_component_expr,
         try_decode_standalone_function_expr,
     };
     use crate::gsp::GspFile;
@@ -2387,6 +2412,19 @@ mod parse_tests {
         assert!(
             message.contains(&format!("payload={}", hex_bytes(payload))),
             "expected failed payload bytes in error, got {message}"
+        );
+    }
+
+    #[test]
+    fn inline_numeric_token_selects_the_exact_payload_parameter() {
+        let parameters =
+            BTreeMap::from([(0, ParameterBinding::value("distance".to_string(), 12.5))]);
+        assert_eq!(
+            decode_inline_parameter_token(b"prefix<0>suffix", &parameters),
+            Some(FunctionExpr::Parsed(FunctionAst::Parameter(
+                "distance".to_string(),
+                12.5,
+            )))
         );
     }
 

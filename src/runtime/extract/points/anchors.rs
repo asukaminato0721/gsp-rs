@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::super::decode::{
     circle_center_radius_value, decode_label_name, find_indexed_path, is_parameter_control_group,
-    try_decode_parameter_control_value_for_group, try_decode_payload_anchor_point,
+    measured_radius_segment_group_indices, try_decode_parameter_control_value_for_group,
+    try_decode_payload_anchor_point,
 };
 use super::constraints::{
     RawPointConstraint, decode_translated_point_constraint, regular_polygon_iteration_step,
@@ -18,19 +19,20 @@ use crate::format::GroupKind;
 use crate::format::{read_u16, read_u32};
 use crate::runtime::functions::{
     BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters, function_expr_ast,
-    try_decode_function_expr, try_decode_function_expr_with_inlined_refs,
-    try_decode_function_plot_descriptor,
+    function_parameter_group_ordinals, try_decode_function_expr,
+    try_decode_function_expr_with_inlined_refs, try_decode_function_plot_descriptor,
 };
 use crate::runtime::geometry::{
-    GraphTransform, angle_degrees_from_points, from_core_point, lerp_point, point_on_circle_arc,
-    point_on_three_point_arc, reflect_across_line, rotate_around, scale_around,
-    three_point_arc_geometry, to_core_point, to_raw_from_world, to_world,
+    GraphTransform, angle_degrees_from_points, arc_on_circle_control_points, from_core_point,
+    lerp_point, point_on_circle_arc, point_on_three_point_arc, reflect_across_line, rotate_around,
+    scale_around, three_point_arc_geometry, to_core_point, to_raw_from_world, to_world,
 };
 use crate::runtime::payload_consts::RECORD_ITERATION_DEFINITION;
 use crate::runtime::payload_consts::{
     EXPRESSION_TRANSFORM_CALCULATED_ROTATE_CLASS, EXPRESSION_TRANSFORM_CALCULATED_SCALE_CLASS,
-    EXPRESSION_TRANSFORM_LABELED_ROTATE_CLASS, EXPRESSION_TRANSFORM_MARKED_SCALE_CLASS,
-    EXPRESSION_TRANSFORM_ROTATE_CLASS, EXPRESSION_TRANSFORM_SCALE_CLASS,
+    EXPRESSION_TRANSFORM_FUNCTION_ROTATE_CLASS, EXPRESSION_TRANSFORM_LABELED_ROTATE_CLASS,
+    EXPRESSION_TRANSFORM_MARKED_SCALE_CLASS, EXPRESSION_TRANSFORM_ROTATE_CLASS,
+    EXPRESSION_TRANSFORM_SCALE_CLASS,
 };
 use crate::runtime::scene::LineLikeKind;
 
@@ -64,6 +66,73 @@ pub(crate) struct CustomTransformBindingDef {
     pub(crate) angle_expr: crate::runtime::functions::FunctionExpr,
     pub(crate) distance_raw_scale: f64,
     pub(crate) angle_degrees_scale: f64,
+}
+
+#[derive(Clone)]
+pub(crate) struct DirectedAngleAnchorBindingDef {
+    pub(crate) first_start_group_index: usize,
+    pub(crate) first_end_group_index: usize,
+    pub(crate) second_start_group_index: usize,
+    pub(crate) second_end_group_index: usize,
+    pub(crate) distance: f64,
+    pub(crate) parameter: f64,
+}
+
+pub(crate) fn decode_directed_angle_anchor_binding(
+    file: &GspFile,
+    group: &ObjectGroup,
+) -> Option<DirectedAngleAnchorBindingDef> {
+    if group.header.kind() != GroupKind::DirectedAngleAnchor {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    if path.refs.len() != 4 {
+        return None;
+    }
+    let payload = group
+        .records
+        .iter()
+        .find(|record| {
+            record.record_type == crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD
+        })?
+        .payload(&file.data);
+    if payload.len() != 28
+        || read_u32(payload, 0) != u32::from(GroupKind::DirectedAngleAnchor.raw())
+        || read_u32(payload, 20) != 1
+        || read_u32(payload, 24) != 0
+    {
+        return None;
+    }
+    let distance = read_f64(payload, 4);
+    let parameter = read_f64(payload, 12);
+    if !distance.is_finite() || !parameter.is_finite() {
+        return None;
+    }
+    Some(DirectedAngleAnchorBindingDef {
+        first_start_group_index: path.refs[0].checked_sub(1)?,
+        first_end_group_index: path.refs[1].checked_sub(1)?,
+        second_start_group_index: path.refs[2].checked_sub(1)?,
+        second_end_group_index: path.refs[3].checked_sub(1)?,
+        distance,
+        parameter,
+    })
+}
+
+pub(crate) fn decode_directed_angle_anchor_raw(
+    file: &GspFile,
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    let binding = decode_directed_angle_anchor_binding(file, group)?;
+    gsp_runtime_core::directed_angle_anchor(
+        to_core_point(anchors.get(binding.first_start_group_index)?.as_ref()?),
+        to_core_point(anchors.get(binding.first_end_group_index)?.as_ref()?),
+        to_core_point(anchors.get(binding.second_start_group_index)?.as_ref()?),
+        to_core_point(anchors.get(binding.second_end_group_index)?.as_ref()?),
+        binding.distance,
+        binding.parameter,
+    )
+    .map(from_core_point)
 }
 
 #[derive(Clone)]
@@ -117,7 +186,10 @@ fn expression_transform_kind(
     match (transform_class, value_class) {
         (
             Some(EXPRESSION_TRANSFORM_SCALE_CLASS),
-            Some(EXPRESSION_TRANSFORM_CALCULATED_ROTATE_CLASS),
+            Some(
+                EXPRESSION_TRANSFORM_CALCULATED_ROTATE_CLASS
+                | EXPRESSION_TRANSFORM_FUNCTION_ROTATE_CLASS,
+            ),
         ) => return Some(ExpressionTransformKind::Rotate),
         (
             Some(
@@ -161,6 +233,7 @@ pub(crate) struct ExpressionOffsetBindingDef {
 pub(crate) struct DerivedPolarEndpointBindingDef {
     pub(crate) center_group_index: usize,
     pub(crate) distance_expr: FunctionExpr,
+    pub(crate) distance_parameter_group_ordinals: BTreeMap<String, usize>,
     pub(crate) distance_value: f64,
     pub(crate) x_scale: f64,
     pub(crate) y_scale: f64,
@@ -231,6 +304,7 @@ fn parameter_anchor_runtime_value(
             RawPointConstraint::Circular(_)
             | RawPointConstraint::CircleArc(_)
             | RawPointConstraint::Arc(_)
+            | RawPointConstraint::HostedArc { .. }
             | RawPointConstraint::Polyline { .. } => return None,
         }
     } else {
@@ -426,7 +500,13 @@ pub(crate) fn expression_runtime_context(
     if expr_group.header.kind() != GroupKind::FunctionExpr {
         return None;
     }
-    let expr = try_decode_function_expr(file, groups, expr_group).ok()?;
+    let expr = try_decode_function_expr(file, groups, expr_group)
+        .or_else(|_| {
+            crate::runtime::functions::try_decode_function_expr_with_inlined_refs(
+                file, groups, expr_group,
+            )
+        })
+        .ok()?;
     let mut parameters = BTreeMap::new();
     collect_expr_runtime_parameters(
         file,
@@ -440,7 +520,7 @@ pub(crate) fn expression_runtime_context(
     Some((expr, parameters, parameter_name))
 }
 
-fn scale_function_expr(expr: FunctionExpr, factor: f64) -> FunctionExpr {
+pub(super) fn scale_function_expr(expr: FunctionExpr, factor: f64) -> FunctionExpr {
     if (factor - 1.0).abs() <= 1e-9 {
         return expr;
     }
@@ -583,7 +663,24 @@ pub(crate) fn decode_expression_rotation_binding(
             } else {
                 scale_angle_expr_to_degrees(angle_expr)
             };
-        let angle_degrees = evaluate_expr_with_parameters(&angle_expr, 0.0, &parameters)?;
+        let angle_degrees =
+            evaluate_expr_with_parameters(&angle_expr, 0.0, &parameters).or_else(|| {
+                let value = crate::runtime::functions::evaluate_function_group_with_overrides(
+                    file,
+                    groups,
+                    expr_group,
+                    &BTreeMap::new(),
+                )?;
+                Some(
+                    if crate::runtime::functions::function_expr_uses_degree_units(
+                        file, groups, expr_group,
+                    ) {
+                        value
+                    } else {
+                        value.to_degrees()
+                    },
+                )
+            })?;
         (angle_expr, angle_degrees, parameter_name)
     } else if expr_group.header.kind() == GroupKind::Point {
         let parameter_name = editable_non_graph_parameter_name_for_group(file, groups, expr_group)
@@ -1045,6 +1142,40 @@ pub(crate) fn decode_coordinate_expression_anchor_raw(
         }
         _ => {
             let calc_group = groups.get(path.refs[1].checked_sub(1)?)?;
+            if calc_group.header.kind() == GroupKind::BoundaryCurveLengthValue {
+                let boundary_group = find_indexed_path(file, calc_group)?
+                    .refs
+                    .first()
+                    .and_then(|ordinal| groups.get(ordinal.checked_sub(1)?))?;
+                let length =
+                    boundary_arc_length_in_space(file, groups, anchors, boundary_group, graph)?;
+                let payload = group
+                    .records
+                    .iter()
+                    .find(|record| {
+                        record.record_type == crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD
+                    })?
+                    .payload(&file.data);
+                let axis = match group.header.kind() {
+                    GroupKind::CoordinateExpressionPointAlt => {
+                        crate::runtime::scene::CoordinateAxis::Horizontal
+                    }
+                    _ if payload.len() >= 24 && read_u32(payload, 20) == 1 => {
+                        crate::runtime::scene::CoordinateAxis::Vertical
+                    }
+                    _ => crate::runtime::scene::CoordinateAxis::Horizontal,
+                };
+                return Some(match axis {
+                    crate::runtime::scene::CoordinateAxis::Horizontal => PointRecord {
+                        x: source_world.x + length,
+                        y: source_world.y,
+                    },
+                    crate::runtime::scene::CoordinateAxis::Vertical => PointRecord {
+                        x: source_world.x,
+                        y: source_world.y + length,
+                    },
+                });
+            }
             let expr = try_decode_function_expr(file, groups, calc_group).ok()?;
             let payload = group
                 .records
@@ -1062,6 +1193,28 @@ pub(crate) fn decode_coordinate_expression_anchor_raw(
                     _ => crate::runtime::scene::CoordinateAxis::Horizontal,
                 },
             };
+            if is_parameter_control_group(calc_group) {
+                let raw_per_unit = graph.map_or(PX_PER_CM, |transform| transform.raw_per_unit);
+                let raw_scale = match axis {
+                    crate::runtime::scene::CoordinateAxis::Horizontal => raw_per_unit,
+                    crate::runtime::scene::CoordinateAxis::Vertical => -raw_per_unit,
+                };
+                let raw_offset = evaluate_expr_with_parameters(
+                    &scale_function_expr(expr, raw_scale),
+                    0.0,
+                    &BTreeMap::new(),
+                )?;
+                return Some(match axis {
+                    crate::runtime::scene::CoordinateAxis::Horizontal => PointRecord {
+                        x: source_position.x + raw_offset,
+                        y: source_position.y,
+                    },
+                    crate::runtime::scene::CoordinateAxis::Vertical => PointRecord {
+                        x: source_position.x,
+                        y: source_position.y + raw_offset,
+                    },
+                });
+            }
             let parameter_group = first_path_group(file, groups, calc_group)?;
             let parameter_name = decode_label_name(file, parameter_group)?;
             match axis {
@@ -1093,6 +1246,78 @@ pub(crate) fn decode_coordinate_expression_anchor_raw(
     } else {
         world
     })
+}
+
+pub(crate) fn boundary_arc_control_points_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group: &ObjectGroup,
+) -> Option<[PointRecord; 3]> {
+    let path = find_indexed_path(file, group)?;
+    match group.header.kind() {
+        GroupKind::CenterArc => {
+            let center = anchors.get(path.refs.first()?.checked_sub(1)?)?.as_ref()?;
+            let start = anchors.get(path.refs.get(1)?.checked_sub(1)?)?.as_ref()?;
+            let end = anchors.get(path.refs.get(2)?.checked_sub(1)?)?.as_ref()?;
+            arc_on_circle_control_points(center, start, end)
+        }
+        GroupKind::ArcOnCircle => {
+            let circle_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            let center = resolve_circle_like_raw(file, groups, anchors, circle_group)?.center();
+            let start = anchors.get(path.refs.get(1)?.checked_sub(1)?)?.as_ref()?;
+            let end = anchors.get(path.refs.get(2)?.checked_sub(1)?)?.as_ref()?;
+            arc_on_circle_control_points(&center, start, end)
+        }
+        GroupKind::ThreePointArc => Some([
+            anchors.get(path.refs.first()?.checked_sub(1)?)?.clone()?,
+            anchors.get(path.refs.get(1)?.checked_sub(1)?)?.clone()?,
+            anchors.get(path.refs.get(2)?.checked_sub(1)?)?.clone()?,
+        ]),
+        GroupKind::SectorBoundary | GroupKind::CircularSegmentBoundary => {
+            let host = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            boundary_arc_control_points_raw(file, groups, anchors, host)
+        }
+        _ => None,
+    }
+}
+
+fn arc_length_from_control_points([start, mid, end]: [PointRecord; 3]) -> Option<f64> {
+    let geometry = three_point_arc_geometry(&start, &mid, &end)?;
+    let start_angle = (start.y - geometry.center.y).atan2(start.x - geometry.center.x);
+    let mid_angle = (mid.y - geometry.center.y).atan2(mid.x - geometry.center.x);
+    let end_angle = (end.y - geometry.center.y).atan2(end.x - geometry.center.x);
+    let ccw_span = (end_angle - start_angle).rem_euclid(std::f64::consts::TAU);
+    let ccw_mid = (mid_angle - start_angle).rem_euclid(std::f64::consts::TAU);
+    let span = if ccw_mid <= ccw_span + 1e-9 {
+        ccw_span
+    } else {
+        std::f64::consts::TAU - ccw_span
+    };
+    Some(geometry.radius * span)
+}
+
+pub(crate) fn boundary_arc_length_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group: &ObjectGroup,
+) -> Option<f64> {
+    arc_length_from_control_points(boundary_arc_control_points_raw(
+        file, groups, anchors, group,
+    )?)
+}
+
+fn boundary_arc_length_in_space(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group: &ObjectGroup,
+    graph: Option<&GraphTransform>,
+) -> Option<f64> {
+    let points = boundary_arc_control_points_raw(file, groups, anchors, group)?;
+    let points = points.map(|point| to_world(&point, &graph.cloned()));
+    arc_length_from_control_points(points)
 }
 
 pub(crate) fn decode_intersection_anchor_raw(
@@ -1268,7 +1493,7 @@ fn line_polyline_intersection_with_hint(
     line_polyline_intersection(line_start, line_end, line_kind, polyline)
 }
 
-fn sample_coordinate_trace_points_raw(
+pub(crate) fn sample_coordinate_trace_points_raw(
     file: &GspFile,
     groups: &[ObjectGroup],
     group: &ObjectGroup,
@@ -1540,6 +1765,41 @@ pub(crate) fn resolve_circle_like_raw(
                     radius: radius * factor.abs(),
                 }),
                 CircularConstraintRaw::ThreePointArc { .. } => None,
+            }
+        }
+        crate::format::GroupKind::Rotation => {
+            let binding = try_decode_transform_binding(file, group).ok()?;
+            let center = anchors.get(binding.center_group_index)?.clone()?;
+            let angle_radians = match binding.kind {
+                TransformBindingKind::Rotate { angle_degrees, .. } => angle_degrees.to_radians(),
+                _ => return None,
+            };
+            let source_group = groups.get(binding.source_group_index)?;
+            match resolve_circle_like_raw(file, groups, anchors, source_group)? {
+                CircularConstraintRaw::Circle {
+                    center: source_center,
+                    radius,
+                } => (radius > 1e-9).then_some(CircularConstraintRaw::Circle {
+                    center: rotate_around(&source_center, &center, angle_radians),
+                    radius,
+                }),
+                CircularConstraintRaw::ThreePointArc {
+                    start,
+                    mid,
+                    end,
+                    center: source_center,
+                    radius,
+                    ccw_span,
+                    ccw_mid,
+                } => Some(CircularConstraintRaw::ThreePointArc {
+                    start: rotate_around(&start, &center, angle_radians),
+                    mid: rotate_around(&mid, &center, angle_radians),
+                    end: rotate_around(&end, &center, angle_radians),
+                    center: rotate_around(&source_center, &center, angle_radians),
+                    radius,
+                    ccw_span,
+                    ccw_mid,
+                }),
             }
         }
         crate::format::GroupKind::Reflection => {

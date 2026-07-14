@@ -175,6 +175,21 @@
     const right = resolveLineConstraint(env, constraint.right, resolveFn);
     return left && right ? lineLineIntersection(left.start, left.end, left.kind, right.start, right.end, right.kind) : null;
   }));
+  scene.registerPointConstraintResolver("line-polygon-intersection", ((env: ViewerSceneResolverEnv | null, constraint, resolveFn) => {
+    const line = resolveLineConstraint(env, constraint.line, resolveFn);
+    const polygon = constraint.vertexIndices
+      .map((index) => resolveFn(index))
+      .filter((point): point is Point => point !== null);
+    if (!line || polygon.length !== constraint.vertexIndices.length || polygon.length < 2) return null;
+    return linePolylineIntersection(
+      line.start,
+      line.end,
+      line.kind,
+      [...polygon, polygon[0]],
+      null,
+      constraint.variant,
+    );
+  }));
   scene.registerPointConstraintResolver("line-trace-intersection", ((env: ViewerSceneResolverEnv | null, constraint, resolveFn) => {
     const line = resolveLineConstraint(env, constraint.line, resolveFn);
     const tracePoints = typeof scene.sampleCoordinateTracePoints === "function"

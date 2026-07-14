@@ -121,6 +121,42 @@ fn scene_point_from_intersection(
         ));
     }
 
+    if let (Some(line), Some(vertex_indices)) = (
+        resolve_intersection_line_constraint(file, groups, left_group, anchors, group_to_point_index),
+        resolve_polygon_vertex_indices(file, right_group, group_to_point_index),
+    ) {
+        return Some(scene_point(
+            position,
+            group_color(group),
+            visible,
+            true,
+            ScenePointConstraint::LinePolygonIntersection {
+                line,
+                vertex_indices,
+                variant: intersection_variant(group.header.kind()),
+            },
+            None,
+        ));
+    }
+
+    if let (Some(vertex_indices), Some(line)) = (
+        resolve_polygon_vertex_indices(file, left_group, group_to_point_index),
+        resolve_intersection_line_constraint(file, groups, right_group, anchors, group_to_point_index),
+    ) {
+        return Some(scene_point(
+            position,
+            group_color(group),
+            visible,
+            true,
+            ScenePointConstraint::LinePolygonIntersection {
+                line,
+                vertex_indices,
+                variant: intersection_variant(group.header.kind()),
+            },
+            None,
+        ));
+    }
+
     if let (Some(line), Some((trace_key, point_index, x_min, x_max, sample_count))) = (
         resolve_intersection_line_constraint(file, groups, left_group, anchors, group_to_point_index),
         decode_trace_constraint(file, groups, right_group, group_to_point_index),
@@ -473,10 +509,18 @@ fn resolve_line_constraint(
                 end_index: (*group_to_point_index.get(path.refs[2].checked_sub(1)?)?)?,
             })
         }
-        crate::format::GroupKind::Rotation => {
-            let binding = try_decode_transform_binding(file, group).ok()?;
-            let TransformBindingKind::Rotate { angle_degrees, .. } = binding.kind else {
-                return None;
+        crate::format::GroupKind::Rotation | crate::format::GroupKind::ParameterRotation => {
+            let binding = if group.header.kind() == crate::format::GroupKind::ParameterRotation {
+                try_decode_parameter_rotation_binding(file, groups, group).ok()?
+            } else {
+                try_decode_transform_binding(file, group).ok()?
+            };
+            let (angle_degrees, parameter_name) = match &binding.kind {
+                TransformBindingKind::Rotate {
+                    angle_degrees,
+                    parameter_name,
+                } => (*angle_degrees, parameter_name.clone()),
+                TransformBindingKind::Scale { .. } => return None,
             };
             let source_group = groups.get(binding.source_group_index)?;
             Some(LineConstraint::Rotated {
@@ -493,7 +537,7 @@ fn resolve_line_constraint(
                         binding.center_group_index,
                     )?,
                     angle_degrees,
-                    parameter_name: None,
+                    parameter_name,
                     angle_expr: None,
                     angle_start_index: None,
                     angle_vertex_index: None,
@@ -622,7 +666,9 @@ fn decode_trace_constraint(
 ) -> Option<(usize, usize, f64, f64, usize)> {
     if !matches!(
         group.header.kind(),
-        crate::format::GroupKind::CoordinateTrace | crate::format::GroupKind::PointTrace
+        crate::format::GroupKind::CoordinateTrace
+            | crate::format::GroupKind::PointTrace
+            | crate::format::GroupKind::CustomTransformTrace
     ) {
         return None;
     }
@@ -715,6 +761,22 @@ fn resolve_circle_point_indices(
     }
 }
 
+fn resolve_polygon_vertex_indices(
+    file: &GspFile,
+    group: &ObjectGroup,
+    group_to_point_index: &[Option<usize>],
+) -> Option<Vec<usize>> {
+    if group.header.kind() != crate::format::GroupKind::Polygon {
+        return None;
+    }
+    let path = find_indexed_path(file, group)?;
+    (path.refs.len() >= 2).then_some(())?;
+    path.refs
+        .iter()
+        .map(|ordinal| mapped_point_index(group_to_point_index, ordinal.checked_sub(1)?))
+        .collect()
+}
+
 fn resolve_circular_constraint(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -748,12 +810,30 @@ fn resolve_circular_constraint(
                 })
             } else if radius_group.header.kind() == crate::format::GroupKind::FunctionExpr {
                 let expr = try_decode_function_expr(file, groups, radius_group).ok()?;
-                let initial_value =
-                    evaluate_expr_with_parameters(&expr, 0.0, &std::collections::BTreeMap::new())?;
+                let initial_value = evaluate_function_group_with_overrides(
+                    file,
+                    groups,
+                    radius_group,
+                    &std::collections::BTreeMap::new(),
+                )
+                .or_else(|| {
+                    evaluate_expr_with_parameters(
+                        &expr,
+                        0.0,
+                        &std::collections::BTreeMap::new(),
+                    )
+                })
+                .unwrap_or(0.0);
                 Some(CircularConstraint::ExpressionRadiusCircle {
                     center_index,
                     expr,
                     initial_value,
+                    parameter_group_ordinals:
+                        crate::runtime::functions::function_parameter_group_ordinals(
+                            file,
+                            groups,
+                            radius_group,
+                        ),
                 })
             } else {
                 Some(CircularConstraint::ParameterRadiusCircle {
@@ -796,6 +876,22 @@ fn resolve_circular_constraint(
                 line_start_index: None,
                 line_end_index: None,
                 line_index: group_to_line_index.get(line_group_index).copied().flatten(),
+            })
+        }
+        crate::format::GroupKind::Rotation => {
+            let binding = try_decode_transform_binding(file, group).ok()?;
+            let TransformBindingKind::Rotate { angle_degrees, .. } = binding.kind else {
+                return None;
+            };
+            let source_group = groups.get(binding.source_group_index)?;
+            let source =
+                resolve_circular_constraint(file, groups, source_group, group_to_point_index)?;
+            let center_index =
+                mapped_point_index(group_to_point_index, binding.center_group_index)?;
+            Some(CircularConstraint::RotateCircle {
+                source: Box::new(source),
+                center_index,
+                angle_degrees,
             })
         }
         crate::format::GroupKind::Scale => {

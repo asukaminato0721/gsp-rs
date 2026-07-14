@@ -1,14 +1,128 @@
 use super::analysis::analyze_scene;
 use super::build_scene_checked;
-use super::points::{collect_point_objects, try_decode_parameter_controlled_point};
+use super::points::{
+    collect_point_objects, decode_directed_angle_anchor_binding,
+    try_decode_parameter_controlled_point,
+};
 use super::test_support::{fixture_bytes, fixture_log, fixture_scene, function_expr_has_unary};
 use crate::format::GspFile;
 use crate::runtime::functions::UnaryFunction;
 use crate::runtime::scene::{
-    ButtonAction, CircularConstraint, ColorBinding, IterationTableValueBinding, LineBinding,
-    LineConstraint, LineLikeKind, LineTransformBinding, ScenePointBinding, ScenePointConstraint,
-    ShapeBinding, TextLabelBinding,
+    ArcBinding, ArcConstraint, ButtonAction, CircularConstraint, ColorBinding,
+    IterationTableValueBinding, LineBinding, LineConstraint, LineLikeKind, LineTransformBinding,
+    ScenePointBinding, ScenePointConstraint, ShapeBinding, TextLabelBinding,
 };
+
+#[test]
+fn angle_bisector_fixture_decodes_its_angle_anchor_and_reflected_arc_from_payload() {
+    let Some(data) =
+        fixture_bytes("tests/Samples/个人专栏/周维波作品/角平分线的尺规作图（雪山飞狐）.gsp")
+    else {
+        return;
+    };
+    let file = GspFile::parse(&data).expect("angle-bisector fixture parses");
+    let groups = file.object_groups();
+    let anchor = decode_directed_angle_anchor_binding(&file, &groups[11])
+        .expect("group #12 is the four-parent directed-angle anchor");
+    assert_eq!(
+        [
+            anchor.first_start_group_index,
+            anchor.first_end_group_index,
+            anchor.second_start_group_index,
+            anchor.second_end_group_index,
+        ],
+        [0, 3, 0, 9]
+    );
+    assert!((anchor.distance - 18.89763779527559).abs() < 1e-12);
+    assert_eq!(anchor.parameter, 0.5);
+
+    let scene = build_scene_checked(&file).expect("angle-bisector scene builds");
+    let controlled = scene
+        .points
+        .iter()
+        .find(|point| {
+            point
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 71)
+        })
+        .expect("point #71 on the reflected arc");
+    assert!(matches!(
+        controlled.constraint,
+        ScenePointConstraint::OnArcConstraint {
+            arc: ArcConstraint::Reflected { .. },
+            ..
+        }
+    ));
+    let reflected_arc = scene
+        .arcs
+        .iter()
+        .find(|arc| {
+            arc.debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 61)
+        })
+        .expect("reflected arc #61 is materialized");
+    assert!(matches!(
+        reflected_arc.binding,
+        Some(ArcBinding::DerivedTransform { .. })
+    ));
+
+    let expression_circle_intersection = scene
+        .points
+        .iter()
+        .find(|point| {
+            point
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 45)
+        })
+        .expect("intersection #45 uses the expression-radius circle");
+    assert!(matches!(
+        expression_circle_intersection.constraint,
+        ScenePointConstraint::LineCircularIntersection {
+            circle: CircularConstraint::ExpressionRadiusCircle {
+                ref parameter_group_ordinals,
+                ..
+            },
+            variant: 1,
+            ..
+        } if parameter_group_ordinals.get("DC") == Some(&42)
+    ));
+
+    let expression_rotation = scene
+        .points
+        .iter()
+        .find(|point| {
+            point
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 68)
+        })
+        .expect("point #68 uses the parameter-anchor expression rotation");
+    assert!(matches!(
+        expression_rotation.binding,
+        Some(ScenePointBinding::Rotate {
+            ref angle_parameter_group_ordinals,
+            ..
+        }) if angle_parameter_group_ordinals.get("E") == Some(&65)
+    ));
+
+    let final_intersection = scene
+        .points
+        .iter()
+        .find(|point| {
+            point
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 87)
+        })
+        .expect("point #87 remains a derived line intersection");
+    assert!(matches!(
+        final_intersection.constraint,
+        ScenePointConstraint::LineIntersection { .. }
+    ));
+}
 
 #[test]
 fn rolling_sector_parameter_anchor_drives_hidden_arc_center() {
@@ -39,6 +153,63 @@ fn rolling_sector_parameter_anchor_drives_hidden_arc_center() {
             .as_ref()
             .is_some_and(|debug| debug.group_ordinal == 14)
     }));
+
+    let pages = file.page_files();
+    assert_eq!(pages.len(), 4);
+    for (page_index, page) in pages.iter().enumerate() {
+        let scene = build_scene_checked(page)
+            .unwrap_or_else(|error| panic!("rolling-sector page {}: {error:#}", page_index + 1));
+        assert!(
+            scene.arcs.iter().all(|arc| arc.binding.is_some()),
+            "every arc on rolling-sector page {} must retain exact point parents",
+            page_index + 1
+        );
+        if let Some(boundary_point_ordinal) = [None, Some(18), Some(14), Some(26)][page_index] {
+            let point = scene
+                .points
+                .iter()
+                .find(|point| {
+                    point.debug.as_ref().is_some_and(|debug| {
+                        debug.group_ordinal == boundary_point_ordinal
+                    })
+                })
+                .unwrap_or_else(|| {
+                    panic!(
+                        "rolling-sector page {} boundary-length coordinate point #{boundary_point_ordinal}",
+                        page_index + 1
+                    )
+                });
+            assert!(matches!(
+                point.binding,
+                Some(ScenePointBinding::BoundaryLengthOffset { .. })
+            ));
+        }
+        if let Some(controlled_ordinal) = [None, Some(28), None, Some(34)][page_index] {
+            let point = scene
+                .points
+                .iter()
+                .find(|point| {
+                    point
+                        .debug
+                        .as_ref()
+                        .is_some_and(|debug| debug.group_ordinal == controlled_ordinal)
+                })
+                .unwrap_or_else(|| {
+                    panic!(
+                        "rolling-sector page {} translated-line control point #{controlled_ordinal}",
+                        page_index + 1
+                    )
+                });
+            assert!(matches!(
+                point.binding,
+                Some(ScenePointBinding::DerivedParameter { .. })
+            ));
+            assert!(matches!(
+                point.constraint,
+                ScenePointConstraint::OnLineConstraint { .. }
+            ));
+        }
+    }
 }
 
 #[test]
@@ -935,11 +1106,17 @@ fn preserves_coordinate_point_in_cood_gsp() {
             point.binding.as_ref().is_some_and(|binding| {
                 matches!(
                     binding,
-                    ScenePointBinding::Coordinate { name, .. } if name == "t₁"
+                    ScenePointBinding::CoordinateSource2d {
+                        x_name,
+                        y_name,
+                        x_scalar_group_ordinal: Some(1),
+                        y_scalar_group_ordinal: Some(2),
+                        ..
+                    } if x_name == "t₁" && y_name == "t₁ + 1"
                 )
             })
         }),
-        "expected coordinate-controlled point"
+        "expected the coordinate point to retain both payload scalar parents"
     );
     assert!(scene.points.iter().any(|point| {
         (point.position.x - 0.01).abs() < 0.001 && (point.position.y - 1.01).abs() < 0.001

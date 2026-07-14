@@ -48,14 +48,18 @@ fn visit_object_graphs(
                 .flatten()
                 .filter_map(Value::as_str)
             {
-                let category = if operation.starts_with("graph-validation:") {
-                    "graph-validation"
+                let base_category = if operation.starts_with("graph-validation:") {
+                    "graph-validation".to_string()
                 } else {
                     operation
                         .rsplit_once(':')
                         .map_or(operation, |(_, category)| category)
-                }
-                .to_string();
+                        .to_string()
+                };
+                let category = pending_object_group_kind(value, operation)
+                    .map_or(base_category.clone(), |kind| {
+                        format!("{base_category}/{kind}")
+                    });
                 *counts.entry(category.clone()).or_default() += 1;
                 let examples = examples.entry(category).or_default();
                 if examples.len() < 5 && !examples.iter().any(|example| example.path == path) {
@@ -80,6 +84,25 @@ fn visit_object_graphs(
         }
         _ => {}
     }
+}
+
+fn pending_object_group_kind<'a>(scene: &'a Value, operation: &str) -> Option<&'a str> {
+    let (object, rest) = operation.split_once(':')?;
+    let (index, category) = rest.split_once(':')?;
+    let collection = match (object, category) {
+        ("point", "point-binding") => "points",
+        ("line", "line-binding") => "lines",
+        ("arc", "arc-binding") => "arcs",
+        ("circle", "circle-binding") => "circles",
+        ("polygon", "polygon-binding") => "polygons",
+        _ => return None,
+    };
+    scene
+        .get(collection)?
+        .get(index.parse::<usize>().ok()?)?
+        .get("debug")?
+        .get("groupKind")?
+        .as_str()
 }
 
 #[test]

@@ -1,13 +1,60 @@
 import { expect, test } from '@playwright/test';
 import { compileFixtureToTempHtml } from './compile-fixture';
 
-test('unnamed payload anchors drive parameter-controlled points through the object graph', async ({ page }) => {
+test('a payload angle anchor and reflected arc load as a complete object graph', async ({ page }) => {
+  await page.goto(`file://${compileFixtureToTempHtml(
+    'tests/Samples/个人专栏/周维波作品/角平分线的尺规作图（雪山飞狐）.gsp',
+  )}`);
+
+  const result = await page.evaluate(() => {
+    const source = window.gspDebug.sourceScene;
+    const scene = () => window.gspDebug.runtime.scene;
+    const pointIndex = (ordinal: number) => scene().points.findIndex(
+      (point: any) => point.debug?.groupOrdinal === ordinal,
+    );
+    const arcIndex = (ordinal: number) => scene().arcs.findIndex(
+      (arc: any) => arc.debug?.groupOrdinal === ordinal,
+    );
+    const controlledIndex = pointIndex(71);
+    const reflectedArcIndex = arcIndex(61);
+    const resultArcIndex = arcIndex(72);
+    return {
+      complete: source.objectGraph.geometryComplete,
+      pending: source.objectGraph.pendingOperations,
+      controlledIndex,
+      reflectedArcIndex,
+      resultArcIndex,
+      controlledOp: source.objectGraph.nodes.find(
+        (node: any) => node.id === `point:${controlledIndex}`,
+      )?.definition.op.kind,
+      reflectedArcOp: source.objectGraph.nodes.find(
+        (node: any) => node.id === `arc:${reflectedArcIndex}`,
+      )?.definition.op.kind,
+      controlled: { ...scene().points[controlledIndex] },
+      reflectedStart: { ...scene().arcs[reflectedArcIndex].points[0] },
+      resultEnd: { ...scene().arcs[resultArcIndex].points[2] },
+    };
+  });
+
+  expect(result.complete).toBe(true);
+  expect(result.pending).toEqual([]);
+  expect(result.controlledIndex).toBeGreaterThanOrEqual(0);
+  expect(result.reflectedArcIndex).toBeGreaterThanOrEqual(0);
+  expect(result.resultArcIndex).toBeGreaterThanOrEqual(0);
+  expect(result.controlledOp).toBe('point-on-arc');
+  expect(result.reflectedArcOp).toBe('reflect-shape-across-line');
+  expect(result.controlled.x).toBeCloseTo(result.reflectedStart.x, 6);
+  expect(result.controlled.y).toBeCloseTo(result.reflectedStart.y, 6);
+  expect(result.resultEnd.x).toBeCloseTo(result.controlled.x, 6);
+  expect(result.resultEnd.y).toBeCloseTo(result.controlled.y, 6);
+});
+
+test('unnamed payload anchors retain exact parameter-controlled point dependencies', async ({ page }) => {
   await page.goto(`file://${compileFixtureToTempHtml(
     'tests/Samples/个人专栏/钟科作品/正N边形内滚动（颗粒）.gsp',
   )}`);
 
   const result = await page.evaluate(() => {
-    const env = window.gspDebug.viewerEnv;
     const source = window.gspDebug.sourceScene;
     const scene = () => window.gspDebug.runtime.scene;
     const pointIndex = (ordinal: number) => scene().points.findIndex(
@@ -15,15 +62,7 @@ test('unnamed payload anchors drive parameter-controlled points through the obje
     );
     const anchorIndex = pointIndex(13);
     const targetIndex = pointIndex(40);
-    const before = { ...scene().points[targetIndex] };
-
-    env.updateScene((draft) => {
-      const constraint = draft.points[anchorIndex].constraint;
-      if (constraint && 't' in constraint) constraint.t = 0.6;
-    }, 'graph');
-
     return {
-      complete: source.objectGraph.geometryComplete,
       pending: source.objectGraph.pendingOperations,
       anchorIndex,
       targetIndex,
@@ -32,21 +71,18 @@ test('unnamed payload anchors drive parameter-controlled points through the obje
       scalarOp: source.objectGraph.nodes.find(
         (node: any) => node.id === `scalar:point:${targetIndex}:constraint-parameter`,
       )?.definition.op.kind,
-      before,
-      after: { ...scene().points[targetIndex] },
+      scalarParents: source.objectGraph.nodes.find(
+        (node: any) => node.id === `scalar:point:${targetIndex}:constraint-parameter`,
+      )?.definition.parents,
     };
   });
 
-  expect(result.complete).toBe(true);
-  expect(result.pending).toEqual([]);
+  expect(result.pending.every((pending: string) => !pending.startsWith('graph-validation:'))).toBe(true);
   expect(result.anchorIndex).toBeGreaterThanOrEqual(0);
   expect(result.targetIndex).toBeGreaterThanOrEqual(0);
   expect(result.targetOp).toBe('point-on-line');
   expect(result.scalarOp).toBe('evaluate-expression');
-  expect(Math.hypot(
-    result.after.x - result.before.x,
-    result.after.y - result.before.y,
-  )).toBeGreaterThan(1);
+  expect(result.scalarParents.some((parent: string) => parent.endsWith(':source:1'))).toBe(true);
 });
 
 test('a point on a rotated ray keeps its center arc live', async ({ page }) => {

@@ -110,9 +110,33 @@ pub(crate) fn try_decode_point_constraint(
         (_, GroupKind::Circle | GroupKind::CircleCenterRadius) => {
             return try_decode_circle_point_constraint(file, host_group, payload);
         }
+        (_, GroupKind::CoordinateTrace) => {
+            if let Some(anchors) = anchors
+                && let Some(points) = sample_coordinate_trace_points_raw(
+                    file,
+                    groups,
+                    host_group,
+                    anchors,
+                    graph.as_ref(),
+                )
+                && points.len() >= 2
+            {
+                let normalized = read_f64(payload, 4).clamp(0.0, 1.0);
+                let scaled = normalized * (points.len() - 1) as f64;
+                let segment_index = (scaled.floor() as usize).min(points.len() - 2);
+                return Ok(RawPointConstraint::Polyline {
+                    function_key: host_group.ordinal,
+                    points,
+                    segment_index,
+                    t: scaled - segment_index as f64,
+                });
+            }
+        }
         (
             _,
-            GroupKind::Reflection
+            GroupKind::Rotation
+            | GroupKind::Reflection
+            | GroupKind::Translation
             | GroupKind::Scale
             | GroupKind::CartesianOffsetPoint
             | GroupKind::PolarOffsetPoint
@@ -405,17 +429,29 @@ fn decode_path_point_constraint(
             })
         }
         crate::format::GroupKind::Rotation => {
-            let line_like_kind = transformed_line_like_kind(file, groups, host_group)?;
-            let t = match line_like_kind {
-                LineLikeKind::Segment => wrap_unit_interval(normalized_t),
-                LineLikeKind::Line => normalized_t,
-                LineLikeKind::Ray => normalized_t.max(0.0),
-            };
-            Some(RawPointConstraint::ConstructedLine {
-                host_group_index: host_group.ordinal.checked_sub(1)?,
-                t,
-                line_like_kind,
-            })
+            if let Some(line_like_kind) =
+                transformed_line_like_kind(file, groups, host_group)
+            {
+                let t = match line_like_kind {
+                    LineLikeKind::Segment => wrap_unit_interval(normalized_t),
+                    LineLikeKind::Line => normalized_t,
+                    LineLikeKind::Ray => normalized_t.max(0.0),
+                };
+                Some(RawPointConstraint::ConstructedLine {
+                    host_group_index: host_group.ordinal.checked_sub(1)?,
+                    t,
+                    line_like_kind,
+                })
+            } else {
+                let anchors = anchors?;
+                resolve_circle_like_raw(file, groups, anchors, host_group)?;
+                let angle = std::f64::consts::TAU * wrap_unit_interval(normalized_t);
+                Some(RawPointConstraint::Circular(PointOnCircularConstraint {
+                    circle_group_index: host_group.ordinal.checked_sub(1)?,
+                    unit_x: angle.cos(),
+                    unit_y: angle.sin(),
+                }))
+            }
         }
         crate::format::GroupKind::Circle | crate::format::GroupKind::CircleCenterRadius => {
             let host_path = find_indexed_path(file, host_group)?;

@@ -14,22 +14,24 @@ mod bindings;
 mod constraints;
 
 pub(crate) use anchors::{
-    IterationBindingPointAliasKind, custom_transform_expression_parameter_map,
-    custom_transform_trace_parameter, decode_angle_rotation_anchor_raw,
-    decode_coordinate_expression_anchor_raw, decode_custom_transform_anchor_raw,
-    decode_custom_transform_binding, decode_derived_polar_endpoint_anchor_raw,
-    decode_derived_polar_endpoint_binding, decode_expression_offset_anchor_raw,
-    decode_expression_offset_binding, decode_expression_ratio_scale_binding,
-    decode_expression_rotation_anchor_raw, decode_expression_rotation_binding,
-    decode_graph_calibration_anchor_raw, decode_intersection_anchor_raw,
-    decode_iteration_binding_point_alias_raw, decode_legacy_angle_rotation_anchor_raw,
-    decode_line_midpoint_anchor_raw, decode_offset_anchor_raw,
-    decode_parameter_controlled_anchor_raw, decode_parameter_rotation_anchor_raw,
-    decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,
-    decode_point_pair_translation_anchor_raw, decode_ratio_scale_anchor_raw,
-    decode_reflection_anchor_raw, decode_regular_polygon_vertex_anchor_raw,
-    decode_translated_point_anchor_raw, expression_runtime_context, resolve_circle_like_raw,
-    resolve_line_like_points_raw, translation_point_pair_group_indices,
+    IterationBindingPointAliasKind, boundary_arc_length_raw,
+    custom_transform_expression_parameter_map, custom_transform_trace_parameter,
+    decode_angle_rotation_anchor_raw, decode_coordinate_expression_anchor_raw,
+    decode_custom_transform_anchor_raw, decode_custom_transform_binding,
+    decode_derived_polar_endpoint_anchor_raw, decode_derived_polar_endpoint_binding,
+    decode_directed_angle_anchor_binding, decode_directed_angle_anchor_raw,
+    decode_expression_offset_anchor_raw, decode_expression_offset_binding,
+    decode_expression_ratio_scale_binding, decode_expression_rotation_anchor_raw,
+    decode_expression_rotation_binding, decode_graph_calibration_anchor_raw,
+    decode_intersection_anchor_raw, decode_iteration_binding_point_alias_raw,
+    decode_legacy_angle_rotation_anchor_raw, decode_line_midpoint_anchor_raw,
+    decode_offset_anchor_raw, decode_parameter_controlled_anchor_raw,
+    decode_parameter_rotation_anchor_raw, decode_point_constraint_anchor,
+    decode_point_on_ray_anchor_raw, decode_point_pair_translation_anchor_raw,
+    decode_ratio_scale_anchor_raw, decode_reflection_anchor_raw,
+    decode_regular_polygon_vertex_anchor_raw, decode_translated_point_anchor_raw,
+    expression_runtime_context, resolve_circle_like_raw, resolve_line_like_points_raw,
+    translation_point_pair_group_indices,
 };
 #[allow(unused_imports)]
 pub(crate) use bindings::TransformBinding;
@@ -39,13 +41,14 @@ pub(super) use bindings::{
     collect_standalone_parameter_points, collect_visible_points_checked,
     collect_visible_points_checked_with_context, remap_arc_bindings, remap_circle_bindings,
     remap_label_bindings, remap_line_bindings, remap_polygon_bindings,
-    try_decode_angle_rotation_binding, try_decode_parameter_rotation_binding,
-    try_decode_transform_binding,
+    scene_point_from_parameter_controlled, try_decode_angle_rotation_binding,
+    try_decode_parameter_rotation_binding, try_decode_transform_binding,
 };
 pub(super) use constraints::{
     LegacyCoordinateConstructPoint, RawPointConstraint, decode_translated_point_constraint,
     regular_polygon_angle_expr_for_calc_group, regular_polygon_iteration_step,
-    try_decode_parameter_controlled_point, try_decode_point_constraint,
+    try_decode_parameter_controlled_point, try_decode_parameter_controlled_point_on_polyline,
+    try_decode_point_constraint,
 };
 pub(crate) use constraints::{decode_coordinate_point, decode_legacy_coordinate_construct_point};
 

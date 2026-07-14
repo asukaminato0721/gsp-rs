@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 
 use super::super::decode::{
-    decode_label_name, find_indexed_path, is_circle_group_kind,
+    decode_label_name, find_indexed_path, is_circle_group_kind, is_parameter_control_group,
     try_decode_parameter_control_value_for_group,
 };
 use super::anchors::{
     resolve_circle_like_raw, resolve_circle_point_raw, resolve_line_like_constraint_raw,
-    resolve_polygon_boundary_point_raw,
+    resolve_polygon_boundary_point_raw, sample_coordinate_trace_points_raw, scale_function_expr,
 };
 use super::{
     decode_non_graph_parameter_value_for_group, editable_non_graph_parameter_name_for_group,
@@ -19,7 +19,7 @@ use crate::runtime::functions::{
 };
 use crate::runtime::geometry::{
     GraphTransform, arc_on_circle_control_points, lerp_point, locate_polyline_parameter_by_length,
-    point_on_circle_arc, point_on_three_point_arc, sample_three_point_arc,
+    point_on_circle_arc, point_on_three_point_arc, reflect_across_line, sample_three_point_arc,
     sample_three_point_arc_complement, three_point_arc_geometry, to_raw_from_world, to_world,
 };
 use crate::runtime::payload_consts::{RECORD_BINDING_PAYLOAD, RECORD_FUNCTION_PLOT_DESCRIPTOR};
@@ -95,6 +95,82 @@ pub(crate) enum RawPointConstraint {
     Circular(PointOnCircularConstraint),
     CircleArc(PointOnCircleArcConstraint),
     Arc(PointOnArcConstraint),
+    HostedArc {
+        host_group_index: usize,
+        t: f64,
+    },
+}
+
+pub(crate) fn resolve_arc_points_raw(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    anchors: &[Option<PointRecord>],
+    group: &ObjectGroup,
+    stack: &mut Vec<usize>,
+) -> Option<[PointRecord; 3]> {
+    let group_index = group.ordinal.checked_sub(1)?;
+    if stack.contains(&group_index) {
+        return None;
+    }
+    stack.push(group_index);
+    let result = match group.header.kind() {
+        GroupKind::ThreePointArc => {
+            let path = find_indexed_path(file, group)?;
+            let [start, mid, end] = path.refs.as_slice() else {
+                return None;
+            };
+            Some([
+                anchors.get(start.checked_sub(1)?)?.clone()?,
+                anchors.get(mid.checked_sub(1)?)?.clone()?,
+                anchors.get(end.checked_sub(1)?)?.clone()?,
+            ])
+        }
+        GroupKind::CenterArc => {
+            let path = find_indexed_path(file, group)?;
+            let [center, start, end] = path.refs.as_slice() else {
+                return None;
+            };
+            arc_on_circle_control_points(
+                anchors.get(center.checked_sub(1)?)?.as_ref()?,
+                anchors.get(start.checked_sub(1)?)?.as_ref()?,
+                anchors.get(end.checked_sub(1)?)?.as_ref()?,
+            )
+        }
+        GroupKind::ArcOnCircle => {
+            let path = find_indexed_path(file, group)?;
+            let [circle, start, end] = path.refs.as_slice() else {
+                return None;
+            };
+            let circle_group = groups.get(circle.checked_sub(1)?)?;
+            let center = resolve_circle_like_raw(file, groups, anchors, circle_group)?.center();
+            arc_on_circle_control_points(
+                &center,
+                anchors.get(start.checked_sub(1)?)?.as_ref()?,
+                anchors.get(end.checked_sub(1)?)?.as_ref()?,
+            )
+        }
+        GroupKind::Reflection => {
+            let path = find_indexed_path(file, group)?;
+            let [source, axis] = path.refs.as_slice() else {
+                return None;
+            };
+            let source_group = groups.get(source.checked_sub(1)?)?;
+            let axis_group = groups.get(axis.checked_sub(1)?)?;
+            let (axis_start, axis_end, _) =
+                resolve_line_like_constraint_raw(file, groups, anchors, axis_group)?;
+            Some(
+                resolve_arc_points_raw(file, groups, anchors, source_group, stack)?
+                    .map(|point| reflect_across_line(&point, &axis_start, &axis_end))
+                    .into_iter()
+                    .collect::<Option<Vec<_>>>()?
+                    .try_into()
+                    .ok()?,
+            )
+        }
+        _ => None,
+    };
+    stack.pop();
+    result
 }
 
 pub(crate) struct ParameterControlledPoint {
@@ -107,6 +183,18 @@ pub(crate) struct ParameterControlledPoint {
     pub(crate) source_expr: Option<FunctionExpr>,
     pub(crate) source_expr_absolute_parameter: bool,
     pub(crate) source_parameters: Vec<ParameterControlledSource>,
+    pub(crate) source_group_ordinal: usize,
+}
+
+struct ParameterControlledValue {
+    parameter_name: String,
+    parameter_value: f64,
+    source_point_group_index: Option<usize>,
+    source_parameter_segment_group_indices: Option<(usize, usize)>,
+    source_ratio_group_indices: Option<(usize, usize, usize)>,
+    source_expr: Option<FunctionExpr>,
+    source_expr_absolute_parameter: bool,
+    source_parameters: Vec<ParameterControlledSource>,
 }
 
 #[derive(Clone)]
@@ -298,6 +386,25 @@ fn parameter_anchor_value(
             Some((start_group_index, end_group_index)),
         ));
     }
+    if path
+        .refs
+        .get(1)
+        .and_then(|ordinal| groups.get(ordinal.saturating_sub(1)))
+        .is_some_and(|host| host.header.kind() == GroupKind::PointTrace)
+    {
+        let t = point_group
+            .records
+            .iter()
+            .find(|record| record.record_type == RECORD_BINDING_PAYLOAD)
+            .map(|record| record.payload(&file.data))
+            .filter(|payload| payload.len() >= 12)
+            .map(|payload| read_f64(payload, 4))
+            .filter(|value| value.is_finite())?;
+        let name = decode_label_name(file, group)
+            .or_else(|| decode_label_name(file, point_group))
+            .unwrap_or_default();
+        return Some((name, wrap_unit_interval(t), point_group_index, None));
+    }
     if let Some(host_group) = path
         .refs
         .get(1)
@@ -352,6 +459,7 @@ fn parameter_anchor_value(
         RawPointConstraint::CircleArc(_) => return None,
         RawPointConstraint::Arc(_) => return None,
         RawPointConstraint::Polyline { .. } => return None,
+        RawPointConstraint::HostedArc { t, .. } => t,
     };
     let name = decode_label_name(file, group)
         .or_else(|| decode_label_name(file, point_group))
@@ -686,7 +794,7 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 .ok_or(ParameterControlledPointDecodeError::MissingHostGroup)?,
         )
         .ok_or(ParameterControlledPointDecodeError::MissingHostGroup)?;
-    let (
+    let ParameterControlledValue {
         parameter_name,
         parameter_value,
         source_point_group_index,
@@ -694,149 +802,8 @@ pub(crate) fn try_decode_parameter_controlled_point(
         source_ratio_group_indices,
         source_expr,
         source_expr_absolute_parameter,
-    ): (
-        String,
-        f64,
-        Option<usize>,
-        Option<(usize, usize)>,
-        Option<(usize, usize, usize)>,
-        Option<FunctionExpr>,
-        bool,
-    ) = if (source_group.header.kind()) == crate::format::GroupKind::Point {
-        (
-            decode_label_name(file, source_group)
-                .ok_or(ParameterControlledPointDecodeError::InvalidSource)?,
-            try_decode_parameter_control_value_for_group(file, groups, source_group)
-                .ok()
-                .ok_or(ParameterControlledPointDecodeError::InvalidSource)?,
-            None,
-            None,
-            None,
-            None,
-            false,
-        )
-    } else if (source_group.header.kind()) == crate::format::GroupKind::ParameterAnchor {
-        let (_name, value, point_group_index, segment_group_indices) =
-            parameter_anchor_value(file, groups, source_group, anchors)
-                .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
-        (
-            String::new(),
-            value,
-            Some(point_group_index),
-            segment_group_indices,
-            None,
-            None,
-            false,
-        )
-    } else if (source_group.header.kind()) == crate::format::GroupKind::RatioValue {
-        let source_path = find_indexed_path(file, source_group)
-            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
-        let [origin, denominator, numerator, ..] = source_path.refs.as_slice() else {
-            return Err(ParameterControlledPointDecodeError::InvalidSource);
-        };
-        let origin_index = origin
-            .checked_sub(1)
-            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
-        let denominator_index = denominator
-            .checked_sub(1)
-            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
-        let numerator_index = numerator
-            .checked_sub(1)
-            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
-        let origin = anchors
-            .get(origin_index)
-            .and_then(Option::as_ref)
-            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
-        let denominator = anchors
-            .get(denominator_index)
-            .and_then(Option::as_ref)
-            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
-        let numerator = anchors
-            .get(numerator_index)
-            .and_then(Option::as_ref)
-            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
-        let denominator_length = (denominator.x - origin.x).hypot(denominator.y - origin.y);
-        if denominator_length <= 1e-9 {
-            return Err(ParameterControlledPointDecodeError::InvalidSource);
-        }
-        let parameter_value =
-            (numerator.x - origin.x).hypot(numerator.y - origin.y) / denominator_length;
-        (
-            String::new(),
-            parameter_value.min(1.0),
-            None,
-            None,
-            Some((origin_index, denominator_index, numerator_index)),
-            None,
-            false,
-        )
-    } else if (source_group.header.kind()) == crate::format::GroupKind::FunctionExpr {
-        let (expr, source_expr_absolute_parameter) =
-            try_decode_parameter_control_expr(file, groups, source_group)
-                .map_err(|_| ParameterControlledPointDecodeError::InvalidSource)?;
-        let source_path = find_indexed_path(file, source_group)
-            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
-        let mut parameters = BTreeMap::new();
-        let mut source_point_group_index = None;
-        let mut source_parameter_segment_group_indices = None;
-        let mut anchor_parameter_name = None;
-        let mut anchor_parameter_value = None;
-        for object_ref in &source_path.refs {
-            let ref_group = groups
-                .get(
-                    object_ref
-                        .checked_sub(1)
-                        .ok_or(ParameterControlledPointDecodeError::InvalidSource)?,
-                )
-                .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
-            match ref_group.header.kind() {
-                crate::format::GroupKind::Point => {
-                    let name = decode_label_name(file, ref_group)
-                        .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
-                    let value =
-                        try_decode_parameter_control_value_for_group(file, groups, ref_group)
-                            .ok()
-                            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
-                    parameters.insert(name, value);
-                }
-                crate::format::GroupKind::ParameterAnchor => {
-                    let (name, value, point_group_index, segment_group_indices) =
-                        parameter_anchor_value(file, groups, ref_group, anchors)
-                            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
-                    if !name.is_empty() {
-                        anchor_parameter_name = Some(name.clone());
-                        anchor_parameter_value = Some(value);
-                        parameters.insert(name, value);
-                    }
-                    source_point_group_index.get_or_insert(point_group_index);
-                    if let Some(segment_group_indices) = segment_group_indices {
-                        source_parameter_segment_group_indices.get_or_insert(segment_group_indices);
-                    }
-                }
-                _ => {}
-            }
-        }
-        let mut value = evaluate_expr_with_parameters(&expr, 0.0, &parameters)
-            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
-        if !source_expr_absolute_parameter
-            && let (Some(_), Some(anchor_value)) =
-                (anchor_parameter_name.as_ref(), anchor_parameter_value)
-        {
-            value += anchor_value;
-        }
-        (
-            anchor_parameter_name.unwrap_or_default(),
-            wrap_unit_interval(value),
-            source_point_group_index,
-            source_parameter_segment_group_indices,
-            None,
-            Some(expr),
-            source_expr_absolute_parameter,
-        )
-    } else {
-        return Err(ParameterControlledPointDecodeError::InvalidSource);
-    };
-    let source_parameters = parameter_controlled_sources(file, groups, source_group);
+        source_parameters,
+    } = decode_parameter_controlled_value(file, groups, source_group, anchors)?;
 
     match host_group.header.kind() {
         crate::format::GroupKind::Segment
@@ -888,6 +855,7 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 source_expr: source_expr.clone(),
                 source_expr_absolute_parameter,
                 source_parameters: source_parameters.clone(),
+                source_group_ordinal: source_group.ordinal,
             })
         }
         crate::format::GroupKind::PerpendicularLine
@@ -922,6 +890,7 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 source_expr: source_expr.clone(),
                 source_expr_absolute_parameter,
                 source_parameters: source_parameters.clone(),
+                source_group_ordinal: source_group.ordinal,
             })
         }
         crate::format::GroupKind::Polygon => {
@@ -956,6 +925,7 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 source_expr: source_expr.clone(),
                 source_expr_absolute_parameter,
                 source_parameters: source_parameters.clone(),
+                source_group_ordinal: source_group.ordinal,
             })
         }
         crate::format::GroupKind::Circle => {
@@ -997,6 +967,7 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 source_expr: source_expr.clone(),
                 source_expr_absolute_parameter,
                 source_parameters: source_parameters.clone(),
+                source_group_ordinal: source_group.ordinal,
             })
         }
         crate::format::GroupKind::ThreePointArc => {
@@ -1044,6 +1015,7 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 source_expr: source_expr.clone(),
                 source_expr_absolute_parameter,
                 source_parameters: source_parameters.clone(),
+                source_group_ordinal: source_group.ordinal,
             })
         }
         crate::format::GroupKind::ArcOnCircle => {
@@ -1106,6 +1078,7 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 source_expr: source_expr.clone(),
                 source_expr_absolute_parameter,
                 source_parameters: source_parameters.clone(),
+                source_group_ordinal: source_group.ordinal,
             })
         }
         crate::format::GroupKind::CenterArc => {
@@ -1154,10 +1127,271 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 source_expr,
                 source_expr_absolute_parameter,
                 source_parameters,
+                source_group_ordinal: source_group.ordinal,
+            })
+        }
+        crate::format::GroupKind::Reflection => {
+            let normalized = wrap_unit_interval(parameter_value);
+            let points = resolve_arc_points_raw(file, groups, anchors, host_group, &mut Vec::new())
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let position = point_on_three_point_arc(&points[0], &points[1], &points[2], normalized)
+                .unwrap_or_else(|| points[0].clone());
+            Ok(ParameterControlledPoint {
+                position,
+                constraint: RawPointConstraint::HostedArc {
+                    host_group_index: path.refs[1]
+                        .checked_sub(1)
+                        .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?,
+                    t: normalized,
+                },
+                parameter_name,
+                source_point_group_index,
+                source_parameter_segment_group_indices,
+                source_ratio_group_indices,
+                source_expr,
+                source_expr_absolute_parameter,
+                source_parameters,
+                source_group_ordinal: source_group.ordinal,
             })
         }
         _ => Err(ParameterControlledPointDecodeError::InvalidHostGeometry),
     }
+}
+
+pub(crate) fn try_decode_parameter_controlled_point_on_polyline(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+    function_key: usize,
+    points: &[PointRecord],
+) -> Result<ParameterControlledPoint, ParameterControlledPointDecodeError> {
+    if group.header.kind() != GroupKind::ParameterControlledPoint {
+        return Err(
+            ParameterControlledPointDecodeError::NotParameterControlledPoint(group.header.kind()),
+        );
+    }
+    if points.len() < 2 {
+        return Err(ParameterControlledPointDecodeError::InvalidHostGeometry);
+    }
+    let path =
+        find_indexed_path(file, group).ok_or(ParameterControlledPointDecodeError::MissingPath)?;
+    let source_group = path
+        .refs
+        .first()
+        .and_then(|ordinal| groups.get(ordinal.saturating_sub(1)))
+        .ok_or(ParameterControlledPointDecodeError::MissingSourceGroup)?;
+    let host_group = path
+        .refs
+        .get(1)
+        .and_then(|ordinal| groups.get(ordinal.saturating_sub(1)))
+        .ok_or(ParameterControlledPointDecodeError::MissingHostGroup)?;
+    if host_group.header.kind() != GroupKind::PointTrace || host_group.ordinal != function_key {
+        return Err(ParameterControlledPointDecodeError::InvalidHostGeometry);
+    }
+    let value = decode_parameter_controlled_value(file, groups, source_group, anchors)?;
+    let normalized = wrap_unit_interval(value.parameter_value);
+    let scaled = normalized * (points.len() - 1) as f64;
+    let segment_index = (scaled.floor() as usize).min(points.len() - 2);
+    let t = scaled - segment_index as f64;
+    let position = lerp_point(&points[segment_index], &points[segment_index + 1], t);
+    Ok(ParameterControlledPoint {
+        position,
+        constraint: RawPointConstraint::Polyline {
+            function_key,
+            points: points.to_vec(),
+            segment_index,
+            t,
+        },
+        parameter_name: value.parameter_name,
+        source_point_group_index: value.source_point_group_index,
+        source_parameter_segment_group_indices: value.source_parameter_segment_group_indices,
+        source_ratio_group_indices: value.source_ratio_group_indices,
+        source_expr: value.source_expr,
+        source_expr_absolute_parameter: value.source_expr_absolute_parameter,
+        source_parameters: value.source_parameters,
+        source_group_ordinal: source_group.ordinal,
+    })
+}
+
+fn decode_parameter_controlled_value(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    source_group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Result<ParameterControlledValue, ParameterControlledPointDecodeError> {
+    let mut value = match source_group.header.kind() {
+        GroupKind::Point => ParameterControlledValue {
+            parameter_name: decode_label_name(file, source_group)
+                .ok_or(ParameterControlledPointDecodeError::InvalidSource)?,
+            parameter_value: try_decode_parameter_control_value_for_group(
+                file,
+                groups,
+                source_group,
+            )
+            .ok()
+            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?,
+            source_point_group_index: None,
+            source_parameter_segment_group_indices: None,
+            source_ratio_group_indices: None,
+            source_expr: None,
+            source_expr_absolute_parameter: false,
+            source_parameters: Vec::new(),
+        },
+        GroupKind::ParameterAnchor => {
+            let (_name, parameter_value, point_group_index, segment_group_indices) =
+                parameter_anchor_value(file, groups, source_group, anchors)
+                    .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+            ParameterControlledValue {
+                parameter_name: String::new(),
+                parameter_value,
+                source_point_group_index: Some(point_group_index),
+                source_parameter_segment_group_indices: segment_group_indices,
+                source_ratio_group_indices: None,
+                source_expr: None,
+                source_expr_absolute_parameter: false,
+                source_parameters: Vec::new(),
+            }
+        }
+        GroupKind::RatioValue => {
+            let (parameter_name, parameter_value, group_indices) =
+                parameter_controlled_ratio_value(file, source_group, anchors)?;
+            ParameterControlledValue {
+                parameter_name,
+                parameter_value: parameter_value.min(1.0),
+                source_point_group_index: None,
+                source_parameter_segment_group_indices: None,
+                source_ratio_group_indices: Some(group_indices),
+                source_expr: None,
+                source_expr_absolute_parameter: false,
+                source_parameters: Vec::new(),
+            }
+        }
+        GroupKind::FunctionExpr => {
+            let (expr, source_expr_absolute_parameter) =
+                try_decode_parameter_control_expr(file, groups, source_group)
+                    .map_err(|_| ParameterControlledPointDecodeError::InvalidSource)?;
+            let source_path = find_indexed_path(file, source_group)
+                .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+            let mut parameters = BTreeMap::new();
+            let mut source_point_group_index = None;
+            let mut source_parameter_segment_group_indices = None;
+            let mut anchor_parameter_name = None;
+            let mut anchor_parameter_value = None;
+            for object_ref in &source_path.refs {
+                let ref_group = groups
+                    .get(
+                        object_ref
+                            .checked_sub(1)
+                            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?,
+                    )
+                    .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+                match ref_group.header.kind() {
+                    GroupKind::Point => {
+                        let name = decode_label_name(file, ref_group)
+                            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+                        let parameter_value =
+                            try_decode_parameter_control_value_for_group(file, groups, ref_group)
+                                .ok()
+                                .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+                        parameters.insert(name, parameter_value);
+                    }
+                    GroupKind::ParameterAnchor => {
+                        let (name, parameter_value, point_group_index, segment_group_indices) =
+                            parameter_anchor_value(file, groups, ref_group, anchors)
+                                .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+                        if !name.is_empty() {
+                            anchor_parameter_name = Some(name.clone());
+                            anchor_parameter_value = Some(parameter_value);
+                            parameters.insert(name, parameter_value);
+                        }
+                        source_point_group_index.get_or_insert(point_group_index);
+                        if let Some(segment_group_indices) = segment_group_indices {
+                            source_parameter_segment_group_indices
+                                .get_or_insert(segment_group_indices);
+                        }
+                    }
+                    GroupKind::RatioValue => {
+                        let ratio_expr = try_decode_function_expr(file, groups, ref_group)
+                            .map_err(|_| ParameterControlledPointDecodeError::InvalidSource)?;
+                        let name = decode_label_name(file, ref_group).unwrap_or_else(|| {
+                            crate::runtime::functions::function_expr_label(ratio_expr.clone())
+                        });
+                        let parameter_value =
+                            evaluate_expr_with_parameters(&ratio_expr, 0.0, &BTreeMap::new())
+                                .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+                        parameters.insert(name, parameter_value);
+                    }
+                    _ => {}
+                }
+            }
+            let mut parameter_value = evaluate_expr_with_parameters(&expr, 0.0, &parameters)
+                .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+            if !source_expr_absolute_parameter
+                && let (Some(_), Some(anchor_value)) =
+                    (anchor_parameter_name.as_ref(), anchor_parameter_value)
+            {
+                parameter_value += anchor_value;
+            }
+            ParameterControlledValue {
+                parameter_name: anchor_parameter_name.unwrap_or_default(),
+                parameter_value: wrap_unit_interval(parameter_value),
+                source_point_group_index,
+                source_parameter_segment_group_indices,
+                source_ratio_group_indices: None,
+                source_expr: Some(expr),
+                source_expr_absolute_parameter,
+                source_parameters: Vec::new(),
+            }
+        }
+        _ => return Err(ParameterControlledPointDecodeError::InvalidSource),
+    };
+    value.source_parameters = parameter_controlled_sources(file, groups, source_group);
+    Ok(value)
+}
+
+fn parameter_controlled_ratio_value(
+    file: &GspFile,
+    source_group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Result<(String, f64, (usize, usize, usize)), ParameterControlledPointDecodeError> {
+    let source_path = find_indexed_path(file, source_group)
+        .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+    let [origin, denominator, numerator, ..] = source_path.refs.as_slice() else {
+        return Err(ParameterControlledPointDecodeError::InvalidSource);
+    };
+    let origin_index = origin
+        .checked_sub(1)
+        .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+    let denominator_index = denominator
+        .checked_sub(1)
+        .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+    let numerator_index = numerator
+        .checked_sub(1)
+        .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+    let origin = anchors
+        .get(origin_index)
+        .and_then(Option::as_ref)
+        .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+    let denominator = anchors
+        .get(denominator_index)
+        .and_then(Option::as_ref)
+        .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+    let numerator = anchors
+        .get(numerator_index)
+        .and_then(Option::as_ref)
+        .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+    let denominator_length = (denominator.x - origin.x).hypot(denominator.y - origin.y);
+    if denominator_length <= 1e-9 {
+        return Err(ParameterControlledPointDecodeError::InvalidSource);
+    }
+    let parameter_value =
+        (numerator.x - origin.x).hypot(numerator.y - origin.y) / denominator_length;
+    Ok((
+        decode_label_name(file, source_group).unwrap_or_default(),
+        parameter_value,
+        (origin_index, denominator_index, numerator_index),
+    ))
 }
 
 fn parameter_controlled_sources(
@@ -1388,6 +1622,38 @@ pub(crate) fn decode_coordinate_point(
                     _ => crate::runtime::scene::CoordinateAxis::Horizontal,
                 },
             };
+            if is_parameter_control_group(calc_group) {
+                let raw_per_unit = graph
+                    .as_ref()
+                    .map_or(crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT, |transform| {
+                        transform.raw_per_unit
+                    });
+                let raw_scale = match axis {
+                    crate::runtime::scene::CoordinateAxis::Horizontal => raw_per_unit,
+                    crate::runtime::scene::CoordinateAxis::Vertical => -raw_per_unit,
+                };
+                let expr = scale_function_expr(expr, raw_scale);
+                let offset = evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new())?;
+                let position = match axis {
+                    crate::runtime::scene::CoordinateAxis::Horizontal => PointRecord {
+                        x: source_position.x + offset,
+                        y: source_position.y,
+                    },
+                    crate::runtime::scene::CoordinateAxis::Vertical => PointRecord {
+                        x: source_position.x,
+                        y: source_position.y + offset,
+                    },
+                };
+                return Some(CoordinatePoint {
+                    position,
+                    source: CoordinatePointSource::SourcePoint {
+                        source_group_index,
+                        parameter_name: decode_label_name(file, calc_group).unwrap_or_default(),
+                        axis,
+                    },
+                    expr,
+                });
+            }
             let parameter_group = first_path_group(file, groups, calc_group)?;
             let parameter_name = decode_label_name(file, parameter_group)?;
             let world = match axis {
@@ -1796,6 +2062,23 @@ fn coordinate_parameter_binding(
     parameter_group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
 ) -> Option<(String, f64, FunctionExpr)> {
+    if matches!(
+        parameter_group.header.kind(),
+        GroupKind::CoordinateXValue | GroupKind::CoordinateYValue
+    ) {
+        let value = anchors
+            .get(parameter_group.ordinal.checked_sub(1)?)?
+            .as_ref()?
+            .x;
+        let name = decode_label_name(file, parameter_group)
+            .unwrap_or_else(|| format!("__coordinate_value_{}", parameter_group.ordinal));
+        return Some((
+            name.clone(),
+            value,
+            FunctionExpr::Parsed(FunctionAst::Parameter(name, value)),
+        ));
+    }
+
     if let Some(name) = decode_label_name(file, parameter_group)
         && let Ok(value) =
             try_decode_parameter_control_value_for_group(file, groups, parameter_group)
@@ -1821,6 +2104,13 @@ fn coordinate_parameter_binding(
             value,
             FunctionExpr::Parsed(FunctionAst::Parameter(name, value)),
         ));
+    }
+
+    if let Ok(expr) = try_decode_function_expr(file, groups, parameter_group) {
+        let value = evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new())?;
+        let name = decode_label_name(file, parameter_group)
+            .unwrap_or_else(|| crate::runtime::functions::function_expr_label(expr.clone()));
+        return Some((name, value, expr));
     }
 
     None

@@ -1,4 +1,5 @@
 use crate::format::PointRecord;
+use std::collections::BTreeMap;
 
 use super::functions::{FunctionExpr, FunctionPlotDescriptor};
 use super::geometry::Bounds;
@@ -513,9 +514,18 @@ pub(crate) enum ScenePointConstraint {
         end_index: usize,
         t: f64,
     },
+    OnArcConstraint {
+        arc: ArcConstraint,
+        t: f64,
+    },
     LineIntersection {
         left: LineConstraint,
         right: LineConstraint,
+    },
+    LinePolygonIntersection {
+        line: LineConstraint,
+        vertex_indices: Vec<usize>,
+        variant: usize,
     },
     LineTraceIntersection {
         line: LineConstraint,
@@ -567,6 +577,29 @@ pub(crate) enum ScenePointConstraint {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) enum ArcConstraint {
+    CenterArc {
+        center_index: usize,
+        start_index: usize,
+        end_index: usize,
+    },
+    CircleArc {
+        circle: CircularConstraint,
+        start_index: usize,
+        end_index: usize,
+    },
+    ThreePointArc {
+        start_index: usize,
+        mid_index: usize,
+        end_index: usize,
+    },
+    Reflected {
+        arc: Box<ArcConstraint>,
+        axis: LineConstraint,
+    },
+}
+
+#[derive(Debug, Clone)]
 pub(crate) enum CircularConstraint {
     Circle {
         center_index: usize,
@@ -587,6 +620,7 @@ pub(crate) enum CircularConstraint {
         center_index: usize,
         expr: FunctionExpr,
         initial_value: f64,
+        parameter_group_ordinals: BTreeMap<String, usize>,
     },
     TranslateCircle {
         source: Box<CircularConstraint>,
@@ -603,6 +637,11 @@ pub(crate) enum CircularConstraint {
         source: Box<CircularConstraint>,
         center_index: usize,
         factor: f64,
+    },
+    RotateCircle {
+        source: Box<CircularConstraint>,
+        center_index: usize,
+        angle_degrees: f64,
     },
     CircleArc {
         center_index: usize,
@@ -796,6 +835,7 @@ pub(crate) enum LineBinding {
     },
     CoordinateTrace {
         point_index: usize,
+        parameter_group_ordinal: usize,
         x_min: f64,
         x_max: f64,
         sample_count: usize,
@@ -906,11 +946,20 @@ pub(crate) enum ScenePointBinding {
         expr: FunctionExpr,
         absolute_value: bool,
         expression_sources: Vec<ScenePointParameterSource>,
+        expression_parameter_group_ordinals: BTreeMap<String, usize>,
     },
     Translate {
         source_index: usize,
         vector_start_index: usize,
         vector_end_index: usize,
+    },
+    DirectedAngleAnchor {
+        first_start_index: usize,
+        first_end_index: usize,
+        second_start_index: usize,
+        second_end_index: usize,
+        distance: f64,
+        parameter: f64,
     },
     Reflect {
         source_index: usize,
@@ -987,6 +1036,7 @@ pub(crate) enum ScenePointBinding {
     PolarOffset {
         source_index: usize,
         distance_expr: FunctionExpr,
+        distance_parameter_group_ordinals: BTreeMap<String, usize>,
         x_scale: f64,
         y_scale: f64,
     },
@@ -1084,6 +1134,10 @@ pub(crate) enum ArcBinding {
         mid_index: usize,
         end_index: usize,
     },
+    DerivedTransform {
+        source_index: usize,
+        transform: ShapeTransformBinding,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -1140,6 +1194,7 @@ pub(crate) enum ShapeBinding {
     ExpressionRadiusCircle {
         center_index: usize,
         expr: FunctionExpr,
+        parameter_group_ordinals: BTreeMap<String, usize>,
     },
     DerivedTransform {
         source_index: usize,

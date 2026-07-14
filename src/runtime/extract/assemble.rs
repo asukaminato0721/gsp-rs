@@ -184,12 +184,27 @@ pub(super) fn build_world_data(
                     end_index: *end_index,
                     t: *t,
                 },
+                ScenePointConstraint::OnArcConstraint { arc, t } => {
+                    ScenePointConstraint::OnArcConstraint {
+                        arc: clone_arc_constraint(arc),
+                        t: *t,
+                    }
+                }
                 ScenePointConstraint::LineIntersection { left, right } => {
                     ScenePointConstraint::LineIntersection {
                         left: clone_line_constraint(left),
                         right: clone_line_constraint(right),
                     }
                 }
+                ScenePointConstraint::LinePolygonIntersection {
+                    line,
+                    vertex_indices,
+                    variant,
+                } => ScenePointConstraint::LinePolygonIntersection {
+                    line: clone_line_constraint(line),
+                    vertex_indices: vertex_indices.clone(),
+                    variant: *variant,
+                },
                 ScenePointConstraint::LineTraceIntersection {
                     line,
                     trace_key,
@@ -278,7 +293,27 @@ pub(super) fn build_world_data(
                     variant: *variant,
                 },
             },
-            binding: point.binding.clone(),
+            binding: match &point.binding {
+                Some(ScenePointBinding::DirectedAngleAnchor {
+                    first_start_index,
+                    first_end_index,
+                    second_start_index,
+                    second_end_index,
+                    distance,
+                    parameter,
+                }) => Some(ScenePointBinding::DirectedAngleAnchor {
+                    first_start_index: *first_start_index,
+                    first_end_index: *first_end_index,
+                    second_start_index: *second_start_index,
+                    second_end_index: *second_end_index,
+                    distance: analysis
+                        .graph_ref
+                        .as_ref()
+                        .map_or(*distance, |transform| distance / transform.raw_per_unit),
+                    parameter: *parameter,
+                }),
+                binding => binding.clone(),
+            },
             debug: point.debug.clone(),
         })
         .collect::<Vec<_>>();
@@ -357,6 +392,45 @@ pub(super) fn build_world_data(
         world_points,
         world_point_positions,
         point_iterations,
+    }
+}
+
+fn clone_arc_constraint(
+    arc: &crate::runtime::scene::ArcConstraint,
+) -> crate::runtime::scene::ArcConstraint {
+    use crate::runtime::scene::ArcConstraint;
+    match arc {
+        ArcConstraint::CenterArc {
+            center_index,
+            start_index,
+            end_index,
+        } => ArcConstraint::CenterArc {
+            center_index: *center_index,
+            start_index: *start_index,
+            end_index: *end_index,
+        },
+        ArcConstraint::CircleArc {
+            circle,
+            start_index,
+            end_index,
+        } => ArcConstraint::CircleArc {
+            circle: clone_circular_constraint(circle),
+            start_index: *start_index,
+            end_index: *end_index,
+        },
+        ArcConstraint::ThreePointArc {
+            start_index,
+            mid_index,
+            end_index,
+        } => ArcConstraint::ThreePointArc {
+            start_index: *start_index,
+            mid_index: *mid_index,
+            end_index: *end_index,
+        },
+        ArcConstraint::Reflected { arc, axis } => ArcConstraint::Reflected {
+            arc: Box::new(clone_arc_constraint(arc)),
+            axis: clone_line_constraint(axis),
+        },
     }
 }
 
@@ -454,10 +528,12 @@ fn clone_circular_constraint(constraint: &CircularConstraint) -> CircularConstra
             center_index,
             expr,
             initial_value,
+            parameter_group_ordinals,
         } => CircularConstraint::ExpressionRadiusCircle {
             center_index: *center_index,
             expr: expr.clone(),
             initial_value: *initial_value,
+            parameter_group_ordinals: parameter_group_ordinals.clone(),
         },
         CircularConstraint::TranslateCircle { source, dx, dy } => {
             CircularConstraint::TranslateCircle {
@@ -485,6 +561,15 @@ fn clone_circular_constraint(constraint: &CircularConstraint) -> CircularConstra
             source: Box::new(clone_circular_constraint(source)),
             center_index: *center_index,
             factor: *factor,
+        },
+        CircularConstraint::RotateCircle {
+            source,
+            center_index,
+            angle_degrees,
+        } => CircularConstraint::RotateCircle {
+            source: Box::new(clone_circular_constraint(source)),
+            center_index: *center_index,
+            angle_degrees: *angle_degrees,
         },
         CircularConstraint::CircleArc {
             center_index,
