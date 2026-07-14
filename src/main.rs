@@ -163,8 +163,6 @@ fn worker_args_for_job(config: &Config, job: &gsp_rs::RenderJob) -> Vec<OsString
     let mut args = Vec::new();
     if config.mode == CompileMode::HtmlOnly {
         args.push(OsString::from("--html"));
-    } else {
-        args.push(OsString::from("--no-upload"));
     }
     args.push(job.gsp_path.as_os_str().to_owned());
     args
@@ -275,6 +273,26 @@ mod tests {
         assert_eq!(
             args,
             vec![OsString::from("--html"), OsString::from("sample.gsp")]
+        );
+    }
+
+    #[test]
+    fn standard_worker_does_not_enable_upload() {
+        let config = Config {
+            jobs: vec![],
+            render_width: 800,
+            render_height: 600,
+            upload_url: Some("https://example.test/upload".to_string()),
+            mode: CompileMode::Standard,
+        };
+        let job = RenderJob {
+            gsp_path: PathBuf::from("sample.gsp"),
+            html_path: PathBuf::from("sample.html"),
+        };
+
+        assert_eq!(
+            worker_args_for_job(&config, &job),
+            vec![OsString::from("sample.gsp")]
         );
     }
 }

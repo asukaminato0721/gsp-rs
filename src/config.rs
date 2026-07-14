@@ -40,13 +40,13 @@ impl Config {
 
         let mut mode = CompileMode::Standard;
         let mut jobs = Vec::new();
-        let mut upload_url = Some(DEFAULT_UPLOAD_URL.to_string());
+        let mut upload_url = None;
         let mut index = 0usize;
         while index < raw_args.len() {
             let arg = raw_args[index].to_string_lossy();
             match arg.as_ref() {
-                "--no-upload" => {
-                    upload_url = None;
+                "--upload" => {
+                    upload_url = Some(DEFAULT_UPLOAD_URL.to_string());
                 }
                 "--html" => {
                     mode = CompileMode::HtmlOnly;
@@ -84,8 +84,9 @@ impl Config {
 
     pub fn usage() -> String {
         [
-            "usage: gsp-rs [--no-upload] [--html] <path/to/file1.gsp> [path/to/file2.gsp ...]",
+            "usage: gsp-rs [--upload] [--html] <path/to/file1.gsp> [path/to/file2.gsp ...]",
             "",
+            "--upload uploads each successfully compiled .gsp file.",
             "--html only writes the bundled .html output.",
         ]
         .join("\n")
@@ -114,10 +115,7 @@ mod tests {
             ]
         );
         assert_eq!(config.mode, CompileMode::Standard);
-        assert_eq!(
-            config.upload_url.as_deref(),
-            Some(super::DEFAULT_UPLOAD_URL)
-        );
+        assert_eq!(config.upload_url, None);
     }
 
     #[test]
@@ -127,9 +125,12 @@ mod tests {
     }
 
     #[test]
-    fn no_upload_flag_disables_default_upload() {
-        let config = Config::parse(["--no-upload", "a.gsp"].into_iter()).expect("config parses");
-        assert_eq!(config.upload_url, None);
+    fn upload_flag_enables_upload() {
+        let config = Config::parse(["--upload", "a.gsp"].into_iter()).expect("config parses");
+        assert_eq!(
+            config.upload_url.as_deref(),
+            Some(super::DEFAULT_UPLOAD_URL)
+        );
     }
 
     #[test]
@@ -154,12 +155,9 @@ mod tests {
     }
 
     #[test]
-    fn default_upload_applies_without_explicit_flags() {
+    fn upload_is_disabled_without_explicit_flag() {
         let config = Config::parse(["a.gsp"].into_iter()).expect("config parses");
-        assert_eq!(
-            config.upload_url.as_deref(),
-            Some(super::DEFAULT_UPLOAD_URL)
-        );
+        assert_eq!(config.upload_url, None);
     }
 
     #[test]
