@@ -1,8 +1,8 @@
 use gsp_runtime_core::object_graph::{ObjectDefinition, ObjectGraph, ObjectNode};
 use gsp_runtime_core::{
     AffineTargetHandle, CoordinateTraceMode, FunctionAst, FunctionExpr, LineKind, ObjectExpression,
-    ObjectIterationProgram, ObjectOp, ObjectProgram, ObjectValue, PlotMode, Point, TraceDriver,
-    expression_parameter_names,
+    ObjectIterationProgram, ObjectOp, ObjectProgram, ObjectTransform, ObjectValue, PlotMode, Point,
+    TraceDriver, expression_parameter_names,
 };
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -661,16 +661,12 @@ impl Builder {
                 start_index,
                 end_index,
                 line_kind,
-            } => self.derived(
+            } => self.point_line_parameter(
                 id,
-                ObjectOp::PointLineParameter {
-                    line_kind: core_line_kind(line_kind),
-                },
-                [
-                    point_id(point_index),
-                    point_id(start_index),
-                    point_id(end_index),
-                ],
+                point_index,
+                start_index,
+                end_index,
+                core_line_kind(line_kind),
             ),
             SceneScalarBinding::PointCircleParameter {
                 point_index,
@@ -749,6 +745,27 @@ impl Builder {
 
     fn derived(&mut self, id: String, op: ObjectOp, parents: impl IntoIterator<Item = String>) {
         self.nodes.push(ObjectNode::derived(id, op, parents));
+    }
+
+    fn point_line_parameter(
+        &mut self,
+        id: String,
+        point_index: usize,
+        start_index: usize,
+        end_index: usize,
+        line_kind: LineKind,
+    ) {
+        let line_id = format!("domain:{id}:line");
+        self.derived(
+            line_id.clone(),
+            ObjectOp::Line { line_kind },
+            [point_id(start_index), point_id(end_index)],
+        );
+        self.derived(
+            id,
+            ObjectOp::PointLineParameter,
+            [point_id(point_index), line_id],
+        );
     }
 
     fn pending_source(&mut self, id: String, operation: &str, value: ObjectValue) {
@@ -881,20 +898,12 @@ impl Builder {
                 end_index,
                 line_kind,
                 ..
-            } => self.derived(
+            } => self.point_line_parameter(
                 id,
-                ObjectOp::PointLineParameter {
-                    line_kind: match line_kind {
-                        LineLikeKind::Segment => LineKind::Segment,
-                        LineLikeKind::Line => LineKind::Line,
-                        LineLikeKind::Ray => LineKind::Ray,
-                    },
-                },
-                [
-                    point_id(*point_index),
-                    point_id(*start_index),
-                    point_id(*end_index),
-                ],
+                *point_index,
+                *start_index,
+                *end_index,
+                core_line_kind(*line_kind),
             ),
             TextLabelBinding::ExpressionValue {
                 expr,
@@ -1476,16 +1485,12 @@ impl Builder {
                             match (source_parameter_start_index, source_parameter_end_index) {
                                 (Some(start_index), Some(end_index)) => {
                                     let primary_id = format!("{parameter_id}:primary");
-                                    self.derived(
+                                    self.point_line_parameter(
                                         primary_id.clone(),
-                                        ObjectOp::PointLineParameter {
-                                            line_kind: LineKind::Segment,
-                                        },
-                                        [
-                                            point_id(*source_index),
-                                            point_id(*start_index),
-                                            point_id(*end_index),
-                                        ],
+                                        *source_index,
+                                        *start_index,
+                                        *end_index,
+                                        LineKind::Segment,
                                     );
                                     Some(primary_id)
                                 }
@@ -1514,16 +1519,12 @@ impl Builder {
                     } else if let (Some(start_index), Some(end_index)) =
                         (source_parameter_start_index, source_parameter_end_index)
                     {
-                        self.derived(
+                        self.point_line_parameter(
                             raw_id.clone(),
-                            ObjectOp::PointLineParameter {
-                                line_kind: LineKind::Segment,
-                            },
-                            [
-                                point_id(*source_index),
-                                point_id(*start_index),
-                                point_id(*end_index),
-                            ],
+                            *source_index,
+                            *start_index,
+                            *end_index,
+                            LineKind::Segment,
                         );
                         raw_id
                     } else if self.point_parameter(raw_id.clone(), *source_index) {
@@ -1562,7 +1563,9 @@ impl Builder {
                     vector_end_index,
                 } => self.derived(
                     id,
-                    ObjectOp::TranslatePoint,
+                    ObjectOp::TransformObject {
+                        transform: ObjectTransform::TranslateByVector,
+                    },
                     [
                         point_id(*source_index),
                         point_id(*vector_start_index),
@@ -1593,21 +1596,31 @@ impl Builder {
                     source_index,
                     line_start_index,
                     line_end_index,
-                } => self.derived(
-                    id,
-                    ObjectOp::ReflectPoint,
-                    [
-                        point_id(*source_index),
-                        point_id(*line_start_index),
-                        point_id(*line_end_index),
-                    ],
-                ),
+                } => {
+                    let line_id = format!("domain:{id}:reflection-axis");
+                    self.derived(
+                        line_id.clone(),
+                        ObjectOp::Line {
+                            line_kind: LineKind::Line,
+                        },
+                        [point_id(*line_start_index), point_id(*line_end_index)],
+                    );
+                    self.derived(
+                        id,
+                        ObjectOp::TransformObject {
+                            transform: ObjectTransform::ReflectByLine,
+                        },
+                        [point_id(*source_index), line_id],
+                    );
+                }
                 ScenePointBinding::ReflectLineConstraint { source_index, line } => {
                     let line_id = format!("domain:{id}:reflection-axis");
                     if self.line_constraint(line_id.clone(), line) {
                         self.derived(
                             id,
-                            ObjectOp::ReflectPointAcrossLine,
+                            ObjectOp::TransformObject {
+                                transform: ObjectTransform::ReflectByLine,
+                            },
                             [point_id(*source_index), line_id],
                         );
                     } else {
@@ -1643,7 +1656,9 @@ impl Builder {
                     if let Some(angle_id) = self.rotation_scalar(index, binding) {
                         self.derived(
                             id,
-                            ObjectOp::RotatePointDegrees,
+                            ObjectOp::TransformObject {
+                                transform: ObjectTransform::RotateDegrees,
+                            },
                             [point_id(*source_index), point_id(*center_index), angle_id],
                         );
                     } else {
@@ -1658,7 +1673,9 @@ impl Builder {
                     if let Some(factor_id) = self.scale_scalar(index, binding) {
                         self.derived(
                             id,
-                            ObjectOp::ScalePointByScalar,
+                            ObjectOp::TransformObject {
+                                transform: ObjectTransform::ScaleByScalar,
+                            },
                             [point_id(*source_index), point_id(*center_index), factor_id],
                         );
                     } else {
@@ -1703,9 +1720,11 @@ impl Builder {
                     clamp_to_unit,
                 } => self.derived(
                     id,
-                    ObjectOp::ScalePointByRatio {
-                        signed: *signed,
-                        clamp_to_unit: *clamp_to_unit,
+                    ObjectOp::TransformObject {
+                        transform: ObjectTransform::ScaleByRatio {
+                            signed: *signed,
+                            clamp_to_unit: *clamp_to_unit,
+                        },
                     },
                     [
                         point_id(*source_index),
@@ -1730,9 +1749,11 @@ impl Builder {
                     );
                     self.derived(
                         id,
-                        ObjectOp::PointScaledOffset {
-                            x_scale: *x_scale,
-                            y_scale: *y_scale,
+                        ObjectOp::TransformObject {
+                            transform: ObjectTransform::TranslateScaledScalar {
+                                x_scale: *x_scale,
+                                y_scale: *y_scale,
+                            },
                         },
                         [point_id(*source_index), distance_id],
                     );
@@ -1760,10 +1781,12 @@ impl Builder {
                     );
                     self.derived(
                         id,
-                        ObjectOp::PointPolarOffset {
-                            invert_y: !self.y_up,
-                            distance_scale: *distance_scale,
-                            angle_degrees_scale: *angle_degrees_scale,
+                        ObjectOp::TransformObject {
+                            transform: ObjectTransform::TranslatePolar {
+                                invert_y: !self.y_up,
+                                distance_scale: *distance_scale,
+                                angle_degrees_scale: *angle_degrees_scale,
+                            },
                         },
                         [point_id(*source_index), distance_id, angle_id],
                     );
@@ -1784,9 +1807,11 @@ impl Builder {
                     self.derived(radius_id.clone(), ObjectOp::CircularRadius, [circle_id]);
                     self.derived(
                         id,
-                        ObjectOp::PointScaledOffset {
-                            x_scale: *x_scale,
-                            y_scale: *y_scale,
+                        ObjectOp::TransformObject {
+                            transform: ObjectTransform::TranslateScaledScalar {
+                                x_scale: *x_scale,
+                                y_scale: *y_scale,
+                            },
                         },
                         [point_id(*source_index), radius_id],
                     );
@@ -1803,9 +1828,11 @@ impl Builder {
                         self.derived(distance_id.clone(), ObjectOp::ArcLength, [boundary_id]);
                         self.derived(
                             id,
-                            ObjectOp::PointScaledOffset {
-                                x_scale: *x_scale,
-                                y_scale: *y_scale,
+                            ObjectOp::TransformObject {
+                                transform: ObjectTransform::TranslateScaledScalar {
+                                    x_scale: *x_scale,
+                                    y_scale: *y_scale,
+                                },
                             },
                             [point_id(*source_index), distance_id],
                         );
@@ -1865,7 +1892,9 @@ impl Builder {
                     };
                     self.derived(
                         id,
-                        ObjectOp::PointScaledOffset { x_scale, y_scale },
+                        ObjectOp::TransformObject {
+                            transform: ObjectTransform::TranslateScaledScalar { x_scale, y_scale },
+                        },
                         [point_id(*source_index), offset_id],
                     );
                 }
@@ -1906,7 +1935,9 @@ impl Builder {
                     }
                     self.derived(
                         id,
-                        ObjectOp::PointOffsetByScalars,
+                        ObjectOp::TransformObject {
+                            transform: ObjectTransform::TranslateByScalars,
+                        },
                         [point_id(*source_index), x_id, y_id],
                     );
                 }
@@ -1932,7 +1963,9 @@ impl Builder {
                 dy,
             } => self.derived(
                 id,
-                ObjectOp::PointOffset { dx: *dx, dy: *dy },
+                ObjectOp::TransformObject {
+                    transform: ObjectTransform::TranslateDelta { dx: *dx, dy: *dy },
+                },
                 [point_id(*origin_index)],
             ),
             ScenePointConstraint::OnSegment {
@@ -2076,7 +2109,9 @@ impl Builder {
                     );
                     self.derived(
                         domain_id.clone(),
-                        ObjectOp::TranslateShape,
+                        ObjectOp::TransformObject {
+                            transform: ObjectTransform::TranslateByVector,
+                        },
                         [
                             base_id,
                             point_id(*vector_start_index),
@@ -2471,16 +2506,12 @@ impl Builder {
             angle_parameter_end_index,
         ) {
             let raw_id = format!("{id}:parameter");
-            self.derived(
+            self.point_line_parameter(
                 raw_id.clone(),
-                ObjectOp::PointLineParameter {
-                    line_kind: LineKind::Segment,
-                },
-                [
-                    point_id(*point_index),
-                    point_id(*start_index),
-                    point_id(*end_index),
-                ],
+                *point_index,
+                *start_index,
+                *end_index,
+                LineKind::Segment,
             );
             self.derived(
                 id.clone(),
@@ -2531,16 +2562,12 @@ impl Builder {
     ) -> bool {
         let parameter_id = format!("scalar:{id}:derived-parameter");
         if let (Some(start_index), Some(end_index)) = (parameter_start_index, parameter_end_index) {
-            self.derived(
+            self.point_line_parameter(
                 parameter_id.clone(),
-                ObjectOp::PointLineParameter {
-                    line_kind: LineKind::Segment,
-                },
-                [
-                    point_id(source_index),
-                    point_id(start_index),
-                    point_id(end_index),
-                ],
+                source_index,
+                start_index,
+                end_index,
+                LineKind::Segment,
             );
         } else if !self.point_parameter(parameter_id.clone(), source_index) {
             return false;
@@ -2722,47 +2749,23 @@ impl Builder {
                 start_index,
                 end_index,
                 ..
-            } => self.derived(
+            } => self.point_line_parameter(
                 id,
-                ObjectOp::PointLineParameter {
-                    line_kind: LineKind::Segment,
-                },
-                [
-                    point_id(point_index),
-                    point_id(start_index),
-                    point_id(end_index),
-                ],
+                point_index,
+                start_index,
+                end_index,
+                LineKind::Segment,
             ),
             ScenePointConstraint::OnLine {
                 start_index,
                 end_index,
                 ..
-            } => self.derived(
-                id,
-                ObjectOp::PointLineParameter {
-                    line_kind: LineKind::Line,
-                },
-                [
-                    point_id(point_index),
-                    point_id(start_index),
-                    point_id(end_index),
-                ],
-            ),
+            } => self.point_line_parameter(id, point_index, start_index, end_index, LineKind::Line),
             ScenePointConstraint::OnRay {
                 start_index,
                 end_index,
                 ..
-            } => self.derived(
-                id,
-                ObjectOp::PointLineParameter {
-                    line_kind: LineKind::Ray,
-                },
-                [
-                    point_id(point_index),
-                    point_id(start_index),
-                    point_id(end_index),
-                ],
-            ),
+            } => self.point_line_parameter(id, point_index, start_index, end_index, LineKind::Ray),
             ScenePointConstraint::OnLineConstraint { line, .. }
             | ScenePointConstraint::OnRayConstraint { line, .. } => {
                 let domain_id = format!("domain:{id}:line");
@@ -2771,9 +2774,7 @@ impl Builder {
                 }
                 self.derived(
                     id,
-                    ObjectOp::PointLineParameter {
-                        line_kind: LineKind::Line,
-                    },
+                    ObjectOp::PointLineParameter,
                     [point_id(point_index), domain_id],
                 );
             }
@@ -3120,16 +3121,12 @@ impl Builder {
             factor_parameter_start_index,
             factor_parameter_end_index,
         ) {
-            self.derived(
+            self.point_line_parameter(
                 id.clone(),
-                ObjectOp::PointLineParameter {
-                    line_kind: LineKind::Segment,
-                },
-                [
-                    point_id(*point_index),
-                    point_id(*start_index),
-                    point_id(*end_index),
-                ],
+                *point_index,
+                *start_index,
+                *end_index,
+                LineKind::Segment,
             );
         } else if let Some(expression) = factor_expr {
             self.expression_with_group_sources(
@@ -3306,7 +3303,9 @@ impl Builder {
                 }
                 self.derived(
                     id,
-                    ObjectOp::TranslateShape,
+                    ObjectOp::TransformObject {
+                        transform: ObjectTransform::TranslateByVector,
+                    },
                     [
                         base_id,
                         point_id(*vector_start_index),
@@ -3321,7 +3320,9 @@ impl Builder {
                 }
                 self.derived(
                     id,
-                    ObjectOp::TranslateShapeDelta { dx: *dx, dy: *dy },
+                    ObjectOp::TransformObject {
+                        transform: ObjectTransform::TranslateDelta { dx: *dx, dy: *dy },
+                    },
                     [base_id],
                 );
             }
@@ -3333,7 +3334,13 @@ impl Builder {
                 {
                     return false;
                 }
-                self.derived(id, ObjectOp::ReflectShapeAcrossLine, [base_id, axis_id]);
+                self.derived(
+                    id,
+                    ObjectOp::TransformObject {
+                        transform: ObjectTransform::ReflectByLine,
+                    },
+                    [base_id, axis_id],
+                );
             }
             LineConstraint::Rotated { line, rotation } => {
                 let base_id = format!("{id}:base");
@@ -3345,7 +3352,9 @@ impl Builder {
                 };
                 self.derived(
                     id,
-                    ObjectOp::RotateShapeDegrees,
+                    ObjectOp::TransformObject {
+                        transform: ObjectTransform::RotateDegrees,
+                    },
                     [base_id, point_id(rotation.center_index), angle_id],
                 );
             }
@@ -3399,7 +3408,9 @@ impl Builder {
                 }
                 self.derived(
                     id,
-                    ObjectOp::TranslateShapeDelta { dx: *dx, dy: *dy },
+                    ObjectOp::TransformObject {
+                        transform: ObjectTransform::TranslateDelta { dx: *dx, dy: *dy },
+                    },
                     [source_id],
                 );
             }
@@ -3414,7 +3425,9 @@ impl Builder {
                 }
                 self.derived(
                     id,
-                    ObjectOp::TranslateShape,
+                    ObjectOp::TransformObject {
+                        transform: ObjectTransform::TranslateByVector,
+                    },
                     [
                         source_id,
                         point_id(*vector_start_index),
@@ -3438,7 +3451,13 @@ impl Builder {
                 else {
                     return false;
                 };
-                self.derived(id, ObjectOp::ReflectShapeAcrossLine, [source_id, axis_id]);
+                self.derived(
+                    id,
+                    ObjectOp::TransformObject {
+                        transform: ObjectTransform::ReflectByLine,
+                    },
+                    [source_id, axis_id],
+                );
             }
             CircularConstraint::ScaleCircle {
                 source,
@@ -3451,7 +3470,9 @@ impl Builder {
                 }
                 self.derived(
                     id,
-                    ObjectOp::ScaleShape { factor: *factor },
+                    ObjectOp::TransformObject {
+                        transform: ObjectTransform::Scale { factor: *factor },
+                    },
                     [source_id, point_id(*center_index)],
                 );
             }
@@ -3473,7 +3494,9 @@ impl Builder {
                 );
                 self.derived(
                     id,
-                    ObjectOp::RotateShapeDegrees,
+                    ObjectOp::TransformObject {
+                        transform: ObjectTransform::RotateDegrees,
+                    },
                     [source_id, point_id(*center_index), angle_id],
                 );
             }
@@ -4455,7 +4478,9 @@ impl Builder {
                 vector_end_index,
             } => self.derived(
                 id,
-                ObjectOp::TranslateShape,
+                ObjectOp::TransformObject {
+                    transform: ObjectTransform::TranslateByVector,
+                },
                 [
                     source_id,
                     point_id(*vector_start_index),
@@ -4468,14 +4493,18 @@ impl Builder {
                 };
                 self.derived(
                     id,
-                    ObjectOp::RotateShapeDegrees,
+                    ObjectOp::TransformObject {
+                        transform: ObjectTransform::RotateDegrees,
+                    },
                     [source_id, point_id(rotation.center_index), angle_id],
                 );
             }
             LineTransformBinding::Scale(scale) => self.derived(
                 id,
-                ObjectOp::ScaleShape {
-                    factor: scale.factor,
+                ObjectOp::TransformObject {
+                    transform: ObjectTransform::Scale {
+                        factor: scale.factor,
+                    },
                 },
                 [source_id, point_id(scale.center_index)],
             ),
@@ -4488,7 +4517,13 @@ impl Builder {
                 ) else {
                     return false;
                 };
-                self.derived(id, ObjectOp::ReflectShapeAcrossLine, [source_id, axis_id]);
+                self.derived(
+                    id,
+                    ObjectOp::TransformObject {
+                        transform: ObjectTransform::ReflectByLine,
+                    },
+                    [source_id, axis_id],
+                );
             }
         }
         true
@@ -4503,7 +4538,9 @@ impl Builder {
         match transform {
             ShapeTransformBinding::TranslateDelta { dx, dy } => self.derived(
                 id,
-                ObjectOp::TranslateShapeDelta { dx: *dx, dy: *dy },
+                ObjectOp::TransformObject {
+                    transform: ObjectTransform::TranslateDelta { dx: *dx, dy: *dy },
+                },
                 [source_id],
             ),
             ShapeTransformBinding::TranslateVector {
@@ -4511,7 +4548,9 @@ impl Builder {
                 vector_end_index,
             } => self.derived(
                 id,
-                ObjectOp::TranslateShape,
+                ObjectOp::TransformObject {
+                    transform: ObjectTransform::TranslateByVector,
+                },
                 [
                     source_id,
                     point_id(*vector_start_index),
@@ -4524,14 +4563,18 @@ impl Builder {
                 };
                 self.derived(
                     id,
-                    ObjectOp::RotateShapeDegrees,
+                    ObjectOp::TransformObject {
+                        transform: ObjectTransform::RotateDegrees,
+                    },
                     [source_id, point_id(rotation.center_index), angle_id],
                 );
             }
             ShapeTransformBinding::Scale(scale) => self.derived(
                 id,
-                ObjectOp::ScaleShape {
-                    factor: scale.factor,
+                ObjectOp::TransformObject {
+                    transform: ObjectTransform::Scale {
+                        factor: scale.factor,
+                    },
                 },
                 [source_id, point_id(scale.center_index)],
             ),
@@ -4544,7 +4587,13 @@ impl Builder {
                 ) else {
                     return false;
                 };
-                self.derived(id, ObjectOp::ReflectShapeAcrossLine, [source_id, axis_id]);
+                self.derived(
+                    id,
+                    ObjectOp::TransformObject {
+                        transform: ObjectTransform::ReflectByLine,
+                    },
+                    [source_id, axis_id],
+                );
             }
         }
         true
@@ -4601,7 +4650,13 @@ impl Builder {
                 {
                     return false;
                 }
-                self.derived(id, ObjectOp::ReflectShapeAcrossLine, [source_id, axis_id]);
+                self.derived(
+                    id,
+                    ObjectOp::TransformObject {
+                        transform: ObjectTransform::ReflectByLine,
+                    },
+                    [source_id, axis_id],
+                );
             }
         }
         true

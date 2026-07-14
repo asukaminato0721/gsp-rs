@@ -17,6 +17,14 @@ fn operation_kind<'a>(scene: &'a Value, id: &str) -> Option<&'a str> {
         .as_str()
 }
 
+fn transform_kind<'a>(scene: &'a Value, id: &str) -> Option<&'a str> {
+    scene["objectGraph"]["nodes"]
+        .as_array()?
+        .iter()
+        .find(|node| node["id"] == id)?["definition"]["op"]["transform"]["kind"]
+        .as_str()
+}
+
 fn evaluate_scene_object_graph(scene: &Value) -> Vec<ObjectNodeValue> {
     let input = serde_json::json!({
         "nodes": scene["objectGraph"]["nodes"],
@@ -109,7 +117,7 @@ fn quadrilateral_rolling_uses_rotation_scalars_and_translation_parents() {
         let point = object_id_for_group(&scene, "points", "point", ordinal);
         assert_eq!(
             operation_kind(&scene, &point),
-            Some("rotate-point-degrees"),
+            Some("transform-object"),
             "rotation point #{ordinal}"
         );
     }
@@ -117,7 +125,7 @@ fn quadrilateral_rolling_uses_rotation_scalars_and_translation_parents() {
         let point = object_id_for_group(&scene, "points", "point", ordinal);
         assert_eq!(
             operation_kind(&scene, &point),
-            Some("translate-point"),
+            Some("transform-object"),
             "translation point #{ordinal}"
         );
     }
@@ -217,7 +225,7 @@ fn walking_person_coordinate_expression_keeps_all_payload_scalar_parents() {
     let final_intersection = point(98);
     assert_eq!(
         operation_kind(&scene, &coordinate),
-        Some("point-scaled-offset")
+        Some("transform-object")
     );
     assert_eq!(
         operation_kind(&scene, &intersection),
@@ -267,10 +275,7 @@ fn parameter_coordinate_feeds_isochronous_circle_intersections() {
         serde_json::json!([])
     );
     let point = |ordinal| object_id_for_group(&scene, "points", "point", ordinal);
-    assert_eq!(
-        operation_kind(&scene, &point(4)),
-        Some("point-scaled-offset")
-    );
+    assert_eq!(operation_kind(&scene, &point(4)), Some("transform-object"));
     assert_eq!(
         operation_kind(&scene, &point(10)),
         Some("line-circle-intersection")
@@ -302,10 +307,7 @@ fn fixed_translated_line_keeps_running_person_table_driven() {
     let point = |ordinal| object_id_for_group(&scene, "points", "point", ordinal);
     assert_eq!(operation_kind(&scene, &point(42)), Some("point-on-line"));
     assert_eq!(operation_kind(&scene, &point(49)), Some("point-on-line"));
-    assert_eq!(
-        operation_kind(&scene, &point(45)),
-        Some("scale-point-by-ratio")
-    );
+    assert_eq!(operation_kind(&scene, &point(45)), Some("transform-object"));
     assert_eq!(
         operation_kind(&scene, &point(124)),
         Some("circle-circle-intersection")
@@ -442,7 +444,10 @@ fn projected_coordinate_points_keep_mixed_payload_parents_and_feed_translations(
         (83, 60),
     ] {
         let translated = point(translated_ordinal);
-        assert_eq!(operation_kind(&scene, &translated), Some("translate-point"));
+        assert_eq!(
+            operation_kind(&scene, &translated),
+            Some("transform-object")
+        );
         assert_eq!(
             node(&translated)["definition"]["parents"],
             serde_json::json!([point(source_ordinal), point(54), point(52)])
@@ -520,10 +525,7 @@ fn fraction_arc_keeps_its_symbolic_rotation_parent_chain() {
 
     for ordinal in [92, 94] {
         let rotated = point(ordinal);
-        assert_eq!(
-            operation_kind(&scene, &rotated),
-            Some("rotate-point-degrees")
-        );
+        assert_eq!(operation_kind(&scene, &rotated), Some("transform-object"));
         let angle = format!("scalar:{rotated}:rotation-degrees");
         assert_eq!(operation_kind(&scene, &angle), Some("evaluate-expression"));
         assert_eq!(
@@ -560,7 +562,7 @@ fn arbitrary_sector_arc_uses_the_arc_measurement_scalar_program() {
     let angle = format!("scalar:{measured_rotation}:rotation-degrees");
     assert_eq!(
         operation_kind(&scene, &measured_rotation),
-        Some("rotate-point-degrees")
+        Some("transform-object")
     );
     assert_eq!(operation_kind(&scene, &angle), Some("evaluate-expression"));
     assert_eq!(
@@ -597,7 +599,7 @@ fn sliding_polygon_circular_trace_chain_is_table_driven() {
         intersection_node["definition"]["parents"],
         serde_json::json!([format!("domain:{intersection}:circle"), trace])
     );
-    assert_eq!(operation_kind(scene, &translated), Some("translate-point"));
+    assert_eq!(operation_kind(scene, &translated), Some("transform-object"));
     assert_eq!(operation_kind(scene, &traced), Some("point-trace"));
     assert_eq!(scene["objectGraph"]["geometryComplete"], true);
     assert_eq!(
@@ -645,10 +647,7 @@ fn ellipse_trace_intersection_chain_is_table_driven() {
     let first_intersection = object_id_for_group(&scene, "points", "point", 119);
     let arc_intersection = object_id_for_group(&scene, "points", "point", 138);
     let undefined_initial_scale = object_id_for_group(&scene, "points", "point", 162);
-    assert_eq!(
-        operation_kind(&scene, &rotation),
-        Some("rotate-point-degrees")
-    );
+    assert_eq!(operation_kind(&scene, &rotation), Some("transform-object"));
     assert_eq!(
         operation_kind(&scene, &first_intersection),
         Some("line-polyline-intersection")
@@ -659,7 +658,7 @@ fn ellipse_trace_intersection_chain_is_table_driven() {
     );
     assert_eq!(
         operation_kind(&scene, &undefined_initial_scale),
-        Some("scale-point-by-scalar")
+        Some("transform-object")
     );
 
     let nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
@@ -766,9 +765,22 @@ fn polygon_parameter_point_uses_the_exact_anchor_scalar_parent() {
         .iter()
         .find(|node| node["id"] == anchor_scalar)
         .unwrap();
+    let anchor_line = format!("domain:{anchor_scalar}:line");
     assert_eq!(
         anchor_node["definition"]["parents"],
-        serde_json::json!([anchor_point, segment_start, segment_end])
+        serde_json::json!([anchor_point, anchor_line])
+    );
+    let anchor_line_node = scene["objectGraph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == anchor_line)
+        .unwrap();
+    assert_eq!(anchor_line_node["definition"]["op"]["kind"], "line");
+    assert_eq!(anchor_line_node["definition"]["op"]["line_kind"], "segment");
+    assert_eq!(
+        anchor_line_node["definition"]["parents"],
+        serde_json::json!([segment_start, segment_end])
     );
 
     let parameter_scalar = format!("scalar:{point}:constraint-parameter");
@@ -798,11 +810,11 @@ fn parameter_angle_expression_keeps_the_refraction_intersection_live() {
     let refractive_index = object_id_for_group(&scene, "labels", "scalar:label", 18);
     let angle = format!("scalar:{rotated}:rotation-degrees");
 
+    assert_eq!(operation_kind(&scene, &rotated), Some("transform-object"));
     assert_eq!(
-        operation_kind(&scene, &rotated),
-        Some("rotate-point-degrees")
+        operation_kind(&scene, &translated),
+        Some("transform-object")
     );
-    assert_eq!(operation_kind(&scene, &translated), Some("translate-point"));
     assert_eq!(
         operation_kind(&scene, &intersection),
         Some("line-circle-intersection")
@@ -841,7 +853,7 @@ fn nested_measurements_drive_rotation_trace_and_controlled_point() {
     let controlled_trace_point = object_id_for_group(scene, "points", "point", 85);
     assert_eq!(
         operation_kind(scene, &parameter_rotation),
-        Some("rotate-point-degrees")
+        Some("transform-object")
     );
     assert_eq!(
         operation_kind(scene, &linear_intersection),
@@ -849,11 +861,11 @@ fn nested_measurements_drive_rotation_trace_and_controlled_point() {
     );
     assert_eq!(
         operation_kind(scene, &first_expression_rotation),
-        Some("rotate-point-degrees")
+        Some("transform-object")
     );
     assert_eq!(
         operation_kind(scene, &second_expression_rotation),
-        Some("rotate-point-degrees")
+        Some("transform-object")
     );
     assert_eq!(
         operation_kind(scene, &controlled_trace_point),
@@ -891,10 +903,8 @@ fn angle_rotated_segment_intersects_legacy_radius_circle() {
 
     let line_id = format!("domain:{intersection}:line");
     let circle_id = format!("domain:{intersection}:circle");
-    assert_eq!(
-        operation_kind(scene, &line_id),
-        Some("rotate-shape-degrees")
-    );
+    assert_eq!(operation_kind(scene, &line_id), Some("transform-object"));
+    assert_eq!(transform_kind(scene, &line_id), Some("rotate-degrees"));
     assert_eq!(
         operation_kind(scene, &circle_id),
         Some("circle-by-segment-radius")
@@ -930,7 +940,7 @@ fn legacy_coordinate_helpers_keep_piecewise_star_intersections_live() {
 
     let helper = object_id_for_group(&scene, "points", "point", 245);
     let intersection = object_id_for_group(&scene, "points", "point", 248);
-    assert_eq!(operation_kind(&scene, &helper), Some("point-scaled-offset"));
+    assert_eq!(operation_kind(&scene, &helper), Some("transform-object"));
     assert_eq!(
         operation_kind(&scene, &intersection),
         Some("line-circle-intersection")
@@ -950,9 +960,21 @@ fn legacy_coordinate_helpers_keep_piecewise_star_intersections_live() {
         .iter()
         .find(|node| node["id"] == parameter_scalar)
         .expect("parameter anchor scalar");
+    let parameter_line = format!("domain:{parameter_scalar}:line");
     assert_eq!(
         parameter_node["definition"]["parents"],
-        serde_json::json!([parameter_point, parameter_start, parameter_end])
+        serde_json::json!([parameter_point, parameter_line])
+    );
+    let parameter_line_node = scene["objectGraph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == parameter_line)
+        .expect("normalized parameter line");
+    assert_eq!(parameter_line_node["definition"]["op"]["kind"], "line");
+    assert_eq!(
+        parameter_line_node["definition"]["parents"],
+        serde_json::json!([parameter_start, parameter_end])
     );
 
     let expression = object_id_for_group(&scene, "labels", "scalar:label", 244);
@@ -1054,7 +1076,7 @@ fn coordinate_value_parent_drives_the_payload_vector_translation() {
     let translated = object_id_for_group(scene, "points", "point", 252);
     let source = object_id_for_group(scene, "points", "point", 251);
     let vector_start = object_id_for_group(scene, "points", "point", 1);
-    assert_eq!(operation_kind(scene, &translated), Some("translate-point"));
+    assert_eq!(operation_kind(scene, &translated), Some("transform-object"));
     let node = scene["objectGraph"]["nodes"]
         .as_array()
         .unwrap()
@@ -1076,10 +1098,10 @@ fn coordinate_expression_parameter_drives_the_full_hebei_construction() {
     );
 
     for (ordinal, kind) in [
-        (4, "point-scaled-offset"),
+        (4, "transform-object"),
         (20, "point-on-line"),
         (23, "point-on-polygon-boundary"),
-        (24, "rotate-point-degrees"),
+        (24, "transform-object"),
         (33, "line-intersection"),
         (34, "line-intersection"),
     ] {
@@ -1123,7 +1145,11 @@ fn directed_angle_anchor_and_reflected_arc_are_fully_table_driven() {
     let reflected_arc_id = object_id_for_group(&scene, "arcs", "arc", 61);
     assert_eq!(
         operation_kind(&scene, &reflected_arc_id),
-        Some("reflect-shape-across-line")
+        Some("transform-object")
+    );
+    assert_eq!(
+        transform_kind(&scene, &reflected_arc_id),
+        Some("reflect-by-line")
     );
 
     let controlled_point_id = object_id_for_group(&scene, "points", "point", 71);
@@ -1133,7 +1159,7 @@ fn directed_angle_anchor_and_reflected_arc_are_fully_table_driven() {
     );
     assert_eq!(
         operation_kind(&scene, &format!("domain:{controlled_point_id}")),
-        Some("reflect-shape-across-line")
+        Some("transform-object")
     );
 
     let result_arc_id = object_id_for_group(&scene, "arcs", "arc", 72);
@@ -1174,7 +1200,7 @@ fn directed_angle_anchor_and_reflected_arc_are_fully_table_driven() {
     let expression_rotation_id = object_id_for_group(&scene, "points", "point", 68);
     assert_eq!(
         operation_kind(&scene, &expression_rotation_id),
-        Some("rotate-point-degrees")
+        Some("transform-object")
     );
     let parameter_anchor_scalar_id = object_id_for_group(&scene, "labels", "scalar:label", 65);
     let rotation_scalar_id = format!("scalar:{expression_rotation_id}:rotation-degrees");
@@ -1212,7 +1238,7 @@ fn point_on_rotated_circle_drives_the_complete_gear_chain() {
     );
     assert_eq!(
         operation_kind(&scene, &format!("domain:{constrained_point_id}")),
-        Some("rotate-shape-degrees")
+        Some("transform-object")
     );
 
     let measured_radius_circle_id = object_id_for_group(&scene, "circles", "circle", 50);
@@ -1260,10 +1286,7 @@ fn polygon_boundary_intersection_drives_the_sphere_construction() {
 fn coordinate_trace_intersection_is_a_complete_typed_graph() {
     let scene = compile_fixture("tests/fixtures/gsp/insection/cood_intersection.gsp");
     assert_eq!(scene["objectGraph"]["geometryComplete"], true);
-    assert_eq!(
-        operation_kind(&scene, "point:4"),
-        Some("point-scaled-offset")
-    );
+    assert_eq!(operation_kind(&scene, "point:4"), Some("transform-object"));
     assert_eq!(operation_kind(&scene, "line:2"), Some("coordinate-trace"));
     assert_eq!(
         operation_kind(&scene, "point:5"),
@@ -1313,9 +1336,21 @@ fn non_graph_coordinate_trace_drives_points_lines_and_intersections() {
         .iter()
         .find(|node| node["id"] == measurement_parameter)
         .unwrap();
+    let measurement_line = format!("domain:{measurement_parameter}:line");
     assert_eq!(
         parameter_node["definition"]["parents"],
-        serde_json::json!([parameter_point, measurement_origin, measurement_end])
+        serde_json::json!([parameter_point, measurement_line])
+    );
+    let measurement_line_node = scene["objectGraph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == measurement_line)
+        .unwrap();
+    assert_eq!(measurement_line_node["definition"]["op"]["kind"], "line");
+    assert_eq!(
+        measurement_line_node["definition"]["parents"],
+        serde_json::json!([measurement_origin, measurement_end])
     );
 }
 
@@ -1455,10 +1490,7 @@ fn coordinate_point_uses_its_payload_scalar_objects_as_graph_parents() {
         coordinate_y_node["definition"]["parents"][0],
         format!("scalar:label:{polygon_area_label_index}")
     );
-    assert_eq!(
-        point_node["definition"]["op"]["kind"],
-        "point-offset-by-scalars"
-    );
+    assert_eq!(point_node["definition"]["op"]["kind"], "transform-object");
     let trace_id = object_id_for_group(&scene, "lines", "line", 464);
     assert_eq!(operation_kind(&scene, &trace_id), Some("point-trace"));
 }
@@ -1562,7 +1594,7 @@ fn boundary_length_endpoint_is_derived_from_its_live_arc() {
     let endpoint_id = object_id_for_group(&scene, "points", "point", 10);
     assert_eq!(
         operation_kind(&scene, &endpoint_id),
-        Some("point-scaled-offset")
+        Some("transform-object")
     );
     assert_eq!(
         operation_kind(&scene, &format!("domain:{endpoint_id}:boundary-length")),
@@ -1740,12 +1772,12 @@ fn fixed_coordinate_root_keeps_heart_curve_transform_chain_table_driven() {
     let arc = object_id_for_group(&scene, "arcs", "arc", 22);
 
     for (id, op) in [
-        (&center, "point-offset-by-scalars"),
+        (&center, "transform-object"),
         (&circle_point, "point-on-circle"),
-        (&first_translation, "translate-point"),
-        (&second_translation, "translate-point"),
-        (&parameter_rotation, "rotate-point-degrees"),
-        (&fixed_rotation, "rotate-point-degrees"),
+        (&first_translation, "transform-object"),
+        (&second_translation, "transform-object"),
+        (&parameter_rotation, "transform-object"),
+        (&fixed_rotation, "transform-object"),
         (&arc_point, "point-on-arc"),
         (&arc, "center-arc"),
     ] {
@@ -1808,7 +1840,10 @@ fn polygon_rolling_translation_and_trace_use_the_complete_parent_program() {
     let vector_end = object_id_for_group(&scene, "points", "point", 68);
     let translated = object_id_for_group(&scene, "points", "point", 74);
     let trace = object_id_for_group(&scene, "lines", "line", 75);
-    assert_eq!(operation_kind(&scene, &translated), Some("translate-point"));
+    assert_eq!(
+        operation_kind(&scene, &translated),
+        Some("transform-object")
+    );
     assert_eq!(operation_kind(&scene, &trace), Some("point-trace"));
 
     let node = |id: &str| {
@@ -1874,12 +1909,12 @@ fn function_rotation_chain_keeps_its_center_arc_live() {
     assert_eq!(scene["objectGraph"]["geometryComplete"], true);
 
     let expected_point_ops = [
-        (18, "rotate-point-degrees"),
-        (19, "translate-point"),
-        (20, "translate-point"),
-        (21, "scale-point-by-scalar"),
-        (40, "rotate-point-degrees"),
-        (41, "rotate-point-degrees"),
+        (18, "transform-object"),
+        (19, "transform-object"),
+        (20, "transform-object"),
+        (21, "transform-object"),
+        (40, "transform-object"),
+        (41, "transform-object"),
     ];
     for (ordinal, expected_op) in expected_point_ops {
         let id = object_id_for_group(&scene, "points", "point", ordinal);
@@ -1922,7 +1957,7 @@ fn circle_measurement_function_rotations_keep_center_arcs_table_driven() {
     for ordinal in [13, 15, 30] {
         assert_eq!(
             operation_kind(scene, &point(ordinal)),
-            Some("rotate-point-degrees")
+            Some("transform-object")
         );
     }
     assert_eq!(operation_kind(scene, &point(17)), Some("point-on-arc"));
@@ -2005,12 +2040,12 @@ fn circle_measurement_function_rotations_keep_center_arcs_table_driven() {
     );
 
     for (ordinal, kind) in [
-        (46, "rotate-point-degrees"),
+        (46, "transform-object"),
         (49, "point-on-arc"),
-        (55, "rotate-point-degrees"),
-        (104, "rotate-point-degrees"),
+        (55, "transform-object"),
+        (104, "transform-object"),
         (106, "point-on-arc"),
-        (111, "rotate-point-degrees"),
+        (111, "transform-object"),
     ] {
         assert_eq!(operation_kind(scene, &point(ordinal)), Some(kind));
     }
@@ -2202,7 +2237,7 @@ fn points_on_reflected_and_rotated_rays_keep_arc_dependencies_live() {
     let rotated_point_id = object_id_for_group(&scene, "points", "point", 340);
     assert_eq!(
         operation_kind(&scene, &format!("domain:{rotated_point_id}")),
-        Some("rotate-shape-degrees")
+        Some("transform-object")
     );
     for ordinal in [84, 86, 347] {
         let arc_id = object_id_for_group(&scene, "arcs", "arc", ordinal);
@@ -2323,7 +2358,7 @@ fn repeated_line_collection_keeps_the_first_payload_object_index() {
     let rotated_id = object_id_for_group(&scene, "lines", "line", 99);
     assert_eq!(
         operation_kind(&scene, &rotated_id),
-        Some("rotate-shape-degrees")
+        Some("transform-object")
     );
     let rotated = scene["objectGraph"]["nodes"]
         .as_array()
@@ -2355,7 +2390,7 @@ fn marked_distance_endpoint_depends_on_the_live_distance_measurement() {
     let distance_label_id = object_id_for_group(&scene, "labels", "scalar:label", 4);
     assert_eq!(
         operation_kind(&scene, &endpoint_id),
-        Some("point-scaled-offset")
+        Some("transform-object")
     );
     let distance_id = format!("scalar:{endpoint_id}:distance");
     assert_eq!(
@@ -2502,7 +2537,7 @@ fn rolling_circle_all_pages_have_typed_arcs() {
     let rotated_endpoint = object_id_for_group(eighth, "points", "point", 156);
     assert_eq!(
         operation_kind(eighth, &rotated_endpoint),
-        Some("rotate-point-degrees")
+        Some("transform-object")
     );
 }
 
@@ -2555,14 +2590,14 @@ fn hidden_offset_anchor_keeps_parameter_rotated_arc_live() {
     let constrained_id = object_id_for_group(&scene, "points", "point", 50);
     let rotated_id = object_id_for_group(&scene, "points", "point", 55);
     let arc_id = object_id_for_group(&scene, "arcs", "arc", 56);
-    assert_eq!(operation_kind(&scene, &anchor_id), Some("point-offset"));
+    assert_eq!(operation_kind(&scene, &anchor_id), Some("transform-object"));
     assert_eq!(
         operation_kind(&scene, &constrained_id),
         Some("point-on-line")
     );
     assert_eq!(
         operation_kind(&scene, &rotated_id),
-        Some("rotate-point-degrees")
+        Some("transform-object")
     );
     assert_eq!(operation_kind(&scene, &arc_id), Some("center-arc"));
 }
@@ -2585,11 +2620,11 @@ fn trace_intersections_depend_on_the_payload_trace_object() {
     let translation_id = object_id_for_group(scene, "points", "point", 23);
     assert_eq!(
         operation_kind(scene, &rotation_id),
-        Some("rotate-point-degrees")
+        Some("transform-object")
     );
     assert_eq!(
         operation_kind(scene, &translation_id),
-        Some("translate-point")
+        Some("transform-object")
     );
     let parameter_id = "scalar:group:19";
     assert_eq!(
@@ -2675,7 +2710,7 @@ fn rotor_expressions_with_the_same_display_name_use_exact_payload_parents() {
     let ray_parameter = object_id_for_group(&scene, "labels", "scalar:label", 10);
     assert_eq!(
         operation_kind(&scene, &scaled_point),
-        Some("scale-point-by-scalar")
+        Some("transform-object")
     );
     assert_eq!(
         node(&scale_scalar)["definition"]["parents"][0],
@@ -2714,7 +2749,7 @@ fn direct_polar_transform_drives_the_circle_arc_construction() {
 
     assert_eq!(
         operation_kind(&scene, &transformed),
-        Some("point-polar-offset")
+        Some("transform-object")
     );
     assert_eq!(
         node(&transformed)["definition"]["parents"],
@@ -2803,7 +2838,7 @@ fn clock_time_scalars_use_their_exact_arc_angle_parents() {
     let reflected_arc = object_id_for_group(&scene, "arcs", "arc", 355);
     assert_eq!(
         operation_kind(&scene, &reflected_arc),
-        Some("reflect-shape-across-line")
+        Some("transform-object")
     );
 
     let nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
@@ -2945,11 +2980,8 @@ fn translated_point_uses_its_exact_payload_parent_chain() {
     let source = object_id_for_group(scene, "points", "point", 11);
     let vector_start = object_id_for_group(scene, "points", "point", 1);
     let vector_end = object_id_for_group(scene, "points", "point", 13);
-    assert_eq!(
-        operation_kind(scene, &rotated),
-        Some("rotate-point-degrees")
-    );
-    assert_eq!(operation_kind(scene, &translated), Some("translate-point"));
+    assert_eq!(operation_kind(scene, &rotated), Some("transform-object"));
+    assert_eq!(operation_kind(scene, &translated), Some("transform-object"));
     let translated_node = scene["objectGraph"]["nodes"]
         .as_array()
         .unwrap()
@@ -2994,10 +3026,7 @@ fn half_sector_pages_keep_scale_translation_intersection_and_arc_programs() {
         };
 
         let scaled = point(6);
-        assert_eq!(
-            operation_kind(scene, &scaled),
-            Some("scale-point-by-scalar")
-        );
+        assert_eq!(operation_kind(scene, &scaled), Some("transform-object"));
         assert_eq!(
             node(&scaled)["definition"]["parents"],
             serde_json::json!([point(4), point(1), format!("scalar:{scaled}:scale-factor")])
@@ -3017,7 +3046,7 @@ fn half_sector_pages_keep_scale_translation_intersection_and_arc_programs() {
             [(7, 6, 4, 1), (16, 15, 1, 4), (17, 15, 4, 1)]
         {
             let translated = point(ordinal);
-            assert_eq!(operation_kind(scene, &translated), Some("translate-point"));
+            assert_eq!(operation_kind(scene, &translated), Some("transform-object"));
             assert_eq!(
                 node(&translated)["definition"]["parents"],
                 serde_json::json!([point(source), point(vector_start), point(vector_end)])
@@ -3069,7 +3098,8 @@ fn vector_translated_circle_keeps_both_vector_points_as_graph_parents() {
         operation_kind(&scene, &constrained_point),
         Some("point-on-circle")
     );
-    assert_eq!(operation_kind(&scene, &domain), Some("translate-shape"));
+    assert_eq!(operation_kind(&scene, &domain), Some("transform-object"));
+    assert_eq!(transform_kind(&scene, &domain), Some("translate-by-vector"));
     let domain_node = scene["objectGraph"]["nodes"]
         .as_array()
         .unwrap()
@@ -3116,11 +3146,11 @@ fn ellipse_polygon_rolling_is_an_exact_table_driven_program() {
     );
 
     for (ordinal, op) in [
-        (85, "rotate-shape-degrees"),
+        (85, "transform-object"),
         (87, "perpendicular-line"),
-        (101, "rotate-shape-degrees"),
-        (102, "reflect-shape-across-line"),
-        (110, "rotate-shape-degrees"),
+        (101, "transform-object"),
+        (102, "transform-object"),
+        (110, "transform-object"),
         (118, "perpendicular-line"),
     ] {
         assert_eq!(operation_kind(&scene, &line(ordinal)), Some(op));
@@ -3151,7 +3181,7 @@ fn measurement_line_parameter_point_translation_is_table_driven() {
     );
     let point = |ordinal| object_id_for_group(&scene, "points", "point", ordinal);
     assert_eq!(operation_kind(&scene, &point(18)), Some("point-on-line"));
-    assert_eq!(operation_kind(&scene, &point(24)), Some("translate-point"));
+    assert_eq!(operation_kind(&scene, &point(24)), Some("transform-object"));
     let translated = scene["objectGraph"]["nodes"]
         .as_array()
         .unwrap()
@@ -3175,15 +3205,9 @@ fn initially_undefined_polar_center_keeps_scale_translation_program() {
         scene["objectGraph"]["pendingOperations"]
     );
     let point = |ordinal| object_id_for_group(&scene, "points", "point", ordinal);
-    assert_eq!(
-        operation_kind(&scene, &point(65)),
-        Some("point-scaled-offset")
-    );
-    assert_eq!(
-        operation_kind(&scene, &point(66)),
-        Some("scale-point-by-scalar")
-    );
-    assert_eq!(operation_kind(&scene, &point(69)), Some("translate-point"));
+    assert_eq!(operation_kind(&scene, &point(65)), Some("transform-object"));
+    assert_eq!(operation_kind(&scene, &point(66)), Some("transform-object"));
+    assert_eq!(operation_kind(&scene, &point(69)), Some("transform-object"));
     let nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
     let node = |id: &str| {
         nodes
@@ -3212,7 +3236,7 @@ fn initially_undefined_rotated_ray_intersection_is_table_driven() {
     );
     let line = object_id_for_group(&scene, "lines", "line", 14);
     let intersection = object_id_for_group(&scene, "points", "point", 15);
-    assert_eq!(operation_kind(&scene, &line), Some("rotate-shape-degrees"));
+    assert_eq!(operation_kind(&scene, &line), Some("transform-object"));
     assert_eq!(
         operation_kind(&scene, &intersection),
         Some("line-circle-intersection")

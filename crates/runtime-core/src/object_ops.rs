@@ -73,6 +73,39 @@ pub enum TraceDriver {
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum ObjectTransform {
+    TranslateDelta {
+        dx: f64,
+        dy: f64,
+    },
+    TranslateByVector,
+    TranslateByScalars,
+    TranslateScaledScalar {
+        x_scale: f64,
+        y_scale: f64,
+    },
+    TranslatePolar {
+        invert_y: bool,
+        distance_scale: f64,
+        angle_degrees_scale: f64,
+    },
+    ReflectByLine,
+    RotateRadians {
+        radians: f64,
+    },
+    RotateDegrees,
+    Scale {
+        factor: f64,
+    },
+    ScaleByScalar,
+    ScaleByRatio {
+        signed: bool,
+        clamp_to_unit: bool,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum AffineTargetHandle {
     ParentPoint,
     ParentLinePoint { segment_index: usize, t: f64 },
@@ -208,20 +241,6 @@ pub enum ObjectOp {
     ProjectedCoordinatePoint {
         source_parent: usize,
     },
-    PointOffset {
-        dx: f64,
-        dy: f64,
-    },
-    PointScaledOffset {
-        x_scale: f64,
-        y_scale: f64,
-    },
-    PointPolarOffset {
-        invert_y: bool,
-        distance_scale: f64,
-        angle_degrees_scale: f64,
-    },
-    PointOffsetByScalars,
     PointFromScalars,
     DirectedAngleAnchor {
         distance: f64,
@@ -248,22 +267,7 @@ pub enum ObjectOp {
     PointOnPolygonBoundary,
     Midpoint,
     Circumcenter,
-    TranslatePoint,
-    ReflectPoint,
-    ReflectPointAcrossLine,
-    RotatePoint {
-        radians: f64,
-    },
-    RotatePointDegrees,
-    ScalePoint {
-        factor: f64,
-    },
-    ScalePointByScalar,
     MarkedAngleTranslationPoint,
-    ScalePointByRatio {
-        signed: bool,
-        clamp_to_unit: bool,
-    },
     Line {
         line_kind: LineKind,
     },
@@ -431,9 +435,7 @@ pub enum ObjectOp {
         vertical: bool,
     },
     MeasuredRotationDegrees,
-    PointLineParameter {
-        line_kind: LineKind,
-    },
+    PointLineParameter,
     PolylineParameterFromPoint,
     CircleParameter {
         invert_y: bool,
@@ -466,19 +468,8 @@ pub enum ObjectOp {
     HsbColor {
         alpha: u8,
     },
-    TranslateShapeDelta {
-        dx: f64,
-        dy: f64,
-    },
-    TranslateShape,
-    ReflectShape,
-    ReflectShapeAcrossLine,
-    RotateShape {
-        radians: f64,
-    },
-    RotateShapeDegrees,
-    ScaleShape {
-        factor: f64,
+    TransformObject {
+        transform: ObjectTransform,
     },
 }
 
@@ -706,47 +697,6 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
             ObjectOp::ProjectedCoordinatePoint { source_parent } => Ok(ObjectValue::point(
                 expect_point("projected-coordinate-point", parents, *source_parent)?,
             )),
-            ObjectOp::PointOffset { dx, dy } => {
-                expect_arity("point-offset", parents, 1)?;
-                let origin = expect_point("point-offset", parents, 0)?;
-                Ok(ObjectValue::point(Point {
-                    x: origin.x + dx,
-                    y: origin.y + dy,
-                }))
-            }
-            ObjectOp::PointScaledOffset { x_scale, y_scale } => {
-                expect_arity("point-scaled-offset", parents, 2)?;
-                let source = expect_point("point-scaled-offset", parents, 0)?;
-                let distance = expect_scalar("point-scaled-offset", parents, 1)?;
-                Ok(ObjectValue::point(Point {
-                    x: source.x + distance * x_scale,
-                    y: source.y + distance * y_scale,
-                }))
-            }
-            ObjectOp::PointPolarOffset {
-                invert_y,
-                distance_scale,
-                angle_degrees_scale,
-            } => {
-                expect_arity("point-polar-offset", parents, 3)?;
-                let source = expect_point("point-polar-offset", parents, 0)?;
-                let distance = expect_scalar("point-polar-offset", parents, 1)? * distance_scale;
-                let angle = (expect_scalar("point-polar-offset", parents, 2)?
-                    * angle_degrees_scale)
-                    .to_radians();
-                Ok(ObjectValue::point(Point {
-                    x: source.x + distance * angle.cos(),
-                    y: source.y + distance * angle.sin() * if *invert_y { -1.0 } else { 1.0 },
-                }))
-            }
-            ObjectOp::PointOffsetByScalars => {
-                expect_arity("point-offset-by-scalars", parents, 3)?;
-                let source = expect_point("point-offset-by-scalars", parents, 0)?;
-                Ok(ObjectValue::point(Point {
-                    x: source.x + expect_scalar("point-offset-by-scalars", parents, 1)?,
-                    y: source.y + expect_scalar("point-offset-by-scalars", parents, 2)?,
-                }))
-            }
             ObjectOp::PointFromScalars => {
                 expect_arity("point-from-scalars", parents, 2)?;
                 Ok(ObjectValue::point(Point {
@@ -918,73 +868,6 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
                 .ok_or(ObjectOpError::Degenerate { op: "circumcenter" })?;
                 Ok(ObjectValue::point(geometry.center))
             }
-            ObjectOp::TranslatePoint => {
-                expect_arity("translate-point", parents, 3)?;
-                let source = expect_point("translate-point", parents, 0)?;
-                let vector_start = expect_point("translate-point", parents, 1)?;
-                let vector_end = expect_point("translate-point", parents, 2)?;
-                Ok(ObjectValue::point(translate(
-                    source,
-                    vector_start,
-                    vector_end,
-                )))
-            }
-            ObjectOp::ReflectPoint => {
-                expect_arity("reflect-point", parents, 3)?;
-                let reflected = reflect_across_line(
-                    expect_point("reflect-point", parents, 0)?,
-                    expect_point("reflect-point", parents, 1)?,
-                    expect_point("reflect-point", parents, 2)?,
-                )
-                .ok_or(ObjectOpError::Degenerate {
-                    op: "reflect-point",
-                })?;
-                Ok(ObjectValue::point(reflected))
-            }
-            ObjectOp::ReflectPointAcrossLine => {
-                expect_arity("reflect-point-across-line", parents, 2)?;
-                let source = expect_point("reflect-point-across-line", parents, 0)?;
-                let (_, line_start, line_end) =
-                    expect_line("reflect-point-across-line", parents, 1)?;
-                let reflected = reflect_across_line(source, line_start, line_end).ok_or(
-                    ObjectOpError::Degenerate {
-                        op: "reflect-point-across-line",
-                    },
-                )?;
-                Ok(ObjectValue::point(reflected))
-            }
-            ObjectOp::RotatePoint { radians } => {
-                expect_arity("rotate-point", parents, 2)?;
-                Ok(ObjectValue::point(rotate_around(
-                    expect_point("rotate-point", parents, 0)?,
-                    expect_point("rotate-point", parents, 1)?,
-                    *radians,
-                )))
-            }
-            ObjectOp::RotatePointDegrees => {
-                expect_arity("rotate-point-degrees", parents, 3)?;
-                Ok(ObjectValue::point(rotate_around(
-                    expect_point("rotate-point-degrees", parents, 0)?,
-                    expect_point("rotate-point-degrees", parents, 1)?,
-                    expect_scalar("rotate-point-degrees", parents, 2)?.to_radians(),
-                )))
-            }
-            ObjectOp::ScalePoint { factor } => {
-                expect_arity("scale-point", parents, 2)?;
-                Ok(ObjectValue::point(scale_around(
-                    expect_point("scale-point", parents, 0)?,
-                    expect_point("scale-point", parents, 1)?,
-                    *factor,
-                )))
-            }
-            ObjectOp::ScalePointByScalar => {
-                expect_arity("scale-point-by-scalar", parents, 3)?;
-                Ok(ObjectValue::point(scale_around(
-                    expect_point("scale-point-by-scalar", parents, 0)?,
-                    expect_point("scale-point-by-scalar", parents, 1)?,
-                    expect_scalar("scale-point-by-scalar", parents, 2)?,
-                )))
-            }
             ObjectOp::MarkedAngleTranslationPoint => {
                 expect_arity("marked-angle-translation-point", parents, 5)?;
                 crate::marked_angle_translation_point(
@@ -998,25 +881,6 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
                 .ok_or(ObjectOpError::Degenerate {
                     op: "marked-angle-translation-point",
                 })
-            }
-            ObjectOp::ScalePointByRatio {
-                signed,
-                clamp_to_unit,
-            } => {
-                expect_arity("scale-point-by-ratio", parents, 5)?;
-                let point = scale_by_three_point_ratio(
-                    expect_point("scale-point-by-ratio", parents, 0)?,
-                    expect_point("scale-point-by-ratio", parents, 1)?,
-                    expect_point("scale-point-by-ratio", parents, 2)?,
-                    expect_point("scale-point-by-ratio", parents, 3)?,
-                    expect_point("scale-point-by-ratio", parents, 4)?,
-                    *signed,
-                    *clamp_to_unit,
-                )
-                .ok_or(ObjectOpError::Degenerate {
-                    op: "scale-point-by-ratio",
-                })?;
-                Ok(ObjectValue::point(point))
             }
             ObjectOp::Line { line_kind } => {
                 expect_arity("line", parents, 2)?;
@@ -2112,19 +1976,11 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
                 .to_degrees();
                 Ok(ObjectValue::Scalar { value })
             }
-            ObjectOp::PointLineParameter { line_kind } => {
+            ObjectOp::PointLineParameter => {
+                expect_arity("point-line-parameter", parents, 2)?;
                 let point = expect_point("point-line-parameter", parents, 0)?;
-                let (resolved_kind, start, end) = if parents.len() == 2 {
-                    expect_line("point-line-parameter", parents, 1)?
-                } else {
-                    expect_arity("point-line-parameter", parents, 3)?;
-                    (
-                        *line_kind,
-                        expect_point("point-line-parameter", parents, 1)?,
-                        expect_point("point-line-parameter", parents, 2)?,
-                    )
-                };
-                let projection = project_to_line_like(point, start, end, resolved_kind).ok_or(
+                let (line_kind, start, end) = expect_line("point-line-parameter", parents, 1)?;
+                let projection = project_to_line_like(point, start, end, line_kind).ok_or(
                     ObjectOpError::Degenerate {
                         op: "point-line-parameter",
                     },
@@ -2367,60 +2223,8 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
                     ),
                 })
             }
-            ObjectOp::TranslateShapeDelta { dx, dy } => {
-                expect_arity("translate-shape-delta", parents, 1)?;
-                transform_shape("translate-shape-delta", parents[0], |point| {
-                    Some(Point {
-                        x: point.x + dx,
-                        y: point.y + dy,
-                    })
-                })
-            }
-            ObjectOp::TranslateShape => {
-                expect_arity("translate-shape", parents, 3)?;
-                let vector_start = expect_point("translate-shape", parents, 1)?;
-                let vector_end = expect_point("translate-shape", parents, 2)?;
-                transform_shape("translate-shape", parents[0], |point| {
-                    Some(translate(point, vector_start, vector_end))
-                })
-            }
-            ObjectOp::ReflectShape => {
-                expect_arity("reflect-shape", parents, 3)?;
-                let line_start = expect_point("reflect-shape", parents, 1)?;
-                let line_end = expect_point("reflect-shape", parents, 2)?;
-                transform_shape("reflect-shape", parents[0], |point| {
-                    reflect_across_line(point, line_start, line_end)
-                })
-            }
-            ObjectOp::ReflectShapeAcrossLine => {
-                expect_arity("reflect-shape-across-line", parents, 2)?;
-                let (_, line_start, line_end) =
-                    expect_line("reflect-shape-across-line", parents, 1)?;
-                transform_shape("reflect-shape-across-line", parents[0], |point| {
-                    reflect_across_line(point, line_start, line_end)
-                })
-            }
-            ObjectOp::RotateShape { radians } => {
-                expect_arity("rotate-shape", parents, 2)?;
-                let center = expect_point("rotate-shape", parents, 1)?;
-                transform_shape("rotate-shape", parents[0], |point| {
-                    Some(rotate_around(point, center, *radians))
-                })
-            }
-            ObjectOp::RotateShapeDegrees => {
-                expect_arity("rotate-shape-degrees", parents, 3)?;
-                let center = expect_point("rotate-shape-degrees", parents, 1)?;
-                let radians = expect_scalar("rotate-shape-degrees", parents, 2)?.to_radians();
-                transform_shape("rotate-shape-degrees", parents[0], |point| {
-                    Some(rotate_around(point, center, radians))
-                })
-            }
-            ObjectOp::ScaleShape { factor } => {
-                expect_arity("scale-shape", parents, 2)?;
-                let center = expect_point("scale-shape", parents, 1)?;
-                transform_shape("scale-shape", parents[0], |point| {
-                    Some(scale_around(point, center, *factor))
-                })
+            ObjectOp::TransformObject { transform } => {
+                transform_object("transform-object", *transform, parents)
             }
         }
     }
@@ -3002,6 +2806,128 @@ fn translate(point: Point, vector_start: Point, vector_end: Point) -> Point {
     }
 }
 
+fn transform_object(
+    op: &'static str,
+    transform: ObjectTransform,
+    parents: &[&ObjectValue],
+) -> Result<ObjectValue, ObjectOpError> {
+    match transform {
+        ObjectTransform::TranslateDelta { dx, dy } => {
+            expect_arity(op, parents, 1)?;
+            transform_shape(op, parents[0], |point| {
+                Some(Point {
+                    x: point.x + dx,
+                    y: point.y + dy,
+                })
+            })
+        }
+        ObjectTransform::TranslateByVector => {
+            expect_arity(op, parents, 3)?;
+            let vector_start = expect_point(op, parents, 1)?;
+            let vector_end = expect_point(op, parents, 2)?;
+            transform_shape(op, parents[0], |point| {
+                Some(translate(point, vector_start, vector_end))
+            })
+        }
+        ObjectTransform::TranslateByScalars => {
+            expect_arity(op, parents, 3)?;
+            let dx = expect_scalar(op, parents, 1)?;
+            let dy = expect_scalar(op, parents, 2)?;
+            transform_shape(op, parents[0], |point| {
+                Some(Point {
+                    x: point.x + dx,
+                    y: point.y + dy,
+                })
+            })
+        }
+        ObjectTransform::TranslateScaledScalar { x_scale, y_scale } => {
+            expect_arity(op, parents, 2)?;
+            let distance = expect_scalar(op, parents, 1)?;
+            transform_shape(op, parents[0], |point| {
+                Some(Point {
+                    x: point.x + distance * x_scale,
+                    y: point.y + distance * y_scale,
+                })
+            })
+        }
+        ObjectTransform::TranslatePolar {
+            invert_y,
+            distance_scale,
+            angle_degrees_scale,
+        } => {
+            expect_arity(op, parents, 3)?;
+            let distance = expect_scalar(op, parents, 1)? * distance_scale;
+            let angle = (expect_scalar(op, parents, 2)? * angle_degrees_scale).to_radians();
+            let dy = distance * angle.sin() * if invert_y { -1.0 } else { 1.0 };
+            let dx = distance * angle.cos();
+            transform_shape(op, parents[0], |point| {
+                Some(Point {
+                    x: point.x + dx,
+                    y: point.y + dy,
+                })
+            })
+        }
+        ObjectTransform::ReflectByLine => {
+            expect_arity(op, parents, 2)?;
+            let (_, line_start, line_end) = expect_line(op, parents, 1)?;
+            transform_shape(op, parents[0], |point| {
+                reflect_across_line(point, line_start, line_end)
+            })
+        }
+        ObjectTransform::RotateRadians { radians } => {
+            expect_arity(op, parents, 2)?;
+            let center = expect_point(op, parents, 1)?;
+            transform_shape(op, parents[0], |point| {
+                Some(rotate_around(point, center, radians))
+            })
+        }
+        ObjectTransform::RotateDegrees => {
+            expect_arity(op, parents, 3)?;
+            let center = expect_point(op, parents, 1)?;
+            let radians = expect_scalar(op, parents, 2)?.to_radians();
+            transform_shape(op, parents[0], |point| {
+                Some(rotate_around(point, center, radians))
+            })
+        }
+        ObjectTransform::Scale { factor } => {
+            expect_arity(op, parents, 2)?;
+            let center = expect_point(op, parents, 1)?;
+            transform_shape(op, parents[0], |point| {
+                Some(scale_around(point, center, factor))
+            })
+        }
+        ObjectTransform::ScaleByScalar => {
+            expect_arity(op, parents, 3)?;
+            let center = expect_point(op, parents, 1)?;
+            let factor = expect_scalar(op, parents, 2)?;
+            transform_shape(op, parents[0], |point| {
+                Some(scale_around(point, center, factor))
+            })
+        }
+        ObjectTransform::ScaleByRatio {
+            signed,
+            clamp_to_unit,
+        } => {
+            expect_arity(op, parents, 5)?;
+            let center = expect_point(op, parents, 1)?;
+            let ratio_origin = expect_point(op, parents, 2)?;
+            let ratio_denominator = expect_point(op, parents, 3)?;
+            let ratio_numerator = expect_point(op, parents, 4)?;
+            transform_shape(op, parents[0], |point| {
+                scale_by_three_point_ratio(
+                    point,
+                    center,
+                    ratio_origin,
+                    ratio_denominator,
+                    ratio_numerator,
+                    signed,
+                    clamp_to_unit,
+                )
+            })
+        }
+    }
+}
+
 fn transform_shape(
     op: &'static str,
     value: &ObjectValue,
@@ -3063,10 +2989,21 @@ fn transform_shape(
                 })
                 .collect::<Result<_, ObjectOpError>>()?,
         }),
-        ObjectValue::Scalar { .. }
-        | ObjectValue::Polygons { .. }
-        | ObjectValue::Color { .. }
-        | ObjectValue::Text { .. } => Err(ObjectOpError::ExpectedShape { op, parent: 0 }),
+        ObjectValue::Polygons { polygons } => Ok(ObjectValue::Polygons {
+            polygons: polygons
+                .iter()
+                .map(|polygon| {
+                    polygon
+                        .iter()
+                        .copied()
+                        .map(map_point)
+                        .collect::<Result<Vec<_>, _>>()
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+        }),
+        ObjectValue::Scalar { .. } | ObjectValue::Color { .. } | ObjectValue::Text { .. } => {
+            Err(ObjectOpError::ExpectedShape { op, parent: 0 })
+        }
     }
 }
 
@@ -3174,9 +3111,18 @@ mod tests {
             ObjectNode::source("axis-end"),
             ObjectNode::derived("midpoint", ObjectOp::Midpoint, ["a", "b"]),
             ObjectNode::derived(
+                "axis",
+                ObjectOp::Line {
+                    line_kind: LineKind::Line,
+                },
+                ["axis-start", "axis-end"],
+            ),
+            ObjectNode::derived(
                 "reflected",
-                ObjectOp::ReflectPoint,
-                ["midpoint", "axis-start", "axis-end"],
+                ObjectOp::TransformObject {
+                    transform: ObjectTransform::ReflectByLine,
+                },
+                ["midpoint", "axis"],
             ),
             ObjectNode::derived(
                 "segment",
@@ -3213,6 +3159,166 @@ mod tests {
                 end: Point { x: -2.0, y: 0.0 },
             })
         );
+    }
+
+    #[test]
+    fn one_transform_interpreter_preserves_geometry_values_for_downstream_operations() {
+        let segment = ObjectValue::Line {
+            line_kind: LineKind::Segment,
+            start: Point { x: 0.0, y: 0.0 },
+            end: Point { x: 2.0, y: 0.0 },
+        };
+        let origin = ObjectValue::point(Point { x: 0.0, y: 0.0 });
+        let vector_end = ObjectValue::point(Point { x: 3.0, y: 1.0 });
+        let degrees = ObjectValue::Scalar { value: 90.0 };
+        let axis = ObjectValue::Line {
+            line_kind: LineKind::Line,
+            start: Point { x: 0.0, y: -1.0 },
+            end: Point { x: 0.0, y: 1.0 },
+        };
+
+        let transformed_lines = [
+            BuiltinOperationTable
+                .evaluate(
+                    "translate",
+                    &ObjectOp::TransformObject {
+                        transform: ObjectTransform::TranslateByVector,
+                    },
+                    &[&segment, &origin, &vector_end],
+                )
+                .unwrap(),
+            BuiltinOperationTable
+                .evaluate(
+                    "rotate",
+                    &ObjectOp::TransformObject {
+                        transform: ObjectTransform::RotateDegrees,
+                    },
+                    &[&segment, &origin, &degrees],
+                )
+                .unwrap(),
+            BuiltinOperationTable
+                .evaluate(
+                    "reflect",
+                    &ObjectOp::TransformObject {
+                        transform: ObjectTransform::ReflectByLine,
+                    },
+                    &[&segment, &axis],
+                )
+                .unwrap(),
+            BuiltinOperationTable
+                .evaluate(
+                    "scale",
+                    &ObjectOp::TransformObject {
+                        transform: ObjectTransform::Scale { factor: 2.0 },
+                    },
+                    &[&segment, &origin],
+                )
+                .unwrap(),
+        ];
+
+        for line in transformed_lines {
+            let (line_kind, start) = match &line {
+                ObjectValue::Line {
+                    line_kind, start, ..
+                } => (*line_kind, *start),
+                _ => panic!("a transformed line-like object must remain a line value"),
+            };
+            assert_eq!(line_kind, LineKind::Segment);
+            let point = ObjectValue::point(start);
+            assert_eq!(
+                BuiltinOperationTable
+                    .evaluate("parameter", &ObjectOp::PointLineParameter, &[&point, &line],)
+                    .unwrap(),
+                ObjectValue::Scalar { value: 0.0 }
+            );
+        }
+
+        for line_kind in [LineKind::Segment, LineKind::Ray, LineKind::Line] {
+            let line = ObjectValue::Line {
+                line_kind,
+                start: Point { x: 0.0, y: 0.0 },
+                end: Point { x: 1.0, y: 0.0 },
+            };
+            let transformed = BuiltinOperationTable
+                .evaluate(
+                    "translate-line-like",
+                    &ObjectOp::TransformObject {
+                        transform: ObjectTransform::TranslateDelta { dx: 1.0, dy: 2.0 },
+                    },
+                    &[&line],
+                )
+                .unwrap();
+            assert!(matches!(
+                transformed,
+                ObjectValue::Line {
+                    line_kind: transformed_kind,
+                    ..
+                } if transformed_kind == line_kind
+            ));
+        }
+
+        let circle = ObjectValue::Circle {
+            center: Point { x: 0.0, y: 0.0 },
+            radius_point: Point { x: 2.0, y: 0.0 },
+        };
+        let scaled_circle = BuiltinOperationTable
+            .evaluate(
+                "scale-circle",
+                &ObjectOp::TransformObject {
+                    transform: ObjectTransform::Scale { factor: 2.0 },
+                },
+                &[&circle, &origin],
+            )
+            .unwrap();
+        assert!(matches!(scaled_circle, ObjectValue::Circle { .. }));
+        assert_eq!(
+            BuiltinOperationTable
+                .evaluate("radius", &ObjectOp::CircularRadius, &[&scaled_circle])
+                .unwrap(),
+            ObjectValue::Scalar { value: 4.0 }
+        );
+
+        let arc = ObjectValue::Arc {
+            start: Point { x: 1.0, y: 0.0 },
+            mid: Point { x: 0.0, y: 1.0 },
+            end: Point { x: -1.0, y: 0.0 },
+            center: Some(Point { x: 0.0, y: 0.0 }),
+            counterclockwise: true,
+            complement: false,
+        };
+        let translated_arc = BuiltinOperationTable
+            .evaluate(
+                "translate-arc",
+                &ObjectOp::TransformObject {
+                    transform: ObjectTransform::TranslateDelta { dx: 2.0, dy: 3.0 },
+                },
+                &[&arc],
+            )
+            .unwrap();
+        assert!(matches!(translated_arc, ObjectValue::Arc { .. }));
+        let ObjectValue::Scalar { value: arc_length } = BuiltinOperationTable
+            .evaluate("arc-length", &ObjectOp::ArcLength, &[&translated_arc])
+            .unwrap()
+        else {
+            panic!("arc length must be scalar");
+        };
+        assert!((arc_length - std::f64::consts::PI).abs() < 1e-9);
+
+        let polygons = ObjectValue::Polygons {
+            polygons: vec![vec![Point { x: 0.0, y: 0.0 }, Point { x: 1.0, y: 0.0 }]],
+        };
+        assert!(matches!(
+            BuiltinOperationTable
+                .evaluate(
+                    "translate-polygons",
+                    &ObjectOp::TransformObject {
+                        transform: ObjectTransform::TranslateDelta { dx: 1.0, dy: 2.0 },
+                    },
+                    &[&polygons],
+                )
+                .unwrap(),
+            ObjectValue::Polygons { .. }
+        ));
     }
 
     #[test]
@@ -3331,10 +3437,12 @@ mod tests {
         let point = BuiltinOperationTable
             .evaluate(
                 "polar-offset",
-                &ObjectOp::PointPolarOffset {
-                    invert_y: false,
-                    distance_scale: 0.5,
-                    angle_degrees_scale: 2.0,
+                &ObjectOp::TransformObject {
+                    transform: ObjectTransform::TranslatePolar {
+                        invert_y: false,
+                        distance_scale: 0.5,
+                        angle_degrees_scale: 2.0,
+                    },
                 },
                 &[&source, &distance, &angle],
             )

@@ -42,7 +42,7 @@ test('a payload angle anchor and reflected arc load as a complete object graph',
   expect(result.reflectedArcIndex).toBeGreaterThanOrEqual(0);
   expect(result.resultArcIndex).toBeGreaterThanOrEqual(0);
   expect(result.controlledOp).toBe('point-on-arc');
-  expect(result.reflectedArcOp).toBe('reflect-shape-across-line');
+  expect(result.reflectedArcOp).toBe('transform-object');
   expect(result.controlled.x).toBeCloseTo(result.reflectedStart.x, 6);
   expect(result.controlled.y).toBeCloseTo(result.reflectedStart.y, 6);
   expect(result.resultEnd.x).toBeCloseTo(result.controlled.x, 6);
@@ -82,7 +82,7 @@ test('unnamed payload anchors retain exact parameter-controlled point dependenci
   expect(result.targetIndex).toBeGreaterThanOrEqual(0);
   expect(result.targetOp).toBe('point-on-line');
   expect(result.scalarOp).toBe('evaluate-expression');
-  expect(result.scalarParents.some((parent: string) => parent.endsWith(':source:1'))).toBe(true);
+  expect(result.scalarParents).toContain('scalar:group:14');
 });
 
 test('a point on a rotated ray keeps its center arc live', async ({ page }) => {
@@ -127,7 +127,7 @@ test('a point on a rotated ray keeps its center arc live', async ({ page }) => {
   expect(result.pointIndex).toBeGreaterThanOrEqual(0);
   expect(result.arcIndex).toBeGreaterThanOrEqual(0);
   expect(result.pointOp).toBe('point-on-line');
-  expect(result.domainOp).toBe('rotate-shape-degrees');
+  expect(result.domainOp).toBe('transform-object');
   expect(Math.hypot(
     result.after[0].x - result.before[0].x,
     result.after[0].y - result.before[0].y,
@@ -206,6 +206,7 @@ test('a function point drives both sides of the point and segment trace construc
       if (constraint?.kind === 'polyline') {
         constraint.segmentIndex = 550;
         constraint.t = 0.5;
+        constraint.parameter = 0.55;
       }
     }, 'graph');
     const afterPoint = { ...scene().points[pointIndex] };
