@@ -2,10 +2,10 @@ use super::basic::resolve_arc_boundary_points;
 use super::{
     CircleShape, GspFile, LineBinding, LineShape, ObjectGroup, PointRecord, PolygonShape,
     SceneContext, ShapeBinding, TransformBindingKind, collect_circle_fill_colors, color_from_style,
-    fill_color_from_styles, find_indexed_path, has_distinct_points, is_circle_group_kind,
-    line_is_dashed, line_stroke_width_from_style, payload_debug_source, reflect_across_line,
-    rotate_around, scale_around, translation_point_pair_group_indices,
-    try_decode_parameter_rotation_binding, try_decode_transform_binding,
+    fill_color_from_styles, find_indexed_path, is_circle_group_kind, line_is_dashed,
+    line_stroke_width_from_style, payload_debug_source, reflect_across_line, rotate_around,
+    scale_around, translation_point_pair_group_indices, try_decode_parameter_rotation_binding,
+    try_decode_transform_binding,
 };
 use crate::runtime::extract::decode::resolve_circle_points_raw;
 use crate::runtime::extract::points::{TransformBinding, resolve_line_like_points_raw};
@@ -25,6 +25,29 @@ fn rotation_transform_for_group(
     group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
 ) -> Option<RotationTransform> {
+    if group.header.kind() == crate::format::GroupKind::AngleRotation {
+        let binding =
+            crate::runtime::extract::points::try_decode_angle_rotation_binding(file, group).ok()?;
+        let angle_start = anchors.get(binding.angle_start_group_index)?.clone()?;
+        let angle_vertex = anchors.get(binding.angle_vertex_group_index)?.clone()?;
+        let angle_end = anchors.get(binding.angle_end_group_index)?.clone()?;
+        let angle_degrees = angle_degrees_from_points(&angle_start, &angle_vertex, &angle_end)?;
+        return Some(RotationTransform {
+            binding: TransformBinding {
+                source_group_index: binding.source_group_index,
+                center_group_index: binding.center_group_index,
+                kind: TransformBindingKind::Rotate {
+                    angle_degrees,
+                    parameter_name: None,
+                },
+            },
+            angle_group_indices: Some((
+                binding.angle_start_group_index,
+                binding.angle_vertex_group_index,
+                binding.angle_end_group_index,
+            )),
+        });
+    }
     if group.header.kind() == crate::format::GroupKind::ParameterRotation {
         if let Ok(binding) = try_decode_parameter_rotation_binding(file, groups, group) {
             return Some(RotationTransform {
@@ -79,6 +102,7 @@ fn rotation_binding(
         center_index,
         angle_degrees: binding_angle_degrees(binding)?,
         parameter_name: binding_parameter_name(binding),
+        angle_expr: None,
         angle_start_index: angle_group_indices.map(|indices| indices.0),
         angle_vertex_index: angle_group_indices.map(|indices| indices.1),
         angle_end_index: angle_group_indices.map(|indices| indices.2),
@@ -96,7 +120,9 @@ pub(crate) fn collect_rotated_line_shapes(
         .filter(|group| {
             matches!(
                 group.header.kind(),
-                crate::format::GroupKind::Rotation | crate::format::GroupKind::ParameterRotation
+                crate::format::GroupKind::Rotation
+                    | crate::format::GroupKind::ParameterRotation
+                    | crate::format::GroupKind::AngleRotation
             )
         })
         .filter_map(|group| {
@@ -706,7 +732,7 @@ fn derived_line_shape(
     points: Vec<PointRecord>,
     transform: LineTransformBinding,
 ) -> Option<LineShape> {
-    (points.len() >= 2 && has_distinct_points(&points)).then_some(LineShape {
+    (points.len() >= 2).then_some(LineShape {
         points,
         color: color_from_style(source_group.header.style_b),
         dashed: line_is_dashed(source_group.header.style_a),

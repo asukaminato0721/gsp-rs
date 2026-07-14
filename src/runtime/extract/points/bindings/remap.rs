@@ -1,7 +1,7 @@
-use crate::runtime::extract::shapes::CircleShape;
+use crate::runtime::extract::shapes::{ArcShape, CircleShape};
 use crate::runtime::scene::{
-    AxisBinding, LineBinding, LineShape, LineTransformBinding, PolygonShape, ShapeBinding,
-    ShapeTransformBinding, TextLabel, TextLabelBinding,
+    ArcBinding, AxisBinding, LineBinding, LineShape, LineTransformBinding, PolygonShape,
+    ShapeBinding, ShapeTransformBinding, TextLabel, TextLabelBinding,
 };
 
 fn mapped_index(mapping: &[Option<usize>], index: usize) -> Option<usize> {
@@ -236,6 +236,7 @@ pub(crate) fn remap_label_bindings(
         }
         let point_index = match binding {
             TextLabelBinding::ParameterValue { .. }
+            | TextLabelBinding::ScalarAlias { .. }
             | TextLabelBinding::ExpressionValue { .. }
             | TextLabelBinding::SequenceExpressionValue { .. }
             | TextLabelBinding::RichTextExpressionValues { .. } => continue,
@@ -479,6 +480,48 @@ pub(crate) fn remap_circle_bindings(
             }
             _ => continue,
         }
+    }
+}
+
+pub(crate) fn remap_arc_bindings(
+    arcs: &mut [ArcShape],
+    group_to_point_index: &[Option<usize>],
+    group_to_circle_index: &[Option<usize>],
+) {
+    for arc in arcs {
+        let Some(binding) = arc.binding.as_mut() else {
+            continue;
+        };
+        let mapped = (|| match binding {
+            ArcBinding::CenterArc {
+                center_index,
+                start_index,
+                end_index,
+            } => Some(ArcBinding::CenterArc {
+                center_index: mapped_index(group_to_point_index, *center_index)?,
+                start_index: mapped_index(group_to_point_index, *start_index)?,
+                end_index: mapped_index(group_to_point_index, *end_index)?,
+            }),
+            ArcBinding::CircleArc {
+                circle_index,
+                start_index,
+                end_index,
+            } => Some(ArcBinding::CircleArc {
+                circle_index: mapped_index(group_to_circle_index, *circle_index)?,
+                start_index: mapped_index(group_to_point_index, *start_index)?,
+                end_index: mapped_index(group_to_point_index, *end_index)?,
+            }),
+            ArcBinding::ThreePointArc {
+                start_index,
+                mid_index,
+                end_index,
+            } => Some(ArcBinding::ThreePointArc {
+                start_index: mapped_index(group_to_point_index, *start_index)?,
+                mid_index: mapped_index(group_to_point_index, *mid_index)?,
+                end_index: mapped_index(group_to_point_index, *end_index)?,
+            }),
+        })();
+        arc.binding = mapped;
     }
 }
 

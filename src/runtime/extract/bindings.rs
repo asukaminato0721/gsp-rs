@@ -51,7 +51,7 @@ fn map_line_shape(mapping: &mut [Option<usize>], line: &LineShape, shape_index: 
     if let Some(group_index) = group_ordinal.checked_sub(1)
         && group_index < mapping.len()
     {
-        mapping[group_index] = Some(shape_index);
+        mapping[group_index].get_or_insert(shape_index);
     }
 }
 
@@ -80,7 +80,7 @@ fn line_group_to_index_map(
         if let Some(group_index) = group_ordinal.checked_sub(1)
             && group_index < mapping.len()
         {
-            mapping[group_index] = Some(next_index);
+            mapping[group_index].get_or_insert(next_index);
         }
         next_index += 1;
     }
@@ -103,6 +103,11 @@ pub(super) fn remap_scene_bindings(
         collect_carried_polygon_edge_segment_groups(file, groups);
     let line_group_to_index = line_group_to_index_map(groups, shapes, function_plot_count);
     let circle_group_to_index = circle_group_to_index_map(groups, shapes);
+    remap_arc_bindings(
+        &mut shapes.arcs,
+        group_to_point_index,
+        &circle_group_to_index,
+    );
     remap_circle_bindings(
         &mut shapes.circles,
         group_to_point_index,

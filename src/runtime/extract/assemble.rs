@@ -9,7 +9,7 @@ use crate::runtime::scene::{
 };
 
 use super::analysis::{BoundsData, CollectedShapes, SceneAnalysis, WorldData};
-use super::graph::{BoundsInputs, collect_bounds, dedupe_line_shapes, expand_bounds};
+use super::graph::{BoundsInputs, collect_bounds, expand_bounds};
 use super::world::{world_line_iteration_family, world_line_shape, world_polygon_iteration_family};
 
 pub(super) struct SceneAssemblyArtifacts {
@@ -192,6 +192,7 @@ pub(super) fn build_world_data(
                 }
                 ScenePointConstraint::LineTraceIntersection {
                     line,
+                    trace_key,
                     point_index,
                     x_min,
                     x_max,
@@ -199,6 +200,7 @@ pub(super) fn build_world_data(
                     variant,
                 } => ScenePointConstraint::LineTraceIntersection {
                     line: clone_line_constraint(line),
+                    trace_key: *trace_key,
                     point_index: *point_index,
                     x_min: *x_min,
                     x_max: *x_max,
@@ -207,6 +209,7 @@ pub(super) fn build_world_data(
                 },
                 ScenePointConstraint::LineFunctionIntersection {
                     line,
+                    function_key,
                     expr,
                     x_min,
                     x_max,
@@ -215,6 +218,7 @@ pub(super) fn build_world_data(
                     sample_hint,
                 } => ScenePointConstraint::LineFunctionIntersection {
                     line: clone_line_constraint(line),
+                    function_key: *function_key,
                     expr: expr.clone(),
                     x_min: *x_min,
                     x_max: *x_max,
@@ -544,6 +548,20 @@ fn clone_line_constraint(constraint: &LineConstraint) -> LineConstraint {
             line_start_index: *line_start_index,
             line_end_index: *line_end_index,
         },
+        LineConstraint::PerpendicularTo {
+            through_index,
+            line,
+        } => LineConstraint::PerpendicularTo {
+            through_index: *through_index,
+            line: Box::new(clone_line_constraint(line)),
+        },
+        LineConstraint::ParallelTo {
+            through_index,
+            line,
+        } => LineConstraint::ParallelTo {
+            through_index: *through_index,
+            line: Box::new(clone_line_constraint(line)),
+        },
         LineConstraint::AngleBisectorRay {
             start_index,
             vertex_index,
@@ -561,6 +579,14 @@ fn clone_line_constraint(constraint: &LineConstraint) -> LineConstraint {
             line: Box::new(clone_line_constraint(line)),
             vector_start_index: *vector_start_index,
             vector_end_index: *vector_end_index,
+        },
+        LineConstraint::Reflected { line, axis } => LineConstraint::Reflected {
+            line: Box::new(clone_line_constraint(line)),
+            axis: Box::new(clone_line_constraint(axis)),
+        },
+        LineConstraint::Rotated { line, rotation } => LineConstraint::Rotated {
+            line: Box::new(clone_line_constraint(line)),
+            rotation: rotation.clone(),
         },
     }
 }
@@ -650,15 +676,13 @@ pub(super) fn assemble_scene(
         arcs,
     } = shapes;
 
-    let raw_lines = dedupe_line_shapes(
-        lines
-            .into_iter()
-            .chain(trace_lines)
-            .chain(axes)
-            .chain(analysis.function_plots.iter().cloned())
-            .chain(post_function_lines)
-            .collect(),
-    );
+    let raw_lines = lines
+        .into_iter()
+        .chain(trace_lines)
+        .chain(axes)
+        .chain(analysis.function_plots.iter().cloned())
+        .chain(post_function_lines)
+        .collect::<Vec<_>>();
     let functions =
         remap_function_line_indices(artifacts.functions, &analysis.function_plots, &raw_lines);
 
@@ -739,6 +763,7 @@ pub(super) fn assemble_scene(
                     .map(|center| to_world(&center, &analysis.graph_ref)),
                 counterclockwise: arc.counterclockwise,
                 visible: arc.visible,
+                binding: arc.binding,
                 debug: arc.debug,
             })
             .collect(),
@@ -829,6 +854,7 @@ fn world_label_binding(
             result_name,
             expr_label,
             expr,
+            parameter_group_ordinals,
         }) => {
             let (anchor_dx, anchor_dy) = world_label_delta(anchor_dx, anchor_dy, graph_ref);
             Some(TextLabelBinding::PointBoundExpressionValue {
@@ -839,6 +865,7 @@ fn world_label_binding(
                 result_name,
                 expr_label,
                 expr,
+                parameter_group_ordinals,
             })
         }
         Some(TextLabelBinding::PointAnchor {

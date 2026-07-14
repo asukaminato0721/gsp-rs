@@ -369,6 +369,17 @@ impl Collector<'_> {
             } => {
                 self.points(deps, [*start_index, *vertex_index, *end_index]);
             }
+            LineConstraint::PerpendicularTo {
+                through_index,
+                line,
+            }
+            | LineConstraint::ParallelTo {
+                through_index,
+                line,
+            } => {
+                self.point(deps, Some(*through_index));
+                self.line_constraint(deps, line);
+            }
             LineConstraint::Translated {
                 line,
                 vector_start_index,
@@ -376,6 +387,27 @@ impl Collector<'_> {
             } => {
                 self.line_constraint(deps, line);
                 self.points(deps, [*vector_start_index, *vector_end_index]);
+            }
+            LineConstraint::Reflected { line, axis } => {
+                self.line_constraint(deps, line);
+                self.line_constraint(deps, axis);
+            }
+            LineConstraint::Rotated { line, rotation } => {
+                self.line_constraint(deps, line);
+                self.point(deps, Some(rotation.center_index));
+                self.points(
+                    deps,
+                    [
+                        rotation.angle_start_index,
+                        rotation.angle_vertex_index,
+                        rotation.angle_end_index,
+                    ]
+                    .into_iter()
+                    .flatten(),
+                );
+                if let Some(expr) = &rotation.angle_expr {
+                    self.expr(deps, expr);
+                }
             }
         }
     }
@@ -510,6 +542,12 @@ impl Collector<'_> {
                 self.optional_points(deps, [*parameter_start_index, *parameter_end_index]);
             }
             ScenePointBinding::ConstraintParameterExpr { expr } => self.expr(deps, expr),
+            ScenePointBinding::ConstraintParameterPointDistanceRatio {
+                origin_index,
+                denominator_index,
+                numerator_index,
+                ..
+            } => self.points(deps, [*origin_index, *denominator_index, *numerator_index]),
             ScenePointBinding::ConstraintParameterFromPointExpr {
                 source_index,
                 parameter_name,
@@ -643,6 +681,22 @@ impl Collector<'_> {
             } => {
                 self.point(deps, Some(*source_index));
                 self.expr(deps, distance_expr);
+            }
+            ScenePointBinding::RadiusOffset {
+                source_index,
+                circle,
+                ..
+            } => {
+                self.point(deps, Some(*source_index));
+                self.circular_constraint(deps, circle);
+            }
+            ScenePointBinding::BoundaryLengthOffset {
+                source_index,
+                boundary,
+                ..
+            } => {
+                self.point(deps, Some(*source_index));
+                self.circular_constraint(deps, boundary);
             }
             ScenePointBinding::CustomTransform {
                 source_index,
@@ -1002,6 +1056,7 @@ impl Collector<'_> {
     fn label_binding(&self, deps: &mut Dependencies, binding: &TextLabelBinding) {
         match binding {
             TextLabelBinding::ParameterValue { name } => self.parameter(deps, Some(name)),
+            TextLabelBinding::ScalarAlias { .. } => {}
             TextLabelBinding::ExpressionValue {
                 parameter_name,
                 expr,
@@ -1119,7 +1174,7 @@ impl Collector<'_> {
 }
 
 fn derived_label_order(scene: &Scene) -> Vec<usize> {
-    let derived = scene
+    let mut derived = scene
         .labels
         .iter()
         .enumerate()
@@ -1129,31 +1184,34 @@ fn derived_label_order(scene: &Scene) -> Vec<usize> {
             (!output_names.is_empty()).then_some((label_index, binding, output_names))
         })
         .collect::<Vec<_>>();
+    derived.sort_by_key(|(label_index, _, _)| {
+        scene.labels[*label_index]
+            .debug
+            .as_ref()
+            .map(|debug| debug.group_ordinal)
+            .unwrap_or(usize::MAX)
+    });
     let mut producers = BTreeMap::<String, String>::new();
-    for (index, (_, _, output_names)) in derived.iter().enumerate() {
+    let mut nodes = Vec::with_capacity(derived.len());
+    for (index, (_, binding, output_names)) in derived.iter().enumerate() {
+        let id = format!("derived-label:{index}");
+        let mut referenced = BTreeSet::new();
+        if let TextLabelBinding::ExpressionValue { expr, .. }
+        | TextLabelBinding::PointBoundExpressionValue { expr, .. } = binding
+        {
+            referenced.extend(gsp_runtime_core::expression_parameter_names(expr));
+        }
+        nodes.push(gsp_runtime_core::DependencyNodeInput {
+            id: id.clone(),
+            depends_on: referenced
+                .into_iter()
+                .filter_map(|name| producers.get(&name).cloned())
+                .collect(),
+        });
         for name in output_names {
-            producers.insert(name.clone(), format!("derived-label:{index}"));
+            producers.insert(name.clone(), id.clone());
         }
     }
-    let nodes = derived
-        .iter()
-        .enumerate()
-        .map(|(index, (_, binding, _))| {
-            let mut referenced = BTreeSet::new();
-            if let TextLabelBinding::ExpressionValue { expr, .. }
-            | TextLabelBinding::PointBoundExpressionValue { expr, .. } = binding
-            {
-                referenced.extend(gsp_runtime_core::expression_parameter_names(expr));
-            }
-            gsp_runtime_core::DependencyNodeInput {
-                id: format!("derived-label:{index}"),
-                depends_on: referenced
-                    .into_iter()
-                    .filter_map(|name| producers.get(&name).cloned())
-                    .collect(),
-            }
-        })
-        .collect::<Vec<_>>();
     let plan = gsp_runtime_core::DependencyPlan::build(&nodes)
         .expect("derived label dependencies must not contain a cycle");
     plan.topo_order()
@@ -1223,57 +1281,49 @@ fn collect_derived_parameter_deps(
         label_referenced_parameter_names(binding, &mut entry.1);
     }
 
-    fn resolve(
-        name: &str,
-        definitions: &BTreeMap<String, (Dependencies, BTreeSet<String>)>,
-        known_parameters: &BTreeSet<String>,
-        resolved: &mut BTreeMap<String, Dependencies>,
-        resolving: &mut Vec<String>,
-    ) -> Dependencies {
-        if let Some(deps) = resolved.get(name) {
-            return deps.clone();
-        }
-        if let Some(start) = resolving.iter().position(|candidate| candidate == name) {
-            let mut cycle = resolving[start..].to_vec();
-            cycle.push(name.into());
-            panic!(
-                "cyclic derived parameter dependency: {}",
-                cycle.join(" -> ")
-            );
-        }
-        let Some((direct, referenced)) = definitions.get(name) else {
-            return Dependencies::new();
-        };
-        resolving.push(name.into());
-        let mut deps = direct.clone();
-        for referenced_name in referenced {
-            if known_parameters.contains(referenced_name) {
-                deps.insert(parameter_root_id(referenced_name));
-            }
-            deps.extend(resolve(
-                referenced_name,
-                definitions,
-                known_parameters,
-                resolved,
-                resolving,
-            ));
-        }
-        resolving.pop();
-        resolved.insert(name.into(), deps.clone());
-        deps
-    }
+    resolve_name_indexed_dependencies(&definitions, known_parameters)
+}
 
-    let mut resolved = BTreeMap::new();
-    for name in definitions.keys() {
-        resolve(
-            name,
-            &definitions,
-            known_parameters,
-            &mut resolved,
-            &mut Vec::new(),
-        );
+fn resolve_name_indexed_dependencies(
+    definitions: &BTreeMap<String, (Dependencies, BTreeSet<String>)>,
+    known_parameters: &BTreeSet<String>,
+) -> BTreeMap<String, Dependencies> {
+    let mut resolved = definitions
+        .iter()
+        .map(|(name, (direct, referenced))| {
+            let mut deps = direct.clone();
+            deps.extend(
+                referenced
+                    .iter()
+                    .filter(|name| known_parameters.contains(*name))
+                    .map(|name| parameter_root_id(name)),
+            );
+            (name.clone(), deps)
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    // This compatibility graph is indexed by displayed names. GSP permits a
+    // function application to shadow its argument (q(A) -> A), so distinct
+    // ordinal values can collapse into cycles here. Propagate the finite set
+    // of root dependencies to a least fixed point; the ordinal ObjectGraph
+    // remains responsible for the actual evaluation order.
+    loop {
+        let previous = resolved.clone();
+        let mut changed = false;
+        for (name, (_, referenced)) in definitions {
+            let deps = resolved.entry(name.clone()).or_default();
+            for referenced_name in referenced {
+                if let Some(referenced_deps) = previous.get(referenced_name) {
+                    let old_len = deps.len();
+                    deps.extend(referenced_deps.iter().cloned());
+                    changed |= deps.len() != old_len;
+                }
+            }
+        }
+        if !changed {
+            return resolved;
+        }
     }
-    resolved
 }
 
 fn derived_parameter_name(binding: &TextLabelBinding) -> Option<String> {
@@ -1699,5 +1749,27 @@ mod tests {
             serde_json::to_string(&DependencyRecipeJson::RefreshDerivedPoints).unwrap(),
             "\"refresh-derived-points\""
         );
+    }
+
+    #[test]
+    fn name_indexed_dependency_cycles_reach_a_root_fixed_point() {
+        let definitions = BTreeMap::from([
+            (
+                "A".into(),
+                (
+                    BTreeSet::from(["point:7".into()]),
+                    BTreeSet::from(["B".into()]),
+                ),
+            ),
+            (
+                "B".into(),
+                (BTreeSet::new(), BTreeSet::from(["A".into(), "k".into()])),
+            ),
+        ]);
+        let resolved =
+            resolve_name_indexed_dependencies(&definitions, &BTreeSet::from(["k".into()]));
+        let expected = BTreeSet::from(["point:7".into(), parameter_root_id("k")]);
+        assert_eq!(resolved["A"], expected);
+        assert_eq!(resolved["B"], expected);
     }
 }

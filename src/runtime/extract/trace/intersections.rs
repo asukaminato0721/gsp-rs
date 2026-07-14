@@ -68,6 +68,36 @@ fn resolve_trace_line_constraint(
                 LineLikeKind::Line,
             ))
         }
+        LineConstraint::PerpendicularTo {
+            through_index,
+            line,
+        }
+        | LineConstraint::ParallelTo {
+            through_index,
+            line,
+        } => {
+            let through = resolve_trace_point(points, *through_index, visiting)?;
+            let (host_start, host_end, _) =
+                resolve_trace_line_constraint(points, line, visiting)?;
+            let dx = host_end.x - host_start.x;
+            let dy = host_end.y - host_start.y;
+            let len = (dx * dx + dy * dy).sqrt();
+            (len > 1e-9).then_some((
+                through.clone(),
+                if matches!(constraint, LineConstraint::PerpendicularTo { .. }) {
+                    PointRecord {
+                        x: through.x - dy,
+                        y: through.y + dx,
+                    }
+                } else {
+                    PointRecord {
+                        x: through.x + dx,
+                        y: through.y + dy,
+                    }
+                },
+                LineLikeKind::Line,
+            ))
+        }
         LineConstraint::AngleBisectorRay {
             start_index,
             vertex_index,
@@ -109,6 +139,56 @@ fn resolve_trace_line_constraint(
                     x: end.x + dx,
                     y: end.y + dy,
                 },
+                kind,
+            ))
+        }
+        LineConstraint::Reflected { line, axis } => {
+            let (start, end, kind) = resolve_trace_line_constraint(points, line, visiting)?;
+            let (axis_start, axis_end, _) =
+                resolve_trace_line_constraint(points, axis, visiting)?;
+            let start = gsp_runtime_core::reflect_across_line(
+                to_core_point(&start),
+                to_core_point(&axis_start),
+                to_core_point(&axis_end),
+            )?;
+            let end = gsp_runtime_core::reflect_across_line(
+                to_core_point(&end),
+                to_core_point(&axis_start),
+                to_core_point(&axis_end),
+            )?;
+            Some((from_core_point(start), from_core_point(end), kind))
+        }
+        LineConstraint::Rotated { line, rotation } => {
+            let (start, end, kind) = resolve_trace_line_constraint(points, line, visiting)?;
+            let center = resolve_trace_point(points, rotation.center_index, visiting)?;
+            let angle_degrees = if let (Some(start_index), Some(vertex_index), Some(end_index)) = (
+                rotation.angle_start_index,
+                rotation.angle_vertex_index,
+                rotation.angle_end_index,
+            ) {
+                let angle_start = resolve_trace_point(points, start_index, visiting)?;
+                let angle_vertex = resolve_trace_point(points, vertex_index, visiting)?;
+                let angle_end = resolve_trace_point(points, end_index, visiting)?;
+                crate::runtime::geometry::angle_degrees_from_points(
+                    &angle_start,
+                    &angle_vertex,
+                    &angle_end,
+                )?
+            } else {
+                rotation.angle_degrees
+            };
+            let radians = angle_degrees.to_radians();
+            Some((
+                from_core_point(gsp_runtime_core::rotate_around(
+                    to_core_point(&start),
+                    to_core_point(&center),
+                    radians,
+                )),
+                from_core_point(gsp_runtime_core::rotate_around(
+                    to_core_point(&end),
+                    to_core_point(&center),
+                    radians,
+                )),
                 kind,
             ))
         }

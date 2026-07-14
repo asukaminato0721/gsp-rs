@@ -375,6 +375,10 @@ fn postfix_display_label_from_words(
                 stack.push(DisplayExprLabel::atom("π".to_string()));
                 index += 1;
             }
+            EXPR_EULER_WORD => {
+                stack.push(DisplayExprLabel::atom("e".to_string()));
+                index += 1;
+            }
             _ if (word & EXPR_PARAMETER_MASK) == EXPR_PARAMETER_PREFIX => {
                 let parameter_index = usize::from(word & 0x000f);
                 stack.push(display_parameter_expr_label(
@@ -470,6 +474,7 @@ fn display_operand_label(
     match word {
         EXPR_VARIABLE_WORD => Some(DisplayExprLabel::atom("x".to_string())),
         EXPR_PI_WORD => Some(DisplayExprLabel::atom("π".to_string())),
+        EXPR_EULER_WORD => Some(DisplayExprLabel::atom("e".to_string())),
         _ => Some(DisplayExprLabel::atom(format_number(f64::from(word)))),
     }
 }
@@ -561,7 +566,11 @@ fn display_group_reference_label(
     parameter_anchor_display_label(file, groups, parameter_group)
         .or_else(|| decode_label_name(file, parameter_group))
         .or_else(|| {
-            if parameter_group.header.kind() == crate::format::GroupKind::DistanceValue {
+            if matches!(
+                parameter_group.header.kind(),
+                crate::format::GroupKind::DistanceValue
+                    | crate::format::GroupKind::GraphDistanceValue
+            ) {
                 let path = find_indexed_path(file, parameter_group)?;
                 return Some(distance_value_label_name(file, groups, &path));
             }
@@ -623,4 +632,3 @@ fn parameter_anchor_display_label(
         _ => None,
     }
 }
-

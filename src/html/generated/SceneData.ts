@@ -13,6 +13,7 @@ import type { LabelIterationJson } from "./LabelIterationJson";
 import type { LabelJson } from "./LabelJson";
 import type { LineIterationJson } from "./LineIterationJson";
 import type { LineJson } from "./LineJson";
+import type { ObjectGraphJson } from "./ObjectGraphJson";
 import type { ParameterJson } from "./ParameterJson";
 import type { PointIterationJson } from "./PointIterationJson";
 import type { PointJson } from "./PointJson";
@@ -20,4 +21,4 @@ import type { PolygonIterationJson } from "./PolygonIterationJson";
 import type { PolygonJson } from "./PolygonJson";
 import type { ScenePointJson } from "./ScenePointJson";
 
-export type SceneData = { width: number, height: number, backgroundColor: [number, number, number, number] | null, graphMode: boolean, piMode: boolean, savedViewport: boolean, yUp: boolean, bounds: BoundsJson, origin: PointJson | null, images: Array<ImageJson>, lines: Array<LineJson>, polygons: Array<PolygonJson>, circles: Array<CircleJson>, arcs: Array<ArcJson>, labels: Array<LabelJson>, points: Array<ScenePointJson>, pointIterations: Array<PointIterationJson>, circleIterations: Array<CircleIterationJson>, lineIterations: Array<LineIterationJson>, polygonIterations: Array<PolygonIterationJson>, labelIterations: Array<LabelIterationJson>, iterationTables: Array<IterationTableJson>, buttons: Array<ButtonJson>, parameters: Array<ParameterJson>, functions: Array<FunctionJson>, functionDefinitions: Array<FunctionDefinitionJson>, dependencyGraph: DependencyGraphJson, };
+export type SceneData = { width: number, height: number, backgroundColor: [number, number, number, number] | null, graphMode: boolean, piMode: boolean, savedViewport: boolean, yUp: boolean, bounds: BoundsJson, origin: PointJson | null, images: Array<ImageJson>, lines: Array<LineJson>, polygons: Array<PolygonJson>, circles: Array<CircleJson>, arcs: Array<ArcJson>, labels: Array<LabelJson>, points: Array<ScenePointJson>, pointIterations: Array<PointIterationJson>, circleIterations: Array<CircleIterationJson>, lineIterations: Array<LineIterationJson>, polygonIterations: Array<PolygonIterationJson>, labelIterations: Array<LabelIterationJson>, iterationTables: Array<IterationTableJson>, buttons: Array<ButtonJson>, parameters: Array<ParameterJson>, functions: Array<FunctionJson>, functionDefinitions: Array<FunctionDefinitionJson>, objectGraph: ObjectGraphJson, dependencyGraph: DependencyGraphJson, };

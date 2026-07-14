@@ -518,6 +518,7 @@
                 centerIndex: family.centerIndex,
                 angleDegrees: angleDegrees * step,
                 parameterName: null,
+                angleExpr: null,
                 angleStartIndex: null,
                 angleVertexIndex: null,
                 angleEndIndex: null,

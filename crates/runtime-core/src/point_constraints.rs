@@ -430,6 +430,18 @@ enum LineConstraint {
         #[serde(rename = "lineEndIndex")]
         line_end_index: usize,
     },
+    #[serde(rename = "perpendicular-to")]
+    PerpendicularTo {
+        #[serde(rename = "throughIndex")]
+        through_index: usize,
+        line: Box<LineConstraint>,
+    },
+    #[serde(rename = "parallel-to")]
+    ParallelTo {
+        #[serde(rename = "throughIndex")]
+        through_index: usize,
+        line: Box<LineConstraint>,
+    },
     #[serde(rename = "angle-bisector-ray")]
     AngleBisector {
         #[serde(rename = "startIndex")]
@@ -446,6 +458,19 @@ enum LineConstraint {
         vector_start_index: usize,
         #[serde(rename = "vectorEndIndex")]
         vector_end_index: usize,
+    },
+    #[serde(rename = "reflected")]
+    Reflected {
+        line: Box<LineConstraint>,
+        axis: Box<LineConstraint>,
+    },
+    #[serde(rename = "rotated")]
+    Rotated {
+        line: Box<LineConstraint>,
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "angleDegrees")]
+        angle_degrees: f64,
     },
 }
 
@@ -1657,6 +1682,40 @@ impl Resolver {
                     LineKind::Line,
                 ))
             }
+            LineConstraint::PerpendicularTo {
+                through_index,
+                line,
+            } => {
+                let through = self.resolve(*through_index)?;
+                let (start, end, _) = self.line_geometry(line)?;
+                let dx = end.x - start.x;
+                let dy = end.y - start.y;
+                (dx.hypot(dy) > 1e-9).then_some((
+                    through,
+                    Point {
+                        x: through.x - dy,
+                        y: through.y + dx,
+                    },
+                    LineKind::Line,
+                ))
+            }
+            LineConstraint::ParallelTo {
+                through_index,
+                line,
+            } => {
+                let through = self.resolve(*through_index)?;
+                let (start, end, _) = self.line_geometry(line)?;
+                let dx = end.x - start.x;
+                let dy = end.y - start.y;
+                (dx.hypot(dy) > 1e-9).then_some((
+                    through,
+                    Point {
+                        x: through.x + dx,
+                        y: through.y + dy,
+                    },
+                    LineKind::Line,
+                ))
+            }
             LineConstraint::AngleBisector {
                 start_index,
                 vertex_index,
@@ -1694,6 +1753,29 @@ impl Resolver {
                         x: end.x + dx,
                         y: end.y + dy,
                     },
+                    kind,
+                ))
+            }
+            LineConstraint::Reflected { line, axis } => {
+                let (start, end, kind) = self.line_geometry(line)?;
+                let (axis_start, axis_end, _) = self.line_geometry(axis)?;
+                Some((
+                    reflect_across_line(start, axis_start, axis_end)?,
+                    reflect_across_line(end, axis_start, axis_end)?,
+                    kind,
+                ))
+            }
+            LineConstraint::Rotated {
+                line,
+                center_index,
+                angle_degrees,
+            } => {
+                let (start, end, kind) = self.line_geometry(line)?;
+                let center = self.resolve(*center_index)?;
+                let radians = angle_degrees.to_radians();
+                Some((
+                    rotate_around(start, center, radians),
+                    rotate_around(end, center, radians),
                     kind,
                 ))
             }

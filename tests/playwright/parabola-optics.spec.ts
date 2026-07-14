@@ -1,21 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { execFileSync } from 'node:child_process';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-
-function compileFixtureToTempHtml(relativeFixturePath: string): string {
-  const repoRoot = process.cwd();
-  const sourcePath = path.resolve(repoRoot, relativeFixturePath);
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsp-parabola-optics-'));
-  const tempFixturePath = path.join(tempDir, path.basename(sourcePath));
-  fs.copyFileSync(sourcePath, tempFixturePath);
-  execFileSync(path.resolve(repoRoot, 'target/debug/gsp-rs'), ['--html', tempFixturePath], {
-    cwd: repoRoot,
-    stdio: 'pipe',
-  });
-  return tempFixturePath.replace(/\.gsp$/i, '.html');
-}
+import { compileFixtureToTempHtml } from './compile-fixture';
 
 test('parabola optics colorized iterations stay live for point drag and N', async ({ page }) => {
   const file = compileFixtureToTempHtml(

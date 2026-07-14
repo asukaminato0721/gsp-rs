@@ -21,6 +21,7 @@ pub struct DependencyPlan {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DependencyPlanError {
     DuplicateNode(String),
+    MissingDependency { node: String, dependency: String },
     Cycle(Vec<String>),
 }
 
@@ -28,6 +29,10 @@ impl std::fmt::Display for DependencyPlanError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::DuplicateNode(id) => write!(formatter, "duplicate scene dependency node: {id}"),
+            Self::MissingDependency { node, dependency } => write!(
+                formatter,
+                "scene dependency node {node} references missing dependency {dependency}"
+            ),
             Self::Cycle(nodes) => write!(
                 formatter,
                 "cyclic scene dependency graph: {}",
@@ -39,6 +44,17 @@ impl std::fmt::Display for DependencyPlanError {
 
 impl DependencyPlan {
     pub fn build(nodes: &[DependencyNodeInput]) -> Result<Self, DependencyPlanError> {
+        Self::build_with_missing_policy(nodes, false)
+    }
+
+    pub fn build_strict(nodes: &[DependencyNodeInput]) -> Result<Self, DependencyPlanError> {
+        Self::build_with_missing_policy(nodes, true)
+    }
+
+    fn build_with_missing_policy(
+        nodes: &[DependencyNodeInput],
+        reject_missing_dependencies: bool,
+    ) -> Result<Self, DependencyPlanError> {
         let mut node_indices = BTreeMap::new();
         for (index, node) in nodes.iter().enumerate() {
             if node_indices.insert(node.id.clone(), index).is_some() {
@@ -51,10 +67,22 @@ impl DependencyPlan {
         for (index, node) in nodes.iter().enumerate() {
             let mut seen = BTreeSet::new();
             for dependency in &node.depends_on {
-                if dependency == &node.id || !seen.insert(dependency) {
+                if !seen.insert(dependency) {
                     continue;
                 }
-                let Some(&dependency_index) = node_indices.get(dependency) else {
+                let dependency_index = if dependency == &node.id {
+                    if !reject_missing_dependencies {
+                        continue;
+                    }
+                    index
+                } else if let Some(&dependency_index) = node_indices.get(dependency) {
+                    dependency_index
+                } else if reject_missing_dependencies {
+                    return Err(DependencyPlanError::MissingDependency {
+                        node: node.id.clone(),
+                        dependency: dependency.clone(),
+                    });
+                } else {
                     continue;
                 };
                 indegrees[index] += 1;
@@ -98,6 +126,10 @@ impl DependencyPlan {
 
     pub fn topo_order(&self) -> &[usize] {
         &self.topo_order
+    }
+
+    pub fn node_index(&self, id: &str) -> Option<usize> {
+        self.node_indices.get(id).copied()
     }
 
     pub fn affected(&self, dirty_roots: &[String]) -> Vec<usize> {
@@ -162,6 +194,13 @@ mod tests {
         assert_eq!(
             DependencyPlan::build(&[node("a", &[]), node("a", &[])]),
             Err(DependencyPlanError::DuplicateNode("a".into())),
+        );
+        assert_eq!(
+            DependencyPlan::build_strict(&[node("a", &["missing"])]),
+            Err(DependencyPlanError::MissingDependency {
+                node: "a".into(),
+                dependency: "missing".into(),
+            }),
         );
     }
 }

@@ -205,7 +205,15 @@ pub(crate) fn decode_parameter_rotation_anchor_raw(
             GroupKind::FunctionExpr => {
                 let (angle_expr, parameters, parameter_name) =
                     expression_runtime_context(file, groups, angle_group, anchors)?;
-                let angle_expr = scale_angle_expr_to_degrees(angle_expr);
+                let angle_expr = if crate::runtime::functions::function_expr_uses_degree_units(
+                    file,
+                    groups,
+                    angle_group,
+                ) {
+                    angle_expr
+                } else {
+                    scale_angle_expr_to_degrees(angle_expr)
+                };
                 (
                     evaluate_expr_with_parameters(&angle_expr, 0.0, &parameters)?,
                     parameter_name,
@@ -263,9 +271,12 @@ pub(crate) fn decode_derived_polar_endpoint_binding(
         let value = evaluate_expr_with_parameters(&expr, 0.0, &parameters)?;
         (expr, value)
     } else {
-        let name = decode_label_name(file, distance_group)?;
-        let value =
-            try_decode_parameter_control_value_for_group(file, groups, distance_group).ok()?;
+        let expression = try_decode_function_expr(file, groups, distance_group).ok()?;
+        let value = try_decode_parameter_control_value_for_group(file, groups, distance_group)
+            .ok()
+            .or_else(|| evaluate_expr_with_parameters(&expression, 0.0, &BTreeMap::new()))?;
+        let name = decode_label_name(file, distance_group)
+            .unwrap_or_else(|| crate::runtime::functions::function_expr_label(expression));
         (
             FunctionExpr::Parsed(FunctionAst::Parameter(name, value)),
             value,

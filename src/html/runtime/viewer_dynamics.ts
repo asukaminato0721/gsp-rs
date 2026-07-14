@@ -177,6 +177,23 @@
     );
   }
 
+  function constraintPointDistanceRatioValue(
+    scene: ViewerSceneData,
+    binding: RuntimePointBindingJson,
+  ) {
+    if (binding.kind !== "constraint-parameter-point-distance-ratio") return null;
+    const origin = scene.points[binding.originIndex];
+    const denominator = scene.points[binding.denominatorIndex];
+    const numerator = scene.points[binding.numeratorIndex];
+    if (!origin || !denominator || !numerator) return null;
+    return window.GspRuntimeCore.pointDistanceRatio(
+      origin,
+      denominator,
+      numerator,
+      binding.clampToUnit === true,
+    );
+  }
+
 
   function pointDistanceValue(scene: ViewerSceneData, binding: RuntimeLabelBindingJson) {
     const left = scene.points[binding.leftIndex];
@@ -895,6 +912,23 @@
         false,
       );
     }
+    if (constraint.kind === "perpendicular-to" || constraint.kind === "parallel-to") {
+      const through = resolvePointAt(constraint.throughIndex);
+      const base = resolveLineConstraintPoints(resolvePointAt, bounds, constraint.line);
+      if (!through || !base || base.length < 2) return null;
+      const dx = base[1].x - base[0].x;
+      const dy = base[1].y - base[0].y;
+      const len = Math.hypot(dx, dy);
+      if (len <= 1e-9) return null;
+      return clipParametricLineToBounds(
+        through,
+        constraint.kind === "perpendicular-to"
+          ? { x: through.x - dy / len, y: through.y + dx / len }
+          : { x: through.x + dx / len, y: through.y + dy / len },
+        bounds,
+        false,
+      );
+    }
     if (constraint.kind === "angle-bisector-ray") {
       const start = resolvePointAt(constraint.startIndex);
       const vertex = resolvePointAt(constraint.vertexIndex);
@@ -918,6 +952,26 @@
       const dx = vectorEnd.x - vectorStart.x;
       const dy = vectorEnd.y - vectorStart.y;
       return source.map(( point) => ({ x: point.x + dx, y: point.y + dy }));
+    }
+    if (constraint.kind === "reflected") {
+      const source = resolveLineConstraintPoints(resolvePointAt, bounds, constraint.line);
+      const axis = resolveLineConstraintParameterPoints(resolvePointAt, constraint.axis);
+      if (!source || !axis) return null;
+      const reflected = source.map((point) => reflectAcrossLine(point, axis[0], axis[1]));
+      return reflected.every((point): point is Point => point !== null) ? reflected : null;
+    }
+    if (constraint.kind === "rotated") {
+      const source = resolveLineConstraintPoints(resolvePointAt, bounds, constraint.line);
+      const center = resolvePointAt(constraint.centerIndex);
+      if (!source || !center) return null;
+      const angleDegrees = resolveRotateTransformAngleDegrees(
+        constraint,
+        new Map(),
+        resolvePointAt,
+      );
+      if (!isFiniteNumber(angleDegrees)) return null;
+      const radians = angleDegrees * Math.PI / 180;
+      return source.map((point) => rotateAround(point, center, radians));
     }
     return null;
   }
@@ -981,6 +1035,26 @@
       const dy = vectorEnd.y - vectorStart.y;
       return source.map(( point) => ({ x: point.x + dx, y: point.y + dy }));
     }
+    if (constraint.kind === "reflected") {
+      const source = resolveLineConstraintParameterPoints(resolvePointAt, constraint.line);
+      const axis = resolveLineConstraintParameterPoints(resolvePointAt, constraint.axis);
+      if (!source || !axis) return null;
+      const reflected = source.map((point) => reflectAcrossLine(point, axis[0], axis[1]));
+      return reflected.every((point): point is Point => point !== null) ? reflected : null;
+    }
+    if (constraint.kind === "rotated") {
+      const source = resolveLineConstraintParameterPoints(resolvePointAt, constraint.line);
+      const center = resolvePointAt(constraint.centerIndex);
+      if (!source || !center) return null;
+      const angleDegrees = resolveRotateTransformAngleDegrees(
+        constraint,
+        new Map(),
+        resolvePointAt,
+      );
+      if (!isFiniteNumber(angleDegrees)) return null;
+      const radians = angleDegrees * Math.PI / 180;
+      return source.map((point) => rotateAround(point, center, radians));
+    }
     return null;
   }
 
@@ -1001,6 +1075,12 @@
     },
     "constraint-parameter-expr"(_env: ViewerEnv, scene: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
       const value = evaluateExpr(point.binding.expr, 0, parameters);
+      if (isFiniteNumber(value)) {
+        updateConstraintParameterizedPoint(point, scene, value);
+      }
+    },
+    "constraint-parameter-point-distance-ratio"(_env: ViewerEnv, scene: ViewerSceneData, point: RuntimeScenePointJson) {
+      const value = constraintPointDistanceRatioValue(scene, point.binding);
       if (isFiniteNumber(value)) {
         updateConstraintParameterizedPoint(point, scene, value);
       }
@@ -1029,6 +1109,31 @@
     },
     "polar-offset"(env: ViewerEnv, _scene: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
       updatePolarOffsetPoint(point, env.resolveScenePoint(point.binding.sourceIndex), parameters);
+    },
+    "boundary-length-offset"(env: ViewerEnv, scene: ViewerSceneData, point: RuntimeScenePointJson) {
+      const source = resolveScenePointInScene(env, scene, point.binding.sourceIndex);
+      if (!source) return;
+      const boundary = modules.scene._circleFromConstraint?.(
+        env,
+        point.binding.boundary,
+        (index: number) => resolveScenePointInScene(env, scene, index),
+      );
+      if (!boundary) return;
+      let length: number;
+      if (
+        !("ccwMid" in boundary)
+        || !("ccwSpan" in boundary)
+        || typeof boundary.ccwMid !== "number"
+        || typeof boundary.ccwSpan !== "number"
+      ) {
+        length = 2 * Math.PI * boundary.radius;
+      } else {
+        const containsMid = boundary.ccwMid <= boundary.ccwSpan + 1e-9;
+        const span = containsMid ? boundary.ccwSpan : 2 * Math.PI - boundary.ccwSpan;
+        length = boundary.radius * span;
+      }
+      point.x = source.x + length * point.binding.xScale;
+      point.y = source.y + length * point.binding.yScale;
     },
     derived(env: ViewerEnv, scene: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
       const source = resolveScenePointInScene(env, scene, point.binding.sourceIndex);
@@ -1340,6 +1445,25 @@
     },
   };
 
+  const objectGraphLabelValues = new WeakMap<object, Map<number, number>>();
+
+  function refreshExpressionLabelFromGraphValue(
+    env: ViewerEnv,
+    label: RuntimeLabelJson,
+    value: number,
+  ) {
+    if (
+      label.binding?.kind !== "expression-value"
+      && label.binding?.kind !== "point-bound-expression-value"
+    ) {
+      return false;
+    }
+    const valueText = formatExpressionLabelValue(label, value, env);
+    label.text = `${label.binding.exprLabel} = ${valueText}`;
+    label.richMarkup = buildExpressionRichMarkup(label.binding.exprLabel, valueText);
+    return true;
+  }
+
 
   const SYNC_DYNAMIC_POINT_BINDING_UPDATERS = {
     coordinate(_env: ViewerEnv, _draft: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
@@ -1378,6 +1502,12 @@
     },
     "constraint-parameter-expr"(_env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
       const value = evaluateExpr(point.binding.expr, 0, parameters);
+      if (isFiniteNumber(value)) {
+        updateConstraintParameterizedPoint(point, draft, value);
+      }
+    },
+    "constraint-parameter-point-distance-ratio"(_env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson) {
+      const value = constraintPointDistanceRatioValue(draft, point.binding);
       if (isFiniteNumber(value)) {
         updateConstraintParameterizedPoint(point, draft, value);
       }
@@ -1646,11 +1776,12 @@
 
 
   function refreshDerivedPoints(env: ViewerEnv, scene: ViewerSceneData) {
+    if (refreshGeometryFromObjectGraph(env, scene)) {
+      return;
+    }
     const bounds = env.getViewBounds ? env.getViewBounds() : (scene.bounds || env.sourceScene.bounds);
     let parameters = parameterMapForScene(env, scene);
     const pointOrder = modules.dynamicsDependencies.createPointDependencyOrder(scene);
-    const resolvedByWasm = refreshWasmResolvedPointPositions(scene, pointOrder, parameters);
-    parameters = parameterMapForScene(env, scene);
     const resolveHandle = ( handle) => {
       if (hasPointIndexHandle(handle)) {
         return env.resolveScenePoint(handle.pointIndex);
@@ -1675,9 +1806,7 @@
       if (!point) {
         return;
       }
-      if (resolvedByWasm[pointIndex]) {
-        return;
-      }
+      parameters = parameterMapForScene(env, scene);
       const refreshBinding = point.binding ? DERIVED_POINT_BINDING_REFRESHERS[point.binding.kind] : null;
       if (refreshBinding) {
         refreshBinding(env, scene, point, parameters);
@@ -1791,32 +1920,313 @@
   }
 
 
-  function refreshWasmResolvedPointPositions(
-    scene: ViewerSceneData,
-    pointOrder = scene.points.map((_, index) => index),
-    parameters = new Map<string, number>(),
-  ) {
-    const resolvedByWasm = window.GspRuntimeCore.resolvePointConstraints(
-      scene.points,
-      pointOrder,
-      scene.yUp,
-      parameters,
-    );
-    pointOrder.forEach((pointIndex) => {
-      const point = scene.points[pointIndex];
-      if (!point) {
-        return;
+  function refreshGeometryFromObjectGraph(env: ViewerEnv, scene: ViewerSceneData) {
+    const graph = env.sourceScene.objectGraph;
+    if (!graph?.geometryComplete) {
+      return false;
+    }
+    const sourceValue = (source) => {
+      if (source.id.startsWith("control:point:")) {
+        const match = /^control:point:(\d+):(t|unit-x|unit-y)$/.exec(source.id);
+        if (!match) return source.value;
+        const point = scene.points[Number(match[1])];
+        const constraint = point?.constraint;
+        if (!constraint) return source.value;
+        if (match[2] === "t" && typeof constraint.t === "number") {
+          if (constraint.kind === "polyline") {
+            const parameter = polylineParameterFromPoint(scene, Number(match[1]));
+            if (parameter !== null) return { kind: "scalar", value: parameter };
+          }
+          return { kind: "scalar", value: constraint.t };
+        }
+        if (match[2] === "unit-x" && typeof constraint.unitX === "number") {
+          return { kind: "scalar", value: constraint.unitX };
+        }
+        if (match[2] === "unit-y" && typeof constraint.unitY === "number") {
+          return { kind: "scalar", value: constraint.unitY };
+        }
+        return source.value;
       }
-      const resolved = resolvedByWasm[pointIndex];
-      if (!resolved) {
-        return;
+      const [kind, rawIndex] = source.id.split(":");
+      const index = Number(rawIndex);
+      if (kind === "parameter") {
+        const parameter = env.currentDynamics().parameters.find((candidate) => candidate.name === rawIndex);
+        return parameter && Number.isFinite(parameter.value)
+          ? { kind: "scalar", value: parameter.value }
+          : source.value;
       }
-      point.x = resolved.x;
-      point.y = resolved.y;
+      if (!Number.isInteger(index) || index < 0) {
+        return source.value;
+      }
+      if (kind === "point") {
+        const point = scene.points[index];
+        return point ? { kind: "point", x: point.x, y: point.y } : source.value;
+      }
+      if (kind === "line") {
+        const line = scene.lines[index];
+        return line ? { kind: "points", points: line.points } : source.value;
+      }
+      if (kind === "circle") {
+        const circle = scene.circles[index];
+        return circle ? {
+          kind: "circle",
+          center: circle.center,
+          radius_point: circle.radiusPoint,
+        } : source.value;
+      }
+      if (kind === "polygon") {
+        const polygon = scene.polygons[index];
+        return polygon ? { kind: "points", points: polygon.points } : source.value;
+      }
+      if (kind === "arc") {
+        const arc = scene.arcs[index];
+        return arc ? {
+          kind: "arc",
+          start: arc.points[0],
+          mid: arc.points[1],
+          end: arc.points[2],
+          center: arc.center,
+          counterclockwise: arc.counterclockwise,
+          complement: false,
+        } : source.value;
+      }
+      return source.value;
+    };
+    const results = window.GspRuntimeCore.evaluateObjectGraph({
+      nodes: graph.nodes,
+      sources: graph.sources.map((source) => ({
+        id: source.id,
+        value: sourceValue(source),
+      })),
     });
-    return resolvedByWasm;
-  }
+    const bounds = env.getViewBounds ? env.getViewBounds() : (scene.bounds || env.sourceScene.bounds);
+    const pointIterationResults = new Map<number, Point[]>();
+    const lineIterationResults = new Map<number, Point[]>();
+    const circleIterationResults = new Map<number, Array<{ center: Point; radiusPoint: Point }>>();
+    const polygonIterationResults = new Map<number, Point[][]>();
+    const labelValues = new Map<number, number>();
+    objectGraphLabelValues.set(scene, labelValues);
+    results.forEach((result: any) => {
+      const labelMatch = /^scalar:label:(\d+)$/.exec(result.id);
+      if (
+        labelMatch
+        && result.value?.kind === "scalar"
+        && Number.isFinite(result.value.value)
+      ) {
+        labelValues.set(Number(labelMatch[1]), result.value.value);
+        return;
+      }
+      const [kind, rawIndex] = result.id.split(":");
+      const index = Number(rawIndex);
+      if (!Number.isInteger(index) || index < 0) return;
+      if (kind === "point" && result.value?.kind === "point" && scene.points[index]) {
+        scene.points[index].x = result.value.x;
+        scene.points[index].y = result.value.y;
+        return;
+      }
+      if (kind === "line" && scene.lines[index]) {
+        if (result.value?.kind === "line") {
+          const endpoints = result.value.line_kind === "line"
+            ? window.GspRuntimeCore.clipLineToBounds(result.value.start, result.value.end, bounds)
+            : result.value.line_kind === "ray"
+              ? window.GspRuntimeCore.clipRayToBounds(result.value.start, result.value.end, bounds)
+              : [result.value.start, result.value.end];
+          if (endpoints) scene.lines[index].points = endpoints;
+        } else if (result.value?.kind === "points") {
+          scene.lines[index].points = result.value.points;
+          if (scene.lines[index].binding?.kind === "segment-trace") {
+            scene.lines[index].segments = Array.from(
+              { length: Math.floor(result.value.points.length / 2) },
+              (_, segmentIndex) => result.value.points.slice(segmentIndex * 2, segmentIndex * 2 + 2),
+            );
+          }
+        }
+        return;
+      }
+      if (kind === "circle" && result.value?.kind === "circle" && scene.circles[index]) {
+        scene.circles[index].center = result.value.center;
+        scene.circles[index].radiusPoint = result.value.radius_point;
+        return;
+      }
+      if (kind === "circle-fill-color" && result.value?.kind === "color" && scene.circles[index]) {
+        scene.circles[index].fillColor = result.value.color;
+        return;
+      }
+      if (kind === "polygon" && result.value?.kind === "points" && scene.polygons[index]) {
+        scene.polygons[index].points = result.value.points;
+        return;
+      }
+      if (kind === "polygon-color" && result.value?.kind === "color" && scene.polygons[index]) {
+        scene.polygons[index].color = result.value.color;
+        return;
+      }
+      if (kind === "arc" && result.value?.kind === "arc" && scene.arcs[index]) {
+        scene.arcs[index].points = [result.value.start, result.value.mid, result.value.end];
+        scene.arcs[index].center = result.value.center ?? null;
+        scene.arcs[index].counterclockwise = result.value.counterclockwise === true;
+        return;
+      }
+      if (kind === "polygon-iteration" && result.value?.kind === "polygons") {
+        polygonIterationResults.set(index, result.value.polygons);
+        return;
+      }
+      if (kind === "point-iteration" && result.value?.kind === "points") {
+        pointIterationResults.set(index, result.value.points);
+        return;
+      }
+      if (kind === "line-iteration" && result.value?.kind === "points") {
+        lineIterationResults.set(index, result.value.points);
+        return;
+      }
+      if (kind === "circle-iteration" && result.value?.kind === "circles") {
+        circleIterationResults.set(index, result.value.circles);
+      }
+    });
 
+    const pointIterations = env.sourceScene.pointIterations || [];
+    if (pointIterations.length > 0) {
+      const exportedDepth = pointIterations.reduce(
+        (sum, family) => sum + (family.kind === "parameterized" ? 0 : Math.max(0, family.depth || 0)),
+        0,
+      );
+      const standaloneCount = env.sourceScene.points
+        .filter((point) => point?.binding?.kind === "parameter" && !point.constraint)
+        .length;
+      const baseCount = Math.max(0, env.sourceScene.points.length - exportedDepth - standaloneCount);
+      const standalonePoints = scene.points.slice(scene.points.length - standaloneCount);
+      const templates = env.sourceScene.points.slice(baseCount, baseCount + exportedDepth);
+      scene.points = scene.points.slice(0, baseCount);
+      let templateIndex = 0;
+      pointIterations.forEach((family, familyIndex) => {
+        const points = pointIterationResults.get(familyIndex) || [];
+        const sourceIndex = family.kind === "offset" || family.kind === "rotate-chain"
+          ? family.seedIndex
+          : family.kind === "rotate"
+            ? family.sourceIndex
+            : family.pointIndex;
+        points.forEach((point) => {
+          const template = templates[templateIndex] || scene.points[sourceIndex];
+          scene.points.push({
+            ...(template || {}),
+            x: point.x,
+            y: point.y,
+            color: template?.color || [255, 60, 40, 255],
+            visible: template?.visible !== false,
+            draggable: false,
+            constraint: null,
+            binding: null,
+            debug: null,
+          });
+          templateIndex += 1;
+        });
+        templateIndex += Math.max(0, (family.depth || 0) - points.length);
+      });
+      standalonePoints.forEach((point) => scene.points.push(point));
+    }
+
+    const lineIterations = env.sourceScene.lineIterations || [];
+    if (lineIterations.length > 0) {
+      const exportedDepth = lineIterations.reduce((sum, family) => {
+        const depth = Math.max(0, family.depth || 0);
+        if (family.kind === "parameterized-point-trace" || family.kind === "rotate") return sum;
+        if (family.kind === "branching") {
+          const branchCount = Array.isArray(family.targetSegments) ? family.targetSegments.length : 0;
+          let total = 0;
+          let width = branchCount;
+          for (let step = 0; step < depth; step += 1) {
+            total += width;
+            width *= branchCount;
+          }
+          return sum + total;
+        }
+        if (family.kind === "affine") return sum + depth;
+        if (family.bidirectional) {
+          return sum + (Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy)
+            ? 2 * depth * (depth + 1)
+            : 2 * depth);
+        }
+        return sum + (Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy)
+          ? ((depth + 1) * (depth + 2)) / 2 - 1
+          : depth);
+      }, 0);
+      const baseCount = Math.max(0, env.sourceScene.lines.length - exportedDepth);
+      scene.lines = scene.lines.slice(0, baseCount);
+      lineIterations.forEach((family, familyIndex) => {
+        const points = lineIterationResults.get(familyIndex) || [];
+        for (let index = 0; index + 1 < points.length; index += 2) {
+          scene.lines.push({
+            points: [points[index], points[index + 1]],
+            segments: null,
+            color: family.color,
+            dashed: !!family.dashed,
+            strokeWidth: family.strokeWidth,
+            visible: family.visible !== false,
+            binding: null,
+            debug: null,
+          });
+        }
+      });
+    }
+
+    const circleIterations = env.sourceScene.circleIterations || [];
+    if (circleIterations.length > 0) {
+      const exportedDepth = circleIterations.reduce(
+        (sum, family) => sum + Math.max(0, family.depth || 0),
+        0,
+      );
+      const baseCount = Math.max(0, env.sourceScene.circles.length - exportedDepth);
+      scene.circles = scene.circles.slice(0, baseCount);
+      circleIterations.forEach((family, familyIndex) => {
+        const source = scene.circles[family.sourceCircleIndex];
+        if (!source) return;
+        (circleIterationResults.get(familyIndex) || []).forEach((circle) => {
+          scene.circles.push({
+            ...source,
+            center: circle.center,
+            radiusPoint: circle.radiusPoint,
+            visible: family.visible !== false,
+            binding: null,
+            fillColorBinding: null,
+            debug: null,
+          });
+        });
+      });
+    }
+
+    const polygonIterations = env.sourceScene.polygonIterations || [];
+    if (polygonIterations.length > 0) {
+      const generatedCount = polygonIterations.reduce((sum, family) => {
+        const depth = Math.max(0, Math.round(family.depth || 0));
+        if (family.kind === "coordinate-grid" || family.kind === "similarity") {
+          return sum + depth;
+        }
+        if (family.bidirectional) {
+          return sum + (Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy)
+            ? 1 + 2 * depth * (depth + 1)
+            : 1 + 2 * depth);
+        }
+        return sum + (Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy)
+          ? ((depth + 1) * (depth + 2)) / 2
+          : depth + 1);
+      }, 0);
+      const baseCount = Math.max(0, env.sourceScene.polygons.length - generatedCount);
+      scene.polygons = scene.polygons.slice(0, baseCount);
+      polygonIterations.forEach((family, familyIndex) => {
+        const polygons = polygonIterationResults.get(familyIndex) || [];
+        polygons.forEach((points) => {
+          scene.polygons.push({
+            points,
+            color: family.color,
+            colorBinding: null,
+            visible: family.visible !== false,
+            binding: null,
+            debug: null,
+          });
+        });
+      });
+    }
+    return true;
+  }
 
   function refreshTraceConstrainedPointPositions(env: ViewerEnv, scene: ViewerSceneData) {
     scene.points.forEach(( point,  pointIndex: number) => {
@@ -1835,8 +2245,16 @@
 
   function refreshDynamicLabels(env: ViewerEnv, scene: ViewerSceneData) {
     const parameters = parameterMapForScene(env, scene);
-    scene.labels.forEach(( label) => {
+    const labelValues = objectGraphLabelValues.get(scene);
+    scene.labels.forEach(( label, labelIndex) => {
       if (!label.binding) return;
+      const graphValue = labelValues?.get(labelIndex);
+      if (
+        graphValue !== undefined
+        && refreshExpressionLabelFromGraphValue(env, label, graphValue)
+      ) {
+        return;
+      }
       const refreshLabel = DYNAMIC_LABEL_REFRESHERS[label.binding.kind];
       if (refreshLabel) {
         refreshLabel(env, scene, label, parameters);

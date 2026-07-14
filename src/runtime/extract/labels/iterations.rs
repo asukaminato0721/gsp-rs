@@ -216,6 +216,9 @@ pub(super) fn bind_button_seed_expression_labels(
             result_name: decode_label_name(file, expr_group),
             expr_label,
             expr,
+            parameter_group_ordinals: function_parameter_group_ordinals(
+                file, groups, expr_group,
+            ),
         });
     }
 }

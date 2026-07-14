@@ -11,6 +11,37 @@ use crate::runtime::scene::{
 };
 
 #[test]
+fn rolling_sector_parameter_anchor_drives_hidden_arc_center() {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/方小庆作品/扇形滚动(inRm).gsp")
+    else {
+        return;
+    };
+    let file = GspFile::parse(&data).expect("rolling-sector fixture parses");
+    let groups = file.object_groups();
+    let point_map = collect_point_objects(&file, &groups);
+    let analysis = analyze_scene(&file, &groups, &point_map);
+    let controlled =
+        try_decode_parameter_controlled_point(&file, &groups, &groups[13], &analysis.raw_anchors)
+            .expect("payload point #14 decodes from ParameterAnchor #13");
+    assert_eq!(controlled.source_point_group_index, Some(4));
+    assert!(matches!(
+        controlled.constraint,
+        super::points::RawPointConstraint::ConstructedLine {
+            host_group_index: 11,
+            line_like_kind: LineLikeKind::Segment,
+            ..
+        }
+    ));
+    let scene = build_scene_checked(&file).expect("rolling-sector scene builds");
+    assert!(scene.points.iter().any(|point| {
+        point
+            .debug
+            .as_ref()
+            .is_some_and(|debug| debug.group_ordinal == 14)
+    }));
+}
+
+#[test]
 fn expression_transform_kind_follows_payload_value_class() {
     let rolling = GspFile::parse(include_bytes!(
         "../../../tests/Samples/热研系列/滚动系列/正Ｎ边形真滚1.gsp"
@@ -1246,6 +1277,7 @@ fn exports_test10_marked_ratio_scale_and_reference_geometry() {
             factor_parameter_end_index,
             source_index,
             center_index,
+            ..
         }) => {
             assert_eq!((*source_index, *center_index), (2, 1));
             assert_eq!(parameter_name, &None);

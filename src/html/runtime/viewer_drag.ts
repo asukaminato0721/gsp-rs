@@ -547,6 +547,7 @@
   modules.drag = {
     dragModeFor,
     beginDrag,
+    updatePointToWorld,
     updateDraggedPoint,
     updateDraggedLabel,
     updateDraggedImage,

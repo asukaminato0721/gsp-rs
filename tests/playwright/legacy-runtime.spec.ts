@@ -1,21 +1,7 @@
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
-
-function compileFixtureToTempHtml(relativeFixturePath: string): string {
-  const repoRoot = process.cwd();
-  const sourcePath = path.resolve(repoRoot, relativeFixturePath);
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsp-legacy-runtime-'));
-  const tempFixturePath = path.join(tempDir, path.basename(sourcePath));
-  fs.copyFileSync(sourcePath, tempFixturePath);
-  execFileSync(path.resolve(repoRoot, 'target/debug/gsp-rs'), ['--html', tempFixturePath], {
-    cwd: repoRoot,
-    stdio: 'pipe',
-  });
-  return tempFixturePath.replace(/\.gsp$/i, '.html');
-}
+import { compileFixtureToTempHtml } from './compile-fixture';
 
 test('line-intersection helper points stay pan-only in the browser runtime', async ({ page }) => {
   const file = compileFixtureToTempHtml('tests/Samples/热研系列/概率问题/蒲丰投针实验求π的近似值.gsp');
@@ -126,6 +112,7 @@ test('three-circle rolling animate buttons update measured rolling geometry', as
       } : null;
     };
     return {
+      objectGraphComplete: window.gspDebug.viewerEnv.sourceScene.objectGraph.geometryComplete,
       mainCenter: point(6),
       innerDriver: point(16),
       innerIntersection: point(24),
@@ -150,6 +137,7 @@ test('three-circle rolling animate buttons update measured rolling geometry', as
   ) => left && right ? Math.hypot(left.cx - right.cx, left.cy - right.cy) : 0;
 
   const before = await snapshot();
+  expect(before.objectGraphComplete).toBe(true);
   expect(before.buttons).toEqual(expect.arrayContaining([
     expect.objectContaining({ text: '内圆', group: 17, action: expect.objectContaining({ kind: 'animate-point' }) }),
     expect.objectContaining({ text: '外圆', group: 29, action: expect.objectContaining({ kind: 'animate-point' }) }),
@@ -651,6 +639,10 @@ test('three-moving-point fixture keeps measured rotation and move buttons live',
     const scene = window.gspDebug.runtime.scene;
     const moveButtons = scene.buttons.filter((button: any) => button.action?.kind === 'move-point');
     return {
+      objectGraphComplete: window.gspDebug.sourceScene.objectGraph.geometryComplete,
+      objectGraphPending: window.gspDebug.sourceScene.objectGraph.pendingOperations,
+      arcOperation: window.gspDebug.sourceScene.objectGraph.nodes
+        .find((node: any) => node.id === 'arc:0')?.definition?.op?.kind,
       cPoint: scene.points.find((point: any) => point.debug?.groupOrdinal === 4),
       parameter: scene.parameters.find((parameter: any) => parameter.name === 't₁'),
       moveButtonOrdinals: moveButtons.map((button: any) => button.debug?.groupOrdinal),
@@ -664,6 +656,9 @@ test('three-moving-point fixture keeps measured rotation and move buttons live',
     };
   });
 
+  expect(before.objectGraphComplete).toBe(true);
+  expect(before.objectGraphPending).toEqual([]);
+  expect(before.arcOperation).toBe('center-arc');
   expect(before.parameter?.value).toBeCloseTo(60, 6);
   expect(before.parameter?.unit).toBe('degree');
   expect(before.cPoint?.binding?.transform?.kind).toBe('rotate');
@@ -711,6 +706,23 @@ test('three-moving-point fixture keeps measured rotation and move buttons live',
     expect(Math.hypot(dx, dy)).toBeGreaterThan(1);
   }
   expect(after.measurementTexts).not.toEqual(before.measurementTexts);
+
+  const rotationUpdate = await page.evaluate(() => {
+    const env = window.gspDebug.viewerEnv;
+    env.updateDynamics((draft: any) => {
+      draft.parameters.find((parameter: any) => parameter.name === 't₁').value = 90;
+    });
+    window.GspViewerModules.dynamics!.syncDynamicScene?.(env, ['t₁']);
+    const scene = window.gspDebug.runtime.scene;
+    const cPoint = scene.points.find((point: any) => point.debug?.groupOrdinal === 4);
+    const arc = scene.arcs.find((candidate: any) => candidate.debug?.groupOrdinal === 5);
+    return { cPoint, arcEnd: arc?.points[2], arcCenter: arc?.center };
+  });
+
+  expect(rotationUpdate.cPoint.x).not.toBeCloseTo(before.cPoint.x, 3);
+  expect(rotationUpdate.arcEnd.x).toBeCloseTo(rotationUpdate.cPoint.x, 9);
+  expect(rotationUpdate.arcEnd.y).toBeCloseTo(rotationUpdate.cPoint.y, 9);
+  expect(rotationUpdate.arcCenter).toBeTruthy();
 });
 
 test('one dragon fixture preserves JavaSketchpad visibility and clickable sequence action', async ({ page }) => {

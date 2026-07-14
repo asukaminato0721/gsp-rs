@@ -20,7 +20,7 @@ pub(crate) enum CircularConstraintRaw {
 }
 
 impl CircularConstraintRaw {
-    pub(super) fn center(&self) -> PointRecord {
+    pub(crate) fn center(&self) -> PointRecord {
         match self {
             Self::Circle { center, .. } | Self::ThreePointArc { center, .. } => center.clone(),
         }
@@ -51,13 +51,6 @@ pub(super) fn line_polyline_intersection(
             LineLikeKind::Segment,
         )
     })
-}
-
-pub(super) fn distinct_pair(
-    start: PointRecord,
-    end: PointRecord,
-) -> Option<(PointRecord, PointRecord)> {
-    (((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt() > 1e-9).then_some((start, end))
 }
 
 pub(super) fn select_line_circle_intersection(

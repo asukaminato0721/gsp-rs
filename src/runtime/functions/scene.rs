@@ -11,7 +11,10 @@ use crate::runtime::scene::{
     TextLabel,
 };
 
-use super::decode::{try_decode_function_expr, try_decode_function_plot_descriptor};
+use super::decode::{
+    function_parameter_group_ordinals, try_decode_function_expr,
+    try_decode_function_plot_descriptor,
+};
 use super::expr::{
     BinaryOp, FunctionAst, FunctionExpr, FunctionPlotDescriptor, function_expr_contains_variable,
     function_expr_label_with_variable, function_expr_uses_trig, function_name_for_index,
@@ -92,7 +95,14 @@ pub(crate) fn collect_scene_functions(
     points: &[ScenePoint],
     plot_line_offset: usize,
 ) -> Vec<SceneFunction> {
-    let base_entries: Vec<(usize, String, FunctionExpr, FunctionPlotDescriptor)> = groups
+    let base_entries: Vec<(
+        usize,
+        usize,
+        String,
+        FunctionExpr,
+        FunctionPlotDescriptor,
+        BTreeMap<String, usize>,
+    )> = groups
         .iter()
         .filter(|group| (group.header.kind()) == crate::format::GroupKind::FunctionPlot)
         .filter_map(|group| {
@@ -107,7 +117,16 @@ pub(crate) fn collect_scene_functions(
             let descriptor =
                 try_decode_function_plot_descriptor(descriptor_record.payload(&file.data)).ok()?;
             let name = source_function_name(file, definition_group).unwrap_or_default();
-            Some((definition_ordinal, name, expr, descriptor))
+            let parameter_group_ordinals =
+                function_parameter_group_ordinals(file, groups, definition_group);
+            Some((
+                definition_ordinal,
+                group.ordinal,
+                name,
+                expr,
+                descriptor,
+                parameter_group_ordinals,
+            ))
         })
         .collect();
 
@@ -116,7 +135,17 @@ pub(crate) fn collect_scene_functions(
         .iter()
         .enumerate()
         .filter_map(
-            |(index, (definition_ordinal, source_name, expr, descriptor))| {
+            |(
+                index,
+                (
+                    definition_ordinal,
+                    plot_ordinal,
+                    source_name,
+                    expr,
+                    descriptor,
+                    parameter_group_ordinals,
+                ),
+            )| {
                 let name = if source_name.is_empty() {
                     let definition_group = groups.get(definition_ordinal.checked_sub(1)?)?;
                     function_name_for_definition(file, definition_group, index, total, expr)
@@ -134,7 +163,7 @@ pub(crate) fn collect_scene_functions(
                     .enumerate()
                     .filter_map(|(point_index, point)| match &point.constraint {
                         ScenePointConstraint::OnPolyline { function_key, .. }
-                            if function_key == definition_ordinal =>
+                            if function_key == plot_ordinal =>
                         {
                             Some(point_index)
                         }
@@ -143,9 +172,11 @@ pub(crate) fn collect_scene_functions(
                     .collect::<Vec<_>>();
                 Some(SceneFunction {
                     key: *definition_ordinal,
+                    plot_key: Some(*plot_ordinal),
                     name,
                     derivative: false,
                     expr: expr.clone(),
+                    parameter_group_ordinals: parameter_group_ordinals.clone(),
                     domain: descriptor.clone(),
                     line_index: Some(plot_line_offset + index),
                     label_index,
@@ -165,7 +196,7 @@ pub(crate) fn collect_scene_functions(
                 let base_index =
                     base_entries
                         .iter()
-                        .position(|(definition_ordinal, _, _, _)| {
+                        .position(|(definition_ordinal, _, _, _, _, _)| {
                             *definition_ordinal == base_definition_ordinal
                         })?;
                 let definition_group = groups.get(base_definition_ordinal.checked_sub(1)?)?;
@@ -174,7 +205,7 @@ pub(crate) fn collect_scene_functions(
                     definition_group,
                     base_index,
                     total,
-                    &base_entries[base_index].2,
+                    &base_entries[base_index].3,
                 );
                 let expr = try_decode_function_expr(file, groups, group).ok()?;
                 let label_index = labels.iter().position(|label| {
@@ -185,10 +216,12 @@ pub(crate) fn collect_scene_functions(
                 });
                 Some(SceneFunction {
                     key: base_definition_ordinal,
+                    plot_key: None,
                     name: base_name,
                     derivative: true,
                     expr,
-                    domain: base_entries[base_index].3.clone(),
+                    parameter_group_ordinals: base_entries[base_index].5.clone(),
+                    domain: base_entries[base_index].4.clone(),
                     line_index: None,
                     label_index,
                     constrained_point_indices: Vec::new(),
@@ -396,6 +429,8 @@ fn htm_ast_label(ast: &FunctionAst, variable: &str, wrap_binary: bool) -> String
     let text = match ast {
         FunctionAst::Variable => variable.to_string(),
         FunctionAst::Constant(value) => crate::runtime::geometry::format_number(*value),
+        FunctionAst::PiConstant => "π".to_string(),
+        FunctionAst::EulerConstant => "e".to_string(),
         FunctionAst::PiAngle => "π".to_string(),
         FunctionAst::Parameter(name, _) => htm_unsubscript_digits(name),
         FunctionAst::Unary { op, expr } => {

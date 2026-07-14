@@ -8,17 +8,62 @@ use crate::{
 
 const POINT_EPSILON: f64 = 1e-6;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum PlotMode {
     Cartesian,
     Polar,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum CoordinateTraceMode {
     Horizontal,
     Vertical,
     TwoDimensional,
+}
+
+pub fn segment_marker_points(
+    start: Point,
+    end: Point,
+    t: f64,
+    marker_class: u32,
+) -> Option<Vec<Point>> {
+    let dx = end.x - start.x;
+    let dy = end.y - start.y;
+    let length = dx.hypot(dy);
+    if length <= 1e-9 {
+        return None;
+    }
+    let tangent = Point {
+        x: dx / length,
+        y: dy / length,
+    };
+    let normal = Point {
+        x: -tangent.y,
+        y: tangent.x,
+    };
+    let center = Point {
+        x: start.x + dx * t.clamp(0.0, 1.0),
+        y: start.y + dy * t.clamp(0.0, 1.0),
+    };
+    let half_length = (length * 0.06).clamp(5.0, 10.0);
+    let spacing = (length * 0.05).clamp(6.0, 11.0);
+    let center_offset = marker_class.saturating_sub(1) as f64 * -0.5 * spacing;
+    let slash_center = Point {
+        x: center.x + tangent.x * center_offset,
+        y: center.y + tangent.y * center_offset,
+    };
+    Some(vec![
+        Point {
+            x: slash_center.x - normal.x * half_length,
+            y: slash_center.y - normal.y * half_length,
+        },
+        Point {
+            x: slash_center.x + normal.x * half_length,
+            y: slash_center.y + normal.y * half_length,
+        },
+    ])
 }
 
 /// Samples a scalar expression while preserving invalid samples as segment breaks.
@@ -547,6 +592,77 @@ pub fn point_angle_degrees(start: Point, vertex: Point, end: Point) -> Option<f6
     let dot = first.x / first_len * (second.x / second_len)
         + first.y / first_len * (second.y / second_len);
     finite(cross.atan2(dot).abs().to_degrees())
+}
+
+pub fn angle_marker_points(
+    start: Point,
+    vertex: Point,
+    end: Point,
+    marker_class: u32,
+) -> Option<Vec<Point>> {
+    let first_dx = start.x - vertex.x;
+    let first_dy = start.y - vertex.y;
+    let second_dx = end.x - vertex.x;
+    let second_dy = end.y - vertex.y;
+    let first_len = first_dx.hypot(first_dy);
+    let second_len = second_dx.hypot(second_dy);
+    let shortest_len = first_len.min(second_len);
+    if first_len <= 1e-9 || second_len <= 1e-9 || shortest_len <= 1e-9 {
+        return None;
+    }
+    let first = Point {
+        x: first_dx / first_len,
+        y: first_dy / first_len,
+    };
+    let second = Point {
+        x: second_dx / second_len,
+        y: second_dy / second_len,
+    };
+    let dot = (first.x * second.x + first.y * second.y).clamp(-1.0, 1.0);
+    let cross = first.x * second.y - first.y * second.x;
+    if dot.abs() <= 0.12 {
+        let side = (shortest_len * 0.125)
+            .clamp(10.0, 28.0)
+            .min(shortest_len * 0.5);
+        if side <= 1e-9 {
+            return None;
+        }
+        return Some(vec![
+            Point {
+                x: vertex.x + first.x * side,
+                y: vertex.y + first.y * side,
+            },
+            Point {
+                x: vertex.x + (first.x + second.x) * side,
+                y: vertex.y + (first.y + second.y) * side,
+            },
+            Point {
+                x: vertex.x + second.x * side,
+                y: vertex.y + second.y * side,
+            },
+        ]);
+    }
+
+    let class_scale = 1.0 + 0.18 * marker_class.max(1).saturating_sub(1) as f64;
+    let radius = ((shortest_len * 0.12).clamp(10.0, 28.0) * class_scale).min(shortest_len * 0.42);
+    let delta = cross.atan2(dot);
+    if radius <= 1e-9 || delta.abs() <= 1e-6 {
+        return None;
+    }
+    let start_angle = first.y.atan2(first.x);
+    let samples = 9usize;
+    Some(
+        (0..samples)
+            .map(|index| {
+                let t = index as f64 / (samples - 1) as f64;
+                let angle = start_angle + delta * t;
+                Point {
+                    x: vertex.x + radius * angle.cos(),
+                    y: vertex.y + radius * angle.sin(),
+                }
+            })
+            .collect(),
+    )
 }
 
 pub fn polygon_area(points: &[Point], value_scale: f64) -> Option<f64> {

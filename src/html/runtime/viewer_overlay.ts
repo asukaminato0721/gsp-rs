@@ -915,18 +915,72 @@
       }
 
       
-      function movePointsToPayloadTargets(targets: Array<{ pointIndex: number, targetPointIndex: number | null }>) {
-        env.updateScene((draft: ViewerSceneData) => {
-          targets.forEach((move) => {
-            const draftPoint = draft.points[move.pointIndex];
+      function movePointsToPayloadTargets(
+        buttonIndex: number,
+        targets: Array<{ pointIndex: number, targetPointIndex: number | null }>,
+        speed: number,
+      ) {
+        if (buttonsState.val[buttonIndex]?.active) {
+          stopButtonAnimation(buttonIndex);
+          return;
+        }
+        const sourcePointRootId = modules.dynamics?.sourcePointRootId;
+        const markSourcesDirty = () => {
+          if (typeof sourcePointRootId === "function") {
+            env.markDependencyRootsDirty?.(
+              targets.map((move) => sourcePointRootId(move.pointIndex)),
+            );
+          }
+        };
+        const starts = targets.map((move) => {
+          const point = env.currentScene().points[move.pointIndex];
+          return point ? { x: point.x, y: point.y } : null;
+        });
+        const applyProgress = (progress: number) => {
+          markSourcesDirty();
+          env.updateScene((draft: ViewerSceneData) => {
+            targets.forEach((move, index) => {
+              const start = starts[index];
             const targetPoint = typeof move.targetPointIndex === "number"
               ? draft.points[move.targetPointIndex]
               : null;
-            if (!draftPoint || !targetPoint) return;
-            draftPoint.x = targetPoint.x;
-            draftPoint.y = targetPoint.y;
+              if (!start || !targetPoint) return;
+            modules.drag.updatePointToWorld(
+              env,
+              draft,
+              move.pointIndex,
+                {
+                  x: start.x + (targetPoint.x - start.x) * progress,
+                  y: start.y + (targetPoint.y - start.y) * progress,
+                },
+            );
           });
         }, "graph");
+        };
+        if (!Number.isFinite(speed) || speed <= 0) {
+          applyProgress(1);
+          return;
+        }
+        const state = { stop: false, progress: 0, rafId: 0 };
+        buttonAnimations.set(buttonIndex, state);
+        updateButtons((buttons) => {
+          if (buttons[buttonIndex]) buttons[buttonIndex].active = true;
+        });
+        let lastTime: number | null = null;
+        const step = (timestamp: number) => {
+          if (state.stop) return;
+          if (lastTime === null) lastTime = timestamp;
+          const dt = Math.min(64, timestamp - lastTime);
+          lastTime = timestamp;
+          state.progress = Math.min(1, state.progress + dt * speed / 12000);
+          applyProgress(state.progress);
+          if (state.progress >= 1) {
+            stopButtonAnimation(buttonIndex);
+            return;
+          }
+          state.rafId = window.requestAnimationFrame(step);
+        };
+        state.rafId = window.requestAnimationFrame(step);
       }
 
 
@@ -951,12 +1005,12 @@
           }
           case "move-point":
             if (typeof action.pointIndex === "number") {
-              movePointsToPayloadTargets([action]);
+              movePointsToPayloadTargets(buttonIndex, [action], action.speed);
             }
             break;
           case "move-points":
             if (Array.isArray(action.targets)) {
-              movePointsToPayloadTargets(action.targets);
+              movePointsToPayloadTargets(buttonIndex, action.targets, action.speed);
             }
             break;
           case "set-parameter":

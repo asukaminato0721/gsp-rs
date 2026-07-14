@@ -58,6 +58,10 @@ pub(super) enum FunctionAstJson {
     Variable,
     #[serde(rename = "constant")]
     Constant { value: f64 },
+    #[serde(rename = "pi-constant")]
+    PiConstant,
+    #[serde(rename = "euler-constant")]
+    EulerConstant,
     #[serde(rename = "parameter")]
     Parameter { name: String, value: f64 },
     #[serde(rename = "pi-angle")]
@@ -80,6 +84,8 @@ impl FunctionAstJson {
         match ast {
             FunctionAst::Variable => Self::Variable,
             FunctionAst::Constant(value) => Self::Constant { value: *value },
+            FunctionAst::PiConstant => Self::PiConstant,
+            FunctionAst::EulerConstant => Self::EulerConstant,
             FunctionAst::PiAngle => Self::PiAngle,
             FunctionAst::Parameter(name, value) => Self::Parameter {
                 name: name.clone(),

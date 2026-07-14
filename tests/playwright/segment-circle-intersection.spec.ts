@@ -1,21 +1,5 @@
 import { test, expect } from '@playwright/test';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { execFileSync } from 'node:child_process';
-
-function compileFixtureToTempHtml(relativeFixturePath: string): string {
-  const repoRoot = process.cwd();
-  const sourcePath = path.resolve(repoRoot, relativeFixturePath);
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsp-segment-circle-'));
-  const tempFixturePath = path.join(tempDir, path.basename(sourcePath));
-  fs.copyFileSync(sourcePath, tempFixturePath);
-  execFileSync(path.resolve(repoRoot, 'target/debug/gsp-rs'), ['--html', tempFixturePath], {
-    cwd: repoRoot,
-    stdio: 'pipe',
-  });
-  return tempFixturePath.replace(/\.gsp$/i, '.html');
-}
+import { compileFixtureToTempHtml } from './compile-fixture';
 
 test('segment-circle intersection stays interactive and preserves segment semantics', async ({ page }) => {
   const file = compileFixtureToTempHtml('tests/fixtures/gsp/insection/circle_insection.gsp');
@@ -25,11 +9,13 @@ test('segment-circle intersection stays interactive and preserves segment semant
     const runtime = window.gspDebug.runtime;
     const intersection = runtime.scene.points[4];
     return {
+      objectGraphComplete: window.gspDebug.viewerEnv.sourceScene.objectGraph.geometryComplete,
       intersectionX: intersection.x,
       intersectionY: intersection.y,
       lineKind: intersection.constraint?.line?.kind ?? null,
     };
   });
+  expect(before.objectGraphComplete).toBe(true);
   expect(before.lineKind).toBe('segment');
 
   await page.evaluate(() => {

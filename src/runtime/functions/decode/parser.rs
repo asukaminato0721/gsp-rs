@@ -1,9 +1,10 @@
 use std::collections::BTreeMap;
 
 use crate::runtime::payload_consts::{
-    EXPR_OP_ADD, EXPR_OP_DIV, EXPR_OP_MUL, EXPR_OP_POW, EXPR_OP_SUB, EXPR_PARAMETER_MASK,
-    EXPR_PARAMETER_PREFIX, EXPR_PI_SUFFIX, EXPR_PI_WORD, EXPR_VARIABLE_SUFFIX, EXPR_VARIABLE_WORD,
-    FUNCTION_EXPR_MARKER_A, FUNCTION_EXPR_MARKER_B, RECORD_FUNCTION_EXPR_PAYLOAD,
+    EXPR_EULER_WORD, EXPR_OP_ADD, EXPR_OP_DIV, EXPR_OP_MUL, EXPR_OP_POW, EXPR_OP_SUB,
+    EXPR_PARAMETER_MASK, EXPR_PARAMETER_PREFIX, EXPR_PI_SUFFIX, EXPR_PI_WORD, EXPR_VARIABLE_SUFFIX,
+    EXPR_VARIABLE_WORD, FUNCTION_EXPR_MARKER_A, FUNCTION_EXPR_MARKER_B,
+    RECORD_FUNCTION_EXPR_PAYLOAD,
 };
 
 use super::super::expr::{
@@ -182,7 +183,8 @@ impl<'a> FunctionExprParser<'a> {
         let offset = self.tokens.current_offset();
         match self.tokens.bump()? {
             FunctionToken::Variable => Ok(FunctionAst::Variable),
-            FunctionToken::PiAngle => Ok(FunctionAst::PiAngle),
+            FunctionToken::PiConstant => Ok(FunctionAst::PiConstant),
+            FunctionToken::EulerConstant => Ok(FunctionAst::EulerConstant),
             FunctionToken::Parameter(binding) => Ok(binding
                 .expr
                 .unwrap_or(FunctionAst::Parameter(binding.name, binding.value))),
@@ -304,7 +306,7 @@ fn lex_function_token(
             {
                 0
             }
-            _ => usize::from(matches!(next, Some(0x0101 | 0x0201))),
+            _ => usize::from(matches!(next, Some(0x0100 | 0x0101 | 0x0201))),
         }
     }
 
@@ -332,12 +334,12 @@ fn lex_function_token(
             kind: FunctionToken::Pow,
             width_words: 1,
         },
-        EXPR_PI_WORD if matches!(words.get(1), Some(&EXPR_PI_SUFFIX)) => LexedFunctionToken {
-            kind: FunctionToken::PiAngle,
-            width_words: 2,
+        EXPR_PI_WORD => LexedFunctionToken {
+            kind: FunctionToken::PiConstant,
+            width_words: 1 + usize::from(matches!(words.get(1), Some(&EXPR_PI_SUFFIX))),
         },
-        EXPR_PI_WORD if words.len() == 1 => LexedFunctionToken {
-            kind: FunctionToken::Constant(std::f64::consts::PI),
+        EXPR_EULER_WORD => LexedFunctionToken {
+            kind: FunctionToken::EulerConstant,
             width_words: 1,
         },
         EXPR_VARIABLE_WORD if matches!(words.get(1), Some(&EXPR_VARIABLE_SUFFIX)) => {
@@ -400,17 +402,34 @@ fn lex_function_token(
 }
 
 fn decode_decimal_digit_literal(words: &[u16]) -> Option<(f64, usize)> {
+    if let Some(literal) = decode_terminated_decimal_literal(words) {
+        return Some(literal);
+    }
+    if let Some(literal) = decode_three_digit_literal(words) {
+        return Some(literal);
+    }
     let first = *words.first()?;
     let second = *words.get(1)?;
     let next = words.get(2).copied();
-    if first <= 9
-        && second <= 9
-        && let (Some(third), Some(suffix)) = (words.get(2).copied(), words.get(3).copied())
-        && third == 0
-        && suffix == 0x0101
-        && words.len() == 4
-    {
-        return Some((f64::from(first * 100 + second * 10 + third), 4));
+    if first == 0x000a {
+        let mut index = 1;
+        let mut divisor = 1.0;
+        let mut value = 0.0;
+        while let Some(digit) = words.get(index).copied().filter(|word| *word <= 9) {
+            divisor *= 10.0;
+            value += f64::from(digit) / divisor;
+            index += 1;
+        }
+        if index > 1
+            && matches!(
+                words.get(index).copied(),
+                None | Some(
+                    EXPR_OP_ADD | EXPR_OP_SUB | EXPR_OP_MUL | EXPR_OP_DIV | EXPR_OP_POW | 0x000c
+                )
+            )
+        {
+            return value.is_finite().then_some((value, index));
+        }
     }
     if first == 0 && second == 10 {
         let digit = *words.get(2)?;
@@ -438,6 +457,51 @@ fn decode_decimal_digit_literal(words: &[u16]) -> Option<(f64, usize)> {
     Some((f64::from(first * 10 + second), 2))
 }
 
+fn decode_terminated_decimal_literal(words: &[u16]) -> Option<(f64, usize)> {
+    let terminator_index = words.iter().position(|word| *word == 0x0101)?;
+    let literal_words = words.get(..terminator_index)?;
+    if literal_words.is_empty()
+        || literal_words.iter().any(|word| *word > 0x000a)
+        || literal_words.iter().filter(|word| **word == 0x000a).count() > 1
+    {
+        return None;
+    }
+    let radix_index = literal_words.iter().position(|word| *word == 0x000a);
+    let (integer_digits, fraction_digits) = match radix_index {
+        Some(index) => (&literal_words[..index], &literal_words[index + 1..]),
+        None => (literal_words, &[][..]),
+    };
+    if integer_digits.is_empty() && fraction_digits.is_empty() {
+        return None;
+    }
+    let integer = integer_digits
+        .iter()
+        .try_fold(0.0, |value, digit| Some(value * 10.0 + f64::from(*digit)))?;
+    let (fraction, _) = fraction_digits
+        .iter()
+        .try_fold((0.0, 10.0), |(value, divisor), digit| {
+            Some((value + f64::from(*digit) / divisor, divisor * 10.0))
+        })?;
+    let value = integer + fraction;
+    value.is_finite().then_some((value, terminator_index + 1))
+}
+
+fn decode_three_digit_literal(words: &[u16]) -> Option<(f64, usize)> {
+    let [hundreds, tens, ones, 0x0101, ..] = words else {
+        return None;
+    };
+    if *hundreds > 9 || *tens > 9 || *ones > 9 {
+        return None;
+    }
+    if !matches!(
+        words.get(4).copied(),
+        None | Some(EXPR_OP_ADD | EXPR_OP_SUB | EXPR_OP_MUL | EXPR_OP_DIV | EXPR_OP_POW | 0x000c)
+    ) {
+        return None;
+    }
+    Some((f64::from(hundreds * 100 + tens * 10 + ones), 4))
+}
+
 fn decode_postfix_decimal_digit_literal(words: &[u16]) -> Option<(f64, usize)> {
     let first = *words.first()?;
     let second = *words.get(1)?;
@@ -461,6 +525,50 @@ fn decode_postfix_decimal_digit_literal(words: &[u16]) -> Option<(f64, usize)> {
         }
     }
     decode_decimal_digit_literal(words)
+}
+
+pub(super) fn decode_grouped_decimal_digit_literal(words: &[u16]) -> Option<(f64, usize)> {
+    if let Some(literal) = decode_terminated_decimal_literal(words) {
+        return Some(literal);
+    }
+    if words.first().copied() == Some(0x000a) {
+        let mut index = 1;
+        let mut divisor = 1.0;
+        let mut value = 0.0;
+        while let Some(digit) = words.get(index).copied().filter(|word| *word <= 9) {
+            divisor *= 10.0;
+            value += f64::from(digit) / divisor;
+            index += 1;
+        }
+        if index > 1
+            && matches!(
+                words.get(index).copied(),
+                None | Some(
+                    EXPR_OP_ADD | EXPR_OP_SUB | EXPR_OP_MUL | EXPR_OP_DIV | EXPR_OP_POW | 0x000c
+                )
+            )
+        {
+            return value.is_finite().then_some((value, index));
+        }
+    }
+    // Some grouped payloads preserve more than one leading zero before the
+    // native 0x000a radix marker (for example 00.5). Consume that complete
+    // fractional token; integer digit runs retain the established grouped
+    // token boundaries because adjacent digits can also be operands there.
+    let mut index = words.iter().take_while(|word| **word == 0).count();
+    if index == 0 || words.get(index).copied() != Some(0x000a) {
+        return None;
+    }
+    index += 1;
+    let mut divisor = 1.0;
+    let mut value = 0.0;
+    let fraction_start = index;
+    while let Some(word) = words.get(index).copied().filter(|word| *word <= 9) {
+        divisor *= 10.0;
+        value += f64::from(word) / divisor;
+        index += 1;
+    }
+    (index > fraction_start && value.is_finite()).then_some((value, index))
 }
 
 fn postfix_suffix_width(word: u16, next: Option<u16>) -> usize {
@@ -550,12 +658,12 @@ fn parse_postfix_function_expr_from_words(
                 });
                 index += 1;
             }
-            EXPR_PI_WORD if matches!(words.get(index + 1), Some(&EXPR_PI_SUFFIX)) => {
-                stack.push(FunctionAst::PiAngle);
-                index += 2;
+            EXPR_PI_WORD => {
+                stack.push(FunctionAst::PiConstant);
+                index += 1 + usize::from(matches!(words.get(index + 1), Some(&EXPR_PI_SUFFIX)));
             }
-            EXPR_PI_WORD if index + 1 == words.len() => {
-                stack.push(FunctionAst::Constant(std::f64::consts::PI));
+            EXPR_EULER_WORD => {
+                stack.push(FunctionAst::EulerConstant);
                 index += 1;
             }
             EXPR_VARIABLE_WORD if matches!(words.get(index + 1), Some(&EXPR_VARIABLE_SUFFIX)) => {
@@ -650,6 +758,46 @@ pub(crate) fn try_decode_inner_function_expr(
     })
 }
 
+pub(super) fn decode_trailing_scanned_payload_function_expr(
+    payload: &[u8],
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Result<FunctionExpr, FunctionExprParseError> {
+    with_function_payload_context(payload, || {
+        let words = payload
+            .chunks_exact(2)
+            .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+            .collect::<Vec<_>>();
+        parse_trailing_scanned_function_expr(&words, parameters).map(canonicalize_function_expr)
+    })
+}
+
+fn parse_trailing_scanned_function_expr(
+    words: &[u16],
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Result<FunctionAst, FunctionExprParseError> {
+    let search_start =
+        trailing_calculate_expr_start(words).ok_or(FunctionExprParseError::NoExpressionFound {
+            word_len: words.len(),
+        })?;
+    for start in search_start..words.len() {
+        if matches!(words[start], 0x000c | 0x0100 | 0x0101 | 0x0201) {
+            continue;
+        }
+        if let Ok(parsed) = parse_grouped_parameter_control_expr_at(words, start, parameters) {
+            return Ok(parsed);
+        }
+        if let Ok((parsed, end)) = parse_function_expr_from(words, start, parameters)
+            && function_ast_contains_symbol(&parsed)
+            && has_ignorable_expr_suffix(words, end)
+        {
+            return Ok(parsed);
+        }
+    }
+    Err(FunctionExprParseError::NoExpressionFound {
+        word_len: words.len(),
+    })
+}
+
 #[allow(dead_code)]
 pub(super) fn parse_function_expr(
     payload: &[u8],
@@ -692,10 +840,17 @@ enum GroupedFunctionToken {
     LParen,
     RParen,
     Variable,
-    PiAngle,
+    PiConstant,
+    EulerConstant,
     Parameter(ParameterBinding),
     Unary(UnaryFunction),
     Constant(f64),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct LexedGroupedFunctionToken {
+    kind: GroupedFunctionToken,
+    width_words: usize,
 }
 
 struct GroupedFunctionParser<'a> {
@@ -704,6 +859,7 @@ struct GroupedFunctionParser<'a> {
     base_offset: usize,
     offset: usize,
     allow_unclosed_unary_argument: bool,
+    allow_decimal_literals: bool,
 }
 
 impl<'a> GroupedFunctionParser<'a> {
@@ -718,6 +874,7 @@ impl<'a> GroupedFunctionParser<'a> {
             base_offset,
             offset: 0,
             allow_unclosed_unary_argument: false,
+            allow_decimal_literals: false,
         }
     }
 
@@ -726,24 +883,38 @@ impl<'a> GroupedFunctionParser<'a> {
         self
     }
 
+    fn allowing_decimal_literals(mut self) -> Self {
+        self.allow_decimal_literals = true;
+        self
+    }
+
     fn peek(&self) -> Result<Option<GroupedFunctionToken>, FunctionExprParseError> {
         if self.offset >= self.words.len() {
             return Ok(None);
         }
         lex_grouped_function_token(
-            self.words[self.offset],
+            &self.words[self.offset..],
             self.parameters,
             self.base_offset + self.offset,
+            self.allow_decimal_literals,
         )
-        .map(Some)
+        .map(|token| Some(token.kind))
     }
 
     fn bump(&mut self) -> Result<GroupedFunctionToken, FunctionExprParseError> {
-        let token = self.peek()?.ok_or(FunctionExprParseError::UnexpectedEnd {
-            offset: self.base_offset + self.offset,
-        })?;
-        self.offset += 1;
-        Ok(token)
+        if self.offset >= self.words.len() {
+            return Err(FunctionExprParseError::UnexpectedEnd {
+                offset: self.base_offset + self.offset,
+            });
+        }
+        let token = lex_grouped_function_token(
+            &self.words[self.offset..],
+            self.parameters,
+            self.base_offset + self.offset,
+            self.allow_decimal_literals,
+        )?;
+        self.offset += token.width_words;
+        Ok(token.kind)
     }
 
     fn skip_infix_delimiters(&mut self) {
@@ -809,7 +980,8 @@ impl<'a> GroupedFunctionParser<'a> {
         let offset = self.base_offset + self.offset;
         match self.bump()? {
             GroupedFunctionToken::Variable => Ok(FunctionAst::Variable),
-            GroupedFunctionToken::PiAngle => Ok(FunctionAst::PiAngle),
+            GroupedFunctionToken::PiConstant => Ok(FunctionAst::PiConstant),
+            GroupedFunctionToken::EulerConstant => Ok(FunctionAst::EulerConstant),
             GroupedFunctionToken::Parameter(binding) => Ok(binding
                 .expr
                 .unwrap_or(FunctionAst::Parameter(binding.name, binding.value))),
@@ -903,7 +1075,8 @@ fn grouped_to_function_token(token: GroupedFunctionToken) -> FunctionToken {
         GroupedFunctionToken::Pow => FunctionToken::Pow,
         GroupedFunctionToken::RParen => FunctionToken::Terminator,
         GroupedFunctionToken::Variable => FunctionToken::Variable,
-        GroupedFunctionToken::PiAngle => FunctionToken::PiAngle,
+        GroupedFunctionToken::PiConstant => FunctionToken::PiConstant,
+        GroupedFunctionToken::EulerConstant => FunctionToken::EulerConstant,
         GroupedFunctionToken::Parameter(binding) => FunctionToken::Parameter(binding),
         GroupedFunctionToken::Unary(op) => FunctionToken::Unary(op),
         GroupedFunctionToken::Constant(value) => FunctionToken::Constant(value),
@@ -912,11 +1085,24 @@ fn grouped_to_function_token(token: GroupedFunctionToken) -> FunctionToken {
 }
 
 fn lex_grouped_function_token(
-    word: u16,
+    words: &[u16],
     parameters: &BTreeMap<u16, ParameterBinding>,
     offset: usize,
-) -> Result<GroupedFunctionToken, FunctionExprParseError> {
-    Ok(match word {
+    allow_decimal_literals: bool,
+) -> Result<LexedGroupedFunctionToken, FunctionExprParseError> {
+    let word = *words
+        .first()
+        .ok_or(FunctionExprParseError::UnexpectedEnd { offset })?;
+    if allow_decimal_literals
+        && let Some((value, width_words)) = decode_grouped_decimal_digit_literal(words)
+            .or_else(|| decode_three_digit_literal(words))
+    {
+        return Ok(LexedGroupedFunctionToken {
+            kind: GroupedFunctionToken::Constant(value),
+            width_words,
+        });
+    }
+    let kind = match word {
         EXPR_OP_ADD => GroupedFunctionToken::Add,
         EXPR_OP_SUB => GroupedFunctionToken::Sub,
         EXPR_OP_MUL => GroupedFunctionToken::Mul,
@@ -924,7 +1110,8 @@ fn lex_grouped_function_token(
         EXPR_OP_POW => GroupedFunctionToken::Pow,
         0x000b => GroupedFunctionToken::LParen,
         0x000c => GroupedFunctionToken::RParen,
-        EXPR_PI_WORD => GroupedFunctionToken::PiAngle,
+        EXPR_PI_WORD => GroupedFunctionToken::PiConstant,
+        EXPR_EULER_WORD => GroupedFunctionToken::EulerConstant,
         EXPR_VARIABLE_WORD => GroupedFunctionToken::Variable,
         _ if (word & EXPR_PARAMETER_MASK) == EXPR_PARAMETER_PREFIX => {
             let parameter_index = word & 0x000f;
@@ -938,13 +1125,25 @@ fn lex_grouped_function_token(
         _ if decode_unary_function(word).is_some() => {
             GroupedFunctionToken::Unary(decode_unary_function(word).unwrap())
         }
-        _ if word < EXPR_OP_ADD => GroupedFunctionToken::Constant(f64::from(word)),
+        _ if word < EXPR_OP_ADD => {
+            return Ok(LexedGroupedFunctionToken {
+                kind: GroupedFunctionToken::Constant(f64::from(word)),
+                width_words: 1 + usize::from(matches!(
+                    words.get(1).copied(),
+                    Some(0x0100 | 0x0101 | 0x0201)
+                )),
+            });
+        }
         _ => {
             return Err(FunctionExprParseError::UnknownOpcode {
                 offset,
                 opcode: word,
             });
         }
+    };
+    Ok(LexedGroupedFunctionToken {
+        kind,
+        width_words: 1,
     })
 }
 
@@ -985,6 +1184,30 @@ pub(super) fn parse_grouped_function_expr_at(
 ) -> Result<FunctionAst, FunctionExprParseError> {
     let mut parser = GroupedFunctionParser::new(&words[start..], parameters, start)
         .allowing_unclosed_unary_argument();
+    let expr = parser.parse_expr(0)?;
+    if !parsed_contains_symbol(&expr) {
+        return Err(FunctionExprParseError::NoExpressionFound {
+            word_len: words.len(),
+        });
+    }
+    let remaining = &parser.words[parser.offset..];
+    if remaining.is_empty() || remaining.iter().all(|word| *word == 0x000c) {
+        Ok(expr)
+    } else {
+        Err(FunctionExprParseError::NoExpressionFound {
+            word_len: words.len(),
+        })
+    }
+}
+
+pub(super) fn parse_grouped_parameter_control_expr_at(
+    words: &[u16],
+    start: usize,
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Result<FunctionAst, FunctionExprParseError> {
+    let mut parser = GroupedFunctionParser::new(&words[start..], parameters, start)
+        .allowing_unclosed_unary_argument()
+        .allowing_decimal_literals();
     let expr = parser.parse_expr(0)?;
     if !parsed_contains_symbol(&expr) {
         return Err(FunctionExprParseError::NoExpressionFound {

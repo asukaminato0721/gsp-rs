@@ -6,6 +6,7 @@ use super::iteration_scene_json::{
 };
 use super::label_button_scene_json::{ButtonJson, LabelJson};
 use super::line_shape_scene_json::{ArcJson, CircleJson, LineJson, PolygonJson};
+use super::object_graph_scene_json::ObjectGraphJson;
 use super::point_scene_json::ScenePointJson;
 use crate::format::PointRecord;
 use crate::runtime::scene::{PayloadDebugSource, Scene};
@@ -51,6 +52,7 @@ struct SceneJson {
     parameters: Vec<ParameterJson>,
     functions: Vec<FunctionJson>,
     function_definitions: Vec<FunctionDefinitionJson>,
+    object_graph: ObjectGraphJson,
     dependency_graph: DependencyGraphJson,
 }
 
@@ -127,6 +129,7 @@ impl SceneJson {
                 .iter()
                 .map(FunctionDefinitionJson::from_definition)
                 .collect(),
+            object_graph: ObjectGraphJson::from_scene(scene),
             dependency_graph: DependencyGraphJson::from_scene(scene),
         }
     }

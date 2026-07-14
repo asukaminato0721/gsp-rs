@@ -3,7 +3,7 @@ use crate::export::html::{
 };
 use crate::gsp;
 use crate::runtime::build_scene_checked;
-use crate::runtime::scene::{ButtonAction, PointAnimation, Scene};
+use crate::runtime::scene::{AnimatedPointTarget, ButtonAction, PointAnimation, Scene};
 use miette::{Result, WrapErr, miette};
 use std::collections::BTreeMap;
 
@@ -70,6 +70,7 @@ fn compile_pages(
             .wrap_err_with(|| format!("failed to build scene from page {}", index + 1))?;
         if let Some(reference_htm) = reference_htm {
             apply_reference_animation_definitions(&mut scene, reference_htm);
+            apply_reference_move_definitions(&mut scene, reference_htm);
         }
         let document_layout = is_document_layout(page_file, &scene);
         let (width, height) = export_dimensions(page_file, &scene, width, height);
@@ -86,6 +87,7 @@ fn compile_pages(
 
 #[derive(Debug)]
 struct AnimationDefinition {
+    point_group_ordinals: Vec<usize>,
     speeds: Vec<u32>,
     directions: Vec<i32>,
     repeats: Vec<bool>,
@@ -93,6 +95,17 @@ struct AnimationDefinition {
 
 fn apply_reference_animation_definitions(scene: &mut Scene, htm: &str) {
     let definitions = parse_animation_definitions(htm);
+    let point_indices_by_ordinal = scene
+        .points
+        .iter()
+        .enumerate()
+        .filter_map(|(index, point)| {
+            point
+                .debug
+                .as_ref()
+                .map(|debug| (debug.group_ordinal, index))
+        })
+        .collect::<BTreeMap<_, _>>();
     for button in &mut scene.buttons {
         let Some(group_ordinal) = button.debug.as_ref().map(|debug| debug.group_ordinal) else {
             continue;
@@ -100,18 +113,58 @@ fn apply_reference_animation_definitions(scene: &mut Scene, htm: &str) {
         let Some(definition) = definitions.get(&group_ordinal) else {
             continue;
         };
-        match &mut button.action {
-            ButtonAction::AnimatePoint { animation, .. } => {
-                *animation = animation_at(definition, 0);
+        if !matches!(
+            button.action,
+            ButtonAction::AnimatePoint { .. } | ButtonAction::AnimatePoints { .. }
+        ) {
+            continue;
+        }
+        let targets = definition
+            .point_group_ordinals
+            .iter()
+            .enumerate()
+            .filter_map(|(index, ordinal)| {
+                Some(AnimatedPointTarget {
+                    point_index: *point_indices_by_ordinal.get(ordinal)?,
+                    animation: animation_at(definition, index),
+                })
+            })
+            .collect::<Vec<_>>();
+        match targets.as_slice() {
+            [] => {}
+            [target] => {
+                button.action = ButtonAction::AnimatePoint {
+                    point_index: target.point_index,
+                    animation: target.animation.clone(),
+                };
             }
-            ButtonAction::AnimatePoints { targets } => {
-                for (index, target) in targets.iter_mut().enumerate() {
-                    target.animation = animation_at(definition, index);
-                }
-            }
-            _ => {}
+            _ => button.action = ButtonAction::AnimatePoints { targets },
         }
     }
+}
+
+fn apply_reference_move_definitions(scene: &mut Scene, htm: &str) {
+    let speeds = htm.lines().filter_map(parse_move_button_speed);
+    let actions = scene
+        .buttons
+        .iter_mut()
+        .filter_map(|button| match &mut button.action {
+            ButtonAction::MovePoint { speed, .. } | ButtonAction::MovePoints { speed, .. } => {
+                Some(speed)
+            }
+            _ => None,
+        });
+    for (speed, reference_speed) in actions.zip(speeds) {
+        *speed = reference_speed;
+    }
+}
+
+fn parse_move_button_speed(line: &str) -> Option<u32> {
+    let trimmed = line.trim();
+    trimmed.strip_prefix('{')?;
+    let move_start = trimmed.find("MoveButton(")? + "MoveButton".len();
+    let arguments = parenthesized_groups(&trimmed[move_start..]);
+    arguments.first()?.split(',').nth(2)?.trim().parse().ok()
 }
 
 fn animation_at(definition: &AnimationDefinition, index: usize) -> Option<PointAnimation> {
@@ -146,6 +199,16 @@ fn parse_animation_definition_line(line: &str) -> Option<(usize, AnimationDefini
     if groups.len() < 5 {
         return None;
     }
+    let target_pairs = parse_integer_list(groups[1])?;
+    let mut target_chunks = target_pairs.chunks_exact(2);
+    let point_group_ordinals = target_chunks
+        .by_ref()
+        .map(|pair| usize::try_from(pair[0]))
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .ok()?;
+    if !target_chunks.remainder().is_empty() {
+        return None;
+    }
     let speeds = parse_integer_list(groups[2])?
         .into_iter()
         .map(u32::try_from)
@@ -159,6 +222,7 @@ fn parse_animation_definition_line(line: &str) -> Option<(usize, AnimationDefini
     Some((
         ordinal,
         AnimationDefinition {
+            point_group_ordinals,
             speeds,
             directions,
             repeats,
@@ -258,6 +322,7 @@ mod tests {
         let line = "{52} AnimateButton(10,5,'动画点')(10,9,19,9)(5,3)(0,1)(1,0)[color(255,128,0)];";
         let definitions = parse_animation_definitions(line);
         let definition = definitions.get(&52).expect("animation definition");
+        assert_eq!(definition.point_group_ordinals, [10, 19]);
         assert_eq!(
             animation_at(definition, 0),
             Some(PointAnimation {
@@ -285,6 +350,18 @@ mod tests {
     }
 
     #[test]
+    fn parses_move_button_speed_from_reference_htm() {
+        assert_eq!(
+            parse_move_button_speed("{24} MoveButton(10,152,3,'')(21,23)[hidden];"),
+            Some(3),
+        );
+        assert_eq!(
+            parse_move_button_speed("{46} MoveButton(64,784,0,'初始化')(45,2);"),
+            Some(0),
+        );
+    }
+
+    #[test]
     fn reference_htm_animation_options_reach_scene_json() {
         let data = include_bytes!("../../tests/Samples/未分类档/万花筒.gsp");
         let htm = include_str!("../../tests/Samples/未分类档/万花筒.htm");
@@ -307,5 +384,28 @@ mod tests {
         assert_eq!(targets[1]["animation"]["speed"].as_u64(), Some(3));
         assert_eq!(targets[0]["animation"]["direction"].as_i64(), Some(0));
         assert_eq!(targets[0]["animation"]["repeat"].as_bool(), Some(true));
+    }
+
+    #[test]
+    fn reference_htm_move_speeds_reach_scene_json_in_construction_order() {
+        let data = include_bytes!("../../tests/Samples/个人专栏/李章博作品/一条龙.gsp");
+        let htm = include_str!("../../tests/Samples/个人专栏/李章博作品/一条龙.htm");
+        let json = compile_bytes_to_scene_json_with_reference(data, 1200, 800, Some(htm))
+            .expect("dragon sample should compile with reference htm");
+        let scene: serde_json::Value = serde_json::from_str(&json).expect("scene json");
+        let speeds = scene["buttons"]
+            .as_array()
+            .expect("buttons")
+            .iter()
+            .filter_map(|button| {
+                matches!(
+                    button["action"]["kind"].as_str(),
+                    Some("move-point" | "move-points")
+                )
+                .then(|| button["action"]["speed"].as_u64())
+                .flatten()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(speeds, vec![3, 3, 3, 3]);
     }
 }

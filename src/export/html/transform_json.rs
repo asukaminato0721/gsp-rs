@@ -1,3 +1,4 @@
+use super::function_expr_json::FunctionExprJson;
 use crate::runtime::scene::{AxisBinding, LineTransformBinding, ShapeTransformBinding};
 use serde::Serialize;
 use ts_rs::TS;
@@ -22,6 +23,8 @@ pub(super) enum TransformJson {
         angle_degrees: f64,
         #[serde(rename = "parameterName")]
         parameter_name: Option<String>,
+        #[serde(rename = "angleExpr", skip_serializing_if = "Option::is_none")]
+        angle_expr: Option<FunctionExprJson>,
         #[serde(rename = "angleStartIndex", skip_serializing_if = "Option::is_none")]
         angle_start_index: Option<usize>,
         #[serde(rename = "angleVertexIndex", skip_serializing_if = "Option::is_none")]
@@ -60,6 +63,7 @@ impl TransformJson {
                 center_index: binding.center_index,
                 angle_degrees: binding.angle_degrees,
                 parameter_name: binding.parameter_name.clone(),
+                angle_expr: binding.angle_expr.as_ref().map(FunctionExprJson::from_expr),
                 angle_start_index: binding.angle_start_index,
                 angle_vertex_index: binding.angle_vertex_index,
                 angle_end_index: binding.angle_end_index,
@@ -88,6 +92,7 @@ impl TransformJson {
                 center_index: binding.center_index,
                 angle_degrees: binding.angle_degrees,
                 parameter_name: binding.parameter_name.clone(),
+                angle_expr: binding.angle_expr.as_ref().map(FunctionExprJson::from_expr),
                 angle_start_index: binding.angle_start_index,
                 angle_vertex_index: binding.angle_vertex_index,
                 angle_end_index: binding.angle_end_index,

@@ -1,4 +1,4 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u16, read_u32};
@@ -8,15 +8,17 @@ use crate::runtime::extract::points::{
 };
 use crate::runtime::extract::shapes::collect_raw_object_anchors;
 use crate::runtime::extract::{
-    decode_measurement_value, find_indexed_path, try_decode_parameter_control_value_for_group,
+    decode_measurement_value, find_indexed_path, is_circle_group_kind,
+    try_decode_parameter_control_value_for_group,
 };
 use crate::runtime::functions::{evaluate_expr_with_parameters, function_expr_label};
 use crate::runtime::geometry::GraphTransform;
 use crate::runtime::geometry::angle_degrees_from_points;
 use crate::runtime::payload_consts::{
-    EXPR_OP_ADD, EXPR_OP_DIV, EXPR_OP_MUL, EXPR_OP_POW, EXPR_OP_SUB, EXPR_PARAMETER_MASK,
-    EXPR_PARAMETER_PREFIX, EXPR_PI_WORD, EXPR_VARIABLE_WORD, FUNCTION_EXPR_MARKER_A,
-    FUNCTION_EXPR_MARKER_B, RECORD_FUNCTION_EXPR_PAYLOAD, RECORD_INDEXED_PATH_B, RECORD_LABEL_AUX,
+    EXPR_EULER_WORD, EXPR_OP_ADD, EXPR_OP_DIV, EXPR_OP_MUL, EXPR_OP_POW, EXPR_OP_SUB,
+    EXPR_PARAMETER_MASK, EXPR_PARAMETER_PREFIX, EXPR_PI_WORD, EXPR_VARIABLE_WORD,
+    FUNCTION_EXPR_MARKER_A, FUNCTION_EXPR_MARKER_B, RECORD_FUNCTION_EXPR_PAYLOAD,
+    RECORD_INDEXED_PATH_B, RECORD_LABEL_AUX,
 };
 use crate::util::hex_bytes;
 use thiserror::Error;
@@ -31,10 +33,11 @@ mod parser;
 
 pub(crate) use self::parser::try_decode_inner_function_expr;
 use self::parser::{
-    decode_embedded_postfix_payload_function_expr, embedded_calculate_expr_start,
+    decode_embedded_postfix_payload_function_expr, decode_grouped_decimal_digit_literal,
+    decode_trailing_scanned_payload_function_expr, embedded_calculate_expr_start,
     has_ignorable_expr_suffix, parse_function_expr_from, parse_function_expr_from_words,
     parse_grouped_function_expr_at, parse_grouped_function_expr_from_words,
-    trailing_calculate_expr_start,
+    parse_grouped_parameter_control_expr_at, trailing_calculate_expr_start,
 };
 
 #[cfg(test)]
@@ -42,6 +45,20 @@ use self::parser::parse_function_expr;
 
 thread_local! {
     static RESOLVING_MEASURED_VALUE: Cell<bool> = const { Cell::new(false) };
+    static MEASURED_VALUE_ANCHORS_CACHE: RefCell<Option<Vec<Option<PointRecord>>>> = const { RefCell::new(None) };
+    static RESOLVING_NUMERIC_HELPERS: RefCell<BTreeSet<usize>> = RefCell::new(BTreeSet::new());
+    static NUMERIC_HELPER_CACHE: RefCell<BTreeMap<usize, Option<FunctionExpr>>> = RefCell::new(BTreeMap::new());
+}
+
+pub(crate) fn with_numeric_helper_cache<T>(f: impl FnOnce() -> T) -> T {
+    NUMERIC_HELPER_CACHE.with(|cache| cache.borrow_mut().clear());
+    MEASURED_VALUE_ANCHORS_CACHE.with(|cache| *cache.borrow_mut() = None);
+    RESOLVING_NUMERIC_HELPERS.with(|resolving| resolving.borrow_mut().clear());
+    let result = f();
+    NUMERIC_HELPER_CACHE.with(|cache| cache.borrow_mut().clear());
+    MEASURED_VALUE_ANCHORS_CACHE.with(|cache| *cache.borrow_mut() = None);
+    RESOLVING_NUMERIC_HELPERS.with(|resolving| resolving.borrow_mut().clear());
+    result
 }
 
 fn is_function_like_group(group: &ObjectGroup) -> bool {
@@ -55,6 +72,7 @@ fn is_function_like_group(group: &ObjectGroup) -> bool {
             | crate::format::GroupKind::GraphYValue
             | crate::format::GroupKind::GraphXValue
             | crate::format::GroupKind::AngleValue
+            | crate::format::GroupKind::VertexAngleValue
             | crate::format::GroupKind::ArcAngleValue
             | crate::format::GroupKind::BoundaryCurveLengthValue
             | crate::format::GroupKind::RadiusValue
@@ -100,18 +118,58 @@ pub(crate) fn try_decode_function_expr(
     decode_function_expr_recursive(file, groups, group, &mut BTreeSet::new())
 }
 
+pub(crate) fn function_expr_uses_degree_units(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> bool {
+    fn visit(
+        file: &GspFile,
+        groups: &[ObjectGroup],
+        group: &ObjectGroup,
+        visiting: &mut BTreeSet<usize>,
+    ) -> bool {
+        if !visiting.insert(group.ordinal) {
+            return false;
+        }
+        let has_degree_literal = group
+            .records
+            .iter()
+            .find(|record| record.record_type == RECORD_FUNCTION_EXPR_PAYLOAD)
+            .map(|record| record.payload(&file.data))
+            .map(|payload| {
+                let words = payload
+                    .chunks_exact(2)
+                    .map(|word| u16::from_le_bytes([word[0], word[1]]))
+                    .collect::<Vec<_>>();
+                embedded_calculate_expr_start(&words)
+                    .is_some_and(|start| words[start..].contains(&0x0101))
+            })
+            .unwrap_or(false);
+        let inherited_degree_unit = find_indexed_path(file, group).is_some_and(|path| {
+            path.refs.iter().any(|ordinal| {
+                groups
+                    .get(ordinal.saturating_sub(1))
+                    .filter(|parent| is_function_like_group(parent))
+                    .is_some_and(|parent| visit(file, groups, parent, visiting))
+            })
+        });
+        visiting.remove(&group.ordinal);
+        has_degree_literal || inherited_degree_unit
+    }
+
+    visit(file, groups, group, &mut BTreeSet::new())
+}
+
 pub(crate) fn try_decode_parameter_control_expr(
     file: &GspFile,
     groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> Result<(FunctionExpr, bool), FunctionExprParseError> {
-    if let Ok(expr) = try_decode_function_expr(file, groups, group) {
-        return Ok((expr, false));
-    }
     let payload = group_function_payload(file, group)?;
     let mut visiting = BTreeSet::from([group.ordinal]);
     let parameters = collect_parameter_bindings(file, groups, group, &mut visiting, false, true);
-    with_function_payload_context(payload, || {
+    let absolute = with_function_payload_context(payload, || {
         let words = payload
             .chunks_exact(2)
             .map(|word| u16::from_le_bytes([word[0], word[1]]))
@@ -121,9 +179,14 @@ pub(crate) fn try_decode_parameter_control_expr(
                 word_len: words.len(),
             },
         )?;
-        let ast = parse_grouped_function_expr_at(&words, start, &parameters)?;
+        let ast = if words.get(start..start + 2) == Some(&[0x0000, 0x000a]) {
+            parse_grouped_parameter_control_expr_at(&words, start, &parameters)?
+        } else {
+            parse_grouped_function_expr_at(&words, start, &parameters)?
+        };
         Ok((canonicalize_function_expr(ast), true))
-    })
+    });
+    absolute.or_else(|_| try_decode_function_expr(file, groups, group).map(|expr| (expr, false)))
 }
 
 pub(crate) fn try_decode_function_expr_with_inlined_refs(
@@ -289,7 +352,7 @@ fn decode_group_function_payload_expr(
 ) -> Result<FunctionExpr, FunctionExprParseError> {
     let payload = group_function_payload(file, group)?;
     let parameters =
-        collect_parameter_bindings(file, groups, group, visiting, inline_function_refs, false);
+        collect_parameter_bindings(file, groups, group, visiting, inline_function_refs, true);
 
     let function_ref_expr = try_decode_single_payload_function_application(
         file,
@@ -305,8 +368,11 @@ fn decode_group_function_payload_expr(
     if let Some(expr) = function_ref_expr {
         return Ok(expr);
     }
+    if payload_uses_grouped_expression(payload) {
+        return decode_grouped_decimal_payload_function_expr(payload, &parameters);
+    }
 
-    match mode {
+    let decoded = match mode {
         PayloadExprDecodeMode::Standard => decode_payload_function_expr(payload, &parameters),
         PayloadExprDecodeMode::EmbeddedPostfixPreferred => {
             decode_embedded_postfix_payload_function_expr(payload, &parameters)
@@ -315,7 +381,121 @@ fn decode_group_function_payload_expr(
         PayloadExprDecodeMode::GroupedPreferred => {
             decode_grouped_preferred_payload_function_expr(payload, &parameters)
         }
+    };
+    decoded.or_else(|error| {
+        if function_expr_is_rotation_calculation(file, groups, group.ordinal)
+            || function_definition_is_plotted(file, groups, group)
+            || function_expression_is_definition_parameter(file, groups, group.ordinal)
+        {
+            decode_trailing_scanned_payload_function_expr(payload, &parameters)
+        } else {
+            Err(error)
+        }
+    })
+}
+
+fn function_expression_is_definition_parameter(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    expression_ordinal: usize,
+) -> bool {
+    fn depends_on(
+        file: &GspFile,
+        groups: &[ObjectGroup],
+        group: &ObjectGroup,
+        target_ordinal: usize,
+        visiting: &mut BTreeSet<usize>,
+    ) -> bool {
+        if !visiting.insert(group.ordinal) {
+            return false;
+        }
+        let found = find_indexed_path(file, group).is_some_and(|path| {
+            path.refs.iter().any(|ordinal| {
+                *ordinal == target_ordinal
+                    || groups
+                        .get(ordinal.saturating_sub(1))
+                        .filter(|parent| {
+                            parent.header.kind() == crate::format::GroupKind::FunctionDefinition
+                                || is_function_like_group(parent)
+                        })
+                        .is_some_and(|parent| {
+                            depends_on(file, groups, parent, target_ordinal, visiting)
+                        })
+            })
+        });
+        visiting.remove(&group.ordinal);
+        found
     }
+
+    groups.iter().any(|candidate| {
+        candidate.header.kind() == crate::format::GroupKind::FunctionDefinition
+            && depends_on(
+                file,
+                groups,
+                candidate,
+                expression_ordinal,
+                &mut BTreeSet::new(),
+            )
+    })
+}
+
+fn function_definition_is_plotted(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    function_group: &ObjectGroup,
+) -> bool {
+    function_group.header.kind() == crate::format::GroupKind::FunctionDefinition
+        && groups.iter().any(|candidate| {
+            candidate.header.kind() == crate::format::GroupKind::FunctionPlot
+                && find_indexed_path(file, candidate).and_then(|path| path.refs.first().copied())
+                    == Some(function_group.ordinal)
+        })
+}
+
+fn function_expr_is_rotation_calculation(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    expression_ordinal: usize,
+) -> bool {
+    groups.iter().any(|candidate| {
+        matches!(
+            candidate.header.kind(),
+            crate::format::GroupKind::ParameterRotation
+                | crate::format::GroupKind::ExpressionRotation
+        ) && find_indexed_path(file, candidate).and_then(|path| path.refs.get(2).copied())
+            == Some(expression_ordinal)
+    })
+}
+
+fn payload_uses_grouped_expression(payload: &[u8]) -> bool {
+    let words = payload
+        .chunks_exact(2)
+        .map(|word| u16::from_le_bytes([word[0], word[1]]))
+        .collect::<Vec<_>>();
+    let Some(start) = embedded_calculate_expr_start(&words) else {
+        return false;
+    };
+    let expression = &words[start..];
+    expression.contains(&0x000b)
+}
+
+fn decode_grouped_decimal_payload_function_expr(
+    payload: &[u8],
+    parameters: &BTreeMap<u16, ParameterBinding>,
+) -> Result<FunctionExpr, FunctionExprParseError> {
+    with_function_payload_context(payload, || {
+        let words = payload
+            .chunks_exact(2)
+            .map(|word| u16::from_le_bytes([word[0], word[1]]))
+            .collect::<Vec<_>>();
+        let start = embedded_calculate_expr_start(&words).ok_or(
+            FunctionExprParseError::NoExpressionFound {
+                word_len: words.len(),
+            },
+        )?;
+        let ast = parse_grouped_parameter_control_expr_at(&words, start, parameters)?;
+        Ok(canonicalize_function_expr(ast))
+    })
 }
 
 fn group_function_payload<'a>(
@@ -402,6 +582,29 @@ fn try_decode_numeric_helper_group(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> Option<FunctionExpr> {
+    if let Some(cached) =
+        NUMERIC_HELPER_CACHE.with(|cache| cache.borrow().get(&group.ordinal).cloned())
+    {
+        return cached;
+    }
+    RESOLVING_NUMERIC_HELPERS.with(|resolving| {
+        if !resolving.borrow_mut().insert(group.ordinal) {
+            return None;
+        }
+        let result = try_decode_numeric_helper_group_inner(file, groups, group);
+        resolving.borrow_mut().remove(&group.ordinal);
+        NUMERIC_HELPER_CACHE.with(|cache| {
+            cache.borrow_mut().insert(group.ordinal, result.clone());
+        });
+        result
+    })
+}
+
+fn try_decode_numeric_helper_group_inner(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<FunctionExpr> {
     if !matches!(
         group.header.kind(),
         crate::format::GroupKind::DistanceValue
@@ -411,6 +614,7 @@ fn try_decode_numeric_helper_group(
             | crate::format::GroupKind::GraphYValue
             | crate::format::GroupKind::GraphXValue
             | crate::format::GroupKind::AngleValue
+            | crate::format::GroupKind::VertexAngleValue
             | crate::format::GroupKind::ArcAngleValue
             | crate::format::GroupKind::BoundaryCurveLengthValue
             | crate::format::GroupKind::RadiusValue
@@ -497,7 +701,7 @@ fn try_decode_numeric_helper_group(
                 point_world.y - source_world.y
             }
         }
-        crate::format::GroupKind::AngleValue => {
+        crate::format::GroupKind::AngleValue | crate::format::GroupKind::VertexAngleValue => {
             let start = anchors.get(path.refs.first()?.checked_sub(1)?)?.clone()?;
             let vertex = anchors.get(path.refs.get(1)?.checked_sub(1)?)?.clone()?;
             let end = anchors.get(path.refs.get(2)?.checked_sub(1)?)?.clone()?;
@@ -509,13 +713,25 @@ fn try_decode_numeric_helper_group(
         }
         crate::format::GroupKind::BoundaryCurveLengthValue => {
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-            boundary_curve_length_raw(
-                file,
-                groups,
-                &anchors,
-                source_group,
-                graph.as_ref().map(|(_, raw_per_unit)| *raw_per_unit),
-            )?
+            if path.refs.len() == 3 && is_circle_group_kind(source_group.header.kind()) {
+                let circle = resolve_circle_like_raw(file, groups, &anchors, source_group)?;
+                let start = anchors.get(path.refs[1].checked_sub(1)?)?.as_ref()?;
+                let end = anchors.get(path.refs[2].checked_sub(1)?)?.as_ref()?;
+                let center = circle.center();
+                let degrees = angle_degrees_from_points(start, &center, end)?.abs();
+                normalize_graph_distance(
+                    circle.radius() * degrees.to_radians(),
+                    graph.as_ref().map(|(_, raw_per_unit)| *raw_per_unit),
+                )
+            } else {
+                boundary_curve_length_raw(
+                    file,
+                    groups,
+                    &anchors,
+                    source_group,
+                    graph.as_ref().map(|(_, raw_per_unit)| *raw_per_unit),
+                )?
+            }
         }
         crate::format::GroupKind::RadiusValue => {
             let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
@@ -588,11 +804,11 @@ fn try_decode_numeric_helper_group(
                     .clone()?;
                 angle_degrees_from_points(&start, &vertex, &end)?
             } else {
-                try_decode_function_expr(file, groups, source_group)
-                    .ok()
+                try_decode_numeric_helper_group(file, groups, source_group)
+                    .or_else(|| try_decode_function_expr(file, groups, source_group).ok())
                     .and_then(|expr| match expr {
                         FunctionExpr::Constant(value) => Some(value),
-                        _ => None,
+                        _ => evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new()),
                     })?
             }
         }
@@ -1111,7 +1327,11 @@ fn decode_trailing_degree_literal_expr(
 fn substitute_variable(ast: FunctionAst, replacement: &FunctionAst) -> FunctionAst {
     match ast {
         FunctionAst::Variable => replacement.clone(),
-        FunctionAst::Constant(_) | FunctionAst::PiAngle | FunctionAst::Parameter(_, _) => ast,
+        FunctionAst::Constant(_)
+        | FunctionAst::PiConstant
+        | FunctionAst::EulerConstant
+        | FunctionAst::PiAngle
+        | FunctionAst::Parameter(_, _) => ast,
         FunctionAst::Unary { op, expr } => FunctionAst::Unary {
             op,
             expr: Box::new(substitute_variable(*expr, replacement)),
@@ -1167,6 +1387,12 @@ impl<'a> FunctionRefParser<'a> {
 
     fn parse_prefix(&mut self) -> Result<FunctionAst, FunctionExprParseError> {
         let offset = self.offset;
+        if let Some((value, width_words)) =
+            decode_grouped_decimal_digit_literal(&self.words[self.offset..])
+        {
+            self.offset += width_words;
+            return Ok(FunctionAst::Constant(value));
+        }
         let word = *self
             .words
             .get(self.offset)
@@ -1174,7 +1400,8 @@ impl<'a> FunctionRefParser<'a> {
         self.offset += 1;
         match word {
             EXPR_VARIABLE_WORD => Ok(FunctionAst::Variable),
-            EXPR_PI_WORD => Ok(FunctionAst::PiAngle),
+            EXPR_PI_WORD => Ok(FunctionAst::PiConstant),
+            EXPR_EULER_WORD => Ok(FunctionAst::EulerConstant),
             EXPR_OP_ADD => self.parse_prefix(),
             EXPR_OP_SUB => {
                 let expr = self.parse_prefix()?;
@@ -1280,7 +1507,8 @@ fn function_ref_token_for_word(
         EXPR_OP_POW => FunctionToken::Pow,
         0x000c => FunctionToken::Terminator,
         EXPR_VARIABLE_WORD => FunctionToken::Variable,
-        EXPR_PI_WORD => FunctionToken::PiAngle,
+        EXPR_PI_WORD => FunctionToken::PiConstant,
+        EXPR_EULER_WORD => FunctionToken::EulerConstant,
         _ if (word & EXPR_PARAMETER_MASK) == EXPR_PARAMETER_PREFIX => {
             let parameter_index = word & 0x000f;
             FunctionToken::Parameter(parameters.get(&parameter_index)?.clone())
@@ -1304,24 +1532,27 @@ fn try_decode_single_payload_function_application(
         .chunks_exact(2)
         .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
         .collect::<Vec<_>>();
-    let expression_start = words
-        .windows(2)
-        .position(|pair| *pair == FUNCTION_EXPR_MARKER_A || *pair == FUNCTION_EXPR_MARKER_B)
-        .map_or(0, |marker_index| marker_index + 2);
+    let expression_start = embedded_calculate_expr_start(&words).or_else(|| {
+        words
+            .windows(2)
+            .position(|pair| *pair == FUNCTION_EXPR_MARKER_A || *pair == FUNCTION_EXPR_MARKER_B)
+            .map(|marker_index| marker_index + 2)
+    })?;
     let (application_offset, application_word) = words
         .iter()
         .copied()
         .enumerate()
         .skip(expression_start)
         .find(|(_, word)| (*word & EXPR_FUNCTION_REF_MASK) == EXPR_FUNCTION_REF_PREFIX)?;
+    if application_offset != expression_start {
+        return None;
+    }
     let helper_index = usize::from(application_word & 0x000f);
     let path = find_indexed_path(file, group)?;
     let helper_group = groups.get(path.refs.get(helper_index)?.checked_sub(1)?)?;
-    if !is_function_like_group(helper_group) {
-        return None;
-    }
-
-    let helper_expr = decode_function_expr_recursive(file, groups, helper_group, visiting).ok()?;
+    let helper_expr = decode_function_expr_recursive(file, groups, helper_group, visiting)
+        .or_else(|_| decode_embedded_grouped_function_expr(file, groups, helper_group, visiting))
+        .ok()?;
     let arg_payload = words
         .get(application_offset + 1..)?
         .iter()
@@ -1347,11 +1578,13 @@ fn try_decode_payload_function_refs(
         .chunks_exact(2)
         .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
         .collect::<Vec<_>>();
-    let expression_start = words
-        .windows(2)
-        .position(|pair| *pair == FUNCTION_EXPR_MARKER_A || *pair == FUNCTION_EXPR_MARKER_B)
-        .map(|marker_index| marker_index + 2)
-        .or_else(|| embedded_calculate_expr_start(&words))
+    let expression_start = embedded_calculate_expr_start(&words)
+        .or_else(|| {
+            words
+                .windows(2)
+                .position(|pair| *pair == FUNCTION_EXPR_MARKER_A || *pair == FUNCTION_EXPR_MARKER_B)
+                .map(|marker_index| marker_index + 2)
+        })
         .unwrap_or(0);
     let helper_indices = words
         .iter()
@@ -1369,9 +1602,6 @@ fn try_decode_payload_function_refs(
     let mut helpers = BTreeMap::new();
     for helper_index in helper_indices {
         let helper_group = groups.get(path.refs.get(usize::from(helper_index))?.checked_sub(1)?)?;
-        if !is_function_like_group(helper_group) {
-            return None;
-        }
         let helper_expr = decode_function_expr_recursive(file, groups, helper_group, visiting)
             .or_else(|_| {
                 decode_embedded_grouped_function_expr(file, groups, helper_group, visiting)
@@ -1528,6 +1758,27 @@ fn collect_parameter_bindings(
     bindings
 }
 
+pub(crate) fn function_parameter_group_ordinals(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> BTreeMap<String, usize> {
+    let Some(path) = find_indexed_path(file, group) else {
+        return BTreeMap::new();
+    };
+    let mut visiting = BTreeSet::from([group.ordinal]);
+    let bindings = collect_parameter_bindings(file, groups, group, &mut visiting, false, false);
+    bindings
+        .into_iter()
+        .filter_map(|(index, binding)| {
+            path.refs
+                .get(usize::from(index))
+                .copied()
+                .map(|ordinal| (binding.name, ordinal))
+        })
+        .collect()
+}
+
 fn decode_runtime_parameter_binding(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -1588,21 +1839,22 @@ fn decode_parameter_binding_recursive(
         return decode_measured_value_binding(file, groups, group);
     }
     if is_function_like_group(group) {
-        let expr = decode_function_expr_recursive(file, groups, group, visiting).ok()?;
-        let name =
-            group_name(file, groups, group).unwrap_or_else(|| function_expr_label(expr.clone()));
-        let value = evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new());
-        if !inline_function_refs
-            || function_expr_contains_variable(&expr)
-            || group.header.kind() != crate::format::GroupKind::FunctionDefinition
-        {
-            return value.map(|value| ParameterBinding::value(name, value));
+        if let Ok(expr) = decode_function_expr_recursive(file, groups, group, visiting) {
+            let name = group_name(file, groups, group)
+                .unwrap_or_else(|| function_expr_label(expr.clone()));
+            let value = evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new());
+            if !inline_function_refs
+                || function_expr_contains_variable(&expr)
+                || group.header.kind() != crate::format::GroupKind::FunctionDefinition
+            {
+                return value.map(|value| ParameterBinding::value(name, value));
+            }
+            return Some(ParameterBinding::expression(
+                name,
+                value.unwrap_or(0.0),
+                function_expr_ast(expr),
+            ));
         }
-        return Some(ParameterBinding::expression(
-            name,
-            value.unwrap_or(0.0),
-            function_expr_ast(expr),
-        ));
     }
 
     let label_payload = group
@@ -1649,21 +1901,70 @@ fn decode_parameter_anchor_binding(
             .find(|record| record.record_type == RECORD_INDEXED_PATH_B && record.length == 12)
             .map(|record| read_f64(record.payload(&file.data), 4))
             .filter(|value| value.is_finite())?,
-        crate::format::GroupKind::Point => {
-            let payload = point_group
-                .records
-                .iter()
-                .find(|record| record.record_type == RECORD_FUNCTION_EXPR_PAYLOAD)
-                .map(|record| record.payload(&file.data))?;
-            if payload.len() >= 60 {
-                read_f64(payload, 52)
-            } else {
-                f64::from(read_u16(payload, payload.len().checked_sub(2)?))
-            }
-        }
-        _ => return None,
+        crate::format::GroupKind::Point => point_group
+            .records
+            .iter()
+            .find(|record| record.record_type == RECORD_FUNCTION_EXPR_PAYLOAD)
+            .map(|record| record.payload(&file.data))
+            .and_then(|payload| {
+                if payload.len() >= 60 {
+                    Some(read_f64(payload, 52))
+                } else {
+                    Some(f64::from(read_u16(payload, payload.len().checked_sub(2)?)))
+                }
+            })
+            .filter(|value| value.is_finite())
+            .or_else(|| decode_parameter_anchor_host_value(file, &groups, &path))?,
+        _ => decode_parameter_anchor_host_value(file, &groups, &path)?,
     };
     Some(ParameterBinding::value(name, value))
+}
+
+fn decode_parameter_anchor_host_value(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    path: &crate::format::IndexedPathRecord,
+) -> Option<f64> {
+    let point_ordinal = *path.refs.first()?;
+    let host_ordinal = *path.refs.get(1)?;
+    let max_ordinal = point_ordinal.max(host_ordinal);
+    let helper_groups = groups.get(..max_ordinal)?;
+    let point_map = collect_point_objects(file, groups);
+    let helper_point_map = point_map.get(..max_ordinal)?;
+    let anchors = collect_raw_object_anchors(file, helper_groups, helper_point_map, None);
+    let point = anchors.get(point_ordinal.checked_sub(1)?)?.as_ref()?;
+    let host = groups.get(host_ordinal.checked_sub(1)?)?;
+
+    if host.header.kind() == crate::format::GroupKind::Polygon {
+        let host_path = find_indexed_path(file, host)?;
+        let vertex_index = host_path
+            .refs
+            .iter()
+            .position(|ordinal| *ordinal == point_ordinal)?;
+        let vertex_group_indices = host_path
+            .refs
+            .iter()
+            .map(|ordinal| ordinal.checked_sub(1))
+            .collect::<Option<Vec<_>>>()?;
+        return polygon_boundary_parameter_for_anchor(
+            &anchors,
+            &vertex_group_indices,
+            vertex_index,
+            0.0,
+        );
+    }
+
+    if let Some(circle) = resolve_circle_like_raw(file, groups, &anchors, host) {
+        let center = circle.center();
+        let angle = (-(point.y - center.y)).atan2(point.x - center.x);
+        return Some(angle.rem_euclid(std::f64::consts::TAU) / std::f64::consts::TAU);
+    }
+    let (start, end) = resolve_line_like_points_raw(file, groups, &anchors, host)?;
+    let dx = end.x - start.x;
+    let dy = end.y - start.y;
+    let length_squared = dx * dx + dy * dy;
+    (length_squared > 1e-18)
+        .then_some(((point.x - start.x) * dx + (point.y - start.y) * dy) / length_squared)
 }
 
 fn decode_parameter_anchor_constraint_value(
@@ -1791,12 +2092,18 @@ fn collect_measured_value_anchors(
     file: &GspFile,
     groups: &[ObjectGroup],
 ) -> Vec<Option<PointRecord>> {
+    if let Some(anchors) = MEASURED_VALUE_ANCHORS_CACHE.with(|cache| cache.borrow().clone()) {
+        return anchors;
+    }
     let point_map = collect_point_objects(file, groups);
     let raw_anchors = collect_raw_object_anchors(file, groups, &point_map, None);
-    let Some(graph) = detect_function_graph_transform(file, groups, &raw_anchors) else {
-        return raw_anchors;
+    let anchors = if let Some(graph) = detect_function_graph_transform(file, groups, &raw_anchors) {
+        collect_raw_object_anchors(file, groups, &point_map, Some(&graph))
+    } else {
+        raw_anchors
     };
-    collect_raw_object_anchors(file, groups, &point_map, Some(&graph))
+    MEASURED_VALUE_ANCHORS_CACHE.with(|cache| *cache.borrow_mut() = Some(anchors.clone()));
+    anchors
 }
 
 fn detect_function_graph_transform(
@@ -1845,7 +2152,10 @@ fn numeric_helper_group_name(
     if group.header.kind() == crate::format::GroupKind::BoundaryCurveLengthValue {
         return boundary_curve_length_group_name(file, groups, group);
     }
-    if group.header.kind() != crate::format::GroupKind::DistanceValue {
+    if !matches!(
+        group.header.kind(),
+        crate::format::GroupKind::DistanceValue | crate::format::GroupKind::GraphDistanceValue
+    ) {
         return None;
     }
     let path = find_indexed_path(file, group)?;
@@ -1878,6 +2188,15 @@ fn boundary_curve_length_group_name(
 ) -> Option<String> {
     let path = find_indexed_path(file, group)?;
     let host_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+    if path.refs.len() == 3 && is_circle_group_kind(host_group.header.kind()) {
+        let start = groups
+            .get(path.refs[1].checked_sub(1)?)
+            .and_then(|group| group_name(file, groups, group))?;
+        let end = groups
+            .get(path.refs[2].checked_sub(1)?)
+            .and_then(|group| group_name(file, groups, group))?;
+        return Some(format!("{start}{end}"));
+    }
     let host_path = find_indexed_path(file, host_group)?;
     let (start_ordinal, end_ordinal) = match host_group.header.kind() {
         crate::format::GroupKind::CenterArc => (*host_path.refs.get(1)?, *host_path.refs.get(2)?),
@@ -1962,7 +2281,8 @@ pub(crate) enum FunctionToken {
     Pow,
     Terminator,
     Variable,
-    PiAngle,
+    PiConstant,
+    EulerConstant,
     Parameter(ParameterBinding),
     Unary(UnaryFunction),
     Constant(f64),
@@ -2033,9 +2353,10 @@ fn function_payload_parse_error(
 mod parse_tests {
     use crate::runtime::payload_consts::{EXPR_OP_ADD, EXPR_OP_SUB, EXPR_VARIABLE_WORD};
 
+    use super::parser::parse_grouped_parameter_control_expr_at;
     use super::{
         FunctionExprParseError, ParameterBinding, decode_embedded_postfix_payload_function_expr,
-        decode_payload_function_expr, group_function_payload, parse_function_expr,
+        decode_payload_function_expr, function_definition_is_plotted, parse_function_expr,
         try_decode_function_expr, try_decode_inner_function_expr, try_decode_plot_component_expr,
         try_decode_standalone_function_expr,
     };
@@ -2199,6 +2520,61 @@ mod parse_tests {
         assert_eq!(
             evaluate_expr_with_parameters(&expr, 1.6, &BTreeMap::new()),
             Some(0.0)
+        );
+    }
+
+    #[test]
+    fn decodes_parameter_control_grouped_expression_with_leading_zero_decimal() {
+        let words = [
+            0x0000, 0x000a, 0x0005, 0x1002, 0x000b, 0x000b, 0x200a, 0x0000, 0x000a, 0x0005, 0x1001,
+            0x6000, 0x000c, 0x1000, 0x0001, 0x000c, 0x1002, 0x6001, 0x1000, 0x000b, 0x200a, 0x6000,
+            0x1001, 0x0000, 0x000a, 0x0005, 0x000c, 0x1000, 0x0001, 0x000c, 0x1002, 0x6002, 0x000c,
+        ];
+        let parameters = BTreeMap::from([
+            (0, ParameterBinding::value("m₁".to_string(), 0.25)),
+            (1, ParameterBinding::value("m₂".to_string(), 0.4)),
+            (2, ParameterBinding::value("m₃".to_string(), 0.8)),
+        ]);
+        let expr = parse_grouped_parameter_control_expr_at(&words, 0, &parameters)
+            .expect("payload grouped expression");
+        let expr = FunctionExpr::Parsed(expr);
+        assert_eq!(
+            evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new()),
+            Some(0.4)
+        );
+    }
+
+    #[test]
+    fn decodes_grouped_constants_with_native_0100_suffix() {
+        let words = [
+            0x000b, 0x6000, 0x1002, 0x0002, 0x1003, 0x6001, 0x1002, 0x0001, 0x0100, 0x1000, 0x0001,
+            0x0004, 0x0004, 0x0101, 0x000c, 0x1002, 0x6002,
+        ];
+        let parameters = BTreeMap::from([
+            (0, ParameterBinding::value("r".to_string(), 2.0)),
+            (1, ParameterBinding::value("R".to_string(), 4.0)),
+            (2, ParameterBinding::value("M".to_string(), 3.0)),
+        ]);
+        let expr = parse_grouped_parameter_control_expr_at(&words, 0, &parameters)
+            .expect("native numeric suffix is structural, not an operand");
+        assert_eq!(
+            evaluate_expr_with_parameters(&FunctionExpr::Parsed(expr), 0.0, &BTreeMap::new()),
+            Some(435.0)
+        );
+    }
+
+    #[test]
+    fn decodes_three_digit_literal_before_an_infix_operator() {
+        let payload = payload_from_words(&[
+            0x0112, 0x0000, 0x0003, 0x0006, 0x0000, 0x0101, 0x1003, 0x6000,
+        ]);
+        let parameters = BTreeMap::from([(0, ParameterBinding::value("分母".to_string(), 6.0))]);
+        let expr = try_decode_inner_function_expr(&payload, &parameters)
+            .expect("the native 360 / parameter payload must decode");
+        assert_eq!(function_expr_label(expr.clone()), "360 / 分母");
+        assert_eq!(
+            evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new()),
+            Some(60.0)
         );
     }
 
@@ -2571,8 +2947,9 @@ mod parse_tests {
     }
 
     #[test]
-    fn rejects_unmarked_function_definition_payload_from_sine_transform_sample() {
-        let Ok(data) = fs::read("tests/Samples/个人专栏/向忠作品/正弦型函数图象变换.gsp")
+    fn decodes_plotted_function_definition_payload_from_sine_transform_sample() {
+        let Ok(data) =
+            fs::read("tests/Samples/个人专栏/郑飞宇作品/正弦型函数图像变换(修正颜色).gsp")
         else {
             return;
         };
@@ -2580,24 +2957,70 @@ mod parse_tests {
         let groups = file.object_groups();
         let function_group = groups
             .iter()
-            .find(|group| group.ordinal == 306)
+            .find(|group| group.ordinal == 42)
             .expect("expected function definition group");
+        assert!(
+            function_definition_is_plotted(&file, &groups, function_group),
+            "expected #42 to be referenced directly by a FunctionPlot"
+        );
 
-        let payload = group_function_payload(&file, function_group).expect("function payload");
-        let error = try_decode_function_expr(&file, &groups, function_group)
-            .expect_err("unmarked grouped payload must not be rescued by broad fallback");
-        assert_payload_parse_failed(error, payload);
+        let expression = try_decode_function_expr(&file, &groups, function_group)
+            .expect("the exact FunctionDefinition -> FunctionPlot family should decode");
+        assert!(crate::runtime::functions::function_expr_contains_variable(
+            &expression
+        ));
     }
 
     #[test]
-    fn rejects_liyougui_function_iteration_payload_without_family_decoder() {
+    fn decodes_liyougui_grouped_function_iteration_payload() {
         let data =
             include_bytes!("../../../tests/Samples/个人专栏/李有贵作品/函数图象迭代(liyougui).gsp");
         let file = GspFile::parse(data).expect("fixture parses");
         let groups = file.object_groups();
-        let payload = group_function_payload(&file, &groups[14]).expect("#15 payload");
-        let error = try_decode_function_expr(&file, &groups, &groups[14])
-            .expect_err("unmarked grouped payload must not be rescued by broad fallback");
-        assert_payload_parse_failed(error, payload);
+        let expression = try_decode_function_expr(&file, &groups, &groups[14])
+            .expect("native 0x0100 numeric suffix makes the grouped payload complete");
+        assert_eq!(function_expr_label(expression), "2*(C + m)");
+    }
+
+    #[test]
+    fn decodes_nested_function_reference_plot_from_normal_distribution() {
+        let data = include_bytes!("../../../tests/Samples/个人专栏/向忠作品/正态分布.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let groups = file.object_groups();
+        let density = try_decode_function_expr(&file, &groups, &groups[2])
+            .expect("normal density function should decode from its native constants");
+        let density_at_mean =
+            evaluate_expr_with_parameters(&density, 0.0, &BTreeMap::new()).unwrap();
+        assert!((density_at_mean - 0.398_942_280_401_432_7).abs() < 1e-12);
+        let expression = try_decode_function_expr(&file, &groups, &groups[90])
+            .expect("nested plotted function references should decode");
+        assert!(crate::runtime::functions::function_expr_contains_variable(
+            &expression
+        ));
+    }
+
+    #[test]
+    fn decodes_nested_function_reference_plot_from_water_drop() {
+        let data = include_bytes!("../../../tests/Samples/未分类档/水滴.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let groups = file.object_groups();
+        let expression = try_decode_function_expr(&file, &groups, &groups[66])
+            .expect("function references are indexed within the function-parent table");
+        assert!(crate::runtime::functions::function_expr_contains_variable(
+            &expression
+        ));
+    }
+
+    #[test]
+    fn decodes_nested_function_reference_plot_from_exponential_properties() {
+        let data =
+            include_bytes!("../../../tests/Samples/个人专栏/向忠作品/指数函数的图象和性质.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let groups = file.object_groups();
+        let expression = try_decode_function_expr(&file, &groups, &groups[318])
+            .expect("nested function definition #319 should decode");
+        assert!(crate::runtime::functions::function_expr_contains_variable(
+            &expression
+        ));
     }
 }

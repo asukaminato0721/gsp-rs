@@ -207,6 +207,7 @@ fn collects_move_point_button_variants_without_validation() {
         ButtonAction::MovePoint {
             point_index,
             target_point_index,
+            ..
         } => {
             assert!(
                 target_point_index.is_some(),
@@ -239,17 +240,50 @@ fn exports_hidden_unlabeled_multi_move_buttons_for_classic_dynamic_fixture() {
     assert_eq!(hidden_move.text, "");
     assert!(!hidden_move.visible);
     match &hidden_move.action {
-        ButtonAction::MovePoints { targets } => {
+        ButtonAction::MovePoints { targets, .. } => {
+            let group_ordinals = targets
+                .iter()
+                .map(|target| {
+                    let source = scene.points[target.point_index]
+                        .debug
+                        .as_ref()
+                        .expect("source point debug ordinal")
+                        .group_ordinal;
+                    let destination = scene.points[target.target_point_index.expect("destination")]
+                        .debug
+                        .as_ref()
+                        .expect("destination point debug ordinal")
+                        .group_ordinal;
+                    (source, destination)
+                })
+                .collect::<Vec<_>>();
             assert_eq!(
                 targets.len(),
-                6,
-                "expected the payload pairs that resolve to exported points to stay linked"
+                11,
+                "expected the payload pairs that resolve to exported points to stay linked: {group_ordinals:?}"
             );
             assert!(
                 targets
                     .iter()
                     .all(|target| target.target_point_index.is_some()),
                 "expected hidden multi-move targets to keep their destination points"
+            );
+            assert_eq!(
+                group_ordinals,
+                [
+                    (175, 386),
+                    (170, 385),
+                    (172, 387),
+                    (174, 388),
+                    (91, 88),
+                    (94, 87),
+                    (103, 101),
+                    (104, 135),
+                    (123, 134),
+                    (127, 133),
+                    (139, 136),
+                ],
+                "expected all eleven pairs to retain the exact #389 payload order"
             );
         }
         action => panic!("expected multi-point move action, got {action:?}"),

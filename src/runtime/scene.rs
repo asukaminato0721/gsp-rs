@@ -78,9 +78,11 @@ pub(crate) enum ButtonAction {
     MovePoint {
         point_index: usize,
         target_point_index: Option<usize>,
+        speed: u32,
     },
     MovePoints {
         targets: Vec<MovePointTarget>,
+        speed: u32,
     },
     SetParameter {
         parameter_name: String,
@@ -517,6 +519,7 @@ pub(crate) enum ScenePointConstraint {
     },
     LineTraceIntersection {
         line: LineConstraint,
+        trace_key: usize,
         point_index: usize,
         x_min: f64,
         x_max: f64,
@@ -525,6 +528,7 @@ pub(crate) enum ScenePointConstraint {
     },
     LineFunctionIntersection {
         line: LineConstraint,
+        function_key: usize,
         expr: FunctionExpr,
         x_min: f64,
         x_max: f64,
@@ -643,6 +647,14 @@ pub(crate) enum LineConstraint {
         line_start_index: usize,
         line_end_index: usize,
     },
+    PerpendicularTo {
+        through_index: usize,
+        line: Box<LineConstraint>,
+    },
+    ParallelTo {
+        through_index: usize,
+        line: Box<LineConstraint>,
+    },
     AngleBisectorRay {
         start_index: usize,
         vertex_index: usize,
@@ -652,6 +664,14 @@ pub(crate) enum LineConstraint {
         line: Box<LineConstraint>,
         vector_start_index: usize,
         vector_end_index: usize,
+    },
+    Reflected {
+        line: Box<LineConstraint>,
+        axis: Box<LineConstraint>,
+    },
+    Rotated {
+        line: Box<LineConstraint>,
+        rotation: RotationBinding,
     },
 }
 
@@ -678,6 +698,7 @@ pub(crate) struct RotationBinding {
     pub(crate) center_index: usize,
     pub(crate) angle_degrees: f64,
     pub(crate) parameter_name: Option<String>,
+    pub(crate) angle_expr: Option<crate::runtime::functions::FunctionExpr>,
     pub(crate) angle_start_index: Option<usize>,
     pub(crate) angle_vertex_index: Option<usize>,
     pub(crate) angle_end_index: Option<usize>,
@@ -853,6 +874,13 @@ pub(crate) struct SceneParameter {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct ScenePointParameterSource {
+    pub(crate) name: String,
+    pub(crate) point_index: usize,
+    pub(crate) circle: Option<CircularConstraint>,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) enum ScenePointBinding {
     GraphCalibration,
     Parameter {
@@ -866,11 +894,18 @@ pub(crate) enum ScenePointBinding {
     ConstraintParameterExpr {
         expr: FunctionExpr,
     },
+    ConstraintParameterPointDistanceRatio {
+        origin_index: usize,
+        denominator_index: usize,
+        numerator_index: usize,
+        clamp_to_unit: bool,
+    },
     ConstraintParameterFromPointExpr {
         source_index: usize,
         parameter_name: String,
         expr: FunctionExpr,
         absolute_value: bool,
+        expression_sources: Vec<ScenePointParameterSource>,
     },
     Translate {
         source_index: usize,
@@ -892,6 +927,7 @@ pub(crate) enum ScenePointBinding {
         angle_degrees: f64,
         parameter_name: Option<String>,
         angle_expr: Option<FunctionExpr>,
+        angle_parameter_group_ordinals: std::collections::BTreeMap<String, usize>,
         angle_start_index: Option<usize>,
         angle_vertex_index: Option<usize>,
         angle_end_index: Option<usize>,
@@ -915,6 +951,7 @@ pub(crate) enum ScenePointBinding {
         factor: f64,
         parameter_name: Option<String>,
         factor_expr: Option<FunctionExpr>,
+        factor_parameter_group_ordinals: std::collections::BTreeMap<String, usize>,
         factor_parameter_point_index: Option<usize>,
         factor_parameter_start_index: Option<usize>,
         factor_parameter_end_index: Option<usize>,
@@ -940,14 +977,29 @@ pub(crate) enum ScenePointBinding {
     },
     CoordinateSource2d {
         source_index: usize,
+        x_scalar_group_ordinal: Option<usize>,
         x_name: String,
         x_expr: FunctionExpr,
+        y_scalar_group_ordinal: Option<usize>,
         y_name: String,
         y_expr: FunctionExpr,
     },
     PolarOffset {
         source_index: usize,
         distance_expr: FunctionExpr,
+        x_scale: f64,
+        y_scale: f64,
+    },
+    RadiusOffset {
+        source_index: usize,
+        circle: CircularConstraint,
+        radius: f64,
+        x_scale: f64,
+        y_scale: f64,
+    },
+    BoundaryLengthOffset {
+        source_index: usize,
+        boundary: CircularConstraint,
         x_scale: f64,
         y_scale: f64,
     },
@@ -971,9 +1023,11 @@ pub(crate) enum CoordinateAxis {
 #[derive(Debug, Clone)]
 pub(crate) struct SceneFunction {
     pub(crate) key: usize,
+    pub(crate) plot_key: Option<usize>,
     pub(crate) name: String,
     pub(crate) derivative: bool,
     pub(crate) expr: FunctionExpr,
+    pub(crate) parameter_group_ordinals: std::collections::BTreeMap<String, usize>,
     pub(crate) domain: FunctionPlotDescriptor,
     pub(crate) line_index: Option<usize>,
     pub(crate) label_index: Option<usize>,
@@ -1009,7 +1063,27 @@ pub(crate) struct SceneArc {
     pub(crate) center: Option<PointRecord>,
     pub(crate) counterclockwise: bool,
     pub(crate) visible: bool,
+    pub(crate) binding: Option<ArcBinding>,
     pub(crate) debug: Option<PayloadDebugSource>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum ArcBinding {
+    CenterArc {
+        center_index: usize,
+        start_index: usize,
+        end_index: usize,
+    },
+    CircleArc {
+        circle_index: usize,
+        start_index: usize,
+        end_index: usize,
+    },
+    ThreePointArc {
+        start_index: usize,
+        mid_index: usize,
+        end_index: usize,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -1154,11 +1228,16 @@ pub(crate) enum TextLabelBinding {
     ParameterValue {
         name: String,
     },
+    ScalarAlias {
+        source_group_ordinal: usize,
+        name: String,
+    },
     ExpressionValue {
         parameter_name: String,
         result_name: Option<String>,
         expr_label: String,
         expr: FunctionExpr,
+        parameter_group_ordinals: std::collections::BTreeMap<String, usize>,
     },
     PointBoundExpressionValue {
         point_index: usize,
@@ -1168,6 +1247,7 @@ pub(crate) enum TextLabelBinding {
         result_name: Option<String>,
         expr_label: String,
         expr: FunctionExpr,
+        parameter_group_ordinals: std::collections::BTreeMap<String, usize>,
     },
     PointAnchor {
         point_index: usize,

@@ -15,9 +15,10 @@ use crate::runtime::extract::decode::{
 };
 use crate::runtime::extract::points::{is_non_graph_parameter_group, resolve_line_like_points_raw};
 use crate::runtime::geometry::{
-    arc_on_circle_control_points, sample_three_point_arc, sample_three_point_arc_complement,
+    arc_on_circle_control_points, from_core_point, sample_three_point_arc,
+    sample_three_point_arc_complement, to_core_point,
 };
-use crate::runtime::scene::ArcBoundaryKind;
+use crate::runtime::scene::{ArcBinding, ArcBoundaryKind};
 
 const ARC_BOUNDARY_SUBDIVISIONS: usize = 48;
 
@@ -388,17 +389,16 @@ fn resolve_angle_marker_shape(
     let vertex = anchors.get(path.refs[1].checked_sub(1)?)?.clone()?;
     let end = anchors.get(path.refs[2].checked_sub(1)?)?.clone()?;
 
-    let first = normalize_direction(&vertex, &start)?;
-    let second = normalize_direction(&vertex, &end)?;
-    let first_len = ((start.x - vertex.x).powi(2) + (start.y - vertex.y).powi(2)).sqrt();
-    let second_len = ((end.x - vertex.x).powi(2) + (end.y - vertex.y).powi(2)).sqrt();
-    let shortest_len = first_len.min(second_len);
-    if shortest_len <= 1e-9 {
-        return None;
-    }
-
     let marker_class = decode_angle_marker_class(file, group).max(1);
-    let points = resolve_angle_marker_points(&vertex, first, second, shortest_len, marker_class)?;
+    let points = gsp_runtime_core::angle_marker_points(
+        to_core_point(&start),
+        to_core_point(&vertex),
+        to_core_point(&end),
+        marker_class,
+    )?
+    .into_iter()
+    .map(from_core_point)
+    .collect::<Vec<_>>();
 
     has_distinct_points(&points).then_some(LineShape {
         points,
@@ -414,83 +414,6 @@ fn resolve_angle_marker_shape(
         }),
         debug: Some(payload_debug_source(group)),
     })
-}
-
-pub(crate) fn resolve_angle_marker_points(
-    vertex: &PointRecord,
-    first: (f64, f64),
-    second: (f64, f64),
-    shortest_len: f64,
-    marker_class: u32,
-) -> Option<Vec<PointRecord>> {
-    let dot = (first.0 * second.0 + first.1 * second.1).clamp(-1.0, 1.0);
-    let cross = first.0 * second.1 - first.1 * second.0;
-    if dot.abs() <= 0.12 {
-        return resolve_right_angle_marker_points(vertex, first, second, shortest_len);
-    }
-    resolve_arc_angle_marker_points(vertex, first, shortest_len, cross, dot, marker_class)
-}
-
-fn resolve_right_angle_marker_points(
-    vertex: &PointRecord,
-    first: (f64, f64),
-    second: (f64, f64),
-    shortest_len: f64,
-) -> Option<Vec<PointRecord>> {
-    let side = (shortest_len * 0.125)
-        .clamp(10.0, 28.0)
-        .min(shortest_len * 0.5);
-    if side <= 1e-9 {
-        return None;
-    }
-
-    let start_on_first = PointRecord {
-        x: vertex.x + first.0 * side,
-        y: vertex.y + first.1 * side,
-    };
-    let corner = PointRecord {
-        x: vertex.x + (first.0 + second.0) * side,
-        y: vertex.y + (first.1 + second.1) * side,
-    };
-    let end_on_second = PointRecord {
-        x: vertex.x + second.0 * side,
-        y: vertex.y + second.1 * side,
-    };
-
-    Some(vec![start_on_first, corner, end_on_second])
-}
-
-fn resolve_arc_angle_marker_points(
-    vertex: &PointRecord,
-    first: (f64, f64),
-    shortest_len: f64,
-    cross: f64,
-    dot: f64,
-    marker_class: u32,
-) -> Option<Vec<PointRecord>> {
-    let class_scale = 1.0 + 0.18 * (marker_class.saturating_sub(1) as f64);
-    let radius = ((shortest_len * 0.12).clamp(10.0, 28.0) * class_scale).min(shortest_len * 0.42);
-    if radius <= 1e-9 {
-        return None;
-    }
-    let delta = cross.atan2(dot);
-    if delta.abs() <= 1e-6 {
-        return None;
-    }
-    let start_angle = first.1.atan2(first.0);
-    let samples = 9usize;
-    Some(
-        (0..samples)
-            .map(|index| {
-                let t = index as f64 / (samples - 1) as f64;
-                let angle = start_angle + delta * t;
-                PointRecord {
-                    x: vertex.x + radius * angle.cos(),
-                    y: vertex.y + radius * angle.sin(),
-                }
-            })
-            .collect(),
-    )
 }
 
 fn decode_angle_marker_class(file: &GspFile, group: &ObjectGroup) -> u32 {
@@ -523,37 +446,13 @@ pub(crate) fn resolve_segment_marker_points(
     t: f64,
     marker_class: u32,
 ) -> Option<Vec<PointRecord>> {
-    let dx = end.x - start.x;
-    let dy = end.y - start.y;
-    let len = (dx * dx + dy * dy).sqrt();
-    if len <= 1e-9 {
-        return None;
-    }
-    let tangent = (dx / len, dy / len);
-    let normal = (-tangent.1, tangent.0);
-    let center_t = t.clamp(0.0, 1.0);
-    let center = PointRecord {
-        x: start.x + dx * center_t,
-        y: start.y + dy * center_t,
-    };
-    let half_len = (len * 0.06).clamp(5.0, 10.0);
-    let spacing = (len * 0.05).clamp(6.0, 11.0);
-    let offset = (marker_class.saturating_sub(1) as f64) * -0.5;
-    let center_offset = offset * spacing;
-    let slash_center = PointRecord {
-        x: center.x + tangent.0 * center_offset,
-        y: center.y + tangent.1 * center_offset,
-    };
-    Some(vec![
-        PointRecord {
-            x: slash_center.x - normal.0 * half_len,
-            y: slash_center.y - normal.1 * half_len,
-        },
-        PointRecord {
-            x: slash_center.x + normal.0 * half_len,
-            y: slash_center.y + normal.1 * half_len,
-        },
-    ])
+    gsp_runtime_core::segment_marker_points(
+        to_core_point(start),
+        to_core_point(end),
+        t,
+        marker_class,
+    )
+    .map(|points| points.into_iter().map(from_core_point).collect())
 }
 
 fn resolve_segment_marker_endpoint_groups(
@@ -639,13 +538,15 @@ fn resolve_angle_bisector_ray_shape(
     let vertex = anchors.get(vertex_index)?.clone()?;
     let end = anchors.get(end_index)?.clone()?;
 
-    let (dir_x, dir_y) = angle_bisector_direction(&start, &vertex, &end)?;
-    let bisector_end = PointRecord {
-        x: vertex.x + dir_x,
-        y: vertex.y + dir_y,
-    };
+    let bisector_end = angle_bisector_direction(&start, &vertex, &end).map_or_else(
+        || vertex.clone(),
+        |(dir_x, dir_y)| PointRecord {
+            x: vertex.x + dir_x,
+            y: vertex.y + dir_y,
+        },
+    );
 
-    has_distinct_points(&[vertex.clone(), bisector_end.clone()]).then_some(LineShape {
+    Some(LineShape {
         points: vec![vertex.clone(), bisector_end],
         color: color_from_style(group.header.style_b),
         dashed: line_is_dashed(group.header.style_a),
@@ -680,19 +581,17 @@ fn resolve_perpendicular_line_shape(
     let dx = host_end.x - host_start.x;
     let dy = host_end.y - host_start.y;
     let host_len = (dx * dx + dy * dy).sqrt();
-    if host_len <= 1e-9 {
-        return None;
-    }
-
-    let perp_x = -dy / host_len;
-    let perp_y = dx / host_len;
     let start = through.clone();
-    let end = PointRecord {
-        x: through.x + perp_x,
-        y: through.y + perp_y,
+    let end = if host_len <= 1e-9 {
+        through.clone()
+    } else {
+        PointRecord {
+            x: through.x - dy / host_len,
+            y: through.y + dx / host_len,
+        }
     };
 
-    has_distinct_points(&[start.clone(), end.clone()]).then_some(LineShape {
+    Some(LineShape {
         points: vec![start, end],
         color: color_from_style(group.header.style_b),
         dashed: line_is_dashed(group.header.style_a),
@@ -728,17 +627,17 @@ fn resolve_parallel_line_shape(
     let dx = host_end.x - host_start.x;
     let dy = host_end.y - host_start.y;
     let host_len = (dx * dx + dy * dy).sqrt();
-    if host_len <= 1e-9 {
-        return None;
-    }
-
     let start = through.clone();
-    let end = PointRecord {
-        x: through.x + dx / host_len,
-        y: through.y + dy / host_len,
+    let end = if host_len <= 1e-9 {
+        through.clone()
+    } else {
+        PointRecord {
+            x: through.x + dx / host_len,
+            y: through.y + dy / host_len,
+        }
     };
 
-    has_distinct_points(&[start.clone(), end.clone()]).then_some(LineShape {
+    Some(LineShape {
         points: vec![start, end],
         color: color_from_style(group.header.style_b),
         dashed: line_is_dashed(group.header.style_a),
@@ -773,13 +672,6 @@ fn angle_bisector_direction(
     Some((direction.x, direction.y))
 }
 
-fn normalize_direction(from: &PointRecord, to: &PointRecord) -> Option<(f64, f64)> {
-    let dx = to.x - from.x;
-    let dy = to.y - from.y;
-    let len = (dx * dx + dy * dy).sqrt();
-    (len > 1e-9).then_some((dx / len, dy / len))
-}
-
 fn resolve_host_line_points(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -792,12 +684,7 @@ fn resolve_host_line_points(
     let start_index = path.refs.first().and_then(|ordinal| ordinal.checked_sub(1));
     let end_index = path.refs.get(1).and_then(|ordinal| ordinal.checked_sub(1));
     let (start, end) = resolve_line_like_points_raw(file, groups, anchors, group)?;
-    has_distinct_points(&[start.clone(), end.clone()]).then_some((
-        start_index,
-        end_index,
-        start,
-        end,
-    ))
+    Some((start_index, end_index, start, end))
 }
 
 pub(crate) fn collect_bound_line_shapes(
@@ -1011,7 +898,7 @@ pub(crate) fn collect_three_point_arc_shapes(
         })
         .filter_map(|group| {
             let path = find_indexed_path(file, group)?;
-            let (points, center, counterclockwise) = match group.header.kind() {
+            let (points, center, counterclockwise, binding) = match group.header.kind() {
                 crate::format::GroupKind::ThreePointArc => {
                     if path.refs.len() != 3 {
                         return None;
@@ -1022,7 +909,16 @@ pub(crate) fn collect_three_point_arc_shapes(
                         anchors.get(path.refs[2].saturating_sub(1))?.clone()?,
                     ];
                     three_point_arc_geometry(&points[0], &points[1], &points[2])?;
-                    (points, None, false)
+                    (
+                        points,
+                        None,
+                        false,
+                        ArcBinding::ThreePointArc {
+                            start_index: path.refs[0].checked_sub(1)?,
+                            mid_index: path.refs[1].checked_sub(1)?,
+                            end_index: path.refs[2].checked_sub(1)?,
+                        },
+                    )
                 }
                 crate::format::GroupKind::ArcOnCircle => {
                     if path.refs.len() != 3 {
@@ -1040,6 +936,11 @@ pub(crate) fn collect_three_point_arc_shapes(
                         arc_on_circle_control_points(&center, &start, &end)?,
                         Some(center),
                         true,
+                        ArcBinding::CircleArc {
+                            circle_index: path.refs[0].checked_sub(1)?,
+                            start_index: path.refs[1].checked_sub(1)?,
+                            end_index: path.refs[2].checked_sub(1)?,
+                        },
                     )
                 }
                 crate::format::GroupKind::CenterArc => {
@@ -1053,6 +954,11 @@ pub(crate) fn collect_three_point_arc_shapes(
                         arc_on_circle_control_points(&center, &start, &end)?,
                         Some(center),
                         true,
+                        ArcBinding::CenterArc {
+                            center_index: path.refs[0].checked_sub(1)?,
+                            start_index: path.refs[1].checked_sub(1)?,
+                            end_index: path.refs[2].checked_sub(1)?,
+                        },
                     )
                 }
                 _ => return None,
@@ -1063,6 +969,7 @@ pub(crate) fn collect_three_point_arc_shapes(
                 center,
                 counterclockwise,
                 visible: !group.header.is_hidden() && arc_stroke_visible(group),
+                binding: Some(binding),
                 debug: Some(payload_debug_source(group)),
             })
         })

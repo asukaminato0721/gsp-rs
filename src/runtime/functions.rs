@@ -6,9 +6,11 @@ mod scene;
 
 pub(crate) use decode::{
     FunctionExprParseError, evaluate_function_group_with_overrides,
+    function_expr_uses_degree_units, function_parameter_group_ordinals,
     try_decode_embedded_calculate_expr, try_decode_function_expr,
     try_decode_function_expr_with_inlined_refs, try_decode_function_plot_descriptor,
     try_decode_parameter_control_expr, try_decode_standalone_function_expr,
+    with_numeric_helper_cache,
 };
 pub(crate) use eval::evaluate_expr_with_parameters;
 pub(crate) use expr::{
@@ -200,13 +202,13 @@ mod tests {
                 lhs: Box::new(FunctionAst::Binary {
                     lhs: Box::new(FunctionAst::Constant(2.0)),
                     op: BinaryOp::Mul,
-                    rhs: Box::new(FunctionAst::PiAngle),
+                    rhs: Box::new(FunctionAst::PiConstant),
                 }),
                 op: BinaryOp::Div,
                 rhs: Box::new(FunctionAst::Parameter("t₂".to_string(), 5.0)),
             })
         );
-        assert_eq!(function_expr_label(expr), "2*180 / t₂");
+        assert_eq!(function_expr_label(expr), "2*π / t₂");
     }
 
     #[test]

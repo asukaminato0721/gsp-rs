@@ -1,5 +1,93 @@
 use super::test_support::{fixture_bytes, fixture_scene};
 use crate::runtime::scene::{LineBinding, ScenePointBinding, ScenePointConstraint};
+use std::collections::BTreeMap;
+
+#[test]
+fn center_arc_keeps_its_hidden_rotation_parent_chain() {
+    let data = include_bytes!("../../../tests/Samples/个人专栏/贺基旭作品/轨迹(hjx4882).gsp");
+    let file = crate::format::GspFile::parse(data).expect("fixture parses");
+    let groups = file.object_groups();
+    let angle_expr =
+        crate::runtime::functions::try_decode_function_expr(&file, &groups, &groups[13])
+            .expect("parameter rotation expression #14 must decode");
+    assert!(
+        crate::runtime::functions::function_expr_label(angle_expr).contains('m'),
+        "rotation expression must retain its polygon parameter"
+    );
+    let scene = fixture_scene(data);
+    let arc = scene
+        .arcs
+        .iter()
+        .find(|arc| {
+            arc.debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 18)
+        })
+        .expect("center arc #18");
+    assert!(arc.binding.is_some(), "hidden arc parents must remain live");
+}
+
+#[test]
+fn flying_car_first_point_trace_retains_its_payload_driver() {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/方小庆作品/FlyingCar(inRm).gsp")
+    else {
+        return;
+    };
+    let file = crate::format::GspFile::parse(&data).expect("fixture parses");
+    let groups = file.object_groups();
+    let group = &groups[84];
+    let path = super::find_indexed_path(&file, group).expect("point trace has indexed path");
+    assert_eq!(path.refs, [84, 78, 79, 81, 82, 83, 80, 84]);
+    assert_eq!(
+        super::points::translation_point_pair_group_indices(&file, &groups[75]),
+        Some((0, 67))
+    );
+    assert_eq!(
+        groups[65]
+            .records
+            .iter()
+            .find(|record| {
+                record.record_type == crate::runtime::payload_consts::RECORD_PATH_POINT_AUX
+            })
+            .map(|record| crate::format::read_u16(record.payload(&file.data), 0)),
+        Some(crate::runtime::payload_consts::EXPRESSION_TRANSFORM_LABELED_ROTATE_CLASS)
+    );
+}
+
+#[test]
+fn empty_calculate_display_still_decodes_its_trailing_expression_program() {
+    let data = fixture_bytes("tests/Samples/个人专栏/方小庆作品/(inRm)圆柱圆锥展开.gsp").unwrap();
+    let file = crate::format::GspFile::parse(&data).unwrap();
+    let page = &file.page_files()[4];
+    let groups = page.object_groups();
+    let value = |ordinal: usize| {
+        let expression = crate::runtime::functions::try_decode_function_expr(
+            page,
+            &groups,
+            &groups[ordinal - 1],
+        )
+        .unwrap();
+        crate::runtime::functions::evaluate_expr_with_parameters(&expression, 0.0, &BTreeMap::new())
+            .unwrap()
+    };
+    assert!((value(13) - 2.532_001_075_698_586_7).abs() < 1e-9);
+    assert!((value(20) - 119.376_713_407_712_34).abs() < 1e-9);
+    assert!((value(22) - 239.688_356_703_856_2).abs() < 1e-9);
+
+    let scene = super::build::build_scene_checked(page).unwrap();
+    for ordinal in [15, 27, 39] {
+        let arc = scene
+            .arcs
+            .iter()
+            .find(|arc| {
+                arc.debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .unwrap();
+        assert!(arc.binding.is_some());
+    }
+}
 
 #[test]
 fn preserves_coordinate_trace_in_cood_trace_gsp() {

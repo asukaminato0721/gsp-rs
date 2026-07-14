@@ -37,9 +37,10 @@ pub(crate) use bindings::TransformBinding;
 pub(super) use bindings::{
     RawPointIterationFamily, TransformBindingKind, collect_point_iteration_points,
     collect_standalone_parameter_points, collect_visible_points_checked,
-    collect_visible_points_checked_with_context, remap_circle_bindings, remap_label_bindings,
-    remap_line_bindings, remap_polygon_bindings, try_decode_angle_rotation_binding,
-    try_decode_parameter_rotation_binding, try_decode_transform_binding,
+    collect_visible_points_checked_with_context, remap_arc_bindings, remap_circle_bindings,
+    remap_label_bindings, remap_line_bindings, remap_polygon_bindings,
+    try_decode_angle_rotation_binding, try_decode_parameter_rotation_binding,
+    try_decode_transform_binding,
 };
 pub(super) use constraints::{
     LegacyCoordinateConstructPoint, RawPointConstraint, decode_translated_point_constraint,

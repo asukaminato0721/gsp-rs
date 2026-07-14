@@ -5,7 +5,8 @@ use super::super::decode::{
     try_decode_parameter_control_value_for_group,
 };
 use super::anchors::{
-    resolve_circle_like_raw, resolve_circle_point_raw, resolve_polygon_boundary_point_raw,
+    resolve_circle_like_raw, resolve_circle_point_raw, resolve_line_like_constraint_raw,
+    resolve_polygon_boundary_point_raw,
 };
 use super::{
     decode_non_graph_parameter_value_for_group, editable_non_graph_parameter_name_for_group,
@@ -102,8 +103,17 @@ pub(crate) struct ParameterControlledPoint {
     pub(crate) parameter_name: String,
     pub(crate) source_point_group_index: Option<usize>,
     pub(crate) source_parameter_segment_group_indices: Option<(usize, usize)>,
+    pub(crate) source_ratio_group_indices: Option<(usize, usize, usize)>,
     pub(crate) source_expr: Option<FunctionExpr>,
     pub(crate) source_expr_absolute_parameter: bool,
+    pub(crate) source_parameters: Vec<ParameterControlledSource>,
+}
+
+#[derive(Clone)]
+pub(crate) struct ParameterControlledSource {
+    pub(crate) name: String,
+    pub(crate) point_group_index: usize,
+    pub(crate) host_group_index: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Error)]
@@ -133,8 +143,10 @@ pub(crate) enum CoordinatePointSource {
     },
     SourcePoint2d {
         source_group_index: usize,
+        x_scalar_group_ordinal: Option<usize>,
         x_parameter_name: String,
         x_expr: FunctionExpr,
+        y_scalar_group_ordinal: Option<usize>,
         y_parameter_name: String,
         y_expr: FunctionExpr,
     },
@@ -286,6 +298,25 @@ fn parameter_anchor_value(
             Some((start_group_index, end_group_index)),
         ));
     }
+    if let Some(host_group) = path
+        .refs
+        .get(1)
+        .and_then(|ordinal| groups.get(ordinal.checked_sub(1)?))
+        && let Some(circle) = resolve_circle_like_raw(file, groups, anchors, host_group)
+    {
+        let point = anchors.get(point_group_index)?.as_ref()?;
+        let center = circle.center();
+        let angle = (-(point.y - center.y)).atan2(point.x - center.x);
+        let name = decode_label_name(file, group)
+            .or_else(|| decode_label_name(file, point_group))
+            .unwrap_or_default();
+        return Some((
+            name,
+            angle.rem_euclid(std::f64::consts::TAU) / std::f64::consts::TAU,
+            point_group_index,
+            None,
+        ));
+    }
     let t = match try_decode_point_constraint(file, groups, point_group, None, &None).ok()? {
         RawPointConstraint::Segment(constraint) => constraint.t,
         RawPointConstraint::ConstructedLine { t, .. } => t,
@@ -359,6 +390,13 @@ pub(crate) fn regular_polygon_iteration_step(
     ]
     .into_iter()
     .filter_map(Result::ok)
+    .map(|expr| {
+        if crate::runtime::functions::function_expr_uses_degree_units(file, groups, calc_group) {
+            expr
+        } else {
+            super::anchors::scale_angle_expr_to_degrees(expr)
+        }
+    })
     .find(|expr| {
         evaluate_expr_with_parameters(expr, 0.0, &BTreeMap::from([(parameter_name.clone(), n)]))
             .is_some_and(|value| (value - (360.0 / n)).abs() < 1e-6)
@@ -581,7 +619,10 @@ fn decode_point_on_line_like_constraint(
                 _ => LineLikeKind::Line,
             },
         }),
-        crate::format::GroupKind::Rotation => Some(RawPointConstraint::ConstructedLine {
+        crate::format::GroupKind::Rotation
+        | crate::format::GroupKind::Reflection
+        | crate::format::GroupKind::Translation
+        | crate::format::GroupKind::Scale => Some(RawPointConstraint::ConstructedLine {
             host_group_index,
             t,
             line_like_kind: transformed_line_like_kind(file, groups, host_group)?,
@@ -603,6 +644,10 @@ fn transformed_line_like_kind(
         }
         GroupKind::Line => Some(LineLikeKind::Line),
         GroupKind::Ray => Some(LineLikeKind::Ray),
+        GroupKind::Rotation | GroupKind::Reflection | GroupKind::Translation | GroupKind::Scale => {
+            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            transformed_line_like_kind(file, groups, source_group)
+        }
         _ => None,
     }
 }
@@ -646,6 +691,7 @@ pub(crate) fn try_decode_parameter_controlled_point(
         parameter_value,
         source_point_group_index,
         source_parameter_segment_group_indices,
+        source_ratio_group_indices,
         source_expr,
         source_expr_absolute_parameter,
     ): (
@@ -653,6 +699,7 @@ pub(crate) fn try_decode_parameter_controlled_point(
         f64,
         Option<usize>,
         Option<(usize, usize)>,
+        Option<(usize, usize, usize)>,
         Option<FunctionExpr>,
         bool,
     ) = if (source_group.header.kind()) == crate::format::GroupKind::Point {
@@ -662,6 +709,7 @@ pub(crate) fn try_decode_parameter_controlled_point(
             try_decode_parameter_control_value_for_group(file, groups, source_group)
                 .ok()
                 .ok_or(ParameterControlledPointDecodeError::InvalidSource)?,
+            None,
             None,
             None,
             None,
@@ -676,6 +724,49 @@ pub(crate) fn try_decode_parameter_controlled_point(
             value,
             Some(point_group_index),
             segment_group_indices,
+            None,
+            None,
+            false,
+        )
+    } else if (source_group.header.kind()) == crate::format::GroupKind::RatioValue {
+        let source_path = find_indexed_path(file, source_group)
+            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+        let [origin, denominator, numerator, ..] = source_path.refs.as_slice() else {
+            return Err(ParameterControlledPointDecodeError::InvalidSource);
+        };
+        let origin_index = origin
+            .checked_sub(1)
+            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+        let denominator_index = denominator
+            .checked_sub(1)
+            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+        let numerator_index = numerator
+            .checked_sub(1)
+            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+        let origin = anchors
+            .get(origin_index)
+            .and_then(Option::as_ref)
+            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+        let denominator = anchors
+            .get(denominator_index)
+            .and_then(Option::as_ref)
+            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+        let numerator = anchors
+            .get(numerator_index)
+            .and_then(Option::as_ref)
+            .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+        let denominator_length = (denominator.x - origin.x).hypot(denominator.y - origin.y);
+        if denominator_length <= 1e-9 {
+            return Err(ParameterControlledPointDecodeError::InvalidSource);
+        }
+        let parameter_value =
+            (numerator.x - origin.x).hypot(numerator.y - origin.y) / denominator_length;
+        (
+            String::new(),
+            parameter_value.min(1.0),
+            None,
+            None,
+            Some((origin_index, denominator_index, numerator_index)),
             None,
             false,
         )
@@ -738,12 +829,14 @@ pub(crate) fn try_decode_parameter_controlled_point(
             wrap_unit_interval(value),
             source_point_group_index,
             source_parameter_segment_group_indices,
+            None,
             Some(expr),
             source_expr_absolute_parameter,
         )
     } else {
         return Err(ParameterControlledPointDecodeError::InvalidSource);
     };
+    let source_parameters = parameter_controlled_sources(file, groups, source_group);
 
     match host_group.header.kind() {
         crate::format::GroupKind::Segment
@@ -791,8 +884,44 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 parameter_name,
                 source_point_group_index,
                 source_parameter_segment_group_indices,
+                source_ratio_group_indices,
                 source_expr: source_expr.clone(),
                 source_expr_absolute_parameter,
+                source_parameters: source_parameters.clone(),
+            })
+        }
+        crate::format::GroupKind::PerpendicularLine
+        | crate::format::GroupKind::ParallelLine
+        | crate::format::GroupKind::AngleBisectorRay
+        | crate::format::GroupKind::Translation
+        | crate::format::GroupKind::Rotation
+        | crate::format::GroupKind::ParameterRotation
+        | crate::format::GroupKind::AngleRotation
+        | crate::format::GroupKind::Scale => {
+            let (start, end, line_like_kind) =
+                resolve_line_like_constraint_raw(file, groups, anchors, host_group)
+                    .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let t = match line_like_kind {
+                LineLikeKind::Segment => wrap_unit_interval(parameter_value),
+                LineLikeKind::Line => parameter_value,
+                LineLikeKind::Ray => parameter_value.max(0.0),
+            };
+            Ok(ParameterControlledPoint {
+                position: lerp_point(&start, &end, t),
+                constraint: RawPointConstraint::ConstructedLine {
+                    host_group_index: path.refs[1]
+                        .checked_sub(1)
+                        .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?,
+                    t,
+                    line_like_kind,
+                },
+                parameter_name,
+                source_point_group_index,
+                source_parameter_segment_group_indices,
+                source_ratio_group_indices,
+                source_expr: source_expr.clone(),
+                source_expr_absolute_parameter,
+                source_parameters: source_parameters.clone(),
             })
         }
         crate::format::GroupKind::Polygon => {
@@ -823,8 +952,10 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 parameter_name,
                 source_point_group_index,
                 source_parameter_segment_group_indices,
+                source_ratio_group_indices,
                 source_expr: source_expr.clone(),
                 source_expr_absolute_parameter,
+                source_parameters: source_parameters.clone(),
             })
         }
         crate::format::GroupKind::Circle => {
@@ -862,8 +993,10 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 parameter_name,
                 source_point_group_index,
                 source_parameter_segment_group_indices,
+                source_ratio_group_indices,
                 source_expr: source_expr.clone(),
                 source_expr_absolute_parameter,
+                source_parameters: source_parameters.clone(),
             })
         }
         crate::format::GroupKind::ThreePointArc => {
@@ -895,7 +1028,7 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 .and_then(|value| value.clone())
                 .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
             let position = point_on_three_point_arc(&start, &mid, &end, normalized)
-                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+                .unwrap_or_else(|| start.clone());
             Ok(ParameterControlledPoint {
                 position,
                 constraint: RawPointConstraint::Arc(PointOnArcConstraint {
@@ -907,8 +1040,10 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 parameter_name,
                 source_point_group_index,
                 source_parameter_segment_group_indices,
+                source_ratio_group_indices,
                 source_expr: source_expr.clone(),
                 source_expr_absolute_parameter,
+                source_parameters: source_parameters.clone(),
             })
         }
         crate::format::GroupKind::ArcOnCircle => {
@@ -955,7 +1090,7 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 .and_then(|value| value.clone())
                 .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
             let position = point_on_circle_arc(&center, &start, &end, normalized)
-                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+                .unwrap_or_else(|| start.clone());
             Ok(ParameterControlledPoint {
                 position,
                 constraint: RawPointConstraint::CircleArc(PointOnCircleArcConstraint {
@@ -967,8 +1102,10 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 parameter_name,
                 source_point_group_index,
                 source_parameter_segment_group_indices,
+                source_ratio_group_indices,
                 source_expr: source_expr.clone(),
                 source_expr_absolute_parameter,
+                source_parameters: source_parameters.clone(),
             })
         }
         crate::format::GroupKind::CenterArc => {
@@ -1001,7 +1138,7 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
             let reversed_t = 1.0 - normalized;
             let position = point_on_circle_arc(&center, &start, &end, reversed_t)
-                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+                .unwrap_or_else(|| start.clone());
             Ok(ParameterControlledPoint {
                 position,
                 constraint: RawPointConstraint::CircleArc(PointOnCircleArcConstraint {
@@ -1013,12 +1150,51 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 parameter_name,
                 source_point_group_index,
                 source_parameter_segment_group_indices,
+                source_ratio_group_indices,
                 source_expr,
                 source_expr_absolute_parameter,
+                source_parameters,
             })
         }
         _ => Err(ParameterControlledPointDecodeError::InvalidHostGeometry),
     }
+}
+
+fn parameter_controlled_sources(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    source_group: &ObjectGroup,
+) -> Vec<ParameterControlledSource> {
+    let candidate_ordinals = if source_group.header.kind() == GroupKind::ParameterAnchor {
+        vec![source_group.ordinal]
+    } else if source_group.header.kind() == GroupKind::FunctionExpr {
+        find_indexed_path(file, source_group)
+            .map(|path| path.refs)
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    candidate_ordinals
+        .into_iter()
+        .filter_map(|ordinal| {
+            let anchor_group = groups.get(ordinal.checked_sub(1)?)?;
+            if anchor_group.header.kind() != GroupKind::ParameterAnchor {
+                return None;
+            }
+            let path = find_indexed_path(file, anchor_group)?;
+            let point_group_index = path.refs.first()?.checked_sub(1)?;
+            let host_group_index = path.refs.get(1)?.checked_sub(1)?;
+            let point_group = groups.get(point_group_index)?;
+            let name = decode_label_name(file, anchor_group)
+                .or_else(|| decode_label_name(file, point_group))
+                .unwrap_or_else(|| format!("__param_anchor_{}", anchor_group.ordinal));
+            Some(ParameterControlledSource {
+                name,
+                point_group_index,
+                host_group_index,
+            })
+        })
+        .collect()
 }
 
 pub(crate) fn decode_coordinate_point(
@@ -1086,8 +1262,10 @@ pub(crate) fn decode_coordinate_point(
                         position,
                         source: CoordinatePointSource::SourcePoint2d {
                             source_group_index,
+                            x_scalar_group_ordinal: Some(x_parameter_group.ordinal),
                             x_parameter_name,
                             x_expr,
+                            y_scalar_group_ordinal: Some(y_parameter_group.ordinal),
                             y_parameter_name,
                             y_expr: y_expr.clone(),
                         },
@@ -1143,8 +1321,10 @@ pub(crate) fn decode_coordinate_point(
                             position,
                             source: CoordinatePointSource::SourcePoint2d {
                                 source_group_index,
+                                x_scalar_group_ordinal: Some(x_calc_group.ordinal),
                                 x_parameter_name,
                                 x_expr,
+                                y_scalar_group_ordinal: Some(y_calc_group.ordinal),
                                 y_parameter_name,
                                 y_expr: y_expr.clone(),
                             },
@@ -1320,8 +1500,10 @@ pub(crate) fn decode_coordinate_point(
                 position,
                 source: CoordinatePointSource::SourcePoint2d {
                     source_group_index,
+                    x_scalar_group_ordinal: Some(x_group.ordinal),
                     x_parameter_name,
                     x_expr,
+                    y_scalar_group_ordinal: Some(y_expr_group.ordinal),
                     y_parameter_name,
                     y_expr: y_expr.clone(),
                 },
@@ -1393,8 +1575,10 @@ pub(crate) fn decode_coordinate_point(
                 position,
                 source: CoordinatePointSource::SourcePoint2d {
                     source_group_index,
+                    x_scalar_group_ordinal: None,
                     x_parameter_name: "x".to_string(),
                     x_expr: FunctionExpr::Constant(radius * angle_radians.cos()),
+                    y_scalar_group_ordinal: None,
                     y_parameter_name: "y".to_string(),
                     y_expr: FunctionExpr::Constant(radius * angle_radians.sin()),
                 },
@@ -1446,8 +1630,10 @@ pub(crate) fn decode_coordinate_point(
                 position,
                 source: CoordinatePointSource::SourcePoint2d {
                     source_group_index,
+                    x_scalar_group_ordinal: Some(x_calc_group.ordinal),
                     x_parameter_name,
                     x_expr: x_expr.clone(),
+                    y_scalar_group_ordinal: Some(y_calc_group.ordinal),
                     y_parameter_name,
                     y_expr: y_expr.clone(),
                 },

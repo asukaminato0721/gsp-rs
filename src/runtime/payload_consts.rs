@@ -24,6 +24,8 @@ pub(crate) const RECORD_IMAGE_RESOURCE: u32 = 0x1f44;
 
 pub(crate) const EXPRESSION_TRANSFORM_SCALE_CLASS: u16 = 0;
 pub(crate) const EXPRESSION_TRANSFORM_ROTATE_CLASS: u16 = 1;
+pub(crate) const EXPRESSION_TRANSFORM_CALCULATED_ROTATE_CLASS: u16 = 2;
+pub(crate) const EXPRESSION_TRANSFORM_LABELED_ROTATE_CLASS: u16 = 6;
 pub(crate) const EXPRESSION_TRANSFORM_MARKED_SCALE_CLASS: u16 = 5;
 pub(crate) const EXPRESSION_TRANSFORM_CALCULATED_SCALE_CLASS: u16 = 7;
 
@@ -35,6 +37,7 @@ pub(crate) const EXPR_OP_MUL: u16 = 0x1002;
 pub(crate) const EXPR_OP_DIV: u16 = 0x1003;
 pub(crate) const EXPR_OP_POW: u16 = 0x1004;
 pub(crate) const EXPR_PI_WORD: u16 = 0x000d;
+pub(crate) const EXPR_EULER_WORD: u16 = 0x000e;
 pub(crate) const EXPR_PI_SUFFIX: u16 = 0x0100;
 pub(crate) const EXPR_VARIABLE_WORD: u16 = 0x000f;
 pub(crate) const EXPR_VARIABLE_SUFFIX: u16 = 0x000c;

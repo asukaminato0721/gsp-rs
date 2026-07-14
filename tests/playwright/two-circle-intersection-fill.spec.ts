@@ -1,21 +1,5 @@
 import { test, expect } from '@playwright/test';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { execFileSync } from 'node:child_process';
-
-function compileFixtureToTempHtml(relativeFixturePath: string): string {
-  const repoRoot = process.cwd();
-  const sourcePath = path.resolve(repoRoot, relativeFixturePath);
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsp-two-circle-fill-'));
-  const tempFixturePath = path.join(tempDir, 'fixture.gsp');
-  fs.copyFileSync(sourcePath, tempFixturePath);
-  execFileSync(path.resolve(repoRoot, 'target/debug/gsp-rs'), ['--html', tempFixturePath], {
-    cwd: repoRoot,
-    stdio: 'pipe',
-  });
-  return tempFixturePath.replace(/\.gsp$/i, '.html');
-}
+import { compileFixtureToTempHtml } from './compile-fixture';
 
 test('two explicit circle interiors remain independent while circles move', async ({ page }) => {
   const file = compileFixtureToTempHtml('tests/fixtures/未实现/(inRm)两圆之交.gsp');

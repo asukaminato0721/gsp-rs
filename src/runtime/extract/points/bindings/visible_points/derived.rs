@@ -48,8 +48,8 @@ fn scene_point_from_midpoint(
     let group = groups.get(index)?;
     let path = find_indexed_path(file, group)?;
     let host_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
-    let line = resolve_line_constraint(file, groups, host_group, group_to_point_index)?;
-    let (start_index, end_index) = match line {
+    let line = resolve_line_constraint(file, groups, host_group, anchors, group_to_point_index)?;
+    let (constraint, binding) = match line {
         LineConstraint::Segment {
             start_index,
             end_index,
@@ -61,8 +61,21 @@ fn scene_point_from_midpoint(
         | LineConstraint::Ray {
             start_index,
             end_index,
-        } => (start_index, end_index),
-        _ => return None,
+        } => (
+            ScenePointConstraint::OnSegment {
+                start_index,
+                end_index,
+                t: 0.5,
+            },
+            Some(ScenePointBinding::Midpoint {
+                start_index,
+                end_index,
+            }),
+        ),
+        line => (
+            ScenePointConstraint::OnLineConstraint { line, t: 0.5 },
+            None,
+        ),
     };
     let position = anchors.get(index).cloned().flatten()?;
 
@@ -71,15 +84,8 @@ fn scene_point_from_midpoint(
         group_color(group),
         visible,
         true,
-        ScenePointConstraint::OnSegment {
-            start_index,
-            end_index,
-            t: 0.5,
-        },
-        Some(ScenePointBinding::Midpoint {
-            start_index,
-            end_index,
-        }),
+        constraint,
+        binding,
     ))
 }
 
@@ -102,8 +108,8 @@ fn scene_point_from_intersection(
     let position = anchors.get(index).cloned().flatten()?;
 
     if let (Some(left), Some(right)) = (
-        resolve_intersection_line_constraint(file, groups, left_group, group_to_point_index),
-        resolve_intersection_line_constraint(file, groups, right_group, group_to_point_index),
+        resolve_intersection_line_constraint(file, groups, left_group, anchors, group_to_point_index),
+        resolve_intersection_line_constraint(file, groups, right_group, anchors, group_to_point_index),
     ) {
         return Some(scene_point(
             position,
@@ -115,8 +121,8 @@ fn scene_point_from_intersection(
         ));
     }
 
-    if let (Some(line), Some((point_index, x_min, x_max, sample_count))) = (
-        resolve_intersection_line_constraint(file, groups, left_group, group_to_point_index),
+    if let (Some(line), Some((trace_key, point_index, x_min, x_max, sample_count))) = (
+        resolve_intersection_line_constraint(file, groups, left_group, anchors, group_to_point_index),
         decode_trace_constraint(file, groups, right_group, group_to_point_index),
     ) {
         return Some(scene_point(
@@ -126,6 +132,7 @@ fn scene_point_from_intersection(
             true,
             ScenePointConstraint::LineTraceIntersection {
                 line,
+                trace_key,
                 point_index,
                 x_min,
                 x_max,
@@ -136,9 +143,9 @@ fn scene_point_from_intersection(
         ));
     }
 
-    if let (Some((point_index, x_min, x_max, sample_count)), Some(line)) = (
+    if let (Some((trace_key, point_index, x_min, x_max, sample_count)), Some(line)) = (
         decode_trace_constraint(file, groups, left_group, group_to_point_index),
-        resolve_intersection_line_constraint(file, groups, right_group, group_to_point_index),
+        resolve_intersection_line_constraint(file, groups, right_group, anchors, group_to_point_index),
     ) {
         return Some(scene_point(
             position,
@@ -147,6 +154,7 @@ fn scene_point_from_intersection(
             true,
             ScenePointConstraint::LineTraceIntersection {
                 line,
+                trace_key,
                 point_index,
                 x_min,
                 x_max,
@@ -157,8 +165,8 @@ fn scene_point_from_intersection(
         ));
     }
 
-    if let (Some(line), Some((expr, descriptor))) = (
-        resolve_intersection_line_constraint(file, groups, left_group, group_to_point_index),
+    if let (Some(line), Some((function_key, expr, descriptor))) = (
+        resolve_intersection_line_constraint(file, groups, left_group, anchors, group_to_point_index),
         decode_function_plot_constraint(file, groups, right_group),
     ) {
         return Some(scene_point(
@@ -168,6 +176,7 @@ fn scene_point_from_intersection(
             true,
             ScenePointConstraint::LineFunctionIntersection {
                 line,
+                function_key,
                 expr,
                 x_min: descriptor.x_min,
                 x_max: descriptor.x_max,
@@ -179,9 +188,9 @@ fn scene_point_from_intersection(
         ));
     }
 
-    if let (Some((expr, descriptor)), Some(line)) = (
+    if let (Some((function_key, expr, descriptor)), Some(line)) = (
         decode_function_plot_constraint(file, groups, left_group),
-        resolve_intersection_line_constraint(file, groups, right_group, group_to_point_index),
+        resolve_intersection_line_constraint(file, groups, right_group, anchors, group_to_point_index),
     ) {
         return Some(scene_point(
             position,
@@ -190,6 +199,7 @@ fn scene_point_from_intersection(
             true,
             ScenePointConstraint::LineFunctionIntersection {
                 line,
+                function_key,
                 expr,
                 x_min: descriptor.x_min,
                 x_max: descriptor.x_max,
@@ -206,7 +216,7 @@ fn scene_point_from_intersection(
     let right_circular =
         resolve_circular_constraint(file, groups, right_group, group_to_point_index);
     if let (Some(line), Some((center_index, radius_index))) = (
-        resolve_intersection_line_constraint(file, groups, left_group, group_to_point_index),
+        resolve_intersection_line_constraint(file, groups, left_group, anchors, group_to_point_index),
         resolve_circle_point_indices(file, groups, right_group, group_to_point_index),
     ) {
         return Some(scene_point(
@@ -226,7 +236,7 @@ fn scene_point_from_intersection(
 
     if let (Some((center_index, radius_index)), Some(line)) = (
         resolve_circle_point_indices(file, groups, left_group, group_to_point_index),
-        resolve_intersection_line_constraint(file, groups, right_group, group_to_point_index),
+        resolve_intersection_line_constraint(file, groups, right_group, anchors, group_to_point_index),
     ) {
         return Some(scene_point(
             position,
@@ -244,7 +254,7 @@ fn scene_point_from_intersection(
     }
 
     if let (Some(line), Some(circle)) = (
-        resolve_intersection_line_constraint(file, groups, left_group, group_to_point_index),
+        resolve_intersection_line_constraint(file, groups, left_group, anchors, group_to_point_index),
         right_circular.clone(),
     ) {
         return Some(scene_point(
@@ -263,7 +273,7 @@ fn scene_point_from_intersection(
 
     if let (Some(circle), Some(line)) = (
         left_circular.clone(),
-        resolve_intersection_line_constraint(file, groups, right_group, group_to_point_index),
+        resolve_intersection_line_constraint(file, groups, right_group, anchors, group_to_point_index),
     ) {
         return Some(scene_point(
             position,
@@ -371,15 +381,17 @@ fn resolve_intersection_line_constraint(
     file: &GspFile,
     groups: &[ObjectGroup],
     group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
     group_to_point_index: &[Option<usize>],
 ) -> Option<LineConstraint> {
-    resolve_line_constraint(file, groups, group, group_to_point_index)
+    resolve_line_constraint(file, groups, group, anchors, group_to_point_index)
 }
 
 fn resolve_line_constraint(
     file: &GspFile,
     groups: &[ObjectGroup],
     group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
     group_to_point_index: &[Option<usize>],
 ) -> Option<LineConstraint> {
     let path = find_indexed_path(file, group)?;
@@ -415,9 +427,25 @@ fn resolve_line_constraint(
             }
             let through_index = (*group_to_point_index.get(path.refs[0].checked_sub(1)?)?)?;
             let host_group = groups.get(path.refs[1].checked_sub(1)?)?;
-            let host = resolve_line_constraint(file, groups, host_group, group_to_point_index)?;
-            let (line_start_index, line_end_index, host_is_perpendicular) =
-                line_direction_reference(&host)?;
+            let host =
+                resolve_line_constraint(file, groups, host_group, anchors, group_to_point_index)?;
+            let Some((line_start_index, line_end_index, host_is_perpendicular)) =
+                line_direction_reference(&host)
+            else {
+                return Some(if group.header.kind()
+                    == crate::format::GroupKind::PerpendicularLine
+                {
+                    LineConstraint::PerpendicularTo {
+                        through_index,
+                        line: Box::new(host),
+                    }
+                } else {
+                    LineConstraint::ParallelTo {
+                        through_index,
+                        line: Box::new(host),
+                    }
+                });
+            };
             let result_is_perpendicular = (group.header.kind()
                 == crate::format::GroupKind::PerpendicularLine)
                 ^ host_is_perpendicular;
@@ -451,40 +479,66 @@ fn resolve_line_constraint(
                 return None;
             };
             let source_group = groups.get(binding.source_group_index)?;
-            let source_path = find_indexed_path(file, source_group)?;
-            if source_path.refs.len() != 2 || !source_group.header.kind().is_line_like() {
-                return None;
-            }
-            let start_group_index = source_path.refs[0].checked_sub(1)?;
-            let end_group_index = source_path.refs[1].checked_sub(1)?;
-            let start_index = mapped_rotated_endpoint_index(
-                file,
-                groups,
-                group_to_point_index,
-                start_group_index,
-                binding.center_group_index,
-                angle_degrees,
-            )?;
-            let end_index = mapped_rotated_endpoint_index(
-                file,
-                groups,
-                group_to_point_index,
-                end_group_index,
-                binding.center_group_index,
-                angle_degrees,
-            )?;
-            Some(match source_group.header.kind() {
-                crate::format::GroupKind::Segment => LineConstraint::Segment {
-                    start_index,
-                    end_index,
+            Some(LineConstraint::Rotated {
+                line: Box::new(resolve_line_constraint(
+                    file,
+                    groups,
+                    source_group,
+                    anchors,
+                    group_to_point_index,
+                )?),
+                rotation: RotationBinding {
+                    center_index: mapped_point_index(
+                        group_to_point_index,
+                        binding.center_group_index,
+                    )?,
+                    angle_degrees,
+                    parameter_name: None,
+                    angle_expr: None,
+                    angle_start_index: None,
+                    angle_vertex_index: None,
+                    angle_end_index: None,
                 },
-                crate::format::GroupKind::Ray => LineConstraint::Ray {
-                    start_index,
-                    end_index,
-                },
-                _ => LineConstraint::Line {
-                    start_index,
-                    end_index,
+            })
+        }
+        crate::format::GroupKind::AngleRotation => {
+            let binding = try_decode_angle_rotation_binding(file, group).ok()?;
+            let source_group = groups.get(binding.source_group_index)?;
+            let angle_start = anchors.get(binding.angle_start_group_index)?.clone()?;
+            let angle_vertex = anchors.get(binding.angle_vertex_group_index)?.clone()?;
+            let angle_end = anchors.get(binding.angle_end_group_index)?.clone()?;
+            Some(LineConstraint::Rotated {
+                line: Box::new(resolve_line_constraint(
+                    file,
+                    groups,
+                    source_group,
+                    anchors,
+                    group_to_point_index,
+                )?),
+                rotation: RotationBinding {
+                    center_index: mapped_point_index(
+                        group_to_point_index,
+                        binding.center_group_index,
+                    )?,
+                    angle_degrees: angle_degrees_from_points(
+                        &angle_start,
+                        &angle_vertex,
+                        &angle_end,
+                    )?,
+                    parameter_name: None,
+                    angle_expr: None,
+                    angle_start_index: Some(mapped_point_index(
+                        group_to_point_index,
+                        binding.angle_start_group_index,
+                    )?),
+                    angle_vertex_index: Some(mapped_point_index(
+                        group_to_point_index,
+                        binding.angle_vertex_group_index,
+                    )?),
+                    angle_end_index: Some(mapped_point_index(
+                        group_to_point_index,
+                        binding.angle_end_group_index,
+                    )?),
                 },
             })
         }
@@ -493,11 +547,35 @@ fn resolve_line_constraint(
                 return None;
             }
             let source_group = groups.get(path.refs[0].checked_sub(1)?)?;
-            let line = resolve_line_constraint(file, groups, source_group, group_to_point_index)?;
+            let line =
+                resolve_line_constraint(file, groups, source_group, anchors, group_to_point_index)?;
             Some(LineConstraint::Translated {
                 line: Box::new(line),
                 vector_start_index: (*group_to_point_index.get(path.refs[1].checked_sub(1)?)?)?,
                 vector_end_index: (*group_to_point_index.get(path.refs[2].checked_sub(1)?)?)?,
+            })
+        }
+        crate::format::GroupKind::Reflection => {
+            if path.refs.len() != 2 {
+                return None;
+            }
+            let source = groups.get(path.refs[0].checked_sub(1)?)?;
+            let axis = groups.get(path.refs[1].checked_sub(1)?)?;
+            Some(LineConstraint::Reflected {
+                line: Box::new(resolve_line_constraint(
+                    file,
+                    groups,
+                    source,
+                    anchors,
+                    group_to_point_index,
+                )?),
+                axis: Box::new(resolve_line_constraint(
+                    file,
+                    groups,
+                    axis,
+                    anchors,
+                    group_to_point_index,
+                )?),
             })
         }
         _ => None,
@@ -529,42 +607,11 @@ fn line_direction_reference(constraint: &LineConstraint) -> Option<(usize, usize
             ..
         } => Some((*line_start_index, *line_end_index, false)),
         LineConstraint::Translated { line, .. } => line_direction_reference(line),
-        LineConstraint::AngleBisectorRay { .. } => None,
+        LineConstraint::PerpendicularTo { .. } | LineConstraint::ParallelTo { .. } => None,
+        LineConstraint::AngleBisectorRay { .. }
+        | LineConstraint::Reflected { .. }
+        | LineConstraint::Rotated { .. } => None,
     }
-}
-
-fn mapped_rotated_endpoint_index(
-    file: &GspFile,
-    groups: &[ObjectGroup],
-    group_to_point_index: &[Option<usize>],
-    source_group_index: usize,
-    center_group_index: usize,
-    angle_degrees: f64,
-) -> Option<usize> {
-    if source_group_index == center_group_index {
-        return mapped_point_index(group_to_point_index, source_group_index);
-    }
-    groups
-        .iter()
-        .enumerate()
-        .find_map(|(candidate_index, candidate)| {
-            if candidate.header.kind() != crate::format::GroupKind::Rotation {
-                return None;
-            }
-            let binding = try_decode_transform_binding(file, candidate).ok()?;
-            let TransformBindingKind::Rotate {
-                angle_degrees: candidate_angle,
-                ..
-            } = binding.kind
-            else {
-                return None;
-            };
-            (binding.source_group_index == source_group_index
-                && binding.center_group_index == center_group_index
-                && (candidate_angle - angle_degrees).abs() < 1e-6)
-                .then(|| mapped_point_index(group_to_point_index, candidate_index))
-                .flatten()
-        })
 }
 
 fn decode_trace_constraint(
@@ -572,7 +619,7 @@ fn decode_trace_constraint(
     _groups: &[ObjectGroup],
     group: &ObjectGroup,
     group_to_point_index: &[Option<usize>],
-) -> Option<(usize, f64, f64, usize)> {
+) -> Option<(usize, usize, f64, f64, usize)> {
     if !matches!(
         group.header.kind(),
         crate::format::GroupKind::CoordinateTrace | crate::format::GroupKind::PointTrace
@@ -588,10 +635,13 @@ fn decode_trace_constraint(
     let payload = group
         .records
         .iter()
-        .find(|record| record.record_type == crate::runtime::payload_consts::RECORD_FUNCTION_PLOT_DESCRIPTOR)
+        .find(|record| {
+            record.record_type == crate::runtime::payload_consts::RECORD_FUNCTION_PLOT_DESCRIPTOR
+        })
         .map(|record| record.payload(&file.data))?;
     let descriptor = try_decode_function_plot_descriptor(payload).ok()?;
     Some((
+        group.ordinal,
         point_index,
         descriptor.x_min,
         descriptor.x_max,
@@ -613,9 +663,7 @@ fn trace_intersection_variant(file: &GspFile, group: &ObjectGroup) -> usize {
     group
         .records
         .iter()
-        .find(|record| {
-            record.record_type == crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD
-        })
+        .find(|record| record.record_type == crate::runtime::payload_consts::RECORD_BINDING_PAYLOAD)
         .map(|record| record.payload(&file.data))
         .filter(|payload| payload.len() >= 8)
         .map_or(0, |payload| crate::format::read_u32(payload, 4) as usize)
@@ -626,6 +674,7 @@ fn decode_function_plot_constraint(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> Option<(
+    usize,
     FunctionExpr,
     crate::runtime::functions::FunctionPlotDescriptor,
 )> {
@@ -643,7 +692,7 @@ fn decode_function_plot_constraint(
         .map(|record| record.payload(&file.data))?;
     let descriptor = try_decode_function_plot_descriptor(descriptor_payload).ok()?;
     let expr = try_decode_function_expr(file, groups, expr_group).ok()?;
-    Some((expr, descriptor))
+    Some((group.ordinal, expr, descriptor))
 }
 
 fn resolve_circle_point_indices(

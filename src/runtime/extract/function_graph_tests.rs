@@ -21,7 +21,11 @@ fn collect_function_parameter_names(expr: &FunctionExpr) -> BTreeSet<String> {
                 collect_ast(lhs, names);
                 collect_ast(rhs, names);
             }
-            FunctionAst::Variable | FunctionAst::Constant(_) | FunctionAst::PiAngle => {}
+            FunctionAst::Variable
+            | FunctionAst::Constant(_)
+            | FunctionAst::PiConstant
+            | FunctionAst::EulerConstant
+            | FunctionAst::PiAngle => {}
         }
     }
 
@@ -114,12 +118,16 @@ fn preserves_parabola_locus_with_constructed_line_driver() {
     assert!(
         scene.labels.iter().any(|label| {
             label.text == "5在L₁上的值 = 0.03"
-                && matches!(
-                    label.binding,
-                    Some(TextLabelBinding::PolylineParameter { point_index: 8, .. })
-                )
+                && match &label.binding {
+                    Some(TextLabelBinding::PolylineParameter { point_index, .. }) => scene
+                        .points
+                        .get(*point_index)
+                        .and_then(|point| point.debug.as_ref())
+                        .is_some_and(|debug| debug.group_ordinal == 13),
+                    _ => false,
+                }
         }),
-        "expected the point-on-locus parameter label to follow the payload ParameterAnchor"
+        "expected the point-on-locus parameter label to follow payload point #13 through ParameterAnchor #18"
     );
     assert!(
         scene
@@ -153,16 +161,20 @@ fn preserves_parabola_locus_with_constructed_line_driver() {
             line.debug
                 .as_ref()
                 .is_some_and(|debug| debug.group_ordinal == 30)
-                && matches!(
-                    line.binding,
+                && match &line.binding {
                     Some(LineBinding::ColorizedSpectrum {
-                        point_index: 8,
+                        point_index,
                         trace_endpoint_index: 1,
-                        depth_parameter_name: Some(ref name),
+                        depth_parameter_name: Some(name),
                         ray: false,
                         ..
-                    }) if name == "N"
-                )
+                    }) if name == "N" => scene
+                        .points
+                        .get(*point_index)
+                        .and_then(|point| point.debug.as_ref())
+                        .is_some_and(|debug| debug.group_ordinal == 13),
+                    _ => false,
+                }
         }),
         "expected the segment Colorized_Spectrum payload to stay bound to point 4"
     );
@@ -171,15 +183,19 @@ fn preserves_parabola_locus_with_constructed_line_driver() {
             line.debug
                 .as_ref()
                 .is_some_and(|debug| debug.group_ordinal == 31)
-                && matches!(
-                    line.binding,
+                && match &line.binding {
                     Some(LineBinding::ColorizedSpectrum {
-                        point_index: 8,
-                        depth_parameter_name: Some(ref name),
+                        point_index,
+                        depth_parameter_name: Some(name),
                         ray: true,
                         ..
-                    }) if name == "N"
-                )
+                    }) if name == "N" => scene
+                        .points
+                        .get(*point_index)
+                        .and_then(|point| point.debug.as_ref())
+                        .is_some_and(|debug| debug.group_ordinal == 13),
+                    _ => false,
+                }
         }),
         "expected the ray Colorized_Spectrum payload to stay bound to its live ray direction"
     );
@@ -382,7 +398,11 @@ fn builds_moving_pulley_with_payload_function_plot_branch_and_arc_length() {
                 .is_some_and(|debug| debug.group_ordinal == 45)
         })
         .expect("expected total rope length label #45");
-    assert_eq!(total.text, "DA + BC + CD = 31.28");
+    assert_eq!(
+        total.text, "DA + BC + CD = 31.28",
+        "binding={:?}",
+        total.binding
+    );
     let function_parameters = collect_function_parameter_names(&scene.functions[0].expr);
     assert!(
         ["m[5]", "m[9]", "m[10]", "m₄"]

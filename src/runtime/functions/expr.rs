@@ -82,6 +82,8 @@ fn format_function_ast(expr: &FunctionAst, variable: &str, parent_prec: u8) -> S
     match expr {
         FunctionAst::Variable => variable.to_string(),
         FunctionAst::Constant(value) => format_number(*value),
+        FunctionAst::PiConstant => "π".to_string(),
+        FunctionAst::EulerConstant => "e".to_string(),
         FunctionAst::PiAngle => "180".to_string(),
         FunctionAst::Parameter(name, _) => name.clone(),
         FunctionAst::Unary { op, expr } => match op {
@@ -265,7 +267,10 @@ pub(super) fn function_ast_contains_symbol(expr: &FunctionAst) -> bool {
         FunctionAst::Binary { lhs, rhs, .. } => {
             function_ast_contains_symbol(lhs) || function_ast_contains_symbol(rhs)
         }
-        FunctionAst::Constant(_) | FunctionAst::PiAngle => false,
+        FunctionAst::Constant(_)
+        | FunctionAst::PiConstant
+        | FunctionAst::EulerConstant
+        | FunctionAst::PiAngle => false,
     }
 }
 
@@ -276,7 +281,11 @@ fn function_ast_contains_variable(expr: &FunctionAst) -> bool {
         FunctionAst::Binary { lhs, rhs, .. } => {
             function_ast_contains_variable(lhs) || function_ast_contains_variable(rhs)
         }
-        FunctionAst::Constant(_) | FunctionAst::PiAngle | FunctionAst::Parameter(_, _) => false,
+        FunctionAst::Constant(_)
+        | FunctionAst::PiConstant
+        | FunctionAst::EulerConstant
+        | FunctionAst::PiAngle
+        | FunctionAst::Parameter(_, _) => false,
     }
 }
 
@@ -310,6 +319,8 @@ fn function_ast_period(expr: &FunctionAst) -> Option<RationalPiPeriod> {
         },
         FunctionAst::Variable
         | FunctionAst::Constant(_)
+        | FunctionAst::PiConstant
+        | FunctionAst::EulerConstant
         | FunctionAst::PiAngle
         | FunctionAst::Parameter(_, _) => None,
     }
@@ -334,6 +345,8 @@ fn linear_ast(expr: &FunctionAst) -> Option<(f64, f64)> {
     match expr {
         FunctionAst::Variable => Some((1.0, 0.0)),
         FunctionAst::Constant(value) => Some((0.0, *value)),
+        FunctionAst::PiConstant => Some((0.0, std::f64::consts::PI)),
+        FunctionAst::EulerConstant => Some((0.0, std::f64::consts::E)),
         FunctionAst::Binary { lhs, op, rhs } => match op {
             BinaryOp::Add => {
                 let (la, lb) = linear_ast(lhs)?;
@@ -373,6 +386,8 @@ fn linear_ast(expr: &FunctionAst) -> Option<(f64, f64)> {
 fn ast_constant(expr: &FunctionAst) -> Option<f64> {
     match expr {
         FunctionAst::Constant(value) => Some(*value),
+        FunctionAst::PiConstant => Some(std::f64::consts::PI),
+        FunctionAst::EulerConstant => Some(std::f64::consts::E),
         _ => None,
     }
 }

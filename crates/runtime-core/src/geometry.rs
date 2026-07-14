@@ -1,6 +1,6 @@
 const EPSILON: f64 = 1e-9;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct Point {
     pub x: f64,
     pub y: f64,
@@ -10,7 +10,8 @@ impl Point {
     pub const ZERO: Self = Self { x: 0.0, y: 0.0 };
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum LineKind {
     Segment,
     Line,

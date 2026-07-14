@@ -15,7 +15,8 @@ use crate::runtime::geometry::{
     three_point_arc_geometry, to_raw_from_world,
 };
 use crate::runtime::scene::{
-    LineBinding, LineIterationFamily, PayloadDebugSource, PolygonIterationFamily, ShapeBinding,
+    ArcBinding, LineBinding, LineIterationFamily, PayloadDebugSource, PolygonIterationFamily,
+    ShapeBinding,
 };
 
 #[derive(Debug, Clone)]
@@ -39,6 +40,7 @@ pub(super) struct ArcShape {
     pub(super) center: Option<PointRecord>,
     pub(super) counterclockwise: bool,
     pub(super) visible: bool,
+    pub(super) binding: Option<ArcBinding>,
     pub(super) debug: Option<PayloadDebugSource>,
 }
 
@@ -61,8 +63,9 @@ pub(super) use basic::{
 pub(super) use iterations::{
     collect_carried_circle_iteration_families, collect_carried_iteration_circles,
     collect_carried_iteration_lines, collect_carried_iteration_polygons,
-    collect_carried_line_iteration_families, collect_carried_polygon_edge_segment_groups,
-    collect_carried_polygon_iteration_families, collect_rotational_line_iteration_families,
+    collect_carried_line_iteration_families, collect_carried_line_iteration_image_groups,
+    collect_carried_polygon_edge_segment_groups, collect_carried_polygon_iteration_families,
+    collect_rotational_line_iteration_families,
 };
 pub(super) use transforms::{
     collect_reflected_circle_shapes, collect_reflected_line_shapes,
@@ -79,6 +82,7 @@ pub(super) fn collect_scene_shapes(
     analysis: &SceneAnalysis,
 ) -> CollectedShapes {
     let suppressed_segment_groups = collect_carried_polygon_edge_segment_groups(file, groups);
+    let suppressed_carried_line_images = collect_carried_line_iteration_image_groups(file, groups);
     let suppressed_ray_groups = collect_materialized_ray_groups(file, groups);
     let segments = collect_line_shapes(
         file,
@@ -172,6 +176,11 @@ pub(super) fn collect_scene_shapes(
         ))
         .chain(measurements)
         .collect::<Vec<_>>();
+    lines.retain(|line| {
+        line.debug.as_ref().is_none_or(|debug| {
+            !suppressed_carried_line_images.contains(&debug.group_ordinal.saturating_sub(1))
+        })
+    });
     let trace_lines = coordinate_traces;
     let base_polygons = collect_polygon_shapes(
         file,

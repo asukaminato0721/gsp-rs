@@ -1,7 +1,7 @@
 use super::function_expr_json::FunctionExprJson;
 use super::scene_json::{DebugSourceJson, PointJson};
 use super::transform_json::TransformJson;
-use crate::runtime::functions::FunctionPlotMode;
+use crate::runtime::functions::{FunctionExpr, FunctionPlotMode};
 use crate::runtime::scene::{
     AxisBinding, CircularConstraint, LineConstraint, ScenePointBinding, ScenePointConstraint,
 };
@@ -57,6 +57,17 @@ enum PointBindingJson {
     },
     #[serde(rename = "constraint-parameter-expr")]
     ConstraintParameterExpr { expr: FunctionExprJson },
+    #[serde(rename = "constraint-parameter-point-distance-ratio")]
+    ConstraintParameterPointDistanceRatio {
+        #[serde(rename = "originIndex")]
+        origin_index: usize,
+        #[serde(rename = "denominatorIndex")]
+        denominator_index: usize,
+        #[serde(rename = "numeratorIndex")]
+        numerator_index: usize,
+        #[serde(rename = "clampToUnit")]
+        clamp_to_unit: bool,
+    },
     #[serde(rename = "constraint-parameter-from-point-expr")]
     ConstraintParameterFromPointExpr {
         #[serde(rename = "sourceIndex")]
@@ -122,10 +133,14 @@ enum PointBindingJson {
     CoordinateSource2d {
         #[serde(rename = "sourceIndex")]
         source_index: usize,
+        #[serde(rename = "xScalarGroupOrdinal")]
+        x_scalar_group_ordinal: Option<usize>,
         #[serde(rename = "xName")]
         x_name: String,
         #[serde(rename = "xExpr")]
         x_expr: FunctionExprJson,
+        #[serde(rename = "yScalarGroupOrdinal")]
+        y_scalar_group_ordinal: Option<usize>,
         #[serde(rename = "yName")]
         y_name: String,
         #[serde(rename = "yExpr")]
@@ -137,6 +152,16 @@ enum PointBindingJson {
         source_index: usize,
         #[serde(rename = "distanceExpr")]
         distance_expr: FunctionExprJson,
+        #[serde(rename = "xScale")]
+        x_scale: f64,
+        #[serde(rename = "yScale")]
+        y_scale: f64,
+    },
+    #[serde(rename = "boundary-length-offset")]
+    BoundaryLengthOffset {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        boundary: CircularConstraintJson,
         #[serde(rename = "xScale")]
         x_scale: f64,
         #[serde(rename = "yScale")]
@@ -277,11 +302,23 @@ impl PointBindingJson {
             ScenePointBinding::ConstraintParameterExpr { expr } => Self::ConstraintParameterExpr {
                 expr: FunctionExprJson::from_expr(expr),
             },
+            ScenePointBinding::ConstraintParameterPointDistanceRatio {
+                origin_index,
+                denominator_index,
+                numerator_index,
+                clamp_to_unit,
+            } => Self::ConstraintParameterPointDistanceRatio {
+                origin_index: *origin_index,
+                denominator_index: *denominator_index,
+                numerator_index: *numerator_index,
+                clamp_to_unit: *clamp_to_unit,
+            },
             ScenePointBinding::ConstraintParameterFromPointExpr {
                 source_index,
                 parameter_name,
                 expr,
                 absolute_value,
+                ..
             } => Self::ConstraintParameterFromPointExpr {
                 source_index: *source_index,
                 parameter_name: parameter_name.clone(),
@@ -329,6 +366,7 @@ impl PointBindingJson {
                 angle_parameter_start_index,
                 angle_parameter_end_index,
                 angle_parameter_scale,
+                ..
             } => Self::Derived {
                 source_index: *source_index,
                 transform: PointTransformJson::Rotate {
@@ -371,6 +409,7 @@ impl PointBindingJson {
                 factor_parameter_point_index,
                 factor_parameter_start_index,
                 factor_parameter_end_index,
+                ..
             } => Self::Derived {
                 source_index: *source_index,
                 transform: PointTransformJson::Scale {
@@ -416,14 +455,18 @@ impl PointBindingJson {
             },
             ScenePointBinding::CoordinateSource2d {
                 source_index,
+                x_scalar_group_ordinal,
                 x_name,
                 x_expr,
+                y_scalar_group_ordinal,
                 y_name,
                 y_expr,
             } => Self::CoordinateSource2d {
                 source_index: *source_index,
+                x_scalar_group_ordinal: *x_scalar_group_ordinal,
                 x_name: x_name.clone(),
                 x_expr: FunctionExprJson::from_expr(x_expr),
+                y_scalar_group_ordinal: *y_scalar_group_ordinal,
                 y_name: y_name.clone(),
                 y_expr: FunctionExprJson::from_expr(y_expr),
             },
@@ -435,6 +478,29 @@ impl PointBindingJson {
             } => Self::PolarOffset {
                 source_index: *source_index,
                 distance_expr: FunctionExprJson::from_expr(distance_expr),
+                x_scale: *x_scale,
+                y_scale: *y_scale,
+            },
+            ScenePointBinding::RadiusOffset {
+                source_index,
+                radius,
+                x_scale,
+                y_scale,
+                ..
+            } => Self::PolarOffset {
+                source_index: *source_index,
+                distance_expr: FunctionExprJson::from_expr(&FunctionExpr::Constant(*radius)),
+                x_scale: *x_scale,
+                y_scale: *y_scale,
+            },
+            ScenePointBinding::BoundaryLengthOffset {
+                source_index,
+                boundary,
+                x_scale,
+                y_scale,
+            } => Self::BoundaryLengthOffset {
+                source_index: *source_index,
+                boundary: CircularConstraintJson::from_constraint(boundary),
                 x_scale: *x_scale,
                 y_scale: *y_scale,
             },
@@ -573,6 +639,8 @@ enum PointConstraintJson {
     #[serde(rename = "line-trace-intersection")]
     LineTraceIntersection {
         line: LineConstraintJson,
+        #[serde(rename = "traceKey")]
+        trace_key: usize,
         #[serde(rename = "pointIndex")]
         point_index: usize,
         #[serde(rename = "xMin")]
@@ -586,6 +654,8 @@ enum PointConstraintJson {
     #[serde(rename = "line-function-intersection")]
     LineFunctionIntersection {
         line: LineConstraintJson,
+        #[serde(rename = "functionKey")]
+        function_key: usize,
         expr: FunctionExprJson,
         #[serde(rename = "xMin")]
         x_min: f64,
@@ -771,6 +841,7 @@ impl PointConstraintJson {
             }
             ScenePointConstraint::LineTraceIntersection {
                 line,
+                trace_key,
                 point_index,
                 x_min,
                 x_max,
@@ -778,6 +849,7 @@ impl PointConstraintJson {
                 variant,
             } => Some(Self::LineTraceIntersection {
                 line: LineConstraintJson::from_constraint(line),
+                trace_key: *trace_key,
                 point_index: *point_index,
                 x_min: *x_min,
                 x_max: *x_max,
@@ -786,6 +858,7 @@ impl PointConstraintJson {
             }),
             ScenePointConstraint::LineFunctionIntersection {
                 line,
+                function_key,
                 expr,
                 x_min,
                 x_max,
@@ -794,6 +867,7 @@ impl PointConstraintJson {
                 sample_hint,
             } => Some(Self::LineFunctionIntersection {
                 line: LineConstraintJson::from_constraint(line),
+                function_key: *function_key,
                 expr: FunctionExprJson::from_expr(expr),
                 x_min: *x_min,
                 x_max: *x_max,
@@ -1060,6 +1134,18 @@ enum LineConstraintJson {
         #[serde(rename = "lineEndIndex")]
         line_end_index: usize,
     },
+    #[serde(rename = "perpendicular-to")]
+    PerpendicularTo {
+        #[serde(rename = "throughIndex")]
+        through_index: usize,
+        line: Box<LineConstraintJson>,
+    },
+    #[serde(rename = "parallel-to")]
+    ParallelTo {
+        #[serde(rename = "throughIndex")]
+        through_index: usize,
+        line: Box<LineConstraintJson>,
+    },
     #[serde(rename = "angle-bisector-ray")]
     AngleBisectorRay {
         #[serde(rename = "startIndex")]
@@ -1075,6 +1161,27 @@ enum LineConstraintJson {
         vector_start_index: usize,
         #[serde(rename = "vectorEndIndex")]
         vector_end_index: usize,
+    },
+    Reflected {
+        line: Box<LineConstraintJson>,
+        axis: Box<LineConstraintJson>,
+    },
+    Rotated {
+        line: Box<LineConstraintJson>,
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "angleDegrees")]
+        angle_degrees: f64,
+        #[serde(rename = "parameterName", skip_serializing_if = "Option::is_none")]
+        parameter_name: Option<String>,
+        #[serde(rename = "angleExpr", skip_serializing_if = "Option::is_none")]
+        angle_expr: Option<FunctionExprJson>,
+        #[serde(rename = "angleStartIndex", skip_serializing_if = "Option::is_none")]
+        angle_start_index: Option<usize>,
+        #[serde(rename = "angleVertexIndex", skip_serializing_if = "Option::is_none")]
+        angle_vertex_index: Option<usize>,
+        #[serde(rename = "angleEndIndex", skip_serializing_if = "Option::is_none")]
+        angle_end_index: Option<usize>,
     },
 }
 
@@ -1120,6 +1227,20 @@ impl LineConstraintJson {
                 line_start_index: *line_start_index,
                 line_end_index: *line_end_index,
             },
+            LineConstraint::PerpendicularTo {
+                through_index,
+                line,
+            } => Self::PerpendicularTo {
+                through_index: *through_index,
+                line: Box::new(Self::from_constraint(line)),
+            },
+            LineConstraint::ParallelTo {
+                through_index,
+                line,
+            } => Self::ParallelTo {
+                through_index: *through_index,
+                line: Box::new(Self::from_constraint(line)),
+            },
             LineConstraint::AngleBisectorRay {
                 start_index,
                 vertex_index,
@@ -1137,6 +1258,23 @@ impl LineConstraintJson {
                 line: Box::new(Self::from_constraint(line)),
                 vector_start_index: *vector_start_index,
                 vector_end_index: *vector_end_index,
+            },
+            LineConstraint::Reflected { line, axis } => Self::Reflected {
+                line: Box::new(Self::from_constraint(line)),
+                axis: Box::new(Self::from_constraint(axis)),
+            },
+            LineConstraint::Rotated { line, rotation } => Self::Rotated {
+                line: Box::new(Self::from_constraint(line)),
+                center_index: rotation.center_index,
+                angle_degrees: rotation.angle_degrees,
+                parameter_name: rotation.parameter_name.clone(),
+                angle_expr: rotation
+                    .angle_expr
+                    .as_ref()
+                    .map(FunctionExprJson::from_expr),
+                angle_start_index: rotation.angle_start_index,
+                angle_vertex_index: rotation.angle_vertex_index,
+                angle_end_index: rotation.angle_end_index,
             },
         }
     }

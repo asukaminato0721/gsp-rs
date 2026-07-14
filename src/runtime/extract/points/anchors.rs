@@ -28,7 +28,8 @@ use crate::runtime::geometry::{
 };
 use crate::runtime::payload_consts::RECORD_ITERATION_DEFINITION;
 use crate::runtime::payload_consts::{
-    EXPRESSION_TRANSFORM_CALCULATED_SCALE_CLASS, EXPRESSION_TRANSFORM_MARKED_SCALE_CLASS,
+    EXPRESSION_TRANSFORM_CALCULATED_ROTATE_CLASS, EXPRESSION_TRANSFORM_CALCULATED_SCALE_CLASS,
+    EXPRESSION_TRANSFORM_LABELED_ROTATE_CLASS, EXPRESSION_TRANSFORM_MARKED_SCALE_CLASS,
     EXPRESSION_TRANSFORM_ROTATE_CLASS, EXPRESSION_TRANSFORM_SCALE_CLASS,
 };
 use crate::runtime::scene::LineLikeKind;
@@ -36,7 +37,7 @@ use crate::runtime::scene::LineLikeKind;
 mod geometry;
 
 use self::geometry::{
-    CircularConstraintRaw, distinct_pair, line_line_intersection, line_polyline_intersection,
+    CircularConstraintRaw, line_line_intersection, line_polyline_intersection,
     normalize_angle_delta_raw, resolve_polyline_point, select_circular_intersection,
     select_line_circle_intersection, select_point_circle_tangent,
 };
@@ -72,6 +73,7 @@ pub(crate) struct ExpressionRotationBindingDef {
     pub(crate) angle_expr: FunctionExpr,
     pub(crate) angle_degrees: f64,
     pub(crate) parameter_name: Option<String>,
+    pub(crate) parameter_group_ordinals: BTreeMap<String, usize>,
 }
 
 #[derive(Clone)]
@@ -81,6 +83,7 @@ pub(crate) struct ExpressionScaleBindingDef {
     pub(crate) factor_expr: FunctionExpr,
     pub(crate) factor: f64,
     pub(crate) parameter_name: Option<String>,
+    pub(crate) parameter_group_ordinals: BTreeMap<String, usize>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -109,13 +112,30 @@ fn expression_transform_kind(
     }
     let path = find_indexed_path(file, group)?;
     let value_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
-    match expression_value_class(file, group)
-        .or_else(|| expression_value_class(file, value_group))?
-    {
+    let transform_class = expression_value_class(file, group);
+    let value_class = expression_value_class(file, value_group);
+    match (transform_class, value_class) {
+        (
+            Some(EXPRESSION_TRANSFORM_SCALE_CLASS),
+            Some(EXPRESSION_TRANSFORM_CALCULATED_ROTATE_CLASS),
+        ) => return Some(ExpressionTransformKind::Rotate),
+        (
+            Some(
+                EXPRESSION_TRANSFORM_SCALE_CLASS
+                | EXPRESSION_TRANSFORM_MARKED_SCALE_CLASS
+                | EXPRESSION_TRANSFORM_CALCULATED_SCALE_CLASS,
+            ),
+            _,
+        ) => return Some(ExpressionTransformKind::Scale),
+        _ => {}
+    }
+    match transform_class.or(value_class)? {
         EXPRESSION_TRANSFORM_SCALE_CLASS
         | EXPRESSION_TRANSFORM_MARKED_SCALE_CLASS
         | EXPRESSION_TRANSFORM_CALCULATED_SCALE_CLASS => Some(ExpressionTransformKind::Scale),
-        EXPRESSION_TRANSFORM_ROTATE_CLASS => Some(ExpressionTransformKind::Rotate),
+        EXPRESSION_TRANSFORM_ROTATE_CLASS
+        | EXPRESSION_TRANSFORM_CALCULATED_ROTATE_CLASS
+        | EXPRESSION_TRANSFORM_LABELED_ROTATE_CLASS => Some(ExpressionTransformKind::Rotate),
         _ => None,
     }
 }
@@ -438,7 +458,43 @@ pub(crate) fn scale_angle_expr_to_degrees(expr: FunctionExpr) -> FunctionExpr {
     if function_expr_contains_pi_angle(&expr) || function_expr_has_degree_multiplier(&expr) {
         return expr;
     }
+    if function_expr_contains_pi_constant(&expr) {
+        return FunctionExpr::Parsed(replace_pi_constant_with_degree_angle(function_expr_ast(
+            expr,
+        )));
+    }
     scale_function_expr(expr, 180.0 / std::f64::consts::PI)
+}
+
+fn function_expr_contains_pi_constant(expr: &FunctionExpr) -> bool {
+    matches!(expr, FunctionExpr::Parsed(ast) if function_ast_contains_pi_constant(ast))
+}
+
+fn function_ast_contains_pi_constant(expr: &FunctionAst) -> bool {
+    match expr {
+        FunctionAst::PiConstant => true,
+        FunctionAst::Unary { expr, .. } => function_ast_contains_pi_constant(expr),
+        FunctionAst::Binary { lhs, rhs, .. } => {
+            function_ast_contains_pi_constant(lhs) || function_ast_contains_pi_constant(rhs)
+        }
+        _ => false,
+    }
+}
+
+fn replace_pi_constant_with_degree_angle(expr: FunctionAst) -> FunctionAst {
+    match expr {
+        FunctionAst::PiConstant => FunctionAst::PiAngle,
+        FunctionAst::Unary { op, expr } => FunctionAst::Unary {
+            op,
+            expr: Box::new(replace_pi_constant_with_degree_angle(*expr)),
+        },
+        FunctionAst::Binary { lhs, op, rhs } => FunctionAst::Binary {
+            lhs: Box::new(replace_pi_constant_with_degree_angle(*lhs)),
+            op,
+            rhs: Box::new(replace_pi_constant_with_degree_angle(*rhs)),
+        },
+        other => other,
+    }
 }
 
 fn function_expr_contains_pi_angle(expr: &FunctionExpr) -> bool {
@@ -459,7 +515,11 @@ fn function_ast_contains_pi_angle(expr: &FunctionAst) -> bool {
         FunctionAst::Binary { lhs, rhs, .. } => {
             function_ast_contains_pi_angle(lhs) || function_ast_contains_pi_angle(rhs)
         }
-        FunctionAst::Variable | FunctionAst::Constant(_) | FunctionAst::Parameter(_, _) => false,
+        FunctionAst::Variable
+        | FunctionAst::Constant(_)
+        | FunctionAst::PiConstant
+        | FunctionAst::EulerConstant
+        | FunctionAst::Parameter(_, _) => false,
     }
 }
 
@@ -481,7 +541,11 @@ fn function_ast_has_degree_multiplier(expr: &FunctionAst) -> bool {
         FunctionAst::Binary { lhs, rhs, .. } => {
             function_ast_has_degree_multiplier(lhs) || function_ast_has_degree_multiplier(rhs)
         }
-        FunctionAst::Variable | FunctionAst::PiAngle | FunctionAst::Parameter(_, _) => false,
+        FunctionAst::Variable
+        | FunctionAst::PiConstant
+        | FunctionAst::EulerConstant
+        | FunctionAst::PiAngle
+        | FunctionAst::Parameter(_, _) => false,
     }
 }
 
@@ -512,7 +576,13 @@ pub(crate) fn decode_expression_rotation_binding(
     {
         let (angle_expr, parameters, parameter_name) =
             expression_runtime_context(file, groups, expr_group, anchors)?;
-        let angle_expr = scale_angle_expr_to_degrees(angle_expr);
+        let angle_expr =
+            if crate::runtime::functions::function_expr_uses_degree_units(file, groups, expr_group)
+            {
+                angle_expr
+            } else {
+                scale_angle_expr_to_degrees(angle_expr)
+            };
         let angle_degrees = evaluate_expr_with_parameters(&angle_expr, 0.0, &parameters)?;
         (angle_expr, angle_degrees, parameter_name)
     } else if expr_group.header.kind() == GroupKind::Point {
@@ -561,6 +631,9 @@ pub(crate) fn decode_expression_rotation_binding(
         angle_expr,
         angle_degrees,
         parameter_name,
+        parameter_group_ordinals: crate::runtime::functions::function_parameter_group_ordinals(
+            file, groups, expr_group,
+        ),
     })
 }
 
@@ -616,6 +689,9 @@ pub(crate) fn decode_expression_scale_binding(
         factor_expr,
         factor,
         parameter_name,
+        parameter_group_ordinals: crate::runtime::functions::function_parameter_group_ordinals(
+            file, groups, expr_group,
+        ),
     })
 }
 
@@ -1598,7 +1674,7 @@ pub(crate) fn resolve_line_like_constraint_raw(
                 crate::format::GroupKind::Ray => LineLikeKind::Ray,
                 _ => LineLikeKind::Line,
             };
-            distinct_pair(start, end).map(|(start, end)| (start, end, kind))
+            Some((start, end, kind))
         }
         crate::format::GroupKind::GraphMeasurementSegment => {
             if path.refs.len() != 2 {
@@ -1616,8 +1692,7 @@ pub(crate) fn resolve_line_like_constraint_raw(
             } else {
                 host_start
             };
-            distinct_pair(origin.clone(), end)
-                .map(|(start, end)| (start, end, LineLikeKind::Segment))
+            Some((origin, end, LineLikeKind::Segment))
         }
         crate::format::GroupKind::PerpendicularLine => {
             if path.refs.len() != 2 {
@@ -1630,17 +1705,15 @@ pub(crate) fn resolve_line_like_constraint_raw(
             let dx = host_end.x - host_start.x;
             let dy = host_end.y - host_start.y;
             let len = (dx * dx + dy * dy).sqrt();
-            if len <= 1e-9 {
-                return None;
-            }
-            distinct_pair(
-                through.clone(),
+            let end = if len <= 1e-9 {
+                through.clone()
+            } else {
                 PointRecord {
                     x: through.x - dy,
                     y: through.y + dx,
-                },
-            )
-            .map(|(start, end)| (start, end, LineLikeKind::Line))
+                }
+            };
+            Some((through, end, LineLikeKind::Line))
         }
         crate::format::GroupKind::ParallelLine => {
             if path.refs.len() != 2 {
@@ -1653,17 +1726,15 @@ pub(crate) fn resolve_line_like_constraint_raw(
             let dx = host_end.x - host_start.x;
             let dy = host_end.y - host_start.y;
             let len = (dx * dx + dy * dy).sqrt();
-            if len <= 1e-9 {
-                return None;
-            }
-            distinct_pair(
-                through.clone(),
+            let end = if len <= 1e-9 {
+                through.clone()
+            } else {
                 PointRecord {
                     x: through.x + dx,
                     y: through.y + dy,
-                },
-            )
-            .map(|(start, end)| (start, end, LineLikeKind::Line))
+                }
+            };
+            Some((through, end, LineLikeKind::Line))
         }
         crate::format::GroupKind::AngleBisectorRay => {
             if path.refs.len() != 3 {
@@ -1682,15 +1753,15 @@ pub(crate) fn resolve_line_like_constraint_raw(
                     y: vertex.y,
                 },
                 gsp_runtime_core::Point { x: end.x, y: end.y },
-            )?;
-            distinct_pair(
-                vertex.clone(),
-                PointRecord {
+            );
+            let ray_end = direction.map_or_else(
+                || vertex.clone(),
+                |direction| PointRecord {
                     x: vertex.x + direction.x,
                     y: vertex.y + direction.y,
                 },
-            )
-            .map(|(start, end)| (start, end, LineLikeKind::Ray))
+            );
+            Some((vertex, ray_end, LineLikeKind::Ray))
         }
         crate::format::GroupKind::Translation => {
             if path.refs.len() < 3 {
@@ -1703,7 +1774,7 @@ pub(crate) fn resolve_line_like_constraint_raw(
             let vector_end = anchors.get(path.refs[2].checked_sub(1)?)?.clone()?;
             let dx = vector_end.x - vector_start.x;
             let dy = vector_end.y - vector_start.y;
-            distinct_pair(
+            Some((
                 PointRecord {
                     x: start.x + dx,
                     y: start.y + dy,
@@ -1712,8 +1783,8 @@ pub(crate) fn resolve_line_like_constraint_raw(
                     x: end.x + dx,
                     y: end.y + dy,
                 },
-            )
-            .map(|(start, end)| (start, end, kind))
+                kind,
+            ))
         }
         crate::format::GroupKind::Rotation
         | crate::format::GroupKind::ParameterRotation
@@ -1743,7 +1814,21 @@ pub(crate) fn resolve_line_like_constraint_raw(
                     scale_around(&end, &center, factor),
                 ),
             };
-            distinct_pair(start, end).map(|(start, end)| (start, end, kind))
+            Some((start, end, kind))
+        }
+        crate::format::GroupKind::AngleRotation => {
+            let binding = try_decode_angle_rotation_binding(file, group).ok()?;
+            let source_group = groups.get(binding.source_group_index)?;
+            let (start, end, kind) =
+                resolve_line_like_constraint_raw(file, groups, anchors, source_group)?;
+            let center = anchors.get(binding.center_group_index)?.clone()?;
+            let angle_start = anchors.get(binding.angle_start_group_index)?.clone()?;
+            let angle_vertex = anchors.get(binding.angle_vertex_group_index)?.clone()?;
+            let angle_end = anchors.get(binding.angle_end_group_index)?.clone()?;
+            let angle_degrees = angle_degrees_from_points(&angle_start, &angle_vertex, &angle_end)?;
+            let start = rotate_around(&start, &center, angle_degrees.to_radians());
+            let end = rotate_around(&end, &center, angle_degrees.to_radians());
+            Some((start, end, kind))
         }
         _ => None,
     }

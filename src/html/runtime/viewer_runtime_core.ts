@@ -25,6 +25,9 @@
     gsp_point_circle_tangents: (pointX: number, pointY: number, centerX: number, centerY: number, radius: number) => number;
     gsp_compile_dependency_plan: (pointer: number, length: number) => number;
     gsp_resolve_point_constraints: (pointer: number, length: number) => number;
+    gsp_evaluate_object_graph: (pointer: number, length: number) => number;
+    gsp_json_result_ptr: () => number;
+    gsp_json_result_len: () => number;
     gsp_inverse_point_transform: (pointer: number, length: number) => number;
     gsp_transform_points: (pointer: number, length: number) => number;
     gsp_dependency_topo_order: (handle: number) => number;
@@ -98,13 +101,36 @@
   const module = new WebAssembly.Module(bytes);
   const instance = new WebAssembly.Instance(module, {});
   const wasm = instance.exports as unknown as RuntimeCoreWasmExports;
-  if (wasm.gsp_runtime_abi_version() !== 6) {
+  if (wasm.gsp_runtime_abi_version() !== 7) {
     throw new Error("Unsupported gsp-rs runtime core ABI");
   }
 
   const encoder = new TextEncoder();
   const decoder = new TextDecoder("utf-8");
   const expressionCache = new WeakMap<object, CompiledExpression>();
+
+  function evaluateObjectGraph(input: unknown): unknown[] {
+    const bytes = encoder.encode(JSON.stringify(input));
+    const pointer = wasm.gsp_alloc_bytes(bytes.length);
+    if (!pointer) throw new Error("Unable to allocate object graph input");
+    new Uint8Array(wasm.memory.buffer, pointer, bytes.length).set(bytes);
+    try {
+      const length = wasm.gsp_evaluate_object_graph(pointer, bytes.length);
+      if (!length) {
+        throw new Error(lastRuntimeError() || "Object graph evaluation failed");
+      }
+      const outputPointer = wasm.gsp_json_result_ptr();
+      const outputLength = wasm.gsp_json_result_len();
+      if (!outputPointer || outputLength !== length) {
+        throw new Error("Object graph returned an invalid JSON result");
+      }
+      return JSON.parse(decoder.decode(
+        new Uint8Array(wasm.memory.buffer, outputPointer, outputLength),
+      ));
+    } finally {
+      wasm.gsp_free_bytes(pointer, bytes.length);
+    }
+  }
 
   function lineKindCode(kind: string): number {
     if (kind === "segment") return 0;
@@ -898,6 +924,7 @@
     circleCircleIntersections,
     pointCircleTangents,
     createDependencyPlan,
+    evaluateObjectGraph,
     resolvePointConstraints,
     inversePointTransform,
     transformPoints,

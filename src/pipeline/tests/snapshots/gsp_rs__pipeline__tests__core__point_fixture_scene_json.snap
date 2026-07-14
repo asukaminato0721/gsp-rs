@@ -67,6 +67,28 @@ expression: scene_json
   "parameters": [],
   "functions": [],
   "functionDefinitions": [],
+  "objectGraph": {
+    "geometryComplete": true,
+    "nodes": [
+      {
+        "id": "point:0",
+        "definition": {
+          "kind": "source"
+        }
+      }
+    ],
+    "sources": [
+      {
+        "id": "point:0",
+        "value": {
+          "kind": "point",
+          "x": 323.0,
+          "y": 217.0
+        }
+      }
+    ],
+    "pendingOperations": []
+  },
   "dependencyGraph": {
     "nodes": [
       {

@@ -277,10 +277,12 @@ pub(super) fn collect_buttons(
                         ButtonAction::MovePoint {
                             point_index: target.point_index,
                             target_point_index: target.target_point_index,
+                            speed: 0,
                         }
                     } else if !point_targets.is_empty() {
                         ButtonAction::MovePoints {
                             targets: point_targets,
+                            speed: 0,
                         }
                     } else if let Some((point_group_ordinal, target_group_ordinal)) =
                         targets.first()

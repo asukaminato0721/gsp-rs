@@ -29,6 +29,7 @@ use super::trace::{
 use crate::format::{GspFile, ObjectGroup, PointRecord, record_name};
 use crate::runtime::functions::{
     collect_scene_functions, collect_scene_parameters, collect_standalone_function_definitions,
+    with_numeric_helper_cache,
 };
 use crate::runtime::scene::{
     LabelIterationFamily, LineBinding, LineIterationFamily, LineShape, PayloadDebugSource,
@@ -80,6 +81,10 @@ pub(in crate::runtime) fn payload_debug_source(group: &ObjectGroup) -> PayloadDe
 }
 
 pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
+    with_numeric_helper_cache(|| build_scene_checked_inner(file))
+}
+
+fn build_scene_checked_inner(file: &GspFile) -> Result<Scene> {
     let groups = file.object_groups();
     validate_scene_payloads(file, &groups)?;
     let context = SceneContext::new(file, &groups);
@@ -374,6 +379,13 @@ fn collect_visible_points_and_traces(
             Some(debug) => !existing_point_trace_ordinals.contains(&debug.group_ordinal),
             None => true,
         }),
+    );
+    bind_points_to_point_traces(
+        file,
+        groups,
+        &mut visible_points,
+        &mut group_to_point_index,
+        &shapes.trace_lines,
     );
     shapes.trace_lines.extend(collect_segment_traces(
         file,

@@ -22,17 +22,18 @@ use crate::runtime::extract::context::SceneContext;
 use crate::runtime::extract::iteration_depth::decode_iteration_depth_expr;
 use crate::runtime::functions::{
     FunctionExpr, evaluate_expr_with_parameters, function_expr_label,
-    synthesize_standalone_function_definition_labels, try_decode_function_expr,
+    function_parameter_group_ordinals, synthesize_standalone_function_definition_labels,
+    try_decode_function_expr,
 };
 use crate::runtime::geometry::{
     angle_degrees_from_points, color_from_style, distance_world, format_number,
 };
 use crate::runtime::payload_consts::{
-    EXPR_OP_ADD, EXPR_OP_DIV, EXPR_OP_MUL, EXPR_OP_POW, EXPR_OP_SUB, EXPR_PARAMETER_MASK,
-    EXPR_PARAMETER_PREFIX, EXPR_PI_WORD, EXPR_VARIABLE_WORD, FUNCTION_EXPR_MARKER_A,
-    FUNCTION_EXPR_MARKER_B, RECORD_BINDING_PAYLOAD, RECORD_FUNCTION_EXPR_PAYLOAD,
-    RECORD_ITERATION_DEFINITION, RECORD_POINT_F64_PAIR, RECORD_RICH_TEXT,
-    RECORD_VALUE_TABLE_LAYOUT,
+    EXPR_EULER_WORD, EXPR_OP_ADD, EXPR_OP_DIV, EXPR_OP_MUL, EXPR_OP_POW, EXPR_OP_SUB,
+    EXPR_PARAMETER_MASK, EXPR_PARAMETER_PREFIX, EXPR_PI_WORD, EXPR_VARIABLE_WORD,
+    FUNCTION_EXPR_MARKER_A, FUNCTION_EXPR_MARKER_B, RECORD_BINDING_PAYLOAD,
+    RECORD_FUNCTION_EXPR_PAYLOAD, RECORD_ITERATION_DEFINITION, RECORD_POINT_F64_PAIR,
+    RECORD_RICH_TEXT, RECORD_VALUE_TABLE_LAYOUT,
 };
 use crate::runtime::scene::{
     IterationTable, IterationTableColumn, IterationTableValueBinding, LabelIterationFamily,
@@ -209,6 +210,37 @@ fn supports_payload_label(kind: crate::format::GroupKind) -> bool {
             | crate::format::GroupKind::RichTextLabel
             | crate::format::GroupKind::LabelIterationSeed
     )
+}
+
+fn named_alias_binding(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+) -> Option<TextLabelBinding> {
+    if group.header.kind() != crate::format::GroupKind::NamedAlias {
+        return None;
+    }
+    let source_group_ordinal = *find_indexed_path(file, group)?.refs.first()?;
+    let source_group = groups.get(source_group_ordinal.checked_sub(1)?)?;
+    if matches!(
+        source_group.header.kind(),
+        crate::format::GroupKind::AngleMarker | crate::format::GroupKind::LegacyAngleMarker
+    ) {
+        let path = find_indexed_path(file, source_group)?;
+        if path.refs.len() >= 3 {
+            return Some(TextLabelBinding::PointAngleValue {
+                start_index: path.refs[0].saturating_sub(1),
+                vertex_index: path.refs[1].saturating_sub(1),
+                end_index: path.refs[2].saturating_sub(1),
+                name: decode_label_name(file, group).unwrap_or_default(),
+                value_suffix: "°".to_string(),
+            });
+        }
+    }
+    Some(TextLabelBinding::ScalarAlias {
+        source_group_ordinal,
+        name: decode_label_name(file, group).unwrap_or_default(),
+    })
 }
 
 fn label_color_for_group(group: &ObjectGroup) -> [u8; 4] {
@@ -884,6 +916,7 @@ pub(super) fn collect_labels(
                     };
                     let binding = angle_marker_measurement_binding(file, group, &text)
                         .or_else(|| coordinate_readout_binding(file, groups, group))
+                        .or_else(|| named_alias_binding(file, groups, group))
                         .or_else(|| {
                             rich_text_expression_binding(
                                 file,
@@ -1021,6 +1054,7 @@ pub(super) fn collect_labels(
                     };
                     let binding = angle_marker_measurement_binding(file, group, &text)
                         .or_else(|| coordinate_readout_binding(file, groups, group))
+                        .or_else(|| named_alias_binding(file, groups, group))
                         .or_else(|| {
                             rich_text_expression_binding(
                                 file,
@@ -1398,8 +1432,10 @@ pub(super) fn collect_coordinate_labels(
                 debug: Some(payload_debug_source(group)),
                 ..Default::default()
             });
-        } else if kind == crate::format::GroupKind::DistanceValue
-            && let Some(path) = find_indexed_path(file, group)
+        } else if matches!(
+            kind,
+            crate::format::GroupKind::DistanceValue | crate::format::GroupKind::GraphDistanceValue
+        ) && let Some(path) = find_indexed_path(file, group)
             && path.refs.len() >= 2
             && let (Some(left), Some(right)) = (
                 anchors
@@ -1471,8 +1507,10 @@ pub(super) fn collect_coordinate_labels(
                 debug: Some(payload_debug_source(group)),
                 ..Default::default()
             });
-        } else if kind == crate::format::GroupKind::AngleValue
-            && let Some(path) = find_indexed_path(file, group)
+        } else if matches!(
+            kind,
+            crate::format::GroupKind::AngleValue | crate::format::GroupKind::VertexAngleValue
+        ) && let Some(path) = find_indexed_path(file, group)
             && path.refs.len() >= 3
             && let (Some(start), Some(vertex), Some(end)) = (
                 anchors
@@ -1705,6 +1743,9 @@ pub(super) fn collect_coordinate_labels(
                     result_name: decode_label_name(file, group),
                     expr_label: expr_label.clone(),
                     expr: expr.clone(),
+                    parameter_group_ordinals: function_parameter_group_ordinals(
+                        file, groups, group,
+                    ),
                 })
             };
             let value_text = value
@@ -1808,6 +1849,7 @@ fn collect_legacy_expression_label(
             result_name: decode_label_name(file, group),
             expr_label,
             expr,
+            parameter_group_ordinals: function_parameter_group_ordinals(file, groups, expr_group),
         }),
         screen_space: false,
         hotspots: Vec::new(),

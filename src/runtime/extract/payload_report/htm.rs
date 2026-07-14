@@ -1210,6 +1210,8 @@ fn htm_ast_label_with_letters(
     let text = match ast {
         FunctionAst::Variable => variable.to_string(),
         FunctionAst::Constant(value) => format_htm_parameter(*value),
+        FunctionAst::PiConstant => "π".to_string(),
+        FunctionAst::EulerConstant => "e".to_string(),
         FunctionAst::PiAngle => "π".to_string(),
         FunctionAst::Parameter(name, _) => htm_unsubscript_digits(name),
         FunctionAst::Unary { op, expr } => {
@@ -1295,6 +1297,8 @@ fn htm_ast_rpn(ast: &FunctionAst, letters: &BTreeMap<String, char>) -> String {
     match ast {
         FunctionAst::Variable => "x".to_string(),
         FunctionAst::Constant(value) => format_htm_parameter(*value),
+        FunctionAst::PiConstant => "3.14159".to_string(),
+        FunctionAst::EulerConstant => "2.71828".to_string(),
         FunctionAst::PiAngle => "3.14159".to_string(),
         FunctionAst::Parameter(name, _) => letters
             .get(&htm_unsubscript_digits(name))

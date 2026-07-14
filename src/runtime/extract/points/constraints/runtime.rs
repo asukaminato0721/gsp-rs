@@ -91,8 +91,14 @@ pub(crate) fn try_decode_point_constraint(
                         | GroupKind::PerpendicularLine
                         | GroupKind::ParallelLine
                         | GroupKind::AngleBisectorRay
-                        | GroupKind::Rotation
-                ) =>
+                )
+                || matches!(
+                    kind,
+                    GroupKind::Rotation
+                        | GroupKind::Reflection
+                        | GroupKind::Translation
+                        | GroupKind::Scale
+                ) && transformed_line_like_kind(file, groups, host_group).is_some() =>
         {
             return decode_point_on_line_like_constraint(file, groups, group).ok_or(
                 PointConstraintDecodeError::UnsupportedOrMalformed {

@@ -1,28 +1,10 @@
 import { test, expect } from '@playwright/test';
-import { execFileSync } from 'node:child_process';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-
-function compileFixture(): string {
-  const repoRoot = process.cwd();
-  const sourceBase = path.resolve(
-    repoRoot,
-    'tests/Samples/个人专栏/李章博作品/割圆为方（李章博）',
-  );
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsp-circle-to-square-'));
-  const tempBase = path.join(tempDir, path.basename(sourceBase));
-  fs.copyFileSync(`${sourceBase}.gsp`, `${tempBase}.gsp`);
-  fs.copyFileSync(`${sourceBase}.htm`, `${tempBase}.htm`);
-  execFileSync(path.resolve(repoRoot, 'target/debug/gsp-rs'), ['--html', `${tempBase}.gsp`], {
-    cwd: repoRoot,
-    stdio: 'pipe',
-  });
-  return `${tempBase}.html`;
-}
+import { compileFixtureToTempHtml } from './compile-fixture';
 
 test('circle-to-square sectors follow the E1 payload control', async ({ page }) => {
-  await page.goto(`file://${compileFixture()}`);
+  await page.goto(`file://${compileFixtureToTempHtml(
+    'tests/Samples/个人专栏/李章博作品/割圆为方（李章博）.gsp',
+  )}`);
 
   const result = await page.evaluate(() => {
     const env = window.gspDebug.viewerEnv;
@@ -38,6 +20,8 @@ test('circle-to-square sectors follow the E1 payload control', async ({ page }) 
         (label: any) => label.debug?.groupOrdinal === ordinal,
       )?.text;
       return {
+        objectGraphComplete: window.gspDebug.sourceScene.objectGraph.geometryComplete,
+        objectGraphPending: window.gspDebug.sourceScene.objectGraph.pendingOperations,
         polygonCount: current.polygons.length,
         firstIteratedPoint: { ...current.polygons[4].points[0] },
         center: { ...current.points[centerIndex] },
@@ -85,6 +69,8 @@ test('circle-to-square sectors follow the E1 payload control', async ({ page }) 
 
   expect(result.driverIndex).toBeGreaterThanOrEqual(0);
   expect(result.dragMode).toBe('point');
+  expect(result.before.objectGraphComplete).toBe(true);
+  expect(result.before.objectGraphPending).toEqual([]);
   expect(result.before.polygonCount).toBe(40);
   expect(result.after.polygonCount).toBe(40);
   expect(result.before.allFinite).toBe(true);
@@ -104,6 +90,20 @@ test('circle-to-square sectors follow the E1 payload control', async ({ page }) 
     [255, 0, 0, 127],
     [255, 0, 0, 127],
   ]);
+  const [initialLowerA, initialLowerB, initialUpperA, initialUpperB] =
+    result.before.iterationBounds;
+  expect([initialLowerA, initialLowerB].some(
+    (bounds) => (bounds.minX + bounds.maxX) / 2 < result.before.axisX,
+  )).toBe(true);
+  expect([initialLowerA, initialLowerB].some(
+    (bounds) => (bounds.minX + bounds.maxX) / 2 > result.before.axisX,
+  )).toBe(true);
+  expect([initialUpperA, initialUpperB].some(
+    (bounds) => bounds.maxX <= result.before.axisX + 1e-6,
+  )).toBe(true);
+  expect([initialUpperA, initialUpperB].some(
+    (bounds) => bounds.minX >= result.before.axisX - 1e-6,
+  )).toBe(true);
   const [lowerLeft, lowerRight, upperRight, upperLeft] = result.after.iterationBounds;
   expect(lowerLeft.maxX).toBeLessThan(result.after.axisX);
   expect(lowerRight.minX).toBeGreaterThan(result.after.axisX);

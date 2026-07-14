@@ -12,6 +12,16 @@ use std::collections::BTreeMap;
 #[test]
 fn circle_to_square_sample_keeps_live_calculations_and_bidirectional_sector_iterations() {
     let data = include_bytes!("../../../tests/Samples/个人专栏/李章博作品/割圆为方（李章博）.gsp");
+    let file = crate::format::GspFile::parse(data).expect("fixture parses");
+    let groups = file.object_groups();
+    assert!(crate::runtime::functions::function_expr_uses_degree_units(
+        &file, &groups, &groups[3]
+    ));
+    assert!(crate::runtime::functions::function_expr_uses_degree_units(
+        &file,
+        &groups,
+        &groups[16]
+    ));
     let scene = fixture_scene(data);
 
     let angle_step = scene
@@ -36,7 +46,7 @@ fn circle_to_square_sample_keeps_live_calculations_and_bidirectional_sector_iter
     let parameters = BTreeMap::from([("n".to_string(), 10.0), ("b".to_string(), 0.5)]);
     let angle_step_value = evaluate_expr_with_parameters(angle_step_expr, 0.0, &parameters)
         .expect("expected angle step to evaluate");
-    assert!((angle_step_value - std::f64::consts::PI / 20.0).abs() < 1e-9);
+    assert!((angle_step_value - 9.0).abs() < 1e-9);
     let transition_angle = scene
         .labels
         .iter()
@@ -59,7 +69,7 @@ fn circle_to_square_sample_keeps_live_calculations_and_bidirectional_sector_iter
     let transition_angle_value =
         evaluate_expr_with_parameters(transition_angle_expr, 0.0, &parameters)
             .expect("expected transition angle to evaluate");
-    assert!((transition_angle_value + std::f64::consts::PI / 80.0).abs() < 1e-9);
+    assert!((transition_angle_value + 2.25).abs() < 1e-9);
 
     assert_eq!(
         scene.polygons.len(),

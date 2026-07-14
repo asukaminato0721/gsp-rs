@@ -637,6 +637,12 @@ type ViewerDragModule = {
     iterationTableIndex: number | null,
     imageIndex: number | null,
   ) => void;
+  updatePointToWorld: (
+    env: ViewerEnv,
+    draft: ViewerSceneData,
+    pointIndex: number,
+    world: Point,
+  ) => void;
   updateDraggedPoint: (env: ViewerEnv, world: Point) => void;
   updateDraggedLabel: (env: ViewerEnv, world: Point) => void;
   updateDraggedImage: (env: ViewerEnv, position: Point) => void;
@@ -924,6 +930,7 @@ type ViewerModules = {
 
 interface Window {
   GspRuntimeCore: {
+    evaluateObjectGraph: (input: unknown) => unknown[];
     createDependencyPlan: (nodes: Array<{ id: string; dependsOn: string[] }>) => {
       topoOrder: number[];
       affected: (dirtyRootIds: string[]) => number[];

@@ -2,6 +2,8 @@
 
 mod dependency;
 mod geometry;
+pub mod object_graph;
+mod object_ops;
 mod point_constraints;
 mod scene_math;
 
@@ -16,16 +18,21 @@ pub use geometry::{
     project_to_line_like, project_to_three_point_arc, reflect_across_line, rotate_around,
     scale_around, scale_by_three_point_ratio, three_point_arc_geometry,
 };
+pub use object_ops::{
+    BuiltinOperationTable, ObjectCircle, ObjectExpression, ObjectGraphEvaluationInput,
+    ObjectNodeValue, ObjectOp, ObjectOpError, ObjectProgram, ObjectSourceValue, ObjectValue,
+    TraceDriver, evaluate_object_graph_json,
+};
 pub use point_constraints::{
     inverse_point_transform_json, resolve_point_constraints_json, transform_points_json,
 };
 pub use scene_math::{
-    CoordinateTraceMode, PlotMode, affine_iteration_segment, branching_iteration_segments,
-    choose_point_candidate, line_circle_intersection_candidate, line_polyline_intersection,
-    point_angle_degrees, point_distance, point_distance_ratio, polygon_area,
-    rotate_iteration_points, sample_circle_arc, sample_coordinate_trace,
+    CoordinateTraceMode, PlotMode, affine_iteration_segment, angle_marker_points,
+    branching_iteration_segments, choose_point_candidate, line_circle_intersection_candidate,
+    line_polyline_intersection, point_angle_degrees, point_distance, point_distance_ratio,
+    polygon_area, rotate_iteration_points, sample_circle_arc, sample_coordinate_trace,
     sample_custom_transform_trace, sample_expression, sample_parametric_curve,
-    sample_three_point_arc, translation_iteration_deltas,
+    sample_three_point_arc, segment_marker_points, translation_iteration_deltas,
 };
 
 use std::collections::BTreeMap;
@@ -42,7 +49,7 @@ pub enum FunctionExpr {
     Parsed(FunctionAst),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum BinaryOp {
     Add,
@@ -52,7 +59,7 @@ pub enum BinaryOp {
     Pow,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum UnaryFunction {
     Sin,
@@ -71,6 +78,8 @@ pub enum UnaryFunction {
 pub enum FunctionAst {
     Variable,
     Constant(f64),
+    PiConstant,
+    EulerConstant,
     PiAngle,
     Parameter(String, f64),
     Unary {
@@ -123,6 +132,8 @@ pub fn expression_parameter_names(expr: &FunctionExpr) -> Vec<String> {
             }
             FunctionAst::Variable
             | FunctionAst::Constant(_)
+            | FunctionAst::PiConstant
+            | FunctionAst::EulerConstant
             | FunctionAst::PiAngle
             | FunctionAst::Parameter(_, _) => {}
         }
@@ -144,6 +155,8 @@ fn evaluate_ast(expr: &FunctionAst, x: f64, parameters: &BTreeMap<String, f64>) 
     let value = match expr {
         FunctionAst::Variable => x,
         FunctionAst::Constant(value) => *value,
+        FunctionAst::PiConstant => std::f64::consts::PI,
+        FunctionAst::EulerConstant => std::f64::consts::E,
         FunctionAst::PiAngle => 180.0,
         FunctionAst::Parameter(name, default) => *parameters.get(name).unwrap_or(default),
         FunctionAst::Unary { op, expr } => {
@@ -205,7 +218,11 @@ fn ast_contains_pi_angle(expr: &FunctionAst) -> bool {
         FunctionAst::Binary { lhs, rhs, .. } => {
             ast_contains_pi_angle(lhs) || ast_contains_pi_angle(rhs)
         }
-        FunctionAst::Variable | FunctionAst::Constant(_) | FunctionAst::Parameter(_, _) => false,
+        FunctionAst::Variable
+        | FunctionAst::Constant(_)
+        | FunctionAst::PiConstant
+        | FunctionAst::EulerConstant
+        | FunctionAst::Parameter(_, _) => false,
     }
 }
 
@@ -234,6 +251,10 @@ enum WireFunctionAst {
     Variable,
     #[serde(rename = "constant")]
     Constant { value: f64 },
+    #[serde(rename = "pi-constant")]
+    PiConstant,
+    #[serde(rename = "euler-constant")]
+    EulerConstant,
     #[serde(rename = "parameter")]
     Parameter { name: String, value: f64 },
     #[serde(rename = "pi-angle")]
@@ -266,6 +287,8 @@ impl From<WireFunctionAst> for FunctionAst {
         match value {
             WireFunctionAst::Variable => Self::Variable,
             WireFunctionAst::Constant { value } => Self::Constant(value),
+            WireFunctionAst::PiConstant => Self::PiConstant,
+            WireFunctionAst::EulerConstant => Self::EulerConstant,
             WireFunctionAst::Parameter { name, value } => Self::Parameter(name, value),
             WireFunctionAst::PiAngle => Self::PiAngle,
             WireFunctionAst::Unary { op, expr } => Self::Unary {
@@ -300,17 +323,18 @@ mod wasm_abi {
         FunctionExpr, LineKind, PlotMode, Point, Projection, affine_iteration_segment,
         angle_bisector_direction, branching_iteration_segments, choose_point_candidate,
         circle_arc_control_points, circle_circle_intersections, clip_line_to_bounds,
-        clip_ray_to_bounds, evaluate_expr, inverse_point_transform_json, lerp_point,
-        line_circle_intersection_candidate, line_circle_intersections, line_line_intersection,
-        line_polyline_intersection, measured_rotation_radians, normalize_angle_delta,
-        parse_expression_json, point_angle_degrees, point_circle_tangents, point_distance,
-        point_distance_ratio, point_on_circle_arc, point_on_three_point_arc,
-        point_on_three_point_arc_complement, polygon_area, project_to_circle_arc,
-        project_to_line_like, project_to_three_point_arc, reflect_across_line,
-        resolve_point_constraints_json, rotate_around, rotate_iteration_points, sample_circle_arc,
-        sample_coordinate_trace, sample_custom_transform_trace, sample_expression,
-        sample_parametric_curve, sample_three_point_arc, scale_around, scale_by_three_point_ratio,
-        three_point_arc_geometry, transform_points_json, translation_iteration_deltas,
+        clip_ray_to_bounds, evaluate_expr, evaluate_object_graph_json,
+        inverse_point_transform_json, lerp_point, line_circle_intersection_candidate,
+        line_circle_intersections, line_line_intersection, line_polyline_intersection,
+        measured_rotation_radians, normalize_angle_delta, parse_expression_json,
+        point_angle_degrees, point_circle_tangents, point_distance, point_distance_ratio,
+        point_on_circle_arc, point_on_three_point_arc, point_on_three_point_arc_complement,
+        polygon_area, project_to_circle_arc, project_to_line_like, project_to_three_point_arc,
+        reflect_across_line, resolve_point_constraints_json, rotate_around,
+        rotate_iteration_points, sample_circle_arc, sample_coordinate_trace,
+        sample_custom_transform_trace, sample_expression, sample_parametric_curve,
+        sample_three_point_arc, scale_around, scale_by_three_point_ratio, three_point_arc_geometry,
+        transform_points_json, translation_iteration_deltas,
     };
 
     struct CompiledExpression {
@@ -326,12 +350,13 @@ mod wasm_abi {
         static GEOMETRY_SCALARS: RefCell<Vec<f64>> = const { RefCell::new(Vec::new()) };
         static BATCH_RESULTS: RefCell<Vec<f64>> = const { RefCell::new(Vec::new()) };
         static DEPENDENCY_PLANS: RefCell<Vec<DependencyPlan>> = const { RefCell::new(Vec::new()) };
+        static JSON_RESULT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
         static LAST_ERROR: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
     }
 
     #[unsafe(no_mangle)]
     pub extern "C" fn gsp_runtime_abi_version() -> u32 {
-        6
+        7
     }
 
     #[unsafe(no_mangle)]
@@ -923,6 +948,40 @@ mod wasm_abi {
             None => [f64::NAN, f64::NAN],
         }));
         count
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn gsp_evaluate_object_graph(ptr: u32, len: u32) -> u32 {
+        if ptr == 0 || len == 0 {
+            set_last_error("object graph input is empty");
+            JSON_RESULT.with_borrow_mut(Vec::clear);
+            return 0;
+        }
+        // SAFETY: the caller owns an allocation of at least `len` bytes in this module's memory.
+        let bytes = unsafe { std::slice::from_raw_parts(ptr as usize as *const u8, len as usize) };
+        match evaluate_object_graph_json(bytes) {
+            Ok(encoded) => {
+                clear_last_error();
+                let len = encoded.len() as u32;
+                JSON_RESULT.with_borrow_mut(|result| *result = encoded);
+                len
+            }
+            Err(error) => {
+                set_last_error(&error);
+                JSON_RESULT.with_borrow_mut(Vec::clear);
+                0
+            }
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn gsp_json_result_ptr() -> u32 {
+        JSON_RESULT.with_borrow(|result| result.as_ptr() as usize as u32)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn gsp_json_result_len() -> u32 {
+        JSON_RESULT.with_borrow(|result| result.len() as u32)
     }
 
     #[unsafe(no_mangle)]

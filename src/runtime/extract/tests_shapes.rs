@@ -5,6 +5,60 @@ use crate::runtime::scene::{
 };
 
 #[test]
+fn rolling_circle_decodes_grouped_rotation_and_boundary_expressions() {
+    let data = fixture_bytes("tests/Samples/个人专栏/方小庆作品/圆的滚动全解(inRm).gsp")
+        .expect("rolling-circle fixture");
+    let file = crate::format::GspFile::parse(&data).expect("fixture parses");
+
+    let sixth = &file.page_files()[5];
+    let sixth_groups = sixth.object_groups();
+    for ordinal in [56, 57] {
+        crate::runtime::functions::try_decode_function_expr_with_inlined_refs(
+            sixth,
+            &sixth_groups,
+            &sixth_groups[ordinal - 1],
+        )
+        .unwrap_or_else(|error| panic!("page 6 group #{ordinal} must decode: {error}"));
+    }
+
+    let eighth = &file.page_files()[7];
+    let eighth_groups = eighth.object_groups();
+    for ordinal in [28, 36, 49, 50, 53, 61, 145, 155] {
+        crate::runtime::functions::try_decode_function_expr_with_inlined_refs(
+            eighth,
+            &eighth_groups,
+            &eighth_groups[ordinal - 1],
+        )
+        .unwrap_or_else(|error| panic!("page 8 group #{ordinal} must decode: {error}"));
+    }
+}
+
+#[test]
+fn rolling_circle_point_trace_parameter_is_live() {
+    let data = fixture_bytes("tests/Samples/个人专栏/方小庆作品/圆的滚动全解(inRm).gsp")
+        .expect("rolling-circle fixture");
+    let file = crate::format::GspFile::parse(&data).expect("fixture parses");
+    let scene = super::build::build_scene_checked(&file.page_files()[3]).expect("page 4 scene");
+    let point = scene
+        .points
+        .iter()
+        .find(|point| {
+            point
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 26)
+        })
+        .expect("group #26 point");
+    assert!(matches!(
+        point.constraint,
+        ScenePointConstraint::OnPolyline {
+            function_key: 18,
+            ..
+        }
+    ));
+}
+
+#[test]
 fn cylinder_net_exports_live_translation_parallel_trace_and_move_buttons() {
     let path = "tests/Samples/个人专栏/侯仰顺作品/圆柱侧面展开图(蚂蚁制作).gsp";
     let Some(data) = fixture_bytes(path) else {
@@ -721,6 +775,14 @@ fn preserves_three_point_arc_gsp() {
     );
 
     let arc = &scene.arcs[0];
+    assert!(matches!(
+        arc.binding,
+        Some(crate::runtime::scene::ArcBinding::ThreePointArc {
+            start_index: 0,
+            mid_index: 1,
+            end_index: 2,
+        })
+    ));
     assert_eq!(arc.color, [0, 128, 0, 255]);
     assert!(
         arc.points
@@ -753,6 +815,14 @@ fn preserves_arc_on_circle_gsp() {
     );
 
     let arc = &scene.arcs[0];
+    assert!(matches!(
+        arc.binding,
+        Some(crate::runtime::scene::ArcBinding::CircleArc {
+            circle_index: 0,
+            start_index: 2,
+            end_index: 3,
+        })
+    ));
     let start = &scene.points[2].position;
     let end = &scene.points[3].position;
     let midpoint = &arc.points[1];
@@ -872,6 +942,149 @@ fn preserves_parameter_controlled_arc_on_circle_gsp() {
             || (scene.points[2].position.y - scene.points[3].position.y).abs() > 1e-6,
         "expected distinct start and end points from the two payload values"
     );
+}
+
+#[test]
+fn preserves_center_arc_with_parameter_controlled_center() {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/侯仰顺作品/滑块(蚂蚁).gsp")
+    else {
+        return;
+    };
+    let file = crate::format::GspFile::parse(&data).expect("fixture parses");
+    let groups = file.object_groups();
+    let point_map = super::collect_point_objects(&file, &groups);
+    let anchors = super::collect_raw_object_anchors(&file, &groups, &point_map, None);
+    let decoded_expr =
+        crate::runtime::functions::try_decode_parameter_control_expr(&file, &groups, &groups[26]);
+    if let Err(error) = decoded_expr {
+        panic!("parameter-control expression #27 must decode: {error:?}");
+    }
+    let decoded_center =
+        super::try_decode_parameter_controlled_point(&file, &groups, &groups[27], &anchors);
+    if let Err(error) = decoded_center {
+        panic!("parameter-controlled center #28 must decode: {error:?}");
+    }
+    let scene = fixture_scene(&data);
+    let center_index = scene
+        .points
+        .iter()
+        .position(|point| {
+            point
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 28)
+        })
+        .expect("parameter-controlled center #28 must remain in the dependency graph");
+    let start_index = scene
+        .points
+        .iter()
+        .position(|point| {
+            point
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 64)
+        })
+        .expect("arc start #64");
+    let end_index = scene
+        .points
+        .iter()
+        .position(|point| {
+            point
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 68)
+        })
+        .expect("arc end #68");
+    let arc = scene
+        .arcs
+        .iter()
+        .find(|arc| {
+            arc.debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 69)
+        })
+        .expect("center arc #69");
+    assert!(matches!(
+        arc.binding,
+        Some(crate::runtime::scene::ArcBinding::CenterArc {
+            center_index: actual_center,
+            start_index: actual_start,
+            end_index: actual_end,
+        }) if actual_center == center_index
+            && actual_start == start_index
+            && actual_end == end_index
+    ));
+}
+
+#[test]
+fn preserves_center_arc_with_function_rotation_endpoints() {
+    let Some(data) = fixture_bytes("tests/Samples/个人专栏/况永胜作品/分数的魔变.gsp")
+    else {
+        return;
+    };
+    let file = crate::format::GspFile::parse(&data).expect("fixture parses");
+    let groups = file.object_groups();
+    for (ordinal, expected) in [
+        (12usize, "trunc(t₁ - 0) / 分母"),
+        (13, "t₁ - m₃*分母"),
+        (22, "360 / 分母"),
+        (23, "360 / 分母*t₁ - m₃*分母"),
+    ] {
+        let decoded = crate::runtime::functions::try_decode_function_expr(
+            &file,
+            &groups,
+            &groups[ordinal - 1],
+        )
+        .unwrap_or_else(|error| panic!("function expression #{ordinal}: {error:?}"));
+        assert_eq!(
+            crate::runtime::functions::function_expr_label(decoded),
+            expected
+        );
+    }
+    let fractional_step =
+        crate::runtime::functions::try_decode_function_expr(&file, &groups, &groups[11])
+            .expect("fractional rotation step expression");
+    assert_eq!(
+        crate::runtime::functions::evaluate_expr_with_parameters(
+            &fractional_step,
+            0.0,
+            &std::collections::BTreeMap::from([("t₁".to_string(), 6.0005)]),
+        ),
+        Some(5.0 / 6.0),
+        "the payload's 0.001 offset must not be rounded out of the calculation"
+    );
+    let scene = fixture_scene(&data);
+    let point_index = |ordinal| {
+        scene.points.iter().position(|point| {
+            point
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == ordinal)
+        })
+    };
+    for ordinal in [18usize, 19, 20, 21, 40, 41] {
+        assert!(
+            point_index(ordinal).is_some(),
+            "derived point #{ordinal} must remain in the object graph"
+        );
+    }
+    assert!(matches!(
+        scene.points[point_index(18).expect("expression rotation #18")].binding,
+        Some(ScenePointBinding::Rotate { .. })
+    ));
+    let arc = scene
+        .arcs
+        .iter()
+        .find(|arc| {
+            arc.debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 42)
+        })
+        .expect("center arc #42");
+    assert!(matches!(
+        arc.binding,
+        Some(crate::runtime::scene::ArcBinding::CenterArc { .. })
+    ));
 }
 
 #[test]

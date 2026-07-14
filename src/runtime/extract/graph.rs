@@ -301,37 +301,6 @@ pub(super) fn collect_bounds(graph: &Option<GraphTransform>, inputs: BoundsInput
     bounds
 }
 
-pub(super) fn dedupe_line_shapes(lines: Vec<LineShape>) -> Vec<LineShape> {
-    let mut deduped: Vec<LineShape> = Vec::new();
-    'outer: for line in lines {
-        for existing in &deduped {
-            // Coincident dynamic constructions are still distinct payload
-            // objects. Their bindings may diverge after an interaction, so
-            // only collapse genuinely static geometry.
-            if line.binding.is_some() || existing.binding.is_some() {
-                continue;
-            }
-            if line.points.len() != existing.points.len() {
-                continue;
-            }
-            if line
-                .points
-                .iter()
-                .zip(existing.points.iter())
-                .all(|(left, right)| {
-                    (left.x - right.x).abs() < 1e-6 && (left.y - right.y).abs() < 1e-6
-                })
-                && line.color == existing.color
-                && line.dashed == existing.dashed
-            {
-                continue 'outer;
-            }
-        }
-        deduped.push(line);
-    }
-    deduped
-}
-
 pub(super) fn expand_bounds(bounds: &mut Bounds) {
     if (bounds.max_x - bounds.min_x).abs() < f64::EPSILON {
         bounds.max_x += 1.0;

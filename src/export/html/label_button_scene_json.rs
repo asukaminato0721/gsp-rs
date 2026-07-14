@@ -68,9 +68,11 @@ enum ButtonActionJson {
         point_index: usize,
         #[serde(rename = "targetPointIndex")]
         target_point_index: Option<usize>,
+        speed: u32,
     },
     MovePoints {
         targets: Vec<ButtonMoveTargetJson>,
+        speed: u32,
     },
     SetParameter {
         #[serde(rename = "parameterName")]
@@ -161,11 +163,13 @@ impl ButtonActionJson {
             ButtonAction::MovePoint {
                 point_index,
                 target_point_index,
+                speed,
             } => Self::MovePoint {
                 point_index: *point_index,
                 target_point_index: *target_point_index,
+                speed: *speed,
             },
-            ButtonAction::MovePoints { targets } => Self::MovePoints {
+            ButtonAction::MovePoints { targets, speed } => Self::MovePoints {
                 targets: targets
                     .iter()
                     .map(|target| ButtonMoveTargetJson {
@@ -173,6 +177,7 @@ impl ButtonActionJson {
                         target_point_index: target.target_point_index,
                     })
                     .collect(),
+                speed: *speed,
             },
             ButtonAction::SetParameter {
                 parameter_name,
@@ -377,6 +382,12 @@ impl LabelHotspotActionJson {
 enum LabelBindingJson {
     #[serde(rename = "parameter-value")]
     ParameterValue { name: String },
+    #[serde(rename = "scalar-alias")]
+    ScalarAlias {
+        #[serde(rename = "sourceGroupOrdinal")]
+        source_group_ordinal: usize,
+        name: String,
+    },
     #[serde(rename = "expression-value")]
     ExpressionValue {
         #[serde(rename = "parameterName")]
@@ -675,11 +686,19 @@ impl LabelBindingJson {
             TextLabelBinding::ParameterValue { name } => {
                 Self::ParameterValue { name: name.clone() }
             }
+            TextLabelBinding::ScalarAlias {
+                source_group_ordinal,
+                name,
+            } => Self::ScalarAlias {
+                source_group_ordinal: *source_group_ordinal,
+                name: name.clone(),
+            },
             TextLabelBinding::ExpressionValue {
                 parameter_name,
                 result_name,
                 expr_label,
                 expr,
+                ..
             } => Self::ExpressionValue {
                 parameter_name: parameter_name.clone(),
                 result_name: result_name.clone(),
@@ -696,6 +715,7 @@ impl LabelBindingJson {
                 result_name,
                 expr_label,
                 expr,
+                ..
             } => Self::PointBoundExpressionValue {
                 point_index: *point_index,
                 anchor_dx: *anchor_dx,

@@ -1,21 +1,5 @@
 import { test, expect } from '@playwright/test';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { execFileSync } from 'node:child_process';
-
-function compileFixtureToTempHtml(relativeFixturePath: string): string {
-  const repoRoot = process.cwd();
-  const sourcePath = path.resolve(repoRoot, relativeFixturePath);
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsp-external-tangent-'));
-  const tempFixturePath = path.join(tempDir, path.basename(sourcePath));
-  fs.copyFileSync(sourcePath, tempFixturePath);
-  execFileSync(path.resolve(repoRoot, 'target/debug/gsp-rs'), ['--html', tempFixturePath], {
-    cwd: repoRoot,
-    stdio: 'pipe',
-  });
-  return tempFixturePath.replace(/\.gsp$/i, '.html');
-}
+import { compileFixtureToTempHtml } from './compile-fixture';
 
 test('two-circle external tangent stays interactive after radius change', async ({ page }) => {
   const file = compileFixtureToTempHtml('tests/Samples/个人专栏/方小庆作品/两圆之外切线(inRm).gsp');

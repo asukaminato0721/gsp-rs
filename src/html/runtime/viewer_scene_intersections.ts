@@ -91,6 +91,18 @@
         ? { start: through, end: { x: through.x - dy / len, y: through.y + dx / len }, kind: "line" }
         : { start: through, end: { x: through.x + dx / len, y: through.y + dy / len }, kind: "line" };
     }
+    if (constraint.kind === "perpendicular-to" || constraint.kind === "parallel-to") {
+      const through = resolveFn(constraint.throughIndex);
+      const base = resolveLineConstraint(_env, constraint.line, resolveFn);
+      if (!through || !base) return null;
+      const dx = base.end.x - base.start.x;
+      const dy = base.end.y - base.start.y;
+      const len = Math.hypot(dx, dy);
+      if (len <= 1e-9) return null;
+      return constraint.kind === "perpendicular-to"
+        ? { start: through, end: { x: through.x - dy / len, y: through.y + dx / len }, kind: "line" }
+        : { start: through, end: { x: through.x + dx / len, y: through.y + dy / len }, kind: "line" };
+    }
     if (constraint.kind === "angle-bisector-ray") {
       const start = resolveFn(constraint.startIndex);
       const vertex = resolveFn(constraint.vertexIndex);

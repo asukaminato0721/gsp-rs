@@ -289,6 +289,50 @@ pub(crate) fn collect_carried_iteration_lines(
         .collect()
 }
 
+pub(crate) fn collect_carried_line_iteration_image_groups(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+) -> BTreeSet<usize> {
+    let carried_groups_with_segment_seed = groups
+        .iter()
+        .filter(|group| group.header.kind() == crate::format::GroupKind::IterationBinding)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            let source = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            let iteration = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+            (source.header.kind() == crate::format::GroupKind::Segment
+                && iteration.header.kind().is_carried_iteration())
+            .then_some(iteration.ordinal)
+        })
+        .collect::<BTreeSet<_>>();
+
+    groups
+        .iter()
+        .filter(|group| group.header.kind() == crate::format::GroupKind::IterationBinding)
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            let source_group_index = path.refs.first()?.checked_sub(1)?;
+            let source = groups.get(source_group_index)?;
+            let iteration = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+            if !carried_groups_with_segment_seed.contains(&iteration.ordinal) {
+                return None;
+            }
+            matches!(
+                source.header.kind(),
+                crate::format::GroupKind::Translation
+                    | crate::format::GroupKind::Rotation
+                    | crate::format::GroupKind::AngleRotation
+                    | crate::format::GroupKind::ParameterRotation
+                    | crate::format::GroupKind::ExpressionRotation
+                    | crate::format::GroupKind::Scale
+                    | crate::format::GroupKind::RatioScale
+                    | crate::format::GroupKind::Reflection
+            )
+            .then_some(source_group_index)
+        })
+        .collect()
+}
+
 pub(crate) fn collect_carried_line_iteration_families(
     file: &GspFile,
     groups: &[ObjectGroup],

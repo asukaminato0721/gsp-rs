@@ -152,6 +152,22 @@ fn exports_kaleidoscope_nested_reflected_polygons() {
             "expected rotated axis segment #{ordinal} to export for reflection axes"
         );
     }
+    let transformed_midpoint = scene["points"]
+        .as_array()
+        .and_then(|points| {
+            points
+                .iter()
+                .find(|point| point["debug"]["groupOrdinal"].as_u64() == Some(8))
+        })
+        .expect("expected midpoint #8 of rotated segment #5 to export");
+    assert_eq!(
+        transformed_midpoint["constraint"]["kind"].as_str(),
+        Some("line-constraint")
+    );
+    assert_eq!(
+        transformed_midpoint["constraint"]["line"]["kind"].as_str(),
+        Some("rotated")
+    );
 
     let buttons = scene["buttons"]
         .as_array()

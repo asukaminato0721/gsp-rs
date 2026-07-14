@@ -1,31 +1,22 @@
 import { test, expect } from '@playwright/test';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { execFileSync } from 'node:child_process';
-
-function compileFixtureToTempHtml(relativeFixturePath: string): string {
-  const repoRoot = process.cwd();
-  const sourcePath = path.resolve(repoRoot, relativeFixturePath);
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsp-circle-circle-'));
-  const tempFixturePath = path.join(tempDir, path.basename(sourcePath));
-  fs.copyFileSync(sourcePath, tempFixturePath);
-  execFileSync(path.resolve(repoRoot, 'target/debug/gsp-rs'), ['--html', tempFixturePath], {
-    cwd: repoRoot,
-    stdio: 'pipe',
-  });
-  return tempFixturePath.replace(/\.gsp$/i, '.html');
-}
+import { compileFixtureToTempHtml } from './compile-fixture';
 
 test('circle-circle intersections stay distinct after dragging both circle centers', async ({ page }) => {
   const file = compileFixtureToTempHtml('tests/fixtures/gsp/insection/circle_circle_insection.gsp');
   await page.goto(`file://${file}`);
 
-  const before = await page.evaluate(() =>
-    window.gspDebug.runtime.scene.points.slice(4, 6).map((point) => ({ x: point.x, y: point.y })),
-  );
-  expect(before).toHaveLength(2);
-  expect(Math.hypot(before[0].x - before[1].x, before[0].y - before[1].y)).toBeGreaterThan(1);
+  const before = await page.evaluate(() => ({
+    objectGraphComplete: window.gspDebug.viewerEnv.sourceScene.objectGraph.geometryComplete,
+    points: window.gspDebug.runtime.scene.points
+      .slice(4, 6)
+      .map((point) => ({ x: point.x, y: point.y })),
+  }));
+  expect(before.objectGraphComplete).toBe(true);
+  expect(before.points).toHaveLength(2);
+  expect(Math.hypot(
+    before.points[0].x - before.points[1].x,
+    before.points[0].y - before.points[1].y,
+  )).toBeGreaterThan(1);
 
   await page.evaluate(() => {
     const env = window.gspDebug.viewerEnv;

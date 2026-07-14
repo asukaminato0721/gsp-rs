@@ -380,7 +380,9 @@ pub(super) fn bind_points_to_point_traces(
         let Some(path) = find_indexed_path(file, group) else {
             continue;
         };
-        let Some(host_ordinal) = path.refs.first().copied() else {
+        let host_ref_index =
+            usize::from(group.header.kind() == GroupKind::ParameterControlledPoint);
+        let Some(host_ordinal) = path.refs.get(host_ref_index).copied() else {
             continue;
         };
         let Some(host_group) = groups.get(host_ordinal.saturating_sub(1)) else {
@@ -392,25 +394,9 @@ pub(super) fn bind_points_to_point_traces(
         let Some(group_index) = group.ordinal.checked_sub(1) else {
             continue;
         };
-        let Some(slot) = group_to_point_index.get_mut(group_index) else {
+        let Some(existing_point_index) = group_to_point_index.get(group_index).copied() else {
             continue;
         };
-        let existing_point_index = *slot;
-        let Some(payload) = group
-            .records
-            .iter()
-            .find(|record| record.record_type == RECORD_BINDING_PAYLOAD)
-            .map(|record| record.payload(&file.data))
-        else {
-            continue;
-        };
-        if payload.len() < 12 {
-            continue;
-        }
-        let normalized_t = read_f64(payload, 4);
-        if !normalized_t.is_finite() {
-            continue;
-        }
         let Some(trace_line) = point_trace_lines.iter().find(|line| {
             line.debug
                 .as_ref()
@@ -435,6 +421,31 @@ pub(super) fn bind_points_to_point_traces(
         } else {
             continue;
         };
+        let normalized_t = group
+            .records
+            .iter()
+            .find(|record| record.record_type == RECORD_BINDING_PAYLOAD)
+            .map(|record| record.payload(&file.data))
+            .filter(|payload| payload.len() >= 12)
+            .map(|payload| read_f64(payload, 4))
+            .filter(|value| value.is_finite())
+            .or_else(|| {
+                let parameter_anchor = path
+                    .refs
+                    .first()
+                    .and_then(|ordinal| groups.get(ordinal.saturating_sub(1)))?;
+                if parameter_anchor.header.kind() != GroupKind::ParameterAnchor {
+                    return None;
+                }
+                let anchor_path = find_indexed_path(file, parameter_anchor)?;
+                let source_group_index = anchor_path.refs.first()?.checked_sub(1)?;
+                let source_point_index = (*group_to_point_index.get(source_group_index)?)?;
+                let source = &visible_points.get(source_point_index)?.position;
+                nearest_sampled_polyline_parameter(&trace_points, source)
+            });
+        let Some(normalized_t) = normalized_t else {
+            continue;
+        };
         let wrapped_t = normalized_t.rem_euclid(1.0);
         let scaled = wrapped_t * (trace_points.len() - 1) as f64;
         let segment_index = (scaled.floor() as usize).min(trace_points.len() - 2);
@@ -447,7 +458,7 @@ pub(super) fn bind_points_to_point_traces(
         };
         let point_index = existing_point_index.unwrap_or_else(|| {
             let next_index = visible_points.len();
-            *slot = Some(next_index);
+            group_to_point_index[group_index] = Some(next_index);
             visible_points.push(ScenePoint {
                 position: position.clone(),
                 color: crate::runtime::geometry::color_from_style(group.header.style_b),
@@ -470,6 +481,30 @@ pub(super) fn bind_points_to_point_traces(
             point.draggable = true;
         }
     }
+}
+
+fn nearest_sampled_polyline_parameter(points: &[PointRecord], point: &PointRecord) -> Option<f64> {
+    if points.len() < 2 {
+        return None;
+    }
+    let mut nearest = None::<(f64, usize, f64)>;
+    for (index, segment) in points.windows(2).enumerate() {
+        let dx = segment[1].x - segment[0].x;
+        let dy = segment[1].y - segment[0].y;
+        let length_sq = dx * dx + dy * dy;
+        if length_sq <= 1e-12 {
+            continue;
+        }
+        let t = (((point.x - segment[0].x) * dx + (point.y - segment[0].y) * dy) / length_sq)
+            .clamp(0.0, 1.0);
+        let projected_x = segment[0].x + dx * t;
+        let projected_y = segment[0].y + dy * t;
+        let distance_sq = (point.x - projected_x).powi(2) + (point.y - projected_y).powi(2);
+        if nearest.is_none_or(|(best, _, _)| distance_sq < best) {
+            nearest = Some((distance_sq, index, t));
+        }
+    }
+    nearest.map(|(_, index, t)| (index as f64 + t) / (points.len() - 1) as f64)
 }
 
 pub(super) fn collect_colorized_spectrum_lines(
@@ -1517,6 +1552,7 @@ fn resolve_trace_point(
             parameter_name,
             expr,
             absolute_value,
+            ..
         }) => {
             let source_value = trace_parameter_value_from_point(points, *source_index, visiting)?;
             let mut parameters = BTreeMap::new();

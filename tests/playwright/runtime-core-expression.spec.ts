@@ -17,6 +17,97 @@ function compilePointFixture(): string {
   return fixture.replace(/\.gsp$/i, '.html');
 }
 
+function compilePointTranslationFixture(): string {
+  const root = process.cwd();
+  const source = path.resolve(root, 'tests/fixtures/gsp/static/point_translation.gsp');
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'gsp-object-graph-'));
+  const fixture = path.join(directory, 'point_translation.gsp');
+  fs.copyFileSync(source, fixture);
+  execFileSync(path.resolve(root, 'target/debug/gsp-rs'), ['--html', fixture], {
+    cwd: root,
+    stdio: 'pipe',
+  });
+  return fixture.replace(/\.gsp$/i, '.html');
+}
+
+test('embedded Rust runtime evaluates a typed object graph through one op table', async ({ page }) => {
+  await page.goto(`file://${compilePointFixture()}`);
+
+  const values = await page.evaluate(() => window.GspRuntimeCore.evaluateObjectGraph({
+    nodes: [
+      { id: 'left', definition: { kind: 'source' } },
+      { id: 'right', definition: { kind: 'source' } },
+      {
+        id: 'midpoint',
+        definition: {
+          kind: 'derived',
+          op: { kind: 'midpoint' },
+          parents: ['left', 'right'],
+        },
+      },
+      {
+        id: 'segment',
+        definition: {
+          kind: 'derived',
+          op: { kind: 'line', line_kind: 'segment' },
+          parents: ['left', 'midpoint'],
+        },
+      },
+    ],
+    sources: [
+      { id: 'left', value: { kind: 'point', x: 0, y: 2 } },
+      { id: 'right', value: { kind: 'point', x: 8, y: 6 } },
+    ],
+  }));
+
+  expect(values).toEqual([
+    { id: 'left', value: { kind: 'point', x: 0, y: 2 } },
+    { id: 'right', value: { kind: 'point', x: 8, y: 6 } },
+    { id: 'midpoint', value: { kind: 'point', x: 4, y: 4 } },
+    {
+      id: 'segment',
+      value: {
+        kind: 'line',
+        line_kind: 'segment',
+        start: { x: 0, y: 2 },
+        end: { x: 4, y: 4 },
+      },
+    },
+  ]);
+});
+
+test('complete scene geometry is recomputed by the exported object graph', async ({ page }) => {
+  await page.goto(`file://${compilePointTranslationFixture()}`);
+
+  const result = await page.evaluate(() => {
+    const env = window.gspDebug.viewerEnv;
+    const scene = window.gspDebug.runtime.scene;
+    const before = scene.points.map((point) => ({ x: point.x, y: point.y }));
+    scene.points[1].binding = null;
+    scene.points[1].constraint = null;
+    scene.points[0].x += 17;
+    scene.points[0].y -= 9;
+    window.GspViewerModules.dynamics!.refreshDerivedPoints(env, scene);
+    return {
+      complete: window.gspDebug.sourceScene.objectGraph.geometryComplete,
+      pending: window.gspDebug.sourceScene.objectGraph.pendingOperations,
+      sourceDelta: {
+        x: scene.points[0].x - before[0].x,
+        y: scene.points[0].y - before[0].y,
+      },
+      derivedDelta: {
+        x: scene.points[1].x - before[1].x,
+        y: scene.points[1].y - before[1].y,
+      },
+    };
+  });
+
+  expect(result.complete).toBe(true);
+  expect(result.pending).toEqual([]);
+  expect(result.derivedDelta).toEqual(result.sourceDelta);
+  expect(result.sourceDelta).toEqual({ x: 17, y: -9 });
+});
+
 test('standalone file HTML evaluates expressions in the embedded Rust runtime core', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(String(error)));

@@ -299,6 +299,33 @@
             derived,
           );
         }
+      } else if (point.binding?.kind === "constraint-parameter-point-distance-ratio") {
+        const origin = resolveTracePoint(points, point.binding.originIndex, visiting);
+        const denominator = resolveTracePoint(points, point.binding.denominatorIndex, visiting);
+        const numerator = resolveTracePoint(points, point.binding.numeratorIndex, visiting);
+        const value = origin && denominator && numerator
+          ? window.GspRuntimeCore.pointDistanceRatio(
+              origin,
+              denominator,
+              numerator,
+              point.binding.clampToUnit === true,
+            )
+          : null;
+        if (value !== null) {
+          const derived = cloneTracePoint(point);
+          updateConstraintParameterizedPoint(derived, sampleScene, value);
+          sampleScene.points[index] = derived;
+          resolved = modules.scene.resolveConstrainedPoint(
+            {
+              sourceScene: scene,
+              currentScene: () => sampleScene,
+              resolveScenePoint: (pointIndex: number) => resolveTracePoint(points, pointIndex, visiting),
+            },
+            derived.constraint,
+            (pointIndex: number) => resolveTracePoint(points, pointIndex, visiting),
+            derived,
+          );
+        }
       } else if (point.binding?.kind === "constraint-parameter-from-point-expr") {
         const sourceValue = parameterValueFromPoint(sampleScene, point.binding.sourceIndex);
         if (isFiniteNumber(sourceValue)) {

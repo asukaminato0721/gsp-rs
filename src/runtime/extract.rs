@@ -67,10 +67,11 @@ use self::points::{
     decode_point_constraint_anchor, decode_point_on_ray_anchor_raw,
     decode_point_pair_translation_anchor_raw, decode_reflection_anchor_raw,
     decode_regular_polygon_vertex_anchor_raw, decode_translated_point_anchor_raw,
-    decode_translated_point_constraint, regular_polygon_iteration_step, remap_circle_bindings,
-    remap_line_bindings, remap_polygon_bindings, translation_point_pair_group_indices,
-    try_decode_parameter_controlled_point, try_decode_parameter_rotation_binding,
-    try_decode_point_constraint, try_decode_transform_binding,
+    decode_translated_point_constraint, regular_polygon_iteration_step, remap_arc_bindings,
+    remap_circle_bindings, remap_line_bindings, remap_polygon_bindings,
+    translation_point_pair_group_indices, try_decode_parameter_controlled_point,
+    try_decode_parameter_rotation_binding, try_decode_point_constraint,
+    try_decode_transform_binding,
 };
 use self::shapes::{
     collect_carried_line_iteration_families, collect_carried_polygon_iteration_families,
