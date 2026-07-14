@@ -294,17 +294,16 @@ fn exports_lizhangbo_solid_geometry_parameter_buttons() {
     );
     assert_eq!(
         scene.point_iterations.len(),
-        2,
-        "expected P and the payload-derived N translation to be exported as point traces"
+        3,
+        "expected all three payload point bindings to become interpreted point traces"
     );
     assert!(
         scene.point_iterations.iter().any(|family| matches!(
             family,
-            PointIterationFamily::Parameterized {
+            PointIterationFamily::Interpreted {
                 depth_parameter_name: Some(depth_parameter_name),
-                trace_parameter_name,
                 ..
-            } if depth_parameter_name == "t[7]" && trace_parameter_name == "t[8]"
+            } if depth_parameter_name == "t[7]"
         )),
         "expected the RegularPolygonIteration payload to export parameterized point iteration"
     );
@@ -355,26 +354,26 @@ fn preserves_parameter_driven_point_iteration_family() {
         1,
         "expected one point iteration family"
     );
-    match &scene.point_iterations[0] {
-        PointIterationFamily::Offset {
-            seed_index,
-            depth,
-            parameter_name,
-            ..
-        } => {
-            assert_eq!(
-                *seed_index, 1,
-                "expected initial image point as iteration seed"
-            );
-            assert_eq!(*depth, 5, "expected exported depth");
-            assert_eq!(parameter_name.as_deref(), Some("n"));
-        }
-        family => panic!("expected offset iteration family, got {family:?}"),
-    }
+    let PointIterationFamily::Interpreted {
+        point_index,
+        states,
+        depth,
+        depth_parameter_name,
+        ..
+    } = &scene.point_iterations[0];
+    assert_eq!(
+        *point_index, 1,
+        "expected initial image point as iteration seed"
+    );
+    assert_eq!(*depth, 5, "expected exported depth");
+    assert_eq!(depth_parameter_name.as_deref(), Some("n"));
+    assert_eq!(states.len(), 1);
+    assert_eq!(states[0].source_group_ordinal, 1);
+    assert_eq!(states[0].image_group_ordinal, 2);
     assert_eq!(
         scene.points.len(),
-        8,
-        "expected original point, initial point, 5 iterates, and the legacy parameter source point"
+        3,
+        "expected original point, initial point, and the legacy parameter source point"
     );
 }
 
@@ -425,14 +424,16 @@ fn preserves_non_graph_parameter_and_expression_labels_in_iteration_fixture() {
     assert!(scene.point_iterations.iter().any(|family| {
         matches!(
             family,
-            PointIterationFamily::Offset {
-                dx,
-                dy,
-                parameter_name,
+            PointIterationFamily::Interpreted {
+                depth_parameter_name,
+                states,
                 ..
-            } if parameter_name.as_deref() == Some("n")
-                && (*dx - 37.79527559055118).abs() < 1e-6
-                && dy.abs() < 1e-6
+            } if depth_parameter_name.as_deref() == Some("n")
+                && states.len() == 2
+                && states[0].source_group_ordinal == 1
+                && states[0].image_group_ordinal == 5
+                && states[1].source_group_ordinal == 3
+                && states[1].image_group_ordinal == 4
         )
     }));
     assert!(scene.label_iterations.iter().any(|family| {
@@ -462,14 +463,17 @@ fn preserves_default_depth_non_graph_iteration_fixture() {
     assert!(scene.point_iterations.iter().any(|family| {
         matches!(
             family,
-            PointIterationFamily::RotateChain {
-                seed_index,
-                center_index,
-                angle_degrees,
+            PointIterationFamily::Interpreted {
+                point_index,
+                states,
                 depth,
-            } if *seed_index == 2
-                && *center_index == 0
-                && (*angle_degrees - 30.0).abs() < 1e-6
+                ..
+            } if *point_index == 2
+                && states.len() == 2
+                && states[0].source_group_ordinal == 4
+                && states[0].image_group_ordinal == 5
+                && states[1].source_group_ordinal == 2
+                && states[1].image_group_ordinal == 3
                 && *depth == 3
         )
     }));
@@ -499,8 +503,8 @@ fn preserves_carried_segment_default_depth_iteration_fixture() {
     );
     assert_eq!(
         scene.points.len(),
-        5,
-        "expected original point, seed point, and three iterates"
+        2,
+        "expected the payload's original point and initial image; later images are interpreted"
     );
     let starts = scene
         .lines
@@ -652,26 +656,24 @@ fn preserves_default_depth_point_iteration_family() {
         1,
         "expected one default-depth point iteration family"
     );
-    match &scene.point_iterations[0] {
-        PointIterationFamily::Offset {
-            seed_index,
-            depth,
-            parameter_name,
-            ..
-        } => {
-            assert_eq!(
-                *seed_index, 1,
-                "expected initial image point as iteration seed"
-            );
-            assert_eq!(*depth, 3, "expected default depth of three");
-            assert_eq!(parameter_name, &None);
-        }
-        family => panic!("expected offset iteration family, got {family:?}"),
-    }
+    let PointIterationFamily::Interpreted {
+        point_index,
+        states,
+        depth,
+        depth_parameter_name,
+        ..
+    } = &scene.point_iterations[0];
+    assert_eq!(
+        *point_index, 1,
+        "expected initial image point as iteration seed"
+    );
+    assert_eq!(*depth, 3, "expected default depth of three");
+    assert_eq!(depth_parameter_name, &None);
+    assert_eq!(states.len(), 1);
     assert_eq!(
         scene.points.len(),
-        5,
-        "expected original point, initial point, and three default iterates"
+        2,
+        "expected only the payload's original point and initial image point"
     );
     assert!(
         matches!(

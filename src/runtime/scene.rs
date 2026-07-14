@@ -215,33 +215,25 @@ pub(crate) struct ScenePoint {
 
 #[derive(Debug, Clone)]
 pub(crate) enum PointIterationFamily {
-    Offset {
-        seed_index: usize,
-        dx: f64,
-        dy: f64,
-        depth: usize,
-        parameter_name: Option<String>,
-    },
-    RotateChain {
-        seed_index: usize,
-        center_index: usize,
-        angle_degrees: f64,
-        depth: usize,
-    },
-    Rotate {
-        source_index: usize,
-        center_index: usize,
-        angle_expr: FunctionExpr,
-        depth: usize,
-        parameter_name: Option<String>,
-    },
-    Parameterized {
+    Interpreted {
         point_index: usize,
+        states: Vec<IterationStatePair>,
         depth_parameter_name: Option<String>,
-        trace_parameter_name: String,
-        step_expr: FunctionExpr,
         depth: usize,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum IterationStateKind {
+    Object,
+    Scalar,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct IterationStatePair {
+    pub(crate) source_group_ordinal: usize,
+    pub(crate) image_group_ordinal: usize,
+    pub(crate) kind: IterationStateKind,
 }
 
 #[derive(Debug, Clone)]

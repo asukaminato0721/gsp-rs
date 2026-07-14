@@ -21,8 +21,8 @@ pub use geometry::{
 };
 pub use object_ops::{
     AffineTargetHandle, BuiltinOperationTable, ObjectCircle, ObjectExpression,
-    ObjectGraphEvaluationInput, ObjectNodeValue, ObjectOp, ObjectOpError, ObjectProgram,
-    ObjectSourceValue, ObjectValue, TraceDriver, evaluate_object_graph_json,
+    ObjectGraphEvaluationInput, ObjectIterationProgram, ObjectNodeValue, ObjectOp, ObjectOpError,
+    ObjectProgram, ObjectSourceValue, ObjectValue, TraceDriver, evaluate_object_graph_json,
 };
 pub use point_constraints::{
     inverse_point_transform_json, resolve_point_constraints_json, transform_points_json,

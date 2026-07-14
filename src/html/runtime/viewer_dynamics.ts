@@ -711,15 +711,13 @@
 
   function collectDiscreteIterationParameterNames(scene: ViewerSceneData | SceneData | null | undefined) {
     const names = new Set<string>();
-    const add = ( name: string) => {
+    const add = ( name: unknown) => {
       if (typeof name === "string" && name.length > 0) {
         names.add(name);
       }
     };
     (scene?.pointIterations || []).forEach((family) => {
-      if ("parameterName" in family) {
-        add(family.parameterName);
-      }
+      add(family.depthParameterName);
     });
     (scene?.circleIterations || []).forEach((family) => add(family.depthParameterName));
     (scene?.lineIterations || []).forEach((family) => {
@@ -2287,27 +2285,17 @@
 
     const pointIterations = env.sourceScene.pointIterations || [];
     if (pointIterations.length > 0) {
-      const exportedDepth = pointIterations.reduce(
-        (sum, family) => sum + (family.kind === "parameterized" ? 0 : Math.max(0, family.depth || 0)),
-        0,
-      );
       const standaloneCount = env.sourceScene.points
         .filter((point) => point?.binding?.kind === "parameter" && !point.constraint)
         .length;
-      const baseCount = Math.max(0, env.sourceScene.points.length - exportedDepth - standaloneCount);
+      const baseCount = Math.max(0, env.sourceScene.points.length - standaloneCount);
       const standalonePoints = scene.points.slice(scene.points.length - standaloneCount);
-      const templates = env.sourceScene.points.slice(baseCount, baseCount + exportedDepth);
       scene.points = scene.points.slice(0, baseCount);
-      let templateIndex = 0;
       pointIterations.forEach((family, familyIndex) => {
         const points = pointIterationResults.get(familyIndex) || [];
-        const sourceIndex = family.kind === "offset" || family.kind === "rotate-chain"
-          ? family.seedIndex
-          : family.kind === "rotate"
-            ? family.sourceIndex
-            : family.pointIndex;
+        const sourceIndex = family.pointIndex;
         points.forEach((point) => {
-          const template = templates[templateIndex] || scene.points[sourceIndex];
+          const template = scene.points[sourceIndex];
           scene.points.push({
             ...(template || {}),
             x: point.x,
@@ -2319,9 +2307,7 @@
             binding: null,
             debug: null,
           });
-          templateIndex += 1;
         });
-        templateIndex += Math.max(0, (family.depth || 0) - points.length);
       });
       standalonePoints.forEach((point) => scene.points.push(point));
     }

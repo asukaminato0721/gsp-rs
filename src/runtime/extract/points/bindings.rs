@@ -4,13 +4,11 @@ use super::anchors::{
 };
 use super::constraints::{
     CoordinatePoint, ParameterControlledPoint, RawPointConstraint, decode_coordinate_point,
-    decode_translated_point_constraint, regular_polygon_iteration_step,
-    try_decode_parameter_controlled_point, try_decode_point_constraint,
+    decode_translated_point_constraint, try_decode_parameter_controlled_point,
+    try_decode_point_constraint,
 };
 use super::*;
-use crate::format::read_u32;
-use crate::runtime::functions::FunctionExpr;
-use crate::runtime::geometry::rotate_around;
+use crate::format::{read_u16, read_u32};
 use crate::runtime::payload_consts::RECORD_ITERATION_DEFINITION;
 
 #[path = "bindings/decode.rs"]
@@ -73,31 +71,20 @@ fn iteration_depth(file: &GspFile, group: &ObjectGroup, default_depth: usize) ->
 }
 
 pub(crate) enum RawPointIterationFamily {
-    Offset {
-        seed_index: usize,
-        dx: f64,
-        dy: f64,
-        depth: usize,
-        parameter_name: Option<String>,
-    },
-    RotateChain {
-        seed_index: usize,
-        center_index: usize,
-        angle_degrees: f64,
-        depth: usize,
-    },
-    Rotate {
-        source_index: usize,
-        center_index: usize,
-        angle_expr: FunctionExpr,
-        depth: usize,
-        parameter_name: Option<String>,
-    },
-    Parameterized {
+    Interpreted {
         point_index: usize,
+        states: Vec<crate::runtime::scene::IterationStatePair>,
         depth_parameter_name: Option<String>,
-        trace_parameter_name: String,
-        step_expr: FunctionExpr,
         depth: usize,
     },
+}
+
+fn iteration_state_count(file: &GspFile, group: &ObjectGroup) -> Option<usize> {
+    group
+        .records
+        .iter()
+        .find(|record| record.record_type == RECORD_ITERATION_DEFINITION)
+        .map(|record| record.payload(&file.data))
+        .filter(|payload| payload.len() >= 20)
+        .map(|payload| read_u16(payload, 6) as usize)
 }

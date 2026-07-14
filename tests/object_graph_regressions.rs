@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use gsp_rs::pipeline::compile_file_to_scene_json;
+use gsp_runtime_core::{ObjectNodeValue, ObjectValue, evaluate_object_graph_json};
 use serde_json::Value;
 
 fn compile_fixture(path: &str) -> Value {
@@ -16,14 +17,21 @@ fn operation_kind<'a>(scene: &'a Value, id: &str) -> Option<&'a str> {
         .as_str()
 }
 
+fn evaluate_scene_object_graph(scene: &Value) -> Vec<ObjectNodeValue> {
+    let input = serde_json::json!({
+        "nodes": scene["objectGraph"]["nodes"],
+        "sources": scene["objectGraph"]["sources"],
+    });
+    serde_json::from_slice(
+        &evaluate_object_graph_json(&serde_json::to_vec(&input).unwrap()).unwrap(),
+    )
+    .unwrap()
+}
+
 #[test]
 fn n_leaf_trace_point_is_derived_from_trace_and_payload_parameter() {
     let scene = compile_fixture("tests/Samples/个人专栏/向忠作品/n叶草系列迭代.gsp");
-    assert_eq!(
-        scene["objectGraph"]["geometryComplete"], true,
-        "pending: {}",
-        scene["objectGraph"]["pendingOperations"]
-    );
+    assert_eq!(scene["objectGraph"]["geometryComplete"], true);
     assert_eq!(
         scene["objectGraph"]["pendingOperations"],
         serde_json::json!([])
@@ -322,7 +330,11 @@ fn fixed_translated_line_keeps_running_person_table_driven() {
 #[test]
 fn ellipse_on_ellipse_ignores_embedded_tool_sections() {
     let scene = compile_fixture("tests/Samples/热研系列/滚动系列/椭圆在椭圆上滚动.gsp");
-    assert_eq!(scene["objectGraph"]["geometryComplete"], true);
+    assert_eq!(
+        scene["objectGraph"]["geometryComplete"], true,
+        "pending: {}",
+        scene["objectGraph"]["pendingOperations"]
+    );
     assert_eq!(
         scene["objectGraph"]["pendingOperations"],
         serde_json::json!([])
@@ -2042,22 +2054,27 @@ fn parameterized_point_iterations_run_typed_dependency_programs() {
         compile_fixture("tests/Samples/个人专栏/李章博作品/动画演示立体几何轨迹形成（李章博）.gsp");
     assert_eq!(scene["objectGraph"]["geometryComplete"], true);
     let expected_targets = [
+        object_id_for_group(&scene, "points", "point", 111),
+        object_id_for_group(&scene, "points", "point", 137),
         object_id_for_group(&scene, "points", "point", 138),
-        object_id_for_group(&scene, "points", "point", 145),
     ];
     for (index, target_id) in expected_targets.into_iter().enumerate() {
         let id = format!("point-iteration:{index}");
-        assert_eq!(
-            operation_kind(&scene, &id),
-            Some("parameterized-point-iteration")
-        );
+        assert_eq!(operation_kind(&scene, &id), Some("point-iteration"));
         let node = scene["objectGraph"]["nodes"]
             .as_array()
             .unwrap()
             .iter()
             .find(|node| node["id"] == id)
             .unwrap();
-        assert_eq!(node["definition"]["op"]["program"]["targetId"], target_id);
+        assert_eq!(node["definition"]["op"]["program"]["outputId"], target_id);
+        assert_eq!(
+            node["definition"]["op"]["program"]["stateSourceIds"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
         let parents = node["definition"]["parents"].as_array().unwrap();
         assert!(parents.iter().any(|parent| parent == "parameter:t[10]"));
         assert!(parents.iter().any(|parent| {
@@ -2065,6 +2082,45 @@ fn parameterized_point_iterations_run_typed_dependency_programs() {
                 .as_str()
                 .is_some_and(|parent| parent == format!("scalar:{id}:depth"))
         }));
+    }
+}
+
+#[test]
+fn point_iteration_reexecutes_the_payload_operation_program() {
+    let scene = compile_fixture("tests/fixtures/gsp/static/简单迭代/原象点初象点默认深度3迭代.gsp");
+    assert_eq!(scene["objectGraph"]["geometryComplete"], true);
+    assert_eq!(
+        operation_kind(&scene, "point-iteration:0"),
+        Some("point-iteration")
+    );
+
+    let node = scene["objectGraph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == "point-iteration:0")
+        .unwrap();
+    let program = &node["definition"]["op"]["program"];
+    assert_eq!(program["stateSourceIds"], serde_json::json!(["point:0"]));
+    assert_eq!(program["stateTargetIds"], serde_json::json!(["point:1"]));
+    assert_eq!(program["outputId"], "point:1");
+
+    let results = evaluate_scene_object_graph(&scene);
+    let iteration = results
+        .iter()
+        .find(|result| result.id == "point-iteration:0")
+        .unwrap();
+    let ObjectValue::Points { points } = &iteration.value else {
+        panic!(
+            "expected interpreted point images, got {:?}",
+            iteration.value
+        );
+    };
+    assert_eq!(points.len(), 3);
+    for (index, point) in points.iter().enumerate() {
+        let step = index as f64 + 2.0;
+        assert!((point.x - (168.0 + 37.79527559055118 * step)).abs() < 1e-6);
+        assert!((point.y - (376.0 - 37.79527559055118 * step)).abs() < 1e-6);
     }
 }
 

@@ -44,7 +44,6 @@ use crate::runtime::scene::{
 struct PointStage {
     visible_points: Vec<ScenePoint>,
     group_to_point_index: Vec<Option<usize>>,
-    derived_iteration_points: Vec<ScenePoint>,
     standalone_parameter_points: Vec<ScenePoint>,
     raw_point_iterations: Vec<RawPointIterationFamily>,
 }
@@ -141,7 +140,6 @@ fn build_scene_checked_inner(file: &GspFile) -> Result<Scene> {
     let world_data = build_world_data(
         &analysis,
         &point_stage.visible_points,
-        &point_stage.derived_iteration_points,
         &point_stage.standalone_parameter_points,
         point_stage.raw_point_iterations,
     );
@@ -477,13 +475,11 @@ fn collect_point_stage(
 ) -> Result<PointStage> {
     let (visible_points, group_to_point_index) =
         collect_visible_points_and_traces(file, groups, context, point_map, analysis, shapes)?;
-    let (derived_iteration_points, raw_point_iterations) =
-        collect_point_iteration_points(file, groups, &analysis.raw_anchors, &group_to_point_index);
+    let raw_point_iterations = collect_point_iteration_points(file, groups, &group_to_point_index);
     let standalone_parameter_points = collect_standalone_parameter_points(file, groups);
     Ok(PointStage {
         visible_points,
         group_to_point_index,
-        derived_iteration_points,
         standalone_parameter_points,
         raw_point_iterations,
     })

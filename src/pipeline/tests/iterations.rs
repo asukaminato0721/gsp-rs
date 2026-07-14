@@ -8,7 +8,8 @@ fn exports_point_iteration_metadata_into_html() {
     );
 
     assert!(html.contains("\"pointIterations\":["));
-    assert!(html.contains("\"parameterName\":\"n\""));
+    assert!(html.contains("\"kind\":\"interpreted\""));
+    assert!(html.contains("\"depthParameterName\":\"n\""));
 }
 
 #[test]

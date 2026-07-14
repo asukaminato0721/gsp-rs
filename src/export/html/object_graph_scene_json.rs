@@ -1,7 +1,8 @@
 use gsp_runtime_core::object_graph::{ObjectDefinition, ObjectGraph, ObjectNode};
 use gsp_runtime_core::{
     AffineTargetHandle, CoordinateTraceMode, FunctionAst, FunctionExpr, LineKind, ObjectExpression,
-    ObjectOp, ObjectProgram, ObjectValue, PlotMode, Point, TraceDriver, expression_parameter_names,
+    ObjectIterationProgram, ObjectOp, ObjectProgram, ObjectValue, PlotMode, Point, TraceDriver,
+    expression_parameter_names,
 };
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -168,37 +169,8 @@ impl ObjectGraphJson {
         for (group_ordinal, id) in builder.group_scalars.clone() {
             builder.group_objects.entry(group_ordinal).or_insert(id);
         }
-        let standalone_parameter_count = scene
-            .points
-            .iter()
-            .rev()
-            .take_while(|point| {
-                matches!(point.binding, Some(ScenePointBinding::Parameter { .. }))
-                    && matches!(point.constraint, ScenePointConstraint::Free)
-            })
-            .count();
-        let generated_point_count = scene
-            .point_iterations
-            .iter()
-            .map(|family| match family {
-                PointIterationFamily::Offset { depth, .. }
-                | PointIterationFamily::RotateChain { depth, .. }
-                | PointIterationFamily::Rotate { depth, .. } => *depth,
-                PointIterationFamily::Parameterized { .. } => 0,
-            })
-            .sum::<usize>();
-        let generated_point_start = scene
-            .points
-            .len()
-            .saturating_sub(standalone_parameter_count + generated_point_count);
-        let generated_point_end = scene
-            .points
-            .len()
-            .saturating_sub(standalone_parameter_count);
         for (index, point) in scene.points.iter().enumerate() {
-            if !(generated_point_start..generated_point_end).contains(&index) {
-                builder.point(index, point);
-            }
+            builder.point(index, point);
         }
         for (index, family) in scene.point_iterations.iter().enumerate() {
             builder.point_iteration(index, family);
@@ -1061,115 +1033,12 @@ impl Builder {
     fn point_iteration(&mut self, index: usize, family: &PointIterationFamily) {
         let id = format!("point-iteration:{index}");
         match family {
-            PointIterationFamily::Offset {
-                seed_index,
-                dx,
-                dy,
-                depth,
-                parameter_name,
-            } => {
-                let Some(depth_id) = self.iteration_depth_scalar(
-                    &format!("scalar:{id}:depth"),
-                    *depth,
-                    parameter_name.as_deref(),
-                ) else {
-                    self.pending("iteration-operations");
-                    return;
-                };
-                self.derived(
-                    id,
-                    ObjectOp::PointOffsetIteration { dx: *dx, dy: *dy },
-                    [point_id(*seed_index), depth_id],
-                );
-            }
-            PointIterationFamily::RotateChain {
-                seed_index,
-                center_index,
-                angle_degrees,
-                depth,
-            } => {
-                let angle_id = format!("scalar:{id}:angle");
-                let depth_id = format!("scalar:{id}:depth");
-                self.source(
-                    angle_id.clone(),
-                    ObjectValue::Scalar {
-                        value: *angle_degrees,
-                    },
-                );
-                self.source(
-                    depth_id.clone(),
-                    ObjectValue::Scalar {
-                        value: *depth as f64,
-                    },
-                );
-                self.derived(
-                    id,
-                    ObjectOp::PointRotateIteration,
-                    [
-                        point_id(*seed_index),
-                        point_id(*center_index),
-                        angle_id,
-                        depth_id,
-                    ],
-                );
-            }
-            PointIterationFamily::Rotate {
-                source_index,
-                center_index,
-                angle_expr,
-                depth,
-                parameter_name,
-            } => {
-                let angle_id = format!("scalar:{id}:angle");
-                self.expression(angle_id.clone(), angle_expr);
-                let Some(depth_id) = self.iteration_depth_scalar(
-                    &format!("scalar:{id}:depth"),
-                    *depth,
-                    parameter_name.as_deref(),
-                ) else {
-                    self.pending("iteration-operations");
-                    return;
-                };
-                self.derived(
-                    id,
-                    ObjectOp::PointRotateIteration,
-                    [
-                        point_id(*source_index),
-                        point_id(*center_index),
-                        angle_id,
-                        depth_id,
-                    ],
-                );
-            }
-            PointIterationFamily::Parameterized {
+            PointIterationFamily::Interpreted {
                 point_index,
+                states,
                 depth_parameter_name,
-                trace_parameter_name,
-                step_expr,
                 depth,
             } => {
-                let Some(trace_source_id) = self.named_scalars.get(trace_parameter_name).cloned()
-                else {
-                    self.pending("iteration-operations");
-                    return;
-                };
-                let target_id = point_id(*point_index);
-                let Some(program) =
-                    self.object_program(&target_id, std::slice::from_ref(&trace_source_id))
-                else {
-                    self.pending("iteration-operations");
-                    return;
-                };
-                let mut step_parameter_names = expression_parameter_names(step_expr);
-                step_parameter_names.retain(|name| name != trace_parameter_name);
-                let Some(step_parents) = step_parameter_names
-                    .iter()
-                    .map(|name| self.named_scalars.get(name).cloned())
-                    .collect::<Option<Vec<_>>>()
-                else {
-                    self.pending("iteration-operations");
-                    return;
-                };
                 let Some(depth_id) = self.iteration_depth_scalar(
                     &format!("scalar:{id}:depth"),
                     *depth,
@@ -1178,20 +1047,49 @@ impl Builder {
                     self.pending("iteration-operations");
                     return;
                 };
+                let resolve_state = |state: &crate::runtime::scene::IterationStatePair,
+                                     source: bool|
+                 -> Option<String> {
+                    let ordinal = if source {
+                        state.source_group_ordinal
+                    } else {
+                        state.image_group_ordinal
+                    };
+                    match state.kind {
+                        crate::runtime::scene::IterationStateKind::Object => {
+                            self.group_objects.get(&ordinal).cloned()
+                        }
+                        crate::runtime::scene::IterationStateKind::Scalar => {
+                            self.group_scalars.get(&ordinal).cloned()
+                        }
+                    }
+                };
+                let Some(state_source_ids) = states
+                    .iter()
+                    .map(|state| resolve_state(state, true))
+                    .collect::<Option<Vec<_>>>()
+                else {
+                    self.pending("iteration-state-sources");
+                    return;
+                };
+                let Some(state_target_ids) = states
+                    .iter()
+                    .map(|state| resolve_state(state, false))
+                    .collect::<Option<Vec<_>>>()
+                else {
+                    self.pending("iteration-state-targets");
+                    return;
+                };
+                let output_id = point_id(*point_index);
+                let Some(program) =
+                    self.object_iteration_program(&output_id, &state_source_ids, &state_target_ids)
+                else {
+                    return;
+                };
                 let mut parents = program.source_ids.clone();
-                parents.extend(step_parents);
-                parents.extend([trace_source_id.clone(), depth_id]);
-                self.derived(
-                    id,
-                    ObjectOp::ParameterizedPointIteration {
-                        program,
-                        trace_source_id,
-                        trace_parameter_name: trace_parameter_name.clone(),
-                        step_expression: ObjectExpression::from_function_expr(step_expr),
-                        step_parameter_names,
-                    },
-                    parents,
-                );
+                parents.extend(state_target_ids);
+                parents.push(depth_id);
+                self.derived(id, ObjectOp::PointIteration { program }, parents);
             }
         }
     }
@@ -4224,6 +4122,65 @@ impl Builder {
             nodes,
             source_ids,
             target_id: target_id.to_string(),
+        })
+    }
+
+    fn object_iteration_program(
+        &self,
+        output_id: &str,
+        state_source_ids: &[String],
+        state_target_ids: &[String],
+    ) -> Option<ObjectIterationProgram> {
+        if state_source_ids.is_empty() || state_source_ids.len() != state_target_ids.len() {
+            return None;
+        }
+        let nodes_by_id = self
+            .nodes
+            .iter()
+            .map(|node| (node.id.as_str(), node))
+            .collect::<BTreeMap<_, _>>();
+        let mut required = std::collections::BTreeSet::new();
+        let mut stack = state_target_ids.to_vec();
+        stack.push(output_id.to_string());
+        while let Some(id) = stack.pop() {
+            if !required.insert(id.clone()) {
+                continue;
+            }
+            let node = nodes_by_id.get(id.as_str())?;
+            if !state_source_ids.contains(&id) {
+                stack.extend(node.parents().iter().cloned());
+            }
+        }
+        for source_id in state_source_ids {
+            if !nodes_by_id.contains_key(source_id.as_str()) {
+                return None;
+            }
+            required.insert(source_id.clone());
+        }
+        let nodes = self
+            .nodes
+            .iter()
+            .filter(|node| required.contains(&node.id))
+            .cloned()
+            .map(|mut node| {
+                if state_source_ids.contains(&node.id) {
+                    node.definition = ObjectDefinition::Source;
+                }
+                node
+            })
+            .collect::<Vec<_>>();
+        let source_ids = nodes
+            .iter()
+            .filter(|node| matches!(node.definition, ObjectDefinition::Source))
+            .map(|node| node.id.clone())
+            .filter(|source_id| !state_source_ids.contains(source_id))
+            .collect();
+        Some(ObjectIterationProgram {
+            nodes,
+            source_ids,
+            state_source_ids: state_source_ids.to_vec(),
+            state_target_ids: state_target_ids.to_vec(),
+            output_id: output_id.to_string(),
         })
     }
 

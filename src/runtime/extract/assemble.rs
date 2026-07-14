@@ -30,13 +30,11 @@ pub(super) struct SceneAssemblyArtifacts {
 pub(super) fn build_world_data(
     analysis: &SceneAnalysis,
     visible_points: &[ScenePoint],
-    derived_iteration_points: &[ScenePoint],
     standalone_parameter_points: &[ScenePoint],
     raw_point_iterations: Vec<super::points::RawPointIterationFamily>,
 ) -> WorldData {
     let mut world_points = visible_points
         .iter()
-        .chain(derived_iteration_points.iter())
         .chain(standalone_parameter_points.iter())
         .map(|point| ScenePoint {
             position: to_world(&point.position, &analysis.graph_ref),
@@ -380,61 +378,15 @@ pub(super) fn build_world_data(
     let point_iterations = raw_point_iterations
         .into_iter()
         .map(|family| match family {
-            super::points::RawPointIterationFamily::Offset {
-                seed_index,
-                dx,
-                dy,
-                depth,
-                parameter_name,
-            } => {
-                let (dx, dy) = if let Some(transform) = &analysis.graph_ref {
-                    (dx / transform.raw_per_unit, -dy / transform.raw_per_unit)
-                } else {
-                    (dx, dy)
-                };
-                PointIterationFamily::Offset {
-                    seed_index,
-                    dx,
-                    dy,
-                    depth,
-                    parameter_name,
-                }
-            }
-            super::points::RawPointIterationFamily::RotateChain {
-                seed_index,
-                center_index,
-                angle_degrees,
-                depth,
-            } => PointIterationFamily::RotateChain {
-                seed_index,
-                center_index,
-                angle_degrees,
-                depth,
-            },
-            super::points::RawPointIterationFamily::Rotate {
-                source_index,
-                center_index,
-                angle_expr,
-                depth,
-                parameter_name,
-            } => PointIterationFamily::Rotate {
-                source_index,
-                center_index,
-                angle_expr,
-                depth,
-                parameter_name,
-            },
-            super::points::RawPointIterationFamily::Parameterized {
+            super::points::RawPointIterationFamily::Interpreted {
                 point_index,
+                states,
                 depth_parameter_name,
-                trace_parameter_name,
-                step_expr,
                 depth,
-            } => PointIterationFamily::Parameterized {
+            } => PointIterationFamily::Interpreted {
                 point_index,
+                states,
                 depth_parameter_name,
-                trace_parameter_name,
-                step_expr,
                 depth,
             },
         })

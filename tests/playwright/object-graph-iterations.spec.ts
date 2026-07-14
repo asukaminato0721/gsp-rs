@@ -98,7 +98,8 @@ test('parameterized point iteration evaluates its typed point programs', async (
       .filter((node: any) => node.id.startsWith('point-iteration:'))
       .map((node: any) => ({
         kind: node.definition.op.kind,
-        targetId: node.definition.op.program.targetId,
+        outputId: node.definition.op.program.outputId,
+        stateCount: node.definition.op.program.stateSourceIds.length,
       }));
     const generated = scene.points.filter((point: any) => point.debug == null);
     return {
@@ -116,11 +117,13 @@ test('parameterized point iteration evaluates its typed point programs', async (
 
   expect(result.complete).toBe(true);
   expect(result.pending).toEqual([]);
-  expect(result.operations).toEqual([
-    { kind: 'parameterized-point-iteration', targetId: 'point:59' },
-    { kind: 'parameterized-point-iteration', targetId: 'point:62' },
-  ]);
+  expect(result.operations).toHaveLength(3);
+  expect(result.operations.every((operation: any) => (
+    operation.kind === 'point-iteration'
+      && operation.outputId.startsWith('point:')
+      && operation.stateCount === 1
+  ))).toBe(true);
   expect(result.runtimePointCount).toBeGreaterThan(result.sourcePointCount);
-  expect(result.generatedCount).toBeGreaterThanOrEqual(798);
+  expect(result.generatedCount).toBeGreaterThanOrEqual(1197);
   expect(result.allFinite).toBe(true);
 });

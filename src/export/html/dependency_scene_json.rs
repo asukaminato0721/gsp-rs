@@ -1615,41 +1615,13 @@ impl Collector<'_> {
     }
     fn point_iteration(&self, deps: &mut Dependencies, family: &PointIterationFamily) {
         match family {
-            PointIterationFamily::Offset {
-                seed_index,
-                parameter_name,
-                ..
-            } => {
-                self.point(deps, Some(*seed_index));
-                self.parameter(deps, parameter_name.as_deref());
-            }
-            PointIterationFamily::RotateChain {
-                seed_index,
-                center_index,
-                ..
-            } => self.points(deps, [*seed_index, *center_index]),
-            PointIterationFamily::Rotate {
-                source_index,
-                center_index,
-                angle_expr,
-                parameter_name,
-                ..
-            } => {
-                self.points(deps, [*source_index, *center_index]);
-                self.parameter(deps, parameter_name.as_deref());
-                self.expr(deps, angle_expr);
-            }
-            PointIterationFamily::Parameterized {
+            PointIterationFamily::Interpreted {
                 point_index,
                 depth_parameter_name,
-                trace_parameter_name,
-                step_expr,
                 ..
             } => {
                 self.point(deps, Some(*point_index));
                 self.parameter(deps, depth_parameter_name.as_deref());
-                self.parameter(deps, Some(trace_parameter_name));
-                self.expr(deps, step_expr);
             }
         }
     }

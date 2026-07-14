@@ -49,6 +49,16 @@ pub struct ObjectProgram {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObjectIterationProgram {
+    pub nodes: Vec<ObjectNode<ObjectOp>>,
+    pub source_ids: Vec<String>,
+    pub state_source_ids: Vec<String>,
+    pub state_target_ids: Vec<String>,
+    pub output_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum TraceDriver {
     Scalar {
@@ -373,17 +383,8 @@ pub enum ObjectOp {
     SimilarityPolygonIteration {
         inverse: bool,
     },
-    PointOffsetIteration {
-        dx: f64,
-        dy: f64,
-    },
-    PointRotateIteration,
-    ParameterizedPointIteration {
-        program: ObjectProgram,
-        trace_source_id: String,
-        trace_parameter_name: String,
-        step_expression: ObjectExpression,
-        step_parameter_names: Vec<String>,
+    PointIteration {
+        program: ObjectIterationProgram,
     },
     LineTranslateIteration {
         dx: f64,
@@ -1689,84 +1690,82 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
                 }
                 Ok(ObjectValue::Polygons { polygons })
             }
-            ObjectOp::PointOffsetIteration { dx, dy } => {
-                expect_arity("point-offset-iteration", parents, 2)?;
-                let seed = expect_point("point-offset-iteration", parents, 0)?;
-                let depth = discrete_depth(expect_scalar("point-offset-iteration", parents, 1)?);
-                Ok(ObjectValue::Points {
-                    points: (1..=depth)
-                        .map(|step| Point {
-                            x: seed.x + dx * step as f64,
-                            y: seed.y + dy * step as f64,
-                        })
-                        .collect(),
-                })
-            }
-            ObjectOp::PointRotateIteration => {
-                expect_arity("point-rotate-iteration", parents, 4)?;
-                let seed = expect_point("point-rotate-iteration", parents, 0)?;
-                let center = expect_point("point-rotate-iteration", parents, 1)?;
-                let angle = expect_scalar("point-rotate-iteration", parents, 2)?.to_radians();
-                let depth = discrete_depth(expect_scalar("point-rotate-iteration", parents, 3)?);
-                Ok(ObjectValue::Points {
-                    points: (1..=depth)
-                        .map(|step| rotate_around(seed, center, angle * step as f64))
-                        .collect(),
-                })
-            }
-            ObjectOp::ParameterizedPointIteration {
-                program,
-                trace_source_id,
-                trace_parameter_name,
-                step_expression,
-                step_parameter_names,
-            } => {
-                let program_parent_count = program.source_ids.len();
-                let step_parent_count = step_parameter_names.len();
-                expect_arity(
-                    "parameterized-point-iteration",
-                    parents,
-                    program_parent_count + step_parent_count + 2,
-                )?;
-                let initial_index = program_parent_count + step_parent_count;
-                let mut current =
-                    expect_scalar("parameterized-point-iteration", parents, initial_index)?;
+            ObjectOp::PointIteration { program } => {
+                let source_count = program.source_ids.len();
+                let state_count = program.state_source_ids.len();
+                if state_count == 0 || state_count != program.state_target_ids.len() {
+                    return Err(ObjectOpError::InvalidProgram {
+                        op: "point-iteration",
+                        message: "iteration state sources and targets must be non-empty and paired"
+                            .to_string(),
+                    });
+                }
+                expect_arity("point-iteration", parents, source_count + state_count + 1)?;
                 let depth = discrete_depth(expect_scalar(
-                    "parameterized-point-iteration",
+                    "point-iteration",
                     parents,
-                    initial_index + 1,
+                    source_count + state_count,
                 )?);
-                let mut step_parameters = step_parameter_names
+                let graph = ObjectGraph::build(program.nodes.clone()).map_err(|error| {
+                    ObjectOpError::InvalidProgram {
+                        op: "point-iteration",
+                        message: error.to_string(),
+                    }
+                })?;
+                let source_parents = &parents[..source_count];
+                let mut state = parents[source_count..source_count + state_count]
                     .iter()
-                    .enumerate()
-                    .map(|(index, name)| {
-                        expect_scalar(
-                            "parameterized-point-iteration",
-                            parents,
-                            program_parent_count + index,
-                        )
-                        .map(|value| (name.clone(), value))
-                    })
-                    .collect::<Result<BTreeMap<_, _>, _>>()?;
-                let graph = build_object_program("parameterized-point-iteration", program)?;
+                    .map(|value| (*value).clone())
+                    .collect::<Vec<_>>();
                 let mut points = Vec::with_capacity(depth);
                 for _ in 0..depth {
-                    step_parameters.insert(trace_parameter_name.clone(), current);
-                    let Some(next) = evaluate_expr(
-                        &FunctionExpr::Parsed(step_expression.to_function_ast()),
-                        0.0,
-                        &step_parameters,
-                    ) else {
-                        break;
-                    };
-                    points.push(evaluate_object_program_point(
-                        "parameterized-point-iteration",
-                        program,
-                        &graph,
-                        &parents[..program_parent_count],
-                        &[(trace_source_id.clone(), ObjectValue::Scalar { value: next })],
-                    )?);
-                    current = next;
+                    let mut values = ObjectValues::new(&graph);
+                    for (source_id, parent) in program.source_ids.iter().zip(source_parents) {
+                        values
+                            .set_source::<_, ObjectOpError>(&graph, source_id, (*parent).clone())
+                            .map_err(|error| ObjectOpError::InvalidProgram {
+                                op: "point-iteration",
+                                message: error.to_string(),
+                            })?;
+                    }
+                    for (source_id, value) in program.state_source_ids.iter().zip(&state) {
+                        values
+                            .set_source::<_, ObjectOpError>(&graph, source_id, value.clone())
+                            .map_err(|error| ObjectOpError::InvalidProgram {
+                                op: "point-iteration",
+                                message: error.to_string(),
+                            })?;
+                    }
+                    values
+                        .evaluate_all(&graph, &mut BuiltinOperationTable)
+                        .map_err(|error| ObjectOpError::InvalidProgram {
+                            op: "point-iteration",
+                            message: error.to_string(),
+                        })?;
+                    points.push(
+                        values
+                            .get(&graph, &program.output_id)
+                            .and_then(ObjectValue::as_point)
+                            .ok_or_else(|| ObjectOpError::InvalidProgram {
+                                op: "point-iteration",
+                                message: format!(
+                                    "iteration output {} is not a point",
+                                    program.output_id
+                                ),
+                            })?,
+                    );
+                    state = program
+                        .state_target_ids
+                        .iter()
+                        .map(|target_id| {
+                            values.get(&graph, target_id).cloned().ok_or_else(|| {
+                                ObjectOpError::InvalidProgram {
+                                    op: "point-iteration",
+                                    message: format!("missing iteration state target {target_id}"),
+                                }
+                            })
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
                 }
                 Ok(ObjectValue::Points { points })
             }
@@ -3818,15 +3817,33 @@ mod tests {
     }
 
     #[test]
-    fn parameterized_point_iteration_evaluates_its_typed_point_program() {
-        let program = ObjectProgram {
+    fn point_iteration_interprets_the_state_program_for_each_image() {
+        let program = ObjectIterationProgram {
             nodes: vec![
                 ObjectNode::source("trace"),
                 ObjectNode::source("y"),
-                ObjectNode::derived("target", ObjectOp::PointFromScalars, ["trace", "y"]),
+                ObjectNode::derived(
+                    "next",
+                    ObjectOp::EvaluateExpression {
+                        expression: ObjectExpression::Binary {
+                            left: Box::new(ObjectExpression::Parameter {
+                                name: "t".into(),
+                                default: 0.0,
+                            }),
+                            op: BinaryOp::Add,
+                            right: Box::new(ObjectExpression::Constant { value: 1.0 }),
+                        },
+                        parameter_names: vec!["t".into()],
+                        x: 0.0,
+                    },
+                    ["trace"],
+                ),
+                ObjectNode::derived("target", ObjectOp::PointFromScalars, ["next", "y"]),
             ],
             source_ids: vec!["y".into()],
-            target_id: "target".into(),
+            state_source_ids: vec!["trace".into()],
+            state_target_ids: vec!["next".into()],
+            output_id: "target".into(),
         };
         let y = ObjectValue::Scalar { value: 9.0 };
         let initial = ObjectValue::Scalar { value: 0.0 };
@@ -3834,20 +3851,7 @@ mod tests {
         let value = BuiltinOperationTable
             .evaluate(
                 "iteration",
-                &ObjectOp::ParameterizedPointIteration {
-                    program,
-                    trace_source_id: "trace".into(),
-                    trace_parameter_name: "t".into(),
-                    step_expression: ObjectExpression::Binary {
-                        left: Box::new(ObjectExpression::Parameter {
-                            name: "t".into(),
-                            default: 0.0,
-                        }),
-                        op: BinaryOp::Add,
-                        right: Box::new(ObjectExpression::Constant { value: 1.0 }),
-                    },
-                    step_parameter_names: Vec::new(),
-                },
+                &ObjectOp::PointIteration { program },
                 &[&y, &initial, &depth],
             )
             .unwrap();
